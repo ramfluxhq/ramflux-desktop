@@ -99,16 +99,16 @@ fn state(cx: &mut TestAppContext, launcher: &Entity<DaemonLauncher>) -> LaunchSt
     cx.update(|cx| launcher.read(cx).state().clone())
 }
 
-/// Lets the child process run while the GPUI test clock ticks.
+/// Lets the child process run while the GPUI test clock ticks, until
+/// `done` holds. The wall-clock limit only bounds a failure; a busy machine
+/// just takes longer.
 fn wait(cx: &mut TestAppContext, what: &str, mut done: impl FnMut(&mut TestAppContext) -> bool) {
-    for _ in 0..300 {
-        if done(cx) {
-            return;
-        }
+    let limit = std::time::Instant::now() + common::WAIT_LIMIT;
+    while !done(cx) {
+        assert!(std::time::Instant::now() < limit, "timed out waiting for: {what}");
         std::thread::sleep(Duration::from_millis(10));
         advance(cx, 100);
     }
-    panic!("timed out waiting for: {what}");
 }
 
 #[gpui_kit::test]

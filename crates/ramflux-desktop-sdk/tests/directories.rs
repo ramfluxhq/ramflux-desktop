@@ -71,10 +71,14 @@ fn pages_are_followed_by_cursor_and_listed_only_when_complete() {
     let cursors: Vec<Option<&str>> = seen
         .iter()
         .filter(|s| s.method == "conversation.directory")
-        .take(3)
         .map(|s| s.body["cursor"].as_str())
         .collect();
-    assert_eq!(cursors, [None, Some("c-1"), Some("c-2")], "each cursor is passed back once");
+    // Polls may start new listings in between; each cursor follows a first
+    // page and every next page was asked for.
+    let first = cursors.iter().position(Option::is_none).expect("a first page");
+    let c1 = cursors.iter().position(|c| *c == Some("c-1")).expect("page 2");
+    let c2 = cursors.iter().position(|c| *c == Some("c-2")).expect("page 3");
+    assert!(first < c1 && c1 < c2, "{cursors:?}");
     assert!(
         seen.iter()
             .filter(|s| s.method.ends_with(".directory"))

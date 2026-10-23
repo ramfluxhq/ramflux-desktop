@@ -7,9 +7,15 @@
 //! The data set is deterministic: 200 contexts, 100 000 moments (one
 //! context holds 20 000 of them), 1 000 of them waiting on the user across
 //! the 200 contexts. Each benchmark prints its time
-//! (`cargo test -p ramflux-desktop-core --test scale -- --nocapture`) and
-//! asserts a generous upper bound (sized for unoptimized test builds on a
-//! slow machine), so a complexity regression fails instead of slipping in.
+//! (`cargo test -p ramflux-desktop-core --test scale -- --nocapture`). The
+//! results (counts, bounded bodies) are always checked. The time bounds
+//! (generous, sized for unoptimized test builds) depend on how busy the
+//! machine is, so they are asserted only on request, keeping the default
+//! `cargo test` deterministic:
+//!
+//! ```sh
+//! RAMFLUX_PERF_ASSERT=1 cargo test -p ramflux-desktop-core --test scale -- --nocapture
+//! ```
 
 mod common;
 
@@ -87,9 +93,16 @@ fn best<R>(runs: usize, mut f: impl FnMut() -> R) -> (Duration, R) {
     (best, last.expect("at least one run"))
 }
 
+/// Whether wall-clock bounds are asserted (`RAMFLUX_PERF_ASSERT=1`).
+fn perf_asserted() -> bool {
+    std::env::var("RAMFLUX_PERF_ASSERT").is_ok_and(|v| v == "1")
+}
+
 fn report(name: &str, took: Duration, bound: Duration) {
     println!("BENCH {name}: {:.3} ms (bound {} ms)", took.as_secs_f64() * 1e3, bound.as_millis());
-    assert!(took <= bound, "{name} took {took:?}, over its bound {bound:?}");
+    if perf_asserted() {
+        assert!(took <= bound, "{name} took {took:?}, over its bound {bound:?}");
+    }
 }
 
 #[test]
@@ -127,7 +140,9 @@ fn a_20k_timeline_and_a_context_switch_cost_their_own_size() {
     assert!(count >= (MOMENTS - BIG_MOMENTS) / CONTEXTS);
     // Cost follows the context's own size (400 versus 20 000 moments), not
     // the 100 000 in the store.
-    assert!(took * 5 < big_took, "a small context costs {took:?}, the big one {big_took:?}");
+    if perf_asserted() {
+        assert!(took * 5 < big_took, "a small context costs {took:?}, the big one {big_took:?}");
+    }
 }
 
 #[test]

@@ -23,6 +23,11 @@ use ramflux_desktop_ui::workspace::Workspace;
 /// The window handle and the production root view.
 pub type Opened = (WindowHandle<Root>, Entity<Shell>);
 
+/// How long a condition-based wait on real threads or processes may take
+/// before the test fails. It only bounds a failure; no test asserts speed.
+#[allow(dead_code)]
+pub const WAIT_LIMIT: Duration = Duration::from_secs(30);
+
 /// Opens the production window root playing `scenario` with a running clock.
 pub fn open(cx: &mut TestAppContext, scenario: &str) -> Opened {
     cx.update(|cx| {

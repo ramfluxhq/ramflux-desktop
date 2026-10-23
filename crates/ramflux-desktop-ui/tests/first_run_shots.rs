@@ -110,14 +110,14 @@ mod shots {
             }
         }
 
+        /// Ticks until `done` holds; the wall-clock limit only bounds a
+        /// failure (a busy machine just takes longer).
         fn until(&mut self, what: &str, mut done: impl FnMut(&mut HeadlessAppContext) -> bool) {
-            for _ in 0..600 {
-                if done(&mut self.cx) {
-                    return;
-                }
+            let limit = std::time::Instant::now() + Duration::from_secs(60);
+            while !done(&mut self.cx) {
+                assert!(std::time::Instant::now() < limit, "timed out waiting for: {what}");
                 self.tick(1);
             }
-            panic!("timed out waiting for: {what}");
         }
 
         fn in_window(

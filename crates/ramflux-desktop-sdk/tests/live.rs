@@ -247,24 +247,29 @@ fn a_lost_daemon_reports_disconnected_and_a_new_one_is_resnapshotted() {
 #[test]
 fn a_slow_request_of_one_account_does_not_block_another() {
     let path = socket_path("slow");
-    let fake = FakeBus::start(&path, |method, account, _| match (method, account) {
+    // The slow account's directory is held until the test releases it.
+    let release = Arc::new(AtomicUsize::new(0));
+    let held = release.clone();
+    let fake = FakeBus::start(&path, move |method, account, _| match (method, account) {
         ("conversation.directory", Some("acct-slow")) => {
-            Reply::Slow(Duration::from_millis(1_500), frames()["conversation.directory"].clone())
+            let limit = Instant::now() + Duration::from_secs(30);
+            while held.load(Ordering::SeqCst) == 0 && Instant::now() < limit {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            fixture(method)
         }
         _ => fixture(method),
     });
     let hub = hub(&path);
-    let started = Instant::now();
     let mut slow = Fed::new(hub.account_source(AccountId::new("acct-slow")));
     let mut fast = Fed::new(hub.account_source(AccountId::new("acct-main")));
     fast.until("fast account live", |s, _| s.context(&ContextId::new("dm-ana")).is_some());
-    let fast_done = started.elapsed();
     slow.pump();
     assert!(
         slow.store.context(&ContextId::new("dm-ana")).is_none(),
-        "the slow account is still waiting"
+        "the slow account is still waiting while the other one is live"
     );
-    assert!(fast_done < Duration::from_millis(1_200), "fast account took {fast_done:?}");
+    release.store(1, Ordering::SeqCst);
     slow.until("slow account live", |s, _| s.context(&ContextId::new("dm-ana")).is_some());
     fake.shutdown();
 }

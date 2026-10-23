@@ -48,16 +48,15 @@ fn options(path: &std::path::Path) -> ShellOptions {
     }
 }
 
-/// Lets the bridge thread answer while the GPUI test clock ticks.
+/// Lets the bridge thread answer while the GPUI test clock ticks, until
+/// `done` holds. The wall-clock limit only bounds a failure.
 fn wait(cx: &mut TestAppContext, what: &str, mut done: impl FnMut(&mut TestAppContext) -> bool) {
-    for _ in 0..400 {
-        if done(cx) {
-            return;
-        }
+    let limit = std::time::Instant::now() + common::WAIT_LIMIT;
+    while !done(cx) {
+        assert!(std::time::Instant::now() < limit, "timed out waiting for: {what}");
         std::thread::sleep(Duration::from_millis(10));
         advance(cx, 50);
     }
-    panic!("timed out waiting for: {what}");
 }
 
 #[gpui_kit::test]

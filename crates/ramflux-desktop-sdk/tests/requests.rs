@@ -26,24 +26,55 @@ fn now_ms() -> u64 {
     u64::try_from(now.as_millis()).expect("millis")
 }
 
+/// A gate the first `parties` requests wait at until all of them arrived:
+/// it opens only if they are in flight at the same time.
+struct Gate {
+    arrived: AtomicUsize,
+    parties: usize,
+}
+
+impl Gate {
+    /// Waits for the other parties; false when they never came (the
+    /// requests were serialized). The limit only bounds a failure.
+    fn meet(&self) -> bool {
+        let me = self.arrived.fetch_add(1, Ordering::SeqCst) + 1;
+        let limit = Instant::now() + Duration::from_secs(30);
+        while me <= self.parties && self.arrived.load(Ordering::SeqCst) < self.parties {
+            if Instant::now() > limit {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        true
+    }
+}
+
 #[test]
 fn the_reads_of_a_scope_run_concurrently_on_one_connection() {
     let path = socket_path("mux");
-    let fake = FakeBus::start(&path, |method, _, _| match method {
-        "conversation.directory" | "group.list" | "contact.list" | "mcp.approval.list" => {
-            Reply::Slow(Duration::from_millis(700), frames()[method].clone())
+    let gate = Arc::new(Gate { arrived: AtomicUsize::new(0), parties: 4 });
+    let met = Arc::new(AtomicUsize::new(0));
+    let (g, m) = (gate.clone(), met.clone());
+    // The first answer of each of these four reads waits until all four
+    // are in flight: the snapshot completes only if they overlap.
+    let fake = FakeBus::start(&path, move |method, _, body| match method {
+        "conversation.directory" | "group.list" | "contact.list" | "mcp.approval.list"
+            if body["cursor"].is_null() && g.arrived.load(Ordering::SeqCst) < g.parties =>
+        {
+            if g.meet() {
+                m.fetch_add(1, Ordering::SeqCst);
+            }
+            fixture(method)
         }
         _ => fixture(method),
     });
     let hub = hub(&path);
-    let started = Instant::now();
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     account.until("snapshot", |s, _| {
         s.context(&ContextId::new("dm-ana")).is_some()
             && s.context(&ContextId::new("thread-team")).is_some()
     });
-    let took = started.elapsed();
-    assert!(took < Duration::from_millis(1_800), "four slow reads overlapped: {took:?}");
+    assert_eq!(met.load(Ordering::SeqCst), 4, "the four reads were in flight together");
     let seen = fake.seen();
     let requests: Vec<_> = seen
         .iter()
@@ -101,7 +132,8 @@ fn every_frame_carries_a_deadline_and_only_mutations_carry_a_key() {
 fn a_request_past_its_deadline_fails_as_a_timeout_and_never_hangs() {
     let path = socket_path("timeout");
     let fake = FakeBus::start(&path, |method, _, _| match method {
-        "node.probe" => Reply::Slow(Duration::from_secs(4), frames()["node.probe"].clone()),
+        // Answers long after the 800 ms deadline, however busy the machine.
+        "node.probe" => Reply::Slow(Duration::from_secs(25), frames()["node.probe"].clone()),
         _ => fixture(method),
     });
     let config =
@@ -109,14 +141,13 @@ fn a_request_past_its_deadline_fails_as_a_timeout_and_never_hangs() {
     let hub = SdkHub::start(config).expect("bridge");
     let mut daemon = Fed::new(hub.daemon_source());
     daemon.until("node", |s, _| s.node(&NodeId::new("n-harbor")).is_some());
-    let sent = Instant::now();
     daemon.source.submit(Effect::Call {
         method: methods::NODE_PROBE.to_owned(),
         body: json!({ "node_id": "n-harbor" }),
     });
+    // The failure arrives while the daemon would still be answering: the
+    // request ended at its deadline, not with the answer.
     daemon.until("timed out", |s, _| !s.failures().is_empty());
-    let waited = sent.elapsed();
-    assert!(waited < Duration::from_millis(2_000), "ended at the deadline: {waited:?}");
     let failure = daemon.store.failures()[0].clone();
     assert_eq!(
         (failure.method.as_str(), &failure.code),

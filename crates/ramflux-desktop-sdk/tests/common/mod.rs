@@ -53,9 +53,10 @@ impl Fed {
         }
     }
 
-    /// Pumps until `done` holds, or panics after a few seconds.
+    /// Pumps until `done` holds. The wall-clock limit only bounds a failure
+    /// (a busy machine just takes longer); nothing is asserted about speed.
     pub fn until(&mut self, what: &str, done: impl Fn(&Store, &[EventEnvelope]) -> bool) {
-        let deadline = Instant::now() + Duration::from_secs(6);
+        let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             self.pump();
             if done(&self.store, &self.envelopes) {
