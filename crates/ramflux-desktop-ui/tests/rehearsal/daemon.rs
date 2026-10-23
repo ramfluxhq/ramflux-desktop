@@ -3,43 +3,17 @@
 
 //! The daemon behind one desktop, and the reference CLI on the same socket.
 //!
-//! The desktop does everything it can itself. The reference CLI is used to
-//! cross-check what the desktop shows and for the steps the desktop cannot
-//! take yet (each use is recorded as a note in the step table):
-//! - starting a direct conversation (the desktop sends only in a
-//!   conversation the daemon already lists a route for);
-//! - receiving a conversation the desktop does not know yet (the desktop
-//!   receives only the conversations it shows).
+//! The desktop does everything it can itself, starting conversations and
+//! sending attachments included. The reference CLI is used to cross-check
+//! what the desktop shows and for the one step the daemon cannot take yet
+//! (recorded as a note in the step table): receiving a conversation the
+//! receiving desktop does not know yet. Until the daemon routes a first
+//! message from an unknown conversation itself, `rf dm read` fetches it.
 
 use std::path::PathBuf;
 
 use ramflux_desktop_test::live_daemon::LiveDaemon;
 use serde_json::Value;
-
-/// The first message of a direct conversation, sent with the reference CLI.
-#[derive(Debug, Clone)]
-pub struct DmSend {
-    /// Local account that sends.
-    pub account: String,
-    /// Conversation id.
-    pub conversation: String,
-    /// Message id.
-    pub message: String,
-    /// Envelope id.
-    pub envelope: String,
-    /// The sender's principal.
-    pub source_principal: String,
-    /// The sender's device.
-    pub sender: String,
-    /// The recipient's principal commitment.
-    pub recipient_commitment: String,
-    /// The recipient's device.
-    pub recipient_device: String,
-    /// The recipient's delivery target.
-    pub target: String,
-    /// The text.
-    pub body: String,
-}
 
 /// A daemon one desktop is attached to.
 pub trait DemoDaemon {
@@ -66,13 +40,6 @@ pub trait DemoDaemon {
     ///
     /// The CLI's failure.
     fn node_public_key(&self, node: &str) -> Result<Option<String>, String>;
-
-    /// Sends the first message of a direct conversation.
-    ///
-    /// # Errors
-    ///
-    /// The CLI's failure.
-    fn dm_send(&self, send: &DmSend) -> Result<(), String>;
 
     /// Receives `conversation` for `account` from the node.
     ///
@@ -113,37 +80,6 @@ impl DemoDaemon for LiveDaemon {
         Ok(listed["nodes"].as_array().into_iter().flatten().find_map(|n| {
             (n["node_id"] == node).then(|| n["node_public_key"].as_str().map(str::to_owned))?
         }))
-    }
-
-    fn dm_send(&self, send: &DmSend) -> Result<(), String> {
-        rf_json(
-            self,
-            &[
-                "dm",
-                "send",
-                "--account",
-                &send.account,
-                "--conversation",
-                &send.conversation,
-                "--message",
-                &send.message,
-                "--envelope",
-                &send.envelope,
-                "--source-principal",
-                &send.source_principal,
-                "--sender",
-                &send.sender,
-                "--recipient-principal-commitment",
-                &send.recipient_commitment,
-                "--recipient-device",
-                &send.recipient_device,
-                "--target",
-                &send.target,
-                "--body",
-                &send.body,
-            ],
-        )
-        .map(drop)
     }
 
     fn dm_read(&self, account: &str, conversation: &str) -> Result<(), String> {

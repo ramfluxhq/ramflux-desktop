@@ -3,7 +3,8 @@
 
 //! Two fake daemons on one fake node, for rehearsing the demo without a
 //! node: each daemon is a [`FakeBus`] on its own socket answering from the
-//! shared [`world::World`]; the reference CLI's steps act on the same world.
+//! shared [`world::World`]; the reference CLI's step (receiving an unknown
+//! conversation) acts on the same world.
 //!
 //! - `world`: the node, both daemons' accounts, links and messages.
 //! - `rows`: the daemon's JSON rows.
@@ -19,7 +20,7 @@ use std::sync::{Arc, Mutex};
 use ramflux_desktop_test::fake_bus::{FakeBus, socket_path};
 use serde_json::{Value, json};
 
-use crate::rehearsal::daemon::{DemoDaemon, DmSend};
+use crate::rehearsal::daemon::DemoDaemon;
 use world::World;
 
 /// The shared world.
@@ -85,21 +86,6 @@ impl DemoDaemon for FakeDaemon {
 
     fn node_public_key(&self, node: &str) -> Result<Option<String>, String> {
         Ok(self.world.lock().expect("world").node_key(self.side, node))
-    }
-
-    fn dm_send(&self, send: &DmSend) -> Result<(), String> {
-        let body = json!({
-            "conversation_id": send.conversation, "message_id": send.message,
-            "envelope_id": send.envelope, "source_principal_id": send.source_principal,
-            "sender_id": send.sender, "recipient_device_id": send.recipient_device,
-            "recipient_principal_commitment": send.recipient_commitment,
-            "target_delivery_id": send.target,
-            "plaintext_body_base64": ramflux_protocol::encode_base64url(send.body.as_bytes()),
-        });
-        match self.world.lock().expect("world").submit(self.side, &send.account, &body) {
-            ramflux_desktop_test::fake_bus::Reply::Ok(_) => Ok(()),
-            other => Err(format!("dm send: {other:?}")),
-        }
     }
 
     fn dm_read(&self, account: &str, conversation: &str) -> Result<(), String> {

@@ -39,6 +39,8 @@ pub struct Peer {
 #[derive(Debug, Clone)]
 pub struct Conversation {
     pub peer: Peer,
+    /// The local title the first submission named (the daemon records it).
+    pub title: Option<String>,
     pub messages: Vec<Value>,
 }
 
@@ -312,9 +314,14 @@ impl World {
         let me = self.account(side, id).expect("account");
         let from = me.peer();
         let stored = rows::message(&message, &from.device, &body_text, at, false);
+        let title = body["title"].as_str().map(str::to_owned);
         me.conversations
             .entry(conversation.clone())
-            .or_insert_with(|| Conversation { peer: recipient.clone(), messages: Vec::new() })
+            .or_insert_with(|| Conversation {
+                peer: recipient.clone(),
+                title,
+                messages: Vec::new(),
+            })
             .messages
             .push(stored);
         for attachment in body["attachments"].as_array().into_iter().flatten() {
@@ -354,7 +361,11 @@ impl World {
             let me = self.account(side, id).expect("account");
             me.conversations
                 .entry(held.conversation.clone())
-                .or_insert_with(|| Conversation { peer: held.from.clone(), messages: Vec::new() })
+                .or_insert_with(|| Conversation {
+                    peer: held.from.clone(),
+                    title: None,
+                    messages: Vec::new(),
+                })
                 .messages
                 .push(rows::message(&held.message, &held.from.device, &held.text, held.at, false));
             decrypted.push(json!({ "message_id": held.message, "body_utf8": held.text }));

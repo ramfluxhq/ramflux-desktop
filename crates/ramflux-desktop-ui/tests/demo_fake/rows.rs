@@ -78,7 +78,7 @@ pub fn conversation(id: &str, conversation: &Conversation, owner: &Account) -> V
     json!({
         "id": id, "archived": false, "hidden": false, "last_activity": null,
         "unread_count": 0, "is_unread": false, "muted": false, "mute_until": null,
-        "disappearing": null, "kind": "direct", "title": null,
+        "disappearing": null, "kind": "direct", "title": conversation.title,
         "participants": [peer.principal, owner.principal], "group_id": null,
         "direct_route": {
             "recipient_principal_commitment": peer.commitment,

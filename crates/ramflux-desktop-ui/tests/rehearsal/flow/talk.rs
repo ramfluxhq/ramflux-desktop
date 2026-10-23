@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Steps 4 to 6: contacts both ways, direct messages both ways, and an
-//! attachment.
+//! Steps 4 to 6: contacts both ways, a conversation started from the
+//! contacts dock with messages both ways, and an attachment sent with the
+//! composer's attach button.
 
 use ramflux_desktop_core::{
-    ContactLink, Direction, ParticipantId, SafetyState, TransferState, UiEventKind,
+    ContactLink, ContextId, Direction, ParticipantId, SafetyState, TransferState,
 };
 
 use super::setup::short;
 use super::{Demo, probe};
-use crate::rehearsal::daemon::{DemoDaemon, DmSend};
+use crate::rehearsal::daemon::DemoDaemon;
 use crate::rehearsal::host::Host;
 use crate::rehearsal::steps::Notes;
 
@@ -97,50 +98,46 @@ fn verify<H: Host, D: DemoDaemon>(
     Ok(())
 }
 
-/// Step 5: Alice opens the conversation with the reference CLI (the
-/// desktop cannot start one), then Bob replies and Alice writes again from
-/// their desktops; both see all three, and each sent message is delivered.
+/// Step 5: Alice starts the conversation from Bob's row in her contacts
+/// dock (a draft, then the first message from the composer), then Bob
+/// replies and Alice writes again from their desktops; both see all three,
+/// and each sent message is delivered. Bob's desktop learns a conversation
+/// it did not start only once his daemon lists it; until the daemon routes
+/// first messages itself, the reference CLI receives it (a note says so).
 pub fn messages<H: Host, D: DemoDaemon>(
     demo: &mut Demo<'_, H, D>,
     notes: &mut Notes,
 ) -> Result<(), String> {
     let (alice, bob) = (demo.sides[0].facts()?.clone(), demo.sides[1].facts()?.clone());
     let run = demo.config.run_id.clone();
-    let context = demo.conversation.clone();
     let limits = demo.config.limits;
     let opener = format!("Hello Bob, this is Alice ({run})");
-    demo.sides[0].daemon.dm_send(&DmSend {
-        account: alice.account.clone(),
-        conversation: context.to_string(),
-        message: format!("demo-msg-{run}-1"),
-        envelope: format!("demo-env-{run}-1"),
-        source_principal: alice.principal.clone(),
-        sender: alice.device.clone(),
-        recipient_commitment: bob.commitment.clone(),
-        recipient_device: bob.device.clone(),
-        target: bob.target.clone(),
-        body: opener.clone(),
-    })?;
-    notes.add("opener sent with the reference CLI (the desktop cannot start a conversation)");
-    for ix in 0..2 {
-        let found = demo.wait(ix, limits.discover, "the conversation", |desk, host| {
+    start(demo, &bob.principal, &opener, notes)?;
+    let context = demo.conversation.clone();
+    notes.add(format!(
+        "opener started from the contacts dock (Message on Bob, first message from the \
+         composer); conversation {}",
+        short(context.as_str())
+    ));
+    see(demo, 0, &opener)?;
+    let found = demo.wait(1, limits.discover, "the conversation", |desk, host| {
+        desk.store(host, |s| s.context(&context).is_some())
+    });
+    if found.is_err() {
+        demo.sides[1].daemon.dm_read(&bob.account, context.as_str())?;
+        notes.add(
+            "Bob received the new conversation with the reference CLI (rf dm read): until the \
+             daemon routes a first message from an unknown conversation itself, his desktop \
+             cannot know it",
+        );
+        demo.wait(1, limits.answer, "the conversation", |desk, host| {
             desk.store(host, |s| s.context(&context).is_some())
-        });
-        if found.is_err() {
-            let facts = demo.sides[ix].facts()?.clone();
-            demo.sides[ix].daemon.dm_read(&facts.account, context.as_str())?;
-            notes.add(format!(
-                "{} received the new conversation with the reference CLI (the desktop receives \
-                 only conversations it shows)",
-                demo.sides[ix].name
-            ));
-            demo.wait(ix, limits.answer, "the conversation", |desk, host| {
-                desk.store(host, |s| s.context(&context).is_some())
-            })?;
-        }
-        demo.sides[ix].desk()?.show_context(demo.host, &context)?;
-        see(demo, ix, &opener)?;
+        })?;
+    } else {
+        notes.add("Bob's desktop listed the new conversation by itself");
     }
+    demo.sides[1].desk()?.show_context(demo.host, &context)?;
+    see(demo, 1, &opener)?;
     let reply = format!("Hi Alice, Bob here ({run})");
     send(demo, 1, &reply)?;
     see(demo, 0, &reply)?;
@@ -161,6 +158,45 @@ pub fn messages<H: Host, D: DemoDaemon>(
     demo.texts = vec![opener, reply, again];
     demo.shots(0, "05_messages", notes)?;
     demo.shots(1, "05_messages", notes)?;
+    Ok(())
+}
+
+/// Alice presses Message on `peer`'s contact row, writes `text` as the
+/// first message of the draft and sends it; the conversation she lands in
+/// becomes the demo's.
+fn start<H: Host, D: DemoDaemon>(
+    demo: &mut Demo<'_, H, D>,
+    peer: &str,
+    text: &str,
+    notes: &mut Notes,
+) -> Result<(), String> {
+    let row = format!("contacts-{peer}");
+    let limit = demo.config.limits.answer;
+    let desk = demo.sides[0].desk()?;
+    if !desk.exists(demo.host, &row) {
+        desk.click(demo.host, None, "rail-contacts")?;
+    }
+    desk.click(demo.host, Some(&row), "message")?;
+    if !desk.draft_open(demo.host) {
+        return Err("Message on the contact opened no new-conversation draft".to_owned());
+    }
+    demo.shots(0, "05_new_conversation", notes)?;
+    let desk = demo.sides[0].desk()?;
+    if let Some(reason) = desk.label(demo.host, "composer-unavailable") {
+        return Err(format!("the draft cannot start: {reason}"));
+    }
+    desk.type_into(demo.host, "composer-input", text)?;
+    desk.click(demo.host, None, "composer-send")?;
+    let started = demo.wait(0, limit, "the started conversation", |desk, host| {
+        !desk.draft_open(host) && desk.current_context(host).is_some()
+    });
+    if let Err(error) = started {
+        let desk = demo.sides[0].desk()?;
+        let status = desk.label(demo.host, "new-conversation-status");
+        return Err(status.map_or(error.clone(), |status| format!("{error}: {status}")));
+    }
+    let desk = demo.sides[0].desk()?;
+    demo.conversation = desk.current_context(demo.host).unwrap_or_else(|| ContextId::new(""));
     Ok(())
 }
 
@@ -193,10 +229,11 @@ fn see<H: Host, D: DemoDaemon>(
     .map(drop)
 }
 
-/// Step 6: Alice attaches a file in the conversation. Her objects list it
-/// as sent; Bob sees the message at once. Bob's copy is reported as it is:
-/// the daemon does not fetch a received attachment yet, so nothing is
-/// shown as available.
+/// Step 6: Alice attaches a file with the composer's attach button: the
+/// file is checked and staged, then sent. While it travels her message
+/// shows it as transferring; then her objects list it as sent and Bob sees
+/// the message. Bob's copy is reported as it is: the daemon does not fetch a
+/// received attachment yet, so nothing is shown as available.
 pub fn attachment<H: Host, D: DemoDaemon>(
     demo: &mut Demo<'_, H, D>,
     notes: &mut Notes,
@@ -210,17 +247,25 @@ pub fn attachment<H: Host, D: DemoDaemon>(
     std::fs::write(&path, &bytes).map_err(|e| format!("cannot write the attachment: {e}"))?;
     let before = demo.read(1, |s| s.context_moment_count(&context))?;
     let desk = demo.sides[0].desk()?;
-    desk.emit_in(
-        demo.host,
-        &context,
-        UiEventKind::AttachFile { path: path.display().to_string() },
-    )?;
-    notes.add("attached through the root sink (UiEvent AttachFile; the composer has no attach control yet)");
+    desk.show_context(demo.host, &context)?;
+    let chosen = desk.attach_file(demo.host, &path)?;
+    if !desk.exists(demo.host, "composer-attachment") {
+        return Err("the chosen file is not staged in the composer".to_owned());
+    }
+    if let Some(detail) = desk.label(demo.host, "composer-attachment") {
+        notes.add(format!("staged: {detail}"));
+    }
+    demo.shots(0, "06_attach_staged", notes)?;
+    let desk = demo.sides[0].desk()?;
+    desk.click(demo.host, None, "composer-send")?;
+    notes.add(format!("attached with the composer's attach button ({chosen})"));
     let wanted = name.clone();
     demo.wait(0, limit, "the sent attachment", |desk, host| {
         desk.store(host, |s| {
             s.objects().any(|o| {
-                o.direction == Direction::Outbound && o.name.as_deref() == Some(wanted.as_str())
+                o.direction == Direction::Outbound
+                    && o.name.as_deref() == Some(wanted.as_str())
+                    && !matches!(o.transfer, TransferState::Transferring { .. })
             })
         })
     })?;

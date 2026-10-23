@@ -32,6 +32,11 @@ pub trait Host {
     /// has no renderer.
     fn screenshot(&mut self, window: AnyWindowHandle, path: &Path) -> Result<bool, String>;
 
+    /// Answers a pending native "open file" dialog with `path`. `false`
+    /// when this context cannot answer one (the offscreen context has no
+    /// dialog to answer).
+    fn answer_file_prompt(&mut self, path: &Path) -> bool;
+
     /// Lets real time pass for threads and child processes, then moves the
     /// GPUI clock.
     fn tick(&mut self) {
@@ -70,6 +75,10 @@ impl Host for HeadlessAppContext {
         image.save(path).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
         Ok(true)
     }
+
+    fn answer_file_prompt(&mut self, _: &Path) -> bool {
+        false
+    }
 }
 
 impl Host for TestAppContext {
@@ -99,5 +108,15 @@ impl Host for TestAppContext {
 
     fn screenshot(&mut self, _: AnyWindowHandle, _: &Path) -> Result<bool, String> {
         Ok(false)
+    }
+
+    fn answer_file_prompt(&mut self, path: &Path) -> bool {
+        if !self.did_prompt_for_paths() {
+            return false;
+        }
+        let path = path.to_path_buf();
+        self.simulate_path_prompt_response(move |_| Some(vec![path]));
+        self.run_until_parked();
+        true
     }
 }

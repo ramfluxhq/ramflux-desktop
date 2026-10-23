@@ -90,6 +90,7 @@ pub struct Demo<'h, H: Host, D: DemoDaemon> {
     sides: [Side<D>; 2],
     work: PathBuf,
     node: Option<NodeId>,
+    /// The direct conversation Alice starts in step 5 (empty until then).
     conversation: ContextId,
     texts: Vec<String>,
 }
@@ -105,7 +106,7 @@ impl<'h, H: Host, D: DemoDaemon> Demo<'h, H, D> {
         bob: Side<D>,
         work: PathBuf,
     ) -> Self {
-        let conversation = ContextId::new(format!("demo-dm-{}", config.run_id));
+        let conversation = ContextId::new("");
         Self {
             host,
             config,

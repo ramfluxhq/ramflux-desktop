@@ -16,10 +16,9 @@ use gpui_kit::{
     AppContext as _, Bounds, Entity, MouseButton, Point, WindowBounds, WindowHandle, WindowOptions,
     px, size,
 };
-use ramflux_desktop_core::{ContextId, Scope, Store, UiEventKind};
+use ramflux_desktop_core::{ContextId, Store};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::confirm::HOLD_DURATION;
-use ramflux_desktop_ui::root::IntentRoot;
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::shell::ShellOptions;
 
@@ -152,19 +151,33 @@ impl Desk {
         })
     }
 
-    /// Emits a UI event from inside conversation `context`, through the
-    /// root sink every view emits through (UiEvent, then root, then intent).
-    pub fn emit_in(
-        &self,
-        host: &mut impl Host,
-        context: &ContextId,
-        kind: UiEventKind,
-    ) -> Result<(), String> {
-        let root = host.app(|cx| self.shell.read(cx).root().clone());
-        let scope = Scope::Context(context.clone());
-        host.window(self.handle.into(), move |window, cx| {
-            IntentRoot::sink(&root).scoped(scope).emit(kind, window, cx);
+    /// The conversation the workspace shows.
+    pub fn current_context(&self, host: &mut impl Host) -> Option<ContextId> {
+        host.app(|cx| self.shell.read(cx).workspace().read(cx).current_context().cloned())
+    }
+
+    /// Whether a new-conversation draft is open.
+    pub fn draft_open(&self, host: &mut impl Host) -> bool {
+        host.app(|cx| {
+            self.shell.read(cx).workspace().read(cx).new_conversation().read(cx).is_open()
         })
+    }
+
+    /// Clicks the composer's attach button and answers the native file
+    /// dialog it opened with `path`. Where the context cannot answer a
+    /// dialog (offscreen), the chosen path is handed to the composer the way
+    /// the dialog would. Returns how the file was chosen.
+    pub fn attach_file(&self, host: &mut impl Host, path: &Path) -> Result<&'static str, String> {
+        self.click(host, None, "composer-attach")?;
+        if host.answer_file_prompt(path) {
+            return Ok("file dialog answered");
+        }
+        let composer = host.app(|cx| self.shell.read(cx).workspace().read(cx).composer().clone());
+        let chosen = path.display().to_string();
+        host.window(self.handle.into(), move |window, cx| {
+            composer.update(cx, |c, cx| c.attach_chosen(&chosen, window, cx));
+        })?;
+        Ok("dialog result handed to the composer (offscreen: no dialog to answer)")
     }
 
     /// Opens Settings at `section`.

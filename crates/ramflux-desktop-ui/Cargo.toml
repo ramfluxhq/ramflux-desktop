@@ -56,3 +56,9 @@ name = "demo_rehearsal"
 path = "tests/demo_rehearsal.rs"
 test = false
 harness = false
+
+[[test]]
+name = "conversation_shots"
+path = "tests/conversation_shots.rs"
+test = false
+harness = false
