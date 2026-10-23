@@ -16,6 +16,7 @@ use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, div,
 };
 use ramflux_desktop_core::ContextKind;
+use ramflux_desktop_sdk::{SdkConfig, SdkHub};
 use ramflux_desktop_test::load_fixture;
 
 use crate::actions::{
@@ -34,9 +35,28 @@ use crate::workspace::{DockTool, PrefsStore, StatusStrip, Workspace};
 /// Scenario played when the application starts.
 pub const DEFAULT_SCENARIO: &str = "s01_first_launch";
 
+/// Where the data comes from.
+#[derive(Debug, Clone)]
+pub enum SourceChoice {
+    /// The bundled scenario named in [`ShellOptions::scenario`].
+    Mock,
+    /// A real daemon over its local bus.
+    Rfd(SdkConfig),
+}
+
+impl SourceChoice {
+    /// The default: scenarios in debug builds, the daemon at its default
+    /// socket in release builds.
+    pub fn default_for_build() -> Self {
+        if cfg!(debug_assertions) { Self::Mock } else { Self::Rfd(SdkConfig::default()) }
+    }
+}
+
 /// How a shell is set up.
 #[derive(Debug, Clone)]
 pub struct ShellOptions {
+    /// Where the data comes from.
+    pub source: SourceChoice,
     /// Bundled scenario to play.
     pub scenario: String,
     /// Run the real-time clock (false: time moves only through the developer controls).
@@ -52,6 +72,7 @@ impl ShellOptions {
     /// epoch, layout kept in memory.
     pub fn for_scenario(name: &str, start_clock: bool) -> Self {
         Self {
+            source: SourceChoice::Mock,
             scenario: name.to_owned(),
             start_clock,
             wall_clock: false,
@@ -88,7 +109,15 @@ impl Shell {
     /// The application window root: [`DEFAULT_SCENARIO`] in real time,
     /// anchored to the wall clock, with the dock layout persisted.
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::application(SourceChoice::default_for_build(), window, cx)
+    }
+
+    /// The application window root on `source`: scenarios in real time
+    /// anchored to the wall clock, or the live daemon; the dock layout is
+    /// persisted.
+    pub fn application(source: SourceChoice, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let options = ShellOptions {
+            source,
             scenario: DEFAULT_SCENARIO.to_owned(),
             start_clock: true,
             wall_clock: true,
@@ -117,8 +146,17 @@ impl Shell {
         let store = cx.new(|cx| {
             let mut store = StoreHandle::new();
             store.set_wall_clock_anchor(options.wall_clock);
-            if let Ok(scenario) = load_fixture(&options.scenario) {
-                store.load_scenario(&scenario, cx);
+            match &options.source {
+                SourceChoice::Mock => {
+                    if let Ok(scenario) = load_fixture(&options.scenario) {
+                        store.load_scenario(&scenario, cx);
+                    }
+                }
+                SourceChoice::Rfd(config) => match SdkHub::start(config.clone()) {
+                    Ok(hub) => store.attach_live(hub, cx),
+                    // Without a bridge the entry page keeps waiting for the daemon.
+                    Err(error) => eprintln!("cannot start the daemon bridge: {error}"),
+                },
             }
             if options.start_clock {
                 store.start_clock(cx);

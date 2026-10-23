@@ -13,4 +13,5 @@ path = "src/main.rs"
 
 [dependencies]
 gpui-kit.workspace = true
+ramflux-desktop-sdk.workspace = true
 ramflux-desktop-ui.workspace = true

@@ -1,0 +1,63 @@
+_version: 2
+backend:
+  gap:
+    tasks:
+      en: "Tasks need the daemon's task API (K3)."
+      zh-CN: "任务需要守护进程的任务接口（K3）。"
+    surfaces:
+      en: "Agent surfaces need A2UI bound to conversations (K2)."
+      zh-CN: "智能体界面需要绑定到会话的 A2UI（K2）。"
+    handoff:
+      en: "Handoff is not available from the daemon yet (K7)."
+      zh-CN: "守护进程尚不支持接力（K7）。"
+    conflicts:
+      en: "Resolving conflicts needs CAS objects (K8)."
+      zh-CN: "解决冲突需要 CAS 对象（K8）。"
+    reveal:
+      en: "Revealing needs the daemon's privacy audit (K9)."
+      zh-CN: "揭示内容需要守护进程的隐私审计（K9）。"
+    direct_route:
+      en: "The daemon does not list the route of a direct conversation yet, so it cannot be sent from here."
+      zh-CN: "守护进程尚未提供单聊的投递路由，暂不能在此发送。"
+    objects:
+      en: "The daemon does not list object names, sizes or directions yet."
+      zh-CN: "守护进程尚未提供对象的名称、大小和方向。"
+    contact_requests:
+      en: "Contact requests do not reach the desktop as events yet (K1)."
+      zh-CN: "联系人请求尚未以事件送达桌面端（K1）。"
+    safety:
+      en: "Verifying needs the contact's identity commitment, which the daemon does not list yet."
+      zh-CN: "验证需要联系人的身份承诺，守护进程尚未提供。"
+    member_keys:
+      en: "Adding or inviting members needs their keys, which cannot be looked up yet."
+      zh-CN: "添加或邀请成员需要其密钥，目前无法查询。"
+    activation:
+      en: "Joining by activation code is not available from the daemon yet."
+      zh-CN: "守护进程尚不支持通过激活码加入。"
+    device_sync:
+      en: "Device sync needs a relay route and a target device the desktop cannot choose yet."
+      zh-CN: "设备同步需要中继路由和目标设备，桌面端暂不能选择。"
+    backup_passphrase:
+      en: "Backups are encrypted with a passphrase the desktop does not ask for yet."
+      zh-CN: "备份需用口令加密，桌面端暂不询问口令。"
+    guest_role:
+      en: "The daemon has no guest role."
+      zh-CN: "守护进程没有访客角色。"
+  message:
+    encrypted_at_rest:
+      en: "This message is stored encrypted; its text is shown only when it is received or sent here."
+      zh-CN: "此消息以密文存储，仅在本机收发时显示正文。"
+  failure:
+    label:
+      en: "Last error"
+      zh-CN: "上次错误"
+    value:
+      en: "%{action}: %{reason}"
+      zh-CN: "%{action}：%{reason}"
+  daemon:
+    waiting:
+      en: "Waiting for the daemon at %{path}"
+      zh-CN: "正在等待守护进程：%{path}"
+    socket:
+      en: "Attached to %{path} · %{accounts} open accounts"
+      zh-CN: "已连接 %{path} · 已打开 %{accounts} 个账户"

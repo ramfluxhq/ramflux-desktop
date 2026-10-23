@@ -17,3 +17,6 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 zeroize.workspace = true
+
+[dev-dependencies]
+ramflux-desktop-test = { workspace = true, features = ["fake-bus"] }

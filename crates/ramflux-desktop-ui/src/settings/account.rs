@@ -46,6 +46,10 @@ fn take(input: &Entity<InputState>, window: &mut Window, cx: &mut App) -> Secret
 pub fn page(context: &SectionContext, rotate: &RotateInputs, cx: &App) -> SettingPage {
     let account = active_account(context, cx);
     let sink = context.sink(SettingsSection::Account);
+    let export_reason = crate::gate::reason(
+        context.store.read(cx).store(),
+        ramflux_desktop_core::methods::ACCOUNT_BACKUP_EXPORT,
+    );
     let summary = {
         let account = account.clone();
         SettingItem::render(move |_, _, cx: &mut App| match &account {
@@ -92,7 +96,7 @@ pub fn page(context: &SectionContext, rotate: &RotateInputs, cx: &App) -> Settin
                             )
                         }),
                 )
-                .child(
+                .child(crate::gate::gated(
                     Button::new("settings-export-backup")
                         .small()
                         .outline()
@@ -113,7 +117,8 @@ pub fn page(context: &SectionContext, rotate: &RotateInputs, cx: &App) -> Settin
                                 },
                             );
                         }),
-                )
+                    export_reason.clone(),
+                ))
                 .into_any_element()
         })
     };

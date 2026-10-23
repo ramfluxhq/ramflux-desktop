@@ -13,3 +13,7 @@ ron.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[features]
+# A fake daemon local bus (std only) for adapter and UI tests.
+fake-bus = []

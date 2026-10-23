@@ -36,7 +36,7 @@ pub fn fallback(payload: &FallbackPayload, cx: &App) -> impl IntoElement {
                 .text_color(cx.theme().muted_foreground)
                 .child(Icon::new(IconName::EyeOff).small())
                 .child(tr("moment.fallback.title"))
-                .child(div().text_xs().child(payload.reason.clone())),
+                .child(div().text_xs().child(crate::i18n::backend_text(&payload.reason))),
         )
         .child(div().text_color(cx.theme().foreground).child(payload.text.clone()))
 }

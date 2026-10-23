@@ -10,6 +10,8 @@ repository.workspace = true
 [dependencies]
 gpui-kit.workspace = true
 ramflux-desktop-core.workspace = true
+# The real source over the daemon (its tokio runtime stays on the bridge thread).
+ramflux-desktop-sdk.workspace = true
 # The scenario-playing mock source drives the UI until the SDK source lands (F2).
 ramflux-desktop-test.workspace = true
 rust-i18n.workspace = true
@@ -20,10 +22,19 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
+ramflux-desktop-test = { workspace = true, features = ["fake-bus"] }
 
 # Offscreen reference screenshots; run explicitly, not part of `cargo test`.
 [[test]]
 name = "screenshots"
 path = "tests/screenshots.rs"
+test = false
+harness = false
+
+# Offscreen screenshot of the window on a live daemon; run explicitly with
+# RAMFLUX_SHOTS_SOCKET set, not part of `cargo test`.
+[[test]]
+name = "live_screenshot"
+path = "tests/live_screenshot.rs"
 test = false
 harness = false

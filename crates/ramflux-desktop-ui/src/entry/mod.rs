@@ -176,13 +176,30 @@ impl EntryPage {
     }
 
     fn render_daemon(&self, cx: &App) -> impl IntoElement {
+        let socket = self
+            .store
+            .read(cx)
+            .live_socket()
+            .map(|path| crate::i18n::tr_args("backend.daemon.waiting", &[("path", path)]));
         h_flex().id("entry-daemon").gap_3().child(Spinner::new()).child(
-            v_flex().gap_1().child(div().text_sm().child(tr("entry.daemon.waiting"))).child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(tr("entry.daemon.help")),
-            ),
+            v_flex()
+                .gap_1()
+                .child(div().text_sm().child(tr("entry.daemon.waiting")))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(tr("entry.daemon.help")),
+                )
+                .when_some(socket, |col, socket| {
+                    col.child(
+                        div()
+                            .text_xs()
+                            .font_family(cx.theme().mono_font_family.clone())
+                            .text_color(cx.theme().muted_foreground)
+                            .child(socket),
+                    )
+                }),
         )
     }
 }

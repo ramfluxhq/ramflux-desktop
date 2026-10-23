@@ -84,7 +84,12 @@ fn request_row(moment: &Moment, from: &Participant, sink: &EventSink, cx: &App) 
         .into_any_element()
 }
 
-fn contact_row(contact: &Participant, sink: &EventSink, cx: &App) -> AnyElement {
+fn contact_row(
+    contact: &Participant,
+    sink: &EventSink,
+    verify_reason: Option<&gpui_kit::SharedString>,
+    cx: &App,
+) -> AnyElement {
     let color = match contact.safety {
         SafetyState::Verified => cx.theme().success,
         SafetyState::Unverified => cx.theme().muted_foreground,
@@ -93,14 +98,17 @@ fn contact_row(contact: &Participant, sink: &EventSink, cx: &App) -> AnyElement 
     let verify = (contact.safety != SafetyState::Verified).then(|| {
         let sink = sink.clone();
         let participant_id = contact.id.clone();
-        Button::new("verify").xsmall().outline().label(tr("moment.safety.verify")).on_click(
-            move |_, window, cx| {
-                sink.emit(
-                    UiEventKind::VerifySafetyPressed { participant_id: participant_id.clone() },
-                    window,
-                    cx,
-                );
-            },
+        crate::gate::gated(
+            Button::new("verify").xsmall().outline().label(tr("moment.safety.verify")).on_click(
+                move |_, window, cx| {
+                    sink.emit(
+                        UiEventKind::VerifySafetyPressed { participant_id: participant_id.clone() },
+                        window,
+                        cx,
+                    );
+                },
+            ),
+            verify_reason.cloned(),
         )
     });
     v_flex()
@@ -132,6 +140,8 @@ fn contact_row(contact: &Participant, sink: &EventSink, cx: &App) -> AnyElement 
 impl Render for ContactsDock {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let store = self.store.read(cx).store();
+        let verify_reason =
+            crate::gate::reason(store, ramflux_desktop_core::methods::SAFETY_VERIFY);
         let requests = requests(store);
         let contacts: Vec<Participant> = selectors::contacts(store).into_iter().cloned().collect();
         v_flex()
@@ -145,6 +155,8 @@ impl Render for ContactsDock {
             })
             .child(section("dock.contacts.list", cx))
             .when(contacts.is_empty(), |col| col.child(empty_line("dock.contacts.empty", cx)))
-            .children(contacts.iter().map(|c| contact_row(c, &self.sink, cx)))
+            .children(
+                contacts.iter().map(|c| contact_row(c, &self.sink, verify_reason.as_ref(), cx)),
+            )
     }
 }

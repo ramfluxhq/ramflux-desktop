@@ -121,6 +121,10 @@ fn label(op: &GovernanceOp) -> gpui_kit::SharedString {
 impl Render for MembersDock {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let store = self.store.read(cx).store();
+        let add_reason =
+            crate::gate::reason(store, ramflux_desktop_core::methods::GROUP_ADD_MEMBER);
+        let invite_reason =
+            crate::gate::reason(store, ramflux_desktop_core::methods::GROUP_CREATE_INVITE);
         let context = self.context_id.as_ref().and_then(|id| store.context(id)).cloned();
         let Some(context) = context.filter(|c| c.kind != ContextKind::Direct) else {
             return v_flex()
@@ -163,23 +167,25 @@ impl Render for MembersDock {
                     .px_3()
                     .py_1()
                     .child(div().flex_1().text_sm().child(name))
-                    .child(
+                    .child(crate::gate::gated(
                         Button::new("add")
                             .xsmall()
                             .outline()
                             .label(tr("dock.members.add"))
                             .on_click(add),
-                    )
+                        add_reason.clone(),
+                    ))
             }))
             .child(
-                div().px_3().py_2().child(
+                div().px_3().py_2().child(crate::gate::gated(
                     Button::new("members-invite")
                         .small()
                         .outline()
                         .icon(IconName::Plus)
                         .label(tr("dock.members.invite"))
                         .on_click(invite),
-                ),
+                    invite_reason,
+                )),
             )
     }
 }

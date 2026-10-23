@@ -8,13 +8,16 @@
 //! becoming `StartTask`). Both go through the context-scoped sink; the
 //! composer never sends anything itself. The mode is view-local.
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, h_flex,
+    ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
 };
 use gpui_kit::prelude::*;
-use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window};
+use gpui_kit::{
+    App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window, div,
+};
 use ramflux_desktop_core::UiEventKind;
 
 use crate::bubble::EventSink;
@@ -34,7 +37,17 @@ pub struct Composer {
     input: Entity<InputState>,
     sink: Option<EventSink>,
     mode: ComposerMode,
+    unavailable: Unavailable,
     _subscription: Subscription,
+}
+
+/// Why a mode cannot submit on the attached backend (translated reasons).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Unavailable {
+    /// Why messages cannot be sent here.
+    pub message: Option<SharedString>,
+    /// Why tasks cannot be started here.
+    pub task: Option<SharedString>,
 }
 
 impl Composer {
@@ -47,7 +60,13 @@ impl Composer {
                 this.submit(window, cx);
             }
         });
-        Self { input, sink: None, mode: ComposerMode::Message, _subscription: subscription }
+        Self {
+            input,
+            sink: None,
+            mode: ComposerMode::Message,
+            unavailable: Unavailable::default(),
+            _subscription: subscription,
+        }
     }
 
     /// Targets a context through its scoped sink, or nothing. A new
@@ -61,6 +80,23 @@ impl Composer {
         self.sink = sink;
         self.set_mode(ComposerMode::Message, window, cx);
         cx.notify();
+    }
+
+    /// Records which modes the backend cannot perform; their controls are
+    /// shown disabled with the reason.
+    pub fn set_unavailable(&mut self, unavailable: Unavailable, cx: &mut Context<Self>) {
+        if self.unavailable != unavailable {
+            self.unavailable = unavailable;
+            cx.notify();
+        }
+    }
+
+    /// Why the current mode cannot submit, if it cannot.
+    pub fn unavailable_reason(&self) -> Option<&SharedString> {
+        match self.mode {
+            ComposerMode::Message => self.unavailable.message.as_ref(),
+            ComposerMode::Task => self.unavailable.task.as_ref(),
+        }
     }
 
     /// The text input, for focus and tests.
@@ -92,6 +128,9 @@ impl Composer {
         let Some(sink) = self.sink.clone() else {
             return;
         };
+        if self.unavailable_reason().is_some() {
+            return;
+        }
         let text = self.input.read(cx).value().trim().to_owned();
         if text.is_empty() {
             return;
@@ -108,21 +147,22 @@ impl Composer {
 impl Render for Composer {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let enabled = self.sink.is_some();
-        h_flex()
-            .id("composer")
+        let reason = self.unavailable_reason().cloned();
+        let can_send = enabled && reason.is_none();
+        let task_reason = self.unavailable.task.clone();
+        let row = h_flex()
             .w_full()
             .gap_2()
-            .p_3()
-            .border_t_1()
-            .border_color(cx.theme().border)
             .child(
                 Button::new("composer-mode")
                     .ghost()
                     .small()
                     .selected(self.mode == ComposerMode::Task)
                     .icon(IconName::LayoutDashboard)
-                    .tooltip(tr("composer.task_mode"))
-                    .disabled(!enabled)
+                    .tooltip(task_reason.clone().unwrap_or_else(|| tr("composer.task_mode")))
+                    .disabled(
+                        !enabled || (task_reason.is_some() && self.mode == ComposerMode::Message),
+                    )
                     .on_click(cx.listener(|this, _, window, cx| {
                         let next = match this.mode {
                             ComposerMode::Message => ComposerMode::Task,
@@ -146,9 +186,27 @@ impl Render for Composer {
                         ComposerMode::Message => "composer.send",
                         ComposerMode::Task => "composer.start",
                     }))
-                    .disabled(!enabled)
+                    .disabled(!can_send)
                     .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
-            )
+            );
+        v_flex()
+            .id("composer")
+            .w_full()
+            .gap_1()
+            .p_3()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .child(row)
+            .when_some(reason.filter(|_| enabled), |col, reason| {
+                col.child(
+                    div()
+                        .id("composer-unavailable")
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(reason)
+                        .test_support(),
+                )
+            })
     }
 }
 

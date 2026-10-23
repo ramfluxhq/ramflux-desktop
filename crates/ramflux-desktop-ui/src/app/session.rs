@@ -6,9 +6,14 @@
 //! This is the only code in the application that calls [`Store::apply`] and
 //! [`Source::submit`] (rules R1 and R2). The GPUI [`super::StoreHandle`] owns
 //! one session per account and drives it; views never reach a session.
+//!
+//! A session is backed either by a scenario-playing mock (with the
+//! developer controls: pause, step, seek) or by a live source (the SDK
+//! source over a real daemon), which follows the wall clock and ignores the
+//! scenario controls.
 
 use ramflux_desktop_core::{
-    Effect, EventEnvelope, Intent, IntentError, Source, Store, Timestamp, handle_intent,
+    ContextId, Effect, EventEnvelope, Intent, IntentError, Source, Store, Timestamp, handle_intent,
 };
 use ramflux_desktop_test::{MockSource, Scenario};
 
@@ -38,14 +43,29 @@ pub enum DispatchOutcome {
     NoAccount,
 }
 
-/// A store fed by a scenario-playing source.
-#[derive(Debug)]
+/// What feeds a session.
+enum Backing {
+    /// A scenario-playing mock with its own clock.
+    Mock { scenario: String, source: MockSource },
+    /// A live source on the wall clock.
+    Live { label: String, source: Box<dyn Source> },
+}
+
+/// A store fed by a scenario-playing or live source.
 pub struct AccountSession {
-    scenario: String,
-    source: MockSource,
+    backing: Backing,
     store: Store,
     clock_ms: u64,
     paused: bool,
+}
+
+impl std::fmt::Debug for AccountSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AccountSession")
+            .field("source", &self.scenario_name())
+            .field("last_seq", &self.store.last_seq())
+            .finish_non_exhaustive()
+    }
 }
 
 impl AccountSession {
@@ -57,17 +77,57 @@ impl AccountSession {
     /// Creates a session whose offset 0 is `epoch` instead of the scenario's own.
     pub fn with_epoch(scenario: &Scenario, epoch: Timestamp) -> Self {
         Self {
-            scenario: scenario.name.clone(),
-            source: MockSource::with_epoch(scenario, epoch),
+            backing: Backing::Mock {
+                scenario: scenario.name.clone(),
+                source: MockSource::with_epoch(scenario, epoch),
+            },
             store: Store::new(),
             clock_ms: 0,
             paused: false,
         }
     }
 
-    /// Name of the scenario this session plays.
+    /// A session fed by a live `source`, named `label` (shown by the
+    /// developer panel instead of a scenario name).
+    pub fn live(label: impl Into<String>, source: Box<dyn Source>) -> Self {
+        Self {
+            backing: Backing::Live { label: label.into(), source },
+            store: Store::new(),
+            clock_ms: 0,
+            paused: false,
+        }
+    }
+
+    /// Whether a live source feeds the session.
+    pub fn is_live(&self) -> bool {
+        matches!(self.backing, Backing::Live { .. })
+    }
+
+    /// Name of the scenario this session plays, or the live source's label.
     pub fn scenario_name(&self) -> &str {
-        &self.scenario
+        match &self.backing {
+            Backing::Mock { scenario, .. } => scenario,
+            Backing::Live { label, .. } => label,
+        }
+    }
+
+    fn mock(&self) -> Option<&MockSource> {
+        match &self.backing {
+            Backing::Mock { source, .. } => Some(source),
+            Backing::Live { .. } => None,
+        }
+    }
+
+    fn source_mut(&mut self) -> &mut dyn Source {
+        match &mut self.backing {
+            Backing::Mock { source, .. } => source,
+            Backing::Live { source, .. } => source.as_mut(),
+        }
+    }
+
+    /// Tells the source which context the user looks at.
+    pub fn focus(&mut self, context: Option<&ContextId>) {
+        self.source_mut().focus(context);
     }
 
     /// The account's store, read-only.
@@ -80,29 +140,34 @@ impl AccountSession {
         self.clock_ms
     }
 
-    /// Wall-clock time of the session clock.
+    /// Time of the session clock: scenario time, or the wall clock when live.
     pub fn now(&self) -> Timestamp {
-        self.source.epoch().saturating_add_ms(self.clock_ms)
+        match self.mock() {
+            Some(source) => source.epoch().saturating_add_ms(self.clock_ms),
+            None => super::wall_clock_now(),
+        }
     }
 
-    /// Offset of the next scheduled event, if any.
+    /// Offset of the next scheduled event, if any (scenarios only).
     pub fn next_due(&self) -> Option<u64> {
-        self.source.next_due()
+        self.mock().and_then(MockSource::next_due)
     }
 
-    /// Number of effects the source received.
+    /// Number of effects a mock source received (0 when live).
     pub fn submitted_effects(&self) -> usize {
-        self.source.effects().len()
+        self.mock().map_or(0, |source| source.effects().len())
     }
 
-    /// Labels of every effect the source received, oldest first.
+    /// Labels of every effect a mock source received, oldest first.
     pub fn effect_labels(&self) -> impl Iterator<Item = &str> {
-        self.source.effects().iter().map(|record| record.label.as_str())
+        self.mock().into_iter().flat_map(|s| s.effects().iter().map(|r| r.label.as_str()))
     }
 
-    /// Every effect the source received with its (secret-free) body, oldest first.
+    /// Every effect a mock source received with its (secret-free) body, oldest first.
     pub fn effects(&self) -> impl Iterator<Item = (&str, &ramflux_desktop_core::JsonValue)> {
-        self.source.effects().iter().map(|record| (record.label.as_str(), &record.body))
+        self.mock()
+            .into_iter()
+            .flat_map(|s| s.effects().iter().map(|r| (r.label.as_str(), &r.body)))
     }
 
     /// Whether the clock is frozen.
@@ -118,7 +183,7 @@ impl AccountSession {
     /// Moves the clock forward by `ms` and applies due envelopes. Does
     /// nothing while paused.
     pub fn advance(&mut self, ms: u64) -> Applied {
-        if self.paused || ms == 0 {
+        if (self.paused && !self.is_live()) || ms == 0 {
             return Applied::default();
         }
         self.clock_ms = self.clock_ms.saturating_add(ms);
@@ -131,8 +196,9 @@ impl AccountSession {
     /// clock to it when it lies ahead.
     pub fn step(&mut self) -> Applied {
         let mut applied = Applied::default();
-        if let Some(env) = self.source.drain_one() {
-            self.clock_ms = self.clock_ms.max(self.source.now_ms());
+        let Backing::Mock { source, .. } = &mut self.backing else { return applied };
+        if let Some(env) = source.drain_one() {
+            self.clock_ms = self.clock_ms.max(source.now_ms());
             self.apply(&env, &mut applied);
             applied.changes.mark_clock();
         }
@@ -142,7 +208,8 @@ impl AccountSession {
     /// Resets the store and replays everything scheduled up to `ms`,
     /// including responses to effects submitted before the seek.
     pub fn seek(&mut self, ms: u64) -> Applied {
-        self.source.rewind();
+        let Backing::Mock { source, .. } = &mut self.backing else { return Applied::default() };
+        source.rewind();
         self.store = Store::new();
         self.clock_ms = ms;
         let mut applied = self.pump();
@@ -155,6 +222,28 @@ impl AccountSession {
     /// Runs policy for `intent` at the session time and submits the
     /// resulting effects. A confirmation request is handed back unsubmitted.
     pub fn dispatch(&mut self, intent: Intent) -> (DispatchOutcome, Vec<InspectorEntry>) {
+        let (decided, mut records) = self.decide(intent);
+        let effects = match decided {
+            Ok(effects) => effects,
+            Err(outcome) => return (outcome, records),
+        };
+        let mut labels = Vec::new();
+        for effect in effects {
+            let label = effect_label(&effect);
+            records.push(InspectorEntry::Effect { label: label.clone() });
+            labels.push(label);
+            self.submit(effect);
+        }
+        (DispatchOutcome::Submitted(labels), records)
+    }
+
+    /// Runs policy for `intent` against this session's store without
+    /// submitting: the effects to submit, or the outcome that ends here
+    /// (refusal or confirmation request).
+    pub fn decide(
+        &self,
+        intent: Intent,
+    ) -> (Result<Vec<Effect>, DispatchOutcome>, Vec<InspectorEntry>) {
         let name = intent_name(&intent);
         let actor = audit_label(&intent);
         let mut records = Vec::new();
@@ -166,10 +255,10 @@ impl AccountSession {
                     actor,
                     result: format!("refused: {error}"),
                 });
-                return (DispatchOutcome::Refused(error), records);
+                return (Err(DispatchOutcome::Refused(error)), records);
             }
         };
-        let mut labels = Vec::new();
+        let mut submit = Vec::new();
         for effect in effects {
             if let Effect::RequireConfirmation { intent } = effect {
                 records.push(InspectorEntry::Intent {
@@ -177,19 +266,22 @@ impl AccountSession {
                     actor,
                     result: "confirmation required".to_owned(),
                 });
-                return (DispatchOutcome::NeedsConfirmation(intent), records);
+                return (Err(DispatchOutcome::NeedsConfirmation(intent)), records);
             }
-            let label = effect_label(&effect);
-            records.push(InspectorEntry::Effect { label: label.clone() });
-            labels.push(label);
-            self.source.submit(effect);
+            submit.push(effect);
         }
-        (DispatchOutcome::Submitted(labels), records)
+        (Ok(submit), records)
+    }
+
+    /// Hands one effect to the source.
+    pub fn submit(&mut self, effect: Effect) {
+        self.source_mut().submit(effect);
     }
 
     fn pump(&mut self) -> Applied {
         let mut applied = Applied::default();
-        for env in self.source.drain(self.now()) {
+        let now = self.now();
+        for env in self.source_mut().drain(now) {
             self.apply(&env, &mut applied);
         }
         applied
@@ -199,7 +291,7 @@ impl AccountSession {
         let result = self.store.apply(env);
         applied.records.push(InspectorEntry::Envelope {
             seq: env.seq,
-            at_ms: env.at.saturating_since(self.source.epoch()),
+            at_ms: env.at.saturating_since(self.mock().map_or(Timestamp(0), MockSource::epoch)),
             event: event_name(&env.event),
             error: result.as_ref().err().map(ToString::to_string),
         });

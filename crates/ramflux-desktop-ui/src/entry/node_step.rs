@@ -5,6 +5,7 @@
 //! cards, the add-node form, then the nodes already confirmed as compact
 //! rows. The hold strip for trust-on-first-use pins is the page's footer.
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
@@ -49,9 +50,25 @@ impl EntryPage {
                     crate::i18n::node_health(node.health)
                 )))
         });
+        let daemon = store.daemon().map(|info| {
+            crate::i18n::tr_args(
+                "backend.daemon.socket",
+                &[("path", &info.socket_path), ("accounts", &info.open_accounts.to_string())],
+            )
+        });
         v_flex()
             .id("entry-node")
             .gap_3()
+            .when_some(daemon, |step, daemon| {
+                step.child(
+                    div()
+                        .id("entry-daemon-info")
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(daemon)
+                        .test_support(),
+                )
+            })
             .child(
                 div()
                     .text_sm()

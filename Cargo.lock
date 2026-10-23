@@ -6092,6 +6092,7 @@ name = "ramflux-desktop"
 version = "0.1.0"
 dependencies = [
  "gpui-kit",
+ "ramflux-desktop-sdk",
  "ramflux-desktop-ui",
 ]
 
@@ -6111,6 +6112,7 @@ version = "0.1.0"
 dependencies = [
  "ramflux-crypto",
  "ramflux-desktop-core",
+ "ramflux-desktop-test",
  "ramflux-protocol",
  "ramflux-sdk",
  "serde",
@@ -6138,6 +6140,7 @@ dependencies = [
  "chrono",
  "gpui-kit",
  "ramflux-desktop-core",
+ "ramflux-desktop-sdk",
  "ramflux-desktop-test",
  "rust-i18n",
  "serde",

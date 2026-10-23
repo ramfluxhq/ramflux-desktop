@@ -105,7 +105,13 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
             &[("seq", &store.last_seq().to_string()), ("count", &rejected.to_string())],
         )
     };
-    vec![
+    let failure = store.failures().last().map(|f| Field {
+        id: "status-failure",
+        label: tr("backend.failure.label"),
+        value: i18n::failure(f),
+        color: Some(theme.danger),
+    });
+    let mut fields = vec![
         Field { id: "status-device", label: tr("status.label.device"), value: device, color: None },
         Field {
             id: "status-node",
@@ -125,7 +131,9 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
             value: i18n::source_status(store.source_status()),
             color: source_color,
         },
-    ]
+    ];
+    fields.extend(failure);
+    fields
 }
 
 /// The account switcher: the rendered account, the "needs me" count of the
@@ -218,7 +226,13 @@ impl Render for StatusStrip {
                 .gap_1()
                 .text_xs()
                 .child(div().text_color(muted).child(field.label))
-                .child(div().text_color(field.color.unwrap_or(foreground)).child(field.value))
+                .child(
+                    div()
+                        .max_w(gpui_kit::rems(24.))
+                        .truncate()
+                        .text_color(field.color.unwrap_or(foreground))
+                        .child(field.value),
+                )
         });
         TitleBar::new()
             .child(

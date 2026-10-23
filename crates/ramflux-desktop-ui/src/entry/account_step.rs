@@ -7,6 +7,7 @@
 //! Each form hands its secret to the intent root as a `SecretInput` and
 //! clears the masked input at once.
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
@@ -329,14 +330,31 @@ impl EntryPage {
                 cx,
             ))
             .child(Self::field("entry.join.code", &self.inputs.code, "activation-code", true, cx))
-            .child(
-                h_flex().child(
-                    Button::new("account-join")
-                        .primary()
-                        .label(tr("entry.join.submit"))
-                        .on_click(cx.listener(|this, _, window, cx| this.join(window, cx))),
-                ),
-            )
+            .child({
+                let reason = crate::gate::reason(
+                    self.store.read(cx).store(),
+                    ramflux_desktop_core::methods::DEVICE_ACTIVATE,
+                );
+                h_flex()
+                    .gap_2()
+                    .child(crate::gate::gated(
+                        Button::new("account-join")
+                            .primary()
+                            .label(tr("entry.join.submit"))
+                            .on_click(cx.listener(|this, _, window, cx| this.join(window, cx))),
+                        reason.clone(),
+                    ))
+                    .when_some(reason, |row, reason| {
+                        row.child(
+                            div()
+                                .id("account-join-unavailable")
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(reason)
+                                .test_support(),
+                        )
+                    })
+            })
             .into_any_element()
     }
 

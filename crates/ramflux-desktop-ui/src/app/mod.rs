@@ -9,9 +9,15 @@
 //! merged [`ChangeSet`]; each view subscribes and notifies itself only when
 //! its own area changed. Views read the active store through
 //! [`StoreHandle::store`] and never mutate it.
+//!
+//! In live mode ([`StoreHandle::attach_live`]) a daemon session (the entry
+//! page's store: daemon status, nodes, accounts) runs beside one session per
+//! unlocked account; sessions appear when the daemon reports an account
+//! unlocked and disappear when it reports it locked. See `live`.
 
 mod changes;
 mod inspector;
+mod live;
 mod names;
 mod session;
 
@@ -22,7 +28,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, EventEmitter, Task};
 use ramflux_desktop_core::{
-    AccountId, AttentionItem, DomainEvent, Intent, Store, Timestamp, selectors,
+    AccountId, AttentionItem, ContextId, DomainEvent, Intent, Store, Timestamp, selectors,
 };
 use ramflux_desktop_test::{Scenario, load_fixture};
 
@@ -70,6 +76,7 @@ pub struct StoreHandle {
     clock: Option<Task<()>>,
     last_tick: Option<Instant>,
     wall_clock: bool,
+    live: Option<live::LiveLink>,
 }
 
 impl EventEmitter<StoreEvent> for StoreHandle {}
@@ -90,6 +97,7 @@ impl StoreHandle {
             clock: None,
             last_tick: None,
             wall_clock: false,
+            live: None,
         }
     }
 
@@ -113,6 +121,7 @@ impl StoreHandle {
     /// whole world.
     pub fn load_scenario(&mut self, scenario: &Scenario, cx: &mut Context<Self>) {
         let account = scenario_account(scenario);
+        self.live = None;
         self.sessions.clear();
         self.sessions.insert(account.clone(), self.new_session(scenario));
         for companion in &scenario.companions {
@@ -159,9 +168,25 @@ impl StoreHandle {
         self.active.as_ref()
     }
 
-    /// The rendered account's session.
+    /// The rendered account's session; in live mode with no account
+    /// rendered, the daemon session.
     pub fn session(&self) -> Option<&AccountSession> {
-        self.active.as_ref().and_then(|id| self.sessions.get(id))
+        self.active
+            .as_ref()
+            .and_then(|id| self.sessions.get(id))
+            .or_else(|| self.live.as_ref().map(live::LiveLink::daemon))
+    }
+
+    /// Whether a live daemon feeds the handle.
+    pub fn is_live(&self) -> bool {
+        self.live.is_some()
+    }
+
+    /// Tells the rendered account's source which context the user looks at.
+    pub fn focus(&mut self, context: Option<&ContextId>) {
+        if let Some(session) = self.active_session_mut() {
+            session.focus(context);
+        }
     }
 
     /// The rendered account's store; an empty store before any account exists.
@@ -257,6 +282,7 @@ impl StoreHandle {
         for account in background {
             cx.emit(StoreEvent::BackgroundChanged(account));
         }
+        self.advance_live(ms, cx);
     }
 
     /// Whether the active session's clock is frozen.
@@ -291,6 +317,9 @@ impl StoreHandle {
     /// Runs policy for `intent` against the active store and submits the
     /// resulting effects to the active source.
     pub fn dispatch(&mut self, intent: Intent, cx: &mut Context<Self>) -> DispatchOutcome {
+        if self.live.is_some() {
+            return self.dispatch_live(intent, cx);
+        }
         let Some(session) = self.active_session_mut() else {
             return DispatchOutcome::NoAccount;
         };
@@ -325,7 +354,7 @@ impl StoreHandle {
 }
 
 /// The current wall-clock time, for anchoring live playback.
-fn wall_clock_now() -> Timestamp {
+pub(crate) fn wall_clock_now() -> Timestamp {
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_millis());

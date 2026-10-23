@@ -26,6 +26,13 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
     let devices: Vec<Device> = context.store.read(cx).store().devices().cloned().collect();
     let sink = context.sink(SettingsSection::Devices);
     let list_sink = sink.clone();
+    let (export_reason, import_reason) = {
+        let store = context.store.read(cx).store();
+        (
+            crate::gate::reason(store, ramflux_desktop_core::methods::DEVICE_SYNC_EXPORT),
+            crate::gate::reason(store, ramflux_desktop_core::methods::DEVICE_SYNC_IMPORT),
+        )
+    };
     let list = SettingItem::render(move |_, _, cx: &mut App| {
         if devices.is_empty() {
             return note("settings.devices.none", cx);
@@ -86,7 +93,7 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
         let import = sink.clone();
         h_flex()
             .gap_2()
-            .child(
+            .child(crate::gate::gated(
                 Button::new("sync-export")
                     .small()
                     .outline()
@@ -110,8 +117,9 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                             },
                         );
                     }),
-            )
-            .child(
+                export_reason.clone(),
+            ))
+            .child(crate::gate::gated(
                 Button::new("sync-import")
                     .small()
                     .outline()
@@ -134,7 +142,8 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                             },
                         );
                     }),
-            )
+                import_reason.clone(),
+            ))
             .into_any_element()
     });
     SettingPage::new(tr("settings.section.devices"))

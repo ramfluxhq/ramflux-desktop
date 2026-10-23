@@ -14,6 +14,7 @@ pub mod clock;
 pub mod labels;
 
 use gpui_kit::{App, SharedString};
+use ramflux_desktop_core::{EffectFailure, Store};
 
 pub use clock::{bytes, date_time, day_label, offset, time_of_day};
 pub use labels::*;
@@ -47,4 +48,24 @@ pub fn locale() -> String {
 pub fn select_locale(locale: &str, cx: &mut App) {
     rust_i18n::set_locale(locale);
     cx.refresh_windows();
+}
+
+/// Why `method` is unavailable on the attached backend, translated, or
+/// `None` when it is available. Backend reasons are locale keys.
+pub fn unsupported(store: &Store, method: &str) -> Option<SharedString> {
+    store.unsupported_reason(method).map(backend_text)
+}
+
+/// A backend reason or message: translated when it is a locale key
+/// (`backend.*`), else shown as the daemon wrote it.
+pub fn backend_text(text: &str) -> SharedString {
+    if text.starts_with("backend.") { tr(text) } else { SharedString::from(text.to_owned()) }
+}
+
+/// One failed effect for the status strip.
+pub fn failure(failure: &EffectFailure) -> SharedString {
+    tr_args(
+        "backend.failure.value",
+        &[("action", &failure.method), ("reason", &backend_text(&failure.message))],
+    )
 }

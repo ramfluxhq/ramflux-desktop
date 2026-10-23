@@ -29,7 +29,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, px,
 };
-use ramflux_desktop_core::{ContextId, IntentKind, ParticipantId, Scope, selectors};
+use ramflux_desktop_core::{ContextId, IntentKind, ParticipantId, Scope, methods, selectors};
 
 use crate::app::{AccountAttention, StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
@@ -159,10 +159,13 @@ impl Workspace {
 
         let mut subscriptions = vec![
             cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, window, cx| {
-                if let StoreEvent::Changed(changes) = event
-                    && changes.touches_context_stack()
-                {
-                    this.ensure_current(window, cx);
+                if let StoreEvent::Changed(changes) = event {
+                    if changes.touches_context_stack() {
+                        this.ensure_current(window, cx);
+                    }
+                    if changes.touches_status() {
+                        this.sync_composer(cx);
+                    }
                 }
             }),
             cx.subscribe_in(&stack, window, |this, _, event: &ContextStackEvent, window, cx| {
@@ -281,7 +284,11 @@ impl Workspace {
         self.current = id.clone();
         let sink =
             id.as_ref().map(|id| IntentRoot::sink(&self.root).scoped(Scope::Context(id.clone())));
+        if changed {
+            self.store.update(cx, |store, _| store.focus(id.as_ref()));
+        }
         self.conversation.update(cx, |field, cx| field.set_context(id.clone(), cx));
+        self.sync_composer(cx);
         self.composer.update(cx, |composer, cx| composer.set_sink(sink, window, cx));
         self.stack.update(cx, |stack, cx| stack.set_current(id.clone(), cx));
         self.members.update(cx, |dock, cx| dock.set_context(id.clone(), cx));
@@ -293,6 +300,24 @@ impl Workspace {
             self.close_dock(window, cx);
         }
         cx.notify();
+    }
+
+    /// Tells the composer what the backend cannot do in the shown context.
+    fn sync_composer(&mut self, cx: &mut Context<Self>) {
+        let unavailable = {
+            let store = self.store.read(cx).store();
+            let kind = self.current.as_ref().and_then(|id| store.context(id)).map(|c| c.kind);
+            composer::Unavailable {
+                message: kind.and_then(|kind| {
+                    crate::i18n::unsupported(
+                        store,
+                        &methods::in_context(methods::SEND_MESSAGE, kind),
+                    )
+                }),
+                task: crate::i18n::unsupported(store, methods::TASK_START),
+            }
+        };
+        self.composer.update(cx, |composer, cx| composer.set_unavailable(unavailable, cx));
     }
 
     /// Keeps the current context valid: when it disappears (or none is

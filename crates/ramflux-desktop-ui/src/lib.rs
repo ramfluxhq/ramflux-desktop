@@ -20,6 +20,7 @@
 //!   pages, overlays and panels.
 //! - [`moments`]: inline moment renderers.
 //! - [`file_dialog`]: native path prompts for every local path.
+//! - [`gate`]: controls for actions the backend cannot perform.
 
 #![forbid(unsafe_code)]
 
@@ -32,6 +33,7 @@ pub mod confirm;
 pub mod dev;
 pub mod entry;
 pub mod file_dialog;
+pub mod gate;
 pub mod i18n;
 mod ids;
 pub mod moments;
