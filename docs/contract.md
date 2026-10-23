@@ -56,7 +56,8 @@ The store keeps each entity in its own collection, keyed by id:
 | `StandingApproval` | scope, `max_risk`, expiry, `uses`, `revoked` |
 | `AuditEntry` | `at`, `action` (method), `subject` (id), `proposed_by`, `human_confirmed` |
 | `Integrations` | read-only MCP servers (`healthy`: `None` while the backend has not checked) and pending A2I events |
-| `Task` | intent id, context, `actor`, `steps` (each may wait on a `grant_id`), `lifecycle`, `result` |
+| `Task` | intent id, context, `requester` (Actor), `assignee` (participant), `steps`, `state` (Proposed, Running, NeedsMe, Done, Failed, Cancelled), rising `version`, `result`, `result_ref` (surface) |
+| `TaskStep` | `id`, `label`, `state` (Pending, Running, NeedsMe, Done, Failed, Skipped), `needs_me`: `Approval { grant_id }` \| `Choice { surface_id }` \| `Input { surface_id }` (required while NeedsMe; kept afterwards as the record) |
 
 Messages carry an optional `attachment` and a `franking` commitment; conflict
 sides carry the conflicting `lines` for a side-by-side compare.
@@ -87,8 +88,36 @@ NeedsMe    -> InProgress | Done | Failed | Dismissed
 Done, Failed, Dismissed are terminal
 ```
 
-`Lifecycle::can_transition(from, to)` encodes this table. Moments, tasks and
-task steps all follow it.
+`Lifecycle::can_transition(from, to)` encodes this table. Moments follow it.
+Tasks follow `TaskState::can_transition` (Proposed -> Running | Failed |
+Cancelled; Running -> NeedsMe | Done | Failed | Cancelled; NeedsMe -> Running |
+Done | Failed | Cancelled) and steps `StepState::can_transition`. A task needs
+the requester exactly when one of its steps does; two steps never ask in the
+same place; a proposal has not started. Task progress moments follow their
+task's state (Proposed and NeedsMe are NeedsMe, Running is InProgress,
+Cancelled is Dismissed); `MomentUpdated` lifecycles on them are ignored.
+
+### Versioned surfaces
+
+`DomainEvent::Surface(SurfaceEvent)` carries the surface protocol events:
+`Create { moment_id, context_id, origin, surface_id, version: 1, blocks,
+actions, fallback_text }` (fallback required), `Patch { surface_id, version,
+base_hash, ops }` with ops `ReplaceBlock`, `InsertBlock { index }`,
+`RemoveBlock`, `SetActions`, `StreamAppend { surface_id, version, block_id,
+text_delta, final }` (Text, Markdown and LogStream blocks) and `Close`. Every
+change consumes exactly the next version. A patch whose `base_hash` is not the
+current content hash is not applied and leaves the surface in conflict until
+a change against the current version arrives. Limits are enforced at the
+reducer edge (64 blocks, 16 actions, 16,384 characters per string, 65,536
+bytes of block data, 4,096-byte text deltas, 16,384 characters streamed per
+block): a surface or change over a limit leaves only the fallback text
+(`SurfaceState::OverLimit`), never a partial rendering, and refuses further
+changes except `Close`. A closed surface is a frozen record. The store keeps a
+`SurfaceRecord` (version, hash, state, streams) per surface. The content hash
+and the action arguments hash live only in `conformance::surface_hash` and
+`conformance::action_args_hash`; adopting the protocol hash replaces those two
+bodies. `export::timeline_text` renders any conversation as plain text
+(surfaces as their fallback text), the terminal degradation.
 
 ## Events
 
@@ -102,8 +131,10 @@ pub struct EventEnvelope { pub schema: String, pub seq: u64, pub at: Timestamp, 
 `ContextRemoved`, `MomentAdded`, `MomentUpdated` (lifecycle and/or a payload
 of the same kind), `SurfacePatched` (`AppendBlocks`, `ReplaceBlock`,
 `ReplaceBlocks`, `AppendText`, `SetActions`, `SetStreaming`; all or nothing),
-`ObjectUpserted`, `GrantRequested`, `GrantResolved`, `TaskUpserted`,
-`TaskStepChanged`, `SourceStatusChanged` (Connected, Disconnected,
+`Surface` (versioned surface events, see above), `ObjectUpserted`,
+`GrantRequested`, `GrantResolved`, `TaskUpserted` (full update, rising
+version), `TaskStepChanged` (one step, rising version), `TaskStateChanged`
+(state only; ending a task skips its unfinished steps), `SourceStatusChanged` (Connected, Disconnected,
 Locked), `ContextSettingsChanged` (pin, mute, disappearing timer),
 `AccountLockChanged`, `NodeSettingsChanged` (enabled; setting a default clears
 the previous one), `NodeProbed` (also sets health), `NodeRemoved`,
@@ -198,7 +229,14 @@ built without a confirmation (`Intent::agent`) and no UI event can carry one.
 The kinds, by area:
 
 - Conversation: `SendMessage`, `AttachObject`, `PinContext`, `UnpinContext`,
-  `MuteContext`, `SetDisappearing`, `StartTask`, `CancelTask`.
+  `MuteContext`, `SetDisappearing`.
+- Tasks: `StartTask { context_id, assignee, text }` (an agent member of the
+  context; body `{conversation_id, assignee, text, constraints, proposal_id}`),
+  `AcceptTaskProposal` (human only; `task.start` with `proposal_id`),
+  `CancelTask` (only the requester; also declines a proposal).
+  `SurfaceAction` carries the `version` and `surface_hash` it was shown on;
+  its body adds `args_hash`; a closed, out-of-date, over-limit or changed
+  surface refuses it.
 - Moments: `SurfaceAction`, `Approve`, `Deny`, `Reveal`, `ResolveConflict`,
   `AcceptContact`, `RejectContact`, `VerifySafetyNumber`, `AcceptHandoff`,
   `DeclineHandoff`.
@@ -336,3 +374,6 @@ controls:
 | `s07_conflict_privacy_handoff` | A CAS conflict, an audited privacy reveal, a cross-device handoff |
 | `s08_failures` | A daemon disconnect, an unhealthy node, a failed transfer and its retry, an unknown block rendered as fallback |
 | `s09_multi_account_day` | Two accounts (companion `s09_work_account`), attention in the background account, switch and resolve; node, device and integration data for settings |
+| `s10_ai_participant` | Demo 3: ask the AI participant in a group, streamed reply, task proposal, needs-me approval with a hold, result patch, done (deny and cancel branches) |
+| `s11_surface_versions` | A choice answered in a surface, a change during review, a conflicting patch and its resend, close |
+| `s12_surface_limits` | A surface over the action limit, a stream over the delta limit |
