@@ -4,37 +4,20 @@
 //! Pinned contexts, persisted per account in the desktop settings file.
 //!
 //! The daemon has no pin method, so pinning is a desktop-local preference.
-//! The source keeps it in a small versioned JSON file and restores it after
-//! the account's snapshot, so pins survive a restart. The file holds only
-//! account and context ids in pin order; never content.
+//! The source keeps it in the settings file ([`crate::local::settings_file`])
+//! and restores it after the account's snapshot, so pins survive a restart.
+//! The file holds only account and context ids in pin order; never content.
 //!
 //! A file written under a newer schema is left untouched (read as empty and
 //! never overwritten), so an older build cannot destroy a newer one's state.
 //! Without a path (tests) pins live in memory only.
 
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use ramflux_desktop_core::{AccountId, ContextId};
-use serde::{Deserialize, Serialize};
 
-/// Schema of the settings file. Bump it on an incompatible change.
-pub const SETTINGS_SCHEMA: u32 = 1;
-
-fn legacy_schema() -> u32 {
-    1
-}
-
-/// The persisted desktop settings.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DesktopSettings {
-    /// Schema the file was written with.
-    #[serde(default = "legacy_schema")]
-    pub schema: u32,
-    /// Pinned contexts per account, in pin order.
-    #[serde(default)]
-    pub pinned: BTreeMap<AccountId, Vec<ContextId>>,
-}
+use crate::local::settings_file;
+pub use crate::local::settings_file::{DesktopSettings, SETTINGS_SCHEMA};
 
 /// Loads and saves the pins of [`DesktopSettings`].
 #[derive(Debug, Clone, Default)]
@@ -48,38 +31,21 @@ impl PinStore {
         Self { path }
     }
 
-    fn read(&self) -> Option<DesktopSettings> {
-        let text = std::fs::read_to_string(self.path.as_ref()?).ok()?;
-        serde_json::from_str(&text).ok()
-    }
-
     /// The pins of `account` in pin order, or `None` when the desktop has
     /// never recorded any for it (missing, unreadable, or another schema).
     pub fn load(&self, account: &AccountId) -> Option<Vec<ContextId>> {
-        self.read()
-            .filter(|settings| settings.schema == SETTINGS_SCHEMA)
+        settings_file::read(self.path.as_ref()?)
             .and_then(|mut settings| settings.pinned.remove(account))
     }
 
-    /// Stores the pins of `account`, keeping every other account's. An empty
-    /// list is kept too: "nothing pinned" is a choice. Best effort: a failed
-    /// write leaves the previous file in place.
+    /// Stores the pins of `account`, keeping every other account's and the
+    /// rest of the file. An empty list is kept too: "nothing pinned" is a
+    /// choice. Best effort: a failed write leaves the previous file in place.
     pub fn save(&self, account: &AccountId, pins: &[ContextId]) {
         let Some(path) = &self.path else { return };
-        let mut settings = match self.read() {
-            Some(settings) if settings.schema > SETTINGS_SCHEMA => return,
-            Some(settings) if settings.schema == SETTINGS_SCHEMA => settings,
-            _ => DesktopSettings { schema: SETTINGS_SCHEMA, ..DesktopSettings::default() },
-        };
-        settings.pinned.insert(account.clone(), pins.to_vec());
-        let Ok(text) = serde_json::to_string_pretty(&settings) else { return };
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let partial = path.with_extension("json.partial");
-        if std::fs::write(&partial, text).is_ok() {
-            let _ = std::fs::rename(&partial, path);
-        }
+        let _ = settings_file::update(path, |settings| {
+            settings.pinned.insert(account.clone(), pins.to_vec());
+        });
     }
 }
 
