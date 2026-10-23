@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 use ramflux_desktop_core::{EventEnvelope, Source, Store, Timestamp};
 use ramflux_desktop_sdk::{SdkConfig, SdkHub, SdkSource};
 
+// Not every test target uses every helper (the live tests use none of the fake).
+#[allow(unused_imports)]
 pub use fake_bus::{FakeBus, Reply, frames, socket_path};
 
 /// Fast timings for tests.

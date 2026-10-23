@@ -11,11 +11,15 @@
 //!   step, advance, and seek for tests and the developer panel.
 //! - [`scale`]: generated large scenarios for scale tests.
 //! - `fake_bus` (feature `fake-bus`): a fake daemon local bus for adapter tests.
+//! - `live_daemon` (feature `live-daemon`): a real `rf daemon` from the
+//!   pinned product revision for live tests.
 
 #![forbid(unsafe_code)]
 
 #[cfg(feature = "fake-bus")]
 pub mod fake_bus;
+#[cfg(feature = "live-daemon")]
+pub mod live_daemon;
 pub mod local_echo;
 pub mod mock_source;
 pub mod player;

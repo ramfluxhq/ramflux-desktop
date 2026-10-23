@@ -33,6 +33,17 @@ cargo test --workspace
 cargo run
 ```
 
+Live tests against a real `rf daemon` (no node needed) are ignored by
+default. Install `rf` from the product revision pinned in `Cargo.lock`, then:
+
+```sh
+RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=/path/to/bin/rf \
+  cargo test -p ramflux-desktop-sdk -p ramflux-desktop-ui --test rfd_live -- --ignored --test-threads=1
+```
+
+Each test starts its own daemon in `/tmp/rf-f3-<pid>-<tag>` and stops it and
+removes the directory afterwards.
+
 ## Keyboard
 
 Everything works from the keyboard; `secondary` is Command on macOS and

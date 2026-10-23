@@ -10,6 +10,9 @@
 //! RAMFLUX_SHOTS_DIR=/some/dir cargo test -p ramflux-desktop-ui --test screenshots
 //! ```
 //!
+//! `RAMFLUX_SHOTS_SET=hardening` renders only the loading and empty states
+//! and the keyboard focus states (shots 10 to 14).
+//!
 //! The developer panel stays closed: scenarios are loaded and time is moved
 //! through the store handle (as the panel would), and every interaction is
 //! real input on the production views.
@@ -29,13 +32,16 @@ mod shots {
     use gpui_kit::assets::Assets;
     use gpui_kit::base::Root;
     use gpui_kit::component::{Theme, ThemeMode};
-    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
     use gpui_kit::{
         AppContext as _, Bounds, Entity, HeadlessAppContext, Point, WindowBounds, WindowHandle,
         WindowOptions, px, size,
     };
-    use ramflux_desktop_core::{ContextId, MomentId};
-    use ramflux_desktop_test::load_fixture;
+    use ramflux_desktop_core::{
+        Account, AccountId, AccountKind, ContextId, DomainEvent, Listing, LockState, MomentId,
+        SourceStatus, Timestamp,
+    };
+    use ramflux_desktop_test::{Scenario, load_fixture};
     use ramflux_desktop_ui::Shell;
     use ramflux_desktop_ui::actions::OpenPalette;
     use ramflux_desktop_ui::settings::SettingsSection;
@@ -109,10 +115,14 @@ mod shots {
         /// scenario buttons do) and seeks to `ms`.
         fn scenario(&mut self, name: &str, ms: u64) {
             let scenario = load_fixture(name).expect("fixture");
+            self.play(&scenario, ms);
+        }
+
+        fn play(&mut self, scenario: &Scenario, ms: u64) {
             let store = self.cx.update(|cx| self.shell.read(cx).store().clone());
             self.cx.update(|cx| {
                 store.update(cx, |store, cx| {
-                    store.load_scenario(&scenario, cx);
+                    store.load_scenario(scenario, cx);
                     // Advance (not seek) so background accounts move too.
                     store.advance(ms, cx);
                 });
@@ -178,6 +188,10 @@ mod shots {
         );
         std::fs::create_dir_all(&out).expect("output directory");
         let mut s = Session::open(out);
+        if std::env::var("RAMFLUX_SHOTS_SET").is_ok_and(|set| set == "hardening") {
+            hardening(&mut s);
+            return;
+        }
 
         // 1. Entry: a node added by address, its NODE-01 card with the
         //    trust-on-first-use warning, and the hold strip for trusting it.
@@ -245,5 +259,72 @@ mod shots {
         s.scenario("s02_daily", 3_000);
         s.click("rail-objects");
         s.both("09_objects_dock");
+    }
+
+    /// An unlocked account with no conversation yet, listed at 500 ms.
+    fn empty_account() -> Scenario {
+        let account = Account {
+            id: AccountId::new("a-new"),
+            label: "Personal".to_owned(),
+            kind: AccountKind::HumanInteractive,
+            node_id: None,
+            device_id: None,
+            lock_state: LockState::Unlocked,
+            self_participant_id: None,
+        };
+        Scenario {
+            name: "empty_account".to_owned(),
+            description: "A new account whose lists are empty".to_owned(),
+            epoch: Timestamp(1_790_812_800_000),
+            timeline: vec![
+                (0, DomainEvent::SourceStatusChanged(SourceStatus::Connected)),
+                (0, DomainEvent::AccountUpdated(account)),
+                (500, DomainEvent::ListingsLoaded(Listing::ALL.to_vec())),
+            ],
+            responses: Vec::new(),
+            companions: Vec::new(),
+        }
+    }
+
+    /// Loading and empty states, and keyboard focus.
+    fn hardening(s: &mut Session) {
+        // 10. Entry: the daemon answered, nodes not listed yet (loading).
+        s.scenario("s01_first_launch", 1_600);
+        s.both("10_entry_nodes_loading");
+
+        // 11. Workspace of a new account: no conversations yet (empty, not loading).
+        s.play(&empty_account(), 600);
+        s.both("11_workspace_no_conversations");
+
+        // 12. The contacts dock of that account: listed and empty.
+        s.click("rail-contacts");
+        s.both("12_contacts_dock_empty");
+        s.click("rail-contacts");
+
+        // 13. Keyboard: secondary-j focuses the moment that needs the user,
+        //     Tab moves to its Approve button (focus ring).
+        s.scenario("s03_intervention", 1_000);
+        s.in_window(|window, cx| window.press("secondary-j", cx));
+        for _ in 0..6 {
+            let on_approve = std::cell::Cell::new(false);
+            s.in_window(|window, _| {
+                let found = window.within("moment-m-approve").try_find("approve");
+                on_approve.set(found.and_then(|e| e.focused()) == Some(true));
+            });
+            if on_approve.get() {
+                break;
+            }
+            s.in_window(|window, cx| window.press("tab", cx));
+        }
+        s.both("13_keyboard_focus_approve");
+
+        // 14. Enter opens the hold strip with focus on the hold control;
+        //     Space held part-way shows the progress.
+        s.in_window(|window, cx| window.press("enter", cx));
+        s.in_window(|window, cx| window.key_down("space", false, cx));
+        s.cx.advance_clock(std::time::Duration::from_millis(500));
+        s.cx.run_until_parked();
+        s.both("14_keyboard_hold_in_progress");
+        s.in_window(|window, cx| window.key_up("space", cx));
     }
 }

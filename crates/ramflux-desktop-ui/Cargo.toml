@@ -22,7 +22,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
-ramflux-desktop-test = { workspace = true, features = ["fake-bus"] }
+ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon"] }
 
 # Offscreen reference screenshots; run explicitly, not part of `cargo test`.
 [[test]]

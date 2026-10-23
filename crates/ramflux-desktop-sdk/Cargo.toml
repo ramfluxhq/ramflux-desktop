@@ -19,4 +19,4 @@ tokio.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
-ramflux-desktop-test = { workspace = true, features = ["fake-bus"] }
+ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon"] }

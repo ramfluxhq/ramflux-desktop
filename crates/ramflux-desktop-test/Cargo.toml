@@ -17,3 +17,5 @@ thiserror.workspace = true
 [features]
 # A fake daemon local bus (std only) for adapter and UI tests.
 fake-bus = []
+# A real `rf daemon` from the pinned product revision for live tests.
+live-daemon = []
