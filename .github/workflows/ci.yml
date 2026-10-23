@@ -21,6 +21,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@b9e0990d219a03df7633c93f6f005a8fecbcab22
 
+      - name: File size limit
+        run: |
+          over=$(git ls-files '*.rs' '*.toml' '*.yml' '*.yaml' | while IFS= read -r f; do
+            n=$(wc -l < "$f")
+            if [ "$n" -gt 5000 ]; then echo "$n $f"; fi
+          done)
+          if [ -n "$over" ]; then
+            echo "Files over 5000 lines (split by responsibility):"
+            echo "$over"
+            exit 1
+          fi
+          echo "OK: no tracked .rs/.toml/.yml file over 5000 lines"
+
       - name: System libraries
         run: |
           sudo apt-get update
