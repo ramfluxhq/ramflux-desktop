@@ -17,6 +17,7 @@
 //! - [`translate`]: daemon answers and events to domain events.
 //! - [`capabilities`]: what the daemon cannot do yet, with reasons.
 //! - [`diagnostics`]: the redacted diagnostics bundle.
+//! - [`directory`]: what the client directories list that requests need.
 //! - [`pins`]: pinned contexts persisted in the desktop settings file.
 //! - [`local`]: files, launch settings, a started daemon and the app log.
 //! - [`source`]: the `Source` implementation.
@@ -28,6 +29,7 @@ pub mod bus;
 pub mod capabilities;
 pub mod config;
 pub mod diagnostics;
+pub mod directory;
 pub mod local;
 pub mod pins;
 pub mod plan;
@@ -39,6 +41,6 @@ pub use config::{DEFAULT_SOCKET, Deadlines, SdkConfig};
 /// The product revision the `ramflux-sdk`, `ramflux-protocol` and
 /// `ramflux-crypto` dependencies are pinned to (checked against
 /// `Cargo.lock` by a test).
-pub const PRODUCT_REV: &str = "b38b4e414b24f1172b6672e6845ba960f409d6df";
+pub const PRODUCT_REV: &str = "3f8d72615deb6e7f489fa4a7aa737b0ea873e0a2";
 pub use source::{DaemonStop, SdkHub, SdkSource};
 pub use translate::Scope;

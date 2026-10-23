@@ -275,8 +275,8 @@ fn all_domain_events() -> Vec<DomainEvent> {
         },
         DomainEvent::ObjectUpserted(Object {
             id: ObjectId::new("o-1"),
-            name: "report.pdf".to_owned(),
-            size: 2048,
+            name: Some("report.pdf".to_owned()),
+            size: Some(2048),
             direction: Direction::Inbound,
             transfer: TransferState::Transferring { transferred: 1024 },
             saved_to: None,
@@ -360,7 +360,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             mcp_servers: vec![McpServer {
                 name: "files".to_owned(),
                 tools: vec!["read".to_owned()],
-                healthy: true,
+                healthy: Some(true),
             }],
             a2i_pending: vec![A2iItem { id: "a2i-1".to_owned(), summary: "Pause".to_owned() }],
         }),

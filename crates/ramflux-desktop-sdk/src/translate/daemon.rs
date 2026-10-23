@@ -10,7 +10,18 @@ use ramflux_desktop_core::{
 use serde_json::Value;
 
 use super::{Translated, Translator, list, text};
+use crate::directory::field;
 use crate::plan::fetch::Fetch;
+
+/// The account kind an `account_details` row declares; `bot` and unknown
+/// kinds have no desktop counterpart and keep the record's kind.
+fn account_kind(detail: &Value) -> Option<ramflux_desktop_core::AccountKind> {
+    match detail["kind"].as_str() {
+        Some("human") => Some(ramflux_desktop_core::AccountKind::HumanInteractive),
+        Some("headless_ai") => Some(ramflux_desktop_core::AccountKind::HeadlessAi),
+        _ => None,
+    }
+}
 
 /// A daemon node profile as a desktop node.
 ///
@@ -73,6 +84,14 @@ impl Translator {
 
     pub(super) fn node_list(&mut self, value: &Value) -> Vec<DomainEvent> {
         let default = value["default_node_id"].as_str();
+        // The relay a node-bound account uses, named as the daemon names it.
+        self.node_relays = list(value, "nodes")
+            .iter()
+            .filter_map(|p| {
+                let addr = p["relay"]["quic_addr"].as_str().filter(|a| !a.is_empty())?;
+                Some((NodeId::new(text(p, "node_id")), format!("quic://{addr}")))
+            })
+            .collect();
         let listed: Vec<Node> =
             list(value, "nodes").iter().map(|p| node_from_profile(p, default, true)).collect();
         let mut events = Vec::new();
@@ -111,6 +130,9 @@ impl Translator {
         self.nodes.values().find(|n| n.is_default).map(|n| n.id.as_str())
     }
 
+    /// `account.list`: open accounts in `accounts`, and every indexed
+    /// account (locked ones too) in `account_details` with its declared
+    /// label and kind.
     pub(super) fn account_list(&mut self, value: &Value) -> Translated {
         let open: Vec<AccountId> =
             list(value, "accounts").iter().filter_map(Value::as_str).map(AccountId::new).collect();
@@ -124,8 +146,25 @@ impl Translator {
         for id in locked_elsewhere {
             out.events.extend(self.set_lock(&id, LockState::Locked));
         }
+        for detail in list(value, "account_details") {
+            let Some(id) = field(detail, "id").map(AccountId::new) else { continue };
+            let mut account = self.account_record(&id);
+            account.lock_state =
+                if detail["state"].as_str() == Some("unlocked") || open.contains(&id) {
+                    LockState::Unlocked
+                } else {
+                    LockState::Locked
+                };
+            if let Some(label) = field(detail, "label") {
+                account.label = label;
+            }
+            if let Some(kind) = account_kind(detail) {
+                account.kind = kind;
+            }
+            out.events.extend(self.put_account(account));
+        }
         for id in open {
-            let unknown = !self.accounts.contains_key(&id);
+            let unknown = self.accounts.get(&id).is_none_or(|a| a.node_id.is_none());
             out.events.extend(self.set_lock(&id, LockState::Unlocked));
             if unknown {
                 out.follow.push(Fetch::AccountStatus(id));
@@ -134,13 +173,12 @@ impl Translator {
         out
     }
 
-    /// The account record as known so far.
+    /// The account record as known so far. The id stands in for a label the
+    /// daemon did not report.
     pub(super) fn account_record(&self, id: &AccountId) -> Account {
         self.accounts.get(id).cloned().unwrap_or_else(|| Account {
             id: id.clone(),
-            // The daemon keeps no account label: the user's own label when
-            // this session created it, else the local account id.
-            label: self.labels.get(id).cloned().unwrap_or_else(|| id.to_string()),
+            label: id.to_string(),
             kind: ramflux_desktop_core::AccountKind::default(),
             node_id: None,
             device_id: None,
@@ -162,12 +200,6 @@ impl Translator {
         let mut account = self.account_record(id);
         account.lock_state = lock_state;
         self.put_account(account)
-    }
-
-    pub(super) fn remember_label(&mut self, id: &AccountId, label: &str) {
-        if !label.trim().is_empty() {
-            self.labels.insert(id.clone(), label.trim().to_owned());
-        }
     }
 
     pub(super) fn probe_result(value: &Value, at: Timestamp) -> ramflux_desktop_core::NodeProbe {

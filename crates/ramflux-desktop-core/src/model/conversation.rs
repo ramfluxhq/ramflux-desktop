@@ -20,6 +20,8 @@ pub enum ParticipantKind {
     Device,
     /// A node acting as a participant.
     Node,
+    /// The backend did not report what kind of party this is.
+    Unknown,
 }
 
 /// Key verification state for a participant.

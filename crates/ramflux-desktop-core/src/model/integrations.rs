@@ -15,9 +15,10 @@ pub struct McpServer {
     /// Tool names it exposes.
     #[serde(default)]
     pub tools: Vec<String>,
-    /// Last refresh succeeded.
+    /// Whether the server was reachable when last checked; `None` when the
+    /// backend has not checked.
     #[serde(default)]
-    pub healthy: bool,
+    pub healthy: Option<bool>,
 }
 
 /// A pending A2I control event.

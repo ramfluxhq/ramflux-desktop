@@ -1,59 +1,657 @@
 {
-  "_about": "Response bodies of the daemon local bus, by method. Entries marked recorded were captured from rfd at product commit fd3b184 with an empty data root and re-checked unchanged at b38b4e4; the others follow the SDK's serialized types at that commit (NodeProfile, ConversationSummary, DirectMessageRecord, GroupState, FriendLinkRecord, LocalMcpApprovalRecord, LocalMcpGrantRecord, LocalMcpStandingApprovalRecord, LocalBusDeviceListResponse, LocalBusAccountCreateResponse).",
-  "daemon.status#recorded": {"accounts": 0, "socket_path": "/tmp/ramflux-f2/rfd.sock"},
-  "node.list#recorded": {"default_node_id": null, "nodes": []},
-  "account.list#recorded": {"active_account_id": null, "accounts": []},
-  "account.status#recorded_error": {"code": "ValidationFailed", "message": "local bus error: account not open: acct-none"},
+  "_about": "Response bodies of the daemon local bus, by method. Entries marked recorded were captured from rfd at product commit fd3b184 with an empty data root and re-checked unchanged at b38b4e4 and 3f8d726 (where account.list adds account_details); the others follow the SDK's serialized types and the client read model rows (docs/client_read_model.md, bus/read_model/rows.rs, bus/group_delivery.rs) at 3f8d726 (NodeProfile, DirectMessageRecord, GroupState plus member routes, FriendLinkRecord, approval directory records, LocalMcpGrantRecord, LocalMcpStandingApprovalRecord, LocalBusDeviceListResponse, LocalBusAccountCreateResponse).",
+  "daemon.status#recorded": {
+    "accounts": 0,
+    "socket_path": "/tmp/ramflux-f2/rfd.sock"
+  },
+  "node.list#recorded": {
+    "default_node_id": null,
+    "nodes": []
+  },
+  "account.list#recorded": {
+    "accounts": [],
+    "account_details": [],
+    "active_account_id": null
+  },
+  "account.status#recorded_error": {
+    "code": "ValidationFailed",
+    "message": "local bus error: account not open: acct-none"
+  },
   "_about_source_errors": "Entries marked source_error are error frames of the grant paths at product commit fd3b184, taken verbatim from the daemon source (error code from local_bus_error_code, message from the SdkError display): reaching them needs an open account, which needs a node, so they could not be captured from a node-less daemon.",
-  "grant.approve#source_error:remote_app": {"code": "RemoteAppApprovalRequired", "message": "remote_app approval requires an App-signed mcp.approval.granted"},
-  "grant.approve#source_error:not_found": {"code": "ValidationFailed", "message": "local bus error: approval not found: appr-1"},
-  "grant.deny#source_error:not_found": {"code": "ValidationFailed", "message": "local bus error: approval not found: appr-1"},
-  "mcp.approval.granted#source_error:signature": {"code": "SignatureVerificationFailed", "message": "signature verification failed for mcp.approval.granted: ed25519 verification failed"},
-  "mcp.tool.started#source_error:invalidated": {"code": "GrantInvalidated", "message": "grant invalidated"},
-  "grant.approve#rebound": {"grant_id": "grant-1", "confirmation_mode": "attended_local",
-    "signing_body": {"approval_id": "appr-1", "arguments_hash": "h-999", "single_use": false, "expires_at": 1890000000}},
-  "daemon.status": {"accounts": 1, "socket_path": "/tmp/ramflux-f2/rfd.sock"},
-  "node.list": {"default_node_id": "n-harbor", "nodes": [{
-    "discovery_url": "https://harbor.example.org", "node_id": "n-harbor",
-    "node_public_key": "MCowBQYDK2VwAyEA-harbor-key", "pin_source": "invitation",
-    "ca_cert_pem": "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n",
-    "gateway": {"quic_addr": "harbor.example.org:7443", "tcp_addr": "harbor.example.org:7444", "server_name": "harbor.example.org"},
-    "relay": {"quic_addr": "harbor.example.org:7543", "server_name": "harbor.example.org"},
-    "prekey_http_url": "https://harbor.example.org/prekey", "signaling_turn_addr": "",
-    "protocol_versions": ["ramflux.v1"], "client_capabilities": ["gateway", "relay", "prekey"],
-    "discovered_at": 1790000000, "expires_at": 1890000000, "enabled": true, "builtin": false,
-    "safety_warnings": []}]},
-  "account.list": {"active_account_id": "acct-main", "accounts": ["acct-main"]},
-  "account.status": {"local_account_id": "acct-main", "node_id": "n-harbor", "principal_id": "principal-me",
-    "target_delivery_id": "target-me", "session_id": "sess-1", "active_transport_kind": "quic", "pending_deliveries": 0},
-  "device.list": {"principal_id": "principal-me", "local_device_id": "device-me", "devices": [
-    {"device_id": "device-me", "device_epoch": 1, "target_delivery_id": "target-me", "capability_scope": ["device.delivery.bind"], "is_local": true},
-    {"device_id": "device-desk", "device_epoch": 2, "target_delivery_id": "target-desk", "capability_scope": [], "is_local": false}]},
-  "conversation.list": {"conversations": [
-    {"conversation_id": "dm-ana", "message_count": 2, "last_message_id": "m2", "last_activity_at": 1790000060, "is_archived": false, "pin_order": 1},
-    {"conversation_id": "dm-old", "message_count": 0, "last_message_id": null, "last_activity_at": null, "is_archived": true, "pin_order": null}]},
-  "group.list": {"groups": [{"group_id": "g-team", "group_epoch": 3, "max_members": 64, "new_member_history": "none",
-    "members": ["device-me", "device-bo"], "roles": {"device-me": "owner", "device-bo": "member"}}]},
-  "contact.list": {"contacts": [{"link_id": "l1", "requester_id": "principal-me", "target_id": "principal-ana", "state": "accepted", "blocked": false}]},
-  "message.list": {"messages": [
-    {"conversation_id": "dm-ana", "message_id": "m1", "sender_id": "device-ana", "encrypted_body": [104, 105], "metadata": {"mentions": [], "forward_count": 0}, "deleted": false, "created_at": 1790000000, "receipts": []},
-    {"conversation_id": "dm-ana", "message_id": "m2", "sender_id": "device-me", "encrypted_body": [111, 107], "metadata": {"mentions": [], "forward_count": 0}, "deleted": false, "created_at": 1790000060, "receipts": [{"device_id": "device-ana", "state": "delivered", "delivered_at": 1790000061, "read_at": null}]}],
-    "rejected": []},
-  "message.receive": {"entries": [], "decrypted_messages": []},
-  "group.receive": {"gateway_entries": [], "sender_key_distributions": [], "decrypted_messages": [], "pending_undecrypted_count": 0, "messages": []},
-  "mcp.approval.list": {"approvals": [{"approval_id": "appr-1", "server_id": "files", "tool_name": "delete", "capability": "write_files",
-    "risk_level": "high", "tool_scope": null, "confirmation_mode": "local", "expires_at": 1890000000, "status": "pending",
-    "details": {"arguments_hash": "h-123"}}]},
-  "grant.list": {"grants": []},
-  "grant.list_standing_approvals": {"standing_approvals": [{"standing_approval_id": "sa-1", "server_id": "files", "tool_name": "read",
-    "capability": "read_files", "risk_level": "low", "registry_hash": "r", "tool_manifest_set_hash": "t", "issued_at": 1790000000,
-    "expires_at": 1890000000, "created_by_device_id": "device-me", "signer_public_key": "k", "signature": "s",
-    "signing_body": {}, "revoked": false}]},
-  "mcp.tool.list": {"registry_hash": "r", "tool_manifest_set_hash": "t", "tools": [{"server_id": "files", "tool_name": "read"}, {"server_id": "files", "tool_name": "delete"}]},
-  "account.create": {"local_account_id": "acct-new", "principal_id": "principal-new", "principal_commitment": "c", "device_id": "device-new",
-    "target_delivery_id": "target-new", "client_mode": "attended_cli", "session_id": "s", "active_transport_kind": "quic"},
-  "grant.approve": {"grant_id": "grant-1", "confirmation_mode": "local", "signing_body": {"approval_id": "appr-1"}},
-  "node.probe": {"node_id": "n-harbor", "healthy": true, "discovery": {"status": "ok", "expires_at": 1890000000},
-    "gateway": {"transport": {"quic": "ok", "tcp": "not_attempted"}, "app": "ok", "session": "ok", "rtt_ms": 42},
-    "relay": {"status": "ok"}, "prekey": {"status": "ok"}, "checked_at": 1790000100}
+  "grant.approve#source_error:remote_app": {
+    "code": "RemoteAppApprovalRequired",
+    "message": "remote_app approval requires an App-signed mcp.approval.granted"
+  },
+  "grant.approve#source_error:not_found": {
+    "code": "ValidationFailed",
+    "message": "local bus error: approval not found: appr-1"
+  },
+  "grant.deny#source_error:not_found": {
+    "code": "ValidationFailed",
+    "message": "local bus error: approval not found: appr-1"
+  },
+  "mcp.approval.granted#source_error:signature": {
+    "code": "SignatureVerificationFailed",
+    "message": "signature verification failed for mcp.approval.granted: ed25519 verification failed"
+  },
+  "mcp.tool.started#source_error:invalidated": {
+    "code": "GrantInvalidated",
+    "message": "grant invalidated"
+  },
+  "grant.approve#rebound": {
+    "grant_id": "grant-1",
+    "confirmation_mode": "attended_local",
+    "signing_body": {
+      "approval_id": "appr-1",
+      "arguments_hash": "h-999",
+      "single_use": false,
+      "expires_at": 1890000000
+    }
+  },
+  "daemon.status": {
+    "accounts": 1,
+    "socket_path": "/tmp/ramflux-f2/rfd.sock"
+  },
+  "node.list": {
+    "default_node_id": "n-harbor",
+    "nodes": [
+      {
+        "discovery_url": "https://harbor.example.org",
+        "node_id": "n-harbor",
+        "node_public_key": "MCowBQYDK2VwAyEA-harbor-key",
+        "pin_source": "invitation",
+        "ca_cert_pem": "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n",
+        "gateway": {
+          "quic_addr": "harbor.example.org:7443",
+          "tcp_addr": "harbor.example.org:7444",
+          "server_name": "harbor.example.org"
+        },
+        "relay": {
+          "quic_addr": "harbor.example.org:7543",
+          "server_name": "harbor.example.org"
+        },
+        "prekey_http_url": "https://harbor.example.org/prekey",
+        "signaling_turn_addr": "",
+        "protocol_versions": [
+          "ramflux.v1"
+        ],
+        "client_capabilities": [
+          "gateway",
+          "relay",
+          "prekey"
+        ],
+        "discovered_at": 1790000000,
+        "expires_at": 1890000000,
+        "enabled": true,
+        "builtin": false,
+        "safety_warnings": []
+      }
+    ]
+  },
+  "account.list": {
+    "active_account_id": "acct-main",
+    "accounts": [
+      "acct-main"
+    ],
+    "account_details": [
+      {
+        "id": "acct-main",
+        "label": "Me",
+        "kind": "human",
+        "principal_id": "principal-me",
+        "state": "unlocked"
+      },
+      {
+        "id": "acct-work",
+        "label": "Work",
+        "kind": "headless_ai",
+        "principal_id": "principal-work",
+        "state": "locked"
+      },
+      {
+        "id": "acct-old",
+        "label": null,
+        "kind": null,
+        "principal_id": "principal-old",
+        "state": "locked"
+      }
+    ]
+  },
+  "account.status": {
+    "local_account_id": "acct-main",
+    "node_id": "n-harbor",
+    "principal_id": "principal-me",
+    "target_delivery_id": "target-me",
+    "session_id": "sess-1",
+    "active_transport_kind": "quic",
+    "pending_deliveries": 0,
+    "principal_commitment": "cm-me"
+  },
+  "device.list": {
+    "principal_id": "principal-me",
+    "local_device_id": "device-me",
+    "devices": [
+      {
+        "device_id": "device-me",
+        "device_epoch": 1,
+        "target_delivery_id": "target-me",
+        "capability_scope": [
+          "device.delivery.bind"
+        ],
+        "is_local": true
+      },
+      {
+        "device_id": "device-desk",
+        "device_epoch": 2,
+        "target_delivery_id": "target-desk",
+        "capability_scope": [],
+        "is_local": false
+      }
+    ]
+  },
+  "group.list": {
+    "groups": [
+      {
+        "group_id": "g-team",
+        "group_epoch": 3,
+        "max_members": 64,
+        "new_member_history": "none",
+        "members": [
+          "device-me",
+          "device-bo"
+        ],
+        "roles": {
+          "device-me": "owner",
+          "device-bo": "member"
+        },
+        "id": "g-team",
+        "member_routes": [
+          {
+            "member_id": "device-me",
+            "principal_id": "principal-me",
+            "member_principal_commitment": "cm-me",
+            "device_signing_public_key": "key-me",
+            "target_delivery_id": "target-me",
+            "federation": null,
+            "delivery_target_known": true
+          },
+          {
+            "member_id": "device-bo",
+            "principal_id": "principal-bo",
+            "member_principal_commitment": "cm-bo",
+            "device_signing_public_key": "key-bo",
+            "target_delivery_id": "target-bo",
+            "federation": null,
+            "delivery_target_known": true
+          }
+        ],
+        "conversation_id": "thread-team",
+        "conversation_ids": [
+          "thread-team"
+        ]
+      }
+    ],
+    "next_cursor": null
+  },
+  "contact.list": {
+    "contacts": [
+      {
+        "link_id": "l1",
+        "requester_id": "principal-me",
+        "target_id": "principal-ana",
+        "state": "accepted",
+        "blocked": false
+      }
+    ]
+  },
+  "message.list": {
+    "messages": [
+      {
+        "conversation_id": "dm-ana",
+        "message_id": "m1",
+        "sender_id": "device-ana",
+        "encrypted_body": [
+          104,
+          105
+        ],
+        "metadata": {
+          "mentions": [],
+          "forward_count": 0
+        },
+        "deleted": false,
+        "created_at": 1790000000,
+        "receipts": []
+      },
+      {
+        "conversation_id": "dm-ana",
+        "message_id": "m2",
+        "sender_id": "device-me",
+        "encrypted_body": [
+          111,
+          107
+        ],
+        "metadata": {
+          "mentions": [],
+          "forward_count": 0
+        },
+        "deleted": false,
+        "created_at": 1790000060,
+        "receipts": [
+          {
+            "device_id": "device-ana",
+            "state": "delivered",
+            "delivered_at": 1790000061,
+            "read_at": null
+          }
+        ]
+      }
+    ],
+    "rejected": []
+  },
+  "message.receive": {
+    "entries": [],
+    "decrypted_messages": []
+  },
+  "group.receive": {
+    "gateway_entries": [],
+    "sender_key_distributions": [],
+    "decrypted_messages": [],
+    "pending_undecrypted_count": 0,
+    "messages": []
+  },
+  "mcp.approval.list": {
+    "approvals": [
+      {
+        "approval_id": "appr-1",
+        "server_id": "files",
+        "tool_name": "delete",
+        "capability": "write_files",
+        "risk_level": "high",
+        "tool_scope": null,
+        "confirmation_mode": "local",
+        "expires_at": 1890000000,
+        "status": "pending",
+        "details": {
+          "arguments_hash": "h-123"
+        },
+        "id": "appr-1",
+        "event_type": "mcp.approval.request",
+        "conversation_id": "dm-ana",
+        "context_id": "ctx-1"
+      },
+      {
+        "id": "appr-2",
+        "approval_id": "appr-2",
+        "event_type": "mcp.approval.request",
+        "server_id": "files",
+        "tool_name": "read",
+        "capability": "read_files",
+        "risk_level": "low",
+        "tool_scope": null,
+        "confirmation_mode": "local",
+        "expires_at": 1890000000,
+        "status": "pending",
+        "details": {
+          "arguments_hash": "h-456"
+        },
+        "conversation_id": null,
+        "context_id": null
+      }
+    ],
+    "next_cursor": null
+  },
+  "grant.list": {
+    "grants": []
+  },
+  "grant.list_standing_approvals": {
+    "standing_approvals": [
+      {
+        "standing_approval_id": "sa-1",
+        "server_id": "files",
+        "tool_name": "read",
+        "capability": "read_files",
+        "risk_level": "low",
+        "registry_hash": "r",
+        "tool_manifest_set_hash": "t",
+        "issued_at": 1790000000,
+        "expires_at": 1890000000,
+        "created_by_device_id": "device-me",
+        "signer_public_key": "k",
+        "signature": "s",
+        "signing_body": {},
+        "revoked": false
+      }
+    ]
+  },
+  "mcp.tool.list": {
+    "registry_hash": "r",
+    "tool_manifest_set_hash": "t",
+    "tools": [
+      {
+        "server_id": "files",
+        "tool_name": "read"
+      },
+      {
+        "server_id": "files",
+        "tool_name": "delete"
+      }
+    ]
+  },
+  "account.create": {
+    "local_account_id": "acct-new",
+    "principal_id": "principal-new",
+    "principal_commitment": "c",
+    "device_id": "device-new",
+    "target_delivery_id": "target-new",
+    "client_mode": "attended_cli",
+    "session_id": "s",
+    "active_transport_kind": "quic"
+  },
+  "grant.approve": {
+    "grant_id": "grant-1",
+    "confirmation_mode": "local",
+    "signing_body": {
+      "approval_id": "appr-1"
+    }
+  },
+  "node.probe": {
+    "node_id": "n-harbor",
+    "healthy": true,
+    "discovery": {
+      "status": "ok",
+      "expires_at": 1890000000
+    },
+    "gateway": {
+      "transport": {
+        "quic": "ok",
+        "tcp": "not_attempted"
+      },
+      "app": "ok",
+      "session": "ok",
+      "rtt_ms": 42
+    },
+    "relay": {
+      "status": "ok"
+    },
+    "prekey": {
+      "status": "ok"
+    },
+    "checked_at": 1790000100
+  },
+  "conversation.directory": {
+    "conversations": [
+      {
+        "id": "dm-ana",
+        "archived": false,
+        "hidden": false,
+        "last_activity": 1790000060,
+        "unread_count": 1,
+        "is_unread": true,
+        "muted": false,
+        "mute_until": null,
+        "disappearing": null,
+        "kind": "direct",
+        "title": null,
+        "participants": [
+          "principal-ana",
+          "principal-me"
+        ],
+        "group_id": null,
+        "direct_route": {
+          "recipient_principal_commitment": "cm-ana",
+          "recipient_device_ids": [
+            "device-ana"
+          ],
+          "target_delivery_id": "target-ana",
+          "federation": null
+        },
+        "self_principal_id": "principal-me"
+      },
+      {
+        "id": "dm-old",
+        "archived": true,
+        "hidden": false,
+        "last_activity": null,
+        "unread_count": 0,
+        "is_unread": false,
+        "muted": false,
+        "mute_until": null,
+        "disappearing": null,
+        "kind": "direct",
+        "title": null,
+        "participants": [
+          "principal-me"
+        ],
+        "group_id": null,
+        "direct_route": null,
+        "self_principal_id": "principal-me"
+      },
+      {
+        "id": "thread-team",
+        "archived": false,
+        "hidden": false,
+        "last_activity": null,
+        "unread_count": 0,
+        "is_unread": false,
+        "muted": true,
+        "mute_until": null,
+        "disappearing": {
+          "timer_seconds": 3600,
+          "countdown_mode": "after_read",
+          "scope": "conversation"
+        },
+        "kind": "group",
+        "title": "Team",
+        "participants": [
+          "principal-bo",
+          "principal-me"
+        ],
+        "group_id": "g-team",
+        "direct_route": null,
+        "self_principal_id": "principal-me",
+        "member_routes": [
+          {
+            "member_id": "device-me",
+            "principal_id": "principal-me",
+            "member_principal_commitment": "cm-me",
+            "device_signing_public_key": "key-me",
+            "target_delivery_id": "target-me",
+            "federation": null,
+            "delivery_target_known": true
+          },
+          {
+            "member_id": "device-bo",
+            "principal_id": "principal-bo",
+            "member_principal_commitment": "cm-bo",
+            "device_signing_public_key": "key-bo",
+            "target_delivery_id": "target-bo",
+            "federation": null,
+            "delivery_target_known": true
+          }
+        ]
+      }
+    ],
+    "next_cursor": null
+  },
+  "identity.directory": {
+    "identities": [
+      {
+        "id": "principal-ana",
+        "principal_id": "principal-ana",
+        "principal_commitment": "cm-ana",
+        "contact_identity_commitment": "cm-ana",
+        "display_name": null,
+        "kind": null,
+        "is_self": false,
+        "devices": [
+          {
+            "id": "device-ana",
+            "device_id": "device-ana",
+            "label": null,
+            "last_seen": null,
+            "verified_at": 1790000000,
+            "target_delivery_id": "target-ana",
+            "signing_public_key": "key-ana"
+          }
+        ],
+        "device_set_hash": "set-ana",
+        "safety_state": "unverified",
+        "safety_number": null,
+        "safety_number_available": false
+      },
+      {
+        "id": "principal-bo",
+        "principal_id": "principal-bo",
+        "principal_commitment": "cm-bo",
+        "contact_identity_commitment": "cm-bo",
+        "display_name": null,
+        "kind": "bot",
+        "is_self": false,
+        "devices": [
+          {
+            "id": "device-bo",
+            "device_id": "device-bo",
+            "label": null,
+            "last_seen": null,
+            "verified_at": 1790000000,
+            "target_delivery_id": "target-bo",
+            "signing_public_key": "key-bo"
+          }
+        ],
+        "device_set_hash": "set-bo",
+        "safety_state": "verified",
+        "safety_number": "12345 67890",
+        "safety_number_available": true
+      },
+      {
+        "id": "principal-cy",
+        "principal_id": "principal-cy",
+        "principal_commitment": "cm-cy",
+        "contact_identity_commitment": "cm-cy",
+        "display_name": null,
+        "kind": null,
+        "is_self": false,
+        "devices": [
+          {
+            "id": "device-cy-1",
+            "device_id": "device-cy-1",
+            "label": null,
+            "last_seen": null,
+            "verified_at": 1790000000,
+            "target_delivery_id": "target-cy-1",
+            "signing_public_key": "key-cy-1"
+          },
+          {
+            "id": "device-cy-2",
+            "device_id": "device-cy-2",
+            "label": null,
+            "last_seen": null,
+            "verified_at": 1790000000,
+            "target_delivery_id": "target-cy-2",
+            "signing_public_key": "key-cy-2"
+          }
+        ],
+        "device_set_hash": "set-cy",
+        "safety_state": "verification_stale",
+        "safety_number": null,
+        "safety_number_available": false
+      },
+      {
+        "id": "principal-me",
+        "principal_id": "principal-me",
+        "principal_commitment": "cm-me",
+        "contact_identity_commitment": "cm-me",
+        "display_name": "Me",
+        "kind": "human",
+        "is_self": true,
+        "devices": [
+          {
+            "id": "device-me",
+            "device_id": "device-me",
+            "label": null,
+            "last_seen": null,
+            "target_delivery_id": "target-me",
+            "signing_public_key": "key-me"
+          }
+        ],
+        "safety_state": "unverified",
+        "safety_number": null,
+        "safety_number_available": false
+      }
+    ],
+    "next_cursor": null
+  },
+  "object.directory": {
+    "objects": [
+      {
+        "id": "attachment:m1:0",
+        "size": 12,
+        "transfer_state": "available",
+        "updated_at": 1790000001,
+        "name": "notes.txt",
+        "mime": "text/plain",
+        "direction": "incoming",
+        "owner": "principal-ana",
+        "conversation_id": "dm-ana",
+        "message_id": "m1",
+        "relay_endpoint": "quic://harbor.example.org:7543",
+        "transfer": null
+      },
+      {
+        "id": "attachment:m2:0",
+        "size": null,
+        "transfer_state": "available",
+        "updated_at": 1790000061,
+        "name": null,
+        "mime": null,
+        "direction": "outgoing",
+        "owner": "principal-me",
+        "conversation_id": "dm-ana",
+        "message_id": "m2",
+        "relay_endpoint": "quic://harbor.example.org:7543",
+        "transfer": {
+          "id": "tr-2",
+          "state": "paused",
+          "peer_device_id": "device-ana",
+          "updated_at": 1790000062
+        }
+      },
+      {
+        "id": "legacy-object",
+        "size": 40,
+        "transfer_state": "available",
+        "updated_at": 1790000002,
+        "name": null,
+        "mime": null,
+        "direction": null,
+        "owner": null,
+        "conversation_id": null,
+        "message_id": null,
+        "relay_endpoint": null,
+        "transfer": null
+      }
+    ],
+    "next_cursor": null
+  },
+  "mcp.server.list": {
+    "servers": [
+      "files",
+      "search"
+    ],
+    "server_details": [
+      {
+        "id": "files",
+        "reachable": null,
+        "last_check": null,
+        "health_source": "not_checked"
+      },
+      {
+        "id": "search",
+        "reachable": true,
+        "last_check": 1790000000,
+        "health_source": "probe"
+      }
+    ],
+    "next_cursor": null
+  }
 }

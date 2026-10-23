@@ -40,10 +40,12 @@ pub enum TransferState {
 pub struct Object {
     /// Object id.
     pub id: ObjectId,
-    /// File name.
-    pub name: String,
-    /// Size in bytes.
-    pub size: u64,
+    /// File name; `None` when the backend did not report one.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Size in bytes; `None` when the backend did not report it.
+    #[serde(default)]
+    pub size: Option<u64>,
     /// Direction.
     pub direction: Direction,
     /// Transfer state.
@@ -57,15 +59,23 @@ pub struct Object {
 }
 
 impl Object {
+    /// The name to show: the reported file name, else the object id.
+    pub fn label(&self) -> String {
+        self.name.clone().unwrap_or_else(|| self.id.to_string())
+    }
+}
+
+impl Object {
     /// Transfer progress from 0 to 1.
     pub fn progress(&self) -> f32 {
         match &self.transfer {
             TransferState::Queued | TransferState::Failed { .. } => 0.0,
             TransferState::Complete => 1.0,
-            TransferState::Transferring { transferred } if self.size > 0 => {
+            TransferState::Transferring { transferred } if self.size.is_some_and(|s| s > 0) => {
+                let size = self.size.unwrap_or(1);
                 // Lossy by design: progress is only displayed.
                 #[allow(clippy::cast_precision_loss)]
-                let ratio = *transferred as f64 / self.size as f64;
+                let ratio = *transferred as f64 / size as f64;
                 #[allow(clippy::cast_possible_truncation)]
                 let ratio = ratio.clamp(0.0, 1.0) as f32;
                 ratio

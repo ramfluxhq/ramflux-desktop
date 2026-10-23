@@ -29,13 +29,22 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 json!({ "context_id": context_id, "text": text }),
             ))
         }),
-        IntentKind::AttachObject { context_id, path } => p.context(context_id).and_then(|_| {
-            non_empty(path, "path")?;
-            Ok(Decision::Call(
-                methods::ATTACH_OBJECT,
-                json!({ "context_id": context_id, "path": path }),
-            ))
-        }),
+        IntentKind::AttachObject { context_id, path } => {
+            p.context(context_id).and_then(|context| {
+                non_empty(path, "path")?;
+                let scoped = methods::in_context(methods::ATTACH_OBJECT, context.kind);
+                if let Some(reason) = p.store.unsupported_reason(&scoped) {
+                    return Err(IntentError::UnsupportedByBackend {
+                        method: methods::ATTACH_OBJECT,
+                        reason: reason.to_owned(),
+                    });
+                }
+                Ok(Decision::Call(
+                    methods::ATTACH_OBJECT,
+                    json!({ "context_id": context_id, "path": path }),
+                ))
+            })
+        }
         IntentKind::PinContext { context_id } | IntentKind::UnpinContext { context_id } => {
             let pin = matches!(kind, IntentKind::PinContext { .. });
             p.context(context_id).and_then(|context| {

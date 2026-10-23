@@ -6,7 +6,9 @@
 //! The daemon expects the client to choose the local account, principal,
 //! device and delivery-target ids and to supply the root and device seeds
 //! (as the reference CLI does). Ids are random; seeds come from the
-//! product's crypto crate and travel only as secret fields.
+//! product's crypto crate and travel only as secret fields. The user's
+//! label and the account kind go along: the daemon keeps them in the
+//! account manifest and lists them in `account.list`, locked or not.
 
 use ramflux_desktop_core::{AccountKind, NodeId, SecretInput};
 use serde_json::json;
@@ -21,6 +23,7 @@ use crate::bus::BusRequest;
 /// Returns a message when the platform cannot supply randomness.
 pub fn create_request(
     kind: AccountKind,
+    label: &str,
     node_id: &NodeId,
     secret: SecretInput,
 ) -> Result<(String, BusRequest), String> {
@@ -32,15 +35,11 @@ pub fn create_request(
     let device_seed = Zeroizing::new(seed()?);
     let commitment =
         ramflux_sdk::identity_root_public_key_commitment_for_seed(&principal, *root_seed);
-    let client_mode = match kind {
-        AccountKind::HumanInteractive => "attended_cli",
-        AccountKind::HeadlessAi => "headless_ai",
+    let (client_mode, declared) = match kind {
+        AccountKind::HumanInteractive => ("attended_cli", "human"),
+        AccountKind::HeadlessAi => ("headless_ai", "headless_ai"),
     };
-    let request = BusRequest::new(
-        None,
-        "account",
-        "account.create",
-        json!({
+    let mut body = json!({
             "node_id": node_id,
             "local_account_id": account,
             "principal_id": principal,
@@ -48,11 +47,16 @@ pub fn create_request(
             "device_id": device,
             "target_delivery_id": target,
             "client_mode": client_mode,
-        }),
-    )
-    .with_secret("account_secret", secret)
-    .with_seed("root_seed", root_seed)
-    .with_seed("device_seed", device_seed);
+            "kind": declared,
+    });
+    let label = label.trim();
+    if !label.is_empty() {
+        body["label"] = json!(label);
+    }
+    let request = BusRequest::new(None, "account", "account.create", body)
+        .with_secret("account_secret", secret)
+        .with_seed("root_seed", root_seed)
+        .with_seed("device_seed", device_seed);
     Ok((account, request))
 }
 
@@ -73,6 +77,7 @@ mod tests {
     fn create_requests_carry_fresh_ids_and_keep_seeds_secret() {
         let (account, request) = create_request(
             AccountKind::HumanInteractive,
+            " Me ",
             &NodeId::new("n-1"),
             SecretInput::new("river stone"),
         )
@@ -80,15 +85,20 @@ mod tests {
         assert!(account.starts_with("acct-") && account.len() == 21);
         assert_eq!(request.body["local_account_id"], account.as_str());
         assert_eq!(request.body["client_mode"], "attended_cli");
+        assert_eq!(
+            (request.body["kind"].as_str(), request.body["label"].as_str()),
+            (Some("human"), Some("Me"))
+        );
         assert!(request.body.get("root_seed").is_none(), "seeds are not in the plain body");
         assert!(!format!("{request:?}").contains("river"));
         let wire = request.wire_body();
         assert_eq!(wire["root_seed"].as_array().map(Vec::len), Some(32));
         assert_eq!(wire["account_secret"], "river stone");
         crate::bus::wipe(wire);
-        let (other, _) =
-            create_request(AccountKind::HeadlessAi, &NodeId::new("n-1"), SecretInput::new("x"))
+        let (other, other_request) =
+            create_request(AccountKind::HeadlessAi, "", &NodeId::new("n-1"), SecretInput::new("x"))
                 .expect("randomness");
         assert_ne!(account, other);
+        assert!(other_request.body.get("label").is_none(), "no label is not an empty label");
     }
 }

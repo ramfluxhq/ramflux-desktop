@@ -16,21 +16,39 @@ backend:
     reveal:
       en: "Revealing needs the daemon's privacy audit (K9)."
       zh-CN: "揭示内容需要守护进程的隐私审计（K9）。"
-    direct_route:
-      en: "The daemon does not list the route of a direct conversation yet, so it cannot be sent from here."
-      zh-CN: "守护进程尚未提供单聊的投递路由，暂不能在此发送。"
-    objects:
-      en: "The daemon does not list object names, sizes or directions yet."
-      zh-CN: "守护进程尚未提供对象的名称、大小和方向。"
     contact_route:
-      en: "Sending a contact request needs the contact's device route, which the daemon does not list yet."
-      zh-CN: "发送联系人请求需要对方设备的投递路由，守护进程尚未提供。"
-    safety:
-      en: "Verifying needs the contact's identity commitment, which the daemon does not list yet."
-      zh-CN: "验证需要联系人的身份承诺，守护进程尚未提供。"
-    member_keys:
-      en: "Adding or inviting members needs their keys, which cannot be looked up yet."
-      zh-CN: "添加或邀请成员需要其密钥，目前无法查询。"
+      en: "A contact request travels to the contact's node and needs a federation route to it, which the daemon does not list."
+      zh-CN: "联系人请求需发送到对方节点，需要通往该节点的联邦路由，守护进程未提供。"
+    spaces:
+      en: "The daemon has no shared spaces."
+      zh-CN: "守护进程不支持共享空间。"
+    group_attachments:
+      en: "Group messages cannot carry attachments yet."
+      zh-CN: "群消息暂不支持附件。"
+    no_route:
+      en: "This conversation has no active route to the contact's device. A route is recorded when a message is exchanged with a verified device."
+      zh-CN: "此会话没有通往对方设备的有效路由。与已验证设备收发消息后才会记录路由。"
+    no_group_link:
+      en: "This conversation is not linked to a group."
+      zh-CN: "此会话未关联群组。"
+    no_member_route:
+      en: "No verified device is listed for this person, so they cannot be added or invited. Verify the contact first."
+      zh-CN: "未列出此人的已验证设备，无法添加或邀请。请先验证该联系人。"
+    no_member_device:
+      en: "This person has no device in the group."
+      zh-CN: "此人在群组中没有设备。"
+    no_commitment:
+      en: "The contact's identity commitment is not listed yet."
+      zh-CN: "尚未列出该联系人的身份承诺。"
+    no_relay:
+      en: "The relay of this account's node is not known."
+      zh-CN: "未知此账户所在节点的中继。"
+    no_self:
+      en: "This account's own identity is not known yet."
+      zh-CN: "尚未获知此账户自身的身份。"
+    no_direction:
+      en: "It is not known whether this object was sent or received."
+      zh-CN: "无法确定此对象是发送还是接收的。"
     activation:
       en: "Joining by activation code is not available from the daemon yet."
       zh-CN: "守护进程尚不支持通过激活码加入。"
@@ -54,6 +72,18 @@ backend:
     value:
       en: "%{action}: %{reason}"
       zh-CN: "%{action}：%{reason}"
+    attachment_too_large:
+      en: "The file is larger than %{limit} bytes, the most one message can carry."
+      zh-CN: "文件超过 %{limit} 字节，超出单条消息可携带的上限。"
+    file:
+      en: "The file could not be read or written: %{reason}"
+      zh-CN: "无法读取或写入文件：%{reason}"
+    group_routes_unresolved:
+      en: "Not sent to anyone: no route to %{members}. Nothing was delivered."
+      zh-CN: "未发送给任何人：无法路由到 %{members}。没有任何投递。"
+    partial:
+      en: "Stopped after %{done} of %{total}: %{reason}"
+      zh-CN: "完成 %{done}/%{total} 后停止：%{reason}"
   daemon:
     socket:
       en: "Attached to %{path} · %{accounts} open accounts"

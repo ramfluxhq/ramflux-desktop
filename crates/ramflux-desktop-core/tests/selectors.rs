@@ -184,8 +184,8 @@ fn dock_selectors_filter_and_order() {
         5,
         DomainEvent::ObjectUpserted(Object {
             id: ObjectId::new("o-1"),
-            name: "notes.txt".to_owned(),
-            size: 12,
+            name: Some("notes.txt".to_owned()),
+            size: Some(12),
             direction: Direction::Outbound,
             transfer: TransferState::Complete,
             saved_to: None,

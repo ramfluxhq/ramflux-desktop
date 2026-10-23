@@ -5,7 +5,7 @@
 
 use ramflux_desktop_core::{
     AccountId, AccountKind, Actor, AuditEntry, ContextId, Disappearing, DomainEvent, GrantId,
-    GrantState, LockState, NodeId, ParticipantId, Timestamp, methods,
+    GrantState, LockState, NodeId, ObjectId, ParticipantId, Timestamp, methods,
 };
 use serde_json::Value;
 
@@ -87,11 +87,15 @@ impl Translator {
             }
             methods::ACCOUNT_CREATE => {
                 let id = AccountId::new(text(answer, "local_account_id"));
-                self.remember_label(&id, text(body, "label"));
                 let kind = serde_json::from_value(body["kind"].clone()).unwrap_or_default();
                 let mut events = self.opened_account(&id, answer, Some(kind));
                 let mut account = self.account_record(&id);
                 account.node_id = Some(node_id());
+                // The daemon keeps the label in the account manifest.
+                let label = text(body, "label").trim();
+                if !label.is_empty() {
+                    label.clone_into(&mut account.label);
+                }
                 events.extend(self.put_account(account));
                 events
             }
@@ -138,6 +142,10 @@ impl Translator {
                 }
                 Vec::new()
             }
+            methods::OBJECT_SAVE => match answer["saved_to"].as_str() {
+                Some(path) => self.object_saved(&ObjectId::new(text(body, "object_id")), path),
+                None => Vec::new(),
+            },
             _ => Vec::new(),
         }
     }
@@ -161,7 +169,9 @@ impl Translator {
         }
         if let Some(device) = answer["device_id"].as_str() {
             account.device_id = Some(device.to_owned());
-            account.self_participant_id = Some(ParticipantId::new(device));
+        }
+        if let Some(principal) = answer["principal_id"].as_str() {
+            account.self_participant_id = Some(ParticipantId::new(principal));
         }
         self.put_account(account)
     }

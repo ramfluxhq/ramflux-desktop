@@ -67,6 +67,13 @@ fn members_dock_kicks_through_the_hold_strip(cx: &mut TestAppContext) {
     click(cx, handle, "rail-members");
     assert!(exists(cx, handle, "dock-content-members"));
 
+    in_window(cx, handle, |window, cx| window.within("member-add-p-mira").click("invite", cx));
+    let body = last_body(cx, &shell, methods::GROUP_CREATE_INVITE);
+    assert_eq!(
+        (body["participant_id"].as_str(), body["role"].as_str()),
+        (Some("p-mira"), Some("Member")),
+        "an invitation names the invited contact"
+    );
     in_window(cx, handle, |window, cx| window.within("member-add-p-mira").click("add", cx));
     let body = last_body(cx, &shell, methods::GROUP_ADD_MEMBER);
     assert_eq!(body["participant_id"], "p-mira", "adding a contact is low risk: no hold");

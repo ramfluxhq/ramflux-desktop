@@ -162,3 +162,29 @@ fn no_rust_source_contains_cjk_text() {
         assert!(!text.chars().any(is_cjk), "{} contains CJK text", file.display());
     }
 }
+
+#[test]
+fn every_reason_the_sdk_source_writes_is_translated() {
+    let entries = parse_locales();
+    let reasons = ramflux_desktop_sdk::capabilities::unsupported()
+        .into_values()
+        .chain(ramflux_desktop_sdk::translate::reason::key::ALL)
+        .chain([ramflux_desktop_sdk::bus::TIMEOUT_KEY, ramflux_desktop_sdk::bus::RECONCILE_KEY]);
+    for key in reasons {
+        assert!(entries.contains_key(key), "{key} has no translation");
+    }
+}
+
+#[test]
+fn a_reason_with_arguments_is_translated_with_them() {
+    rust_i18n::set_locale("en");
+    let text = ramflux_desktop_ui::i18n::backend_text(
+        r#"backend.failure.partial {"done":"1","total":"2","reason":"backend.failure.timeout"}"#,
+    );
+    let timeout = ramflux_desktop_ui::i18n::tr("backend.failure.timeout");
+    assert_eq!(text.as_ref(), format!("Stopped after 1 of 2: {timeout}"));
+    let daemon = ramflux_desktop_ui::i18n::backend_text("local bus error: x");
+    assert_eq!(daemon.as_ref(), "local bus error: x", "daemon text is shown as written");
+    let odd = ramflux_desktop_ui::i18n::backend_text("backend.failure.partial not-json");
+    assert_eq!(odd.as_ref(), "backend.failure.partial not-json", "never a half translation");
+}

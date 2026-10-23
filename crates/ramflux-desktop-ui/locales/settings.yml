@@ -177,8 +177,11 @@ settings:
       en: "Healthy"
       zh-CN: "正常"
     unhealthy:
-      en: "Refresh failed"
-      zh-CN: "刷新失败"
+      en: "Unreachable"
+      zh-CN: "无法连接"
+    not_checked:
+      en: "Not checked"
+      zh-CN: "未检查"
   diagnostics:
     explain:
       en: "This is what the export contains. Keys, tokens, nonces, names and message text are never included."

@@ -6,10 +6,11 @@
 //! A desktop grant id is the daemon's approval id: a pending approval is a
 //! pending grant, and the daemon's grant record that an approval produces is
 //! the same desktop grant, approved (its daemon grant id is kept for
-//! revocation).
+//! revocation). An approval that names the conversation it came from is
+//! also shown there (see `interventions`).
 
 use ramflux_desktop_core::{
-    DomainEvent, Grant, GrantId, GrantState, Risk, StandingApproval, StandingApprovalId,
+    DomainEvent, Grant, GrantId, GrantState, Risk, StandingApproval, StandingApprovalId, Timestamp,
 };
 use serde_json::Value;
 
@@ -24,7 +25,7 @@ fn risk(value: &Value) -> Risk {
     }
 }
 
-fn scope(record: &Value) -> String {
+pub(super) fn scope(record: &Value) -> String {
     let tool = format!("{}/{}", text(record, "server_id"), text(record, "tool_name"));
     match record["tool_scope"].as_str() {
         Some(extra) if !extra.is_empty() => format!("{tool} ({extra})"),
@@ -33,21 +34,22 @@ fn scope(record: &Value) -> String {
 }
 
 impl Translator {
-    /// A pending approval (listed or pushed) as a requested grant.
-    pub(super) fn approval(&mut self, record: &Value) -> Option<DomainEvent> {
+    /// A pending approval (listed or pushed) as a requested grant, and as
+    /// an intervention in the conversation it came from.
+    pub(super) fn approval(&mut self, record: &Value, now: Timestamp) -> Vec<DomainEvent> {
         let id = GrantId::new(text(record, "approval_id"));
         if id.as_str().is_empty() || self.grants.contains_key(&id) {
-            return None;
+            return Vec::new();
         }
         if record["status"].as_str().is_some_and(|s| s != "pending") {
-            return None;
+            return Vec::new();
         }
         self.grants.insert(id.clone(), GrantState::Pending);
         let args_hash = record["details"]["arguments_hash"].as_str().unwrap_or_default().to_owned();
         let expiry = seconds(&record["expires_at"]);
         self.bind(&id, &args_hash, expiry);
-        Some(DomainEvent::GrantRequested(Grant {
-            id,
+        let grant = Grant {
+            id: id.clone(),
             scope: scope(record),
             risk: risk(&record["risk_level"]),
             single_use: record["details"]["single_use"].as_bool().unwrap_or(false),
@@ -55,11 +57,14 @@ impl Translator {
             expiry,
             state: GrantState::Pending,
             failure: None,
-        }))
+        };
+        let mut events = vec![DomainEvent::GrantRequested(grant.clone())];
+        events.extend(self.intervene(&grant, record, now));
+        events
     }
 
-    pub(super) fn approval_list(&mut self, value: &Value) -> Vec<DomainEvent> {
-        list(value, "approvals").iter().filter_map(|record| self.approval(record)).collect()
+    pub(super) fn approval_list(&mut self, rows: &[Value], now: Timestamp) -> Vec<DomainEvent> {
+        rows.iter().flat_map(|record| self.approval(record, now)).collect()
     }
 
     /// A decision on a known pending grant.
@@ -75,7 +80,9 @@ impl Translator {
         match self.grants.get(id) {
             Some(GrantState::Pending) => {
                 self.grants.insert(id.clone(), state);
-                vec![DomainEvent::GrantResolved { grant_id: id.clone(), state }]
+                let mut events = vec![DomainEvent::GrantResolved { grant_id: id.clone(), state }];
+                events.extend(self.intervention_closed(id, state));
+                events
             }
             _ => Vec::new(),
         }

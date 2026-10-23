@@ -30,7 +30,7 @@ fn now_ms() -> u64 {
 fn the_reads_of_a_scope_run_concurrently_on_one_connection() {
     let path = socket_path("mux");
     let fake = FakeBus::start(&path, |method, _, _| match method {
-        "conversation.list" | "group.list" | "contact.list" | "mcp.approval.list" => {
+        "conversation.directory" | "group.list" | "contact.list" | "mcp.approval.list" => {
             Reply::Slow(Duration::from_millis(700), frames()[method].clone())
         }
         _ => fixture(method),
@@ -40,7 +40,7 @@ fn the_reads_of_a_scope_run_concurrently_on_one_connection() {
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     account.until("snapshot", |s, _| {
         s.context(&ContextId::new("dm-ana")).is_some()
-            && s.context(&ContextId::new("g-team")).is_some()
+            && s.context(&ContextId::new("thread-team")).is_some()
     });
     let took = started.elapsed();
     assert!(took < Duration::from_millis(1_800), "four slow reads overlapped: {took:?}");

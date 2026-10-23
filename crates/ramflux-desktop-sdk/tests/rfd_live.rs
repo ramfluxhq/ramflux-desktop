@@ -22,7 +22,11 @@
 //! daemon checks that the account is open before it looks at the method or
 //! body, so without a node a contact frame (and even an unknown method)
 //! only reaches the account router; the bodies are checked against the
-//! SDK's request types in `request_shapes.rs` and `contacts.rs`.
+//! SDK's request types in `request_shapes.rs`, `action_shapes.rs` and
+//! `contacts.rs`. Of the client read model (product 3f8d726), the
+//! Supervisor's `account.list` `account_details` is read live; the account
+//! directories and the actions they unlock need an open account, so they
+//! are checked for routing the same way.
 
 mod common;
 
@@ -332,4 +336,149 @@ fn the_hub_stops_a_real_daemon_gracefully() {
     assert!(status.success(), "a clean exit, not a signal: {status:?}");
     assert!(!daemon.socket().exists(), "the daemon removed its socket");
     entry.until("disconnected", |s, _| s.source_status() == SourceStatus::Disconnected);
+}
+
+#[test]
+#[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
+fn the_real_account_list_carries_account_details_for_locked_accounts() {
+    use ramflux_desktop_sdk::bus::BusRequest;
+    use ramflux_desktop_sdk::bus::client::BusClient;
+    let Some(daemon) = daemon("details") else { return };
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("rt");
+    let client = BusClient::new(
+        daemon.socket(),
+        std::time::Duration::from_secs(5),
+        ramflux_desktop_sdk::Deadlines::standard(),
+    );
+    let listed = runtime
+        .block_on(client.call(&BusRequest::new(None, "account", "account.list", json!({}))))
+        .expect("account.list");
+    println!("account.list: {listed}");
+    assert_eq!(
+        listed["account_details"],
+        json!([]),
+        "the client read model field, empty on a fresh daemon"
+    );
+    assert_eq!(listed["accounts"], json!([]));
+    let hub = hub(&daemon);
+    let mut entry = Fed::new(hub.daemon_source());
+    entry.until("accounts listed", |s, _| s.is_listed(Listing::Accounts));
+    assert_eq!(entry.store.accounts().count(), 0);
+    assert!(entry.store.rejections().is_empty(), "{:?}", entry.store.rejections());
+}
+
+/// The requests of the directories and of the actions they unlock, for an
+/// account the daemon has not opened.
+fn read_model_requests() -> Vec<ramflux_desktop_sdk::bus::BusRequest> {
+    use ramflux_desktop_core::{ContextId, ContextKind};
+    use ramflux_desktop_sdk::directory::{
+        Conversation, DirectRoute, Directory, Identity, IdentityDevice,
+    };
+    use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
+    use ramflux_desktop_sdk::plan::{Known, Plan, plan};
+    struct Listed(Directory);
+    impl Known for Listed {
+        fn context_kind(&self, _: &ContextId) -> Option<ContextKind> {
+            Some(ContextKind::Direct)
+        }
+        fn self_device(&self) -> Option<&str> {
+            Some("device-me")
+        }
+        fn daemon_grant_id(&self, _: &str) -> Option<&str> {
+            None
+        }
+        fn directory(&self) -> Option<&Directory> {
+            Some(&self.0)
+        }
+    }
+    let mut directory =
+        Directory { self_principal: Some("principal-me".to_owned()), ..Directory::default() };
+    directory.conversations.insert(
+        ContextId::new("dm-ana"),
+        Conversation {
+            kind: Some(ContextKind::Direct),
+            group_id: Some("g-team".to_owned()),
+            direct_route: Some(DirectRoute {
+                commitment: Some("cm-ana".to_owned()),
+                device_ids: vec!["device-ana".to_owned()],
+                target: Some("target-ana".to_owned()),
+                federation: None,
+            }),
+        },
+    );
+    directory.identities.insert(
+        "principal-ana".to_owned(),
+        Identity {
+            commitment: Some("cm-ana".to_owned()),
+            is_self: false,
+            devices: vec![IdentityDevice {
+                device_id: "device-ana".to_owned(),
+                signing_key: Some("key-ana".to_owned()),
+                target: Some("target-ana".to_owned()),
+            }],
+        },
+    );
+    directory.objects.insert("o-1".into(), ramflux_desktop_core::Direction::Outbound);
+    let known = Listed(directory);
+    let account = AccountId::new("acct-none");
+    let mut requests: Vec<_> = [
+        Paged::Identities,
+        Paged::Conversations,
+        Paged::Groups,
+        Paged::Objects,
+        Paged::Approvals,
+        Paged::McpServers,
+    ]
+    .into_iter()
+    .map(|paged| Fetch::first(paged).request(Some("acct-none")))
+    .collect();
+    for (method, body) in [
+        (methods::SEND_MESSAGE, json!({ "context_id": "dm-ana", "text": "hi" })),
+        (methods::SAFETY_VERIFY, json!({ "participant_id": "principal-ana" })),
+        (methods::OBJECT_PULL, json!({ "object_id": "o-1" })),
+        (methods::OBJECT_RETRY, json!({ "object_id": "o-1" })),
+        (
+            methods::GROUP_ADD_MEMBER,
+            json!({ "context_id": "dm-ana", "participant_id": "principal-ana", "role": "Member" }),
+        ),
+        (
+            methods::GROUP_CREATE_INVITE,
+            json!({ "context_id": "dm-ana", "participant_id": "principal-ana", "role": "Member" }),
+        ),
+    ] {
+        let effect = Effect::Call { method: method.to_owned(), body };
+        match plan(Some(&account), effect, &known).plan {
+            Plan::Call { request, .. } | Plan::Open { request, .. } => requests.push(request),
+            other => panic!("{method}: expected one request, got {other:?}"),
+        }
+    }
+    requests
+}
+
+#[test]
+#[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
+fn every_directory_and_action_frame_reaches_the_account_router_of_the_real_daemon() {
+    use ramflux_desktop_sdk::bus::BusError;
+    use ramflux_desktop_sdk::bus::client::BusClient;
+    let Some(daemon) = daemon("readmodel") else { return };
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("rt");
+    let client = BusClient::new(
+        daemon.socket(),
+        std::time::Duration::from_secs(5),
+        ramflux_desktop_sdk::Deadlines::standard(),
+    );
+    let requests = read_model_requests();
+    assert_eq!(requests.len(), 12);
+    for request in &requests {
+        let answer = runtime.block_on(client.call(request));
+        println!("{} {}: {answer:?}", request.method, request.body);
+        assert!(
+            matches!(&answer, Err(BusError::Daemon { message, .. })
+                if message.contains("account not open: acct-none")),
+            "{}: {answer:?}",
+            request.method
+        );
+    }
+    let cli = daemon.rf(&["account", "list"]).expect("rf account list");
+    assert!(cli.status.success(), "the daemon still answers");
 }

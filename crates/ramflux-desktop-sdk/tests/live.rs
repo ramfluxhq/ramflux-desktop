@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Span Brain
 
 //! Effects, error mapping, pushed events, polling and reconnects against a
-//! fake daemon.
+//! fake daemon. The daemon reports no pins, so a conversation is followed
+//! when the view focuses it.
 
 mod common;
 
@@ -77,16 +78,30 @@ fn effects_reach_the_daemon_and_their_answers_become_events() {
     assert!(fake.seen()[before..].iter().all(|s| s.method != "task.start"));
 
     // A pin is a desktop-local preference.
-    account.source.submit(call(methods::CONTEXT_PIN, json!({ "context_id": "g-team" })));
-    account.until("pinned", |s, _| s.context(&ContextId::new("g-team")).is_some_and(|c| c.pinned));
+    account.source.submit(call(methods::CONTEXT_PIN, json!({ "context_id": "thread-team" })));
+    account.until("pinned", |s, _| {
+        s.context(&ContextId::new("thread-team")).is_some_and(|c| c.pinned)
+    });
     fake.shutdown();
 }
 
 #[test]
 fn the_daemon_scope_creates_accounts_and_probes_nodes() {
     let path = socket_path("entry");
-    let fake = FakeBus::start(&path, |method, _, _| match method {
-        "account.list" => Reply::Ok(json!({ "accounts": [] })),
+    let created = Arc::new(AtomicUsize::new(0));
+    let seen = created.clone();
+    let fake = FakeBus::start(&path, move |method, _, _| match method {
+        // The daemon lists the new account, with the label it kept.
+        "account.list" if seen.load(Ordering::SeqCst) > 0 => Reply::Ok(json!({
+            "accounts": ["acct-new"], "active_account_id": "acct-new",
+            "account_details": [{ "id": "acct-new", "label": "Personal", "kind": "human",
+                "principal_id": "principal-new", "state": "unlocked" }],
+        })),
+        "account.list" => Reply::Ok(json!({ "accounts": [], "account_details": [] })),
+        "account.create" => {
+            seen.fetch_add(1, Ordering::SeqCst);
+            fixture(method)
+        }
         _ => fixture(method),
     });
     let hub = hub(&path);
@@ -103,6 +118,10 @@ fn the_daemon_scope_creates_accounts_and_probes_nodes() {
     assert_eq!(account.lock_state, ramflux_desktop_core::LockState::Unlocked);
     let create = fake.seen().into_iter().find(|s| s.method == "account.create").expect("create");
     assert_eq!(create.body["account_secret"], "river stone lantern");
+    assert_eq!(
+        (create.body["label"].as_str(), create.body["kind"].as_str()),
+        (Some("Personal"), Some("human"))
+    );
     assert!(daemon.envelopes.iter().all(|e| !format!("{:?}", e.event).contains("river")));
     daemon.source.submit(call(methods::NODE_PROBE, json!({ "node_id": "n-harbor" })));
     daemon
@@ -168,6 +187,7 @@ fn polling_adds_each_message_once_and_updates_receipts() {
     });
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
+    account.source.focus(Some(&ContextId::new("dm-ana")));
     account.until("several polls", |_, _| polls.load(Ordering::SeqCst) >= 5);
     account.settle(100);
     let added = account
@@ -183,7 +203,9 @@ fn polling_adds_each_message_once_and_updates_receipts() {
         });
     assert_eq!(receipt, Some(Receipt::Read), "a changed receipt updates the moment");
     let receives = fake.seen().iter().filter(|s| s.method == "message.receive").count();
-    assert!(receives >= 2, "the pinned conversation is pulled from the node");
+    assert!(receives >= 2, "the focused conversation is pulled from the node");
+    let pull = fake.seen().into_iter().find(|s| s.method == "message.receive").expect("pull");
+    assert_eq!(pull.body["auto_fetch_attachments"], true, "attachments arrive with messages");
     fake.shutdown();
 }
 
@@ -193,17 +215,25 @@ fn a_lost_daemon_reports_disconnected_and_a_new_one_is_resnapshotted() {
     let fake = FakeBus::start(&path, |method, _, _| fixture(method));
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
+    account.source.focus(Some(&ContextId::new("dm-ana")));
     account.until("live", |s, _| s.moment(&MomentId::new("msg:dm-ana:m1")).is_some());
     fake.shutdown();
     account.until("disconnected", |s, _| s.source_status() == SourceStatus::Disconnected);
     let seq_at_loss = account.store.last_seq();
     let restarted = FakeBus::start(&path, |method, _, _| match method {
-        "group.list" => Reply::Ok(json!({ "groups": [] })),
+        "conversation.directory" => {
+            let mut frame = frames()["conversation.directory"].clone();
+            frame["conversations"]
+                .as_array_mut()
+                .expect("rows")
+                .retain(|r| r["id"] != "thread-team");
+            Reply::Ok(frame)
+        }
         _ => fixture(method),
     });
     account.until("reconnected", |s, _| s.source_status() == SourceStatus::Connected);
-    account.until("re-snapshot removes the gone group", |s, _| {
-        s.context(&ContextId::new("g-team")).is_none()
+    account.until("re-snapshot removes the gone conversation", |s, _| {
+        s.context(&ContextId::new("thread-team")).is_none()
     });
     assert!(account.store.last_seq() > seq_at_loss, "the cursor keeps moving forward");
     assert_eq!(account.source.last_seq(), account.store.last_seq());
@@ -215,8 +245,8 @@ fn a_lost_daemon_reports_disconnected_and_a_new_one_is_resnapshotted() {
 fn a_slow_request_of_one_account_does_not_block_another() {
     let path = socket_path("slow");
     let fake = FakeBus::start(&path, |method, account, _| match (method, account) {
-        ("conversation.list", Some("acct-slow")) => {
-            Reply::Slow(Duration::from_millis(1_500), frames()["conversation.list"].clone())
+        ("conversation.directory", Some("acct-slow")) => {
+            Reply::Slow(Duration::from_millis(1_500), frames()["conversation.directory"].clone())
         }
         _ => fixture(method),
     });
@@ -268,6 +298,7 @@ fn an_evicted_body_is_read_again_when_the_view_asks() {
         store: ramflux_desktop_core::Store::with_body_capacity(1),
         envelopes: Vec::new(),
     };
+    account.source.focus(Some(&ContextId::new("dm-ana")));
     let first = MomentId::new("msg:dm-ana:m1");
     let second = MomentId::new("msg:dm-ana:m2");
     account

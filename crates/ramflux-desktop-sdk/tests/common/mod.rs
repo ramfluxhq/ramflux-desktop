@@ -91,6 +91,31 @@ impl Fed {
     }
 }
 
+/// The directories a translator builds from the fixture's account answers
+/// (nodes, account status, devices, identities, groups, conversations,
+/// objects): what the planner reads routes from.
+pub fn directory() -> ramflux_desktop_sdk::directory::Directory {
+    use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
+    use ramflux_desktop_sdk::translate::Translator;
+    let account = ramflux_desktop_core::AccountId::new("acct-main");
+    let mut translator =
+        Translator::new(ramflux_desktop_sdk::Scope::Account(account.clone()), "/tmp/rfd.sock");
+    let frames = frames();
+    for fetch in [
+        Fetch::NodeList,
+        Fetch::AccountStatus(account),
+        Fetch::DeviceList,
+        Fetch::first(Paged::Identities),
+        Fetch::first(Paged::Groups),
+        Fetch::first(Paged::Conversations),
+        Fetch::first(Paged::Objects),
+    ] {
+        let method = fetch.request(Some("acct-main")).method;
+        let _ = translator.fetched(&fetch, &frames[&method], Timestamp(0));
+    }
+    translator.directory().clone()
+}
+
 /// Starts a hub on `path`.
 pub fn hub(path: &std::path::Path) -> SdkHub {
     SdkHub::start(config(path)).expect("bridge")

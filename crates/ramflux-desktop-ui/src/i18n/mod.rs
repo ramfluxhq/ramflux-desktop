@@ -16,7 +16,7 @@ pub mod labels;
 use gpui_kit::{App, SharedString};
 use ramflux_desktop_core::{EffectFailure, Store};
 
-pub use clock::{bytes, date_time, day_label, offset, time_of_day};
+pub use clock::{bytes, date_time, day_label, offset, size, time_of_day};
 pub use labels::*;
 
 /// Locale used when nothing else is selected.
@@ -57,9 +57,27 @@ pub fn unsupported(store: &Store, method: &str) -> Option<SharedString> {
 }
 
 /// A backend reason or message: translated when it is a locale key
-/// (`backend.*`), else shown as the daemon wrote it.
+/// (`backend.*`), else shown as the daemon wrote it. A key may be followed
+/// by one space and a JSON object of string arguments, substituted into the
+/// translation (`backend.failure.partial {"done":"1","total":"2",…}`).
 pub fn backend_text(text: &str) -> SharedString {
-    if text.starts_with("backend.") { tr(text) } else { SharedString::from(text.to_owned()) }
+    if !text.starts_with("backend.") {
+        return SharedString::from(text.to_owned());
+    }
+    let Some((key, args)) = text.split_once(' ') else { return tr(text) };
+    let Ok(serde_json::Value::Object(args)) = serde_json::from_str::<serde_json::Value>(args)
+    else {
+        return SharedString::from(text.to_owned());
+    };
+    let args: Vec<(&str, String)> = args
+        .iter()
+        .map(|(name, value)| {
+            let value = value.as_str().map_or_else(|| value.to_string(), str::to_owned);
+            (name.as_str(), backend_text(&value).to_string())
+        })
+        .collect();
+    let borrowed: Vec<(&str, &str)> = args.iter().map(|(n, v)| (*n, v.as_str())).collect();
+    tr_args(key, &borrowed)
 }
 
 /// One failed effect for the status strip.

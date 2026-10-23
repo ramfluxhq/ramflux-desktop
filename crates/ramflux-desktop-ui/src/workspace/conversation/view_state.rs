@@ -121,7 +121,7 @@ impl ViewState {
                         .refs
                         .objects
                         .get(&conflict.object_id)
-                        .map_or_else(|| conflict.object_id.to_string(), |o| o.name.clone());
+                        .map_or_else(|| conflict.object_id.to_string(), |o| o.label());
                     let patch =
                         crate::moments::conflict_patch(&name, &conflict.local, &conflict.remote);
                     if let Ok(files) = DiffFile::parse(&patch) {

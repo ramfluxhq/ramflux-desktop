@@ -34,8 +34,8 @@ fn node(id: &str, pin_source: PinSource, confirmed: bool) -> Node {
 fn object(id: &str, direction: Direction, transfer: TransferState) -> Object {
     Object {
         id: ObjectId::new(id),
-        name: format!("{id}.bin"),
-        size: 10,
+        name: Some(format!("{id}.bin")),
+        size: Some(10),
         direction,
         transfer,
         saved_to: None,

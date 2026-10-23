@@ -3,12 +3,15 @@
 
 //! Participants and contact links.
 //!
-//! The daemon's friend-link records (`contact.list`, and the record each
-//! `contact.*` call answers with) name a requester and a target principal;
-//! the other side of a link is the contact. The link state maps to
-//! [`ContactLink`]: a pending link is incoming unless this account is its
-//! requester. The daemon reports no display names, kinds or safety state:
-//! the id is shown, the kind stays `Human` and safety `Unverified`.
+//! A participant is a principal. What is known about it comes from two
+//! lists: the identity directory (display name, kind, safety) and the
+//! daemon's friend-link records (`contact.list`, and the record each
+//! `contact.*` call answers with), which name a requester and a target
+//! principal; the other side of a link is the contact. A pending link is
+//! incoming unless this account is its requester. Whatever neither list
+//! reports stays unknown: the id is shown for a missing name, the kind is
+//! `Unknown` and safety `Unverified` until the identity directory says
+//! otherwise.
 
 use ramflux_desktop_core::{
     ContactLink, DomainEvent, Participant, ParticipantId, ParticipantKind, SafetyState,
@@ -17,6 +20,43 @@ use serde_json::Value;
 
 use super::{Translator, list, text};
 use crate::plan::KnownLink;
+
+/// What the identity directory said about a principal.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Facts {
+    /// Display name, when an authoritative local source supplied one.
+    pub display: Option<String>,
+    /// Kind, when declared.
+    pub kind: Option<ParticipantKind>,
+    /// Verification state.
+    pub safety: SafetyState,
+    /// Persisted safety number.
+    pub safety_number: Option<String>,
+}
+
+/// One participant as known from both lists.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Person {
+    /// From the identity directory.
+    pub facts: Option<Facts>,
+    /// From the friend-link records.
+    pub link: ContactLink,
+}
+
+impl Person {
+    fn participant(&self, id: &ParticipantId) -> Participant {
+        let facts = self.facts.clone().unwrap_or_default();
+        Participant {
+            id: id.clone(),
+            kind: facts.kind.unwrap_or(ParticipantKind::Unknown),
+            display: facts.display.unwrap_or_else(|| id.to_string()),
+            safety: facts.safety,
+            contact: self.link == ContactLink::Accepted,
+            safety_number: facts.safety_number,
+            link: self.link,
+        }
+    }
+}
 
 impl Translator {
     pub(super) fn contact_list(&mut self, value: &Value) -> Vec<DomainEvent> {
@@ -30,7 +70,7 @@ impl Translator {
     /// One friend-link record. Later records of the same contact win (the
     /// daemon lists links oldest first).
     pub(super) fn contact_record(&mut self, record: &Value) -> Vec<DomainEvent> {
-        let me = self.principal.clone().unwrap_or_default();
+        let me = self.directory.self_principal.clone().unwrap_or_default();
         let (requester, target) = (text(record, "requester_id"), text(record, "target_id"));
         let outgoing = !me.is_empty() && requester == me;
         let other = if outgoing { target } else { requester };
@@ -38,8 +78,9 @@ impl Translator {
             return Vec::new();
         }
         let state = link_state(record, outgoing);
+        let id = ParticipantId::new(other);
         self.links.insert(
-            ParticipantId::new(other),
+            id.clone(),
             KnownLink {
                 link_id: text(record, "link_id").to_owned(),
                 requester_id: requester.to_owned(),
@@ -47,28 +88,36 @@ impl Translator {
                 state,
             },
         );
-        self.linked_participant(other, state)
+        self.people.entry(id.clone()).or_default().link = state;
+        self.report_person(&id)
     }
 
-    /// Upserts a participant the daemon named outside a contact link (a
-    /// sender, a member, this device), once.
-    pub(super) fn participant(&mut self, id: &str, display: &str) -> Vec<DomainEvent> {
+    /// Records what the identity directory says about `id`.
+    pub(super) fn set_facts(&mut self, id: &ParticipantId, facts: Facts) -> Vec<DomainEvent> {
+        self.people.entry(id.clone()).or_default().facts = Some(facts);
+        self.report_person(id)
+    }
+
+    /// Makes sure a principal or device the daemon named is a participant
+    /// (with nothing known beyond its id).
+    pub(super) fn named(&mut self, id: &str) -> Vec<DomainEvent> {
         let id = ParticipantId::new(id);
-        if self.participants.contains_key(&id) {
+        if id.as_str().is_empty() || self.people.contains_key(&id) {
             return Vec::new();
         }
-        self.participants.insert(id.clone(), ContactLink::None);
-        vec![upserted(id, display, ContactLink::None)]
+        self.people.insert(id.clone(), Person::default());
+        self.report_person(&id)
     }
 
-    /// Upserts a contact whose link state changed.
-    fn linked_participant(&mut self, id: &str, link: ContactLink) -> Vec<DomainEvent> {
-        let participant = ParticipantId::new(id);
-        if self.participants.get(&participant) == Some(&link) {
+    /// Emits the participant when it differs from what was reported.
+    fn report_person(&mut self, id: &ParticipantId) -> Vec<DomainEvent> {
+        let Some(person) = self.people.get(id) else { return Vec::new() };
+        let participant = person.participant(id);
+        if self.reported_people.get(id) == Some(&participant) {
             return Vec::new();
         }
-        self.participants.insert(participant.clone(), link);
-        vec![upserted(participant, id, link)]
+        self.reported_people.insert(id.clone(), participant.clone());
+        vec![DomainEvent::ParticipantUpserted(participant)]
     }
 
     /// The link this account has with `participant`, as last listed.
@@ -90,16 +139,4 @@ fn link_state(record: &Value, outgoing: bool) -> ContactLink {
         "rejected" => ContactLink::Rejected,
         _ => ContactLink::None,
     }
-}
-
-fn upserted(id: ParticipantId, display: &str, link: ContactLink) -> DomainEvent {
-    DomainEvent::ParticipantUpserted(Participant {
-        id,
-        kind: ParticipantKind::Human,
-        display: display.to_owned(),
-        safety: SafetyState::Unverified,
-        contact: link == ContactLink::Accepted,
-        safety_number: None,
-        link,
-    })
 }

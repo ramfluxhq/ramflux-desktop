@@ -17,16 +17,25 @@
 //!   requester's device route; the daemon does not list it.
 //! - `contact.reject`, `contact.block`, `contact.unblock`: the link id.
 //! - `contact.remove`: the link id and the reference CLI's default scope `me`.
+//! - `safety.verify`: `contact.verify` with the contact's identity
+//!   commitment from `identity.directory`; the daemon fetches both device
+//!   sets from the node, computes the safety number and marks it verified.
+//!
+//! A contact request (`contact.request`) is the federated form only: it
+//! needs a federation route to the contact's node, which no directory lists
+//! for a contact, so it stays unsupported.
 
 use ramflux_desktop_core::{ContactLink, methods};
 use ramflux_sdk::{
     LocalBusContactAddRequest, LocalBusContactLinkRequest, LocalBusContactRemoveRequest,
+    LocalBusContactSafetyRequest,
 };
 use serde_json::Value;
 
-use super::fetch::Fetch;
-use super::{Known, Plan, refuse_invalid, text};
+use super::fetch::{Fetch, Paged};
+use super::{Known, Plan, refuse, refuse_invalid, text};
 use crate::bus::BusRequest;
+use crate::translate::reason::key;
 
 /// Domain tag of desktop-derived link ids.
 const LINK_ID_DOMAIN: &str = "ramflux.desktop.contact_link.v1";
@@ -123,6 +132,23 @@ pub(super) fn contact_call(
             request("contact.remove", serde_json::to_value(remove))
         }
         _ => refuse_invalid("no daemon counterpart"),
+    }
+}
+
+/// Plans `safety.verify` for account `acct`.
+pub(super) fn verify(acct: Option<&str>, body: &Value, known: &impl Known) -> Plan {
+    let commitment = known
+        .directory()
+        .and_then(|d| d.identities.get(text(body, "participant_id")))
+        .and_then(|identity| identity.commitment.clone());
+    let Some(commitment) = commitment else { return refuse(key::NO_COMMITMENT) };
+    let verify = LocalBusContactSafetyRequest { contact_identity_commitment: commitment };
+    match serde_json::to_value(verify) {
+        Ok(value) => Plan::Call {
+            request: BusRequest::new(acct, "contact", "contact.verify", value),
+            refresh: vec![Fetch::first(Paged::Identities)],
+        },
+        Err(error) => refuse_invalid(&error.to_string()),
     }
 }
 

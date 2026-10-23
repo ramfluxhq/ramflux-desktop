@@ -60,7 +60,7 @@ impl TableDelegate for ObjectsDelegate {
             return div().into_any_element();
         };
         match COLUMNS[col_ix].0 {
-            "name" => div().truncate().child(object.name.clone()).into_any_element(),
+            "name" => div().truncate().child(object.label()).into_any_element(),
             "direction" => div().child(i18n::direction(object.direction)).into_any_element(),
             "progress" => {
                 div().child(format!("{:.0}%", object.progress() * 100.0)).into_any_element()

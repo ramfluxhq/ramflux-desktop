@@ -13,20 +13,27 @@
 //!
 //! - [`fetch`]: the reads.
 //! - [`identity`]: fresh identity material for account creation.
-//! - [`contact`]: contact effects and the links they name.
+//! - [`contact`]: contact effects and the links they name, and verification.
+//! - [`message`]: direct and group sends, attachments.
+//! - [`object`]: opening, saving and resuming objects.
+//! - [`group`]: membership, roles and invitations.
 
 pub mod contact;
 pub mod fetch;
+pub mod group;
 pub mod identity;
+pub mod message;
+pub mod object;
 
 use ramflux_desktop_core::{
-    AccountId, AccountKind, ContextId, ContextKind, Effect, FailureCode, NodeId, PinSource, Role,
+    AccountId, AccountKind, ContextId, ContextKind, Effect, FailureCode, NodeId, PinSource,
     SecretInput, methods,
 };
 use serde_json::{Value, json};
 
 use crate::bus::{BusRequest, idempotency};
 use crate::capabilities;
+use crate::directory::Directory;
 pub use contact::KnownLink;
 use fetch::Fetch;
 
@@ -47,6 +54,10 @@ pub trait Known {
         let _ = participant;
         None
     }
+    /// What the client directories listed (routes, devices, commitments).
+    fn directory(&self) -> Option<&Directory> {
+        None
+    }
 }
 
 /// How to perform one effect.
@@ -58,6 +69,22 @@ pub enum Plan {
         request: BusRequest,
         /// Reads after success.
         refresh: Vec<Fetch>,
+    },
+    /// Requests in order (one per member device); the first failure stops
+    /// the rest and is reported with how many were applied.
+    Calls {
+        /// The requests.
+        requests: Vec<BusRequest>,
+        /// Reads after the last one, or after a failure.
+        refresh: Vec<Fetch>,
+    },
+    /// `object.get`: the object's bytes, written to `save_to` when set and
+    /// dropped (wiped) otherwise. They never reach the translator.
+    Open {
+        /// The request.
+        request: BusRequest,
+        /// Where the user chose to save it.
+        save_to: Option<String>,
     },
     /// A desktop-local preference; the translator echoes it.
     Local,
@@ -109,10 +136,21 @@ pub fn plan(account: Option<&AccountId>, effect: Effect, known: &impl Known) -> 
 
 /// Gives a mutating request its retry key.
 fn keyed(plan: Plan) -> Plan {
+    let key = |request: BusRequest| -> Result<BusRequest, String> {
+        if idempotency::is_mutation(&request.method) {
+            Ok(request.with_operation_id(idempotency::fresh_key()?))
+        } else {
+            Ok(request)
+        }
+    };
     match plan {
-        Plan::Call { request, refresh } if idempotency::is_mutation(&request.method) => {
-            match idempotency::fresh_key() {
-                Ok(key) => Plan::Call { request: request.with_operation_id(key), refresh },
+        Plan::Call { request, refresh } => match key(request) {
+            Ok(request) => Plan::Call { request, refresh },
+            Err(message) => refuse_invalid(&message),
+        },
+        Plan::Calls { requests, refresh } => {
+            match requests.into_iter().map(key).collect::<Result<Vec<_>, _>>() {
+                Ok(requests) => Plan::Calls { requests, refresh },
                 Err(message) => refuse_invalid(&message),
             }
         }
@@ -120,11 +158,16 @@ fn keyed(plan: Plan) -> Plan {
     }
 }
 
-fn refuse_invalid(message: &str) -> Plan {
+/// Refuses with a reason key (translated by the UI).
+pub(crate) fn refuse(reason: &str) -> Plan {
+    Plan::Refuse { code: FailureCode::UnsupportedByBackend, message: reason.to_owned() }
+}
+
+pub(crate) fn refuse_invalid(message: &str) -> Plan {
     Plan::Refuse { code: FailureCode::Daemon("invalid".to_owned()), message: message.to_owned() }
 }
 
-fn text<'a>(body: &'a Value, field: &str) -> &'a str {
+pub(crate) fn text<'a>(body: &'a Value, field: &str) -> &'a str {
     body.get(field).and_then(Value::as_str).unwrap_or_default()
 }
 
@@ -181,8 +224,11 @@ fn map(
             let kind =
                 serde_json::from_value::<AccountKind>(body["kind"].clone()).unwrap_or_default();
             let Some(secret) = secrets.pop() else { return refuse_invalid("missing passphrase") };
-            match identity::create_request(kind, &NodeId::new(text(body, "node_id")), secret) {
-                Ok((_, request)) => call(request),
+            let node = NodeId::new(text(body, "node_id"));
+            match identity::create_request(kind, text(body, "label"), &node, secret) {
+                Ok((_, request)) => {
+                    Plan::Call { request, refresh: vec![Fetch::AccountList, Fetch::NodeList] }
+                }
                 Err(message) => refuse_invalid(&message),
             }
         }
@@ -289,11 +335,18 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
             ),
             refresh: vec![Fetch::DeviceList],
         },
-        methods::SEND_MESSAGE => send_message(acct, body, known),
+        methods::SEND_MESSAGE => message::send(acct, body, known),
+        methods::ATTACH_OBJECT => message::attach(acct, body, known),
+        methods::OBJECT_PULL | methods::OBJECT_SAVE | methods::OBJECT_RETRY => {
+            object::object_call(acct, method, body, known)
+        }
         methods::GROUP_KICK
         | methods::GROUP_BAN
         | methods::GROUP_REMOVE_MEMBER
-        | methods::GROUP_SET_ROLE => governance(acct, method, body, known),
+        | methods::GROUP_SET_ROLE
+        | methods::GROUP_ADD_MEMBER
+        | methods::GROUP_CREATE_INVITE => group::governance(acct, method, body, known),
+        methods::SAFETY_VERIFY => contact::verify(acct, body, known),
         methods::CONTACT_ADD
         | methods::CONTACT_ACCEPT
         | methods::CONTACT_REJECT
@@ -301,82 +354,5 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         | methods::CONTACT_UNBLOCK
         | methods::CONTACT_REMOVE => contact::contact_call(acct, method, body, known),
         _ => refuse_invalid("no daemon counterpart"),
-    }
-}
-
-fn send_message(acct: Option<&str>, body: &Value, known: &impl Known) -> Plan {
-    let context = ContextId::new(text(body, "context_id"));
-    match known.context_kind(&context) {
-        Some(ContextKind::Group) => {}
-        Some(kind) => {
-            return Plan::Refuse {
-                code: FailureCode::UnsupportedByBackend,
-                message: capabilities::reason_for(&methods::in_context(
-                    methods::SEND_MESSAGE,
-                    kind,
-                ))
-                .unwrap_or(capabilities::reason::DIRECT_ROUTE)
-                .to_owned(),
-            };
-        }
-        None => return refuse_invalid("unknown conversation"),
-    }
-    let Some(sender) = known.self_device() else {
-        return refuse_invalid("this device is not known yet");
-    };
-    let plaintext = ramflux_protocol::encode_base64url(text(body, "text").as_bytes());
-    let message_id = format!(
-        "desk-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
-    );
-    Plan::Call {
-        request: BusRequest::new(
-            acct,
-            "group",
-            "group.send",
-            json!({
-                "group_id": context,
-                "conversation_id": context,
-                "message_id": message_id,
-                "sender_id": sender,
-                "encrypted_body_base64": "",
-                "plaintext_body_base64": plaintext,
-            }),
-        ),
-        refresh: vec![Fetch::Messages(context)],
-    }
-}
-
-fn governance(acct: Option<&str>, method: &str, body: &Value, known: &impl Known) -> Plan {
-    let Some(actor) = known.self_device() else {
-        return refuse_invalid("this device is not known yet");
-    };
-    let group = text(body, "context_id");
-    let member = text(body, "participant_id");
-    let (daemon, extra) = match method {
-        methods::GROUP_KICK => ("group.member.kick", None),
-        methods::GROUP_BAN => ("group.member.ban", None),
-        methods::GROUP_REMOVE_MEMBER => ("group.member.remove", None),
-        _ => {
-            let role = serde_json::from_value::<Role>(body["role"].clone()).ok();
-            let role = match role {
-                Some(Role::Owner) => "owner",
-                Some(Role::Admin) => "admin",
-                Some(Role::Member) => "member",
-                Some(Role::Bot) => "bot",
-                None => return refuse_invalid("unknown role"),
-            };
-            ("group.role.set", Some(role))
-        }
-    };
-    let mut request = json!({ "group_id": group, "actor_id": actor, "member_id": member });
-    if let (Some(role), Value::Object(map)) = (extra, &mut request) {
-        map.insert("role".to_owned(), json!(role));
-    }
-    Plan::Call {
-        request: BusRequest::new(acct, "group", daemon, request),
-        refresh: vec![Fetch::GroupList],
     }
 }

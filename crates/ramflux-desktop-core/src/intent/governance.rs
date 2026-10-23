@@ -41,8 +41,10 @@ pub enum GovernanceOp {
         /// New role.
         role: Role,
     },
-    /// Create an invitation link for a new member.
+    /// Invite a known participant, who joins by accepting.
     CreateInvite {
+        /// Participant to invite.
+        participant_id: ParticipantId,
         /// Role granted on joining.
         role: Role,
     },
@@ -78,8 +80,8 @@ impl GovernanceOp {
             | Self::RemoveMember { participant_id }
             | Self::Kick { participant_id }
             | Self::Ban { participant_id }
-            | Self::SetRole { participant_id, .. } => Some(participant_id),
-            Self::CreateInvite { .. } => None,
+            | Self::SetRole { participant_id, .. }
+            | Self::CreateInvite { participant_id, .. } => Some(participant_id),
         }
     }
 
@@ -88,7 +90,7 @@ impl GovernanceOp {
         match self {
             Self::AddMember { role, .. }
             | Self::SetRole { role, .. }
-            | Self::CreateInvite { role } => Some(*role),
+            | Self::CreateInvite { role, .. } => Some(*role),
             Self::RemoveMember { .. } | Self::Kick { .. } | Self::Ban { .. } => None,
         }
     }

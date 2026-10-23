@@ -64,7 +64,9 @@ impl Translator {
             return Vec::new();
         }
         binding.failed = true;
-        vec![DomainEvent::GrantFailed { grant_id: id.clone(), failure }]
+        let mut events = vec![DomainEvent::GrantFailed { grant_id: id.clone(), failure }];
+        events.extend(self.intervention_failed(id));
+        events
     }
 
     fn expired(&self, id: &GrantId, now: Timestamp) -> bool {

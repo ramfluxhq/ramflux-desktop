@@ -52,6 +52,12 @@ pub fn offset(ms: u64) -> String {
     format!("{minutes}:{seconds:02}.{tenths}")
 }
 
+/// A size that may be unknown: the byte count, or a note that the
+/// backend did not report it.
+pub fn size(size: Option<u64>) -> String {
+    size.map_or_else(|| tr("moment.object.size_unknown").to_string(), bytes)
+}
+
 /// A byte count with a binary unit, one decimal above KiB.
 pub fn bytes(size: u64) -> String {
     const UNITS: [&str; 4] = ["KiB", "MiB", "GiB", "TiB"];

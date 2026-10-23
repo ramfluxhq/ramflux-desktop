@@ -11,7 +11,9 @@
 //! A graceful daemon stop runs on a connection of its own.
 //!
 //! - `scope`: one scope's task.
+//! - `effects`: performing a scope's effects.
 
+mod effects;
 mod scope;
 
 use std::collections::BTreeMap;

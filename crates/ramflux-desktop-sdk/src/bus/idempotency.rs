@@ -21,7 +21,9 @@
 //! poll in the account database.
 
 /// Methods that are planned as effects but do not change daemon state.
-const NOT_MUTATIONS: [&str; 1] = ["node.probe"];
+/// `object.get` answers with the object's bytes, which must never be kept
+/// in a receipt.
+const NOT_MUTATIONS: [&str; 2] = ["node.probe", "object.get"];
 
 /// Prefix of desktop keys (readable in daemon traces).
 const KEY_PREFIX: &str = "desk-op-";
@@ -57,5 +59,6 @@ mod tests {
         assert!(!first.is_empty() && first.len() <= 256);
         assert!(is_mutation("contact.block"));
         assert!(!is_mutation("node.probe"));
+        assert!(!is_mutation("object.get"));
     }
 }

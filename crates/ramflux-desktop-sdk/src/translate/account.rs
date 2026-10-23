@@ -12,6 +12,7 @@ use ramflux_desktop_core::{
 use serde_json::Value;
 
 use super::{Scope, Translator, list, text};
+use crate::directory::field;
 
 impl Translator {
     pub(super) fn account_status(&mut self, id: &AccountId, value: &Value) -> Vec<DomainEvent> {
@@ -19,10 +20,28 @@ impl Translator {
         account.lock_state = LockState::Unlocked;
         account.node_id = value["node_id"].as_str().map(NodeId::new);
         if self.scope == Scope::Account(id.clone()) {
-            self.principal = value["principal_id"].as_str().map(str::to_owned);
-            account.device_id = self.self_device.clone();
-            account.self_participant_id = self.self_device.as_deref().map(ParticipantId::new);
+            let principal = field(value, "principal_id");
+            if principal.is_some() {
+                self.directory.self_principal.clone_from(&principal);
+            }
+            if let Some(commitment) = field(value, "principal_commitment") {
+                self.directory.self_commitment = Some(commitment);
+            }
+            account.device_id.clone_from(&self.self_device);
+            // The participant that is this account is its principal: contacts,
+            // members and conversation participants are principals too.
+            account.self_participant_id = principal.as_deref().map(ParticipantId::new);
+            self.directory.relay_endpoint =
+                account.node_id.as_ref().and_then(|node| self.node_relays.get(node)).cloned();
         }
+        self.put_account(account)
+    }
+
+    /// The label this account's own identity row declares.
+    pub(super) fn own_label(&mut self, label: &str) -> Vec<DomainEvent> {
+        let Some(id) = self.scope.account().cloned() else { return Vec::new() };
+        let mut account = self.account_record(&id);
+        label.clone_into(&mut account.label);
         self.put_account(account)
     }
 
@@ -34,12 +53,7 @@ impl Translator {
             self.self_device.clone_from(&local);
             let mut account = self.account_record(&account_id);
             account.device_id.clone_from(&local);
-            account.self_participant_id = local.as_deref().map(ParticipantId::new);
             events.extend(self.put_account(account));
-            if let Some(me) = &local {
-                let label = self.account_record(&account_id).label;
-                events.extend(self.participant(me, &label));
-            }
         }
         let listed: BTreeMap<DeviceId, Device> = list(value, "devices")
             .iter()
@@ -73,6 +87,7 @@ impl Translator {
         events
     }
 
+    /// `mcp.tool.list`: the tools of each server.
     pub(super) fn mcp_tools(&mut self, value: &Value) -> Vec<DomainEvent> {
         let mut servers: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for tool in list(value, "tools") {
@@ -81,14 +96,36 @@ impl Translator {
                 .or_default()
                 .push(text(tool, "tool_name").to_owned());
         }
-        let integrations = Integrations {
-            mcp_servers: servers
-                .into_iter()
-                // The daemon reports no server health.
-                .map(|(name, tools)| McpServer { name, tools, healthy: false })
-                .collect(),
-            a2i_pending: Vec::new(),
-        };
+        self.mcp_tools = Some(servers);
+        self.integrations_changed()
+    }
+
+    /// `mcp.server.list` `server_details`: the registered servers and what
+    /// was observed about their reachability (`reachable: null` while the
+    /// daemon has not checked; a registered tool is not proof of it).
+    pub(super) fn mcp_servers(&mut self, rows: &[Value]) -> Vec<DomainEvent> {
+        self.mcp_servers = Some(rows.to_vec());
+        self.integrations_changed()
+    }
+
+    fn integrations_changed(&mut self) -> Vec<DomainEvent> {
+        let tools = self.mcp_tools.clone().unwrap_or_default();
+        let mut servers: BTreeMap<String, McpServer> = BTreeMap::new();
+        for row in self.mcp_servers.iter().flatten() {
+            let Some(id) = field(row, "id") else { continue };
+            servers.insert(
+                id.clone(),
+                McpServer { name: id, tools: Vec::new(), healthy: row["reachable"].as_bool() },
+            );
+        }
+        for (server, names) in tools {
+            servers
+                .entry(server.clone())
+                .or_insert_with(|| McpServer { name: server, tools: Vec::new(), healthy: None })
+                .tools = names;
+        }
+        let integrations =
+            Integrations { mcp_servers: servers.into_values().collect(), a2i_pending: Vec::new() };
         if self.integrations.as_ref() == Some(&integrations) {
             return Vec::new();
         }

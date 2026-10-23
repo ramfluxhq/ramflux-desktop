@@ -22,10 +22,8 @@
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
-use ramflux_desktop_core::{
-    ContextId, DomainEvent, Effect, EffectFailure, FailureCode, MomentId, SourceStatus,
-};
-use serde_json::{Value, json};
+use ramflux_desktop_core::{ContextId, DomainEvent, Effect, MomentId, SourceStatus};
+use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::Instant;
@@ -37,8 +35,7 @@ use crate::bus::subscription::{self, Pushed};
 use crate::capabilities;
 use crate::config::SdkConfig;
 use crate::pins::PinStore;
-use crate::plan::fetch::Fetch;
-use crate::plan::{Plan, plan};
+use crate::plan::fetch::{Fetch, Paged};
 use crate::translate::{Scope, Translator};
 
 /// What the bridge forwards to a scope.
@@ -51,7 +48,7 @@ pub(crate) enum ScopeCommand {
     Bodies(Vec<MomentId>),
 }
 
-enum Internal {
+pub(super) enum Internal {
     Snapshot(Vec<(Fetch, Result<Value, BusError>)>),
     Fetched(Fetch, Result<Value, BusError>),
     PollDone,
@@ -59,31 +56,31 @@ enum Internal {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Link {
+pub(super) enum Link {
     Attaching,
     Live,
     Lost,
     Locked,
 }
 
-struct Task {
-    config: SdkConfig,
-    scope: Scope,
-    client: BusClient,
-    translator: Translator,
-    pins: PinStore,
-    outbox: std_mpsc::Sender<Delivery>,
-    internal: mpsc::UnboundedSender<Internal>,
-    pushed: mpsc::UnboundedSender<Pushed>,
-    link: Link,
-    subscribed: bool,
-    subscribe_at: Instant,
-    polls_in_flight: usize,
-    poll_changed: bool,
-    interval: Duration,
-    next_poll: Instant,
-    reconnect_at: Instant,
-    alive: bool,
+pub(super) struct Task {
+    pub(super) config: SdkConfig,
+    pub(super) scope: Scope,
+    pub(super) client: BusClient,
+    pub(super) translator: Translator,
+    pub(super) pins: PinStore,
+    pub(super) outbox: std_mpsc::Sender<Delivery>,
+    pub(super) internal: mpsc::UnboundedSender<Internal>,
+    pub(super) pushed: mpsc::UnboundedSender<Pushed>,
+    pub(super) link: Link,
+    pub(super) subscribed: bool,
+    pub(super) subscribe_at: Instant,
+    pub(super) polls_in_flight: usize,
+    pub(super) poll_changed: bool,
+    pub(super) interval: Duration,
+    pub(super) next_poll: Instant,
+    pub(super) reconnect_at: Instant,
+    pub(super) alive: bool,
 }
 
 /// Runs one scope until its command channel closes or its source is gone.
@@ -140,12 +137,12 @@ pub(crate) async fn run(
 }
 
 impl Task {
-    fn account(&self) -> Option<String> {
+    pub(super) fn account(&self) -> Option<String> {
         self.scope.account().map(ToString::to_string)
     }
 
     /// Delivers events; returns whether there were any.
-    fn emit(&mut self, events: Vec<DomainEvent>) -> bool {
+    pub(super) fn emit(&mut self, events: Vec<DomainEvent>) -> bool {
         let any = !events.is_empty();
         let at = now();
         for event in events {
@@ -229,7 +226,7 @@ impl Task {
         );
     }
 
-    fn lost(&mut self) {
+    pub(super) fn lost(&mut self) {
         if self.link != Link::Lost {
             self.emit(vec![DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)]);
         }
@@ -253,7 +250,7 @@ impl Task {
 
     /// Saves the pins when they changed (a local pin, or one the daemon
     /// reported).
-    fn persist_pins(&mut self) {
+    pub(super) fn persist_pins(&mut self) {
         if let Some(account) = self.scope.account()
             && self.translator.take_pins_changed()
         {
@@ -261,7 +258,7 @@ impl Task {
         }
     }
 
-    fn spawn_fetches(&self, fetches: Vec<Fetch>) {
+    pub(super) fn spawn_fetches(&self, fetches: Vec<Fetch>) {
         for fetch in fetches {
             let client = self.client.clone();
             let request = fetch.request(self.account().as_deref());
@@ -276,16 +273,10 @@ impl Task {
     fn poll(&mut self) {
         let mut sequences: Vec<Vec<Fetch>> = match &self.scope {
             Scope::Daemon => vec![vec![Fetch::DaemonStatus, Fetch::AccountList]],
-            Scope::Account(_) => {
-                vec![
-                    vec![Fetch::ConversationList],
-                    vec![Fetch::GroupList],
-                    vec![Fetch::Approvals],
-                    // Incoming contact requests are recorded by the daemon
-                    // when it receives them; they are not pushed.
-                    vec![Fetch::ContactList],
-                ]
-            }
+            // Directories, approvals and contacts (incoming contact requests
+            // are recorded by the daemon when it receives them; they are not
+            // pushed). Further pages follow on their own.
+            Scope::Account(_) => Fetch::account_poll().into_iter().map(|f| vec![f]).collect(),
         };
         sequences.extend(self.translator.poll_reads());
         self.polls_in_flight = sequences.len();
@@ -315,7 +306,7 @@ impl Task {
                 if self.on_read(&fetch, result) && self.polls_in_flight > 0 {
                     self.poll_changed = true;
                 }
-                if matches!(fetch, Fetch::ConversationList | Fetch::GroupList) {
+                if matches!(fetch, Fetch::Page(Paged::Conversations | Paged::Groups, _)) {
                     self.restore_pins();
                 }
             }
@@ -354,8 +345,6 @@ impl Task {
         }
         // Every list is known now, so pins come back in their saved order.
         self.restore_pins();
-        let done = self.translator.snapshot_done();
-        self.emit(done);
         if self.link == Link::Live {
             self.interval = self.config.poll_fast;
             self.next_poll = Instant::now() + self.interval;
@@ -393,7 +382,7 @@ impl Task {
         match pushed {
             Pushed::Opened => {}
             Pushed::Event { topic, body } => {
-                let events = self.translator.pushed(&topic, &body);
+                let events = self.translator.pushed(&topic, &body, now());
                 if self.emit(events) {
                     self.interval = self.config.poll_fast;
                 }
@@ -418,88 +407,4 @@ impl Task {
             }
         }
     }
-
-    fn effect(&mut self, effect: Effect) {
-        let planned = plan(self.scope.account(), effect, &self.translator);
-        let (method, body) = (planned.method, planned.body);
-        self.translator.decision_sent(&method, &body);
-        match planned.plan {
-            Plan::Call { request, refresh } => {
-                let client = self.client.clone();
-                let internal = self.internal.clone();
-                tokio::spawn(async move {
-                    let result = client.call(&request).await;
-                    let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
-                });
-            }
-            Plan::Local => {
-                let events = self.translator.local(&method, &body);
-                self.emit(events);
-                self.persist_pins();
-            }
-            Plan::Diagnostics { path } => {
-                let client = self.client.clone();
-                let internal = self.internal.clone();
-                tokio::spawn(async move {
-                    let result = write_diagnostics(&client, &path).await;
-                    let _ = internal.send(Internal::EffectDone {
-                        method,
-                        body,
-                        result,
-                        refresh: Vec::new(),
-                    });
-                });
-            }
-            Plan::Refuse { code, message } => {
-                self.emit(vec![DomainEvent::EffectFailed(EffectFailure { method, code, message })]);
-            }
-        }
-    }
-
-    fn on_effect_done(
-        &mut self,
-        method: &str,
-        body: &Value,
-        result: Result<Value, BusError>,
-        refresh: Vec<Fetch>,
-    ) {
-        match result {
-            Ok(answer) => {
-                let events = self.translator.effect_done(method, body, &answer, now());
-                self.emit(events);
-                self.spawn_fetches(refresh);
-                self.interval = self.config.poll_fast;
-                if method == ramflux_desktop_core::methods::ACCOUNT_LOCK
-                    && self.scope.account().is_some()
-                {
-                    self.link = Link::Locked;
-                }
-            }
-            Err(error) => {
-                let code = match &error {
-                    BusError::Daemon { code, .. } => FailureCode::Daemon(code.clone()),
-                    BusError::Transport(_) => FailureCode::Transport,
-                    BusError::Timeout => FailureCode::Timeout,
-                };
-                let message = error.message();
-                let closed = self.translator.effect_failed(method, body, &code, &message, now());
-                let failure = EffectFailure { method: method.to_owned(), code, message };
-                let mut events = vec![DomainEvent::EffectFailed(failure)];
-                events.extend(closed);
-                self.emit(events);
-                if error.is_connection_lost() {
-                    self.lost();
-                }
-            }
-        }
-    }
-}
-
-async fn write_diagnostics(client: &BusClient, path: &str) -> Result<Value, BusError> {
-    let status = client.call(&Fetch::DaemonStatus.request(None)).await?;
-    let nodes = client.call(&Fetch::NodeList.request(None)).await?;
-    let text = crate::diagnostics::bundle(&status, &nodes);
-    std::fs::write(path, text)
-        .map_err(|error| BusError::Daemon { code: "io".to_owned(), message: error.to_string() })?;
-    Ok(json!({ "path": path }))
 }

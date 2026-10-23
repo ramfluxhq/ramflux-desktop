@@ -147,7 +147,6 @@ impl Render for MembersDock {
             .filter(|p| !context.participants.contains(&p.id))
             .map(|p| (p.id.clone(), p.display.clone()))
             .collect();
-        let invite = op_sink(&sink, GovernanceOp::CreateInvite { role: Role::Member });
         v_flex()
             .id("dock-members")
             .size_full()
@@ -161,6 +160,10 @@ impl Render for MembersDock {
                 let add = op_sink(
                     &sink,
                     GovernanceOp::AddMember { participant_id: id.clone(), role: Role::Member },
+                );
+                let invite = op_sink(
+                    &sink,
+                    GovernanceOp::CreateInvite { participant_id: id.clone(), role: Role::Member },
                 );
                 h_flex()
                     .id(domain_id("member-add", &id))
@@ -176,17 +179,14 @@ impl Render for MembersDock {
                             .on_click(add),
                         add_reason.clone(),
                     ))
+                    .child(crate::gate::gated(
+                        Button::new("invite")
+                            .xsmall()
+                            .ghost()
+                            .label(tr("dock.members.invite"))
+                            .on_click(invite),
+                        invite_reason.clone(),
+                    ))
             }))
-            .child(
-                div().px_3().py_2().child(crate::gate::gated(
-                    Button::new("members-invite")
-                        .small()
-                        .outline()
-                        .icon(IconName::Plus)
-                        .label(tr("dock.members.invite"))
-                        .on_click(invite),
-                    invite_reason,
-                )),
-            )
     }
 }

@@ -91,7 +91,7 @@ pub fn groups(
         .collect();
     let objects: Vec<Entry> = selectors::objects(store)
         .into_iter()
-        .map(|o| entry(o.name.clone(), IconName::File, PaletteChoice::Object(o.id.clone())))
+        .map(|o| entry(o.label(), IconName::File, PaletteChoice::Object(o.id.clone())))
         .collect();
     groups.push(Group { label: tr("palette.contacts"), entries: contacts });
     groups.push(Group { label: tr("palette.objects"), entries: objects });

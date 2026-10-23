@@ -1,17 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Conversations, groups and their messages.
+//! Conversations and groups as contexts, their pins and settings.
+//!
+//! A context is a conversation of `conversation.directory`. Its kind,
+//! title, participants (principals), unread count, mute and disappearing
+//! timer are the row's; a null title shows the conversation id. A group
+//! conversation names its group (`group_id`); that group's row in
+//! `group.list` gives the epoch, the roles (by member device, shown on the
+//! member's principal when all its devices agree) and the member routes.
+//! A member whose principal the daemon does not know is shown by its device
+//! id. A group with no linked conversation has no context: nothing is
+//! derived from its id. A row without a classification and without a group
+//! is a direct conversation (the daemon classifies every group
+//! conversation it links). Archived and hidden conversations are not shown.
 
 use std::collections::BTreeMap;
 
 use ramflux_desktop_core::{
-    Context, ContextId, ContextKind, DomainEvent, FallbackPayload, Lifecycle, MessagePayload,
-    Moment, MomentId, MomentKind, ParticipantId, Receipt, Role, Timestamp,
+    Context, ContextId, ContextKind, DomainEvent, MomentId, ParticipantId, Role,
 };
 use serde_json::Value;
 
-use super::{Translated, Translator, list, seconds, text};
+use super::{Translated, Translator};
+use crate::directory::{Conversation, Group, field};
 use crate::plan::fetch::Fetch;
 
 /// Moment id of a stored message.
@@ -19,33 +31,17 @@ pub(crate) fn message_moment_id(context: &ContextId, message: &str) -> MomentId 
     MomentId::new(format!("msg:{context}:{message}"))
 }
 
-fn role(name: &str) -> Role {
+fn role(name: &str) -> Option<Role> {
     match name {
-        "owner" => Role::Owner,
-        "admin" => Role::Admin,
-        "bot" => Role::Bot,
-        _ => Role::Member,
+        "owner" => Some(Role::Owner),
+        "admin" => Some(Role::Admin),
+        "member" => Some(Role::Member),
+        "bot" => Some(Role::Bot),
+        _ => None,
     }
 }
 
 impl Translator {
-    fn new_context(&self, id: &ContextId, kind: ContextKind) -> Context {
-        Context {
-            id: id.clone(),
-            kind,
-            // The daemon lists no titles; the id is shown.
-            title: id.to_string(),
-            participants: self.self_device.iter().map(ParticipantId::new).collect(),
-            // Pins are restored in pin order once the lists are known.
-            pinned: false,
-            unread: 0,
-            muted: false,
-            disappearing_secs: None,
-            roles: BTreeMap::new(),
-            epoch: None,
-        }
-    }
-
     /// Emits the context when it differs from what was reported.
     pub(super) fn put_context(&mut self, context: Context) -> Vec<DomainEvent> {
         if self.contexts.get(&context.id) == Some(&context) {
@@ -64,216 +60,115 @@ impl Translator {
         DomainEvent::ContextRemoved { context_id: id.clone() }
     }
 
-    pub(super) fn conversation_list(&mut self, value: &Value) -> Translated {
+    /// A complete `group.list`.
+    pub(super) fn groups(&mut self, rows: &[Value]) -> Vec<DomainEvent> {
+        self.directory.groups = rows
+            .iter()
+            .filter_map(|row| Some((field(row, "group_id").or_else(|| field(row, "id"))?, row)))
+            .map(|(id, row)| (id, Group::from_row(row)))
+            .collect();
+        self.rebuild_contexts().events
+    }
+
+    /// A complete `conversation.directory`.
+    pub(super) fn conversations(&mut self, rows: &[Value]) -> Translated {
+        self.directory.conversations = rows
+            .iter()
+            .filter_map(|row| {
+                Some((ContextId::new(field(row, "id")?), Conversation::from_row(row)))
+            })
+            .collect();
+        self.conversation_rows = Some(rows.to_vec());
+        self.rebuild_contexts()
+    }
+
+    /// Contexts from the latest conversation rows and groups; removes the
+    /// ones no longer listed.
+    fn rebuild_contexts(&mut self) -> Translated {
         let mut out = Translated::default();
+        let Some(rows) = self.conversation_rows.clone() else { return out };
         let mut listed = Vec::new();
-        for row in list(value, "conversations") {
-            let id = ContextId::new(text(row, "conversation_id"));
-            if row["is_archived"].as_bool().unwrap_or(false) || self.context_kind_is_group(&id) {
+        for row in &rows {
+            let Some(id) = field(row, "id").map(ContextId::new) else { continue };
+            if row["archived"].as_bool().unwrap_or(false)
+                || row["hidden"].as_bool().unwrap_or(false)
+            {
                 continue;
             }
-            // A conversation the daemon reports pinned is adopted only
-            // while the desktop has no pins of its own recorded.
-            if !self.pins_recorded
-                && !row["pin_order"].is_null()
-                && !self.contexts.contains_key(&id)
-            {
-                self.add_pin(&id);
+            let (context, named) = self.context_from_row(&id, row);
+            for name in named {
+                out.events.extend(self.named(&name));
             }
-            let context = match self.contexts.get(&id) {
-                Some(known) => known.clone(),
-                None => self.new_context(&id, ContextKind::Direct),
-            };
+            let kind = context.kind;
             out.events.extend(self.put_context(context));
-            if self.pins.contains(&id) || self.focus.as_ref() == Some(&id) {
+            if kind != ContextKind::Group
+                && (self.pins.contains(&id) || self.focus.as_ref() == Some(&id))
+            {
                 out.follow.push(Fetch::Messages(id.clone()));
             }
             listed.push(id);
         }
-        let gone: Vec<ContextId> = self
-            .contexts
-            .values()
-            .filter(|c| c.kind == ContextKind::Direct && !listed.contains(&c.id))
-            .map(|c| c.id.clone())
-            .collect();
+        let gone: Vec<ContextId> =
+            self.contexts.keys().filter(|id| !listed.contains(id)).cloned().collect();
         for id in gone {
             out.events.push(self.remove_context(&id));
         }
+        out.events.extend(self.place_interventions());
         out
     }
 
-    fn context_kind_is_group(&self, id: &ContextId) -> bool {
-        self.contexts.get(id).is_some_and(|c| c.kind == ContextKind::Group)
-    }
-
-    pub(super) fn group_list(&mut self, value: &Value) -> Translated {
-        let mut out = Translated::default();
-        let mut listed = Vec::new();
-        for group in list(value, "groups") {
-            let id = ContextId::new(text(group, "group_id"));
-            let mut context = match self.contexts.get(&id) {
-                Some(known) if known.kind == ContextKind::Group => known.clone(),
-                _ => self.new_context(&id, ContextKind::Group),
-            };
-            context.participants = list(group, "members")
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ParticipantId::new)
-                .collect();
-            context.roles = group["roles"]
-                .as_object()
-                .map(|roles| {
-                    roles
-                        .iter()
-                        .filter_map(|(member, r)| {
-                            r.as_str().map(|r| (ParticipantId::new(member.as_str()), role(r)))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            context.epoch = group["group_epoch"].as_u64();
-            for member in context.participants.clone() {
-                out.events.extend(self.participant(member.as_str(), member.as_str()));
+    /// One context, and the participant ids it names.
+    fn context_from_row(&self, id: &ContextId, row: &Value) -> (Context, Vec<String>) {
+        let conversation = Conversation::from_row(row);
+        let kind = match (conversation.kind, &conversation.group_id) {
+            (Some(kind), _) => kind,
+            (None, Some(_)) => ContextKind::Group,
+            (None, None) => ContextKind::Direct,
+        };
+        let mut participants: Vec<String> = row["participants"]
+            .as_array()
+            .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+            .unwrap_or_default();
+        let group = conversation.group_id.as_ref().and_then(|g| self.directory.groups.get(g));
+        let mut roles = BTreeMap::new();
+        if let Some(group) = group {
+            let mut by_member: BTreeMap<String, Vec<Option<Role>>> = BTreeMap::new();
+            for member in &group.members {
+                let name = member.principal_id.clone().unwrap_or_else(|| member.member_id.clone());
+                if !participants.contains(&name) {
+                    participants.push(name.clone());
+                }
+                let role = group.roles.get(&member.member_id).and_then(|r| role(r));
+                by_member.entry(name).or_default().push(role);
             }
-            out.events.extend(self.put_context(context));
-            listed.push(id);
-        }
-        let gone: Vec<ContextId> = self
-            .contexts
-            .values()
-            .filter(|c| c.kind == ContextKind::Group && !listed.contains(&c.id))
-            .map(|c| c.id.clone())
-            .collect();
-        for id in gone {
-            out.events.push(self.remove_context(&id));
-        }
-        out
-    }
-
-    /// Keeps decrypted bodies the daemon returned from a receive: a group's
-    /// stored bodies are ciphertext, so its text is known only from here
-    /// (or from what this device sent).
-    pub(super) fn remember_plaintext(&mut self, value: &Value) {
-        for message in list(value, "decrypted_messages") {
-            let id = text(message, "message_id");
-            if let Some(body) = message["body_utf8"].as_str()
-                && !id.is_empty()
-            {
-                self.plaintext.insert(&MomentId::new(id), body.to_owned());
-            }
-        }
-    }
-
-    /// Remembers the text of a message this device sent.
-    pub(super) fn remember_sent(&mut self, message_id: &str, body: &str) {
-        self.plaintext.insert(&MomentId::new(message_id), body.to_owned());
-    }
-
-    pub(super) fn messages(
-        &mut self,
-        context: &ContextId,
-        value: &Value,
-        now: Timestamp,
-    ) -> Vec<DomainEvent> {
-        let mut events = Vec::new();
-        let kind = self.contexts.get(context).map_or(ContextKind::Direct, |c| c.kind);
-        if !self.contexts.contains_key(context) {
-            let fresh = self.new_context(context, kind);
-            events.extend(self.put_context(fresh));
-        }
-        for record in list(value, "messages") {
-            let sender = text(record, "sender_id");
-            if sender.is_empty() {
-                continue;
-            }
-            events.extend(self.participant(sender, sender));
-            if let Some(mut ctx) = self.contexts.get(context).cloned() {
-                let sender_id = ParticipantId::new(sender);
-                if !ctx.participants.contains(&sender_id) {
-                    ctx.participants.push(sender_id);
-                    events.extend(self.put_context(ctx));
+            for (name, found) in by_member {
+                if let Some(Some(first)) = found.first()
+                    && found.iter().all(|r| r.as_ref() == Some(first))
+                {
+                    roles.insert(ParticipantId::new(name.as_str()), *first);
                 }
             }
-            let moment = self.message_moment(context, kind, record, now);
-            events.extend(self.report_moment(moment));
         }
-        events
-    }
-
-    /// Emits a stored message the first time, when its payload changed, or
-    /// when the view asked for its body again; remembers only a digest.
-    fn report_moment(&mut self, moment: Moment) -> Option<DomainEvent> {
-        let is_message = matches!(moment.kind, MomentKind::Message(_));
-        let digest = super::digest(&moment.kind);
-        let wanted = self.resend.remove(&moment.id);
-        let known = self.moments.get(&moment.id).copied();
-        let event = match known {
-            // A body that is no longer in memory here (an evicted group
-            // plaintext) never replaces the message already shown.
-            Some(seen) if seen.message && !is_message => return None,
-            Some(seen) if seen.digest == digest && !wanted => return None,
-            Some(_) => DomainEvent::MomentUpdated {
-                moment_id: moment.id.clone(),
-                lifecycle: None,
-                kind: Some(moment.kind.clone()),
-            },
-            None => DomainEvent::MomentAdded(Box::new(moment.clone())),
+        let known = self.contexts.get(id);
+        let context = Context {
+            id: id.clone(),
+            kind,
+            title: field(row, "title").unwrap_or_else(|| id.to_string()),
+            participants: participants.iter().map(|p| ParticipantId::new(p.as_str())).collect(),
+            // Pins are restored in pin order once the lists are known.
+            pinned: known.is_some_and(|c| c.pinned),
+            unread: row["unread_count"]
+                .as_u64()
+                .map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX)),
+            muted: row["muted"].as_bool().unwrap_or(false),
+            disappearing_secs: row["disappearing"]["timer_seconds"]
+                .as_u64()
+                .and_then(|s| u32::try_from(s).ok())
+                .filter(|s| *s > 0),
+            roles,
+            epoch: group.and_then(|g| g.epoch),
         };
-        self.moments.insert(moment.id, super::Reported { digest, message: is_message });
-        Some(event)
-    }
-
-    fn message_moment(
-        &self,
-        context: &ContextId,
-        kind: ContextKind,
-        record: &Value,
-        now: Timestamp,
-    ) -> Moment {
-        let message = text(record, "message_id");
-        let sender = text(record, "sender_id");
-        let outbound = self.self_device.as_deref() == Some(sender);
-        let stored: Option<String> = record["encrypted_body"].as_array().and_then(|bytes| {
-            let bytes: Option<Vec<u8>> =
-                bytes.iter().map(|b| b.as_u64().and_then(|v| u8::try_from(v).ok())).collect();
-            bytes.and_then(|b| String::from_utf8(b).ok())
-        });
-        // A direct message is stored decrypted; a group message is stored as
-        // ciphertext, so only a received or sent copy gives its text.
-        let body = self
-            .plaintext
-            .get(&MomentId::new(message))
-            .map(ToString::to_string)
-            .or_else(|| (kind != ContextKind::Group).then_some(stored).flatten());
-        let deleted = record["deleted"].as_bool().unwrap_or(false);
-        let payload = match body {
-            Some(text) => MomentKind::Message(MessagePayload {
-                text,
-                receipt: if outbound { receipt(record) } else { Receipt::default() },
-                tombstone: deleted,
-                attachment: None,
-                franking: None,
-            }),
-            None if deleted => MomentKind::Message(MessagePayload {
-                text: String::new(),
-                receipt: Receipt::default(),
-                tombstone: true,
-                attachment: None,
-                franking: None,
-            }),
-            None => MomentKind::Fallback(FallbackPayload {
-                reason: "backend.message.encrypted_at_rest".to_owned(),
-                text: String::new(),
-            }),
-        };
-        Moment {
-            id: message_moment_id(context, message),
-            context_id: context.clone(),
-            origin: ParticipantId::new(sender),
-            at: seconds(&record["created_at"]).unwrap_or(now),
-            kind: payload,
-            lifecycle: Lifecycle::Done,
-        }
+        (context, participants)
     }
 
     fn add_pin(&mut self, context: &ContextId) {
@@ -295,7 +190,6 @@ impl Translator {
             self.pins.retain(|id| id != context);
             self.pins_changed = true;
         }
-        self.pins_recorded = true;
         self.show_pin(context, pinned)
     }
 
@@ -347,16 +241,5 @@ impl Translator {
             muted,
             disappearing,
         }]
-    }
-}
-
-fn receipt(record: &Value) -> Receipt {
-    let states: Vec<&str> = list(record, "receipts").iter().map(|r| text(r, "state")).collect();
-    if states.contains(&"read") {
-        Receipt::Read
-    } else if states.contains(&"delivered") {
-        Receipt::Delivered
-    } else {
-        Receipt::Sent
     }
 }

@@ -43,15 +43,15 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                     .child(
                         div()
                             .text_xs()
-                            .text_color(if server.healthy {
-                                cx.theme().success
-                            } else {
-                                cx.theme().danger
+                            .text_color(match server.healthy {
+                                Some(true) => cx.theme().success,
+                                Some(false) => cx.theme().danger,
+                                None => cx.theme().muted_foreground,
                             })
-                            .child(tr(if server.healthy {
-                                "settings.integrations.healthy"
-                            } else {
-                                "settings.integrations.unhealthy"
+                            .child(tr(match server.healthy {
+                                Some(true) => "settings.integrations.healthy",
+                                Some(false) => "settings.integrations.unhealthy",
+                                None => "settings.integrations.not_checked",
                             })),
                     )
             }))

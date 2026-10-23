@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Every account, node, grant, conversation, device, group and pull frame
-//! the desktop builds parses into the product SDK's request type at the
-//! pinned revision, and every field it sends is a field of that type (serde
-//! would drop an unknown one silently). Contact frames are checked the same
-//! way in `contacts.rs`. Mutating effects carry a fresh retry key; reads and
-//! pulls carry none.
+//! Every account, node, grant, conversation, device, group, message, object
+//! and pull frame the desktop builds parses into the product SDK's request
+//! type at the pinned revision, and every field it sends is a field of that
+//! type (serde would drop an unknown one silently), except the client
+//! metadata fields the read model documents (`account.create` `label` /
+//! `kind`, an attachment's `name`), which the daemon reads from the raw body.
+//! Contact frames are checked the same way in `contacts.rs`. Mutating effects
+//! carry a fresh retry key; reads, pulls and object reads carry none. The
+//! routes, devices and commitments come from the directories (`Fake`).
 
 use ramflux_desktop_core::{AccountId, ContextId, ContextKind, Effect, SecretInput, methods};
 use ramflux_desktop_sdk::bus::BusRequest;
-use ramflux_desktop_sdk::plan::fetch::Fetch;
+use ramflux_desktop_sdk::directory::Directory;
+use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
 use ramflux_desktop_sdk::plan::{Known, Plan, plan};
 use ramflux_sdk::{
     LocalBusAccountBackupExportRequest, LocalBusAccountBackupImportRequest,
@@ -27,17 +31,26 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-struct Fake;
+mod common;
+
+struct Fake(Directory);
 
 impl Known for Fake {
     fn context_kind(&self, context: &ContextId) -> Option<ContextKind> {
-        (context.as_str() == "g-team").then_some(ContextKind::Group)
+        match context.as_str() {
+            "thread-team" => Some(ContextKind::Group),
+            "dm-ana" | "dm-unrouted" => Some(ContextKind::Direct),
+            _ => None,
+        }
     }
     fn self_device(&self) -> Option<&str> {
         Some("device-me")
     }
     fn daemon_grant_id(&self, _: &str) -> Option<&str> {
         Some("grant-1")
+    }
+    fn directory(&self) -> Option<&Directory> {
+        Some(&self.0)
     }
 }
 
@@ -53,20 +66,36 @@ fn secret(method: &str, body: Value, secrets: &[&str]) -> Effect {
     }
 }
 
+fn fake() -> Fake {
+    Fake(common::directory())
+}
+
+fn planned(effect: Effect) -> Plan {
+    plan(Some(&AccountId::new("acct-main")), effect, &fake()).plan
+}
+
 fn request(effect: Effect) -> BusRequest {
-    match plan(Some(&AccountId::new("acct-main")), effect, &Fake).plan {
-        Plan::Call { request, .. } => request,
+    match planned(effect) {
+        Plan::Call { request, .. } | Plan::Open { request, .. } => request,
         other => panic!("expected a call, got {other:?}"),
     }
 }
 
 /// The body parses into `T` and every field sent survives the round trip.
 fn parses<T: DeserializeOwned + Serialize>(request: &BusRequest) -> T {
+    parses_with(request, &[])
+}
+
+/// As [`parses`], allowing the documented client metadata `extras`.
+fn parses_with<T: DeserializeOwned + Serialize>(request: &BusRequest, extras: &[&str]) -> T {
     let body = request.wire_body();
     let typed: T = serde_json::from_value(body.clone())
         .unwrap_or_else(|e| panic!("{}: not the SDK request type: {e}", request.method));
     let back = serde_json::to_value(&typed).expect("json");
     for (field, value) in body.as_object().expect("an object body") {
+        if extras.contains(&field.as_str()) {
+            continue;
+        }
         assert_eq!(
             back.get(field),
             Some(value),
@@ -77,21 +106,30 @@ fn parses<T: DeserializeOwned + Serialize>(request: &BusRequest) -> T {
     typed
 }
 
-/// A mutating request: parses into `T` and carries a retry key.
-fn mutation<T: DeserializeOwned + Serialize>(effect: Effect) -> T {
+/// A mutating request: carries a retry key.
+fn keyed(effect: Effect) -> BusRequest {
     let request = request(effect);
     let key = request.operation_id.as_deref().unwrap_or_default();
     assert!(!key.is_empty() && key.len() <= 256, "{} carries a retry key", request.method);
-    parses(&request)
+    request
+}
+
+/// A mutating request: parses into `T` and carries a retry key.
+fn mutation<T: DeserializeOwned + Serialize>(effect: Effect) -> T {
+    parses(&keyed(effect))
 }
 
 #[test]
 fn account_frames_are_the_sdk_account_requests() {
-    let create: LocalBusAccountCreateRequest = mutation(secret(
+    let created = keyed(secret(
         methods::ACCOUNT_CREATE,
         json!({ "kind": "HumanInteractive", "label": "Me", "node_id": "n-harbor" }),
         &["pw"],
     ));
+    let create: LocalBusAccountCreateRequest = parses_with(&created, &["label", "kind"]);
+    let wire = created.wire_body();
+    assert_eq!((wire["label"].as_str(), wire["kind"].as_str()), (Some("Me"), Some("human")));
+    ramflux_desktop_sdk::bus::wipe(wire);
     assert_eq!(create.node_id.as_deref(), Some("n-harbor"));
     assert_eq!(create.account_secret, "pw");
     assert_eq!(create.client_mode, ramflux_sdk::LocalBusClientMode::AttendedCli);
@@ -167,10 +205,23 @@ fn grant_conversation_device_and_group_frames_are_the_sdk_requests() {
     let _: LocalBusDeviceRevokeRequest =
         mutation(call(methods::DEVICE_REVOKE, json!({ "device_id": "device-x" })));
     let send: LocalBusGroupSendRequest =
-        mutation(call(methods::SEND_MESSAGE, json!({ "context_id": "g-team", "text": "hi" })));
-    assert_eq!((send.group_id.as_str(), send.sender_id.as_str()), ("g-team", "device-me"));
-    let member = json!({ "context_id": "g-team", "participant_id": "device-bo" });
-    let _: LocalBusGroupMemberKickRequest = mutation(call(methods::GROUP_KICK, member.clone()));
+        mutation(call(methods::SEND_MESSAGE, json!({ "context_id": "thread-team", "text": "hi" })));
+    assert_eq!(
+        (send.group_id.as_str(), send.conversation_id.as_str(), send.sender_id.as_str()),
+        ("g-team", "thread-team", "device-me"),
+        "the group the conversation names; no group id is a conversation id"
+    );
+    assert!(
+        send.target_delivery_id.is_none() && send.envelope_id.is_none(),
+        "no delivery override: the daemon resolves every member's route"
+    );
+    let member = json!({ "context_id": "thread-team", "participant_id": "principal-bo" });
+    let kick: LocalBusGroupMemberKickRequest = mutation(call(methods::GROUP_KICK, member.clone()));
+    assert_eq!(
+        (kick.member_id.as_str(), kick.actor_id.as_str()),
+        ("device-bo", "device-me"),
+        "the participant's member device"
+    );
     let _: LocalBusGroupMemberBanRequest = mutation(call(methods::GROUP_BAN, member.clone()));
     let _: LocalBusGroupMemberRemoveRequest =
         mutation(call(methods::GROUP_REMOVE_MEMBER, member.clone()));
@@ -186,16 +237,39 @@ fn reads_and_pulls_are_the_sdk_requests_without_retry_keys() {
     let receive = Fetch::Receive(context.clone()).request(Some("acct-main"));
     let pulled: LocalBusMessageReceiveRequest = parses(&receive);
     assert_eq!(pulled.conversation_id.as_deref(), Some("dm-ana"));
-    let group = Fetch::GroupReceive(ContextId::new("g-team")).request(Some("acct-main"));
-    let _: LocalBusGroupReceiveRequest = parses(&group);
+    let group = group_receive().request(Some("acct-main"));
+    let received: LocalBusGroupReceiveRequest = parses(&group);
+    assert_eq!(
+        (received.group_id.as_str(), received.conversation_id.as_str()),
+        ("g-team", "thread-team")
+    );
     let list = Fetch::Messages(context).request(Some("acct-main"));
     let _: LocalBusConversationRequest = parses(&list);
     for fetch in Fetch::account_snapshot(&AccountId::new("acct-main"))
         .into_iter()
-        .chain([receive_of("dm-ana"), Fetch::GroupReceive(ContextId::new("g-team"))])
+        .chain([receive_of("dm-ana"), group_receive()])
     {
         assert!(fetch.request(Some("acct-main")).operation_id.is_none(), "{fetch:?}");
     }
+    // Directory pages: the documented paging body, nothing else.
+    for paged in [
+        Paged::Identities,
+        Paged::Conversations,
+        Paged::Groups,
+        Paged::Objects,
+        Paged::Approvals,
+        Paged::McpServers,
+    ] {
+        let first = Fetch::first(paged).request(Some("acct-main"));
+        assert_eq!(first.wire_body(), json!({ "limit": 100, "cursor": null }), "{paged:?}");
+        let next = Fetch::Page(paged, Some("c-1".to_owned())).request(Some("acct-main"));
+        assert_eq!(next.wire_body(), json!({ "limit": 100, "cursor": "c-1" }));
+        assert_eq!(next.account.as_deref(), Some("acct-main"));
+    }
+}
+
+fn group_receive() -> Fetch {
+    Fetch::GroupReceive { context: ContextId::new("thread-team"), group: "g-team".to_owned() }
 }
 
 fn receive_of(context: &str) -> Fetch {

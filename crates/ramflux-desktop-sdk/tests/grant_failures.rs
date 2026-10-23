@@ -13,7 +13,7 @@ use ramflux_desktop_core::{
     Timestamp, methods,
 };
 use ramflux_desktop_sdk::Scope;
-use ramflux_desktop_sdk::plan::fetch::Fetch;
+use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
 use ramflux_desktop_sdk::translate::Translator;
 use serde_json::{Value, json};
 
@@ -26,7 +26,7 @@ fn translator() -> Translator {
 
 fn translator_with(approvals: Value) -> Translator {
     let mut t = Translator::new(Scope::Account(AccountId::new("acct-main")), "/tmp/rfd.sock");
-    let events = t.fetched(&Fetch::Approvals, &approvals, NOW).events;
+    let events = t.fetched(&Fetch::first(Paged::Approvals), &approvals, NOW).events;
     assert!(events.iter().any(|e| matches!(e, DomainEvent::GrantRequested(_))));
     t
 }
@@ -132,10 +132,10 @@ fn an_approval_bound_to_other_arguments_fails_closed() {
     let mut pushed = translator();
     let mut record = frames()["mcp.approval.list"]["approvals"][0].clone();
     record["details"]["arguments_hash"] = json!("h-other");
-    let events = pushed.pushed("mcp.approval.request", &record);
+    let events = pushed.pushed("mcp.approval.request", &record, NOW);
     assert_eq!(failed(&events), [GrantFailure::ArgumentsMismatch]);
     let same = frames()["mcp.approval.list"]["approvals"][0].clone();
-    assert!(translator().pushed("mcp.approval.request", &same).is_empty());
+    assert!(translator().pushed("mcp.approval.request", &same, NOW).is_empty());
 }
 
 #[test]

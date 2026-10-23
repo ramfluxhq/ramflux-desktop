@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Span Brain
 
 //! Pinned contexts persist in the desktop settings file and come back, in
-//! pin order, after a restart.
+//! pin order, after a restart. The conversation directory reports no pins:
+//! pinning is the desktop's own preference.
 
 mod common;
 
@@ -33,29 +34,28 @@ fn pins_persist_across_a_restart_in_pin_order() {
 
     let hub = start();
     let mut first = Fed::new(hub.account_source(account.clone()));
-    first.until("daemon pin adopted", |s, _| s.pin_order() == [ContextId::new("dm-ana")]);
-    first.source.submit(pin(methods::CONTEXT_PIN, "g-team"));
+    first.until("contexts", |s, _| s.context(&ContextId::new("thread-team")).is_some());
+    assert!(first.store.pin_order().is_empty(), "nothing is pinned until the user pins");
+    first.source.submit(pin(methods::CONTEXT_PIN, "dm-ana"));
+    first.until("pinned", |s, _| s.pin_order() == [ContextId::new("dm-ana")]);
+    first.source.submit(pin(methods::CONTEXT_PIN, "thread-team"));
     first.source.submit(pin(methods::CONTEXT_UNPIN, "dm-ana"));
-    first.until("pins changed", |s, _| s.pin_order() == [ContextId::new("g-team")]);
+    first.until("pins changed", |s, _| s.pin_order() == [ContextId::new("thread-team")]);
     let store = PinStore::new(Some(settings.clone()));
-    assert_eq!(store.load(&account), Some(vec![ContextId::new("g-team")]));
+    assert_eq!(store.load(&account), Some(vec![ContextId::new("thread-team")]));
     drop(first);
     drop(hub);
 
     let hub = start();
     let mut second = Fed::new(hub.account_source(account.clone()));
-    second.until("restored", |s, _| s.pin_order() == [ContextId::new("g-team")]);
+    second.until("restored", |s, _| s.pin_order() == [ContextId::new("thread-team")]);
     second.settle(300);
-    assert_eq!(
-        second.store.pin_order(),
-        [ContextId::new("g-team")],
-        "the desktop's own record wins over the daemon's pin"
-    );
+    assert_eq!(second.store.pin_order(), [ContextId::new("thread-team")], "kept across polls");
     second.source.submit(pin(methods::CONTEXT_PIN, "dm-ana"));
     second.until("pinned again", |s, _| s.pin_order().len() == 2);
     assert_eq!(
         store.load(&account),
-        Some(vec![ContextId::new("g-team"), ContextId::new("dm-ana")]),
+        Some(vec![ContextId::new("thread-team"), ContextId::new("dm-ana")]),
         "pin order is kept"
     );
     fake.shutdown();

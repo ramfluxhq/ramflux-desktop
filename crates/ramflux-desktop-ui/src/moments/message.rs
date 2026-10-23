@@ -35,9 +35,9 @@ pub fn render(
     }
     let attachment = payload.attachment.as_ref().map(|id| {
         let object = refs.objects.get(id);
-        let name = object.map_or_else(|| id.to_string(), |o| o.name.clone());
+        let name = object.map_or_else(|| id.to_string(), |o| o.label());
         let detail =
-            object.map(|o| format!("{} · {}", i18n::bytes(o.size), i18n::transfer(&o.transfer)));
+            object.map(|o| format!("{} · {}", i18n::size(o.size), i18n::transfer(&o.transfer)));
         h_flex()
             .id("message-attachment")
             .gap_2()

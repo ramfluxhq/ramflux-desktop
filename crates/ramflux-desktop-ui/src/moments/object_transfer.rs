@@ -140,20 +140,18 @@ pub fn render(
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .child(div().text_sm().font_medium().truncate().child(object.name.clone()))
+                        .child(div().text_sm().font_medium().truncate().child(object.label()))
                         .child(div().text_xs().text_color(muted).child(format!(
                             "{} · {}",
                             i18n::direction(object.direction),
-                            i18n::bytes(object.size)
+                            i18n::size(object.size)
                         ))),
                 )
                 .child(div().text_xs().text_color(status_color).child(status)),
         )
         .when(matches!(object.transfer, TransferState::Transferring { .. }), |col| {
             col.child(
-                Progress::new("object-progress")
-                    .value(percent)
-                    .accessibility_label(object.name.clone()),
+                Progress::new("object-progress").value(percent).accessibility_label(object.label()),
             )
         })
         .when_some(object.saved_to.clone(), |col, path| {
@@ -188,7 +186,7 @@ pub fn save_with_dialog(
     object: &ramflux_desktop_core::Object,
 ) -> impl Fn(&gpui_kit::ClickEvent, &mut gpui_kit::Window, &mut App) + 'static {
     let sink = sink.clone();
-    let (object_id, name) = (object.id.clone(), object.name.clone());
+    let (object_id, name) = (object.id.clone(), object.label());
     move |_, window, cx| {
         let (sink, object_id) = (sink.clone(), object_id.clone());
         file_dialog::save_as(StartDir::Downloads, &name, window, cx, move |path, window, cx| {

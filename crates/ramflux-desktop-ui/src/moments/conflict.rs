@@ -70,7 +70,7 @@ pub fn render(
     let name = refs
         .objects
         .get(&payload.object_id)
-        .map_or_else(|| payload.object_id.to_string(), |o| o.name.clone());
+        .map_or_else(|| payload.object_id.to_string(), |o| o.label());
     let open = payload.resolution.is_none() && lifecycle == Lifecycle::NeedsMe;
     let choice_sink = sink.scoped(Scope::Block(BlockId::new("resolution")));
     let side = |label: &'static str, side: &ConflictSide| {

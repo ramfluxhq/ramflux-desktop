@@ -67,10 +67,12 @@ fn check(p: &Policy<'_>, context_id: &ContextId, op: &GovernanceOp) -> Result<()
     }
     let is_member = context.participants.contains(target);
     match op {
-        GovernanceOp::AddMember { .. } if is_member => Err(IntentError::AlreadyMember {
-            context: context_id.clone(),
-            participant: target.clone(),
-        }),
+        GovernanceOp::AddMember { .. } | GovernanceOp::CreateInvite { .. } if is_member => {
+            Err(IntentError::AlreadyMember {
+                context: context_id.clone(),
+                participant: target.clone(),
+            })
+        }
         GovernanceOp::RemoveMember { .. }
         | GovernanceOp::Kick { .. }
         | GovernanceOp::SetRole { .. }

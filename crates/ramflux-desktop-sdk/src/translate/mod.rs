@@ -7,17 +7,23 @@
 //! contexts, messages, grants), so it emits only differences: a re-snapshot
 //! after a reconnect upserts what changed and removes what disappeared, and
 //! a poll that returns the same messages emits nothing. It never invents
-//! data the daemon did not report; where the daemon lacks a field the
-//! desktop contract has, the field keeps its neutral default (see the gap
-//! ledger).
+//! data the daemon did not report: a field the daemon reports as null stays
+//! unknown (see the gap ledger), and ids are never derived from one another.
 //!
+//! - `pages`: collecting the pages of a paged list.
 //! - `daemon`: daemon status, nodes, accounts.
 //! - `account`: account status, devices, integrations.
+//! - `identity`: identities (participants, devices, safety).
 //! - `contacts`: participants and contact links.
-//! - `conversation`: conversations, groups and their messages.
+//! - `conversation`: conversations and groups as contexts, pins, settings.
+//! - `messages`: stored messages as message moments.
+//! - `objects`: the object directory.
 //! - `grants`: approvals, grants and standing approvals.
+//! - `interventions`: approvals shown in their conversation.
 //! - `grant_failures`: fail-closed grant errors.
+//! - `send_failures`: why a send failed, in the user's terms.
 //! - `effects`: answers to effects, and the audit record of confirmed ones.
+//! - `reason`: locale keys with arguments.
 
 mod account;
 mod contacts;
@@ -26,18 +32,27 @@ mod daemon;
 mod effects;
 mod grant_failures;
 mod grants;
+mod identity;
+mod interventions;
+mod messages;
+mod objects;
+pub mod pages;
+pub mod reason;
+mod send_failures;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use ramflux_desktop_core::{
     Account, AccountId, BodyCache, Context, ContextId, ContextKind, DeviceId, DomainEvent, GrantId,
-    GrantState, Listing, MomentId, NodeId, ParticipantId, StandingApproval, StandingApprovalId,
-    Timestamp,
+    GrantState, Listing, MomentId, NodeId, Object, ObjectId, Participant, ParticipantId,
+    StandingApproval, StandingApprovalId, Timestamp,
 };
 use serde_json::Value;
 
+use crate::directory::Directory;
 use crate::plan::Known;
-use crate::plan::fetch::Fetch;
+use crate::plan::fetch::{Fetch, Paged};
+use pages::{Pages, Paging};
 
 /// The source's scope.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -100,15 +115,17 @@ pub struct Translator {
     socket: String,
     nodes: BTreeMap<NodeId, ramflux_desktop_core::Node>,
     accounts: BTreeMap<AccountId, Account>,
-    labels: BTreeMap<AccountId, String>,
-    principal: Option<String>,
+    node_relays: BTreeMap<NodeId, String>,
     self_device: Option<String>,
     devices: BTreeMap<DeviceId, ramflux_desktop_core::Device>,
-    participants: BTreeMap<ParticipantId, ramflux_desktop_core::ContactLink>,
+    directory: Directory,
+    pages: Pages,
+    people: BTreeMap<ParticipantId, contacts::Person>,
+    reported_people: BTreeMap<ParticipantId, Participant>,
     links: BTreeMap<ParticipantId, crate::plan::KnownLink>,
+    conversation_rows: Option<Vec<Value>>,
     contexts: BTreeMap<ContextId, Context>,
     pins: Vec<ContextId>,
-    pins_recorded: bool,
     pins_changed: bool,
     moments: BTreeMap<MomentId, Reported>,
     resend: BTreeSet<MomentId>,
@@ -116,11 +133,15 @@ pub struct Translator {
     grants: BTreeMap<GrantId, GrantState>,
     bindings: BTreeMap<GrantId, grant_failures::Binding>,
     daemon_grants: BTreeMap<String, String>,
+    interventions: BTreeMap<GrantId, interventions::Placement>,
     standing: BTreeMap<StandingApprovalId, StandingApproval>,
+    objects: BTreeMap<ObjectId, Object>,
+    mcp_tools: Option<BTreeMap<String, Vec<String>>>,
+    mcp_servers: Option<Vec<Value>>,
     integrations: Option<ramflux_desktop_core::Integrations>,
     focus: Option<ContextId>,
     listed: BTreeSet<Listing>,
-    answered: BTreeSet<Fetch>,
+    completed: BTreeSet<Paged>,
 }
 
 impl Translator {
@@ -131,15 +152,17 @@ impl Translator {
             socket: socket.into(),
             nodes: BTreeMap::new(),
             accounts: BTreeMap::new(),
-            labels: BTreeMap::new(),
-            principal: None,
+            node_relays: BTreeMap::new(),
             self_device: None,
             devices: BTreeMap::new(),
-            participants: BTreeMap::new(),
+            directory: Directory::default(),
+            pages: Pages::default(),
+            people: BTreeMap::new(),
+            reported_people: BTreeMap::new(),
             links: BTreeMap::new(),
+            conversation_rows: None,
             contexts: BTreeMap::new(),
             pins: Vec::new(),
-            pins_recorded: false,
             pins_changed: false,
             moments: BTreeMap::new(),
             resend: BTreeSet::new(),
@@ -147,11 +170,15 @@ impl Translator {
             grants: BTreeMap::new(),
             bindings: BTreeMap::new(),
             daemon_grants: BTreeMap::new(),
+            interventions: BTreeMap::new(),
             standing: BTreeMap::new(),
+            objects: BTreeMap::new(),
+            mcp_tools: None,
+            mcp_servers: None,
             integrations: None,
             focus: None,
             listed: BTreeSet::new(),
-            answered: BTreeSet::new(),
+            completed: BTreeSet::new(),
         }
     }
 
@@ -160,16 +187,20 @@ impl Translator {
         &self.scope
     }
 
+    /// What the directories listed so far.
+    pub fn directory(&self) -> &Directory {
+        &self.directory
+    }
+
     /// Records the context the user looks at.
     pub fn set_focus(&mut self, context: Option<ContextId>) {
         self.focus = context;
     }
 
-    /// Seeds the pins recorded in the desktop settings (pin order). Once
-    /// the desktop has a record, it wins over pins the daemon reports.
+    /// Seeds the pins recorded in the desktop settings (pin order); the
+    /// daemon reports none.
     pub fn set_pins(&mut self, pins: Vec<ContextId>) {
         self.pins = pins;
-        self.pins_recorded = true;
         self.pins_changed = false;
     }
 
@@ -192,14 +223,31 @@ impl Translator {
             .collect()
     }
 
+    /// The read that refreshes one context's messages: a group conversation
+    /// is received through the group the directory links it to (none when
+    /// no group is linked).
+    fn messages_read(&self, context: &ContextId, kind: ContextKind, pull: bool) -> Vec<Fetch> {
+        match kind {
+            ContextKind::Group => self
+                .directory
+                .group_of(context)
+                .map(|group| Fetch::GroupReceive {
+                    context: context.clone(),
+                    group: group.to_owned(),
+                })
+                .into_iter()
+                .collect(),
+            _ if pull => vec![Fetch::Receive(context.clone()), Fetch::Messages(context.clone())],
+            _ => vec![Fetch::Messages(context.clone())],
+        }
+    }
+
     /// The reads that keep the watched contexts fresh.
     pub fn poll_reads(&self) -> Vec<Vec<Fetch>> {
         self.watched()
             .into_iter()
-            .map(|(id, kind)| match kind {
-                ContextKind::Group => vec![Fetch::GroupReceive(id)],
-                _ => vec![Fetch::Receive(id.clone()), Fetch::Messages(id)],
-            })
+            .map(|(id, kind)| self.messages_read(&id, kind, true))
+            .filter(|reads| !reads.is_empty())
             .collect()
     }
 
@@ -212,21 +260,19 @@ impl Translator {
 
     /// The listings a read completes, the first time it is answered.
     fn listing_answered(&mut self, fetch: &Fetch) -> Option<DomainEvent> {
-        if matches!(fetch, Fetch::ConversationList | Fetch::GroupList) {
-            self.answered.insert(fetch.clone());
-        }
+        let complete = |paged| self.completed.contains(&paged);
         let listing = match fetch {
             Fetch::NodeList => Listing::Nodes,
             Fetch::AccountList => Listing::Accounts,
-            // Contexts are conversations and groups: listed once both answered.
-            Fetch::ConversationList | Fetch::GroupList
-                if self.answered.contains(&Fetch::ConversationList)
-                    && self.answered.contains(&Fetch::GroupList) =>
+            // Contexts are conversations and groups: listed once both are.
+            Fetch::Page(Paged::Conversations | Paged::Groups, _)
+                if complete(Paged::Conversations) && complete(Paged::Groups) =>
             {
                 Listing::Contexts
             }
             Fetch::ContactList => Listing::Contacts,
-            Fetch::Approvals => Listing::Approvals,
+            Fetch::Page(Paged::Approvals, _) if complete(Paged::Approvals) => Listing::Approvals,
+            Fetch::Page(Paged::Objects, _) if complete(Paged::Objects) => Listing::Objects,
             _ => return None,
         };
         self.listed(&[listing])
@@ -239,15 +285,6 @@ impl Translator {
         (!fresh.is_empty()).then_some(DomainEvent::ListingsLoaded(fresh))
     }
 
-    /// The account's snapshot is complete. The daemon lists no objects (gap
-    /// ledger), so the objects collection is known to be empty from here.
-    pub fn snapshot_done(&mut self) -> Vec<DomainEvent> {
-        if self.scope.account().is_none() {
-            return Vec::new();
-        }
-        self.listed(&[Listing::Objects]).into_iter().collect()
-    }
-
     fn translate(&mut self, fetch: &Fetch, value: &Value, now: Timestamp) -> Translated {
         match fetch {
             Fetch::DaemonStatus => Translated::events(self.daemon_status(value)),
@@ -255,15 +292,20 @@ impl Translator {
             Fetch::AccountList => self.account_list(value),
             Fetch::AccountStatus(id) => Translated::events(self.account_status(id, value)),
             Fetch::DeviceList => Translated::events(self.device_list(value)),
-            Fetch::ConversationList => self.conversation_list(value),
-            Fetch::GroupList => self.group_list(value),
+            Fetch::Page(paged, cursor) => match self.pages.page(*paged, cursor.as_deref(), value) {
+                Paging::More(next) => Translated { events: Vec::new(), follow: vec![next] },
+                Paging::Dropped => Translated::default(),
+                Paging::Complete(rows) => {
+                    self.completed.insert(*paged);
+                    self.listing(*paged, &rows, now)
+                }
+            },
             Fetch::ContactList => Translated::events(self.contact_list(value)),
-            Fetch::Approvals => Translated::events(self.approval_list(value)),
             Fetch::Grants => Translated::events(self.grant_list(value)),
             Fetch::StandingApprovals => Translated::events(self.standing_list(value)),
             Fetch::McpTools => Translated::events(self.mcp_tools(value)),
             Fetch::Messages(context) => Translated::events(self.messages(context, value, now)),
-            Fetch::GroupReceive(context) => {
+            Fetch::GroupReceive { context, .. } => {
                 self.remember_plaintext(value);
                 Translated::events(self.messages(context, value, now))
             }
@@ -271,6 +313,18 @@ impl Translator {
                 self.remember_plaintext(value);
                 Translated::default()
             }
+        }
+    }
+
+    /// Translates one complete paged listing.
+    fn listing(&mut self, paged: Paged, rows: &[Value], now: Timestamp) -> Translated {
+        match paged {
+            Paged::Identities => Translated::events(self.identities(rows)),
+            Paged::Groups => Translated::events(self.groups(rows)),
+            Paged::Conversations => self.conversations(rows),
+            Paged::Objects => Translated::events(self.object_listing(rows)),
+            Paged::Approvals => Translated::events(self.approval_list(rows, now)),
+            Paged::McpServers => Translated::events(self.mcp_servers(rows)),
         }
     }
 
@@ -302,22 +356,20 @@ impl Translator {
         }
         contexts
             .into_iter()
-            .map(|id| match self.contexts.get(&id).map(|c| c.kind) {
-                Some(ContextKind::Group) => Fetch::GroupReceive(id),
-                _ => Fetch::Messages(id),
-            })
+            .filter_map(|id| self.contexts.get(&id).map(|c| (id.clone(), c.kind)))
+            .flat_map(|(id, kind)| self.messages_read(&id, kind, false))
             .collect()
     }
 
     /// Translates one pushed event.
-    pub fn pushed(&mut self, topic: &str, body: &Value) -> Vec<DomainEvent> {
+    pub fn pushed(&mut self, topic: &str, body: &Value, now: Timestamp) -> Vec<DomainEvent> {
         match topic {
             "mcp.approval.request" => {
                 let id = GrantId::new(text(body, "approval_id"));
                 if self.grants.contains_key(&id) {
                     self.approval_changed(&id, body)
                 } else {
-                    self.approval(body).into_iter().collect()
+                    self.approval(body, now)
                 }
             }
             "mcp.approval.granted" => self.approval_decided(body, GrantState::Approved),
@@ -343,11 +395,15 @@ impl Known for Translator {
     }
 
     fn self_principal(&self) -> Option<&str> {
-        self.principal.as_deref()
+        self.directory.self_principal.as_deref()
     }
 
     fn contact_link(&self, participant: &str) -> Option<&crate::plan::KnownLink> {
         self.known_link(participant)
+    }
+
+    fn directory(&self) -> Option<&Directory> {
+        Some(&self.directory)
     }
 }
 

@@ -145,6 +145,9 @@ moment:
     missing:
       en: "Object %{id} is not available yet"
       zh-CN: "对象 %{id} 暂不可用"
+    size_unknown:
+      en: "size not reported"
+      zh-CN: "大小未知"
   safety:
     key_changed:
       en: "%{name}'s identity key changed"

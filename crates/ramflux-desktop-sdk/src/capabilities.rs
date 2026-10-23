@@ -26,17 +26,13 @@ pub mod reason {
     pub const CONFLICTS: &str = "backend.gap.conflicts";
     /// Privacy reveal and its audit (K9).
     pub const REVEAL: &str = "backend.gap.reveal";
-    /// Direct sends need the conversation route, not listed by the daemon.
-    pub const DIRECT_ROUTE: &str = "backend.gap.direct_route";
-    /// Objects carry no listable metadata (name, size, direction).
-    pub const OBJECTS: &str = "backend.gap.objects";
-    /// A contact request travels to the contact's device, whose route the
-    /// daemon does not list.
+    /// The daemon has no spaces (long-lived shared contexts).
+    pub const SPACES: &str = "backend.gap.spaces";
+    /// Group messages carry no attachments on the bus.
+    pub const GROUP_ATTACHMENTS: &str = "backend.gap.group_attachments";
+    /// A contact request is federated only and needs a federation route to
+    /// the contact's node, which no directory lists.
     pub const CONTACT_ROUTE: &str = "backend.gap.contact_route";
-    /// Verification needs the contact's identity commitment.
-    pub const SAFETY: &str = "backend.gap.safety";
-    /// Adding or inviting members needs their keys, which cannot be looked up.
-    pub const MEMBER_KEYS: &str = "backend.gap.member_keys";
     /// Joining by activation code has no daemon counterpart.
     pub const ACTIVATION: &str = "backend.gap.activation";
     /// Device sync needs a relay route and a target device.
@@ -54,14 +50,7 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
         (methods::HANDOFF_DECLINE, reason::HANDOFF),
         (methods::CONFLICT_RESOLVE, reason::CONFLICTS),
         (methods::PRIVACY_REVEAL, reason::REVEAL),
-        (methods::ATTACH_OBJECT, reason::OBJECTS),
-        (methods::OBJECT_PULL, reason::OBJECTS),
-        (methods::OBJECT_SAVE, reason::OBJECTS),
-        (methods::OBJECT_RETRY, reason::OBJECTS),
         (methods::CONTACT_REQUEST, reason::CONTACT_ROUTE),
-        (methods::SAFETY_VERIFY, reason::SAFETY),
-        (methods::GROUP_ADD_MEMBER, reason::MEMBER_KEYS),
-        (methods::GROUP_CREATE_INVITE, reason::MEMBER_KEYS),
         (methods::DEVICE_ACTIVATE, reason::ACTIVATION),
         (methods::DEVICE_SYNC_EXPORT, reason::DEVICE_SYNC),
         (methods::DEVICE_SYNC_IMPORT, reason::DEVICE_SYNC),
@@ -69,13 +58,11 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
     .into_iter()
     .map(|(method, why)| (method.to_owned(), why))
     .collect();
+    table.insert(methods::in_context(methods::SEND_MESSAGE, ContextKind::Space), reason::SPACES);
+    table.insert(methods::in_context(methods::ATTACH_OBJECT, ContextKind::Space), reason::SPACES);
     table.insert(
-        methods::in_context(methods::SEND_MESSAGE, ContextKind::Direct),
-        reason::DIRECT_ROUTE,
-    );
-    table.insert(
-        methods::in_context(methods::SEND_MESSAGE, ContextKind::Space),
-        reason::DIRECT_ROUTE,
+        methods::in_context(methods::ATTACH_OBJECT, ContextKind::Group),
+        reason::GROUP_ATTACHMENTS,
     );
     table
 }

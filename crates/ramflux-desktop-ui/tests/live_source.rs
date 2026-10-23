@@ -3,7 +3,7 @@
 
 //! The production window root on the SDK source over a fake daemon:
 //! the entry page with the real daemon status, account sessions that follow
-//! the daemon, controls the backend cannot perform shown disabled, lock
+//! the daemon, conversations the directories route shown sendable, lock
 //! returning to entry, and the contacts dock adding a contact and answering
 //! an incoming request with the daemon's own frames.
 
@@ -109,10 +109,13 @@ fn an_unlocked_account_opens_the_workspace_and_lock_returns_to_entry(cx: &mut Te
     });
     show_context(cx, handle, &shell, "dm-ana");
     assert!(
-        exists(cx, handle, "composer-unavailable"),
-        "a direct send the daemon cannot route is shown disabled with its reason"
+        !exists(cx, handle, "composer-unavailable"),
+        "a direct conversation with a listed route can be sent to"
     );
-    show_context(cx, handle, &shell, "g-team");
+    wait(cx, "the group conversation", |cx| {
+        with_store(cx, &shell, |s| s.context(&ContextId::new("thread-team")).is_some())
+    });
+    show_context(cx, handle, &shell, "thread-team");
     assert!(!exists(cx, handle, "composer-unavailable"), "groups can be sent to");
 
     cx.update(|cx| {

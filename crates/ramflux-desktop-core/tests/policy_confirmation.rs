@@ -152,7 +152,8 @@ fn kick_ban_and_set_role_need_confirmation_add_and_invite_do_not() {
     let (method, body) = call_body(effects(&store, Intent::human(governance(add))));
     assert_eq!(method, methods::GROUP_ADD_MEMBER);
     assert_eq!(body["role"], "Member");
-    let invite = GovernanceOp::CreateInvite { role: Role::Bot };
+    let invite =
+        GovernanceOp::CreateInvite { participant_id: ParticipantId::new("p-cy"), role: Role::Bot };
     let (method, _) = call_body(effects(&store, Intent::human(governance(invite))));
     assert_eq!(method, methods::GROUP_CREATE_INVITE);
     let remove = GovernanceOp::RemoveMember { participant_id: bo() };
@@ -166,7 +167,7 @@ fn governance_validates_context_and_membership() {
     let refuse = |kind: IntentKind| handle_intent(&store, Intent::human(kind), NOW).err();
     let direct = IntentKind::Governance {
         context_id: ContextId::new("c-direct"),
-        op: GovernanceOp::CreateInvite { role: Role::Member },
+        op: GovernanceOp::CreateInvite { participant_id: "p-cy".into(), role: Role::Member },
     };
     assert_eq!(refuse(direct), Some(IntentError::NotAGroup(ContextId::new("c-direct"))));
     let kick_outsider = governance(GovernanceOp::Kick { participant_id: "p-cy".into() });
