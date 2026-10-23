@@ -13,9 +13,16 @@ use crate::model::{Direction, Object, TransferState};
 /// Decides conversation-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
     Some(match kind {
-        IntentKind::SendMessage { context_id, text } => p.context(context_id).and_then(|_| {
+        IntentKind::SendMessage { context_id, text } => p.context(context_id).and_then(|context| {
             if text.trim().is_empty() {
                 return Err(IntentError::Empty("message text"));
+            }
+            let scoped = methods::in_context(methods::SEND_MESSAGE, context.kind);
+            if let Some(reason) = p.store.unsupported_reason(&scoped) {
+                return Err(IntentError::UnsupportedByBackend {
+                    method: methods::SEND_MESSAGE,
+                    reason: reason.to_owned(),
+                });
             }
             Ok(Decision::Call(
                 methods::SEND_MESSAGE,

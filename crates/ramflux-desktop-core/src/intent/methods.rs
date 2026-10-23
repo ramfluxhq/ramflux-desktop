@@ -99,3 +99,10 @@ pub const NODE_SET_DEFAULT: &str = "node.set_default";
 pub const NODE_SET_ENABLED: &str = "node.set_enabled";
 /// Export a redacted diagnostics bundle.
 pub const DIAGNOSTICS_EXPORT: &str = "diagnostics.export";
+
+/// Capability key of `method` performed in a context of `kind`, for
+/// backends that support a method only for some context kinds (for example
+/// `message.send@Direct`).
+pub fn in_context(method: &str, kind: crate::model::ContextKind) -> String {
+    format!("{method}@{kind:?}")
+}
