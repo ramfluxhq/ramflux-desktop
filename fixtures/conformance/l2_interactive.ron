@@ -1,0 +1,75 @@
+// Renderer conformance L2: form, tool call, approval, capability negotiation.
+// A form surface (select, input, action group) with a low-risk submit and a
+// high-risk deploy action; at 3000 ms the agent patches the deploy action,
+// so a deploy held over that moment is cancelled and must be reviewed again.
+// A tool call waits on a high-risk, single-use grant: approving it from this
+// device is refused by the backend (the request needs a signed approval),
+// and the grant fails closed. An approval block decides a medium grant.
+// A text block with a data version the renderer does not read falls back
+// (capability negotiation: the app declares its profile to the source).
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "l2_interactive",
+    description: "Conformance L2: form, tool call, approval, capability negotiation",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
+        (0, AccountUpdated(id: "a-conf", label: "Conformance", lock_state: Unlocked, self_participant_id: "p-me")),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-agent", kind: Agent, display: "Orbit", contact: true)),
+        (0, ContextUpserted(id: "c-conf", kind: Direct, title: "Orbit", participants: ["p-me", "p-agent"], pinned: true)),
+        (100, GrantRequested(id: "g-notice", scope: "calendar/post", risk: Medium, args_hash: "sha256:7d3b0a19ce52")),
+        (100, MomentAdded(id: "m-form", context_id: "c-conf", origin: "p-agent", at: 0,
+            kind: AgentSurface(
+                surface_id: "s-form",
+                fallback_text: "Deploy release 2.4",
+                blocks: [
+                    (id: "b-form", kind: Form, data: {"title": "Deploy release 2.4", "text": "Pick a region, then deploy."}),
+                    (id: "b-region", kind: Select, data: {"label": "Region", "name": "region",
+                        "options": [["eu", "Europe"], ["us", "United States"]], "value": "eu"}),
+                    (id: "b-note", kind: Input, data: {"label": "Change note", "name": "note", "placeholder": "Optional"}),
+                    (id: "b-buttons", kind: ActionGroup, data: {"actions": ["submit", "deploy"]}),
+                    (id: "b-notice", kind: Approval, data: {"grant_id": "g-notice", "summary": "Post the release notice to the team calendar"}),
+                    (id: "b-future", kind: Text, version: 3, data: {"text": "rich text", "spans": []}),
+                ],
+                actions: [
+                    (id: "submit", label: "Save draft"),
+                    (id: "deploy", label: "Deploy to production", risk: High),
+                ],
+            ),
+            lifecycle: Done)),
+        (200, GrantRequested(id: "g-tool", scope: "deploy/release", risk: High, single_use: true,
+            args_hash: "sha256:4f1c9a0e7b2d", expiry: 1790899200000)),
+        (200, MomentAdded(id: "m-tool", context_id: "c-conf", origin: "p-agent", at: 0,
+            kind: Intervention(grant_id: "g-tool", risk: High, summary: "Run deploy/release for 2.4 on production"),
+            lifecycle: NeedsMe)),
+        (3000, SurfacePatched(moment_id: "m-form", surface_id: "s-form", ops: [
+            SetActions([
+                (id: "submit", label: "Save draft"),
+                (id: "deploy", label: "Deploy to production and purge caches", risk: High),
+            ]),
+        ])),
+    ],
+    responses: [
+        (
+            on: Call(method: "surface.action", fields: {"moment_id": "m-form", "action_id": "submit"}),
+            emit: [
+                (100, SurfacePatched(moment_id: "m-form", surface_id: "s-form", ops: [
+                    AppendBlocks([(id: "b-saved", kind: Success, data: {"text": "Draft saved."})]),
+                ])),
+            ],
+        ),
+        (
+            on: Call(method: "grant.approve", fields: {"grant_id": "g-tool"}),
+            emit: [
+                (100, EffectFailed(method: "grant.approve", code: Daemon("RemoteAppApprovalRequired"),
+                    message: "remote_app approval requires an App-signed mcp.approval.granted")),
+                (100, GrantFailed(grant_id: "g-tool", failure: SignedApprovalRequired)),
+            ],
+        ),
+        (
+            on: Call(method: "grant.approve", fields: {"grant_id": "g-notice"}),
+            emit: [(100, GrantResolved(grant_id: "g-notice", state: Approved))],
+        ),
+    ],
+)

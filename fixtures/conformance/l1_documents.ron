@@ -1,0 +1,82 @@
+// Renderer conformance L1: markdown, details, table fallback, patch, snapshot.
+// A long read-only surface (collapsed to its first blocks until the user
+// opens the details) with markdown, key/value details, a valid table, a
+// malformed table (schema mismatch), a block with a newer data version
+// than the renderer reads, and a display-blocked (redacted) block.
+// At 500 ms a streaming patch appends to the markdown; at 600 ms a patch
+// made against an older version arrives and marks the surface out of date;
+// at 900 ms a full snapshot replaces it and resolves the conflict.
+// A second surface offers more actions than the renderer allows and shows
+// only its fallback.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "l1_documents",
+    description: "Conformance L1: markdown, details, table fallback, patch, snapshot",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
+        (0, AccountUpdated(id: "a-conf", label: "Conformance", lock_state: Unlocked, self_participant_id: "p-me")),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-agent", kind: Agent, display: "Orbit", contact: true)),
+        (0, ContextUpserted(id: "c-conf", kind: Direct, title: "Orbit", participants: ["p-me", "p-agent"], pinned: true)),
+        (100, MomentAdded(id: "m-l1", context_id: "c-conf", origin: "p-agent", at: 0,
+            kind: AgentSurface(
+                surface_id: "s-l1",
+                fallback_text: "Release notes for 2.4",
+                blocks: [
+                    (id: "b-title", kind: Heading, data: {"text": "Release 2.4"}),
+                    (id: "b-notes", kind: Markdown, data: {"text": "**Highlights**: faster sync"}),
+                    (id: "b-details", kind: KeyValue, data: {"items": [["Version", "2.4.0"], ["Channel", "stable"]]}),
+                    (id: "b-table", kind: TableFallback, data: {"columns": ["Platform", "Size"], "rows": [["macOS", "41 MB"], ["Linux", "38 MB"]]}),
+                    (id: "b-broken", kind: TableFallback, data: {"columns": ["Platform"], "rows": [["macOS", "41 MB"]]}),
+                    (id: "b-v2", kind: List, version: 2, data: {"items": ["a"], "style": "timeline"}),
+                    (id: "b-key", kind: Text, redacted: true, data: {"text": "signing key passphrase: amber-otter-42"}),
+                ],
+                streaming: true,
+            ),
+            lifecycle: Done)),
+        (500, SurfacePatched(moment_id: "m-l1", surface_id: "s-l1", ops: [
+            AppendText(block_id: "b-notes", text: " and smaller downloads."),
+            SetStreaming(false),
+        ])),
+        (600, SurfacePatched(moment_id: "m-l1", surface_id: "s-l1",
+            base_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            ops: [AppendText(block_id: "b-notes", text: " (stale edit)")])),
+        (900, MomentUpdated(moment_id: "m-l1",
+            kind: AgentSurface(
+                surface_id: "s-l1",
+                fallback_text: "Release notes for 2.4",
+                blocks: [
+                    (id: "b-title", kind: Heading, data: {"text": "Release 2.4"}),
+                    (id: "b-notes", kind: Markdown, data: {"text": "**Highlights**: faster sync and smaller downloads."}),
+                    (id: "b-details", kind: KeyValue, data: {"items": [["Version", "2.4.1"], ["Channel", "stable"]]}),
+                ],
+            ))),
+        (1000, MomentAdded(id: "m-over", context_id: "c-conf", origin: "p-agent", at: 0,
+            kind: AgentSurface(
+                surface_id: "s-over",
+                fallback_text: "Choose a mirror (open the full list on a larger client)",
+                blocks: [(id: "b-ask", kind: Text, data: {"text": "Pick the mirror closest to you."})],
+                actions: [
+                    (id: "opt-01", label: "Option 1"),
+                    (id: "opt-02", label: "Option 2"),
+                    (id: "opt-03", label: "Option 3"),
+                    (id: "opt-04", label: "Option 4"),
+                    (id: "opt-05", label: "Option 5"),
+                    (id: "opt-06", label: "Option 6"),
+                    (id: "opt-07", label: "Option 7"),
+                    (id: "opt-08", label: "Option 8"),
+                    (id: "opt-09", label: "Option 9"),
+                    (id: "opt-10", label: "Option 10"),
+                    (id: "opt-11", label: "Option 11"),
+                    (id: "opt-12", label: "Option 12"),
+                    (id: "opt-13", label: "Option 13"),
+                    (id: "opt-14", label: "Option 14"),
+                    (id: "opt-15", label: "Option 15"),
+                    (id: "opt-16", label: "Option 16"),
+                    (id: "opt-17", label: "Option 17")
+                ],
+            ),
+            lifecycle: Done)),
+    ],
+)

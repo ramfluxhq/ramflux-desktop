@@ -8,7 +8,7 @@ use std::ops::Bound;
 
 use ramflux_desktop_core::{
     DomainEvent, Effect, EventEnvelope, JsonValue, MomentId, MomentKind, PrivacyRevealPayload,
-    Source, Timestamp,
+    RendererProfile, Source, Timestamp,
 };
 
 use crate::local_echo::{ECHO_DELAY_MS, audit_echo, local_echo};
@@ -55,6 +55,7 @@ pub struct MockSource {
     seq: u64,
     now_ms: u64,
     effects: Vec<EffectRecord>,
+    profile: Option<RendererProfile>,
 }
 
 impl MockSource {
@@ -75,11 +76,17 @@ impl MockSource {
             seq: 0,
             now_ms: 0,
             effects: Vec::new(),
+            profile: None,
         };
         for (offset, event) in &scenario.timeline {
             source.schedule_at(*offset, event.clone());
         }
         source
+    }
+
+    /// The renderer profile the app declared (capability negotiation).
+    pub fn negotiated_profile(&self) -> Option<&RendererProfile> {
+        self.profile.as_ref()
     }
 
     /// Scenario epoch.
@@ -159,6 +166,10 @@ impl MockSource {
 }
 
 impl Source for MockSource {
+    fn renderer_profile(&mut self, profile: &RendererProfile) {
+        self.profile = Some(profile.clone());
+    }
+
     fn submit(&mut self, effect: Effect) {
         let label = effect.method().unwrap_or("RequireConfirmation").to_owned();
         let rule = self.rules.iter().position(|r| r.on.matches(&effect));

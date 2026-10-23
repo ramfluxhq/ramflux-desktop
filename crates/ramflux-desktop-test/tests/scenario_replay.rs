@@ -387,7 +387,7 @@ fn s07_conflict_reveal_and_handoff_complete() {
 }
 
 #[test]
-fn s08_failures_degrade_and_unknown_block_falls_back() {
+fn s08_failures_degrade_and_unknown_block_is_unsupported() {
     let mut p = player("s08_failures");
     p.advance(4000);
 
@@ -401,7 +401,7 @@ fn s08_failures_degrade_and_unknown_block_falls_back() {
     let chart = store.moment(&MomentId::new("m-chart")).expect("chart");
     let MomentKind::AgentSurface(surface) = &chart.kind else { panic!("not a surface") };
     assert_eq!(surface.blocks[0].kind, BlockKind::Heading);
-    assert_eq!(surface.blocks[1].kind, BlockKind::Fallback);
+    assert_eq!(surface.blocks[1].kind, BlockKind::Unsupported);
     assert_eq!(surface.blocks[1].data["series"][1], 98);
 }
 
@@ -435,4 +435,16 @@ fn s09_and_its_companion_replay_as_separate_accounts() {
     assert_clean(&work);
     assert!(attention_ids(&work).is_empty());
     assert_eq!(lifecycle(&work, "m-deployed"), Lifecycle::Done);
+}
+
+#[test]
+fn conformance_fixtures_parse_and_replay_without_rejections() {
+    for name in ramflux_desktop_test::CONFORMANCE_NAMES {
+        let scenario =
+            ramflux_desktop_test::load_conformance(name).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(scenario.name, name);
+        let mut p = ScenarioPlayer::new(&scenario);
+        p.advance(10_000);
+        assert!(p.store().rejections().is_empty(), "{name}: {:?}", p.store().rejections());
+    }
 }

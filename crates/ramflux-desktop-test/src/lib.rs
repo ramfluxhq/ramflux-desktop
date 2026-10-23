@@ -29,6 +29,6 @@ pub mod scenario;
 pub use mock_source::{EffectRecord, MockSource};
 pub use player::ScenarioPlayer;
 pub use scenario::{
-    Companion, DEFAULT_EPOCH, EffectMatcher, ResponseRule, SCENARIO_NAMES, Scenario, ScenarioError,
-    fixtures_dir, load_fixture,
+    CONFORMANCE_NAMES, Companion, DEFAULT_EPOCH, EffectMatcher, ResponseRule, SCENARIO_NAMES,
+    Scenario, ScenarioError, conformance_dir, fixtures_dir, load_conformance, load_fixture,
 };

@@ -1,0 +1,42 @@
+// Renderer conformance L0: text, metric, action and fallback.
+// An agent surface with a text block, a metric, an explicit fallback block
+// and a block of a kind outside the catalog (rendered as a block fallback,
+// recorded as an unsupported-block renderer error). One low-risk action is
+// offered; invoking it binds the surface version it was shown on, and the
+// agent answers by disabling it.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "l0_basics",
+    description: "Conformance L0: text, metric, action, fallback",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
+        (0, AccountUpdated(id: "a-conf", label: "Conformance", lock_state: Unlocked, self_participant_id: "p-me")),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-agent", kind: Agent, display: "Orbit", contact: true)),
+        (0, ContextUpserted(id: "c-conf", kind: Direct, title: "Orbit", participants: ["p-me", "p-agent"], pinned: true)),
+        (100, MomentAdded(id: "m-l0", context_id: "c-conf", origin: "p-agent", at: 0,
+            kind: AgentSurface(
+                surface_id: "s-l0",
+                fallback_text: "Build status: green, 42 tests",
+                blocks: [
+                    (id: "b-text", kind: Text, data: {"text": "The nightly build finished."}),
+                    (id: "b-metric", kind: Metric, data: {"label": "Tests passed", "value": "42", "delta": "+3"}),
+                    (id: "b-fallback", kind: Fallback),
+                    (id: "b-holo", kind: Hologram, data: {"frames": 3}),
+                ],
+                actions: [(id: "ack", label: "Acknowledge")],
+            ),
+            lifecycle: Done)),
+    ],
+    responses: [
+        (
+            on: Call(method: "surface.action", fields: {"moment_id": "m-l0", "action_id": "ack"}),
+            emit: [
+                (100, SurfacePatched(moment_id: "m-l0", surface_id: "s-l0", ops: [
+                    SetActions([(id: "ack", label: "Acknowledge", disabled_reason: "Acknowledged")]),
+                ])),
+            ],
+        ),
+    ],
+)

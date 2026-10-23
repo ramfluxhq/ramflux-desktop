@@ -157,6 +157,23 @@ pub fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/scenarios")
 }
 
+/// Names of the renderer conformance fixtures, by level (L0, L1, L2).
+pub const CONFORMANCE_NAMES: [&str; 3] = ["l0_basics", "l1_documents", "l2_interactive"];
+
+/// Directory holding the renderer conformance fixtures.
+pub fn conformance_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/conformance")
+}
+
+/// Loads a renderer conformance fixture by name, e.g. `"l0_basics"`.
+///
+/// # Errors
+///
+/// Returns [`ScenarioError`] when the file is missing or invalid.
+pub fn load_conformance(name: &str) -> Result<Scenario, ScenarioError> {
+    Scenario::load(&conformance_dir().join(format!("{name}.ron")))
+}
+
 /// Loads a bundled scenario by name, e.g. `"s03_intervention"`.
 ///
 /// # Errors
