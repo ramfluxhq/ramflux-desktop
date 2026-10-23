@@ -97,7 +97,7 @@ pub struct Node {
 pub enum ParticipantKind {
     /// A person.
     Human,
-    /// An AI agent.
+    /// A software agent.
     Agent,
     /// One of the user's own devices.
     Device,
