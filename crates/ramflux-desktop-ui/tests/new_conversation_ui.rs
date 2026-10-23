@@ -138,7 +138,7 @@ fn a_missing_route_or_unverified_key_comes_back_in_the_draft(cx: &mut TestAppCon
         assert!(draft_open(cx, &shell));
         in_window(cx, handle, |window, cx| {
             window.click("composer-input", cx);
-            window.press("cmd-a", cx);
+            window.press("secondary-a", cx);
             window.press("backspace", cx);
         });
         type_into(cx, handle, "composer-input", "first words");

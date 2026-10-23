@@ -88,7 +88,7 @@ mod shots {
             let (id, text) = (id.to_owned(), text.to_owned());
             self.window(move |window, cx| {
                 window.click(id.clone(), cx);
-                window.press("cmd-a", cx);
+                window.press("secondary-a", cx);
                 window.press("backspace", cx);
                 window.input(&text, cx);
             });

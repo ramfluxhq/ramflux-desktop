@@ -50,7 +50,7 @@ fn link(
 fn replace_field(cx: &mut TestAppContext, handle: Handle, text: &str) {
     in_window(cx, handle, |window, cx| {
         window.click("contact-add-id", cx);
-        window.press("cmd-a", cx);
+        window.press("secondary-a", cx);
         window.press("backspace", cx);
     });
     type_into(cx, handle, "contact-add-id", text);
