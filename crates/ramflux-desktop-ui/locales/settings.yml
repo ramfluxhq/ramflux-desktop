@@ -201,6 +201,12 @@ settings:
     export_title:
       en: "Diagnostics export"
       zh-CN: "诊断导出"
+    sync:
+      en: "Message sync"
+      zh-CN: "消息同步"
+    sync_note:
+      en: "New messages from unknown conversations arrive after the background sync update of the daemon. Until then, a conversation someone else starts reaches this device only once the daemon lists it; it then appears without a restart."
+      zh-CN: "来自未知会话的新消息将在守护进程的后台同步更新后送达。在此之前，他人发起的会话只有在守护进程列出后才会到达本设备，届时无需重启即可显示。"
   launch:
     title:
       en: "Startup"

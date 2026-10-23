@@ -33,6 +33,7 @@ use crate::moments::MomentView;
 use crate::root::{ConfirmHost, IntentRoot};
 
 use super::composer::Composer;
+use super::new_conversation::NewConversation;
 use rows::{RowUpdate, Rows};
 use view_state::ViewState;
 
@@ -49,6 +50,7 @@ pub struct Conversation {
     view: ViewState,
     highlighted: Option<MomentId>,
     composer: Entity<Composer>,
+    draft: Option<Entity<NewConversation>>,
     focus_handle: FocusHandle,
     highlight_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
@@ -131,9 +133,18 @@ impl Conversation {
             view: ViewState::default(),
             highlighted: None,
             composer,
+            draft: None,
             focus_handle: cx.focus_handle(),
             highlight_focus: cx.focus_handle().tab_stop(true),
             _subscriptions: subscriptions,
+        }
+    }
+
+    /// Shows a new-conversation draft in place of a context, or stops.
+    pub fn set_draft(&mut self, draft: Option<Entity<NewConversation>>, cx: &mut Context<Self>) {
+        if self.draft.as_ref().map(Entity::entity_id) != draft.as_ref().map(Entity::entity_id) {
+            self.draft = draft;
+            cx.notify();
         }
     }
 
@@ -416,14 +427,17 @@ impl Render for Conversation {
         };
         let root = self.root.read(cx);
         let strip = (root.host() == ConfirmHost::Workspace).then(|| root.confirm_strip().clone());
+        let draft = self.draft.clone().filter(|_| self.context_id.is_none());
         v_flex()
             .id("conversation")
             .track_focus(&self.focus_handle)
             .size_full()
             .min_w_0()
             .bg(cx.theme().background)
-            .child(header)
-            .child(body)
+            .map(|field| match draft {
+                Some(draft) => field.child(draft),
+                None => field.child(header).child(body),
+            })
             .children(strip)
             .child(self.composer.clone())
     }

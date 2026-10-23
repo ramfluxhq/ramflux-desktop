@@ -124,6 +124,13 @@ fn step_index(block: &BlockId) -> Option<usize> {
 /// Intents named by id, from docks, settings, entry and object rows.
 fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
     Some(match &event.kind {
+        UiEventKind::StartConversationRequested { context_id, participant_id, text } => {
+            IntentKind::StartConversation {
+                context_id: context_id.clone(),
+                participant_id: participant_id.clone(),
+                text: text.clone(),
+            }
+        }
         UiEventKind::VerifySafetyPressed { participant_id } => {
             IntentKind::VerifySafetyNumber { participant_id: participant_id.clone() }
         }

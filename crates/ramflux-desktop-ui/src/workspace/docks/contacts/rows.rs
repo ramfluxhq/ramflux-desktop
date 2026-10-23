@@ -7,6 +7,8 @@
 //!
 //! Every action emits a UI event; the root turns it into an intent. Block
 //! and Remove revoke what was shared with the contact and need the hold.
+//! Message (on an accepted contact) is navigation: it shows the direct
+//! conversation with the contact, or a draft of a new one.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -16,8 +18,8 @@ use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, Window, div};
 use ramflux_desktop_core::{
-    ContactAction, Moment, MomentKind, Participant, ParticipantId, SafetyState, Scope, Store,
-    UiEventKind, selectors,
+    ContactAction, ContactLink, Moment, MomentKind, Participant, ParticipantId, SafetyState, Scope,
+    Store, UiEventKind, selectors,
 };
 
 use crate::bubble::EventSink;
@@ -163,13 +165,22 @@ fn actions_menu(contact: &Participant, sink: &EventSink) -> impl IntoElement + u
 }
 
 /// A contact with its safety state, safety number, Verify while unverified,
-/// and the actions menu.
+/// Message once accepted, and the actions menu.
 pub fn contact_row(
     contact: &Participant,
     sink: &EventSink,
     verify_reason: Option<&SharedString>,
+    on_message: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> AnyElement {
+    let message = (contact.link_state() == ContactLink::Accepted).then(|| {
+        Button::new("message")
+            .xsmall()
+            .outline()
+            .label(tr("dock.contacts.message"))
+            .accessibility_label(tr_args("dock.contacts.message_to", &[("name", &contact.display)]))
+            .on_click(on_message)
+    });
     let color = match contact.safety {
         SafetyState::Verified => cx.theme().success,
         SafetyState::Unverified => cx.theme().muted_foreground,
@@ -205,6 +216,7 @@ pub fn contact_row(
                 )
                 .child(div().text_xs().text_color(color).child(i18n::safety(contact.safety)))
                 .children(verify)
+                .children(message)
                 .child(actions_menu(contact, sink)),
         )
         .when_some(contact.safety_number.clone(), |col, number| {

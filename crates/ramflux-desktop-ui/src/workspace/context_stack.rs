@@ -6,9 +6,11 @@
 //! not a list of every conversation; every other context is reached only
 //! through the command palette, which the footer opens. Choosing a context is
 //! navigation (view-local), so it is reported to the workspace as a
-//! [`ContextStackEvent`], not a UI event.
+//! [`ContextStackEvent`], not a UI event. The "+" in the header lists the
+//! accepted contacts to start a conversation with (and adding a contact).
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
 };
@@ -16,7 +18,9 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Context, Entity, EventEmitter, IntoElement, Render, SharedString, Subscription, Window, div,
 };
-use ramflux_desktop_core::{ContextId, ContextKind, Listing, Store, selectors};
+use ramflux_desktop_core::{
+    ContactLink, ContextId, ContextKind, Listing, ParticipantId, Store, selectors,
+};
 
 use crate::actions::OpenPalette;
 use crate::app::{StoreEvent, StoreHandle};
@@ -28,6 +32,10 @@ use crate::ids::domain_id;
 pub enum ContextStackEvent {
     /// The user chose a context.
     Selected(ContextId),
+    /// The user chose a contact to start a conversation with.
+    NewConversation(ParticipantId),
+    /// The user chose to add a contact first.
+    AddContact,
 }
 
 /// The context stack view.
@@ -182,6 +190,41 @@ impl Render for ContextStack {
                 )
         });
 
+        let contacts: Vec<(ParticipantId, String)> = selectors::contacts(store)
+            .into_iter()
+            .filter(|p| p.link_state() == ContactLink::Accepted)
+            .map(|p| (p.id.clone(), p.display.clone()))
+            .collect();
+        let this = cx.weak_entity();
+        let new_menu = Button::new("stack-new")
+            .ghost()
+            .xsmall()
+            .icon(IconName::Plus)
+            .accessibility_label(tr("stack.new"))
+            .tooltip(tr("stack.new"))
+            .dropdown_menu(move |menu, _, _| {
+                let emit = |event: ContextStackEvent| {
+                    let this = this.clone();
+                    move |_: &gpui_kit::ClickEvent, _: &mut Window, cx: &mut gpui_kit::App| {
+                        this.update(cx, |_, cx| cx.emit(event.clone())).ok();
+                    }
+                };
+                let menu = contacts.iter().fold(menu, |menu, (id, name)| {
+                    menu.item(
+                        PopupMenuItem::new(tr_args("stack.new_with", &[("name", name)]))
+                            .on_click(emit(ContextStackEvent::NewConversation(id.clone()))),
+                    )
+                });
+                let menu = if contacts.is_empty() {
+                    menu.item(PopupMenuItem::new(tr("stack.new_no_contacts")).disabled(true))
+                } else {
+                    menu
+                };
+                menu.separator().item(
+                    PopupMenuItem::new(tr("stack.add_contact"))
+                        .on_click(emit(ContextStackEvent::AddContact)),
+                )
+            });
         v_flex()
             .id("context-stack")
             .h_full()
@@ -192,7 +235,14 @@ impl Render for ContextStack {
             .bg(sidebar)
             .border_r_1()
             .border_color(border)
-            .child(div().px_2().py_1().text_xs().text_color(muted).child(tr("stack.title")))
+            .child(
+                h_flex()
+                    .pl_2()
+                    .child(
+                        div().flex_1().py_1().text_xs().text_color(muted).child(tr("stack.title")),
+                    )
+                    .child(new_menu),
+            )
             .children(list)
             .children(placeholder.flatten())
             .child(div().flex_1())

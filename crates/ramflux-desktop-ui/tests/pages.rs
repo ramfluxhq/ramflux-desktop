@@ -236,6 +236,10 @@ fn settings_rotate_passphrase_and_export_diagnostics(cx: &mut TestAppContext) {
 
     settings(cx, handle, &shell, SettingsSection::Diagnostics);
     assert!(exists(cx, handle, "diagnostics-preview"));
+    assert!(
+        exists(cx, handle, "diagnostics-sync-note"),
+        "what the daemon does not deliver yet is said in Diagnostics only"
+    );
     assert!(exists(cx, handle, "renderer-profile"), "the renderer profile is shown read-only");
     click(cx, handle, "diagnostics-export");
     cx.simulate_new_path_selection(|dir| Some(dir.join("diag.txt")));

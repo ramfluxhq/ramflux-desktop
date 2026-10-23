@@ -27,7 +27,8 @@ pub enum PaletteChoice {
     Moment(ContextId, MomentId),
     /// Show the objects dock.
     Object(ObjectId),
-    /// Show the direct context with a contact, else the contacts dock.
+    /// Show the direct context with a contact, else a new-conversation
+    /// draft with them.
     Contact(ParticipantId),
     /// Pin or unpin a context (an intent).
     Pin(ContextId, bool),

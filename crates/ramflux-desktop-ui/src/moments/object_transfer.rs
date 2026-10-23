@@ -4,6 +4,11 @@
 //! Object transfer moments: name, direction and size, live progress, and the
 //! actions the transfer state allows (pull, preview, save, retry).
 //!
+//! Progress is shown only as far as it is known: a transfer whose source
+//! reports no bytes moved (the daemon sends an attachment in one request)
+//! shows a working indicator and no percentage. A failure reason that is a
+//! locale key is translated.
+//!
 //! Preview is view-local (the moment expands in place to show the text
 //! preview the source supplied); pull, save and retry are intents.
 
@@ -112,12 +117,14 @@ pub fn render(
         _ => {}
     }
     let percent = object.progress() * 100.0;
+    let measured =
+        matches!(object.transfer, TransferState::Transferring { transferred } if transferred > 0);
     let status = match &object.transfer {
-        TransferState::Transferring { .. } => {
+        TransferState::Transferring { .. } if measured => {
             format!("{} · {percent:.0}%", i18n::transfer(&object.transfer))
         }
         TransferState::Failed { reason } => {
-            format!("{} · {reason}", i18n::transfer(&object.transfer))
+            format!("{} · {}", i18n::transfer(&object.transfer), i18n::backend_text(reason))
         }
         other => i18n::transfer(other).to_string(),
     };
@@ -147,9 +154,20 @@ pub fn render(
                             i18n::size(object.size)
                         ))),
                 )
-                .child(div().text_xs().text_color(status_color).child(status)),
+                .when(
+                    matches!(object.transfer, TransferState::Transferring { .. }) && !measured,
+                    |row| row.child(Icon::new(IconName::LoaderCircle).small().text_color(muted)),
+                )
+                .child(
+                    div()
+                        .id("object-transfer-status")
+                        .text_xs()
+                        .text_color(status_color)
+                        .child(status)
+                        .test_support(),
+                ),
         )
-        .when(matches!(object.transfer, TransferState::Transferring { .. }), |col| {
+        .when(measured, |col| {
             col.child(
                 Progress::new("object-progress").value(percent).accessibility_label(object.label()),
             )

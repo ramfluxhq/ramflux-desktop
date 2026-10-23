@@ -9,13 +9,15 @@
 //! everything (see `palette`).
 //!
 //! Every view here emits through the [`IntentRoot`] sink; the workspace owns
-//! navigation only: the shown context, which tool is open or pinned, and the
-//! "take me to what needs me" cursor across contexts and accounts.
+//! navigation only: the shown context (or a new-conversation draft), which
+//! tool is open or pinned, and the "take me to what needs me" cursor across
+//! contexts and accounts.
 
 mod composer;
 mod context_stack;
 mod conversation;
 pub mod docks;
+pub mod new_conversation;
 mod status_strip;
 
 use std::sync::Arc;
@@ -29,22 +31,26 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, px,
 };
-use ramflux_desktop_core::{ContextId, IntentKind, ParticipantId, Scope, methods, selectors};
+use ramflux_desktop_core::{
+    ContextId, ContextKind, IntentKind, ParticipantId, Scope, methods, selectors,
+};
 
 use crate::app::{AccountAttention, StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::confirm::ConfirmStrip;
 use crate::root::{IntentRoot, RootEvent};
 
-pub use composer::{Composer, ComposerMode};
+pub use composer::attachment::Staged;
+pub use composer::{Composer, ComposerMode, DraftTarget};
 pub use context_stack::{ContextStack, ContextStackEvent};
 pub use conversation::{Conversation, TIMERS, timer_label};
 pub use docks::prefs::{DockPrefs, LAYOUT_SCHEMA, PrefsStore};
 pub use docks::{DockRail, DockTool, DockToolEvent, DockToolPanel};
+pub use new_conversation::{NewConversation, NewConversationEvent};
 pub use status_strip::StatusStrip;
 
 use docks::approvals::ApprovalsDock;
-use docks::contacts::ContactsDock;
+use docks::contacts::{ContactsDock, ContactsDockEvent};
 use docks::evidence::EvidenceDock;
 use docks::members::MembersDock;
 use docks::objects::ObjectsDock;
@@ -66,6 +72,7 @@ pub struct Workspace {
     stack: Entity<ContextStack>,
     conversation: Entity<Conversation>,
     composer: Entity<Composer>,
+    new_conversation: Entity<NewConversation>,
     dock_area: Entity<DockArea>,
     tools: Vec<ToolSlot>,
     objects: Entity<ObjectsDock>,
@@ -97,7 +104,8 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Self {
         let sink = IntentRoot::sink(&root);
-        let composer = cx.new(|cx| Composer::new(window, cx));
+        let composer = cx.new(|cx| Composer::new(store.clone(), window, cx));
+        let new_conversation = cx.new(|cx| NewConversation::new(store.clone(), cx));
         let stack = cx.new(|cx| ContextStack::new(store.clone(), cx));
         let conversation =
             cx.new(|cx| Conversation::new(store.clone(), root.clone(), composer.clone(), cx));
@@ -171,9 +179,33 @@ impl Workspace {
                 }
             }),
             cx.subscribe_in(&stack, window, |this, _, event: &ContextStackEvent, window, cx| {
-                let ContextStackEvent::Selected(id) = event;
-                this.select_context(Some(id.clone()), window, cx);
+                match event {
+                    ContextStackEvent::Selected(id) => {
+                        this.select_context(Some(id.clone()), window, cx);
+                    }
+                    ContextStackEvent::NewConversation(participant) => {
+                        this.open_conversation_with(participant.clone(), window, cx);
+                    }
+                    ContextStackEvent::AddContact => this.open_add_contact(window, cx),
+                }
             }),
+            cx.subscribe_in(&contacts, window, |this, _, event: &ContactsDockEvent, window, cx| {
+                let ContactsDockEvent::MessageRequested(participant) = event;
+                this.open_conversation_with(participant.clone(), window, cx);
+            }),
+            cx.subscribe_in(
+                &new_conversation,
+                window,
+                |this, _, event: &NewConversationEvent, window, cx| {
+                    let NewConversationEvent::Started(id) = event;
+                    this.select_context(Some(id.clone()), window, cx);
+                    this.composer.update(cx, |composer, cx| {
+                        composer.clear(window, cx);
+                        composer.focus(window, cx);
+                    });
+                },
+            ),
+            cx.observe(&new_conversation, |this, _, cx| this.sync_composer(cx)),
             cx.subscribe_in(&root, window, |this, _, event: &RootEvent, window, cx| match event {
                 RootEvent::ConfirmClosed => {
                     this.composer.update(cx, |composer, cx| composer.focus(window, cx));
@@ -222,6 +254,7 @@ impl Workspace {
             stack,
             conversation,
             composer,
+            new_conversation,
             dock_area,
             tools,
             objects,
@@ -268,6 +301,62 @@ impl Workspace {
         &self.contacts
     }
 
+    /// The new-conversation draft.
+    pub fn new_conversation(&self) -> &Entity<NewConversation> {
+        &self.new_conversation
+    }
+
+    /// Shows the direct conversation with `participant`, or opens a draft
+    /// of a new one when there is none. Focus moves to the composer.
+    pub fn open_conversation_with(
+        &mut self,
+        participant: ParticipantId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let existing = {
+            let store = self.store.read(cx).store();
+            selectors::contexts_with(store, &participant)
+                .into_iter()
+                .find(|c| c.kind == ContextKind::Direct)
+                .map(|c| c.id.clone())
+        };
+        if let Some(id) = existing {
+            self.select_context(Some(id), window, cx);
+            self.composer.update(cx, |composer, cx| composer.focus(window, cx));
+            return;
+        }
+        self.new_conversation.update(cx, |draft, cx| draft.open(participant, cx));
+        if self.current.take().is_some() {
+            self.store.update(cx, |store, _| store.focus(None));
+        }
+        let target = self.new_conversation.read(cx).draft().map(|d| DraftTarget {
+            context_id: d.context_id.clone(),
+            participant_id: d.participant.clone(),
+        });
+        let sink = NewConversation::sink(&self.new_conversation, &IntentRoot::sink(&self.root));
+        let draft = self.new_conversation.clone();
+        self.conversation.update(cx, |field, cx| {
+            field.set_context(None, cx);
+            field.set_draft(Some(draft), cx);
+        });
+        self.composer.update(cx, |composer, cx| match target {
+            Some(target) => composer.set_draft(target, sink, window, cx),
+            None => composer.set_sink(None, window, cx),
+        });
+        self.sync_composer(cx);
+        self.stack.update(cx, |stack, cx| stack.set_current(None, cx));
+        self.members.update(cx, |dock, cx| dock.set_context(None, cx));
+        self.evidence.update(cx, |dock, cx| dock.set_context(None, cx));
+        if let Some(open) = self.open_tool
+            && self.prefs.pinned != Some(open)
+        {
+            self.close_dock(window, cx);
+        }
+        self.composer.update(cx, |composer, cx| composer.focus(window, cx));
+        cx.notify();
+    }
+
     /// Opens the contacts dock and moves focus to its add-contact field.
     pub fn open_add_contact(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_tool(DockTool::Contacts, window, cx);
@@ -303,6 +392,8 @@ impl Workspace {
     ) {
         let changed = self.current != id;
         self.current = id.clone();
+        self.new_conversation.update(cx, NewConversation::close);
+        self.conversation.update(cx, |field, cx| field.set_draft(None, cx));
         let sink =
             id.as_ref().map(|id| IntentRoot::sink(&self.root).scoped(Scope::Context(id.clone())));
         if changed {
@@ -323,19 +414,27 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Tells the composer what the backend cannot do in the shown context.
+    /// Tells the composer what the backend cannot do in the shown context
+    /// (or why the draft cannot start its conversation yet).
     fn sync_composer(&mut self, cx: &mut Context<Self>) {
         let unavailable = {
             let store = self.store.read(cx).store();
+            let draft = self.new_conversation.read(cx);
             let kind = self.current.as_ref().and_then(|id| store.context(id)).map(|c| c.kind);
+            let in_context = |method: &str| {
+                kind.and_then(|kind| {
+                    crate::i18n::unsupported(store, &methods::in_context(method, kind))
+                })
+            };
             composer::Unavailable {
-                message: kind.and_then(|kind| {
-                    crate::i18n::unsupported(
-                        store,
-                        &methods::in_context(methods::SEND_MESSAGE, kind),
-                    )
-                }),
+                message: if draft.is_open() {
+                    draft.blocked(store)
+                } else {
+                    in_context(methods::SEND_MESSAGE)
+                },
                 task: crate::i18n::unsupported(store, methods::TASK_START),
+                attach: in_context(methods::ATTACH_OBJECT)
+                    .or_else(|| crate::i18n::unsupported(store, methods::ATTACH_OBJECT)),
             }
         };
         self.composer.update(cx, |composer, cx| composer.set_unavailable(unavailable, cx));
@@ -344,6 +443,9 @@ impl Workspace {
     /// Keeps the current context valid: when it disappears (or none is
     /// chosen yet) the first stacked context, else the first context, is shown.
     fn ensure_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.new_conversation.read(cx).is_open() {
+            return;
+        }
         let store = self.store.read(cx).store();
         if self.current.as_ref().is_some_and(|id| store.context(id).is_some()) {
             return;

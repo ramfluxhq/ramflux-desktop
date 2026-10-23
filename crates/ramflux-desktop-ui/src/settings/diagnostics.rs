@@ -7,8 +7,10 @@
 //! plaintext; identifiers that could link people are reduced to counts.
 //!
 //! A read-only group shows the renderer profile this client
-//! declares to its source and the renderer errors found this session. The
-//! local setup groups ([`super::local_setup`]) follow.
+//! declares to its source and the renderer errors found this session, and
+//! a note says what the daemon does not deliver yet (messages in
+//! conversations this device does not know arrive with the daemon's
+//! background sync). The local setup groups ([`super::local_setup`]) follow.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
@@ -119,6 +121,20 @@ fn renderer_group(context: &SectionContext, cx: &App) -> SettingGroup {
     SettingGroup::new().title(tr("settings.diagnostics.renderer")).item(item)
 }
 
+fn sync_group(cx: &App) -> SettingGroup {
+    let muted = cx.theme().muted_foreground;
+    let item = SettingItem::render(move |_, _, _: &mut App| {
+        div()
+            .id("diagnostics-sync-note")
+            .test_support()
+            .text_xs()
+            .text_color(muted)
+            .child(tr("settings.diagnostics.sync_note"))
+            .into_any_element()
+    });
+    SettingGroup::new().title(tr("settings.diagnostics.sync")).item(item)
+}
+
 /// The diagnostics section: the export and the renderer profile, then the
 /// local setup, the local daemon, version and logs.
 pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> SettingPage {
@@ -165,6 +181,7 @@ pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Settin
     SettingPage::new(tr("settings.section.diagnostics"))
         .group(SettingGroup::new().title(tr("settings.diagnostics.export_title")).item(item))
         .group(renderer_group(context, cx))
+        .group(sync_group(cx))
         .group(setup)
         .group(daemon)
         .group(about)

@@ -29,6 +29,7 @@ pub fn format_scope(scope: &Scope) -> String {
 pub fn ui_event_name(event: &UiEvent) -> &'static str {
     match event.kind {
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
+        UiEventKind::StartConversationRequested { .. } => "StartConversationRequested",
         UiEventKind::AttachFile { .. } => "AttachFile",
         UiEventKind::ActionInvoked { .. } => "ActionInvoked",
         UiEventKind::ApprovePressed => "ApprovePressed",
@@ -71,6 +72,7 @@ pub fn intent_name(intent: &Intent) -> &'static str {
 pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
         IntentKind::SendMessage { .. } => "SendMessage",
+        IntentKind::StartConversation { .. } => "StartConversation",
         IntentKind::AttachObject { .. } => "AttachObject",
         IntentKind::PinContext { .. } => "PinContext",
         IntentKind::UnpinContext { .. } => "UnpinContext",

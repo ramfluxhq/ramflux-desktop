@@ -18,6 +18,37 @@ composer:
   task_placeholder:
     en: "Describe what should happen, in one sentence"
     zh-CN: "用一句话描述要完成的事"
+  first_placeholder:
+    en: "Write the first message"
+    zh-CN: "输入第一条消息"
+  attach:
+    label:
+      en: "Attach a file"
+      zh-CN: "附加文件"
+    prompt:
+      en: "Attach"
+      zh-CN: "附加"
+    remove:
+      en: "Remove the file"
+      zh-CN: "移除文件"
+    too_large:
+      en: "%{size}: too large; one message carries at most %{limit}"
+      zh-CN: "%{size}：文件过大，一条消息最多携带 %{limit}"
+    unreadable:
+      en: "Cannot be read: %{reason}"
+      zh-CN: "无法读取：%{reason}"
+    not_a_file:
+      en: "not a file"
+      zh-CN: "不是文件"
+    sending:
+      en: "Sending…"
+      zh-CN: "正在发送…"
+    failed:
+      en: "Not sent: %{reason}"
+      zh-CN: "未发送：%{reason}"
+    after_start:
+      en: "Files can be attached once the conversation has started"
+      zh-CN: "会话开始后才能附加文件"
 conversation:
   title:
     en: "Conversation"
@@ -64,6 +95,41 @@ conversation:
   safety_banner:
     en: "%{name}: %{state}. Verify before you share anything sensitive."
     zh-CN: "%{name}：%{state}。在分享敏感内容前请先验证。"
+  new:
+    title:
+      en: "New conversation with %{name}"
+      zh-CN: "与 %{name} 的新会话"
+    title_unknown:
+      en: "New conversation"
+      zh-CN: "新会话"
+    hint:
+      en: "Your first message starts the conversation. It is end-to-end encrypted to their verified device."
+      zh-CN: "第一条消息即开启会话，消息以端到端加密发送到对方已验证的设备。"
+    sending:
+      en: "Starting the conversation…"
+      zh-CN: "正在开启会话…"
+    failed:
+      en: "The conversation did not start: %{reason}"
+      zh-CN: "会话未能开启：%{reason}"
+    error:
+      self:
+        en: "This is your own account."
+        zh-CN: "这是你自己的账户。"
+      not_accepted:
+        en: "%{name} has not accepted your contact request yet. Their answer arrives in Contacts."
+        zh-CN: "%{name} 尚未接受你的联系人请求，对方的答复会显示在联系人中。"
+      incoming:
+        en: "%{name} asked to become your contact. Accept the request in Contacts first."
+        zh-CN: "%{name} 请求成为你的联系人，请先在联系人中接受请求。"
+      blocked:
+        en: "You blocked %{name}. Unblock them in Contacts to write to them."
+        zh-CN: "你已屏蔽 %{name}，请在联系人中解除屏蔽后再发消息。"
+      not_a_contact:
+        en: "%{name} is not a contact. Add them in Contacts first."
+        zh-CN: "%{name} 不是联系人，请先在联系人中添加。"
+      key_changed:
+        en: "%{name}'s safety number changed. Verify it in Contacts before starting a conversation."
+        zh-CN: "%{name} 的安全码已变更，请先在联系人中验证后再开启会话。"
   jump_latest:
     en: "Jump to latest"
     zh-CN: "跳到最新"
@@ -86,6 +152,18 @@ stack:
   search:
     en: "Search"
     zh-CN: "搜索"
+  new:
+    en: "New conversation"
+    zh-CN: "新会话"
+  new_with:
+    en: "With %{name}"
+    zh-CN: "与 %{name}"
+  new_no_contacts:
+    en: "No contacts yet"
+    zh-CN: "还没有联系人"
+  add_contact:
+    en: "Add a contact"
+    zh-CN: "添加联系人"
   search_more:
     en: "Search %{count} more"
     zh-CN: "搜索其余 %{count} 个"
@@ -197,6 +275,12 @@ dock:
     actions_for:
       en: "Actions for %{name}"
       zh-CN: "%{name} 的操作"
+    message:
+      en: "Message"
+      zh-CN: "发消息"
+    message_to:
+      en: "Message %{name}"
+      zh-CN: "给 %{name} 发消息"
     list:
       en: "Contacts"
       zh-CN: "联系人"

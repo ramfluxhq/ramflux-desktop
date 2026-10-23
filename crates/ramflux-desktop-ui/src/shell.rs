@@ -15,7 +15,6 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, div,
 };
-use ramflux_desktop_core::{ContextKind, selectors};
 use ramflux_desktop_sdk::{SdkConfig, SdkHub};
 use ramflux_desktop_test::load_fixture;
 
@@ -494,17 +493,7 @@ impl Shell {
                 workspace.update(cx, |w, cx| w.open_tool(DockTool::Objects, window, cx))
             }
             PaletteChoice::Contact(participant) => {
-                let direct = {
-                    let store = self.store.read(cx).store();
-                    selectors::contexts_with(store, &participant)
-                        .into_iter()
-                        .find(|c| c.kind == ContextKind::Direct)
-                        .map(|c| c.id.clone())
-                };
-                workspace.update(cx, |w, cx| match direct {
-                    Some(id) => w.select_context(Some(id), window, cx),
-                    None => w.open_tool(DockTool::Contacts, window, cx),
-                });
+                workspace.update(cx, |w, cx| w.open_conversation_with(participant, window, cx));
             }
             PaletteChoice::SwitchAccount(account) => {
                 self.store.update(cx, |store, cx| store.set_active_account(&account, cx));

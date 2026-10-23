@@ -3,9 +3,10 @@
 
 //! The contacts dock: the add-contact form, open contact requests (answer
 //! in place), every contact with its safety state, safety number, a Verify
-//! action while unverified and a Block / Remove menu, then blocked
-//! participants (Unblock, Remove). Key changes stay visible here until
-//! verified.
+//! action while unverified, Message (reported to the workspace as
+//! [`ContactsDockEvent::MessageRequested`]) and a Block / Remove menu, then
+//! blocked participants (Unblock, Remove). Key changes stay visible here
+//! until verified.
 //!
 //! - [`add_form`]: the add-contact form and its view-local state.
 //! - [`rows`]: request, contact and blocked rows.
@@ -18,13 +19,22 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::InputEvent;
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::*;
-use gpui_kit::{Context, Entity, IntoElement, Render, Subscription, Window, div};
-use ramflux_desktop_core::{Listing, Participant, Store, UiEventKind, methods, selectors};
+use gpui_kit::{Context, Entity, EventEmitter, IntoElement, Render, Subscription, Window, div};
+use ramflux_desktop_core::{
+    Listing, Participant, ParticipantId, Store, UiEventKind, methods, selectors,
+};
 
 use super::section;
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use add_form::{AddForm, FormNote};
+
+/// Reported to the workspace (navigation, not intents).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContactsDockEvent {
+    /// Message pressed on a contact.
+    MessageRequested(ParticipantId),
+}
 
 /// The contacts dock content.
 pub struct ContactsDock {
@@ -33,6 +43,8 @@ pub struct ContactsDock {
     form: AddForm,
     _subscriptions: Vec<Subscription>,
 }
+
+impl EventEmitter<ContactsDockEvent> for ContactsDock {}
 
 impl ContactsDock {
     /// A dock over `store`, emitting through `sink` (scoped to the dock).
@@ -152,11 +164,13 @@ impl Render for ContactsDock {
                 "dock.contacts.empty",
                 cx,
             ))
-            .children(
-                contacts
-                    .iter()
-                    .map(|c| rows::contact_row(c, &self.sink, verify_reason.as_ref(), cx)),
-            )
+            .children(contacts.iter().map(|c| {
+                let id = c.id.clone();
+                let on_message = cx.listener(move |_, _, _, cx| {
+                    cx.emit(ContactsDockEvent::MessageRequested(id.clone()));
+                });
+                rows::contact_row(c, &self.sink, verify_reason.as_ref(), on_message, cx)
+            }))
             .when(!blocked.is_empty(), |col| {
                 col.child(section("dock.contacts.blocked", cx))
                     .children(blocked.iter().map(|c| rows::blocked_row(c, &self.sink, cx)))
