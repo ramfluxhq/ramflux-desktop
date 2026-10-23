@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Span Brain
 
 //! Locale resource checks: every key has every locale, English text has no
-//! CJK characters, every key used in code exists, and no Rust source in the
+//! CJK characters, every key used in code exists, keys are unique across the
+//! per-area files, the runtime resolves every file, and no Rust source in the
 //! workspace contains CJK text (translated text lives only in locale files).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,9 +20,31 @@ fn is_cjk(c: char) -> bool {
     matches!(c as u32, 0x3000..=0x303F | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF | 0xFF00..=0xFFEF)
 }
 
-/// Parses the two-space-indented `_version: 2` file into key -> locale -> text.
+fn locale_files() -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = fs::read_dir(crate_dir().join("locales"))
+        .expect("locales dir")
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "yml"))
+        .collect();
+    files.sort();
+    files
+}
+
+/// Parses every two-space-indented `_version: 2` file into key -> locale -> text.
 fn parse_locales() -> BTreeMap<String, BTreeMap<String, String>> {
-    let text = fs::read_to_string(crate_dir().join("locales/ui.yml")).expect("locale file");
+    let mut entries: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    for file in locale_files() {
+        for (key, texts) in parse_file(&file) {
+            assert!(!entries.contains_key(&key), "{key} is defined twice ({})", file.display());
+            entries.insert(key, texts);
+        }
+    }
+    entries
+}
+
+fn parse_file(file: &Path) -> BTreeMap<String, BTreeMap<String, String>> {
+    let text = fs::read_to_string(file).expect("locale file");
     let mut path: Vec<String> = Vec::new();
     let mut entries: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     for line in text.lines().filter(|l| !l.trim().is_empty() && !l.starts_with("_version")) {
@@ -106,7 +129,24 @@ fn every_key_used_in_code_exists() {
     let used = used_keys(&groups);
     assert!(used.len() > 100, "found {} keys in code", used.len());
     let missing: Vec<&String> = used.iter().filter(|key| !entries.contains_key(*key)).collect();
-    assert!(missing.is_empty(), "keys used in code but missing in ui.yml: {missing:?}");
+    assert!(missing.is_empty(), "keys used in code but missing in the locale files: {missing:?}");
+}
+
+#[test]
+fn the_runtime_resolves_a_key_from_every_file() {
+    rust_i18n::set_locale("en");
+    for file in locale_files() {
+        let entries = parse_file(&file);
+        for (key, texts) in entries.iter().filter(|(_, t)| !t["en"].contains('%')).take(3) {
+            let text = ramflux_desktop_ui::i18n::tr(key);
+            assert_eq!(
+                text.as_ref(),
+                texts["en"].as_str(),
+                "{key} from {} is not loaded",
+                file.display()
+            );
+        }
+    }
 }
 
 #[test]
