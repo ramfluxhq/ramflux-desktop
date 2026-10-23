@@ -8,17 +8,20 @@
 //! here: the root receives the request and policy opens the hold-to-confirm
 //! strip above the composer.
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{
-    BlockId, Grant, GrantState, InterventionPayload, Lifecycle, Risk, Scope, UiEventKind,
+    AuditEntry, BlockId, Grant, GrantState, InterventionPayload, Lifecycle, Risk, Scope,
+    UiEventKind,
 };
 
+use super::RowRefs;
 use crate::bubble::EventSink;
-use crate::i18n::{self, tr};
+use crate::i18n::{self, tr, tr_args};
 
 /// Block id of the disclosure.
 pub const DETAILS_BLOCK: &str = "details";
@@ -30,6 +33,8 @@ pub const DECISION_BLOCK: &str = "decision";
 pub struct InterventionBody {
     payload: InterventionPayload,
     grant: Option<Grant>,
+    audit: Option<AuditEntry>,
+    proposer: SharedString,
     lifecycle: Lifecycle,
     sink: EventSink,
     expanded: bool,
@@ -39,11 +44,32 @@ impl InterventionBody {
     /// A body emitting through the moment-scoped `sink`.
     pub fn new(
         payload: InterventionPayload,
-        grant: Option<Grant>,
+        refs: &RowRefs,
         lifecycle: Lifecycle,
         sink: EventSink,
     ) -> Self {
-        Self { payload, grant, lifecycle, sink, expanded: false }
+        let grant = refs.grants.get(&payload.grant_id).cloned();
+        let audit = refs
+            .audit
+            .iter()
+            .rev()
+            .find(|entry| entry.subject == payload.grant_id.as_str())
+            .cloned();
+        Self {
+            payload,
+            grant,
+            audit,
+            proposer: SharedString::default(),
+            lifecycle,
+            sink,
+            expanded: false,
+        }
+    }
+
+    /// Display name of the participant who asked.
+    pub fn proposed_by(mut self, proposer: SharedString) -> Self {
+        self.proposer = proposer;
+        self
     }
 
     /// Whether the details disclosure is open.
@@ -135,6 +161,7 @@ impl RenderOnce for InterventionBody {
             } else {
                 resolution(self.grant.as_ref(), self.lifecycle, cx).into_any_element()
             })
+            .child(audit_line(&self.proposer, self.audit.as_ref(), cx))
     }
 }
 
@@ -169,7 +196,7 @@ fn decision(sink: EventSink, risk: Risk) -> impl IntoElement {
         .gap_2()
         .child(Button::new("approve").primary().small().label(approve_label).on_click(
             move |_, window, cx| {
-                approve_sink.emit(UiEventKind::ApprovePressed { confirmed: false }, window, cx);
+                approve_sink.emit(UiEventKind::ApprovePressed, window, cx);
             },
         ))
         .child(
@@ -186,10 +213,27 @@ fn resolution(grant: Option<&Grant>, lifecycle: Lifecycle, cx: &App) -> impl Int
         Some(GrantState::Approved) => "moment.intervention.approved",
         Some(GrantState::Denied) => "moment.intervention.denied",
         Some(GrantState::Expired) => "moment.intervention.expired",
+        Some(GrantState::Revoked) => "moment.intervention.revoked",
         Some(GrantState::Pending) | None => match lifecycle {
             Lifecycle::Dismissed => "moment.intervention.denied",
             _ => "moment.intervention.closed",
         },
     };
     div().text_xs().text_color(cx.theme().muted_foreground).child(tr(key))
+}
+
+/// Who proposed the request and, once decided with a hold, that the
+/// attended human confirmed it (and when).
+fn audit_line(proposer: &SharedString, audit: Option<&AuditEntry>, cx: &App) -> impl IntoElement {
+    let confirmed = audit.filter(|entry| entry.human_confirmed).map(|entry| {
+        tr_args("moment.intervention.confirmed_by", &[("time", &i18n::time_of_day(entry.at))])
+    });
+    h_flex()
+        .id("intervention-audit")
+        .gap_2()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(tr_args("moment.intervention.proposed_by", &[("name", proposer)]))
+        .when_some(confirmed, |row, confirmed| row.child(confirmed))
+        .test_support()
 }
