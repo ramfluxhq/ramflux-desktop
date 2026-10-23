@@ -406,6 +406,7 @@ impl Task {
     fn effect(&mut self, effect: Effect) {
         let planned = plan(self.scope.account(), effect, &self.translator);
         let (method, body) = (planned.method, planned.body);
+        self.translator.decision_sent(&method, &body);
         match planned.plan {
             Plan::Call { request, refresh } => {
                 let lane = self.lane.clone();
@@ -464,9 +465,12 @@ impl Task {
                     BusError::Transport(_) => FailureCode::Transport,
                     BusError::Timeout => FailureCode::Timeout,
                 };
-                let failure =
-                    EffectFailure { method: method.to_owned(), code, message: error.message() };
-                self.emit(vec![DomainEvent::EffectFailed(failure)]);
+                let message = error.message();
+                let closed = self.translator.effect_failed(method, body, &code, &message, now());
+                let failure = EffectFailure { method: method.to_owned(), code, message };
+                let mut events = vec![DomainEvent::EffectFailed(failure)];
+                events.extend(closed);
+                self.emit(events);
                 if error.is_connection_lost() {
                     self.lost();
                 }

@@ -48,6 +48,7 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
         (methods::TASK_START, reason::TASKS),
         (methods::TASK_CANCEL, reason::TASKS),
         (methods::SURFACE_ACTION, reason::SURFACES),
+        (methods::RENDERER_ERROR, reason::SURFACES),
         (methods::HANDOFF_ACCEPT, reason::HANDOFF),
         (methods::HANDOFF_DECLINE, reason::HANDOFF),
         (methods::CONFLICT_RESOLVE, reason::CONFLICTS),

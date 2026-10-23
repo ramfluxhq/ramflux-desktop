@@ -13,7 +13,7 @@
 use std::sync::mpsc as std_mpsc;
 
 use ramflux_desktop_core::{
-    AccountId, ContextId, Effect, EventEnvelope, MomentId, Source, Timestamp,
+    AccountId, ContextId, Effect, EventEnvelope, MomentId, RendererProfile, Source, Timestamp,
 };
 
 use crate::bridge::{Bridge, Command, Delivery};
@@ -60,6 +60,7 @@ pub struct SdkSource {
     scope: Scope,
     inbox: std_mpsc::Receiver<Delivery>,
     last_seq: u64,
+    profile: Option<RendererProfile>,
 }
 
 impl std::fmt::Debug for SdkSource {
@@ -75,7 +76,7 @@ impl SdkSource {
     fn attach(bridge: Bridge, scope: Scope) -> Self {
         let (outbox, inbox) = std_mpsc::channel();
         bridge.send(Command::Attach { scope: scope.clone(), outbox });
-        Self { bridge, scope, inbox, last_seq: 0 }
+        Self { bridge, scope, inbox, last_seq: 0, profile: None }
     }
 
     /// The scope served.
@@ -86,6 +87,11 @@ impl SdkSource {
     /// The last sequence number handed out (the scope's cursor).
     pub fn last_seq(&self) -> u64 {
         self.last_seq
+    }
+
+    /// The renderer profile the app declared.
+    pub fn negotiated_profile(&self) -> Option<&RendererProfile> {
+        self.profile.as_ref()
     }
 }
 
@@ -105,6 +111,12 @@ impl Source for SdkSource {
 
     fn focus(&mut self, context: Option<&ContextId>) {
         self.bridge.send(Command::Focus { scope: self.scope.clone(), context: context.cloned() });
+    }
+
+    /// Kept for the surface stream (K2), which will send it to producers;
+    /// the daemon has no counterpart yet.
+    fn renderer_profile(&mut self, profile: &RendererProfile) {
+        self.profile = Some(profile.clone());
     }
 
     fn request_bodies(&mut self, moments: &[MomentId]) {

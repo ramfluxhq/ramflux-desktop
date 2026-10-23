@@ -104,7 +104,9 @@ impl Translator {
                 if let Some(grant) = answer["grant_id"].as_str() {
                     self.daemon_grants.insert(id.to_string(), grant.to_owned());
                 }
-                self.resolve(&id, GrantState::Approved)
+                let mut events = self.resolve(&id, GrantState::Approved);
+                events.extend(self.approval_answer(&id, text(body, "args_hash"), answer, now));
+                events
             }
             methods::GRANT_DENY => {
                 self.resolve(&GrantId::new(text(body, "grant_id")), GrantState::Denied)

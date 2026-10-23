@@ -15,12 +15,14 @@
 //! - `account`: account status, devices, contacts, integrations.
 //! - `conversation`: conversations, groups and their messages.
 //! - `grants`: approvals, grants and standing approvals.
+//! - `grant_failures`: fail-closed grant errors.
 //! - `effects`: answers to effects, and the audit record of confirmed ones.
 
 mod account;
 mod conversation;
 mod daemon;
 mod effects;
+mod grant_failures;
 mod grants;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -109,6 +111,7 @@ pub struct Translator {
     resend: BTreeSet<MomentId>,
     plaintext: BodyCache,
     grants: BTreeMap<GrantId, GrantState>,
+    bindings: BTreeMap<GrantId, grant_failures::Binding>,
     daemon_grants: BTreeMap<String, String>,
     standing: BTreeMap<StandingApprovalId, StandingApproval>,
     integrations: Option<ramflux_desktop_core::Integrations>,
@@ -138,6 +141,7 @@ impl Translator {
             resend: BTreeSet::new(),
             plaintext: BodyCache::with_capacity(PLAINTEXT_CAPACITY),
             grants: BTreeMap::new(),
+            bindings: BTreeMap::new(),
             daemon_grants: BTreeMap::new(),
             standing: BTreeMap::new(),
             integrations: None,
@@ -304,7 +308,14 @@ impl Translator {
     /// Translates one pushed event.
     pub fn pushed(&mut self, topic: &str, body: &Value) -> Vec<DomainEvent> {
         match topic {
-            "mcp.approval.request" => self.approval(body).into_iter().collect(),
+            "mcp.approval.request" => {
+                let id = GrantId::new(text(body, "approval_id"));
+                if self.grants.contains_key(&id) {
+                    self.approval_changed(&id, body)
+                } else {
+                    self.approval(body).into_iter().collect()
+                }
+            }
             "mcp.approval.granted" => self.approval_decided(body, GrantState::Approved),
             "mcp.approval.denied" => self.approval_decided(body, GrantState::Denied),
             // Tool starts and A2UI action records are not bound to a

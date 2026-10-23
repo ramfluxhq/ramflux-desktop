@@ -43,14 +43,18 @@ impl Translator {
             return None;
         }
         self.grants.insert(id.clone(), GrantState::Pending);
+        let args_hash = record["details"]["arguments_hash"].as_str().unwrap_or_default().to_owned();
+        let expiry = seconds(&record["expires_at"]);
+        self.bind(&id, &args_hash, expiry);
         Some(DomainEvent::GrantRequested(Grant {
             id,
             scope: scope(record),
             risk: risk(&record["risk_level"]),
             single_use: record["details"]["single_use"].as_bool().unwrap_or(false),
-            args_hash: record["details"]["arguments_hash"].as_str().unwrap_or_default().to_owned(),
-            expiry: seconds(&record["expires_at"]),
+            args_hash,
+            expiry,
             state: GrantState::Pending,
+            failure: None,
         }))
     }
 
@@ -110,6 +114,7 @@ impl Translator {
                     args_hash: body["arguments_hash"].as_str().unwrap_or_default().to_owned(),
                     expiry: seconds(&body["expires_at"]),
                     state: GrantState::Pending,
+                    failure: None,
                 }));
             }
             events.extend(self.resolve(&id, GrantState::Approved));
