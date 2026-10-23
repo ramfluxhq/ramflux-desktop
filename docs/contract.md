@@ -48,7 +48,7 @@ The store keeps each entity in its own collection, keyed by id:
 | `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state`, `self_participant_id` (the participant that is this account; outbound moments and receipts key on it, never guessed) |
 | `Node` | NODE-01 profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
 | `Device` | account, label, `this_device`, `revoked`, `last_seen` |
-| `Participant` | `kind` (Human, Agent, Device, Node), `display`, `safety`, `contact`, `safety_number` |
+| `Participant` | `kind` (Human, Agent, Device, Node), `display`, `safety`, `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported) |
 | `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread`, `muted`, `disappearing_secs`, `roles` (Owner, Admin, Member, Bot: exactly the daemon's roles), `epoch` |
 | `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind`, `lifecycle` |
 | `Object` | name, size, direction, `transfer`, `saved_to`, `preview` |
@@ -173,6 +173,7 @@ All selectors are pure functions of `&Store`.
 | `in_flight` | `InProgress` moments and `TaskProgress` moments whose task is not terminal, ordered by `(at, id)`. |
 | `timeline` | The moments of one context, ordered by `(at, id)`. |
 | `needs_me_count(context)`, `contact_requests` | Attention per context; open contact requests. |
+| `incoming_contact_requests`, `blocked_contacts` | Participants whose contact link is an incoming request, or blocked. |
 | `presenting_moment(grant)` | The intervention, approval block or owning task step that presents a grant. |
 | `contexts_with(participant)` | The contexts a participant is a member of. |
 | `objects`, `contacts`, `grants(Pending or All)`, `participants(context)` | Dock views. |
@@ -198,6 +199,13 @@ The kinds, by area:
 - Moments: `SurfaceAction`, `Approve`, `Deny`, `Reveal`, `ResolveConflict`,
   `AcceptContact`, `RejectContact`, `VerifySafetyNumber`, `AcceptHandoff`,
   `DeclineHandoff`.
+- Contacts: `AddContact { participant_id }` (the id the contact shared; human
+  only), `Contact { participant_id, action }` with `ContactAction` Accept,
+  Reject (incoming link), Block (accepted, incoming or outgoing), Unblock
+  (blocked), Remove (accepted or blocked). Methods `contact.add`,
+  `contact.accept`, `contact.reject`, `contact.block`, `contact.unblock`,
+  `contact.remove`; `contact.request` names sending a request to the
+  contact's device. `check_add_contact` is the add check the form also runs.
 - Objects: `PullObject` (queued inbound only), `SaveObject` (complete only),
   `RetryTransfer` (failed only).
 - Governance and approvals: `Governance { context_id, op }` (`AddMember`,
@@ -221,7 +229,8 @@ checks the intent against the store at time `now` and never mutates it.
   `[Effect::RequireConfirmation { intent }]`) for: approving a `High` or
   `Critical` grant, a `High` or `Critical` surface action, `Kick`, `Ban` and
   `SetRole`, every `Reveal`, `RevokeGrant`, `RevokeStandingApproval`,
-  `RevokeDevice`, and `ConfirmNode` with a trust-on-first-use (`Manual`) pin.
+  `RevokeDevice`, blocking or removing a contact, and `ConfirmNode` with a
+  trust-on-first-use (`Manual`) pin.
 - Grants that are not pending, or whose expiry is at or before `now`, cannot
   be approved or denied; only approved grants can be revoked.
 - `ConfirmNode` must match the discovered pin source; new accounts and new
@@ -230,7 +239,7 @@ checks the intent against the store at time `now` and never mutates it.
 - Agent proposals follow the same rules; the agent must be a known `Agent`
   participant. Agents may never unlock, create, activate or restore an
   account, rotate its passphrase, export a backup, sync or revoke devices,
-  confirm a node, verify a safety number, or answer a handoff.
+  confirm a node, verify a safety number, answer a handoff, or add a contact.
 
 `Effect` is one of the following:
 

@@ -86,12 +86,25 @@ daemon yet (shown disabled).
 
 ## 6. Add a contact
 
-The desktop has no "add contact" form yet. Add or request the contact with the
-reference CLI against the same socket (`rf contact add …` or
-`rf contact request …`; see `rf contact --help`); it then appears in the
-contacts dock. Pending daemon support: contact requests are not delivered to
-clients as events, so accepting or rejecting a request and verifying a safety
-number stay disabled in the desktop.
+Open the contacts dock (`secondary-alt-2`, or **Add a contact…** in the command
+palette), paste the id the contact shared with you (their principal id) and
+press **Add**. The contact is added on this account at once; the field explains
+an id it cannot use, and a daemon error is shown under the field. Supported
+today.
+
+Adding does not send the contact a request: a request travels to the contact's
+device, and the daemon does not list that route yet. Send one with the reference
+CLI against the same socket (`rf contact request …`; see `rf contact --help`).
+
+A request appears under **Requests** in the dock within one poll once the
+daemon has recorded it, which it does when it receives the request message in
+that conversation (the desktop receives only the conversations you have open or
+pinned; `rf dm read …` receives others). **Accept** adds the contact on
+this account and **Reject** declines.
+The requester is not told yet, for the same reason. A contact's menu blocks or
+removes them (both revoke what you shared and need a hold-to-confirm); blocked
+contacts can be unblocked. Verifying a safety number stays disabled: the daemon
+does not list the contact's identity commitment yet.
 
 ## 7. Send a message or an attachment
 
