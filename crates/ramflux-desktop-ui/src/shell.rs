@@ -20,7 +20,10 @@ use ramflux_desktop_sdk::{SdkConfig, SdkHub};
 use ramflux_desktop_test::load_fixture;
 
 use crate::actions::{
-    ClosePalette, CloseSettings, GoToNeedsMe, OpenPalette, OpenSettings, ToggleDevPanel,
+    ClosePalette, CloseSettings, GoToNeedsMe, NextSettingsSection, OpenPalette, OpenSettings,
+    PreviousSettingsSection, SelectStackEntry1, SelectStackEntry2, SelectStackEntry3,
+    SelectStackEntry4, SelectStackEntry5, SelectStackEntry6, ToggleApprovalsDock,
+    ToggleContactsDock, ToggleDevPanel, ToggleEvidenceDock, ToggleMembersDock, ToggleObjectsDock,
     TogglePinContext, ToggleTheme,
 };
 use crate::app::{StoreEvent, StoreHandle};
@@ -99,6 +102,8 @@ pub struct Shell {
     palette_open: bool,
     page: Page,
     focus_handle: FocusHandle,
+    /// Where keyboard focus returns when an overlay (settings, palette) closes.
+    return_focus: Option<FocusHandle>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -200,6 +205,16 @@ impl Shell {
             cx.subscribe_in(&palette, window, |this, _, event: &PaletteEvent, window, cx| {
                 this.on_palette_event(event.clone(), window, cx);
             }),
+            // A focused control can stop rendering (a confirmed node card, a
+            // closed strip, a finished entry step). Keyboard focus then moves
+            // to its closest rendered ancestor, or the window root, so Tab
+            // and every shortcut keep working.
+            cx.on_focus_lost(window, |this: &mut Self, window, cx| {
+                let target = window
+                    .focus_lost_restore_target(cx)
+                    .unwrap_or_else(|| this.focus_handle.clone());
+                target.focus(window, cx);
+            }),
         ];
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
@@ -217,6 +232,7 @@ impl Shell {
             palette_open: false,
             page: Page::Entry(EntryStep::Daemon),
             focus_handle,
+            return_focus: None,
             _subscriptions: subscriptions,
         };
         shell.sync_page(cx);
@@ -332,8 +348,45 @@ impl Shell {
         cx.notify();
     }
 
-    fn open_settings(&mut self, _: &OpenSettings, _: &mut Window, cx: &mut Context<Self>) {
+    fn open_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.settings_open {
+            self.remember_focus(window, cx);
+        }
         self.open_settings_at(SettingsSection::Account, cx);
+        let focus = self.settings.read(cx).focus_handle(cx);
+        window.focus(&focus, cx);
+    }
+
+    /// Saves the focused element so closing an overlay can return to it.
+    fn remember_focus(&mut self, window: &mut Window, cx: &App) {
+        self.return_focus = window.focused(cx);
+    }
+
+    /// Returns keyboard focus after an overlay closed: to the element that
+    /// had it, or the window root when that element is gone.
+    fn restore_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let target = self.return_focus.take().unwrap_or_else(|| self.focus_handle.clone());
+        window.focus(&target, cx);
+    }
+
+    fn select_stack_entry(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page == Page::Workspace {
+            self.workspace.update(cx, |w, cx| w.select_stack_entry(ix, window, cx));
+        }
+    }
+
+    fn toggle_dock(&mut self, tool: DockTool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page == Page::Workspace {
+            self.workspace.update(cx, |w, cx| w.toggle_tool_with_focus(tool, window, cx));
+        }
+    }
+
+    fn settings_section(&mut self, step: isize, cx: &mut Context<Self>) {
+        if self.settings_open {
+            self.settings.update(cx, |page, cx| page.step_section(step, cx));
+        } else {
+            cx.propagate();
+        }
     }
 
     /// Closes the settings overlay.
@@ -347,7 +400,7 @@ impl Shell {
         if self.settings_open {
             self.settings_open = false;
             self.sync_host(cx);
-            window.focus(&self.focus_handle, cx);
+            self.restore_focus(window, cx);
             cx.notify();
         } else {
             cx.propagate();
@@ -359,6 +412,9 @@ impl Shell {
             return;
         }
         let current = self.workspace.read(cx).current_context().cloned();
+        if !self.palette_open {
+            self.remember_focus(window, cx);
+        }
         self.settings_open = false;
         self.sync_host(cx);
         self.palette_open = true;
@@ -373,7 +429,7 @@ impl Shell {
     fn dismiss_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.palette_open {
             self.palette_open = false;
-            window.focus(&self.focus_handle, cx);
+            self.restore_focus(window, cx);
             cx.notify();
         }
     }
@@ -449,6 +505,47 @@ impl Render for Shell {
             .on_action(cx.listener(Self::open_palette))
             .on_action(cx.listener(Self::close_palette))
             .on_action(cx.listener(Self::toggle_theme))
+            .on_action(
+                cx.listener(|this, _: &SelectStackEntry1, w, cx| this.select_stack_entry(0, w, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &SelectStackEntry2, w, cx| this.select_stack_entry(1, w, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &SelectStackEntry3, w, cx| this.select_stack_entry(2, w, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &SelectStackEntry4, w, cx| this.select_stack_entry(3, w, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &SelectStackEntry5, w, cx| this.select_stack_entry(4, w, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &SelectStackEntry6, w, cx| this.select_stack_entry(5, w, cx)),
+            )
+            .on_action(cx.listener(|this, _: &ToggleObjectsDock, w, cx| {
+                this.toggle_dock(DockTool::Objects, w, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ToggleContactsDock, w, cx| {
+                this.toggle_dock(DockTool::Contacts, w, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ToggleMembersDock, w, cx| {
+                this.toggle_dock(DockTool::Members, w, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ToggleApprovalsDock, w, cx| {
+                this.toggle_dock(DockTool::Approvals, w, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ToggleEvidenceDock, w, cx| {
+                this.toggle_dock(DockTool::Evidence, w, cx)
+            }))
+            .on_action(
+                cx.listener(|this, _: &NextSettingsSection, _, cx| this.settings_section(1, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &PreviousSettingsSection, _, cx| {
+                    this.settings_section(-1, cx)
+                }),
+            )
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)

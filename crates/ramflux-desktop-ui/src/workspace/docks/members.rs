@@ -20,7 +20,7 @@ use ramflux_desktop_core::{
 use super::{empty_line, section};
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
-use crate::i18n::{self, tr};
+use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 
 /// The members dock content.
@@ -75,6 +75,7 @@ fn member_row(
             .ghost()
             .xsmall()
             .icon(IconName::Ellipsis)
+            .accessibility_label(tr_args("dock.members.actions_for", &[("name", &member.display)]))
             .tooltip(tr("dock.members.actions"))
             .dropdown_menu(move |menu, _, _| {
                 let target = |op: GovernanceOp| {

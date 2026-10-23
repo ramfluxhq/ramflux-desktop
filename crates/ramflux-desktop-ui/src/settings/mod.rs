@@ -23,6 +23,8 @@ pub mod diagnostics;
 pub mod integrations;
 pub mod nodes;
 
+use gpui_kit::TestSupportExt as _;
+use gpui_kit::component::FocusTrapElement as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, InputState};
@@ -30,7 +32,8 @@ use gpui_kit::component::setting::{SelectIndex, Settings};
 use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window, div,
+    App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, SharedString, Subscription,
+    Window, div,
 };
 use ramflux_desktop_core::Scope;
 
@@ -109,7 +112,14 @@ pub struct SettingsPage {
     inputs: account::AccountInputs,
     section: SettingsSection,
     opened: usize,
+    focus_handle: FocusHandle,
     _subscriptions: Vec<Subscription>,
+}
+
+impl Focusable for SettingsPage {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
 }
 
 impl SettingsPage {
@@ -151,6 +161,7 @@ impl SettingsPage {
             inputs,
             section: SettingsSection::Account,
             opened: 0,
+            focus_handle: cx.focus_handle(),
             _subscriptions: subscriptions,
         }
     }
@@ -165,6 +176,16 @@ impl SettingsPage {
     /// The section shown when the overlay opened.
     pub fn section(&self) -> SettingsSection {
         self.section
+    }
+
+    /// Shows the section `step` places after (or, negative, before) the
+    /// current one, wrapping around (keyboard section navigation).
+    pub fn step_section(&mut self, step: isize, cx: &mut Context<Self>) {
+        let count = SettingsSection::ALL.len();
+        let current = isize::try_from(self.section.index()).unwrap_or(0);
+        let len = isize::try_from(count).unwrap_or(1);
+        let next = usize::try_from((current + step).rem_euclid(len)).unwrap_or(0);
+        self.show(SettingsSection::ALL[next], cx);
     }
 
     /// The masked inputs of passphrase rotation.
@@ -193,6 +214,7 @@ impl Render for SettingsPage {
         let strip = (root.host() == ConfirmHost::Settings).then(|| root.confirm_strip().clone());
         v_flex()
             .id("settings")
+            .test_support()
             .key_context(SETTINGS_CONTEXT)
             .absolute()
             .inset_0()
@@ -227,6 +249,9 @@ impl Render for SettingsPage {
                 ),
             )
             .children(strip.map(|strip| div().flex_shrink_0().pb_2().child(strip)))
+            // An overlay over the whole window: Tab stays inside it. The trap
+            // tracks the page's focus handle and keeps the "settings" id.
+            .focus_trap("settings", &self.focus_handle)
     }
 }
 

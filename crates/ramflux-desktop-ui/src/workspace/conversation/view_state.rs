@@ -55,6 +55,7 @@ impl ViewState {
             fields: self.fields.get(id).cloned().unwrap_or_default(),
             inputs: self.inputs.get(id).cloned().unwrap_or_default(),
             diff: self.diffs.get(id).cloned(),
+            focus: None,
         }
     }
 

@@ -64,6 +64,29 @@ impl ContextStack {
     fn select(&mut self, id: ContextId, cx: &mut Context<Self>) {
         cx.emit(ContextStackEvent::Selected(id));
     }
+
+    /// The contexts shown, top to bottom (what secondary-1..6 select).
+    pub fn entry_ids(&self, store: &Store) -> Vec<ContextId> {
+        entries(store, self.current.as_ref()).into_iter().map(|entry| entry.id).collect()
+    }
+}
+
+/// The accessible name of an entry: its title and every state the row shows.
+fn accessible_name(entry: &Entry) -> SharedString {
+    let mut parts = vec![entry.title.to_string()];
+    if entry.pinned {
+        parts.push(tr("stack.pinned").to_string());
+    }
+    if entry.muted {
+        parts.push(tr("stack.muted").to_string());
+    }
+    if entry.needs_me > 0 {
+        parts
+            .push(tr_args("stack.needs_me", &[("count", &entry.needs_me.to_string())]).to_string());
+    } else if entry.unread > 0 {
+        parts.push(tr_args("stack.unread", &[("count", &entry.unread.to_string())]).to_string());
+    }
+    parts.join(", ").into()
 }
 
 struct Entry {
@@ -129,6 +152,7 @@ impl Render for ContextStack {
                 .ghost()
                 .small()
                 .w_full()
+                .accessibility_label(accessible_name(&entry))
                 .selected(selected)
                 .on_click(cx.listener(move |this, _, _, cx| this.select(id.clone(), cx)))
                 .child(

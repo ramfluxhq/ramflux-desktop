@@ -114,6 +114,7 @@ pub fn render(
                 .ghost()
                 .small()
                 .icon(IconName::Ellipsis)
+                .accessibility_label(tr("conversation.more"))
                 .tooltip(tr("conversation.more"))
                 .dropdown_menu(move |menu, _, _| {
                     let mute = menu_sink.clone();

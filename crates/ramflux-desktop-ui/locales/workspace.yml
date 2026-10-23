@@ -77,6 +77,12 @@ stack:
   muted:
     en: "Muted"
     zh-CN: "静音"
+  pinned:
+    en: "Pinned"
+    zh-CN: "已固定"
+  unread:
+    en: "%{count} unread"
+    zh-CN: "%{count} 条未读"
   search:
     en: "Search"
     zh-CN: "搜索"
@@ -151,6 +157,9 @@ dock:
     actions:
       en: "Member actions"
       zh-CN: "成员操作"
+    actions_for:
+      en: "Actions for %{name}"
+      zh-CN: "%{name} 的操作"
     make_admin:
       en: "Make admin…"
       zh-CN: "设为管理员…"

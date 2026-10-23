@@ -8,7 +8,9 @@
 //! gesture: the pending intent stays with the intent root, which re-submits
 //! it with the human's confirmation when the strip reports
 //! [`ConfirmEvent::HoldCompleted`]. A click is not a hold: the button must be
-//! held (pointer or Space) for [`HOLD_DURATION`]; releasing early resets it.
+//! held (pointer, Space or Enter) for [`HOLD_DURATION`]; releasing early
+//! resets it. The strip is an alert that names the request and its risk, and
+//! the hold control reports its progress as a value from 0 to 100.
 
 use std::time::{Duration, Instant};
 
@@ -16,7 +18,9 @@ use crate::actions::{CONFIRM_CONTEXT, CancelConfirmation};
 use crate::i18n::{self, tr, tr_args};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Icon, IconName, Sizable as _, ThemeStyled as _, h_flex, v_flex,
+};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent, KeyUpEvent,
@@ -172,8 +176,13 @@ impl ConfirmStrip {
     }
 }
 
+/// Keys that press and hold the focused hold control.
+fn is_hold_key(key: &str) -> bool {
+    matches!(key, "space" | "enter")
+}
+
 impl Render for ConfirmStrip {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(request) = self.request.clone() else {
             return div().id("confirm-strip").into_any_element();
         };
@@ -184,8 +193,15 @@ impl Render for ConfirmStrip {
         };
         let progress = self.progress;
         let hold_label = tr("confirm.hold");
+        let risk = i18n::risk(request.risk());
+        let announce =
+            tr_args("confirm.announce", &[("summary", request.summary()), ("risk", &risk)]);
+        let focused = self.focus_handle.is_focused(window);
         h_flex()
             .id("confirm-strip")
+            .role(Role::Alert)
+            .aria_label(announce)
+            .test_support()
             .key_context(CONFIRM_CONTEXT)
             .on_action(cx.listener(Self::on_cancel_action))
             .flex_shrink_0()
@@ -239,6 +255,11 @@ impl Render for ConfirmStrip {
                     .id("hold-confirm")
                     .role(Role::Button)
                     .aria_label(hold_label.clone())
+                    .aria_description(tr("confirm.hold_keys"))
+                    .aria_keyshortcuts("Space")
+                    .aria_numeric_value(f64::from(progress * 100.))
+                    .aria_min_numeric_value(0.)
+                    .aria_max_numeric_value(100.)
                     .test_support()
                     .track_focus(&self.focus_handle)
                     .relative()
@@ -252,7 +273,7 @@ impl Render for ConfirmStrip {
                     .rounded(cx.theme().radius)
                     .text_sm()
                     .text_color(cx.theme().foreground)
-                    .focus_visible(|style| style.border_2())
+                    .when(focused, |control| control.focus_ring_style(window, cx))
                     .child(
                         div()
                             .absolute()
@@ -276,12 +297,12 @@ impl Render for ConfirmStrip {
                         cx.listener(|this, _, _, cx| this.release_hold(cx)),
                     )
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                        if event.keystroke.key == "space" && !event.is_held {
+                        if is_hold_key(&event.keystroke.key) && !event.is_held {
                             this.begin_hold(cx);
                         }
                     }))
                     .on_key_up(cx.listener(|this, event: &KeyUpEvent, _, cx| {
-                        if event.keystroke.key == "space" {
+                        if is_hold_key(&event.keystroke.key) {
                             this.release_hold(cx);
                         }
                     })),

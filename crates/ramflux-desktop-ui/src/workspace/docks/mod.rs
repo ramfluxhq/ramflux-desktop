@@ -36,10 +36,14 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyView, App, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
-    SharedString, Window, div,
+    Role, SharedString, Window, div,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::actions::{
+    CloseDock, DOCK_CONTEXT, ToggleApprovalsDock, ToggleContactsDock, ToggleEvidenceDock,
+    ToggleMembersDock, ToggleObjectsDock,
+};
 use crate::i18n::tr;
 
 /// One summonable tool.
@@ -100,6 +104,17 @@ impl DockTool {
         })
     }
 
+    /// The keyboard command that opens or closes the tool.
+    pub fn toggle_action(self) -> Box<dyn gpui_kit::Action> {
+        match self {
+            Self::Objects => Box::new(ToggleObjectsDock),
+            Self::Contacts => Box::new(ToggleContactsDock),
+            Self::Members => Box::new(ToggleMembersDock),
+            Self::Approvals => Box::new(ToggleApprovalsDock),
+            Self::Evidence => Box::new(ToggleEvidenceDock),
+        }
+    }
+
     /// Rail icon.
     pub fn icon(self) -> IconName {
         match self {
@@ -117,6 +132,8 @@ impl DockTool {
 pub enum DockToolEvent {
     /// The user pinned or unpinned the tool.
     PinToggled(DockTool),
+    /// The user asked (Escape) to close the dock that has focus.
+    CloseRequested(DockTool),
 }
 
 /// The shared dock panel frame around one tool's content view.
@@ -131,6 +148,10 @@ impl DockToolPanel {
     /// A panel for `tool` showing `content`.
     pub fn new(tool: DockTool, content: AnyView, cx: &mut Context<Self>) -> Self {
         Self { tool, content, pinned: false, focus_handle: cx.focus_handle() }
+    }
+
+    fn close(&mut self, _: &CloseDock, _: &mut Window, cx: &mut Context<Self>) {
+        cx.emit(DockToolEvent::CloseRequested(self.tool));
     }
 
     /// The tool shown.
@@ -182,6 +203,12 @@ impl Render for DockToolPanel {
         let pinned = self.pinned;
         v_flex()
             .id(SharedString::from(format!("dock-panel-{}", tool.key())))
+            .role(Role::Region)
+            .aria_label(tool.title())
+            .test_support()
+            .track_focus(&self.focus_handle)
+            .key_context(DOCK_CONTEXT)
+            .on_action(cx.listener(Self::close))
             .size_full()
             .min_h_0()
             .child(
@@ -242,7 +269,8 @@ impl RenderOnce for DockRail {
                 .ghost()
                 .small()
                 .icon(tool.icon())
-                .tooltip(tool.title())
+                .accessibility_label(tool.title())
+                .tooltip_with_action(tool.title(), tool.toggle_action().as_ref(), None)
                 .selected(self.open == Some(tool))
                 .on_click(move |_: &ClickEvent, window, cx| on_toggle(tool, window, cx))
         });

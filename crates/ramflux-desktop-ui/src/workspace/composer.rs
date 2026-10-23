@@ -159,6 +159,7 @@ impl Render for Composer {
                     .small()
                     .selected(self.mode == ComposerMode::Task)
                     .icon(IconName::LayoutDashboard)
+                    .accessibility_label(tr("composer.task_mode"))
                     .tooltip(task_reason.clone().unwrap_or_else(|| tr("composer.task_mode")))
                     .disabled(
                         !enabled || (task_reason.is_some() && self.mode == ComposerMode::Message),

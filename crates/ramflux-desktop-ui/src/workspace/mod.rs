@@ -200,9 +200,12 @@ impl Workspace {
             subscriptions.push(cx.subscribe_in(
                 &slot.panel,
                 window,
-                |this, _, event: &DockToolEvent, _, cx| {
-                    let DockToolEvent::PinToggled(tool) = *event;
-                    this.toggle_pinned(tool, cx);
+                |this, _, event: &DockToolEvent, window, cx| match *event {
+                    DockToolEvent::PinToggled(tool) => this.toggle_pinned(tool, cx),
+                    DockToolEvent::CloseRequested(_) => {
+                        this.close_dock(window, cx);
+                        this.composer.update(cx, |composer, cx| composer.focus(window, cx));
+                    }
                 },
             ));
         }
@@ -355,7 +358,10 @@ impl Workspace {
             self.select_context(Some(next.item.context_id.clone()), window, cx);
         }
         let moment = next.item.moment_id.clone();
-        self.conversation.update(cx, |field, cx| field.focus_moment(&moment, cx));
+        self.conversation.update(cx, |field, cx| {
+            field.focus_moment(&moment, cx);
+            field.focus_highlighted(window, cx);
+        });
     }
 
     /// The pin command for the current context.
@@ -403,6 +409,38 @@ impl Workspace {
         } else {
             self.open_tool(tool, window, cx);
         }
+    }
+
+    /// The keyboard path to a tool: opens it and moves focus into its panel
+    /// (Escape closes it again), or closes it and returns to the composer.
+    pub fn toggle_tool_with_focus(
+        &mut self,
+        tool: DockTool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.open_tool == Some(tool) {
+            self.close_dock(window, cx);
+            self.composer.update(cx, |composer, cx| composer.focus(window, cx));
+            return;
+        }
+        self.open_tool(tool, window, cx);
+        if let Some(slot) = self.tools.iter().find(|slot| slot.tool == tool) {
+            let focus = slot.panel.read(cx).focus_handle(cx);
+            window.focus(&focus, cx);
+        }
+    }
+
+    /// Shows the `ix`-th context of the stack (secondary-1 to secondary-6)
+    /// and moves focus to the composer.
+    pub fn select_stack_entry(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let target = {
+            let store = self.store.read(cx).store();
+            self.stack.read(cx).entry_ids(store).into_iter().nth(ix)
+        };
+        let Some(id) = target else { return };
+        self.select_context(Some(id), window, cx);
+        self.composer.update(cx, |composer, cx| composer.focus(window, cx));
     }
 
     /// Pins a tool (it stays open across contexts and launches) or unpins it.

@@ -28,6 +28,9 @@ common:
     en: "No"
     zh-CN: "否"
 status:
+  needs_me_hint:
+    en: "Take me to what needs me"
+    zh-CN: "带我去需要我处理的事项"
   label:
     account:
       en: "Account"
@@ -271,6 +274,12 @@ confirm:
   hold:
     en: "Hold to confirm"
     zh-CN: "按住确认"
+  hold_keys:
+    en: "Hold Space or Enter for a moment to confirm, Escape to cancel"
+    zh-CN: "按住空格键或回车键片刻以确认，按 Esc 取消"
+  announce:
+    en: "Confirmation needed: %{summary}. Risk: %{risk}"
+    zh-CN: "需要确认：%{summary}。风险：%{risk}"
   risk:
     en: "Risk: %{risk}"
     zh-CN: "风险：%{risk}"

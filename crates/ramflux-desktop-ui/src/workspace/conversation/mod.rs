@@ -50,6 +50,7 @@ pub struct Conversation {
     highlighted: Option<MomentId>,
     composer: Entity<Composer>,
     focus_handle: FocusHandle,
+    highlight_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -126,6 +127,7 @@ impl Conversation {
             highlighted: None,
             composer,
             focus_handle: cx.focus_handle(),
+            highlight_focus: cx.focus_handle().tab_stop(true),
             _subscriptions: subscriptions,
         }
     }
@@ -198,6 +200,20 @@ impl Conversation {
             let _ = state.scroll_to_item(ix, cx);
         });
         cx.notify();
+    }
+
+    /// Moves keyboard focus to the highlighted row, so Tab reaches its
+    /// controls (approve, deny, details) next.
+    pub fn focus_highlighted(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.highlighted.is_some() {
+            window.focus(&self.highlight_focus, cx);
+            cx.notify();
+        }
+    }
+
+    /// The keyboard focus of the highlighted row.
+    pub fn highlight_focus(&self) -> &FocusHandle {
+        &self.highlight_focus
     }
 
     fn remeasure(&mut self, id: &MomentId, cx: &mut Context<Self>) {
@@ -348,6 +364,7 @@ impl Render for Conversation {
                 // up in the renderer, not prepared for every row.
                 let view = Rc::new(self.view.clone());
                 let highlighted = self.highlighted.clone();
+                let highlight_focus = self.highlight_focus.clone();
                 let this = cx.weak_entity();
                 let store = self.store.downgrade();
                 MessageScroller::new("conversation", self.scroller.clone(), move |ix, _, cx| {
@@ -361,7 +378,9 @@ impl Render for Conversation {
                             store.update(cx, |store, _| store.request_bodies(&[id])).ok();
                         });
                     }
-                    let state = view.row_state(id, highlighted.as_ref() == Some(id));
+                    let is_highlighted = highlighted.as_ref() == Some(id);
+                    let mut state = view.row_state(id, is_highlighted);
+                    state.focus = is_highlighted.then(|| highlight_focus.clone());
                     let sink = Self::moment_sink(this.clone(), &context_sink, id);
                     MomentView::new(row.clone(), sink, state).into_any_element()
                 })

@@ -31,11 +31,12 @@ use std::rc::Rc;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
+use gpui_kit::component::ThemeStyled as _;
 use gpui_kit::component::diff::DiffState;
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{App, Entity, IntoElement, SharedString, Window, div};
+use gpui_kit::{App, Entity, FocusHandle, IntoElement, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
     Actor, AuditEntry, BlockId, BlockKind, Grant, GrantId, Lifecycle, Moment, MomentId, MomentKind,
     Object, ObjectId, Participant, ParticipantId, Store, Task, selectors,
@@ -269,6 +270,9 @@ pub struct RowState {
     pub inputs: Rc<BTreeMap<BlockId, Entity<InputState>>>,
     /// Compare state of a conflict.
     pub diff: Option<Entity<DiffState>>,
+    /// Keyboard focus of the highlighted row ("take me to what needs me"
+    /// moves focus here; Tab then reaches the row's own controls).
+    pub focus: Option<FocusHandle>,
 }
 
 /// One rendered moment row.
@@ -334,10 +338,14 @@ impl RenderOnce for MomentView {
             MomentKind::System(p) => notice::system(p, cx).into_any_element(),
             MomentKind::Fallback(p) => notice::fallback(p, cx).into_any_element(),
         };
-        let _ = window;
+        let focused = state.focus.as_ref().is_some_and(|f| f.is_focused(window));
         v_flex()
             .id(domain_id("moment", &moment.id))
+            .role(Role::ListItem)
+            .aria_label(accessible_label(&row))
+            .aria_selected(state.highlighted)
             .test_support()
+            .when_some(state.focus.as_ref(), |el, focus| el.track_focus(focus))
             .w_full()
             .min_w_0()
             .gap_1()
@@ -351,9 +359,31 @@ impl RenderOnce for MomentView {
                     .py_1()
                     .rounded(cx.theme().radius)
                     .when(state.highlighted, |r| r.bg(cx.theme().muted))
+                    .when(focused, |r| r.focus_ring_style(window, cx))
                     .child(header(&row, cx))
                     .child(body),
             )
+    }
+}
+
+/// What assistive technology announces for a row: its kind, author, time
+/// and lifecycle state, plus the risk of a decision.
+pub fn accessible_label(row: &MomentRow) -> SharedString {
+    let moment = &row.moment;
+    let base = i18n::tr_args(
+        "moment.a11y.row",
+        &[
+            ("kind", &i18n::moment_kind(&moment.kind)),
+            ("author", &row.author),
+            ("time", &i18n::time_of_day(moment.at)),
+            ("state", &i18n::lifecycle(moment.lifecycle)),
+        ],
+    );
+    match &moment.kind {
+        MomentKind::Intervention(p) => {
+            i18n::tr_args("moment.a11y.with_risk", &[("row", &base), ("risk", &i18n::risk(p.risk))])
+        }
+        _ => base,
     }
 }
 

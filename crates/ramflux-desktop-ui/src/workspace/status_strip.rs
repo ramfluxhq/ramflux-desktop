@@ -254,7 +254,8 @@ impl Render for StatusStrip {
                                 .ghost()
                                 .small()
                                 .icon(IconName::Search)
-                                .tooltip(tr("status.palette"))
+                                .accessibility_label(tr("status.palette"))
+                                .tooltip_with_action(tr("status.palette"), &OpenPalette, None)
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(OpenPalette), cx)
                                 }),
@@ -269,6 +270,7 @@ impl Render for StatusStrip {
                                     "status.needs_me",
                                     &[("count", &needs_me.to_string())],
                                 ))
+                                .tooltip_with_action(tr("status.needs_me_hint"), &GoToNeedsMe, None)
                                 .disabled(needs_me == 0)
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(GoToNeedsMe), cx)
@@ -280,7 +282,8 @@ impl Render for StatusStrip {
                             .ghost()
                             .small()
                             .icon(if cx.theme().is_dark() { IconName::Sun } else { IconName::Moon })
-                            .tooltip(tr("status.toggle_theme"))
+                            .accessibility_label(tr("status.toggle_theme"))
+                            .tooltip_with_action(tr("status.toggle_theme"), &ToggleTheme, None)
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(ToggleTheme), cx)
                             }),
@@ -290,7 +293,8 @@ impl Render for StatusStrip {
                             .ghost()
                             .small()
                             .icon(IconName::Settings)
-                            .tooltip(tr("status.settings"))
+                            .accessibility_label(tr("status.settings"))
+                            .tooltip_with_action(tr("status.settings"), &OpenSettings, None)
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(OpenSettings), cx)
                             }),
@@ -301,7 +305,8 @@ impl Render for StatusStrip {
                                 .ghost()
                                 .small()
                                 .icon(IconName::SquareTerminal)
-                                .tooltip(tr("status.dev_panel"))
+                                .accessibility_label(tr("status.dev_panel"))
+                                .tooltip_with_action(tr("status.dev_panel"), &ToggleDevPanel, None)
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(ToggleDevPanel), cx)
                                 }),
