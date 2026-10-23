@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "apps/ramflux-desktop",
     "crates/ramflux-desktop-core",
+    "crates/ramflux-desktop-sdk",
     "crates/ramflux-desktop-test",
     "crates/ramflux-desktop-ui",
 ]
@@ -25,6 +26,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 zeroize = "1.8"
+# The product SDK (local-bus client, request types), pinned by full commit.
+ramflux-sdk = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "fd3b184bec025f456c8def1f00eecc4f6ca34d95" }
+ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "fd3b184bec025f456c8def1f00eecc4f6ca34d95" }
+ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "fd3b184bec025f456c8def1f00eecc4f6ca34d95" }
+# Only on the SDK bridge thread; never in GPUI tasks or core.
+tokio = { version = "1.42", default-features = false, features = ["rt", "net", "sync", "time", "macros", "io-util"] }
 ramflux-desktop-core = { path = "crates/ramflux-desktop-core" }
+ramflux-desktop-sdk = { path = "crates/ramflux-desktop-sdk" }
 ramflux-desktop-test = { path = "crates/ramflux-desktop-test" }
 ramflux-desktop-ui = { path = "crates/ramflux-desktop-ui" }

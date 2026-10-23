@@ -1,0 +1,19 @@
+[package]
+name = "ramflux-desktop-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+ramflux-crypto.workspace = true
+ramflux-protocol.workspace = true
+ramflux-desktop-core.workspace = true
+ramflux-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+zeroize.workspace = true

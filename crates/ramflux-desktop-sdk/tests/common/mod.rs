@@ -1,0 +1,95 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Span Brain
+
+//! Shared helpers for the adapter tests.
+
+#![allow(dead_code)]
+
+pub mod fake_bus;
+
+use std::time::{Duration, Instant};
+
+use ramflux_desktop_core::{EventEnvelope, Source, Store, Timestamp};
+use ramflux_desktop_sdk::{SdkConfig, SdkHub, SdkSource};
+
+pub use fake_bus::{FakeBus, Reply, frames, socket_path};
+
+/// Fast timings for tests.
+pub fn config(path: &std::path::Path) -> SdkConfig {
+    SdkConfig {
+        request_connections: 2,
+        request_timeout: Duration::from_secs(3),
+        poll_fast: Duration::from_millis(80),
+        poll_slow: Duration::from_millis(300),
+        reconnect_backoff: Duration::from_millis(150),
+        ..SdkConfig::new(path)
+    }
+}
+
+/// The fixture answer for `method`, or an empty object.
+pub fn fixture(method: &str) -> Reply {
+    Reply::Ok(frames().get(method).cloned().unwrap_or_else(|| serde_json::json!({})))
+}
+
+/// A store fed by one source, with every envelope kept.
+pub struct Fed {
+    pub source: SdkSource,
+    pub store: Store,
+    pub envelopes: Vec<EventEnvelope>,
+}
+
+impl Fed {
+    pub fn new(source: SdkSource) -> Self {
+        Self { source, store: Store::new(), envelopes: Vec::new() }
+    }
+
+    /// Applies what has arrived.
+    pub fn pump(&mut self) {
+        for env in self.source.drain(Timestamp(0)) {
+            let _ = self.store.apply(&env);
+            self.envelopes.push(env);
+        }
+    }
+
+    /// Pumps until `done` holds, or panics after a few seconds.
+    pub fn until(&mut self, what: &str, done: impl Fn(&Store, &[EventEnvelope]) -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(6);
+        loop {
+            self.pump();
+            if done(&self.store, &self.envelopes) {
+                return;
+            }
+            assert!(Instant::now() < deadline, "timed out waiting for: {what}");
+            std::thread::sleep(Duration::from_millis(15));
+        }
+    }
+
+    /// Pumps for `ms` milliseconds.
+    pub fn settle(&mut self, ms: u64) {
+        let deadline = Instant::now() + Duration::from_millis(ms);
+        while Instant::now() < deadline {
+            self.pump();
+            std::thread::sleep(Duration::from_millis(15));
+        }
+        self.pump();
+    }
+
+    /// Names of every event received, in order.
+    pub fn names(&self) -> Vec<String> {
+        self.envelopes
+            .iter()
+            .map(|e| {
+                format!("{:?}", e.event)
+                    .split(['(', ' ', '{'])
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned()
+            })
+            .collect()
+    }
+}
+
+/// Starts a hub on `path`.
+pub fn hub(path: &std::path::Path) -> SdkHub {
+    SdkHub::start(config(path)).expect("bridge")
+}
