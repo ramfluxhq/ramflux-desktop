@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Span Brain
+
+//! The scenario fixture format.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+use ramflux_desktop_core::{AccountId, DomainEvent, Effect, JsonValue, Timestamp};
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Default scenario epoch: 2026-10-01T00:00:00Z in unix milliseconds.
+pub const DEFAULT_EPOCH: Timestamp = Timestamp(1_790_812_800_000);
+
+/// Names of the bundled scenarios, in order.
+pub const SCENARIO_NAMES: [&str; 8] = [
+    "s01_first_launch",
+    "s02_daily",
+    "s03_intervention",
+    "s04_safety",
+    "s05_group_governance",
+    "s06_in_progress",
+    "s07_conflict_privacy_handoff",
+    "s08_failures",
+];
+
+/// A scripted sequence of domain events plus reactions to effects.
+///
+/// Offsets are milliseconds: timeline offsets from the scenario start,
+/// response offsets from the moment the matching effect is submitted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Scenario {
+    /// Short name.
+    pub name: String,
+    /// What the scenario demonstrates.
+    pub description: String,
+    /// Wall-clock time of offset 0.
+    #[serde(default = "default_epoch")]
+    pub epoch: Timestamp,
+    /// Events at fixed offsets.
+    pub timeline: Vec<(u64, DomainEvent)>,
+    /// Reactions to submitted effects.
+    #[serde(default)]
+    pub responses: Vec<ResponseRule>,
+}
+
+fn default_epoch() -> Timestamp {
+    DEFAULT_EPOCH
+}
+
+/// Emits events when a submitted effect matches.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResponseRule {
+    /// Which effects trigger the rule.
+    pub on: EffectMatcher,
+    /// Events emitted at offsets after the submission.
+    pub emit: Vec<(u64, DomainEvent)>,
+}
+
+/// Matches submitted effects.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum EffectMatcher {
+    /// A contract call with this method whose body contains these top-level fields.
+    Call {
+        /// Method name.
+        method: String,
+        /// Required body fields and values.
+        #[serde(default)]
+        fields: BTreeMap<String, JsonValue>,
+    },
+    /// An unlock, optionally for one account.
+    Unlock {
+        /// Required account.
+        #[serde(default)]
+        account_id: Option<AccountId>,
+    },
+}
+
+impl EffectMatcher {
+    /// Returns whether `effect` matches. Confirmation requests never match:
+    /// they are handled by the app, not the source.
+    pub fn matches(&self, effect: &Effect) -> bool {
+        match (self, effect) {
+            (Self::Call { method, fields }, Effect::Call { method: m, body }) => {
+                method == m && fields.iter().all(|(k, v)| body.get(k) == Some(v))
+            }
+            (Self::Unlock { account_id }, Effect::Unlock { account_id: a, .. }) => {
+                account_id.as_ref().is_none_or(|want| want == a)
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Failure to load a scenario.
+#[derive(Debug, Error)]
+pub enum ScenarioError {
+    /// The file could not be read.
+    #[error("cannot read scenario {path}: {source}")]
+    Io {
+        /// File path.
+        path: PathBuf,
+        /// Cause.
+        #[source]
+        source: std::io::Error,
+    },
+    /// The file is not a valid scenario.
+    #[error("invalid scenario: {0}")]
+    Parse(#[from] ron::error::SpannedError),
+}
+
+impl Scenario {
+    /// Parses a scenario from RON text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScenarioError::Parse`] on invalid RON or schema.
+    pub fn from_ron(text: &str) -> Result<Self, ScenarioError> {
+        Ok(ron::from_str(text)?)
+    }
+
+    /// Loads a scenario file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScenarioError`] when the file is unreadable or invalid.
+    pub fn load(path: &Path) -> Result<Self, ScenarioError> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|source| ScenarioError::Io { path: path.to_owned(), source })?;
+        Self::from_ron(&text)
+    }
+}
+
+/// Directory holding the bundled `*.ron` scenarios.
+pub fn fixtures_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/scenarios")
+}
+
+/// Loads a bundled scenario by name, e.g. `"s03_intervention"`.
+///
+/// # Errors
+///
+/// Returns [`ScenarioError`] when the file is missing or invalid.
+pub fn load_fixture(name: &str) -> Result<Scenario, ScenarioError> {
+    Scenario::load(&fixtures_dir().join(format!("{name}.ron")))
+}

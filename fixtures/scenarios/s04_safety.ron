@@ -1,0 +1,27 @@
+// s04 Safety: a verified contact's identity key changes. A sticky SafetyChange
+// moment needs the user until the safety number is verified again, after
+// which the warning is closed and a verification moment is recorded.
+// Demonstrates: ParticipantUpserted safety states and SafetyChange moments.
+// Note: there is no "verify safety number" intent in the F0 contract yet, so
+// verification arrives as source facts.
+// Moment `at` values are stamped by the mock source at delivery time.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s04_safety",
+    description: "Contact key changed, sticky warning, safety number verified",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true)),
+        (10, ContextUpserted(id: "c-mira", kind: Direct, title: "Mira Okafor", participants: ["p-me", "p-mira"])),
+        (100, MomentAdded(id: "m-mira-1", context_id: "c-mira", origin: "p-mira", at: 0,
+            kind: Message(text: "New phone, same me."), lifecycle: Done)),
+        (500, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: KeyChanged, contact: true)),
+        (500, MomentAdded(id: "m-key", context_id: "c-mira", origin: "p-mira", at: 0,
+            kind: SafetyChange(participant_id: "p-mira", change: KeyChanged), lifecycle: NeedsMe)),
+        (5000, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true)),
+        (5000, MomentAdded(id: "m-verified", context_id: "c-mira", origin: "p-me", at: 0,
+            kind: SafetyChange(participant_id: "p-mira", change: Verified), lifecycle: Done)),
+        (5000, MomentUpdated(moment_id: "m-key", lifecycle: Done)),
+    ],
+)

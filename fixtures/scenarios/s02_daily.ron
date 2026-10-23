@@ -1,0 +1,66 @@
+// s02 Daily use: three contexts with unread counts, an agent participant
+// streaming a reply into a surface, and an inbound object transfer.
+// Demonstrates: ContextUpserted with unread, SurfacePatched AppendText and
+// SetStreaming, ObjectUpserted progress, and a message.send response.
+// Moment `at` values are stamped by the mock source at delivery time.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s02_daily",
+    description: "Three contexts, unread, streaming agent reply, object transfer",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", safety: Verified, contact: true)),
+        (0, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", contact: true)),
+        (0, ParticipantUpserted(id: "p-orbit", kind: Agent, display: "Orbit", contact: true)),
+        (10, ContextUpserted(id: "c-lena", kind: Direct, title: "Lena Hart", participants: ["p-me", "p-lena"], unread: 2)),
+        (10, ContextUpserted(id: "c-team", kind: Group, title: "Design team", participants: ["p-me", "p-lena", "p-tomas", "p-orbit"], pinned: true)),
+        (10, ContextUpserted(id: "c-orbit", kind: Direct, title: "Orbit", participants: ["p-me", "p-orbit"])),
+        (100, MomentAdded(id: "m-lena-1", context_id: "c-lena", origin: "p-lena", at: 0,
+            kind: Message(text: "Are we still on for lunch?"), lifecycle: Done)),
+        (200, MomentAdded(id: "m-lena-2", context_id: "c-lena", origin: "p-lena", at: 0,
+            kind: Message(text: "I can do 12:30."), lifecycle: Done)),
+        (300, MomentAdded(id: "m-team-1", context_id: "c-team", origin: "p-tomas", at: 0,
+            kind: Message(text: "Uploading the new floor plan now."), lifecycle: Done)),
+        (400, MomentAdded(id: "m-orbit-q", context_id: "c-orbit", origin: "p-me", at: 0,
+            kind: Message(text: "Summarize yesterday's design review."), lifecycle: Done)),
+        (500, MomentAdded(id: "m-orbit-a", context_id: "c-orbit", origin: "p-orbit", at: 0,
+            kind: AgentSurface(
+                surface_id: "s-summary",
+                fallback_text: "Design review summary",
+                blocks: [(id: "b-answer", kind: Markdown, data: {"text": ""})],
+                streaming: true,
+            ),
+            lifecycle: InProgress)),
+        (700, SurfacePatched(moment_id: "m-orbit-a", surface_id: "s-summary", ops: [
+            AppendText(block_id: "b-answer", text: "Three decisions were made: "),
+        ])),
+        (900, SurfacePatched(moment_id: "m-orbit-a", surface_id: "s-summary", ops: [
+            AppendText(block_id: "b-answer", text: "keep the open layout, "),
+        ])),
+        (1100, SurfacePatched(moment_id: "m-orbit-a", surface_id: "s-summary", ops: [
+            AppendText(block_id: "b-answer", text: "move the kitchen east, and defer lighting."),
+            SetActions([(id: "copy", label: "Copy summary")]),
+            SetStreaming(false),
+        ])),
+        (1150, MomentUpdated(moment_id: "m-orbit-a", lifecycle: Done)),
+        (1200, ObjectUpserted(id: "o-floorplan", name: "floorplan-v2.pdf", size: 482133,
+            direction: Inbound, transfer: Transferring(transferred: 0))),
+        (1200, MomentAdded(id: "m-team-file", context_id: "c-team", origin: "p-tomas", at: 0,
+            kind: ObjectTransfer(object_id: "o-floorplan"), lifecycle: InProgress)),
+        (1800, ObjectUpserted(id: "o-floorplan", name: "floorplan-v2.pdf", size: 482133,
+            direction: Inbound, transfer: Transferring(transferred: 240000))),
+        (2400, ObjectUpserted(id: "o-floorplan", name: "floorplan-v2.pdf", size: 482133,
+            direction: Inbound, transfer: Complete)),
+        (2400, MomentUpdated(moment_id: "m-team-file", lifecycle: Done)),
+    ],
+    responses: [
+        (
+            on: Call(method: "message.send", fields: {"context_id": "c-lena"}),
+            emit: [
+                (50, MomentAdded(id: "m-lena-reply", context_id: "c-lena", origin: "p-me", at: 0,
+                    kind: Message(text: "12:30 works, see you there.", receipt: Sent), lifecycle: Done)),
+            ],
+        ),
+    ],
+)

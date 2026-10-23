@@ -1,0 +1,60 @@
+// s01 First launch: no daemon, then the daemon appears, the user joins a node
+// from an invite, the account is created locked, and unlocking enters the
+// workspace with a pinned "Notes to self" context.
+// Demonstrates: SourceStatusChanged, NodeUpserted/NodeHealthChanged,
+// AccountUpdated, and an Unlock effect answered by a response rule.
+// Moment `at` values are stamped by the mock source at delivery time.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s01_first_launch",
+    description: "No daemon, connect, join node, create account, unlock, enter workspace",
+    timeline: [
+        (0, SourceStatusChanged(Disconnected)),
+        (1500, SourceStatusChanged(Locked)),
+        (2000, NodeUpserted(
+            id: "n-harbor",
+            endpoints: ["quic://harbor.example.net:7443"],
+            pin_source: Invite,
+            health: Unknown,
+        )),
+        (2600, NodeHealthChanged(node_id: "n-harbor", health: Healthy)),
+        (4000, AccountUpdated(
+            id: "a-main",
+            label: "Personal",
+            node_id: "n-harbor",
+            device_id: "dev-laptop-01",
+            lock_state: Locked,
+        )),
+    ],
+    responses: [
+        (
+            on: Unlock(account_id: "a-main"),
+            emit: [
+                (100, AccountUpdated(
+                    id: "a-main",
+                    label: "Personal",
+                    node_id: "n-harbor",
+                    device_id: "dev-laptop-01",
+                    lock_state: Unlocked,
+                )),
+                (150, SourceStatusChanged(Connected)),
+                (200, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+                (250, ContextUpserted(
+                    id: "c-notes",
+                    kind: Direct,
+                    title: "Notes to self",
+                    participants: ["p-me"],
+                    pinned: true,
+                )),
+                (300, MomentAdded(
+                    id: "m-welcome",
+                    context_id: "c-notes",
+                    origin: "p-me",
+                    at: 0,
+                    kind: System(level: Info, text: "This device is now part of your account."),
+                    lifecycle: Done,
+                )),
+            ],
+        ),
+    ],
+)

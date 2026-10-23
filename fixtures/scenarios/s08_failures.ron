@@ -1,0 +1,47 @@
+// s08 Failures: the node degrades, a transfer fails, the daemon connection
+// drops and the node becomes unreachable; an agent surface uses a block kind
+// this client does not know and renders through the Fallback block.
+// Demonstrates: NodeHealthChanged, TransferState::Failed, SourceStatusChanged,
+// System moments, unknown BlockKind -> Fallback, and a Fallback moment.
+// Moment `at` values are stamped by the mock source at delivery time.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s08_failures",
+    description: "Daemon disconnect, unhealthy node, failed transfer, render fallback",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, NodeUpserted(id: "n-harbor", endpoints: ["quic://harbor.example.net:7443"], pin_source: Invite, health: Healthy)),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", contact: true)),
+        (0, ParticipantUpserted(id: "p-orbit", kind: Agent, display: "Orbit", contact: true)),
+        (10, ContextUpserted(id: "c-lena", kind: Direct, title: "Lena Hart", participants: ["p-me", "p-lena"])),
+        (10, ContextUpserted(id: "c-orbit", kind: Direct, title: "Orbit", participants: ["p-me", "p-orbit"])),
+        (100, ObjectUpserted(id: "o-photos", name: "garden-photos.zip", size: 73400320, direction: Outbound,
+            transfer: Transferring(transferred: 1048576))),
+        (100, MomentAdded(id: "m-upload", context_id: "c-lena", origin: "p-me", at: 0,
+            kind: ObjectTransfer(object_id: "o-photos"), lifecycle: InProgress)),
+        (800, MomentAdded(id: "m-chart", context_id: "c-orbit", origin: "p-orbit", at: 0,
+            kind: AgentSurface(
+                surface_id: "s-chart",
+                fallback_text: "Monthly spending chart",
+                blocks: [
+                    (id: "b-title", kind: Heading, data: {"text": "Spending by month"}),
+                    (id: "b-chart", kind: HolographicChart, data: {"series": [120, 98, 143]}),
+                ],
+            ),
+            lifecycle: Done)),
+        (900, MomentAdded(id: "m-fallback", context_id: "c-orbit", origin: "p-orbit", at: 0,
+            kind: Fallback(reason: "unsupported surface catalog", text: "Open this report on a client that supports charts."),
+            lifecycle: Done)),
+        (1500, NodeHealthChanged(node_id: "n-harbor", health: Degraded)),
+        (1500, MomentAdded(id: "m-slow", context_id: "c-lena", origin: "p-me", at: 0,
+            kind: System(level: Warning, text: "Your node is responding slowly."), lifecycle: Done)),
+        (2500, ObjectUpserted(id: "o-photos", name: "garden-photos.zip", size: 73400320, direction: Outbound,
+            transfer: Failed(reason: "connection reset by peer"))),
+        (2500, MomentUpdated(moment_id: "m-upload", lifecycle: Failed)),
+        (3000, SourceStatusChanged(Disconnected)),
+        (3000, NodeHealthChanged(node_id: "n-harbor", health: Unreachable)),
+        (3000, MomentAdded(id: "m-lost", context_id: "c-lena", origin: "p-me", at: 0,
+            kind: System(level: Error, text: "Lost connection to the local daemon. Retrying."), lifecycle: Done)),
+    ],
+)

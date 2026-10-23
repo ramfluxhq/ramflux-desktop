@@ -1,0 +1,60 @@
+// s07 Contract-first moments not yet backed by the SDK: a CAS conflict on a
+// shared object, masked content revealed with an audit record, and a
+// cross-device handoff.
+// Demonstrates: Conflict + ResolveConflict, PrivacyReveal + Reveal, Handoff.
+// Note: there is no "accept handoff" intent in the F0 contract yet, so the
+// handoff completes as a source fact.
+// Moment `at` values are stamped by the mock source at delivery time.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s07_conflict_privacy_handoff",
+    description: "Conflict resolution, audited privacy reveal, cross-device handoff",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", contact: true)),
+        (0, ParticipantUpserted(id: "d-desk", kind: Device, display: "Desk workstation")),
+        (0, ParticipantUpserted(id: "d-laptop", kind: Device, display: "This laptop")),
+        (10, ContextUpserted(id: "c-ledger", kind: Space, title: "Household ledger", participants: ["p-me", "p-lena"], pinned: true)),
+        (100, ObjectUpserted(id: "o-budget", name: "budget-2026.ods", size: 18432, direction: Outbound, transfer: Complete)),
+        (200, MomentAdded(id: "m-conflict", context_id: "c-ledger", origin: "p-lena", at: 0,
+            kind: Conflict(
+                object_id: "o-budget",
+                local: (version: "v7", summary: "Edited on this laptop: groceries line"),
+                remote: (version: "v8", summary: "Lena edited the utilities line"),
+            ),
+            lifecycle: NeedsMe)),
+        (300, MomentAdded(id: "m-iban", context_id: "c-ledger", origin: "p-lena", at: 0,
+            kind: PrivacyReveal(label: "Bank account number"), lifecycle: Pending)),
+        (400, MomentAdded(id: "m-handoff", context_id: "c-ledger", origin: "d-desk", at: 0,
+            kind: Handoff(from_device: "d-desk", summary: "Continue reviewing the ledger draft"),
+            lifecycle: NeedsMe)),
+        (6000, MomentUpdated(moment_id: "m-handoff", lifecycle: Done,
+            kind: Handoff(from_device: "d-desk", to_device: "d-laptop", summary: "Continue reviewing the ledger draft"))),
+    ],
+    responses: [
+        (
+            on: Call(method: "object.resolve_conflict", fields: {"moment_id": "m-conflict", "resolution": "KeepBoth"}),
+            emit: [
+                (100, MomentUpdated(moment_id: "m-conflict", lifecycle: Done,
+                    kind: Conflict(
+                        object_id: "o-budget",
+                        local: (version: "v7", summary: "Edited on this laptop: groceries line"),
+                        remote: (version: "v8", summary: "Lena edited the utilities line"),
+                        resolution: KeepBoth,
+                    ))),
+            ],
+        ),
+        (
+            on: Call(method: "privacy.reveal", fields: {"moment_id": "m-iban"}),
+            emit: [
+                (100, MomentUpdated(moment_id: "m-iban", lifecycle: Done,
+                    kind: PrivacyReveal(
+                        label: "Bank account number",
+                        revealed: (by: "p-me", at: 1790812803000),
+                        content: "XX00 0000 1111 2222 3333 44",
+                    ))),
+            ],
+        ),
+    ],
+)

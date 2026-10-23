@@ -1,0 +1,65 @@
+// s03 Intervention: the agent asks to run a high-risk tool. The approval is
+// bound to a single-use grant; approving without hold-to-confirm yields a
+// confirmation request, a confirmed approval resolves the grant and the
+// result returns to the conversation.
+// Demonstrates: GrantRequested, Intervention in NeedsMe, the High-risk
+// confirmation policy, and grant.approve / grant.deny responses.
+// Moment `at` values are stamped by the mock source at delivery time.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s03_intervention",
+    description: "Agent requests a high-risk tool, hold-to-confirm approval, result returns",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-orbit", kind: Agent, display: "Orbit", contact: true)),
+        (10, ContextUpserted(id: "c-ops", kind: Group, title: "Release ops", participants: ["p-me", "p-orbit"], pinned: true)),
+        (100, MomentAdded(id: "m-ask", context_id: "c-ops", origin: "p-me", at: 0,
+            kind: Message(text: "Orbit, rotate the staging API keys."), lifecycle: Done)),
+        (600, MomentAdded(id: "m-plan", context_id: "c-ops", origin: "p-orbit", at: 0,
+            kind: AgentSurface(
+                surface_id: "s-plan",
+                fallback_text: "Key rotation plan",
+                blocks: [
+                    (id: "b-intro", kind: Text, data: {"text": "I will rotate three keys and revoke the old ones."}),
+                    (id: "b-keys", kind: KeyValue, data: {"items": [["billing-api", "staging"], ["search-api", "staging"], ["media-api", "staging"]]}),
+                ],
+            ),
+            lifecycle: Done)),
+        (800, GrantRequested(
+            id: "g-rotate",
+            scope: "tool.secrets.rotate",
+            risk: High,
+            single_use: true,
+            args_hash: "sha256:4f1c9a0e7b2d",
+            expiry: 1790813400000,
+        )),
+        (800, MomentAdded(id: "m-approve", context_id: "c-ops", origin: "p-orbit", at: 0,
+            kind: Intervention(grant_id: "g-rotate", risk: High,
+                summary: "Rotate 3 API keys on staging with secrets.rotate"),
+            lifecycle: NeedsMe)),
+    ],
+    responses: [
+        (
+            on: Call(method: "grant.approve", fields: {"grant_id": "g-rotate"}),
+            emit: [
+                (100, GrantResolved(grant_id: "g-rotate", state: Approved)),
+                (150, MomentUpdated(moment_id: "m-approve", lifecycle: Done)),
+                (900, MomentAdded(id: "m-result", context_id: "c-ops", origin: "p-orbit", at: 0,
+                    kind: AgentSurface(
+                        surface_id: "s-result",
+                        fallback_text: "Rotation finished",
+                        blocks: [(id: "b-ok", kind: Success, data: {"text": "Rotated 3 keys. Old keys revoked."})],
+                    ),
+                    lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "grant.deny", fields: {"grant_id": "g-rotate"}),
+            emit: [
+                (100, GrantResolved(grant_id: "g-rotate", state: Denied)),
+                (150, MomentUpdated(moment_id: "m-approve", lifecycle: Dismissed)),
+            ],
+        ),
+    ],
+)
