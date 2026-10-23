@@ -11,6 +11,11 @@
 //! developer controls: pause, step, seek) or by a live source (the SDK
 //! source over a real daemon), which follows the wall clock and ignores the
 //! scenario controls.
+//!
+//! The session declares this client's renderer profile to its source when
+//! it starts, and checks every surface an envelope changed against it: new
+//! renderer errors are logged ([`RendererErrors`]) and reported to the
+//! source when the backend can carry the report.
 
 use std::collections::BTreeSet;
 
@@ -23,6 +28,7 @@ use ramflux_desktop_test::{MockSource, Scenario};
 use super::changes::ChangeSet;
 use super::inspector::InspectorEntry;
 use super::names::{effect_label, event_name, intent_name};
+use super::renderer_errors::RendererErrors;
 
 /// What one clock movement or step applied.
 #[derive(Debug, Default)]
@@ -49,7 +55,7 @@ pub enum DispatchOutcome {
 /// What feeds a session.
 enum Backing {
     /// A scenario-playing mock with its own clock.
-    Mock { scenario: String, source: MockSource },
+    Mock { scenario: String, source: Box<MockSource> },
     /// A live source on the wall clock.
     Live { label: String, source: Box<dyn Source> },
 }
@@ -62,6 +68,7 @@ pub struct AccountSession {
     paused: bool,
     /// Message bodies asked of the source and not delivered yet (asked once).
     requested: BTreeSet<MomentId>,
+    renderer_errors: RendererErrors,
 }
 
 impl std::fmt::Debug for AccountSession {
@@ -81,28 +88,40 @@ impl AccountSession {
 
     /// Creates a session whose offset 0 is `epoch` instead of the scenario's own.
     pub fn with_epoch(scenario: &Scenario, epoch: Timestamp) -> Self {
-        Self {
-            backing: Backing::Mock {
-                scenario: scenario.name.clone(),
-                source: MockSource::with_epoch(scenario, epoch),
-            },
-            store: Store::new(),
-            clock_ms: 0,
-            paused: false,
-            requested: BTreeSet::new(),
-        }
+        Self::start(Backing::Mock {
+            scenario: scenario.name.clone(),
+            source: Box::new(MockSource::with_epoch(scenario, epoch)),
+        })
     }
 
     /// A session fed by a live `source`, named `label` (shown by the
     /// developer panel instead of a scenario name).
     pub fn live(label: impl Into<String>, source: Box<dyn Source>) -> Self {
-        Self {
-            backing: Backing::Live { label: label.into(), source },
+        Self::start(Backing::Live { label: label.into(), source })
+    }
+
+    fn start(backing: Backing) -> Self {
+        let mut session = Self {
+            backing,
             store: Store::new(),
             clock_ms: 0,
             paused: false,
             requested: BTreeSet::new(),
-        }
+            renderer_errors: RendererErrors::default(),
+        };
+        let profile = crate::moments::surface::registry::profile();
+        session.source_mut().renderer_profile(profile);
+        session
+    }
+
+    /// Renderer errors found in this session.
+    pub fn renderer_errors(&self) -> &RendererErrors {
+        &self.renderer_errors
+    }
+
+    /// The renderer profile the mock source received (`None` when live).
+    pub fn negotiated_profile(&self) -> Option<&ramflux_desktop_core::RendererProfile> {
+        self.mock().and_then(MockSource::negotiated_profile)
     }
 
     /// Whether a live source feeds the session.
@@ -127,7 +146,7 @@ impl AccountSession {
 
     fn source_mut(&mut self) -> &mut dyn Source {
         match &mut self.backing {
-            Backing::Mock { source, .. } => source,
+            Backing::Mock { source, .. } => source.as_mut(),
             Backing::Live { source, .. } => source.as_mut(),
         }
     }
@@ -235,6 +254,7 @@ impl AccountSession {
         source.rewind();
         self.store = Store::new();
         self.requested.clear();
+        self.renderer_errors.clear();
         self.clock_ms = ms;
         let mut applied = self.pump();
         let mut changes = ChangeSet::reset();
@@ -324,7 +344,27 @@ impl AccountSession {
             error: result.as_ref().err().map(ToString::to_string),
         });
         if let Ok(changes) = result {
+            let errors = self.renderer_errors.check(&self.store, &changes.moments);
+            self.report(errors, applied);
             applied.changes.merge(changes);
+        }
+    }
+
+    /// Reports new renderer errors to the source, when the backend carries
+    /// the report (a backend without it declares the method unsupported).
+    fn report(&mut self, errors: Vec<ramflux_desktop_core::RendererError>, applied: &mut Applied) {
+        if errors.is_empty()
+            || self
+                .store
+                .unsupported_reason(ramflux_desktop_core::methods::RENDERER_ERROR)
+                .is_some()
+        {
+            return;
+        }
+        for error in errors {
+            let effect = error.to_effect();
+            applied.records.push(InspectorEntry::Effect { label: effect_label(&effect) });
+            self.submit(effect);
         }
     }
 }

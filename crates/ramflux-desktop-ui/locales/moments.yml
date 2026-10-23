@@ -294,3 +294,43 @@ surface:
   action_hold:
     en: "%{label}…"
     zh-CN: "%{label}…"
+  redacted:
+    en: "Hidden: this part cannot be shown on this device"
+    zh-CN: "已隐藏：此部分不能在本设备上显示"
+  over_limit:
+    title:
+      en: "Shown as a summary"
+      zh-CN: "以摘要显示"
+    text:
+      en: "This surface is larger than this client shows (%{limit}), so only its summary is shown and it offers no actions."
+      zh-CN: "此界面超出本客户端的显示上限（%{limit}），因此仅显示摘要，且不提供任何操作。"
+  limit:
+    blocks:
+      en: "too many blocks"
+      zh-CN: "区块过多"
+    actions:
+      en: "too many actions"
+      zh-CN: "操作过多"
+    text:
+      en: "text too long"
+      zh-CN: "文本过长"
+    data:
+      en: "too much data"
+      zh-CN: "数据过大"
+  conflict:
+    title:
+      en: "Out of date"
+      zh-CN: "内容已过期"
+    text:
+      en: "An update was made against an older version of this surface. Waiting for the agent to send it again."
+      zh-CN: "有更新基于此界面的旧版本。正在等待智能体重新发送。"
+    action:
+      en: "Unavailable until the surface is up to date"
+      zh-CN: "界面更新前不可用"
+  review_again:
+    title:
+      en: "Changed after you reviewed it"
+      zh-CN: "你审阅后内容已变更"
+    text:
+      en: "Nothing was done. Review the changes, then choose again."
+      zh-CN: "未执行任何操作。请审阅变更后重新选择。"

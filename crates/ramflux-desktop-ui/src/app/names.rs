@@ -146,6 +146,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::GrantRequested(_) => "GrantRequested",
         DomainEvent::GrantResolved { .. } => "GrantResolved",
         DomainEvent::GrantRevoked { .. } => "GrantRevoked",
+        DomainEvent::GrantFailed { .. } => "GrantFailed",
         DomainEvent::StandingApprovalUpserted(_) => "StandingApprovalUpserted",
         DomainEvent::AuditAppended(_) => "AuditAppended",
         DomainEvent::IntegrationsUpdated(_) => "IntegrationsUpdated",

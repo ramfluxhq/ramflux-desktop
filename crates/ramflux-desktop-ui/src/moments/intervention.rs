@@ -87,7 +87,10 @@ impl InterventionBody {
 
     fn is_open(&self) -> bool {
         self.lifecycle == Lifecycle::NeedsMe
-            && self.grant.as_ref().is_none_or(|grant| grant.state == GrantState::Pending)
+            && self
+                .grant
+                .as_ref()
+                .is_none_or(|grant| grant.state == GrantState::Pending && grant.failure.is_none())
     }
 }
 
@@ -102,11 +105,12 @@ impl RenderOnce for InterventionBody {
         let details_sink = self.sink.scoped(Scope::Block(BlockId::new(DETAILS_BLOCK)));
         let decision_sink = self.sink.scoped(Scope::Block(BlockId::new(DECISION_BLOCK)));
         let expanded = self.expanded;
+        let failed = self.grant.as_ref().is_some_and(|g| g.failure.is_some());
         v_flex()
             .gap_2()
             .p_3()
             .border_1()
-            .border_color(if open { risk_color } else { cx.theme().border })
+            .border_color(if open || failed { risk_color } else { cx.theme().border })
             .rounded(cx.theme().radius_lg)
             .bg(cx.theme().group_box)
             .child(
@@ -163,10 +167,10 @@ impl RenderOnce for InterventionBody {
                     ),
             )
             .when(expanded, |body| body.child(details(self.grant.as_ref(), self.payload.risk)))
-            .child(if open {
-                decision(decision_sink, self.payload.risk).into_any_element()
-            } else {
-                resolution(self.grant.as_ref(), self.lifecycle, cx).into_any_element()
+            .child(match self.grant.as_ref().and_then(|g| g.failure) {
+                Some(failure) => super::grant_failure::render(failure, cx),
+                None if open => decision(decision_sink, self.payload.risk).into_any_element(),
+                None => resolution(self.grant.as_ref(), self.lifecycle, cx).into_any_element(),
             })
             .child(audit_line(&self.proposer, self.audit.as_ref(), cx))
     }

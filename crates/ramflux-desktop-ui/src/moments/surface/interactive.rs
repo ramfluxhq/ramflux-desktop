@@ -19,7 +19,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{GrantId, GrantState, JsonValue, SurfaceAction, UiEventKind};
 
-use super::{BlockContext, action_row};
+use super::{ActionRow, BlockContext};
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 
@@ -112,7 +112,8 @@ pub fn action_group(ids: &[&str], context: &BlockContext<'_>, cx: &App) -> Optio
     if actions.is_empty() {
         return None;
     }
-    Some(action_row("block-actions", &actions, &context.sink, cx))
+    let row = ActionRow { hash: context.hash, blocked: context.blocked };
+    Some(row.render("block-actions", &actions, &context.sink, cx))
 }
 
 /// An approval bound to a grant: summary, risk, scope and Approve / Deny
@@ -123,7 +124,9 @@ pub fn approval(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Optio
     let grant = context.grants.get(&grant_id)?;
     let risk_color =
         if grant.risk.requires_confirmation() { cx.theme().danger } else { cx.theme().warning };
-    let decision: AnyElement = if grant.state == GrantState::Pending {
+    let decision: AnyElement = if let Some(failure) = grant.failure {
+        crate::moments::grant_failure::render(failure, cx)
+    } else if grant.state == GrantState::Pending {
         let approve_sink = context.sink.clone();
         let deny_sink = context.sink.clone();
         let approve_label: SharedString = tr(if grant.risk.requires_confirmation() {

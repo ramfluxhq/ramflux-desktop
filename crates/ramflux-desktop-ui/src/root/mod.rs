@@ -13,6 +13,12 @@
 //! Secret-carrying intents (unlock, create, activate, restore, passphrase
 //! rotation) cannot travel in UI events; their forms call
 //! [`IntentRoot::submit_secret`], which takes the same policy path.
+//!
+//! A pending confirmation is bound to what the user reviewed. When the store
+//! changes under it (the surface was patched, the grant was decided or
+//! failed), the root cancels it before a hold can complete; a surface change
+//! is reported ([`RootEvent::SurfaceChanged`]) so the row asks the user to
+//! review it again. Policy re-checks the bound version on submit as well.
 
 mod intent_map;
 
@@ -20,10 +26,13 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, Subscription, Window};
 
-use ramflux_desktop_core::{ConfirmationIssuer, Intent, IntentKind, ParticipantId, Scope, UiEvent};
+use ramflux_desktop_core::{
+    ConfirmationIssuer, GrantState, Intent, IntentError, IntentKind, MomentId, ParticipantId,
+    Scope, Store, UiEvent,
+};
 
 use crate::app::{
-    DispatchOutcome, InspectorEntry, StoreHandle, UiOutcome, audit_label, format_path,
+    DispatchOutcome, InspectorEntry, StoreEvent, StoreHandle, UiOutcome, audit_label, format_path,
     format_scope, intent_name, ui_event_name,
 };
 use crate::bubble::EventSink;
@@ -43,10 +52,13 @@ pub enum ConfirmHost {
 }
 
 /// Reported to the pages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RootEvent {
     /// The strip closed (held or cancelled); the host restores focus.
     ConfirmClosed,
+    /// An action on this surface was not performed because the surface
+    /// changed after the user reviewed it.
+    SurfaceChanged(MomentId),
 }
 
 /// Owns the pending intent and the hold-to-confirm strip.
@@ -58,7 +70,7 @@ pub struct IntentRoot {
     /// The only issuer of human confirmations in the application. Not
     /// `Clone`; it mints one only when the strip reports a completed hold.
     issuer: ConfirmationIssuer,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl EventEmitter<RootEvent> for IntentRoot {}
@@ -149,7 +161,12 @@ impl IntentRoot {
                 cx.notify();
                 "confirmation required".to_owned()
             }
-            DispatchOutcome::Refused(error) => format!("refused: {error}"),
+            DispatchOutcome::Refused(error) => {
+                if let IntentError::SurfaceChanged(moment) = &error {
+                    cx.emit(RootEvent::SurfaceChanged(moment.clone()));
+                }
+                format!("refused: {error}")
+            }
             DispatchOutcome::NoAccount => "no account".to_owned(),
         }
     }
@@ -190,6 +207,23 @@ impl IntentRoot {
         self.store.update(cx, |store, cx| store.record(entry, cx));
     }
 
+    /// Cancels the pending confirmation when what it was bound to changed
+    /// in the store (subscribed in [`IntentRoot::attach`]).
+    fn recheck_pending(&mut self, cx: &mut Context<Self>) {
+        let Some(intent) = &self.pending else { return };
+        let Some((result, surface)) = stale(self.store.read(cx).store(), &intent.kind) else {
+            return;
+        };
+        let Some(intent) = self.pending.take() else { return };
+        self.confirm.update(cx, ConfirmStrip::close);
+        self.record_intent(&intent, result, cx);
+        if let Some(moment) = surface {
+            cx.emit(RootEvent::SurfaceChanged(moment));
+        }
+        cx.emit(RootEvent::ConfirmClosed);
+        cx.notify();
+    }
+
     /// Handles the strip's outcome (subscribed in [`IntentRoot::attach`]).
     fn on_confirm_event(
         &mut self,
@@ -224,21 +258,47 @@ impl IntentRoot {
     pub fn attach(store: Entity<StoreHandle>, window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| {
             let confirm = cx.new(ConfirmStrip::new);
-            let subscription = cx.subscribe_in(
-                &confirm,
-                window,
-                |root: &mut Self, _, event: &ConfirmEvent, window, cx| {
-                    root.on_confirm_event(*event, window, cx);
-                },
-            );
+            let subscriptions = vec![
+                cx.subscribe_in(
+                    &confirm,
+                    window,
+                    |root: &mut Self, _, event: &ConfirmEvent, window, cx| {
+                        root.on_confirm_event(*event, window, cx);
+                    },
+                ),
+                cx.subscribe(&store, |root: &mut Self, _, event: &StoreEvent, cx| {
+                    if matches!(event, StoreEvent::Changed(_)) {
+                        root.recheck_pending(cx);
+                    }
+                }),
+            ];
             Self {
                 store,
                 confirm,
                 pending: None,
                 host: ConfirmHost::Workspace,
                 issuer: ConfirmationIssuer::new(),
-                _subscription: subscription,
+                _subscriptions: subscriptions,
             }
         })
+    }
+}
+
+/// Why a pending intent no longer matches the store: the inspector result,
+/// and the surface moment when a surface changed. `None` while it matches.
+fn stale(store: &Store, kind: &IntentKind) -> Option<(&'static str, Option<MomentId>)> {
+    match kind {
+        IntentKind::SurfaceAction { moment_id, surface_hash, .. } => {
+            let current = store.surface_hash(moment_id) == Some(surface_hash)
+                && !store.surface_conflict(moment_id);
+            (!current).then(|| ("confirmation cancelled: surface changed", Some(moment_id.clone())))
+        }
+        IntentKind::Approve { grant_id } => {
+            let open = store
+                .grant(grant_id)
+                .is_some_and(|g| g.state == GrantState::Pending && g.failure.is_none());
+            (!open).then_some(("confirmation cancelled: request closed", None))
+        }
+        _ => None,
     }
 }

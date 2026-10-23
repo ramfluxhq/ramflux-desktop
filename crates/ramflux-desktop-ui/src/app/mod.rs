@@ -19,6 +19,7 @@ mod changes;
 mod inspector;
 mod live;
 mod names;
+mod renderer_errors;
 mod session;
 
 use std::collections::BTreeMap;
@@ -38,6 +39,7 @@ pub use names::{
     effect_label, event_name, format_path, format_scope, intent_kind_name, intent_name,
     ui_event_name,
 };
+pub use renderer_errors::{MAX_RENDERER_ERRORS, RendererErrors};
 pub use session::{AccountSession, Applied, DispatchOutcome, audit_label};
 
 /// Interval of the clock task.

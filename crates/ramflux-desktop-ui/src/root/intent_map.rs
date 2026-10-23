@@ -53,13 +53,15 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
     let moment = event.moment_id().and_then(|id| store.moment(id))?;
     let moment_id = moment.id.clone();
     Some(match &event.kind {
-        UiEventKind::ActionInvoked { action_id, values } => {
+        UiEventKind::ActionInvoked { action_id, values, surface_hash } => {
             let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
             IntentKind::SurfaceAction {
                 moment_id,
                 surface_id: event.surface_id().unwrap_or(&surface.surface_id).clone(),
                 action_id: action_id.clone(),
                 values: values.clone(),
+                // The version the user saw, never the store's current one.
+                surface_hash: surface_hash.clone(),
             }
         }
         UiEventKind::ApprovePressed => {

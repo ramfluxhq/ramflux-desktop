@@ -23,6 +23,7 @@ pub struct ViewState {
     fields: BTreeMap<MomentId, Rc<BTreeMap<BlockId, String>>>,
     inputs: BTreeMap<MomentId, Rc<BTreeMap<BlockId, Entity<InputState>>>>,
     diffs: BTreeMap<MomentId, Entity<DiffState>>,
+    review_again: BTreeSet<MomentId>,
 }
 
 impl ViewState {
@@ -34,6 +35,22 @@ impl ViewState {
     /// Sets a row's disclosure; returns whether it changed.
     pub fn set_expanded(&mut self, id: &MomentId, expanded: bool) -> bool {
         if expanded { self.expanded.insert(id.clone()) } else { self.expanded.remove(id) }
+    }
+
+    /// Shows or clears the "review again" notice of a surface; returns
+    /// whether it changed.
+    pub fn set_review_again(&mut self, id: &MomentId, on: bool) -> bool {
+        if on { self.review_again.insert(id.clone()) } else { self.review_again.remove(id) }
+    }
+
+    /// Drops every "review again" notice.
+    pub fn clear_reviews(&mut self) {
+        self.review_again.clear();
+    }
+
+    /// Whether a surface shows the "review again" notice.
+    pub fn is_review_again(&self, id: &MomentId) -> bool {
+        self.review_again.contains(id)
     }
 
     /// Records a select block's value; returns whether it changed.
@@ -56,6 +73,7 @@ impl ViewState {
             inputs: self.inputs.get(id).cloned().unwrap_or_default(),
             diff: self.diffs.get(id).cloned(),
             focus: None,
+            review_again: self.review_again.contains(id),
         }
     }
 

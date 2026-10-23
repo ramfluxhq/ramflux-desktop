@@ -5,6 +5,9 @@
 //! node endpoints and health, counts) and the export itself. The preview is
 //! built from the store, which never holds keys, tokens, nonces or message
 //! plaintext; identifiers that could link people are reduced to counts.
+//!
+//! A second, read-only group shows the renderer profile this client
+//! declares to its source and the renderer errors found this session.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
@@ -12,11 +15,13 @@ use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, div};
-use ramflux_desktop_core::{Store, UiEventKind};
+use ramflux_desktop_core::{RendererProfile, Store, UiEventKind};
 
 use super::{SectionContext, SettingsSection};
+use crate::app::RendererErrors;
 use crate::file_dialog::{self, StartDir};
-use crate::i18n::tr;
+use crate::i18n::{tr, tr_args};
+use crate::moments::surface::registry;
 
 /// File name suggested for the diagnostics export.
 pub const DIAGNOSTICS_FILE_NAME: &str = "ramflux-diagnostics.txt";
@@ -45,6 +50,73 @@ pub fn preview(store: &Store) -> String {
     lines.join("\n")
 }
 
+/// The renderer profile and error counts, one `key: value` per line.
+/// Errors are counted by kind; no block data or ids are shown.
+pub fn renderer_summary(profile: &RendererProfile, errors: Option<&RendererErrors>) -> String {
+    let blocks: Vec<String> = profile
+        .blocks
+        .iter()
+        .map(|b| {
+            let versions: Vec<String> = b.versions.iter().map(|v| format!("v{v}")).collect();
+            format!("{:?}({})", b.kind, versions.join("/"))
+        })
+        .collect();
+    let limits = &profile.limits;
+    let mut lines = vec![
+        format!("device: {:?}, runtime: {}", profile.device_class, profile.runtime),
+        format!("input: {:?}, output: {:?}", profile.input, profile.output),
+        format!("surface modes: {:?}", profile.surface_modes),
+        format!("blocks: {}", blocks.join(", ")),
+        format!(
+            "limits: blocks={} actions={} text={} data_bytes={}",
+            limits.max_blocks, limits.max_actions, limits.max_text_chars, limits.max_data_bytes
+        ),
+    ];
+    if let Some(errors) = errors {
+        for (kind, count) in errors.counts() {
+            lines.push(format!("renderer.errors.{kind}: {count}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn mono_box(id: &'static str, text: String, cx: &App) -> gpui_kit::AnyElement {
+    div()
+        .id(id)
+        .p_2()
+        .rounded(cx.theme().radius)
+        .bg(cx.theme().muted)
+        .text_xs()
+        .font_family(cx.theme().mono_font_family.clone())
+        .children(text.lines().map(|line| div().child(line.to_owned())))
+        .test_support()
+        .into_any_element()
+}
+
+fn renderer_group(context: &SectionContext, cx: &App) -> SettingGroup {
+    let handle = context.store.read(cx);
+    let errors = handle.session().map(|s| s.renderer_errors());
+    let total = errors.map_or(0, RendererErrors::total);
+    let text = renderer_summary(registry::profile(), errors);
+    let item = SettingItem::render(move |_, _, cx: &mut App| {
+        v_flex()
+            .gap_2()
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(tr("settings.diagnostics.renderer_explain")),
+            )
+            .child(mono_box("renderer-profile", text.clone(), cx))
+            .child(div().id("renderer-error-count").text_xs().child(tr_args(
+                "settings.diagnostics.renderer_errors",
+                &[("count", &total.to_string())],
+            )))
+            .into_any_element()
+    });
+    SettingGroup::new().title(tr("settings.diagnostics.renderer")).item(item)
+}
+
 /// The diagnostics section.
 pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
     let text = preview(context.store.read(cx).store());
@@ -59,17 +131,7 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("settings.diagnostics.explain")),
             )
-            .child(
-                div()
-                    .id("diagnostics-preview")
-                    .p_2()
-                    .rounded(cx.theme().radius)
-                    .bg(cx.theme().muted)
-                    .text_xs()
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .children(text.lines().map(|line| div().child(line.to_owned())))
-                    .test_support(),
-            )
+            .child(mono_box("diagnostics-preview", text.clone(), cx))
             .child(
                 h_flex().child(
                     Button::new("diagnostics-export")
@@ -96,7 +158,9 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
             )
             .into_any_element()
     });
-    SettingPage::new(tr("settings.section.diagnostics")).group(SettingGroup::new().item(item))
+    SettingPage::new(tr("settings.section.diagnostics"))
+        .group(SettingGroup::new().item(item))
+        .group(renderer_group(context, cx))
 }
 
 #[cfg(test)]

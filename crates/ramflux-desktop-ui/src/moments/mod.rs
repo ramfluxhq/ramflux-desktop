@@ -16,6 +16,7 @@
 mod conflict;
 mod contact;
 mod governance;
+pub mod grant_failure;
 mod handoff;
 mod intervention;
 mod message;
@@ -131,6 +132,8 @@ pub struct MomentRow {
     pub day_header: Option<SharedString>,
     /// The local user wrote it (receipts are shown on outbound messages).
     pub outbound: bool,
+    /// For a surface: its version and renderer verdict.
+    pub surface: Option<surface::SurfaceStatus>,
 }
 
 impl MomentRow {
@@ -163,6 +166,7 @@ impl MomentRow {
             refs: refs(store, moment, audit),
             day_header: None,
             outbound: me == Some(&moment.origin),
+            surface: surface::SurfaceStatus::of(store, moment),
         }
     }
 
@@ -273,6 +277,9 @@ pub struct RowState {
     /// Keyboard focus of the highlighted row ("take me to what needs me"
     /// moves focus here; Tab then reaches the row's own controls).
     pub focus: Option<FocusHandle>,
+    /// A pending confirmation on this surface was cancelled because the
+    /// surface changed; the user reviews it again.
+    pub review_again: bool,
 }
 
 /// One rendered moment row.
@@ -300,10 +307,13 @@ impl RenderOnce for MomentView {
                 message::render(p, row.body.as_ref(), &row.refs, row.outbound, &sink, cx)
                     .into_any_element()
             }
-            MomentKind::AgentSurface(p) => {
-                surface::SurfaceBody::new(p.clone(), &row.refs, sink.clone(), &state)
-                    .into_any_element()
-            }
+            MomentKind::AgentSurface(p) => match row.surface.clone() {
+                Some(status) => {
+                    surface::SurfaceBody::new(p.clone(), status, &row.refs, sink.clone(), &state)
+                        .into_any_element()
+                }
+                None => div().into_any_element(),
+            },
             MomentKind::ObjectTransfer(p) => {
                 object_transfer::render(p, &row.refs, &sink, &state, cx).into_any_element()
             }

@@ -172,9 +172,13 @@ impl Workspace {
                 let ContextStackEvent::Selected(id) = event;
                 this.select_context(Some(id.clone()), window, cx);
             }),
-            cx.subscribe_in(&root, window, |this, _, event: &RootEvent, window, cx| {
-                let RootEvent::ConfirmClosed = event;
-                this.composer.update(cx, |composer, cx| composer.focus(window, cx));
+            cx.subscribe_in(&root, window, |this, _, event: &RootEvent, window, cx| match event {
+                RootEvent::ConfirmClosed => {
+                    this.composer.update(cx, |composer, cx| composer.focus(window, cx));
+                }
+                RootEvent::SurfaceChanged(moment) => {
+                    this.conversation.update(cx, |field, cx| field.review_again(moment, cx));
+                }
             }),
             cx.subscribe(&dock_area, |this, _, event: &DockToggleEvent, cx| {
                 if !event.is_open() {

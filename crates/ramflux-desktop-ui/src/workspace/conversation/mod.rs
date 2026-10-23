@@ -103,6 +103,11 @@ impl Conversation {
         let subscriptions = vec![
             cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
                 let StoreEvent::Changed(changes) = event else { return };
+                if changes.is_reset() {
+                    // A new world (scenario, account switch): a "review again"
+                    // notice belongs to the old one.
+                    this.view.clear_reviews();
+                }
                 let Some(context_id) = this.context_id.clone() else {
                     // The placeholder tells loading from no conversations.
                     if changes.touches_listings() {
@@ -225,6 +230,19 @@ impl Conversation {
         cx.notify();
     }
 
+    /// Asks the user to review a surface again: an action on it was not
+    /// performed because it changed after the user reviewed it.
+    pub fn review_again(&mut self, id: &MomentId, cx: &mut Context<Self>) {
+        if self.view.set_review_again(id, true) {
+            self.remeasure(id, cx);
+        }
+    }
+
+    /// Whether a surface row shows the "review again" notice.
+    pub fn is_review_again(&self, id: &MomentId) -> bool {
+        self.view.is_review_again(id)
+    }
+
     /// Toggles a row's disclosure. Called from the moment-level sink.
     pub fn set_expanded(&mut self, id: &MomentId, expanded: bool, cx: &mut Context<Self>) {
         if self.view.set_expanded(id, expanded) {
@@ -298,19 +316,24 @@ impl Conversation {
                     .ok();
                     None
                 }
-                UiEventKind::ActionInvoked { action_id, values } if values.is_null() => {
-                    let action_id = action_id.clone();
+                UiEventKind::ActionInvoked { action_id, values, surface_hash } => {
+                    let (action_id, surface_hash) = (action_id.clone(), surface_hash.clone());
+                    // Acting again is the new review: the notice goes away.
                     let collected = this
-                        .read_with(cx, |field, cx| {
+                        .update(cx, |field, cx| {
+                            if field.view.set_review_again(&moment_id, false) {
+                                field.remeasure(&moment_id, cx);
+                            }
                             let row = field.rows.position(&moment_id)?;
                             field.rows.as_slice().get(row).map(|row| field.view.values(row, cx))
                         })
                         .ok()
                         .flatten()
                         .unwrap_or_default();
+                    let values = if values.is_null() { collected } else { values.clone() };
                     Some(UiEvent {
                         scope_path: event.scope_path,
-                        kind: UiEventKind::ActionInvoked { action_id, values: collected },
+                        kind: UiEventKind::ActionInvoked { action_id, values, surface_hash },
                     })
                 }
                 _ => Some(event),

@@ -231,6 +231,34 @@ grant:
     revoked:
       en: "Revoked"
       zh-CN: "已撤销"
+  failure:
+    title:
+      en: "Refused, and not retried"
+      zh-CN: "已被拒绝，不会重试"
+    already_used:
+      en: "This approval was already used or decided on another device."
+      zh-CN: "该审批已被使用，或已在其他设备上处理。"
+    expired:
+      en: "This approval expired before it could be used."
+      zh-CN: "该审批在使用前已过期。"
+    arguments_mismatch:
+      en: "The arguments differ from the ones you reviewed."
+      zh-CN: "参数与你审阅过的不一致。"
+    replay:
+      en: "A decision was already sent for it; repeating it was refused."
+      zh-CN: "此前已提交过决定，重复提交被拒绝。"
+    signature_rejected:
+      en: "The approval signature was rejected."
+      zh-CN: "审批签名未通过校验。"
+    signed_approval_required:
+      en: "This request needs an approval signed on your approving device."
+      zh-CN: "此请求需要在你的审批设备上签名批准。"
+    invalidated:
+      en: "This approval is no longer valid (revoked, or its tools changed)."
+      zh-CN: "该审批已失效（已撤销，或其工具已变更）。"
+    next:
+      en: "If it is still needed, ask the agent to request it again."
+      zh-CN: "如仍需要，请让智能体重新发起请求。"
 audit:
   you:
     en: "you"

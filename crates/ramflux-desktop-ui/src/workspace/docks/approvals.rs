@@ -111,6 +111,9 @@ fn pending_row(store: &Store, grant: &Grant, sink: &EventSink, cx: &App) -> AnyE
                     .on_click(move |_, window, cx| deny.emit(UiEventKind::DenyPressed, window, cx)),
             )
     });
+    // A failed grant is closed: its failure replaces the decision.
+    let failure = grant.failure.map(|failure| crate::moments::grant_failure::render(failure, cx));
+    let decide = if failure.is_some() { None } else { decide };
     v_flex()
         .id(domain_id("approvals-pending", &grant.id))
         .gap_1()
@@ -118,6 +121,7 @@ fn pending_row(store: &Store, grant: &Grant, sink: &EventSink, cx: &App) -> AnyE
         .py_1()
         .child(div().text_sm().font_medium().child(summary))
         .child(grant_line(grant, cx))
+        .children(failure)
         .children(decide)
         .into_any_element()
 }
@@ -156,7 +160,16 @@ fn grant_row(grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement {
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
                         .child(i18n::grant_state(grant.state)),
-                ),
+                )
+                .when_some(grant.failure, |col, failure| {
+                    col.child(
+                        div()
+                            .id("grant-failure-note")
+                            .text_xs()
+                            .text_color(cx.theme().danger)
+                            .child(crate::moments::grant_failure::reason(failure)),
+                    )
+                }),
         )
         .children(revoke)
         .into_any_element()

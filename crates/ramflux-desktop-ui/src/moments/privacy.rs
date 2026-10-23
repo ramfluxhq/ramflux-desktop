@@ -34,7 +34,8 @@ pub fn render(
             .id("privacy-content")
             .text_sm()
             .font_family(cx.theme().mono_font_family.clone())
-            .child(content.clone())
+            // The only place revealed text is read; it is shown, never copied out.
+            .child(content.expose().to_owned())
             .test_support()
             .into_any_element(),
         None => div()
