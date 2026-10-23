@@ -188,6 +188,7 @@ impl Render for ConfirmStrip {
             .id("confirm-strip")
             .key_context(CONFIRM_CONTEXT)
             .on_action(cx.listener(Self::on_cancel_action))
+            .flex_shrink_0()
             .mx_3()
             .mt_2()
             .gap_3()

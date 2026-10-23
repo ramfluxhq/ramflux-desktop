@@ -22,6 +22,7 @@ mod account_step;
 mod node_card;
 mod node_step;
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::spinner::Spinner;
@@ -201,7 +202,7 @@ impl Render for EntryPage {
         };
         let root = self.root.read(cx);
         let strip = (root.host() == ConfirmHost::Entry).then(|| root.confirm_strip().clone());
-        let scroll = div().id("entry").flex_1().min_h_0().overflow_y_scroll().child(
+        let scroll = div().id("entry").test_support().flex_1().min_h_0().overflow_y_scroll().child(
             v_flex()
                 .mx_auto()
                 .w_full()
@@ -227,9 +228,20 @@ impl Render for EntryPage {
                 ]))
                 .child(content),
         );
-        // The hold strip stays in view at the foot of the page.
-        v_flex().size_full().bg(cx.theme().background).child(scroll).children(
-            strip.map(|strip| div().mx_auto().w_full().max_w(rems(38.)).pb_3().child(strip)),
-        )
+        // The hold strip stays in view at the foot of the page. It is a
+        // footer that reserves its own height (it never shrinks), separated
+        // by a rule, so the scrolling content ends above it and is never
+        // drawn underneath.
+        v_flex().size_full().bg(cx.theme().background).child(scroll).children(strip.map(|strip| {
+            div()
+                .id("entry-confirm-footer")
+                .test_support()
+                .flex_shrink_0()
+                .w_full()
+                .border_t_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().background)
+                .child(div().mx_auto().w_full().max_w(rems(38.)).pb_3().child(strip))
+        }))
     }
 }

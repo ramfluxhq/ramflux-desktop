@@ -213,7 +213,7 @@ impl Render for SettingsPage {
                         .pages(pages),
                 ),
             )
-            .children(strip.map(|strip| div().pb_2().child(strip)))
+            .children(strip.map(|strip| div().flex_shrink_0().pb_2().child(strip)))
     }
 }
 

@@ -71,6 +71,15 @@ fn entry_adds_a_tofu_node_with_a_hold_then_creates_an_account(cx: &mut TestAppCo
     let before = confirms(cx);
     click_in(cx, handle, "node-n-studio", "node-confirm");
     assert!(strip_open(cx, &shell), "trusting a key on first use needs the hold");
+    let (page_bounds, footer, strip) = in_window(cx, handle, |window, _| {
+        let page = window.find("entry").bounds();
+        (page, window.find("entry-confirm-footer").bounds(), window.find("hold-confirm").bounds())
+    });
+    assert!(
+        page_bounds.bottom() <= footer.top() && footer.top() < strip.top(),
+        "the hold strip is a footer below the scrolling entry content, never over it: \
+         {page_bounds:?} {footer:?} {strip:?}"
+    );
     assert_eq!(confirms(cx), before, "nothing is pinned before the hold");
     hold_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::NODE_CONFIRM);
