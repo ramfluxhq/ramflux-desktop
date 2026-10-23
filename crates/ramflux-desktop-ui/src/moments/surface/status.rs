@@ -11,8 +11,13 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Hsla, SharedString, div};
+use std::collections::BTreeSet;
+
 use ramflux_desktop_core::conformance::{LimitKind, SurfaceVerdict, check_surface};
-use ramflux_desktop_core::{Moment, MomentKind, Store};
+use ramflux_desktop_core::{
+    AgentSurfacePayload, BlockId, Moment, MomentId, MomentKind, RendererError, RendererErrorKind,
+    Store, SurfaceState,
+};
 
 use crate::i18n::{tr, tr_args};
 
@@ -21,8 +26,34 @@ use crate::i18n::{tr, tr_args};
 pub struct SurfaceStatus {
     /// The renderer verdict on this version (carries its hash).
     pub verdict: SurfaceVerdict,
+    /// The version number actions are bound to (with the hash).
+    pub version: u64,
     /// A patch made against another version left it out of date.
     pub conflict: bool,
+    /// The author closed it: a frozen record.
+    pub closed: bool,
+    /// Blocks whose text stream is open and has no text yet.
+    pub waiting: BTreeSet<BlockId>,
+}
+
+/// The renderer verdict on the surface a moment holds: the renderer's own
+/// check, or a whole-surface fallback when the store refused it over a
+/// renderer limit (it then keeps only the fallback text).
+pub fn verdict(store: &Store, moment: &MomentId, surface: &AgentSurfacePayload) -> SurfaceVerdict {
+    let mut verdict = check_surface(moment, surface, super::registry::profile());
+    if let Some(limit) = store.surface(moment).and_then(|r| r.over_limit()) {
+        verdict.over_limit = Some(limit);
+        verdict.blocks.clear();
+        verdict.errors = vec![RendererError {
+            moment_id: moment.clone(),
+            surface_id: surface.surface_id.clone(),
+            surface_hash: verdict.hash.clone(),
+            block_id: None,
+            block_kind: None,
+            kind: RendererErrorKind::OverLimit(limit),
+        }];
+    }
+    verdict
 }
 
 impl SurfaceStatus {
@@ -32,9 +63,25 @@ impl SurfaceStatus {
         let MomentKind::AgentSurface(surface) = &moment.kind else {
             return None;
         };
-        let verdict = check_surface(&moment.id, surface, super::registry::profile());
+        let verdict = verdict(store, &moment.id, surface);
         debug_assert_eq!(Some(&verdict.hash), store.surface_hash(&moment.id));
-        Some(Self { verdict, conflict: store.surface_conflict(&moment.id) })
+        let record = store.surface(&moment.id);
+        let waiting = record
+            .map(|r| {
+                r.streams
+                    .iter()
+                    .filter(|(_, s)| !s.finished && s.chars == 0)
+                    .map(|(id, _)| id.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Self {
+            verdict,
+            version: record.map_or(0, |r| r.version),
+            conflict: store.surface_conflict(&moment.id),
+            closed: record.is_some_and(|r| r.state == SurfaceState::Closed),
+            waiting,
+        })
     }
 
     /// Why actions are inactive, if they are.
@@ -77,6 +124,8 @@ fn limit_name(limit: LimitKind) -> SharedString {
         LimitKind::Actions => "surface.limit.actions",
         LimitKind::TextLength => "surface.limit.text",
         LimitKind::DataBytes => "surface.limit.data",
+        LimitKind::TextDelta => "surface.limit.delta",
+        LimitKind::StreamLength => "surface.limit.stream",
     })
 }
 
@@ -115,6 +164,19 @@ pub fn review_again(cx: &App) -> AnyElement {
         tr("surface.review_again.text"),
         cx,
     )
+}
+
+/// A closed surface: what it was, frozen.
+pub fn closed(cx: &App) -> AnyElement {
+    h_flex()
+        .id("surface-closed")
+        .gap_1()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(Icon::new(IconName::Check).xsmall())
+        .child(tr("surface.closed"))
+        .test_support()
+        .into_any_element()
 }
 
 /// A display-blocked block: no data, only that something is hidden here.

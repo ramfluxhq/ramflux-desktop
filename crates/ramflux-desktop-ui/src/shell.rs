@@ -506,6 +506,9 @@ impl Shell {
                 workspace.update(cx, |w, cx| w.open_add_contact(window, cx));
             }
             PaletteChoice::NeedsMe => workspace.update(cx, |w, cx| w.go_to_needs_me(window, cx)),
+            PaletteChoice::AskAgent(agent) => {
+                workspace.update(cx, |w, cx| w.ask_agent(agent, window, cx));
+            }
             PaletteChoice::ToggleTheme => self.toggle_theme(&ToggleTheme, window, cx),
             PaletteChoice::Pin(..) | PaletteChoice::Mute(..) | PaletteChoice::Disappearing(..) => {}
         }

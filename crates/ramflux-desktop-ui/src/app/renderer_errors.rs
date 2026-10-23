@@ -12,10 +12,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ramflux_desktop_core::conformance::{RendererErrorKind, check_surface};
+use ramflux_desktop_core::conformance::RendererErrorKind;
 use ramflux_desktop_core::{BlockId, MomentId, MomentKind, RendererError, Store};
 
-use crate::moments::surface::registry;
+use crate::moments::surface::verdict as status_verdict;
 
 /// Renderer errors kept for display.
 pub const MAX_RENDERER_ERRORS: usize = 64;
@@ -46,7 +46,8 @@ impl RendererErrors {
         for id in moments {
             let Some(moment) = store.moment(id) else { continue };
             let MomentKind::AgentSurface(surface) = &moment.kind else { continue };
-            let verdict = check_surface(id, surface, registry::profile());
+            // The store's own verdict too: a surface refused over a limit.
+            let verdict = status_verdict(store, id, surface);
             if store.surface_conflict(id) {
                 found.push(RendererError {
                     moment_id: id.clone(),

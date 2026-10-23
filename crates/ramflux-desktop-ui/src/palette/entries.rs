@@ -44,6 +44,9 @@ pub enum PaletteChoice {
     OpenDock(DockTool),
     /// Open the contacts dock at its add-contact field.
     AddContact,
+    /// Address the composer's next request to an AI participant of the
+    /// shown conversation (view-local; the request itself is an intent).
+    AskAgent(ParticipantId),
     /// Move to the next item that needs the user.
     NeedsMe,
     /// Switch between the light and dark theme.
@@ -164,6 +167,15 @@ fn actions(
     let mut entries = vec![entry(tr("palette.needs_me"), IconName::Bell, PaletteChoice::NeedsMe)];
     if let Some(context) = current.and_then(|id| store.context(id)) {
         let id = context.id.clone();
+        for agent in crate::workspace::composer::assignee::agents(store, &id) {
+            let mut e = entry(
+                tr_args("palette.ask_agent", &[("name", &agent.name)]),
+                IconName::Bot,
+                PaletteChoice::AskAgent(agent.id),
+            );
+            e.keywords = vec![format!("@{}", agent.name)];
+            entries.push(e);
+        }
         entries.push(entry(
             tr_args(
                 if context.pinned { "palette.unpin" } else { "palette.pin" },

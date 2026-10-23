@@ -13,7 +13,7 @@
 //! tool is open or pinned, and the "take me to what needs me" cursor across
 //! contexts and accounts.
 
-mod composer;
+pub(crate) mod composer;
 mod context_stack;
 mod conversation;
 pub mod docks;
@@ -342,7 +342,7 @@ impl Workspace {
         });
         self.composer.update(cx, |composer, cx| match target {
             Some(target) => composer.set_draft(target, sink, window, cx),
-            None => composer.set_sink(None, window, cx),
+            None => composer.set_sink(None, None, window, cx),
         });
         self.sync_composer(cx);
         self.stack.update(cx, |stack, cx| stack.set_current(None, cx));
@@ -355,6 +355,12 @@ impl Workspace {
         }
         self.composer.update(cx, |composer, cx| composer.focus(window, cx));
         cx.notify();
+    }
+
+    /// Addresses the composer's next request to `agent` (an AI participant
+    /// of the shown conversation) and focuses it.
+    pub fn ask_agent(&mut self, agent: ParticipantId, window: &mut Window, cx: &mut Context<Self>) {
+        self.composer.update(cx, |composer, cx| composer.ask(agent, window, cx));
     }
 
     /// Opens the contacts dock and moves focus to its add-contact field.
@@ -401,7 +407,7 @@ impl Workspace {
         }
         self.conversation.update(cx, |field, cx| field.set_context(id.clone(), cx));
         self.sync_composer(cx);
-        self.composer.update(cx, |composer, cx| composer.set_sink(sink, window, cx));
+        self.composer.update(cx, |composer, cx| composer.set_sink(id.clone(), sink, window, cx));
         self.stack.update(cx, |stack, cx| stack.set_current(id.clone(), cx));
         self.members.update(cx, |dock, cx| dock.set_context(id.clone(), cx));
         self.evidence.update(cx, |dock, cx| dock.set_context(id, cx));

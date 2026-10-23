@@ -209,6 +209,33 @@ moment:
     count:
       en: "%{done} of %{total} steps"
       zh-CN: "第 %{done}/%{total} 步"
+    proposal_hint:
+      en: "%{name} proposes this plan and starts only when you do."
+      zh-CN: "%{name} 提议了这个计划，你开始后才会执行。"
+    start:
+      en: "Start task"
+      zh-CN: "开始任务"
+    decline:
+      en: "Decline"
+      zh-CN: "拒绝"
+    not_yours:
+      en: "Waiting for the person who asked"
+      zh-CN: "等待发起人确认"
+    show_result:
+      en: "Show result"
+      zh-CN: "查看结果"
+    place_missing:
+      en: "Waiting for the request to arrive"
+      zh-CN: "正在等待请求到达"
+    choose_in_view:
+      en: "Choose in %{name}'s view"
+      zh-CN: "请在 %{name} 的界面中选择"
+    answer_in_view:
+      en: "Answer in %{name}'s view"
+      zh-CN: "请在 %{name} 的界面中填写"
+    show_view:
+      en: "Show"
+      zh-CN: "查看"
     show_steps:
       en: "Show all steps"
       zh-CN: "显示全部步骤"
@@ -285,6 +312,18 @@ surface:
   streaming:
     en: "Writing…"
     zh-CN: "正在生成…"
+  waiting:
+    en: "Writing…"
+    zh-CN: "正在生成…"
+  closed:
+    en: "Closed"
+    zh-CN: "已关闭"
+  show_final:
+    en: "Show final view"
+    zh-CN: "查看最终界面"
+  hide_final:
+    en: "Hide final view"
+    zh-CN: "收起最终界面"
   show_all:
     en: "Show all %{count} blocks"
     zh-CN: "显示全部 %{count} 个区块"
@@ -320,6 +359,12 @@ surface:
     data:
       en: "too much data"
       zh-CN: "数据过大"
+    delta:
+      en: "an update too large"
+      zh-CN: "单次更新过大"
+    stream:
+      en: "streamed text too long"
+      zh-CN: "流式文本过长"
   conflict:
     title:
       en: "Out of date"

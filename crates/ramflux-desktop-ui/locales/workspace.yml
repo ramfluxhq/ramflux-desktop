@@ -13,11 +13,17 @@ composer:
     en: "Start"
     zh-CN: "开始"
   task_mode:
-    en: "Ask for a task in one sentence"
-    zh-CN: "用一句话发起任务"
+    en: "Ask an AI participant"
+    zh-CN: "请 AI 参与者处理"
   task_placeholder:
     en: "Describe what should happen, in one sentence"
     zh-CN: "用一句话描述要完成的事"
+  ask_placeholder:
+    en: "Ask %{name} to do something, in one sentence"
+    zh-CN: "用一句话请 %{name} 做一件事"
+  no_agent:
+    en: "No AI participant in this conversation"
+    zh-CN: "此会话中没有 AI 参与者"
   first_placeholder:
     en: "Write the first message"
     zh-CN: "输入第一条消息"
@@ -384,6 +390,9 @@ dock:
       en: "No node known"
       zh-CN: "未知节点"
 palette:
+  ask_agent:
+    en: "Ask %{name} to…"
+    zh-CN: "请 %{name} 处理…"
   placeholder:
     en: "Search contexts, people, objects, history, or type a command"
     zh-CN: "搜索上下文、联系人、对象、历史，或输入命令"

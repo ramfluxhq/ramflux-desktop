@@ -112,7 +112,7 @@ pub fn action_group(ids: &[&str], context: &BlockContext<'_>, cx: &App) -> Optio
     if actions.is_empty() {
         return None;
     }
-    let row = ActionRow { hash: context.hash, blocked: context.blocked };
+    let row = ActionRow { hash: context.hash, version: context.version, blocked: context.blocked };
     Some(row.render("block-actions", &actions, &context.sink, cx))
 }
 

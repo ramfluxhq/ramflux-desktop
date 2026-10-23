@@ -67,6 +67,11 @@ pub struct RowRefs {
     /// For an intervention whose grant a task step owns: that step. The
     /// decision then renders only inside the task (one moment, one place).
     pub owner: Option<OwningStep>,
+    /// For a task whose step asks for a choice or an input: the surface
+    /// moment where the user answers (the task only points there).
+    pub decision_surface: Option<MomentId>,
+    /// For a task with a result surface: its moment.
+    pub result_surface: Option<MomentId>,
 }
 
 /// The task step an intervention belongs to.
@@ -227,15 +232,19 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
         }
         MomentKind::TaskProgress(p) => {
             refs.task = store.task(&p.task_id).cloned();
-            let steps: Vec<GrantId> = refs
-                .task
-                .iter()
-                .flat_map(|t| t.steps.iter().filter_map(|s| s.grant_id.clone()))
-                .collect();
+            let steps: Vec<GrantId> =
+                refs.task.iter().flat_map(|t| t.step_grants().cloned()).collect();
             for id in &steps {
                 grant(id, &mut refs);
             }
-            Vec::new()
+            refs.decision_surface = selectors::task_decision_surface(store, moment).cloned();
+            refs.result_surface = refs
+                .task
+                .as_ref()
+                .and_then(|t| t.result_ref.as_ref())
+                .and_then(|s| store.surface_moment(s))
+                .cloned();
+            refs.task.as_ref().map(|t| vec![&t.assignee]).unwrap_or_default()
         }
         MomentKind::SafetyChange(p) => vec![&p.participant_id],
         MomentKind::Governance(p) => vec![&p.target],
@@ -334,7 +343,7 @@ impl RenderOnce for MomentView {
                 contact::render(p, &row.refs, lifecycle, &sink, cx).into_any_element()
             }
             MomentKind::TaskProgress(_) => {
-                task_progress::render(&row.refs, lifecycle, &sink, &state, cx).into_any_element()
+                task_progress::render(&row.refs, &sink, &state, cx).into_any_element()
             }
             MomentKind::Conflict(p) => {
                 conflict::render(p, &row.refs, lifecycle, &sink, &state, cx).into_any_element()

@@ -58,13 +58,15 @@ impl Run {
     /// The intent a click on `action` of the rendered `moment` maps to.
     fn click(&self, moment: &str, action: &str) -> Intent {
         let row = self.row(moment);
-        let hash = row.surface.expect("surface status").verdict.hash;
+        let status = row.surface.expect("surface status");
+        let (hash, version) = (status.verdict.hash, status.version);
         let event = UiEvent::new(
             Scope::Block(BlockId::new("b-buttons")),
             UiEventKind::ActionInvoked {
                 action_id: action.to_owned(),
                 values: JsonValue::Null,
                 surface_hash: hash,
+                version,
             },
         )
         .within(Scope::Moment(MomentId::new(moment)))

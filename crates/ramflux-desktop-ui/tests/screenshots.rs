@@ -13,7 +13,8 @@
 //! `RAMFLUX_SHOTS_SET=hardening` renders only the loading and empty states
 //! and the keyboard focus states (shots 10 to 14);
 //! `RAMFLUX_SHOTS_SET=conformance` renders the renderer conformance states
-//! (shots 15 to 17).
+//! (shots 15 to 17); `RAMFLUX_SHOTS_SET=ai_participant` renders the AI
+//! participant in the conversation (shots 18 to 22).
 //!
 //! The developer panel stays closed: scenarios are loaded and time is moved
 //! through the store handle (as the panel would), and every interaction is
@@ -174,6 +175,14 @@ mod shots {
             println!("wrote {}", path.display());
         }
 
+        /// Lets value transitions (progress bars) finish before a capture.
+        fn settle(&mut self) {
+            for _ in 0..5 {
+                self.cx.advance_clock(std::time::Duration::from_millis(200));
+                self.in_window(|_, _| {});
+            }
+        }
+
         /// Saves `name` in light and dark.
         fn both(&mut self, name: &str) {
             self.theme(ThemeMode::Light);
@@ -193,6 +202,7 @@ mod shots {
         match std::env::var("RAMFLUX_SHOTS_SET").as_deref() {
             Ok("hardening") => return hardening(&mut s),
             Ok("conformance") => return conformance(&mut s),
+            Ok("ai_participant") => return ai_participant(&mut s),
             _ => {}
         }
 
@@ -379,5 +389,53 @@ mod shots {
         s.click("rail-approvals");
         s.both("17_grant_fail_closed");
         s.click("rail-approvals");
+    }
+
+    /// The AI participant in the conversation (demo 3 and surface versions).
+    fn ai_participant(s: &mut Session) {
+        // 18. Orbit's reply streaming into its surface, mid-way.
+        s.scenario("s10_ai_participant", 200);
+        s.show("c-launch", None);
+        s.type_into("composer-input", "@Orbit can you check the launch checklist?");
+        s.click("composer-send");
+        s.advance(750);
+        s.settle();
+        s.both("18_ai_reply_streaming");
+
+        // 19. The task Orbit proposed, started; its deploy step needs me.
+        s.advance(400);
+        s.click_in("moment-m-task", "task-start");
+        s.advance(1_400);
+        s.show("c-launch", Some("m-task"));
+        s.settle();
+        s.both("19_ai_task_needs_me");
+
+        // 20. Approve pressed: the hold-to-confirm strip above the composer.
+        s.click_in("moment-m-task", "step-approve");
+        s.settle();
+        s.both("20_ai_approval_confirm");
+
+        // 22. Held: the result patched into Orbit's checklist, task done.
+        let center = std::cell::Cell::new(None);
+        s.in_window(|window, cx| {
+            let at = window.find("hold-confirm").bounds().center();
+            window.pointer_down(at, gpui_kit::MouseButton::Left, cx);
+            center.set(Some(at));
+        });
+        s.cx.advance_clock(std::time::Duration::from_millis(1_400));
+        s.cx.run_until_parked();
+        if let Some(at) = center.get() {
+            s.in_window(|window, cx| window.pointer_up(at, gpui_kit::MouseButton::Left, cx));
+        }
+        s.advance(1_700);
+        s.show("c-launch", Some("m-task"));
+        s.settle();
+        s.both("22_ai_task_done");
+
+        // 21. A surface whose change was made against an older version.
+        s.scenario("s11_surface_versions", 2_600);
+        s.show("c-plan", Some("m-pick"));
+        s.settle();
+        s.both("21_ai_surface_conflict");
     }
 }

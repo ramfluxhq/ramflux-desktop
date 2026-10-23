@@ -32,8 +32,8 @@ fn context_intent(event: &UiEvent) -> Option<IntentKind> {
         UiEventKind::AttachFile { path } => {
             IntentKind::AttachObject { context_id, path: path.clone() }
         }
-        UiEventKind::TaskRequested { request } => {
-            IntentKind::StartTask { context_id, request: request.clone() }
+        UiEventKind::TaskRequested { assignee, text } => {
+            IntentKind::StartTask { context_id, assignee: assignee.clone(), text: text.clone() }
         }
         UiEventKind::PinToggled { pinned: true } => IntentKind::PinContext { context_id },
         UiEventKind::PinToggled { pinned: false } => IntentKind::UnpinContext { context_id },
@@ -53,7 +53,7 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
     let moment = event.moment_id().and_then(|id| store.moment(id))?;
     let moment_id = moment.id.clone();
     Some(match &event.kind {
-        UiEventKind::ActionInvoked { action_id, values, surface_hash } => {
+        UiEventKind::ActionInvoked { action_id, values, surface_hash, version } => {
             let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
             IntentKind::SurfaceAction {
                 moment_id,
@@ -62,6 +62,7 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                 values: values.clone(),
                 // The version the user saw, never the store's current one.
                 surface_hash: surface_hash.clone(),
+                version: *version,
             }
         }
         UiEventKind::ApprovePressed => {
@@ -77,6 +78,10 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::CancelPressed => {
             let MomentKind::TaskProgress(payload) = &moment.kind else { return None };
             IntentKind::CancelTask { task_id: payload.task_id.clone() }
+        }
+        UiEventKind::ProposalAccepted => {
+            let MomentKind::TaskProgress(payload) = &moment.kind else { return None };
+            IntentKind::AcceptTaskProposal { task_id: payload.task_id.clone() }
         }
         UiEventKind::ContactAnswered { accept: true } => IntentKind::AcceptContact { moment_id },
         UiEventKind::ContactAnswered { accept: false } => IntentKind::RejectContact { moment_id },
@@ -106,7 +111,7 @@ fn decision_grant(event: &UiEvent, moment: &Moment, store: &Store) -> Option<Gra
                 .and_then(step_index)
                 .and_then(|ix| task.steps.get(ix))
                 .or_else(|| task.needs_me_step().map(|(_, step)| step))?;
-            step.grant_id.clone()
+            step.grant_id().cloned()
         }
         _ => None,
     }

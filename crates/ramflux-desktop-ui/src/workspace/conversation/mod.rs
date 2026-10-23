@@ -327,8 +327,9 @@ impl Conversation {
                     .ok();
                     None
                 }
-                UiEventKind::ActionInvoked { action_id, values, surface_hash } => {
-                    let (action_id, surface_hash) = (action_id.clone(), surface_hash.clone());
+                UiEventKind::ActionInvoked { action_id, values, surface_hash, version } => {
+                    let (action_id, surface_hash, version) =
+                        (action_id.clone(), surface_hash.clone(), *version);
                     // Acting again is the new review: the notice goes away.
                     let collected = this
                         .update(cx, |field, cx| {
@@ -344,7 +345,12 @@ impl Conversation {
                     let values = if values.is_null() { collected } else { values.clone() };
                     Some(UiEvent {
                         scope_path: event.scope_path,
-                        kind: UiEventKind::ActionInvoked { action_id, values, surface_hash },
+                        kind: UiEventKind::ActionInvoked {
+                            action_id,
+                            values,
+                            surface_hash,
+                            version,
+                        },
                     })
                 }
                 _ => Some(event),

@@ -4,9 +4,13 @@
 //! The composer: the primary input of the conversation field.
 //!
 //! Two modes: a message ([`UiEventKind::SubmitMessage`], becoming
-//! `SendMessage`) or a one-sentence request ([`UiEventKind::TaskRequested`],
-//! becoming `StartTask`). Both go through the context-scoped sink; the
-//! composer never sends anything itself. The mode is view-local.
+//! `SendMessage`) or a one-sentence request to an AI participant of the
+//! conversation ([`UiEventKind::TaskRequested`], becoming `StartTask`). A
+//! request is addressed with a leading mention (`@Orbit …`), else to the
+//! participant picked in the command palette, else to the conversation's
+//! first AI participant ([`assignee`]); a conversation without one offers
+//! no request mode. Both go through the context-scoped sink; the composer
+//! never sends anything itself. The mode and the pick are view-local.
 //!
 //! In a new-conversation draft the composer writes the first message: it
 //! submits [`UiEventKind::StartConversationRequested`] for the draft's
@@ -17,7 +21,9 @@
 //! checked and staged ([`attachment`]) and sent with Send, before the text.
 //!
 //! - [`attachment`]: the staged file and its chip.
+//! - [`assignee`]: who a request is addressed to.
 
+pub mod assignee;
 pub mod attachment;
 
 use gpui_kit::TestSupportExt as _;
@@ -32,10 +38,12 @@ use gpui_kit::{
 };
 use ramflux_desktop_core::{ContextId, ParticipantId, UiEventKind};
 
+use assignee::Agent;
+
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::file_dialog;
-use crate::i18n::tr;
+use crate::i18n::{tr, tr_args};
 use attachment::Staged;
 
 /// What the composer submits.
@@ -61,6 +69,8 @@ pub struct Composer {
     store: Entity<StoreHandle>,
     input: Entity<InputState>,
     sink: Option<EventSink>,
+    context: Option<ContextId>,
+    picked: Option<ParticipantId>,
     draft: Option<DraftTarget>,
     mode: ComposerMode,
     unavailable: Unavailable,
@@ -105,6 +115,8 @@ impl Composer {
             store,
             input,
             sink: None,
+            context: None,
+            picked: None,
             draft: None,
             mode: ComposerMode::Message,
             unavailable: Unavailable::default(),
@@ -114,14 +126,18 @@ impl Composer {
     }
 
     /// Targets a context through its scoped sink, or nothing. A new
-    /// context starts in message mode, with no staged file and no draft.
+    /// context starts in message mode, with no staged file, no draft and
+    /// no picked AI participant.
     pub fn set_sink(
         &mut self,
+        context: Option<ContextId>,
         sink: Option<EventSink>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.sink = sink;
+        self.context = context;
+        self.picked = None;
         self.draft = None;
         self.staged = None;
         self.set_mode(ComposerMode::Message, window, cx);
@@ -139,6 +155,8 @@ impl Composer {
         cx: &mut Context<Self>,
     ) {
         self.sink = Some(sink);
+        self.context = None;
+        self.picked = None;
         self.draft = Some(draft);
         self.staged = None;
         self.set_mode(ComposerMode::Message, window, cx);
@@ -188,9 +206,11 @@ impl Composer {
         self.input.update(cx, |input, cx| input.set_value("", window, cx));
     }
 
-    /// Switches between message and task mode (a draft is message only).
+    /// Switches between message and task mode (a draft is message only,
+    /// and a conversation without an AI participant has nobody to ask).
     pub fn set_mode(&mut self, mode: ComposerMode, window: &mut Window, cx: &mut Context<Self>) {
-        if self.mode == mode || (self.draft.is_some() && mode == ComposerMode::Task) {
+        let nobody = mode == ComposerMode::Task && self.agents(cx).is_empty();
+        if self.mode == mode || (self.draft.is_some() && mode == ComposerMode::Task) || nobody {
             return;
         }
         self.mode = mode;
@@ -198,12 +218,39 @@ impl Composer {
         cx.notify();
     }
 
+    /// Addresses requests to `agent` (from the command palette) and
+    /// switches to request mode.
+    pub fn ask(&mut self, agent: ParticipantId, window: &mut Window, cx: &mut Context<Self>) {
+        self.picked = Some(agent);
+        self.set_mode(ComposerMode::Task, window, cx);
+        self.set_placeholder(window, cx);
+        self.focus(window, cx);
+        cx.notify();
+    }
+
+    /// The AI participants of the shown conversation.
+    pub fn agents(&self, cx: &App) -> Vec<Agent> {
+        self.context
+            .as_ref()
+            .map(|c| assignee::agents(self.store.read(cx).store(), c))
+            .unwrap_or_default()
+    }
+
+    /// The AI participant a request without a mention goes to.
+    pub fn addressee(&self, cx: &App) -> Option<Agent> {
+        let agents = self.agents(cx);
+        assignee::resolve(&agents, self.picked.as_ref(), "").map(|(a, _)| a.clone())
+    }
+
     fn set_placeholder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let placeholder = tr(match (self.mode, &self.draft) {
-            (ComposerMode::Task, _) => "composer.task_placeholder",
-            (ComposerMode::Message, Some(_)) => "composer.first_placeholder",
-            (ComposerMode::Message, None) => "composer.placeholder",
-        });
+        let placeholder = match (self.mode, &self.draft) {
+            (ComposerMode::Task, _) => match self.addressee(cx) {
+                Some(agent) => tr_args("composer.ask_placeholder", &[("name", &agent.name)]),
+                None => tr("composer.task_placeholder"),
+            },
+            (ComposerMode::Message, Some(_)) => tr("composer.first_placeholder"),
+            (ComposerMode::Message, None) => tr("composer.placeholder"),
+        };
         self.input.update(cx, |input, cx| input.set_placeholder(placeholder, window, cx));
     }
 
@@ -272,11 +319,21 @@ impl Composer {
         if text.is_empty() {
             return;
         }
-        self.input.update(cx, |input, cx| input.set_value("", window, cx));
         let kind = match self.mode {
             ComposerMode::Message => UiEventKind::SubmitMessage { text },
-            ComposerMode::Task => UiEventKind::TaskRequested { request: text },
+            ComposerMode::Task => {
+                let agents = self.agents(cx);
+                let Some((agent, text)) = assignee::resolve(&agents, self.picked.as_ref(), &text)
+                else {
+                    return;
+                };
+                if text.is_empty() {
+                    return;
+                }
+                UiEventKind::TaskRequested { assignee: agent.id.clone(), text }
+            }
         };
+        self.input.update(cx, |input, cx| input.set_value("", window, cx));
         sink.emit(kind, window, cx);
     }
 }
@@ -286,7 +343,9 @@ impl Render for Composer {
         let enabled = self.sink.is_some();
         let reason = self.unavailable_reason().cloned();
         let can_send = enabled && reason.is_none();
-        let task_reason = self.unavailable.task.clone();
+        let nobody = enabled && self.draft.is_none() && self.agents(cx).is_empty();
+        let task_reason =
+            self.unavailable.task.clone().or_else(|| nobody.then(|| tr("composer.no_agent")));
         let in_draft = self.draft.is_some();
         let attach_reason = if in_draft {
             Some(tr("composer.attach.after_start"))

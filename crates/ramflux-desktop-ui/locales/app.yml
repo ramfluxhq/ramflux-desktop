@@ -127,6 +127,44 @@ lifecycle:
   dismissed:
     en: "Dismissed"
     zh-CN: "已关闭"
+task_state:
+  proposed:
+    en: "Proposed"
+    zh-CN: "提议中"
+  running:
+    en: "In progress"
+    zh-CN: "进行中"
+  needs_me:
+    en: "Needs me"
+    zh-CN: "需要我"
+  done:
+    en: "Done"
+    zh-CN: "已完成"
+  failed:
+    en: "Failed"
+    zh-CN: "失败"
+  cancelled:
+    en: "Cancelled"
+    zh-CN: "已取消"
+step_state:
+  pending:
+    en: "Not started"
+    zh-CN: "未开始"
+  running:
+    en: "Running"
+    zh-CN: "进行中"
+  needs_me:
+    en: "Needs me"
+    zh-CN: "需要我"
+  done:
+    en: "Done"
+    zh-CN: "已完成"
+  failed:
+    en: "Failed"
+    zh-CN: "失败"
+  skipped:
+    en: "Skipped"
+    zh-CN: "已跳过"
 risk:
   low:
     en: "Low"

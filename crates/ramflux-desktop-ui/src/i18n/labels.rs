@@ -6,7 +6,8 @@
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
     AccountKind, Direction, GovernanceAction, GrantState, Lifecycle, MomentKind, NodeHealth,
-    PinSource, Receipt, Risk, Role, SafetyState, SourceStatus, SystemLevel, TransferState,
+    PinSource, Receipt, Risk, Role, SafetyState, SourceStatus, StepState, SystemLevel, TaskState,
+    TransferState,
 };
 
 use super::tr;
@@ -48,6 +49,30 @@ pub fn lifecycle(lifecycle: Lifecycle) -> SharedString {
         Lifecycle::Done => "lifecycle.done",
         Lifecycle::Failed => "lifecycle.failed",
         Lifecycle::Dismissed => "lifecycle.dismissed",
+    })
+}
+
+/// Label of a task state.
+pub fn task_state(state: TaskState) -> SharedString {
+    tr(match state {
+        TaskState::Proposed => "task_state.proposed",
+        TaskState::Running => "task_state.running",
+        TaskState::NeedsMe => "task_state.needs_me",
+        TaskState::Done => "task_state.done",
+        TaskState::Failed => "task_state.failed",
+        TaskState::Cancelled => "task_state.cancelled",
+    })
+}
+
+/// Label of a task step state.
+pub fn step_state(state: StepState) -> SharedString {
+    tr(match state {
+        StepState::Pending => "step_state.pending",
+        StepState::Running => "step_state.running",
+        StepState::NeedsMe => "step_state.needs_me",
+        StepState::Done => "step_state.done",
+        StepState::Failed => "step_state.failed",
+        StepState::Skipped => "step_state.skipped",
     })
 }
 

@@ -6,7 +6,9 @@
 //! These are trace labels (variant and method names), never user-facing text
 //! and never secrets.
 
-use ramflux_desktop_core::{DomainEvent, Effect, Intent, IntentKind, Scope, UiEvent, UiEventKind};
+use ramflux_desktop_core::{
+    DomainEvent, Effect, Intent, IntentKind, Scope, SurfaceEvent, UiEvent, UiEventKind,
+};
 
 /// Formats a scope path as `Workspace > Context(c-1) > Moment(m-1)`.
 pub fn format_path(path: &[Scope]) -> String {
@@ -38,6 +40,7 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::ConflictResolved { .. } => "ConflictResolved",
         UiEventKind::TaskRequested { .. } => "TaskRequested",
         UiEventKind::CancelPressed => "CancelPressed",
+        UiEventKind::ProposalAccepted => "ProposalAccepted",
         UiEventKind::PinToggled { .. } => "PinToggled",
         UiEventKind::MuteToggled { .. } => "MuteToggled",
         UiEventKind::DisappearingChosen { .. } => "DisappearingChosen",
@@ -80,6 +83,7 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::SetDisappearing { .. } => "SetDisappearing",
         IntentKind::StartTask { .. } => "StartTask",
         IntentKind::CancelTask { .. } => "CancelTask",
+        IntentKind::AcceptTaskProposal { .. } => "AcceptTaskProposal",
         IntentKind::SurfaceAction { .. } => "SurfaceAction",
         IntentKind::Approve { .. } => "Approve",
         IntentKind::Deny { .. } => "Deny",
@@ -148,6 +152,10 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::MomentAdded(_) => "MomentAdded",
         DomainEvent::MomentUpdated { .. } => "MomentUpdated",
         DomainEvent::SurfacePatched { .. } => "SurfacePatched",
+        DomainEvent::Surface(SurfaceEvent::Create { .. }) => "Surface.Create",
+        DomainEvent::Surface(SurfaceEvent::Patch { .. }) => "Surface.Patch",
+        DomainEvent::Surface(SurfaceEvent::StreamAppend { .. }) => "Surface.StreamAppend",
+        DomainEvent::Surface(SurfaceEvent::Close { .. }) => "Surface.Close",
         DomainEvent::ObjectUpserted(_) => "ObjectUpserted",
         DomainEvent::GrantRequested(_) => "GrantRequested",
         DomainEvent::GrantResolved { .. } => "GrantResolved",
@@ -158,6 +166,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::IntegrationsUpdated(_) => "IntegrationsUpdated",
         DomainEvent::TaskUpserted(_) => "TaskUpserted",
         DomainEvent::TaskStepChanged { .. } => "TaskStepChanged",
+        DomainEvent::TaskStateChanged { .. } => "TaskStateChanged",
         DomainEvent::SourceStatusChanged(_) => "SourceStatusChanged",
         DomainEvent::CapabilitiesUpdated(_) => "CapabilitiesUpdated",
         DomainEvent::DaemonInfoUpdated(_) => "DaemonInfoUpdated",

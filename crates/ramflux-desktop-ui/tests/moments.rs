@@ -201,10 +201,9 @@ fn task_progress_runs_through_needs_me_to_done(cx: &mut TestAppContext) {
     assert_eq!(mode, ComposerMode::Task);
     type_into(cx, handle, "composer-input", "Book a train to Lyon on Friday morning");
     click(cx, handle, "composer-send");
-    assert_eq!(
-        last_body(cx, &shell, methods::TASK_START)["request"],
-        "Book a train to Lyon on Friday morning"
-    );
+    let start = last_body(cx, &shell, methods::TASK_START);
+    assert_eq!(start["text"], "Book a train to Lyon on Friday morning");
+    assert_eq!(start["assignee"], "p-orbit", "the conversation's AI participant is asked");
     advance(cx, 3_000);
     assert_eq!(lifecycle(cx, &shell, "m-task"), Some(Lifecycle::NeedsMe));
     // One moment, one place: the decision lives only in the task step; the

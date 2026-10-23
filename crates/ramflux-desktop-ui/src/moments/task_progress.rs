@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Task progress moments: intent, then steps with their states, then the
-//! result.
+//! Task moments: what an AI participant does for the user inside the
+//! conversation, from proposal to result.
 //!
-//! Collapsed, the card shows the title, a step count and the current step;
-//! expanded (view-local), every step. The step that needs the user always
-//! expands with its decision inline: the grant it waits on, with Approve and
-//! Deny scoped to that step (`Block(step-N)`), so the root decides exactly
-//! that grant.
+//! The card names the task, who works on it and its state, then its steps
+//! and the result. A proposal shows the plan with Start and Decline (only
+//! for the requester; agents never confirm). A running task shows its
+//! active steps (all of them when expanded, view-local) and, for its
+//! requester, Cancel.
+//!
+//! A step that needs the user asks in exactly one place. An approval is
+//! decided right inside the step: the grant it waits on, with Approve and
+//! Deny scoped to that step (`Block(step-N)`), through the same grant flow
+//! and hold-to-confirm strip as any approval. A choice or an input lives in
+//! the agent's surface; the step only points there and brings it into view.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -16,9 +22,10 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, App, IntoElement, div};
+use gpui_kit::{AnyElement, App, Hsla, IntoElement, SharedString, div};
 use ramflux_desktop_core::{
-    BlockId, Grant, GrantState, Lifecycle, Scope, Task, TaskStep, UiEventKind,
+    Actor, BlockId, Grant, GrantState, MomentId, NeedsMe, Scope, StepState, Task, TaskState,
+    TaskStep, UiEventKind,
 };
 
 use super::{RowRefs, RowState};
@@ -28,13 +35,7 @@ use crate::ids::domain_id;
 use crate::root::step_block_id;
 
 /// Renders a task progress body.
-pub fn render(
-    refs: &RowRefs,
-    lifecycle: Lifecycle,
-    sink: &EventSink,
-    state: &RowState,
-    cx: &App,
-) -> impl IntoElement {
+pub fn render(refs: &RowRefs, sink: &EventSink, state: &RowState, cx: &App) -> impl IntoElement {
     let Some(task) = refs.task.clone() else {
         return v_flex()
             .id("task-progress")
@@ -42,124 +43,224 @@ pub fn render(
             .text_color(cx.theme().muted_foreground)
             .child(tr("moment.task.missing"));
     };
-    let done = task.steps.iter().filter(|s| s.lifecycle == Lifecycle::Done).count();
+    let assignee = refs.name(&task.assignee);
+    let mine = task.requester == Actor::Human;
+    let proposal = task.state == TaskState::Proposed;
+    let done = task.finished_steps();
     let total = task.steps.len();
-    let expanded = state.expanded;
+    let expanded = state.expanded || proposal;
     let steps: Vec<AnyElement> = task
         .steps
         .iter()
         .enumerate()
         .filter(|(_, step)| {
             expanded
-                || matches!(
-                    step.lifecycle,
-                    Lifecycle::InProgress | Lifecycle::NeedsMe | Lifecycle::Failed
-                )
+                || matches!(step.state, StepState::Running | StepState::NeedsMe | StepState::Failed)
         })
-        .map(|(ix, step)| step_row(ix, step, refs, sink, cx))
+        .map(|(ix, step)| step_row(ix, step, &assignee, refs, sink, cx))
         .collect();
-    let disclosure = sink.scoped(Scope::Block(BlockId::new("steps")));
-    let cancel = sink.scoped(Scope::Block(BlockId::new("cancel")));
     // Lossy by design: the bar is only displayed.
     #[allow(clippy::cast_precision_loss)]
     let percent = if total == 0 { 0.0 } else { done as f32 / total as f32 * 100.0 };
+    let attention = matches!(task.state, TaskState::NeedsMe | TaskState::Proposed);
     v_flex()
         .id("task-progress")
         .gap_2()
         .p_3()
         .border_1()
-        .border_color(if lifecycle == Lifecycle::NeedsMe {
-            cx.theme().warning
-        } else {
-            cx.theme().border
-        })
+        .border_color(if attention { cx.theme().warning } else { cx.theme().border })
         .rounded(cx.theme().radius_lg)
         .bg(cx.theme().group_box)
-        .child(
-            h_flex()
-                .gap_2()
-                .child(
-                    Icon::new(IconName::LayoutDashboard)
-                        .small()
-                        .text_color(cx.theme().muted_foreground),
-                )
-                .child(div().flex_1().min_w_0().text_sm().font_medium().child(task.title.clone()))
-                .child(div().text_xs().text_color(cx.theme().muted_foreground).child(tr_args(
-                    "moment.task.count",
-                    &[("done", &done.to_string()), ("total", &total.to_string())],
-                ))),
-        )
-        .child(Progress::new("task-bar").value(percent).accessibility_label(task.title.clone()))
+        .child(header(&task, &assignee, cx))
+        .when(proposal, |col| {
+            col.child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(tr_args("moment.task.proposal_hint", &[("name", &assignee)])),
+            )
+        })
+        .when(!proposal, |col| {
+            col.child(
+                Progress::new("task-bar").value(percent).accessibility_label(task.title.clone()),
+            )
+        })
         .children(steps)
-        .child(
-            h_flex()
-                .gap_2()
-                .child(
-                    Button::new("task-steps")
-                        .ghost()
-                        .xsmall()
-                        .icon(if expanded { IconName::ChevronDown } else { IconName::ChevronRight })
-                        .label(tr(if expanded {
-                            "moment.task.hide_steps"
-                        } else {
-                            "moment.task.show_steps"
-                        }))
-                        .on_click(move |_, window, cx| {
-                            disclosure.emit(
-                                UiEventKind::ExpandToggled { expanded: !expanded },
-                                window,
-                                cx,
-                            );
-                        }),
-                )
-                .when(!task.lifecycle.is_terminal(), |row| {
-                    row.child(
-                        Button::new("task-cancel")
-                            .ghost()
-                            .xsmall()
-                            .label(tr("moment.task.cancel"))
-                            .on_click(move |_, window, cx| {
-                                cancel.emit(UiEventKind::CancelPressed, window, cx)
-                            }),
-                    )
-                }),
-        )
-        .when_some(result(&task, cx), |col, result| col.child(result))
+        .child(footer(&task, mine, state.expanded, sink, cx))
+        .when_some(result(&task, refs.result_surface.clone(), sink, cx), |col, result| {
+            col.child(result)
+        })
 }
 
-fn result(task: &Task, cx: &App) -> Option<AnyElement> {
+fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
+    let state_color = state_color(task.state, cx);
+    h_flex()
+        .gap_2()
+        .child(Icon::new(IconName::Bot).small().text_color(cx.theme().muted_foreground))
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .child(div().text_sm().font_medium().child(task.title.clone()))
+                .child(
+                    h_flex()
+                        .id("task-state")
+                        .gap_1()
+                        .text_xs()
+                        .child(
+                            div().text_color(cx.theme().muted_foreground).child(assignee.clone()),
+                        )
+                        .child(div().text_color(cx.theme().muted_foreground).child("·"))
+                        .child(div().text_color(state_color).child(i18n::task_state(task.state)))
+                        .test_support(),
+                ),
+        )
+        .when(task.state != TaskState::Proposed, |row| {
+            row.child(div().text_xs().text_color(cx.theme().muted_foreground).child(tr_args(
+                "moment.task.count",
+                &[
+                    ("done", &task.finished_steps().to_string()),
+                    ("total", &task.steps.len().to_string()),
+                ],
+            )))
+        })
+}
+
+fn state_color(state: TaskState, cx: &App) -> Hsla {
+    match state {
+        TaskState::Proposed | TaskState::NeedsMe => cx.theme().warning,
+        TaskState::Done => cx.theme().success,
+        TaskState::Failed => cx.theme().danger,
+        TaskState::Running | TaskState::Cancelled => cx.theme().muted_foreground,
+    }
+}
+
+/// Start / Decline for a proposal, Cancel for a running task (both only
+/// for the requester), and the steps disclosure.
+fn footer(task: &Task, mine: bool, expanded: bool, sink: &EventSink, cx: &App) -> AnyElement {
+    let proposal = task.state == TaskState::Proposed;
+    let disclosure = sink.scoped(Scope::Block(BlockId::new("steps")));
+    let cancel = sink.scoped(Scope::Block(BlockId::new("cancel")));
+    let start = sink.scoped(Scope::Block(BlockId::new("start")));
+    h_flex()
+        .id("task-footer")
+        .gap_2()
+        .when(proposal && mine, |row| {
+            row.child(
+                Button::new("task-start")
+                    .primary()
+                    .small()
+                    .label(tr("moment.task.start"))
+                    .on_click(move |_, window, cx| {
+                        start.emit(UiEventKind::ProposalAccepted, window, cx)
+                    }),
+            )
+        })
+        .when(!proposal, |row| {
+            row.child(
+                Button::new("task-steps")
+                    .ghost()
+                    .xsmall()
+                    .icon(if expanded { IconName::ChevronDown } else { IconName::ChevronRight })
+                    .label(tr(if expanded {
+                        "moment.task.hide_steps"
+                    } else {
+                        "moment.task.show_steps"
+                    }))
+                    .on_click(move |_, window, cx| {
+                        disclosure.emit(
+                            UiEventKind::ExpandToggled { expanded: !expanded },
+                            window,
+                            cx,
+                        );
+                    }),
+            )
+        })
+        .when(mine && !task.state.is_terminal(), |row| {
+            let label = if proposal { "moment.task.decline" } else { "moment.task.cancel" };
+            let button =
+                Button::new("task-cancel").label(tr(label)).on_click(move |_, window, cx| {
+                    cancel.emit(UiEventKind::CancelPressed, window, cx);
+                });
+            row.child(if proposal { button.outline().small() } else { button.ghost().xsmall() })
+        })
+        .when(!mine && proposal, |row| {
+            row.child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(tr("moment.task.not_yours")),
+            )
+        })
+        .into_any_element()
+}
+
+fn result(
+    task: &Task,
+    surface: Option<MomentId>,
+    sink: &EventSink,
+    cx: &App,
+) -> Option<AnyElement> {
     let text = task.result.clone()?;
-    let (icon, color) = match task.lifecycle {
-        Lifecycle::Done => (IconName::CircleCheck, cx.theme().success),
+    let (icon, color) = match task.state {
+        TaskState::Done => (IconName::CircleCheck, cx.theme().success),
+        TaskState::Cancelled => (IconName::Dash, cx.theme().muted_foreground),
         _ => (IconName::CircleX, cx.theme().danger),
     };
+    let show = surface.map(|target| {
+        let sink = sink.scoped(Scope::Block(BlockId::new("result")));
+        Button::new("task-show-result")
+            .ghost()
+            .xsmall()
+            .label(tr("moment.task.show_result"))
+            .on_click(move |_, window, cx| {
+                sink.emit(
+                    UiEventKind::FocusMomentRequested { moment_id: target.clone() },
+                    window,
+                    cx,
+                );
+            })
+    });
     Some(
         h_flex()
             .id("task-result")
             .gap_2()
             .text_sm()
             .child(Icon::new(icon).small().text_color(color))
-            .child(div().min_w_0().child(text))
+            .child(div().flex_1().min_w_0().child(text))
+            .children(show)
             .test_support()
             .into_any_element(),
     )
 }
 
-fn step_row(ix: usize, step: &TaskStep, refs: &RowRefs, sink: &EventSink, cx: &App) -> AnyElement {
-    let (icon, color) = match step.lifecycle {
-        Lifecycle::Done => (IconName::CircleCheck, cx.theme().success),
-        Lifecycle::InProgress => (IconName::LoaderCircle, cx.theme().foreground),
-        Lifecycle::NeedsMe => (IconName::TriangleAlert, cx.theme().warning),
-        Lifecycle::Failed | Lifecycle::Dismissed => (IconName::CircleX, cx.theme().danger),
-        Lifecycle::Pending => (IconName::Dash, cx.theme().muted_foreground),
+fn step_row(
+    ix: usize,
+    step: &TaskStep,
+    assignee: &SharedString,
+    refs: &RowRefs,
+    sink: &EventSink,
+    cx: &App,
+) -> AnyElement {
+    let (icon, color) = match step.state {
+        StepState::Done => (IconName::CircleCheck, cx.theme().success),
+        StepState::Running => (IconName::LoaderCircle, cx.theme().foreground),
+        StepState::NeedsMe => (IconName::TriangleAlert, cx.theme().warning),
+        StepState::Failed => (IconName::CircleX, cx.theme().danger),
+        StepState::Pending | StepState::Skipped => (IconName::Dash, cx.theme().muted_foreground),
     };
-    let grant = step.grant_id.as_ref().and_then(|id| refs.grants.get(id));
-    let decision = (step.lifecycle == Lifecycle::NeedsMe)
-        .then_some(grant)
-        .flatten()
-        .map(|grant| decision(ix, grant, sink, cx));
+    let asking = (step.state == StepState::NeedsMe).then_some(step.needs_me.as_ref()).flatten();
+    let place = asking.map(|needs_me| match needs_me {
+        NeedsMe::Approval { grant_id } => match refs.grants.get(grant_id) {
+            Some(grant) => decision(ix, grant, sink, cx),
+            None => missing_place(cx),
+        },
+        NeedsMe::Choice { .. } | NeedsMe::Input { .. } => {
+            pointer(ix, needs_me, assignee, refs.decision_surface.clone(), sink, cx)
+        }
+    });
     v_flex()
-        .id(domain_id("step", &ix))
+        .id(domain_id("step", &step.id))
         .gap_1()
         .child(
             h_flex()
@@ -167,16 +268,67 @@ fn step_row(ix: usize, step: &TaskStep, refs: &RowRefs, sink: &EventSink, cx: &A
                 .text_sm()
                 .child(Icon::new(icon).xsmall().text_color(color))
                 .child(div().flex_1().min_w_0().child(step.label.clone()))
-                .child(div().text_xs().text_color(color).child(i18n::lifecycle(step.lifecycle))),
+                .child(div().text_xs().text_color(color).child(i18n::step_state(step.state))),
         )
-        .children(decision)
+        .children(place)
+        .test_support()
+        .into_any_element()
+}
+
+fn missing_place(cx: &App) -> AnyElement {
+    div()
+        .ml_5()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(tr("moment.task.place_missing"))
+        .into_any_element()
+}
+
+/// A choice or an input is answered in the agent's surface: the step says
+/// so and brings that surface into view (it never repeats the controls).
+fn pointer(
+    ix: usize,
+    needs_me: &NeedsMe,
+    assignee: &SharedString,
+    surface: Option<MomentId>,
+    sink: &EventSink,
+    cx: &App,
+) -> AnyElement {
+    let key = match needs_me {
+        NeedsMe::Choice { .. } => "moment.task.choose_in_view",
+        _ => "moment.task.answer_in_view",
+    };
+    let sink = sink.scoped(Scope::Block(step_block_id(ix)));
+    h_flex()
+        .id("step-pointer")
+        .ml_5()
+        .gap_2()
+        .text_xs()
+        .text_color(cx.theme().warning)
+        .child(div().flex_1().min_w_0().child(tr_args(key, &[("name", assignee)])))
+        .when_some(surface, |row, target| {
+            row.child(
+                Button::new("step-show-view")
+                    .ghost()
+                    .xsmall()
+                    .label(tr("moment.task.show_view"))
+                    .on_click(move |_, window, cx| {
+                        sink.emit(
+                            UiEventKind::FocusMomentRequested { moment_id: target.clone() },
+                            window,
+                            cx,
+                        );
+                    }),
+            )
+        })
+        .test_support()
         .into_any_element()
 }
 
 fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement {
     let step_sink = sink.scoped(Scope::Block(step_block_id(ix)));
     let deny_sink = step_sink.clone();
-    let pending = grant.state == GrantState::Pending;
+    let open = grant.state == GrantState::Pending && grant.failure.is_none();
     v_flex()
         .id("step-decision")
         .ml_5()
@@ -200,8 +352,9 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
                         .child(grant.scope.clone()),
                 ),
         )
-        .child(if pending {
-            h_flex()
+        .child(match grant.failure {
+            Some(failure) => super::grant_failure::render(failure, cx),
+            None if open => h_flex()
                 .gap_2()
                 .child(
                     Button::new("step-approve")
@@ -225,13 +378,13 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
                             deny_sink.emit(UiEventKind::DenyPressed, window, cx)
                         }),
                 )
-                .into_any_element()
-        } else {
-            div()
+                .into_any_element(),
+            None => div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child(i18n::grant_state(grant.state))
-                .into_any_element()
+                .into_any_element(),
         })
+        .test_support()
         .into_any_element()
 }
