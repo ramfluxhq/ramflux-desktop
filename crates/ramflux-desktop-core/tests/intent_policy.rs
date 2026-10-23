@@ -66,6 +66,7 @@ fn store_with_grants() -> Store {
             node_id: None,
             device_id: None,
             lock_state: LockState::Locked,
+            self_participant_id: None,
         }),
     );
     feed.store

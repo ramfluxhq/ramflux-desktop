@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{AccountId, DeviceId, NodeId, Timestamp};
+use crate::ids::{AccountId, DeviceId, NodeId, ParticipantId, Timestamp};
 
 /// Whether the local account is unlocked.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +46,10 @@ pub struct Account {
     /// Lock state.
     #[serde(default)]
     pub lock_state: LockState,
+    /// The participant that is this account in its contexts. Outbound
+    /// moments (and so receipts) are the ones whose origin is this id.
+    #[serde(default)]
+    pub self_participant_id: Option<ParticipantId>,
 }
 
 /// How a node endpoint was pinned.

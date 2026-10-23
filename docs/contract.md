@@ -45,7 +45,7 @@ The store keeps each entity in its own collection, keyed by id:
 
 | Entity | Key fields |
 |---|---|
-| `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state` |
+| `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state`, `self_participant_id` (the participant that is this account; outbound moments and receipts key on it, never guessed) |
 | `Node` | NODE-01 profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
 | `Device` | account, label, `this_device`, `revoked`, `last_seen` |
 | `Participant` | `kind` (Human, Agent, Device, Node), `display`, `safety`, `contact`, `safety_number` |

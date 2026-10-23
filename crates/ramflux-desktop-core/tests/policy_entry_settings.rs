@@ -73,6 +73,7 @@ fn store() -> Store {
             node_id: Some(NodeId::new("n-home")),
             device_id: None,
             lock_state: LockState::Unlocked,
+            self_participant_id: None,
         }),
     );
     feed.ok(5, DomainEvent::GrantRequested(grant("g-ok", Risk::Low)));

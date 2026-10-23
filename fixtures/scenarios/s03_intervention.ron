@@ -20,7 +20,7 @@
         (0, NodeUpserted(id: "n-harbor", endpoints: ["quic://harbor.example.net:7443"],
             fingerprint: "SHA256:4b9e 77c1 0a3f d2e8 91c6 5f04 aa2d 6e19", pin_source: Invite, health: Healthy,
             capabilities: ["gateway", "relay", "prekey"], expires_at: 1793404800000, is_default: true)),
-        (0, AccountUpdated(id: "a-ops", label: "Operations", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked)),
+        (0, AccountUpdated(id: "a-ops", label: "Operations", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked, self_participant_id: "p-me")),
         (0, DeviceUpserted(id: "dev-laptop-01", account_id: "a-ops", label: "This laptop", this_device: true, last_seen: 1790812800000)),
         (0, DeviceUpserted(id: "dev-desk-01", account_id: "a-ops", label: "Desk workstation", last_seen: 1790809200000)),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),

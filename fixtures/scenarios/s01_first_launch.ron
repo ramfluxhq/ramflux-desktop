@@ -85,7 +85,7 @@
         (
             on: Call(method: "account.create", fields: {"node_id": "n-studio"}),
             emit: [
-                (200, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-studio", device_id: "dev-laptop-01", lock_state: Unlocked)),
+                (200, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-studio", device_id: "dev-laptop-01", lock_state: Unlocked, self_participant_id: "p-me")),
                 (250, SourceStatusChanged(Connected)),
                 (250, DeviceUpserted(id: "dev-laptop-01", account_id: "a-main", label: "This laptop", this_device: true)),
                 (300, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
@@ -97,7 +97,7 @@
         (
             on: Call(method: "account.create", fields: {"node_id": "n-harbor"}),
             emit: [
-                (200, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked)),
+                (200, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked, self_participant_id: "p-me")),
                 (250, SourceStatusChanged(Connected)),
                 (250, DeviceUpserted(id: "dev-laptop-01", account_id: "a-main", label: "This laptop", this_device: true)),
                 (300, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
@@ -109,7 +109,7 @@
         (
             on: Call(method: "account.create"),
             emit: [
-                (200, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-ramflux", device_id: "dev-laptop-01", lock_state: Unlocked)),
+                (200, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-ramflux", device_id: "dev-laptop-01", lock_state: Unlocked, self_participant_id: "p-me")),
                 (250, SourceStatusChanged(Connected)),
                 (250, DeviceUpserted(id: "dev-laptop-01", account_id: "a-main", label: "This laptop", this_device: true)),
                 (300, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
@@ -121,7 +121,7 @@
         (
             on: Call(method: "device.activate"),
             emit: [
-                (300, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-02", lock_state: Unlocked)),
+                (300, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-02", lock_state: Unlocked, self_participant_id: "p-me")),
                 (350, SourceStatusChanged(Connected)),
                 (350, DeviceUpserted(id: "dev-desk-01", account_id: "a-main", label: "Desk workstation")),
                 (350, DeviceUpserted(id: "dev-laptop-02", account_id: "a-main", label: "This laptop", this_device: true)),
@@ -134,7 +134,7 @@
         (
             on: Call(method: "account.backup.import"),
             emit: [
-                (400, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked)),
+                (400, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked, self_participant_id: "p-me")),
                 (450, SourceStatusChanged(Connected)),
                 (450, DeviceUpserted(id: "dev-laptop-01", account_id: "a-main", label: "This laptop", this_device: true)),
                 (500, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),

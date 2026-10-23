@@ -210,3 +210,29 @@ fn dock_selectors_filter_and_order() {
 
     assert_eq!(objects(&feed.store).len(), 1);
 }
+
+#[test]
+fn self_participant_comes_only_from_the_account() {
+    let mut feed = Feed::new();
+    let mut ctx = context("c-1", false);
+    ctx.participants = vec![ParticipantId::new("p-me"), ParticipantId::new("p-ana")];
+    feed.ok(
+        1,
+        DomainEvent::ParticipantUpserted(participant("p-me", ParticipantKind::Human, "Me", false)),
+    );
+    feed.ok(1, DomainEvent::ContextUpserted(ctx));
+    assert_eq!(selectors::self_participant(&feed.store), None, "never guessed from membership");
+    feed.ok(
+        2,
+        DomainEvent::AccountUpdated(Account {
+            id: AccountId::new("a-1"),
+            label: "Me".into(),
+            kind: AccountKind::HumanInteractive,
+            node_id: None,
+            device_id: None,
+            lock_state: LockState::Unlocked,
+            self_participant_id: Some(ParticipantId::new("p-me")),
+        }),
+    );
+    assert_eq!(selectors::self_participant(&feed.store), Some(ParticipantId::new("p-me")));
+}

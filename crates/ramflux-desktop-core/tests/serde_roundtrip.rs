@@ -212,6 +212,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             node_id: Some(NodeId::new("n-1")),
             device_id: Some("dev-1".to_owned()),
             lock_state: LockState::Unlocked,
+            self_participant_id: Some(ParticipantId::new("p-me")),
         }),
         DomainEvent::NodeUpserted(Node {
             id: NodeId::new("n-1"),

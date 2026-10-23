@@ -190,20 +190,13 @@ pub fn participants<'a>(store: &'a Store, context_id: &ContextId) -> Vec<&'a Par
         .unwrap_or_default()
 }
 
-/// The local user's participant: the human present in every context.
-///
-/// The contract has no explicit "self" field yet; every source lists the
-/// local user in each of their contexts, which identifies them.
+/// The local user's participant: the `self_participant_id` the source
+/// declared on the account (the unlocked one first). `None` while no account
+/// declares it; the desktop never guesses it.
 pub fn self_participant(store: &Store) -> Option<crate::ids::ParticipantId> {
-    let mut contexts = store.contexts();
-    let first = contexts.next()?;
-    let rest: Vec<_> = contexts.collect();
-    first
-        .participants
-        .iter()
-        .filter(|id| {
-            store.participant(id).is_some_and(|p| p.kind == crate::model::ParticipantKind::Human)
-        })
-        .find(|id| rest.iter().all(|c| c.participants.contains(id)))
-        .cloned()
+    store
+        .accounts()
+        .find(|a| a.lock_state == crate::model::LockState::Unlocked)
+        .or_else(|| store.accounts().next())
+        .and_then(|a| a.self_participant_id.clone())
 }

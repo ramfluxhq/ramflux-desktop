@@ -25,7 +25,7 @@
             fingerprint: "SHA256:0c55 a1e9 37f2 8b06 d4c1 9e7a 52b3 f810", pin_source: Manual, health: Degraded,
             capabilities: ["gateway", "relay"], expires_at: 1791417600000,
             probe: (at: 1790809200000, gateway: (ok: true, latency_ms: 88), relay: (ok: false, detail: "relay timeout")))),
-        (0, AccountUpdated(id: "a-personal", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked)),
+        (0, AccountUpdated(id: "a-personal", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked, self_participant_id: "p-me")),
         (0, DeviceUpserted(id: "dev-laptop-01", account_id: "a-personal", label: "This laptop", this_device: true, last_seen: 1790812800000)),
         (0, DeviceUpserted(id: "dev-phone-01", account_id: "a-personal", label: "Phone", last_seen: 1790805600000)),
         (0, DeviceUpserted(id: "dev-tablet-old", account_id: "a-personal", label: "Old tablet", revoked: true, last_seen: 1788134400000)),

@@ -11,7 +11,7 @@
         (0, NodeUpserted(id: "n-corp", endpoints: ["quic://ramflux.acme.example:7443"],
             fingerprint: "SHA256:0c55 a1e9 37f2 8b06 d4c1 9e7a 52b3 f810", pin_source: Manual, health: Healthy,
             capabilities: ["gateway", "relay"], expires_at: 1791417600000, is_default: true)),
-        (0, AccountUpdated(id: "a-work", label: "Work", node_id: "n-corp", device_id: "dev-laptop-01", lock_state: Unlocked)),
+        (0, AccountUpdated(id: "a-work", label: "Work", node_id: "n-corp", device_id: "dev-laptop-01", lock_state: Unlocked, self_participant_id: "p-me")),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
         (0, ParticipantUpserted(id: "p-kai", kind: Human, display: "Kai Brenner", contact: true)),
         (0, ParticipantUpserted(id: "p-relay", kind: Agent, display: "Relay", contact: true)),
