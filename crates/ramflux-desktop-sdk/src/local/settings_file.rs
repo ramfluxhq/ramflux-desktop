@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Span Brain
 
 //! The desktop settings file: a small versioned JSON file holding desktop
-//! preferences only (pinned contexts, launch choices), never content,
-//! keys or secrets.
+//! preferences and local bookkeeping only (pinned contexts, launch choices,
+//! event-stream cursors), never content, keys or secrets.
 //!
 //! Every writer reads, changes its own part and replaces the file
 //! atomically (write a sibling, then rename), so one writer never drops
@@ -40,6 +40,10 @@ pub struct DesktopSettings {
     /// Source, socket, daemon binary and data directory choices.
     #[serde(default)]
     pub launch: LaunchSettings,
+    /// The last event-stream entry applied, per daemon socket and account
+    /// (a sequence number, not content).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub stream_cursors: BTreeMap<String, BTreeMap<AccountId, u64>>,
 }
 
 /// Why the settings file was not written.

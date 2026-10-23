@@ -65,6 +65,9 @@ pub struct LaunchSettings {
     /// Data directory of a daemon the desktop starts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_dir: Option<PathBuf>,
+    /// Whether to poll when the daemon offers no event stream (default: on).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poll_fallback: Option<bool>,
 }
 
 /// Which daemon binary a start would run.
@@ -97,6 +100,12 @@ impl LaunchSettings {
     /// The chosen socket, else the reference CLI's default.
     pub fn socket_or_default(&self) -> PathBuf {
         self.socket_path.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_SOCKET))
+    }
+
+    /// Whether polling stands in for a missing event stream (on unless
+    /// turned off).
+    pub fn poll_fallback_or_default(&self) -> bool {
+        self.poll_fallback.unwrap_or(true)
     }
 
     /// The chosen data directory, else the default under the state
@@ -204,6 +213,7 @@ mod tests {
             socket_path: Some(PathBuf::from("/tmp/rf/rfd.sock")),
             daemon_binary: Some(PathBuf::from("/opt/rf/bin/rf")),
             data_dir: Some(PathBuf::from("/tmp/rf/data")),
+            poll_fallback: Some(false),
         };
         store.save(&launch).expect("save");
         assert_eq!(store.load(), launch);

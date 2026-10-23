@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The subscription connection of one unlocked account.
+//! The push subscription of one unlocked account on a daemon without the
+//! event stream (`subscription.open`), used only while the source falls back
+//! to polling.
 //!
-//! The daemon pushes only a few topics today (approval requests and
-//! decisions, tool starts, A2UI action records); everything else is polled
-//! until the resumable event stream lands. The stream's list-changing
-//! topics are subscribed already, so its events refresh lists as soon as a
-//! daemon pushes them. The connection is dedicated to
-//! the account's events, apart from its request connection, so a burst of
-//! events never queues behind requests (or the other way round).
+//! Such a daemon pushes a few topics (approval requests and decisions, tool
+//! starts, A2UI action records); everything else is polled. The connection
+//! is dedicated to the account's events, apart from its request connection,
+//! so a burst of events never queues behind requests (or the other way
+//! round). A daemon with the stream is followed through [`super::stream`].
 
 use std::path::Path;
 use std::time::Duration;
@@ -21,10 +21,7 @@ use tokio::sync::mpsc;
 use super::BusError;
 use super::deadline::{Deadlines, deadline_ms};
 
-/// Topics the desktop subscribes to: those pushed today, then the
-/// list-changing topics of the resumable event stream
-/// ([`crate::translate::stream::TOPICS`]; unknown topics are accepted and
-/// simply never pushed by a daemon without the stream).
+/// Topics a daemon without the event stream pushes.
 pub const PUSHED_TOPICS: [&str; 6] = [
     "mcp.approval.request",
     "mcp.approval.granted",
@@ -34,9 +31,9 @@ pub const PUSHED_TOPICS: [&str; 6] = [
     "ramflux.a2ui.action_result",
 ];
 
-/// Every topic the subscription asks for.
+/// Every topic the push subscription asks for.
 pub fn topics() -> Vec<&'static str> {
-    PUSHED_TOPICS.iter().chain(crate::translate::stream::TOPICS.iter()).copied().collect()
+    PUSHED_TOPICS.to_vec()
 }
 
 /// What the subscription reports.

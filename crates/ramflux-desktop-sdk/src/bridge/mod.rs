@@ -6,14 +6,17 @@
 //! The GPUI side talks to it through two runtime-agnostic channels: commands
 //! go in through an unbounded sender (a plain, non-blocking `send`), and each
 //! source drains its own `std::sync::mpsc` outbox. Every scope (the daemon,
-//! each unlocked account) runs as its own task with its own request connection,
-//! subscription and poll timer, so scopes never wait on one another.
+//! each unlocked account) runs as its own task with its own request connection
+//! and event stream (or, as a fallback, poll timer), so scopes never wait on
+//! one another.
 //! A graceful daemon stop runs on a connection of its own.
 //!
 //! - `scope`: one scope's task.
+//! - `live`: how an account scope stays up to date (stream or polling).
 //! - `effects`: performing a scope's effects.
 
 mod effects;
+mod live;
 mod scope;
 
 use std::collections::BTreeMap;

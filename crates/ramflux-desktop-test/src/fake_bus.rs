@@ -10,11 +10,16 @@
 //! `operation_id` was already applied is answered from the receipt without
 //! calling the handler again.
 //!
+//! It also keeps an event journal per account and serves `bus.subscribe`
+//! from it ([`crate::fake_journal`]); the stream is off until a test turns
+//! it on ([`FakeBus::enable_stream`]), so by default the fake answers as a
+//! daemon without the stream and the source polls.
+//!
 //! Std only (a thread per connection and per request); behind the
 //! `fake-bus` feature.
 
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -23,6 +28,8 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+
+use crate::fake_journal::{Journal, Subscribed, Writer, write_frame};
 
 /// How the fake answers one request.
 #[derive(Clone, Debug)]
@@ -72,6 +79,7 @@ pub struct FakeBus {
     subscribers: Arc<Mutex<Vec<(String, UnixStream)>>>,
     streams: Arc<Mutex<Vec<UnixStream>>>,
     applied: Arc<AtomicUsize>,
+    journal: Arc<Mutex<Journal>>,
 }
 
 /// What every connection of one fake shares.
@@ -81,6 +89,7 @@ struct Shared {
     subscribers: Arc<Mutex<Vec<(String, UnixStream)>>>,
     receipts: Arc<Receipts>,
     applied: Arc<AtomicUsize>,
+    journal: Arc<Mutex<Journal>>,
 }
 
 impl FakeBus {
@@ -98,12 +107,14 @@ impl FakeBus {
         let subscribers = Arc::new(Mutex::new(Vec::new()));
         let streams = Arc::new(Mutex::new(Vec::new()));
         let applied = Arc::new(AtomicUsize::new(0));
+        let journal = Arc::new(Mutex::new(Journal::default()));
         let shared = Arc::new(Shared {
             handler,
             seen: seen.clone(),
             subscribers: subscribers.clone(),
             receipts: Arc::new(Mutex::new(BTreeMap::new())),
             applied: applied.clone(),
+            journal: journal.clone(),
         });
         let (s, st) = (stop.clone(), streams.clone());
         thread::spawn(move || {
@@ -123,7 +134,48 @@ impl FakeBus {
                 }
             }
         });
-        Self { path: path.to_path_buf(), stop, seen, subscribers, streams, applied }
+        Self { path: path.to_path_buf(), stop, seen, subscribers, streams, applied, journal }
+    }
+
+    fn journal(&self) -> std::sync::MutexGuard<'_, Journal> {
+        self.journal.lock().expect("journal")
+    }
+
+    /// Serves `bus.subscribe` from the journal (a daemon with the stream).
+    pub fn enable_stream(&self) {
+        self.journal().set_enabled(true);
+    }
+
+    /// Appends an event to `account`'s journal and delivers it to its
+    /// streams; returns its sequence number.
+    pub fn publish(&self, account: &str, topic: &str, body: Value) -> u64 {
+        self.journal().publish(account, topic, body)
+    }
+
+    /// Writes an event with any sequence number to `account`'s streams
+    /// without journaling it (a duplicate or out-of-order delivery).
+    pub fn deliver_raw(&self, account: &str, seq: Option<u64>, topic: &str, body: &Value) {
+        self.journal().deliver_raw(account, seq, topic, body);
+    }
+
+    /// Forgets `account`'s journal entries below `floor`.
+    pub fn prune_below(&self, account: &str, floor: u64) {
+        self.journal().prune_below(account, floor);
+    }
+
+    /// Ends `account`'s streams, with a final `stream.lagged` when `lagged`.
+    pub fn end_streams(&self, account: &str, lagged: bool) {
+        self.journal().end_streams(account, lagged);
+    }
+
+    /// Whether `account` has a stream open.
+    pub fn streaming(&self, account: &str) -> bool {
+        self.journal().streaming(account)
+    }
+
+    /// The newest journal entry of `account`.
+    pub fn head(&self, account: &str) -> u64 {
+        self.journal().head(account)
     }
 
     /// How many requests the handler applied (receipt answers excluded).
@@ -162,6 +214,7 @@ impl FakeBus {
             let _ = stream.shutdown(std::net::Shutdown::Both);
         }
         self.subscribers.lock().expect("subs").clear();
+        self.journal().clear();
         let _ = std::fs::remove_file(&self.path);
         thread::sleep(Duration::from_millis(30));
     }
@@ -175,21 +228,15 @@ fn read_frame(stream: &mut UnixStream) -> Option<Value> {
     serde_json::from_slice(&body).ok()
 }
 
-fn write_frame(stream: &mut UnixStream, frame: &Value) -> std::io::Result<()> {
-    let body = serde_json::to_vec(frame).expect("frame json");
-    let len = u32::try_from(body.len()).expect("frame size");
-    stream.write_all(&len.to_be_bytes())?;
-    stream.write_all(&body)
-}
-
 fn serve(mut stream: UnixStream, connection: usize, shared: &Arc<Shared>) {
     let Ok(writer) = stream.try_clone() else { return };
-    let writer = Arc::new(Mutex::new(writer));
+    let writer: Writer = Arc::new(Mutex::new(writer));
     while let Some(request) = read_frame(&mut stream) {
         let (shared, writer) = (shared.clone(), writer.clone());
         let Ok(subscriber) = stream.try_clone() else { break };
         thread::spawn(move || answer(&request, connection, &shared, &writer, subscriber));
     }
+    shared.journal.lock().expect("journal").disconnect(connection);
 }
 
 fn text(frame: &Value, field: &str) -> Option<String> {
@@ -200,7 +247,7 @@ fn answer(
     request: &Value,
     connection: usize,
     shared: &Shared,
-    writer: &Mutex<UnixStream>,
+    writer: &Writer,
     subscriber: UnixStream,
 ) {
     let method = text(request, "method").unwrap_or_default();
@@ -222,6 +269,11 @@ fn answer(
     });
     let reply = if let Some(stored) = receipt {
         Reply::Ok(stored)
+    } else if method == "bus.subscribe" {
+        match shared.journal.lock().expect("journal").subscribe(request, connection, writer) {
+            Subscribed::Following => return,
+            Subscribed::Refused(code, message) => Reply::Error(code, message),
+        }
     } else if method == "subscription.open" {
         if let Some(account) = &account {
             shared.subscribers.lock().expect("subs").push((account.clone(), subscriber));

@@ -12,12 +12,10 @@
 //! read stays pending: a missed deadline is a `Timeout` failure.
 //!
 //! Lifecycle: attach, then snapshot. When every read answered the scope is
-//! live: an account subscribes to its pushed topics and polls its watched
-//! contexts on an adaptive interval. A lost connection reports
-//! `Disconnected` and re-snapshots after a back-off. This polling is the
-//! transitional path: when the daemon offers a resumable event stream, the
-//! poll reads are replaced by a subscription with a cursor, and only the
-//! re-snapshot on `resync_required` remains.
+//! live: an account follows the daemon's event stream from its cursor (see
+//! [`super::live`]), and polls only as a fallback; the daemon scope polls
+//! the daemon status and account list. A lost connection reports
+//! `Disconnected` and re-snapshots after a back-off.
 
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
@@ -28,12 +26,15 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 
+use super::live::{SyncState, last_page};
 use super::{Delivery, now};
 use crate::bus::BusError;
 use crate::bus::client::BusClient;
+use crate::bus::stream::Streamed;
 use crate::bus::subscription::{self, Pushed};
 use crate::capabilities;
 use crate::config::SdkConfig;
+use crate::cursor::CursorStore;
 use crate::pins::PinStore;
 use crate::plan::fetch::{Fetch, Paged};
 use crate::translate::{Scope, Translator};
@@ -72,6 +73,11 @@ pub(super) struct Task {
     pub(super) outbox: std_mpsc::Sender<Delivery>,
     pub(super) internal: mpsc::UnboundedSender<Internal>,
     pub(super) pushed: mpsc::UnboundedSender<Pushed>,
+    pub(super) streamed: mpsc::UnboundedSender<Streamed>,
+    pub(super) cursors: CursorStore,
+    pub(super) sync: SyncState,
+    /// The push subscription (polling fallback only).
+    pub(super) push_task: Option<tokio::task::AbortHandle>,
     pub(super) link: Link,
     pub(super) subscribed: bool,
     pub(super) subscribe_at: Instant,
@@ -92,7 +98,10 @@ pub(crate) async fn run(
 ) {
     let (internal, mut internal_rx) = mpsc::unbounded_channel();
     let (pushed, mut pushed_rx) = mpsc::unbounded_channel();
+    let (streamed, mut streamed_rx) = mpsc::unbounded_channel();
     let socket = config.socket_path.to_string_lossy().into_owned();
+    let cursors = CursorStore::new(config.settings_path.clone(), socket.clone());
+    let cursor = scope.account().and_then(|account| cursors.load(account));
     let client =
         BusClient::new(config.socket_path.clone(), config.connect_timeout, config.deadlines);
     let start = Instant::now();
@@ -111,6 +120,10 @@ pub(crate) async fn run(
         outbox,
         internal,
         pushed,
+        streamed,
+        cursors,
+        sync: SyncState::new(cursor),
+        push_task: None,
         link: Link::Attaching,
         subscribed: false,
         subscribe_at: start,
@@ -121,6 +134,7 @@ pub(crate) async fn run(
         alive: true,
     };
     task.emit(vec![DomainEvent::CapabilitiesUpdated(capabilities::capabilities())]);
+    task.show_sync(true);
     task.snapshot();
     while task.alive {
         let wake = task.next_wake();
@@ -131,8 +145,25 @@ pub(crate) async fn run(
             },
             Some(internal) = internal_rx.recv() => task.internal(internal),
             Some(pushed) = pushed_rx.recv() => task.on_pushed(pushed),
+            Some(streamed) = streamed_rx.recv() => {
+                task.on_streamed(streamed);
+                // Apply what else has arrived before the reads it calls for
+                // start, so a burst (a replay) is coalesced.
+                while task.alive {
+                    let Ok(streamed) = streamed_rx.try_recv() else { break };
+                    task.on_streamed(streamed);
+                }
+            }
             () = tokio::time::sleep_until(wake) => task.tick(),
         }
+    }
+}
+
+impl Drop for Task {
+    fn drop(&mut self) {
+        self.save_cursor(true);
+        self.sync.stop();
+        self.stop_push_subscription();
     }
 }
 
@@ -159,9 +190,14 @@ impl Task {
         match self.link {
             Link::Lost => self.reconnect_at,
             Link::Live => {
-                let mut wake = if self.polls_in_flight == 0 { self.next_poll } else { far };
-                if self.scope.account().is_some() && !self.subscribed {
+                let polls = self.polls();
+                let mut wake =
+                    if polls && self.polls_in_flight == 0 { self.next_poll } else { far };
+                if polls && self.scope.account().is_some() && !self.subscribed {
                     wake = wake.min(self.subscribe_at);
+                }
+                if let Some(open_at) = self.sync.open_at {
+                    wake = wake.min(open_at);
                 }
                 wake
             }
@@ -174,10 +210,18 @@ impl Task {
         match self.link {
             Link::Lost if now >= self.reconnect_at => self.snapshot(),
             Link::Live => {
-                if self.scope.account().is_some() && !self.subscribed && now >= self.subscribe_at {
+                if self.sync.open_at.is_some_and(|at| now >= at) {
+                    self.open_stream();
+                }
+                let polls = self.polls();
+                if polls
+                    && self.scope.account().is_some()
+                    && !self.subscribed
+                    && now >= self.subscribe_at
+                {
                     self.subscribe();
                 }
-                if self.polls_in_flight == 0 && now >= self.next_poll {
+                if polls && self.polls_in_flight == 0 && now >= self.next_poll {
                     self.poll();
                 }
             }
@@ -221,9 +265,19 @@ impl Task {
         let socket = self.config.socket_path.clone();
         let (connect, deadlines) = (self.config.connect_timeout, self.config.deadlines);
         let out = self.pushed.clone();
-        tokio::spawn(
-            async move { subscription::run(&socket, account, connect, deadlines, out).await },
-        );
+        let task = tokio::spawn(async move {
+            subscription::run(&socket, account, connect, deadlines, out).await;
+        });
+        self.push_task = Some(task.abort_handle());
+    }
+
+    /// Stops the push subscription (the stream took over, or the scope
+    /// ends).
+    pub(super) fn stop_push_subscription(&mut self) {
+        if let Some(task) = self.push_task.take() {
+            task.abort();
+        }
+        self.subscribed = false;
     }
 
     pub(super) fn lost(&mut self) {
@@ -231,12 +285,20 @@ impl Task {
             self.emit(vec![DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)]);
         }
         self.link = Link::Lost;
-        self.subscribed = false;
+        self.stop_push_subscription();
+        self.sync.stop();
+        if self.sync.mode == ramflux_desktop_core::SyncMode::Stream {
+            self.sync.mode = ramflux_desktop_core::SyncMode::Connecting;
+            self.show_sync(true);
+        }
         self.reconnect_at = Instant::now() + self.config.reconnect_backoff;
     }
 
-    fn locked(&mut self) {
+    pub(super) fn locked(&mut self) {
         self.link = Link::Locked;
+        self.stop_push_subscription();
+        self.sync.stop();
+        self.save_cursor(true);
         let events = self.translator.own_account_locked();
         self.emit(events);
     }
@@ -311,12 +373,14 @@ impl Task {
         match internal {
             Internal::Snapshot(results) => self.on_snapshot(results),
             Internal::Fetched(fetch, result) => {
+                let finished = last_page(&fetch, &result);
                 if self.on_read(&fetch, result) && self.polls_in_flight > 0 {
                     self.poll_changed = true;
                 }
                 if matches!(fetch, Fetch::Page(Paged::Conversations | Paged::Groups, _)) {
                     self.restore_pins();
                 }
+                self.read_ended(&fetch, finished);
             }
             Internal::PollDone => {
                 self.polls_in_flight = self.polls_in_flight.saturating_sub(1);
@@ -357,6 +421,7 @@ impl Task {
             self.interval = self.config.poll_fast;
             self.next_poll = Instant::now() + self.interval;
             self.subscribe_at = Instant::now();
+            self.live_after_snapshot();
         }
     }
 
@@ -391,13 +456,12 @@ impl Task {
             Pushed::Opened => {}
             Pushed::Event { topic, body } => {
                 let events = self.translator.pushed(&topic, &body, now());
-                let reads = self.translator.pushed_reads(&topic, &body);
-                if self.emit(events) || !reads.is_empty() {
+                if self.emit(events) {
                     self.interval = self.config.poll_fast;
                 }
-                self.spawn_fetches(reads);
             }
             Pushed::Lost(_) => {
+                self.push_task = None;
                 self.subscribed = false;
                 self.subscribe_at = Instant::now() + self.config.reconnect_backoff;
             }
@@ -407,8 +471,15 @@ impl Task {
     fn command(&mut self, command: ScopeCommand) {
         match command {
             ScopeCommand::Focus(context) => {
+                if self.polls() {
+                    self.next_poll = Instant::now();
+                } else if let Some(context) = &context
+                    && self.link == Link::Live
+                {
+                    let reads = self.translator.context_reads(context);
+                    self.request_reads(reads);
+                }
                 self.translator.set_focus(context);
-                self.next_poll = Instant::now();
             }
             ScopeCommand::Effect(effect) => self.effect(*effect),
             ScopeCommand::Bodies(moments) => {

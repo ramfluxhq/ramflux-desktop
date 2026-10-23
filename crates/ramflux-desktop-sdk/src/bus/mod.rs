@@ -6,11 +6,14 @@
 //! - [`client`]: one multiplexed request connection for one scope.
 //! - [`deadline`]: the deadline every request carries.
 //! - [`idempotency`]: the retry key every mutating request carries.
-//! - [`subscription`]: the one subscription connection of an account.
+//! - [`stream`]: the event stream of an account (`bus.subscribe`).
+//! - [`subscription`]: the push subscription of an account on a daemon
+//!   without the stream.
 
 pub mod client;
 pub mod deadline;
 pub mod idempotency;
+pub mod stream;
 pub mod subscription;
 
 use ramflux_desktop_core::SecretInput;

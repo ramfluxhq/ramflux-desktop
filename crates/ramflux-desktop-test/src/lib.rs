@@ -10,7 +10,8 @@
 //! - [`ScenarioPlayer`]: owns a store and a mock source and offers pause,
 //!   step, advance, and seek for tests and the developer panel.
 //! - [`scale`]: generated large scenarios for scale tests.
-//! - `fake_bus` (feature `fake-bus`): a fake daemon local bus for adapter tests.
+//! - `fake_bus` (feature `fake-bus`): a fake daemon local bus for adapter tests,
+//!   with its event journal in `fake_journal`.
 //! - `live_daemon` (feature `live-daemon`): a real `rf daemon` from the
 //!   pinned product revision for live tests.
 
@@ -18,6 +19,8 @@
 
 #[cfg(feature = "fake-bus")]
 pub mod fake_bus;
+#[cfg(feature = "fake-bus")]
+pub mod fake_journal;
 #[cfg(feature = "live-daemon")]
 pub mod live_daemon;
 pub mod local_echo;
