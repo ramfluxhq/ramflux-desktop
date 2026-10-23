@@ -288,9 +288,15 @@ impl Task {
             tokio::spawn(async move {
                 for fetch in sequence {
                     let result = client.call(&fetch.request(account.as_deref())).await;
-                    let failed = result.is_err();
+                    // A failed pull from the node (`message.receive`) never
+                    // stops the read of what is already stored: the
+                    // conversation keeps showing its messages.
+                    let stop = match &result {
+                        Err(error) => error.is_connection_lost() || !fetch.is_pull(),
+                        Ok(_) => false,
+                    };
                     let _ = internal.send(Internal::Fetched(fetch, result));
-                    if failed {
+                    if stop {
                         break;
                     }
                 }

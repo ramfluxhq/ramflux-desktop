@@ -87,6 +87,12 @@ pub enum Fetch {
 }
 
 impl Fetch {
+    /// Whether this read pulls from the node (`message.receive`); its
+    /// failure does not stop the reads of stored state after it.
+    pub const fn is_pull(&self) -> bool {
+        matches!(self, Self::Receive(_))
+    }
+
     /// The first page of `paged`.
     pub const fn first(paged: Paged) -> Self {
         Self::Page(paged, None)
@@ -124,8 +130,10 @@ impl Fetch {
                 "message.list",
                 json!({ "conversation_id": context }),
             ),
-            // Attachments are fetched with their message: the daemon lists
-            // an object (and can open it) only once it is stored locally.
+            // Receiving never downloads attachments: a relay failure must
+            // not fail the receive or hold back later messages. (The daemon
+            // offers no fetch of an attachment after its message was
+            // received; see the gap ledger.)
             Self::Receive(context) => BusRequest::new(
                 account,
                 "message",
@@ -133,7 +141,7 @@ impl Fetch {
                 json!({
                     "limit": 100,
                     "conversation_id": context,
-                    "auto_fetch_attachments": true,
+                    "auto_fetch_attachments": false,
                 }),
             ),
             Self::GroupReceive { context, group } => BusRequest::new(

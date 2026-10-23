@@ -120,7 +120,7 @@ example after a message).
 |---|---|
 | Message in a group | Supported. The daemon resolves every member's route first; if a member cannot be reached nothing is sent, and the failure names who. Incoming messages are fetched by polling (1.5 s, slowing to 12 s when quiet). |
 | Direct message | Supported in a conversation the daemon lists a route for (recorded once a message was exchanged with the contact's verified device). Without one the send fails with that reason; start the conversation with `rf dm send`. |
-| Attachment | Supported in direct conversations, up to 512 KiB per file (one message frame). Received attachments are fetched with their message and listed in the objects dock, where they can be saved; a paused transfer can be resumed. Groups carry no attachments. |
+| Attachment | Supported in direct conversations, up to 512 KiB per file (one message frame). Sent attachments are listed in the objects dock, where they can be saved and a paused upload resumed. Received attachments are not downloaded yet: receiving never waits on an attachment, and the daemon has no way to fetch one after its message arrived (pending daemon support). Groups carry no attachments. |
 | Group members | Add or invite a contact whose devices the daemon has verified (members dock); remove, kick, ban and roles act on the member's devices in the group. |
 | Approvals | An approval requested from a conversation appears in that conversation and in "needs me"; the others in the approvals dock only. |
 

@@ -205,7 +205,10 @@ fn polling_adds_each_message_once_and_updates_receipts() {
     let receives = fake.seen().iter().filter(|s| s.method == "message.receive").count();
     assert!(receives >= 2, "the focused conversation is pulled from the node");
     let pull = fake.seen().into_iter().find(|s| s.method == "message.receive").expect("pull");
-    assert_eq!(pull.body["auto_fetch_attachments"], true, "attachments arrive with messages");
+    assert_eq!(
+        pull.body["auto_fetch_attachments"], false,
+        "receiving never waits on an attachment download"
+    );
     fake.shutdown();
 }
 
