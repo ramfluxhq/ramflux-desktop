@@ -71,6 +71,9 @@ mod shots {
                     store: LaunchStore::at(dir.join("desktop-settings.json")),
                     bundled,
                     log_dir: Some(dir.join("logs")),
+                    owned: ramflux_desktop_sdk::local::OwnedDaemonFile::at(
+                        dir.join("owned-daemon.json"),
+                    ),
                 },
                 ..ShellOptions::for_scenario("", true)
             };
@@ -154,7 +157,7 @@ mod shots {
 
         fn stop(&mut self, w: &Window) {
             let launcher = self.cx.update(|cx| w.shell.read(cx).launcher().clone());
-            self.cx.update(|cx| launcher.update(cx, |l, _| l.stop_now()));
+            self.cx.update(|cx| launcher.update(cx, |l, cx| l.stop_now(cx)));
         }
     }
 

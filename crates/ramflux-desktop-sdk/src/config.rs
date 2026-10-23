@@ -6,6 +6,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+pub use crate::bus::deadline::Deadlines;
+
 /// Default daemon socket (the reference CLI's default).
 pub const DEFAULT_SOCKET: &str = "/tmp/ramflux/rfd.sock";
 
@@ -14,12 +16,10 @@ pub const DEFAULT_SOCKET: &str = "/tmp/ramflux/rfd.sock";
 pub struct SdkConfig {
     /// The daemon's local-bus socket.
     pub socket_path: PathBuf,
-    /// Request connections per scope (the daemon serves one request at a
-    /// time per connection).
-    pub request_connections: usize,
-    /// Longest wait for one answer. Account creation and node discovery
-    /// reach the network, so this is generous.
-    pub request_timeout: Duration,
+    /// Longest wait for the daemon socket to accept a connection.
+    pub connect_timeout: Duration,
+    /// Deadlines of requests, by what the method does.
+    pub deadlines: Deadlines,
     /// Poll interval right after something changed.
     pub poll_fast: Duration,
     /// Poll interval after a quiet period (the interval doubles up to it).
@@ -36,8 +36,8 @@ impl SdkConfig {
     pub fn new(socket_path: impl Into<PathBuf>) -> Self {
         Self {
             socket_path: socket_path.into(),
-            request_connections: 2,
-            request_timeout: Duration::from_secs(60),
+            connect_timeout: Duration::from_secs(5),
+            deadlines: Deadlines::standard(),
             poll_fast: Duration::from_millis(1_500),
             poll_slow: Duration::from_secs(12),
             reconnect_backoff: Duration::from_secs(2),

@@ -6,8 +6,9 @@
 //! The GPUI side talks to it through two runtime-agnostic channels: commands
 //! go in through an unbounded sender (a plain, non-blocking `send`), and each
 //! source drains its own `std::sync::mpsc` outbox. Every scope (the daemon,
-//! each unlocked account) runs as its own task with its own request lane,
+//! each unlocked account) runs as its own task with its own request connection,
 //! subscription and poll timer, so scopes never wait on one another.
+//! A graceful daemon stop runs on a connection of its own.
 //!
 //! - `scope`: one scope's task.
 
@@ -17,8 +18,11 @@ use std::collections::BTreeMap;
 use std::sync::mpsc as std_mpsc;
 
 use ramflux_desktop_core::{ContextId, DomainEvent, Effect, MomentId, Timestamp};
+use serde_json::json;
 use tokio::sync::mpsc;
 
+use crate::bus::client::BusClient;
+use crate::bus::{BusError, BusRequest};
 use crate::config::SdkConfig;
 use crate::translate::Scope;
 
@@ -43,6 +47,8 @@ pub(crate) enum Command {
     Bodies { scope: Scope, moments: Vec<MomentId> },
     /// Stop serving `scope`.
     Detach { scope: Scope },
+    /// Ask the daemon to stop (`daemon.stop`) and report its answer.
+    StopDaemon { reply: std_mpsc::Sender<Result<(), BusError>> },
 }
 
 /// Handle to the bridge thread. Dropping every handle stops it.
@@ -99,7 +105,28 @@ async fn serve(config: SdkConfig, mut inbox: mpsc::UnboundedReceiver<Command>) {
             Command::Detach { scope } => {
                 scopes.remove(&scope);
             }
+            Command::StopDaemon { reply } => {
+                let client = BusClient::new(
+                    config.socket_path.clone(),
+                    config.connect_timeout,
+                    config.deadlines,
+                );
+                tokio::spawn(async move {
+                    let request = BusRequest::new(None, "daemon", "daemon.stop", json!({}));
+                    let answer = client.call(&request).await.and_then(stopping);
+                    let _ = reply.send(answer);
+                });
+            }
         }
+    }
+}
+
+/// Checks the answer to `daemon.stop`.
+fn stopping(answer: serde_json::Value) -> Result<(), BusError> {
+    if answer.get("stopping").and_then(serde_json::Value::as_bool) == Some(true) {
+        Ok(())
+    } else {
+        Err(BusError::Transport(format!("unexpected answer to daemon.stop: {answer}")))
     }
 }
 

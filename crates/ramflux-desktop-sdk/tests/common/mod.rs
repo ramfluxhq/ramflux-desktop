@@ -10,7 +10,7 @@ pub mod fake_bus;
 use std::time::{Duration, Instant};
 
 use ramflux_desktop_core::{EventEnvelope, Source, Store, Timestamp};
-use ramflux_desktop_sdk::{SdkConfig, SdkHub, SdkSource};
+use ramflux_desktop_sdk::{Deadlines, SdkConfig, SdkHub, SdkSource};
 
 // Not every test target uses every helper (the live tests use none of the fake).
 #[allow(unused_imports)]
@@ -19,8 +19,8 @@ pub use fake_bus::{FakeBus, Reply, frames, socket_path};
 /// Fast timings for tests.
 pub fn config(path: &std::path::Path) -> SdkConfig {
     SdkConfig {
-        request_connections: 2,
-        request_timeout: Duration::from_secs(3),
+        connect_timeout: Duration::from_secs(2),
+        deadlines: Deadlines::uniform(Duration::from_secs(3)),
         poll_fast: Duration::from_millis(80),
         poll_slow: Duration::from_millis(300),
         reconnect_backoff: Duration::from_millis(150),

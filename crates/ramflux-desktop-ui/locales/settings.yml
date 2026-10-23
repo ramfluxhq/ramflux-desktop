@@ -250,6 +250,9 @@ settings:
     status_stopping:
       en: "Stopping the local daemon…"
       zh-CN: "正在停止本地守护进程…"
+    status_left_behind:
+      en: "Running, started by an earlier Ramflux Desktop session that did not stop it (process %{pid})."
+      zh-CN: "正在运行，由此前未正常结束的 Ramflux Desktop 会话启动（进程 %{pid}）。"
     status_scenarios:
       en: "Playing the demo scenarios; no daemon is used."
       zh-CN: "正在播放演示场景，未使用守护进程。"

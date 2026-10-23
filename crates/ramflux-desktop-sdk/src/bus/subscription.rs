@@ -5,17 +5,19 @@
 //!
 //! The daemon pushes only a few topics today (approval requests and
 //! decisions, tool starts, A2UI action records); everything else is polled
-//! until the resumable event stream lands. The connection is dedicated: a
-//! `LocalBusClient` that is reading events cannot serve requests.
+//! until the resumable event stream lands. The connection is dedicated to
+//! the account's events, apart from its request connection, so a burst of
+//! events never queues behind requests (or the other way round).
 
 use std::path::Path;
 use std::time::Duration;
 
-use ramflux_sdk::{LocalBusClient, LocalBusFrameKind};
+use ramflux_sdk::{LocalBusClient, LocalBusFrame, LocalBusFrameKind};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
 use super::BusError;
+use super::deadline::{Deadlines, deadline_ms};
 
 /// Topics the desktop subscribes to.
 pub const TOPICS: [&str; 6] = [
@@ -48,35 +50,37 @@ pub enum Pushed {
 pub async fn run(
     socket: &Path,
     account: String,
-    timeout: Duration,
+    connect_timeout: Duration,
+    deadlines: Deadlines,
     out: mpsc::UnboundedSender<Pushed>,
 ) {
-    let ended = follow(socket, account, timeout, &out).await;
+    let ended = follow(socket, account, connect_timeout, deadlines, &out).await;
     let _ = out.send(Pushed::Lost(ended));
 }
 
 async fn follow(
     socket: &Path,
     account: String,
-    timeout: Duration,
+    connect_timeout: Duration,
+    deadlines: Deadlines,
     out: &mpsc::UnboundedSender<Pushed>,
 ) -> BusError {
-    let connected = tokio::time::timeout(timeout, LocalBusClient::connect(socket)).await;
+    let connected = tokio::time::timeout(connect_timeout, LocalBusClient::connect(socket)).await;
     let mut client = match connected {
         Err(_) => return BusError::Timeout,
         Ok(Err(error)) => return BusError::from(error),
         Ok(Ok(client)) => client,
     };
-    let open = json!({ "topics": TOPICS, "attended_frontend": true });
-    let opened = tokio::time::timeout(
-        timeout,
-        client.request(Some(account), "subscription", "subscription.open", &open),
-    )
-    .await;
-    match opened {
-        Err(_) => return BusError::Timeout,
-        Ok(Err(error)) => return BusError::from(error),
-        Ok(Ok(_)) => {}
+    let mut open = LocalBusFrame::request(
+        "desk_subscription",
+        Some(account),
+        "subscription",
+        "subscription.open",
+        json!({ "topics": TOPICS, "attended_frontend": true }),
+    );
+    open.deadline_ms = Some(deadline_ms(deadlines.budget("subscription.open")));
+    if let Err(error) = client.request_frame(open).await {
+        return BusError::from(error);
     }
     if out.send(Pushed::Opened).is_err() {
         return BusError::Transport("subscriber gone".to_owned());

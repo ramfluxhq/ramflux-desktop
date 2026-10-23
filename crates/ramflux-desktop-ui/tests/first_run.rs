@@ -6,7 +6,8 @@
 //! configured program on the watched socket and can be stopped; a missing
 //! program disables the offer and points to Settings › Diagnostics; a daemon
 //! that exits at once is reported; launch settings typed in Settings ›
-//! Diagnostics persist.
+//! Diagnostics persist; a daemon left behind by a crashed session is offered
+//! for a graceful stop, and a daemon the user started is not.
 //!
 //! A shell script stands in for `rf` (it records its arguments and waits),
 //! so no real daemon runs here.
@@ -21,8 +22,10 @@ use std::time::Duration;
 use common::*;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{Entity, ScrollDelta, TestAppContext, point, px};
+use ramflux_desktop_core::SourceStatus;
 use ramflux_desktop_sdk::SdkConfig;
-use ramflux_desktop_sdk::local::{LaunchError, LaunchStore};
+use ramflux_desktop_sdk::local::{LaunchError, LaunchStore, OwnedDaemon, OwnedDaemonFile};
+use ramflux_desktop_test::fake_bus::{FakeBus, Reply};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::launch::{DaemonLauncher, LaunchFailure, LaunchOptions, LaunchState};
 use ramflux_desktop_ui::route::{EntryStep, Page};
@@ -56,6 +59,10 @@ impl Fixture {
         self.dir.join("rfd.sock")
     }
 
+    fn owned(&self) -> OwnedDaemonFile {
+        OwnedDaemonFile::at(self.dir.join("owned-daemon.json"))
+    }
+
     fn args(&self) -> Option<String> {
         std::fs::read_to_string(self.dir.join("args")).ok()
     }
@@ -71,6 +78,7 @@ impl Fixture {
                 store: settings,
                 bundled,
                 log_dir: Some(self.dir.join("logs")),
+                owned: self.owned(),
             },
             ..ShellOptions::for_scenario("", true)
         }
@@ -132,10 +140,19 @@ fn no_daemon_offers_a_start_and_starts_nothing_by_itself(cx: &mut TestAppContext
     let first = state(cx, &launcher);
     cx.update(|cx| launcher.update(cx, |launcher, cx| launcher.start(cx)));
     assert_eq!(state(cx, &launcher), first, "a second start request starts nothing");
+    let LaunchState::Starting { pid } = first else { panic!("starting: {first:?}") };
+    assert_eq!(
+        fx.owned().load(),
+        Some(OwnedDaemon { pid, socket: fx.socket() }),
+        "the started daemon is recorded"
+    );
 
+    // The stand-in cannot be asked over the bus, so the stop falls back to
+    // the terminate signal.
     cx.update(|cx| launcher.update(cx, |launcher, cx| launcher.stop(cx)));
     wait(cx, "stopped", |cx| state(cx, &launcher) == LaunchState::Idle);
     assert!(!cx.update(|cx| launcher.read(cx).owns_daemon()));
+    assert_eq!(fx.owned().load(), None, "the record goes with the daemon");
     assert!(exists(cx, handle, "entry-daemon-start"), "the offer comes back");
 }
 
@@ -222,4 +239,96 @@ fn scenarios_show_the_wait_without_an_offer(cx: &mut TestAppContext) {
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Daemon));
     assert!(exists(cx, handle, "entry-daemon"));
     assert!(!exists(cx, handle, "entry-daemon-start"), "scenarios never start a daemon");
+}
+
+fn daemon_frames() -> std::collections::BTreeMap<String, serde_json::Value> {
+    let text = include_str!("../../ramflux-desktop-sdk/tests/fixtures/rfd_frames.json");
+    serde_json::from_str(text).expect("fixture json")
+}
+
+fn visible(
+    cx: &mut TestAppContext,
+    handle: gpui_kit::WindowHandle<gpui_kit::base::Root>,
+    id: &'static str,
+) -> bool {
+    in_window(cx, handle, |window, _| window.try_find(id).is_some_and(|e| e.visible()))
+}
+
+/// Opens Settings › Diagnostics and scrolls to the local daemon group.
+fn open_diagnostics(
+    cx: &mut TestAppContext,
+    handle: gpui_kit::WindowHandle<gpui_kit::base::Root>,
+    shell: &Entity<Shell>,
+) {
+    cx.update(|cx| {
+        shell.update(cx, |shell, cx| shell.open_settings_at(SettingsSection::Diagnostics, cx));
+    });
+    advance(cx, 50);
+    for _ in 0..12 {
+        if visible(cx, handle, "launch-daemon-status") {
+            return;
+        }
+        let anchors = ["diagnostics-preview", "renderer-profile", "launch-socket", "launch-save"];
+        let Some(anchor) = anchors.into_iter().find(|id| visible(cx, handle, id)) else { return };
+        in_window(cx, handle, |window, cx| {
+            let delta = ScrollDelta::Pixels(point(px(0.), px(-300.)));
+            window.scroll(anchor, delta, cx);
+        });
+        advance(cx, 50);
+    }
+}
+
+fn answering_daemon(socket: &Path) -> FakeBus {
+    let frames = daemon_frames();
+    FakeBus::start(socket, move |method, _, _| match method {
+        "daemon.stop" => Reply::Ok(serde_json::json!({ "stopping": true })),
+        _ => Reply::Ok(frames.get(method).cloned().unwrap_or_else(|| serde_json::json!({}))),
+    })
+}
+
+#[gpui_kit::test]
+fn a_daemon_left_behind_by_a_crash_is_offered_and_stopped_gracefully(cx: &mut TestAppContext) {
+    let fx = Fixture::new("left");
+    fx.owned().record(&OwnedDaemon { pid: 4242, socket: fx.socket() });
+    let fake = answering_daemon(&fx.socket());
+    let (handle, shell) = open_with(cx, fx.options(None, LaunchStore::in_memory()));
+    let launcher = launcher(cx, &shell);
+    wait(cx, "attached", |cx| {
+        with_store(cx, &shell, |s| s.source_status() == SourceStatus::Connected)
+    });
+    assert_eq!(cx.update(|cx| launcher.read(cx).left_behind(cx)), Some(4242));
+    assert!(cx.update(|cx| launcher.read(cx).can_stop(cx)), "Stop is offered");
+    open_diagnostics(cx, handle, &shell);
+    assert!(exists(cx, handle, "launch-daemon-stop"), "the Stop button shows");
+
+    cx.update(|cx| launcher.update(cx, |launcher, cx| launcher.stop(cx)));
+    assert_eq!(state(cx, &launcher), LaunchState::Stopping { pid: 4242 });
+    wait(cx, "asked to stop", |_| fake.seen().iter().any(|s| s.method == "daemon.stop"));
+    let stop = fake.seen().into_iter().find(|s| s.method == "daemon.stop").expect("stop");
+    assert!(stop.deadline_ms.is_some(), "a bounded request");
+    // The daemon drains and goes away.
+    fake.shutdown();
+    wait(cx, "stopped", |cx| state(cx, &launcher) == LaunchState::Idle);
+    assert_eq!(fx.owned().load(), None, "the record is cleared");
+    assert!(!cx.update(|cx| launcher.read(cx).can_stop(cx)));
+}
+
+#[gpui_kit::test]
+fn a_daemon_the_user_started_is_never_offered_for_stopping(cx: &mut TestAppContext) {
+    let fx = Fixture::new("theirs");
+    let fake = answering_daemon(&fx.socket());
+    let (handle, shell) = open_with(cx, fx.options(None, LaunchStore::in_memory()));
+    let launcher = launcher(cx, &shell);
+    wait(cx, "attached", |cx| {
+        with_store(cx, &shell, |s| s.source_status() == SourceStatus::Connected)
+    });
+    assert_eq!(cx.update(|cx| launcher.read(cx).left_behind(cx)), None);
+    assert!(!cx.update(|cx| launcher.read(cx).can_stop(cx)));
+    open_diagnostics(cx, handle, &shell);
+    assert!(exists(cx, handle, "launch-daemon-status"), "the daemon group shows");
+    assert!(!exists(cx, handle, "launch-daemon-stop"));
+    cx.update(|cx| launcher.update(cx, |launcher, cx| launcher.stop(cx)));
+    advance(cx, 500);
+    assert!(fake.seen().iter().all(|s| s.method != "daemon.stop"), "never asked");
+    fake.shutdown();
 }

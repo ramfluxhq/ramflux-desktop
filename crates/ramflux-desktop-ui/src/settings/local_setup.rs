@@ -244,6 +244,10 @@ fn daemon_status(context: &SectionContext, cx: &App) -> SharedString {
         LaunchState::Stopping { .. } => tr("settings.launch.status_stopping"),
         LaunchState::Failed(failure) => daemon_failure_text(failure),
         LaunchState::Idle if !handle.is_live() => tr("settings.launch.status_scenarios"),
+        LaunchState::Idle if launcher.left_behind(cx).is_some() => {
+            let pid = launcher.left_behind(cx).unwrap_or_default();
+            tr_args("settings.launch.status_left_behind", &[("pid", &pid.to_string())])
+        }
         LaunchState::Idle if handle.store().source_status() != SourceStatus::Disconnected => {
             tr_args("settings.launch.status_attached", &[("path", &socket)])
         }
@@ -255,7 +259,7 @@ fn daemon_group(context: &SectionContext, cx: &App) -> SettingGroup {
     let status = daemon_status(context, cx);
     let launcher = context.launcher.read(cx);
     let can_start = launcher.can_start(cx) && launcher.binary().path().is_some();
-    let owns = launcher.owns_daemon();
+    let can_stop = launcher.can_stop(cx);
     let item = SettingItem::render(move |_, _, cx: &mut App| {
         v_flex()
             .gap_2()
@@ -273,7 +277,7 @@ fn daemon_group(context: &SectionContext, cx: &App) -> SettingGroup {
                                 window.dispatch_action(Box::new(StartLocalDaemon), cx);
                             }),
                     )
-                    .when(owns, |row| {
+                    .when(can_stop, |row| {
                         row.child(
                             Button::new("launch-daemon-stop")
                                 .small()

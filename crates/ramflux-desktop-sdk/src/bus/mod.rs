@@ -3,10 +3,14 @@
 
 //! Local-bus requests and their failures, independent of any connection.
 //!
-//! - [`lane`]: a small pool of request connections for one scope.
+//! - [`client`]: one multiplexed request connection for one scope.
+//! - [`deadline`]: the deadline every request carries.
+//! - [`idempotency`]: the retry key every mutating request carries.
 //! - [`subscription`]: the one subscription connection of an account.
 
-pub mod lane;
+pub mod client;
+pub mod deadline;
+pub mod idempotency;
 pub mod subscription;
 
 use ramflux_desktop_core::SecretInput;
@@ -30,6 +34,9 @@ pub struct BusRequest {
     pub body: Value,
     /// Secret fields added to the body only when sending.
     pub secrets: Vec<(&'static str, SecretField)>,
+    /// The retry key of a mutating request (the frame's `operation_id`);
+    /// `None` for reads.
+    pub operation_id: Option<String>,
 }
 
 /// A secret body field.
@@ -60,7 +67,15 @@ impl BusRequest {
             method: method.into(),
             body,
             secrets: Vec::new(),
+            operation_id: None,
         }
+    }
+
+    /// Sets the retry key.
+    #[must_use]
+    pub fn with_operation_id(mut self, key: String) -> Self {
+        self.operation_id = Some(key);
+        self
     }
 
     /// Adds a secret string field.
@@ -136,12 +151,26 @@ impl BusError {
     /// Short text for the user.
     pub fn message(&self) -> String {
         match self {
+            Self::Daemon { message, .. } if message.contains(RECONCILE) => RECONCILE_KEY.to_owned(),
             Self::Daemon { message, .. } => message.clone(),
             Self::Transport(message) => message.clone(),
-            Self::Timeout => "the daemon did not answer in time".to_owned(),
+            Self::Timeout => TIMEOUT_KEY.to_owned(),
         }
     }
 }
+
+/// Locale key of the timeout message (translated by the UI).
+pub const TIMEOUT_KEY: &str = "backend.failure.timeout";
+
+/// Locale key of the message for an operation the daemon cannot replay.
+pub const RECONCILE_KEY: &str = "backend.failure.reconcile";
+
+/// How the daemon refuses a retry of an operation that was interrupted (or
+/// failed) after it was reserved: it never guesses whether it applied.
+const RECONCILE: &str = "operation requires reconciliation";
+
+/// How the client and the daemon describe a missed deadline.
+const DEADLINE_EXCEEDED: &str = "request deadline exceeded";
 
 /// Error codes the daemon puts on error frames.
 const DAEMON_CODES: [&str; 5] = [
@@ -155,6 +184,9 @@ const DAEMON_CODES: [&str; 5] = [
 impl From<SdkError> for BusError {
     fn from(error: SdkError) -> Self {
         match error {
+            // Both the client (no answer by the deadline) and the daemon (the
+            // deadline passed before the request was applied) say so.
+            SdkError::LocalBus(text) if text.contains(DEADLINE_EXCEEDED) => Self::Timeout,
             // An error frame reaches the client as `LocalBus("<code>: <message>")`.
             SdkError::LocalBus(text) => match text.split_once(": ") {
                 Some((code, message)) if DAEMON_CODES.contains(&code) => {
@@ -190,6 +222,33 @@ mod tests {
         assert!(broken.is_connection_lost());
         let odd = BusError::from(SdkError::LocalBus("unexpected local bus frame".to_owned()));
         assert!(odd.is_connection_lost());
+        let closed = BusError::from(SdkError::LocalBus("local bus connection closed".to_owned()));
+        assert!(closed.is_connection_lost());
+    }
+
+    #[test]
+    fn missed_deadlines_on_either_side_are_timeouts() {
+        let client = BusError::from(SdkError::LocalBus("request deadline exceeded".to_owned()));
+        assert_eq!(client, BusError::Timeout);
+        let daemon = BusError::from(SdkError::LocalBus(
+            "ValidationFailed: local bus error: request deadline exceeded or outside supported \
+             clock range"
+                .to_owned(),
+        ));
+        assert_eq!(daemon, BusError::Timeout);
+        assert!(!daemon.is_connection_lost());
+        assert_eq!(daemon.message(), TIMEOUT_KEY);
+    }
+
+    #[test]
+    fn a_retry_the_daemon_cannot_replay_asks_the_user_to_check() {
+        let refused = BusError::from(SdkError::LocalBus(
+            "ValidationFailed: storage error: event id conflict: operation requires \
+             reconciliation: desk-op-1"
+                .to_owned(),
+        ));
+        assert!(matches!(&refused, BusError::Daemon { code, .. } if code == "ValidationFailed"));
+        assert_eq!(refused.message(), RECONCILE_KEY);
     }
 
     #[test]

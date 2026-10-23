@@ -8,18 +8,23 @@
 //! [`DaemonLauncher::start`], reached from the user's "Start local daemon"
 //! command, runs `rf daemon start` on the socket the live source already
 //! watches; the source then attaches by itself as soon as the daemon
-//! answers. A daemon the launcher started is owned by it: it is stopped by
-//! terminating the child process (the pinned CLI cannot stop a foreground
-//! daemon), on the user's "Stop" command and when the application quits.
+//! answers. A daemon the launcher started is owned by it: it is stopped on
+//! the user's "Stop" command and when the application quits, gracefully over
+//! the local bus (`daemon.stop`) with a bounded fallback to terminating the
+//! child process (see [`stopping`]). A daemon left behind by a session that
+//! crashed is recognised by its record and can be stopped gracefully too; a
+//! daemon the user started without the desktop is never offered.
 //!
 //! Launching a process is a local application action, not a domain intent:
 //! it involves no account, no daemon method and no policy, so it travels as
 //! a window command handled by the shell, not through the intent root.
 //!
 //! - [`choice`]: the source chosen by flags, environment and settings.
+//! - [`stopping`]: the bounded stop sequence of an owned daemon.
 //! - [`version`]: version information shown in diagnostics.
 
 pub mod choice;
+pub mod stopping;
 pub mod version;
 
 use std::path::PathBuf;
@@ -27,18 +32,20 @@ use std::time::Duration;
 
 use gpui_kit::{App, Context, Entity, Task};
 use ramflux_desktop_core::SourceStatus;
+use ramflux_desktop_sdk::DaemonStop;
 use ramflux_desktop_sdk::local::{
     DaemonBinary, DaemonCommand, DaemonProcess, LaunchError, LaunchSettings, LaunchStore,
-    SourceKind, app_log, daemon_process, paths,
+    OwnedDaemon, OwnedDaemonFile, SourceKind, app_log, daemon_process, paths,
 };
 
 use crate::app::StoreHandle;
+use stopping::{GRACEFUL_POLLS, StopSequence, StopStep};
 
 /// Interval at which a started daemon is checked.
 pub const POLL: Duration = Duration::from_millis(250);
 
-/// Polls a stopping daemon gets before it is killed.
-const STOP_POLLS: u32 = 12;
+/// How long quitting waits for the daemon to accept a graceful stop.
+const QUIT_ANSWER_WAIT: Duration = Duration::from_secs(2);
 
 /// What the launcher has done.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,7 +62,7 @@ pub enum LaunchState {
         /// Process id.
         pid: u32,
     },
-    /// Asked to stop; not exited yet.
+    /// Asked to stop (an owned daemon, or one left behind); not gone yet.
     Stopping {
         /// Process id.
         pid: u32,
@@ -72,6 +79,18 @@ pub enum LaunchFailure {
     /// It exited by itself, with this exit code (none when ended by a
     /// signal).
     Exited(Option<i32>),
+    /// A daemon left behind by an earlier session refused to stop, or did
+    /// not stop in time (the reason).
+    Stop(String),
+}
+
+/// The graceful stop of a daemon left behind by an earlier session (no
+/// process handle: it can only be asked).
+#[derive(Debug)]
+struct LeftBehindStop {
+    request: Option<DaemonStop>,
+    accepted: bool,
+    polls: u32,
 }
 
 /// Starts, watches and stops a local daemon; keeps the launch settings.
@@ -84,7 +103,11 @@ pub struct DaemonLauncher {
     process: Option<DaemonProcess>,
     state: LaunchState,
     saved: Option<Result<(), String>>,
-    stop_polls: u32,
+    owned_file: OwnedDaemonFile,
+    left_behind: Option<OwnedDaemon>,
+    stopping: Option<StopSequence>,
+    stopping_left_behind: Option<LeftBehindStop>,
+    last_stop_graceful: Option<bool>,
     poll: Option<Task<()>>,
 }
 
@@ -98,6 +121,8 @@ pub struct LaunchOptions {
     pub bundled: Option<PathBuf>,
     /// Directory of the daemon log.
     pub log_dir: Option<PathBuf>,
+    /// The record of a started daemon (to find one left behind by a crash).
+    pub owned: OwnedDaemonFile,
 }
 
 impl LaunchOptions {
@@ -113,6 +138,7 @@ impl LaunchOptions {
             store: LaunchStore::default_location(),
             bundled: paths::bundled_daemon(),
             log_dir: paths::log_dir(),
+            owned: OwnedDaemonFile::default_location(),
         }
     }
 }
@@ -121,8 +147,8 @@ impl DaemonLauncher {
     /// A launcher for the daemon `store` watches, set up by `options`.
     pub fn new(store: Entity<StoreHandle>, options: LaunchOptions, cx: &mut Context<Self>) -> Self {
         // A daemon the desktop owns stops with the application.
-        cx.on_app_quit(|this: &mut Self, _| {
-            this.stop_now();
+        cx.on_app_quit(|this: &mut Self, cx| {
+            this.stop_now(cx);
             async {}
         })
         .detach();
@@ -135,7 +161,11 @@ impl DaemonLauncher {
             process: None,
             state: LaunchState::Idle,
             saved: None,
-            stop_polls: 0,
+            left_behind: options.owned.load(),
+            owned_file: options.owned,
+            stopping: None,
+            stopping_left_behind: None,
+            last_stop_graceful: None,
             poll: None,
         }
     }
@@ -153,6 +183,31 @@ impl DaemonLauncher {
     /// Whether a daemon started by the desktop is running (or stopping).
     pub fn owns_daemon(&self) -> bool {
         self.process.is_some()
+    }
+
+    /// The process id of a daemon an earlier session of the desktop started
+    /// and did not stop (it crashed), when that daemon is the one attached
+    /// now; `None` otherwise.
+    pub fn left_behind(&self, cx: &App) -> Option<u32> {
+        let record = self.left_behind.as_ref()?;
+        let handle = self.store.read(cx);
+        let attached = handle.store().source_status() != SourceStatus::Disconnected;
+        let same_socket = handle.live_socket().map(PathBuf::from).as_ref() == Some(&record.socket);
+        (self.process.is_none() && attached && same_socket && self.state == LaunchState::Idle)
+            .then_some(record.pid)
+    }
+
+    /// Whether the last stop of a daemon the desktop started ended it
+    /// gracefully (`daemon.stop`) rather than by signal; `None` before any.
+    pub fn last_stop_graceful(&self) -> Option<bool> {
+        self.last_stop_graceful
+    }
+
+    /// Whether "Stop daemon" can be offered now: a daemon the desktop
+    /// started, or one an earlier session left behind.
+    pub fn can_stop(&self, cx: &App) -> bool {
+        (self.process.is_some() && !matches!(self.state, LaunchState::Stopping { .. }))
+            || self.left_behind(cx).is_some()
     }
 
     /// The result of the last save, if any.
@@ -207,11 +262,14 @@ impl DaemonLauncher {
             return;
         }
         let Some(socket) = self.socket(cx) else { return };
-        let result = self.command(socket).and_then(|command| DaemonProcess::spawn(&command));
+        let result =
+            self.command(socket.clone()).and_then(|command| DaemonProcess::spawn(&command));
         match result {
             Ok(process) => {
                 let pid = process.pid();
                 app_log::info(&format!("local daemon started on request pid={pid}"));
+                self.owned_file.record(&OwnedDaemon { pid, socket: socket.clone() });
+                self.left_behind = None;
                 self.process = Some(process);
                 self.state = LaunchState::Starting { pid };
                 self.watch(cx);
@@ -231,28 +289,51 @@ impl DaemonLauncher {
         Ok(DaemonCommand { binary, socket, data_dir, log_file: self.daemon_log() })
     }
 
-    /// Asks a daemon the desktop started to stop; it is killed if it does
-    /// not exit within a few seconds. Never touches a daemon it did not
-    /// start.
+    /// Stops a daemon the desktop started (gracefully, then by signal, then
+    /// by force, each step bounded), or asks one an earlier session left
+    /// behind to stop. Never touches a daemon the user started without the
+    /// desktop.
     pub fn stop(&mut self, cx: &mut Context<Self>) {
-        let Some(process) = self.process.as_mut() else { return };
-        process.terminate();
-        let pid = process.pid();
-        app_log::info(&format!("local daemon stop requested pid={pid}"));
-        self.state = LaunchState::Stopping { pid };
-        self.stop_polls = 0;
+        if !self.can_stop(cx) {
+            return;
+        }
+        let request = self.store.read(cx).request_daemon_stop();
+        if let Some(process) = self.process.as_ref() {
+            let pid = process.pid();
+            app_log::info(&format!("local daemon graceful stop requested pid={pid}"));
+            self.stopping = Some(StopSequence::new(request));
+            self.state = LaunchState::Stopping { pid };
+        } else if let Some(pid) = self.left_behind(cx) {
+            app_log::info(&format!("left-behind daemon graceful stop requested pid={pid}"));
+            self.stopping_left_behind = Some(LeftBehindStop { request, accepted: false, polls: 0 });
+            self.state = LaunchState::Stopping { pid };
+        }
         self.watch(cx);
         cx.notify();
     }
 
     /// Stops a daemon the desktop started and waits for it (application
-    /// quit).
-    pub fn stop_now(&mut self) {
-        if let Some(mut process) = self.process.take() {
-            app_log::info(&format!("local daemon stopped on quit pid={}", process.pid()));
+    /// quit): a graceful request first, then the bounded fallback.
+    pub fn stop_now(&mut self, cx: &App) {
+        let Some(mut process) = self.process.take() else { return };
+        let pid = process.pid();
+        let accepted = self
+            .store
+            .read(cx)
+            .request_daemon_stop()
+            .and_then(|mut request| request.wait(QUIT_ANSWER_WAIT))
+            .is_some_and(|answer| answer.is_ok());
+        let graceful = accepted && process.wait_exit(daemon_process::STOP_GRACE);
+        self.last_stop_graceful = Some(graceful);
+        if graceful {
+            app_log::info(&format!("local daemon stopped gracefully on quit pid={pid}"));
+        } else {
+            app_log::info(&format!("local daemon terminated on quit pid={pid}"));
             process.stop(daemon_process::STOP_GRACE);
-            self.state = LaunchState::Idle;
         }
+        self.owned_file.clear();
+        self.stopping = None;
+        self.state = LaunchState::Idle;
     }
 
     fn watch(&mut self, cx: &mut Context<Self>) {
@@ -270,47 +351,102 @@ impl DaemonLauncher {
         }));
     }
 
-    /// One check of the started daemon; returns whether to keep watching.
+    /// One check of the started (or stopping) daemon; returns whether to
+    /// keep watching.
     fn check(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(process) = self.process.as_mut() else {
+        let watching =
+            if self.process.is_some() { self.check_owned(cx) } else { self.check_left_behind(cx) };
+        if !watching {
             self.poll = None;
-            return false;
-        };
+            cx.notify();
+        }
+        watching
+    }
+
+    fn check_owned(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(process) = self.process.as_mut() else { return false };
         let pid = process.pid();
         if let Some(code) = process.exit_code() {
             self.process = None;
-            self.poll = None;
-            self.state = if matches!(self.state, LaunchState::Stopping { .. }) {
-                app_log::info(&format!("local daemon stopped pid={pid}"));
-                LaunchState::Idle
-            } else {
-                let status = code.map_or_else(|| "signal".to_owned(), |c| c.to_string());
-                app_log::warn(&format!("local daemon exited pid={pid} status {status}"));
-                LaunchState::Failed(LaunchFailure::Exited(code))
+            self.owned_file.clear();
+            let stopping = self.stopping.take();
+            self.state = match stopping {
+                Some(sequence) => {
+                    self.last_stop_graceful = Some(sequence.graceful());
+                    let how = if sequence.graceful() { "gracefully" } else { "after a signal" };
+                    app_log::info(&format!("local daemon stopped {how} pid={pid}"));
+                    LaunchState::Idle
+                }
+                None => {
+                    let status = code.map_or_else(|| "signal".to_owned(), |c| c.to_string());
+                    app_log::warn(&format!("local daemon exited pid={pid} status {status}"));
+                    LaunchState::Failed(LaunchFailure::Exited(code))
+                }
             };
-            cx.notify();
             return false;
         }
-        let attached = self.store.read(cx).store().source_status() != SourceStatus::Disconnected;
-        match self.state {
-            LaunchState::Stopping { .. } => {
-                self.stop_polls += 1;
-                if self.stop_polls > STOP_POLLS {
+        if let Some(sequence) = self.stopping.as_mut() {
+            match sequence.step() {
+                StopStep::Wait => {}
+                StopStep::Terminate => {
+                    let why = sequence.refused().unwrap_or("no exit in time").to_owned();
+                    app_log::warn(&format!("local daemon terminated pid={pid}: {why}"));
+                    process.terminate();
+                }
+                StopStep::Kill => {
                     app_log::warn(&format!("local daemon killed after no exit pid={pid}"));
                     process.kill();
                     self.process = None;
-                    self.poll = None;
+                    self.stopping = None;
+                    self.last_stop_graceful = Some(false);
+                    self.owned_file.clear();
                     self.state = LaunchState::Idle;
-                    cx.notify();
                     return false;
                 }
             }
-            LaunchState::Starting { pid } if attached => {
-                app_log::info(&format!("local daemon answering pid={pid}"));
-                self.state = LaunchState::Running { pid };
-                cx.notify();
+            return true;
+        }
+        let attached = self.store.read(cx).store().source_status() != SourceStatus::Disconnected;
+        if let LaunchState::Starting { pid } = self.state
+            && attached
+        {
+            app_log::info(&format!("local daemon answering pid={pid}"));
+            self.state = LaunchState::Running { pid };
+            cx.notify();
+        }
+        true
+    }
+
+    fn check_left_behind(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(stop) = self.stopping_left_behind.as_mut() else { return false };
+        stop.polls += 1;
+        let answer = stop
+            .request
+            .as_mut()
+            .map_or_else(|| Some(Err("no daemon link".to_owned())), DaemonStop::poll);
+        let failed = match answer {
+            Some(Ok(())) => {
+                stop.accepted = true;
+                None
             }
-            _ => {}
+            Some(Err(reason)) if !stop.accepted => Some(reason),
+            _ if stop.polls > GRACEFUL_POLLS => Some("the daemon kept answering".to_owned()),
+            _ => None,
+        };
+        let gone = self.store.read(cx).store().source_status() == SourceStatus::Disconnected;
+        if let Some(reason) = failed {
+            app_log::warn(&format!("left-behind daemon did not stop: {reason}"));
+            self.stopping_left_behind = None;
+            self.state = LaunchState::Failed(LaunchFailure::Stop(reason));
+            return false;
+        }
+        if stop.accepted && gone {
+            app_log::info("left-behind daemon stopped gracefully");
+            self.stopping_left_behind = None;
+            self.left_behind = None;
+            self.owned_file.clear();
+            self.state = LaunchState::Idle;
+            return false;
         }
         true
     }

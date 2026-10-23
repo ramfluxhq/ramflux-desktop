@@ -8,6 +8,8 @@
 //! (a desktop grant id is the daemon's approval id) and bodies differ. Each
 //! supported method maps to exactly one request plus the reads that refresh
 //! what it changed; unsupported methods are refused with their reason.
+//! Every request that changes daemon state gets a fresh retry key here, once
+//! per effect (see [`crate::bus::idempotency`]).
 //!
 //! - [`fetch`]: the reads.
 //! - [`identity`]: fresh identity material for account creation.
@@ -23,7 +25,7 @@ use ramflux_desktop_core::{
 };
 use serde_json::{Value, json};
 
-use crate::bus::BusRequest;
+use crate::bus::{BusRequest, idempotency};
 use crate::capabilities;
 pub use contact::KnownLink;
 use fetch::Fetch;
@@ -100,9 +102,22 @@ pub fn plan(account: Option<&AccountId>, effect: Effect, known: &impl Known) -> 
     let plan = if let Some(reason) = capabilities::reason_for(&method) {
         Plan::Refuse { code: FailureCode::UnsupportedByBackend, message: reason.to_owned() }
     } else {
-        map(account, &method, &body, secrets, known)
+        keyed(map(account, &method, &body, secrets, known))
     };
     Planned { method, body, plan }
+}
+
+/// Gives a mutating request its retry key.
+fn keyed(plan: Plan) -> Plan {
+    match plan {
+        Plan::Call { request, refresh } if idempotency::is_mutation(&request.method) => {
+            match idempotency::fresh_key() {
+                Ok(key) => Plan::Call { request: request.with_operation_id(key), refresh },
+                Err(message) => refuse_invalid(&message),
+            }
+        }
+        other => other,
+    }
 }
 
 fn refuse_invalid(message: &str) -> Plan {

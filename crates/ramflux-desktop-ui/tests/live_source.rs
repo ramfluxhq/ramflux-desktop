@@ -32,7 +32,7 @@ fn frames() -> BTreeMap<String, Value> {
 
 fn options(path: &std::path::Path) -> ShellOptions {
     let config = SdkConfig {
-        request_timeout: Duration::from_secs(3),
+        deadlines: ramflux_desktop_sdk::Deadlines::uniform(Duration::from_secs(3)),
         poll_fast: Duration::from_millis(80),
         poll_slow: Duration::from_millis(300),
         reconnect_backoff: Duration::from_millis(150),

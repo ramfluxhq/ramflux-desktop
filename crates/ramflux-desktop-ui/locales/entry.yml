@@ -83,6 +83,9 @@ entry:
     signal:
       en: "signal"
       zh-CN: "信号"
+    stop_failed:
+      en: "The daemon did not stop: %{reason}"
+      zh-CN: "守护进程未停止：%{reason}"
   node:
     intro:
       en: "Your account lives on a node. Confirm the node you were invited to, or add one by address."

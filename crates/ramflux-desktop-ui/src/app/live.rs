@@ -13,7 +13,7 @@
 
 use gpui_kit::Context;
 use ramflux_desktop_core::{AccountId, Intent, LockState, methods};
-use ramflux_desktop_sdk::SdkHub;
+use ramflux_desktop_sdk::{DaemonStop, SdkHub};
 
 use super::{
     AccountSession, DispatchOutcome, InspectorEntry, StoreEvent, StoreHandle, effect_label,
@@ -50,6 +50,13 @@ impl StoreHandle {
     /// The daemon socket in live mode.
     pub fn live_socket(&self) -> Option<&str> {
         self.live.as_ref().map(|link| link.hub.socket())
+    }
+
+    /// Asks the daemon on the live socket to stop gracefully (`daemon.stop`);
+    /// `None` when the window plays scenarios. A local application command
+    /// of the launcher, not a domain intent.
+    pub fn request_daemon_stop(&self) -> Option<DaemonStop> {
+        self.live.as_ref().map(|link| link.hub.stop_daemon())
     }
 
     pub(super) fn advance_live(&mut self, ms: u64, cx: &mut Context<Self>) {

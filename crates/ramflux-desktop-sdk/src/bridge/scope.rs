@@ -4,10 +4,12 @@
 //! One scope's task: snapshot, live events, polling, effects, reconnects.
 //!
 //! The task is the single owner of its translator. Requests run as spawned
-//! futures on the scope's lane and report back through an internal channel,
-//! so several requests of one scope are in flight at once while translation
-//! stays sequential and deterministic (a snapshot is translated in its fixed
-//! read order, whatever order the answers arrive in).
+//! futures on the scope's multiplexed connection and report back through an
+//! internal channel, so several requests of one scope are in flight at once
+//! on one connection while translation stays sequential and deterministic (a
+//! snapshot is translated in its fixed read order, whatever order the
+//! answers arrive in). Every request ends by its deadline, so no effect or
+//! read stays pending: a missed deadline is a `Timeout` failure.
 //!
 //! Lifecycle: attach, then snapshot. When every read answered the scope is
 //! live: an account subscribes to its pushed topics and polls its watched
@@ -30,7 +32,7 @@ use tokio::time::Instant;
 
 use super::{Delivery, now};
 use crate::bus::BusError;
-use crate::bus::lane::Lane;
+use crate::bus::client::BusClient;
 use crate::bus::subscription::{self, Pushed};
 use crate::capabilities;
 use crate::config::SdkConfig;
@@ -67,7 +69,7 @@ enum Link {
 struct Task {
     config: SdkConfig,
     scope: Scope,
-    lane: Lane,
+    client: BusClient,
     translator: Translator,
     pins: PinStore,
     outbox: std_mpsc::Sender<Delivery>,
@@ -94,8 +96,8 @@ pub(crate) async fn run(
     let (internal, mut internal_rx) = mpsc::unbounded_channel();
     let (pushed, mut pushed_rx) = mpsc::unbounded_channel();
     let socket = config.socket_path.to_string_lossy().into_owned();
-    let lane =
-        Lane::spawn(config.socket_path.clone(), config.request_connections, config.request_timeout);
+    let client =
+        BusClient::new(config.socket_path.clone(), config.connect_timeout, config.deadlines);
     let start = Instant::now();
     let pins = PinStore::new(config.settings_path.clone());
     let mut translator = Translator::new(scope.clone(), socket);
@@ -108,7 +110,7 @@ pub(crate) async fn run(
         pins,
         config,
         scope,
-        lane,
+        client,
         outbox,
         internal,
         pushed,
@@ -196,15 +198,15 @@ impl Task {
     fn snapshot(&mut self) {
         self.link = Link::Attaching;
         let reads = self.reads_for_snapshot();
-        let lane = self.lane.clone();
+        let client = self.client.clone();
         let account = self.account();
         let internal = self.internal.clone();
         tokio::spawn(async move {
             let mut set = JoinSet::new();
             for (index, fetch) in reads.into_iter().enumerate() {
-                let lane = lane.clone();
+                let client = client.clone();
                 let request = fetch.request(account.as_deref());
-                set.spawn(async move { (index, fetch, lane.call(request).await) });
+                set.spawn(async move { (index, fetch, client.call(&request).await) });
             }
             let mut results = Vec::new();
             while let Some(Ok(answer)) = set.join_next().await {
@@ -220,9 +222,11 @@ impl Task {
         let Some(account) = self.account() else { return };
         self.subscribed = true;
         let socket = self.config.socket_path.clone();
-        let timeout = self.config.request_timeout;
+        let (connect, deadlines) = (self.config.connect_timeout, self.config.deadlines);
         let out = self.pushed.clone();
-        tokio::spawn(async move { subscription::run(&socket, account, timeout, out).await });
+        tokio::spawn(
+            async move { subscription::run(&socket, account, connect, deadlines, out).await },
+        );
     }
 
     fn lost(&mut self) {
@@ -259,11 +263,11 @@ impl Task {
 
     fn spawn_fetches(&self, fetches: Vec<Fetch>) {
         for fetch in fetches {
-            let lane = self.lane.clone();
+            let client = self.client.clone();
             let request = fetch.request(self.account().as_deref());
             let internal = self.internal.clone();
             tokio::spawn(async move {
-                let result = lane.call(request).await;
+                let result = client.call(&request).await;
                 let _ = internal.send(Internal::Fetched(fetch, result));
             });
         }
@@ -287,12 +291,12 @@ impl Task {
         self.polls_in_flight = sequences.len();
         self.poll_changed = false;
         for sequence in sequences {
-            let lane = self.lane.clone();
+            let client = self.client.clone();
             let account = self.account();
             let internal = self.internal.clone();
             tokio::spawn(async move {
                 for fetch in sequence {
-                    let result = lane.call(fetch.request(account.as_deref())).await;
+                    let result = client.call(&fetch.request(account.as_deref())).await;
                     let failed = result.is_err();
                     let _ = internal.send(Internal::Fetched(fetch, result));
                     if failed {
@@ -333,8 +337,13 @@ impl Task {
     }
 
     fn on_snapshot(&mut self, results: Vec<(Fetch, Result<Value, BusError>)>) {
+        let unanswered = |r: &Result<Value, BusError>| {
+            r.as_ref().is_err_and(|e| e.is_connection_lost() || *e == BusError::Timeout)
+        };
+        // A daemon that accepts the connection but answers none of the reads
+        // in time is treated as gone (and retried), not as an empty one.
         if results.iter().any(|(_, r)| r.as_ref().is_err_and(BusError::is_connection_lost))
-            || results.is_empty()
+            || results.iter().all(|(_, r)| unanswered(r))
         {
             self.lost();
             return;
@@ -416,10 +425,10 @@ impl Task {
         self.translator.decision_sent(&method, &body);
         match planned.plan {
             Plan::Call { request, refresh } => {
-                let lane = self.lane.clone();
+                let client = self.client.clone();
                 let internal = self.internal.clone();
                 tokio::spawn(async move {
-                    let result = lane.call(request).await;
+                    let result = client.call(&request).await;
                     let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
                 });
             }
@@ -429,10 +438,10 @@ impl Task {
                 self.persist_pins();
             }
             Plan::Diagnostics { path } => {
-                let lane = self.lane.clone();
+                let client = self.client.clone();
                 let internal = self.internal.clone();
                 tokio::spawn(async move {
-                    let result = write_diagnostics(&lane, &path).await;
+                    let result = write_diagnostics(&client, &path).await;
                     let _ = internal.send(Internal::EffectDone {
                         method,
                         body,
@@ -486,9 +495,9 @@ impl Task {
     }
 }
 
-async fn write_diagnostics(lane: &Lane, path: &str) -> Result<Value, BusError> {
-    let status = lane.call(Fetch::DaemonStatus.request(None)).await?;
-    let nodes = lane.call(Fetch::NodeList.request(None)).await?;
+async fn write_diagnostics(client: &BusClient, path: &str) -> Result<Value, BusError> {
+    let status = client.call(&Fetch::DaemonStatus.request(None)).await?;
+    let nodes = client.call(&Fetch::NodeList.request(None)).await?;
     let text = crate::diagnostics::bundle(&status, &nodes);
     std::fs::write(path, text)
         .map_err(|error| BusError::Daemon { code: "io".to_owned(), message: error.to_string() })?;

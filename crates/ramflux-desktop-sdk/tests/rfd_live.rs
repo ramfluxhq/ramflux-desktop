@@ -3,8 +3,9 @@
 
 //! The SDK source against a real `rf daemon` from the pinned product
 //! revision, without a node: daemon status, the empty node list, the
-//! account list, error mapping, diagnostics, and a stopped daemon that
-//! disconnects, comes back and is re-snapshotted.
+//! account list, error mapping, diagnostics, a stopped daemon that
+//! disconnects, comes back and is re-snapshotted, many requests in flight on
+//! one connection, the retry key read by the daemon, and a graceful stop.
 //!
 //! Ignored by default. Run with a pinned `rf`:
 //!
@@ -17,14 +18,13 @@
 //! or restoring one opens a gateway session on a node, so it is not
 //! exercised without a node; unlocking an account the daemon does not know
 //! is checked as an error instead. For the same reason contact calls are
-//! checked for routing only: every frame the desktop builds reaches its
-//! daemon method (an unknown one would be named), and `contact.add` /
-//! `contact.accept` bodies parse into the daemon's request type before it
-//! finds that no account is open.
+//! checked for routing only. Since the account actors (product b38b4e4) the
+//! daemon checks that the account is open before it looks at the method or
+//! body, so without a node a contact frame (and even an unknown method)
+//! only reaches the account router; the bodies are checked against the
+//! SDK's request types in `request_shapes.rs` and `contacts.rs`.
 
 mod common;
-
-use std::time::Duration;
 
 use common::{Fed, config};
 use ramflux_desktop_core::{
@@ -49,7 +49,7 @@ fn daemon(tag: &str) -> Option<LiveDaemon> {
 
 fn hub(daemon: &LiveDaemon) -> SdkHub {
     SdkHub::start(ramflux_desktop_sdk::SdkConfig {
-        request_timeout: Duration::from_secs(10),
+        deadlines: ramflux_desktop_sdk::Deadlines::standard(),
         ..config(&daemon.socket())
     })
     .expect("bridge")
@@ -161,8 +161,8 @@ fn a_stopped_daemon_disconnects_and_a_restarted_one_is_resnapshotted() {
 }
 
 /// Plans a contact effect with a source that knows one link of each kind,
-/// and returns the daemon method and the exact wire body it would send.
-fn contact_frame(method: &str, participant: &str) -> (String, serde_json::Value) {
+/// and returns the request the desktop would send.
+fn contact_request(method: &str, participant: &str) -> ramflux_desktop_sdk::bus::BusRequest {
     use ramflux_desktop_core::{ContactLink, ContextId, ContextKind};
     use ramflux_desktop_sdk::plan::{Known, KnownLink, Plan, plan};
     struct Links(Vec<(&'static str, KnownLink)>);
@@ -198,17 +198,23 @@ fn contact_frame(method: &str, participant: &str) -> (String, serde_json::Value)
         body: json!({ "participant_id": participant, "proposed_by": "Human", "confirmed_by": null }),
     };
     match plan(Some(&AccountId::new("acct-none")), effect, &known).plan {
-        Plan::Call { request, .. } => (request.method.clone(), request.wire_body()),
+        Plan::Call { request, .. } => request,
         other => panic!("{method}: expected a call, got {other:?}"),
     }
 }
 
 #[test]
 #[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
-fn every_contact_frame_is_routed_by_the_real_daemon() {
+fn every_contact_frame_reaches_the_account_router_of_the_real_daemon() {
+    use ramflux_desktop_sdk::bus::BusError;
+    use ramflux_desktop_sdk::bus::client::BusClient;
     let Some(daemon) = daemon("contacts") else { return };
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("rt");
-    let socket = daemon.socket();
+    let client = BusClient::new(
+        daemon.socket(),
+        std::time::Duration::from_secs(5),
+        ramflux_desktop_sdk::Deadlines::standard(),
+    );
     for (method, participant) in [
         (methods::CONTACT_ADD, "principal-kai"),
         (methods::CONTACT_ACCEPT, "principal-sam"),
@@ -217,26 +223,113 @@ fn every_contact_frame_is_routed_by_the_real_daemon() {
         (methods::CONTACT_UNBLOCK, "principal-ana"),
         (methods::CONTACT_REMOVE, "principal-ana"),
     ] {
-        let (daemon_method, body) = contact_frame(method, participant);
-        let answer = runtime.block_on(async {
-            let mut bus = ramflux_sdk::LocalBusClient::connect(&socket).await.expect("connect");
-            bus.request(Some("acct-none".to_owned()), "contact", &daemon_method, &body).await
-        });
-        let error = answer.expect_err("no account is open").to_string();
-        println!("{daemon_method} {body}: {error}");
+        let request = contact_request(method, participant);
+        assert!(request.operation_id.is_some(), "{method} carries its retry key");
+        let answer = runtime.block_on(client.call(&request));
+        println!("{} {}: {answer:?}", request.method, request.body);
         assert!(
-            !error.contains("unsupported local bus method"),
-            "{daemon_method} is a daemon method: {error}"
+            matches!(&answer, Err(BusError::Daemon { message, .. })
+                if message.contains("account not open: acct-none")),
+            "{method}: {answer:?}"
         );
-        assert!(!error.contains("missing field"), "{daemon_method} body is complete: {error}");
     }
-    // The check has teeth: a method the daemon lacks is named as such.
-    let bogus = runtime.block_on(async {
-        let mut bus = ramflux_sdk::LocalBusClient::connect(&socket).await.expect("connect");
-        bus.request(Some("acct-none".to_owned()), "contact", "contact.bogus", &json!({})).await
-    });
-    assert!(bogus.expect_err("bogus").to_string().contains("unsupported local bus method"));
     // The daemon still answers (no request left it in a bad state).
     let cli = daemon.rf(&["account", "list"]).expect("rf account list");
     assert!(cli.status.success());
+}
+
+#[test]
+#[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
+fn many_requests_run_concurrently_on_one_connection_of_a_real_daemon() {
+    use ramflux_desktop_sdk::bus::BusRequest;
+    use ramflux_desktop_sdk::bus::client::BusClient;
+    let Some(daemon) = daemon("mux") else { return };
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("rt");
+    let client = BusClient::new(
+        daemon.socket(),
+        std::time::Duration::from_secs(5),
+        ramflux_desktop_sdk::Deadlines::standard(),
+    );
+    let answers = runtime.block_on(async {
+        let mut set = tokio::task::JoinSet::new();
+        for index in 0..48 {
+            let client = client.clone();
+            let (sdk_api, method) =
+                [("daemon", "daemon.status"), ("node", "node.list"), ("account", "account.list")]
+                    [index % 3];
+            set.spawn(async move {
+                client.call(&BusRequest::new(None, sdk_api, method, json!({}))).await
+            });
+        }
+        let mut answers = Vec::new();
+        while let Some(joined) = set.join_next().await {
+            answers.push(joined.expect("task"));
+        }
+        answers
+    });
+    assert_eq!(answers.len(), 48);
+    for answer in &answers {
+        assert!(answer.is_ok(), "{answer:?}");
+    }
+    assert_eq!(client.connections_opened(), 1, "48 requests in flight on one connection");
+}
+
+#[test]
+#[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
+fn the_real_daemon_reads_the_retry_key_of_a_mutation() {
+    use ramflux_desktop_sdk::bus::client::BusClient;
+    use ramflux_desktop_sdk::bus::{BusError, BusRequest, idempotency};
+    let Some(daemon) = daemon("keys") else { return };
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("rt");
+    let client = BusClient::new(
+        daemon.socket(),
+        std::time::Duration::from_secs(5),
+        ramflux_desktop_sdk::Deadlines::standard(),
+    );
+    let remove = |key: String| {
+        BusRequest::new(None, "node", "node.remove", json!({ "node_id": "n-unknown" }))
+            .with_operation_id(key)
+    };
+    // A key the daemon rejects proves it reads the field.
+    let too_long = runtime.block_on(client.call(&remove("k".repeat(257))));
+    println!("257-byte key: {too_long:?}");
+    assert!(
+        matches!(&too_long, Err(BusError::Daemon { message, .. }) if message.contains("operation_id")),
+        "{too_long:?}"
+    );
+    // A desktop key is accepted; the request then fails on its own merits.
+    let key = idempotency::fresh_key().expect("randomness");
+    let first = runtime.block_on(client.call(&remove(key.clone())));
+    println!("desktop key: {first:?}");
+    assert!(
+        matches!(&first, Err(BusError::Daemon { message, .. }) if !message.contains("operation_id")),
+        "{first:?}"
+    );
+    // A failed operation stores no answer, and the daemon fails closed: the
+    // same key is never applied again, it asks for reconciliation instead.
+    let again = runtime.block_on(client.call(&remove(key)));
+    println!("same key again: {again:?}");
+    assert!(
+        matches!(&again, Err(BusError::Daemon { message, .. })
+            if message.contains("operation requires reconciliation")),
+        "{again:?}"
+    );
+}
+
+#[test]
+#[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
+fn the_hub_stops_a_real_daemon_gracefully() {
+    let Some(mut daemon) = daemon("stop") else { return };
+    let hub = hub(&daemon);
+    let mut entry = Fed::new(hub.daemon_source());
+    entry.until("connected", |s, _| s.source_status() == SourceStatus::Connected);
+    let mut stop = hub.stop_daemon();
+    let answer = stop.wait(std::time::Duration::from_secs(10));
+    assert_eq!(answer, Some(Ok(())), "the daemon accepted the stop");
+    assert!(daemon.wait_exit(std::time::Duration::from_secs(10)), "it exits by itself");
+    let status = daemon.exit_status().expect("exited");
+    println!("daemon exit status after daemon.stop: {status:?}");
+    assert!(status.success(), "a clean exit, not a signal: {status:?}");
+    assert!(!daemon.socket().exists(), "the daemon removed its socket");
+    entry.until("disconnected", |s, _| s.source_status() == SourceStatus::Disconnected);
 }

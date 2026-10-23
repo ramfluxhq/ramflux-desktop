@@ -17,6 +17,7 @@ use ramflux_desktop_core::{
 };
 
 use crate::bridge::{Bridge, Command, Delivery};
+use crate::bus::BusError;
 use crate::config::SdkConfig;
 use crate::translate::Scope;
 
@@ -51,6 +52,49 @@ impl SdkHub {
     /// A source for one unlocked account.
     pub fn account_source(&self, account: AccountId) -> SdkSource {
         SdkSource::attach(self.bridge.clone(), Scope::Account(account))
+    }
+
+    /// Asks the daemon on the hub's socket to stop (`daemon.stop`: it
+    /// stops accepting, drains, closes its databases and removes its
+    /// socket). Returns at once; the answer arrives on the handle.
+    pub fn stop_daemon(&self) -> DaemonStop {
+        let (reply, answer) = std_mpsc::channel();
+        self.bridge.send(Command::StopDaemon { reply });
+        DaemonStop { answer, result: None }
+    }
+}
+
+/// A pending `daemon.stop`.
+#[derive(Debug)]
+pub struct DaemonStop {
+    answer: std_mpsc::Receiver<Result<(), BusError>>,
+    result: Option<Result<(), String>>,
+}
+
+impl DaemonStop {
+    /// The daemon's answer once it arrived: `Ok` when it accepted the stop,
+    /// else why not. `None` while it is pending.
+    pub fn poll(&mut self) -> Option<Result<(), String>> {
+        if self.result.is_none() {
+            self.result = match self.answer.try_recv() {
+                Ok(answer) => Some(answer.map_err(|error| error.message())),
+                Err(std_mpsc::TryRecvError::Empty) => None,
+                Err(std_mpsc::TryRecvError::Disconnected) => {
+                    Some(Err("the bridge stopped".to_owned()))
+                }
+            };
+        }
+        self.result.clone()
+    }
+
+    /// Waits up to `limit` for the answer (application quit only).
+    pub fn wait(&mut self, limit: std::time::Duration) -> Option<Result<(), String>> {
+        if self.result.is_none()
+            && let Ok(answer) = self.answer.recv_timeout(limit)
+        {
+            self.result = Some(answer.map_err(|error| error.message()));
+        }
+        self.poll()
     }
 }
 

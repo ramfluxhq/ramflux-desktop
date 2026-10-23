@@ -49,8 +49,13 @@ itself. Pick one:
   executable, exits at once) is shown with the reason and can be retried.
 
 A daemon started by the app belongs to the app: **Stop daemon** in Settings ›
-Diagnostics stops it, and quitting the app stops it. A daemon you started
-yourself is never stopped by the app.
+Diagnostics stops it, and quitting the app stops it. The app asks the daemon
+to stop (it finishes what it is writing, closes its data and removes its
+socket) and only terminates the process if it refuses or has not exited after
+a few seconds. If the app ended without stopping it (a crash), the next start
+attaches to it and Settings › Diagnostics offers **Stop daemon** for it. A
+daemon you started yourself is never stopped by the app; `rf daemon stop`
+stops it.
 
 ## 3. Settings › Diagnostics
 

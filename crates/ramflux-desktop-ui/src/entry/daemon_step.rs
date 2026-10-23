@@ -25,7 +25,7 @@ use ramflux_desktop_sdk::local::{DaemonBinary, LaunchError};
 
 use super::EntryPage;
 use crate::actions::{OpenDiagnosticsSettings, StartLocalDaemon};
-use crate::i18n::{tr, tr_args};
+use crate::i18n::{backend_text, tr, tr_args};
 use crate::launch::{LaunchFailure, LaunchState};
 
 fn shown(path: &Path) -> String {
@@ -50,6 +50,9 @@ pub fn failure_text(failure: &LaunchFailure) -> SharedString {
             let status =
                 code.map_or_else(|| tr("entry.daemon.signal").to_string(), |c| c.to_string());
             tr_args("entry.daemon.exited", &[("status", &status)])
+        }
+        LaunchFailure::Stop(reason) => {
+            tr_args("entry.daemon.stop_failed", &[("reason", &backend_text(reason))])
         }
     }
 }

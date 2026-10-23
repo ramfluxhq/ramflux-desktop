@@ -45,6 +45,12 @@ backend:
     label:
       en: "Last error"
       zh-CN: "上次错误"
+    timeout:
+      en: "The daemon did not answer in time."
+      zh-CN: "守护进程未在规定时间内响应。"
+    reconcile:
+      en: "The daemon cannot tell whether this was applied after an interrupted attempt. Check the result before trying again."
+      zh-CN: "上次尝试中断，守护进程无法确定此操作是否已生效。请先核对结果再重试。"
     value:
       en: "%{action}: %{reason}"
       zh-CN: "%{action}：%{reason}"

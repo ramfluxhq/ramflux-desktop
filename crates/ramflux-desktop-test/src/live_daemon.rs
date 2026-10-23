@@ -148,26 +148,45 @@ impl LiveDaemon {
         fs::read_to_string(self.dir.join("rfd.log")).unwrap_or_default()
     }
 
-    /// Stops the daemon and waits for it: a terminate signal first (the
-    /// pinned CLI's `daemon stop` cannot stop a foreground daemon), then by
-    /// force.
+    /// Stops the daemon and waits for it: `rf daemon stop` first (a
+    /// graceful `daemon.stop`), then a terminate signal, then by force.
     pub fn stop(&mut self) {
-        if let Some(mut child) = self.child.take() {
-            let _ = Command::new("kill")
-                .args(["-TERM", &child.id().to_string()])
-                .stderr(Stdio::null())
-                .status();
-            let deadline = Instant::now() + Duration::from_secs(3);
-            while Instant::now() < deadline {
-                if child.try_wait().is_ok_and(|status| status.is_some()) {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(50));
+        if self.child.is_some() {
+            let _ = self.rf(&["daemon", "stop"]);
+            if !self.wait_exit(Duration::from_secs(5))
+                && let Some(child) = self.child.as_ref()
+            {
+                let _ = Command::new("kill")
+                    .args(["-TERM", &child.id().to_string()])
+                    .stderr(Stdio::null())
+                    .status();
+                self.wait_exit(Duration::from_secs(3));
             }
+        }
+        if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
         }
         let _ = fs::remove_file(self.socket());
+    }
+
+    /// Waits up to `limit` for the daemon process to exit by itself;
+    /// returns whether it has (true when no process is held).
+    pub fn wait_exit(&mut self, limit: Duration) -> bool {
+        let deadline = Instant::now() + limit;
+        loop {
+            match self.child.as_mut().map(Child::try_wait) {
+                None | Some(Ok(Some(_)) | Err(_)) => return true,
+                Some(Ok(None)) if Instant::now() >= deadline => return false,
+                Some(Ok(None)) => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+    }
+
+    /// The exit status of a daemon that has exited (and was not reaped by
+    /// [`LiveDaemon::stop`]).
+    pub fn exit_status(&mut self) -> Option<std::process::ExitStatus> {
+        self.child.as_mut().and_then(|child| child.try_wait().ok().flatten())
     }
 
     /// Whether the daemon process is still running.

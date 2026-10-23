@@ -9,8 +9,9 @@
 //! trait and talk to the bridge over runtime-agnostic channels; the GPUI side
 //! never awaits a tokio future.
 //!
-//! - [`config`]: socket, pool size, timeouts, poll intervals.
-//! - [`bus`]: requests, failures, request lanes, the subscription.
+//! - [`config`]: socket, deadlines, poll intervals.
+//! - [`bus`]: requests, failures, deadlines, retry keys, the multiplexed
+//!   request connection, the subscription.
 //! - [`bridge`]: the bridge thread and one task per scope.
 //! - [`plan`]: effects to daemon requests, and the reads.
 //! - [`translate`]: daemon answers and events to domain events.
@@ -33,11 +34,11 @@ pub mod plan;
 pub mod source;
 pub mod translate;
 
-pub use config::{DEFAULT_SOCKET, SdkConfig};
+pub use config::{DEFAULT_SOCKET, Deadlines, SdkConfig};
 
 /// The product revision the `ramflux-sdk`, `ramflux-protocol` and
 /// `ramflux-crypto` dependencies are pinned to (checked against
 /// `Cargo.lock` by a test).
-pub const PRODUCT_REV: &str = "fd3b184bec025f456c8def1f00eecc4f6ca34d95";
-pub use source::{SdkHub, SdkSource};
+pub const PRODUCT_REV: &str = "b38b4e414b24f1172b6672e6845ba960f409d6df";
+pub use source::{DaemonStop, SdkHub, SdkSource};
 pub use translate::Scope;

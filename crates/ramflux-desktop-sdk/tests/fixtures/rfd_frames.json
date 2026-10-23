@@ -1,5 +1,5 @@
 {
-  "_about": "Response bodies of the daemon local bus, by method. Entries marked recorded were captured from rfd at product commit fd3b184 with an empty data root; the others follow the SDK's serialized types at that commit (NodeProfile, ConversationSummary, DirectMessageRecord, GroupState, FriendLinkRecord, LocalMcpApprovalRecord, LocalMcpGrantRecord, LocalMcpStandingApprovalRecord, LocalBusDeviceListResponse, LocalBusAccountCreateResponse).",
+  "_about": "Response bodies of the daemon local bus, by method. Entries marked recorded were captured from rfd at product commit fd3b184 with an empty data root and re-checked unchanged at b38b4e4; the others follow the SDK's serialized types at that commit (NodeProfile, ConversationSummary, DirectMessageRecord, GroupState, FriendLinkRecord, LocalMcpApprovalRecord, LocalMcpGrantRecord, LocalMcpStandingApprovalRecord, LocalBusDeviceListResponse, LocalBusAccountCreateResponse).",
   "daemon.status#recorded": {"accounts": 0, "socket_path": "/tmp/ramflux-f2/rfd.sock"},
   "node.list#recorded": {"default_node_id": null, "nodes": []},
   "account.list#recorded": {"active_account_id": null, "accounts": []},

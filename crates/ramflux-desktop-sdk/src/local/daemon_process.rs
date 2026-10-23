@@ -8,9 +8,10 @@
 //! `rf --socket <socket> daemon start --data-root <data dir>` as a child
 //! process, with its output appended to a log file.
 //!
-//! The pinned CLI's `rf daemon stop` cannot stop a foreground daemon, so a
-//! daemon the desktop owns is stopped by terminating its child process:
-//! a terminate signal first, then by force. Dropping the handle stops it.
+//! A daemon the desktop owns is stopped gracefully over the local bus
+//! (`daemon.stop`, through the bridge); this handle is the bounded fallback
+//! when that is refused or does not end the process in time: a terminate
+//! signal first, then by force. Dropping the handle stops it that way.
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -171,17 +172,26 @@ impl DaemonProcess {
         }
     }
 
+    /// Waits up to `limit` for the process to exit; returns whether it
+    /// did. Blocks the caller for at most `limit`.
+    pub fn wait_exit(&mut self, limit: Duration) -> bool {
+        let deadline = Instant::now() + limit;
+        loop {
+            if self.child.is_none() || self.exit_code().is_some() {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
     /// Terminates the process and waits up to `grace` for it to exit, then
     /// kills it. Blocks the caller for at most `grace`.
     pub fn stop(&mut self, grace: Duration) {
         self.terminate();
-        let deadline = Instant::now() + grace;
-        while Instant::now() < deadline {
-            if self.exit_code().is_some() {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
+        self.wait_exit(grace);
         self.kill();
     }
 }
