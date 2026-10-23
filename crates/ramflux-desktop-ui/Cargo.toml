@@ -23,6 +23,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
 ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon"] }
+# The node key fingerprint and base64 of the demo rehearsal (already in the graph).
+ramflux-protocol.workspace = true
 
 # Offscreen reference screenshots; run explicitly, not part of `cargo test`.
 [[test]]
@@ -44,5 +46,13 @@ harness = false
 [[test]]
 name = "first_run_shots"
 path = "tests/first_run_shots.rs"
+test = false
+harness = false
+
+# The tier-2 demo rehearsed against a real node; run explicitly with
+# RAMFLUX_DEMO_REHEARSAL=1 and the node's URL and key, never in CI.
+[[test]]
+name = "demo_rehearsal"
+path = "tests/demo_rehearsal.rs"
 test = false
 harness = false
