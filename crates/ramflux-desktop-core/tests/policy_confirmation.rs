@@ -242,3 +242,24 @@ fn a_confirmation_cannot_be_forged_through_serde() {
     assert!(!intent.is_confirmed(), "deserialization never yields a confirmation");
     assert!(ConfirmationIssuer::new().issue_hold(MIN_HOLD_MS - 1).is_none());
 }
+
+#[test]
+fn methods_the_backend_cannot_perform_are_refused_before_any_hold() {
+    let mut feed = Feed::new();
+    let mut ctx = context("c-1", false);
+    ctx.kind = ContextKind::Direct;
+    feed.ok(1, DomainEvent::ContextUpserted(ctx));
+    let start = || IntentKind::StartTask { context_id: ContextId::new("c-1"), request: "x".into() };
+    assert!(handle_intent(&feed.store, Intent::human(start()), NOW).is_ok());
+    let unsupported = Capabilities {
+        unsupported: [(methods::TASK_START.to_owned(), "needs K3".to_owned())]
+            .into_iter()
+            .collect(),
+    };
+    feed.ok(2, DomainEvent::CapabilitiesUpdated(unsupported));
+    assert_eq!(feed.store.unsupported_reason(methods::TASK_START), Some("needs K3"));
+    assert!(matches!(
+        handle_intent(&feed.store, Intent::human(start()), NOW),
+        Err(IntentError::UnsupportedByBackend { method: methods::TASK_START, .. })
+    ));
+}

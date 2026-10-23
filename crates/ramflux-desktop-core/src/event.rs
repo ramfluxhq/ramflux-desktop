@@ -9,9 +9,9 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, Block, Context, Device, Disappearing, Grant, GrantState, Integrations,
-    Lifecycle, LockState, Moment, MomentKind, Node, NodeHealth, NodeProbe, Object, Participant,
-    StandingApproval, SurfaceAction, Task,
+    Account, AuditEntry, Block, Capabilities, Context, DaemonInfo, Device, Disappearing,
+    EffectFailure, Grant, GrantState, Integrations, Lifecycle, LockState, Moment, MomentKind, Node,
+    NodeHealth, NodeProbe, Object, Participant, StandingApproval, SurfaceAction, Task,
 };
 
 /// Schema tag carried by every envelope. The store rejects any other value.
@@ -197,4 +197,10 @@ pub enum DomainEvent {
     AuditAppended(AuditEntry),
     /// The read-only integrations snapshot was replaced.
     IntegrationsUpdated(Integrations),
+    /// The backend declared which contract methods it cannot perform.
+    CapabilitiesUpdated(Capabilities),
+    /// The local daemon reported about itself.
+    DaemonInfoUpdated(DaemonInfo),
+    /// An effect could not be performed. Changes no domain entity.
+    EffectFailed(EffectFailure),
 }

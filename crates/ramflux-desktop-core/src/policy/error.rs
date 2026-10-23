@@ -145,6 +145,14 @@ pub enum IntentError {
     /// The device is already revoked.
     #[error("device {0} is already revoked")]
     DeviceRevoked(DeviceId),
+    /// The backend behind the source cannot perform the method.
+    #[error("{method} is not available on this backend: {reason}")]
+    UnsupportedByBackend {
+        /// Contract method.
+        method: &'static str,
+        /// Reason shown to the user.
+        reason: String,
+    },
     /// The device running this client cannot revoke itself.
     #[error("device {0} is this device")]
     ThisDevice(DeviceId),

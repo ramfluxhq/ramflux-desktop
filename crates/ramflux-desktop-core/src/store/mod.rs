@@ -22,8 +22,8 @@ use crate::ids::{
     StandingApprovalId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, Context, Device, Grant, Integrations, Moment, Node, Object, Participant,
-    StandingApproval, Task,
+    Account, AuditEntry, Capabilities, Context, DaemonInfo, Device, EffectFailure, Grant,
+    Integrations, Moment, Node, Object, Participant, StandingApproval, Task,
 };
 
 pub use changes::{ApplyError, Changes, Rejection};
@@ -33,6 +33,9 @@ pub const MAX_REJECTIONS: usize = 64;
 
 /// Maximum number of audit records kept in memory.
 pub const MAX_AUDIT: usize = 512;
+
+/// Maximum number of failed effects kept for display.
+pub const MAX_FAILURES: usize = 32;
 
 /// Normalized domain state.
 #[derive(Debug, Clone, Default)]
@@ -49,6 +52,9 @@ pub struct Store {
     tasks: BTreeMap<TaskId, Task>,
     audit: Vec<AuditEntry>,
     integrations: Integrations,
+    capabilities: Capabilities,
+    daemon: Option<DaemonInfo>,
+    failures: Vec<EffectFailure>,
     pin_order: Vec<ContextId>,
     needs_me_since: BTreeMap<MomentId, Timestamp>,
     source_status: SourceStatus,
@@ -225,6 +231,26 @@ impl Store {
     /// The read-only integrations snapshot.
     pub fn integrations(&self) -> &Integrations {
         &self.integrations
+    }
+
+    /// What the backend cannot do, with reasons.
+    pub fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+
+    /// Why `method` is unavailable on this backend, if it is.
+    pub fn unsupported_reason(&self, method: &str) -> Option<&str> {
+        self.capabilities.unsupported_reason(method)
+    }
+
+    /// What the local daemon last reported about itself.
+    pub fn daemon(&self) -> Option<&DaemonInfo> {
+        self.daemon.as_ref()
+    }
+
+    /// Effects that failed, oldest first, at most [`MAX_FAILURES`].
+    pub fn failures(&self) -> &[EffectFailure] {
+        &self.failures
     }
 
     /// Task by id.

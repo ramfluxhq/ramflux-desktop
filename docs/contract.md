@@ -108,8 +108,17 @@ Locked), `ContextSettingsChanged` (pin, mute, disappearing timer),
 `AccountLockChanged`, `NodeSettingsChanged` (enabled; setting a default clears
 the previous one), `NodeProbed` (also sets health), `NodeRemoved`,
 `DeviceUpserted`, `GrantRevoked` (Approved to Revoked only),
-`StandingApprovalUpserted`, `AuditAppended` (the last 512 are kept) and
-`IntegrationsUpdated`.
+`StandingApprovalUpserted`, `AuditAppended` (the last 512 are kept),
+`IntegrationsUpdated`, `CapabilitiesUpdated` (contract methods the backend
+cannot perform, each with the reason shown to the user), `DaemonInfoUpdated`
+(socket path, open accounts) and `EffectFailed` (method, code
+`UnsupportedByBackend` / `Daemon(code)` / `Transport` / `Timeout`, message;
+the last 32 are kept; no domain entity changes).
+
+Policy refuses an intent whose method the backend declared unsupported
+(`IntentError::UnsupportedByBackend`), before any hold, and the UI shows such
+controls disabled with the reason. Sources never fake data for a method they
+lack.
 
 ## Store
 
@@ -231,11 +240,14 @@ Events that change business state reach the root, where they become intents
 pub trait Source {
     fn submit(&mut self, effect: Effect);
     fn drain(&mut self, now: Timestamp) -> Vec<EventEnvelope>;
+    fn focus(&mut self, _context: Option<&ContextId>) {}
 }
 ```
 
-The trait does not depend on any async runtime. An SDK-backed source can run
-its own bridge thread and buffer events until `drain` is called.
+The trait does not depend on any async runtime. An SDK-backed source
+(`crates/ramflux-desktop-sdk`) runs its own bridge thread and buffers events
+until `drain` is called. `focus` tells a pulling source which context the user
+looks at, so it can keep it fresh until the daemon pushes events itself.
 
 ## Scenarios (`crates/ramflux-desktop-test`)
 

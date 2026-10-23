@@ -8,6 +8,7 @@
 //! moment payloads that present them.
 //!
 //! - [`actor`]: who proposes and who confirms.
+//! - [`backend`]: backend capabilities, daemon info and failed effects.
 //! - [`account`]: accounts, nodes and devices.
 //! - [`conversation`]: participants and contexts.
 //! - [`moment`]: moments, their lifecycle and every payload kind.
@@ -19,6 +20,7 @@
 
 mod account;
 mod actor;
+mod backend;
 mod conversation;
 mod grant;
 mod integrations;
@@ -31,6 +33,7 @@ pub use account::{
     Account, AccountKind, Device, LockState, Node, NodeHealth, NodeProbe, PinSource, ProbeOutcome,
 };
 pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MIN_HOLD_MS};
+pub use backend::{Capabilities, DaemonInfo, EffectFailure, FailureCode};
 pub use conversation::{
     Context, ContextKind, Disappearing, Participant, ParticipantKind, Role, SafetyState,
 };

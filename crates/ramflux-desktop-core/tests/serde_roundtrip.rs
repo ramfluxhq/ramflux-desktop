@@ -41,9 +41,12 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::StandingApprovalUpserted(_) => "StandingApprovalUpserted",
         DomainEvent::AuditAppended(_) => "AuditAppended",
         DomainEvent::IntegrationsUpdated(_) => "IntegrationsUpdated",
+        DomainEvent::CapabilitiesUpdated(_) => "CapabilitiesUpdated",
+        DomainEvent::DaemonInfoUpdated(_) => "DaemonInfoUpdated",
+        DomainEvent::EffectFailed(_) => "EffectFailed",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 25;
+const DOMAIN_EVENT_VARIANTS: usize = 28;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -346,6 +349,18 @@ fn all_domain_events() -> Vec<DomainEvent> {
                 healthy: true,
             }],
             a2i_pending: vec![A2iItem { id: "a2i-1".to_owned(), summary: "Pause".to_owned() }],
+        }),
+        DomainEvent::CapabilitiesUpdated(Capabilities {
+            unsupported: [("task.start".to_owned(), "K3".to_owned())].into_iter().collect(),
+        }),
+        DomainEvent::DaemonInfoUpdated(DaemonInfo {
+            socket_path: "/tmp/rfd.sock".to_owned(),
+            open_accounts: 1,
+        }),
+        DomainEvent::EffectFailed(EffectFailure {
+            method: "grant.approve".to_owned(),
+            code: FailureCode::Daemon("ValidationFailed".to_owned()),
+            message: "approval expired".to_owned(),
         }),
     ];
     for (i, kind) in all_moment_kinds().into_iter().enumerate() {

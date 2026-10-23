@@ -34,8 +34,8 @@ pub(crate) enum Decision {
     Call(&'static str, Value),
     /// Call `method` with `body` and the intent's secrets.
     SecretCall(&'static str, Value),
-    /// The intent needs the attended human's hold first.
-    Confirm,
+    /// The intent (calling `method`) needs the attended human's hold first.
+    Confirm(&'static str),
 }
 
 /// What every area needs to decide.
@@ -54,7 +54,7 @@ impl Policy<'_> {
     /// `Call`, or `Confirm` when `risk` needs a hold that has not happened.
     pub fn gated(&self, risk: Risk, method: &'static str, body: Value) -> Decision {
         if risk.requires_confirmation() && !self.human_confirmed {
-            Decision::Confirm
+            Decision::Confirm(method)
         } else {
             Decision::Call(method, body)
         }
@@ -89,7 +89,8 @@ impl Policy<'_> {
 /// verify a safety number, or answer a handoff. Grants whose expiry is at or
 /// before `now` cannot be approved or denied.
 ///
-/// Every call body carries `proposed_by` and `confirmed_by`.
+/// Every call body carries `proposed_by` and `confirmed_by`. An intent whose
+/// method the backend declared unsupported is refused before any hold.
 ///
 /// # Errors
 ///
@@ -116,6 +117,14 @@ pub fn handle_intent(
         .or_else(|| governance::decide(&policy, &intent.kind))
         .or_else(|| accounts::decide(&policy, &intent.kind))
         .unwrap_or_else(|| unreachable!("every intent kind belongs to one area"))?;
+    let method = match &decision {
+        Decision::Call(method, _) | Decision::SecretCall(method, _) | Decision::Confirm(method) => {
+            *method
+        }
+    };
+    if let Some(reason) = store.unsupported_reason(method) {
+        return Err(IntentError::UnsupportedByBackend { method, reason: reason.to_owned() });
+    }
     let stamp = |mut body: Value| {
         if let Value::Object(map) = &mut body {
             map.insert("proposed_by".to_owned(), proposed_by.clone());
@@ -132,7 +141,7 @@ pub fn handle_intent(
             body: stamp(body),
             secrets: take_secrets(intent.kind),
         },
-        Decision::Confirm => Effect::RequireConfirmation { intent: Box::new(intent) },
+        Decision::Confirm(_) => Effect::RequireConfirmation { intent: Box::new(intent) },
     }])
 }
 

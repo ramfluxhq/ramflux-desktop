@@ -132,7 +132,8 @@ pub struct Changes {
     pub integrations: bool,
     /// The pinned order changed.
     pub pin_order: bool,
-    /// The source status changed.
+    /// The source status, backend capabilities, daemon info or the failed
+    /// effects changed.
     pub source_status: bool,
 }
 

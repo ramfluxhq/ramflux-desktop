@@ -116,6 +116,21 @@ impl Store {
                 self.audit.push(entry.clone());
                 changes.audit = true;
             }
+            DomainEvent::CapabilitiesUpdated(capabilities) => {
+                self.capabilities = capabilities.clone();
+                changes.source_status = true;
+            }
+            DomainEvent::DaemonInfoUpdated(info) => {
+                self.daemon = Some(info.clone());
+                changes.source_status = true;
+            }
+            DomainEvent::EffectFailed(failure) => {
+                if self.failures.len() == super::MAX_FAILURES {
+                    self.failures.remove(0);
+                }
+                self.failures.push(failure.clone());
+                changes.source_status = true;
+            }
             DomainEvent::IntegrationsUpdated(integrations) => {
                 self.integrations = integrations.clone();
                 changes.integrations = true;

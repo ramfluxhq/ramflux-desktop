@@ -8,7 +8,7 @@
 //! trait nor core depends on an async runtime.
 
 use crate::event::EventEnvelope;
-use crate::ids::Timestamp;
+use crate::ids::{ContextId, Timestamp};
 use crate::intent::Effect;
 
 /// Executes effects and yields sequenced domain events.
@@ -18,4 +18,8 @@ pub trait Source {
 
     /// Returns every envelope due at or before `now`, in sequence order.
     fn drain(&mut self, now: Timestamp) -> Vec<EventEnvelope>;
+
+    /// The context the user is looking at changed. A source that pulls
+    /// (instead of being pushed) keeps that context fresh; others ignore it.
+    fn focus(&mut self, _context: Option<&ContextId>) {}
 }
