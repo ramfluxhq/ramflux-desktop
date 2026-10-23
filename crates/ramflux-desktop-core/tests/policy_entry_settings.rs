@@ -11,7 +11,7 @@ use ramflux_desktop_core::*;
 const NOW: Timestamp = Timestamp(100);
 
 fn held(intent: Intent) -> Intent {
-    intent.confirmed_by_human(HumanConfirmation::hold(1_200))
+    intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
 }
 
 fn node(id: &str, pin_source: PinSource, confirmed: bool) -> Node {

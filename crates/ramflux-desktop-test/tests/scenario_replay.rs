@@ -39,7 +39,11 @@ fn approve(grant: &str, confirmed: bool) -> Intent {
 
 /// Adds the hold-to-confirm evidence the strip would add.
 fn held_if(intent: Intent, confirmed: bool) -> Intent {
-    if confirmed { intent.confirmed_by_human(HumanConfirmation::hold(1_200)) } else { intent }
+    if confirmed {
+        intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
+    } else {
+        intent
+    }
 }
 
 #[test]

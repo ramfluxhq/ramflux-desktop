@@ -148,12 +148,16 @@ All selectors are pure functions of `&Store`.
 ## Intents, policy and effects
 
 `Intent { proposed_by: Actor, confirmed_by: Option<HumanConfirmation>, kind: IntentKind }`.
-`Actor` is `Human` or `Agent(ParticipantId)`. `HumanConfirmation { gesture:
-Hold, held_ms }` is added only by the hold-to-confirm strip after the gesture
-completes (`Intent::confirmed_by_human`); it never changes `proposed_by`, so an
-agent proposal confirmed by the human keeps the agent as proposer. Agent
-intents are built without a confirmation (`Intent::agent`) and no UI event can
-carry one.
+`Actor` is `Human` or `Agent(ParticipantId)`. `HumanConfirmation` (gesture
+`Hold`, `held_ms`) is an unforgeable capability: it has no public constructor,
+is neither `Clone` nor `Deserialize`, and only a `ConfirmationIssuer` mints it,
+for a completed hold of at least `MIN_HOLD_MS`. The application creates one
+issuer and the intent root (owner of the hold-to-confirm strip) keeps it.
+`confirmed_by` is skipped on deserialization, so a stored, received or scenario
+intent is always unconfirmed, and policy counts a confirmation only when it is
+present with a full hold. Confirming never changes `proposed_by`, so an agent
+proposal confirmed by the human keeps the agent as proposer. Agent intents are
+built without a confirmation (`Intent::agent`) and no UI event can carry one.
 
 The kinds, by area:
 

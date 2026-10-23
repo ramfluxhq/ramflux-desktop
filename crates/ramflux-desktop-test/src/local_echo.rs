@@ -94,7 +94,7 @@ pub fn audit_echo(effect: &Effect, at: Timestamp) -> Option<DomainEvent> {
 
 #[cfg(test)]
 mod tests {
-    use ramflux_desktop_core::{HumanConfirmation, MomentId};
+    use ramflux_desktop_core::MomentId;
     use serde_json::json;
 
     use super::*;
@@ -133,7 +133,7 @@ mod tests {
             json!({
                 "moment_id": "m-1",
                 "proposed_by": { "Agent": "p-orbit" },
-                "confirmed_by": HumanConfirmation::hold(1_200),
+                "confirmed_by": { "gesture": "Hold", "held_ms": 1_200 },
             }),
         );
         let Some(DomainEvent::AuditAppended(entry)) = audit_echo(&held, Timestamp(7)) else {

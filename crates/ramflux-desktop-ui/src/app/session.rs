@@ -212,9 +212,9 @@ impl AccountSession {
 /// The audit pair of an intent as an inspector label, e.g.
 /// `Agent(p-orbit), confirmed by Hold`.
 pub fn audit_label(intent: &Intent) -> String {
-    match intent.confirmed_by {
+    match &intent.confirmed_by {
         Some(confirmation) => {
-            format!("{:?}, confirmed by {:?}", intent.proposed_by, confirmation.gesture)
+            format!("{:?}, confirmed by {:?}", intent.proposed_by, confirmation.gesture())
         }
         None => format!("{:?}", intent.proposed_by),
     }
@@ -223,7 +223,7 @@ pub fn audit_label(intent: &Intent) -> String {
 #[cfg(test)]
 mod tests {
     use ramflux_desktop_core::{
-        Actor, GrantId, GrantState, HumanConfirmation, IntentKind, ParticipantId, methods,
+        Actor, ConfirmationIssuer, GrantId, GrantState, IntentKind, ParticipantId, methods,
     };
     use ramflux_desktop_test::load_fixture;
 
@@ -233,13 +233,17 @@ mod tests {
         AccountSession::new(&load_fixture(name).expect("fixture"))
     }
 
+    fn hold(ms: u64) -> ramflux_desktop_core::HumanConfirmation {
+        ConfirmationIssuer::new().issue_hold(ms).expect("a full hold")
+    }
+
     fn approve(actor: Actor, confirmed: bool) -> Intent {
         let intent = Intent {
             proposed_by: actor,
             confirmed_by: None,
             kind: IntentKind::Approve { grant_id: GrantId::new("g-rotate") },
         };
-        if confirmed { intent.confirmed_by_human(HumanConfirmation::hold(1_200)) } else { intent }
+        if confirmed { intent.confirmed_by_human(hold(1_200)) } else { intent }
     }
 
     #[test]
@@ -282,8 +286,7 @@ mod tests {
             panic!("an unconfirmed agent proposal waits for the hold");
         };
         assert_eq!(intent.proposed_by, agent);
-        let (outcome, records) =
-            s.dispatch(intent.confirmed_by_human(HumanConfirmation::hold(1_300)));
+        let (outcome, records) = s.dispatch(intent.confirmed_by_human(hold(1_300)));
         assert!(
             matches!(outcome, DispatchOutcome::Submitted(ref labels) if labels == &[methods::GRANT_APPROVE]),
             "{outcome:?}"

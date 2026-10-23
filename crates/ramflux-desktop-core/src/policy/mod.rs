@@ -106,7 +106,10 @@ pub fn handle_intent(
         store,
         now,
         is_agent: matches!(intent.proposed_by, Actor::Agent(_)),
-        human_confirmed: intent.confirmed_by.is_some(),
+        human_confirmed: intent
+            .confirmed_by
+            .as_ref()
+            .is_some_and(|c| c.held_ms() >= crate::model::MIN_HOLD_MS),
     };
     let decision = conversation::decide(&policy, &intent.kind)
         .or_else(|| moments::decide(&policy, &intent.kind))

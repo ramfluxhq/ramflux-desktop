@@ -490,13 +490,16 @@ fn every_serializable_intent_kind_round_trips() {
     assert_eq!(names.len(), SERIALIZABLE_INTENT_VARIANTS, "an IntentKind variant has no sample");
     for kind in kinds {
         let intent = Intent::agent(ParticipantId::new("p-1"), kind)
-            .confirmed_by_human(HumanConfirmation::hold(1_250));
+            .confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_250).expect("a full hold"));
         let first = serde_json::to_value(&intent).expect("serialize intent");
         let back: Intent = serde_json::from_value(first.clone()).expect("deserialize intent");
-        let second = serde_json::to_value(&back).expect("re-serialize intent");
-        assert_eq!(first, second);
+        let mut second = serde_json::to_value(&back).expect("re-serialize intent");
+        second["confirmed_by"] = first["confirmed_by"].clone();
+        assert_eq!(first, second, "everything but the confirmation round-trips");
         assert_eq!(back.proposed_by, intent.proposed_by);
-        assert_eq!(back.confirmed_by, intent.confirmed_by);
+        assert!(intent.confirmed_by.is_some());
+        assert!(back.confirmed_by.is_none(), "a deserialized intent is never confirmed");
+        assert_eq!(first["confirmed_by"]["gesture"], "Hold");
     }
 }
 

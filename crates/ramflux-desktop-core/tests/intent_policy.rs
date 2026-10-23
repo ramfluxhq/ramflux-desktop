@@ -82,7 +82,7 @@ fn approve(grant: &str) -> IntentKind {
 }
 
 fn held(intent: Intent) -> Intent {
-    intent.confirmed_by_human(HumanConfirmation::hold(1_200))
+    intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
 }
 
 fn single(effects: Vec<Effect>) -> Effect {

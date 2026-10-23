@@ -36,7 +36,8 @@ pub struct Intent {
     /// Who proposed it. Never rewritten by a confirmation.
     pub proposed_by: Actor,
     /// Set only by the hold-to-confirm strip after the gesture completes.
-    #[serde(default)]
+    /// Never deserialized: a stored or received intent is always unconfirmed.
+    #[serde(default, skip_deserializing)]
     pub confirmed_by: Option<HumanConfirmation>,
     /// What is wanted.
     pub kind: IntentKind,

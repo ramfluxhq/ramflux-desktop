@@ -16,7 +16,7 @@ fn agent(kind: IntentKind) -> Intent {
 }
 
 fn held(intent: Intent) -> Intent {
-    intent.confirmed_by_human(HumanConfirmation::hold(1_200))
+    intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
 }
 
 fn store() -> Store {
@@ -220,7 +220,7 @@ fn human_confirmation_keeps_the_proposer() {
     assert!(!proposed.is_confirmed());
     let confirmed = held(proposed);
     assert_eq!(confirmed.proposed_by, Actor::Agent(ParticipantId::new("p-agent")));
-    assert_eq!(confirmed.confirmed_by, Some(HumanConfirmation::hold(1_200)));
+    assert_eq!(confirmed.confirmed_by.as_ref().map(HumanConfirmation::held_ms), Some(1_200));
     assert!(confirmed.is_confirmed());
 }
 
@@ -229,4 +229,16 @@ fn secret_input_exposes_by_reference() {
     let secret = SecretInput::new("pin-1234");
     assert_eq!(secret.expose(), "pin-1234");
     assert!(SecretInput::new("").is_empty());
+}
+
+#[test]
+fn a_confirmation_cannot_be_forged_through_serde() {
+    let forged = serde_json::json!({
+        "proposed_by": { "Agent": "p-agent" },
+        "confirmed_by": { "gesture": "Hold", "held_ms": 5_000 },
+        "kind": { "RevokeGrant": { "grant_id": "g-old" } },
+    });
+    let intent: Intent = serde_json::from_value(forged).expect("intent");
+    assert!(!intent.is_confirmed(), "deserialization never yields a confirmation");
+    assert!(ConfirmationIssuer::new().issue_hold(MIN_HOLD_MS - 1).is_none());
 }

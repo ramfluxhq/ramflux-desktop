@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, Subscription, Window};
 
-use ramflux_desktop_core::{HumanConfirmation, Intent, IntentKind, ParticipantId, Scope, UiEvent};
+use ramflux_desktop_core::{ConfirmationIssuer, Intent, IntentKind, ParticipantId, Scope, UiEvent};
 
 use crate::app::{
     DispatchOutcome, InspectorEntry, StoreHandle, UiOutcome, audit_label, format_path,
@@ -55,6 +55,9 @@ pub struct IntentRoot {
     confirm: Entity<ConfirmStrip>,
     pending: Option<Intent>,
     host: ConfirmHost,
+    /// The only issuer of human confirmations in the application. Not
+    /// `Clone`; it mints one only when the strip reports a completed hold.
+    issuer: ConfirmationIssuer,
     _subscription: Subscription,
 }
 
@@ -197,7 +200,13 @@ impl IntentRoot {
         let Some(intent) = self.pending.take() else { return };
         match event {
             ConfirmEvent::HoldCompleted { held_ms } => {
-                let confirmed = intent.confirmed_by_human(HumanConfirmation::hold(held_ms));
+                let Some(confirmation) = self.issuer.issue_hold(held_ms) else {
+                    self.record_intent(&intent, "confirmation refused: hold too short", cx);
+                    cx.emit(RootEvent::ConfirmClosed);
+                    cx.notify();
+                    return;
+                };
+                let confirmed = intent.confirmed_by_human(confirmation);
                 let label = audit_label(&confirmed);
                 let name = intent_name(&confirmed);
                 let result = self.submit(confirmed, window, cx);
@@ -227,6 +236,7 @@ impl IntentRoot {
                 confirm,
                 pending: None,
                 host: ConfirmHost::Workspace,
+                issuer: ConfirmationIssuer::new(),
                 _subscription: subscription,
             }
         })
