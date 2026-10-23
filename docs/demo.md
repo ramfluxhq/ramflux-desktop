@@ -98,8 +98,9 @@ an id it cannot use, and a daemon error is shown under the field. Supported
 today.
 
 Adding does not send the contact a request: a request travels to the contact's
-device, and the daemon does not list that route yet. Send one with the reference
-CLI against the same socket (`rf contact request …`; see `rf contact --help`).
+node over a federation route, which the daemon does not list for a contact.
+Send one with the reference CLI against the same socket (`rf contact request …`;
+see `rf contact --help`).
 
 A request appears under **Requests** in the dock within one poll once the
 daemon has recorded it, which it does when it receives the request message in
@@ -108,16 +109,20 @@ pinned; `rf dm read …` receives others). **Accept** adds the contact on
 this account and **Reject** declines.
 The requester is not told yet, for the same reason. A contact's menu blocks or
 removes them (both revoke what you shared and need a hold-to-confirm); blocked
-contacts can be unblocked. Verifying a safety number stays disabled: the daemon
-does not list the contact's identity commitment yet.
+contacts can be unblocked. **Verify** compares the contact's devices through the
+node and marks the safety number verified (it needs the node, and the contact's
+identity, which the daemon lists once it has fetched their device manifest, for
+example after a message).
 
 ## 7. Send a message or an attachment
 
 | What | Today |
 |---|---|
-| Message in a group | Supported. Incoming messages are fetched by polling (1.5 s, slowing to 12 s when quiet). |
-| Direct message | Pending: the daemon does not list a direct conversation's route yet, so the composer explains why it cannot send. Use `rf dm send` meanwhile. |
-| Attachment | Pending: the daemon does not list object names, sizes or directions yet, so attach, download and save stay disabled. |
+| Message in a group | Supported. The daemon resolves every member's route first; if a member cannot be reached nothing is sent, and the failure names who. Incoming messages are fetched by polling (1.5 s, slowing to 12 s when quiet). |
+| Direct message | Supported in a conversation the daemon lists a route for (recorded once a message was exchanged with the contact's verified device). Without one the send fails with that reason; start the conversation with `rf dm send`. |
+| Attachment | Supported in direct conversations, up to 512 KiB per file (one message frame). Received attachments are fetched with their message and listed in the objects dock, where they can be saved; a paused transfer can be resumed. Groups carry no attachments. |
+| Group members | Add or invite a contact whose devices the daemon has verified (members dock); remove, kick, ban and roles act on the member's devices in the group. |
+| Approvals | An approval requested from a conversation appears in that conversation and in "needs me"; the others in the approvals dock only. |
 
 ## Where the app keeps files
 

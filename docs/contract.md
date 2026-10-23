@@ -48,14 +48,14 @@ The store keeps each entity in its own collection, keyed by id:
 | `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state`, `self_participant_id` (the participant that is this account; outbound moments and receipts key on it, never guessed) |
 | `Node` | NODE-01 profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
 | `Device` | account, label, `this_device`, `revoked`, `last_seen` |
-| `Participant` | `kind` (Human, Agent, Device, Node), `display`, `safety`, `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported) |
+| `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `safety`, `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported) |
 | `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread`, `muted`, `disappearing_secs`, `roles` (Owner, Admin, Member, Bot: exactly the daemon's roles), `epoch` |
 | `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind`, `lifecycle` |
-| `Object` | name, size, direction, `transfer`, `saved_to`, `preview` |
+| `Object` | `name` and `size` (each `None` when not reported; `label()` shows the id for a missing name), direction, `transfer`, `saved_to`, `preview` |
 | `Grant` | scope, `risk`, `single_use`, `args_hash`, expiry, `state` (Pending, Approved, Denied, Expired, Revoked) |
 | `StandingApproval` | scope, `max_risk`, expiry, `uses`, `revoked` |
 | `AuditEntry` | `at`, `action` (method), `subject` (id), `proposed_by`, `human_confirmed` |
-| `Integrations` | read-only MCP servers and pending A2I events |
+| `Integrations` | read-only MCP servers (`healthy`: `None` while the backend has not checked) and pending A2I events |
 | `Task` | intent id, context, `actor`, `steps` (each may wait on a `grant_id`), `lifecycle`, `result` |
 
 Messages carry an optional `attachment` and a `franking` commitment; conflict
@@ -124,8 +124,11 @@ only while loading and an explicit empty state once listed.
 
 Policy refuses an intent whose method the backend declared unsupported
 (`IntentError::UnsupportedByBackend`), before any hold, and the UI shows such
-controls disabled with the reason. Sources never fake data for a method they
-lack.
+controls disabled with the reason. A method may be unsupported only in some
+context kinds (`methods::in_context`, e.g. `message.send@Space`,
+`object.send@Group`). Sources never fake data for a method they lack. A
+reason or failure message is a locale key (`backend.*`), optionally followed
+by one space and a JSON object of string arguments the UI substitutes.
 
 ## Store
 
@@ -205,11 +208,12 @@ The kinds, by area:
   (blocked), Remove (accepted or blocked). Methods `contact.add`,
   `contact.accept`, `contact.reject`, `contact.block`, `contact.unblock`,
   `contact.remove`; `contact.request` names sending a request to the
-  contact's device. `check_add_contact` is the add check the form also runs.
+  contact's node. `check_add_contact` is the add check the form also runs.
 - Objects: `PullObject` (queued inbound only), `SaveObject` (complete only),
   `RetryTransfer` (failed only).
 - Governance and approvals: `Governance { context_id, op }` (`AddMember`,
-  `RemoveMember`, `Kick`, `Ban`, `SetRole`, `CreateInvite`), `RevokeGrant`,
+  `RemoveMember`, `Kick`, `Ban`, `SetRole`, `CreateInvite { participant_id,
+  role }`: an invitation names the invited participant), `RevokeGrant`,
   `RevokeStandingApproval`.
 - Entry: `Unlock`, `CreateAccount { kind, label, node_id, secret }`,
   `ActivateDevice { node_id, device_label, code }`, `RestoreBackup { path,
