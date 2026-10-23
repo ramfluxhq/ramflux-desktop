@@ -75,11 +75,48 @@ pub enum GrantFilter {
     All,
 }
 
+/// Where an intervention's decision lives when a task owns its grant: the
+/// task progress moment and the zero-based index of the step that waits on
+/// the grant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskStepRef {
+    /// The task progress moment presenting the task.
+    pub moment_id: MomentId,
+    /// The task.
+    pub task_id: crate::ids::TaskId,
+    /// Zero-based step index.
+    pub step: usize,
+}
+
+/// The task step that owns `grant`, if a task progress moment presents a
+/// task with a step waiting on it. One moment, one place: such a decision
+/// renders only inside the task step, and the standalone intervention for
+/// the same grant collapses to a reference.
+pub fn owning_task_step(store: &Store, grant: &crate::ids::GrantId) -> Option<TaskStepRef> {
+    store.moments().find_map(|m| match &m.kind {
+        MomentKind::TaskProgress(p) => {
+            let task = store.task(&p.task_id)?;
+            let step = task.steps.iter().position(|s| s.grant_id.as_ref() == Some(grant))?;
+            Some(TaskStepRef { moment_id: m.id.clone(), task_id: task.id.clone(), step })
+        }
+        _ => None,
+    })
+}
+
+/// Whether `moment` is an intervention whose grant a task step owns.
+pub fn is_task_owned_intervention(store: &Store, moment: &Moment) -> bool {
+    matches!(&moment.kind, MomentKind::Intervention(p)
+        if owning_task_step(store, &p.grant_id).is_some())
+}
+
 /// All `NeedsMe` moments, oldest first (by `since`, then id).
+///
+/// An intervention owned by a task step is not listed on its own: the task
+/// moment carries the attention (one moment, one place).
 pub fn attention(store: &Store) -> Vec<AttentionItem> {
     let mut items: Vec<AttentionItem> = store
         .moments()
-        .filter(|m| m.lifecycle == Lifecycle::NeedsMe)
+        .filter(|m| m.lifecycle == Lifecycle::NeedsMe && !is_task_owned_intervention(store, m))
         .map(|m| AttentionItem {
             context_id: m.context_id.clone(),
             moment_id: m.id.clone(),

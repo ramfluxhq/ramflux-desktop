@@ -202,6 +202,17 @@ fn task_progress_runs_through_needs_me_to_done(cx: &mut TestAppContext) {
     );
     advance(cx, 3_000);
     assert_eq!(lifecycle(cx, &shell, "m-task"), Some(Lifecycle::NeedsMe));
+    // One moment, one place: the decision lives only in the task step; the
+    // standalone intervention is a reference that brings the step into view.
+    assert!(!exists_in(cx, handle, "moment-m-hold", "approve"), "no second decision");
+    assert!(exists_in(cx, handle, "moment-m-hold", "intervention-open-task"));
+    click_in(cx, handle, "moment-m-hold", "intervention-open-task");
+    let (expanded, highlighted) = cx.update(|cx| {
+        let field = workspace.read(cx).conversation().read(cx);
+        (field.is_expanded(&MomentId::new("m-task")), field.highlighted().cloned())
+    });
+    assert!(expanded, "the task opens with its steps");
+    assert_eq!(highlighted, Some(MomentId::new("m-task")));
     click_in(cx, handle, "moment-m-task", "step-approve");
     assert_eq!(
         last_body(cx, &shell, methods::GRANT_APPROVE)["grant_id"],
@@ -215,7 +226,7 @@ fn task_progress_runs_through_needs_me_to_done(cx: &mut TestAppContext) {
     let expanded = cx.update(|cx| {
         workspace.read(cx).conversation().read(cx).is_expanded(&MomentId::new("m-task"))
     });
-    assert!(expanded, "expanding the steps is view-local");
+    assert!(!expanded, "collapsing the steps is view-local");
 }
 
 #[gpui_kit::test]

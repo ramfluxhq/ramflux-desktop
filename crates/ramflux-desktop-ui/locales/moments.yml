@@ -83,6 +83,12 @@ moment:
     approve_hold:
       en: "Approve…"
       zh-CN: "批准…"
+    in_task:
+      en: "Decided in task “%{task}”, step %{step}: %{label}"
+      zh-CN: "在任务“%{task}”第 %{step} 步中决定：%{label}"
+    open_task:
+      en: "Show step"
+      zh-CN: "查看步骤"
     deny:
       en: "Deny"
       zh-CN: "拒绝"

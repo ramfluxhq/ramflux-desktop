@@ -309,6 +309,10 @@ fn s06_task_passes_through_needs_me_before_done() {
 
     assert_eq!(lifecycle(&p, "m-task"), Lifecycle::NeedsMe);
     assert!(attention_ids(&p).contains(&"m-task".to_owned()));
+    assert!(
+        !attention_ids(&p).contains(&"m-hold".to_owned()),
+        "the task step owns the intervention: one moment, one place"
+    );
     assert!(in_flight(p.store()).contains(&MomentId::new("m-task")));
     let task = p.store().task(&TaskId::new("t-trip")).expect("task");
     assert_eq!(task.steps[2].lifecycle, Lifecycle::NeedsMe);

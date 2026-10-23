@@ -258,6 +258,15 @@ impl Conversation {
                     this.update(cx, |field, cx| field.set_expanded(&moment_id, expanded, cx)).ok();
                     None
                 }
+                UiEventKind::FocusMomentRequested { moment_id: target } => {
+                    let target = target.clone();
+                    this.update(cx, |field, cx| {
+                        field.set_expanded(&target, true, cx);
+                        field.focus_moment(&target, cx);
+                    })
+                    .ok();
+                    None
+                }
                 UiEventKind::FieldChanged { value } => {
                     let block = event.block_id()?.clone();
                     let value = value.clone();

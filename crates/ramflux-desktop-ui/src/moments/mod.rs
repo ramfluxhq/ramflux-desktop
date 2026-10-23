@@ -36,8 +36,8 @@ use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{
-    Actor, AuditEntry, BlockId, BlockKind, Grant, GrantId, Lifecycle, Moment, MomentKind, Object,
-    ObjectId, Participant, ParticipantId, Store, Task,
+    Actor, AuditEntry, BlockId, BlockKind, Grant, GrantId, Lifecycle, Moment, MomentId, MomentKind,
+    Object, ObjectId, Participant, ParticipantId, Store, Task, selectors,
 };
 
 use crate::bubble::EventSink;
@@ -61,6 +61,22 @@ pub struct RowRefs {
     pub people: BTreeMap<ParticipantId, Participant>,
     /// Audit records about the moment or its grants, oldest first.
     pub audit: Vec<AuditEntry>,
+    /// For an intervention whose grant a task step owns: that step. The
+    /// decision then renders only inside the task (one moment, one place).
+    pub owner: Option<OwningStep>,
+}
+
+/// The task step an intervention belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwningStep {
+    /// The task progress moment.
+    pub moment_id: MomentId,
+    /// Task title.
+    pub title: String,
+    /// One-based step number, for display.
+    pub number: usize,
+    /// Step label.
+    pub label: String,
 }
 
 impl RowRefs {
@@ -135,6 +151,16 @@ fn refs(store: &Store, moment: &Moment) -> RowRefs {
         }
         MomentKind::Intervention(p) => {
             grant(&p.grant_id, &mut refs);
+            refs.owner = selectors::owning_task_step(store, &p.grant_id).and_then(|owner| {
+                let task = store.task(&owner.task_id)?;
+                let step = task.steps.get(owner.step)?;
+                Some(OwningStep {
+                    moment_id: owner.moment_id,
+                    title: task.title.clone(),
+                    number: owner.step + 1,
+                    label: step.label.clone(),
+                })
+            });
             Vec::new()
         }
         MomentKind::Conflict(p) => {
@@ -229,6 +255,9 @@ impl RenderOnce for MomentView {
             }
             MomentKind::ObjectTransfer(p) => {
                 object_transfer::render(p, &row.refs, &sink, &state, cx).into_any_element()
+            }
+            MomentKind::Intervention(_) if row.refs.owner.is_some() => {
+                intervention::task_reference(row.refs.owner.as_ref(), &sink, cx).into_any_element()
             }
             MomentKind::Intervention(p) => {
                 intervention::InterventionBody::new(p.clone(), &row.refs, lifecycle, sink.clone())

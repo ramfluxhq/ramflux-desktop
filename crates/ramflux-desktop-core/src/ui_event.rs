@@ -214,6 +214,13 @@ pub enum UiEventKind {
         /// New value.
         value: String,
     },
+    /// View-local: bring another moment of the shown context into view and
+    /// open it (for example the task step that owns an intervention). Never
+    /// reaches the store.
+    FocusMomentRequested {
+        /// The moment to show.
+        moment_id: MomentId,
+    },
 }
 
 /// A UI event with its bubbling path.
@@ -277,7 +284,12 @@ impl UiEvent {
 
     /// Whether the event is view-local and must be consumed below the root (B1).
     pub fn is_view_local(&self) -> bool {
-        matches!(self.kind, UiEventKind::ExpandToggled { .. } | UiEventKind::FieldChanged { .. })
+        matches!(
+            self.kind,
+            UiEventKind::ExpandToggled { .. }
+                | UiEventKind::FieldChanged { .. }
+                | UiEventKind::FocusMomentRequested { .. }
+        )
     }
 }
 

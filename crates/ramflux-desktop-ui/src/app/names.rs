@@ -57,6 +57,7 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::DiagnosticsExportRequested { .. } => "DiagnosticsExportRequested",
         UiEventKind::ExpandToggled { .. } => "ExpandToggled",
         UiEventKind::FieldChanged { .. } => "FieldChanged",
+        UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
     }
 }
 

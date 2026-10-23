@@ -7,6 +7,10 @@
 //! and `decision` (Approve / Deny). Approving a high-risk grant never commits
 //! here: the root receives the request and policy opens the hold-to-confirm
 //! strip above the composer.
+//!
+//! When a task step owns the grant, the decision lives only in that step
+//! (one moment, one place) and this moment collapses to a one-line
+//! reference ([`task_reference`]) that brings the task step into view.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -19,7 +23,10 @@ use ramflux_desktop_core::{
     UiEventKind,
 };
 
-use super::RowRefs;
+/// Block id of the reference to the owning task step.
+pub const TASK_REFERENCE_BLOCK: &str = "task-reference";
+
+use super::{OwningStep, RowRefs};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
 
@@ -236,4 +243,38 @@ fn audit_line(proposer: &SharedString, audit: Option<&AuditEntry>, cx: &App) -> 
         .child(tr_args("moment.intervention.proposed_by", &[("name", proposer)]))
         .when_some(confirmed, |row, confirmed| row.child(confirmed))
         .test_support()
+}
+
+/// The one-line reference shown instead of a decision when a task step owns
+/// the grant. Its button asks the conversation field (view-local) to bring
+/// the task moment into view with its steps open.
+pub fn task_reference(owner: Option<&OwningStep>, sink: &EventSink, cx: &App) -> impl IntoElement {
+    let Some(owner) = owner.cloned() else {
+        return h_flex().id("intervention-task-reference");
+    };
+    let sink = sink.scoped(Scope::Block(BlockId::new(TASK_REFERENCE_BLOCK)));
+    let target = owner.moment_id.clone();
+    h_flex()
+        .id("intervention-task-reference")
+        .gap_2()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(Icon::new(IconName::LayoutDashboard).xsmall())
+        .child(div().flex_1().min_w_0().truncate().child(tr_args(
+            "moment.intervention.in_task",
+            &[("task", &owner.title), ("step", &owner.number.to_string()), ("label", &owner.label)],
+        )))
+        .child(
+            Button::new("intervention-open-task")
+                .ghost()
+                .xsmall()
+                .label(tr("moment.intervention.open_task"))
+                .on_click(move |_, window, cx| {
+                    sink.emit(
+                        UiEventKind::FocusMomentRequested { moment_id: target.clone() },
+                        window,
+                        cx,
+                    );
+                }),
+        )
 }

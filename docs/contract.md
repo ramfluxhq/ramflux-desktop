@@ -139,7 +139,8 @@ All selectors are pure functions of `&Store`.
 | Selector | Result |
 |---|---|
 | `context_stack` | Pinned contexts in pin order, then contexts with a `NeedsMe` moment ordered by their oldest one, de-duplicated and capped at 6. It is never sorted by recent activity. |
-| `attention` | `AttentionItem { context_id, moment_id, reason, since }` for every `NeedsMe` moment, oldest first. |
+| `attention` | `AttentionItem { context_id, moment_id, reason, since }` for every `NeedsMe` moment, oldest first. An intervention whose grant a task step owns is left out: the task moment carries it (one moment, one place). |
+| `owning_task_step` | `TaskStepRef { moment_id, task_id, step }` of the task step waiting on a grant. |
 | `in_flight` | `InProgress` moments and `TaskProgress` moments whose task is not terminal, ordered by `(at, id)`. |
 | `timeline` | The moments of one context, ordered by `(at, id)`. |
 | `objects`, `contacts`, `grants(Pending or All)`, `participants(context)` | Dock views. |
@@ -214,7 +215,7 @@ root to the leaf: `Workspace, Context, Moment, Surface, Block`, with a
 emits an event with its own scope, and each parent prepends its scope with
 `UiEvent::within` before passing the event up.
 
-View-local events (`ExpandToggled`, `FieldChanged`) are consumed below the
+View-local events (`ExpandToggled`, `FieldChanged`, `FocusMomentRequested`) are consumed below the
 root (B1); a level may add context it owns (the moment level adds collected
 form values to `ActionInvoked`, B3).
 Events that change business state reach the root, where they become intents

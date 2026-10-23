@@ -37,7 +37,7 @@ pub use ids::{
 pub use intent::{Effect, GovernanceOp, Intent, IntentKind, SecretInput, SyncDirection, methods};
 pub use model::*;
 pub use policy::{IntentError, handle_intent};
-pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter};
+pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter, TaskStepRef};
 pub use serde_json::Value as JsonValue;
 pub use source::Source;
 pub use store::{ApplyError, Changes, MAX_AUDIT, MAX_REJECTIONS, Rejection, Store};

@@ -142,9 +142,10 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::DeviceSyncRequested { .. } => "DeviceSyncRequested",
         UiEventKind::DiagnosticsExportRequested { .. } => "DiagnosticsExportRequested",
         UiEventKind::FieldChanged { .. } => "FieldChanged",
+        UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 29;
+const UI_EVENT_KIND_VARIANTS: usize = 30;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -452,6 +453,7 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         },
         UiEventKind::DiagnosticsExportRequested { path: "/tmp/d".into() },
         UiEventKind::FieldChanged { value: "x".into() },
+        UiEventKind::FocusMomentRequested { moment_id: "m-1".into() },
     ]
 }
 
