@@ -25,8 +25,14 @@ use crate::translate::reason::{key, keyed};
 impl Task {
     pub(super) fn effect(&mut self, effect: Effect) {
         let planned = plan(self.scope.account(), effect, &self.translator);
-        let (method, body) = (planned.method, planned.body);
+        let (method, mut body) = (planned.method, planned.body);
         self.translator.decision_sent(&method, &body);
+        if method == ramflux_desktop_core::methods::ATTACH_OBJECT
+            && let Plan::Call { request, .. } = &planned.plan
+        {
+            let events = self.translator.attachment_sending(&request.body, &mut body, now());
+            self.emit(events);
+        }
         match planned.plan {
             Plan::Local => {
                 let events = self.translator.local(&method, &body);

@@ -38,6 +38,17 @@ pub enum IntentKind {
         /// Text.
         text: String,
     },
+    /// Start a direct conversation with a contact: the first message
+    /// creates it. The conversation id is chosen fresh by the caller (never
+    /// derived from either identity), so a retry names the same one.
+    StartConversation {
+        /// The new conversation's id.
+        context_id: ContextId,
+        /// The contact.
+        participant_id: ParticipantId,
+        /// The first message.
+        text: String,
+    },
     /// Send a local file as an object.
     AttachObject {
         /// Target context.

@@ -75,6 +75,15 @@ pub enum UiEventKind {
         /// Text.
         text: String,
     },
+    /// The first message of a new direct conversation was submitted.
+    StartConversationRequested {
+        /// The new conversation's id, chosen when the draft opened.
+        context_id: ContextId,
+        /// The contact.
+        participant_id: ParticipantId,
+        /// The first message.
+        text: String,
+    },
     /// A file was picked or dropped.
     AttachFile {
         /// Local path.

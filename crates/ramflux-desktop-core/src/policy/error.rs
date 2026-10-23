@@ -181,6 +181,16 @@ pub enum IntentError {
         /// Current link.
         link: crate::model::ContactLink,
     },
+    /// A new conversation would reuse the id of a known context.
+    #[error("context {0} already exists")]
+    ContextExists(ContextId),
+    /// The participant's key changed or forked and is not verified again;
+    /// a new conversation waits until the user checks the safety number.
+    #[error("the safety number of {0} must be verified again first")]
+    SafetyUnresolved(ParticipantId),
+    /// A conversation with this account's own identity.
+    #[error("{0} is this account")]
+    SelfParticipant(ParticipantId),
     /// The device running this client cannot revoke itself.
     #[error("device {0} is this device")]
     ThisDevice(DeviceId),

@@ -9,6 +9,8 @@
 
 /// Send a text message.
 pub const SEND_MESSAGE: &str = "message.send";
+/// Start a direct conversation with a contact by sending its first message.
+pub const CONVERSATION_START: &str = "conversation.start";
 /// Send an object.
 pub const ATTACH_OBJECT: &str = "object.send";
 /// Pull (download) an inbound object.

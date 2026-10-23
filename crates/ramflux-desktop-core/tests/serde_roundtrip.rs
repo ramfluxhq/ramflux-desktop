@@ -72,6 +72,7 @@ const MOMENT_KIND_VARIANTS: usize = 13;
 fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
         IntentKind::SendMessage { .. } => "SendMessage",
+        IntentKind::StartConversation { .. } => "StartConversation",
         IntentKind::AttachObject { .. } => "AttachObject",
         IntentKind::SurfaceAction { .. } => "SurfaceAction",
         IntentKind::Approve { .. } => "Approve",
@@ -116,11 +117,12 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the six secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 36;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 37;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
+        UiEventKind::StartConversationRequested { .. } => "StartConversationRequested",
         UiEventKind::AttachFile { .. } => "AttachFile",
         UiEventKind::ActionInvoked { .. } => "ActionInvoked",
         UiEventKind::ApprovePressed => "ApprovePressed",
@@ -153,7 +155,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 31;
+const UI_EVENT_KIND_VARIANTS: usize = 32;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -388,6 +390,11 @@ fn all_domain_events() -> Vec<DomainEvent> {
 fn all_intent_kinds() -> Vec<IntentKind> {
     vec![
         IntentKind::SendMessage { context_id: ContextId::new("c-1"), text: "hi".into() },
+        IntentKind::StartConversation {
+            context_id: ContextId::new("c-new"),
+            participant_id: ParticipantId::new("p-ana"),
+            text: "hi".into(),
+        },
         IntentKind::AttachObject { context_id: ContextId::new("c-1"), path: "/tmp/a.txt".into() },
         IntentKind::SurfaceAction {
             moment_id: MomentId::new("m-1"),
@@ -447,6 +454,11 @@ fn all_intent_kinds() -> Vec<IntentKind> {
 fn all_ui_event_kinds() -> Vec<UiEventKind> {
     vec![
         UiEventKind::SubmitMessage { text: "hi".into() },
+        UiEventKind::StartConversationRequested {
+            context_id: ContextId::new("c-new"),
+            participant_id: ParticipantId::new("p-ana"),
+            text: "hi".into(),
+        },
         UiEventKind::AttachFile { path: "/tmp/a.txt".into() },
         UiEventKind::ActionInvoked {
             action_id: "run".into(),

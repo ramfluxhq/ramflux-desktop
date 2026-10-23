@@ -23,6 +23,9 @@
 //! - `grant_failures`: fail-closed grant errors.
 //! - `node_failures`: why a node lookup failed (Local Network privacy).
 //! - `send_failures`: why a send failed, in the user's terms.
+//! - `outgoing`: a started conversation and an attachment on its way,
+//!   before the daemon lists them.
+//! - `stream`: the reads a pushed list-changing event calls for.
 //! - `effects`: answers to effects, and the audit record of confirmed ones.
 //! - `reason`: locale keys with arguments.
 
@@ -38,9 +41,11 @@ mod interventions;
 mod messages;
 mod node_failures;
 mod objects;
+mod outgoing;
 pub mod pages;
 pub mod reason;
 mod send_failures;
+pub mod stream;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -138,6 +143,8 @@ pub struct Translator {
     interventions: BTreeMap<GrantId, interventions::Placement>,
     standing: BTreeMap<StandingApprovalId, StandingApproval>,
     objects: BTreeMap<ObjectId, Object>,
+    sent_attachments: BTreeMap<String, ObjectId>,
+    message_objects: BTreeMap<String, ObjectId>,
     mcp_tools: Option<BTreeMap<String, Vec<String>>>,
     mcp_servers: Option<Vec<Value>>,
     integrations: Option<ramflux_desktop_core::Integrations>,
@@ -175,6 +182,8 @@ impl Translator {
             interventions: BTreeMap::new(),
             standing: BTreeMap::new(),
             objects: BTreeMap::new(),
+            sent_attachments: BTreeMap::new(),
+            message_objects: BTreeMap::new(),
             mcp_tools: None,
             mcp_servers: None,
             integrations: None,

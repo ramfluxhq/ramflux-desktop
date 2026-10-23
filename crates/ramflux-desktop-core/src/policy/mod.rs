@@ -12,6 +12,7 @@
 //! - `moments`: surface actions, approvals and inline moment decisions.
 //! - `governance`: membership, roles and grant revocation.
 //! - `contacts`: adding contacts and acting on contact links.
+//! - `start`: starting a direct conversation with a contact.
 //! - `accounts`: entry (accounts, devices, nodes) and settings.
 
 mod accounts;
@@ -20,6 +21,7 @@ mod conversation;
 mod error;
 mod governance;
 mod moments;
+mod start;
 
 use serde_json::{Value, json};
 
@@ -30,6 +32,7 @@ use crate::store::Store;
 
 pub use contacts::{check_add_contact, contact_action_current};
 pub use error::IntentError;
+pub use start::check_start_conversation;
 
 /// What an area decided about one intent.
 pub(crate) enum Decision {
@@ -89,8 +92,8 @@ impl Policy<'_> {
 /// `confirmed_by` they yield [`Effect::RequireConfirmation`]. Agent proposals
 /// follow the same rules. Agents may never unlock, create, activate or
 /// restore an account, rotate its passphrase, export a backup, sync or revoke
-/// devices, confirm a node, verify a safety number, answer a handoff, or add
-/// a contact. Grants whose expiry is at or before `now` cannot be approved or
+/// devices, confirm a node, verify a safety number, answer a handoff, add a
+/// contact, or start a conversation. Grants whose expiry is at or before `now` cannot be approved or
 /// denied.
 ///
 /// Every call body carries `proposed_by` and `confirmed_by`. An intent whose
@@ -120,6 +123,7 @@ pub fn handle_intent(
         .or_else(|| moments::decide(&policy, &intent.kind))
         .or_else(|| governance::decide(&policy, &intent.kind))
         .or_else(|| contacts::decide(&policy, &intent.kind))
+        .or_else(|| start::decide(&policy, &intent.kind))
         .or_else(|| accounts::decide(&policy, &intent.kind))
         .unwrap_or_else(|| unreachable!("every intent kind belongs to one area"))?;
     let method = match &decision {

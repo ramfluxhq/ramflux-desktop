@@ -44,7 +44,9 @@ pub use intent::{
     SecretInput, SyncDirection, check_contact_id, methods,
 };
 pub use model::*;
-pub use policy::{IntentError, check_add_contact, contact_action_current, handle_intent};
+pub use policy::{
+    IntentError, check_add_contact, check_start_conversation, contact_action_current, handle_intent,
+};
 pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter, TaskStepRef};
 pub use serde_json::Value as JsonValue;
 pub use source::Source;

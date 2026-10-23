@@ -17,7 +17,8 @@
 //! `direction` `incoming` / `outgoing` is inbound / outbound. An object whose
 //! direction the daemon has not observed (an older record) is not shown: the
 //! desktop could not tell whether it was sent or received. A null name or
-//! size stays unknown.
+//! size stays unknown. An object's `message_id` names the message that
+//! carries it (shown as that message's attachment).
 
 use ramflux_desktop_core::{Direction, DomainEvent, Object, ObjectId, TransferState};
 use serde_json::Value;
@@ -53,9 +54,13 @@ impl Translator {
     pub(super) fn object_listing(&mut self, rows: &[Value]) -> Vec<DomainEvent> {
         let mut events = Vec::new();
         let mut directions = std::collections::BTreeMap::new();
+        let mut by_message = std::collections::BTreeMap::new();
         for row in rows {
             let (Some(id), Some(direction)) = (field(row, "id"), direction(row)) else { continue };
             let id = ObjectId::new(id);
+            if let Some(message) = field(row, "message_id") {
+                by_message.insert(message, id.clone());
+            }
             directions.insert(id.clone(), direction);
             let object = Object {
                 id: id.clone(),
@@ -69,6 +74,7 @@ impl Translator {
             events.extend(self.put_object(object));
         }
         self.directory.objects = directions;
+        self.message_objects = by_message;
         events
     }
 

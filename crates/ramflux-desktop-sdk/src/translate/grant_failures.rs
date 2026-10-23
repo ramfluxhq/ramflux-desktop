@@ -82,6 +82,9 @@ impl Translator {
         message: &str,
         now: Timestamp,
     ) -> Vec<DomainEvent> {
+        if method == methods::ATTACH_OBJECT {
+            return self.attachment_failed(body, message);
+        }
         if !matches!(method, methods::GRANT_APPROVE | methods::GRANT_DENY) {
             return Vec::new();
         }

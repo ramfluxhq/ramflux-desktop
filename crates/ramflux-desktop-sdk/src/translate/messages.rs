@@ -117,7 +117,7 @@ impl Translator {
                 text,
                 receipt: if outbound { receipt(record) } else { Receipt::default() },
                 tombstone: deleted,
-                attachment: None,
+                attachment: self.attachment_of(message),
                 franking: None,
             }),
             None if deleted => MomentKind::Message(MessagePayload {

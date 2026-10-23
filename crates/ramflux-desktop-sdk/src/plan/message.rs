@@ -39,8 +39,12 @@ pub const MESSAGE_TTL: u32 = 300;
 /// Relay chunk size of an attachment.
 pub const ATTACHMENT_CHUNK: usize = 4096;
 
+/// The largest attachment one message carries, in bytes: what one
+/// local-bus frame holds (the daemon refuses more).
+pub const ATTACHMENT_LIMIT: usize = MAX_LOCAL_BUS_ONE_SHOT_OBJECT_BYTES;
+
 /// A fresh id with `prefix`.
-fn fresh_id(prefix: &str) -> Result<String, String> {
+pub(super) fn fresh_id(prefix: &str) -> Result<String, String> {
     let random = zeroize::Zeroizing::new(
         ramflux_crypto::random_32().map_err(|error| format!("no randomness: {error}"))?,
     );
@@ -89,7 +93,7 @@ pub(super) fn attach(acct: Option<&str>, body: &Value, known: &impl Known) -> Pl
         return refuse(key::NO_RELAY);
     };
     let path = std::path::Path::new(text(body, "path"));
-    let limit = MAX_LOCAL_BUS_ONE_SHOT_OBJECT_BYTES;
+    let limit = ATTACHMENT_LIMIT;
     match std::fs::metadata(path) {
         Ok(meta) if meta.len() > limit as u64 => {
             return refuse(&keyed(key::ATTACHMENT_TOO_LARGE, &[("limit", &limit.to_string())]));
@@ -185,24 +189,24 @@ fn direct(
     }
 }
 
-struct SubmitParts<'a> {
-    conversation: &'a ContextId,
-    message_id: String,
-    envelope_id: String,
-    source: &'a str,
-    sender: &'a str,
-    device: &'a str,
-    commitment: Option<String>,
-    target: &'a str,
-    text: &'a str,
-    federation: Option<LocalBusFederationRoute>,
-    attachments: Vec<(LocalBusMessageAttachmentInput, Option<String>)>,
+pub(super) struct SubmitParts<'a> {
+    pub(super) conversation: &'a ContextId,
+    pub(super) message_id: String,
+    pub(super) envelope_id: String,
+    pub(super) source: &'a str,
+    pub(super) sender: &'a str,
+    pub(super) device: &'a str,
+    pub(super) commitment: Option<String>,
+    pub(super) target: &'a str,
+    pub(super) text: &'a str,
+    pub(super) federation: Option<LocalBusFederationRoute>,
+    pub(super) attachments: Vec<(LocalBusMessageAttachmentInput, Option<String>)>,
 }
 
 /// The `message.submit` body, built from the SDK's request type. A file
 /// name rides along on its attachment (the daemon records it as the
 /// object's name).
-fn submit_request(parts: SubmitParts<'_>) -> Result<Value, serde_json::Error> {
+pub(super) fn submit_request(parts: SubmitParts<'_>) -> Result<Value, serde_json::Error> {
     let names: Vec<Option<String>> = parts.attachments.iter().map(|(_, n)| n.clone()).collect();
     let submit = LocalBusMessageSubmitRequest {
         conversation_id: parts.conversation.to_string(),

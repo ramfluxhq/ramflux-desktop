@@ -391,9 +391,11 @@ impl Task {
             Pushed::Opened => {}
             Pushed::Event { topic, body } => {
                 let events = self.translator.pushed(&topic, &body, now());
-                if self.emit(events) {
+                let reads = self.translator.pushed_reads(&topic, &body);
+                if self.emit(events) || !reads.is_empty() {
                     self.interval = self.config.poll_fast;
                 }
+                self.spawn_fetches(reads);
             }
             Pushed::Lost(_) => {
                 self.subscribed = false;

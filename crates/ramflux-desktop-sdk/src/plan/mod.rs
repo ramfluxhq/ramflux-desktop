@@ -14,11 +14,13 @@
 //! - [`fetch`]: the reads.
 //! - [`identity`]: fresh identity material for account creation.
 //! - [`contact`]: contact effects and the links they name, and verification.
+//! - [`conversation`]: starting a direct conversation (its first message).
 //! - [`message`]: direct and group sends, attachments.
 //! - [`object`]: opening, saving and resuming objects.
 //! - [`group`]: membership, roles and invitations.
 
 pub mod contact;
+pub mod conversation;
 pub mod fetch;
 pub mod group;
 pub mod identity;
@@ -336,6 +338,7 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
             refresh: vec![Fetch::DeviceList],
         },
         methods::SEND_MESSAGE => message::send(acct, body, known),
+        methods::CONVERSATION_START => conversation::start(acct, body, known),
         methods::ATTACH_OBJECT => message::attach(acct, body, known),
         methods::OBJECT_PULL | methods::OBJECT_SAVE | methods::OBJECT_RETRY => {
             object::object_call(acct, method, body, known)

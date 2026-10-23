@@ -136,6 +136,8 @@ impl Translator {
                 // accept wraps it in `link`).
                 self.contact_record(answer.get("link").unwrap_or(answer))
             }
+            methods::CONVERSATION_START => self.conversation_started(body, answer),
+            methods::ATTACH_OBJECT => self.attachment_sent(body),
             methods::SEND_MESSAGE => {
                 if let Some(id) = answer["message_id"].as_str() {
                     self.remember_sent(id, text(body, "text"));

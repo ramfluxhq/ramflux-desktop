@@ -45,9 +45,18 @@ pub mod key {
     pub const LOCAL_NETWORK_MAYBE: &str = "backend.failure.local_network_maybe";
     /// A multi-step effect stopped (`done` of `total` applied, `reason`).
     pub const PARTIAL: &str = "backend.failure.partial";
+    /// A new conversation: the identity directory does not list the
+    /// contact (`name`) yet.
+    pub const START_NO_IDENTITY: &str = "backend.failure.start_no_identity";
+    /// A new conversation: no device of the contact (`name`) has a
+    /// delivery target.
+    pub const START_NO_TARGET: &str = "backend.failure.start_no_target";
+    /// A new conversation: the contact's (`name`) devices have targets but
+    /// no verified signing key.
+    pub const START_UNVERIFIED_KEY: &str = "backend.failure.start_unverified_key";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 14] = [
+    pub const ALL: [&str; 17] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -62,6 +71,9 @@ pub mod key {
         LOCAL_NETWORK,
         LOCAL_NETWORK_MAYBE,
         PARTIAL,
+        START_NO_IDENTITY,
+        START_NO_TARGET,
+        START_UNVERIFIED_KEY,
     ];
 }
 

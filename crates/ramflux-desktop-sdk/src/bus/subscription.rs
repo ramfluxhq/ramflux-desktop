@@ -5,7 +5,9 @@
 //!
 //! The daemon pushes only a few topics today (approval requests and
 //! decisions, tool starts, A2UI action records); everything else is polled
-//! until the resumable event stream lands. The connection is dedicated to
+//! until the resumable event stream lands. The stream's list-changing
+//! topics are subscribed already, so its events refresh lists as soon as a
+//! daemon pushes them. The connection is dedicated to
 //! the account's events, apart from its request connection, so a burst of
 //! events never queues behind requests (or the other way round).
 
@@ -19,8 +21,11 @@ use tokio::sync::mpsc;
 use super::BusError;
 use super::deadline::{Deadlines, deadline_ms};
 
-/// Topics the desktop subscribes to.
-pub const TOPICS: [&str; 6] = [
+/// Topics the desktop subscribes to: those pushed today, then the
+/// list-changing topics of the resumable event stream
+/// ([`crate::translate::stream::TOPICS`]; unknown topics are accepted and
+/// simply never pushed by a daemon without the stream).
+pub const PUSHED_TOPICS: [&str; 6] = [
     "mcp.approval.request",
     "mcp.approval.granted",
     "mcp.approval.denied",
@@ -28,6 +33,11 @@ pub const TOPICS: [&str; 6] = [
     "ramflux.a2ui.action_submitted",
     "ramflux.a2ui.action_result",
 ];
+
+/// Every topic the subscription asks for.
+pub fn topics() -> Vec<&'static str> {
+    PUSHED_TOPICS.iter().chain(crate::translate::stream::TOPICS.iter()).copied().collect()
+}
 
 /// What the subscription reports.
 #[derive(Debug, Clone, PartialEq)]
@@ -76,7 +86,7 @@ async fn follow(
         Some(account),
         "subscription",
         "subscription.open",
-        json!({ "topics": TOPICS, "attended_frontend": true }),
+        json!({ "topics": topics(), "attended_frontend": true }),
     );
     open.deadline_ms = Some(deadline_ms(deadlines.budget("subscription.open")));
     if let Err(error) = client.request_frame(open).await {
