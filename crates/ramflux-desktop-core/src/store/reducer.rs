@@ -143,6 +143,7 @@ impl Store {
                     self.failures.remove(0);
                 }
                 self.failures.push(failure.clone());
+                self.failures_total += 1;
                 changes.source_status = true;
             }
             DomainEvent::ListingsLoaded(listings) => {

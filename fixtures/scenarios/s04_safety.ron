@@ -3,10 +3,13 @@
 // user until the user verifies the safety number again (VerifySafetyNumber
 // intent), after which the warning is closed and a verification moment is
 // recorded. A new person asks to become a contact; the request is answered
-// inline or from the contacts dock.
-// Demonstrates: ParticipantUpserted safety states and safety numbers,
-// SafetyChange moments, ContactRequest moments, and safety.verify /
-// contact.accept / contact.reject responses.
+// inline or from the contacts dock. Another asks through a contact link (no
+// moment), one participant is blocked, and contacts are added by id from the
+// contacts dock (one add succeeds, one fails with the daemon's reason).
+// Demonstrates: ParticipantUpserted safety states, safety numbers and contact
+// links, SafetyChange moments, ContactRequest moments, and safety.verify /
+// contact.add / contact.accept / contact.reject / contact.block /
+// contact.unblock / contact.remove responses.
 // Moment `at: 0` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
@@ -23,6 +26,8 @@
             safety_number: "70211 48302 19554 83017 22690 41175")),
         (0, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", contact: true)),
         (0, ParticipantUpserted(id: "p-noor", kind: Human, display: "Noor Haddad")),
+        (0, ParticipantUpserted(id: "p-sam", kind: Human, display: "Sam Ortiz", link: Incoming)),
+        (0, ParticipantUpserted(id: "p-ivo", kind: Human, display: "Ivo Brandt", link: Blocked)),
         (10, ContextUpserted(id: "c-mira", kind: Direct, title: "Mira Okafor", participants: ["p-me", "p-mira"])),
         (10, ContextUpserted(id: "c-requests", kind: Direct, title: "Noor Haddad", participants: ["p-me", "p-noor"])),
         (100, MomentAdded(id: "m-mira-1", context_id: "c-mira", origin: "p-mira", at: 0,
@@ -61,6 +66,40 @@
         (
             on: Call(method: "contact.reject", fields: {"moment_id": "m-noor"}),
             emit: [(100, MomentUpdated(moment_id: "m-noor", lifecycle: Dismissed))],
+        ),
+        (
+            on: Call(method: "contact.add", fields: {"participant_id": "principal-kai"}),
+            emit: [
+                (100, ParticipantUpserted(id: "principal-kai", kind: Human, display: "principal-kai", contact: true,
+                    link: Accepted)),
+            ],
+        ),
+        (
+            on: Call(method: "contact.add", fields: {"participant_id": "principal-locked"}),
+            emit: [
+                (100, EffectFailed(method: "contact.add", code: Daemon("ValidationFailed"),
+                    message: "account database is not unlocked")),
+            ],
+        ),
+        (
+            on: Call(method: "contact.accept", fields: {"participant_id": "p-sam"}),
+            emit: [(100, ParticipantUpserted(id: "p-sam", kind: Human, display: "Sam Ortiz", contact: true, link: Accepted))],
+        ),
+        (
+            on: Call(method: "contact.reject", fields: {"participant_id": "p-sam"}),
+            emit: [(100, ParticipantUpserted(id: "p-sam", kind: Human, display: "Sam Ortiz", link: Rejected))],
+        ),
+        (
+            on: Call(method: "contact.block", fields: {"participant_id": "p-tomas"}),
+            emit: [(100, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", link: Blocked))],
+        ),
+        (
+            on: Call(method: "contact.unblock", fields: {"participant_id": "p-ivo"}),
+            emit: [(100, ParticipantUpserted(id: "p-ivo", kind: Human, display: "Ivo Brandt", contact: true, link: Accepted))],
+        ),
+        (
+            on: Call(method: "contact.remove", fields: {"participant_id": "p-ivo"}),
+            emit: [(100, ParticipantUpserted(id: "p-ivo", kind: Human, display: "Ivo Brandt", link: Removed))],
         ),
     ],
 )

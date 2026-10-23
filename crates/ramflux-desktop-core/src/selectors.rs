@@ -204,6 +204,24 @@ pub fn contacts(store: &Store) -> Vec<&Participant> {
     list
 }
 
+/// Participants whose contact link is an incoming request, ordered by
+/// display name then id.
+pub fn incoming_contact_requests(store: &Store) -> Vec<&Participant> {
+    linked(store, crate::model::ContactLink::Incoming)
+}
+
+/// Blocked participants, ordered by display name then id.
+pub fn blocked_contacts(store: &Store) -> Vec<&Participant> {
+    linked(store, crate::model::ContactLink::Blocked)
+}
+
+fn linked(store: &Store, link: crate::model::ContactLink) -> Vec<&Participant> {
+    let mut list: Vec<&Participant> =
+        store.participants().filter(|p| p.link_state() == link).collect();
+    list.sort_by(|a, b| (&a.display, &a.id).cmp(&(&b.display, &b.id)));
+    list
+}
+
 /// Grants dock, ordered by id.
 pub fn grants(store: &Store, filter: GrantFilter) -> Vec<&Grant> {
     store

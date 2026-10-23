@@ -45,10 +45,20 @@ pub const CONTEXT_UNPIN: &str = "context.unpin";
 pub const CONTEXT_MUTE: &str = "conversation.mute";
 /// Set the disappearing-message timer.
 pub const CONTEXT_DISAPPEARING: &str = "conversation.disappearing.set";
+/// Add a contact by the id they shared.
+pub const CONTACT_ADD: &str = "contact.add";
+/// Send a contact request to the contact's node.
+pub const CONTACT_REQUEST: &str = "contact.request";
 /// Accept a contact request.
 pub const CONTACT_ACCEPT: &str = "contact.accept";
 /// Reject a contact request.
 pub const CONTACT_REJECT: &str = "contact.reject";
+/// Block a contact.
+pub const CONTACT_BLOCK: &str = "contact.block";
+/// Lift a block.
+pub const CONTACT_UNBLOCK: &str = "contact.unblock";
+/// Remove a contact.
+pub const CONTACT_REMOVE: &str = "contact.remove";
 /// Verify a safety number.
 pub const SAFETY_VERIFY: &str = "safety.verify";
 /// Add a group member.

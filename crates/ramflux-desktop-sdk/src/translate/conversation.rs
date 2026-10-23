@@ -133,7 +133,7 @@ impl Translator {
                 .unwrap_or_default();
             context.epoch = group["group_epoch"].as_u64();
             for member in context.participants.clone() {
-                out.events.extend(self.participant(member.as_str(), member.as_str(), false));
+                out.events.extend(self.participant(member.as_str(), member.as_str()));
             }
             out.events.extend(self.put_context(context));
             listed.push(id);
@@ -186,7 +186,7 @@ impl Translator {
             if sender.is_empty() {
                 continue;
             }
-            events.extend(self.participant(sender, sender, false));
+            events.extend(self.participant(sender, sender));
             if let Some(mut ctx) = self.contexts.get(context).cloned() {
                 let sender_id = ParticipantId::new(sender);
                 if !ctx.participants.contains(&sender_id) {

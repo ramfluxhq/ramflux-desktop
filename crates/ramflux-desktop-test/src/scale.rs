@@ -29,6 +29,7 @@ fn participant(id: &str, display: &str) -> DomainEvent {
         safety: SafetyState::Verified,
         contact: true,
         safety_number: None,
+        link: ramflux_desktop_core::ContactLink::None,
     })
 }
 

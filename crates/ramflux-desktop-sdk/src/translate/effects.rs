@@ -122,6 +122,16 @@ impl Translator {
                     .map_or(Disappearing::Off, Disappearing::After);
                 self.context_setting(&context(), None, Some(timer))
             }
+            methods::CONTACT_ADD
+            | methods::CONTACT_ACCEPT
+            | methods::CONTACT_REJECT
+            | methods::CONTACT_BLOCK
+            | methods::CONTACT_UNBLOCK
+            | methods::CONTACT_REMOVE => {
+                // The daemon answers with the link record (the federated
+                // accept wraps it in `link`).
+                self.contact_record(answer.get("link").unwrap_or(answer))
+            }
             methods::SEND_MESSAGE => {
                 if let Some(id) = answer["message_id"].as_str() {
                     self.remember_sent(id, text(body, "text"));
@@ -159,11 +169,19 @@ impl Translator {
 
 /// The audit record of an effect the attended human confirmed with a hold.
 fn audit(method: &str, body: &Value, at: Timestamp) -> DomainEvent {
-    let subject = ["grant_id", "approval_id", "node_id", "device_id", "moment_id", "context_id"]
-        .into_iter()
-        .find_map(|field| body[field].as_str())
-        .unwrap_or_default()
-        .to_owned();
+    let subject = [
+        "grant_id",
+        "approval_id",
+        "node_id",
+        "device_id",
+        "moment_id",
+        "context_id",
+        "participant_id",
+    ]
+    .into_iter()
+    .find_map(|field| body[field].as_str())
+    .unwrap_or_default()
+    .to_owned();
     let proposed_by =
         serde_json::from_value::<Actor>(body["proposed_by"].clone()).unwrap_or(Actor::Human);
     DomainEvent::AuditAppended(AuditEntry {

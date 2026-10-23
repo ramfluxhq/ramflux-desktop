@@ -30,8 +30,9 @@ pub mod reason {
     pub const DIRECT_ROUTE: &str = "backend.gap.direct_route";
     /// Objects carry no listable metadata (name, size, direction).
     pub const OBJECTS: &str = "backend.gap.objects";
-    /// Contact requests are not delivered to clients as events.
-    pub const CONTACT_REQUESTS: &str = "backend.gap.contact_requests";
+    /// A contact request travels to the contact's device, whose route the
+    /// daemon does not list.
+    pub const CONTACT_ROUTE: &str = "backend.gap.contact_route";
     /// Verification needs the contact's identity commitment.
     pub const SAFETY: &str = "backend.gap.safety";
     /// Adding or inviting members needs their keys, which cannot be looked up.
@@ -57,8 +58,7 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
         (methods::OBJECT_PULL, reason::OBJECTS),
         (methods::OBJECT_SAVE, reason::OBJECTS),
         (methods::OBJECT_RETRY, reason::OBJECTS),
-        (methods::CONTACT_ACCEPT, reason::CONTACT_REQUESTS),
-        (methods::CONTACT_REJECT, reason::CONTACT_REQUESTS),
+        (methods::CONTACT_REQUEST, reason::CONTACT_ROUTE),
         (methods::SAFETY_VERIFY, reason::SAFETY),
         (methods::GROUP_ADD_MEMBER, reason::MEMBER_KEYS),
         (methods::GROUP_CREATE_INVITE, reason::MEMBER_KEYS),

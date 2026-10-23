@@ -39,9 +39,12 @@ pub use ids::{
     AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
     StandingApprovalId, SurfaceId, TaskId, Timestamp,
 };
-pub use intent::{Effect, GovernanceOp, Intent, IntentKind, SecretInput, SyncDirection, methods};
+pub use intent::{
+    ContactAction, ContactIdProblem, Effect, GovernanceOp, Intent, IntentKind, MAX_CONTACT_ID_LEN,
+    SecretInput, SyncDirection, check_contact_id, methods,
+};
 pub use model::*;
-pub use policy::{IntentError, handle_intent};
+pub use policy::{IntentError, check_add_contact, contact_action_current, handle_intent};
 pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter, TaskStepRef};
 pub use serde_json::Value as JsonValue;
 pub use source::Source;

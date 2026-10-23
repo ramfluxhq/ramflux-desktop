@@ -69,6 +69,7 @@ pub struct Store {
     capabilities: Capabilities,
     daemon: Option<DaemonInfo>,
     failures: Vec<EffectFailure>,
+    failures_total: u64,
     pin_order: Vec<ContextId>,
     listed: BTreeSet<Listing>,
     needs_me_since: BTreeMap<MomentId, Timestamp>,
@@ -281,6 +282,19 @@ impl Store {
     /// Effects that failed, oldest first, at most [`MAX_FAILURES`].
     pub fn failures(&self) -> &[EffectFailure] {
         &self.failures
+    }
+
+    /// How many effects failed since the store was created (keeps counting
+    /// past [`MAX_FAILURES`]), so a view can tell which failures are new.
+    pub fn failures_total(&self) -> u64 {
+        self.failures_total
+    }
+
+    /// The failures recorded after the count was `since`, oldest first
+    /// (those still kept).
+    pub fn failures_since(&self, since: u64) -> &[EffectFailure] {
+        let new = usize::try_from(self.failures_total.saturating_sub(since)).unwrap_or(usize::MAX);
+        &self.failures[self.failures.len().saturating_sub(new)..]
     }
 
     /// Task by id.

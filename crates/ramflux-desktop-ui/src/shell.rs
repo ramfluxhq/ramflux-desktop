@@ -513,6 +513,9 @@ impl Shell {
             PaletteChoice::OpenDock(tool) => {
                 workspace.update(cx, |w, cx| w.open_tool(tool, window, cx))
             }
+            PaletteChoice::AddContact => {
+                workspace.update(cx, |w, cx| w.open_add_contact(window, cx));
+            }
             PaletteChoice::NeedsMe => workspace.update(cx, |w, cx| w.go_to_needs_me(window, cx)),
             PaletteChoice::ToggleTheme => self.toggle_theme(&ToggleTheme, window, cx),
             PaletteChoice::Pin(..) | PaletteChoice::Mute(..) | PaletteChoice::Disappearing(..) => {}

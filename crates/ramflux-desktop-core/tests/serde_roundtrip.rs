@@ -85,6 +85,8 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::AcceptContact { .. } => "AcceptContact",
         IntentKind::RejectContact { .. } => "RejectContact",
         IntentKind::VerifySafetyNumber { .. } => "VerifySafetyNumber",
+        IntentKind::AddContact { .. } => "AddContact",
+        IntentKind::Contact { .. } => "Contact",
         IntentKind::Governance { .. } => "Governance",
         IntentKind::AcceptHandoff { .. } => "AcceptHandoff",
         IntentKind::DeclineHandoff { .. } => "DeclineHandoff",
@@ -114,7 +116,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the six secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 34;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 36;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -133,6 +135,8 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::MuteToggled { .. } => "MuteToggled",
         UiEventKind::DisappearingChosen { .. } => "DisappearingChosen",
         UiEventKind::VerifySafetyPressed { .. } => "VerifySafetyPressed",
+        UiEventKind::AddContactRequested { .. } => "AddContactRequested",
+        UiEventKind::ContactActionPressed { .. } => "ContactActionPressed",
         UiEventKind::HandoffAnswered { .. } => "HandoffAnswered",
         UiEventKind::ObjectActionPressed { .. } => "ObjectActionPressed",
         UiEventKind::GovernanceRequested { .. } => "GovernanceRequested",
@@ -149,7 +153,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 29;
+const UI_EVENT_KIND_VARIANTS: usize = 31;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -406,6 +410,11 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::AcceptContact { moment_id: MomentId::new("m-1") },
         IntentKind::RejectContact { moment_id: MomentId::new("m-1") },
         IntentKind::VerifySafetyNumber { participant_id: ParticipantId::new("p-1") },
+        IntentKind::AddContact { participant_id: ParticipantId::new("principal-ana") },
+        IntentKind::Contact {
+            participant_id: ParticipantId::new("p-1"),
+            action: ContactAction::Remove,
+        },
         IntentKind::Governance {
             context_id: ContextId::new("c-1"),
             op: GovernanceOp::SetRole {
@@ -456,6 +465,11 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::MuteToggled { muted: true },
         UiEventKind::DisappearingChosen { seconds: None },
         UiEventKind::VerifySafetyPressed { participant_id: ParticipantId::new("p-1") },
+        UiEventKind::AddContactRequested { participant_id: ParticipantId::new("principal-ana") },
+        UiEventKind::ContactActionPressed {
+            participant_id: ParticipantId::new("p-1"),
+            action: ContactAction::Block,
+        },
         UiEventKind::HandoffAnswered { accept: true },
         UiEventKind::ObjectActionPressed {
             object_id: ObjectId::new("o-1"),

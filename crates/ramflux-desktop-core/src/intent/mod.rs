@@ -6,10 +6,12 @@
 //! - [`Intent`]: who proposed it, who confirmed it, and what is wanted.
 //! - [`IntentKind`]: every intent, grouped by area.
 //! - [`GovernanceOp`]: group and space governance operations.
+//! - [`ContactAction`]: actions on a contact link, and the contact id check.
 //! - [`Effect`]: what the source must execute.
 //! - [`methods`]: contract method names.
 //! - [`SecretInput`]: one-shot secrets that never serialize.
 
+mod contact;
 mod effect;
 mod governance;
 mod kind;
@@ -20,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Actor, HumanConfirmation};
 
+pub use contact::{ContactAction, ContactIdProblem, MAX_CONTACT_ID_LEN, check_contact_id};
 pub use effect::Effect;
 pub use governance::GovernanceOp;
 pub use kind::{IntentKind, SyncDirection};

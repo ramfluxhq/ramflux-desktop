@@ -3,8 +3,9 @@
 
 //! The production window root on the SDK source over a fake daemon:
 //! the entry page with the real daemon status, account sessions that follow
-//! the daemon, controls the backend cannot perform shown disabled, and lock
-//! returning to entry.
+//! the daemon, controls the backend cannot perform shown disabled, lock
+//! returning to entry, and the contacts dock adding a contact and answering
+//! an incoming request with the daemon's own frames.
 
 mod common;
 
@@ -125,5 +126,59 @@ fn an_unlocked_account_opens_the_workspace_and_lock_returns_to_entry(cx: &mut Te
     assert!(locked.load(Ordering::SeqCst), "the daemon locked the account");
     let sessions = cx.update(|cx| shell.read(cx).store().read(cx).accounts().count());
     assert_eq!(sessions, 0, "the account's session and its cached data are gone");
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn the_contacts_dock_adds_and_answers_through_the_daemon(cx: &mut TestAppContext) {
+    let path = socket_path("ui-contacts");
+    let all = frames();
+    let links = Arc::new(std::sync::Mutex::new(vec![json!({
+        "link_id": "l9", "requester_id": "principal-sam", "target_id": "principal-me",
+        "state": "pending", "remove_scope": null, "blocked": false, "capability_revoked_at": null,
+    })]));
+    let store = links.clone();
+    let fake = FakeBus::start(&path, move |method, _, body| {
+        let mut links = store.lock().expect("links");
+        match method {
+            "contact.list" => Reply::Ok(json!({ "contacts": links.clone() })),
+            "contact.add" | "contact.accept" => {
+                let row = json!({
+                    "link_id": body["link_id"], "requester_id": body["requester_id"],
+                    "target_id": body["target_id"], "state": "accepted", "remove_scope": null,
+                    "blocked": false, "capability_revoked_at": null,
+                });
+                links.retain(|l| l["link_id"] != body["link_id"]);
+                links.push(row.clone());
+                Reply::Ok(row)
+            }
+            _ => Reply::Ok(all.get(method).cloned().unwrap_or(json!({}))),
+        }
+    });
+    let (handle, shell) = open_with(cx, options(&path));
+    wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
+    click(cx, handle, "rail-contacts");
+    wait(cx, "the incoming request", |cx| exists(cx, handle, "contacts-incoming-principal-sam"));
+    assert!(
+        exists(cx, handle, "contacts-requests-local"),
+        "answers stay on this account while requests cannot travel"
+    );
+    click_in(cx, handle, "contacts-incoming-principal-sam", "accept");
+    wait(cx, "accepted", |cx| exists(cx, handle, "contacts-principal-sam"));
+    let accept = fake.seen().into_iter().find(|s| s.method == "contact.accept").expect("frame");
+    assert_eq!(accept.account.as_deref(), Some("acct-main"));
+    assert_eq!(
+        accept.body,
+        json!({ "link_id": "l9", "requester_id": "principal-sam", "target_id": "principal-me" })
+    );
+
+    type_into(cx, handle, "contact-add-id", "principal-kai");
+    click(cx, handle, "contact-add");
+    wait(cx, "added", |cx| exists(cx, handle, "contacts-principal-kai"));
+    let add = fake.seen().into_iter().find(|s| s.method == "contact.add").expect("frame");
+    assert_eq!(add.body["requester_id"], "principal-me");
+    assert_eq!(add.body["target_id"], "principal-kai");
+    assert!(add.body["link_id"].as_str().is_some_and(|id| id.starts_with("link-")));
+    assert_eq!(add.body.as_object().map(serde_json::Map::len), Some(3));
     fake.shutdown();
 }

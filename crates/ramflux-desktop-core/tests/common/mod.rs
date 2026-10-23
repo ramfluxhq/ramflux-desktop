@@ -93,6 +93,7 @@ pub fn participant(id: &str, kind: ParticipantKind, display: &str, contact: bool
         safety: SafetyState::Unverified,
         contact,
         safety_number: None,
+        link: ramflux_desktop_core::ContactLink::None,
     }
 }
 

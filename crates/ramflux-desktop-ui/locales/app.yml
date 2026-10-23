@@ -341,6 +341,13 @@ confirm:
   generic:
     en: "Confirm this action"
     zh-CN: "确认此操作"
+  contact:
+    block:
+      en: "Block %{contact}; what you shared with them is revoked"
+      zh-CN: "屏蔽 %{contact}，已共享给对方的内容将被撤销"
+    remove:
+      en: "Remove %{contact} from your contacts; what you shared with them is revoked"
+      zh-CN: "将 %{contact} 移出联系人，已共享给对方的内容将被撤销"
   governance:
     kick:
       en: "Remove %{member} from %{group}"

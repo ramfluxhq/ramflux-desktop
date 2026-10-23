@@ -12,13 +12,15 @@
 //! ledger).
 //!
 //! - `daemon`: daemon status, nodes, accounts.
-//! - `account`: account status, devices, contacts, integrations.
+//! - `account`: account status, devices, integrations.
+//! - `contacts`: participants and contact links.
 //! - `conversation`: conversations, groups and their messages.
 //! - `grants`: approvals, grants and standing approvals.
 //! - `grant_failures`: fail-closed grant errors.
 //! - `effects`: answers to effects, and the audit record of confirmed ones.
 
 mod account;
+mod contacts;
 mod conversation;
 mod daemon;
 mod effects;
@@ -102,7 +104,8 @@ pub struct Translator {
     principal: Option<String>,
     self_device: Option<String>,
     devices: BTreeMap<DeviceId, ramflux_desktop_core::Device>,
-    participants: BTreeMap<ParticipantId, bool>,
+    participants: BTreeMap<ParticipantId, ramflux_desktop_core::ContactLink>,
+    links: BTreeMap<ParticipantId, crate::plan::KnownLink>,
     contexts: BTreeMap<ContextId, Context>,
     pins: Vec<ContextId>,
     pins_recorded: bool,
@@ -133,6 +136,7 @@ impl Translator {
             self_device: None,
             devices: BTreeMap::new(),
             participants: BTreeMap::new(),
+            links: BTreeMap::new(),
             contexts: BTreeMap::new(),
             pins: Vec::new(),
             pins_recorded: false,
@@ -336,6 +340,14 @@ impl Known for Translator {
 
     fn daemon_grant_id(&self, approval: &str) -> Option<&str> {
         self.daemon_grants.get(approval).map(String::as_str)
+    }
+
+    fn self_principal(&self) -> Option<&str> {
+        self.principal.as_deref()
+    }
+
+    fn contact_link(&self, participant: &str) -> Option<&crate::plan::KnownLink> {
+        self.known_link(participant)
     }
 }
 

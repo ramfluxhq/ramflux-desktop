@@ -127,6 +127,12 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::VerifySafetyPressed { participant_id } => {
             IntentKind::VerifySafetyNumber { participant_id: participant_id.clone() }
         }
+        UiEventKind::AddContactRequested { participant_id } => {
+            IntentKind::AddContact { participant_id: participant_id.clone() }
+        }
+        UiEventKind::ContactActionPressed { participant_id, action } => {
+            IntentKind::Contact { participant_id: participant_id.clone(), action: *action }
+        }
         UiEventKind::ObjectActionPressed { object_id, action } => {
             let object_id = object_id.clone();
             match action {

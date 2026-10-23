@@ -11,7 +11,9 @@
 //!
 //! - [`fetch`]: the reads.
 //! - [`identity`]: fresh identity material for account creation.
+//! - [`contact`]: contact effects and the links they name.
 
+pub mod contact;
 pub mod fetch;
 pub mod identity;
 
@@ -23,6 +25,7 @@ use serde_json::{Value, json};
 
 use crate::bus::BusRequest;
 use crate::capabilities;
+pub use contact::KnownLink;
 use fetch::Fetch;
 
 /// What the source learned that a request needs.
@@ -33,6 +36,15 @@ pub trait Known {
     fn self_device(&self) -> Option<&str>;
     /// The daemon's grant id for an approved desktop grant (approval id).
     fn daemon_grant_id(&self, approval: &str) -> Option<&str>;
+    /// This account's principal id (the requester of the links it adds).
+    fn self_principal(&self) -> Option<&str> {
+        None
+    }
+    /// The contact link with `participant`, as the daemon last listed it.
+    fn contact_link(&self, participant: &str) -> Option<&KnownLink> {
+        let _ = participant;
+        None
+    }
 }
 
 /// How to perform one effect.
@@ -267,6 +279,12 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         | methods::GROUP_BAN
         | methods::GROUP_REMOVE_MEMBER
         | methods::GROUP_SET_ROLE => governance(acct, method, body, known),
+        methods::CONTACT_ADD
+        | methods::CONTACT_ACCEPT
+        | methods::CONTACT_REJECT
+        | methods::CONTACT_BLOCK
+        | methods::CONTACT_UNBLOCK
+        | methods::CONTACT_REMOVE => contact::contact_call(acct, method, body, known),
         _ => refuse_invalid("no daemon counterpart"),
     }
 }

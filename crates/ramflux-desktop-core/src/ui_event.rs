@@ -18,7 +18,7 @@ use crate::ids::{
     AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
     StandingApprovalId, SurfaceId,
 };
-use crate::intent::{GovernanceOp, SyncDirection};
+use crate::intent::{ContactAction, GovernanceOp, SyncDirection};
 use crate::model::ConflictResolution;
 
 /// One level of the UI nesting.
@@ -128,6 +128,18 @@ pub enum UiEventKind {
     ContactAnswered {
         /// Accepted or rejected.
         accept: bool,
+    },
+    /// A contact id was submitted from the add-contact form.
+    AddContactRequested {
+        /// The id the contact shared (already checked by the form).
+        participant_id: ParticipantId,
+    },
+    /// An action on a contact link was chosen.
+    ContactActionPressed {
+        /// Participant.
+        participant_id: ParticipantId,
+        /// Action.
+        action: ContactAction,
     },
     /// Verify pressed for a participant's safety number.
     VerifySafetyPressed {

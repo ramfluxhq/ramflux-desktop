@@ -41,6 +41,8 @@ pub enum PaletteChoice {
     OpenSettings,
     /// Open a dock tool.
     OpenDock(DockTool),
+    /// Open the contacts dock at its add-contact field.
+    AddContact,
     /// Move to the next item that needs the user.
     NeedsMe,
     /// Switch between the light and dark theme.
@@ -188,6 +190,7 @@ fn actions(
             ));
         }
     }
+    entries.push(entry(tr("palette.add_contact"), IconName::Plus, PaletteChoice::AddContact));
     for tool in DockTool::ALL {
         entries.push(entry(
             tr_args("palette.open_dock", &[("dock", &tool.title())]),

@@ -22,9 +22,9 @@ backend:
     objects:
       en: "The daemon does not list object names, sizes or directions yet."
       zh-CN: "守护进程尚未提供对象的名称、大小和方向。"
-    contact_requests:
-      en: "Contact requests do not reach the desktop as events yet (K1)."
-      zh-CN: "联系人请求尚未以事件送达桌面端（K1）。"
+    contact_route:
+      en: "Sending a contact request needs the contact's device route, which the daemon does not list yet."
+      zh-CN: "发送联系人请求需要对方设备的投递路由，守护进程尚未提供。"
     safety:
       en: "Verifying needs the contact's identity commitment, which the daemon does not list yet."
       zh-CN: "验证需要联系人的身份承诺，守护进程尚未提供。"

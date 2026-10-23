@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{GovernanceOp, SecretInput};
+use super::{ContactAction, GovernanceOp, SecretInput};
 use crate::conformance::SurfaceHash;
 use crate::ids::{
     AccountId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
@@ -144,6 +144,20 @@ pub enum IntentKind {
     DeclineHandoff {
         /// Handoff moment.
         moment_id: MomentId,
+    },
+
+    // Contacts.
+    /// Add a contact by the id they shared out of band. Human only.
+    AddContact {
+        /// The contact's id (their principal id on the daemon).
+        participant_id: ParticipantId,
+    },
+    /// Act on the contact link with a participant.
+    Contact {
+        /// Participant.
+        participant_id: ParticipantId,
+        /// Action.
+        action: ContactAction,
     },
 
     // Objects.

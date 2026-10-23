@@ -273,7 +273,14 @@ impl Task {
         let mut sequences: Vec<Vec<Fetch>> = match &self.scope {
             Scope::Daemon => vec![vec![Fetch::DaemonStatus, Fetch::AccountList]],
             Scope::Account(_) => {
-                vec![vec![Fetch::ConversationList], vec![Fetch::GroupList], vec![Fetch::Approvals]]
+                vec![
+                    vec![Fetch::ConversationList],
+                    vec![Fetch::GroupList],
+                    vec![Fetch::Approvals],
+                    // Incoming contact requests are recorded by the daemon
+                    // when it receives them; they are not pushed.
+                    vec![Fetch::ContactList],
+                ]
             }
         };
         sequences.extend(self.translator.poll_reads());

@@ -299,6 +299,11 @@ fn stale(store: &Store, kind: &IntentKind) -> Option<(&'static str, Option<Momen
                 .is_some_and(|g| g.state == GrantState::Pending && g.failure.is_none());
             (!open).then_some(("confirmation cancelled: request closed", None))
         }
+        IntentKind::Contact { participant_id, action } => {
+            let current =
+                ramflux_desktop_core::contact_action_current(store, participant_id, *action);
+            (!current).then_some(("confirmation cancelled: contact changed", None))
+        }
         _ => None,
     }
 }

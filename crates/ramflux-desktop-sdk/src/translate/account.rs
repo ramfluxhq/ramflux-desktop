@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Account status, devices, contacts and the integrations snapshot.
+//! Account status, devices and the integrations snapshot.
 
 use std::collections::BTreeMap;
 
 use ramflux_desktop_core::{
     AccountId, Device, DeviceId, DomainEvent, Integrations, LockState, McpServer, NodeId,
-    Participant, ParticipantId, ParticipantKind, SafetyState,
+    ParticipantId,
 };
 use serde_json::Value;
 
@@ -38,7 +38,7 @@ impl Translator {
             events.extend(self.put_account(account));
             if let Some(me) = &local {
                 let label = self.account_record(&account_id).label;
-                events.extend(self.participant(me, &label, false));
+                events.extend(self.participant(me, &label));
             }
         }
         let listed: BTreeMap<DeviceId, Device> = list(value, "devices")
@@ -71,46 +71,6 @@ impl Translator {
             }
         }
         events
-    }
-
-    pub(super) fn contact_list(&mut self, value: &Value) -> Vec<DomainEvent> {
-        let me = self.principal.clone().unwrap_or_default();
-        let mut events = Vec::new();
-        for link in list(value, "contacts") {
-            let requester = text(link, "requester_id");
-            let other = if requester == me { text(link, "target_id") } else { requester };
-            if other.is_empty() {
-                continue;
-            }
-            let accepted =
-                text(link, "state") == "accepted" && !link["blocked"].as_bool().unwrap_or(false);
-            events.extend(self.participant(other, other, accepted));
-        }
-        events
-    }
-
-    /// Upserts a participant the daemon named. The daemon reports no display
-    /// names or kinds; the id is shown and the kind stays the neutral `Human`.
-    pub(super) fn participant(
-        &mut self,
-        id: &str,
-        display: &str,
-        contact: bool,
-    ) -> Vec<DomainEvent> {
-        let id = ParticipantId::new(id);
-        match self.participants.get(&id) {
-            Some(known) if *known == contact || !contact => return Vec::new(),
-            _ => {}
-        }
-        self.participants.insert(id.clone(), contact);
-        vec![DomainEvent::ParticipantUpserted(Participant {
-            id,
-            kind: ParticipantKind::Human,
-            display: display.to_owned(),
-            safety: SafetyState::Unverified,
-            contact,
-            safety_number: None,
-        })]
     }
 
     pub(super) fn mcp_tools(&mut self, value: &Value) -> Vec<DomainEvent> {

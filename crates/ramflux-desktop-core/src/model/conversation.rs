@@ -43,6 +43,30 @@ impl SafetyState {
     }
 }
 
+/// The contact link with a participant, as the backend reports it.
+///
+/// `None` means no link was reported. A source that reports only the
+/// `contact` flag (a scenario) leaves it `None`; [`Participant::link_state`]
+/// then reads the flag.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ContactLink {
+    /// No link reported.
+    #[default]
+    None,
+    /// An established contact.
+    Accepted,
+    /// The participant asked to become a contact; the user has not answered.
+    Incoming,
+    /// The user asked the participant; no answer yet.
+    Outgoing,
+    /// The user blocked the participant.
+    Blocked,
+    /// The contact was removed.
+    Removed,
+    /// The user rejected the participant's request.
+    Rejected,
+}
+
 /// A participant.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Participant {
@@ -61,6 +85,19 @@ pub struct Participant {
     /// Safety number for out-of-band comparison.
     #[serde(default)]
     pub safety_number: Option<String>,
+    /// The contact link, when the source reports one.
+    #[serde(default)]
+    pub link: ContactLink,
+}
+
+impl Participant {
+    /// The contact link, reading the `contact` flag when no link was reported.
+    pub fn link_state(&self) -> ContactLink {
+        match self.link {
+            ContactLink::None if self.contact => ContactLink::Accepted,
+            link => link,
+        }
+    }
 }
 
 /// Context shape.

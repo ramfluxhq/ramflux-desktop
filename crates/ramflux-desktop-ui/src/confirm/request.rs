@@ -6,7 +6,7 @@
 
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
-    Actor, GovernanceOp, Intent, IntentKind, MomentKind, ParticipantId, Risk, Store,
+    Actor, ContactAction, GovernanceOp, Intent, IntentKind, MomentKind, ParticipantId, Risk, Store,
 };
 
 use crate::i18n::{tr, tr_args};
@@ -136,6 +136,19 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
                 tr_args("confirm.trust_node", &[("node", node_id.as_str())]),
                 fingerprint.map(SharedString::from),
                 risk,
+            )
+        }
+        IntentKind::Contact { participant_id, action } => {
+            // Only blocking and removing need a hold.
+            let key = match action {
+                ContactAction::Block => "confirm.contact.block",
+                ContactAction::Remove => "confirm.contact.remove",
+                _ => return (tr("confirm.generic"), None, action.risk()),
+            };
+            (
+                tr_args(key, &[("contact", &display_name(store, participant_id))]),
+                Some(SharedString::from(participant_id.to_string())),
+                action.risk(),
             )
         }
         _ => (tr("confirm.generic"), None, Risk::High),

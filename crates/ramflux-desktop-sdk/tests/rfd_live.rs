@@ -16,7 +16,11 @@
 //! A lock and unlock round trip needs an account, and creating, unlocking
 //! or restoring one opens a gateway session on a node, so it is not
 //! exercised without a node; unlocking an account the daemon does not know
-//! is checked as an error instead.
+//! is checked as an error instead. For the same reason contact calls are
+//! checked for routing only: every frame the desktop builds reaches its
+//! daemon method (an unknown one would be named), and `contact.add` /
+//! `contact.accept` bodies parse into the daemon's request type before it
+//! finds that no account is open.
 
 mod common;
 
@@ -154,4 +158,85 @@ fn a_stopped_daemon_disconnects_and_a_restarted_one_is_resnapshotted() {
     assert!(entry.store.last_seq() > seq_at_loss, "the cursor keeps moving forward");
     assert_eq!(entry.source.last_seq(), entry.store.last_seq());
     assert!(entry.store.rejections().is_empty(), "{:?}", entry.store.rejections());
+}
+
+/// Plans a contact effect with a source that knows one link of each kind,
+/// and returns the daemon method and the exact wire body it would send.
+fn contact_frame(method: &str, participant: &str) -> (String, serde_json::Value) {
+    use ramflux_desktop_core::{ContactLink, ContextId, ContextKind};
+    use ramflux_desktop_sdk::plan::{Known, KnownLink, Plan, plan};
+    struct Links(Vec<(&'static str, KnownLink)>);
+    impl Known for Links {
+        fn context_kind(&self, _: &ContextId) -> Option<ContextKind> {
+            None
+        }
+        fn self_device(&self) -> Option<&str> {
+            None
+        }
+        fn daemon_grant_id(&self, _: &str) -> Option<&str> {
+            None
+        }
+        fn self_principal(&self) -> Option<&str> {
+            Some("principal-me")
+        }
+        fn contact_link(&self, participant: &str) -> Option<&KnownLink> {
+            self.0.iter().find(|(p, _)| *p == participant).map(|(_, l)| l)
+        }
+    }
+    let link = |id: &str, requester: &str, target: &str, state| KnownLink {
+        link_id: id.to_owned(),
+        requester_id: requester.to_owned(),
+        target_id: target.to_owned(),
+        state,
+    };
+    let known = Links(vec![
+        ("principal-ana", link("l1", "principal-me", "principal-ana", ContactLink::Accepted)),
+        ("principal-sam", link("l2", "principal-sam", "principal-me", ContactLink::Incoming)),
+    ]);
+    let effect = Effect::Call {
+        method: method.to_owned(),
+        body: json!({ "participant_id": participant, "proposed_by": "Human", "confirmed_by": null }),
+    };
+    match plan(Some(&AccountId::new("acct-none")), effect, &known).plan {
+        Plan::Call { request, .. } => (request.method.clone(), request.wire_body()),
+        other => panic!("{method}: expected a call, got {other:?}"),
+    }
+}
+
+#[test]
+#[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
+fn every_contact_frame_is_routed_by_the_real_daemon() {
+    let Some(daemon) = daemon("contacts") else { return };
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("rt");
+    let socket = daemon.socket();
+    for (method, participant) in [
+        (methods::CONTACT_ADD, "principal-kai"),
+        (methods::CONTACT_ACCEPT, "principal-sam"),
+        (methods::CONTACT_REJECT, "principal-sam"),
+        (methods::CONTACT_BLOCK, "principal-ana"),
+        (methods::CONTACT_UNBLOCK, "principal-ana"),
+        (methods::CONTACT_REMOVE, "principal-ana"),
+    ] {
+        let (daemon_method, body) = contact_frame(method, participant);
+        let answer = runtime.block_on(async {
+            let mut bus = ramflux_sdk::LocalBusClient::connect(&socket).await.expect("connect");
+            bus.request(Some("acct-none".to_owned()), "contact", &daemon_method, &body).await
+        });
+        let error = answer.expect_err("no account is open").to_string();
+        println!("{daemon_method} {body}: {error}");
+        assert!(
+            !error.contains("unsupported local bus method"),
+            "{daemon_method} is a daemon method: {error}"
+        );
+        assert!(!error.contains("missing field"), "{daemon_method} body is complete: {error}");
+    }
+    // The check has teeth: a method the daemon lacks is named as such.
+    let bogus = runtime.block_on(async {
+        let mut bus = ramflux_sdk::LocalBusClient::connect(&socket).await.expect("connect");
+        bus.request(Some("acct-none".to_owned()), "contact", "contact.bogus", &json!({})).await
+    });
+    assert!(bogus.expect_err("bogus").to_string().contains("unsupported local bus method"));
+    // The daemon still answers (no request left it in a bad state).
+    let cli = daemon.rf(&["account", "list"]).expect("rf account list");
+    assert!(cli.status.success());
 }

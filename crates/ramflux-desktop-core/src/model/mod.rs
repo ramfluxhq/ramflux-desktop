@@ -39,7 +39,8 @@ pub use account::{
 pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MIN_HOLD_MS};
 pub use backend::{Capabilities, DaemonInfo, EffectFailure, FailureCode};
 pub use conversation::{
-    Context, ContextKind, Disappearing, Participant, ParticipantKind, Role, SafetyState,
+    ContactLink, Context, ContextKind, Disappearing, Participant, ParticipantKind, Role,
+    SafetyState,
 };
 pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingApproval};
 pub use integrations::{A2iItem, Integrations, McpServer};

@@ -11,9 +11,11 @@
 //! - `conversation`: messages, context settings, tasks and objects.
 //! - `moments`: surface actions, approvals and inline moment decisions.
 //! - `governance`: membership, roles and grant revocation.
+//! - `contacts`: adding contacts and acting on contact links.
 //! - `accounts`: entry (accounts, devices, nodes) and settings.
 
 mod accounts;
+mod contacts;
 mod conversation;
 mod error;
 mod governance;
@@ -26,6 +28,7 @@ use crate::intent::{Effect, Intent, IntentKind, SecretInput};
 use crate::model::{Actor, Context, Moment, ParticipantKind, Risk};
 use crate::store::Store;
 
+pub use contacts::{check_add_contact, contact_action_current};
 pub use error::IntentError;
 
 /// What an area decided about one intent.
@@ -81,13 +84,14 @@ impl Policy<'_> {
 /// Policy: approving a `High` or `Critical` grant, invoking a `High` or
 /// `Critical` surface action, a high-risk governance operation (`Kick`,
 /// `Ban`, `SetRole`), revealing masked content, revoking a grant, standing
-/// approval or device, and confirming a trust-on-first-use node all need the
-/// attended human's hold: without `confirmed_by` they yield
-/// [`Effect::RequireConfirmation`]. Agent proposals follow the same rules.
-/// Agents may never unlock, create, activate or restore an account, rotate
-/// its passphrase, export a backup, sync or revoke devices, confirm a node,
-/// verify a safety number, or answer a handoff. Grants whose expiry is at or
-/// before `now` cannot be approved or denied.
+/// approval or device, blocking or removing a contact, and confirming a
+/// trust-on-first-use node all need the attended human's hold: without
+/// `confirmed_by` they yield [`Effect::RequireConfirmation`]. Agent proposals
+/// follow the same rules. Agents may never unlock, create, activate or
+/// restore an account, rotate its passphrase, export a backup, sync or revoke
+/// devices, confirm a node, verify a safety number, answer a handoff, or add
+/// a contact. Grants whose expiry is at or before `now` cannot be approved or
+/// denied.
 ///
 /// Every call body carries `proposed_by` and `confirmed_by`. An intent whose
 /// method the backend declared unsupported is refused before any hold.
@@ -115,6 +119,7 @@ pub fn handle_intent(
     let decision = conversation::decide(&policy, &intent.kind)
         .or_else(|| moments::decide(&policy, &intent.kind))
         .or_else(|| governance::decide(&policy, &intent.kind))
+        .or_else(|| contacts::decide(&policy, &intent.kind))
         .or_else(|| accounts::decide(&policy, &intent.kind))
         .unwrap_or_else(|| unreachable!("every intent kind belongs to one area"))?;
     let method = match &decision {

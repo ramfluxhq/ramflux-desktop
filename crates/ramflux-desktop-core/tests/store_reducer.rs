@@ -310,3 +310,28 @@ fn listings_are_recorded_once_and_tell_empty_from_loading() {
     assert_eq!(ListState::of(feed.store.is_listed(Listing::Nodes), empty), ListState::Empty);
     assert_eq!(ListState::of(feed.store.is_listed(Listing::Contacts), true), ListState::Loading);
 }
+
+#[test]
+fn failures_are_counted_past_the_cap_and_new_ones_found() {
+    let mut feed = Feed::new();
+    let fail = |n: usize| {
+        DomainEvent::EffectFailed(EffectFailure {
+            method: format!("m-{n}"),
+            code: FailureCode::Transport,
+            message: String::new(),
+        })
+    };
+    for n in 0..MAX_FAILURES {
+        feed.ok(1, fail(n));
+    }
+    let since = feed.store.failures_total();
+    assert!(feed.store.failures_since(since).is_empty());
+    feed.ok(2, fail(100));
+    feed.ok(2, fail(101));
+    assert_eq!(feed.store.failures_total(), since + 2);
+    assert_eq!(feed.store.failures().len(), MAX_FAILURES, "the kept list stays capped");
+    let new: Vec<&str> =
+        feed.store.failures_since(since).iter().map(|f| f.method.as_str()).collect();
+    assert_eq!(new, ["m-100", "m-101"]);
+    assert_eq!(feed.store.failures_since(0).len(), MAX_FAILURES, "only kept failures");
+}

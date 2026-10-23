@@ -69,6 +69,7 @@ pub struct Workspace {
     dock_area: Entity<DockArea>,
     tools: Vec<ToolSlot>,
     objects: Entity<ObjectsDock>,
+    contacts: Entity<ContactsDock>,
     members: Entity<MembersDock>,
     evidence: Entity<EvidenceDock>,
     open_tool: Option<DockTool>,
@@ -103,14 +104,15 @@ impl Workspace {
         let objects = cx.new(|cx| {
             ObjectsDock::new(store.clone(), dock_sink(&sink, DockTool::Objects), window, cx)
         });
-        let contacts =
-            cx.new(|cx| ContactsDock::new(store.clone(), dock_sink(&sink, DockTool::Contacts), cx));
+        let contacts = cx.new(|cx| {
+            ContactsDock::new(store.clone(), dock_sink(&sink, DockTool::Contacts), window, cx)
+        });
         let members = cx.new(|cx| MembersDock::new(store.clone(), sink.clone(), cx));
         let approvals = cx.new(|cx| ApprovalsDock::new(store.clone(), sink.clone(), cx));
         let evidence = cx.new(|cx| EvidenceDock::new(store.clone(), cx));
         let contents: [(DockTool, gpui_kit::AnyView); 5] = [
             (DockTool::Objects, objects.clone().into()),
-            (DockTool::Contacts, contacts.into()),
+            (DockTool::Contacts, contacts.clone().into()),
             (DockTool::Members, members.clone().into()),
             (DockTool::Approvals, approvals.into()),
             (DockTool::Evidence, evidence.clone().into()),
@@ -223,6 +225,7 @@ impl Workspace {
             dock_area,
             tools,
             objects,
+            contacts,
             members,
             evidence,
             open_tool: None,
@@ -258,6 +261,17 @@ impl Workspace {
     /// The objects dock content.
     pub fn objects_dock(&self) -> &Entity<ObjectsDock> {
         &self.objects
+    }
+
+    /// The contacts dock content.
+    pub fn contacts_dock(&self) -> &Entity<ContactsDock> {
+        &self.contacts
+    }
+
+    /// Opens the contacts dock and moves focus to its add-contact field.
+    pub fn open_add_contact(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_tool(DockTool::Contacts, window, cx);
+        self.contacts.update(cx, |dock, cx| dock.focus_add(window, cx));
     }
 
     /// The hold-to-confirm strip.

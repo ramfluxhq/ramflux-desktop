@@ -135,9 +135,68 @@ dock:
       en: "No objects yet"
       zh-CN: "还没有对象"
   contacts:
+    add:
+      title:
+        en: "Add a contact"
+        zh-CN: "添加联系人"
+      label:
+        en: "Contact id"
+        zh-CN: "联系人 ID"
+      placeholder:
+        en: "Paste the id they shared"
+        zh-CN: "粘贴对方分享的 ID"
+      submit:
+        en: "Add"
+        zh-CN: "添加"
+      help:
+        en: "Adds the contact on this account. It does not send them a request."
+        zh-CN: "在此账户中添加联系人，不会向对方发送请求。"
+      adding:
+        en: "Adding %{id}…"
+        zh-CN: "正在添加 %{id}…"
+      failed:
+        en: "Not added: %{reason}"
+        zh-CN: "未添加：%{reason}"
+      error:
+        empty:
+          en: "Type or paste the contact's id."
+          zh-CN: "请输入或粘贴联系人的 ID。"
+        spaces:
+          en: "An id has no spaces or line breaks."
+          zh-CN: "ID 中不能有空格或换行。"
+        too_long:
+          en: "That is longer than any contact id."
+          zh-CN: "该内容超出了联系人 ID 的长度。"
+        exists:
+          en: "Already in your contacts."
+          zh-CN: "已在联系人中。"
+        blocked:
+          en: "You blocked this contact. Unblock them below instead."
+          zh-CN: "你已屏蔽此联系人，请在下方解除屏蔽。"
+        incoming:
+          en: "They already asked you. Answer their request below."
+          zh-CN: "对方已向你发出请求，请在下方回应。"
     requests:
       en: "Requests"
       zh-CN: "请求"
+    requests_local:
+      en: "Accepting adds them on this account; they are not told yet."
+      zh-CN: "接受后对方会加入此账户的联系人，但暂不会通知对方。"
+    blocked:
+      en: "Blocked"
+      zh-CN: "已屏蔽"
+    block:
+      en: "Block"
+      zh-CN: "屏蔽"
+    unblock:
+      en: "Unblock"
+      zh-CN: "解除屏蔽"
+    remove:
+      en: "Remove"
+      zh-CN: "移除"
+    actions_for:
+      en: "Actions for %{name}"
+      zh-CN: "%{name} 的操作"
     list:
       en: "Contacts"
       zh-CN: "联系人"
@@ -271,6 +330,9 @@ palette:
   history_row:
     en: "%{text} · %{context}"
     zh-CN: "%{text} · %{context}"
+  add_contact:
+    en: "Add a contact…"
+    zh-CN: "添加联系人…"
   needs_me:
     en: "Take me to what needs me"
     zh-CN: "带我到需要我的地方"

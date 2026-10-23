@@ -170,6 +170,17 @@ pub enum IntentError {
         /// Reason shown to the user.
         reason: String,
     },
+    /// The typed contact id cannot be used.
+    #[error("contact id is not usable: {0:?}")]
+    InvalidContactId(crate::intent::ContactIdProblem),
+    /// The contact link is not in a state that allows the intent.
+    #[error("contact {participant} is {link:?}")]
+    ContactLinkState {
+        /// Participant.
+        participant: ParticipantId,
+        /// Current link.
+        link: crate::model::ContactLink,
+    },
     /// The device running this client cannot revoke itself.
     #[error("device {0} is this device")]
     ThisDevice(DeviceId),
