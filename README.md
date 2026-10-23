@@ -44,6 +44,12 @@ RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=/path/to/bin/rf \
 Each test starts its own daemon in `/tmp/rf-f3-<pid>-<tag>` and stops it and
 removes the directory afterwards.
 
+## macOS app and demo
+
+`scripts/package-macos.sh` builds `dist/Ramflux Desktop.app` (an ad hoc signed
+development build). `docs/demo.md` walks through a demo on a real daemon and
+node, and lists what the desktop supports today.
+
 ## Keyboard
 
 Everything works from the keyboard; `secondary` is Command on macOS and
