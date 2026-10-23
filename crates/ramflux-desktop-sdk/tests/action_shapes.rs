@@ -186,7 +186,10 @@ fn objects_are_opened_saved_and_resumed_by_their_directory_ids() {
     assert!(request.operation_id.is_none(), "an object read keeps no receipt of the bytes");
     let get: LocalBusObjectGetRequest = typed(&request, &[]);
     assert_eq!(get.object_id, "attachment:m1:0");
-    assert!(get.relay_endpoint.is_none() && !get.relay_ack, "the stored object, opened locally");
+    assert!(
+        get.relay_endpoint.is_none() && !get.relay_ack,
+        "no endpoint: the daemon picks the node relay or the stored copy"
+    );
     let save =
         planned(methods::OBJECT_SAVE, json!({ "object_id": "attachment:m1:0", "path": "/d/n" }));
     assert!(matches!(save, Plan::Open { save_to: Some(ref path), .. } if path == "/d/n"));

@@ -3,9 +3,11 @@
 
 //! Objects of the object directory: open, save, resume.
 //!
-//! - `object.get` (pull): `object.get` for the directory's object id. The
-//!   daemon decrypts the stored object; the bytes are dropped (wiped) once
-//!   the answer arrived, which shows the object can be opened.
+//! - `object.get` (pull): `object.get` for the directory's object id,
+//!   without a relay endpoint: the daemon uses the relay of the account's
+//!   node (an account bound to a node always does) or else the stored copy.
+//!   The bytes are dropped (wiped) once the answer arrived, which shows the
+//!   object can be opened.
 //! - `object.save`: the same read, the bytes written to the path the user
 //!   chose, then wiped. Bytes never reach the translator or the store.
 //! - `object.transfer.resume`: `object.transfer.resume` in the object's
