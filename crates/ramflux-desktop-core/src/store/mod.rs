@@ -9,6 +9,7 @@
 //! - [`changes`]: [`Changes`], [`ApplyError`] and [`Rejection`].
 //! - `reducer`: one validated arm per domain event.
 //! - `surface_ops`: agent surface patch operations.
+//! - `surfaces`: surface content hashes, compare-and-swap patches, conflicts.
 //! - [`bodies`]: the bounded message-body cache.
 //! - `index`: secondary indexes the reducer maintains (timelines, needs-me,
 //!   in progress, members, grant and task presenters).
@@ -18,6 +19,7 @@ mod changes;
 mod index;
 mod reducer;
 mod surface_ops;
+mod surfaces;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -70,6 +72,8 @@ pub struct Store {
     pin_order: Vec<ContextId>,
     listed: BTreeSet<Listing>,
     needs_me_since: BTreeMap<MomentId, Timestamp>,
+    surface_hashes: BTreeMap<MomentId, crate::conformance::SurfaceHash>,
+    surface_conflicts: BTreeSet<MomentId>,
     source_status: SourceStatus,
     last_seq: u64,
     rejections: Vec<Rejection>,

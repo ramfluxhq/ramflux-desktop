@@ -12,11 +12,9 @@ use std::mem;
 
 use super::bodies::BodyCache;
 use super::changes::{ApplyError, Changes};
-use super::index::presented_grants;
-use super::surface_ops::apply_surface_op;
 use super::{MAX_AUDIT, Store};
-use crate::event::{DomainEvent, SurfaceOp};
-use crate::ids::{AccountId, ContextId, GrantId, MomentId, NodeId, SurfaceId, Timestamp};
+use crate::event::DomainEvent;
+use crate::ids::{AccountId, ContextId, GrantId, MomentId, NodeId, Timestamp};
 use crate::model::{
     Context, Disappearing, GrantState, Lifecycle, LockState, Moment, MomentKind, NodeHealth,
     NodeProbe, Task,
@@ -83,8 +81,8 @@ impl Store {
             DomainEvent::MomentUpdated { moment_id, lifecycle, kind } => {
                 self.update_moment(at, moment_id, *lifecycle, kind.as_ref(), changes)?;
             }
-            DomainEvent::SurfacePatched { moment_id, surface_id, ops } => {
-                self.patch_surface(moment_id, surface_id, ops, changes)?;
+            DomainEvent::SurfacePatched { moment_id, surface_id, ops, base_hash } => {
+                self.patch_surface(moment_id, surface_id, ops, base_hash.as_ref(), changes)?;
             }
             DomainEvent::ObjectUpserted(object) => {
                 changes.objects.insert(object.id.clone());
@@ -101,6 +99,14 @@ impl Store {
             }
             DomainEvent::GrantResolved { grant_id, state } => {
                 self.resolve_grant(grant_id, *state, changes)?;
+            }
+            DomainEvent::GrantFailed { grant_id, failure } => {
+                let grant = self
+                    .grants
+                    .get_mut(grant_id)
+                    .ok_or_else(|| ApplyError::UnknownGrant(grant_id.clone()))?;
+                grant.failure.get_or_insert(*failure);
+                changes.grants.insert(grant_id.clone());
             }
             DomainEvent::GrantRevoked { grant_id } => {
                 let grant = self
@@ -331,6 +337,7 @@ impl Store {
                 self.index.remove_moment(&moment, since);
             }
             self.bodies.remove(&id);
+            self.forget_surface(&id);
             changes.moments.insert(id);
         }
         self.index.remove_context(context_id, &context.participants);
@@ -355,6 +362,7 @@ impl Store {
         }
         let mut stored = moment.clone();
         keep_body(&mut self.bodies, &stored.id, &mut stored.kind);
+        self.track_surface(&moment.id, &stored.kind);
         self.index.add_moment(&stored, since);
         changes.moments.insert(moment.id.clone());
         self.moments.insert(moment.id.clone(), stored);
@@ -398,38 +406,8 @@ impl Store {
             self.index.change_kind(moment_id, &moment.kind, &kind);
             moment.kind = kind;
         }
-        changes.moments.insert(moment_id.clone());
-        Ok(())
-    }
-
-    fn patch_surface(
-        &mut self,
-        moment_id: &MomentId,
-        surface_id: &SurfaceId,
-        ops: &[SurfaceOp],
-        changes: &mut Changes,
-    ) -> Result<(), ApplyError> {
-        let moment = self
-            .moments
-            .get_mut(moment_id)
-            .ok_or_else(|| ApplyError::UnknownMoment(moment_id.clone()))?;
-        let mismatch = || ApplyError::SurfaceMismatch {
-            moment: moment_id.clone(),
-            surface: surface_id.clone(),
-        };
-        let MomentKind::AgentSurface(surface) = &mut moment.kind else {
-            return Err(mismatch());
-        };
-        if &surface.surface_id != surface_id {
-            return Err(mismatch());
-        }
-        let mut patched = surface.clone();
-        for op in ops {
-            apply_surface_op(&mut patched, op)?;
-        }
-        let old = MomentKind::AgentSurface(mem::replace(surface, patched));
-        if presented_grants(&old) != presented_grants(&moment.kind) {
-            self.index.change_kind(moment_id, &old, &moment.kind);
+        if let Some(kind) = kind {
+            self.track_surface(moment_id, kind);
         }
         changes.moments.insert(moment_id.clone());
         Ok(())

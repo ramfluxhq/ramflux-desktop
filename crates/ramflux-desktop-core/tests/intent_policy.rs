@@ -183,12 +183,14 @@ fn handling_intents_never_mutates_the_store() {
 #[test]
 fn surface_action_is_validated_against_the_surface() {
     let store = store_with_grants();
+    let shown = store.surface_hash(&MomentId::new("m-s")).cloned().expect("surface hash");
     let action = |id: &str, surface: &str| {
         Intent::human(IntentKind::SurfaceAction {
             moment_id: MomentId::new("m-s"),
             surface_id: SurfaceId::new(surface),
             action_id: id.to_owned(),
             values: serde_json::json!({}),
+            surface_hash: shown.clone(),
         })
     };
     let ok = single(handle_intent_now(&store, action("run", "s-1")).expect("ok"));

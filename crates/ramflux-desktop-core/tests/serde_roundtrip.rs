@@ -38,6 +38,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::NodeRemoved { .. } => "NodeRemoved",
         DomainEvent::DeviceUpserted(_) => "DeviceUpserted",
         DomainEvent::GrantRevoked { .. } => "GrantRevoked",
+        DomainEvent::GrantFailed { .. } => "GrantFailed",
         DomainEvent::StandingApprovalUpserted(_) => "StandingApprovalUpserted",
         DomainEvent::AuditAppended(_) => "AuditAppended",
         DomainEvent::IntegrationsUpdated(_) => "IntegrationsUpdated",
@@ -47,7 +48,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 29;
+const DOMAIN_EVENT_VARIANTS: usize = 30;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -191,7 +192,7 @@ fn all_moment_kinds() -> Vec<MomentKind> {
         MomentKind::PrivacyReveal(PrivacyRevealPayload {
             label: "Account number".to_owned(),
             revealed: Some(RevealRecord { by: ParticipantId::new("p-me"), at: Timestamp(9) }),
-            content: Some("1234".to_owned()),
+            content: Some(Protected::new("1234")),
         }),
         MomentKind::Handoff(HandoffPayload {
             from_device: ParticipantId::new("d-laptop"),
@@ -247,21 +248,26 @@ fn all_domain_events() -> Vec<DomainEvent> {
             moment_id: MomentId::new("m-2"),
             surface_id: SurfaceId::new("s-1"),
             ops: vec![
-                SurfaceOp::AppendBlocks(vec![Block {
-                    id: BlockId::new("b-2"),
-                    kind: BlockKind::Progress,
-                    data: json!({ "value": 0.5 }),
-                }]),
+                SurfaceOp::AppendBlocks(vec![Block::new(
+                    BlockId::new("b-2"),
+                    BlockKind::Progress,
+                    json!({ "value": 0.5 }),
+                )]),
                 SurfaceOp::ReplaceBlock(Block {
-                    id: BlockId::new("b-1"),
-                    kind: BlockKind::Markdown,
-                    data: json!({ "text": "# Title" }),
+                    redacted: true,
+                    version: 2,
+                    ..Block::new(
+                        BlockId::new("b-1"),
+                        BlockKind::Markdown,
+                        json!({ "text": "# Title" }),
+                    )
                 }),
                 SurfaceOp::ReplaceBlocks(Vec::new()),
                 SurfaceOp::AppendText { block_id: BlockId::new("b-1"), text: " more".into() },
                 SurfaceOp::SetActions(Vec::new()),
                 SurfaceOp::SetStreaming(false),
             ],
+            base_hash: Some(SurfaceHash::new("sha256:abc")),
         },
         DomainEvent::ObjectUpserted(Object {
             id: ObjectId::new("o-1"),
@@ -327,6 +333,10 @@ fn all_domain_events() -> Vec<DomainEvent> {
             last_seen: Some(Timestamp(4)),
         }),
         DomainEvent::GrantRevoked { grant_id: GrantId::new("g-1") },
+        DomainEvent::GrantFailed {
+            grant_id: GrantId::new("g-1"),
+            failure: GrantFailure::ArgumentsMismatch,
+        },
         DomainEvent::StandingApprovalUpserted(StandingApproval {
             id: StandingApprovalId::new("sa-1"),
             scope: "tool.calendar.read".to_owned(),
@@ -380,6 +390,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             surface_id: SurfaceId::new("s-1"),
             action_id: "run".into(),
             values: json!({ "count": 2 }),
+            surface_hash: SurfaceHash::new("sha256:abc"),
         },
         IntentKind::Approve { grant_id: GrantId::new("g-1") },
         IntentKind::Deny { grant_id: GrantId::new("g-1") },
@@ -428,7 +439,11 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
     vec![
         UiEventKind::SubmitMessage { text: "hi".into() },
         UiEventKind::AttachFile { path: "/tmp/a.txt".into() },
-        UiEventKind::ActionInvoked { action_id: "run".into(), values: json!(null) },
+        UiEventKind::ActionInvoked {
+            action_id: "run".into(),
+            values: json!(null),
+            surface_hash: SurfaceHash::new("sha256:abc"),
+        },
         UiEventKind::ApprovePressed,
         UiEventKind::DenyPressed,
         UiEventKind::RevealPressed,
@@ -579,14 +594,16 @@ fn every_ui_event_kind_round_trips_with_scope_path() {
 }
 
 #[test]
-fn unknown_block_kind_deserializes_to_fallback() {
+fn unknown_block_kind_deserializes_to_unsupported() {
     let block: Block = serde_json::from_value(json!({
         "id": "b-x",
         "kind": "HolographicChart",
         "data": { "series": [1, 2, 3] }
     }))
     .expect("unknown block kind must not fail");
-    assert_eq!(block.kind, BlockKind::Fallback);
+    assert_eq!(block.kind, BlockKind::Unsupported);
+    assert_eq!(block.version, DEFAULT_BLOCK_VERSION);
+    assert!(!block.redacted);
     assert_eq!(block.data["series"][2], 3);
 
     let known: BlockKind = serde_json::from_str("\"Approval\"").expect("known kind");
@@ -615,6 +632,7 @@ fn every_catalog_block_kind_round_trips() {
         BlockKind::ActionGroup,
         BlockKind::FilePreview,
         BlockKind::Fallback,
+        BlockKind::Unsupported,
     ];
     for kind in catalog {
         let text = serde_json::to_string(&kind).expect("serialize block kind");

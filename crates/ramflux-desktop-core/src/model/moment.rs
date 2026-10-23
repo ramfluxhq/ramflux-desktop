@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::conversation::Role;
 use super::grant::Risk;
+use super::protected::Protected;
 use super::surface::{Block, SurfaceAction};
 use crate::ids::{
     ContextId, GrantId, MomentId, ObjectId, ParticipantId, SurfaceId, TaskId, Timestamp,
@@ -243,9 +244,9 @@ pub struct PrivacyRevealPayload {
     /// Audit record once revealed.
     #[serde(default)]
     pub revealed: Option<RevealRecord>,
-    /// Revealed content; absent while masked.
+    /// Revealed content; absent while masked. Never printed by `Debug`.
     #[serde(default)]
-    pub content: Option<String>,
+    pub content: Option<Protected>,
 }
 
 /// Payload of a [`MomentKind::Handoff`] (continue on another device).

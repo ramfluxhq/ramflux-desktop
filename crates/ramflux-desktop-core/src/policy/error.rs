@@ -85,6 +85,23 @@ pub enum IntentError {
         /// Reason shown to the user.
         reason: String,
     },
+    /// The surface changed after the action was shown; the user reviews it again.
+    #[error("surface of moment {0} changed since it was shown")]
+    SurfaceChanged(MomentId),
+    /// A patch left the surface out of date; it waits for a full copy.
+    #[error("surface of moment {0} is out of date")]
+    SurfaceConflict(MomentId),
+    /// The surface exceeds a renderer limit and shows only its fallback.
+    #[error("surface of moment {0} exceeds a renderer limit")]
+    SurfaceOverLimit(MomentId),
+    /// The backend refused the grant; it is closed and never retried.
+    #[error("grant {grant} failed: {failure:?}")]
+    GrantFailed {
+        /// Grant.
+        grant: GrantId,
+        /// Why.
+        failure: crate::model::GrantFailure,
+    },
     /// Task already finished.
     #[error("task {0} is already finished")]
     TaskFinished(TaskId),

@@ -13,6 +13,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::conformance::SurfaceHash;
 use crate::ids::{
     AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
     StandingApprovalId, SurfaceId,
@@ -87,6 +88,8 @@ pub enum UiEventKind {
         /// Collected values.
         #[serde(default)]
         values: Value,
+        /// The surface version the action was rendered from.
+        surface_hash: SurfaceHash,
     },
     /// Approve pressed on an intervention or a task step.
     ApprovePressed,
@@ -294,7 +297,11 @@ mod tests {
     fn bubbling_builds_root_first_path() {
         let event = UiEvent::new(
             Scope::Block(BlockId::new("b1")),
-            UiEventKind::ActionInvoked { action_id: "run".into(), values: Value::Null },
+            UiEventKind::ActionInvoked {
+                action_id: "run".into(),
+                values: Value::Null,
+                surface_hash: SurfaceHash::new("sha256:00"),
+            },
         )
         .within(Scope::Surface(SurfaceId::new("s1")))
         .within(Scope::Moment(MomentId::new("m1")))

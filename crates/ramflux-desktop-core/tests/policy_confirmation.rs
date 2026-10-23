@@ -104,11 +104,13 @@ fn expired_grants_are_refused_at_expiry() {
 #[test]
 fn critical_surface_action_needs_human_confirmation() {
     let store = store();
+    let shown = store.surface_hash(&MomentId::new("m-risky")).cloned().expect("surface hash");
     let wipe = || IntentKind::SurfaceAction {
         moment_id: MomentId::new("m-risky"),
         surface_id: SurfaceId::new("s-risky"),
         action_id: "wipe".to_owned(),
         values: JsonValue::Null,
+        surface_hash: shown.clone(),
     };
     assert!(is_confirmation(&effects(&store, Intent::human(wipe()))));
     assert!(is_confirmation(&effects(&store, agent(wipe()))), "an agent proposal waits for a hold");
@@ -121,6 +123,7 @@ fn critical_surface_action_needs_human_confirmation() {
         surface_id: SurfaceId::new("s-risky"),
         action_id: "run".to_owned(),
         values: JsonValue::Null,
+        surface_hash: shown.clone(),
     };
     assert!(!is_confirmation(&effects(&store, Intent::human(run))));
 }

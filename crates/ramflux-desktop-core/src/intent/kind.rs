@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{GovernanceOp, SecretInput};
+use crate::conformance::SurfaceHash;
 use crate::ids::{
     AccountId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
     StandingApprovalId, SurfaceId, TaskId,
@@ -93,6 +94,9 @@ pub enum IntentKind {
         /// Form values collected by the surface.
         #[serde(default)]
         values: Value,
+        /// The surface version the action was shown on. Policy refuses the
+        /// intent when the surface changed since.
+        surface_hash: SurfaceHash,
     },
     /// Approve a pending grant.
     Approve {

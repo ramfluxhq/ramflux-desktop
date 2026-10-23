@@ -13,6 +13,7 @@
 //! - [`conversation`]: participants and contexts.
 //! - [`moment`]: moments, their lifecycle and every payload kind.
 //! - [`surface`]: agent surface blocks and actions.
+//! - [`protected`]: revealed protected text that never prints.
 //! - [`object`]: transferable objects.
 //! - [`grant`]: grants, standing approvals and the audit trail.
 //! - [`task`]: multi-step tasks.
@@ -28,6 +29,7 @@ mod integrations;
 mod listing;
 mod moment;
 mod object;
+mod protected;
 mod surface;
 mod task;
 
@@ -39,7 +41,7 @@ pub use backend::{Capabilities, DaemonInfo, EffectFailure, FailureCode};
 pub use conversation::{
     Context, ContextKind, Disappearing, Participant, ParticipantKind, Role, SafetyState,
 };
-pub use grant::{AuditEntry, Grant, GrantState, Risk, StandingApproval};
+pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingApproval};
 pub use integrations::{A2iItem, Integrations, McpServer};
 pub use listing::{ListState, Listing};
 pub use moment::{
@@ -50,5 +52,6 @@ pub use moment::{
     TaskProgressPayload,
 };
 pub use object::{Direction, Object, TransferState};
-pub use surface::{Block, BlockKind, SurfaceAction};
+pub use protected::Protected;
+pub use surface::{Block, BlockKind, DEFAULT_BLOCK_VERSION, SurfaceAction};
 pub use task::{Task, TaskStep};

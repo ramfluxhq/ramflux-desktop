@@ -137,13 +137,14 @@ fn surface_patches_apply_in_order() {
             surface_id: SurfaceId::new("s-1"),
             ops: vec![
                 SurfaceOp::AppendText { block_id: BlockId::new("b-text"), text: ", world".into() },
-                SurfaceOp::AppendBlocks(vec![Block {
-                    id: BlockId::new("b-progress"),
-                    kind: BlockKind::Progress,
-                    data: json!({ "value": 1.0 }),
-                }]),
+                SurfaceOp::AppendBlocks(vec![Block::new(
+                    BlockId::new("b-progress"),
+                    BlockKind::Progress,
+                    json!({ "value": 1.0 }),
+                )]),
                 SurfaceOp::SetStreaming(false),
             ],
+            base_hash: None,
         },
     );
     let moment = feed.store.moment(&MomentId::new("m-s")).expect("moment");
@@ -166,6 +167,7 @@ fn failing_surface_patch_is_atomic() {
                 SurfaceOp::SetStreaming(false),
                 SurfaceOp::AppendText { block_id: BlockId::new("missing"), text: "x".into() },
             ],
+            base_hash: None,
         },
     );
     assert_eq!(result, Err(ApplyError::UnknownBlock(BlockId::new("missing"))));
@@ -179,6 +181,7 @@ fn failing_surface_patch_is_atomic() {
             moment_id: MomentId::new("m-s"),
             surface_id: SurfaceId::new("s-other"),
             ops: Vec::new(),
+            base_hash: None,
         },
     );
     assert!(matches!(wrong, Err(ApplyError::SurfaceMismatch { .. })));

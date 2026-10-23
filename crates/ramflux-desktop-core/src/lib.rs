@@ -14,11 +14,13 @@
 //! - [`selectors`] derive read-only views.
 //! - [`handle_intent`] validates intents and applies policy without mutating the store.
 //! - [`Source`] executes effects and yields events.
+//! - [`conformance`] checks agent surfaces against a renderer profile.
 //!
 //! See `docs/contract.md` for the full description.
 
 #![forbid(unsafe_code)]
 
+pub mod conformance;
 pub mod event;
 pub mod ids;
 pub mod intent;
@@ -29,6 +31,9 @@ pub mod source;
 pub mod store;
 pub mod ui_event;
 
+pub use conformance::{
+    RendererError, RendererErrorKind, RendererProfile, SurfaceHash, SurfaceVerdict, surface_hash,
+};
 pub use event::{DomainEvent, EVENT_SCHEMA, EventEnvelope, SourceStatus, SurfaceOp};
 pub use ids::{
     AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,

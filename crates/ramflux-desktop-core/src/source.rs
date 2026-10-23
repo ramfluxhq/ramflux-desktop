@@ -7,6 +7,7 @@
 //! mock and an SDK-backed implementation both satisfy this trait; neither the
 //! trait nor core depends on an async runtime.
 
+use crate::conformance::RendererProfile;
 use crate::event::EventEnvelope;
 use crate::ids::{ContextId, MomentId, Timestamp};
 use crate::intent::Effect;
@@ -28,4 +29,9 @@ pub trait Source {
     /// does so (as `MomentUpdated` carrying the message payload); others
     /// ignore it, and the view keeps its placeholder.
     fn request_bodies(&mut self, _moments: &[MomentId]) {}
+
+    /// What the renderer can show (capability negotiation). Given once when
+    /// the source is attached; a source that talks to surface producers
+    /// sends it on, others keep or ignore it.
+    fn renderer_profile(&mut self, _profile: &RendererProfile) {}
 }

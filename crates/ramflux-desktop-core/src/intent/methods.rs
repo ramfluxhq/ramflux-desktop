@@ -19,6 +19,8 @@ pub const OBJECT_SAVE: &str = "object.save";
 pub const OBJECT_RETRY: &str = "object.transfer.resume";
 /// Invoke a surface action.
 pub const SURFACE_ACTION: &str = "surface.action";
+/// Report what a renderer could not show (to the surface producer).
+pub const RENDERER_ERROR: &str = "surface.renderer_error";
 /// Approve a grant.
 pub const GRANT_APPROVE: &str = "grant.approve";
 /// Deny a grant.

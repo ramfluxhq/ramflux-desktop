@@ -81,6 +81,7 @@ pub fn grant(id: &str, risk: Risk) -> Grant {
         args_hash: format!("hash-{id}"),
         expiry: None,
         state: GrantState::Pending,
+        failure: None,
     }
 }
 
@@ -107,11 +108,11 @@ pub fn surface(id: &str) -> MomentKind {
     MomentKind::AgentSurface(AgentSurfacePayload {
         surface_id: SurfaceId::new(id),
         fallback_text: "Agent output".to_owned(),
-        blocks: vec![Block {
-            id: BlockId::new("b-text"),
-            kind: BlockKind::Text,
-            data: serde_json::json!({ "text": "Hello" }),
-        }],
+        blocks: vec![Block::new(
+            BlockId::new("b-text"),
+            BlockKind::Text,
+            serde_json::json!({ "text": "Hello" }),
+        )],
         actions: vec![
             SurfaceAction {
                 id: "run".to_owned(),

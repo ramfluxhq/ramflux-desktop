@@ -7,6 +7,7 @@
 use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
+use crate::conformance::{Limits, SurfaceHash, over_limit};
 use crate::ids::{GrantId, MomentId};
 use crate::intent::{IntentKind, methods};
 use crate::model::{Grant, GrantState, Lifecycle, MomentKind, Risk, SafetyState};
@@ -14,8 +15,8 @@ use crate::model::{Grant, GrantState, Lifecycle, MomentKind, Risk, SafetyState};
 /// Decides moment-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
     Some(match kind {
-        IntentKind::SurfaceAction { moment_id, surface_id, action_id, values } => {
-            surface_action(p, moment_id, surface_id, action_id).map(|risk| {
+        IntentKind::SurfaceAction { moment_id, surface_id, action_id, values, surface_hash } => {
+            surface_action(p, moment_id, surface_id, action_id, surface_hash).map(|risk| {
                 p.gated(
                     risk,
                     methods::SURFACE_ACTION,
@@ -24,6 +25,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                         "surface_id": surface_id,
                         "action_id": action_id,
                         "values": values,
+                        "surface_hash": surface_hash,
                     }),
                 )
             })
@@ -124,16 +126,29 @@ fn needs_me(moment_id: &MomentId, lifecycle: Lifecycle) -> Result<(), IntentErro
 }
 
 /// Validates a surface action and returns its declared risk.
+///
+/// The action must have been shown on the current surface version (`shown`),
+/// on a surface that is not in conflict and renders within the limits.
 fn surface_action(
     p: &Policy<'_>,
     moment_id: &MomentId,
     surface_id: &crate::ids::SurfaceId,
     action_id: &str,
+    shown: &SurfaceHash,
 ) -> Result<Risk, IntentError> {
     let moment = p.moment(moment_id)?;
     let MomentKind::AgentSurface(surface) = &moment.kind else {
         return Err(wrong_kind(moment_id, "AgentSurface"));
     };
+    if p.store.surface_conflict(moment_id) {
+        return Err(IntentError::SurfaceConflict(moment_id.clone()));
+    }
+    if over_limit(surface, &Limits::DESKTOP).is_some() {
+        return Err(IntentError::SurfaceOverLimit(moment_id.clone()));
+    }
+    if p.store.surface_hash(moment_id) != Some(shown) {
+        return Err(IntentError::SurfaceChanged(moment_id.clone()));
+    }
     let action = surface
         .actions
         .iter()
@@ -153,6 +168,9 @@ fn surface_action(
 
 fn open_grant<'a>(p: &Policy<'a>, id: &GrantId) -> Result<&'a Grant, IntentError> {
     let grant = p.store.grant(id).ok_or_else(|| IntentError::UnknownGrant(id.clone()))?;
+    if let Some(failure) = grant.failure {
+        return Err(IntentError::GrantFailed { grant: id.clone(), failure });
+    }
     if grant.state != GrantState::Pending {
         return Err(IntentError::GrantNotPending(id.clone()));
     }

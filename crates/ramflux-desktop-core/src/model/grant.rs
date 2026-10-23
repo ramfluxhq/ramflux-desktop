@@ -47,6 +47,27 @@ pub enum GrantState {
     Revoked,
 }
 
+/// Why the backend refused a grant decision, or a grant stopped being
+/// usable. A failed grant is closed: it is never approved or retried from
+/// the client; the agent has to request it again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GrantFailure {
+    /// The single-use approval was already used or decided elsewhere.
+    AlreadyUsed,
+    /// The grant expired before it could be used.
+    Expired,
+    /// The arguments bound by the backend differ from the ones reviewed.
+    ArgumentsMismatch,
+    /// A decision was sent again for an approval already decided here.
+    Replay,
+    /// The backend rejected the approval signature.
+    SignatureRejected,
+    /// The request needs an approval signed on the approving device.
+    SignedApprovalRequired,
+    /// The backend invalidated the grant (revoked, or its tool set changed).
+    Invalidated,
+}
+
 /// An authorization grant bound to exact arguments.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Grant {
@@ -67,6 +88,9 @@ pub struct Grant {
     /// Decision state.
     #[serde(default)]
     pub state: GrantState,
+    /// Set when the backend refused it (fail closed); never cleared.
+    #[serde(default)]
+    pub failure: Option<GrantFailure>,
 }
 
 /// A standing approval: a bounded, pre-authorized policy for repeated requests.

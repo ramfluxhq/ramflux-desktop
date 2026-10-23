@@ -5,14 +5,15 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::conformance::SurfaceHash;
 use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
     Account, AuditEntry, Block, Capabilities, Context, DaemonInfo, Device, Disappearing,
-    EffectFailure, Grant, GrantState, Integrations, Lifecycle, Listing, LockState, Moment,
-    MomentKind, Node, NodeHealth, NodeProbe, Object, Participant, StandingApproval, SurfaceAction,
-    Task,
+    EffectFailure, Grant, GrantFailure, GrantState, Integrations, Lifecycle, Listing, LockState,
+    Moment, MomentKind, Node, NodeHealth, NodeProbe, Object, Participant, StandingApproval,
+    SurfaceAction, Task,
 };
 
 /// Schema tag carried by every envelope. The store rejects any other value.
@@ -116,6 +117,11 @@ pub enum DomainEvent {
         surface_id: SurfaceId,
         /// Operations applied in order, all or nothing.
         ops: Vec<SurfaceOp>,
+        /// The surface version the patch was made against. When set and
+        /// not the current version, the patch is not applied and the surface
+        /// is marked in conflict until a full copy replaces it.
+        #[serde(default)]
+        base_hash: Option<SurfaceHash>,
     },
     /// Object inserted or replaced.
     ObjectUpserted(Object),
@@ -187,6 +193,14 @@ pub enum DomainEvent {
     },
     /// Device inserted or replaced (revocation keeps the record).
     DeviceUpserted(Device),
+    /// The backend refused a decision on the grant, or the grant stopped
+    /// being usable. The grant is closed; it is never retried from here.
+    GrantFailed {
+        /// Grant.
+        grant_id: GrantId,
+        /// Why.
+        failure: GrantFailure,
+    },
     /// An approved grant was revoked before use.
     GrantRevoked {
         /// Grant.
