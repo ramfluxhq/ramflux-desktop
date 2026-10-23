@@ -3,110 +3,175 @@
 
 //! The entry page (P0): daemon, then node, then account.
 //!
-//! The page is driven only by the store: the step comes from
-//! [`crate::route::page_for`], node and account details from the store. The
-//! unlock form is the one place a secret is typed. The secret leaves the
-//! input as a [`SecretInput`] through the [`UnlockHandler`] (never as a UI
-//! event) and the input is cleared immediately.
+//! The step comes from the store ([`crate::route::page_for`]); the user may
+//! look back at the node step from the account step (view-local). Every path
+//! in is enabled: confirm a discovered node or add one by URL (NODE-01 card,
+//! trust-on-first-use pins need a hold), unlock, create an account, join as
+//! a new device, or restore a backup.
+//!
+//! Non-secret decisions bubble as UI events through the root sink (scope
+//! `Panel(entry)`). Secrets are typed only here: they leave their masked
+//! input as a [`ramflux_desktop_core::SecretInput`] straight into
+//! [`IntentRoot::submit_secret`], never as a UI event, and the input is
+//! cleared immediately.
+//!
+//! - `node_step`: node cards and the add-node form.
+//! - `account_step`: unlock, create, join and restore forms.
 
+mod account_step;
 mod node_card;
-
-use std::rc::Rc;
+mod node_step;
 
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::stepper::{Stepper, StepperItem};
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Sizable as _, h_flex, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{
-    App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window, div, rems,
-};
-use ramflux_desktop_core::{Account, AccountId, LockState, SecretInput, Store};
+use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window, div, rems};
+use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
 
 use crate::app::{StoreEvent, StoreHandle};
-use crate::i18n::{tr, tr_args};
-use crate::ids::domain_id;
+use crate::bubble::EventSink;
+use crate::i18n::tr;
+use crate::root::{ConfirmHost, IntentRoot};
 use crate::route::{EntryStep, Page, page_for};
 
-use node_card::NodeCard;
+pub use node_card::NodeCard;
 
-/// Receives an unlock request with its one-shot secret.
-pub type UnlockHandler = Rc<dyn Fn(AccountId, SecretInput, &mut Window, &mut App)>;
+/// Which account path the account step shows (view-local).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountPath {
+    /// Create a new identity.
+    Create,
+    /// Join an existing identity as a new device.
+    Join,
+    /// Restore from an encrypted backup.
+    Restore,
+}
+
+/// The text inputs of the entry page.
+struct Inputs {
+    passphrase: Entity<InputState>,
+    node_url: Entity<InputState>,
+    label: Entity<InputState>,
+    new_secret: Entity<InputState>,
+    device_label: Entity<InputState>,
+    code: Entity<InputState>,
+    backup_path: Entity<InputState>,
+    backup_secret: Entity<InputState>,
+}
+
+impl Inputs {
+    fn new(window: &mut Window, cx: &mut App) -> Self {
+        let plain = |key: &str, window: &mut Window, cx: &mut App| {
+            let placeholder = tr(key);
+            cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
+        };
+        let masked = |key: &str, window: &mut Window, cx: &mut App| {
+            let placeholder = tr(key);
+            cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(placeholder))
+        };
+        Self {
+            passphrase: masked("entry.account.passphrase", window, cx),
+            node_url: plain("entry.node.url_placeholder", window, cx),
+            label: plain("entry.create.label_placeholder", window, cx),
+            new_secret: masked("entry.create.passphrase", window, cx),
+            device_label: plain("entry.join.device_placeholder", window, cx),
+            code: masked("entry.join.code", window, cx),
+            backup_path: plain("entry.restore.path_placeholder", window, cx),
+            backup_secret: masked("entry.restore.passphrase", window, cx),
+        }
+    }
+}
 
 /// The entry page view.
 pub struct EntryPage {
     store: Entity<StoreHandle>,
-    passphrase: Entity<InputState>,
-    unlocking: Option<AccountId>,
-    on_unlock: UnlockHandler,
+    root: Entity<IntentRoot>,
+    sink: EventSink,
+    inputs: Inputs,
+    path: AccountPath,
+    kind: AccountKind,
+    node: Option<NodeId>,
+    review_nodes: bool,
+    submitted: Option<AccountId>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl EntryPage {
-    /// An entry page reading `store` and sending unlock requests to `on_unlock`.
+    /// An entry page reading `store` and emitting through `root`.
     pub fn new(
         store: Entity<StoreHandle>,
-        on_unlock: UnlockHandler,
+        root: Entity<IntentRoot>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let passphrase = cx.new(|cx| {
-            InputState::new(window, cx).masked(true).placeholder(tr("entry.account.passphrase"))
-        });
+        let inputs = Inputs::new(window, cx);
         let subscriptions = vec![
-            cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
+            cx.subscribe(&store, |this, _, event: &StoreEvent, cx| {
                 if let StoreEvent::Changed(changes) = event
                     && changes.touches_status()
                 {
-                    let still_locked = this.unlocking.as_ref().is_some_and(|id| {
-                        store
-                            .read(cx)
-                            .store()
-                            .account(id)
-                            .is_some_and(|a| a.lock_state == LockState::Locked)
-                    });
-                    if !still_locked {
-                        this.unlocking = None;
-                    }
+                    this.submitted = None;
                     cx.notify();
                 }
             }),
-            cx.subscribe_in(&passphrase, window, |this, _, event, window, cx| {
+            cx.observe(&root, |_, _, cx| cx.notify()),
+            cx.subscribe_in(&inputs.passphrase, window, |this, _, event, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     this.unlock(window, cx);
                 }
             }),
+            cx.subscribe_in(&inputs.node_url, window, |this, _, event, window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    this.add_node(window, cx);
+                }
+            }),
         ];
-        Self { store, passphrase, unlocking: None, on_unlock, _subscriptions: subscriptions }
-    }
-
-    /// The passphrase input.
-    pub fn passphrase(&self) -> &Entity<InputState> {
-        &self.passphrase
-    }
-
-    fn locked_account(store: &Store) -> Option<&Account> {
-        store.accounts().find(|a| a.lock_state == LockState::Locked)
-    }
-
-    /// Sends the typed passphrase for the locked account and clears the input.
-    pub fn unlock(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(account) = Self::locked_account(self.store.read(cx).store()).map(|a| a.id.clone())
-        else {
-            return;
-        };
-        let secret = SecretInput::new(self.passphrase.read(cx).value().to_string());
-        self.passphrase.update(cx, |input, cx| input.set_value("", window, cx));
-        if secret.is_empty() {
-            return;
+        Self {
+            sink: IntentRoot::sink(&root).scoped(Scope::Panel("entry".into())),
+            store,
+            root,
+            inputs,
+            path: AccountPath::Create,
+            kind: AccountKind::HumanInteractive,
+            node: None,
+            review_nodes: false,
+            submitted: None,
+            _subscriptions: subscriptions,
         }
-        self.unlocking = Some(account.clone());
-        cx.notify();
-        (self.on_unlock)(account, secret, window, cx);
+    }
+
+    /// The unlock passphrase input.
+    pub fn passphrase(&self) -> &Entity<InputState> {
+        &self.inputs.passphrase
+    }
+
+    /// Every masked secret input, for tests that check secrets are cleared.
+    pub fn secret_inputs(&self) -> [&Entity<InputState>; 4] {
+        [
+            &self.inputs.passphrase,
+            &self.inputs.new_secret,
+            &self.inputs.code,
+            &self.inputs.backup_secret,
+        ]
+    }
+
+    /// The step shown: the store's step, or the node step while the user
+    /// reviews nodes from the account step.
+    pub fn step(&self, cx: &App) -> EntryStep {
+        match page_for(self.store.read(cx).store()) {
+            Page::Entry(EntryStep::Account) if self.review_nodes && !self.has_account(cx) => {
+                EntryStep::Node
+            }
+            Page::Entry(step) => step,
+            Page::Workspace => EntryStep::Account,
+        }
+    }
+
+    fn has_account(&self, cx: &App) -> bool {
+        self.store.read(cx).store().accounts().next().is_some()
     }
 
     fn render_daemon(&self, cx: &App) -> impl IntoElement {
@@ -119,147 +184,11 @@ impl EntryPage {
             ),
         )
     }
-
-    fn render_node(&self, store: &Store, cx: &App) -> impl IntoElement {
-        let nodes: Vec<_> = store.nodes().cloned().collect();
-        v_flex()
-            .id("entry-node")
-            .gap_3()
-            .when(nodes.is_empty(), |step| {
-                step.child(
-                    h_flex()
-                        .gap_3()
-                        .child(Spinner::new())
-                        .child(div().text_sm().child(tr("entry.node.waiting"))),
-                )
-            })
-            .children(nodes.into_iter().map(NodeCard::new))
-            .when(store.nodes().next().is_some(), |step| {
-                step.child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(tr("entry.node.joining")),
-                )
-            })
-    }
-
-    fn render_account(&self, store: &Store, cx: &mut Context<Self>) -> impl IntoElement {
-        let accounts: Vec<Account> = store.accounts().cloned().collect();
-        let locked = Self::locked_account(store).map(|a| a.id.clone());
-        let unlocking = self.unlocking.is_some();
-        let muted = cx.theme().muted_foreground;
-        let border = cx.theme().border;
-        let radius = cx.theme().radius;
-        let rows = accounts.into_iter().map(move |account| {
-            let state = tr(match account.lock_state {
-                LockState::Locked => "entry.account.locked",
-                LockState::Unlocked => "entry.account.unlocked",
-            });
-            let detail = tr_args(
-                "entry.account.detail",
-                &[
-                    ("node", account.node_id.as_ref().map_or("", |n| n.as_str())),
-                    ("device", account.device_id.as_deref().unwrap_or("")),
-                ],
-            );
-            h_flex()
-                .id(domain_id("account", &account.id))
-                .gap_3()
-                .px_3()
-                .py_2()
-                .border_1()
-                .border_color(border)
-                .rounded(radius)
-                .child(
-                    v_flex()
-                        .flex_1()
-                        .min_w_0()
-                        .child(div().text_sm().font_semibold().child(account.label.clone()))
-                        .child(div().text_xs().text_color(muted).child(detail)),
-                )
-                .child(div().text_xs().text_color(muted).child(state))
-        });
-        v_flex()
-            .id("entry-account")
-            .gap_3()
-            .children(rows)
-            .when(locked.is_some(), |step| {
-                step.child(
-                    v_flex()
-                        .gap_2()
-                        .child(
-                            Input::new(&self.passphrase)
-                                .id("passphrase")
-                                .aria_label(tr("entry.account.passphrase"))
-                                .mask_toggle()
-                                .disabled(unlocking),
-                        )
-                        .child(
-                            h_flex().gap_2().child(
-                                Button::new("unlock")
-                                    .primary()
-                                    .icon(IconName::Check)
-                                    .label(tr(if unlocking {
-                                        "entry.account.unlocking"
-                                    } else {
-                                        "entry.account.unlock"
-                                    }))
-                                    .loading(unlocking)
-                                    .disabled(unlocking)
-                                    .on_click(
-                                        cx.listener(|this, _, window, cx| this.unlock(window, cx)),
-                                    ),
-                            ),
-                        ),
-                )
-            })
-            .child(
-                v_flex()
-                    .gap_2()
-                    .pt_2()
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("account-create")
-                                    .outline()
-                                    .small()
-                                    .label(tr("entry.account.create"))
-                                    .disabled(true),
-                            )
-                            .child(
-                                Button::new("account-link")
-                                    .outline()
-                                    .small()
-                                    .label(tr("entry.account.link"))
-                                    .disabled(true),
-                            )
-                            .child(
-                                Button::new("account-restore")
-                                    .outline()
-                                    .small()
-                                    .label(tr("entry.account.restore"))
-                                    .disabled(true),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(tr("entry.account.pending_contract")),
-                    ),
-            )
-    }
 }
 
 impl Render for EntryPage {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let store = self.store.read(cx).store().clone();
-        let step = match page_for(&store) {
-            Page::Entry(step) => step,
-            Page::Workspace => EntryStep::Account,
-        };
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let step = self.step(cx);
         let selected = match step {
             EntryStep::Daemon => 0,
             EntryStep::Node => 1,
@@ -267,25 +196,29 @@ impl Render for EntryPage {
         };
         let content = match step {
             EntryStep::Daemon => self.render_daemon(cx).into_any_element(),
-            EntryStep::Node => self.render_node(&store, cx).into_any_element(),
-            EntryStep::Account => self.render_account(&store, cx).into_any_element(),
+            EntryStep::Node => self.render_node_step(cx).into_any_element(),
+            EntryStep::Account => self.render_account_step(window, cx).into_any_element(),
         };
-        let title: SharedString = tr("entry.title");
-        div().id("entry").size_full().overflow_y_scroll().bg(cx.theme().background).child(
+        let root = self.root.read(cx);
+        let strip = (root.host() == ConfirmHost::Entry).then(|| root.confirm_strip().clone());
+        let scroll = div().id("entry").flex_1().min_h_0().overflow_y_scroll().child(
             v_flex()
                 .mx_auto()
                 .w_full()
-                .max_w(rems(36.))
+                .max_w(rems(38.))
                 .gap_6()
                 .px_6()
                 .py_12()
                 .child(
-                    v_flex().gap_1().child(div().text_xl().font_semibold().child(title)).child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(tr("entry.subtitle")),
-                    ),
+                    v_flex()
+                        .gap_1()
+                        .child(div().text_xl().font_semibold().child(tr("entry.title")))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(tr("entry.subtitle")),
+                        ),
                 )
                 .child(Stepper::new("entry-steps").selected_index(selected).items([
                     StepperItem::new().child(tr("entry.step.daemon")),
@@ -293,6 +226,10 @@ impl Render for EntryPage {
                     StepperItem::new().child(tr("entry.step.account")),
                 ]))
                 .child(content),
+        );
+        // The hold strip stays in view at the foot of the page.
+        v_flex().size_full().bg(cx.theme().background).child(scroll).children(
+            strip.map(|strip| div().mx_auto().w_full().max_w(rems(38.)).pb_3().child(strip)),
         )
     }
 }
