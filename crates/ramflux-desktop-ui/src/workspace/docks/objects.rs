@@ -20,7 +20,7 @@ use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr};
 use crate::ids::domain_id;
-use crate::moments::DOWNLOADS;
+use crate::moments::save_with_dialog;
 
 const COLUMNS: [(&str, &str, f32); 5] = [
     ("name", "dock.objects.name", 128.),
@@ -83,11 +83,14 @@ fn actions(object: &Object, sink: &EventSink) -> AnyElement {
         (TransferState::Queued, Direction::Inbound) => {
             Some(("pull", "moment.object.pull", ObjectAction::Pull))
         }
-        (TransferState::Complete, Direction::Inbound) if object.saved_to.is_none() => Some((
-            "save",
-            "moment.object.save",
-            ObjectAction::Save { path: format!("{DOWNLOADS}/{}", object.name) },
-        )),
+        (TransferState::Complete, Direction::Inbound) if object.saved_to.is_none() => {
+            return Button::new(domain_id("objects-save", &object.id))
+                .xsmall()
+                .outline()
+                .label(tr("moment.object.save"))
+                .on_click(save_with_dialog(sink, object))
+                .into_any_element();
+        }
         (TransferState::Failed { .. }, _) => {
             Some(("retry", "moment.object.retry", ObjectAction::Retry))
         }

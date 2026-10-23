@@ -15,10 +15,8 @@ use gpui_kit::{App, Entity, SharedString, Window};
 use ramflux_desktop_core::{Account, IntentKind, LockState, SecretInput, UiEventKind};
 
 use super::{SectionContext, SettingsSection, note};
+use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr};
-
-/// Folder offered for backups until a native file dialog is wired.
-pub const BACKUP_DIR: &str = "~/Documents";
 
 /// The masked inputs of passphrase rotation, owned by the settings page.
 pub struct RotateInputs {
@@ -78,7 +76,7 @@ pub fn page(context: &SectionContext, rotate: &RotateInputs, cx: &App) -> Settin
             let lock = sink.clone();
             let export = sink.clone();
             let lock_id = account.id.clone();
-            let path = format!("{BACKUP_DIR}/ramflux-{}.backup", account.id);
+            let suggested = format!("ramflux-{}.backup", account.id);
             h_flex()
                 .gap_2()
                 .child(
@@ -100,13 +98,19 @@ pub fn page(context: &SectionContext, rotate: &RotateInputs, cx: &App) -> Settin
                         .outline()
                         .label(tr("settings.account.export"))
                         .on_click(move |_, window, cx| {
-                            export.emit(
-                                UiEventKind::ExportBackupRequested {
-                                    account_id: account.id.clone(),
-                                    path: path.clone(),
-                                },
+                            let (export, account_id) = (export.clone(), account.id.clone());
+                            file_dialog::save_as(
+                                StartDir::Documents,
+                                &suggested,
                                 window,
                                 cx,
+                                move |path, window, cx| {
+                                    export.emit(
+                                        UiEventKind::ExportBackupRequested { account_id, path },
+                                        window,
+                                        cx,
+                                    );
+                                },
                             );
                         }),
                 )

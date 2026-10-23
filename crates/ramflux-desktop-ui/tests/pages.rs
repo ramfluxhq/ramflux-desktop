@@ -129,12 +129,18 @@ fn entry_joins_as_a_new_device(cx: &mut TestAppContext) {
 fn entry_restores_a_backup_then_locks_and_unlocks(cx: &mut TestAppContext) {
     let (handle, shell) = harbor_confirmed(cx);
     click(cx, handle, "entry-path-2");
-    type_into(cx, handle, "backup-path", "~/Documents/ramflux.backup");
+    click(cx, handle, "backup-browse");
+    cx.simulate_path_prompt_response(|options| {
+        assert!(options.files && !options.multiple);
+        Some(vec!["/backups/ramflux.backup".into()])
+    });
+    cx.run_until_parked();
     type_into(cx, handle, "backup-secret", "river stone lantern");
     click(cx, handle, "account-restore");
     assert_eq!(
         last_body(cx, &shell, methods::ACCOUNT_BACKUP_IMPORT)["path"],
-        "~/Documents/ramflux.backup"
+        "/backups/ramflux.backup",
+        "the native dialog filled the path input"
     );
     advance(cx, 700);
     assert_eq!(page(cx, &shell), Page::Workspace);
@@ -195,8 +201,20 @@ fn settings_devices_revoke_through_the_hold_and_sync(cx: &mut TestAppContext) {
     assert!(with_store(cx, &shell, |s| s
         .device(&DeviceId::new("dev-phone-01"))
         .is_some_and(|d| d.revoked)));
+    let before = effects(cx, &shell).len();
     click(cx, handle, "sync-export");
+    cx.simulate_new_path_selection(|_| None);
+    cx.run_until_parked();
+    assert_eq!(effects(cx, &shell).len(), before, "a cancelled dialog exports nothing");
+    click(cx, handle, "sync-export");
+    cx.simulate_new_path_selection(|dir| Some(dir.join("sync.bundle")));
+    cx.run_until_parked();
     assert_eq!(effects(cx, &shell).last().map(String::as_str), Some(methods::DEVICE_SYNC_EXPORT));
+    assert!(
+        last_body(cx, &shell, methods::DEVICE_SYNC_EXPORT)["path"]
+            .as_str()
+            .is_some_and(|p| p.ends_with("/sync.bundle"))
+    );
 }
 
 #[gpui_kit::test]
@@ -219,8 +237,11 @@ fn settings_rotate_passphrase_and_export_diagnostics(cx: &mut TestAppContext) {
     settings(cx, handle, &shell, SettingsSection::Diagnostics);
     assert!(exists(cx, handle, "diagnostics-preview"));
     click(cx, handle, "diagnostics-export");
-    assert_eq!(
-        last_body(cx, &shell, methods::DIAGNOSTICS_EXPORT)["path"],
-        "~/Documents/ramflux-diagnostics.txt"
+    cx.simulate_new_path_selection(|dir| Some(dir.join("diag.txt")));
+    cx.run_until_parked();
+    assert!(
+        last_body(cx, &shell, methods::DIAGNOSTICS_EXPORT)["path"]
+            .as_str()
+            .is_some_and(|p| p.ends_with("/diag.txt"))
     );
 }

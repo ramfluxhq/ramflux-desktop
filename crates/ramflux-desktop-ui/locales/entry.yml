@@ -100,6 +100,9 @@ entry:
     path_placeholder:
       en: "~/Documents/ramflux.backup"
       zh-CN: "~/Documents/ramflux.backup"
+    browse:
+      en: "Choose…"
+      zh-CN: "选择…"
     passphrase:
       en: "Backup passphrase"
       zh-CN: "备份口令"

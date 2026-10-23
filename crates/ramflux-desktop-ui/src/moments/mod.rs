@@ -46,7 +46,7 @@ use crate::ids::domain_id;
 
 pub use conflict::compare_patch as conflict_patch;
 pub use intervention::{DECISION_BLOCK, DETAILS_BLOCK};
-pub use object_transfer::DOWNLOADS;
+pub use object_transfer::save_with_dialog;
 
 /// Everything a moment references, resolved from the store.
 #[derive(Debug, Clone, Default, PartialEq)]

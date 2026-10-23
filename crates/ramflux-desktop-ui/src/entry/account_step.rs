@@ -20,6 +20,7 @@ use ramflux_desktop_core::{
 };
 
 use super::{AccountPath, EntryPage};
+use crate::file_dialog;
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 
@@ -339,16 +340,38 @@ impl EntryPage {
             .into_any_element()
     }
 
+    /// Picks the backup file with the native open dialog and fills the
+    /// path input (view-local; nothing is submitted).
+    fn browse_backup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let input = self.inputs.backup_path.clone();
+        file_dialog::open_file(tr("entry.restore.path"), window, cx, move |path, window, cx| {
+            input.update(cx, |input, cx| input.set_value(path, window, cx));
+        });
+    }
+
     fn render_restore(&self, cx: &mut Context<Self>) -> AnyElement {
         v_flex()
             .gap_3()
-            .child(Self::field(
-                "entry.restore.path",
-                &self.inputs.backup_path,
-                "backup-path",
-                false,
-                cx,
-            ))
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_end()
+                    .child(div().flex_1().min_w_0().child(Self::field(
+                        "entry.restore.path",
+                        &self.inputs.backup_path,
+                        "backup-path",
+                        false,
+                        cx,
+                    )))
+                    .child(
+                        Button::new("backup-browse")
+                            .outline()
+                            .label(tr("entry.restore.browse"))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.browse_backup(window, cx);
+                            })),
+                    ),
+            )
             .child(Self::field(
                 "entry.restore.passphrase",
                 &self.inputs.backup_secret,

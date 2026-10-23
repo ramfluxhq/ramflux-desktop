@@ -156,8 +156,13 @@ fn object_transfers_pull_preview_and_save(cx: &mut TestAppContext) {
     assert!(exists_in(cx, handle, "moment-m-team-specs", "object-preview-text"));
     assert_eq!(effects(cx, &shell).len(), before, "preview is view-local");
     click_in(cx, handle, "moment-m-team-specs", "object-save");
+    assert!(cx.did_prompt_for_new_path(), "saving asks where with the native dialog");
+    assert_eq!(effects(cx, &shell).len(), before, "nothing is saved before a path is chosen");
+    cx.simulate_new_path_selection(|dir| Some(dir.join("lighting-specs.pdf")));
+    cx.run_until_parked();
     let body = last_body(cx, &shell, methods::OBJECT_SAVE);
-    assert_eq!(body["path"], "~/Downloads/lighting-specs.pdf");
+    let path = body["path"].as_str().unwrap_or_default().to_owned();
+    assert!(path.ends_with("/lighting-specs.pdf") && !path.starts_with('~'), "{path}");
 }
 
 #[gpui_kit::test]

@@ -15,10 +15,11 @@ use gpui_kit::{App, div};
 use ramflux_desktop_core::{Store, UiEventKind};
 
 use super::{SectionContext, SettingsSection};
+use crate::file_dialog::{self, StartDir};
 use crate::i18n::tr;
 
-/// Diagnostics path offered until a native file dialog is wired.
-pub const DIAGNOSTICS_PATH: &str = "~/Documents/ramflux-diagnostics.txt";
+/// File name suggested for the diagnostics export.
+pub const DIAGNOSTICS_FILE_NAME: &str = "ramflux-diagnostics.txt";
 
 /// The redacted export preview, one `key: value` per line.
 pub fn preview(store: &Store) -> String {
@@ -76,12 +77,19 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                         .outline()
                         .label(tr("settings.diagnostics.export"))
                         .on_click(move |_, window, cx| {
-                            sink.emit(
-                                UiEventKind::DiagnosticsExportRequested {
-                                    path: DIAGNOSTICS_PATH.to_owned(),
-                                },
+                            let sink = sink.clone();
+                            file_dialog::save_as(
+                                StartDir::Documents,
+                                DIAGNOSTICS_FILE_NAME,
                                 window,
                                 cx,
+                                move |path, window, cx| {
+                                    sink.emit(
+                                        UiEventKind::DiagnosticsExportRequested { path },
+                                        window,
+                                        cx,
+                                    );
+                                },
                             );
                         }),
                 ),

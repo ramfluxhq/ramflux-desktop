@@ -19,6 +19,7 @@
 //! - [`shell`], [`entry`], [`workspace`], [`settings`], [`palette`], [`dev`]:
 //!   pages, overlays and panels.
 //! - [`moments`]: inline moment renderers.
+//! - [`file_dialog`]: native path prompts for every local path.
 
 #![forbid(unsafe_code)]
 
@@ -30,6 +31,7 @@ pub mod bubble;
 pub mod confirm;
 pub mod dev;
 pub mod entry;
+pub mod file_dialog;
 pub mod i18n;
 mod ids;
 pub mod moments;

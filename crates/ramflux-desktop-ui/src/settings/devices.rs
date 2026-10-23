@@ -14,11 +14,12 @@ use gpui_kit::{App, div};
 use ramflux_desktop_core::{Device, SyncDirection, UiEventKind};
 
 use super::{SectionContext, SettingsSection, note};
+use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 
-/// Sync bundle path offered until a native file dialog is wired.
-pub const SYNC_PATH: &str = "~/Documents/ramflux-device-sync.bundle";
+/// File name suggested for an exported sync bundle.
+pub const SYNC_FILE_NAME: &str = "ramflux-device-sync.bundle";
 
 /// The devices section.
 pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
@@ -91,13 +92,22 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                     .outline()
                     .label(tr("settings.devices.export"))
                     .on_click(move |_, window, cx| {
-                        export.emit(
-                            UiEventKind::DeviceSyncRequested {
-                                direction: SyncDirection::Export,
-                                path: SYNC_PATH.to_owned(),
-                            },
+                        let export = export.clone();
+                        file_dialog::save_as(
+                            StartDir::Documents,
+                            SYNC_FILE_NAME,
                             window,
                             cx,
+                            move |path, window, cx| {
+                                export.emit(
+                                    UiEventKind::DeviceSyncRequested {
+                                        direction: SyncDirection::Export,
+                                        path,
+                                    },
+                                    window,
+                                    cx,
+                                );
+                            },
                         );
                     }),
             )
@@ -107,13 +117,21 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                     .outline()
                     .label(tr("settings.devices.import"))
                     .on_click(move |_, window, cx| {
-                        import.emit(
-                            UiEventKind::DeviceSyncRequested {
-                                direction: SyncDirection::Import,
-                                path: SYNC_PATH.to_owned(),
-                            },
+                        let import = import.clone();
+                        file_dialog::open_file(
+                            tr("settings.devices.import"),
                             window,
                             cx,
+                            move |path, window, cx| {
+                                import.emit(
+                                    UiEventKind::DeviceSyncRequested {
+                                        direction: SyncDirection::Import,
+                                        path,
+                                    },
+                                    window,
+                                    cx,
+                                );
+                            },
                         );
                     }),
             )

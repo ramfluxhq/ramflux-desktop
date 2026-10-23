@@ -20,10 +20,8 @@ use ramflux_desktop_core::{
 
 use super::{RowRefs, RowState};
 use crate::bubble::EventSink;
+use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
-
-/// Folder offered for saving until a native file dialog is wired.
-pub const DOWNLOADS: &str = "~/Downloads";
 
 /// Renders an object transfer body.
 pub fn render(
@@ -92,13 +90,12 @@ pub fn render(
                 );
             }
             if object.saved_to.is_none() && object.direction == Direction::Inbound {
-                let path = format!("{DOWNLOADS}/{}", object.name);
                 actions = actions.child(
                     Button::new("object-save")
                         .small()
                         .outline()
                         .label(tr("moment.object.save"))
-                        .on_click(emit(ObjectAction::Save { path })),
+                        .on_click(save_with_dialog(&action_sink, &object)),
                 );
             }
         }
@@ -182,4 +179,24 @@ pub fn render(
             })
         })
         .child(actions)
+}
+
+/// Click handler that asks where to save `object` with the native dialog
+/// and emits the save with the chosen path. Shared with the objects dock.
+pub fn save_with_dialog(
+    sink: &EventSink,
+    object: &ramflux_desktop_core::Object,
+) -> impl Fn(&gpui_kit::ClickEvent, &mut gpui_kit::Window, &mut App) + 'static {
+    let sink = sink.clone();
+    let (object_id, name) = (object.id.clone(), object.name.clone());
+    move |_, window, cx| {
+        let (sink, object_id) = (sink.clone(), object_id.clone());
+        file_dialog::save_as(StartDir::Downloads, &name, window, cx, move |path, window, cx| {
+            sink.emit(
+                UiEventKind::ObjectActionPressed { object_id, action: ObjectAction::Save { path } },
+                window,
+                cx,
+            );
+        });
+    }
 }
