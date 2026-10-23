@@ -4,46 +4,51 @@
 //! The conversation field: the current context's timeline, the confirmation
 //! strip and the composer. It is the center panel of the workspace dock.
 //!
-//! The field owns view-local state only: which rows are expanded and which
-//! row is highlighted. Expand clicks are consumed at the moment level and
-//! never reach the root (rule B1).
+//! Rows are grouped by local day (today, yesterday, date headers). The field
+//! owns view-local state only ([`view_state::ViewState`]): expanded rows,
+//! surface form fields, conflict compare views, the highlighted row. The
+//! moment level consumes expand and field edits (rule B1) and adds collected
+//! form values to surface actions before they bubble on (rule B3).
 
-use std::collections::BTreeSet;
+mod header;
+mod view_state;
+
 use std::rc::Rc;
 
-use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
 use gpui_kit::component::message_scroller::{MessageScroller, MessageScrollerState};
-use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
     StyleRefinement, Subscription, WeakEntity, Window, div,
 };
-use ramflux_desktop_core::{ContextId, MomentId, Scope, Store, UiEventKind, selectors};
+use ramflux_desktop_core::{ContextId, MomentId, Scope, UiEvent, UiEventKind, selectors};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
-use crate::confirm::ConfirmStrip;
-use crate::i18n::{tr, tr_args};
+use crate::i18n::{self, tr};
 use crate::moments::{MomentRow, MomentView};
+use crate::root::{ConfirmHost, IntentRoot};
 
 use super::composer::Composer;
+use view_state::ViewState;
+
+pub use header::{TIMERS, timer_label};
 
 /// The conversation field view.
 pub struct Conversation {
     store: Entity<StoreHandle>,
+    root: Entity<IntentRoot>,
     root_sink: EventSink,
     context_id: Option<ContextId>,
     rows: Rc<Vec<MomentRow>>,
     scroller: Entity<MessageScrollerState>,
-    expanded: Rc<BTreeSet<MomentId>>,
+    view: ViewState,
     highlighted: Option<MomentId>,
-    confirm: Entity<ConfirmStrip>,
     composer: Entity<Composer>,
     focus_handle: FocusHandle,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl EventEmitter<PanelEvent> for Conversation {}
@@ -83,34 +88,36 @@ impl Panel for Conversation {
 }
 
 impl Conversation {
-    /// A field with no context, emitting through the workspace `root_sink`.
+    /// A field with no context, emitting through the root sink.
     pub fn new(
         store: Entity<StoreHandle>,
-        root_sink: EventSink,
-        confirm: Entity<ConfirmStrip>,
+        root: Entity<IntentRoot>,
         composer: Entity<Composer>,
         cx: &mut Context<Self>,
     ) -> Self {
         let scroller = cx.new(|cx| MessageScrollerState::new(0, cx));
-        let subscription = cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
-            let StoreEvent::Changed(changes) = event else { return };
-            let Some(context_id) = this.context_id.clone() else { return };
-            if changes.touches_context(store.read(cx).store(), &context_id) {
-                this.sync_rows(cx);
-            }
-        });
+        let subscriptions = vec![
+            cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
+                let StoreEvent::Changed(changes) = event else { return };
+                let Some(context_id) = this.context_id.clone() else { return };
+                if changes.touches_context(store.read(cx).store(), &context_id) {
+                    this.sync_rows(cx);
+                }
+            }),
+            cx.observe(&root, |_, _, cx| cx.notify()),
+        ];
         Self {
+            root_sink: IntentRoot::sink(&root),
             store,
-            root_sink,
+            root,
             context_id: None,
             rows: Rc::new(Vec::new()),
             scroller,
-            expanded: Rc::new(BTreeSet::new()),
+            view: ViewState::default(),
             highlighted: None,
-            confirm,
             composer,
             focus_handle: cx.focus_handle(),
-            _subscription: subscription,
+            _subscriptions: subscriptions,
         }
     }
 
@@ -124,9 +131,14 @@ impl Conversation {
         self.rows.iter().map(|row| row.moment.id.clone()).collect()
     }
 
+    /// Day headers in row order (`None` for rows that continue a day).
+    pub fn day_headers(&self) -> Vec<Option<String>> {
+        self.rows.iter().map(|row| row.day_header.as_ref().map(ToString::to_string)).collect()
+    }
+
     /// Whether a row's disclosure is expanded.
     pub fn is_expanded(&self, id: &MomentId) -> bool {
-        self.expanded.contains(id)
+        self.view.is_expanded(id)
     }
 
     /// The highlighted row.
@@ -140,7 +152,7 @@ impl Conversation {
             return;
         }
         self.context_id = context_id;
-        self.expanded = Rc::new(BTreeSet::new());
+        self.view = ViewState::default();
         self.highlighted = None;
         self.rows = Rc::new(Vec::new());
         self.sync_rows(cx);
@@ -156,14 +168,7 @@ impl Conversation {
         cx.notify();
     }
 
-    /// Toggles a row's disclosure. Called from the moment-level sink.
-    pub fn set_expanded(&mut self, id: &MomentId, expanded: bool, cx: &mut Context<Self>) {
-        let mut set = (*self.expanded).clone();
-        let changed = if expanded { set.insert(id.clone()) } else { set.remove(id) };
-        if !changed {
-            return;
-        }
-        self.expanded = Rc::new(set);
+    fn remeasure(&mut self, id: &MomentId, cx: &mut Context<Self>) {
         if let Some(ix) = self.rows.iter().position(|row| &row.moment.id == id) {
             self.scroller.update(cx, |state, cx| {
                 let _ = state.remeasure_items(ix..ix + 1, cx);
@@ -172,7 +177,14 @@ impl Conversation {
         cx.notify();
     }
 
-    /// Emits a pin toggle for the shown context (the pin command).
+    /// Toggles a row's disclosure. Called from the moment-level sink.
+    pub fn set_expanded(&mut self, id: &MomentId, expanded: bool, cx: &mut Context<Self>) {
+        if self.view.set_expanded(id, expanded) {
+            self.remeasure(id, cx);
+        }
+    }
+
+    /// The pin command for the shown context.
     pub fn toggle_pin(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(context_id) = self.context_id.clone() else { return };
         let pinned = self.store.read(cx).store().context(&context_id).is_some_and(|c| c.pinned);
@@ -186,10 +198,22 @@ impl Conversation {
     fn sync_rows(&mut self, cx: &mut Context<Self>) {
         let rows: Vec<MomentRow> = match &self.context_id {
             Some(id) => {
-                let store = self.store.read(cx).store();
+                let handle = self.store.read(cx);
+                let store = handle.store();
+                let now = handle.session().map(|s| s.now()).unwrap_or_default();
+                let me = selectors::self_participant(store);
+                let mut last_day = None;
                 selectors::timeline(store, id)
                     .into_iter()
-                    .map(|m| MomentRow::build(store, m))
+                    .map(|m| {
+                        let mut row = MomentRow::build(store, m, me.as_ref());
+                        let day = i18n::clock::local_day(m.at);
+                        if day != last_day {
+                            row.day_header = Some(i18n::day_label(m.at, now));
+                            last_day = day;
+                        }
+                        row
+                    })
                     .collect()
             }
             None => Vec::new(),
@@ -222,57 +246,63 @@ impl Conversation {
         cx.notify();
     }
 
+    /// The moment-level sink: consumes expand and field edits (B1) and adds
+    /// the surface's form values to action invocations (B3).
     fn moment_sink(this: WeakEntity<Self>, context_sink: &EventSink, id: &MomentId) -> EventSink {
         let moment_id = id.clone();
-        context_sink.scoped_with(Scope::Moment(id.clone()), move |event, _, cx| {
-            let UiEventKind::ExpandToggled { expanded } = event.kind else { return false };
-            this.update(cx, |field, cx| field.set_expanded(&moment_id, expanded, cx)).ok();
-            true
-        })
-    }
-
-    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let store: &Store = self.store.read(cx).store();
-        let context = self.context_id.as_ref().and_then(|id| store.context(id));
-        let title = context.map_or_else(|| tr("conversation.none"), |c| c.title.clone().into());
-        let members = context.map_or(0, |c| c.participants.len());
-        let pinned = context.is_some_and(|c| c.pinned);
-        let has_context = context.is_some();
-        h_flex()
-            .id("conversation-header")
-            .w_full()
-            .gap_2()
-            .px_4()
-            .py_2()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(div().font_semibold().text_color(cx.theme().foreground).child(title))
-            .when(members > 0, |header| {
-                header.child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(tr_args("conversation.members", &[("count", &members.to_string())])),
-                )
-            })
-            .child(div().flex_1())
-            .when(has_context, |header| {
-                header.child(
-                    Button::new("conversation-pin")
-                        .ghost()
-                        .small()
-                        .icon(IconName::Star)
-                        .label(tr(if pinned { "conversation.unpin" } else { "conversation.pin" }))
-                        .on_click(cx.listener(|this, _, window, cx| this.toggle_pin(window, cx))),
-                )
-            })
+        context_sink.scoped_map(
+            Scope::Moment(id.clone()),
+            move |event: UiEvent, _, cx| match &event.kind {
+                UiEventKind::ExpandToggled { expanded } => {
+                    let expanded = *expanded;
+                    this.update(cx, |field, cx| field.set_expanded(&moment_id, expanded, cx)).ok();
+                    None
+                }
+                UiEventKind::FieldChanged { value } => {
+                    let block = event.block_id()?.clone();
+                    let value = value.clone();
+                    this.update(cx, |field, cx| {
+                        if field.view.set_field(&moment_id, &block, value) {
+                            field.remeasure(&moment_id, cx);
+                        }
+                    })
+                    .ok();
+                    None
+                }
+                UiEventKind::ActionInvoked { action_id, values } if values.is_null() => {
+                    let action_id = action_id.clone();
+                    let collected = this
+                        .read_with(cx, |field, cx| {
+                            field
+                                .rows
+                                .iter()
+                                .find(|row| row.moment.id == moment_id)
+                                .map(|row| field.view.values(row, cx))
+                        })
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default();
+                    Some(UiEvent {
+                        scope_path: event.scope_path,
+                        kind: UiEventKind::ActionInvoked { action_id, values: collected },
+                    })
+                }
+                _ => Some(event),
+            },
+        )
     }
 }
 
 impl Render for Conversation {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let header = self.render_header(cx);
-        let body = match self.context_id.clone().filter(|_| !self.rows.is_empty()) {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let rows = Rc::clone(&self.rows);
+        self.view.ensure(&rows, window, cx);
+        let store = self.store.read(cx).store();
+        let context = self.context_id.as_ref().and_then(|id| store.context(id));
+        let context_sink =
+            self.context_id.clone().map(|id| self.root_sink.scoped(Scope::Context(id)));
+        let header = header::render(store, context, context_sink.clone(), cx);
+        let body = match context_sink.filter(|_| !rows.is_empty()) {
             None => div()
                 .flex_1()
                 .flex()
@@ -286,22 +316,22 @@ impl Render for Conversation {
                     "conversation.choose"
                 }))
                 .into_any_element(),
-            Some(context_id) => {
-                let rows = Rc::clone(&self.rows);
-                let expanded = Rc::clone(&self.expanded);
-                let highlighted = self.highlighted.clone();
-                let context_sink = self.root_sink.scoped(Scope::Context(context_id));
+            Some(context_sink) => {
+                let states: Rc<Vec<_>> = Rc::new(
+                    rows.iter()
+                        .map(|row| {
+                            let id = &row.moment.id;
+                            self.view.row_state(id, self.highlighted.as_ref() == Some(id))
+                        })
+                        .collect(),
+                );
                 let this = cx.weak_entity();
                 MessageScroller::new("conversation", self.scroller.clone(), move |ix, _, _| {
-                    let Some(row) = rows.get(ix) else {
+                    let (Some(row), Some(state)) = (rows.get(ix), states.get(ix)) else {
                         return div().into_any_element();
                     };
-                    let id = row.moment.id.clone();
-                    let sink = Self::moment_sink(this.clone(), &context_sink, &id);
-                    MomentView::new(row.clone(), sink)
-                        .expanded(expanded.contains(&id))
-                        .highlighted(highlighted.as_ref() == Some(&id))
-                        .into_any_element()
+                    let sink = Self::moment_sink(this.clone(), &context_sink, &row.moment.id);
+                    MomentView::new(row.clone(), sink, state.clone()).into_any_element()
                 })
                 .with_jump_button_label(tr("conversation.jump_latest"))
                 .with_row_style(StyleRefinement::default().pb_2())
@@ -310,6 +340,8 @@ impl Render for Conversation {
                 .into_any_element()
             }
         };
+        let root = self.root.read(cx);
+        let strip = (root.host() == ConfirmHost::Workspace).then(|| root.confirm_strip().clone());
         v_flex()
             .id("conversation")
             .track_focus(&self.focus_handle)
@@ -318,7 +350,7 @@ impl Render for Conversation {
             .bg(cx.theme().background)
             .child(header)
             .child(body)
-            .child(self.confirm.clone())
+            .children(strip)
             .child(self.composer.clone())
     }
 }

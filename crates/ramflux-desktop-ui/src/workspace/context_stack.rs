@@ -3,12 +3,12 @@
 
 //! The compact context stack: pinned contexts, then contexts that need the
 //! user (selector `context_stack`, at most six). It is a spatial switcher,
-//! not a list of every conversation; other contexts are reached through the
-//! "switch context" menu. Choosing a context is navigation (view-local), so it
-//! is reported to the workspace as a [`ContextStackEvent`], not a UI event.
+//! not a list of every conversation; every other context is reached only
+//! through the command palette, which the footer opens. Choosing a context is
+//! navigation (view-local), so it is reported to the workspace as a
+//! [`ContextStackEvent`], not a UI event.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
 };
@@ -18,6 +18,7 @@ use gpui_kit::{
 };
 use ramflux_desktop_core::{ContextId, ContextKind, Lifecycle, Store, selectors};
 
+use crate::actions::OpenPalette;
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::{tr, tr_args};
 use crate::ids::domain_id;
@@ -70,6 +71,7 @@ struct Entry {
     title: SharedString,
     kind: ContextKind,
     pinned: bool,
+    muted: bool,
     needs_me: usize,
     unread: u32,
 }
@@ -93,6 +95,7 @@ fn entries(store: &Store, current: Option<&ContextId>) -> Vec<Entry> {
                 title: context.title.clone().into(),
                 kind: context.kind,
                 pinned: context.pinned,
+                muted: context.muted,
                 unread: context.unread,
                 needs_me,
                 id,
@@ -105,7 +108,8 @@ impl Render for ContextStack {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let store = self.store.read(cx).store();
         let rows = entries(store, self.current.as_ref());
-        let has_others = store.contexts().count() > rows.len();
+        let others = store.contexts().count().saturating_sub(rows.len());
+        let has_others = others > 0;
         let theme = cx.theme();
         let (muted, warning, border, sidebar) =
             (theme.muted_foreground, theme.warning, theme.border, theme.sidebar);
@@ -134,6 +138,9 @@ impl Render for ContextStack {
                         .when(entry.pinned, |row| {
                             row.child(Icon::new(IconName::Star).xsmall().text_color(muted))
                         })
+                        .when(entry.muted, |row| {
+                            row.child(div().text_xs().text_color(muted).child(tr("stack.muted")))
+                        })
                         .when(entry.needs_me > 0, |row| {
                             row.child(div().text_xs().text_color(warning).child(tr_args(
                                 "stack.needs_me",
@@ -148,8 +155,6 @@ impl Render for ContextStack {
                 )
         });
 
-        let store_handle = self.store.downgrade();
-        let this = cx.weak_entity();
         v_flex()
             .id("context-stack")
             .h_full()
@@ -163,34 +168,18 @@ impl Render for ContextStack {
             .child(div().px_2().py_1().text_xs().text_color(muted).child(tr("stack.title")))
             .children(list)
             .child(div().flex_1())
-            .when(has_others, |stack| {
-                stack.child(
-                    Button::new("stack-switch")
-                        .ghost()
-                        .small()
-                        .w_full()
-                        .icon(IconName::ChevronsUpDown)
-                        .label(tr("stack.switch"))
-                        .dropdown_menu(move |mut menu, _, cx| {
-                            let Some(store) = store_handle.upgrade() else { return menu };
-                            let contexts: Vec<(ContextId, String)> = store
-                                .read(cx)
-                                .store()
-                                .contexts()
-                                .map(|c| (c.id.clone(), c.title.clone()))
-                                .collect();
-                            for (id, title) in contexts {
-                                let this = this.clone();
-                                menu = menu.item(PopupMenuItem::new(title).on_click(
-                                    move |_, _, cx| {
-                                        let id = id.clone();
-                                        this.update(cx, |stack, cx| stack.select(id, cx)).ok();
-                                    },
-                                ));
-                            }
-                            menu
-                        }),
-                )
-            })
+            .child(
+                Button::new("stack-search")
+                    .ghost()
+                    .small()
+                    .w_full()
+                    .icon(IconName::Search)
+                    .label(if has_others {
+                        tr_args("stack.search_more", &[("count", &others.to_string())])
+                    } else {
+                        tr("stack.search")
+                    })
+                    .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenPalette), cx)),
+            )
     }
 }

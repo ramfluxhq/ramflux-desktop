@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The terminal status strip in the window title bar: account, device, node,
-//! projection and source state, plus the "needs me" command.
+//! The terminal status strip in the window title bar: the account switcher
+//! (with background accounts' attention), device, node, projection and
+//! source state, plus the palette and "needs me" commands.
 //!
 //! The strip re-renders only when accounts, nodes, the source status or
 //! attention change.
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, IconName, Sizable as _, TitleBar, h_flex,
 };
@@ -16,9 +19,9 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, Hsla, IntoElement, Render, SharedString, Subscription, Window, div,
 };
-use ramflux_desktop_core::{LockState, NodeHealth, SourceStatus, Store, selectors};
+use ramflux_desktop_core::{AccountId, LockState, NodeHealth, SourceStatus, Store};
 
-use crate::actions::{GoToNeedsMe, OpenSettings, ToggleDevPanel, ToggleTheme};
+use crate::actions::{GoToNeedsMe, OpenPalette, OpenSettings, ToggleDevPanel, ToggleTheme};
 use crate::app::{LOCAL_ACCOUNT, StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
 
@@ -63,11 +66,6 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
         .accounts()
         .find(|a| a.lock_state == LockState::Unlocked)
         .or_else(|| store.accounts().next());
-    let account_label: SharedString = match (account, handle.active_account()) {
-        (Some(account), _) => account.label.clone().into(),
-        (None, Some(id)) if id.as_str() != LOCAL_ACCOUNT => id.to_string().into(),
-        (None, _) => tr("status.account.local"),
-    };
     let device: SharedString = account
         .and_then(|a| a.device_id.clone())
         .map_or_else(|| tr("status.none"), SharedString::from);
@@ -108,12 +106,6 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
         )
     };
     vec![
-        Field {
-            id: "status-account",
-            label: tr("status.label.account"),
-            value: account_label,
-            color: None,
-        },
         Field { id: "status-device", label: tr("status.label.device"), value: device, color: None },
         Field {
             id: "status-node",
@@ -136,11 +128,88 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
     ]
 }
 
+/// The account switcher: the rendered account, the "needs me" count of the
+/// other accounts, and a menu that switches stores (nothing reloads).
+fn account_switcher(
+    handle: &StoreHandle,
+    store: gpui_kit::WeakEntity<StoreHandle>,
+    cx: &App,
+) -> impl IntoElement {
+    let active = handle.active_account().cloned();
+    let accounts: Vec<(AccountId, String, usize)> = handle
+        .accounts()
+        .map(|id| {
+            let name = handle.account_label(id).unwrap_or_else(|| id.to_string());
+            (id.clone(), name, handle.needs_me_count(id))
+        })
+        .collect();
+    let label: SharedString = match &active {
+        Some(id) if id.as_str() != LOCAL_ACCOUNT => {
+            handle.account_label(id).map_or_else(|| tr("status.none"), SharedString::from)
+        }
+        _ => tr("status.account.local"),
+    };
+    let background: usize =
+        accounts.iter().filter(|(id, _, _)| Some(id) != active.as_ref()).map(|(_, _, n)| n).sum();
+    let warning = cx.theme().warning;
+    h_flex()
+        .id("status-account")
+        .gap_1()
+        .text_xs()
+        .child(div().text_color(cx.theme().muted_foreground).child(tr("status.label.account")))
+        .child(
+            Button::new("account-switcher")
+                .ghost()
+                .xsmall()
+                .label(label)
+                .when(accounts.len() > 1, |b| b.icon(IconName::ChevronsUpDown))
+                .dropdown_menu(move |mut menu, _, _| {
+                    for (id, name, count) in &accounts {
+                        let store = store.clone();
+                        let target = id.clone();
+                        let text = if *count > 0 {
+                            tr_args(
+                                "status.account.with_count",
+                                &[("name", name), ("count", &count.to_string())],
+                            )
+                        } else {
+                            SharedString::from(name.clone())
+                        };
+                        menu = menu.item(
+                            PopupMenuItem::new(text).checked(active.as_ref() == Some(id)).on_click(
+                                move |_, _, cx| {
+                                    store
+                                        .update(cx, |store, cx| {
+                                            store.set_active_account(&target, cx)
+                                        })
+                                        .ok();
+                                },
+                            ),
+                        );
+                    }
+                    menu
+                }),
+        )
+        .when(background > 0, |row| {
+            row.child(
+                div()
+                    .id("status-background-attention")
+                    .text_color(warning)
+                    .child(tr_args(
+                        "status.account.background",
+                        &[("count", &background.to_string())],
+                    ))
+                    .test_support(),
+            )
+        })
+}
+
 impl Render for StatusStrip {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let handle = self.store.read(cx);
         let fields = fields(handle, cx);
-        let needs_me = selectors::attention(handle.store()).len();
+        let switcher = account_switcher(handle, self.store.downgrade(), cx);
+        let needs_me = handle.attention_across_accounts().len();
         let muted = cx.theme().muted_foreground;
         let foreground = cx.theme().foreground;
         let chips = fields.into_iter().map(|field| {
@@ -158,6 +227,7 @@ impl Render for StatusStrip {
                     .gap_4()
                     .min_w_0()
                     .child(div().text_sm().font_semibold().child(tr("app.name")))
+                    .child(switcher)
                     .children(chips),
             )
             .child(
@@ -166,6 +236,16 @@ impl Render for StatusStrip {
                     .pr_2()
                     .when(self.show_commands, |row| {
                         row.child(
+                            Button::new("open-palette")
+                                .ghost()
+                                .small()
+                                .icon(IconName::Search)
+                                .tooltip(tr("status.palette"))
+                                .on_click(|_, window, cx| {
+                                    window.dispatch_action(Box::new(OpenPalette), cx)
+                                }),
+                        )
+                        .child(
                             Button::new("needs-me")
                                 .small()
                                 .when(needs_me > 0, |b| b.warning())

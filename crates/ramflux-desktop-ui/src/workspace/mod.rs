@@ -1,69 +1,77 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The conversation workspace (P1) and the root of UI event bubbling.
+//! The conversation workspace (P1).
 //!
 //! Layout: context stack | dock area (conversation field in the center,
 //! summoned tools on the right) | dock rail. The terminal status strip lives
-//! in the window title bar (see `shell`).
+//! in the window title bar (see `shell`), the command palette above
+//! everything (see `palette`).
 //!
-//! The workspace root is the only place UI events become intents: it maps
-//! them with [`crate::bubble::intent_for`], hands the intent to the
-//! [`StoreHandle`], and opens the hold-to-confirm strip when policy asks for
-//! human confirmation (rule B4). It keeps the pending intent itself, so the
-//! only way to submit a confirmed intent is a completed hold.
+//! Every view here emits through the [`IntentRoot`] sink; the workspace owns
+//! navigation only: the shown context, which tool is open or pinned, and the
+//! "take me to what needs me" cursor across contexts and accounts.
 
 mod composer;
 mod context_stack;
 mod conversation;
-mod docks;
+pub mod docks;
 mod status_strip;
 
 use std::sync::Arc;
-use std::time::Instant;
 
 use gpui_kit::component::dock::{
-    BasePanelView, DockArea, DockLayout, DockPlacement, DockSkin, DockToggleEvent, panel_handle,
+    BasePanelView, DockArea, DockEvent, DockLayout, DockPlacement, DockSkin, DockToggleEvent,
+    panel_handle,
 };
 use gpui_kit::component::{ActiveTheme as _, h_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, px,
 };
-use ramflux_desktop_core::{
-    Actor, ContextId, Intent, IntentKind, ParticipantId, Scope, UiEvent, selectors,
-};
+use ramflux_desktop_core::{ContextId, IntentKind, ParticipantId, Scope, selectors};
 
-use crate::app::{
-    DispatchOutcome, InspectorEntry, StoreEvent, StoreHandle, UiOutcome, format_path, format_scope,
-    intent_name, ui_event_name,
-};
-use crate::bubble::{EventSink, intent_for};
-use crate::confirm::{ConfirmEvent, ConfirmRequest, ConfirmStrip};
+use crate::app::{AccountAttention, StoreEvent, StoreHandle};
+use crate::bubble::EventSink;
+use crate::confirm::ConfirmStrip;
+use crate::root::{IntentRoot, RootEvent};
 
-pub use composer::Composer;
+pub use composer::{Composer, ComposerMode};
 pub use context_stack::{ContextStack, ContextStackEvent};
-pub use conversation::Conversation;
-pub use docks::{DockRail, DockTool, DockToolPanel};
+pub use conversation::{Conversation, TIMERS, timer_label};
+pub use docks::prefs::{DockPrefs, PrefsStore};
+pub use docks::{DockRail, DockTool, DockToolEvent, DockToolPanel};
 pub use status_strip::StatusStrip;
 
-/// Width of the right dock when it first opens. A physical layout seed for
-/// the dock engine, which sizes docks in pixels; users resize it freely.
-const DOCK_WIDTH: f32 = 320.;
+use docks::approvals::ApprovalsDock;
+use docks::contacts::ContactsDock;
+use docks::evidence::EvidenceDock;
+use docks::members::MembersDock;
+use docks::objects::ObjectsDock;
+
+/// One dock tool: its frame entity and the handle the dock engine holds.
+struct ToolSlot {
+    tool: DockTool,
+    panel: Entity<DockToolPanel>,
+    handle: Arc<dyn BasePanelView>,
+}
 
 /// The workspace view.
 pub struct Workspace {
     store: Entity<StoreHandle>,
-    sink: EventSink,
+    root: Entity<IntentRoot>,
     stack: Entity<ContextStack>,
     conversation: Entity<Conversation>,
     composer: Entity<Composer>,
-    confirm: Entity<ConfirmStrip>,
     dock_area: Entity<DockArea>,
-    tools: Vec<(DockTool, Arc<dyn BasePanelView>)>,
+    tools: Vec<ToolSlot>,
+    objects: Entity<ObjectsDock>,
+    members: Entity<MembersDock>,
+    evidence: Entity<EvidenceDock>,
     open_tool: Option<DockTool>,
+    prefs: DockPrefs,
+    prefs_store: PrefsStore,
     current: Option<ContextId>,
-    pending: Option<Intent>,
     focus_handle: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -75,36 +83,59 @@ impl Focusable for Workspace {
 }
 
 impl Workspace {
-    /// A workspace over `store`.
-    pub fn new(store: Entity<StoreHandle>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let sink = root_sink(cx);
-        let confirm = cx.new(ConfirmStrip::new);
+    /// A workspace over `store`, emitting through `root`, with dock layout
+    /// preferences from `prefs_store`.
+    pub fn new(
+        store: Entity<StoreHandle>,
+        root: Entity<IntentRoot>,
+        prefs_store: PrefsStore,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let sink = IntentRoot::sink(&root);
         let composer = cx.new(|cx| Composer::new(window, cx));
         let stack = cx.new(|cx| ContextStack::new(store.clone(), cx));
-        let conversation = cx.new(|cx| {
-            Conversation::new(store.clone(), sink.clone(), confirm.clone(), composer.clone(), cx)
+        let conversation =
+            cx.new(|cx| Conversation::new(store.clone(), root.clone(), composer.clone(), cx));
+        let objects = cx.new(|cx| {
+            ObjectsDock::new(store.clone(), dock_sink(&sink, DockTool::Objects), window, cx)
         });
-
-        let (dock_area, _skin) = DockSkin::dock_area("workspace-dock", Some(1), window, cx);
-        let tools: Vec<(DockTool, Arc<dyn BasePanelView>)> = DockTool::ALL
+        let contacts =
+            cx.new(|cx| ContactsDock::new(store.clone(), dock_sink(&sink, DockTool::Contacts), cx));
+        let members = cx.new(|cx| MembersDock::new(store.clone(), sink.clone(), cx));
+        let approvals = cx.new(|cx| ApprovalsDock::new(store.clone(), sink.clone(), cx));
+        let evidence = cx.new(|cx| EvidenceDock::new(store.clone(), cx));
+        let contents: [(DockTool, gpui_kit::AnyView); 5] = [
+            (DockTool::Objects, objects.clone().into()),
+            (DockTool::Contacts, contacts.into()),
+            (DockTool::Members, members.clone().into()),
+            (DockTool::Approvals, approvals.into()),
+            (DockTool::Evidence, evidence.clone().into()),
+        ];
+        let tools: Vec<ToolSlot> = contents
             .into_iter()
-            .map(|tool| (tool, panel_handle(cx.new(|cx| DockToolPanel::new(tool, cx)))))
+            .map(|(tool, content)| {
+                let panel = cx.new(|cx| DockToolPanel::new(tool, content, cx));
+                ToolSlot { tool, handle: panel_handle(panel.clone()), panel }
+            })
             .collect();
+        let prefs = prefs_store.load();
+        let (dock_area, _skin) = DockSkin::dock_area("workspace-dock", Some(1), window, cx);
         dock_area.update(cx, |area, cx| {
             let center = DockLayout::tabs().panel_view(panel_handle(conversation.clone()), cx);
             area.set_center(center, window, cx);
-            let right = tools.iter().fold(DockLayout::tabs(), |layout, (_, panel)| {
-                layout.panel_view(panel.clone(), cx)
+            let right = tools.iter().fold(DockLayout::tabs(), |layout, slot| {
+                layout.panel_view(slot.handle.clone(), cx)
             });
             area.set_dock(DockPlacement::Right, right, window, cx);
             area.set_dock_collapsible(DockPlacement::Right, true, window, cx);
-            area.set_dock_size(DockPlacement::Right, px(DOCK_WIDTH), window, cx);
+            area.set_dock_size(DockPlacement::Right, px(prefs.width), window, cx);
             if area.is_dock_open(DockPlacement::Right) {
                 area.toggle_dock(DockPlacement::Right, window, cx);
             }
         });
 
-        let subscriptions = vec![
+        let mut subscriptions = vec![
             cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, window, cx| {
                 if let StoreEvent::Changed(changes) = event
                     && changes.touches_context_stack()
@@ -116,8 +147,9 @@ impl Workspace {
                 let ContextStackEvent::Selected(id) = event;
                 this.select_context(Some(id.clone()), window, cx);
             }),
-            cx.subscribe_in(&confirm, window, |this, _, event: &ConfirmEvent, window, cx| {
-                this.on_confirm_event(*event, window, cx);
+            cx.subscribe_in(&root, window, |this, _, event: &RootEvent, window, cx| {
+                let RootEvent::ConfirmClosed = event;
+                this.composer.update(cx, |composer, cx| composer.focus(window, cx));
             }),
             cx.subscribe(&dock_area, |this, _, event: &DockToggleEvent, cx| {
                 if !event.is_open() {
@@ -125,24 +157,50 @@ impl Workspace {
                     cx.notify();
                 }
             }),
+            cx.subscribe(&dock_area, |this, area, event: &DockEvent, cx| {
+                if matches!(event, DockEvent::LayoutChanged)
+                    && let Some(width) = area.read(cx).dock_size(DockPlacement::Right)
+                    && (f32::from(width) - this.prefs.width).abs() >= 1.0
+                {
+                    this.prefs.width = f32::from(width);
+                    this.prefs_store.save(this.prefs);
+                }
+            }),
         ];
+        for slot in &tools {
+            subscriptions.push(cx.subscribe_in(
+                &slot.panel,
+                window,
+                |this, _, event: &DockToolEvent, _, cx| {
+                    let DockToolEvent::PinToggled(tool) = *event;
+                    this.toggle_pinned(tool, cx);
+                },
+            ));
+        }
 
         let mut workspace = Self {
             store,
-            sink,
+            root,
             stack,
             conversation,
             composer,
-            confirm,
             dock_area,
             tools,
+            objects,
+            members,
+            evidence,
             open_tool: None,
+            prefs,
+            prefs_store,
             current: None,
-            pending: None,
             focus_handle: cx.focus_handle(),
             _subscriptions: subscriptions,
         };
         workspace.ensure_current(window, cx);
+        if let Some(tool) = prefs.pinned {
+            workspace.sync_pins(cx);
+            workspace.open_tool(tool, window, cx);
+        }
         workspace
     }
 
@@ -161,33 +219,48 @@ impl Workspace {
         &self.composer
     }
 
-    /// The hold-to-confirm strip.
-    pub fn confirm_strip(&self) -> &Entity<ConfirmStrip> {
-        &self.confirm
+    /// The objects dock content.
+    pub fn objects_dock(&self) -> &Entity<ObjectsDock> {
+        &self.objects
     }
 
-    /// The intent waiting for human confirmation.
-    pub fn pending_intent(&self) -> Option<&Intent> {
-        self.pending.as_ref()
+    /// The hold-to-confirm strip.
+    pub fn confirm_strip(&self, cx: &App) -> Entity<ConfirmStrip> {
+        self.root.read(cx).confirm_strip().clone()
     }
 
     /// The open dock tool.
-    pub fn open_tool(&self) -> Option<DockTool> {
+    pub fn open_tool_kind(&self) -> Option<DockTool> {
         self.open_tool
     }
 
-    /// Shows a context, or nothing.
+    /// The pinned dock tool.
+    pub fn pinned_tool(&self) -> Option<DockTool> {
+        self.prefs.pinned
+    }
+
+    /// Shows a context, or nothing. A summoned (unpinned) tool closes.
     pub fn select_context(
         &mut self,
         id: Option<ContextId>,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let changed = self.current != id;
         self.current = id.clone();
-        let sink = id.as_ref().map(|id| self.sink.scoped(Scope::Context(id.clone())));
+        let sink =
+            id.as_ref().map(|id| IntentRoot::sink(&self.root).scoped(Scope::Context(id.clone())));
         self.conversation.update(cx, |field, cx| field.set_context(id.clone(), cx));
-        self.composer.update(cx, |composer, cx| composer.set_sink(sink, cx));
-        self.stack.update(cx, |stack, cx| stack.set_current(id, cx));
+        self.composer.update(cx, |composer, cx| composer.set_sink(sink, window, cx));
+        self.stack.update(cx, |stack, cx| stack.set_current(id.clone(), cx));
+        self.members.update(cx, |dock, cx| dock.set_context(id.clone(), cx));
+        self.evidence.update(cx, |dock, cx| dock.set_context(id, cx));
+        if changed
+            && let Some(open) = self.open_tool
+            && self.prefs.pinned != Some(open)
+        {
+            self.close_dock(window, cx);
+        }
         cx.notify();
     }
 
@@ -207,47 +280,92 @@ impl Workspace {
         }
     }
 
-    /// "Take me to what needs me": shows the oldest attention item.
+    /// "Take me to what needs me": moves to the next attention item after
+    /// the highlighted one, across contexts and accounts, switching the
+    /// rendered account when the next item lives in another one.
     pub fn go_to_needs_me(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(item) = selectors::attention(self.store.read(cx).store()).into_iter().next()
-        else {
+        let (items, active) = {
+            let handle = self.store.read(cx);
+            (handle.attention_across_accounts(), handle.active_account().cloned())
+        };
+        let highlighted = self.conversation.read(cx).highlighted().cloned();
+        let Some(next) = next_attention(&items, active.as_ref(), highlighted.as_ref()) else {
             return;
         };
-        if self.current.as_ref() != Some(&item.context_id) {
-            self.select_context(Some(item.context_id.clone()), window, cx);
+        if active.as_ref() != Some(&next.account) {
+            self.store.update(cx, |store, cx| store.set_active_account(&next.account, cx));
         }
-        self.conversation.update(cx, |field, cx| field.focus_moment(&item.moment_id, cx));
+        if self.current.as_ref() != Some(&next.item.context_id) {
+            self.select_context(Some(next.item.context_id.clone()), window, cx);
+        }
+        let moment = next.item.moment_id.clone();
+        self.conversation.update(cx, |field, cx| field.focus_moment(&moment, cx));
     }
 
     /// The pin command for the current context.
     ///
-    /// Takes the entity rather than `&mut self`: the field emits through the
-    /// root sink, which updates this workspace, so the workspace must not be
-    /// borrowed while the field runs.
+    /// Takes the entity: the field emits through the root sink, and the
+    /// workspace must not be borrowed while it does.
     pub fn toggle_pin(workspace: &Entity<Self>, window: &mut Window, cx: &mut App) {
         let field = workspace.read(cx).conversation.clone();
         field.update(cx, |field, cx| field.toggle_pin(window, cx));
     }
 
-    /// Opens a dock tool, or closes it when it is already open.
-    pub fn toggle_tool(&mut self, tool: DockTool, window: &mut Window, cx: &mut Context<Self>) {
-        let close = self.open_tool == Some(tool);
-        let panel = self.tools.iter().find(|(t, _)| *t == tool).map(|(_, p)| p.panel_id(cx));
+    fn panel_id(&self, tool: DockTool, cx: &App) -> Option<gpui_kit::component::dock::PanelId> {
+        self.tools.iter().find(|slot| slot.tool == tool).map(|slot| slot.handle.panel_id(cx))
+    }
+
+    /// Opens a tool (summoned), selecting its tab.
+    pub fn open_tool(&mut self, tool: DockTool, window: &mut Window, cx: &mut Context<Self>) {
+        let panel = self.panel_id(tool, cx);
         self.dock_area.update(cx, |area, cx| {
-            let open = area.is_dock_open(DockPlacement::Right);
-            if close == open {
+            if !area.is_dock_open(DockPlacement::Right) {
                 area.toggle_dock(DockPlacement::Right, window, cx);
             }
-            if let (false, Some(panel)) = (close, panel) {
+            if let Some(panel) = panel {
                 area.select_panel(panel, window, cx);
             }
         });
-        self.open_tool = if close { None } else { Some(tool) };
+        self.open_tool = Some(tool);
         cx.notify();
     }
 
-    /// Submits an intent proposed by an agent participant. It follows the
-    /// same policy as human intents and can never carry confirmation (R6).
+    fn close_dock(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.dock_area.update(cx, |area, cx| {
+            if area.is_dock_open(DockPlacement::Right) {
+                area.toggle_dock(DockPlacement::Right, window, cx);
+            }
+        });
+        self.open_tool = None;
+        cx.notify();
+    }
+
+    /// Opens a tool, or closes it when it is already open.
+    pub fn toggle_tool(&mut self, tool: DockTool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open_tool == Some(tool) {
+            self.close_dock(window, cx);
+        } else {
+            self.open_tool(tool, window, cx);
+        }
+    }
+
+    /// Pins a tool (it stays open across contexts and launches) or unpins it.
+    pub fn toggle_pinned(&mut self, tool: DockTool, cx: &mut Context<Self>) {
+        self.prefs.pinned = if self.prefs.pinned == Some(tool) { None } else { Some(tool) };
+        self.prefs_store.save(self.prefs);
+        self.sync_pins(cx);
+        cx.notify();
+    }
+
+    fn sync_pins(&mut self, cx: &mut Context<Self>) {
+        let pinned = self.prefs.pinned;
+        for slot in &self.tools {
+            slot.panel.update(cx, |panel, cx| panel.set_pinned(pinned == Some(slot.tool), cx));
+        }
+    }
+
+    /// Submits an intent proposed by an agent participant (developer panel,
+    /// tests). It follows the same policy and never carries a confirmation.
     pub fn submit_agent_intent(
         &mut self,
         agent: ParticipantId,
@@ -255,89 +373,27 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.submit(Intent { actor: Actor::Agent(agent), kind }, window, cx);
-    }
-
-    fn on_ui_event(&mut self, event: UiEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let started = Instant::now();
-        let path = format_path(&event.scope_path);
-        let kind = ui_event_name(&event);
-        let intent = intent_for(&event, self.store.read(cx).store()).map(Intent::human);
-        let outcome = match intent {
-            None => UiOutcome::Ignored,
-            Some(intent) => {
-                let name = intent_name(&intent).to_owned();
-                let result = self.submit(intent, window, cx);
-                UiOutcome::Intent { intent: name, result }
-            }
-        };
-        let entry = InspectorEntry::UiEvent { path, kind, outcome, elapsed: started.elapsed() };
-        self.store.update(cx, |store, cx| store.record(entry, cx));
-    }
-
-    fn record_consumed(&mut self, event: &UiEvent, scope: &Scope, cx: &mut Context<Self>) {
-        let entry = InspectorEntry::UiEvent {
-            path: format_path(&event.scope_path),
-            kind: ui_event_name(event),
-            outcome: UiOutcome::Consumed { at: format_scope(scope) },
-            elapsed: std::time::Duration::ZERO,
-        };
-        self.store.update(cx, |store, cx| store.record(entry, cx));
-    }
-
-    /// Runs policy and either submits, opens the confirmation strip, or
-    /// reports the refusal. Returns a short result for the inspector.
-    fn submit(&mut self, intent: Intent, window: &mut Window, cx: &mut Context<Self>) -> String {
-        let request = ConfirmRequest::describe(self.store.read(cx).store(), &intent);
-        match self.store.update(cx, |store, cx| store.dispatch(intent, cx)) {
-            DispatchOutcome::Submitted(labels) => format!("submitted {}", labels.join(", ")),
-            DispatchOutcome::NeedsConfirmation(intent) => {
-                self.pending = Some(*intent);
-                self.confirm.update(cx, |strip, cx| strip.open(request, window, cx));
-                cx.notify();
-                "confirmation required".to_owned()
-            }
-            DispatchOutcome::Refused(error) => format!("refused: {error}"),
-            DispatchOutcome::NoAccount => "no account".to_owned(),
-        }
-    }
-
-    fn on_confirm_event(
-        &mut self,
-        event: ConfirmEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(intent) = self.pending.take() else { return };
-        match event {
-            ConfirmEvent::HoldCompleted => {
-                self.submit(intent.into_human_confirmed(), window, cx);
-            }
-            ConfirmEvent::Cancelled => {
-                let entry = InspectorEntry::Intent {
-                    intent: intent_name(&intent),
-                    actor: format!("{:?}", intent.actor),
-                    result: "confirmation cancelled".to_owned(),
-                };
-                self.store.update(cx, |store, cx| store.record(entry, cx));
-            }
-        }
-        self.composer.update(cx, |composer, cx| composer.focus(window, cx));
-        cx.notify();
+        self.root.update(cx, |root, cx| root.submit_agent(agent, kind, window, cx));
     }
 }
 
-fn root_sink(cx: &mut Context<Workspace>) -> EventSink {
-    let handler = cx.weak_entity();
-    let observer = handler.clone();
-    EventSink::root(
-        move |event, window, cx| {
-            handler.update(cx, |workspace, cx| workspace.on_ui_event(event, window, cx)).ok();
-        },
-        move |event, scope, cx| {
-            observer.update(cx, |workspace, cx| workspace.record_consumed(event, scope, cx)).ok();
-        },
-    )
+fn dock_sink(sink: &EventSink, tool: DockTool) -> EventSink {
+    sink.scoped(Scope::Panel(tool.scope_name()))
+}
+
+/// The attention item after the highlighted one (wrapping), or the first.
+pub fn next_attention<'a>(
+    items: &'a [AccountAttention],
+    active: Option<&ramflux_desktop_core::AccountId>,
+    highlighted: Option<&ramflux_desktop_core::MomentId>,
+) -> Option<&'a AccountAttention> {
+    let position = items.iter().position(|entry| {
+        Some(&entry.account) == active && Some(&entry.item.moment_id) == highlighted
+    });
+    match position {
+        Some(ix) => items.get((ix + 1) % items.len()),
+        None => items.first(),
+    }
 }
 
 impl Render for Workspace {

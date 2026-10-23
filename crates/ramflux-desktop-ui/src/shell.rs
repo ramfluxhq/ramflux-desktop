@@ -2,47 +2,80 @@
 // Copyright (c) 2026 Span Brain
 
 //! The window root: title bar status strip, the page the store calls for
-//! (entry or workspace), the settings overlay, and the developer panel.
+//! (entry or workspace), the settings overlay, the command palette and the
+//! developer panel.
 //!
 //! Window-wide commands are handled here and routed to the view that owns
-//! them, so a command works the same from a key binding, the title bar, or a
-//! menu.
-
-use std::rc::Rc;
+//! them, so a command works the same from a key binding, the title bar, the
+//! palette or a menu. The shell also tells the intent root which page hosts
+//! the hold-to-confirm strip.
 
 use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, div,
 };
-use ramflux_desktop_core::{AccountId, Intent, IntentKind, SecretInput};
+use ramflux_desktop_core::ContextKind;
 use ramflux_desktop_test::load_fixture;
 
 use crate::actions::{
-    CloseSettings, GoToNeedsMe, OpenSettings, ToggleDevPanel, TogglePinContext, ToggleTheme,
+    ClosePalette, CloseSettings, GoToNeedsMe, OpenPalette, OpenSettings, ToggleDevPanel,
+    TogglePinContext, ToggleTheme,
 };
 use crate::app::{StoreEvent, StoreHandle};
 use crate::dev::DevPanel;
-use crate::entry::{EntryPage, UnlockHandler};
-use crate::route::{Page, page_for};
-use crate::settings::SettingsPage;
-use crate::workspace::{StatusStrip, Workspace};
+use crate::entry::EntryPage;
+use crate::palette::{CommandPalette, PaletteChoice, PaletteEvent};
+use crate::root::{ConfirmHost, IntentRoot};
+use crate::route::{EntryStep, Page, page_for};
+use crate::settings::{SettingsPage, SettingsSection};
+use crate::workspace::{DockTool, PrefsStore, StatusStrip, Workspace};
 
 /// Scenario played when the application starts.
 pub const DEFAULT_SCENARIO: &str = "s01_first_launch";
 
+/// How a shell is set up.
+#[derive(Debug, Clone)]
+pub struct ShellOptions {
+    /// Bundled scenario to play.
+    pub scenario: String,
+    /// Run the real-time clock (false: time moves only through the developer controls).
+    pub start_clock: bool,
+    /// Anchor playback to the wall clock so moment times are real local times.
+    pub wall_clock: bool,
+    /// Where the dock layout persists.
+    pub prefs: PrefsStore,
+}
+
+impl ShellOptions {
+    /// Deterministic options for tests and reference screenshots: fixture
+    /// epoch, layout kept in memory.
+    pub fn for_scenario(name: &str, start_clock: bool) -> Self {
+        Self {
+            scenario: name.to_owned(),
+            start_clock,
+            wall_clock: false,
+            prefs: PrefsStore::in_memory(),
+        }
+    }
+}
+
 /// The window root view.
 pub struct Shell {
     store: Entity<StoreHandle>,
+    root: Entity<IntentRoot>,
     status: Entity<StatusStrip>,
     entry: Entity<EntryPage>,
     workspace: Entity<Workspace>,
+    settings: Entity<SettingsPage>,
+    palette: Entity<CommandPalette>,
     dev: Option<Entity<DevPanel>>,
     dev_visible: bool,
     settings_open: bool,
+    palette_open: bool,
     page: Page,
     focus_handle: FocusHandle,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl Focusable for Shell {
@@ -52,54 +85,86 @@ impl Focusable for Shell {
 }
 
 impl Shell {
-    /// The application window root, playing [`DEFAULT_SCENARIO`] in real time.
+    /// The application window root: [`DEFAULT_SCENARIO`] in real time,
+    /// anchored to the wall clock, with the dock layout persisted.
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::with_scenario(DEFAULT_SCENARIO, true, window, cx)
+        let options = ShellOptions {
+            scenario: DEFAULT_SCENARIO.to_owned(),
+            start_clock: true,
+            wall_clock: true,
+            prefs: PrefsStore::default_location(),
+        };
+        Self::with_options(options, window, cx)
     }
 
-    /// A root playing the bundled scenario `name`. With `start_clock` false
-    /// time only moves through the developer controls (deterministic tests).
+    /// A root playing the bundled scenario `name` deterministically. With
+    /// `start_clock` false time only moves through the developer controls.
     pub fn with_scenario(
         name: &str,
         start_clock: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::with_options(ShellOptions::for_scenario(name, start_clock), window, cx)
+    }
+
+    /// A root set up by `options`.
+    pub fn with_options(
+        options: ShellOptions,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let store = cx.new(|cx| {
             let mut store = StoreHandle::new();
-            if let Ok(scenario) = load_fixture(name) {
+            store.set_wall_clock_anchor(options.wall_clock);
+            if let Ok(scenario) = load_fixture(&options.scenario) {
                 store.load_scenario(&scenario, cx);
             }
-            if start_clock {
+            if options.start_clock {
                 store.start_clock(cx);
             }
             store
         });
+        let root = IntentRoot::attach(store.clone(), window, cx);
         let status = cx.new(|cx| StatusStrip::new(store.clone(), cx));
-        let entry = cx.new(|cx| EntryPage::new(store.clone(), unlock_handler(&store), window, cx));
-        let workspace = cx.new(|cx| Workspace::new(store.clone(), window, cx));
+        let entry = cx.new(|cx| EntryPage::new(store.clone(), root.clone(), window, cx));
+        let workspace = cx.new(|cx| {
+            Workspace::new(store.clone(), root.clone(), options.prefs.clone(), window, cx)
+        });
+        let settings = cx.new(|cx| SettingsPage::new(store.clone(), root.clone(), window, cx));
+        let palette =
+            cx.new(|cx| CommandPalette::new(store.clone(), IntentRoot::sink(&root), window, cx));
         let dev = cfg!(debug_assertions)
             .then(|| cx.new(|cx| DevPanel::new(store.clone(), workspace.downgrade(), cx)));
-        let subscription = cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, _, cx| {
-            if let StoreEvent::Changed(changes) = event
-                && changes.touches_status()
-            {
-                this.sync_page(cx);
-            }
-        });
+        let subscriptions = vec![
+            cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, _, cx| {
+                if let StoreEvent::Changed(changes) = event
+                    && changes.touches_status()
+                {
+                    this.sync_page(cx);
+                }
+            }),
+            cx.subscribe_in(&palette, window, |this, _, event: &PaletteEvent, window, cx| {
+                this.on_palette_event(event.clone(), window, cx);
+            }),
+        ];
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
         let mut shell = Self {
             store,
+            root,
             status,
             entry,
             workspace,
+            settings,
+            palette,
             dev,
             dev_visible: false,
             settings_open: false,
-            page: Page::Entry(crate::route::EntryStep::Daemon),
+            palette_open: false,
+            page: Page::Entry(EntryStep::Daemon),
             focus_handle,
-            _subscription: subscription,
+            _subscriptions: subscriptions,
         };
         shell.sync_page(cx);
         shell
@@ -110,6 +175,11 @@ impl Shell {
         &self.store
     }
 
+    /// The intent root.
+    pub fn root(&self) -> &Entity<IntentRoot> {
+        &self.root
+    }
+
     /// The workspace page.
     pub fn workspace(&self) -> &Entity<Workspace> {
         &self.workspace
@@ -118,6 +188,16 @@ impl Shell {
     /// The entry page.
     pub fn entry(&self) -> &Entity<EntryPage> {
         &self.entry
+    }
+
+    /// The settings overlay.
+    pub fn settings(&self) -> &Entity<SettingsPage> {
+        &self.settings
+    }
+
+    /// The command palette.
+    pub fn palette(&self) -> &Entity<CommandPalette> {
+        &self.palette
     }
 
     /// The developer panel, in debug builds.
@@ -140,14 +220,35 @@ impl Shell {
         self.settings_open
     }
 
+    /// Whether the command palette is showing.
+    pub fn is_palette_open(&self) -> bool {
+        self.palette_open
+    }
+
     fn sync_page(&mut self, cx: &mut Context<Self>) {
         let page = page_for(self.store.read(cx).store());
         if page != self.page {
             self.page = page;
             let show = page == Page::Workspace;
             self.status.update(cx, |status, cx| status.set_show_commands(show, cx));
+            if !show {
+                self.settings_open = false;
+                self.palette_open = false;
+            }
             cx.notify();
         }
+        self.sync_host(cx);
+    }
+
+    fn sync_host(&mut self, cx: &mut Context<Self>) {
+        let host = if self.settings_open {
+            ConfirmHost::Settings
+        } else if self.page == Page::Workspace {
+            ConfirmHost::Workspace
+        } else {
+            ConfirmHost::Entry
+        };
+        self.root.update(cx, |root, cx| root.set_host(host, cx));
     }
 
     fn toggle_dev_panel(&mut self, _: &ToggleDevPanel, _: &mut Window, cx: &mut Context<Self>) {
@@ -169,18 +270,106 @@ impl Shell {
         }
     }
 
-    fn open_settings(&mut self, _: &OpenSettings, _: &mut Window, cx: &mut Context<Self>) {
+    /// Opens the settings overlay at `section`.
+    pub fn open_settings_at(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
+        self.palette_open = false;
         self.settings_open = true;
+        self.settings.update(cx, |page, cx| page.show(section, cx));
+        self.sync_host(cx);
+        cx.notify();
+    }
+
+    fn open_settings(&mut self, _: &OpenSettings, _: &mut Window, cx: &mut Context<Self>) {
+        self.open_settings_at(SettingsSection::Account, cx);
+    }
+
+    /// Closes the settings overlay.
+    pub fn close_settings_now(&mut self, cx: &mut Context<Self>) {
+        self.settings_open = false;
+        self.sync_host(cx);
         cx.notify();
     }
 
     fn close_settings(&mut self, _: &CloseSettings, window: &mut Window, cx: &mut Context<Self>) {
         if self.settings_open {
             self.settings_open = false;
+            self.sync_host(cx);
             window.focus(&self.focus_handle, cx);
             cx.notify();
         } else {
             cx.propagate();
+        }
+    }
+
+    fn open_palette(&mut self, _: &OpenPalette, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page != Page::Workspace {
+            return;
+        }
+        let current = self.workspace.read(cx).current_context().cloned();
+        self.settings_open = false;
+        self.sync_host(cx);
+        self.palette_open = true;
+        self.palette.update(cx, |palette, cx| palette.open(current, window, cx));
+        cx.notify();
+    }
+
+    fn close_palette(&mut self, _: &ClosePalette, window: &mut Window, cx: &mut Context<Self>) {
+        self.dismiss_palette(window, cx);
+    }
+
+    fn dismiss_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette_open {
+            self.palette_open = false;
+            window.focus(&self.focus_handle, cx);
+            cx.notify();
+        }
+    }
+
+    fn on_palette_event(
+        &mut self,
+        event: PaletteEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.dismiss_palette(window, cx);
+        let PaletteEvent::Navigate(choice) = event else { return };
+        let workspace = self.workspace.clone();
+        match choice {
+            PaletteChoice::Context(id) => {
+                workspace.update(cx, |w, cx| w.select_context(Some(id), window, cx));
+            }
+            PaletteChoice::Moment(context, moment) => workspace.update(cx, |w, cx| {
+                w.select_context(Some(context), window, cx);
+                w.conversation().update(cx, |field, cx| field.focus_moment(&moment, cx));
+            }),
+            PaletteChoice::Object(_) => {
+                workspace.update(cx, |w, cx| w.open_tool(DockTool::Objects, window, cx))
+            }
+            PaletteChoice::Contact(participant) => {
+                let direct = {
+                    let store = self.store.read(cx).store();
+                    store
+                        .contexts()
+                        .find(|c| {
+                            c.kind == ContextKind::Direct && c.participants.contains(&participant)
+                        })
+                        .map(|c| c.id.clone())
+                };
+                workspace.update(cx, |w, cx| match direct {
+                    Some(id) => w.select_context(Some(id), window, cx),
+                    None => w.open_tool(DockTool::Contacts, window, cx),
+                });
+            }
+            PaletteChoice::SwitchAccount(account) => {
+                self.store.update(cx, |store, cx| store.set_active_account(&account, cx));
+            }
+            PaletteChoice::OpenSettings => self.open_settings_at(SettingsSection::Account, cx),
+            PaletteChoice::OpenDock(tool) => {
+                workspace.update(cx, |w, cx| w.open_tool(tool, window, cx))
+            }
+            PaletteChoice::NeedsMe => workspace.update(cx, |w, cx| w.go_to_needs_me(window, cx)),
+            PaletteChoice::ToggleTheme => self.toggle_theme(&ToggleTheme, window, cx),
+            PaletteChoice::Pin(..) | PaletteChoice::Mute(..) | PaletteChoice::Disappearing(..) => {}
         }
     }
 
@@ -189,14 +378,6 @@ impl Shell {
         Theme::change(mode, Some(window), cx);
         cx.refresh_windows();
     }
-}
-
-fn unlock_handler(store: &Entity<StoreHandle>) -> UnlockHandler {
-    let store = store.downgrade();
-    Rc::new(move |account_id: AccountId, secret: SecretInput, _: &mut Window, cx: &mut App| {
-        let intent = Intent::human(IntentKind::Unlock { account_id, secret });
-        store.update(cx, |store, cx| store.dispatch(intent, cx)).ok();
-    })
 }
 
 impl Render for Shell {
@@ -214,6 +395,8 @@ impl Render for Shell {
             .on_action(cx.listener(Self::toggle_pin))
             .on_action(cx.listener(Self::open_settings))
             .on_action(cx.listener(Self::close_settings))
+            .on_action(cx.listener(Self::open_palette))
+            .on_action(cx.listener(Self::close_palette))
             .on_action(cx.listener(Self::toggle_theme))
             .size_full()
             .bg(cx.theme().background)
@@ -231,7 +414,8 @@ impl Render for Shell {
                             .min_w_0()
                             .h_full()
                             .child(content)
-                            .when(self.settings_open, |area| area.child(SettingsPage)),
+                            .when(self.settings_open, |area| area.child(self.settings.clone()))
+                            .when(self.palette_open, |area| area.child(self.palette.clone())),
                     )
                     .when_some(self.dev.clone().filter(|_| self.dev_visible), |row, dev| {
                         row.child(dev)

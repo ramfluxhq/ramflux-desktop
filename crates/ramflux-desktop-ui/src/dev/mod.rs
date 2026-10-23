@@ -72,7 +72,7 @@ impl DevPanel {
         let Some((agent, grant_id)) = Self::pending_agent_grant(self.store.read(cx).store()) else {
             return;
         };
-        let kind = IntentKind::Approve { grant_id, confirmed: true };
+        let kind = IntentKind::Approve { grant_id };
         self.workspace
             .update(cx, |workspace, cx| workspace.submit_agent_intent(agent, kind, window, cx))
             .ok();
