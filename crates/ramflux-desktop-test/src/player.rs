@@ -130,7 +130,7 @@ impl ScenarioPlayer {
         for effect in handle_intent(&self.store, intent, now)? {
             match effect {
                 Effect::RequireConfirmation { .. } => for_app.push(effect),
-                Effect::Call { .. } | Effect::Unlock { .. } => self.source.submit(effect),
+                Effect::Call { .. } | Effect::SecretCall { .. } => self.source.submit(effect),
             }
         }
         Ok(for_app)

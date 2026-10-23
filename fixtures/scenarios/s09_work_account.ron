@@ -1,0 +1,45 @@
+// Companion of s09: the work account, played in the background. A
+// deployment approval arrives while the user is in the personal account.
+// Not listed in SCENARIO_NAMES; s09_multi_account_day loads it.
+// Moment `at: 0` values are stamped by the mock source at delivery time.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s09_work_account",
+    description: "Background work account for s09: a deployment approval arrives",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, NodeUpserted(id: "n-corp", endpoints: ["quic://ramflux.acme.example:7443"],
+            fingerprint: "SHA256:0c55 a1e9 37f2 8b06 d4c1 9e7a 52b3 f810", pin_source: Manual, health: Healthy,
+            capabilities: ["gateway", "relay"], expires_at: 1791417600000, is_default: true)),
+        (0, AccountUpdated(id: "a-work", label: "Work", node_id: "n-corp", device_id: "dev-laptop-01", lock_state: Unlocked)),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-kai", kind: Human, display: "Kai Brenner", contact: true)),
+        (0, ParticipantUpserted(id: "p-relay", kind: Agent, display: "Relay", contact: true)),
+        (10, ContextUpserted(id: "c-release", kind: Group, title: "Release 4.2", participants: ["p-me", "p-kai", "p-relay"], pinned: true, epoch: 19)),
+        (100, MomentAdded(id: "m-rel-1", context_id: "c-release", origin: "p-kai", at: 0,
+            kind: Message(text: "Staging looks good. Relay will ask before production."), lifecycle: Done)),
+        (1500, GrantRequested(id: "g-deploy", scope: "tool.deploy.production", risk: Medium, single_use: true,
+            args_hash: "sha256:b81e4c09d2a7")),
+        (1500, MomentAdded(id: "m-deploy", context_id: "c-release", origin: "p-relay", at: 0,
+            kind: Intervention(grant_id: "g-deploy", risk: Medium, summary: "Deploy release 4.2 to production"),
+            lifecycle: NeedsMe)),
+    ],
+    responses: [
+        (
+            on: Call(method: "grant.approve", fields: {"grant_id": "g-deploy"}),
+            emit: [
+                (100, GrantResolved(grant_id: "g-deploy", state: Approved)),
+                (100, MomentUpdated(moment_id: "m-deploy", lifecycle: Done)),
+                (600, MomentAdded(id: "m-deployed", context_id: "c-release", origin: "p-relay", at: 0,
+                    kind: Message(text: "Release 4.2 is live in production."), lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "grant.deny", fields: {"grant_id": "g-deploy"}),
+            emit: [
+                (100, GrantResolved(grant_id: "g-deploy", state: Denied)),
+                (100, MomentUpdated(moment_id: "m-deploy", lifecycle: Dismissed)),
+            ],
+        ),
+    ],
+)

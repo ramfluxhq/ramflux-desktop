@@ -1,8 +1,10 @@
 // s06 Work in progress: a one-sentence request starts a multi-step task. The
 // task needs the user midway (a medium-risk seat hold), then completes.
+// The step that needs the user carries its grant, so the decision expands
+// inside the task card; the finished task carries a result summary.
 // Demonstrates: TaskUpserted, TaskStepChanged, a TaskProgress moment moving
-// InProgress -> NeedsMe -> InProgress -> Done, and chained response rules
-// (task.start, then grant.approve).
+// InProgress -> NeedsMe -> InProgress -> Done, a step bound to a grant, and
+// chained response rules (task.start, then grant.approve or grant.deny).
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
@@ -55,7 +57,7 @@
                     steps: [
                         (label: "Search connections", lifecycle: Done),
                         (label: "Compare fares", lifecycle: Done),
-                        (label: "Hold a seat", lifecycle: NeedsMe),
+                        (label: "Hold a seat", lifecycle: NeedsMe, grant_id: "g-hold"),
                         (label: "Confirm booking", lifecycle: Pending),
                     ],
                     lifecycle: NeedsMe,
@@ -65,6 +67,30 @@
                     kind: Intervention(grant_id: "g-hold", risk: Medium,
                         summary: "Hold seat 42A on the 07:58 train for 64 EUR"),
                     lifecycle: NeedsMe)),
+            ],
+        ),
+        (
+            on: Call(method: "grant.deny", fields: {"grant_id": "g-hold"}),
+            emit: [
+                (100, GrantResolved(grant_id: "g-hold", state: Denied)),
+                (100, MomentUpdated(moment_id: "m-hold", lifecycle: Dismissed)),
+                (150, TaskStepChanged(task_id: "t-trip", index: 2, lifecycle: Failed)),
+                (200, TaskUpserted(
+                    id: "t-trip",
+                    intent_id: "i-trip",
+                    context_id: "c-trip",
+                    actor: Human,
+                    title: "Book a train to Lyon on Friday morning",
+                    steps: [
+                        (label: "Search connections", lifecycle: Done),
+                        (label: "Compare fares", lifecycle: Done),
+                        (label: "Hold a seat", lifecycle: Failed, grant_id: "g-hold"),
+                        (label: "Confirm booking", lifecycle: Pending),
+                    ],
+                    lifecycle: Failed,
+                    result: "Stopped: you declined the seat hold.",
+                )),
+                (200, MomentUpdated(moment_id: "m-task", lifecycle: Failed)),
             ],
         ),
         (
@@ -85,10 +111,11 @@
                     steps: [
                         (label: "Search connections", lifecycle: Done),
                         (label: "Compare fares", lifecycle: Done),
-                        (label: "Hold a seat", lifecycle: Done),
+                        (label: "Hold a seat", lifecycle: Done, grant_id: "g-hold"),
                         (label: "Confirm booking", lifecycle: Done),
                     ],
                     lifecycle: Done,
+                    result: "Seat 42A on the 07:58 to Lyon, 64 EUR. Booking reference RFX-2210.",
                 )),
                 (1600, MomentUpdated(moment_id: "m-task", lifecycle: Done)),
             ],

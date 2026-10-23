@@ -1,21 +1,23 @@
 // s05 Group governance through intents: adding a member, promoting a member
-// (SetRole, high risk) and kicking a member (Kick, high risk). The high-risk
-// operations go through the hold-to-confirm strip before the call reaches the
-// source; response rules then emit the membership facts.
+// (SetRole, high risk), kicking or banning a member (high risk) and creating
+// an invitation. The high-risk operations go through the hold-to-confirm
+// strip before the call reaches the source; response rules then emit the
+// membership facts. The members dock lists roles and offers the actions.
 // Demonstrates: Governance intents, the high-risk governance policy,
-// Governance moments, and ContextUpserted membership changes.
-// Moment `at` values are stamped by the mock source at delivery time.
+// Governance moments, context roles, and ContextUpserted membership changes.
+// Moment `at: 0` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s05_group_governance",
-    description: "Add member, role change and kick with confirmation strip",
+    description: "Add member, role change, kick or ban with confirmation strip, invitation",
     timeline: [
         (0, SourceStatusChanged(Connected)),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
         (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", contact: true)),
         (0, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", contact: true)),
         (0, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", contact: true)),
-        (10, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-tomas"], pinned: true)),
+        (10, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-tomas"], pinned: true,
+            roles: {"p-me": Owner}, epoch: 3)),
         (100, MomentAdded(id: "m-garden-1", context_id: "c-garden", origin: "p-lena", at: 0,
             kind: Message(text: "Seed swap is on Saturday. Can we add Mira?"), lifecycle: Done)),
     ],
@@ -25,7 +27,8 @@
             emit: [
                 (100, MomentAdded(id: "m-invite", context_id: "c-garden", origin: "p-me", at: 0,
                     kind: Governance(action: Invited, target: "p-mira", role: Member), lifecycle: Done)),
-                (1000, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-tomas", "p-mira"], pinned: true)),
+                (1000, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-tomas", "p-mira"], pinned: true,
+                    roles: {"p-me": Owner}, epoch: 4)),
                 (1000, MomentAdded(id: "m-joined", context_id: "c-garden", origin: "p-mira", at: 0,
                     kind: Governance(action: Joined, target: "p-mira"), lifecycle: Done)),
             ],
@@ -33,6 +36,8 @@
         (
             on: Call(method: "group.set_role", fields: {"context_id": "c-garden", "participant_id": "p-lena", "role": "Admin"}),
             emit: [
+                (100, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-tomas", "p-mira"], pinned: true,
+                    roles: {"p-me": Owner, "p-lena": Admin}, epoch: 4)),
                 (100, MomentAdded(id: "m-role", context_id: "c-garden", origin: "p-me", at: 0,
                     kind: Governance(action: RoleChanged, target: "p-lena", role: Admin), lifecycle: Done)),
             ],
@@ -40,9 +45,26 @@
         (
             on: Call(method: "group.kick", fields: {"context_id": "c-garden", "participant_id": "p-tomas"}),
             emit: [
-                (100, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-mira"], pinned: true)),
+                (100, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-mira"], pinned: true,
+                    roles: {"p-me": Owner, "p-lena": Admin}, epoch: 5)),
                 (100, MomentAdded(id: "m-removed", context_id: "c-garden", origin: "p-me", at: 0,
                     kind: Governance(action: Removed, target: "p-tomas"), lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "group.ban", fields: {"context_id": "c-garden", "participant_id": "p-tomas"}),
+            emit: [
+                (100, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-mira"], pinned: true,
+                    roles: {"p-me": Owner, "p-lena": Admin}, epoch: 5)),
+                (100, MomentAdded(id: "m-banned", context_id: "c-garden", origin: "p-me", at: 0,
+                    kind: Governance(action: Banned, target: "p-tomas"), lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "group.create_invite", fields: {"context_id": "c-garden"}),
+            emit: [
+                (100, MomentAdded(id: "m-invite-link", context_id: "c-garden", origin: "p-me", at: 0,
+                    kind: System(level: Info, text: "Invitation link created. It expires in 7 days."), lifecycle: Done)),
             ],
         ),
     ],

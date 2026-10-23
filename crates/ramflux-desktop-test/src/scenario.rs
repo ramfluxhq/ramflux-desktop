@@ -6,15 +6,16 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use ramflux_desktop_core::{AccountId, DomainEvent, Effect, JsonValue, Timestamp};
+use ramflux_desktop_core::{AccountId, DomainEvent, Effect, JsonValue, Timestamp, methods};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Default scenario epoch: 2026-10-01T00:00:00Z in unix milliseconds.
 pub const DEFAULT_EPOCH: Timestamp = Timestamp(1_790_812_800_000);
 
-/// Names of the bundled scenarios, in order.
-pub const SCENARIO_NAMES: [&str; 8] = [
+/// Names of the bundled scenarios, in order. Companion fixtures (background
+/// accounts of a multi-account scenario) are not listed.
+pub const SCENARIO_NAMES: [&str; 9] = [
     "s01_first_launch",
     "s02_daily",
     "s03_intervention",
@@ -23,6 +24,7 @@ pub const SCENARIO_NAMES: [&str; 8] = [
     "s06_in_progress",
     "s07_conflict_privacy_handoff",
     "s08_failures",
+    "s09_multi_account_day",
 ];
 
 /// A scripted sequence of domain events plus reactions to effects.
@@ -43,6 +45,18 @@ pub struct Scenario {
     /// Reactions to submitted effects.
     #[serde(default)]
     pub responses: Vec<ResponseRule>,
+    /// Further accounts played beside this one as background accounts.
+    #[serde(default)]
+    pub companions: Vec<Companion>,
+}
+
+/// A background account played from another fixture.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Companion {
+    /// Account slot the companion plays.
+    pub account_id: AccountId,
+    /// Fixture name, e.g. `"s09_work_account"`.
+    pub scenario: String,
 }
 
 fn default_epoch() -> Timestamp {
@@ -69,7 +83,7 @@ pub enum EffectMatcher {
         #[serde(default)]
         fields: BTreeMap<String, JsonValue>,
     },
-    /// An unlock, optionally for one account.
+    /// An unlock (a secret call to `account.unlock`), optionally for one account.
     Unlock {
         /// Required account.
         #[serde(default)]
@@ -78,17 +92,23 @@ pub enum EffectMatcher {
 }
 
 impl EffectMatcher {
-    /// Returns whether `effect` matches. Confirmation requests never match:
-    /// they are handled by the app, not the source.
+    /// Returns whether `effect` matches. `Call` matches plain and secret
+    /// calls alike (secrets are never matched). Confirmation requests never
+    /// match: they are handled by the app, not the source.
     pub fn matches(&self, effect: &Effect) -> bool {
-        match (self, effect) {
-            (Self::Call { method, fields }, Effect::Call { method: m, body }) => {
+        let (Some(m), Some(body)) = (effect.method(), effect.body()) else {
+            return false;
+        };
+        match self {
+            Self::Call { method, fields } => {
                 method == m && fields.iter().all(|(k, v)| body.get(k) == Some(v))
             }
-            (Self::Unlock { account_id }, Effect::Unlock { account_id: a, .. }) => {
-                account_id.as_ref().is_none_or(|want| want == a)
+            Self::Unlock { account_id } => {
+                m == methods::ACCOUNT_UNLOCK
+                    && account_id.as_ref().is_none_or(|want| {
+                        body.get("account_id") == Some(&JsonValue::from(want.as_str()))
+                    })
             }
-            _ => false,
         }
     }
 }

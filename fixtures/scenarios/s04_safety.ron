@@ -1,22 +1,34 @@
-// s04 Safety: a verified contact's identity key changes. A sticky SafetyChange
-// moment needs the user until the user verifies the safety number again
-// (VerifySafetyNumber intent), after which the warning is closed and a
-// verification moment is recorded.
-// Demonstrates: ParticipantUpserted safety states, SafetyChange moments, and
-// a safety.verify response rule.
-// Moment `at` values are stamped by the mock source at delivery time.
+// s04 Safety and contacts: a verified contact's identity key changes. A
+// sticky SafetyChange moment (and a banner in the context header) needs the
+// user until the user verifies the safety number again (VerifySafetyNumber
+// intent), after which the warning is closed and a verification moment is
+// recorded. A new person asks to become a contact; the request is answered
+// inline or from the contacts dock.
+// Demonstrates: ParticipantUpserted safety states and safety numbers,
+// SafetyChange moments, ContactRequest moments, and safety.verify /
+// contact.accept / contact.reject responses.
+// Moment `at: 0` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s04_safety",
-    description: "Contact key changed, sticky warning, safety number verified",
+    description: "Contact key changed, sticky warning, safety number verified, contact request",
     timeline: [
         (0, SourceStatusChanged(Connected)),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
-        (0, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true)),
+        (0, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true,
+            safety_number: "38104 77215 90462 11873 50926 64018")),
+        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", safety: Verified, contact: true,
+            safety_number: "70211 48302 19554 83017 22690 41175")),
+        (0, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", contact: true)),
+        (0, ParticipantUpserted(id: "p-noor", kind: Human, display: "Noor Haddad")),
         (10, ContextUpserted(id: "c-mira", kind: Direct, title: "Mira Okafor", participants: ["p-me", "p-mira"])),
+        (10, ContextUpserted(id: "c-requests", kind: Direct, title: "Noor Haddad", participants: ["p-me", "p-noor"])),
         (100, MomentAdded(id: "m-mira-1", context_id: "c-mira", origin: "p-mira", at: 0,
             kind: Message(text: "New phone, same me."), lifecycle: Done)),
-        (500, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: KeyChanged, contact: true)),
+        (300, MomentAdded(id: "m-noor", context_id: "c-requests", origin: "p-noor", at: 0,
+            kind: ContactRequest(from: "p-noor", note: "We met at the garden workshop."), lifecycle: NeedsMe)),
+        (500, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: KeyChanged, contact: true,
+            safety_number: "38104 77215 90462 11873 50926 99031")),
         (500, MomentAdded(id: "m-key", context_id: "c-mira", origin: "p-mira", at: 0,
             kind: SafetyChange(participant_id: "p-mira", change: KeyChanged), lifecycle: NeedsMe)),
     ],
@@ -24,11 +36,29 @@
         (
             on: Call(method: "safety.verify", fields: {"participant_id": "p-mira"}),
             emit: [
-                (100, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true)),
+                (100, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true,
+                    safety_number: "38104 77215 90462 11873 50926 99031")),
                 (100, MomentAdded(id: "m-verified", context_id: "c-mira", origin: "p-me", at: 0,
                     kind: SafetyChange(participant_id: "p-mira", change: Verified), lifecycle: Done)),
                 (100, MomentUpdated(moment_id: "m-key", lifecycle: Done)),
             ],
+        ),
+        (
+            on: Call(method: "safety.verify", fields: {"participant_id": "p-tomas"}),
+            emit: [
+                (100, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", safety: Verified, contact: true)),
+            ],
+        ),
+        (
+            on: Call(method: "contact.accept", fields: {"moment_id": "m-noor"}),
+            emit: [
+                (100, ParticipantUpserted(id: "p-noor", kind: Human, display: "Noor Haddad", contact: true)),
+                (100, MomentUpdated(moment_id: "m-noor", lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "contact.reject", fields: {"moment_id": "m-noor"}),
+            emit: [(100, MomentUpdated(moment_id: "m-noor", lifecycle: Dismissed))],
         ),
     ],
 )

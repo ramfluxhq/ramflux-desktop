@@ -1,60 +1,152 @@
-// s01 First launch: no daemon, then the daemon appears, the user joins a node
-// from an invite, the account is created locked, and unlocking enters the
-// workspace with a pinned "Notes to self" context.
-// Demonstrates: SourceStatusChanged, NodeUpserted/NodeHealthChanged,
-// AccountUpdated, and an Unlock effect answered by a response rule.
+// s01 First launch: no daemon, then the daemon appears with the shipped
+// bootstrap node and a node from an invite link awaiting confirmation. The
+// user may add a node by URL (trust on first use: the card shows the key
+// fingerprint, endpoints, capabilities, expiry and a sticky warning, and the
+// confirmation needs a hold), then creates an account, joins as a new device,
+// or restores a backup. Locking from settings returns to entry; unlocking
+// returns to the workspace.
+// Demonstrates: SourceStatusChanged, NodeUpserted (confirmed and pending),
+// node.add / node.confirm, account.create / device.activate /
+// account.backup.import secret calls, account.lock echo and account.unlock.
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s01_first_launch",
-    description: "No daemon, connect, join node, create account, unlock, enter workspace",
+    description: "No daemon, bootstrap and invite nodes, TOFU add, create account, lock and unlock",
     timeline: [
         (0, SourceStatusChanged(Disconnected)),
         (1500, SourceStatusChanged(Locked)),
+        (2000, NodeUpserted(
+            id: "n-ramflux",
+            endpoints: ["quic://bootstrap.ramflux.example:443"],
+            fingerprint: "SHA256:9a1c 0e44 7b2d 51f0 c3a8 66e1 2d90 b7f4",
+            pin_source: Bootstrap,
+            health: Healthy,
+            capabilities: ["gateway", "relay", "prekey"],
+            builtin: true,
+            is_default: true,
+        )),
         (2000, NodeUpserted(
             id: "n-harbor",
             endpoints: ["quic://harbor.example.net:7443"],
             fingerprint: "SHA256:4b9e 77c1 0a3f d2e8 91c6 5f04 aa2d 6e19",
             pin_source: Invite,
             health: Unknown,
+            capabilities: ["gateway", "relay", "prekey", "objects"],
+            expires_at: 1793404800000,
+            confirmed: false,
         )),
         (2600, NodeHealthChanged(node_id: "n-harbor", health: Healthy)),
-        (4000, AccountUpdated(
-            id: "a-main",
-            label: "Personal",
-            node_id: "n-harbor",
-            device_id: "dev-laptop-01",
-            lock_state: Locked,
-        )),
     ],
     responses: [
         (
+            on: Call(method: "node.add"),
+            emit: [
+                (300, NodeUpserted(
+                    id: "n-studio",
+                    endpoints: ["quic://studio.example.org:7443", "https://studio.example.org/.well-known/ramflux/client"],
+                    fingerprint: "SHA256:e21f 9c07 3b5a 0d88 41e6 f2c9 7a13 5d06",
+                    pin_source: Manual,
+                    health: Unknown,
+                    capabilities: ["gateway", "relay", "prekey"],
+                    expires_at: 1791417600000,
+                    confirmed: false,
+                )),
+            ],
+        ),
+        (
+            on: Call(method: "node.confirm", fields: {"node_id": "n-studio"}),
+            emit: [
+                (100, NodeUpserted(
+                    id: "n-studio",
+                    endpoints: ["quic://studio.example.org:7443", "https://studio.example.org/.well-known/ramflux/client"],
+                    fingerprint: "SHA256:e21f 9c07 3b5a 0d88 41e6 f2c9 7a13 5d06",
+                    pin_source: Manual,
+                    health: Healthy,
+                    capabilities: ["gateway", "relay", "prekey"],
+                    expires_at: 1791417600000,
+                )),
+            ],
+        ),
+        (
+            on: Call(method: "node.confirm", fields: {"node_id": "n-harbor"}),
+            emit: [
+                (100, NodeUpserted(
+                    id: "n-harbor",
+                    endpoints: ["quic://harbor.example.net:7443"],
+                    fingerprint: "SHA256:4b9e 77c1 0a3f d2e8 91c6 5f04 aa2d 6e19",
+                    pin_source: Invite,
+                    health: Healthy,
+                    capabilities: ["gateway", "relay", "prekey", "objects"],
+                    expires_at: 1793404800000,
+                )),
+            ],
+        ),
+        (
+            on: Call(method: "account.create", fields: {"node_id": "n-studio"}),
+            emit: [
+                (200, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-studio", device_id: "dev-laptop-01", lock_state: Unlocked)),
+                (250, SourceStatusChanged(Connected)),
+                (250, DeviceUpserted(id: "dev-laptop-01", account_id: "a-main", label: "This laptop", this_device: true)),
+                (300, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+                (350, ContextUpserted(id: "c-notes", kind: Direct, title: "Notes to self", participants: ["p-me"], pinned: true)),
+                (400, MomentAdded(id: "m-welcome", context_id: "c-notes", origin: "p-me", at: 0,
+                    kind: System(level: Info, text: "This device is now part of your account."), lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "account.create", fields: {"node_id": "n-harbor"}),
+            emit: [
+                (200, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked)),
+                (250, SourceStatusChanged(Connected)),
+                (250, DeviceUpserted(id: "dev-laptop-01", account_id: "a-main", label: "This laptop", this_device: true)),
+                (300, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+                (350, ContextUpserted(id: "c-notes", kind: Direct, title: "Notes to self", participants: ["p-me"], pinned: true)),
+                (400, MomentAdded(id: "m-welcome", context_id: "c-notes", origin: "p-me", at: 0,
+                    kind: System(level: Info, text: "This device is now part of your account."), lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "account.create"),
+            emit: [
+                (200, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-ramflux", device_id: "dev-laptop-01", lock_state: Unlocked)),
+                (250, SourceStatusChanged(Connected)),
+                (250, DeviceUpserted(id: "dev-laptop-01", account_id: "a-main", label: "This laptop", this_device: true)),
+                (300, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+                (350, ContextUpserted(id: "c-notes", kind: Direct, title: "Notes to self", participants: ["p-me"], pinned: true)),
+                (400, MomentAdded(id: "m-welcome", context_id: "c-notes", origin: "p-me", at: 0,
+                    kind: System(level: Info, text: "This device is now part of your account."), lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "device.activate"),
+            emit: [
+                (300, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-02", lock_state: Unlocked)),
+                (350, SourceStatusChanged(Connected)),
+                (350, DeviceUpserted(id: "dev-desk-01", account_id: "a-main", label: "Desk workstation")),
+                (350, DeviceUpserted(id: "dev-laptop-02", account_id: "a-main", label: "This laptop", this_device: true)),
+                (400, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+                (450, ContextUpserted(id: "c-notes", kind: Direct, title: "Notes to self", participants: ["p-me"], pinned: true)),
+                (500, MomentAdded(id: "m-welcome", context_id: "c-notes", origin: "p-me", at: 0,
+                    kind: System(level: Info, text: "This laptop joined your account. History syncs from your other devices."), lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "account.backup.import"),
+            emit: [
+                (400, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked)),
+                (450, SourceStatusChanged(Connected)),
+                (450, DeviceUpserted(id: "dev-laptop-01", account_id: "a-main", label: "This laptop", this_device: true)),
+                (500, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+                (550, ContextUpserted(id: "c-notes", kind: Direct, title: "Notes to self", participants: ["p-me"], pinned: true)),
+                (600, MomentAdded(id: "m-welcome", context_id: "c-notes", origin: "p-me", at: 0,
+                    kind: System(level: Info, text: "Account restored from backup."), lifecycle: Done)),
+            ],
+        ),
+        (
             on: Unlock(account_id: "a-main"),
             emit: [
-                (100, AccountUpdated(
-                    id: "a-main",
-                    label: "Personal",
-                    node_id: "n-harbor",
-                    device_id: "dev-laptop-01",
-                    lock_state: Unlocked,
-                )),
-                (150, SourceStatusChanged(Connected)),
-                (200, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
-                (250, ContextUpserted(
-                    id: "c-notes",
-                    kind: Direct,
-                    title: "Notes to self",
-                    participants: ["p-me"],
-                    pinned: true,
-                )),
-                (300, MomentAdded(
-                    id: "m-welcome",
-                    context_id: "c-notes",
-                    origin: "p-me",
-                    at: 0,
-                    kind: System(level: Info, text: "This device is now part of your account."),
-                    lifecycle: Done,
-                )),
+                (100, AccountLockChanged(account_id: "a-main", lock_state: Unlocked)),
             ],
         ),
     ],

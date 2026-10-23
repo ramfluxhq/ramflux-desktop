@@ -1,0 +1,83 @@
+// s09 Multi-account day: the personal account is in front; the work account
+// (companion fixture s09_work_account) plays in the background. Attention
+// arrives in the background account; the account switcher and "take me to
+// what needs me" show it, the user switches, resolves it, and returns.
+// The personal account also carries the settings data: three node profiles
+// (shipped, invite, operator) with probe results, three devices (one
+// revoked) and the read-only integrations snapshot.
+// Demonstrates: companions (one store per account), background attention,
+// node.probe / node.set_default / node.set_enabled, device.revoke.
+// Moment `at: 0` values are stamped by the mock source at delivery time.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s09_multi_account_day",
+    description: "Personal in front, work in the background, attention arrives there, switch and resolve",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, NodeUpserted(id: "n-ramflux", endpoints: ["quic://bootstrap.ramflux.example:443"],
+            fingerprint: "SHA256:9a1c 0e44 7b2d 51f0 c3a8 66e1 2d90 b7f4", pin_source: Bootstrap, health: Healthy,
+            capabilities: ["gateway", "relay", "prekey"], builtin: true)),
+        (0, NodeUpserted(id: "n-harbor", endpoints: ["quic://harbor.example.net:7443"],
+            fingerprint: "SHA256:4b9e 77c1 0a3f d2e8 91c6 5f04 aa2d 6e19", pin_source: Invite, health: Healthy,
+            capabilities: ["gateway", "relay", "prekey", "objects"], expires_at: 1793404800000, is_default: true,
+            probe: (at: 1790809200000, gateway: (ok: true, latency_ms: 24), relay: (ok: true, latency_ms: 31)))),
+        (0, NodeUpserted(id: "n-corp", endpoints: ["quic://ramflux.acme.example:7443"],
+            fingerprint: "SHA256:0c55 a1e9 37f2 8b06 d4c1 9e7a 52b3 f810", pin_source: Manual, health: Degraded,
+            capabilities: ["gateway", "relay"], expires_at: 1791417600000,
+            probe: (at: 1790809200000, gateway: (ok: true, latency_ms: 88), relay: (ok: false, detail: "relay timeout")))),
+        (0, AccountUpdated(id: "a-personal", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked)),
+        (0, DeviceUpserted(id: "dev-laptop-01", account_id: "a-personal", label: "This laptop", this_device: true, last_seen: 1790812800000)),
+        (0, DeviceUpserted(id: "dev-phone-01", account_id: "a-personal", label: "Phone", last_seen: 1790805600000)),
+        (0, DeviceUpserted(id: "dev-tablet-old", account_id: "a-personal", label: "Old tablet", revoked: true, last_seen: 1788134400000)),
+        (0, IntegrationsUpdated(
+            mcp_servers: [(name: "notes", tools: ["notes.search", "notes.append"], healthy: true)],
+            a2i_pending: [],
+        )),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", safety: Verified, contact: true)),
+        (0, ParticipantUpserted(id: "p-sam", kind: Human, display: "Sam Moreau", contact: true)),
+        (0, ParticipantUpserted(id: "p-ines", kind: Human, display: "Ines Carvalho")),
+        (10, ContextUpserted(id: "c-family", kind: Group, title: "Family", participants: ["p-me", "p-sam", "p-lena"], pinned: true, epoch: 11)),
+        (10, ContextUpserted(id: "c-ines", kind: Direct, title: "Ines Carvalho", participants: ["p-me", "p-ines"])),
+        (20, MomentAdded(id: "m-fam-0", context_id: "c-family", origin: "p-sam", at: -46800000,
+            kind: Message(text: "Dinner at ours on Sunday?"), lifecycle: Done)),
+        (100, MomentAdded(id: "m-fam-1", context_id: "c-family", origin: "p-me", at: 0,
+            kind: Message(text: "Sunday works. I will bring dessert.", receipt: Read), lifecycle: Done)),
+        (800, MomentAdded(id: "m-ines", context_id: "c-ines", origin: "p-ines", at: 0,
+            kind: ContactRequest(from: "p-ines", note: "From the climbing club."), lifecycle: NeedsMe)),
+    ],
+    responses: [
+        (
+            on: Call(method: "contact.accept", fields: {"moment_id": "m-ines"}),
+            emit: [
+                (100, ParticipantUpserted(id: "p-ines", kind: Human, display: "Ines Carvalho", contact: true)),
+                (100, MomentUpdated(moment_id: "m-ines", lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "contact.reject", fields: {"moment_id": "m-ines"}),
+            emit: [(100, MomentUpdated(moment_id: "m-ines", lifecycle: Dismissed))],
+        ),
+        (
+            on: Call(method: "node.probe", fields: {"node_id": "n-corp"}),
+            emit: [
+                (400, NodeProbed(node_id: "n-corp", probe: (at: 0, gateway: (ok: true, latency_ms: 72), relay: (ok: true, latency_ms: 95)))),
+            ],
+        ),
+        (
+            on: Call(method: "node.probe"),
+            emit: [
+                (300, NodeProbed(node_id: "n-harbor", probe: (at: 0, gateway: (ok: true, latency_ms: 22), relay: (ok: true, latency_ms: 29)))),
+            ],
+        ),
+        (
+            on: Call(method: "device.revoke", fields: {"device_id": "dev-phone-01"}),
+            emit: [
+                (200, DeviceUpserted(id: "dev-phone-01", account_id: "a-personal", label: "Phone", revoked: true, last_seen: 1790805600000)),
+            ],
+        ),
+    ],
+    companions: [
+        (account_id: "a-work", scenario: "s09_work_account"),
+    ],
+)

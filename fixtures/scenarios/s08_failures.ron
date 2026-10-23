@@ -1,8 +1,10 @@
 // s08 Failures: the node degrades, a transfer fails, the daemon connection
 // drops and the node becomes unreachable; an agent surface uses a block kind
 // this client does not know and renders through the Fallback block.
+// Retrying the failed transfer starts a new transfer moment that completes.
 // Demonstrates: NodeHealthChanged, TransferState::Failed, SourceStatusChanged,
-// System moments, unknown BlockKind -> Fallback, and a Fallback moment.
+// System moments, unknown BlockKind -> Fallback, a Fallback moment, and
+// object.transfer.resume.
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
@@ -43,5 +45,19 @@
         (3000, NodeHealthChanged(node_id: "n-harbor", health: Unreachable)),
         (3000, MomentAdded(id: "m-lost", context_id: "c-lena", origin: "p-me", at: 0,
             kind: System(level: Error, text: "Lost connection to the local daemon. Retrying."), lifecycle: Done)),
+    ],
+    responses: [
+        (
+            on: Call(method: "object.transfer.resume", fields: {"object_id": "o-photos"}),
+            emit: [
+                (100, ObjectUpserted(id: "o-photos", name: "garden-photos.zip", size: 73400320, direction: Outbound,
+                    transfer: Transferring(transferred: 36700160))),
+                (100, MomentAdded(id: "m-upload-retry", context_id: "c-lena", origin: "p-me", at: 0,
+                    kind: ObjectTransfer(object_id: "o-photos"), lifecycle: InProgress)),
+                (1200, ObjectUpserted(id: "o-photos", name: "garden-photos.zip", size: 73400320, direction: Outbound,
+                    transfer: Complete)),
+                (1200, MomentUpdated(moment_id: "m-upload-retry", lifecycle: Done)),
+            ],
+        ),
     ],
 )

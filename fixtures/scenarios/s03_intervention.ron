@@ -1,21 +1,46 @@
 // s03 Intervention: the agent asks to run a high-risk tool. The approval is
 // bound to a single-use grant; approving without hold-to-confirm yields a
 // confirmation request, a confirmed approval resolves the grant and the
-// result returns to the conversation.
+// result returns to the conversation. The agent also offers a form (select
+// and input) and an approval block for a medium-risk notice. The approvals
+// dock shows an earlier approved grant, a standing approval and the audit
+// trail; the evidence dock shows franking, the group epoch, devices and the
+// node.
 // Demonstrates: GrantRequested, Intervention in NeedsMe, the High-risk
-// confirmation policy, and grant.approve / grant.deny responses.
-// Moment `at` values are stamped by the mock source at delivery time.
+// confirmation policy, grant.approve / grant.deny / grant.revoke /
+// grant.revoke_standing_approval responses, surface form values, and the
+// read-only integrations snapshot.
+// Moment `at: 0` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s03_intervention",
-    description: "Agent requests a high-risk tool, hold-to-confirm approval, result returns",
+    description: "Agent requests a high-risk tool, hold-to-confirm approval, form surface, approvals dock",
     timeline: [
         (0, SourceStatusChanged(Connected)),
+        (0, NodeUpserted(id: "n-harbor", endpoints: ["quic://harbor.example.net:7443"],
+            fingerprint: "SHA256:4b9e 77c1 0a3f d2e8 91c6 5f04 aa2d 6e19", pin_source: Invite, health: Healthy,
+            capabilities: ["gateway", "relay", "prekey"], expires_at: 1793404800000, is_default: true)),
+        (0, AccountUpdated(id: "a-ops", label: "Operations", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked)),
+        (0, DeviceUpserted(id: "dev-laptop-01", account_id: "a-ops", label: "This laptop", this_device: true, last_seen: 1790812800000)),
+        (0, DeviceUpserted(id: "dev-desk-01", account_id: "a-ops", label: "Desk workstation", last_seen: 1790809200000)),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
         (0, ParticipantUpserted(id: "p-orbit", kind: Agent, display: "Orbit", contact: true)),
-        (10, ContextUpserted(id: "c-ops", kind: Group, title: "Release ops", participants: ["p-me", "p-orbit"], pinned: true)),
+        (0, IntegrationsUpdated(
+            mcp_servers: [
+                (name: "secrets", tools: ["secrets.rotate", "secrets.list"], healthy: true),
+                (name: "calendar", tools: ["calendar.read", "calendar.post"], healthy: true),
+                (name: "ticketing", tools: ["tickets.create"], healthy: false),
+            ],
+            a2i_pending: [(id: "a2i-17", summary: "Orbit asks to pause nightly builds")],
+        )),
+        (0, GrantRequested(id: "g-calendar", scope: "tool.calendar.read", risk: Low, args_hash: "sha256:90c2e71f0b44")),
+        (5, GrantResolved(grant_id: "g-calendar", state: Approved)),
+        (5, StandingApprovalUpserted(id: "sa-calendar", scope: "tool.calendar.read", max_risk: Medium, expiry: 1793404800000, uses: 12)),
+        (5, AuditAppended(at: 1790809200000, action: "grant.approve", subject: "g-calendar", proposed_by: Agent("p-orbit"), human_confirmed: false)),
+        (10, ContextUpserted(id: "c-ops", kind: Group, title: "Release ops", participants: ["p-me", "p-orbit"], pinned: true,
+            roles: {"p-me": Owner, "p-orbit": Member}, epoch: 42)),
         (100, MomentAdded(id: "m-ask", context_id: "c-ops", origin: "p-me", at: 0,
-            kind: Message(text: "Orbit, rotate the staging API keys."), lifecycle: Done)),
+            kind: Message(text: "Orbit, rotate the staging API keys.", receipt: Read, franking: "frank:2f8a 61c0 d93e 4b17"), lifecycle: Done)),
         (600, MomentAdded(id: "m-plan", context_id: "c-ops", origin: "p-orbit", at: 0,
             kind: AgentSurface(
                 surface_id: "s-plan",
@@ -24,6 +49,22 @@
                     (id: "b-intro", kind: Text, data: {"text": "I will rotate three keys and revoke the old ones."}),
                     (id: "b-keys", kind: KeyValue, data: {"items": [["billing-api", "staging"], ["search-api", "staging"], ["media-api", "staging"]]}),
                 ],
+            ),
+            lifecycle: Done)),
+        (700, GrantRequested(id: "g-notice", scope: "tool.calendar.post", risk: Medium, args_hash: "sha256:7d3b0a19ce52")),
+        (700, MomentAdded(id: "m-window", context_id: "c-ops", origin: "p-orbit", at: 0,
+            kind: AgentSurface(
+                surface_id: "s-window",
+                fallback_text: "Pick a maintenance window",
+                blocks: [
+                    (id: "b-form", kind: Form, data: {"title": "Maintenance window", "text": "Choose when the rotation may restart services."}),
+                    (id: "b-slot", kind: Select, data: {"label": "Window", "name": "window",
+                        "options": [["sat-0200", "Saturday 02:00"], ["sun-0400", "Sunday 04:00"]], "value": "sat-0200"}),
+                    (id: "b-note", kind: Input, data: {"label": "Note for the team", "name": "note", "placeholder": "Optional"}),
+                    (id: "b-submit", kind: ActionGroup, data: {"actions": ["schedule"]}),
+                    (id: "b-notice", kind: Approval, data: {"grant_id": "g-notice", "summary": "Post the maintenance notice to the team calendar"}),
+                ],
+                actions: [(id: "schedule", label: "Schedule")],
             ),
             lifecycle: Done)),
         (800, GrantRequested(
@@ -59,6 +100,34 @@
             emit: [
                 (100, GrantResolved(grant_id: "g-rotate", state: Denied)),
                 (150, MomentUpdated(moment_id: "m-approve", lifecycle: Dismissed)),
+            ],
+        ),
+        (
+            on: Call(method: "grant.approve", fields: {"grant_id": "g-notice"}),
+            emit: [(100, GrantResolved(grant_id: "g-notice", state: Approved))],
+        ),
+        (
+            on: Call(method: "grant.deny", fields: {"grant_id": "g-notice"}),
+            emit: [(100, GrantResolved(grant_id: "g-notice", state: Denied))],
+        ),
+        (
+            on: Call(method: "surface.action", fields: {"moment_id": "m-window", "action_id": "schedule"}),
+            emit: [
+                (200, SurfacePatched(moment_id: "m-window", surface_id: "s-window", ops: [
+                    AppendBlocks([(id: "b-scheduled", kind: Success, data: {"text": "Maintenance window scheduled."})]),
+                    SetActions([(id: "schedule", label: "Schedule", disabled_reason: "Already scheduled")]),
+                ])),
+            ],
+        ),
+        (
+            on: Call(method: "grant.revoke", fields: {"grant_id": "g-calendar"}),
+            emit: [(100, GrantRevoked(grant_id: "g-calendar"))],
+        ),
+        (
+            on: Call(method: "grant.revoke_standing_approval", fields: {"approval_id": "sa-calendar"}),
+            emit: [
+                (100, StandingApprovalUpserted(id: "sa-calendar", scope: "tool.calendar.read", max_risk: Medium,
+                    expiry: 1793404800000, uses: 12, revoked: true)),
             ],
         ),
     ],

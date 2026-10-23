@@ -6,31 +6,45 @@
 use std::collections::BTreeMap;
 use std::ops::Bound;
 
-use ramflux_desktop_core::{DomainEvent, Effect, EventEnvelope, Source, Timestamp};
+use ramflux_desktop_core::{
+    DomainEvent, Effect, EventEnvelope, JsonValue, MomentKind, PrivacyRevealPayload, Source,
+    Timestamp,
+};
 
+use crate::local_echo::{ECHO_DELAY_MS, audit_echo, local_echo};
 use crate::scenario::{ResponseRule, Scenario};
 
 /// Ordering key of a scheduled event: (offset ms, insertion order).
 type Key = (u64, u64);
 
 /// A submitted effect as seen by the mock. Secrets are never recorded.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EffectRecord {
     /// Offset at which it was submitted.
     pub at_ms: u64,
-    /// Method name, `"RequireConfirmation"`, or `"Unlock"`.
+    /// Method name, or `"RequireConfirmation"`.
     pub label: String,
     /// Index of the matching response rule.
     pub rule: Option<usize>,
+    /// Whether the built-in local echo answered it.
+    pub echoed: bool,
+    /// The call body (never contains secrets; secret calls carry them beside it).
+    pub body: JsonValue,
 }
 
 /// Plays a scenario as a source.
 ///
 /// Every event lives in one schedule keyed by offset. Delivery assigns
-/// increasing `seq` from 1 and `at = epoch + offset`, and stamps `at` on
-/// added moments, so fixtures need not repeat timestamps. Responses are
-/// scheduled into the same schedule, which makes [`MockSource::rewind`] replay
-/// them deterministically.
+/// increasing `seq` from 1 and `at = epoch + offset`. An added moment written
+/// with `at: 0` is stamped with the delivery time; any other `at` is a signed
+/// offset from the epoch, so fixtures can carry history (for example
+/// yesterday's messages) that stays relative when the epoch moves. Reveal
+/// records and node probes written with `at: 0` are stamped the same way.
+/// Responses are scheduled into the same schedule, which makes
+/// [`MockSource::rewind`] replay them deterministically.
+///
+/// Effects no scenario rule answers fall back to the built-in local echo
+/// (see [`crate::local_echo`]); confirmed calls are always audited.
 #[derive(Debug)]
 pub struct MockSource {
     epoch: Timestamp,
@@ -46,8 +60,14 @@ pub struct MockSource {
 impl MockSource {
     /// Creates a source for `scenario`.
     pub fn new(scenario: &Scenario) -> Self {
+        Self::with_epoch(scenario, scenario.epoch)
+    }
+
+    /// Creates a source for `scenario` with offset 0 at `epoch` instead of
+    /// the scenario's own epoch (the app anchors live playback to the wall clock).
+    pub fn with_epoch(scenario: &Scenario, epoch: Timestamp) -> Self {
         let mut source = Self {
-            epoch: scenario.epoch,
+            epoch,
             rules: scenario.responses.clone(),
             schedule: BTreeMap::new(),
             next_order: 0,
@@ -116,8 +136,23 @@ impl MockSource {
         self.cursor = Some(key);
         self.seq += 1;
         let at = self.epoch.saturating_add_ms(key.0);
-        if let DomainEvent::MomentAdded(moment) = &mut event {
-            moment.at = at;
+        match &mut event {
+            DomainEvent::MomentAdded(moment) => {
+                moment.at = if moment.at == Timestamp(0) {
+                    at
+                } else {
+                    Timestamp(self.epoch.millis().saturating_add(moment.at.millis()))
+                };
+            }
+            DomainEvent::MomentUpdated {
+                kind:
+                    Some(MomentKind::PrivacyReveal(PrivacyRevealPayload {
+                        revealed: Some(record), ..
+                    })),
+                ..
+            } if record.at == Timestamp(0) => record.at = at,
+            DomainEvent::NodeProbed { probe, .. } if probe.at == Timestamp(0) => probe.at = at,
+            _ => {}
         }
         EventEnvelope::new(self.seq, at, event)
     }
@@ -125,18 +160,24 @@ impl MockSource {
 
 impl Source for MockSource {
     fn submit(&mut self, effect: Effect) {
-        let label = match &effect {
-            Effect::Call { method, .. } => method.clone(),
-            Effect::RequireConfirmation { .. } => "RequireConfirmation".to_owned(),
-            Effect::Unlock { .. } => "Unlock".to_owned(),
-        };
+        let label = effect.method().unwrap_or("RequireConfirmation").to_owned();
         let rule = self.rules.iter().position(|r| r.on.matches(&effect));
-        self.effects.push(EffectRecord { at_ms: self.now_ms, label, rule });
+        let echo = if rule.is_none() { local_echo(&effect) } else { Vec::new() };
+        let echoed = !echo.is_empty();
+        let body = effect.body().cloned().unwrap_or_default();
+        self.effects.push(EffectRecord { at_ms: self.now_ms, label, rule, echoed, body });
         if let Some(index) = rule {
             let emit = self.rules[index].emit.clone();
             for (delay, event) in emit {
                 self.inject(delay, event);
             }
+        }
+        for event in echo {
+            self.inject(ECHO_DELAY_MS, event);
+        }
+        let at = self.epoch.saturating_add_ms(self.now_ms.saturating_add(ECHO_DELAY_MS));
+        if let Some(event) = audit_echo(&effect, at) {
+            self.inject(ECHO_DELAY_MS, event);
         }
     }
 

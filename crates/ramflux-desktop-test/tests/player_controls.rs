@@ -7,7 +7,12 @@ use ramflux_desktop_core::*;
 use ramflux_desktop_test::{EffectMatcher, MockSource, ScenarioPlayer, load_fixture};
 
 fn approve(grant: &str, confirmed: bool) -> Intent {
-    Intent::human(IntentKind::Approve { grant_id: GrantId::new(grant), confirmed })
+    held_if(Intent::human(IntentKind::Approve { grant_id: GrantId::new(grant) }), confirmed)
+}
+
+/// Adds the hold-to-confirm evidence the strip would add.
+fn held_if(intent: Intent, confirmed: bool) -> Intent {
+    if confirmed { intent.confirmed_by_human(HumanConfirmation::hold(1_200)) } else { intent }
 }
 
 #[test]
@@ -31,7 +36,7 @@ fn step_moves_time_to_the_next_event() {
     let mut p = ScenarioPlayer::new(&scenario);
     p.advance(100);
     assert!(p.step());
-    assert_eq!(p.now_ms(), 500);
+    assert_eq!(p.now_ms(), 300, "the next event is the contact request at 300 ms");
     let total = p.run_to_end();
     assert!(total > 0);
     assert!(!p.step());
@@ -92,7 +97,12 @@ fn mock_source_assigns_increasing_seq_and_stamps_moment_time() {
     for env in &envelopes {
         assert_eq!(env.schema, EVENT_SCHEMA);
         if let DomainEvent::MomentAdded(moment) = &env.event {
-            assert_eq!(moment.at, env.at);
+            if moment.at < scenario.epoch {
+                // History: a fixture `at` other than 0 is an offset before the epoch.
+                assert!(moment.id.as_str().ends_with('0'), "{} is history", moment.id);
+            } else {
+                assert_eq!(moment.at, env.at);
+            }
         }
     }
     assert!(source.drain(scenario.epoch.saturating_add_ms(20_000)).is_empty());
@@ -121,10 +131,17 @@ fn effect_matcher_checks_method_and_fields() {
     };
     assert!(matcher.matches(&call("g-1")));
     assert!(!matcher.matches(&call("g-2")));
-    let unlock =
-        Effect::Unlock { account_id: AccountId::new("a-1"), secret: SecretInput::new("x") };
+    let unlock = Effect::SecretCall {
+        method: methods::ACCOUNT_UNLOCK.to_owned(),
+        body: JsonValue::Object(
+            [("account_id".to_owned(), JsonValue::from("a-1"))].into_iter().collect(),
+        ),
+        secrets: vec![SecretInput::new("x")],
+    };
     assert!(!matcher.matches(&unlock));
     assert!(EffectMatcher::Unlock { account_id: None }.matches(&unlock));
+    assert!(EffectMatcher::Unlock { account_id: Some(AccountId::new("a-1")) }.matches(&unlock));
+    assert!(!EffectMatcher::Unlock { account_id: Some(AccountId::new("a-2")) }.matches(&unlock));
 }
 
 #[test]
@@ -144,4 +161,35 @@ fn replay_is_deterministic_across_players() {
         format!("{:?}", p.store())
     };
     assert_eq!(run(), run());
+}
+
+#[test]
+fn local_only_intents_round_trip_in_every_scenario() {
+    for name in ramflux_desktop_test::SCENARIO_NAMES {
+        let scenario = load_fixture(name).expect("fixture");
+        let mut p = ScenarioPlayer::new(&scenario);
+        p.run_to_end();
+        let Some(context) = p.store().contexts().next().map(|c| c.id.clone()) else {
+            continue;
+        };
+        let pinned = p.store().context(&context).is_some_and(|c| c.pinned);
+        let pin = if pinned {
+            IntentKind::UnpinContext { context_id: context.clone() }
+        } else {
+            IntentKind::PinContext { context_id: context.clone() }
+        };
+        for kind in [
+            pin,
+            IntentKind::MuteContext { context_id: context.clone(), muted: true },
+            IntentKind::SetDisappearing { context_id: context.clone(), seconds: Some(3_600) },
+        ] {
+            assert!(p.dispatch(Intent::human(kind)).expect("local intent").is_empty());
+        }
+        p.run_to_end();
+        let after = p.store().context(&context).expect("context");
+        assert_eq!(after.pinned, !pinned, "{name}: pin echoed");
+        assert!(after.muted, "{name}: mute echoed");
+        assert_eq!(after.disappearing_secs, Some(3_600), "{name}: timer echoed");
+        assert!(p.errors().is_empty(), "{name}: {:?}", p.errors());
+    }
 }

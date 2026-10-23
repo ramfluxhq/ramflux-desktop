@@ -1,29 +1,43 @@
-// s02 Daily use: three contexts with unread counts, an agent participant
-// streaming a reply into a surface, and an inbound object transfer.
-// Demonstrates: ContextUpserted with unread, SurfacePatched AppendText and
-// SetStreaming, ObjectUpserted progress, and a message.send response.
-// Moment `at` values are stamped by the mock source at delivery time.
+// s02 Daily use: three contexts with unread counts and yesterday's history,
+// an agent participant streaming a reply into a surface, an agent digest that
+// uses the block catalog, an inbound transfer, an inbound object waiting for a
+// pull, a deleted message, and receipts that advance after a send.
+// Demonstrates: ContextUpserted with unread, history moments (a negative `at`
+// is an offset before the epoch), SurfacePatched AppendText and SetStreaming,
+// ObjectUpserted progress, object.get / object.save, surface.action, and a
+// message.send response whose receipt moves from Sent to Read.
+// Moment `at: 0` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s02_daily",
-    description: "Three contexts, unread, streaming agent reply, object transfer",
+    description: "Three contexts, history, streaming agent reply, block catalog, transfers, receipts",
     timeline: [
         (0, SourceStatusChanged(Connected)),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
         (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", safety: Verified, contact: true)),
         (0, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", contact: true)),
         (0, ParticipantUpserted(id: "p-orbit", kind: Agent, display: "Orbit", contact: true)),
+        (0, ObjectUpserted(id: "o-moodboard", name: "moodboard.png", size: 1843200, direction: Outbound, transfer: Complete)),
         (10, ContextUpserted(id: "c-lena", kind: Direct, title: "Lena Hart", participants: ["p-me", "p-lena"], unread: 2)),
-        (10, ContextUpserted(id: "c-team", kind: Group, title: "Design team", participants: ["p-me", "p-lena", "p-tomas", "p-orbit"], pinned: true)),
+        (10, ContextUpserted(id: "c-team", kind: Group, title: "Design team", participants: ["p-me", "p-lena", "p-tomas", "p-orbit"], pinned: true, epoch: 7)),
         (10, ContextUpserted(id: "c-orbit", kind: Direct, title: "Orbit", participants: ["p-me", "p-orbit"])),
+        (20, MomentAdded(id: "m-lena-0", context_id: "c-lena", origin: "p-lena", at: -50400000,
+            kind: Message(text: "Did the floor plan draft reach you?"), lifecycle: Done)),
+        (20, MomentAdded(id: "m-lena-00", context_id: "c-lena", origin: "p-me", at: -50100000,
+            kind: Message(text: "Yes, reviewing it tonight.", receipt: Read), lifecycle: Done)),
+        (20, MomentAdded(id: "m-team-0", context_id: "c-team", origin: "p-me", at: -49000000,
+            kind: Message(text: "Moodboard for the kitchen.", receipt: Delivered, attachment: "o-moodboard",
+                franking: "frank:c41d 08e2 77ab 19f0"), lifecycle: Done)),
+        (20, MomentAdded(id: "m-team-00", context_id: "c-team", origin: "p-tomas", at: -48000000,
+            kind: Message(text: "", tombstone: true), lifecycle: Done)),
         (100, MomentAdded(id: "m-lena-1", context_id: "c-lena", origin: "p-lena", at: 0,
             kind: Message(text: "Are we still on for lunch?"), lifecycle: Done)),
         (200, MomentAdded(id: "m-lena-2", context_id: "c-lena", origin: "p-lena", at: 0,
             kind: Message(text: "I can do 12:30."), lifecycle: Done)),
         (300, MomentAdded(id: "m-team-1", context_id: "c-team", origin: "p-tomas", at: 0,
-            kind: Message(text: "Uploading the new floor plan now."), lifecycle: Done)),
+            kind: Message(text: "Uploading the new floor plan now.", franking: "frank:9e02 51aa 0c7d 3b18"), lifecycle: Done)),
         (400, MomentAdded(id: "m-orbit-q", context_id: "c-orbit", origin: "p-me", at: 0,
-            kind: Message(text: "Summarize yesterday's design review."), lifecycle: Done)),
+            kind: Message(text: "Summarize yesterday's design review.", receipt: Read), lifecycle: Done)),
         (500, MomentAdded(id: "m-orbit-a", context_id: "c-orbit", origin: "p-orbit", at: 0,
             kind: AgentSurface(
                 surface_id: "s-summary",
@@ -45,14 +59,45 @@
         ])),
         (1150, MomentUpdated(moment_id: "m-orbit-a", lifecycle: Done)),
         (1200, ObjectUpserted(id: "o-floorplan", name: "floorplan-v2.pdf", size: 482133,
-            direction: Inbound, transfer: Transferring(transferred: 0))),
+            direction: Inbound, transfer: Transferring(transferred: 0), preview: "Floor plan v2: open layout, kitchen moved east")),
         (1200, MomentAdded(id: "m-team-file", context_id: "c-team", origin: "p-tomas", at: 0,
             kind: ObjectTransfer(object_id: "o-floorplan"), lifecycle: InProgress)),
         (1800, ObjectUpserted(id: "o-floorplan", name: "floorplan-v2.pdf", size: 482133,
-            direction: Inbound, transfer: Transferring(transferred: 240000))),
+            direction: Inbound, transfer: Transferring(transferred: 240000), preview: "Floor plan v2: open layout, kitchen moved east")),
         (2400, ObjectUpserted(id: "o-floorplan", name: "floorplan-v2.pdf", size: 482133,
-            direction: Inbound, transfer: Complete)),
+            direction: Inbound, transfer: Complete, preview: "Floor plan v2: open layout, kitchen moved east")),
         (2400, MomentUpdated(moment_id: "m-team-file", lifecycle: Done)),
+        (2500, ObjectUpserted(id: "o-specs", name: "lighting-specs.pdf", size: 96256,
+            direction: Inbound, transfer: Queued)),
+        (2500, MomentAdded(id: "m-team-specs", context_id: "c-team", origin: "p-lena", at: 0,
+            kind: ObjectTransfer(object_id: "o-specs"), lifecycle: Pending)),
+        (2600, MomentAdded(id: "m-orbit-digest", context_id: "c-orbit", origin: "p-orbit", at: 0,
+            kind: AgentSurface(
+                surface_id: "s-digest",
+                fallback_text: "Weekly studio digest",
+                blocks: [
+                    (id: "b-title", kind: Heading, data: {"text": "Weekly studio digest"}),
+                    (id: "b-hours", kind: Metric, data: {"label": "Billable hours", "value": "126", "delta": "+8%"}),
+                    (id: "b-open", kind: Metric, data: {"label": "Open reviews", "value": "4", "delta": "-2"}),
+                    (id: "b-done", kind: List, data: {"items": ["Kitchen layout approved", "Lighting deferred to phase 2", "Supplier quotes requested"]}),
+                    (id: "b-budget", kind: TableFallback, data: {
+                        "columns": ["Item", "Budget", "Spent"],
+                        "rows": [["Joinery", "18,000", "11,400"], ["Lighting", "6,500", "0"], ["Paint", "2,200", "1,950"]],
+                    }),
+                    (id: "b-progress", kind: Progress, data: {"label": "Phase 1 completion", "value": 0.68}),
+                    (id: "b-log", kind: LogStream, data: {"text": "09:02 synced 14 files\n09:05 rendered 3 previews\n09:06 digest ready"}),
+                    (id: "b-warn", kind: Warning, data: {"title": "Supplier delay", "text": "Tiles arrive two weeks late."}),
+                    (id: "b-err", kind: Error, data: {"title": "Render failed", "text": "One preview could not be rendered."}),
+                    (id: "b-ok", kind: Success, data: {"text": "All drawings are backed up."}),
+                    (id: "b-file", kind: FilePreview, data: {"name": "floorplan-v2.pdf", "size": 482133, "excerpt": "Open layout, kitchen moved east"}),
+                    (id: "b-actions", kind: ActionGroup, data: {"actions": ["open-report", "archive"]}),
+                ],
+                actions: [
+                    (id: "open-report", label: "Open full report"),
+                    (id: "archive", label: "Archive digest", disabled_reason: "Archiving is not available on this device"),
+                ],
+            ),
+            lifecycle: Done)),
     ],
     responses: [
         (
@@ -60,6 +105,45 @@
             emit: [
                 (50, MomentAdded(id: "m-lena-reply", context_id: "c-lena", origin: "p-me", at: 0,
                     kind: Message(text: "12:30 works, see you there.", receipt: Sent), lifecycle: Done)),
+                (800, MomentUpdated(moment_id: "m-lena-reply",
+                    kind: Message(text: "12:30 works, see you there.", receipt: Delivered))),
+                (1600, MomentUpdated(moment_id: "m-lena-reply",
+                    kind: Message(text: "12:30 works, see you there.", receipt: Read))),
+            ],
+        ),
+        (
+            on: Call(method: "object.get", fields: {"object_id": "o-specs"}),
+            emit: [
+                (100, ObjectUpserted(id: "o-specs", name: "lighting-specs.pdf", size: 96256,
+                    direction: Inbound, transfer: Transferring(transferred: 40000))),
+                (100, MomentUpdated(moment_id: "m-team-specs", lifecycle: InProgress)),
+                (700, ObjectUpserted(id: "o-specs", name: "lighting-specs.pdf", size: 96256,
+                    direction: Inbound, transfer: Complete, preview: "Pendant lights, 2700K, dimmable")),
+                (700, MomentUpdated(moment_id: "m-team-specs", lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "object.save", fields: {"object_id": "o-floorplan"}),
+            emit: [
+                (100, ObjectUpserted(id: "o-floorplan", name: "floorplan-v2.pdf", size: 482133,
+                    direction: Inbound, transfer: Complete, saved_to: "~/Downloads/floorplan-v2.pdf",
+                    preview: "Floor plan v2: open layout, kitchen moved east")),
+            ],
+        ),
+        (
+            on: Call(method: "object.save", fields: {"object_id": "o-specs"}),
+            emit: [
+                (100, ObjectUpserted(id: "o-specs", name: "lighting-specs.pdf", size: 96256,
+                    direction: Inbound, transfer: Complete, saved_to: "~/Downloads/lighting-specs.pdf",
+                    preview: "Pendant lights, 2700K, dimmable")),
+            ],
+        ),
+        (
+            on: Call(method: "surface.action", fields: {"moment_id": "m-orbit-digest", "action_id": "open-report"}),
+            emit: [
+                (200, SurfacePatched(moment_id: "m-orbit-digest", surface_id: "s-digest", ops: [
+                    AppendBlocks([(id: "b-opened", kind: Success, data: {"text": "Full report shared to Objects."})]),
+                ])),
             ],
         ),
     ],
