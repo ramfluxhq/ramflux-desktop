@@ -9,3 +9,17 @@ repository.workspace = true
 
 [dependencies]
 gpui-kit.workspace = true
+ramflux-desktop-core.workspace = true
+# The scenario-playing mock source drives the UI until the SDK source lands (F2).
+ramflux-desktop-test.workspace = true
+rust-i18n.workspace = true
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+
+# Offscreen reference screenshots; run explicitly, not part of `cargo test`.
+[[test]]
+name = "screenshots"
+path = "tests/screenshots.rs"
+test = false
+harness = false

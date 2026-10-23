@@ -1,0 +1,546 @@
+_version: 2
+app:
+  name:
+    en: Ramflux
+    zh-CN: Ramflux
+locale:
+  english:
+    en: English
+    zh-CN: English
+  chinese:
+    en: 简体中文
+    zh-CN: 简体中文
+common:
+  cancel:
+    en: Cancel
+    zh-CN: 取消
+  close:
+    en: Close
+    zh-CN: 关闭
+  yes:
+    en: "Yes"
+    zh-CN: 是
+  no:
+    en: "No"
+    zh-CN: 否
+status:
+  label:
+    account:
+      en: Account
+      zh-CN: 账户
+    device:
+      en: Device
+      zh-CN: 设备
+    node:
+      en: Node
+      zh-CN: 节点
+    projection:
+      en: Projection
+      zh-CN: 投影
+    source:
+      en: Daemon
+      zh-CN: 守护进程
+  account:
+    local:
+      en: Local
+      zh-CN: 本地
+  none:
+    en: None
+    zh-CN: 无
+  node:
+    value:
+      en: "%{node} · %{health}"
+      zh-CN: "%{node} · %{health}"
+    unknown:
+      en: Not checked
+      zh-CN: 未检测
+    healthy:
+      en: Healthy
+      zh-CN: 正常
+    degraded:
+      en: Slow
+      zh-CN: 缓慢
+    unreachable:
+      en: Unreachable
+      zh-CN: 不可达
+  projection:
+    value:
+      en: "seq %{seq}"
+      zh-CN: "序号 %{seq}"
+    rejected:
+      en: "seq %{seq}, %{count} rejected"
+      zh-CN: "序号 %{seq}，拒绝 %{count} 条"
+  source:
+    connected:
+      en: Connected
+      zh-CN: 已连接
+    disconnected:
+      en: Disconnected
+      zh-CN: 未连接
+    locked:
+      en: Locked
+      zh-CN: 已锁定
+  needs_me:
+    en: "Needs me (%{count})"
+    zh-CN: "需要我（%{count}）"
+  toggle_theme:
+    en: Switch theme
+    zh-CN: 切换主题
+  settings:
+    en: Settings…
+    zh-CN: 设置…
+  dev_panel:
+    en: Developer panel
+    zh-CN: 开发面板
+lifecycle:
+  pending:
+    en: Pending
+    zh-CN: 待处理
+  in_progress:
+    en: In progress
+    zh-CN: 进行中
+  needs_me:
+    en: Needs me
+    zh-CN: 需要我
+  done:
+    en: Done
+    zh-CN: 已完成
+  failed:
+    en: Failed
+    zh-CN: 失败
+  dismissed:
+    en: Dismissed
+    zh-CN: 已关闭
+risk:
+  low:
+    en: Low
+    zh-CN: 低
+  medium:
+    en: Medium
+    zh-CN: 中
+  high:
+    en: High
+    zh-CN: 高
+  critical:
+    en: Critical
+    zh-CN: 严重
+moment:
+  kind:
+    message:
+      en: Message
+      zh-CN: 消息
+    agent_surface:
+      en: Agent surface
+      zh-CN: 智能体界面
+    object_transfer:
+      en: Object transfer
+      zh-CN: 对象传输
+    intervention:
+      en: Approval
+      zh-CN: 审批
+    safety_change:
+      en: Safety change
+      zh-CN: 安全变更
+    governance:
+      en: Membership
+      zh-CN: 成员变更
+    contact_request:
+      en: Contact request
+      zh-CN: 联系人请求
+    task_progress:
+      en: Task
+      zh-CN: 任务
+    conflict:
+      en: Version conflict
+      zh-CN: 版本冲突
+    privacy_reveal:
+      en: Protected content
+      zh-CN: 受保护内容
+    handoff:
+      en: Handoff
+      zh-CN: 接力
+    fallback:
+      en: Fallback
+      zh-CN: 降级显示
+    system:
+      en: System
+      zh-CN: 系统
+  message:
+    deleted:
+      en: Message deleted
+      zh-CN: 消息已删除
+    sending:
+      en: Sending
+      zh-CN: 发送中
+  system:
+    info:
+      en: Info
+      zh-CN: 提示
+    warning:
+      en: Warning
+      zh-CN: 警告
+    error:
+      en: Error
+      zh-CN: 错误
+  fallback:
+    title:
+      en: Shown in a simpler form
+      zh-CN: 以简化形式显示
+  placeholder:
+    later:
+      en: Full view in a later build
+      zh-CN: 完整视图将在后续版本提供
+  intervention:
+    risk:
+      en: "Risk: %{risk}"
+      zh-CN: "风险：%{risk}"
+    details:
+      en: Details
+      zh-CN: 详情
+    approve:
+      en: Approve
+      zh-CN: 批准
+    approve_hold:
+      en: Approve…
+      zh-CN: 批准…
+    deny:
+      en: Deny
+      zh-CN: 拒绝
+    approved:
+      en: Approved
+      zh-CN: 已批准
+    denied:
+      en: Denied
+      zh-CN: 已拒绝
+    expired:
+      en: Expired
+      zh-CN: 已过期
+    closed:
+      en: Closed
+      zh-CN: 已关闭
+grant:
+  risk:
+    en: Risk
+    zh-CN: 风险
+  scope:
+    en: Scope
+    zh-CN: 范围
+  args_hash:
+    en: Arguments hash
+    zh-CN: 参数哈希
+  single_use:
+    en: Single use
+    zh-CN: 一次性
+  expiry:
+    en: Expires (UTC)
+    zh-CN: 过期时间（UTC）
+  no_expiry:
+    en: No expiry
+    zh-CN: 不过期
+confirm:
+  hold:
+    en: Hold to confirm
+    zh-CN: 按住确认
+  risk:
+    en: "Risk: %{risk}"
+    zh-CN: "风险：%{risk}"
+  proposed_by_agent:
+    en: Proposed by an agent; your hold is the decision
+    zh-CN: 由智能体提出，需由你按住确认
+  approve:
+    en: "Approve: %{summary}"
+    zh-CN: "批准：%{summary}"
+  surface_action:
+    en: "Run “%{action}”"
+    zh-CN: "执行“%{action}”"
+  generic:
+    en: Confirm this action
+    zh-CN: 确认此操作
+  governance:
+    kick:
+      en: "Remove %{member} from %{group}"
+      zh-CN: "将 %{member} 移出 %{group}"
+    ban:
+      en: "Ban %{member} from %{group}"
+      zh-CN: "在 %{group} 中封禁 %{member}"
+    set_role:
+      en: "Change the role of %{member} in %{group}"
+      zh-CN: "更改 %{member} 在 %{group} 中的角色"
+    add_member:
+      en: "Add %{member} to %{group}"
+      zh-CN: "将 %{member} 加入 %{group}"
+    remove_member:
+      en: "Remove %{member} from %{group}"
+      zh-CN: "将 %{member} 移出 %{group}"
+    create_invite:
+      en: "Create an invitation to %{group}"
+      zh-CN: "创建 %{group} 的邀请"
+composer:
+  label:
+    en: Message
+    zh-CN: 消息
+  placeholder:
+    en: Write a message
+    zh-CN: 输入消息
+  send:
+    en: Send
+    zh-CN: 发送
+conversation:
+  title:
+    en: Conversation
+    zh-CN: 对话
+  none:
+    en: No context
+    zh-CN: 未选择上下文
+  choose:
+    en: Choose a context to continue
+    zh-CN: 选择一个上下文以继续
+  empty:
+    en: Nothing here yet
+    zh-CN: 这里还没有内容
+  members:
+    en: "%{count} members"
+    zh-CN: "%{count} 位成员"
+  pin:
+    en: Pin
+    zh-CN: 固定
+  unpin:
+    en: Unpin
+    zh-CN: 取消固定
+  jump_latest:
+    en: Jump to latest
+    zh-CN: 跳到最新
+stack:
+  title:
+    en: Contexts
+    zh-CN: 上下文
+  needs_me:
+    en: "%{count} need me"
+    zh-CN: "%{count} 项需要我"
+  switch:
+    en: Switch context
+    zh-CN: 切换上下文
+dock:
+  objects:
+    en: Objects
+    zh-CN: 对象
+  contacts:
+    en: Contacts
+    zh-CN: 联系人
+  members:
+    en: Members
+    zh-CN: 成员
+  approvals:
+    en: Approvals
+    zh-CN: 审批与授权
+  evidence:
+    en: Evidence
+    zh-CN: 证据
+  empty:
+    en: Available in a later build
+    zh-CN: 将在后续版本提供
+entry:
+  title:
+    en: Welcome to Ramflux
+    zh-CN: 欢迎使用 Ramflux
+  subtitle:
+    en: Connect this device to your local daemon, a node, and your account.
+    zh-CN: 将这台设备连接到本地守护进程、节点和你的账户。
+  step:
+    daemon:
+      en: Daemon
+      zh-CN: 守护进程
+    node:
+      en: Node
+      zh-CN: 节点
+    account:
+      en: Account
+      zh-CN: 账户
+  daemon:
+    waiting:
+      en: Waiting for the local daemon
+      zh-CN: 正在等待本地守护进程
+    help:
+      en: Ramflux connects to the background service on this device. It starts automatically.
+      zh-CN: Ramflux 会连接到本机的后台服务，它会自动启动。
+  node:
+    waiting:
+      en: Connected. Waiting for a node from your invitation.
+      zh-CN: 已连接。正在等待邀请中的节点。
+    joining:
+      en: The daemon is joining this node. Your account appears here when it is ready.
+      zh-CN: 守护进程正在加入此节点，账户就绪后会显示在这里。
+  account:
+    locked:
+      en: Locked
+      zh-CN: 已锁定
+    unlocked:
+      en: Unlocked
+      zh-CN: 已解锁
+    detail:
+      en: "Node %{node} · device %{device}"
+      zh-CN: "节点 %{node} · 设备 %{device}"
+    passphrase:
+      en: Passphrase
+      zh-CN: 口令
+    unlock:
+      en: Unlock
+      zh-CN: 解锁
+    unlocking:
+      en: Unlocking
+      zh-CN: 正在解锁
+    create:
+      en: Create account…
+      zh-CN: 创建账户…
+    link:
+      en: Sign in as a new device…
+      zh-CN: 作为新设备登录…
+    restore:
+      en: Restore from backup…
+      zh-CN: 从备份恢复…
+    pending_contract:
+      en: Creating, linking and restoring accounts arrive with the account contract.
+      zh-CN: 创建、关联与恢复账户将随账户契约提供。
+node:
+  id:
+    en: Node
+    zh-CN: 节点
+  fingerprint:
+    en: Key fingerprint
+    zh-CN: 密钥指纹
+  fingerprint_unknown:
+    en: Not provided
+    zh-CN: 未提供
+  endpoints:
+    en: Endpoints
+    zh-CN: 端点
+  pin_source:
+    en: Pinned from
+    zh-CN: 固定来源
+  health:
+    en: Health
+    zh-CN: 健康状态
+  pin:
+    bootstrap:
+      en: Built-in list
+      zh-CN: 内置列表
+    invite:
+      en: Invitation
+      zh-CN: 邀请
+    manual:
+      en: Entered manually
+      zh-CN: 手动输入
+  tofu_title:
+    en: First contact with this node
+    zh-CN: 首次连接此节点
+  tofu_body:
+    en: Compare the key fingerprint with the one in your invitation before you rely on this node.
+    zh-CN: 在信任此节点之前，请将密钥指纹与邀请中的指纹进行核对。
+settings:
+  title:
+    en: Settings
+    zh-CN: 设置
+  account:
+    en: Account
+    zh-CN: 账户
+  devices:
+    en: Devices
+    zh-CN: 设备
+  node:
+    en: Node
+    zh-CN: 节点
+  integrations:
+    en: MCP and A2I
+    zh-CN: MCP 与 A2I
+  diagnostics:
+    en: Diagnostics
+    zh-CN: 诊断
+  appearance:
+    en: Appearance
+    zh-CN: 外观
+  dark_theme:
+    en: Dark theme
+    zh-CN: 深色主题
+  language:
+    en: Language
+    zh-CN: 语言
+  later:
+    en: Available in a later build.
+    zh-CN: 将在后续版本提供。
+  readonly_later:
+    en: Readonly. Available in a later build.
+    zh-CN: 只读。将在后续版本提供。
+dev:
+  title:
+    en: Developer panel
+    zh-CN: 开发面板
+  scenario:
+    en: Scenario
+    zh-CN: 场景
+  timeline:
+    en: Timeline
+    zh-CN: 时间轴
+  clock:
+    en: "t = %{time}"
+    zh-CN: "t = %{time}"
+  next:
+    en: "next at %{time}"
+    zh-CN: "下一个 %{time}"
+  next_none:
+    en: end of scenario
+    zh-CN: 场景结束
+  pause:
+    en: Pause
+    zh-CN: 暂停
+  resume:
+    en: Resume
+    zh-CN: 继续
+  step:
+    en: Step
+    zh-CN: 单步
+  restart:
+    en: Restart
+    zh-CN: 重新开始
+  back:
+    en: Back 1 s
+    zh-CN: 后退 1 秒
+  forward:
+    en: Forward 1 s
+    zh-CN: 前进 1 秒
+  agent:
+    en: Agent
+    zh-CN: 智能体
+  agent_approve:
+    en: Agent approves the pending grant
+    zh-CN: 智能体批准待处理授权
+  store:
+    en: Store
+    zh-CN: 存储
+  count:
+    contexts:
+      en: Contexts
+      zh-CN: 上下文
+    moments:
+      en: Moments
+      zh-CN: 时刻
+    participants:
+      en: Participants
+      zh-CN: 参与者
+    grants:
+      en: Pending grants
+      zh-CN: 待处理授权
+    objects:
+      en: Objects
+      zh-CN: 对象
+    tasks:
+      en: Tasks
+      zh-CN: 任务
+    seq:
+      en: Last seq
+      zh-CN: 最新序号
+    rejections:
+      en: Rejections
+      zh-CN: 拒绝
+  inspector:
+    en: Event inspector
+    zh-CN: 事件检查器
