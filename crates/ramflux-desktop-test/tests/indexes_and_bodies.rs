@@ -24,7 +24,14 @@ fn naive_needs_me(store: &Store) -> Vec<MomentId> {
         .map(|m| (store.needs_me_since(&m.id).unwrap_or(m.at), m.id.clone()))
         .collect();
     items.sort();
-    items.into_iter().map(|(_, id)| id).collect()
+    // A task whose step waits on a surface needs the user at that surface.
+    items
+        .into_iter()
+        .map(|(_, id)| {
+            let moment = store.moment(&id).expect("moment");
+            selectors::task_decision_surface(store, moment).cloned().unwrap_or(id)
+        })
+        .collect()
 }
 
 fn agrees(store: &Store, at: &str) {

@@ -304,7 +304,8 @@ fn s06_task_passes_through_needs_me_before_done() {
     p.advance(200);
     let start = IntentKind::StartTask {
         context_id: ContextId::new("c-trip"),
-        request: "Book a train to Lyon on Friday morning".into(),
+        assignee: ParticipantId::new("p-orbit"),
+        text: "Book a train to Lyon on Friday morning".into(),
     };
     assert!(p.dispatch(Intent::human(start)).expect("start").is_empty());
     p.advance(1000);
@@ -319,7 +320,8 @@ fn s06_task_passes_through_needs_me_before_done() {
     );
     assert!(in_flight(p.store()).contains(&MomentId::new("m-task")));
     let task = p.store().task(&TaskId::new("t-trip")).expect("task");
-    assert_eq!(task.steps[2].lifecycle, Lifecycle::NeedsMe);
+    assert_eq!(task.steps[2].state, StepState::NeedsMe);
+    assert_eq!(task.state, TaskState::NeedsMe);
 
     // Medium risk: no confirmation bar, the call goes straight to the source.
     assert!(p.dispatch(approve("g-hold", false)).expect("approve").is_empty());
@@ -327,8 +329,8 @@ fn s06_task_passes_through_needs_me_before_done() {
 
     assert_clean(&p);
     let task = p.store().task(&TaskId::new("t-trip")).expect("task");
-    assert_eq!(task.lifecycle, Lifecycle::Done);
-    assert!(task.steps.iter().all(|s| s.lifecycle == Lifecycle::Done));
+    assert_eq!(task.state, TaskState::Done);
+    assert!(task.steps.iter().all(|s| s.state == StepState::Done));
     assert_eq!(lifecycle(&p, "m-task"), Lifecycle::Done);
     assert!(in_flight(p.store()).is_empty());
     assert!(attention_ids(&p).is_empty());

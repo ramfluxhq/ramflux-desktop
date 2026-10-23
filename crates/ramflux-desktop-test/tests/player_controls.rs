@@ -156,7 +156,8 @@ fn replay_is_deterministic_across_players() {
         p.advance(200);
         let start = IntentKind::StartTask {
             context_id: ContextId::new("c-trip"),
-            request: "Book a train".into(),
+            assignee: ParticipantId::new("p-orbit"),
+            text: "Book a train".into(),
         };
         p.dispatch(Intent::human(start)).expect("start");
         p.advance(3000);

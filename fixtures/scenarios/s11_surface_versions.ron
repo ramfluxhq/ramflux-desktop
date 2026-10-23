@@ -1,0 +1,133 @@
+// s11 Surface versions: a task step asks the user to choose in a surface
+// (needs me at the surface, not at the task), the AI participant changes
+// the surface while the user reviews it (a pending hold is cancelled and
+// the surface asks for a new review), then sends a change made against an
+// older version (the surface is out of date and refuses actions) and
+// resends it against the current one (resolved). Answering the choice gets
+// the result patched in, the surface closed (a frozen record with its
+// fallback text) and the task done.
+//
+// Timeline: 200 ms create v1 + step needs me; 1500 ms patch v2 (adds
+// Monday); 2500 ms patch v3 against v1 (conflict); 3500 ms the same patch v3
+// against v2 (applied). Answer after 3.5 s: the response patches v4 against
+// v3, closes the surface (v5) and finishes the task. `base_hash` values
+// are content hashes; the test `s11_hashes_match_the_contract` checks them.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s11_surface_versions",
+    description: "Choice in a surface, changed during review, conflict and resend, answer, close",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
+        (0, AccountUpdated(id: "local", label: "Local", lock_state: Unlocked, self_participant_id: "p-me")),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-orbit", kind: Agent, display: "Orbit", contact: true)),
+        (10, ContextUpserted(id: "c-plan", kind: Direct, title: "Orbit", participants: ["p-me", "p-orbit"])),
+        (50, MomentAdded(id: "m-ask", context_id: "c-plan", origin: "p-me", at: 0,
+            kind: Message(text: "Plan the release day with QA in mind.", receipt: Read), lifecycle: Done)),
+        (100, TaskUpserted(
+            id: "t-day",
+            context_id: "c-plan",
+            requester: Human,
+            assignee: "p-orbit",
+            title: "Plan the release day",
+            steps: [
+                (id: "pick", label: "Agree on the day", state: Running),
+                (id: "publish", label: "Publish the plan", state: Pending),
+            ],
+            state: Running,
+            version: 1,
+        )),
+        (100, MomentAdded(id: "m-task", context_id: "c-plan", origin: "p-orbit", at: 0,
+            kind: TaskProgress(task_id: "t-day"), lifecycle: Pending)),
+        (200, Surface(Create(
+            moment_id: "m-pick",
+            context_id: "c-plan",
+            origin: "p-orbit",
+            surface_id: "s-pick",
+            version: 1,
+            blocks: [(id: "b-q", kind: Text, data: {"text": "Which day should the release go out?"})],
+            actions: [
+                (id: "thu", label: "Thursday"),
+                (id: "fri", label: "Friday, skipping the QA pass", risk: High),
+            ],
+            fallback_text: "Orbit asks which day the release goes out.",
+        ))),
+        (200, TaskStepChanged(task_id: "t-day", version: 2, step_id: "pick", state: NeedsMe,
+            needs_me: Choice(surface_id: "s-pick"))),
+        (1500, Surface(Patch(surface_id: "s-pick", version: 2, base_hash: "sha256:79a41494ab548f3e7e791511f47b31287f30c665b62927f5b11f0d22273a80ce", ops: [
+            ReplaceBlock(block: (id: "b-q", kind: Text,
+                data: {"text": "Which day should the release go out? Monday works too now."})),
+            SetActions(actions: [
+                (id: "thu", label: "Thursday"),
+                (id: "fri", label: "Friday, skipping the QA pass", risk: High),
+                (id: "mon", label: "Monday"),
+            ]),
+        ]))),
+        (2500, Surface(Patch(surface_id: "s-pick", version: 3, base_hash: "sha256:79a41494ab548f3e7e791511f47b31287f30c665b62927f5b11f0d22273a80ce", ops: [
+            InsertBlock(index: 1, block: (id: "b-note", kind: Warning,
+                data: {"text": "QA is booked until Thursday noon."})),
+        ]))),
+        (3500, Surface(Patch(surface_id: "s-pick", version: 3, base_hash: "sha256:46403b85cfedd0f3d871f9483839a12535a70e49db8e75de43e088c4db06fa30", ops: [
+            InsertBlock(index: 1, block: (id: "b-note", kind: Warning,
+                data: {"text": "QA is booked until Thursday noon."})),
+        ]))),
+    ],
+    responses: [
+        (
+            on: Call(method: "surface.action", fields: {"surface_id": "s-pick", "action_id": "thu"}),
+            emit: [
+                (200, Surface(Patch(surface_id: "s-pick", version: 4, base_hash: "sha256:23f05c927afca2cc4b93f7224d84db3d0b56d8437598cf5c876b313726886592", ops: [
+                    InsertBlock(index: 2, block: (id: "b-answer", kind: Success,
+                        data: {"text": "You chose Thursday."})),
+                    SetActions(actions: []),
+                ]))),
+                (300, TaskStepChanged(task_id: "t-day", version: 3, step_id: "pick", state: Done)),
+                (400, Surface(Close(surface_id: "s-pick", version: 5))),
+                (500, TaskStepChanged(task_id: "t-day", version: 4, step_id: "publish", state: Running)),
+                (1200, TaskStepChanged(task_id: "t-day", version: 5, step_id: "publish", state: Done)),
+                (1200, TaskStateChanged(task_id: "t-day", version: 6, state: Done,
+                    result: "The release goes out on Thursday; the plan is published.")),
+            ],
+        ),
+        (
+            on: Call(method: "surface.action", fields: {"surface_id": "s-pick", "action_id": "mon"}),
+            emit: [
+                (200, Surface(Patch(surface_id: "s-pick", version: 4, base_hash: "sha256:23f05c927afca2cc4b93f7224d84db3d0b56d8437598cf5c876b313726886592", ops: [
+                    InsertBlock(index: 2, block: (id: "b-answer", kind: Success,
+                        data: {"text": "You chose Monday."})),
+                    SetActions(actions: []),
+                ]))),
+                (300, TaskStepChanged(task_id: "t-day", version: 3, step_id: "pick", state: Done)),
+                (400, Surface(Close(surface_id: "s-pick", version: 5))),
+                (500, TaskStepChanged(task_id: "t-day", version: 4, step_id: "publish", state: Running)),
+                (1200, TaskStepChanged(task_id: "t-day", version: 5, step_id: "publish", state: Done)),
+                (1200, TaskStateChanged(task_id: "t-day", version: 6, state: Done,
+                    result: "The release goes out on Monday; the plan is published.")),
+            ],
+        ),
+        (
+            on: Call(method: "surface.action", fields: {"surface_id": "s-pick", "action_id": "fri"}),
+            emit: [
+                (200, Surface(Patch(surface_id: "s-pick", version: 4, base_hash: "sha256:23f05c927afca2cc4b93f7224d84db3d0b56d8437598cf5c876b313726886592", ops: [
+                    InsertBlock(index: 2, block: (id: "b-answer", kind: Success,
+                        data: {"text": "You chose Friday."})),
+                    SetActions(actions: []),
+                ]))),
+                (300, TaskStepChanged(task_id: "t-day", version: 3, step_id: "pick", state: Done)),
+                (400, Surface(Close(surface_id: "s-pick", version: 5))),
+                (500, TaskStepChanged(task_id: "t-day", version: 4, step_id: "publish", state: Running)),
+                (1200, TaskStepChanged(task_id: "t-day", version: 5, step_id: "publish", state: Done)),
+                (1200, TaskStateChanged(task_id: "t-day", version: 6, state: Done,
+                    result: "The release goes out on Friday; the plan is published.")),
+            ],
+        ),
+        (
+            on: Call(method: "task.cancel", fields: {"task_id": "t-day"}),
+            emit: [
+                (100, TaskStateChanged(task_id: "t-day", version: 100, state: Cancelled,
+                    result: "Cancelled by Alex.")),
+            ],
+        ),
+    ],
+)

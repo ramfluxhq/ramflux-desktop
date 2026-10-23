@@ -1,0 +1,172 @@
+// s10 AI participant, demo 3 (deterministic): in a group conversation the
+// user asks the AI participant Orbit to check the launch checklist. Orbit
+// streams its reply into a surface, then proposes a task. The user starts
+// it; Orbit drafts the release notes, then needs the user's approval for the
+// staging deploy (high risk: a hold). After the approval Orbit patches its
+// checklist surface with the result (against the hash of the version it
+// last sent) and finishes the task.
+//
+// This is the script a rule-based AI participant mirrors: every rule below
+// is "when the user does X, the AI participant sends Y". Offsets are in
+// milliseconds, timeline offsets from the start, response offsets from the
+// submitted effect. Surfaces use the versioned surface events (Create,
+// StreamAppend with `final`, Patch with `base_hash`); tasks use rising
+// versions. `base_hash` is the content hash of the version patched; the
+// test `s10_hashes_match_the_contract` checks it, and prints the value to
+// use if the hash algorithm changes.
+//
+// Rules: message.send in the group -> streamed reply + proposal;
+// task.start with the proposal -> task runs, asks for g-deploy;
+// grant.approve -> result patch, done; grant.deny -> task fails;
+// task.cancel -> task cancelled.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s10_ai_participant",
+    description: "Ask the AI participant, streamed reply, proposal, approval, result patch, done",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
+        (0, AccountUpdated(id: "local", label: "Local", lock_state: Unlocked, self_participant_id: "p-me")),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", contact: true)),
+        (0, ParticipantUpserted(id: "p-orbit", kind: Agent, display: "Orbit", contact: true)),
+        (10, ContextUpserted(id: "c-launch", kind: Group, title: "Launch room",
+            participants: ["p-me", "p-lena", "p-orbit"], pinned: true)),
+        (100, MomentAdded(id: "m-lena", context_id: "c-launch", origin: "p-lena", at: 0,
+            kind: Message(text: "Friday is close. Is the launch checklist in shape?"), lifecycle: Done)),
+    ],
+    responses: [
+        (
+            on: Call(method: "message.send", fields: {"context_id": "c-launch"}),
+            emit: [
+                (50, MomentAdded(id: "m-ask", context_id: "c-launch", origin: "p-me", at: 0,
+                    kind: Message(text: "@Orbit can you check the launch checklist and sort out what is open?",
+                        receipt: Sent),
+                    lifecycle: Done)),
+                (300, Surface(Create(
+                    moment_id: "m-reply",
+                    context_id: "c-launch",
+                    origin: "p-orbit",
+                    surface_id: "s-reply",
+                    version: 1,
+                    blocks: [(id: "b-reply", kind: Markdown, data: {"text": ""})],
+                    actions: [],
+                    fallback_text: "Orbit: two checklist items are open (release notes, staging deploy). I proposed a task to finish them.",
+                ))),
+                (500, Surface(StreamAppend(surface_id: "s-reply", version: 2, block_id: "b-reply",
+                    text_delta: "I checked the launch checklist. "))),
+                (700, Surface(StreamAppend(surface_id: "s-reply", version: 3, block_id: "b-reply",
+                    text_delta: "Two items are still open: **the release notes** and **the staging deploy**. "))),
+                (900, Surface(StreamAppend(surface_id: "s-reply", version: 4, block_id: "b-reply",
+                    text_delta: "I can draft the notes and run the deploy for you.", final: true))),
+                (1000, TaskUpserted(
+                    id: "t-launch",
+                    context_id: "c-launch",
+                    requester: Human,
+                    assignee: "p-orbit",
+                    title: "Finish the launch checklist",
+                    steps: [
+                        (id: "notes", label: "Draft the release notes", state: Pending),
+                        (id: "deploy", label: "Deploy to staging", state: Pending),
+                        (id: "report", label: "Post the result", state: Pending),
+                    ],
+                    state: Proposed,
+                    version: 1,
+                )),
+                (1000, MomentAdded(id: "m-task", context_id: "c-launch", origin: "p-orbit", at: 0,
+                    kind: TaskProgress(task_id: "t-launch"), lifecycle: Pending)),
+            ],
+        ),
+        (
+            on: Call(method: "task.start", fields: {"proposal_id": "t-launch"}),
+            emit: [
+                (100, TaskStateChanged(task_id: "t-launch", version: 2, state: Running)),
+                (150, Surface(Create(
+                    moment_id: "m-status",
+                    context_id: "c-launch",
+                    origin: "p-orbit",
+                    surface_id: "s-status",
+                    version: 1,
+                    blocks: [
+                        (id: "b-title", kind: Heading, data: {"text": "Launch checklist"}),
+                        (id: "b-items", kind: KeyValue, data: {"items": [
+                            ["Release notes", "In progress"],
+                            ["Staging deploy", "Not started"],
+                        ]}),
+                    ],
+                    actions: [],
+                    fallback_text: "Orbit's launch checklist: release notes and the staging deploy.",
+                ))),
+                (400, TaskStepChanged(task_id: "t-launch", version: 3, step_id: "notes", state: Running)),
+                (1200, TaskStepChanged(task_id: "t-launch", version: 4, step_id: "notes", state: Done)),
+                (1300, GrantRequested(
+                    id: "g-deploy",
+                    scope: "deploy.staging",
+                    risk: High,
+                    single_use: true,
+                    args_hash: "sha256:5f1c09a2d7e4",
+                )),
+                (1300, TaskStepChanged(task_id: "t-launch", version: 5, step_id: "deploy", state: NeedsMe,
+                    needs_me: Approval(grant_id: "g-deploy"))),
+            ],
+        ),
+        (
+            on: Call(method: "grant.approve", fields: {"grant_id": "g-deploy"}),
+            emit: [
+                (100, GrantResolved(grant_id: "g-deploy", state: Approved)),
+                (100, TaskStepChanged(task_id: "t-launch", version: 6, step_id: "deploy", state: Running)),
+                (900, Surface(Patch(
+                    surface_id: "s-status",
+                    version: 2,
+                    base_hash: "sha256:8bb9797409864020be96fbecae9b457f1a6b3a6be50bbd302da2b77b53691d86",
+                    ops: [
+                        ReplaceBlock(block: (id: "b-items", kind: KeyValue, data: {"items": [
+                            ["Release notes", "Drafted"],
+                            ["Staging deploy", "Green, build 2.4.0-rc1"],
+                        ]})),
+                        InsertBlock(index: 2, block: (id: "b-done", kind: Success, data: {
+                            "title": "Staging is green",
+                            "text": "Build 2.4.0-rc1 deployed in 3 minutes; smoke tests passed.",
+                        })),
+                    ],
+                ))),
+                (1000, TaskStepChanged(task_id: "t-launch", version: 7, step_id: "deploy", state: Done)),
+                (1100, TaskStepChanged(task_id: "t-launch", version: 8, step_id: "report", state: Running)),
+                (1500, TaskStepChanged(task_id: "t-launch", version: 9, step_id: "report", state: Done)),
+                (1500, TaskUpserted(
+                    id: "t-launch",
+                    context_id: "c-launch",
+                    requester: Human,
+                    assignee: "p-orbit",
+                    title: "Finish the launch checklist",
+                    steps: [
+                        (id: "notes", label: "Draft the release notes", state: Done),
+                        (id: "deploy", label: "Deploy to staging", state: Done,
+                            needs_me: Approval(grant_id: "g-deploy")),
+                        (id: "report", label: "Post the result", state: Done),
+                    ],
+                    state: Done,
+                    version: 10,
+                    result: "Release notes drafted; staging is green on build 2.4.0-rc1.",
+                    result_ref: "s-status",
+                )),
+            ],
+        ),
+        (
+            on: Call(method: "grant.deny", fields: {"grant_id": "g-deploy"}),
+            emit: [
+                (100, GrantResolved(grant_id: "g-deploy", state: Denied)),
+                (150, TaskStepChanged(task_id: "t-launch", version: 6, step_id: "deploy", state: Failed)),
+                (200, TaskStateChanged(task_id: "t-launch", version: 7, state: Failed,
+                    result: "Stopped: you declined the staging deploy.")),
+            ],
+        ),
+        (
+            on: Call(method: "task.cancel", fields: {"task_id": "t-launch"}),
+            emit: [
+                (100, TaskStateChanged(task_id: "t-launch", version: 100, state: Cancelled,
+                    result: "Cancelled by Alex.")),
+            ],
+        ),
+    ],
+)

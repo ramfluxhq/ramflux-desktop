@@ -2,9 +2,10 @@
 // task needs the user midway (a medium-risk seat hold), then completes.
 // The step that needs the user carries its grant, so the decision expands
 // inside the task card; the finished task carries a result summary.
-// Demonstrates: TaskUpserted, TaskStepChanged, a TaskProgress moment moving
-// InProgress -> NeedsMe -> InProgress -> Done, a step bound to a grant, and
-// chained response rules (task.start, then grant.approve or grant.deny).
+// Demonstrates: TaskUpserted, versioned TaskStepChanged, a TaskProgress
+// moment following its task (InProgress -> NeedsMe -> InProgress -> Done), a
+// step that needs the user at a grant, and chained response rules
+// (task.start, then grant.approve or grant.deny).
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
@@ -22,49 +23,38 @@
     ],
     responses: [
         (
-            on: Call(method: "task.start", fields: {"context_id": "c-trip"}),
+            on: Call(method: "task.start", fields: {"conversation_id": "c-trip"}),
             emit: [
                 (50, TaskUpserted(
                     id: "t-trip",
                     intent_id: "i-trip",
                     context_id: "c-trip",
-                    actor: Human,
+                    requester: Human,
+                    assignee: "p-orbit",
                     title: "Book a train to Lyon on Friday morning",
                     steps: [
-                        (label: "Search connections", lifecycle: Pending),
-                        (label: "Compare fares", lifecycle: Pending),
-                        (label: "Hold a seat", lifecycle: Pending),
-                        (label: "Confirm booking", lifecycle: Pending),
+                        (id: "search", label: "Search connections", state: Pending),
+                        (id: "compare", label: "Compare fares", state: Pending),
+                        (id: "hold", label: "Hold a seat", state: Pending),
+                        (id: "confirm", label: "Confirm booking", state: Pending),
                     ],
-                    lifecycle: InProgress,
+                    state: Running,
+                    version: 1,
                 )),
                 (60, MomentAdded(id: "m-task", context_id: "c-trip", origin: "p-orbit", at: 0,
                     kind: TaskProgress(task_id: "t-trip"), lifecycle: InProgress)),
-                (500, TaskStepChanged(task_id: "t-trip", index: 0, lifecycle: InProgress)),
-                (1500, TaskStepChanged(task_id: "t-trip", index: 0, lifecycle: Done)),
-                (1600, TaskStepChanged(task_id: "t-trip", index: 1, lifecycle: InProgress)),
-                (2500, TaskStepChanged(task_id: "t-trip", index: 1, lifecycle: Done)),
+                (500, TaskStepChanged(task_id: "t-trip", version: 2, step_id: "search", state: Running)),
+                (1500, TaskStepChanged(task_id: "t-trip", version: 3, step_id: "search", state: Done)),
+                (1600, TaskStepChanged(task_id: "t-trip", version: 4, step_id: "compare", state: Running)),
+                (2500, TaskStepChanged(task_id: "t-trip", version: 5, step_id: "compare", state: Done)),
                 (2600, GrantRequested(
                     id: "g-hold",
                     scope: "travel.hold_seat",
                     risk: Medium,
                     args_hash: "sha256:1d0f5c3b8a77",
                 )),
-                (2600, TaskUpserted(
-                    id: "t-trip",
-                    intent_id: "i-trip",
-                    context_id: "c-trip",
-                    actor: Human,
-                    title: "Book a train to Lyon on Friday morning",
-                    steps: [
-                        (label: "Search connections", lifecycle: Done),
-                        (label: "Compare fares", lifecycle: Done),
-                        (label: "Hold a seat", lifecycle: NeedsMe, grant_id: "g-hold"),
-                        (label: "Confirm booking", lifecycle: Pending),
-                    ],
-                    lifecycle: NeedsMe,
-                )),
-                (2600, MomentUpdated(moment_id: "m-task", lifecycle: NeedsMe)),
+                (2600, TaskStepChanged(task_id: "t-trip", version: 6, step_id: "hold", state: NeedsMe,
+                    needs_me: Approval(grant_id: "g-hold"))),
                 (2600, MomentAdded(id: "m-hold", context_id: "c-trip", origin: "p-orbit", at: 0,
                     kind: Intervention(grant_id: "g-hold", risk: Medium,
                         summary: "Hold seat 42A on the 07:58 train for 64 EUR"),
@@ -76,23 +66,25 @@
             emit: [
                 (100, GrantResolved(grant_id: "g-hold", state: Denied)),
                 (100, MomentUpdated(moment_id: "m-hold", lifecycle: Dismissed)),
-                (150, TaskStepChanged(task_id: "t-trip", index: 2, lifecycle: Failed)),
+                (150, TaskStepChanged(task_id: "t-trip", version: 7, step_id: "hold", state: Failed)),
                 (200, TaskUpserted(
                     id: "t-trip",
                     intent_id: "i-trip",
                     context_id: "c-trip",
-                    actor: Human,
+                    requester: Human,
+                    assignee: "p-orbit",
                     title: "Book a train to Lyon on Friday morning",
                     steps: [
-                        (label: "Search connections", lifecycle: Done),
-                        (label: "Compare fares", lifecycle: Done),
-                        (label: "Hold a seat", lifecycle: Failed, grant_id: "g-hold"),
-                        (label: "Confirm booking", lifecycle: Pending),
+                        (id: "search", label: "Search connections", state: Done),
+                        (id: "compare", label: "Compare fares", state: Done),
+                        (id: "hold", label: "Hold a seat", state: Failed,
+                            needs_me: Approval(grant_id: "g-hold")),
+                        (id: "confirm", label: "Confirm booking", state: Skipped),
                     ],
-                    lifecycle: Failed,
+                    state: Failed,
+                    version: 8,
                     result: "Stopped: you declined the seat hold.",
                 )),
-                (200, MomentUpdated(moment_id: "m-task", lifecycle: Failed)),
             ],
         ),
         (
@@ -100,26 +92,27 @@
             emit: [
                 (100, GrantResolved(grant_id: "g-hold", state: Approved)),
                 (100, MomentUpdated(moment_id: "m-hold", lifecycle: Done)),
-                (150, TaskStepChanged(task_id: "t-trip", index: 2, lifecycle: InProgress)),
-                (150, MomentUpdated(moment_id: "m-task", lifecycle: InProgress)),
-                (800, TaskStepChanged(task_id: "t-trip", index: 2, lifecycle: Done)),
-                (900, TaskStepChanged(task_id: "t-trip", index: 3, lifecycle: InProgress)),
+                (150, TaskStepChanged(task_id: "t-trip", version: 7, step_id: "hold", state: Running)),
+                (800, TaskStepChanged(task_id: "t-trip", version: 8, step_id: "hold", state: Done)),
+                (900, TaskStepChanged(task_id: "t-trip", version: 9, step_id: "confirm", state: Running)),
                 (1600, TaskUpserted(
                     id: "t-trip",
                     intent_id: "i-trip",
                     context_id: "c-trip",
-                    actor: Human,
+                    requester: Human,
+                    assignee: "p-orbit",
                     title: "Book a train to Lyon on Friday morning",
                     steps: [
-                        (label: "Search connections", lifecycle: Done),
-                        (label: "Compare fares", lifecycle: Done),
-                        (label: "Hold a seat", lifecycle: Done, grant_id: "g-hold"),
-                        (label: "Confirm booking", lifecycle: Done),
+                        (id: "search", label: "Search connections", state: Done),
+                        (id: "compare", label: "Compare fares", state: Done),
+                        (id: "hold", label: "Hold a seat", state: Done,
+                            needs_me: Approval(grant_id: "g-hold")),
+                        (id: "confirm", label: "Confirm booking", state: Done),
                     ],
-                    lifecycle: Done,
+                    state: Done,
+                    version: 10,
                     result: "Seat 42A on the 07:58 to Lyon, 64 EUR. Booking reference RFX-2210.",
                 )),
-                (1600, MomentUpdated(moment_id: "m-task", lifecycle: Done)),
             ],
         ),
     ],
