@@ -20,15 +20,16 @@ use ramflux_desktop_sdk::{SdkConfig, SdkHub};
 use ramflux_desktop_test::load_fixture;
 
 use crate::actions::{
-    ClosePalette, CloseSettings, GoToNeedsMe, NextSettingsSection, OpenPalette, OpenSettings,
-    PreviousSettingsSection, SelectStackEntry1, SelectStackEntry2, SelectStackEntry3,
-    SelectStackEntry4, SelectStackEntry5, SelectStackEntry6, ToggleApprovalsDock,
-    ToggleContactsDock, ToggleDevPanel, ToggleEvidenceDock, ToggleMembersDock, ToggleObjectsDock,
-    TogglePinContext, ToggleTheme,
+    ClosePalette, CloseSettings, GoToNeedsMe, NextSettingsSection, OpenDiagnosticsSettings,
+    OpenPalette, OpenSettings, PreviousSettingsSection, SelectStackEntry1, SelectStackEntry2,
+    SelectStackEntry3, SelectStackEntry4, SelectStackEntry5, SelectStackEntry6, StartLocalDaemon,
+    StopLocalDaemon, ToggleApprovalsDock, ToggleContactsDock, ToggleDevPanel, ToggleEvidenceDock,
+    ToggleMembersDock, ToggleObjectsDock, TogglePinContext, ToggleTheme,
 };
 use crate::app::{StoreEvent, StoreHandle};
 use crate::dev::DevPanel;
 use crate::entry::EntryPage;
+use crate::launch::{DaemonLauncher, LaunchOptions};
 use crate::palette::{CommandPalette, PaletteChoice, PaletteEvent};
 use crate::root::{ConfirmHost, IntentRoot};
 use crate::route::{EntryStep, Page, page_for};
@@ -38,8 +39,9 @@ use crate::workspace::{DockTool, PrefsStore, StatusStrip, Workspace};
 /// Scenario played when the application starts.
 pub const DEFAULT_SCENARIO: &str = "s01_first_launch";
 
-/// File name of the desktop settings (pinned contexts) in the state directory.
-pub const DESKTOP_SETTINGS_FILE: &str = "desktop-settings.json";
+/// File name of the desktop settings (pinned contexts, launch settings) in
+/// the state directory.
+pub const DESKTOP_SETTINGS_FILE: &str = ramflux_desktop_sdk::local::paths::SETTINGS_FILE;
 
 /// Where the data comes from.
 #[derive(Debug, Clone)]
@@ -71,6 +73,8 @@ pub struct ShellOptions {
     pub wall_clock: bool,
     /// Where the dock layout persists.
     pub prefs: PrefsStore,
+    /// Launch settings, bundled daemon and daemon log of the launcher.
+    pub launch: LaunchOptions,
 }
 
 impl ShellOptions {
@@ -83,6 +87,7 @@ impl ShellOptions {
             start_clock,
             wall_clock: false,
             prefs: PrefsStore::in_memory(),
+            launch: LaunchOptions::in_memory(),
         }
     }
 }
@@ -96,6 +101,7 @@ pub struct Shell {
     workspace: Entity<Workspace>,
     settings: Entity<SettingsPage>,
     palette: Entity<CommandPalette>,
+    launcher: Entity<DaemonLauncher>,
     dev: Option<Entity<DevPanel>>,
     dev_visible: bool,
     settings_open: bool,
@@ -129,8 +135,7 @@ impl Shell {
         let source = match source {
             SourceChoice::Rfd(mut config) => {
                 if config.settings_path.is_none() {
-                    config.settings_path = crate::workspace::docks::prefs::state_dir()
-                        .map(|dir| dir.join(DESKTOP_SETTINGS_FILE));
+                    config.settings_path = ramflux_desktop_sdk::local::paths::settings_file();
                 }
                 SourceChoice::Rfd(config)
             }
@@ -142,6 +147,7 @@ impl Shell {
             start_clock: true,
             wall_clock: true,
             prefs: PrefsStore::default_location(),
+            launch: LaunchOptions::application(),
         };
         Self::with_options(options, window, cx)
     }
@@ -175,7 +181,9 @@ impl Shell {
                 SourceChoice::Rfd(config) => match SdkHub::start(config.clone()) {
                     Ok(hub) => store.attach_live(hub, cx),
                     // Without a bridge the entry page keeps waiting for the daemon.
-                    Err(error) => eprintln!("cannot start the daemon bridge: {error}"),
+                    Err(error) => ramflux_desktop_sdk::local::app_log::warn(&format!(
+                        "cannot start the daemon bridge: {error}"
+                    )),
                 },
             }
             if options.start_clock {
@@ -184,12 +192,15 @@ impl Shell {
             store
         });
         let root = IntentRoot::attach(store.clone(), window, cx);
+        let launcher = cx.new(|cx| DaemonLauncher::new(store.clone(), options.launch.clone(), cx));
         let status = cx.new(|cx| StatusStrip::new(store.clone(), cx));
-        let entry = cx.new(|cx| EntryPage::new(store.clone(), root.clone(), window, cx));
+        let entry =
+            cx.new(|cx| EntryPage::new(store.clone(), root.clone(), launcher.clone(), window, cx));
         let workspace = cx.new(|cx| {
             Workspace::new(store.clone(), root.clone(), options.prefs.clone(), window, cx)
         });
-        let settings = cx.new(|cx| SettingsPage::new(store.clone(), root.clone(), window, cx));
+        let settings = cx
+            .new(|cx| SettingsPage::new(store.clone(), root.clone(), launcher.clone(), window, cx));
         let palette =
             cx.new(|cx| CommandPalette::new(store.clone(), IntentRoot::sink(&root), window, cx));
         let dev = cfg!(debug_assertions)
@@ -226,6 +237,7 @@ impl Shell {
             workspace,
             settings,
             palette,
+            launcher,
             dev,
             dev_visible: false,
             settings_open: false,
@@ -267,6 +279,11 @@ impl Shell {
     /// The command palette.
     pub fn palette(&self) -> &Entity<CommandPalette> {
         &self.palette
+    }
+
+    /// The local daemon launcher.
+    pub fn launcher(&self) -> &Entity<DaemonLauncher> {
+        &self.launcher
     }
 
     /// The developer panel, in debug builds.
@@ -355,6 +372,28 @@ impl Shell {
         self.open_settings_at(SettingsSection::Account, cx);
         let focus = self.settings.read(cx).focus_handle(cx);
         window.focus(&focus, cx);
+    }
+
+    fn open_diagnostics(
+        &mut self,
+        _: &OpenDiagnosticsSettings,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.settings_open {
+            self.remember_focus(window, cx);
+        }
+        self.open_settings_at(SettingsSection::Diagnostics, cx);
+        let focus = self.settings.read(cx).focus_handle(cx);
+        window.focus(&focus, cx);
+    }
+
+    fn start_daemon(&mut self, _: &StartLocalDaemon, _: &mut Window, cx: &mut Context<Self>) {
+        self.launcher.update(cx, |launcher, cx| launcher.start(cx));
+    }
+
+    fn stop_daemon(&mut self, _: &StopLocalDaemon, _: &mut Window, cx: &mut Context<Self>) {
+        self.launcher.update(cx, |launcher, cx| launcher.stop(cx));
     }
 
     /// Saves the focused element so closing an overlay can return to it.
@@ -501,6 +540,9 @@ impl Render for Shell {
             .on_action(cx.listener(Self::go_to_needs_me))
             .on_action(cx.listener(Self::toggle_pin))
             .on_action(cx.listener(Self::open_settings))
+            .on_action(cx.listener(Self::open_diagnostics))
+            .on_action(cx.listener(Self::start_daemon))
+            .on_action(cx.listener(Self::stop_daemon))
             .on_action(cx.listener(Self::close_settings))
             .on_action(cx.listener(Self::open_palette))
             .on_action(cx.listener(Self::close_palette))

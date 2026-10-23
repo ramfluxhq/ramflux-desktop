@@ -15,19 +15,20 @@
 //! [`IntentRoot::submit_secret`], never as a UI event, and the input is
 //! cleared immediately.
 //!
+//! - `daemon_step`: no daemon yet; the user may start a local one.
 //! - `node_step`: node cards and the add-node form.
 //! - `account_step`: unlock, create, join and restore forms.
 
 mod account_step;
+mod daemon_step;
 mod node_card;
 mod node_step;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::stepper::{Stepper, StepperItem};
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window, div, rems};
 use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
@@ -35,9 +36,11 @@ use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::i18n::tr;
+use crate::launch::DaemonLauncher;
 use crate::root::{ConfirmHost, IntentRoot};
 use crate::route::{EntryStep, Page, page_for};
 
+pub use daemon_step::failure_text as daemon_failure_text;
 pub use node_card::NodeCard;
 
 /// Which account path the account step shows (view-local).
@@ -90,6 +93,7 @@ impl Inputs {
 pub struct EntryPage {
     store: Entity<StoreHandle>,
     root: Entity<IntentRoot>,
+    launcher: Entity<DaemonLauncher>,
     sink: EventSink,
     inputs: Inputs,
     path: AccountPath,
@@ -101,10 +105,12 @@ pub struct EntryPage {
 }
 
 impl EntryPage {
-    /// An entry page reading `store` and emitting through `root`.
+    /// An entry page reading `store`, emitting through `root`, and
+    /// offering to start a local daemon through `launcher`.
     pub fn new(
         store: Entity<StoreHandle>,
         root: Entity<IntentRoot>,
+        launcher: Entity<DaemonLauncher>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -119,6 +125,7 @@ impl EntryPage {
                 }
             }),
             cx.observe(&root, |_, _, cx| cx.notify()),
+            cx.observe(&launcher, |_, _, cx| cx.notify()),
             cx.subscribe_in(&inputs.passphrase, window, |this, _, event, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     this.unlock(window, cx);
@@ -134,6 +141,7 @@ impl EntryPage {
             sink: IntentRoot::sink(&root).scoped(Scope::Panel("entry".into())),
             store,
             root,
+            launcher,
             inputs,
             path: AccountPath::Create,
             kind: AccountKind::HumanInteractive,
@@ -173,34 +181,6 @@ impl EntryPage {
 
     fn has_account(&self, cx: &App) -> bool {
         self.store.read(cx).store().accounts().next().is_some()
-    }
-
-    fn render_daemon(&self, cx: &App) -> impl IntoElement {
-        let socket = self
-            .store
-            .read(cx)
-            .live_socket()
-            .map(|path| crate::i18n::tr_args("backend.daemon.waiting", &[("path", path)]));
-        h_flex().id("entry-daemon").gap_3().child(Spinner::new()).child(
-            v_flex()
-                .gap_1()
-                .child(div().text_sm().child(tr("entry.daemon.waiting")))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(tr("entry.daemon.help")),
-                )
-                .when_some(socket, |col, socket| {
-                    col.child(
-                        div()
-                            .text_xs()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_color(cx.theme().muted_foreground)
-                            .child(socket),
-                    )
-                }),
-        )
     }
 }
 

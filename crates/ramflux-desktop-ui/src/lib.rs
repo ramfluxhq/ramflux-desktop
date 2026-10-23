@@ -20,6 +20,7 @@
 //!   pages, overlays and panels.
 //! - [`moments`]: inline moment renderers.
 //! - [`file_dialog`]: native path prompts for every local path.
+//! - [`launch`]: the local daemon launcher and launch settings.
 //! - [`gate`]: controls for actions the backend cannot perform.
 //! - [`list_state`]: loading and empty placeholders of lists.
 
@@ -37,6 +38,7 @@ pub mod file_dialog;
 pub mod gate;
 pub mod i18n;
 mod ids;
+pub mod launch;
 pub mod list_state;
 pub mod moments;
 pub mod palette;

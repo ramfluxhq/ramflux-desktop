@@ -3,7 +3,7 @@
 
 //! Native file dialogs (GPUI path prompts) for every local path the user
 //! chooses: backup export and restore, device sync, diagnostics export and
-//! saving a downloaded object.
+//! saving a downloaded object, the daemon program and its data folder.
 //!
 //! A dialog is view-local: it only produces a path. The caller turns the
 //! chosen path into a UI event (or fills an input); a cancelled dialog does
@@ -65,6 +65,31 @@ pub fn open_file(
     let receiver = cx.prompt_for_paths(PathPromptOptions {
         files: true,
         directories: false,
+        multiple: false,
+        prompt: Some(prompt),
+    });
+    window
+        .spawn(cx, async move |cx| {
+            if let Ok(Ok(Some(paths))) = receiver.await
+                && let Some(path) = paths.into_iter().next()
+            {
+                cx.update(|window, cx| chosen(display(&path), window, cx)).ok();
+            }
+        })
+        .detach();
+}
+
+/// Shows the platform "open" dialog for one folder, then calls `chosen`
+/// with the absolute path. Nothing happens when the user cancels.
+pub fn open_dir(
+    prompt: SharedString,
+    window: &mut Window,
+    cx: &mut App,
+    chosen: impl FnOnce(String, &mut Window, &mut App) + 'static,
+) {
+    let receiver = cx.prompt_for_paths(PathPromptOptions {
+        files: false,
+        directories: true,
         multiple: false,
         prompt: Some(prompt),
     });

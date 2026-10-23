@@ -14,6 +14,8 @@
 //! - [`nodes`]: node profiles, probe results, default, enable, remove.
 //! - [`integrations`]: MCP servers and pending A2I events (read-only).
 //! - [`diagnostics`]: redacted export preview and export.
+//! - [`local_setup`]: source, socket, daemon program and data folder, the
+//!   local daemon, version and log locations (local preference).
 //! - [`appearance`]: theme and language (local preference).
 
 pub mod account;
@@ -21,6 +23,7 @@ pub mod appearance;
 pub mod devices;
 pub mod diagnostics;
 pub mod integrations;
+pub mod local_setup;
 pub mod nodes;
 
 use gpui_kit::TestSupportExt as _;
@@ -41,6 +44,7 @@ use crate::actions::{CloseSettings, SETTINGS_CONTEXT};
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::i18n::tr;
+use crate::launch::DaemonLauncher;
 use crate::root::{ConfirmHost, IntentRoot};
 
 /// A settings section, in sidebar order.
@@ -97,6 +101,8 @@ pub struct SectionContext {
     pub sink: EventSink,
     /// The intent root (for secret-carrying intents).
     pub root: Entity<IntentRoot>,
+    /// The local daemon launcher and launch settings.
+    pub launcher: Entity<DaemonLauncher>,
 }
 
 impl SectionContext {
@@ -110,6 +116,7 @@ impl SectionContext {
 pub struct SettingsPage {
     context: SectionContext,
     inputs: account::AccountInputs,
+    launch_inputs: local_setup::LaunchInputs,
     section: SettingsSection,
     opened: usize,
     focus_handle: FocusHandle,
@@ -127,6 +134,7 @@ impl SettingsPage {
     pub fn new(
         store: Entity<StoreHandle>,
         root: Entity<IntentRoot>,
+        launcher: Entity<DaemonLauncher>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -139,7 +147,9 @@ impl SettingsPage {
                 }
             }),
             cx.observe(&root, |_, _, cx| cx.notify()),
+            cx.observe(&launcher, |_, _, cx| cx.notify()),
         ];
+        let launch_inputs = local_setup::LaunchInputs::new(&launcher, window, cx);
         let masked = |key: &str, window: &mut Window, cx: &mut Context<Self>| {
             let placeholder = tr(key);
             cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(placeholder))
@@ -157,8 +167,9 @@ impl SettingsPage {
         }));
         let sink = IntentRoot::sink(&root).scoped(Scope::Panel("settings".into()));
         Self {
-            context: SectionContext { store, sink, root },
+            context: SectionContext { store, sink, root, launcher },
             inputs,
+            launch_inputs,
             section: SettingsSection::Account,
             opened: 0,
             focus_handle: cx.focus_handle(),
@@ -207,7 +218,7 @@ impl Render for SettingsPage {
             devices::page(context, cx),
             nodes::page(context, cx),
             integrations::page(context, cx),
-            diagnostics::page(context, cx),
+            diagnostics::page(context, &self.launch_inputs, cx),
             appearance::page(),
         ];
         let root = context.root.read(cx);

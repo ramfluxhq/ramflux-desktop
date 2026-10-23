@@ -21,8 +21,68 @@ entry:
       en: "Waiting for the local daemon"
       zh-CN: "正在等待本地守护进程"
     help:
-      en: "Ramflux connects to the background service on this device. It starts automatically."
-      zh-CN: "Ramflux 会连接到本机的后台服务，它会自动启动。"
+      en: "Ramflux connects to the background service on this device."
+      zh-CN: "Ramflux 会连接到本机的后台服务。"
+    none:
+      en: "No local daemon is answering"
+      zh-CN: "没有本地守护进程响应"
+    none_help:
+      en: "Ramflux Desktop connects as soon as a daemon answers at %{path}. Start one here, or start it yourself with rf daemon start."
+      zh-CN: "只要 %{path} 上有守护进程响应，Ramflux Desktop 就会立即连接。可以在这里启动，也可以自行运行 rf daemon start。"
+    start:
+      en: "Start local daemon"
+      zh-CN: "启动本地守护进程"
+    retry:
+      en: "Try again"
+      zh-CN: "重试"
+    settings:
+      en: "Daemon settings…"
+      zh-CN: "守护进程设置…"
+    runs:
+      en: "Program: %{path}"
+      zh-CN: "程序：%{path}"
+    data:
+      en: "Data folder: %{path}"
+      zh-CN: "数据文件夹：%{path}"
+    only_on_request:
+      en: "Nothing starts until you press Start. A daemon started here stops when you quit Ramflux Desktop."
+      zh-CN: "在你点击启动之前不会启动任何进程。在这里启动的守护进程会在退出 Ramflux Desktop 时停止。"
+    missing_title:
+      en: "No daemon program set"
+      zh-CN: "未设置守护进程程序"
+    missing:
+      en: "Choose the rf program in Settings › Diagnostics, or start a daemon yourself."
+      zh-CN: "请在“设置 › 诊断”中选择 rf 程序，或自行启动守护进程。"
+    starting:
+      en: "Starting the local daemon…"
+      zh-CN: "正在启动本地守护进程…"
+    connecting:
+      en: "The daemon is running. Connecting…"
+      zh-CN: "守护进程已在运行，正在连接…"
+    output:
+      en: "Daemon output: %{path}"
+      zh-CN: "守护进程输出：%{path}"
+    failed_title:
+      en: "The local daemon is not running"
+      zh-CN: "本地守护进程未在运行"
+    not_found:
+      en: "The daemon program was not found at %{path}."
+      zh-CN: "在 %{path} 找不到守护进程程序。"
+    not_executable:
+      en: "%{path} is not an executable program."
+      zh-CN: "%{path} 不是可执行程序。"
+    no_data_dir:
+      en: "No data folder is set for the daemon."
+      zh-CN: "尚未为守护进程设置数据文件夹。"
+    spawn_failed:
+      en: "The daemon could not be started: %{error}"
+      zh-CN: "无法启动守护进程：%{error}"
+    exited:
+      en: "The daemon stopped right after starting (exit status %{status}). Its output is in the daemon log."
+      zh-CN: "守护进程启动后立即停止（退出状态 %{status}）。输出见守护进程日志。"
+    signal:
+      en: "signal"
+      zh-CN: "信号"
   node:
     intro:
       en: "Your account lives on a node. Confirm the node you were invited to, or add one by address."

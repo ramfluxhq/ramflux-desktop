@@ -67,18 +67,7 @@ impl DockPrefs {
 /// Where the desktop keeps its local settings files (dock layout, desktop
 /// settings): `RAMFLUX_DESKTOP_STATE_DIR`, else the user's configuration
 /// directory.
-pub fn state_dir() -> Option<PathBuf> {
-    std::env::var_os("RAMFLUX_DESKTOP_STATE_DIR").map(PathBuf::from).or_else(|| {
-        let home = std::env::var_os("HOME").map(PathBuf::from)?;
-        Some(if cfg!(target_os = "macos") {
-            home.join("Library/Application Support/Ramflux Desktop")
-        } else {
-            std::env::var_os("XDG_CONFIG_HOME")
-                .map_or_else(|| home.join(".config"), PathBuf::from)
-                .join("ramflux-desktop")
-        })
-    })
-}
+pub use ramflux_desktop_sdk::local::paths::state_dir;
 
 /// Loads and saves [`DockPrefs`].
 #[derive(Debug, Clone, Default)]

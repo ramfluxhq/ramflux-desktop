@@ -6,8 +6,9 @@
 //! built from the store, which never holds keys, tokens, nonces or message
 //! plaintext; identifiers that could link people are reduced to counts.
 //!
-//! A second, read-only group shows the renderer profile this client
-//! declares to its source and the renderer errors found this session.
+//! A read-only group shows the renderer profile this client
+//! declares to its source and the renderer errors found this session. The
+//! local setup groups ([`super::local_setup`]) follow.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
@@ -17,6 +18,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, div};
 use ramflux_desktop_core::{RendererProfile, Store, UiEventKind};
 
+use super::local_setup::{self, LaunchInputs};
 use super::{SectionContext, SettingsSection};
 use crate::app::RendererErrors;
 use crate::file_dialog::{self, StartDir};
@@ -117,8 +119,10 @@ fn renderer_group(context: &SectionContext, cx: &App) -> SettingGroup {
     SettingGroup::new().title(tr("settings.diagnostics.renderer")).item(item)
 }
 
-/// The diagnostics section.
-pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
+/// The diagnostics section: the export and the renderer profile, then the
+/// local setup, the local daemon, version and logs.
+pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> SettingPage {
+    let [setup, daemon, about] = local_setup::groups(context, inputs, cx);
     let text = preview(context.store.read(cx).store());
     let sink = context.sink(SettingsSection::Diagnostics);
     let item = SettingItem::render(move |_, _, cx: &mut App| {
@@ -159,8 +163,11 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
             .into_any_element()
     });
     SettingPage::new(tr("settings.section.diagnostics"))
-        .group(SettingGroup::new().item(item))
+        .group(SettingGroup::new().title(tr("settings.diagnostics.export_title")).item(item))
         .group(renderer_group(context, cx))
+        .group(setup)
+        .group(daemon)
+        .group(about)
 }
 
 #[cfg(test)]

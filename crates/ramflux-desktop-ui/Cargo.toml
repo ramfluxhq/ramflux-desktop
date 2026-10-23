@@ -38,3 +38,11 @@ name = "live_screenshot"
 path = "tests/live_screenshot.rs"
 test = false
 harness = false
+
+# Offscreen screenshots of the first-run states (optionally on a real daemon
+# started from the app); run explicitly, not part of `cargo test`.
+[[test]]
+name = "first_run_shots"
+path = "tests/first_run_shots.rs"
+test = false
+harness = false

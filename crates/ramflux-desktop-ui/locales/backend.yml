@@ -49,9 +49,6 @@ backend:
       en: "%{action}: %{reason}"
       zh-CN: "%{action}：%{reason}"
   daemon:
-    waiting:
-      en: "Waiting for the daemon at %{path}"
-      zh-CN: "正在等待守护进程：%{path}"
     socket:
       en: "Attached to %{path} · %{accounts} open accounts"
       zh-CN: "已连接 %{path} · 已打开 %{accounts} 个账户"

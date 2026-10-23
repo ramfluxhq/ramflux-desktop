@@ -64,6 +64,7 @@ mod shot {
             start_clock: false,
             wall_clock: true,
             prefs: PrefsStore::in_memory(),
+            launch: ramflux_desktop_ui::launch::LaunchOptions::in_memory(),
         };
         let (handle, shell) = cx
             .update(|cx| {

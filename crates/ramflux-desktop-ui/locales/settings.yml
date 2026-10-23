@@ -195,3 +195,82 @@ settings:
     renderer_errors:
       en: "Renderer errors this session: %{count}"
       zh-CN: "本次会话的渲染错误：%{count}"
+    export_title:
+      en: "Diagnostics export"
+      zh-CN: "诊断导出"
+  launch:
+    title:
+      en: "Startup"
+      zh-CN: "启动"
+    use_daemon:
+      en: "Use the local daemon"
+      zh-CN: "使用本地守护进程"
+    source_help:
+      en: "Off: play the bundled demo scenarios instead. Saved at once; applies the next time Ramflux Desktop starts."
+      zh-CN: "关闭时改为播放内置演示场景。立即保存，下次启动 Ramflux Desktop 时生效。"
+    socket:
+      en: "Daemon socket"
+      zh-CN: "守护进程套接字"
+    binary:
+      en: "Daemon program (rf)"
+      zh-CN: "守护进程程序（rf）"
+    binary_placeholder:
+      en: "Not set: choose the rf program"
+      zh-CN: "未设置：请选择 rf 程序"
+    data_dir:
+      en: "Daemon data folder"
+      zh-CN: "守护进程数据文件夹"
+    browse:
+      en: "Choose…"
+      zh-CN: "选择…"
+    save:
+      en: "Save"
+      zh-CN: "保存"
+    saved:
+      en: "Saved."
+      zh-CN: "已保存。"
+    save_failed:
+      en: "Not saved: %{error}"
+      zh-CN: "未保存：%{error}"
+    apply_help:
+      en: "Empty fields use the default shown. The socket applies the next time Ramflux Desktop starts; program and data folder apply to the next daemon start."
+      zh-CN: "留空则使用显示的默认值。套接字在下次启动 Ramflux Desktop 时生效；程序和数据文件夹在下次启动守护进程时生效。"
+    daemon_title:
+      en: "Local daemon"
+      zh-CN: "本地守护进程"
+    status_none:
+      en: "No daemon answers at %{path}."
+      zh-CN: "%{path} 上没有守护进程响应。"
+    status_attached:
+      en: "Attached to a daemon at %{path}."
+      zh-CN: "已连接到 %{path} 上的守护进程。"
+    status_owned:
+      en: "Running, started by Ramflux Desktop (process %{pid})."
+      zh-CN: "正在运行，由 Ramflux Desktop 启动（进程 %{pid}）。"
+    status_stopping:
+      en: "Stopping the local daemon…"
+      zh-CN: "正在停止本地守护进程…"
+    status_scenarios:
+      en: "Playing the demo scenarios; no daemon is used."
+      zh-CN: "正在播放演示场景，未使用守护进程。"
+    stop:
+      en: "Stop daemon"
+      zh-CN: "停止守护进程"
+    about_title:
+      en: "Version and logs"
+      zh-CN: "版本与日志"
+    version:
+      en: "Version"
+      zh-CN: "版本"
+    app_log:
+      en: "App log"
+      zh-CN: "应用日志"
+    daemon_log:
+      en: "Daemon log"
+      zh-CN: "守护进程日志"
+    settings_file:
+      en: "Settings file"
+      zh-CN: "设置文件"
+    none:
+      en: "Not kept"
+      zh-CN: "未保存"

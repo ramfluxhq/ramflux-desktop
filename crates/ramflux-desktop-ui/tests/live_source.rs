@@ -43,6 +43,7 @@ fn options(path: &std::path::Path) -> ShellOptions {
         start_clock: true,
         wall_clock: false,
         prefs: PrefsStore::in_memory(),
+        launch: ramflux_desktop_ui::launch::LaunchOptions::in_memory(),
     }
 }
 

@@ -57,6 +57,12 @@ gpui_kit::actions!(
         NextSettingsSection,
         /// Show the previous settings section.
         PreviousSettingsSection,
+        /// Start the local daemon (only ever on the user's command).
+        StartLocalDaemon,
+        /// Stop the local daemon the desktop started.
+        StopLocalDaemon,
+        /// Open settings at Diagnostics (daemon binary, socket, data folder).
+        OpenDiagnosticsSettings,
     ]
 );
 

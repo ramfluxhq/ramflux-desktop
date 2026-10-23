@@ -7,50 +7,56 @@
 //! ramflux-desktop [--source mock|rfd] [--socket PATH]
 //! ```
 //!
-//! The source defaults to the bundled scenarios in debug builds and to the
-//! local daemon in release builds. `RAMFLUX_DESKTOP_SOURCE` and
-//! `RAMFLUX_DESKTOP_SOCKET` set the same choices from the environment; flags
-//! win.
+//! The source comes from the flags, then `RAMFLUX_DESKTOP_SOURCE` and
+//! `RAMFLUX_DESKTOP_SOCKET`, then the launch settings saved in Settings ›
+//! Diagnostics, then the build: the bundled scenarios in debug builds, the
+//! local daemon at the reference CLI's socket in release builds.
+//!
+//! The desktop attaches to a daemon that is already running. It never
+//! starts one by itself; the entry page offers "Start local daemon".
+//! Application events go to the platform log directory, redacted.
 
 use gpui_kit::component::TitleBar;
 use gpui_kit::*;
-use ramflux_desktop_sdk::SdkConfig;
+use ramflux_desktop_sdk::local::{LaunchStore, app_log, paths};
 use ramflux_desktop_ui::Shell;
+use ramflux_desktop_ui::launch::choice::{self, Overrides};
+use ramflux_desktop_ui::launch::version;
 use ramflux_desktop_ui::shell::SourceChoice;
 
 /// Initial window size: a physical window boundary, not application layout.
 const WINDOW_SIZE: (f32, f32) = (1280., 820.);
 
-/// The source chosen by flags, then the environment, then the build.
+/// The source chosen by flags, then the environment, then the saved
+/// settings, then the build.
 fn source_choice() -> Result<SourceChoice, String> {
-    let mut source = std::env::var("RAMFLUX_DESKTOP_SOURCE").ok();
-    let mut socket = std::env::var("RAMFLUX_DESKTOP_SOCKET").ok();
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--source" => source = args.next(),
-            "--socket" => socket = args.next(),
-            other => return Err(format!("unknown argument: {other}")),
-        }
-    }
-    let rfd = || SourceChoice::Rfd(socket.clone().map_or_else(SdkConfig::default, SdkConfig::new));
-    match source.as_deref() {
-        None if socket.is_some() => Ok(rfd()),
-        None => Ok(SourceChoice::default_for_build()),
-        Some("mock") => Ok(SourceChoice::Mock),
-        Some("rfd") => Ok(rfd()),
-        Some(other) => Err(format!("unknown source: {other} (use mock or rfd)")),
-    }
+    let flags = Overrides::from_args(std::env::args().skip(1))?;
+    let env = Overrides {
+        source: std::env::var(choice::SOURCE_ENV).ok(),
+        socket: std::env::var(choice::SOCKET_ENV).ok(),
+    };
+    choice::resolve(&flags.or(env), &LaunchStore::default_location().load())
 }
 
 fn main() {
+    let log = app_log::init(paths::log_dir());
     let source = match source_choice() {
         Ok(source) => source,
         Err(message) => {
-            eprintln!("{message}");
+            app_log::warn(&message);
             std::process::exit(2);
         }
     };
+    app_log::info(&format!("start: {}", version::summary()));
+    match &source {
+        SourceChoice::Mock => app_log::info("source: demo scenarios"),
+        SourceChoice::Rfd(config) => {
+            app_log::info(&format!("source: daemon at {}", config.socket_path.display()));
+        }
+    }
+    if let Some(log) = log {
+        app_log::info(&format!("log: {}", log.display()));
+    }
     application().with_assets(assets::Assets).run(move |cx| {
         init(cx);
         ramflux_desktop_ui::init(cx);
@@ -64,7 +70,7 @@ fn main() {
             cx.new(|cx| Shell::application(source.clone(), window, cx))
         });
         if let Err(err) = opened {
-            eprintln!("failed to open window: {err}");
+            app_log::warn(&format!("failed to open window: {err}"));
             cx.quit();
         }
     });
