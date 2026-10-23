@@ -8,8 +8,13 @@
 //!
 //! - [`changes`]: [`Changes`], [`ApplyError`] and [`Rejection`].
 //! - `reducer`: one validated arm per domain event.
-//! - `surface_ops`: agent surface patch operations.
-//! - `surfaces`: surface content hashes, compare-and-swap patches, conflicts.
+//! - `surface_ops`: unversioned agent surface patch operations.
+//! - `surfaces`: surface versions, content hashes, states and streams;
+//!   compare-and-swap patches and conflicts.
+//! - `surface_events`: the versioned surface events (create, patch,
+//!   stream, close) and the renderer limits at the reducer edge.
+//! - `tasks`: task updates, step changes and where a step needs the
+//!   requester; task moments follow their task's state.
 //! - [`bodies`]: the bounded message-body cache.
 //! - `index`: secondary indexes the reducer maintains (timelines, needs-me,
 //!   in progress, members, grant and task presenters).
@@ -18,15 +23,17 @@ pub mod bodies;
 mod changes;
 mod index;
 mod reducer;
+mod surface_events;
 mod surface_ops;
 mod surfaces;
+mod tasks;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::event::{EVENT_SCHEMA, EventEnvelope, SourceStatus};
 use crate::ids::{
     AccountId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
-    StandingApprovalId, TaskId, Timestamp,
+    StandingApprovalId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
     Account, AuditEntry, Capabilities, Context, DaemonInfo, Device, EffectFailure, Grant,
@@ -35,6 +42,7 @@ use crate::model::{
 
 pub use bodies::{BodyCache, MAX_BODIES};
 pub use changes::{ApplyError, Changes, Rejection};
+pub use surfaces::{StreamState, SurfaceRecord, SurfaceState};
 
 use index::Indexes;
 
@@ -73,8 +81,8 @@ pub struct Store {
     pin_order: Vec<ContextId>,
     listed: BTreeSet<Listing>,
     needs_me_since: BTreeMap<MomentId, Timestamp>,
-    surface_hashes: BTreeMap<MomentId, crate::conformance::SurfaceHash>,
-    surface_conflicts: BTreeSet<MomentId>,
+    surfaces: BTreeMap<MomentId, SurfaceRecord>,
+    surface_ids: BTreeMap<SurfaceId, MomentId>,
     source_status: SourceStatus,
     last_seq: u64,
     rejections: Vec<Rejection>,

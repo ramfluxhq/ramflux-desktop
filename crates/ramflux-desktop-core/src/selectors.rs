@@ -9,7 +9,9 @@
 use std::collections::BTreeSet;
 
 use crate::ids::{ContextId, GrantId, MomentId, ParticipantId, Timestamp};
-use crate::model::{Context, Grant, GrantState, Moment, MomentKind, Object, Participant};
+use crate::model::{
+    Context, Grant, GrantState, Moment, MomentKind, Object, Participant, TaskState,
+};
 use crate::store::Store;
 
 /// Maximum number of contexts in the context stack.
@@ -22,8 +24,10 @@ pub enum AttentionReason {
     Approval,
     /// A contact request.
     ContactRequest,
-    /// A task waits for input.
+    /// A task step waits for a decision (inside the task).
     TaskInput,
+    /// An AI participant proposed a task; confirm or decline it.
+    TaskProposal,
     /// A conflict must be resolved.
     Conflict,
     /// A key safety change must be acknowledged.
@@ -102,7 +106,7 @@ pub fn owning_task_step(store: &Store, grant: &GrantId) -> Option<TaskStepRef> {
     store
         .step_owners(grant)
         .filter_map(|task| {
-            let step = task.steps.iter().position(|s| s.grant_id.as_ref() == Some(grant))?;
+            let step = task.steps.iter().position(|s| s.grant_id() == Some(grant))?;
             let moment = store.task_presenters(&task.id).next()?;
             Some(TaskStepRef { moment_id: moment.id.clone(), task_id: task.id.clone(), step })
         })
@@ -115,19 +119,34 @@ pub fn is_task_owned_intervention(store: &Store, moment: &Moment) -> bool {
         if owning_task_step(store, &p.grant_id).is_some())
 }
 
-/// All `NeedsMe` moments, oldest first (by `since`, then id).
+/// Where a task moment's decision is made, when that is an agent surface
+/// (a step asking for a choice or an input): the surface's moment.
+pub fn task_decision_surface<'a>(store: &'a Store, moment: &Moment) -> Option<&'a MomentId> {
+    let MomentKind::TaskProgress(p) = &moment.kind else { return None };
+    let task = store.task(&p.task_id)?;
+    let (_, step) = task.needs_me_step()?;
+    store.surface_moment(step.needs_me.as_ref()?.surface()?)
+}
+
+/// All `NeedsMe` moments, oldest first (by `since`, then id), each at the
+/// one place its decision is made.
 ///
 /// An intervention owned by a task step is not listed on its own: the task
-/// moment carries the attention (one moment, one place).
+/// moment carries the attention. A task whose step asks for a choice or an
+/// input is listed at that surface instead (one moment, one place).
 pub fn attention(store: &Store) -> Vec<AttentionItem> {
     store
         .needs_me()
         .filter(|(_, m)| !is_task_owned_intervention(store, m))
-        .map(|(since, m)| AttentionItem {
-            context_id: m.context_id.clone(),
-            moment_id: m.id.clone(),
-            reason: AttentionReason::of(&m.kind),
-            since,
+        .map(|(since, m)| {
+            let proposal = matches!(&m.kind, MomentKind::TaskProgress(p)
+                if store.task(&p.task_id).is_some_and(|t| t.state == TaskState::Proposed));
+            let (moment_id, reason) = match task_decision_surface(store, m) {
+                Some(surface) => (surface.clone(), AttentionReason::SurfaceInput),
+                None if proposal => (m.id.clone(), AttentionReason::TaskProposal),
+                None => (m.id.clone(), AttentionReason::of(&m.kind)),
+            };
+            AttentionItem { context_id: m.context_id.clone(), moment_id, reason, since }
         })
         .collect()
 }
@@ -177,10 +196,8 @@ pub fn context_stack(store: &Store) -> Vec<ContextId> {
 /// `InProgress` moments plus task moments whose task is not terminal,
 /// ordered by `(at, id)`.
 pub fn in_flight(store: &Store) -> Vec<MomentId> {
-    let running_tasks = store
-        .tasks()
-        .filter(|t| !t.lifecycle.is_terminal())
-        .flat_map(|t| store.task_presenters(&t.id));
+    let running_tasks =
+        store.tasks().filter(|t| !t.state.is_terminal()).flat_map(|t| store.task_presenters(&t.id));
     let mut moments: Vec<&Moment> = store.in_progress().chain(running_tasks).collect();
     moments.sort_by(|a, b| (a.at, &a.id).cmp(&(b.at, &b.id)));
     moments.dedup_by(|a, b| a.id == b.id);

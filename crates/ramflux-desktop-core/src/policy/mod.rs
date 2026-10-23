@@ -8,7 +8,8 @@
 //! and returns a [`Decision`]; this module turns decisions into effects and
 //! stamps the audit pair (`proposed_by`, `confirmed_by`) on every body.
 //!
-//! - `conversation`: messages, context settings, tasks and objects.
+//! - `conversation`: messages, context settings and objects.
+//! - `tasks`: asking an AI participant, confirming its proposal, cancelling.
 //! - `moments`: surface actions, approvals and inline moment decisions.
 //! - `governance`: membership, roles and grant revocation.
 //! - `contacts`: adding contacts and acting on contact links.
@@ -22,6 +23,7 @@ mod error;
 mod governance;
 mod moments;
 mod start;
+mod tasks;
 
 use serde_json::{Value, json};
 
@@ -50,6 +52,8 @@ pub(crate) struct Policy<'a> {
     pub store: &'a Store,
     /// Intent time.
     pub now: Timestamp,
+    /// Who proposed the intent.
+    pub proposer: &'a Actor,
     /// The intent was proposed by an agent.
     pub is_agent: bool,
     /// The attended human completed the hold.
@@ -113,6 +117,7 @@ pub fn handle_intent(
     let policy = Policy {
         store,
         now,
+        proposer: &intent.proposed_by,
         is_agent: matches!(intent.proposed_by, Actor::Agent(_)),
         human_confirmed: intent
             .confirmed_by
@@ -120,6 +125,7 @@ pub fn handle_intent(
             .is_some_and(|c| c.held_ms() >= crate::model::MIN_HOLD_MS),
     };
     let decision = conversation::decide(&policy, &intent.kind)
+        .or_else(|| tasks::decide(&policy, &intent.kind))
         .or_else(|| moments::decide(&policy, &intent.kind))
         .or_else(|| governance::decide(&policy, &intent.kind))
         .or_else(|| contacts::decide(&policy, &intent.kind))

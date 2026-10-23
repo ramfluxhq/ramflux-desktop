@@ -111,6 +111,7 @@ fn critical_surface_action_needs_human_confirmation() {
         action_id: "wipe".to_owned(),
         values: JsonValue::Null,
         surface_hash: shown.clone(),
+        version: 0,
     };
     assert!(is_confirmation(&effects(&store, Intent::human(wipe()))));
     assert!(is_confirmation(&effects(&store, agent(wipe()))), "an agent proposal waits for a hold");
@@ -124,6 +125,7 @@ fn critical_surface_action_needs_human_confirmation() {
         action_id: "run".to_owned(),
         values: JsonValue::Null,
         surface_hash: shown.clone(),
+        version: 0,
     };
     assert!(!is_confirmation(&effects(&store, Intent::human(run))));
 }
@@ -252,8 +254,22 @@ fn methods_the_backend_cannot_perform_are_refused_before_any_hold() {
     let mut feed = Feed::new();
     let mut ctx = context("c-1", false);
     ctx.kind = ContextKind::Direct;
+    ctx.participants = vec![ParticipantId::new("p-agent")];
+    feed.ok(
+        1,
+        DomainEvent::ParticipantUpserted(participant(
+            "p-agent",
+            ParticipantKind::Agent,
+            "Orbit",
+            false,
+        )),
+    );
     feed.ok(1, DomainEvent::ContextUpserted(ctx));
-    let start = || IntentKind::StartTask { context_id: ContextId::new("c-1"), request: "x".into() };
+    let start = || IntentKind::StartTask {
+        context_id: ContextId::new("c-1"),
+        assignee: ParticipantId::new("p-agent"),
+        text: "x".into(),
+    };
     assert!(handle_intent(&feed.store, Intent::human(start()), NOW).is_ok());
     let unsupported = Capabilities {
         unsupported: [(methods::TASK_START.to_owned(), "needs K3".to_owned())]

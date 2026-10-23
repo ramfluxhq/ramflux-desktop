@@ -7,14 +7,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::conformance::SurfaceHash;
 use crate::ids::{
-    AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, SurfaceId, TaskId, Timestamp,
+    AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
     Account, AuditEntry, Block, Capabilities, Context, DaemonInfo, Device, Disappearing,
     EffectFailure, Grant, GrantFailure, GrantState, Integrations, Lifecycle, Listing, LockState,
-    Moment, MomentKind, Node, NodeHealth, NodeProbe, Object, Participant, StandingApproval,
-    SurfaceAction, Task,
+    Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant,
+    StandingApproval, StepState, SurfaceAction, Task, TaskState,
 };
+
+pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp};
 
 /// Schema tag carried by every envelope. The store rejects any other value.
 pub const EVENT_SCHEMA: &str = "ramflux.desktop.event.v1";
@@ -51,7 +53,9 @@ pub enum SourceStatus {
     Locked,
 }
 
-/// One patch operation on an agent surface.
+/// One operation of an unversioned agent surface patch
+/// ([`DomainEvent::SurfacePatched`]). Versioned surfaces use
+/// [`SurfaceEvent`] instead.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SurfaceOp {
     /// Append blocks at the end.
@@ -109,7 +113,10 @@ pub enum DomainEvent {
         #[serde(default)]
         kind: Option<MomentKind>,
     },
-    /// Agent surface patched in place.
+    /// A versioned agent surface event (create, patch, stream, close).
+    Surface(SurfaceEvent),
+    /// Agent surface patched in place, without a version (a source that
+    /// projects surfaces itself). Raises the surface version by one.
     SurfacePatched {
         /// Moment holding the surface.
         moment_id: MomentId,
@@ -134,16 +141,40 @@ pub enum DomainEvent {
         /// Final state; must not be `Pending`.
         state: GrantState,
     },
-    /// Task inserted or replaced; lifecycle changes are validated.
+    /// The assignee's full task update. The version must rise; state and
+    /// step transitions, and where a step needs the requester, are
+    /// validated.
     TaskUpserted(Task),
-    /// One task step changed lifecycle.
+    /// The assignee's update of one step. The version must rise; the task
+    /// state follows (a step that needs the requester makes a running task
+    /// need them, and the last such step answered makes it run again).
     TaskStepChanged {
         /// Task.
         task_id: TaskId,
-        /// Zero-based step index.
-        index: u32,
-        /// New step lifecycle.
-        lifecycle: Lifecycle,
+        /// The task's next version.
+        version: u64,
+        /// Step.
+        step_id: StepId,
+        /// New step state.
+        state: StepState,
+        /// Where the step asks the requester; required when `state` is
+        /// `NeedsMe`, otherwise the step keeps its record.
+        #[serde(default)]
+        needs_me: Option<NeedsMe>,
+    },
+    /// The assignee's update of the task state alone (for example the
+    /// answer to a cancel). The version must rise. When the task ends, its
+    /// unfinished steps are skipped.
+    TaskStateChanged {
+        /// Task.
+        task_id: TaskId,
+        /// The task's next version.
+        version: u64,
+        /// New state.
+        state: TaskState,
+        /// Result summary, when it changes.
+        #[serde(default)]
+        result: Option<String>,
     },
     /// Source connectivity changed.
     SourceStatusChanged(SourceStatus),

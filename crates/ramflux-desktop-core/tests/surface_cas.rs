@@ -45,6 +45,7 @@ fn run(shown: SurfaceHash) -> Intent {
         action_id: "run".to_owned(),
         values: serde_json::Value::Null,
         surface_hash: shown,
+        version: 0,
     })
 }
 

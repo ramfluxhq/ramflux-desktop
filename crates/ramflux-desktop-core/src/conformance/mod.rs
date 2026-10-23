@@ -24,7 +24,7 @@ pub mod schema;
 
 pub use check::{BlockIssue, SurfaceVerdict, check_surface, over_limit};
 pub use error::{RendererError, RendererErrorKind};
-pub use hash::{SurfaceHash, surface_hash};
+pub use hash::{SurfaceHash, action_args_hash, surface_hash};
 pub use profile::{
     BlockSupport, DeviceClass, InputMode, LimitKind, Limits, OutputMode, RendererProfile,
     SurfaceMode,

@@ -105,6 +105,18 @@ pub enum IntentError {
     /// Task already finished.
     #[error("task {0} is already finished")]
     TaskFinished(TaskId),
+    /// Only the task's requester may do this.
+    #[error("only the requester of task {0} may do this")]
+    NotRequester(TaskId),
+    /// The task is not a proposal waiting for confirmation.
+    #[error("task {0} is not a proposal")]
+    NotAProposal(TaskId),
+    /// A task is asked of an AI participant only.
+    #[error("{0} is not an AI participant")]
+    NotAnAgent(ParticipantId),
+    /// The surface was closed; it is a frozen record.
+    #[error("surface of moment {0} is closed")]
+    SurfaceClosed(MomentId),
     /// Context already in the requested pin state.
     #[error("context {0} is already in that pin state")]
     PinUnchanged(ContextId),

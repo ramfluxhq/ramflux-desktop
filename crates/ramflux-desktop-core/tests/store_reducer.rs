@@ -205,49 +205,6 @@ fn grant_resolves_once() {
 }
 
 #[test]
-fn task_lifecycle_and_steps_are_validated() {
-    let mut feed = seeded();
-    let mut task = Task {
-        id: TaskId::new("t-1"),
-        intent_id: None,
-        context_id: ContextId::new("c-1"),
-        actor: Actor::Human,
-        title: "Prepare report".to_owned(),
-        steps: vec![TaskStep {
-            label: "Collect".to_owned(),
-            lifecycle: Lifecycle::Pending,
-            grant_id: None,
-        }],
-        lifecycle: Lifecycle::InProgress,
-        result: None,
-    };
-    feed.ok(30, DomainEvent::TaskUpserted(task.clone()));
-    feed.ok(
-        40,
-        DomainEvent::TaskStepChanged {
-            task_id: TaskId::new("t-1"),
-            index: 0,
-            lifecycle: Lifecycle::Done,
-        },
-    );
-    let out_of_range = feed.push(
-        50,
-        DomainEvent::TaskStepChanged {
-            task_id: TaskId::new("t-1"),
-            index: 3,
-            lifecycle: Lifecycle::Done,
-        },
-    );
-    assert!(matches!(out_of_range, Err(ApplyError::StepOutOfRange { index: 3, .. })));
-
-    task.lifecycle = Lifecycle::Done;
-    feed.ok(60, DomainEvent::TaskUpserted(task.clone()));
-    task.lifecycle = Lifecycle::InProgress;
-    let reopened = feed.push(70, DomainEvent::TaskUpserted(task));
-    assert!(matches!(reopened, Err(ApplyError::IllegalTransition { .. })));
-}
-
-#[test]
 fn removing_a_context_drops_its_moments_and_pin() {
     let mut feed = Feed::new();
     feed.ok(1, DomainEvent::ContextUpserted(context("c-1", true)));

@@ -153,6 +153,7 @@ mod tests {
                 max_actions: 1,
                 max_text_chars: 10,
                 max_data_bytes: 60,
+                ..Limits::DESKTOP
             },
         }
     }

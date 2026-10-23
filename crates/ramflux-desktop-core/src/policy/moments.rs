@@ -7,25 +7,36 @@
 use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
-use crate::conformance::{Limits, SurfaceHash, over_limit};
+use crate::conformance::{SurfaceHash, action_args_hash};
 use crate::ids::{GrantId, MomentId};
 use crate::intent::{IntentKind, methods};
 use crate::model::{Grant, GrantState, Lifecycle, MomentKind, Risk, SafetyState};
+use crate::store::SurfaceState;
 
 /// Decides moment-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
     Some(match kind {
-        IntentKind::SurfaceAction { moment_id, surface_id, action_id, values, surface_hash } => {
-            surface_action(p, moment_id, surface_id, action_id, surface_hash).map(|risk| {
+        IntentKind::SurfaceAction {
+            moment_id,
+            surface_id,
+            action_id,
+            values,
+            surface_hash,
+            version,
+        } => {
+            let shown = Shown { hash: surface_hash, version: *version };
+            surface_action(p, moment_id, surface_id, action_id, &shown).map(|risk| {
                 p.gated(
                     risk,
                     methods::SURFACE_ACTION,
                     json!({
                         "moment_id": moment_id,
                         "surface_id": surface_id,
+                        "version": version,
+                        "surface_hash": surface_hash,
                         "action_id": action_id,
                         "values": values,
-                        "surface_hash": surface_hash,
+                        "args_hash": action_args_hash(values),
                     }),
                 )
             })
@@ -125,28 +136,41 @@ fn needs_me(moment_id: &MomentId, lifecycle: Lifecycle) -> Result<(), IntentErro
     }
 }
 
+/// The surface version an action was shown on.
+struct Shown<'a> {
+    hash: &'a SurfaceHash,
+    version: u64,
+}
+
 /// Validates a surface action and returns its declared risk.
 ///
-/// The action must have been shown on the current surface version (`shown`),
-/// on a surface that is not in conflict and renders within the limits.
+/// The action must have been shown on the current surface version (`shown`:
+/// its content hash, and its version number when the view knew it), on a
+/// surface that is open: not closed, not in conflict, within the limits.
 fn surface_action(
     p: &Policy<'_>,
     moment_id: &MomentId,
     surface_id: &crate::ids::SurfaceId,
     action_id: &str,
-    shown: &SurfaceHash,
+    shown: &Shown<'_>,
 ) -> Result<Risk, IntentError> {
     let moment = p.moment(moment_id)?;
     let MomentKind::AgentSurface(surface) = &moment.kind else {
         return Err(wrong_kind(moment_id, "AgentSurface"));
     };
-    if p.store.surface_conflict(moment_id) {
-        return Err(IntentError::SurfaceConflict(moment_id.clone()));
+    let record = p.store.surface(moment_id).ok_or_else(|| wrong_kind(moment_id, "AgentSurface"))?;
+    match record.state {
+        SurfaceState::Closed => return Err(IntentError::SurfaceClosed(moment_id.clone())),
+        SurfaceState::Conflict { .. } => {
+            return Err(IntentError::SurfaceConflict(moment_id.clone()));
+        }
+        SurfaceState::OverLimit(_) => {
+            return Err(IntentError::SurfaceOverLimit(moment_id.clone()));
+        }
+        SurfaceState::Open => {}
     }
-    if over_limit(surface, &Limits::DESKTOP).is_some() {
-        return Err(IntentError::SurfaceOverLimit(moment_id.clone()));
-    }
-    if p.store.surface_hash(moment_id) != Some(shown) {
+    let version_known = shown.version != 0;
+    if &record.hash != shown.hash || (version_known && record.version != shown.version) {
         return Err(IntentError::SurfaceChanged(moment_id.clone()));
     }
     let action = surface

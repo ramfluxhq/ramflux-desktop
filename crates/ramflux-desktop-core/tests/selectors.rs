@@ -110,18 +110,21 @@ fn attention_lists_needs_me_oldest_first_with_reason() {
 fn in_flight_covers_in_progress_moments_and_open_tasks() {
     let mut feed = Feed::new();
     feed.ok(1, DomainEvent::ContextUpserted(context("c-1", false)));
-    let task = |id: &str, lifecycle| Task {
+    let task = |id: &str, state| Task {
         id: TaskId::new(id),
         intent_id: None,
         context_id: ContextId::new("c-1"),
-        actor: Actor::Human,
+        requester: Actor::Human,
+        assignee: ParticipantId::new("p-agent"),
         title: id.to_owned(),
         steps: Vec::new(),
-        lifecycle,
+        state,
+        version: 1,
         result: None,
+        result_ref: None,
     };
-    feed.ok(2, DomainEvent::TaskUpserted(task("t-open", Lifecycle::NeedsMe)));
-    feed.ok(2, DomainEvent::TaskUpserted(task("t-done", Lifecycle::Done)));
+    feed.ok(2, DomainEvent::TaskUpserted(task("t-open", TaskState::Proposed)));
+    feed.ok(2, DomainEvent::TaskUpserted(task("t-done", TaskState::Done)));
     let progress =
         |id: &str| MomentKind::TaskProgress(TaskProgressPayload { task_id: TaskId::new(id) });
     feed.ok(3, added(moment("m-open", "c-1", 3, progress("t-open"), Lifecycle::NeedsMe)));

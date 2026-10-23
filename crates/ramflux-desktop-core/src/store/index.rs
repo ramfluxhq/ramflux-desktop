@@ -56,10 +56,6 @@ fn presented_task(kind: &MomentKind) -> Option<&TaskId> {
     }
 }
 
-fn step_grants(task: &Task) -> impl Iterator<Item = &GrantId> {
-    task.steps.iter().filter_map(|s| s.grant_id.as_ref())
-}
-
 fn remove_from<K: Ord, V: Ord>(map: &mut BTreeMap<K, BTreeSet<V>>, key: &K, value: &V) {
     if let Some(set) = map.get_mut(key) {
         set.remove(value);
@@ -131,11 +127,11 @@ impl Indexes {
     /// Re-indexes the grants a task's steps wait on.
     pub fn change_task(&mut self, old: Option<&Task>, new: &Task) {
         if let Some(old) = old {
-            for grant in step_grants(old) {
+            for grant in old.step_grants() {
                 remove_from(&mut self.step_owners, grant, &old.id);
             }
         }
-        for grant in step_grants(new) {
+        for grant in new.step_grants() {
             self.step_owners.entry(grant.clone()).or_default().insert(new.id.clone());
         }
     }

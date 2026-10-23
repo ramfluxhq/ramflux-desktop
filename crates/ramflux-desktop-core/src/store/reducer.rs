@@ -12,12 +12,13 @@ use std::mem;
 
 use super::bodies::BodyCache;
 use super::changes::{ApplyError, Changes};
+use super::tasks::{StateChange, StepChange};
 use super::{MAX_AUDIT, Store};
 use crate::event::DomainEvent;
 use crate::ids::{AccountId, ContextId, GrantId, MomentId, NodeId, Timestamp};
 use crate::model::{
     Context, Disappearing, GrantState, Lifecycle, LockState, Moment, MomentKind, NodeHealth,
-    NodeProbe, Task,
+    NodeProbe,
 };
 
 impl Store {
@@ -81,6 +82,7 @@ impl Store {
             DomainEvent::MomentUpdated { moment_id, lifecycle, kind } => {
                 self.update_moment(at, moment_id, *lifecycle, kind.as_ref(), changes)?;
             }
+            DomainEvent::Surface(event) => self.surface_event(at, event, changes)?,
             DomainEvent::SurfacePatched { moment_id, surface_id, ops, base_hash } => {
                 self.patch_surface(moment_id, surface_id, ops, base_hash.as_ref(), changes)?;
             }
@@ -155,23 +157,25 @@ impl Store {
                 self.integrations = integrations.clone();
                 changes.integrations = true;
             }
-            DomainEvent::TaskUpserted(task) => self.upsert_task(task, changes)?,
-            DomainEvent::TaskStepChanged { task_id, index, lifecycle } => {
-                let task = self
-                    .tasks
-                    .get_mut(task_id)
-                    .ok_or_else(|| ApplyError::UnknownTask(task_id.clone()))?;
-                let step =
-                    usize::try_from(*index).ok().and_then(|i| task.steps.get_mut(i)).ok_or_else(
-                        || ApplyError::StepOutOfRange { task: task_id.clone(), index: *index },
-                    )?;
-                check_transition(
-                    || format!("task {task_id} step {index}"),
-                    step.lifecycle,
-                    *lifecycle,
-                )?;
-                step.lifecycle = *lifecycle;
-                changes.tasks.insert(task_id.clone());
+            DomainEvent::TaskUpserted(task) => self.upsert_task(at, task, changes)?,
+            DomainEvent::TaskStepChanged { task_id, version, step_id, state, needs_me } => {
+                let step = StepChange {
+                    task_id,
+                    version: *version,
+                    step_id,
+                    state: *state,
+                    needs_me: needs_me.as_ref(),
+                };
+                self.change_step(at, step, changes)?;
+            }
+            DomainEvent::TaskStateChanged { task_id, version, state, result } => {
+                let update = StateChange {
+                    task_id,
+                    version: *version,
+                    state: *state,
+                    result: result.as_ref(),
+                };
+                self.change_task_state(at, update, changes)?;
             }
             DomainEvent::SourceStatusChanged(status) => {
                 if self.source_status != *status {
@@ -345,7 +349,7 @@ impl Store {
         Ok(())
     }
 
-    fn add_moment(
+    pub(super) fn add_moment(
         &mut self,
         at: Timestamp,
         moment: &Moment,
@@ -357,13 +361,22 @@ impl Store {
         if !self.contexts.contains_key(&moment.context_id) {
             return Err(ApplyError::UnknownContext(moment.context_id.clone()));
         }
-        let since = (moment.lifecycle == Lifecycle::NeedsMe).then_some(at);
+        if let MomentKind::AgentSurface(surface) = &moment.kind
+            && self.surface_ids.contains_key(&surface.surface_id)
+        {
+            return Err(ApplyError::DuplicateSurface(surface.surface_id.clone()));
+        }
+        let mut stored = moment.clone();
+        // A task moment follows its task.
+        if let Some(lifecycle) = self.task_moment_lifecycle(&stored.kind) {
+            stored.lifecycle = lifecycle;
+        }
+        let since = (stored.lifecycle == Lifecycle::NeedsMe).then_some(at);
         if let Some(since) = since {
             self.needs_me_since.insert(moment.id.clone(), since);
         }
-        let mut stored = moment.clone();
         keep_body(&mut self.bodies, &stored.id, &mut stored.kind);
-        self.track_surface(&moment.id, &stored.kind);
+        self.track_surface(&moment.id, &mut stored.kind);
         self.index.add_moment(&stored, since);
         changes.moments.insert(moment.id.clone());
         self.moments.insert(moment.id.clone(), stored);
@@ -382,7 +395,11 @@ impl Store {
             .moments
             .get_mut(moment_id)
             .ok_or_else(|| ApplyError::UnknownMoment(moment_id.clone()))?;
-        let next = lifecycle.unwrap_or(moment.lifecycle);
+        // A task moment follows its task, not lifecycle updates.
+        let follows_task = matches!(&moment.kind, MomentKind::TaskProgress(p)
+            if self.tasks.contains_key(&p.task_id));
+        let next =
+            if follows_task { moment.lifecycle } else { lifecycle.unwrap_or(moment.lifecycle) };
         if next != moment.lifecycle {
             check_transition(|| format!("moment {moment_id}"), moment.lifecycle, next)?;
         }
@@ -404,28 +421,15 @@ impl Store {
         if let Some(kind) = kind {
             let mut kind = kind.clone();
             keep_body(&mut self.bodies, moment_id, &mut kind);
+            self.track_surface(moment_id, &mut kind);
+            let moment = self
+                .moments
+                .get_mut(moment_id)
+                .ok_or_else(|| ApplyError::UnknownMoment(moment_id.clone()))?;
             self.index.change_kind(moment_id, &moment.kind, &kind);
             moment.kind = kind;
         }
-        if let Some(kind) = kind {
-            self.track_surface(moment_id, kind);
-        }
         changes.moments.insert(moment_id.clone());
-        Ok(())
-    }
-
-    fn upsert_task(&mut self, task: &Task, changes: &mut Changes) -> Result<(), ApplyError> {
-        if !self.contexts.contains_key(&task.context_id) {
-            return Err(ApplyError::UnknownContext(task.context_id.clone()));
-        }
-        if let Some(current) = self.tasks.get(&task.id)
-            && current.lifecycle != task.lifecycle
-        {
-            check_transition(|| format!("task {}", task.id), current.lifecycle, task.lifecycle)?;
-        }
-        changes.tasks.insert(task.id.clone());
-        let old = self.tasks.insert(task.id.clone(), task.clone());
-        self.index.change_task(old.as_ref(), task);
         Ok(())
     }
 }

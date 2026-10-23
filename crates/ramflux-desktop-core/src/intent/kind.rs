@@ -80,14 +80,23 @@ pub enum IntentKind {
         /// Timer in seconds; `None` turns it off.
         seconds: Option<u32>,
     },
-    /// Start a task from a one-sentence request.
+    /// Ask an AI participant of the conversation to do something
+    /// (`task.start`).
     StartTask {
-        /// Context.
+        /// Conversation.
         context_id: ContextId,
-        /// The request text.
-        request: String,
+        /// The participant asked to do it; an agent member of the conversation.
+        assignee: ParticipantId,
+        /// What to do, in one sentence.
+        text: String,
     },
-    /// Cancel a running task.
+    /// Confirm a task the assignee proposed: the requester starts it.
+    /// Human only.
+    AcceptTaskProposal {
+        /// The proposed task.
+        task_id: TaskId,
+    },
+    /// Cancel a task, or decline a proposal. Only its requester may.
     CancelTask {
         /// Task.
         task_id: TaskId,
@@ -108,6 +117,9 @@ pub enum IntentKind {
         /// The surface version the action was shown on. Policy refuses the
         /// intent when the surface changed since.
         surface_hash: SurfaceHash,
+        /// The version number the action was shown on (with the hash).
+        #[serde(default)]
+        version: u64,
     },
     /// Approve a pending grant.
     Approve {

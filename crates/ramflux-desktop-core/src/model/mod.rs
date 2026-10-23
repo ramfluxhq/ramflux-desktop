@@ -16,7 +16,7 @@
 //! - [`protected`]: revealed protected text that never prints.
 //! - [`object`]: transferable objects.
 //! - [`grant`]: grants, standing approvals and the audit trail.
-//! - [`task`]: multi-step tasks.
+//! - [`task`]: tasks, their steps and where a step needs the requester.
 //! - [`integrations`]: read-only MCP and A2I snapshots.
 //! - [`listing`]: whether a collection was listed yet (loading vs empty).
 
@@ -55,4 +55,4 @@ pub use moment::{
 pub use object::{Direction, Object, TransferState};
 pub use protected::Protected;
 pub use surface::{Block, BlockKind, DEFAULT_BLOCK_VERSION, SurfaceAction};
-pub use task::{Task, TaskStep};
+pub use task::{NeedsMe, StepState, Task, TaskState, TaskStep};

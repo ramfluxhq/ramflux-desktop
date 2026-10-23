@@ -9,9 +9,9 @@ use thiserror::Error;
 
 use crate::ids::{
     AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
-    SurfaceId, TaskId,
+    StepId, SurfaceId, TaskId,
 };
-use crate::model::Lifecycle;
+use crate::model::{Lifecycle, StepState, TaskState};
 
 /// Why an envelope was not applied.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -84,13 +84,96 @@ pub enum ApplyError {
     /// Text was appended to a block without a string `text` field.
     #[error("block {0} has no text field")]
     NotTextBlock(BlockId),
-    /// Task step index out of range.
-    #[error("task {task} has no step {index}")]
-    StepOutOfRange {
+    /// Surface not in the store.
+    #[error("unknown surface {0}")]
+    UnknownSurface(SurfaceId),
+    /// A surface with this id already exists.
+    #[error("surface {0} already exists")]
+    DuplicateSurface(SurfaceId),
+    /// A surface event that is not the next version.
+    #[error("surface {surface}: expected version {expected}, found {found}")]
+    SurfaceVersion {
+        /// Surface.
+        surface: SurfaceId,
+        /// The version the store accepts next.
+        expected: u64,
+        /// The version the event carries.
+        found: u64,
+    },
+    /// The surface was closed; it is a frozen record.
+    #[error("surface {0} is closed")]
+    SurfaceClosed(SurfaceId),
+    /// The surface exceeded a renderer limit and shows only its fallback.
+    #[error("surface {0} is over a renderer limit")]
+    SurfaceOverLimit(SurfaceId),
+    /// A surface without a fallback text.
+    #[error("surface {0} has no fallback text")]
+    MissingFallback(SurfaceId),
+    /// Two blocks with one id in a surface.
+    #[error("block {0} appears twice")]
+    DuplicateBlock(BlockId),
+    /// A block inserted past the end of the surface.
+    #[error("block {block} cannot be inserted at {index}")]
+    InsertOutOfRange {
+        /// Block.
+        block: BlockId,
+        /// Requested position.
+        index: usize,
+    },
+    /// Text was streamed into a block whose stream ended.
+    #[error("the stream of block {0} has ended")]
+    StreamFinished(BlockId),
+    /// A task update whose version does not rise.
+    #[error("task {task}: version {found} is not after {current}")]
+    StaleTaskVersion {
         /// Task.
         task: TaskId,
-        /// Requested index.
-        index: u32,
+        /// Version in the store.
+        current: u64,
+        /// Version of the update.
+        found: u64,
+    },
+    /// A task update changed who the task belongs to.
+    #[error("task {0} cannot change its conversation, requester or assignee")]
+    TaskIdentityChanged(TaskId),
+    /// Task state transition not allowed by [`TaskState::can_transition`].
+    #[error("illegal task transition for {task}: {from:?} -> {to:?}")]
+    IllegalTaskTransition {
+        /// Task.
+        task: TaskId,
+        /// Current state.
+        from: TaskState,
+        /// Requested state.
+        to: TaskState,
+    },
+    /// Step state transition not allowed by [`StepState::can_transition`].
+    #[error("illegal step transition for {task}/{step}: {from:?} -> {to:?}")]
+    IllegalStepTransition {
+        /// Task.
+        task: TaskId,
+        /// Step.
+        step: StepId,
+        /// Current state.
+        from: StepState,
+        /// Requested state.
+        to: StepState,
+    },
+    /// Step not in the task.
+    #[error("task {task} has no step {step}")]
+    UnknownStep {
+        /// Task.
+        task: TaskId,
+        /// Requested step.
+        step: StepId,
+    },
+    /// A task whose steps and state disagree (who needs the requester,
+    /// where, whether a proposal started).
+    #[error("task {task}: {problem}")]
+    InvalidTask {
+        /// Task.
+        task: TaskId,
+        /// What is wrong.
+        problem: &'static str,
     },
 }
 

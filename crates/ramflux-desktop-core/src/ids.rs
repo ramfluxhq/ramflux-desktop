@@ -97,6 +97,10 @@ string_id!(
     /// A block inside an agent surface.
     BlockId
 );
+string_id!(
+    /// A step of a task, unique within its task.
+    StepId
+);
 
 /// A point in time as unix milliseconds.
 ///

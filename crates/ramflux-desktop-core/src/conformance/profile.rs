@@ -60,6 +60,10 @@ pub enum LimitKind {
     TextLength,
     /// The block data is too large.
     DataBytes,
+    /// One streamed text delta is too large.
+    TextDelta,
+    /// The text streamed into one block is too long.
+    StreamLength,
 }
 
 /// Bounds on one surface.
@@ -73,12 +77,35 @@ pub struct Limits {
     pub max_text_chars: usize,
     /// Bytes of all block data, canonically encoded.
     pub max_data_bytes: usize,
+    /// UTF-8 bytes of one streamed text delta.
+    #[serde(default = "default_text_delta_bytes")]
+    pub max_text_delta_bytes: usize,
+    /// Characters streamed into one block in total.
+    #[serde(default = "default_stream_chars")]
+    pub max_stream_chars: usize,
+}
+
+const fn default_text_delta_bytes() -> usize {
+    Limits::DESKTOP.max_text_delta_bytes
+}
+
+const fn default_stream_chars() -> usize {
+    Limits::DESKTOP.max_stream_chars
 }
 
 impl Limits {
-    /// The desktop renderer's limits.
-    pub const DESKTOP: Self =
-        Self { max_blocks: 64, max_actions: 16, max_text_chars: 16_384, max_data_bytes: 65_536 };
+    /// The desktop renderer's limits (the same numbers the surface protocol
+    /// declares: 64 blocks, 16 actions, 16,384 characters per string,
+    /// 65,536 bytes of block data, 4,096-byte text deltas and 16,384
+    /// characters streamed into one block).
+    pub const DESKTOP: Self = Self {
+        max_blocks: 64,
+        max_actions: 16,
+        max_text_chars: 16_384,
+        max_data_bytes: 65_536,
+        max_text_delta_bytes: 4_096,
+        max_stream_chars: 16_384,
+    };
 }
 
 impl Default for Limits {

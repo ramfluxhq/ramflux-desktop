@@ -11,6 +11,11 @@
 //! a peer wrote its keys in. Surface content is peer-controlled, so the
 //! hash must resist collisions; a plain checksum would let a peer change an
 //! action under a pending confirmation without changing the hash.
+//!
+//! [`surface_hash`] and [`action_args_hash`] are the only places that know
+//! the algorithm: everything else (the store, policy, the renderer, the
+//! scenario fixtures' tests) calls them, so adopting the surface protocol's
+//! own hash replaces these two function bodies and nothing else.
 
 use std::fmt;
 
@@ -22,6 +27,9 @@ use crate::model::AgentSurfacePayload;
 
 /// Domain tag hashed before the canonical encoding.
 const DOMAIN: &[u8] = b"ramflux.desktop.surface.v1\n";
+
+/// Domain tag of the arguments hash of a surface action.
+const ARGS_DOMAIN: &[u8] = b"ramflux.desktop.surface_args.v1\n";
 
 /// Content hash of one surface version, `sha256:<hex>`.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -66,10 +74,20 @@ pub fn surface_hash(surface: &AgentSurfacePayload) -> SurfaceHash {
         "blocks": surface.blocks,
         "actions": surface.actions,
     });
+    digest(DOMAIN, &content)
+}
+
+/// The hash of the values a surface action submits, which binds the
+/// human decision to its exact arguments.
+pub fn action_args_hash(values: &Value) -> SurfaceHash {
+    digest(ARGS_DOMAIN, values)
+}
+
+fn digest(domain: &[u8], content: &Value) -> SurfaceHash {
     let mut text = String::new();
-    canonical(&content, &mut text);
+    canonical(content, &mut text);
     let mut hasher = Sha256::new();
-    hasher.update(DOMAIN);
+    hasher.update(domain);
     hasher.update(text.as_bytes());
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(7 + digest.len() * 2);
@@ -167,6 +185,15 @@ mod tests {
         let mut streaming = base.clone();
         streaming.streaming = true;
         assert_eq!(surface_hash(&streaming), hash);
+    }
+
+    #[test]
+    fn args_hash_binds_the_values_not_their_key_order() {
+        let a = action_args_hash(&json!({ "date": "thu", "note": "x" }));
+        let b = action_args_hash(&json!({ "note": "x", "date": "thu" }));
+        assert_eq!(a, b);
+        assert_ne!(a, action_args_hash(&json!({ "date": "fri", "note": "x" })));
+        assert_ne!(a.as_str(), surface_hash(&surface(json!({ "text": "hi" }))).as_str());
     }
 
     #[test]

@@ -25,11 +25,13 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::MomentAdded(_) => "MomentAdded",
         DomainEvent::MomentUpdated { .. } => "MomentUpdated",
         DomainEvent::SurfacePatched { .. } => "SurfacePatched",
+        DomainEvent::Surface(_) => "Surface",
         DomainEvent::ObjectUpserted(_) => "ObjectUpserted",
         DomainEvent::GrantRequested(_) => "GrantRequested",
         DomainEvent::GrantResolved { .. } => "GrantResolved",
         DomainEvent::TaskUpserted(_) => "TaskUpserted",
         DomainEvent::TaskStepChanged { .. } => "TaskStepChanged",
+        DomainEvent::TaskStateChanged { .. } => "TaskStateChanged",
         DomainEvent::SourceStatusChanged(_) => "SourceStatusChanged",
         DomainEvent::ContextSettingsChanged { .. } => "ContextSettingsChanged",
         DomainEvent::AccountLockChanged { .. } => "AccountLockChanged",
@@ -48,7 +50,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 30;
+const DOMAIN_EVENT_VARIANTS: usize = 32;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -81,6 +83,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::ResolveConflict { .. } => "ResolveConflict",
         IntentKind::StartTask { .. } => "StartTask",
         IntentKind::CancelTask { .. } => "CancelTask",
+        IntentKind::AcceptTaskProposal { .. } => "AcceptTaskProposal",
         IntentKind::PinContext { .. } => "PinContext",
         IntentKind::UnpinContext { .. } => "UnpinContext",
         IntentKind::AcceptContact { .. } => "AcceptContact",
@@ -117,7 +120,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the six secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 37;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 38;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -131,6 +134,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::ConflictResolved { .. } => "ConflictResolved",
         UiEventKind::TaskRequested { .. } => "TaskRequested",
         UiEventKind::CancelPressed => "CancelPressed",
+        UiEventKind::ProposalAccepted => "ProposalAccepted",
         UiEventKind::PinToggled { .. } => "PinToggled",
         UiEventKind::ContactAnswered { .. } => "ContactAnswered",
         UiEventKind::ExpandToggled { .. } => "ExpandToggled",
@@ -155,7 +159,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 32;
+const UI_EVENT_KIND_VARIANTS: usize = 33;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -290,21 +294,80 @@ fn all_domain_events() -> Vec<DomainEvent> {
             id: TaskId::new("t-1"),
             intent_id: Some("i-1".to_owned()),
             context_id: ContextId::new("c-1"),
-            actor: Actor::Agent(ParticipantId::new("p-1")),
+            requester: Actor::Human,
+            assignee: ParticipantId::new("p-1"),
             title: "Book travel".to_owned(),
-            steps: vec![TaskStep {
-                label: "Search".to_owned(),
-                lifecycle: Lifecycle::Done,
-                grant_id: Some(GrantId::new("g-1")),
-            }],
-            lifecycle: Lifecycle::InProgress,
-            result: None,
+            steps: vec![
+                TaskStep {
+                    id: StepId::new("search"),
+                    label: "Search".to_owned(),
+                    state: StepState::Done,
+                    needs_me: Some(NeedsMe::Approval { grant_id: GrantId::new("g-1") }),
+                },
+                TaskStep {
+                    id: StepId::new("pick"),
+                    label: "Pick".to_owned(),
+                    state: StepState::NeedsMe,
+                    needs_me: Some(NeedsMe::Choice { surface_id: SurfaceId::new("s-pick") }),
+                },
+            ],
+            state: TaskState::NeedsMe,
+            version: 3,
+            result: Some("Booked".to_owned()),
+            result_ref: Some(SurfaceId::new("s-result")),
         }),
         DomainEvent::TaskStepChanged {
             task_id: TaskId::new("t-1"),
-            index: 0,
-            lifecycle: Lifecycle::NeedsMe,
+            version: 4,
+            step_id: StepId::new("pick"),
+            state: StepState::NeedsMe,
+            needs_me: Some(NeedsMe::Input { surface_id: SurfaceId::new("s-form") }),
         },
+        DomainEvent::TaskStateChanged {
+            task_id: TaskId::new("t-1"),
+            version: 5,
+            state: TaskState::Cancelled,
+            result: Some("Cancelled".into()),
+        },
+        DomainEvent::Surface(SurfaceEvent::Create {
+            moment_id: MomentId::new("m-s"),
+            context_id: ContextId::new("c-1"),
+            origin: ParticipantId::new("p-1"),
+            surface_id: SurfaceId::new("s-1"),
+            version: 1,
+            blocks: vec![Block::new("b-1", BlockKind::Text, json!({ "text": "" }))],
+            actions: vec![SurfaceAction {
+                id: "go".into(),
+                label: "Go".into(),
+                risk: Risk::High,
+                disabled_reason: None,
+            }],
+            fallback_text: "A reply".into(),
+        }),
+        DomainEvent::Surface(SurfaceEvent::Patch {
+            surface_id: SurfaceId::new("s-1"),
+            version: 2,
+            base_hash: SurfaceHash::new("sha256:abc"),
+            ops: vec![
+                SurfacePatchOp::ReplaceBlock {
+                    block: Block::new("b-1", BlockKind::Text, json!({ "text": "x" })),
+                },
+                SurfacePatchOp::InsertBlock {
+                    index: 0,
+                    block: Block::new("b-0", BlockKind::Heading, json!({ "text": "H" })),
+                },
+                SurfacePatchOp::RemoveBlock { block_id: BlockId::new("b-0") },
+                SurfacePatchOp::SetActions { actions: Vec::new() },
+            ],
+        }),
+        DomainEvent::Surface(SurfaceEvent::StreamAppend {
+            surface_id: SurfaceId::new("s-1"),
+            version: 3,
+            block_id: BlockId::new("b-1"),
+            text_delta: "more".into(),
+            is_final: true,
+        }),
+        DomainEvent::Surface(SurfaceEvent::Close { surface_id: SurfaceId::new("s-1"), version: 4 }),
         DomainEvent::SourceStatusChanged(SourceStatus::Locked),
         DomainEvent::ContextSettingsChanged {
             context_id: ContextId::new("c-1"),
@@ -402,6 +465,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             action_id: "run".into(),
             values: json!({ "count": 2 }),
             surface_hash: SurfaceHash::new("sha256:abc"),
+            version: 2,
         },
         IntentKind::Approve { grant_id: GrantId::new("g-1") },
         IntentKind::Deny { grant_id: GrantId::new("g-1") },
@@ -410,7 +474,12 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             moment_id: MomentId::new("m-1"),
             resolution: ConflictResolution::KeepLocal,
         },
-        IntentKind::StartTask { context_id: ContextId::new("c-1"), request: "Plan a trip".into() },
+        IntentKind::StartTask {
+            context_id: ContextId::new("c-1"),
+            assignee: ParticipantId::new("p-orbit"),
+            text: "Plan a trip".into(),
+        },
+        IntentKind::AcceptTaskProposal { task_id: TaskId::new("t-1") },
         IntentKind::CancelTask { task_id: TaskId::new("t-1") },
         IntentKind::PinContext { context_id: ContextId::new("c-1") },
         IntentKind::UnpinContext { context_id: ContextId::new("c-1") },
@@ -464,12 +533,17 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
             action_id: "run".into(),
             values: json!(null),
             surface_hash: SurfaceHash::new("sha256:abc"),
+            version: 2,
         },
         UiEventKind::ApprovePressed,
         UiEventKind::DenyPressed,
         UiEventKind::RevealPressed,
         UiEventKind::ConflictResolved { resolution: ConflictResolution::KeepRemote },
-        UiEventKind::TaskRequested { request: "Summarize".into() },
+        UiEventKind::TaskRequested {
+            assignee: ParticipantId::new("p-orbit"),
+            text: "Summarize".into(),
+        },
+        UiEventKind::ProposalAccepted,
         UiEventKind::CancelPressed,
         UiEventKind::PinToggled { pinned: true },
         UiEventKind::ContactAnswered { accept: false },

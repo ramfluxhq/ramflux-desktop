@@ -21,23 +21,27 @@ fn task_progress(task: &str) -> MomentKind {
     MomentKind::TaskProgress(TaskProgressPayload { task_id: TaskId::new(task) })
 }
 
-fn task(id: &str, ctx: &str, grants: &[&str]) -> Task {
+fn task(id: &str, ctx: &str, grants: &[&str], version: u64) -> Task {
     Task {
         id: TaskId::new(id),
         intent_id: None,
         context_id: ContextId::new(ctx),
         title: format!("Task {id}"),
-        actor: Actor::Human,
+        requester: Actor::Human,
+        assignee: ParticipantId::new("p-agent"),
         steps: grants
             .iter()
             .map(|g| TaskStep {
+                id: StepId::new(format!("s-{g}")),
                 label: format!("step {g}"),
-                lifecycle: Lifecycle::Pending,
-                grant_id: Some(GrantId::new(*g)),
+                state: StepState::Pending,
+                needs_me: Some(NeedsMe::Approval { grant_id: GrantId::new(*g) }),
             })
             .collect(),
-        lifecycle: Lifecycle::InProgress,
+        state: TaskState::Running,
+        version,
         result: None,
+        result_ref: None,
     }
 }
 
@@ -55,7 +59,7 @@ fn naive_attention(store: &Store) -> Vec<MomentId> {
         .filter(|m| {
             !matches!(&m.kind, MomentKind::Intervention(p) if store.moments().any(|t| matches!(&t.kind,
                 MomentKind::TaskProgress(tp) if store.task(&tp.task_id).is_some_and(|task| task
-                    .steps.iter().any(|s| s.grant_id.as_ref() == Some(&p.grant_id))))))
+                    .steps.iter().any(|s| s.grant_id() == Some(&p.grant_id))))))
         })
         .map(|m| (store.needs_me_since(&m.id).unwrap_or(m.at), m.id.clone()))
         .collect();
@@ -116,7 +120,7 @@ fn indexes_follow_adds_updates_patches_tasks_and_removals() {
         selectors::presenting_moment(&feed.store, &GrantId::new("g-2")).map(|m| m.id.clone()),
         Some(MomentId::new("m-ask2"))
     );
-    feed.ok(22, DomainEvent::TaskUpserted(task("t-1", "c-3", &["g-1"])));
+    feed.ok(22, DomainEvent::TaskUpserted(task("t-1", "c-3", &["g-1"], 1)));
     feed.ok(23, added(moment("m-task", "c-3", 7, task_progress("t-1"), Lifecycle::NeedsMe)));
     check(&feed.store);
     let owner = selectors::owning_task_step(&feed.store, &GrantId::new("g-1")).expect("owner");
@@ -125,7 +129,7 @@ fn indexes_follow_adds_updates_patches_tasks_and_removals() {
         !selectors::attention(&feed.store).iter().any(|i| i.moment_id.as_str() == "m-ask"),
         "the task carries the attention"
     );
-    feed.ok(24, DomainEvent::TaskUpserted(task("t-1", "c-3", &["g-2"])));
+    feed.ok(24, DomainEvent::TaskUpserted(task("t-1", "c-3", &["g-2"], 2)));
     check(&feed.store);
     assert!(selectors::owning_task_step(&feed.store, &GrantId::new("g-1")).is_none());
     feed.ok(30, set_lifecycle("m-00", Lifecycle::Done));

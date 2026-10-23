@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Policy for messages, context settings, tasks and object transfers.
+//! Policy for messages, context settings and object transfers.
 
 use serde_json::json;
 
@@ -67,25 +67,6 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 json!({ "context_id": context_id, "seconds": seconds }),
             )
         }),
-        IntentKind::StartTask { context_id, request } => p.context(context_id).and_then(|_| {
-            if request.trim().is_empty() {
-                return Err(IntentError::Empty("task request"));
-            }
-            Ok(Decision::Call(
-                methods::TASK_START,
-                json!({ "context_id": context_id, "request": request }),
-            ))
-        }),
-        IntentKind::CancelTask { task_id } => {
-            p.store.task(task_id).ok_or_else(|| IntentError::UnknownTask(task_id.clone())).and_then(
-                |task| {
-                    if task.lifecycle.is_terminal() {
-                        return Err(IntentError::TaskFinished(task_id.clone()));
-                    }
-                    Ok(Decision::Call(methods::TASK_CANCEL, json!({ "task_id": task_id })))
-                },
-            )
-        }
         IntentKind::PullObject { object_id } => object(p, object_id).and_then(|object| {
             let pullable = object.direction == Direction::Inbound
                 && matches!(object.transfer, TransferState::Queued);

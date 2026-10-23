@@ -191,6 +191,7 @@ fn surface_action_is_validated_against_the_surface() {
             action_id: id.to_owned(),
             values: serde_json::json!({}),
             surface_hash: shown.clone(),
+            version: 0,
         })
     };
     let ok = single(handle_intent_now(&store, action("run", "s-1")).expect("ok"));

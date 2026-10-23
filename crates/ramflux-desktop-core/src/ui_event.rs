@@ -99,6 +99,9 @@ pub enum UiEventKind {
         values: Value,
         /// The surface version the action was rendered from.
         surface_hash: SurfaceHash,
+        /// Its version number.
+        #[serde(default)]
+        version: u64,
     },
     /// Approve pressed on an intervention or a task step.
     ApprovePressed,
@@ -111,12 +114,16 @@ pub enum UiEventKind {
         /// Resolution.
         resolution: ConflictResolution,
     },
-    /// A one-sentence task request was submitted.
+    /// A one-sentence request to an AI participant was submitted.
     TaskRequested {
+        /// The AI participant asked.
+        assignee: ParticipantId,
         /// Request text.
-        request: String,
+        text: String,
     },
-    /// Cancel pressed on a task.
+    /// Start pressed on a task an AI participant proposed.
+    ProposalAccepted,
+    /// Cancel pressed on a task (or Decline on a proposal).
     CancelPressed,
     /// Pin toggled.
     PinToggled {
@@ -322,6 +329,7 @@ mod tests {
                 action_id: "run".into(),
                 values: Value::Null,
                 surface_hash: SurfaceHash::new("sha256:00"),
+                version: 1,
             },
         )
         .within(Scope::Surface(SurfaceId::new("s1")))
