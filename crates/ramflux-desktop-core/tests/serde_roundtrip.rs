@@ -46,11 +46,12 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::IntegrationsUpdated(_) => "IntegrationsUpdated",
         DomainEvent::CapabilitiesUpdated(_) => "CapabilitiesUpdated",
         DomainEvent::DaemonInfoUpdated(_) => "DaemonInfoUpdated",
+        DomainEvent::SyncStatusChanged(_) => "SyncStatusChanged",
         DomainEvent::EffectFailed(_) => "EffectFailed",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 32;
+const DOMAIN_EVENT_VARIANTS: usize = 33;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -435,6 +436,14 @@ fn all_domain_events() -> Vec<DomainEvent> {
         DomainEvent::DaemonInfoUpdated(DaemonInfo {
             socket_path: "/tmp/rfd.sock".to_owned(),
             open_accounts: 1,
+        }),
+        DomainEvent::SyncStatusChanged(SyncStatus {
+            mode: SyncMode::Stream,
+            reason: None,
+            cursor: Some(7),
+            daemon_sync: Some(DaemonSyncState::Running),
+            last_run: Some(Timestamp(9)),
+            unrouted: Some(1),
         }),
         DomainEvent::ListingsLoaded(Listing::ALL.to_vec()),
         DomainEvent::EffectFailed(EffectFailure {

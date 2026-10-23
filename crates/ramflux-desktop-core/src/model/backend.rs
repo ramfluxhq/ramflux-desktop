@@ -38,6 +38,55 @@ pub struct DaemonInfo {
     pub open_accounts: u32,
 }
 
+/// How the source learns about changes in the daemon.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SyncMode {
+    /// Not known yet: the source is attaching or opening its event stream.
+    #[default]
+    Connecting,
+    /// The daemon's event stream: changes arrive as the daemon applies them.
+    Stream,
+    /// Periodic reads: the event stream is unavailable and polling is on.
+    Polling,
+    /// No live updates: the event stream is unavailable and polling is off.
+    Off,
+}
+
+/// The daemon's own background sync, as it last reported it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DaemonSyncState {
+    /// The last run moved messages.
+    Running,
+    /// The last run found nothing new.
+    Idle,
+    /// The last run failed (for example, the node was unreachable).
+    Error,
+}
+
+/// How one account's source is kept up to date. Never holds content.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyncStatus {
+    /// The live mode.
+    #[serde(default)]
+    pub mode: SyncMode,
+    /// Why the event stream is not used (the daemon's or transport's
+    /// words); `None` while it is.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// The last daemon event applied (the stream cursor).
+    #[serde(default)]
+    pub cursor: Option<u64>,
+    /// The daemon's background sync state.
+    #[serde(default)]
+    pub daemon_sync: Option<DaemonSyncState>,
+    /// When the daemon's background sync last ran.
+    #[serde(default)]
+    pub last_run: Option<crate::ids::Timestamp>,
+    /// Inbound messages the daemon holds but cannot route yet.
+    #[serde(default)]
+    pub unrouted: Option<u64>,
+}
+
 /// Why an effect failed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FailureCode {

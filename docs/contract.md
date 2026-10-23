@@ -142,7 +142,10 @@ the previous one), `NodeProbed` (also sets health), `NodeRemoved`,
 `StandingApprovalUpserted`, `AuditAppended` (the last 512 are kept),
 `IntegrationsUpdated`, `CapabilitiesUpdated` (contract methods the backend
 cannot perform, each with the reason shown to the user), `DaemonInfoUpdated`
-(socket path, open accounts), `EffectFailed` (method, code
+(socket path, open accounts), `SyncStatusChanged` (how the source is kept up
+to date: `Connecting`, `Stream`, `Polling` or `Off`, why the stream is not
+used, the stream cursor, and the daemon's background sync state, last run and
+unrouted count), `EffectFailed` (method, code
 `UnsupportedByBackend` / `Daemon(code)` / `Transport` / `Timeout`, message;
 the last 32 are kept; no domain entity changes) and `ListingsLoaded` (the
 source answered these collections in full: `Nodes`, `Accounts`, `Contexts`,

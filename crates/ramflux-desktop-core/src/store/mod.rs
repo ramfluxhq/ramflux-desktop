@@ -37,7 +37,7 @@ use crate::ids::{
 };
 use crate::model::{
     Account, AuditEntry, Capabilities, Context, DaemonInfo, Device, EffectFailure, Grant,
-    Integrations, Listing, Moment, Node, Object, Participant, StandingApproval, Task,
+    Integrations, Listing, Moment, Node, Object, Participant, StandingApproval, SyncStatus, Task,
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
@@ -76,6 +76,7 @@ pub struct Store {
     integrations: Integrations,
     capabilities: Capabilities,
     daemon: Option<DaemonInfo>,
+    sync: Option<SyncStatus>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
     pin_order: Vec<ContextId>,
@@ -285,6 +286,11 @@ impl Store {
     /// What the local daemon last reported about itself.
     pub fn daemon(&self) -> Option<&DaemonInfo> {
         self.daemon.as_ref()
+    }
+
+    /// How the source is kept up to date, once it said so.
+    pub fn sync_status(&self) -> Option<&SyncStatus> {
+        self.sync.as_ref()
     }
 
     /// Effects that failed, oldest first, at most [`MAX_FAILURES`].

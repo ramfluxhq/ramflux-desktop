@@ -140,6 +140,12 @@ impl Store {
                 self.daemon = Some(info.clone());
                 changes.source_status = true;
             }
+            DomainEvent::SyncStatusChanged(status) => {
+                if self.sync.as_ref() != Some(status) {
+                    self.sync = Some(status.clone());
+                    changes.source_status = true;
+                }
+            }
             DomainEvent::EffectFailed(failure) => {
                 if self.failures.len() == super::MAX_FAILURES {
                     self.failures.remove(0);

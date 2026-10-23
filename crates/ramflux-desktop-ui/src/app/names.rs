@@ -170,6 +170,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::SourceStatusChanged(_) => "SourceStatusChanged",
         DomainEvent::CapabilitiesUpdated(_) => "CapabilitiesUpdated",
         DomainEvent::DaemonInfoUpdated(_) => "DaemonInfoUpdated",
+        DomainEvent::SyncStatusChanged(_) => "SyncStatusChanged",
         DomainEvent::EffectFailed(_) => "EffectFailed",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
     }

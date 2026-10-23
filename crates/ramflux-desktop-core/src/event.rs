@@ -13,7 +13,7 @@ use crate::model::{
     Account, AuditEntry, Block, Capabilities, Context, DaemonInfo, Device, Disappearing,
     EffectFailure, Grant, GrantFailure, GrantState, Integrations, Lifecycle, Listing, LockState,
     Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant,
-    StandingApproval, StepState, SurfaceAction, Task, TaskState,
+    StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskState,
 };
 
 pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp};
@@ -247,6 +247,9 @@ pub enum DomainEvent {
     CapabilitiesUpdated(Capabilities),
     /// The local daemon reported about itself.
     DaemonInfoUpdated(DaemonInfo),
+    /// How the source is kept up to date changed (stream, polling, the
+    /// daemon's background sync).
+    SyncStatusChanged(SyncStatus),
     /// An effect could not be performed. Changes no domain entity.
     EffectFailed(EffectFailure),
     /// The source answered these collections in full (each may be empty).

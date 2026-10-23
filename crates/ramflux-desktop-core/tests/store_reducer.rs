@@ -292,3 +292,31 @@ fn failures_are_counted_past_the_cap_and_new_ones_found() {
     assert_eq!(new, ["m-100", "m-101"]);
     assert_eq!(feed.store.failures_since(0).len(), MAX_FAILURES, "only kept failures");
 }
+
+#[test]
+fn sync_status_is_replaced_and_reports_a_change_only_when_it_differs() {
+    let mut feed = Feed::new();
+    assert!(feed.store.sync_status().is_none());
+    let stream = SyncStatus {
+        mode: SyncMode::Stream,
+        cursor: Some(41),
+        daemon_sync: Some(DaemonSyncState::Idle),
+        last_run: Some(Timestamp(5_000)),
+        unrouted: Some(0),
+        ..SyncStatus::default()
+    };
+    let changes = feed.ok(1, DomainEvent::SyncStatusChanged(stream.clone()));
+    assert!(changes.source_status);
+    assert_eq!(feed.store.sync_status(), Some(&stream));
+
+    let same = feed.ok(2, DomainEvent::SyncStatusChanged(stream.clone()));
+    assert!(same.is_empty(), "the same status changes nothing");
+
+    let polling = SyncStatus {
+        mode: SyncMode::Polling,
+        reason: Some("unsupported method: bus.subscribe".to_owned()),
+        ..SyncStatus::default()
+    };
+    assert!(feed.ok(3, DomainEvent::SyncStatusChanged(polling.clone())).source_status);
+    assert_eq!(feed.store.sync_status(), Some(&polling), "a new status replaces the old one");
+}

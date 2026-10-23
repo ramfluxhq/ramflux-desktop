@@ -37,7 +37,9 @@ pub use account::{
     Account, AccountKind, Device, LockState, Node, NodeHealth, NodeProbe, PinSource, ProbeOutcome,
 };
 pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MIN_HOLD_MS};
-pub use backend::{Capabilities, DaemonInfo, EffectFailure, FailureCode};
+pub use backend::{
+    Capabilities, DaemonInfo, DaemonSyncState, EffectFailure, FailureCode, SyncMode, SyncStatus,
+};
 pub use conversation::{
     ContactLink, Context, ContextKind, Disappearing, Participant, ParticipantKind, Role,
     SafetyState,
