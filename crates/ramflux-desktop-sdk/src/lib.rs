@@ -41,6 +41,6 @@ pub use config::{DEFAULT_SOCKET, Deadlines, SdkConfig};
 /// The product revision the `ramflux-sdk`, `ramflux-protocol` and
 /// `ramflux-crypto` dependencies are pinned to (checked against
 /// `Cargo.lock` by a test).
-pub const PRODUCT_REV: &str = "3f8d72615deb6e7f489fa4a7aa737b0ea873e0a2";
+pub const PRODUCT_REV: &str = "7e665e1da4fbf08d9feff0a4a699ce222947da26";
 pub use source::{DaemonStop, SdkHub, SdkSource};
 pub use translate::Scope;
