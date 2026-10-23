@@ -1,0 +1,75 @@
+_version: 2
+dev:
+  title:
+    en: "Developer panel"
+    zh-CN: "开发面板"
+  scenario:
+    en: "Scenario"
+    zh-CN: "场景"
+  timeline:
+    en: "Timeline"
+    zh-CN: "时间轴"
+  clock:
+    en: "t = %{time}"
+    zh-CN: "t = %{time}"
+  next:
+    en: "next at %{time}"
+    zh-CN: "下一个 %{time}"
+  next_none:
+    en: "end of scenario"
+    zh-CN: "场景结束"
+  pause:
+    en: "Pause"
+    zh-CN: "暂停"
+  resume:
+    en: "Resume"
+    zh-CN: "继续"
+  step:
+    en: "Step"
+    zh-CN: "单步"
+  restart:
+    en: "Restart"
+    zh-CN: "重新开始"
+  back:
+    en: "Back 1 s"
+    zh-CN: "后退 1 秒"
+  forward:
+    en: "Forward 1 s"
+    zh-CN: "前进 1 秒"
+  agent:
+    en: "Agent"
+    zh-CN: "智能体"
+  agent_approve:
+    en: "Agent approves the pending grant"
+    zh-CN: "智能体批准待处理授权"
+  store:
+    en: "Store"
+    zh-CN: "存储"
+  count:
+    contexts:
+      en: "Contexts"
+      zh-CN: "上下文"
+    moments:
+      en: "Moments"
+      zh-CN: "时刻"
+    participants:
+      en: "Participants"
+      zh-CN: "参与者"
+    grants:
+      en: "Pending grants"
+      zh-CN: "待处理授权"
+    objects:
+      en: "Objects"
+      zh-CN: "对象"
+    tasks:
+      en: "Tasks"
+      zh-CN: "任务"
+    seq:
+      en: "Last seq"
+      zh-CN: "最新序号"
+    rejections:
+      en: "Rejections"
+      zh-CN: "拒绝"
+  inspector:
+    en: "Event inspector"
+    zh-CN: "事件检查器"

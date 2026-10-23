@@ -5465,6 +5465,7 @@ dependencies = [
  "ramflux-desktop-core",
  "ron",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 
@@ -5472,10 +5473,13 @@ dependencies = [
 name = "ramflux-desktop-ui"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "gpui-kit",
  "ramflux-desktop-core",
  "ramflux-desktop-test",
  "rust-i18n",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

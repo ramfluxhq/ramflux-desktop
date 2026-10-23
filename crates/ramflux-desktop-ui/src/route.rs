@@ -10,9 +10,10 @@ use ramflux_desktop_core::{LockState, SourceStatus, Store};
 pub enum EntryStep {
     /// The local daemon is not reachable yet.
     Daemon,
-    /// Connected; choosing or confirming a node.
+    /// No usable node yet, or a discovered node awaits confirmation.
     Node,
-    /// A node is known; choosing, unlocking or creating an account.
+    /// Unlocking an existing account, or creating, joining or restoring one
+    /// on a confirmed node.
     Account,
 }
 
@@ -29,7 +30,9 @@ pub enum Page {
 ///
 /// The workspace opens when an account is unlocked, or when the source
 /// declares no account at all but already serves contexts (a single implicit
-/// account). A locked account always returns to entry.
+/// account). A locked account always returns to entry. Without an account,
+/// entry stays on the node step until a node is confirmed and no discovered
+/// node waits for a decision.
 pub fn page_for(store: &Store) -> Page {
     let mut accounts = store.accounts().peekable();
     if accounts.peek().is_none() {
@@ -39,40 +42,61 @@ pub fn page_for(store: &Store) -> Page {
     } else if store.accounts().any(|a| a.lock_state == LockState::Unlocked) {
         return Page::Workspace;
     }
+    let pending_node = store.nodes().any(|n| !n.confirmed);
+    let usable_node = store.nodes().any(|n| n.confirmed && n.enabled);
     let step = if store.accounts().next().is_some() {
         EntryStep::Account
     } else if store.source_status() == SourceStatus::Disconnected && store.nodes().next().is_none()
     {
         EntryStep::Daemon
-    } else {
+    } else if pending_node || !usable_node {
         EntryStep::Node
+    } else {
+        EntryStep::Account
     };
     Page::Entry(step)
 }
 
 #[cfg(test)]
 mod tests {
-    use ramflux_desktop_core::{AccountId, Intent, IntentKind, SecretInput};
+    use ramflux_desktop_core::{
+        AccountId, AccountKind, Intent, IntentKind, NodeId, PinSource, SecretInput,
+    };
     use ramflux_desktop_test::{ScenarioPlayer, load_fixture};
 
     use super::*;
 
     #[test]
-    fn s01_walks_every_entry_step_then_opens_the_workspace() {
+    fn s01_walks_every_entry_step_then_opens_the_workspace_and_locks_back() {
         let mut p = ScenarioPlayer::new(&load_fixture("s01_first_launch").expect("s01"));
         p.advance(1);
         assert_eq!(page_for(p.store()), Page::Entry(EntryStep::Daemon));
         p.advance(2_500);
-        assert_eq!(page_for(p.store()), Page::Entry(EntryStep::Node));
-        p.advance(2_000);
+        assert_eq!(page_for(p.store()), Page::Entry(EntryStep::Node), "the invite node waits");
+        let confirm = IntentKind::ConfirmNode {
+            node_id: NodeId::new("n-harbor"),
+            pin_source: PinSource::Invite,
+        };
+        p.dispatch(Intent::human(confirm)).expect("invite pins need no hold");
+        p.advance(200);
         assert_eq!(page_for(p.store()), Page::Entry(EntryStep::Account));
-        let unlock = IntentKind::Unlock {
-            account_id: AccountId::new("a-main"),
+        let create = IntentKind::CreateAccount {
+            kind: AccountKind::HumanInteractive,
+            label: "Personal".into(),
+            node_id: NodeId::new("n-harbor"),
             secret: SecretInput::new("river stone lantern"),
         };
-        p.dispatch(Intent::human(unlock)).expect("unlock");
+        p.dispatch(Intent::human(create)).expect("create");
         p.advance(500);
         assert_eq!(page_for(p.store()), Page::Workspace);
+        let lock = IntentKind::LockAccount { account_id: AccountId::new("a-main") };
+        p.dispatch(Intent::human(lock)).expect("lock");
+        p.advance(100);
+        assert_eq!(
+            page_for(p.store()),
+            Page::Entry(EntryStep::Account),
+            "locking returns to entry"
+        );
     }
 
     #[test]

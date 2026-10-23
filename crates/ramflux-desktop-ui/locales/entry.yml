@@ -1,0 +1,186 @@
+_version: 2
+entry:
+  title:
+    en: "Welcome to Ramflux"
+    zh-CN: "欢迎使用 Ramflux"
+  subtitle:
+    en: "Connect this device to your local daemon, a node, and your account."
+    zh-CN: "将这台设备连接到本地守护进程、节点和你的账户。"
+  step:
+    daemon:
+      en: "Daemon"
+      zh-CN: "守护进程"
+    node:
+      en: "Node"
+      zh-CN: "节点"
+    account:
+      en: "Account"
+      zh-CN: "账户"
+  daemon:
+    waiting:
+      en: "Waiting for the local daemon"
+      zh-CN: "正在等待本地守护进程"
+    help:
+      en: "Ramflux connects to the background service on this device. It starts automatically."
+      zh-CN: "Ramflux 会连接到本机的后台服务，它会自动启动。"
+  node:
+    intro:
+      en: "Your account lives on a node. Confirm the node you were invited to, or add one by address."
+      zh-CN: "你的账户托管在节点上。请确认邀请你的节点，或按地址添加节点。"
+    waiting:
+      en: "Connected. Looking for nodes."
+      zh-CN: "已连接。正在查找节点。"
+    add_title:
+      en: "Add a node by address"
+      zh-CN: "按地址添加节点"
+    url_placeholder:
+      en: "https://node.example.org"
+      zh-CN: "https://node.example.org"
+    add:
+      en: "Look up"
+      zh-CN: "查找"
+    add_help:
+      en: "The node's signed record is checked before anything is saved."
+      zh-CN: "保存之前会校验节点的签名记录。"
+    continue:
+      en: "Continue"
+      zh-CN: "继续"
+    known:
+      en: "Nodes you trust"
+      zh-CN: "已信任的节点"
+    label:
+      en: "Node"
+      zh-CN: "节点"
+    review:
+      en: "Add or review nodes"
+      zh-CN: "添加或查看节点"
+  path:
+    create:
+      en: "Create account"
+      zh-CN: "创建账户"
+    join:
+      en: "This is a new device"
+      zh-CN: "这是一台新设备"
+    restore:
+      en: "Restore from backup"
+      zh-CN: "从备份恢复"
+  create:
+    label:
+      en: "Account name"
+      zh-CN: "账户名称"
+    label_placeholder:
+      en: "Personal"
+      zh-CN: "个人"
+    passphrase:
+      en: "New passphrase"
+      zh-CN: "新口令"
+    submit:
+      en: "Create account"
+      zh-CN: "创建账户"
+  join:
+    help:
+      en: "Open Settings · Devices on a device that is already signed in to get an activation code."
+      zh-CN: "在已登录的设备上打开 设置 · 设备，获取激活码。"
+    device:
+      en: "Name for this device"
+      zh-CN: "此设备名称"
+    device_placeholder:
+      en: "This laptop"
+      zh-CN: "这台笔记本"
+    code:
+      en: "Activation code"
+      zh-CN: "激活码"
+    submit:
+      en: "Join account"
+      zh-CN: "加入账户"
+  restore:
+    path:
+      en: "Backup file"
+      zh-CN: "备份文件"
+    path_placeholder:
+      en: "~/Documents/ramflux.backup"
+      zh-CN: "~/Documents/ramflux.backup"
+    passphrase:
+      en: "Backup passphrase"
+      zh-CN: "备份口令"
+    submit:
+      en: "Restore"
+      zh-CN: "恢复"
+  account:
+    locked:
+      en: "Locked"
+      zh-CN: "已锁定"
+    unlocked:
+      en: "Unlocked"
+      zh-CN: "已解锁"
+    detail:
+      en: "%{kind} · node %{node} · device %{device}"
+      zh-CN: "%{kind} · 节点 %{node} · 设备 %{device}"
+    passphrase:
+      en: "Passphrase"
+      zh-CN: "口令"
+    unlock:
+      en: "Unlock"
+      zh-CN: "解锁"
+    unlocking:
+      en: "Unlocking"
+      zh-CN: "正在解锁"
+node:
+  id:
+    en: "Node"
+    zh-CN: "节点"
+  fingerprint:
+    en: "Key fingerprint"
+    zh-CN: "密钥指纹"
+  fingerprint_unknown:
+    en: "Not provided"
+    zh-CN: "未提供"
+  endpoints:
+    en: "Endpoints"
+    zh-CN: "端点"
+  capabilities:
+    en: "Capabilities"
+    zh-CN: "能力"
+  expires:
+    en: "Record expires"
+    zh-CN: "记录过期时间"
+  pin_source:
+    en: "Pinned from"
+    zh-CN: "固定来源"
+  health:
+    en: "Health"
+    zh-CN: "健康状态"
+  state:
+    en: "State"
+    zh-CN: "状态"
+  pending:
+    en: "Waiting for confirmation"
+    zh-CN: "等待确认"
+  confirmed:
+    en: "Confirmed"
+    zh-CN: "已确认"
+  confirm:
+    en: "Confirm node"
+    zh-CN: "确认节点"
+  confirm_hold:
+    en: "Trust this key…"
+    zh-CN: "信任此密钥…"
+  decline:
+    en: "Not now"
+    zh-CN: "暂不"
+  pin:
+    bootstrap:
+      en: "Built-in list"
+      zh-CN: "内置列表"
+    invite:
+      en: "Invitation"
+      zh-CN: "邀请"
+    manual:
+      en: "Entered manually (first use)"
+      zh-CN: "手动输入（首次信任）"
+  tofu_title:
+    en: "First contact with this node"
+    zh-CN: "首次连接此节点"
+  tofu_body:
+    en: "Nothing vouches for this key yet. Compare the fingerprint with the node's operator before you rely on it; the warning stays until an invitation or operator pin replaces it."
+    zh-CN: "目前没有任何来源为此密钥担保。依赖此节点之前，请与节点运营者核对指纹；在邀请或运营者固定替代之前，此警告会一直显示。"

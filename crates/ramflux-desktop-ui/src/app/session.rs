@@ -13,7 +13,8 @@ use ramflux_desktop_core::{
 use ramflux_desktop_test::{MockSource, Scenario};
 
 use super::changes::ChangeSet;
-use super::inspector::{InspectorEntry, effect_label, event_name, intent_name};
+use super::inspector::InspectorEntry;
+use super::names::{effect_label, event_name, intent_name};
 
 /// What one clock movement or step applied.
 #[derive(Debug, Default)]
@@ -50,9 +51,14 @@ pub struct AccountSession {
 impl AccountSession {
     /// Creates a session at offset 0 with nothing applied.
     pub fn new(scenario: &Scenario) -> Self {
+        Self::with_epoch(scenario, scenario.epoch)
+    }
+
+    /// Creates a session whose offset 0 is `epoch` instead of the scenario's own.
+    pub fn with_epoch(scenario: &Scenario, epoch: Timestamp) -> Self {
         Self {
             scenario: scenario.name.clone(),
-            source: MockSource::new(scenario),
+            source: MockSource::with_epoch(scenario, epoch),
             store: Store::new(),
             clock_ms: 0,
             paused: false,
@@ -92,6 +98,11 @@ impl AccountSession {
     /// Labels of every effect the source received, oldest first.
     pub fn effect_labels(&self) -> impl Iterator<Item = &str> {
         self.source.effects().iter().map(|record| record.label.as_str())
+    }
+
+    /// Every effect the source received with its (secret-free) body, oldest first.
+    pub fn effects(&self) -> impl Iterator<Item = (&str, &ramflux_desktop_core::JsonValue)> {
+        self.source.effects().iter().map(|record| (record.label.as_str(), &record.body))
     }
 
     /// Whether the clock is frozen.
@@ -145,7 +156,7 @@ impl AccountSession {
     /// resulting effects. A confirmation request is handed back unsubmitted.
     pub fn dispatch(&mut self, intent: Intent) -> (DispatchOutcome, Vec<InspectorEntry>) {
         let name = intent_name(&intent);
-        let actor = format!("{:?}", intent.actor);
+        let actor = audit_label(&intent);
         let mut records = Vec::new();
         let effects = match handle_intent(&self.store, intent, self.now()) {
             Ok(effects) => effects,
@@ -198,9 +209,22 @@ impl AccountSession {
     }
 }
 
+/// The audit pair of an intent as an inspector label, e.g.
+/// `Agent(p-orbit), confirmed by Hold`.
+pub fn audit_label(intent: &Intent) -> String {
+    match intent.confirmed_by {
+        Some(confirmation) => {
+            format!("{:?}, confirmed by {:?}", intent.proposed_by, confirmation.gesture)
+        }
+        None => format!("{:?}", intent.proposed_by),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use ramflux_desktop_core::{Actor, GrantId, GrantState, IntentKind, ParticipantId, methods};
+    use ramflux_desktop_core::{
+        Actor, GrantId, GrantState, HumanConfirmation, IntentKind, ParticipantId, methods,
+    };
     use ramflux_desktop_test::load_fixture;
 
     use super::*;
@@ -210,10 +234,12 @@ mod tests {
     }
 
     fn approve(actor: Actor, confirmed: bool) -> Intent {
-        Intent {
-            actor,
-            kind: IntentKind::Approve { grant_id: GrantId::new("g-rotate"), confirmed },
-        }
+        let intent = Intent {
+            proposed_by: actor,
+            confirmed_by: None,
+            kind: IntentKind::Approve { grant_id: GrantId::new("g-rotate") },
+        };
+        if confirmed { intent.confirmed_by_human(HumanConfirmation::hold(1_200)) } else { intent }
     }
 
     #[test]
@@ -247,23 +273,26 @@ mod tests {
     }
 
     #[test]
-    fn high_risk_approval_is_held_for_confirmation_for_humans_and_agents() {
+    fn high_risk_approval_is_held_until_a_human_hold_for_humans_and_agents() {
         let mut s = session("s03_intervention");
         s.advance(1_000);
-        for actor in [Actor::Human, Actor::Agent(ParticipantId::new("p-orbit"))] {
-            let (outcome, _) = s.dispatch(approve(actor.clone(), true));
-            match (&actor, outcome) {
-                (Actor::Human, DispatchOutcome::Submitted(labels)) => {
-                    assert_eq!(labels, [methods::GRANT_APPROVE]);
-                }
-                (Actor::Agent(_), DispatchOutcome::NeedsConfirmation(intent)) => {
-                    assert_eq!(intent.actor, actor);
-                }
-                (_, other) => panic!("unexpected outcome {other:?}"),
-            }
-        }
+        let agent = Actor::Agent(ParticipantId::new("p-orbit"));
+        let (outcome, _) = s.dispatch(approve(agent.clone(), false));
+        let DispatchOutcome::NeedsConfirmation(intent) = outcome else {
+            panic!("an unconfirmed agent proposal waits for the hold");
+        };
+        assert_eq!(intent.proposed_by, agent);
+        let (outcome, records) =
+            s.dispatch(intent.confirmed_by_human(HumanConfirmation::hold(1_300)));
+        assert!(
+            matches!(outcome, DispatchOutcome::Submitted(ref labels) if labels == &[methods::GRANT_APPROVE]),
+            "{outcome:?}"
+        );
+        assert!(records.iter().all(|r| !format!("{r:?}").contains("secret")));
         s.advance(500);
         let grant = s.store().grant(&GrantId::new("g-rotate")).expect("grant");
         assert_eq!(grant.state, GrantState::Approved);
+        let (outcome, _) = s.dispatch(approve(Actor::Human, true));
+        assert!(matches!(outcome, DispatchOutcome::Refused(_)), "a decided grant is refused");
     }
 }

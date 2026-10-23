@@ -1,0 +1,321 @@
+_version: 2
+app:
+  name:
+    en: "Ramflux"
+    zh-CN: "Ramflux"
+locale:
+  english:
+    en: "English"
+    zh-CN: "English"
+  chinese:
+    en: "简体中文"
+    zh-CN: "简体中文"
+common:
+  cancel:
+    en: "Cancel"
+    zh-CN: "取消"
+  close:
+    en: "Close"
+    zh-CN: "关闭"
+  yes:
+    en: "Yes"
+    zh-CN: "是"
+  no:
+    en: "No"
+    zh-CN: "否"
+status:
+  label:
+    account:
+      en: "Account"
+      zh-CN: "账户"
+    device:
+      en: "Device"
+      zh-CN: "设备"
+    node:
+      en: "Node"
+      zh-CN: "节点"
+    projection:
+      en: "Projection"
+      zh-CN: "投影"
+    source:
+      en: "Daemon"
+      zh-CN: "守护进程"
+  account:
+    local:
+      en: "Local"
+      zh-CN: "本地"
+    with_count:
+      en: "%{name} · %{count} need me"
+      zh-CN: "%{name} · %{count} 项需要我"
+    background:
+      en: "%{count} in other accounts"
+      zh-CN: "其他账户 %{count} 项"
+  none:
+    en: "None"
+    zh-CN: "无"
+  node:
+    value:
+      en: "%{node} · %{health}"
+      zh-CN: "%{node} · %{health}"
+    unknown:
+      en: "Not checked"
+      zh-CN: "未检测"
+    healthy:
+      en: "Healthy"
+      zh-CN: "正常"
+    degraded:
+      en: "Slow"
+      zh-CN: "缓慢"
+    unreachable:
+      en: "Unreachable"
+      zh-CN: "不可达"
+  projection:
+    value:
+      en: "seq %{seq}"
+      zh-CN: "序号 %{seq}"
+    rejected:
+      en: "seq %{seq}, %{count} rejected"
+      zh-CN: "序号 %{seq}，拒绝 %{count} 条"
+  source:
+    connected:
+      en: "Connected"
+      zh-CN: "已连接"
+    disconnected:
+      en: "Disconnected"
+      zh-CN: "未连接"
+    locked:
+      en: "Locked"
+      zh-CN: "已锁定"
+  needs_me:
+    en: "Needs me (%{count})"
+    zh-CN: "需要我（%{count}）"
+  toggle_theme:
+    en: "Switch theme"
+    zh-CN: "切换主题"
+  settings:
+    en: "Settings…"
+    zh-CN: "设置…"
+  palette:
+    en: "Search and commands"
+    zh-CN: "搜索与命令"
+  dev_panel:
+    en: "Developer panel"
+    zh-CN: "开发面板"
+lifecycle:
+  pending:
+    en: "Pending"
+    zh-CN: "待处理"
+  in_progress:
+    en: "In progress"
+    zh-CN: "进行中"
+  needs_me:
+    en: "Needs me"
+    zh-CN: "需要我"
+  done:
+    en: "Done"
+    zh-CN: "已完成"
+  failed:
+    en: "Failed"
+    zh-CN: "失败"
+  dismissed:
+    en: "Dismissed"
+    zh-CN: "已关闭"
+risk:
+  low:
+    en: "Low"
+    zh-CN: "低"
+  medium:
+    en: "Medium"
+    zh-CN: "中"
+  high:
+    en: "High"
+    zh-CN: "高"
+  critical:
+    en: "Critical"
+    zh-CN: "严重"
+role:
+  owner:
+    en: "Owner"
+    zh-CN: "所有者"
+  admin:
+    en: "Admin"
+    zh-CN: "管理员"
+  member:
+    en: "Member"
+    zh-CN: "成员"
+  guest:
+    en: "Guest"
+    zh-CN: "访客"
+safety:
+  unverified:
+    en: "Not verified"
+    zh-CN: "未验证"
+  verified:
+    en: "Verified"
+    zh-CN: "已验证"
+  key_changed:
+    en: "Key changed"
+    zh-CN: "密钥已变更"
+  forked:
+    en: "Identity forked"
+    zh-CN: "身份分叉"
+account:
+  kind:
+    human:
+      en: "Personal"
+      zh-CN: "个人"
+    headless:
+      en: "Headless agent"
+      zh-CN: "无界面智能体"
+object:
+  inbound:
+    en: "Received"
+    zh-CN: "接收"
+  outbound:
+    en: "Sent"
+    zh-CN: "发送"
+  queued:
+    en: "Waiting"
+    zh-CN: "等待中"
+  transferring:
+    en: "Transferring"
+    zh-CN: "传输中"
+  complete:
+    en: "Complete"
+    zh-CN: "已完成"
+  failed:
+    en: "Failed"
+    zh-CN: "失败"
+grant:
+  risk:
+    en: "Risk"
+    zh-CN: "风险"
+  scope:
+    en: "Scope"
+    zh-CN: "范围"
+  args_hash:
+    en: "Arguments hash"
+    zh-CN: "参数哈希"
+  single_use:
+    en: "Single use"
+    zh-CN: "一次性"
+  expiry:
+    en: "Expires"
+    zh-CN: "过期时间"
+  no_expiry:
+    en: "No expiry"
+    zh-CN: "不过期"
+  state_label:
+    en: "State"
+    zh-CN: "状态"
+  state:
+    pending:
+      en: "Pending"
+      zh-CN: "待决定"
+    approved:
+      en: "Approved"
+      zh-CN: "已批准"
+    denied:
+      en: "Denied"
+      zh-CN: "已拒绝"
+    expired:
+      en: "Expired"
+      zh-CN: "已过期"
+    revoked:
+      en: "Revoked"
+      zh-CN: "已撤销"
+audit:
+  you:
+    en: "you"
+    zh-CN: "你"
+  held:
+    en: "confirmed with a hold"
+    zh-CN: "已按住确认"
+  not_held:
+    en: "no hold"
+    zh-CN: "未按住确认"
+  by:
+    en: "proposed by %{who}, %{held}"
+    zh-CN: "由%{who}提出，%{held}"
+clock:
+  today:
+    en: "Today"
+    zh-CN: "今天"
+  yesterday:
+    en: "Yesterday"
+    zh-CN: "昨天"
+  date:
+    en: "%{date}"
+    zh-CN: "%{date}"
+timer:
+  off:
+    en: "Off"
+    zh-CN: "关闭"
+  hour:
+    en: "1 hour"
+    zh-CN: "1 小时"
+  day:
+    en: "1 day"
+    zh-CN: "1 天"
+  week:
+    en: "1 week"
+    zh-CN: "1 周"
+  seconds:
+    en: "%{seconds} s"
+    zh-CN: "%{seconds} 秒"
+confirm:
+  hold:
+    en: "Hold to confirm"
+    zh-CN: "按住确认"
+  risk:
+    en: "Risk: %{risk}"
+    zh-CN: "风险：%{risk}"
+  proposed_by_agent:
+    en: "Proposed by %{agent}; your hold is the decision"
+    zh-CN: "由 %{agent} 提出，需由你按住确认"
+  approve:
+    en: "Approve: %{summary}"
+    zh-CN: "批准：%{summary}"
+  surface_action:
+    en: "Run “%{action}”"
+    zh-CN: "执行“%{action}”"
+  reveal:
+    en: "Reveal “%{label}”"
+    zh-CN: "显示“%{label}”"
+  reveal_audit:
+    en: "The reveal is recorded in the audit trail"
+    zh-CN: "此操作会记入审计记录"
+  revoke_grant:
+    en: "Revoke the grant for %{scope}"
+    zh-CN: "撤销 %{scope} 的授权"
+  revoke_standing:
+    en: "Revoke the standing approval for %{scope}"
+    zh-CN: "撤销 %{scope} 的常设授权"
+  revoke_device:
+    en: "Revoke “%{device}”"
+    zh-CN: "撤销设备“%{device}”"
+  trust_node:
+    en: "Trust node %{node} with this key"
+    zh-CN: "信任节点 %{node} 的此密钥"
+  generic:
+    en: "Confirm this action"
+    zh-CN: "确认此操作"
+  governance:
+    kick:
+      en: "Remove %{member} from %{group}"
+      zh-CN: "将 %{member} 移出 %{group}"
+    ban:
+      en: "Ban %{member} from %{group}"
+      zh-CN: "在 %{group} 中封禁 %{member}"
+    set_role:
+      en: "Change the role of %{member} in %{group}"
+      zh-CN: "更改 %{member} 在 %{group} 中的角色"
+    add_member:
+      en: "Add %{member} to %{group}"
+      zh-CN: "将 %{member} 加入 %{group}"
+    remove_member:
+      en: "Remove %{member} from %{group}"
+      zh-CN: "将 %{member} 移出 %{group}"
+    create_invite:
+      en: "Create an invitation to %{group}"
+      zh-CN: "创建 %{group} 的邀请"

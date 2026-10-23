@@ -1,0 +1,288 @@
+_version: 2
+composer:
+  label:
+    en: "Message"
+    zh-CN: "消息"
+  placeholder:
+    en: "Write a message"
+    zh-CN: "输入消息"
+  send:
+    en: "Send"
+    zh-CN: "发送"
+  start:
+    en: "Start"
+    zh-CN: "开始"
+  task_mode:
+    en: "Ask for a task in one sentence"
+    zh-CN: "用一句话发起任务"
+  task_placeholder:
+    en: "Describe what should happen, in one sentence"
+    zh-CN: "用一句话描述要完成的事"
+conversation:
+  title:
+    en: "Conversation"
+    zh-CN: "对话"
+  none:
+    en: "No context"
+    zh-CN: "未选择上下文"
+  choose:
+    en: "Choose a context to continue"
+    zh-CN: "选择一个上下文以继续"
+  empty:
+    en: "Nothing here yet"
+    zh-CN: "这里还没有内容"
+  members:
+    en: "%{count} members"
+    zh-CN: "%{count} 位成员"
+  pin:
+    en: "Pin"
+    zh-CN: "固定"
+  unpin:
+    en: "Unpin"
+    zh-CN: "取消固定"
+  more:
+    en: "More for this context"
+    zh-CN: "此上下文的更多操作"
+  mute:
+    en: "Mute"
+    zh-CN: "静音"
+  unmute:
+    en: "Unmute"
+    zh-CN: "取消静音"
+  muted:
+    en: "Muted"
+    zh-CN: "已静音"
+  disappearing:
+    en: "Disappearing messages"
+    zh-CN: "阅后即焚"
+  timer:
+    en: "Disappearing: %{timer}"
+    zh-CN: "阅后即焚：%{timer}"
+  safety_banner:
+    en: "%{name}: %{state}. Verify before you share anything sensitive."
+    zh-CN: "%{name}：%{state}。在分享敏感内容前请先验证。"
+  jump_latest:
+    en: "Jump to latest"
+    zh-CN: "跳到最新"
+stack:
+  title:
+    en: "Contexts"
+    zh-CN: "上下文"
+  needs_me:
+    en: "%{count} need me"
+    zh-CN: "%{count} 项需要我"
+  muted:
+    en: "Muted"
+    zh-CN: "静音"
+  search:
+    en: "Search"
+    zh-CN: "搜索"
+  search_more:
+    en: "Search %{count} more"
+    zh-CN: "搜索其余 %{count} 个"
+dock:
+  title:
+    objects:
+      en: "Objects"
+      zh-CN: "对象"
+    contacts:
+      en: "Contacts"
+      zh-CN: "联系人"
+    members:
+      en: "Members"
+      zh-CN: "成员"
+    approvals:
+      en: "Approvals"
+      zh-CN: "审批与授权"
+    evidence:
+      en: "Evidence"
+      zh-CN: "证据"
+  pin:
+    en: "Pin"
+    zh-CN: "固定"
+  unpin:
+    en: "Unpin"
+    zh-CN: "取消固定"
+  objects:
+    name:
+      en: "Name"
+      zh-CN: "名称"
+    direction:
+      en: "Direction"
+      zh-CN: "方向"
+    progress:
+      en: "Progress"
+      zh-CN: "进度"
+    state:
+      en: "State"
+      zh-CN: "状态"
+    actions:
+      en: "Actions"
+      zh-CN: "操作"
+    empty:
+      en: "No objects yet"
+      zh-CN: "还没有对象"
+  contacts:
+    requests:
+      en: "Requests"
+      zh-CN: "请求"
+    list:
+      en: "Contacts"
+      zh-CN: "联系人"
+    empty:
+      en: "No contacts yet"
+      zh-CN: "还没有联系人"
+    safety_number:
+      en: "Safety number %{number}"
+      zh-CN: "安全码 %{number}"
+  members:
+    list:
+      en: "Members"
+      zh-CN: "成员"
+    grow:
+      en: "Add people"
+      zh-CN: "添加成员"
+    actions:
+      en: "Member actions"
+      zh-CN: "成员操作"
+    make_admin:
+      en: "Make admin…"
+      zh-CN: "设为管理员…"
+    make_member:
+      en: "Make member…"
+      zh-CN: "设为普通成员…"
+    kick:
+      en: "Remove from group…"
+      zh-CN: "移出群组…"
+    ban:
+      en: "Ban from group…"
+      zh-CN: "封禁…"
+    remove:
+      en: "Remove"
+      zh-CN: "移除"
+    add:
+      en: "Add"
+      zh-CN: "添加"
+    invite:
+      en: "Create invitation"
+      zh-CN: "创建邀请"
+    not_group:
+      en: "Members apply to groups and spaces"
+      zh-CN: "成员仅适用于群组和空间"
+  approvals:
+    pending:
+      en: "Waiting for you"
+      zh-CN: "等待你决定"
+    none_pending:
+      en: "Nothing is waiting"
+      zh-CN: "没有待决定的请求"
+    grants:
+      en: "Grants"
+      zh-CN: "授权"
+    standing:
+      en: "Standing approvals"
+      zh-CN: "常设授权"
+    audit:
+      en: "Audit"
+      zh-CN: "审计"
+    none:
+      en: "None"
+      zh-CN: "无"
+    revoke:
+      en: "Revoke…"
+      zh-CN: "撤销…"
+    revoked:
+      en: "Revoked"
+      zh-CN: "已撤销"
+    expires:
+      en: "expires %{time}"
+      zh-CN: "%{time} 过期"
+    standing_detail:
+      en: "up to %{risk} risk · used %{uses} times"
+      zh-CN: "最高风险 %{risk} · 已使用 %{uses} 次"
+  evidence:
+    none:
+      en: "Choose a context to see its evidence"
+      zh-CN: "选择一个上下文以查看证据"
+    grants:
+      en: "Grant binding"
+      zh-CN: "授权绑定"
+    franking:
+      en: "Message franking"
+      zh-CN: "消息签证"
+    group:
+      en: "Group keys"
+      zh-CN: "群组密钥"
+    epoch:
+      en: "Sender-key epoch"
+      zh-CN: "发送密钥轮次"
+    devices:
+      en: "Active devices"
+      zh-CN: "活动设备"
+    node:
+      en: "Home node"
+      zh-CN: "归属节点"
+    no_node:
+      en: "No node known"
+      zh-CN: "未知节点"
+palette:
+  placeholder:
+    en: "Search contexts, people, objects, history, or type a command"
+    zh-CN: "搜索上下文、联系人、对象、历史，或输入命令"
+  empty:
+    en: "Nothing matches"
+    zh-CN: "没有匹配项"
+  matches:
+    en: "%{count} matches"
+    zh-CN: "%{count} 项匹配"
+  hint:
+    en: "↑↓ move · Enter choose · Esc close"
+    zh-CN: "↑↓ 移动 · Enter 选择 · Esc 关闭"
+  contexts:
+    en: "Contexts"
+    zh-CN: "上下文"
+  actions:
+    en: "Actions"
+    zh-CN: "操作"
+  contacts:
+    en: "Contacts"
+    zh-CN: "联系人"
+  objects:
+    en: "Objects"
+    zh-CN: "对象"
+  history:
+    en: "History"
+    zh-CN: "历史"
+  history_row:
+    en: "%{text} · %{context}"
+    zh-CN: "%{text} · %{context}"
+  needs_me:
+    en: "Take me to what needs me"
+    zh-CN: "带我到需要我的地方"
+  pin:
+    en: "Pin %{title}"
+    zh-CN: "固定 %{title}"
+  unpin:
+    en: "Unpin %{title}"
+    zh-CN: "取消固定 %{title}"
+  mute:
+    en: "Mute %{title}"
+    zh-CN: "静音 %{title}"
+  unmute:
+    en: "Unmute %{title}"
+    zh-CN: "取消静音 %{title}"
+  disappearing:
+    en: "Disappearing messages: %{timer}"
+    zh-CN: "阅后即焚：%{timer}"
+  open_dock:
+    en: "Open %{dock}"
+    zh-CN: "打开%{dock}"
+  switch_account:
+    en: "Switch to %{account}"
+    zh-CN: "切换到 %{account}"
+  settings:
+    en: "Open settings"
+    zh-CN: "打开设置"
+  theme:
+    en: "Switch theme"
+    zh-CN: "切换主题"

@@ -12,6 +12,7 @@
 
 mod changes;
 mod inspector;
+mod names;
 mod session;
 
 use std::collections::BTreeMap;
@@ -20,15 +21,18 @@ use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, EventEmitter, Task};
-use ramflux_desktop_core::{AccountId, DomainEvent, Intent, Store, selectors};
-use ramflux_desktop_test::Scenario;
+use ramflux_desktop_core::{
+    AccountId, AttentionItem, DomainEvent, Intent, Store, Timestamp, selectors,
+};
+use ramflux_desktop_test::{Scenario, load_fixture};
 
 pub use changes::ChangeSet;
-pub use inspector::{
-    INSPECTOR_CAP, Inspector, InspectorEntry, UiOutcome, format_path, format_scope, intent_name,
+pub use inspector::{INSPECTOR_CAP, Inspector, InspectorEntry, UiOutcome};
+pub use names::{
+    effect_label, event_name, format_path, format_scope, intent_kind_name, intent_name,
     ui_event_name,
 };
-pub use session::{AccountSession, Applied, DispatchOutcome};
+pub use session::{AccountSession, Applied, DispatchOutcome, audit_label};
 
 /// Interval of the clock task.
 pub const TICK: Duration = Duration::from_millis(50);
@@ -49,6 +53,15 @@ pub enum StoreEvent {
     Inspected,
 }
 
+/// One "needs me" item in any account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountAttention {
+    /// Account whose store holds the moment.
+    pub account: AccountId,
+    /// The attention item.
+    pub item: AttentionItem,
+}
+
 /// Owns every account session and is the only path to the store and source.
 pub struct StoreHandle {
     sessions: BTreeMap<AccountId, AccountSession>,
@@ -56,6 +69,7 @@ pub struct StoreHandle {
     inspector: Inspector,
     clock: Option<Task<()>>,
     last_tick: Option<Instant>,
+    wall_clock: bool,
 }
 
 impl EventEmitter<StoreEvent> for StoreHandle {}
@@ -75,13 +89,38 @@ impl StoreHandle {
             inspector: Inspector::default(),
             clock: None,
             last_tick: None,
+            wall_clock: false,
         }
     }
 
-    /// Plays `scenario` as the active account, replacing that account's session.
+    /// Anchors scenarios loaded from now on to the wall clock: offset 0 is
+    /// the moment of loading, so moment times are real local times. Tests and
+    /// reference screenshots keep the fixture epoch for determinism.
+    pub fn set_wall_clock_anchor(&mut self, enabled: bool) {
+        self.wall_clock = enabled;
+    }
+
+    fn new_session(&self, scenario: &Scenario) -> AccountSession {
+        if self.wall_clock {
+            AccountSession::with_epoch(scenario, wall_clock_now())
+        } else {
+            AccountSession::new(scenario)
+        }
+    }
+
+    /// Plays `scenario` as the active account and its companions as
+    /// background accounts. Every other session is dropped: a scenario is a
+    /// whole world.
     pub fn load_scenario(&mut self, scenario: &Scenario, cx: &mut Context<Self>) {
         let account = scenario_account(scenario);
-        self.sessions.insert(account.clone(), AccountSession::new(scenario));
+        self.sessions.clear();
+        self.sessions.insert(account.clone(), self.new_session(scenario));
+        for companion in &scenario.companions {
+            if let Ok(other) = load_fixture(&companion.scenario) {
+                let session = self.new_session(&other);
+                self.sessions.insert(companion.account_id.clone(), session);
+            }
+        }
         self.active = Some(account);
         self.inspector.clear();
         self.emit_reset(cx);
@@ -94,7 +133,8 @@ impl StoreHandle {
         scenario: &Scenario,
         cx: &mut Context<Self>,
     ) {
-        self.sessions.insert(account.clone(), AccountSession::new(scenario));
+        let session = self.new_session(scenario);
+        self.sessions.insert(account.clone(), session);
         if self.active.is_none() {
             self.active = Some(account);
             self.emit_reset(cx);
@@ -132,6 +172,31 @@ impl StoreHandle {
     /// Number of "needs me" moments in an account's store.
     pub fn needs_me_count(&self, account: &AccountId) -> usize {
         self.sessions.get(account).map_or(0, |s| selectors::attention(s.store()).len())
+    }
+
+    /// Display label of an account slot: the account record's label in its
+    /// own store, or `None` while the slot has no account record yet.
+    pub fn account_label(&self, account: &AccountId) -> Option<String> {
+        self.sessions
+            .get(account)
+            .and_then(|s| s.store().account(account).or_else(|| s.store().accounts().next()))
+            .map(|a| a.label.clone())
+    }
+
+    /// Every "needs me" item across accounts: the active account first, then
+    /// the others in id order; oldest first within an account.
+    pub fn attention_across_accounts(&self) -> Vec<AccountAttention> {
+        let active = self.active.iter();
+        let others = self.sessions.keys().filter(|id| Some(*id) != self.active.as_ref());
+        active
+            .chain(others)
+            .filter_map(|account| self.sessions.get(account).map(|s| (account, s)))
+            .flat_map(|(account, session)| {
+                selectors::attention(session.store())
+                    .into_iter()
+                    .map(|item| AccountAttention { account: account.clone(), item })
+            })
+            .collect()
     }
 
     /// The inspector log.
@@ -259,6 +324,14 @@ impl StoreHandle {
     }
 }
 
+/// The current wall-clock time, for anchoring live playback.
+fn wall_clock_now() -> Timestamp {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis());
+    Timestamp(i64::try_from(millis).unwrap_or(i64::MAX))
+}
+
 /// The account a mock scenario plays: the first account it declares, or the
 /// [`LOCAL_ACCOUNT`] slot.
 pub fn scenario_account(scenario: &Scenario) -> AccountId {
@@ -285,5 +358,7 @@ mod tests {
         assert_eq!(scenario_account(&s01), AccountId::new("a-main"));
         let s02 = load_fixture("s02_daily").expect("s02");
         assert_eq!(scenario_account(&s02), AccountId::new(LOCAL_ACCOUNT));
+        let s09 = load_fixture("s09_multi_account_day").expect("s09");
+        assert_eq!(scenario_account(&s09), AccountId::new("a-personal"));
     }
 }

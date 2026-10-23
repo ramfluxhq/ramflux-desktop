@@ -25,6 +25,10 @@ gpui_kit::actions!(
         ToggleTheme,
         /// Cancel the pending hold-to-confirm request.
         CancelConfirmation,
+        /// Open the command palette.
+        OpenPalette,
+        /// Close the command palette.
+        ClosePalette,
     ]
 );
 
@@ -32,6 +36,8 @@ gpui_kit::actions!(
 pub const CONFIRM_CONTEXT: &str = "ConfirmStrip";
 /// Key context of the settings page.
 pub const SETTINGS_CONTEXT: &str = "Settings";
+/// Key context of the command palette overlay.
+pub const PALETTE_CONTEXT: &str = "Palette";
 
 /// Registers the application key bindings. Call before building menus.
 pub fn bind_keys(cx: &mut App) {
@@ -40,6 +46,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-shift-p", TogglePinContext, None),
         KeyBinding::new("secondary-,", OpenSettings, None),
         KeyBinding::new("secondary-shift-t", ToggleTheme, None),
+        KeyBinding::new("secondary-k", OpenPalette, None),
+        KeyBinding::new("escape", ClosePalette, Some(PALETTE_CONTEXT)),
         KeyBinding::new("escape", CancelConfirmation, Some(CONFIRM_CONTEXT)),
         KeyBinding::new("escape", CloseSettings, Some(SETTINGS_CONTEXT)),
     ]);

@@ -12,11 +12,13 @@
 //! ```
 //!
 //! - [`app`]: [`app::StoreHandle`], the only writer of the store and the
-//!   only caller of the source.
-//! - [`bubble`]: [`bubble::EventSink`] and the root's intent mapping.
+//!   only caller of the source; one session per account.
+//! - [`bubble`]: [`bubble::EventSink`], the bubbling chain.
+//! - [`root`]: [`root::IntentRoot`], where UI events become intents.
 //! - [`confirm`]: the inline hold-to-confirm strip.
-//! - [`shell`], [`entry`], [`workspace`], [`settings`], [`dev`]: pages and panels.
-//! - [`moments`]: inline moment rows.
+//! - [`shell`], [`entry`], [`workspace`], [`settings`], [`palette`], [`dev`]:
+//!   pages, overlays and panels.
+//! - [`moments`]: inline moment renderers.
 
 #![forbid(unsafe_code)]
 
@@ -31,6 +33,8 @@ pub mod entry;
 pub mod i18n;
 mod ids;
 pub mod moments;
+pub mod palette;
+pub mod root;
 pub mod route;
 pub mod settings;
 pub mod shell;

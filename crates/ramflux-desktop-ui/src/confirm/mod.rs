@@ -3,111 +3,42 @@
 
 //! The inline hold-to-confirm strip for high-risk intents (rule B4).
 //!
-//! The strip sits above the composer; it is never a modal dialog. It owns
-//! only the gesture: the pending intent stays with the workspace root, which
-//! re-submits it with human confirmation when the strip reports
+//! The strip sits inline (above the composer, under the entry node card, at
+//! the foot of settings); it is never a modal dialog. It owns only the
+//! gesture: the pending intent stays with the intent root, which re-submits
+//! it with the human's confirmation when the strip reports
 //! [`ConfirmEvent::HoldCompleted`]. A click is not a hold: the button must be
 //! held (pointer or Space) for [`HOLD_DURATION`]; releasing early resets it.
 
 use std::time::{Duration, Instant};
 
+use crate::actions::{CONFIRM_CONTEXT, CancelConfirmation};
+use crate::i18n::{self, tr, tr_args};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent, KeyUpEvent,
-    MouseButton, Render, Role, SharedString, Task, Window, div, relative,
+    MouseButton, Render, Role, Task, Window, div, relative,
 };
-use ramflux_desktop_core::{GovernanceOp, Intent, IntentKind, MomentKind, Risk, Store};
 
-use crate::actions::{CONFIRM_CONTEXT, CancelConfirmation};
-use crate::i18n::{self, tr, tr_args};
+mod request;
+
+pub use request::ConfirmRequest;
 
 /// How long the confirm control must be held.
 pub const HOLD_DURATION: Duration = Duration::from_millis(1_200);
 const HOLD_FRAME: Duration = Duration::from_millis(30);
 
-/// What the strip shows about the pending request.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConfirmRequest {
-    summary: SharedString,
-    risk: Risk,
-    proposed_by_agent: bool,
-}
-
-impl ConfirmRequest {
-    /// Describes `intent` for the strip.
-    pub fn describe(store: &Store, intent: &Intent) -> Self {
-        let (summary, risk) = describe_kind(store, &intent.kind);
-        let proposed_by_agent = matches!(intent.actor, ramflux_desktop_core::Actor::Agent(_));
-        Self { summary, risk, proposed_by_agent }
-    }
-
-    /// One-line description.
-    pub fn summary(&self) -> &SharedString {
-        &self.summary
-    }
-
-    /// Risk level shown on the strip.
-    pub fn risk(&self) -> Risk {
-        self.risk
-    }
-}
-
-fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Risk) {
-    let name = |id: &ramflux_desktop_core::ParticipantId| {
-        store.participant(id).map_or_else(|| id.to_string(), |p| p.display.clone())
-    };
-    match kind {
-        IntentKind::Approve { grant_id, .. } => {
-            let risk = store.grant(grant_id).map_or(Risk::High, |g| g.risk);
-            let summary = store
-                .moments()
-                .find_map(|m| match &m.kind {
-                    MomentKind::Intervention(p) if &p.grant_id == grant_id => {
-                        Some(p.summary.clone())
-                    }
-                    _ => None,
-                })
-                .unwrap_or_else(|| grant_id.to_string());
-            (tr_args("confirm.approve", &[("summary", &summary)]), risk)
-        }
-        IntentKind::SurfaceAction { moment_id, action_id, .. } => {
-            let action = store.moment(moment_id).and_then(|m| match &m.kind {
-                MomentKind::AgentSurface(s) => {
-                    s.actions.iter().find(|a| &a.id == action_id).cloned()
-                }
-                _ => None,
-            });
-            let (label, risk) =
-                action.map_or((action_id.clone(), Risk::High), |a| (a.label, a.risk));
-            (tr_args("confirm.surface_action", &[("action", &label)]), risk)
-        }
-        IntentKind::Governance { context_id, op, .. } => {
-            let group = store
-                .context(context_id)
-                .map_or_else(|| context_id.to_string(), |c| c.title.clone());
-            let target = op.target().map(name).unwrap_or_default();
-            let key = match op {
-                GovernanceOp::Kick { .. } => "confirm.governance.kick",
-                GovernanceOp::Ban { .. } => "confirm.governance.ban",
-                GovernanceOp::SetRole { .. } => "confirm.governance.set_role",
-                GovernanceOp::AddMember { .. } => "confirm.governance.add_member",
-                GovernanceOp::RemoveMember { .. } => "confirm.governance.remove_member",
-                GovernanceOp::CreateInvite { .. } => "confirm.governance.create_invite",
-            };
-            (tr_args(key, &[("member", &target), ("group", &group)]), op.risk())
-        }
-        _ => (tr("confirm.generic"), Risk::High),
-    }
-}
-
 /// Reported to the owner of the strip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfirmEvent {
     /// The hold completed; the owner submits the confirmed intent.
-    HoldCompleted,
+    HoldCompleted {
+        /// How long the control was held, in milliseconds.
+        held_ms: u64,
+    },
     /// The user cancelled; the owner discards the intent.
     Cancelled,
 }
@@ -212,7 +143,8 @@ impl ConfirmStrip {
         if let Some(task) = self.hold.take() {
             task.detach();
         }
-        cx.emit(ConfirmEvent::HoldCompleted);
+        let held_ms = u64::try_from(held.as_millis()).unwrap_or(u64::MAX);
+        cx.emit(ConfirmEvent::HoldCompleted { held_ms });
         true
     }
 
@@ -245,7 +177,7 @@ impl Render for ConfirmStrip {
         let Some(request) = self.request.clone() else {
             return div().id("confirm-strip").into_any_element();
         };
-        let accent = if request.risk.requires_confirmation() {
+        let accent = if request.risk().requires_confirmation() {
             cx.theme().danger
         } else {
             cx.theme().warning
@@ -275,22 +207,29 @@ impl Render for ConfirmStrip {
                         div()
                             .text_sm()
                             .text_color(cx.theme().foreground)
-                            .child(request.summary.clone()),
+                            .child(request.summary().clone()),
                     )
+                    .when_some(request.detail().cloned(), |col, detail| {
+                        col.child(
+                            div()
+                                .text_xs()
+                                .font_family(cx.theme().mono_font_family.clone())
+                                .text_color(cx.theme().muted_foreground)
+                                .child(detail),
+                        )
+                    })
                     .child(
                         h_flex()
                             .gap_2()
                             .text_xs()
                             .child(div().text_color(accent).child(tr_args(
                                 "confirm.risk",
-                                &[("risk", &i18n::risk(request.risk))],
+                                &[("risk", &i18n::risk(request.risk()))],
                             )))
-                            .when(request.proposed_by_agent, |row| {
-                                row.child(
-                                    div()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(tr("confirm.proposed_by_agent")),
-                                )
+                            .when_some(request.proposed_by().cloned(), |row, agent| {
+                                row.child(div().text_color(cx.theme().muted_foreground).child(
+                                    tr_args("confirm.proposed_by_agent", &[("agent", &agent)]),
+                                ))
                             }),
                     ),
             )

@@ -24,28 +24,7 @@ impl ChangeSet {
 
     /// Merges the changes of one applied envelope.
     pub fn merge(&mut self, changes: Changes) {
-        let Changes {
-            accounts,
-            nodes,
-            participants,
-            contexts,
-            moments,
-            objects,
-            grants,
-            tasks,
-            pin_order,
-            source_status,
-        } = changes;
-        self.changes.accounts.extend(accounts);
-        self.changes.nodes.extend(nodes);
-        self.changes.participants.extend(participants);
-        self.changes.contexts.extend(contexts);
-        self.changes.moments.extend(moments);
-        self.changes.objects.extend(objects);
-        self.changes.grants.extend(grants);
-        self.changes.tasks.extend(tasks);
-        self.changes.pin_order |= pin_order;
-        self.changes.source_status |= source_status;
+        self.changes.merge(changes);
     }
 
     /// Marks that the session clock moved (only the developer panel cares).
@@ -84,6 +63,17 @@ impl ChangeSet {
             || self.changes.source_status
     }
 
+    /// The settings page: accounts, nodes, devices, integrations and the
+    /// source status (diagnostics).
+    pub fn touches_settings(&self) -> bool {
+        self.reset
+            || !self.changes.accounts.is_empty()
+            || !self.changes.nodes.is_empty()
+            || !self.changes.devices.is_empty()
+            || self.changes.integrations
+            || self.changes.source_status
+    }
+
     /// The context stack: contexts, pin order, and moments (attention).
     pub fn touches_context_stack(&self) -> bool {
         self.reset
@@ -108,13 +98,18 @@ impl ChangeSet {
                 .any(|id| store.moment(id).is_none_or(|moment| &moment.context_id == context_id))
     }
 
-    /// The docks: objects, contacts, members, grants.
+    /// The docks: objects, contacts, members, approvals and evidence.
     pub fn touches_docks(&self) -> bool {
         self.reset
             || !self.changes.objects.is_empty()
             || !self.changes.participants.is_empty()
             || !self.changes.grants.is_empty()
             || !self.changes.contexts.is_empty()
+            || !self.changes.moments.is_empty()
+            || !self.changes.devices.is_empty()
+            || !self.changes.nodes.is_empty()
+            || self.changes.standing_approvals
+            || self.changes.audit
     }
 }
 
@@ -124,6 +119,7 @@ mod tests {
         Context, ContextKind, DomainEvent, EventEnvelope, Lifecycle, MessagePayload, Moment,
         MomentId, MomentKind, ParticipantId, Receipt, Timestamp,
     };
+    use std::collections::BTreeMap;
 
     use super::*;
 
@@ -135,6 +131,10 @@ mod tests {
             participants: Vec::new(),
             pinned: false,
             unread: 0,
+            muted: false,
+            disappearing_secs: None,
+            roles: BTreeMap::new(),
+            epoch: None,
         }
     }
 
@@ -148,6 +148,8 @@ mod tests {
                 text: "hi".to_owned(),
                 receipt: Receipt::Sent,
                 tombstone: false,
+                attachment: None,
+                franking: None,
             }),
             lifecycle: Lifecycle::Done,
         }))
@@ -174,7 +176,7 @@ mod tests {
         assert!(set.touches_context(&store, &ContextId::new("c-a")));
         assert!(!set.touches_context(&store, &ContextId::new("c-b")));
         assert!(set.touches_context_stack());
-        assert!(!set.touches_docks());
+        assert!(!set.touches_settings());
         assert!(ChangeSet::reset().touches_context(&store, &ContextId::new("c-b")));
         assert!(ChangeSet::default().is_empty());
     }

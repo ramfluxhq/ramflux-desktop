@@ -13,6 +13,10 @@ ramflux-desktop-core.workspace = true
 # The scenario-playing mock source drives the UI until the SDK source lands (F2).
 ramflux-desktop-test.workspace = true
 rust-i18n.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Local wall-clock time for moment headers (already in the dependency graph).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

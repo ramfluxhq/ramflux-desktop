@@ -1,0 +1,280 @@
+_version: 2
+moment:
+  kind:
+    message:
+      en: "Message"
+      zh-CN: "消息"
+    agent_surface:
+      en: "Agent surface"
+      zh-CN: "智能体界面"
+    object_transfer:
+      en: "Object transfer"
+      zh-CN: "对象传输"
+    intervention:
+      en: "Approval"
+      zh-CN: "审批"
+    safety_change:
+      en: "Safety change"
+      zh-CN: "安全变更"
+    governance:
+      en: "Membership"
+      zh-CN: "成员变更"
+    contact_request:
+      en: "Contact request"
+      zh-CN: "联系人请求"
+    task_progress:
+      en: "Task"
+      zh-CN: "任务"
+    conflict:
+      en: "Version conflict"
+      zh-CN: "版本冲突"
+    privacy_reveal:
+      en: "Protected content"
+      zh-CN: "受保护内容"
+    handoff:
+      en: "Handoff"
+      zh-CN: "接力"
+    fallback:
+      en: "Fallback"
+      zh-CN: "降级显示"
+    system:
+      en: "System"
+      zh-CN: "系统"
+  message:
+    deleted:
+      en: "Message deleted"
+      zh-CN: "消息已删除"
+    sending:
+      en: "Sending"
+      zh-CN: "发送中"
+    sent:
+      en: "Sent"
+      zh-CN: "已发送"
+    delivered:
+      en: "Delivered"
+      zh-CN: "已送达"
+    read:
+      en: "Read"
+      zh-CN: "已读"
+  system:
+    info:
+      en: "Info"
+      zh-CN: "提示"
+    warning:
+      en: "Warning"
+      zh-CN: "警告"
+    error:
+      en: "Error"
+      zh-CN: "错误"
+  fallback:
+    title:
+      en: "Shown in a simpler form"
+      zh-CN: "以简化形式显示"
+  intervention:
+    risk:
+      en: "Risk: %{risk}"
+      zh-CN: "风险：%{risk}"
+    details:
+      en: "Details"
+      zh-CN: "详情"
+    approve:
+      en: "Approve"
+      zh-CN: "批准"
+    approve_hold:
+      en: "Approve…"
+      zh-CN: "批准…"
+    deny:
+      en: "Deny"
+      zh-CN: "拒绝"
+    approved:
+      en: "Approved"
+      zh-CN: "已批准"
+    denied:
+      en: "Denied"
+      zh-CN: "已拒绝"
+    expired:
+      en: "Expired"
+      zh-CN: "已过期"
+    revoked:
+      en: "Approved, then revoked"
+      zh-CN: "已批准，随后撤销"
+    closed:
+      en: "Closed"
+      zh-CN: "已关闭"
+    proposed_by:
+      en: "Requested by %{name}"
+      zh-CN: "由 %{name} 请求"
+    confirmed_by:
+      en: "Confirmed by you with a hold at %{time}"
+      zh-CN: "你已于 %{time} 按住确认"
+  object:
+    pull:
+      en: "Download"
+      zh-CN: "下载"
+    save:
+      en: "Save to Downloads"
+      zh-CN: "保存到下载"
+    retry:
+      en: "Retry"
+      zh-CN: "重试"
+    preview:
+      en: "Preview"
+      zh-CN: "预览"
+    hide_preview:
+      en: "Hide preview"
+      zh-CN: "隐藏预览"
+    saved_to:
+      en: "Saved to %{path}"
+      zh-CN: "已保存到 %{path}"
+    missing:
+      en: "Object %{id} is not available yet"
+      zh-CN: "对象 %{id} 暂不可用"
+  safety:
+    key_changed:
+      en: "%{name}'s identity key changed"
+      zh-CN: "%{name} 的身份密钥已变更"
+    forked:
+      en: "%{name}'s identity forked"
+      zh-CN: "%{name} 的身份出现分叉"
+    explain:
+      en: "Compare the safety number with them in person or on a call before you continue."
+      zh-CN: "继续之前，请当面或通过通话与对方核对安全码。"
+    verify:
+      en: "Verify safety number"
+      zh-CN: "验证安全码"
+    resolved:
+      en: "Resolved"
+      zh-CN: "已处理"
+    verified:
+      en: "You verified %{name}'s safety number"
+      zh-CN: "你已验证 %{name} 的安全码"
+  governance:
+    record:
+      en: "%{name} · %{action}"
+      zh-CN: "%{name} · %{action}"
+    invited:
+      en: "invited"
+      zh-CN: "已邀请"
+    joined:
+      en: "joined"
+      zh-CN: "已加入"
+    left:
+      en: "left"
+      zh-CN: "已离开"
+    removed:
+      en: "removed"
+      zh-CN: "已被移出"
+    banned:
+      en: "banned"
+      zh-CN: "已被封禁"
+    role_changed:
+      en: "role changed"
+      zh-CN: "角色已变更"
+  contact:
+    request:
+      en: "%{name} wants to add you as a contact"
+      zh-CN: "%{name} 想添加你为联系人"
+    accept:
+      en: "Accept"
+      zh-CN: "接受"
+    reject:
+      en: "Reject"
+      zh-CN: "拒绝"
+    accepted:
+      en: "Accepted"
+      zh-CN: "已接受"
+    rejected:
+      en: "Rejected"
+      zh-CN: "已拒绝"
+  task:
+    count:
+      en: "%{done} of %{total} steps"
+      zh-CN: "第 %{done}/%{total} 步"
+    show_steps:
+      en: "Show all steps"
+      zh-CN: "显示全部步骤"
+    hide_steps:
+      en: "Hide steps"
+      zh-CN: "收起步骤"
+    cancel:
+      en: "Cancel task"
+      zh-CN: "取消任务"
+    missing:
+      en: "Task details are not available yet"
+      zh-CN: "任务详情暂不可用"
+  conflict:
+    title:
+      en: "%{name} changed in two places"
+      zh-CN: "%{name} 在两处被修改"
+    explain:
+      en: "This update does not match your local version. Compare them and choose what to keep."
+      zh-CN: "此更新与本地版本不一致。请对比后选择保留哪一份。"
+    local:
+      en: "This device · %{version}"
+      zh-CN: "本设备 · %{version}"
+    remote:
+      en: "Other side · %{version}"
+      zh-CN: "对方 · %{version}"
+    keep_local:
+      en: "Keep mine"
+      zh-CN: "保留我的版本"
+    keep_remote:
+      en: "Keep theirs"
+      zh-CN: "保留对方版本"
+    keep_both:
+      en: "Keep both"
+      zh-CN: "两份都保留"
+    kept_local:
+      en: "Kept your version"
+      zh-CN: "已保留你的版本"
+    kept_remote:
+      en: "Kept their version"
+      zh-CN: "已保留对方版本"
+    kept_both:
+      en: "Kept both versions"
+      zh-CN: "两份版本都已保留"
+    closed:
+      en: "Closed"
+      zh-CN: "已关闭"
+  privacy:
+    reveal:
+      en: "Reveal…"
+      zh-CN: "显示…"
+    audited:
+      en: "Revealing is recorded"
+      zh-CN: "显示操作会被记录"
+    audit:
+      en: "Revealed by %{name} at %{time}"
+      zh-CN: "%{name} 于 %{time} 显示"
+  handoff:
+    offer:
+      en: "%{device} offers to continue here"
+      zh-CN: "%{device} 请求在此继续"
+    accept:
+      en: "Continue here"
+      zh-CN: "在此继续"
+    decline:
+      en: "Not now"
+      zh-CN: "暂不"
+    accepted:
+      en: "Continued on %{device}"
+      zh-CN: "已在 %{device} 上继续"
+    declined:
+      en: "Declined"
+      zh-CN: "已拒绝"
+surface:
+  streaming:
+    en: "Writing…"
+    zh-CN: "正在生成…"
+  show_all:
+    en: "Show all %{count} blocks"
+    zh-CN: "显示全部 %{count} 个区块"
+  show_less:
+    en: "Show less"
+    zh-CN: "收起"
+  fallback:
+    en: "Shown as text: this part cannot be displayed here"
+    zh-CN: "以文本显示：此部分无法在此显示"
+  action_hold:
+    en: "%{label}…"
+    zh-CN: "%{label}…"

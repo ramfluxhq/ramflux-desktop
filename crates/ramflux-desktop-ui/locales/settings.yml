@@ -1,0 +1,179 @@
+_version: 2
+settings:
+  title:
+    en: "Settings"
+    zh-CN: "设置"
+  section:
+    account:
+      en: "Account"
+      zh-CN: "账户"
+    devices:
+      en: "Devices"
+      zh-CN: "设备"
+    nodes:
+      en: "Nodes"
+      zh-CN: "节点"
+    integrations:
+      en: "MCP and A2I"
+      zh-CN: "MCP 与 A2I"
+    diagnostics:
+      en: "Diagnostics"
+      zh-CN: "诊断"
+    appearance:
+      en: "Appearance"
+      zh-CN: "外观"
+  dark_theme:
+    en: "Dark theme"
+    zh-CN: "深色主题"
+  language:
+    en: "Language"
+    zh-CN: "语言"
+  local_only:
+    en: "Local preference: stays on this device and is not part of your account."
+    zh-CN: "本地偏好：仅保存在此设备，不属于账户数据。"
+  readonly:
+    en: "View only. Registering servers, calling tools and acknowledging events stays in the command line."
+    zh-CN: "仅供查看。注册服务器、调用工具与确认事件请在命令行中进行。"
+  account:
+    label:
+      en: "Name"
+      zh-CN: "名称"
+    kind:
+      en: "Kind"
+      zh-CN: "类型"
+    node:
+      en: "Home node"
+      zh-CN: "归属节点"
+    device:
+      en: "This device"
+      zh-CN: "此设备"
+    none:
+      en: "No account is open"
+      zh-CN: "没有打开的账户"
+    lock:
+      en: "Lock account"
+      zh-CN: "锁定账户"
+    export:
+      en: "Export backup"
+      zh-CN: "导出备份"
+    rotate_title:
+      en: "Change passphrase"
+      zh-CN: "更改口令"
+    current:
+      en: "Current passphrase"
+      zh-CN: "当前口令"
+    next:
+      en: "New passphrase"
+      zh-CN: "新口令"
+    rotate:
+      en: "Change passphrase"
+      zh-CN: "更改口令"
+  devices:
+    none:
+      en: "No devices"
+      zh-CN: "没有设备"
+    this:
+      en: "This device"
+      zh-CN: "此设备"
+    revoked:
+      en: "Revoked"
+      zh-CN: "已撤销"
+    never:
+      en: "Never seen"
+      zh-CN: "从未在线"
+    last_seen:
+      en: "Last seen %{time}"
+      zh-CN: "最后在线 %{time}"
+    revoke:
+      en: "Revoke…"
+      zh-CN: "撤销…"
+    sync:
+      en: "Sync with your other devices"
+      zh-CN: "与其他设备同步"
+    export:
+      en: "Export sync bundle"
+      zh-CN: "导出同步包"
+    import:
+      en: "Import sync bundle"
+      zh-CN: "导入同步包"
+  nodes:
+    description:
+      en: "Nodes are kept by this device. An account stays on the node it was created on."
+      zh-CN: "节点信息保存在此设备上。账户始终位于创建时所在的节点。"
+    none:
+      en: "No nodes"
+      zh-CN: "没有节点"
+    builtin:
+      en: "Shipped"
+      zh-CN: "内置"
+    default:
+      en: "Default for new accounts"
+      zh-CN: "新账户默认"
+    disabled:
+      en: "Disabled"
+      zh-CN: "已停用"
+    probed:
+      en: "Probed %{time}"
+      zh-CN: "探测于 %{time}"
+    never_probed:
+      en: "Not probed yet"
+      zh-CN: "尚未探测"
+    gateway:
+      en: "Gateway"
+      zh-CN: "网关"
+    relay:
+      en: "Relay"
+      zh-CN: "中继"
+    ok:
+      en: "Reachable"
+      zh-CN: "可达"
+    ok_ms:
+      en: "Reachable · %{ms} ms"
+      zh-CN: "可达 · %{ms} 毫秒"
+    failed:
+      en: "Not reachable"
+      zh-CN: "不可达"
+    probe:
+      en: "Probe"
+      zh-CN: "探测"
+    make_default:
+      en: "Make default"
+      zh-CN: "设为默认"
+    disable:
+      en: "Disable for new accounts"
+      zh-CN: "对新账户停用"
+    enable:
+      en: "Enable for new accounts"
+      zh-CN: "对新账户启用"
+    remove:
+      en: "Remove"
+      zh-CN: "移除"
+    bound:
+      en: "An account uses this node, so it cannot be removed"
+      zh-CN: "有账户正在使用此节点，无法移除"
+  integrations:
+    mcp:
+      en: "MCP servers"
+      zh-CN: "MCP 服务器"
+    a2i:
+      en: "Pending A2I events"
+      zh-CN: "待处理 A2I 事件"
+    no_servers:
+      en: "No servers registered"
+      zh-CN: "未注册服务器"
+    no_a2i:
+      en: "Nothing pending"
+      zh-CN: "没有待处理事件"
+    healthy:
+      en: "Healthy"
+      zh-CN: "正常"
+    unhealthy:
+      en: "Refresh failed"
+      zh-CN: "刷新失败"
+  diagnostics:
+    explain:
+      en: "This is what the export contains. Keys, tokens, nonces, names and message text are never included."
+      zh-CN: "以下为导出内容。密钥、令牌、随机数、姓名和消息正文绝不会包含在内。"
+    export:
+      en: "Export diagnostics"
+      zh-CN: "导出诊断信息"
