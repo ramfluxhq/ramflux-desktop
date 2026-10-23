@@ -51,7 +51,6 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::ConfirmNodePressed { .. } => "ConfirmNodePressed",
         UiEventKind::NodeActionPressed { .. } => "NodeActionPressed",
         UiEventKind::LockPressed { .. } => "LockPressed",
-        UiEventKind::ExportBackupRequested { .. } => "ExportBackupRequested",
         UiEventKind::RevokeDevicePressed { .. } => "RevokeDevicePressed",
         UiEventKind::DeviceSyncRequested { .. } => "DeviceSyncRequested",
         UiEventKind::DiagnosticsExportRequested { .. } => "DiagnosticsExportRequested",
@@ -156,6 +155,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::CapabilitiesUpdated(_) => "CapabilitiesUpdated",
         DomainEvent::DaemonInfoUpdated(_) => "DaemonInfoUpdated",
         DomainEvent::EffectFailed(_) => "EffectFailed",
+        DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
     }
 }
 

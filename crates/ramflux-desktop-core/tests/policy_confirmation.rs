@@ -149,7 +149,7 @@ fn kick_ban_and_set_role_need_confirmation_add_and_invite_do_not() {
     let (method, body) = call_body(effects(&store, Intent::human(governance(add))));
     assert_eq!(method, methods::GROUP_ADD_MEMBER);
     assert_eq!(body["role"], "Member");
-    let invite = GovernanceOp::CreateInvite { role: Role::Guest };
+    let invite = GovernanceOp::CreateInvite { role: Role::Bot };
     let (method, _) = call_body(effects(&store, Intent::human(governance(invite))));
     assert_eq!(method, methods::GROUP_CREATE_INVITE);
     let remove = GovernanceOp::RemoveMember { participant_id: bo() };

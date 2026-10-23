@@ -131,6 +131,11 @@ impl Store {
                 self.failures.push(failure.clone());
                 changes.source_status = true;
             }
+            DomainEvent::ListingsLoaded(listings) => {
+                for listing in listings {
+                    changes.listings |= self.listed.insert(*listing);
+                }
+            }
             DomainEvent::IntegrationsUpdated(integrations) => {
                 self.integrations = integrations.clone();
                 changes.integrations = true;

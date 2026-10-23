@@ -73,7 +73,7 @@ pub const ACCOUNT_LOCK: &str = "account.lock";
 pub const ACCOUNT_CREATE: &str = "account.create";
 /// Rotate an account passphrase (carries secrets).
 pub const ACCOUNT_ROTATE_PASSPHRASE: &str = "account.passphrase.rotate";
-/// Export an encrypted account backup.
+/// Export an encrypted account backup (carries a secret).
 pub const ACCOUNT_BACKUP_EXPORT: &str = "account.backup.export";
 /// Restore an account from a backup (carries a secret).
 pub const ACCOUNT_BACKUP_IMPORT: &str = "account.backup.import";

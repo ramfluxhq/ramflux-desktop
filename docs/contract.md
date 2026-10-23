@@ -49,7 +49,7 @@ The store keeps each entity in its own collection, keyed by id:
 | `Node` | NODE-01 profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
 | `Device` | account, label, `this_device`, `revoked`, `last_seen` |
 | `Participant` | `kind` (Human, Agent, Device, Node), `display`, `safety`, `contact`, `safety_number` |
-| `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread`, `muted`, `disappearing_secs`, `roles`, `epoch` |
+| `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread`, `muted`, `disappearing_secs`, `roles` (Owner, Admin, Member, Bot: exactly the daemon's roles), `epoch` |
 | `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind`, `lifecycle` |
 | `Object` | name, size, direction, `transfer`, `saved_to`, `preview` |
 | `Grant` | scope, `risk`, `single_use`, `args_hash`, expiry, `state` (Pending, Approved, Denied, Expired, Revoked) |
@@ -111,9 +111,16 @@ the previous one), `NodeProbed` (also sets health), `NodeRemoved`,
 `StandingApprovalUpserted`, `AuditAppended` (the last 512 are kept),
 `IntegrationsUpdated`, `CapabilitiesUpdated` (contract methods the backend
 cannot perform, each with the reason shown to the user), `DaemonInfoUpdated`
-(socket path, open accounts) and `EffectFailed` (method, code
+(socket path, open accounts), `EffectFailed` (method, code
 `UnsupportedByBackend` / `Daemon(code)` / `Transport` / `Timeout`, message;
-the last 32 are kept; no domain entity changes).
+the last 32 are kept; no domain entity changes) and `ListingsLoaded` (the
+source answered these collections in full: `Nodes`, `Accounts`, `Contexts`,
+`Contacts`, `Objects`, `Approvals`).
+
+An empty collection is either still loading or listed and empty. The store
+records each `ListingsLoaded` (`Store::is_listed`) and `ListState::of(listed,
+empty)` gives `Loading`, `Empty` or `Ready`; every list view shows a spinner
+only while loading and an explicit empty state once listed.
 
 Policy refuses an intent whose method the backend declared unsupported
 (`IntentError::UnsupportedByBackend`), before any hold, and the UI shows such
@@ -134,8 +141,8 @@ lack.
   the rejection (the last 64 are kept), returns the error and never panics.
   The envelope's `seq` is consumed, so redelivering it is a no-op.
 - Application is deterministic. `Changes` lists the changed ids for each
-  collection, plus `pin_order` and `source_status` flags, so views can
-  notify precisely.
+  collection, plus `pin_order`, `listings` and `source_status` flags, so
+  views can notify precisely.
 - All other public methods borrow immutably.
 
 The store also tracks the order in which contexts were pinned and the time
@@ -184,11 +191,11 @@ The kinds, by area:
   `ActivateDevice { node_id, device_label, code }`, `RestoreBackup { path,
   secret }`, `AddNode { url }`, `ConfirmNode { node_id, pin_source }`.
 - Settings: `LockAccount`, `RotatePassphrase { current, next }`,
-  `ExportBackup`, `RevokeDevice`, `SyncDevices`, `ProbeNode`, `RemoveNode`,
+  `ExportBackup { account_id, path, secret }`, `RevokeDevice`, `SyncDevices`, `ProbeNode`, `RemoveNode`,
   `SetDefaultNode`, `SetNodeEnabled`, `ExportDiagnostics`.
 
-Kinds that carry a `SecretInput` (unlock, create, activate, restore, rotate)
-are excluded from serde. A `SecretInput` is not `Clone`, not `Serialize`, its
+Kinds that carry a `SecretInput` (unlock, create, activate, restore, backup
+export, rotate) are excluded from serde. A `SecretInput` is not `Clone`, not `Serialize`, its
 `Debug` output is `<redacted>`, and its buffer is zeroized on drop.
 
 `handle_intent(&Store, Intent, now: Timestamp) -> Result<Vec<Effect>, IntentError>`

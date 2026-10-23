@@ -171,6 +171,18 @@ fn map(
             ),
             None => refuse_invalid("missing passphrase"),
         },
+        methods::ACCOUNT_BACKUP_EXPORT => match secrets.pop() {
+            Some(secret) => call(
+                BusRequest::new(
+                    Some(text(body, "account_id")),
+                    "account",
+                    "account.backup.export",
+                    json!({ "output_path": text(body, "path") }),
+                )
+                .with_secret("passphrase", secret),
+            ),
+            None => refuse_invalid("missing backup passphrase"),
+        },
         methods::ACCOUNT_LOCK => call(BusRequest::new(
             Some(text(body, "account_id")),
             "account",
@@ -320,12 +332,8 @@ fn governance(acct: Option<&str>, method: &str, body: &Value, known: &impl Known
                 Some(Role::Owner) => "owner",
                 Some(Role::Admin) => "admin",
                 Some(Role::Member) => "member",
-                Some(Role::Guest) | None => {
-                    return Plan::Refuse {
-                        code: FailureCode::UnsupportedByBackend,
-                        message: capabilities::reason::GUEST_ROLE.to_owned(),
-                    };
-                }
+                Some(Role::Bot) => "bot",
+                None => return refuse_invalid("unknown role"),
             };
             ("group.role.set", Some(role))
         }

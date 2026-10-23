@@ -11,10 +11,11 @@ use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div};
 use ramflux_desktop_core::{
-    Lifecycle, Moment, MomentKind, Participant, SafetyState, Scope, Store, UiEventKind, selectors,
+    Lifecycle, Listing, Moment, MomentKind, Participant, SafetyState, Scope, Store, UiEventKind,
+    selectors,
 };
 
-use super::{empty_line, section};
+use super::section;
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
@@ -154,7 +155,12 @@ impl Render for ContactsDock {
                 )
             })
             .child(section("dock.contacts.list", cx))
-            .when(contacts.is_empty(), |col| col.child(empty_line("dock.contacts.empty", cx)))
+            .children(crate::list_state::placeholder(
+                "contacts-list-state",
+                crate::list_state::of(store, Listing::Contacts, contacts.is_empty()),
+                "dock.contacts.empty",
+                cx,
+            ))
             .children(
                 contacts.iter().map(|c| contact_row(c, &self.sink, verify_reason.as_ref(), cx)),
             )

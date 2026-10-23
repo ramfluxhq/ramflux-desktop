@@ -14,6 +14,7 @@
     description: "Personal in front, work in the background, attention arrives there, switch and resolve",
     timeline: [
         (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
         (0, NodeUpserted(id: "n-ramflux", endpoints: ["quic://bootstrap.ramflux.example:443"],
             fingerprint: "SHA256:9a1c 0e44 7b2d 51f0 c3a8 66e1 2d90 b7f4", pin_source: Bootstrap, health: Healthy,
             capabilities: ["gateway", "relay", "prekey"], builtin: true)),

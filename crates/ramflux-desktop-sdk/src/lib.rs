@@ -16,6 +16,7 @@
 //! - [`translate`]: daemon answers and events to domain events.
 //! - [`capabilities`]: what the daemon cannot do yet, with reasons.
 //! - [`diagnostics`]: the redacted diagnostics bundle.
+//! - [`pins`]: pinned contexts persisted in the desktop settings file.
 //! - [`source`]: the `Source` implementation.
 
 #![forbid(unsafe_code)]
@@ -25,6 +26,7 @@ pub mod bus;
 pub mod capabilities;
 pub mod config;
 pub mod diagnostics;
+pub mod pins;
 pub mod plan;
 pub mod source;
 pub mod translate;

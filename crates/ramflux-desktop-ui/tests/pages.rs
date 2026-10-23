@@ -245,3 +245,28 @@ fn settings_rotate_passphrase_and_export_diagnostics(cx: &mut TestAppContext) {
             .is_some_and(|p| p.ends_with("/diag.txt"))
     );
 }
+
+#[gpui_kit::test]
+fn settings_export_backup_takes_its_passphrase_as_a_secret(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s09_multi_account_day");
+    advance(cx, 1_000);
+    settings(cx, handle, &shell, SettingsSection::Account);
+    // Without a passphrase the control is disabled: no dialog, no export.
+    click(cx, handle, "settings-export-backup");
+    assert!(
+        !effects(cx, &shell).iter().any(|m| m == methods::ACCOUNT_BACKUP_EXPORT),
+        "no passphrase, no export"
+    );
+    type_into(cx, handle, "backup-passphrase", "quiet harbor lights");
+    click(cx, handle, "settings-export-backup");
+    let page = cx.update(|cx| shell.read(cx).settings().clone());
+    let cleared = cx.update(|cx| page.read(cx).backup_input().read(cx).value().is_empty());
+    assert!(cleared, "the passphrase leaves its input when export starts");
+    cx.simulate_new_path_selection(|dir| Some(dir.join("personal.backup")));
+    cx.run_until_parked();
+    let body = last_body(cx, &shell, methods::ACCOUNT_BACKUP_EXPORT);
+    assert_eq!(body["account_id"], "a-personal");
+    assert!(body["path"].as_str().is_some_and(|p| p.ends_with("/personal.backup")));
+    assert!(!body.to_string().contains("harbor"), "the passphrase travels beside the body");
+    assert!(!inspector_text(cx, &shell).contains("harbor"));
+}

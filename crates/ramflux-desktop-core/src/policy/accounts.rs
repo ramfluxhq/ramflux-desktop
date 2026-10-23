@@ -91,11 +91,12 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
-        IntentKind::ExportBackup { account_id, path } => {
+        IntentKind::ExportBackup { account_id, path, secret } => {
             p.human_only("export a backup").and_then(|()| {
                 account(p, account_id)?;
                 non_empty(path, "backup path")?;
-                Ok(Decision::Call(
+                secret_present(secret, "backup passphrase")?;
+                Ok(Decision::SecretCall(
                     methods::ACCOUNT_BACKUP_EXPORT,
                     json!({ "account_id": account_id, "path": path }),
                 ))

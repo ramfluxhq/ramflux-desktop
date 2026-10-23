@@ -12,6 +12,7 @@
     description: "Conflict resolution, audited privacy reveal, cross-device handoff",
     timeline: [
         (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
         (0, AccountUpdated(id: "local", label: "Local", lock_state: Unlocked, self_participant_id: "p-me")),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
         (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", contact: true)),

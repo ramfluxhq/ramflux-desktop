@@ -40,10 +40,6 @@ pub mod reason {
     pub const ACTIVATION: &str = "backend.gap.activation";
     /// Device sync needs a relay route and a target device.
     pub const DEVICE_SYNC: &str = "backend.gap.device_sync";
-    /// Backups need a passphrase the desktop does not collect yet.
-    pub const BACKUP_PASSPHRASE: &str = "backend.gap.backup_passphrase";
-    /// The guest role has no daemon counterpart.
-    pub const GUEST_ROLE: &str = "backend.gap.guest_role";
 }
 
 /// Every unsupported contract method (or `method@ContextKind`) with its reason.
@@ -68,7 +64,6 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
         (methods::DEVICE_ACTIVATE, reason::ACTIVATION),
         (methods::DEVICE_SYNC_EXPORT, reason::DEVICE_SYNC),
         (methods::DEVICE_SYNC_IMPORT, reason::DEVICE_SYNC),
-        (methods::ACCOUNT_BACKUP_EXPORT, reason::BACKUP_PASSPHRASE),
     ]
     .into_iter()
     .map(|(method, why)| (method.to_owned(), why))

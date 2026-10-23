@@ -232,6 +232,32 @@ fn account_creation_needs_a_confirmed_node_and_keeps_the_secret_out_of_the_body(
 }
 
 #[test]
+fn backup_export_carries_its_passphrase_as_a_secret_and_is_human_only() {
+    let store = store();
+    let export = |passphrase: &str| IntentKind::ExportBackup {
+        account_id: AccountId::new("a-1"),
+        path: "/tmp/a.backup".into(),
+        secret: SecretInput::new(passphrase),
+    };
+    assert_eq!(
+        decide(&store, Intent::human(export(""))).err(),
+        Some(IntentError::Empty("backup passphrase"))
+    );
+    let Ok(Effect::SecretCall { method, body, secrets }) =
+        decide(&store, Intent::human(export("quiet harbor")))
+    else {
+        panic!("expected a secret call");
+    };
+    assert_eq!(method, methods::ACCOUNT_BACKUP_EXPORT);
+    assert_eq!(body["path"], "/tmp/a.backup");
+    assert!(!body.to_string().contains("quiet"), "the passphrase stays out of the body");
+    assert_eq!(secrets.len(), 1);
+    assert_eq!(secrets[0].expose(), "quiet harbor");
+    let by_agent = Intent::agent(ParticipantId::new("p-agent"), export("quiet harbor"));
+    assert!(matches!(decide(&store, by_agent), Err(IntentError::AgentForbidden(_))));
+}
+
+#[test]
 fn node_settings_guard_bound_and_default_nodes() {
     let store = store();
     let refuse = |kind| decide(&store, Intent::human(kind)).err();

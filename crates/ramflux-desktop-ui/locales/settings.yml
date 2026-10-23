@@ -54,8 +54,17 @@ settings:
       en: "Lock account"
       zh-CN: "锁定账户"
     export:
-      en: "Export backup"
-      zh-CN: "导出备份"
+      en: "Export backup…"
+      zh-CN: "导出备份…"
+    backup_title:
+      en: "Backup"
+      zh-CN: "备份"
+    backup_passphrase:
+      en: "Backup passphrase"
+      zh-CN: "备份口令"
+    backup_help:
+      en: "The backup file is encrypted with this passphrase. You need it to restore."
+      zh-CN: "备份文件用此口令加密，恢复时需要它。"
     rotate_title:
       en: "Change passphrase"
       zh-CN: "更改口令"

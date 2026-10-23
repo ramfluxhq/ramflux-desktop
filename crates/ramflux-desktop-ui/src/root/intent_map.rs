@@ -160,9 +160,6 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::LockPressed { account_id } => {
             IntentKind::LockAccount { account_id: account_id.clone() }
         }
-        UiEventKind::ExportBackupRequested { account_id, path } => {
-            IntentKind::ExportBackup { account_id: account_id.clone(), path: path.clone() }
-        }
         UiEventKind::RevokeDevicePressed { device_id } => {
             IntentKind::RevokeDevice { device_id: device_id.clone() }
         }

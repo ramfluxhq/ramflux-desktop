@@ -292,3 +292,18 @@ fn replay_is_deterministic() {
     };
     assert_eq!(format!("{:?}", build()), format!("{:?}", build()));
 }
+
+#[test]
+fn listings_are_recorded_once_and_tell_empty_from_loading() {
+    let mut feed = Feed::new();
+    assert!(!feed.store.is_listed(Listing::Nodes));
+    let changes = feed.ok(1, DomainEvent::ListingsLoaded(vec![Listing::Nodes, Listing::Accounts]));
+    assert!(changes.listings);
+    assert!(feed.store.is_listed(Listing::Nodes) && feed.store.is_listed(Listing::Accounts));
+    assert!(!feed.store.is_listed(Listing::Contacts));
+    let again = feed.ok(2, DomainEvent::ListingsLoaded(vec![Listing::Nodes]));
+    assert!(again.is_empty(), "a repeated listing changes nothing");
+    let empty = feed.store.nodes().next().is_none();
+    assert_eq!(ListState::of(feed.store.is_listed(Listing::Nodes), empty), ListState::Empty);
+    assert_eq!(ListState::of(feed.store.is_listed(Listing::Contacts), true), ListState::Loading);
+}

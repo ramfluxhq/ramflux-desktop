@@ -132,6 +132,8 @@ pub struct Changes {
     pub integrations: bool,
     /// The pinned order changed.
     pub pin_order: bool,
+    /// A collection was listed for the first time.
+    pub listings: bool,
     /// The source status, backend capabilities, daemon info or the failed
     /// effects changed.
     pub source_status: bool,
@@ -153,6 +155,7 @@ impl Changes {
             && !self.audit
             && !self.integrations
             && !self.pin_order
+            && !self.listings
             && !self.source_status
     }
 
@@ -172,6 +175,7 @@ impl Changes {
             audit,
             integrations,
             pin_order,
+            listings,
             source_status,
         } = other;
         self.accounts.extend(accounts);
@@ -187,6 +191,7 @@ impl Changes {
         self.audit |= audit;
         self.integrations |= integrations;
         self.pin_order |= pin_order;
+        self.listings |= listings;
         self.source_status |= source_status;
     }
 }

@@ -30,6 +30,9 @@ entry:
     waiting:
       en: "Connected. Looking for nodes."
       zh-CN: "已连接。正在查找节点。"
+    none:
+      en: "No nodes yet. Add one by its address below."
+      zh-CN: "还没有节点。请在下方按地址添加一个。"
     add_title:
       en: "Add a node by address"
       zh-CN: "按地址添加节点"

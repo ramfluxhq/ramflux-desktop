@@ -21,6 +21,7 @@
 //! - [`moments`]: inline moment renderers.
 //! - [`file_dialog`]: native path prompts for every local path.
 //! - [`gate`]: controls for actions the backend cannot perform.
+//! - [`list_state`]: loading and empty placeholders of lists.
 
 #![forbid(unsafe_code)]
 
@@ -36,6 +37,7 @@ pub mod file_dialog;
 pub mod gate;
 pub mod i18n;
 mod ids;
+pub mod list_state;
 pub mod moments;
 pub mod palette;
 pub mod root;

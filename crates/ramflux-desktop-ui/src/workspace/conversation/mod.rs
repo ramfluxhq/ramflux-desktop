@@ -23,7 +23,7 @@ use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
     StyleRefinement, Subscription, WeakEntity, Window, div,
 };
-use ramflux_desktop_core::{ContextId, MomentId, Scope, UiEvent, UiEventKind, selectors};
+use ramflux_desktop_core::{ContextId, Listing, MomentId, Scope, UiEvent, UiEventKind, selectors};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
@@ -100,7 +100,13 @@ impl Conversation {
         let subscriptions = vec![
             cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
                 let StoreEvent::Changed(changes) = event else { return };
-                let Some(context_id) = this.context_id.clone() else { return };
+                let Some(context_id) = this.context_id.clone() else {
+                    // The placeholder tells loading from no conversations.
+                    if changes.touches_listings() {
+                        cx.notify();
+                    }
+                    return;
+                };
                 if changes.touches_context(store.read(cx).store(), &context_id) {
                     this.sync_rows(cx);
                 }
@@ -313,19 +319,36 @@ impl Render for Conversation {
             self.context_id.clone().map(|id| self.root_sink.scoped(Scope::Context(id)));
         let header = header::render(store, context, context_sink.clone(), cx);
         let body = match context_sink.filter(|_| !rows.is_empty()) {
-            None => div()
-                .flex_1()
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(tr(if self.context_id.is_some() {
-                    "conversation.empty"
+            None => {
+                let no_contexts = store.contexts().next().is_none();
+                let state = crate::list_state::of(store, Listing::Contexts, no_contexts);
+                let placeholder = if self.context_id.is_some() {
+                    None
                 } else {
-                    "conversation.choose"
-                }))
-                .into_any_element(),
+                    crate::list_state::placeholder(
+                        "conversation-list-state",
+                        state,
+                        "conversation.no_contexts",
+                        cx,
+                    )
+                };
+                div()
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .map(|area| match placeholder {
+                        Some(placeholder) => area.child(placeholder),
+                        None => area.child(tr(if self.context_id.is_some() {
+                            "conversation.empty"
+                        } else {
+                            "conversation.choose"
+                        })),
+                    })
+                    .into_any_element()
+            }
             Some(context_sink) => {
                 let states: Rc<Vec<_>> = Rc::new(
                     rows.iter()

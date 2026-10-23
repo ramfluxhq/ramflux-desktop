@@ -52,10 +52,16 @@ impl ChangeSet {
         self.is_domain_empty() && !self.clock_moved
     }
 
+    /// A collection was listed for the first time (loading became loaded).
+    pub fn touches_listings(&self) -> bool {
+        self.reset || self.changes.listings
+    }
+
     /// The terminal status strip and page routing: accounts, nodes, source
-    /// status, and attention counts.
+    /// status, listings, and attention counts.
     pub fn touches_status(&self) -> bool {
         self.reset
+            || self.changes.listings
             || !self.changes.accounts.is_empty()
             || !self.changes.nodes.is_empty()
             || !self.changes.moments.is_empty()
@@ -74,9 +80,11 @@ impl ChangeSet {
             || self.changes.source_status
     }
 
-    /// The context stack: contexts, pin order, and moments (attention).
+    /// The context stack: contexts, pin order, listings, and moments
+    /// (attention).
     pub fn touches_context_stack(&self) -> bool {
         self.reset
+            || self.changes.listings
             || !self.changes.contexts.is_empty()
             || !self.changes.moments.is_empty()
             || self.changes.pin_order
@@ -101,6 +109,7 @@ impl ChangeSet {
     /// The docks: objects, contacts, members, approvals and evidence.
     pub fn touches_docks(&self) -> bool {
         self.reset
+            || self.changes.listings
             || !self.changes.objects.is_empty()
             || !self.changes.participants.is_empty()
             || !self.changes.grants.is_empty()

@@ -9,10 +9,10 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{Context, IntoElement, Window, div};
-use ramflux_desktop_core::{Node, UiEventKind};
+use gpui_kit::{Context, IntoElement, Role, Window, div};
+use ramflux_desktop_core::{ListState, Listing, Node, UiEventKind};
 
 use super::{EntryPage, NodeCard};
 use crate::i18n::tr;
@@ -32,7 +32,13 @@ impl EntryPage {
         let store = self.store.read(cx).store();
         let (pending_nodes, known): (Vec<Node>, Vec<Node>) =
             store.nodes().cloned().partition(|n| !n.confirmed);
-        let waiting = pending_nodes.is_empty() && known.is_empty();
+        // Loading until the source listed the nodes; then an empty list is
+        // an explicit empty state, never a perpetual spinner.
+        let state = crate::list_state::of(
+            store,
+            Listing::Nodes,
+            pending_nodes.is_empty() && known.is_empty(),
+        );
         let pending = !pending_nodes.is_empty();
         let usable = known.iter().any(|n| n.enabled);
         let cards =
@@ -75,12 +81,32 @@ impl EntryPage {
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("entry.node.intro")),
             )
-            .when(waiting, |step| {
+            .when(state == ListState::Loading, |step| {
                 step.child(
                     h_flex()
+                        .id("entry-node-loading")
+                        .role(Role::Status)
+                        .aria_label(tr("entry.node.waiting"))
+                        .test_support()
                         .gap_3()
                         .child(Spinner::new())
                         .child(div().text_sm().child(tr("entry.node.waiting"))),
+                )
+            })
+            .when(state == ListState::Empty, |step| {
+                step.child(
+                    h_flex()
+                        .id("entry-node-empty")
+                        .role(Role::Status)
+                        .aria_label(tr("entry.node.none"))
+                        .test_support()
+                        .gap_3()
+                        .p_3()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .rounded(cx.theme().radius_lg)
+                        .child(Icon::new(IconName::Info).text_color(cx.theme().muted_foreground))
+                        .child(div().text_sm().child(tr("entry.node.none"))),
                 )
             })
             .children(cards)

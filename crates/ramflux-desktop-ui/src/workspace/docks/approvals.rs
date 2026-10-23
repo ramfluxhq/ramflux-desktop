@@ -12,8 +12,8 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div};
 use ramflux_desktop_core::{
-    Actor, AuditEntry, Grant, GrantFilter, GrantState, MomentKind, Scope, StandingApproval, Store,
-    UiEventKind, selectors,
+    Actor, AuditEntry, Grant, GrantFilter, GrantState, Listing, MomentKind, Scope,
+    StandingApproval, Store, UiEventKind, selectors,
 };
 
 use super::{empty_line, section};
@@ -256,9 +256,12 @@ impl Render for ApprovalsDock {
             .size_full()
             .overflow_y_scroll()
             .child(section("dock.approvals.pending", cx))
-            .when(pending.is_empty(), |col| {
-                col.child(empty_line("dock.approvals.none_pending", cx))
-            })
+            .children(crate::list_state::placeholder(
+                "approvals-list-state",
+                crate::list_state::of(store, Listing::Approvals, pending.is_empty()),
+                "dock.approvals.none_pending",
+                cx,
+            ))
             .children(pending.iter().map(|g| pending_row(store, g, &sink, cx)))
             .child(section("dock.approvals.grants", cx))
             .when(decided.is_empty(), |col| col.child(empty_line("dock.approvals.none", cx)))

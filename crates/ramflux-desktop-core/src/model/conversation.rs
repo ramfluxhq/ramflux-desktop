@@ -74,7 +74,7 @@ pub enum ContextKind {
     Space,
 }
 
-/// Member role in a group or space.
+/// Member role in a group or space: exactly the daemon's roles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Role {
     /// Owner.
@@ -83,8 +83,8 @@ pub enum Role {
     Admin,
     /// Regular member.
     Member,
-    /// Guest with limited rights.
-    Guest,
+    /// A bot member (an agent admitted to the group).
+    Bot,
 }
 
 /// Disappearing-message timer of a context.

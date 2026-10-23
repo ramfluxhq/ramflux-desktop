@@ -25,7 +25,7 @@ pub enum SyncDirection {
 /// Every intent kind.
 ///
 /// Kinds that carry a [`SecretInput`] (unlock, create, activate, restore,
-/// passphrase rotation) are excluded from serde: serializing them is an error
+/// backup export, passphrase rotation) are excluded from serde: serializing them is an error
 /// and they cannot be deserialized.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum IntentKind {
@@ -249,12 +249,15 @@ pub enum IntentKind {
         /// New passphrase.
         next: SecretInput,
     },
-    /// Export an encrypted backup to a local path.
+    /// Export an encrypted backup to a local path. Not serializable.
+    #[serde(skip)]
     ExportBackup {
         /// Account.
         account_id: AccountId,
         /// Local path chosen by the user.
         path: String,
+        /// Passphrase the backup is encrypted with.
+        secret: SecretInput,
     },
     /// Revoke one of the account's devices (needs a hold).
     RevokeDevice {

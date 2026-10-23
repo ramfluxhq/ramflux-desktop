@@ -10,8 +10,9 @@ use crate::ids::{
 };
 use crate::model::{
     Account, AuditEntry, Block, Capabilities, Context, DaemonInfo, Device, Disappearing,
-    EffectFailure, Grant, GrantState, Integrations, Lifecycle, LockState, Moment, MomentKind, Node,
-    NodeHealth, NodeProbe, Object, Participant, StandingApproval, SurfaceAction, Task,
+    EffectFailure, Grant, GrantState, Integrations, Lifecycle, Listing, LockState, Moment,
+    MomentKind, Node, NodeHealth, NodeProbe, Object, Participant, StandingApproval, SurfaceAction,
+    Task,
 };
 
 /// Schema tag carried by every envelope. The store rejects any other value.
@@ -203,4 +204,6 @@ pub enum DomainEvent {
     DaemonInfoUpdated(DaemonInfo),
     /// An effect could not be performed. Changes no domain entity.
     EffectFailed(EffectFailure),
+    /// The source answered these collections in full (each may be empty).
+    ListingsLoaded(Vec<Listing>),
 }

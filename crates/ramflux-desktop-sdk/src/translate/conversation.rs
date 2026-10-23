@@ -23,7 +23,7 @@ fn role(name: &str) -> Role {
     match name {
         "owner" => Role::Owner,
         "admin" => Role::Admin,
-        // `member` and `bot`; the desktop has no bot role.
+        "bot" => Role::Bot,
         _ => Role::Member,
     }
 }
@@ -36,7 +36,8 @@ impl Translator {
             // The daemon lists no titles; the id is shown.
             title: id.to_string(),
             participants: self.self_device.iter().map(ParticipantId::new).collect(),
-            pinned: self.pinned.contains(id),
+            // Pins are restored in pin order once the lists are known.
+            pinned: false,
             unread: 0,
             muted: false,
             disappearing_secs: None,
@@ -55,8 +56,9 @@ impl Translator {
     }
 
     fn remove_context(&mut self, id: &ContextId) -> DomainEvent {
+        // A removed context keeps its pin: should it come back, it is
+        // restored pinned.
         self.contexts.remove(id);
-        self.pinned.remove(id);
         self.moments.retain(|_, m| &m.context_id != id);
         DomainEvent::ContextRemoved { context_id: id.clone() }
     }
@@ -69,15 +71,20 @@ impl Translator {
             if row["is_archived"].as_bool().unwrap_or(false) || self.context_kind_is_group(&id) {
                 continue;
             }
-            if !row["pin_order"].is_null() && !self.contexts.contains_key(&id) {
-                self.pinned.insert(id.clone());
+            // A conversation the daemon reports pinned is adopted only
+            // while the desktop has no pins of its own recorded.
+            if !self.pins_recorded
+                && !row["pin_order"].is_null()
+                && !self.contexts.contains_key(&id)
+            {
+                self.add_pin(&id);
             }
             let context = match self.contexts.get(&id) {
                 Some(known) => known.clone(),
                 None => self.new_context(&id, ContextKind::Direct),
             };
             out.events.extend(self.put_context(context));
-            if self.pinned.contains(&id) || self.focus.as_ref() == Some(&id) {
+            if self.pins.contains(&id) || self.focus.as_ref() == Some(&id) {
                 out.follow.push(Fetch::Messages(id.clone()));
             }
             listed.push(id);
@@ -259,15 +266,43 @@ impl Translator {
         }
     }
 
+    fn add_pin(&mut self, context: &ContextId) {
+        if !self.pins.contains(context) {
+            self.pins.push(context.clone());
+            self.pins_changed = true;
+        }
+    }
+
     /// Applies a desktop-local pin (the daemon has no pin method) and
     /// returns the settings event.
     pub(super) fn local_pin(&mut self, context: &ContextId, pinned: bool) -> Vec<DomainEvent> {
-        let Some(mut ctx) = self.contexts.get(context).cloned() else { return Vec::new() };
-        if pinned {
-            self.pinned.insert(context.clone());
-        } else {
-            self.pinned.remove(context);
+        if !self.contexts.contains_key(context) {
+            return Vec::new();
         }
+        if pinned {
+            self.add_pin(context);
+        } else if self.pins.contains(context) {
+            self.pins.retain(|id| id != context);
+            self.pins_changed = true;
+        }
+        self.pins_recorded = true;
+        self.show_pin(context, pinned)
+    }
+
+    /// Marks known, not yet pinned contexts of the persisted pins as pinned,
+    /// in pin order. Called after the snapshot and when the lists change.
+    pub fn restore_pins(&mut self) -> Vec<DomainEvent> {
+        let due: Vec<ContextId> = self
+            .pins
+            .iter()
+            .filter(|id| self.contexts.get(*id).is_some_and(|c| !c.pinned))
+            .cloned()
+            .collect();
+        due.iter().flat_map(|id| self.show_pin(id, true)).collect()
+    }
+
+    fn show_pin(&mut self, context: &ContextId, pinned: bool) -> Vec<DomainEvent> {
+        let Some(mut ctx) = self.contexts.get(context).cloned() else { return Vec::new() };
         ctx.pinned = pinned;
         self.contexts.insert(context.clone(), ctx);
         vec![DomainEvent::ContextSettingsChanged {

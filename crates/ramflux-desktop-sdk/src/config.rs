@@ -26,6 +26,9 @@ pub struct SdkConfig {
     pub poll_slow: Duration,
     /// Wait before re-attaching after the daemon went away.
     pub reconnect_backoff: Duration,
+    /// The desktop settings file holding pinned contexts; `None` keeps pins
+    /// in memory only.
+    pub settings_path: Option<PathBuf>,
 }
 
 impl SdkConfig {
@@ -38,6 +41,7 @@ impl SdkConfig {
             poll_fast: Duration::from_millis(1_500),
             poll_slow: Duration::from_secs(12),
             reconnect_backoff: Duration::from_secs(2),
+            settings_path: None,
         }
     }
 }

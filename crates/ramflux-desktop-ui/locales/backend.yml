@@ -37,12 +37,6 @@ backend:
     device_sync:
       en: "Device sync needs a relay route and a target device the desktop cannot choose yet."
       zh-CN: "设备同步需要中继路由和目标设备，桌面端暂不能选择。"
-    backup_passphrase:
-      en: "Backups are encrypted with a passphrase the desktop does not ask for yet."
-      zh-CN: "备份需用口令加密，桌面端暂不询问口令。"
-    guest_role:
-      en: "The daemon has no guest role."
-      zh-CN: "守护进程没有访客角色。"
   message:
     encrypted_at_rest:
       en: "This message is stored encrypted; its text is shown only when it is received or sent here."

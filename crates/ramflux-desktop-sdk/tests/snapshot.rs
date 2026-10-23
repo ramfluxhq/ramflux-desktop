@@ -8,9 +8,9 @@ mod common;
 
 use common::*;
 use ramflux_desktop_core::{
-    AccountId, ContextId, ContextKind, DomainEvent, GrantId, GrantState, LockState, MomentId,
-    MomentKind, NodeId, ParticipantId, PinSource, Receipt, Role, SourceStatus, StandingApprovalId,
-    methods,
+    AccountId, ContextId, ContextKind, DomainEvent, GrantId, GrantState, ListState, Listing,
+    LockState, MomentId, MomentKind, NodeId, ParticipantId, PinSource, Receipt, Role, SourceStatus,
+    StandingApprovalId, methods,
 };
 
 #[test]
@@ -22,11 +22,20 @@ fn an_empty_daemon_reaches_the_node_step_with_its_real_status() {
     });
     let hub = hub(&path);
     let mut daemon = Fed::new(hub.daemon_source());
-    daemon.until("connected", |s, _| s.source_status() == SourceStatus::Connected);
+    daemon.until("connected and listed", |s, _| {
+        s.source_status() == SourceStatus::Connected
+            && s.is_listed(Listing::Nodes)
+            && s.is_listed(Listing::Accounts)
+    });
     let info = daemon.store.daemon().cloned().expect("daemon info");
     assert_eq!(info.socket_path, "/tmp/ramflux-f2/rfd.sock");
     assert_eq!(info.open_accounts, 0);
     assert_eq!(daemon.store.nodes().count(), 0, "an empty node list");
+    assert_eq!(
+        ListState::of(daemon.store.is_listed(Listing::Nodes), true),
+        ListState::Empty,
+        "an answered empty node list is empty, not loading"
+    );
     assert_eq!(daemon.store.accounts().count(), 0);
     assert!(daemon.store.unsupported_reason(methods::TASK_START).is_some());
     assert!(daemon.store.unsupported_reason(methods::NODE_ADD).is_none());
@@ -66,6 +75,11 @@ fn the_account_scope_maps_conversations_groups_messages_and_grants() {
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     account.until("messages of the pinned conversation", |s, _| {
         s.moment(&MomentId::new("msg:dm-ana:m2")).is_some()
+    });
+    account.until("every account listing", |s, _| {
+        [Listing::Contexts, Listing::Contacts, Listing::Approvals, Listing::Objects]
+            .into_iter()
+            .all(|l| s.is_listed(l))
     });
     let store = &account.store;
     let me = store.account(&AccountId::new("acct-main")).cloned().expect("account");

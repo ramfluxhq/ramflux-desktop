@@ -180,13 +180,6 @@ pub enum UiEventKind {
         /// Account.
         account_id: AccountId,
     },
-    /// Backup export requested.
-    ExportBackupRequested {
-        /// Account.
-        account_id: AccountId,
-        /// Local path.
-        path: String,
-    },
     /// Revoke pressed on a device.
     RevokeDevicePressed {
         /// Device.

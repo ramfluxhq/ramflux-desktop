@@ -14,7 +14,7 @@ mod changes;
 mod reducer;
 mod surface_ops;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::event::{EVENT_SCHEMA, EventEnvelope, SourceStatus};
 use crate::ids::{
@@ -23,7 +23,7 @@ use crate::ids::{
 };
 use crate::model::{
     Account, AuditEntry, Capabilities, Context, DaemonInfo, Device, EffectFailure, Grant,
-    Integrations, Moment, Node, Object, Participant, StandingApproval, Task,
+    Integrations, Listing, Moment, Node, Object, Participant, StandingApproval, Task,
 };
 
 pub use changes::{ApplyError, Changes, Rejection};
@@ -56,6 +56,7 @@ pub struct Store {
     daemon: Option<DaemonInfo>,
     failures: Vec<EffectFailure>,
     pin_order: Vec<ContextId>,
+    listed: BTreeSet<Listing>,
     needs_me_since: BTreeMap<MomentId, Timestamp>,
     source_status: SourceStatus,
     last_seq: u64,
@@ -121,6 +122,12 @@ impl Store {
     /// Most recent rejections, oldest first, at most [`MAX_REJECTIONS`].
     pub fn rejections(&self) -> &[Rejection] {
         &self.rejections
+    }
+
+    /// Whether the source has listed `listing` (so an empty collection is
+    /// empty, not still loading).
+    pub fn is_listed(&self, listing: Listing) -> bool {
+        self.listed.contains(&listing)
     }
 
     /// Pinned contexts in the order they were pinned.

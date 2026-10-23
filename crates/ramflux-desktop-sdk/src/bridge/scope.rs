@@ -34,6 +34,7 @@ use crate::bus::lane::Lane;
 use crate::bus::subscription::{self, Pushed};
 use crate::capabilities;
 use crate::config::SdkConfig;
+use crate::pins::PinStore;
 use crate::plan::fetch::Fetch;
 use crate::plan::{Plan, plan};
 use crate::translate::{Scope, Translator};
@@ -66,6 +67,7 @@ struct Task {
     scope: Scope,
     lane: Lane,
     translator: Translator,
+    pins: PinStore,
     outbox: std_mpsc::Sender<Delivery>,
     internal: mpsc::UnboundedSender<Internal>,
     pushed: mpsc::UnboundedSender<Pushed>,
@@ -93,9 +95,15 @@ pub(crate) async fn run(
     let lane =
         Lane::spawn(config.socket_path.clone(), config.request_connections, config.request_timeout);
     let start = Instant::now();
+    let pins = PinStore::new(config.settings_path.clone());
+    let mut translator = Translator::new(scope.clone(), socket);
+    if let Some(recorded) = scope.account().and_then(|account| pins.load(account)) {
+        translator.set_pins(recorded);
+    }
     let mut task = Task {
         interval: config.poll_fast,
-        translator: Translator::new(scope.clone(), socket),
+        translator,
+        pins,
         config,
         scope,
         lane,
@@ -230,6 +238,23 @@ impl Task {
         self.emit(events);
     }
 
+    /// Marks the persisted pins on contexts that are known now.
+    fn restore_pins(&mut self) {
+        let events = self.translator.restore_pins();
+        self.emit(events);
+        self.persist_pins();
+    }
+
+    /// Saves the pins when they changed (a local pin, or one the daemon
+    /// reported).
+    fn persist_pins(&mut self) {
+        if let Some(account) = self.scope.account()
+            && self.translator.take_pins_changed()
+        {
+            self.pins.save(account, self.translator.pins());
+        }
+    }
+
     fn spawn_fetches(&self, fetches: Vec<Fetch>) {
         for fetch in fetches {
             let lane = self.lane.clone();
@@ -277,6 +302,9 @@ impl Task {
                 if self.on_read(&fetch, result) && self.polls_in_flight > 0 {
                     self.poll_changed = true;
                 }
+                if matches!(fetch, Fetch::ConversationList | Fetch::GroupList) {
+                    self.restore_pins();
+                }
             }
             Internal::PollDone => {
                 self.polls_in_flight = self.polls_in_flight.saturating_sub(1);
@@ -306,6 +334,10 @@ impl Task {
         for (fetch, result) in results {
             self.on_read(&fetch, result);
         }
+        // Every list is known now, so pins come back in their saved order.
+        self.restore_pins();
+        let done = self.translator.snapshot_done();
+        self.emit(done);
         if self.link == Link::Live {
             self.interval = self.config.poll_fast;
             self.next_poll = Instant::now() + self.interval;
@@ -380,6 +412,7 @@ impl Task {
             Plan::Local => {
                 let events = self.translator.local(&method, &body);
                 self.emit(events);
+                self.persist_pins();
             }
             Plan::Diagnostics { path } => {
                 let lane = self.lane.clone();

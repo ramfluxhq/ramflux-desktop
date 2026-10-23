@@ -16,7 +16,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Context, Entity, EventEmitter, IntoElement, Render, SharedString, Subscription, Window, div,
 };
-use ramflux_desktop_core::{ContextId, ContextKind, Lifecycle, Store, selectors};
+use ramflux_desktop_core::{ContextId, ContextKind, Lifecycle, Listing, Store, selectors};
 
 use crate::actions::OpenPalette;
 use crate::app::{StoreEvent, StoreHandle};
@@ -108,7 +108,13 @@ impl Render for ContextStack {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let store = self.store.read(cx).store();
         let rows = entries(store, self.current.as_ref());
-        let others = store.contexts().count().saturating_sub(rows.len());
+        let total = store.contexts().count();
+        let others = total.saturating_sub(rows.len());
+        // Nothing stacked: tell "still loading" from "no conversations".
+        let placeholder = rows.is_empty().then(|| {
+            let state = crate::list_state::of(store, Listing::Contexts, total == 0);
+            crate::list_state::placeholder("stack-list-state", state, "stack.empty", cx)
+        });
         let has_others = others > 0;
         let theme = cx.theme();
         let (muted, warning, border, sidebar) =
@@ -167,6 +173,7 @@ impl Render for ContextStack {
             .border_color(border)
             .child(div().px_2().py_1().text_xs().text_color(muted).child(tr("stack.title")))
             .children(list)
+            .children(placeholder.flatten())
             .child(div().flex_1())
             .child(
                 Button::new("stack-search")

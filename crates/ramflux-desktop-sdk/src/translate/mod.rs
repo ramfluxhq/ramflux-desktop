@@ -27,8 +27,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ramflux_desktop_core::{
     Account, AccountId, Context, ContextId, ContextKind, DeviceId, DomainEvent, GrantId,
-    GrantState, Moment, MomentId, NodeId, ParticipantId, StandingApproval, StandingApprovalId,
-    Timestamp,
+    GrantState, Listing, Moment, MomentId, NodeId, ParticipantId, StandingApproval,
+    StandingApprovalId, Timestamp,
 };
 use serde_json::Value;
 
@@ -82,7 +82,9 @@ pub struct Translator {
     devices: BTreeMap<DeviceId, ramflux_desktop_core::Device>,
     participants: BTreeMap<ParticipantId, bool>,
     contexts: BTreeMap<ContextId, Context>,
-    pinned: BTreeSet<ContextId>,
+    pins: Vec<ContextId>,
+    pins_recorded: bool,
+    pins_changed: bool,
     moments: BTreeMap<MomentId, Moment>,
     plaintext: BTreeMap<String, String>,
     grants: BTreeMap<GrantId, GrantState>,
@@ -90,6 +92,8 @@ pub struct Translator {
     standing: BTreeMap<StandingApprovalId, StandingApproval>,
     integrations: Option<ramflux_desktop_core::Integrations>,
     focus: Option<ContextId>,
+    listed: BTreeSet<Listing>,
+    answered: BTreeSet<Fetch>,
 }
 
 impl Translator {
@@ -106,7 +110,9 @@ impl Translator {
             devices: BTreeMap::new(),
             participants: BTreeMap::new(),
             contexts: BTreeMap::new(),
-            pinned: BTreeSet::new(),
+            pins: Vec::new(),
+            pins_recorded: false,
+            pins_changed: false,
             moments: BTreeMap::new(),
             plaintext: BTreeMap::new(),
             grants: BTreeMap::new(),
@@ -114,6 +120,8 @@ impl Translator {
             standing: BTreeMap::new(),
             integrations: None,
             focus: None,
+            listed: BTreeSet::new(),
+            answered: BTreeSet::new(),
         }
     }
 
@@ -127,9 +135,27 @@ impl Translator {
         self.focus = context;
     }
 
+    /// Seeds the pins recorded in the desktop settings (pin order). Once
+    /// the desktop has a record, it wins over pins the daemon reports.
+    pub fn set_pins(&mut self, pins: Vec<ContextId>) {
+        self.pins = pins;
+        self.pins_recorded = true;
+        self.pins_changed = false;
+    }
+
+    /// The pinned contexts in pin order.
+    pub fn pins(&self) -> &[ContextId] {
+        &self.pins
+    }
+
+    /// Whether the pins changed since the last call (they need saving).
+    pub fn take_pins_changed(&mut self) -> bool {
+        std::mem::take(&mut self.pins_changed)
+    }
+
     /// Contexts to keep fresh: the focused one and the pinned ones.
     pub fn watched(&self) -> Vec<(ContextId, ContextKind)> {
-        let mut ids: BTreeSet<&ContextId> = self.pinned.iter().collect();
+        let mut ids: BTreeSet<&ContextId> = self.pins.iter().collect();
         ids.extend(self.focus.iter());
         ids.into_iter()
             .filter_map(|id| self.contexts.get(id).map(|c| (id.clone(), c.kind)))
@@ -149,6 +175,50 @@ impl Translator {
 
     /// Translates one read.
     pub fn fetched(&mut self, fetch: &Fetch, value: &Value, now: Timestamp) -> Translated {
+        let mut out = self.translate(fetch, value, now);
+        out.events.extend(self.listing_answered(fetch));
+        out
+    }
+
+    /// The listings a read completes, the first time it is answered.
+    fn listing_answered(&mut self, fetch: &Fetch) -> Option<DomainEvent> {
+        if matches!(fetch, Fetch::ConversationList | Fetch::GroupList) {
+            self.answered.insert(fetch.clone());
+        }
+        let listing = match fetch {
+            Fetch::NodeList => Listing::Nodes,
+            Fetch::AccountList => Listing::Accounts,
+            // Contexts are conversations and groups: listed once both answered.
+            Fetch::ConversationList | Fetch::GroupList
+                if self.answered.contains(&Fetch::ConversationList)
+                    && self.answered.contains(&Fetch::GroupList) =>
+            {
+                Listing::Contexts
+            }
+            Fetch::ContactList => Listing::Contacts,
+            Fetch::Approvals => Listing::Approvals,
+            _ => return None,
+        };
+        self.listed(&[listing])
+    }
+
+    /// `ListingsLoaded` for those of `listings` not reported yet.
+    fn listed(&mut self, listings: &[Listing]) -> Option<DomainEvent> {
+        let fresh: Vec<Listing> =
+            listings.iter().copied().filter(|l| self.listed.insert(*l)).collect();
+        (!fresh.is_empty()).then_some(DomainEvent::ListingsLoaded(fresh))
+    }
+
+    /// The account's snapshot is complete. The daemon lists no objects (gap
+    /// ledger), so the objects collection is known to be empty from here.
+    pub fn snapshot_done(&mut self) -> Vec<DomainEvent> {
+        if self.scope.account().is_none() {
+            return Vec::new();
+        }
+        self.listed(&[Listing::Objects]).into_iter().collect()
+    }
+
+    fn translate(&mut self, fetch: &Fetch, value: &Value, now: Timestamp) -> Translated {
         match fetch {
             Fetch::DaemonStatus => Translated::events(self.daemon_status(value)),
             Fetch::NodeList => Translated::events(self.node_list(value)),

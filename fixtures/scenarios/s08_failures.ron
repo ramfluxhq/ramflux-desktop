@@ -12,6 +12,7 @@
     description: "Daemon disconnect, unhealthy node, failed transfer, render fallback",
     timeline: [
         (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
         (0, NodeUpserted(id: "n-harbor", endpoints: ["quic://harbor.example.net:7443"], pin_source: Invite, health: Healthy)),
         (0, AccountUpdated(id: "local", label: "Local", lock_state: Unlocked, self_participant_id: "p-me")),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),

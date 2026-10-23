@@ -86,7 +86,7 @@ pub fn role(role: Role) -> SharedString {
         Role::Owner => "role.owner",
         Role::Admin => "role.admin",
         Role::Member => "role.member",
-        Role::Guest => "role.guest",
+        Role::Bot => "role.bot",
     })
 }
 

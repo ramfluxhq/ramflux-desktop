@@ -15,7 +15,8 @@ use std::time::Duration;
 
 use common::*;
 use gpui_kit::TestAppContext;
-use ramflux_desktop_core::{AccountId, ContextId, SourceStatus};
+use gpui_kit::test::TestWindowExt as _;
+use ramflux_desktop_core::{AccountId, ContextId, Listing, SourceStatus};
 use ramflux_desktop_sdk::SdkConfig;
 use ramflux_desktop_test::fake_bus::{FakeBus, Reply, socket_path};
 use ramflux_desktop_ui::route::{EntryStep, Page};
@@ -70,6 +71,13 @@ fn an_empty_daemon_shows_the_node_step_with_its_status(cx: &mut TestAppContext) 
     });
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Node), "no node yet");
     assert!(exists(cx, handle, "entry-daemon-info"), "the daemon's socket and accounts show");
+    wait(cx, "nodes listed", |cx| with_store(cx, &shell, |s| s.is_listed(Listing::Nodes)));
+    assert!(exists(cx, handle, "entry-node-empty"), "an empty node list is an explicit state");
+    assert!(!exists(cx, handle, "entry-node-loading"), "no perpetual spinner");
+    let label = in_window(cx, handle, |window, _| {
+        window.find("entry-node-empty").label().map(str::to_owned)
+    });
+    assert_eq!(label.as_deref(), Some(ramflux_desktop_ui::i18n::tr("entry.node.none").as_ref()));
     assert!(cx.update(|cx| shell.read(cx).store().read(cx).is_live()));
     fake.shutdown();
 }

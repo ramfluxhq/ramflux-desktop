@@ -10,6 +10,10 @@ locale:
   chinese:
     en: "简体中文"
     zh-CN: "简体中文"
+list:
+  loading:
+    en: "Loading…"
+    zh-CN: "正在加载…"
 common:
   cancel:
     en: "Cancel"
@@ -143,9 +147,9 @@ role:
   member:
     en: "Member"
     zh-CN: "成员"
-  guest:
-    en: "Guest"
-    zh-CN: "访客"
+  bot:
+    en: "Bot"
+    zh-CN: "机器人"
 safety:
   unverified:
     en: "Not verified"

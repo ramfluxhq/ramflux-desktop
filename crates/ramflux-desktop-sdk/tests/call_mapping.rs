@@ -97,6 +97,19 @@ fn entry_and_node_methods_map_to_daemon_requests() {
         (m.as_str(), b),
         ("account.backup.import", json!({ "input_path": "/b", "passphrase": "pw" }))
     );
+    let (m, a, b, _) = mapped(secret(
+        methods::ACCOUNT_BACKUP_EXPORT,
+        json!({ "account_id": "acct-main", "path": "/out.backup" }),
+        &["pw"],
+    ));
+    assert_eq!(
+        (m.as_str(), a.as_deref(), b),
+        (
+            "account.backup.export",
+            Some("acct-main"),
+            json!({ "output_path": "/out.backup", "passphrase": "pw" })
+        )
+    );
     let (m, a, _, _) = mapped(call(methods::ACCOUNT_LOCK, json!({ "account_id": "acct-main" })));
     assert_eq!((m.as_str(), a.as_deref()), ("account.lock", Some("acct-main")));
     let (m, _, b, _) = mapped(secret(
@@ -188,6 +201,11 @@ fn account_methods_map_to_daemon_requests() {
         json!({ "context_id": "g-team", "participant_id": "device-bo", "role": "Admin" }),
     ));
     assert_eq!((m.as_str(), b["role"].clone()), ("group.role.set", json!("admin")));
+    let (_, _, b, _) = mapped(call(
+        methods::GROUP_SET_ROLE,
+        json!({ "context_id": "g-team", "participant_id": "device-bo", "role": "Bot" }),
+    ));
+    assert_eq!(b["role"], "bot");
 }
 
 #[test]
@@ -216,7 +234,7 @@ fn local_and_unsupported_methods_never_reach_the_daemon() {
         &Fake,
     );
     assert!(matches!(direct.plan, Plan::Refuse { code: FailureCode::UnsupportedByBackend, .. }));
-    let guest = plan(
+    let unknown_role = plan(
         Some(&account),
         call(
             methods::GROUP_SET_ROLE,
@@ -224,7 +242,10 @@ fn local_and_unsupported_methods_never_reach_the_daemon() {
         ),
         &Fake,
     );
-    assert!(matches!(guest.plan, Plan::Refuse { code: FailureCode::UnsupportedByBackend, .. }));
+    assert!(
+        matches!(unknown_role.plan, Plan::Refuse { code: FailureCode::Daemon(_), .. }),
+        "the desktop has exactly the daemon's roles"
+    );
     let no_account = plan(None, call(methods::GRANT_APPROVE, json!({ "grant_id": "a" })), &Fake);
     assert!(matches!(no_account.plan, Plan::Refuse { .. }));
 }

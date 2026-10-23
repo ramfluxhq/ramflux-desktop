@@ -12,10 +12,9 @@ use gpui_kit::{
     AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div, px,
 };
 use ramflux_desktop_core::{
-    Direction, Object, ObjectAction, TransferState, UiEventKind, selectors,
+    Direction, Listing, Object, ObjectAction, TransferState, UiEventKind, selectors,
 };
 
-use super::empty_line;
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr};
@@ -159,12 +158,19 @@ impl ObjectsDock {
 
 impl Render for ObjectsDock {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let empty = selectors::objects(self.store.read(cx).store()).is_empty();
+        let store = self.store.read(cx).store();
+        let empty = selectors::objects(store).is_empty();
+        let state = crate::list_state::of(store, Listing::Objects, empty);
         v_flex()
             .id("dock-objects")
             .size_full()
             .min_h_0()
-            .when(empty, |col| col.child(empty_line("dock.objects.empty", cx)))
+            .children(crate::list_state::placeholder(
+                "objects-list-state",
+                state,
+                "dock.objects.empty",
+                cx,
+            ))
             .when(!empty, |col| {
                 col.child(
                     h_flex()

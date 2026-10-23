@@ -44,9 +44,10 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::CapabilitiesUpdated(_) => "CapabilitiesUpdated",
         DomainEvent::DaemonInfoUpdated(_) => "DaemonInfoUpdated",
         DomainEvent::EffectFailed(_) => "EffectFailed",
+        DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 28;
+const DOMAIN_EVENT_VARIANTS: usize = 29;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -96,7 +97,6 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::AddNode { .. } => "AddNode",
         IntentKind::ConfirmNode { .. } => "ConfirmNode",
         IntentKind::LockAccount { .. } => "LockAccount",
-        IntentKind::ExportBackup { .. } => "ExportBackup",
         IntentKind::RevokeDevice { .. } => "RevokeDevice",
         IntentKind::SyncDevices { .. } => "SyncDevices",
         IntentKind::ProbeNode { .. } => "ProbeNode",
@@ -108,11 +108,12 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         | IntentKind::CreateAccount { .. }
         | IntentKind::ActivateDevice { .. }
         | IntentKind::RestoreBackup { .. }
+        | IntentKind::ExportBackup { .. }
         | IntentKind::RotatePassphrase { .. } => "secret",
     }
 }
-/// Serializable intent variants (all but the five secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 35;
+/// Serializable intent variants (all but the six secret-carrying kinds).
+const SERIALIZABLE_INTENT_VARIANTS: usize = 34;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -140,7 +141,6 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::ConfirmNodePressed { .. } => "ConfirmNodePressed",
         UiEventKind::NodeActionPressed { .. } => "NodeActionPressed",
         UiEventKind::LockPressed { .. } => "LockPressed",
-        UiEventKind::ExportBackupRequested { .. } => "ExportBackupRequested",
         UiEventKind::RevokeDevicePressed { .. } => "RevokeDevicePressed",
         UiEventKind::DeviceSyncRequested { .. } => "DeviceSyncRequested",
         UiEventKind::DiagnosticsExportRequested { .. } => "DiagnosticsExportRequested",
@@ -148,7 +148,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 30;
+const UI_EVENT_KIND_VARIANTS: usize = 29;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -357,6 +357,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             socket_path: "/tmp/rfd.sock".to_owned(),
             open_accounts: 1,
         }),
+        DomainEvent::ListingsLoaded(Listing::ALL.to_vec()),
         DomainEvent::EffectFailed(EffectFailure {
             method: "grant.approve".to_owned(),
             code: FailureCode::Daemon("ValidationFailed".to_owned()),
@@ -413,7 +414,6 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::AddNode { url: "https://node.example.test".into() },
         IntentKind::ConfirmNode { node_id: NodeId::new("n-1"), pin_source: PinSource::Manual },
         IntentKind::LockAccount { account_id: AccountId::new("a-1") },
-        IntentKind::ExportBackup { account_id: AccountId::new("a-1"), path: "/tmp/b".into() },
         IntentKind::RevokeDevice { device_id: DeviceId::new("dev-2") },
         IntentKind::SyncDevices { direction: SyncDirection::Export, path: "/tmp/s".into() },
         IntentKind::ProbeNode { node_id: NodeId::new("n-1") },
@@ -458,10 +458,6 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
             action: NodeAction::SetEnabled(false),
         },
         UiEventKind::LockPressed { account_id: AccountId::new("a-1") },
-        UiEventKind::ExportBackupRequested {
-            account_id: AccountId::new("a-1"),
-            path: "/tmp/b".into(),
-        },
         UiEventKind::RevokeDevicePressed { device_id: DeviceId::new("dev-2") },
         UiEventKind::DeviceSyncRequested {
             direction: SyncDirection::Import,
@@ -536,6 +532,11 @@ fn secret_intents_refuse_to_serialize() {
             code: secret(),
         },
         IntentKind::RestoreBackup { path: "/tmp/b".into(), secret: secret() },
+        IntentKind::ExportBackup {
+            account_id: AccountId::new("a-1"),
+            path: "/tmp/b".into(),
+            secret: secret(),
+        },
         IntentKind::RotatePassphrase {
             account_id: AccountId::new("a-1"),
             current: secret(),
@@ -547,7 +548,14 @@ fn secret_intents_refuse_to_serialize() {
         let intent = Intent::human(kind);
         assert!(serde_json::to_string(&intent).is_err(), "secret intents must not serialize");
     }
-    for name in ["Unlock", "CreateAccount", "ActivateDevice", "RestoreBackup", "RotatePassphrase"] {
+    for name in [
+        "Unlock",
+        "CreateAccount",
+        "ActivateDevice",
+        "RestoreBackup",
+        "ExportBackup",
+        "RotatePassphrase",
+    ] {
         let text = format!(r#"{{"{name}":{{"account_id":"a-1"}}}}"#);
         assert!(serde_json::from_str::<IntentKind>(&text).is_err(), "{name} must not deserialize");
     }

@@ -150,7 +150,8 @@ fn take_secrets(kind: IntentKind) -> Vec<SecretInput> {
     match kind {
         IntentKind::Unlock { secret, .. }
         | IntentKind::CreateAccount { secret, .. }
-        | IntentKind::RestoreBackup { secret, .. } => vec![secret],
+        | IntentKind::RestoreBackup { secret, .. }
+        | IntentKind::ExportBackup { secret, .. } => vec![secret],
         IntentKind::ActivateDevice { code, .. } => vec![code],
         IntentKind::RotatePassphrase { current, next, .. } => vec![current, next],
         _ => Vec::new(),

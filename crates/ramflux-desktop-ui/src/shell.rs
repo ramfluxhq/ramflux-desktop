@@ -35,6 +35,9 @@ use crate::workspace::{DockTool, PrefsStore, StatusStrip, Workspace};
 /// Scenario played when the application starts.
 pub const DEFAULT_SCENARIO: &str = "s01_first_launch";
 
+/// File name of the desktop settings (pinned contexts) in the state directory.
+pub const DESKTOP_SETTINGS_FILE: &str = "desktop-settings.json";
+
 /// Where the data comes from.
 #[derive(Debug, Clone)]
 pub enum SourceChoice {
@@ -113,9 +116,21 @@ impl Shell {
     }
 
     /// The application window root on `source`: scenarios in real time
-    /// anchored to the wall clock, or the live daemon; the dock layout is
-    /// persisted.
+    /// anchored to the wall clock, or the live daemon; the dock layout and
+    /// (live) the pinned contexts are persisted.
     pub fn application(source: SourceChoice, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Pinned contexts persist in the desktop settings file beside the
+        // dock layout.
+        let source = match source {
+            SourceChoice::Rfd(mut config) => {
+                if config.settings_path.is_none() {
+                    config.settings_path = crate::workspace::docks::prefs::state_dir()
+                        .map(|dir| dir.join(DESKTOP_SETTINGS_FILE));
+                }
+                SourceChoice::Rfd(config)
+            }
+            SourceChoice::Mock => SourceChoice::Mock,
+        };
         let options = ShellOptions {
             source,
             scenario: DEFAULT_SCENARIO.to_owned(),

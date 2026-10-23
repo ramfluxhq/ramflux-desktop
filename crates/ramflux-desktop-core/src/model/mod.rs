@@ -17,6 +17,7 @@
 //! - [`grant`]: grants, standing approvals and the audit trail.
 //! - [`task`]: multi-step tasks.
 //! - [`integrations`]: read-only MCP and A2I snapshots.
+//! - [`listing`]: whether a collection was listed yet (loading vs empty).
 
 mod account;
 mod actor;
@@ -24,6 +25,7 @@ mod backend;
 mod conversation;
 mod grant;
 mod integrations;
+mod listing;
 mod moment;
 mod object;
 mod surface;
@@ -39,6 +41,7 @@ pub use conversation::{
 };
 pub use grant::{AuditEntry, Grant, GrantState, Risk, StandingApproval};
 pub use integrations::{A2iItem, Integrations, McpServer};
+pub use listing::{ListState, Listing};
 pub use moment::{
     AgentSurfacePayload, ConflictPayload, ConflictResolution, ConflictSide, ContactRequestPayload,
     FallbackPayload, GovernanceAction, GovernancePayload, HandoffPayload, InterventionPayload,

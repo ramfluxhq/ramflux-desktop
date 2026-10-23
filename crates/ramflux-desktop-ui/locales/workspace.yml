@@ -31,6 +31,9 @@ conversation:
   empty:
     en: "Nothing here yet"
     zh-CN: "这里还没有内容"
+  no_contexts:
+    en: "No conversations yet. A conversation appears here when a contact writes or you join a group."
+    zh-CN: "还没有对话。联系人发来消息或你加入群组后，对话会出现在这里。"
   members:
     en: "%{count} members"
     zh-CN: "%{count} 位成员"
@@ -80,6 +83,9 @@ stack:
   search_more:
     en: "Search %{count} more"
     zh-CN: "搜索其余 %{count} 个"
+  empty:
+    en: "No conversations yet"
+    zh-CN: "还没有对话"
 dock:
   title:
     objects:
