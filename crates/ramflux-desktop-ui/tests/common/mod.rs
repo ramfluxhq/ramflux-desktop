@@ -47,6 +47,32 @@ pub fn open(cx: &mut TestAppContext, scenario: &str) -> Opened {
     (handle, shell)
 }
 
+/// Opens the production window root set up by `options`.
+pub fn open_with(
+    cx: &mut TestAppContext,
+    options: ramflux_desktop_ui::shell::ShellOptions,
+) -> Opened {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        ramflux_desktop_ui::init(cx);
+    });
+    let (handle, shell) = cx.update(|cx| {
+        let bounds = Bounds { origin: Point::default(), size: size(px(1280.), px(860.)) };
+        let (window, shell) = gpui_kit::open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                ..Default::default()
+            },
+            cx,
+            move |window, cx| cx.new(|cx| Shell::with_options(options, window, cx)),
+        )
+        .expect("open window");
+        (window.downcast::<Root>().expect("Root"), shell)
+    });
+    cx.run_until_parked();
+    (handle, shell)
+}
+
 /// Moves the GPUI test clock (and so the scenario clock) forward.
 pub fn advance(cx: &mut TestAppContext, ms: u64) {
     cx.executor().advance_clock(Duration::from_millis(ms));

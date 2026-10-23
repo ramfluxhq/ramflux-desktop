@@ -5,7 +5,8 @@
 //!
 //! A tool opens when summoned from the rail or the command palette. A
 //! summoned tool closes again when the user moves to another context; a
-//! pinned tool stays open and reopens on the next launch ([`prefs`]).
+//! pinned tool stays open and reopens on the next launch, and the whole dock
+//! layout persists under a schema version ([`prefs`], [`layout`]).
 //! Every panel shares one frame ([`DockToolPanel`]: title, pin toggle) around
 //! its content view:
 //!
@@ -18,6 +19,7 @@
 pub mod approvals;
 pub mod contacts;
 pub mod evidence;
+pub mod layout;
 pub mod members;
 pub mod objects;
 pub mod prefs;
@@ -71,7 +73,8 @@ impl DockTool {
         }
     }
 
-    const fn panel_name(self) -> &'static str {
+    /// Dock engine panel name, used in persisted layouts.
+    pub const fn panel_name(self) -> &'static str {
         match self {
             Self::Objects => "ObjectsPanel",
             Self::Contacts => "ContactsPanel",

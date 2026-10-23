@@ -176,3 +176,54 @@ fn summoned_docks_close_on_context_change_and_pinned_docks_stay(cx: &mut TestApp
     assert_eq!(open_tool(cx), Some(DockTool::Objects), "a pinned tool stays open");
     assert!(effects(cx, &shell).is_empty(), "dock layout is view-local");
 }
+
+#[gpui_kit::test]
+fn the_whole_dock_layout_persists_and_restores_under_its_schema(cx: &mut TestAppContext) {
+    use ramflux_desktop_ui::shell::ShellOptions;
+    use ramflux_desktop_ui::workspace::{LAYOUT_SCHEMA, PrefsStore};
+
+    let dir = std::env::temp_dir().join(format!("ramflux-dock-layout-{}", std::process::id()));
+    let path = dir.join("dock-layout.json");
+    let _ = std::fs::remove_dir_all(&dir);
+    let options = ShellOptions {
+        prefs: PrefsStore::at(path.clone()),
+        ..ShellOptions::for_scenario("s02_daily", true)
+    };
+    let (handle, shell) = open_with(cx, options.clone());
+    advance(cx, 3_000);
+    click(cx, handle, "rail-approvals");
+    click(cx, handle, "dock-pin-approvals");
+    let saved: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("layout file")).expect("json");
+    assert_eq!(saved["schema"], LAYOUT_SCHEMA);
+    assert_eq!(saved["pinned"], "Approvals");
+    assert_eq!(saved["layout"]["version"], LAYOUT_SCHEMA);
+    let before = {
+        let workspace = workspace(cx, &shell);
+        cx.update(|cx| workspace.read(cx).dock_layout(cx))
+    };
+
+    // Only the dumped tree says 333 px; the separate width field says 420.
+    // Seeing 333 after relaunch proves the tree itself was loaded.
+    let mut edited = saved.clone();
+    edited["layout"]["right_dock"]["size"] = serde_json::json!(333.0);
+    edited["width"] = serde_json::json!(420.0);
+    std::fs::write(&path, edited.to_string()).expect("edit layout");
+
+    let (_, again) = open_with(cx, options);
+    advance(cx, 100);
+    let workspace = workspace(cx, &again);
+    let (open, after) =
+        cx.update(|cx| (workspace.read(cx).open_tool_kind(), workspace.read(cx).dock_layout(cx)));
+    assert_eq!(open, Some(DockTool::Approvals), "the pinned tool reopens");
+    let size = |state: &gpui_kit::component::dock::DockAreaState| {
+        state.right_dock.as_ref().map(|d| f32::from(d.size()))
+    };
+    assert_eq!(size(&after), Some(333.0), "the persisted tree is loaded, not rebuilt");
+    let panels = |state: &gpui_kit::component::dock::DockAreaState| {
+        state.right_dock.as_ref().map(|d| d.panel().clone())
+    };
+    assert_eq!(panels(&after), panels(&before), "tabs and the active tab restore");
+    assert_eq!(after.center.children, before.center.children, "the center tree restores");
+    let _ = std::fs::remove_dir_all(dir);
+}

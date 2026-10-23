@@ -39,7 +39,7 @@ use crate::root::{IntentRoot, RootEvent};
 pub use composer::{Composer, ComposerMode};
 pub use context_stack::{ContextStack, ContextStackEvent};
 pub use conversation::{Conversation, TIMERS, timer_label};
-pub use docks::prefs::{DockPrefs, PrefsStore};
+pub use docks::prefs::{DockPrefs, LAYOUT_SCHEMA, PrefsStore};
 pub use docks::{DockRail, DockTool, DockToolEvent, DockToolPanel};
 pub use status_strip::StatusStrip;
 
@@ -48,6 +48,9 @@ use docks::contacts::ContactsDock;
 use docks::evidence::EvidenceDock;
 use docks::members::MembersDock;
 use docks::objects::ObjectsDock;
+
+/// Dock engine panel name of the conversation field.
+const CONVERSATION_PANEL: &str = "Conversation";
 
 /// One dock tool: its frame entity and the handle the dock engine holds.
 struct ToolSlot {
@@ -120,9 +123,11 @@ impl Workspace {
             })
             .collect();
         let prefs = prefs_store.load();
-        let (dock_area, _skin) = DockSkin::dock_area("workspace-dock", Some(1), window, cx);
+        let conversation_handle = panel_handle(conversation.clone());
+        let (dock_area, _skin) =
+            DockSkin::dock_area("workspace-dock", docks::layout::engine_version(), window, cx);
         dock_area.update(cx, |area, cx| {
-            let center = DockLayout::tabs().panel_view(panel_handle(conversation.clone()), cx);
+            let center = DockLayout::tabs().panel_view(conversation_handle.clone(), cx);
             area.set_center(center, window, cx);
             let right = tools.iter().fold(DockLayout::tabs(), |layout, slot| {
                 layout.panel_view(slot.handle.clone(), cx)
@@ -130,6 +135,23 @@ impl Workspace {
             area.set_dock(DockPlacement::Right, right, window, cx);
             area.set_dock_collapsible(DockPlacement::Right, true, window, cx);
             area.set_dock_size(DockPlacement::Right, px(prefs.width), window, cx);
+        });
+        let mut named: Vec<(&'static str, Arc<dyn BasePanelView>)> =
+            vec![(CONVERSATION_PANEL, conversation_handle)];
+        named.extend(tools.iter().map(|slot| (slot.tool.panel_name(), slot.handle.clone())));
+        let names: Vec<&str> = named.iter().map(|(name, _)| *name).collect();
+        if let Some(layout) =
+            prefs.layout.clone().filter(|layout| docks::layout::restorable(layout, &names))
+        {
+            docks::layout::register_existing(&named, cx);
+            dock_area.update(cx, |area, cx| {
+                if area.load(layout, window, cx).is_ok() {
+                    area.set_dock_collapsible(DockPlacement::Right, true, window, cx);
+                }
+            });
+        }
+        // Summoned tools start closed; a pinned tool reopens below.
+        dock_area.update(cx, |area, cx| {
             if area.is_dock_open(DockPlacement::Right) {
                 area.toggle_dock(DockPlacement::Right, window, cx);
             }
@@ -158,12 +180,16 @@ impl Workspace {
                 }
             }),
             cx.subscribe(&dock_area, |this, area, event: &DockEvent, cx| {
-                if matches!(event, DockEvent::LayoutChanged)
-                    && let Some(width) = area.read(cx).dock_size(DockPlacement::Right)
-                    && (f32::from(width) - this.prefs.width).abs() >= 1.0
-                {
-                    this.prefs.width = f32::from(width);
-                    this.prefs_store.save(this.prefs);
+                if matches!(event, DockEvent::LayoutChanged) {
+                    let area = area.read(cx);
+                    if let Some(width) = area.dock_size(DockPlacement::Right) {
+                        this.prefs.width = f32::from(width);
+                    }
+                    let layout = Some(area.dump(cx));
+                    if layout != this.prefs.layout {
+                        this.prefs.layout = layout;
+                        this.prefs_store.save(&this.prefs);
+                    }
                 }
             }),
         ];
@@ -197,7 +223,7 @@ impl Workspace {
             _subscriptions: subscriptions,
         };
         workspace.ensure_current(window, cx);
-        if let Some(tool) = prefs.pinned {
+        if let Some(tool) = workspace.prefs.pinned {
             workspace.sync_pins(cx);
             workspace.open_tool(tool, window, cx);
         }
@@ -237,6 +263,11 @@ impl Workspace {
     /// The pinned dock tool.
     pub fn pinned_tool(&self) -> Option<DockTool> {
         self.prefs.pinned
+    }
+
+    /// The whole dock layout as the dock engine dumps it (what persists).
+    pub fn dock_layout(&self, cx: &App) -> gpui_kit::component::dock::DockAreaState {
+        self.dock_area.read(cx).dump(cx)
     }
 
     /// Shows a context, or nothing. A summoned (unpinned) tool closes.
@@ -352,7 +383,7 @@ impl Workspace {
     /// Pins a tool (it stays open across contexts and launches) or unpins it.
     pub fn toggle_pinned(&mut self, tool: DockTool, cx: &mut Context<Self>) {
         self.prefs.pinned = if self.prefs.pinned == Some(tool) { None } else { Some(tool) };
-        self.prefs_store.save(self.prefs);
+        self.prefs_store.save(&self.prefs);
         self.sync_pins(cx);
         cx.notify();
     }

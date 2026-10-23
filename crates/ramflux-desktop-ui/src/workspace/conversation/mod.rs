@@ -61,6 +61,7 @@ impl Focusable for Conversation {
 
 impl BasePanel for Conversation {
     fn panel_name(&self) -> &'static str {
+        // Must match the name the workspace persists layouts under.
         "Conversation"
     }
 
