@@ -30,8 +30,8 @@ impl Task {
         match planned.plan {
             Plan::Local => {
                 let events = self.translator.local(&method, &body);
-                self.emit(events);
                 self.persist_pins();
+                self.emit(events);
             }
             Plan::Refuse { code, message } => {
                 self.emit(vec![DomainEvent::EffectFailed(EffectFailure { method, code, message })]);

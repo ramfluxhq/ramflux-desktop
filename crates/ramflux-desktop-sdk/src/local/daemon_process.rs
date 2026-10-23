@@ -215,13 +215,19 @@ mod tests {
         dir
     }
 
-    /// A stand-in daemon: records its arguments, then waits.
+    /// A stand-in daemon: records its arguments, then waits. The arguments
+    /// are written to a temporary file and renamed into place, so the file
+    /// exists only once it is complete (a shell redirection creates it
+    /// empty first, and a reader polling for it could see it empty).
     fn fake_rf(dir: &Path) -> PathBuf {
         use std::os::unix::fs::PermissionsExt as _;
         let path = dir.join("rf");
+        let (partial, args) = (dir.join("args.partial"), dir.join("args"));
         let script = format!(
-            "#!/bin/sh\necho \"$@\" > '{}'\necho started\nexec sleep 30\n",
-            dir.join("args").display()
+            "#!/bin/sh\necho \"$@\" > '{}'\nmv '{}' '{}'\necho started\nexec sleep 30\n",
+            partial.display(),
+            partial.display(),
+            args.display()
         );
         std::fs::write(&path, script).expect("script");
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("mode");

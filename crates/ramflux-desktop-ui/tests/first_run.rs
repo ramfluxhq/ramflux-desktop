@@ -44,12 +44,16 @@ impl Fixture {
         Self { dir }
     }
 
-    /// A stand-in `rf`: records its arguments, then runs `then`.
+    /// A stand-in `rf`: records its arguments, then runs `then`. The
+    /// arguments are renamed into place once written, so `args` exists
+    /// only when complete.
     fn program(&self, then: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt as _;
         let path = self.dir.join("rf");
+        let (partial, args) = (self.dir.join("args.partial"), self.dir.join("args"));
+        let (partial, args) = (partial.display(), args.display());
         let script =
-            format!("#!/bin/sh\necho \"$@\" > '{}'\n{then}\n", self.dir.join("args").display());
+            format!("#!/bin/sh\necho \"$@\" > '{partial}'\nmv '{partial}' '{args}'\n{then}\n");
         std::fs::write(&path, script).expect("script");
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("mode");
         path

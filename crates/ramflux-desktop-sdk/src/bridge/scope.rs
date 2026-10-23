@@ -244,12 +244,14 @@ impl Task {
     /// Marks the persisted pins on contexts that are known now.
     fn restore_pins(&mut self) {
         let events = self.translator.restore_pins();
-        self.emit(events);
         self.persist_pins();
+        self.emit(events);
     }
 
     /// Saves the pins when they changed (a local pin, or one the daemon
-    /// reported).
+    /// reported). Called before the change is emitted: once the store shows
+    /// a pin order, the settings file already holds it (a reader of the
+    /// file, or a restart right after, never sees an older order).
     pub(super) fn persist_pins(&mut self) {
         if let Some(account) = self.scope.account()
             && self.translator.take_pins_changed()
