@@ -157,6 +157,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
         DomainEvent::NodeUpserted(Node {
             id: NodeId::new("n-1"),
             endpoints: vec!["quic://node.example.test:7443".to_owned()],
+            fingerprint: Some("SHA256:0011".to_owned()),
             pin_source: PinSource::Invite,
             health: NodeHealth::Healthy,
         }),

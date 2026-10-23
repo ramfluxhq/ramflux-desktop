@@ -45,7 +45,7 @@ The store keeps each entity in its own collection, keyed by id:
 | Entity | Key fields |
 |---|---|
 | `Account` | label, node, device, `lock_state` |
-| `Node` | endpoints, `pin_source`, `health` |
+| `Node` | endpoints, `fingerprint` (optional), `pin_source`, `health` |
 | `Participant` | `kind` (Human, Agent, Device, Node), `display`, `safety`, `contact` |
 | `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread` |
 | `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind`, `lifecycle` |

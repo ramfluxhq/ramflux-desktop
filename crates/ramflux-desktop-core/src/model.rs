@@ -85,6 +85,9 @@ pub struct Node {
     /// Known endpoints.
     #[serde(default)]
     pub endpoints: Vec<String>,
+    /// Fingerprint of the node's identity key, as shown for out-of-band comparison.
+    #[serde(default)]
+    pub fingerprint: Option<String>,
     /// Where the pin came from.
     pub pin_source: PinSource,
     /// Last observed health.
