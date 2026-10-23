@@ -106,7 +106,8 @@ mod shot {
                 cx.refresh_windows();
             });
             cx.run_until_parked();
-            cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx)).expect("frame");
+            cx.update_window(handle.into(), |_, window, cx| window.render_frame(cx))
+                .expect("frame");
             let image = cx.capture_screenshot(handle.into()).expect("offscreen render");
             let path = out.join(format!("01_live_entry_node_step_{name}.png"));
             image.save(&path).expect("write png");
