@@ -59,7 +59,8 @@ impl Translator {
         // A removed context keeps its pin: should it come back, it is
         // restored pinned.
         self.contexts.remove(id);
-        self.moments.retain(|_, m| &m.context_id != id);
+        let prefix = message_moment_id(id, "");
+        self.moments.retain(|moment, _| !moment.as_str().starts_with(prefix.as_str()));
         DomainEvent::ContextRemoved { context_id: id.clone() }
     }
 
@@ -158,14 +159,14 @@ impl Translator {
             if let Some(body) = message["body_utf8"].as_str()
                 && !id.is_empty()
             {
-                self.plaintext.insert(id.to_owned(), body.to_owned());
+                self.plaintext.insert(&MomentId::new(id), body.to_owned());
             }
         }
     }
 
     /// Remembers the text of a message this device sent.
     pub(super) fn remember_sent(&mut self, message_id: &str, body: &str) {
-        self.plaintext.insert(message_id.to_owned(), body.to_owned());
+        self.plaintext.insert(&MomentId::new(message_id), body.to_owned());
     }
 
     pub(super) fn messages(
@@ -194,23 +195,32 @@ impl Translator {
                 }
             }
             let moment = self.message_moment(context, kind, record, now);
-            match self.moments.get(&moment.id) {
-                Some(known) if known == &moment => {}
-                Some(_) => {
-                    events.push(DomainEvent::MomentUpdated {
-                        moment_id: moment.id.clone(),
-                        lifecycle: None,
-                        kind: Some(moment.kind.clone()),
-                    });
-                    self.moments.insert(moment.id.clone(), moment);
-                }
-                None => {
-                    events.push(DomainEvent::MomentAdded(Box::new(moment.clone())));
-                    self.moments.insert(moment.id.clone(), moment);
-                }
-            }
+            events.extend(self.report_moment(moment));
         }
         events
+    }
+
+    /// Emits a stored message the first time, when its payload changed, or
+    /// when the view asked for its body again; remembers only a digest.
+    fn report_moment(&mut self, moment: Moment) -> Option<DomainEvent> {
+        let is_message = matches!(moment.kind, MomentKind::Message(_));
+        let digest = super::digest(&moment.kind);
+        let wanted = self.resend.remove(&moment.id);
+        let known = self.moments.get(&moment.id).copied();
+        let event = match known {
+            // A body that is no longer in memory here (an evicted group
+            // plaintext) never replaces the message already shown.
+            Some(seen) if seen.message && !is_message => return None,
+            Some(seen) if seen.digest == digest && !wanted => return None,
+            Some(_) => DomainEvent::MomentUpdated {
+                moment_id: moment.id.clone(),
+                lifecycle: None,
+                kind: Some(moment.kind.clone()),
+            },
+            None => DomainEvent::MomentAdded(Box::new(moment.clone())),
+        };
+        self.moments.insert(moment.id, super::Reported { digest, message: is_message });
+        Some(event)
     }
 
     fn message_moment(
@@ -232,8 +242,8 @@ impl Translator {
         // ciphertext, so only a received or sent copy gives its text.
         let body = self
             .plaintext
-            .get(message)
-            .cloned()
+            .get(&MomentId::new(message))
+            .map(ToString::to_string)
             .or_else(|| (kind != ContextKind::Group).then_some(stored).flatten());
         let deleted = record["deleted"].as_bool().unwrap_or(false);
         let payload = match body {

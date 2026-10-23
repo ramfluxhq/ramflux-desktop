@@ -61,11 +61,9 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
         IntentKind::Approve { grant_id } => {
             let grant = store.grant(grant_id);
             let summary = store
-                .moments()
+                .grant_presenters(grant_id)
                 .find_map(|m| match &m.kind {
-                    MomentKind::Intervention(p) if &p.grant_id == grant_id => {
-                        Some(p.summary.clone())
-                    }
+                    MomentKind::Intervention(p) => Some(p.summary.clone()),
                     _ => None,
                 })
                 .unwrap_or_else(|| grant.map_or_else(|| grant_id.to_string(), |g| g.scope.clone()));

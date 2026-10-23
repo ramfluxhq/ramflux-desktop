@@ -21,7 +21,7 @@ use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
 use ramflux_desktop_core::{
-    ContextId, DomainEvent, Effect, EffectFailure, FailureCode, SourceStatus,
+    ContextId, DomainEvent, Effect, EffectFailure, FailureCode, MomentId, SourceStatus,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -45,6 +45,8 @@ pub(crate) enum ScopeCommand {
     Effect(Box<Effect>),
     /// The user looks at a context.
     Focus(Option<ContextId>),
+    /// A view needs these messages' bodies again.
+    Bodies(Vec<MomentId>),
 }
 
 enum Internal {
@@ -394,6 +396,10 @@ impl Task {
                 self.next_poll = Instant::now();
             }
             ScopeCommand::Effect(effect) => self.effect(*effect),
+            ScopeCommand::Bodies(moments) => {
+                let reads = self.translator.request_bodies(&moments);
+                self.spawn_fetches(reads);
+            }
         }
     }
 

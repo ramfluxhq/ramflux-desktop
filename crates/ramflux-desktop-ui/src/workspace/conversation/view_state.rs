@@ -15,8 +15,9 @@ use ramflux_desktop_core::{BlockId, BlockKind, JsonValue, MomentId, MomentKind};
 
 use crate::moments::{MomentRow, RowState};
 
-/// Per-row view-local state.
-#[derive(Default)]
+/// Per-row view-local state. Cloning is cheap (shared maps of handles),
+/// so the row renderer gets a snapshot per frame.
+#[derive(Clone, Default)]
 pub struct ViewState {
     expanded: BTreeSet<MomentId>,
     fields: BTreeMap<MomentId, Rc<BTreeMap<BlockId, String>>>,
@@ -59,7 +60,12 @@ impl ViewState {
 
     /// Creates the retained states rows need: a text input per surface input
     /// block and a compare view per conflict with lines.
-    pub fn ensure(&mut self, rows: &[MomentRow], window: &mut Window, cx: &mut App) {
+    pub fn ensure<'a>(
+        &mut self,
+        rows: impl Iterator<Item = &'a MomentRow>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         for row in rows {
             let id = &row.moment.id;
             match &row.moment.kind {

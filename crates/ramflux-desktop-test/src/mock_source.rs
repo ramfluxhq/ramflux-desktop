@@ -3,12 +3,12 @@
 
 //! A scenario-playing [`Source`].
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Bound;
 
 use ramflux_desktop_core::{
-    DomainEvent, Effect, EventEnvelope, JsonValue, MomentKind, PrivacyRevealPayload, Source,
-    Timestamp,
+    DomainEvent, Effect, EventEnvelope, JsonValue, MomentId, MomentKind, PrivacyRevealPayload,
+    Source, Timestamp,
 };
 
 use crate::local_echo::{ECHO_DELAY_MS, audit_echo, local_echo};
@@ -178,6 +178,36 @@ impl Source for MockSource {
         let at = self.epoch.saturating_add_ms(self.now_ms.saturating_add(ECHO_DELAY_MS));
         if let Some(event) = audit_echo(&effect, at) {
             self.inject(ECHO_DELAY_MS, event);
+        }
+    }
+
+    /// Delivers the bodies again from the newest message payload already
+    /// delivered for each moment, as `MomentUpdated` events due now.
+    fn request_bodies(&mut self, moments: &[MomentId]) {
+        let mut wanted: BTreeSet<&MomentId> = moments.iter().collect();
+        let Some(cursor) = self.cursor else { return };
+        let mut found = Vec::new();
+        for event in self.schedule.range(..=cursor).rev().map(|(_, e)| e) {
+            if wanted.is_empty() {
+                break;
+            }
+            let (id, kind) = match event {
+                DomainEvent::MomentAdded(m) => (&m.id, Some(&m.kind)),
+                DomainEvent::MomentUpdated { moment_id, kind, .. } => (moment_id, kind.as_ref()),
+                _ => continue,
+            };
+            if let Some(kind @ MomentKind::Message(_)) = kind
+                && wanted.remove(id)
+            {
+                found.push(DomainEvent::MomentUpdated {
+                    moment_id: id.clone(),
+                    lifecycle: None,
+                    kind: Some(kind.clone()),
+                });
+            }
+        }
+        for event in found {
+            self.inject(0, event);
         }
     }
 

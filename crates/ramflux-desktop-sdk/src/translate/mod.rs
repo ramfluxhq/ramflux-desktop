@@ -26,9 +26,9 @@ mod grants;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ramflux_desktop_core::{
-    Account, AccountId, Context, ContextId, ContextKind, DeviceId, DomainEvent, GrantId,
-    GrantState, Listing, Moment, MomentId, NodeId, ParticipantId, StandingApproval,
-    StandingApprovalId, Timestamp,
+    Account, AccountId, BodyCache, Context, ContextId, ContextKind, DeviceId, DomainEvent, GrantId,
+    GrantState, Listing, MomentId, NodeId, ParticipantId, StandingApproval, StandingApprovalId,
+    Timestamp,
 };
 use serde_json::Value;
 
@@ -69,6 +69,26 @@ impl Translated {
     }
 }
 
+/// Decrypted bodies kept for messages whose stored copy is ciphertext (a
+/// group's), by daemon message id. Bounded like the store's body cache.
+pub const PLAINTEXT_CAPACITY: usize = 16_384;
+
+/// What the source told the store about one stored message: a digest of its
+/// payload (to emit only differences) and whether it was shown as a message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Reported {
+    digest: u64,
+    message: bool,
+}
+
+/// A stable digest of a payload, for change detection only.
+pub(crate) fn digest(kind: &ramflux_desktop_core::MomentKind) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = std::hash::DefaultHasher::new();
+    format!("{kind:?}").hash(&mut hasher);
+    hasher.finish()
+}
+
 /// What the source already reported for one scope.
 #[derive(Debug)]
 pub struct Translator {
@@ -85,8 +105,9 @@ pub struct Translator {
     pins: Vec<ContextId>,
     pins_recorded: bool,
     pins_changed: bool,
-    moments: BTreeMap<MomentId, Moment>,
-    plaintext: BTreeMap<String, String>,
+    moments: BTreeMap<MomentId, Reported>,
+    resend: BTreeSet<MomentId>,
+    plaintext: BodyCache,
     grants: BTreeMap<GrantId, GrantState>,
     daemon_grants: BTreeMap<String, String>,
     standing: BTreeMap<StandingApprovalId, StandingApproval>,
@@ -114,7 +135,8 @@ impl Translator {
             pins_recorded: false,
             pins_changed: false,
             moments: BTreeMap::new(),
-            plaintext: BTreeMap::new(),
+            resend: BTreeSet::new(),
+            plaintext: BodyCache::with_capacity(PLAINTEXT_CAPACITY),
             grants: BTreeMap::new(),
             daemon_grants: BTreeMap::new(),
             standing: BTreeMap::new(),
@@ -250,6 +272,33 @@ impl Translator {
         let Some(id) = self.scope.account().cloned() else { return Vec::new() };
         self.plaintext.clear();
         self.set_lock(&id, ramflux_desktop_core::LockState::Locked)
+    }
+
+    /// The view asked for these messages' bodies again (its store evicted
+    /// them): they are re-emitted by the next read of their contexts, which
+    /// this returns.
+    pub fn request_bodies(&mut self, moments: &[MomentId]) -> Vec<Fetch> {
+        let mut contexts = BTreeSet::new();
+        for id in moments {
+            let Some(context) = self
+                .contexts
+                .keys()
+                .find(|c| id.as_str().starts_with(conversation::message_moment_id(c, "").as_str()))
+            else {
+                continue;
+            };
+            if self.moments.contains_key(id) {
+                self.resend.insert(id.clone());
+                contexts.insert(context.clone());
+            }
+        }
+        contexts
+            .into_iter()
+            .map(|id| match self.contexts.get(&id).map(|c| c.kind) {
+                Some(ContextKind::Group) => Fetch::GroupReceive(id),
+                _ => Fetch::Messages(id),
+            })
+            .collect()
     }
 
     /// Translates one pushed event.

@@ -15,7 +15,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, div,
 };
-use ramflux_desktop_core::ContextKind;
+use ramflux_desktop_core::{ContextKind, selectors};
 use ramflux_desktop_sdk::{SdkConfig, SdkHub};
 use ramflux_desktop_test::load_fixture;
 
@@ -401,11 +401,9 @@ impl Shell {
             PaletteChoice::Contact(participant) => {
                 let direct = {
                     let store = self.store.read(cx).store();
-                    store
-                        .contexts()
-                        .find(|c| {
-                            c.kind == ContextKind::Direct && c.participants.contains(&participant)
-                        })
+                    selectors::contexts_with(store, &participant)
+                        .into_iter()
+                        .find(|c| c.kind == ContextKind::Direct)
                         .map(|c| c.id.clone())
                 };
                 workspace.update(cx, |w, cx| match direct {

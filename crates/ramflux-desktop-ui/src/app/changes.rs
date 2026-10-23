@@ -37,6 +37,24 @@ impl ChangeSet {
         self.reset
     }
 
+    /// Moments added, changed or removed in this batch.
+    pub fn moments(&self) -> impl Iterator<Item = &ramflux_desktop_core::MomentId> {
+        self.changes.moments.iter()
+    }
+
+    /// Whether what rows of `context_id` reference (participants, grants,
+    /// objects, tasks, the context itself) or their bodies changed, so its
+    /// rows must be rebuilt rather than patched.
+    pub fn touches_row_refs(&self, context_id: &ContextId) -> bool {
+        self.reset
+            || self.changes.bodies_cleared
+            || self.changes.contexts.contains(context_id)
+            || !self.changes.participants.is_empty()
+            || !self.changes.grants.is_empty()
+            || !self.changes.objects.is_empty()
+            || !self.changes.tasks.is_empty()
+    }
+
     /// Whether the session clock moved.
     pub fn is_clock_moved(&self) -> bool {
         self.clock_moved
@@ -94,6 +112,7 @@ impl ChangeSet {
     /// store was removed and is treated as touching every context.
     pub fn touches_context(&self, store: &Store, context_id: &ContextId) -> bool {
         self.reset
+            || self.changes.bodies_cleared
             || self.changes.contexts.contains(context_id)
             || !self.changes.participants.is_empty()
             || !self.changes.grants.is_empty()

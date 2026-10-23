@@ -100,9 +100,9 @@ fn the_account_scope_maps_conversations_groups_messages_and_grants() {
     let inbound = store.moment(&MomentId::new("msg:dm-ana:m1")).cloned().expect("m1");
     let outbound = store.moment(&MomentId::new("msg:dm-ana:m2")).cloned().expect("m2");
     match (&inbound.kind, &outbound.kind) {
-        (MomentKind::Message(a), MomentKind::Message(b)) => {
-            assert_eq!(a.text, "hi");
-            assert_eq!(b.text, "ok");
+        (MomentKind::Message(_), MomentKind::Message(b)) => {
+            assert_eq!(store.body(&inbound.id), Some("hi"), "bodies live in the body cache");
+            assert_eq!(store.body(&outbound.id), Some("ok"));
             assert_eq!(b.receipt, Receipt::Delivered, "own message carries its receipt");
         }
         other => panic!("messages expected, got {other:?}"),

@@ -4,11 +4,15 @@
 //! The reducer: one arm per domain event.
 //!
 //! Each arm validates fully before its first mutation, so a rejected event
-//! leaves the store untouched.
+//! leaves the store untouched. Every mutation of moments, contexts and tasks
+//! updates the secondary indexes in the same arm, and message text moves
+//! into the body cache.
 
 use std::mem;
 
+use super::bodies::BodyCache;
 use super::changes::{ApplyError, Changes};
+use super::index::presented_grants;
 use super::surface_ops::apply_surface_op;
 use super::{MAX_AUDIT, Store};
 use crate::event::{DomainEvent, SurfaceOp};
@@ -28,7 +32,11 @@ impl Store {
         match event {
             DomainEvent::AccountUpdated(account) => {
                 changes.accounts.insert(account.id.clone());
-                self.accounts.insert(account.id.clone(), account.clone());
+                let was = self.accounts.insert(account.id.clone(), account.clone());
+                let was_unlocked = was.is_some_and(|a| a.lock_state == LockState::Unlocked);
+                if was_unlocked && account.lock_state == LockState::Locked {
+                    self.drop_bodies(changes);
+                }
             }
             DomainEvent::AccountLockChanged { account_id, lock_state } => {
                 self.set_lock(account_id, *lock_state, changes)?;
@@ -182,9 +190,20 @@ impl Store {
             .accounts
             .get_mut(account_id)
             .ok_or_else(|| ApplyError::UnknownAccount(account_id.clone()))?;
+        let locking = account.lock_state == LockState::Unlocked && lock_state == LockState::Locked;
         account.lock_state = lock_state;
         changes.accounts.insert(account_id.clone());
+        if locking {
+            self.drop_bodies(changes);
+        }
         Ok(())
+    }
+
+    /// Message bodies never outlive an unlocked account in memory.
+    fn drop_bodies(&mut self, changes: &mut Changes) {
+        if self.bodies.clear() {
+            changes.bodies_cleared = true;
+        }
     }
 
     fn node_settings(
@@ -238,7 +257,11 @@ impl Store {
     fn upsert_context(&mut self, context: &Context, changes: &mut Changes) {
         self.sync_pin_order(&context.id, context.pinned, changes);
         changes.contexts.insert(context.id.clone());
-        self.contexts.insert(context.id.clone(), context.clone());
+        let old = self.contexts.insert(context.id.clone(), context.clone());
+        let old_members = old.map(|c| c.participants).unwrap_or_default();
+        if old_members != context.participants {
+            self.index.change_members(&context.id, &old_members, &context.participants);
+        }
     }
 
     fn sync_pin_order(&mut self, id: &ContextId, pinned: bool, changes: &mut Changes) {
@@ -286,25 +309,31 @@ impl Store {
         context_id: &ContextId,
         changes: &mut Changes,
     ) -> Result<(), ApplyError> {
-        if self.contexts.remove(context_id).is_none() {
+        let Some(context) = self.contexts.remove(context_id) else {
             return Err(ApplyError::UnknownContext(context_id.clone()));
-        }
+        };
         changes.contexts.insert(context_id.clone());
         if self.pin_order.contains(context_id) {
             self.pin_order.retain(|id| id != context_id);
             changes.pin_order = true;
         }
         let removed: Vec<MomentId> = self
-            .moments
-            .values()
-            .filter(|m| &m.context_id == context_id)
-            .map(|m| m.id.clone())
+            .index
+            .timeline
+            .get(context_id)
+            .into_iter()
+            .flatten()
+            .map(|(_, id)| id.clone())
             .collect();
         for id in removed {
-            self.moments.remove(&id);
-            self.needs_me_since.remove(&id);
+            if let Some(moment) = self.moments.remove(&id) {
+                let since = self.needs_me_since.remove(&id);
+                self.index.remove_moment(&moment, since);
+            }
+            self.bodies.remove(&id);
             changes.moments.insert(id);
         }
+        self.index.remove_context(context_id, &context.participants);
         Ok(())
     }
 
@@ -320,11 +349,15 @@ impl Store {
         if !self.contexts.contains_key(&moment.context_id) {
             return Err(ApplyError::UnknownContext(moment.context_id.clone()));
         }
-        if moment.lifecycle == Lifecycle::NeedsMe {
-            self.needs_me_since.insert(moment.id.clone(), at);
+        let since = (moment.lifecycle == Lifecycle::NeedsMe).then_some(at);
+        if let Some(since) = since {
+            self.needs_me_since.insert(moment.id.clone(), since);
         }
+        let mut stored = moment.clone();
+        keep_body(&mut self.bodies, &stored.id, &mut stored.kind);
+        self.index.add_moment(&stored, since);
         changes.moments.insert(moment.id.clone());
-        self.moments.insert(moment.id.clone(), moment.clone());
+        self.moments.insert(moment.id.clone(), stored);
         Ok(())
     }
 
@@ -350,15 +383,20 @@ impl Store {
             return Err(ApplyError::KindMismatch(moment_id.clone()));
         }
         if next != moment.lifecycle {
-            if next == Lifecycle::NeedsMe {
-                self.needs_me_since.insert(moment_id.clone(), at);
+            let old_since = if next == Lifecycle::NeedsMe {
+                self.needs_me_since.insert(moment_id.clone(), at)
             } else {
-                self.needs_me_since.remove(moment_id);
-            }
+                self.needs_me_since.remove(moment_id)
+            };
+            let new_since = (next == Lifecycle::NeedsMe).then_some(at);
+            self.index.change_lifecycle(moment, (moment.lifecycle, old_since), (next, new_since));
             moment.lifecycle = next;
         }
         if let Some(kind) = kind {
-            moment.kind = kind.clone();
+            let mut kind = kind.clone();
+            keep_body(&mut self.bodies, moment_id, &mut kind);
+            self.index.change_kind(moment_id, &moment.kind, &kind);
+            moment.kind = kind;
         }
         changes.moments.insert(moment_id.clone());
         Ok(())
@@ -389,7 +427,10 @@ impl Store {
         for op in ops {
             apply_surface_op(&mut patched, op)?;
         }
-        *surface = patched;
+        let old = MomentKind::AgentSurface(mem::replace(surface, patched));
+        if presented_grants(&old) != presented_grants(&moment.kind) {
+            self.index.change_kind(moment_id, &old, &moment.kind);
+        }
         changes.moments.insert(moment_id.clone());
         Ok(())
     }
@@ -404,8 +445,17 @@ impl Store {
             check_transition(|| format!("task {}", task.id), current.lifecycle, task.lifecycle)?;
         }
         changes.tasks.insert(task.id.clone());
-        self.tasks.insert(task.id.clone(), task.clone());
+        let old = self.tasks.insert(task.id.clone(), task.clone());
+        self.index.change_task(old.as_ref(), task);
         Ok(())
+    }
+}
+
+/// Moves a message's text into the body cache; the stored row keeps an
+/// empty text (metadata only).
+fn keep_body(bodies: &mut BodyCache, id: &MomentId, kind: &mut MomentKind) {
+    if let MomentKind::Message(payload) = kind {
+        bodies.insert(id, mem::take(&mut payload.text));
     }
 }
 

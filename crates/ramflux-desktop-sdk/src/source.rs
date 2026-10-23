@@ -12,7 +12,9 @@
 
 use std::sync::mpsc as std_mpsc;
 
-use ramflux_desktop_core::{AccountId, ContextId, Effect, EventEnvelope, Source, Timestamp};
+use ramflux_desktop_core::{
+    AccountId, ContextId, Effect, EventEnvelope, MomentId, Source, Timestamp,
+};
 
 use crate::bridge::{Bridge, Command, Delivery};
 use crate::config::SdkConfig;
@@ -103,6 +105,13 @@ impl Source for SdkSource {
 
     fn focus(&mut self, context: Option<&ContextId>) {
         self.bridge.send(Command::Focus { scope: self.scope.clone(), context: context.cloned() });
+    }
+
+    fn request_bodies(&mut self, moments: &[MomentId]) {
+        if !moments.is_empty() {
+            self.bridge
+                .send(Command::Bodies { scope: self.scope.clone(), moments: moments.to_vec() });
+        }
     }
 }
 

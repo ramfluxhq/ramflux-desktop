@@ -11,8 +11,7 @@ use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div};
 use ramflux_desktop_core::{
-    Lifecycle, Listing, Moment, MomentKind, Participant, SafetyState, Scope, Store, UiEventKind,
-    selectors,
+    Listing, Moment, MomentKind, Participant, SafetyState, Scope, Store, UiEventKind, selectors,
 };
 
 use super::section;
@@ -44,9 +43,8 @@ impl ContactsDock {
 
 /// Open contact requests: `(moment, requester)`.
 fn requests(store: &Store) -> Vec<(Moment, Participant)> {
-    store
-        .moments()
-        .filter(|m| m.lifecycle == Lifecycle::NeedsMe)
+    selectors::contact_requests(store)
+        .into_iter()
         .filter_map(|m| match &m.kind {
             MomentKind::ContactRequest(p) => {
                 store.participant(&p.from).map(|from| (m.clone(), from.clone()))

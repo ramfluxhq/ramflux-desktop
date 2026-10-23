@@ -40,5 +40,8 @@ pub use policy::{IntentError, handle_intent};
 pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter, TaskStepRef};
 pub use serde_json::Value as JsonValue;
 pub use source::Source;
-pub use store::{ApplyError, Changes, MAX_AUDIT, MAX_FAILURES, MAX_REJECTIONS, Rejection, Store};
+pub use store::{
+    ApplyError, BodyCache, Changes, MAX_AUDIT, MAX_BODIES, MAX_FAILURES, MAX_REJECTIONS, Rejection,
+    Store,
+};
 pub use ui_event::{NodeAction, ObjectAction, Scope, UiEvent, UiEventKind};

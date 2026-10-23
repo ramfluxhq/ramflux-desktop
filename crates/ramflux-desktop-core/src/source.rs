@@ -8,7 +8,7 @@
 //! trait nor core depends on an async runtime.
 
 use crate::event::EventEnvelope;
-use crate::ids::{ContextId, Timestamp};
+use crate::ids::{ContextId, MomentId, Timestamp};
 use crate::intent::Effect;
 
 /// Executes effects and yields sequenced domain events.
@@ -22,4 +22,10 @@ pub trait Source {
     /// The context the user is looking at changed. A source that pulls
     /// (instead of being pushed) keeps that context fresh; others ignore it.
     fn focus(&mut self, _context: Option<&ContextId>) {}
+
+    /// A view shows these message moments but their bodies are no longer in
+    /// the store's bounded body cache. A source that can deliver them again
+    /// does so (as `MomentUpdated` carrying the message payload); others
+    /// ignore it, and the view keeps its placeholder.
+    fn request_bodies(&mut self, _moments: &[MomentId]) {}
 }

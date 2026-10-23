@@ -257,3 +257,26 @@ fn an_account_the_daemon_has_not_open_is_reported_locked() {
     assert!(!fake.subscribed("acct-none"), "a locked account is not followed");
     fake.shutdown();
 }
+
+#[test]
+fn an_evicted_body_is_read_again_when_the_view_asks() {
+    let path = socket_path("bodies");
+    let fake = FakeBus::start(&path, |method, _, _| fixture(method));
+    let hub = hub(&path);
+    let mut account = Fed {
+        source: hub.account_source(AccountId::new("acct-main")),
+        store: ramflux_desktop_core::Store::with_body_capacity(1),
+        envelopes: Vec::new(),
+    };
+    let first = MomentId::new("msg:dm-ana:m1");
+    let second = MomentId::new("msg:dm-ana:m2");
+    account
+        .until("both messages", |s, _| s.moment(&first).is_some() && s.moment(&second).is_some());
+    account.settle(100);
+    let missing = if account.store.body(&first).is_none() { first } else { second };
+    assert!(account.store.body(&missing).is_none(), "one body was evicted");
+    account.source.request_bodies(std::slice::from_ref(&missing));
+    account.until("the body is back", |s, _| s.body(&missing).is_some());
+    assert!(account.store.rejections().is_empty(), "{:?}", account.store.rejections());
+    fake.shutdown();
+}

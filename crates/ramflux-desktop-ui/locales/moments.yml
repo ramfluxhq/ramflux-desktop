@@ -41,6 +41,9 @@ moment:
       en: "System"
       zh-CN: "系统"
   message:
+    not_loaded:
+      en: "Loading message text…"
+      zh-CN: "正在加载消息正文…"
     deleted:
       en: "Message deleted"
       zh-CN: "消息已删除"

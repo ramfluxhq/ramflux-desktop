@@ -63,9 +63,7 @@ fn grant_line(grant: &Grant, cx: &App) -> AnyElement {
 
 /// A pending grant with Approve / Deny scoped to the moment that presents it.
 fn pending_row(store: &Store, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement {
-    let moment = store.moments().find(|m| matches!(&m.kind, MomentKind::Intervention(p) if p.grant_id == grant.id)
-        || matches!(&m.kind, MomentKind::AgentSurface(s) if s.blocks.iter().any(|b| b.data.get("grant_id").and_then(|v| v.as_str()) == Some(grant.id.as_str())))
-        || matches!(&m.kind, MomentKind::TaskProgress(p) if store.task(&p.task_id).is_some_and(|t| t.steps.iter().any(|s| s.grant_id.as_ref() == Some(&grant.id)))));
+    let moment = selectors::presenting_moment(store, &grant.id);
     let summary = moment
         .and_then(|m| match &m.kind {
             MomentKind::Intervention(p) => Some(p.summary.clone()),

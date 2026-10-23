@@ -12,8 +12,11 @@
 //! source over a real daemon), which follows the wall clock and ignores the
 //! scenario controls.
 
+use std::collections::BTreeSet;
+
 use ramflux_desktop_core::{
-    ContextId, Effect, EventEnvelope, Intent, IntentError, Source, Store, Timestamp, handle_intent,
+    ContextId, Effect, EventEnvelope, Intent, IntentError, MomentId, Source, Store, Timestamp,
+    handle_intent,
 };
 use ramflux_desktop_test::{MockSource, Scenario};
 
@@ -57,6 +60,8 @@ pub struct AccountSession {
     store: Store,
     clock_ms: u64,
     paused: bool,
+    /// Message bodies asked of the source and not delivered yet (asked once).
+    requested: BTreeSet<MomentId>,
 }
 
 impl std::fmt::Debug for AccountSession {
@@ -84,6 +89,7 @@ impl AccountSession {
             store: Store::new(),
             clock_ms: 0,
             paused: false,
+            requested: BTreeSet::new(),
         }
     }
 
@@ -95,6 +101,7 @@ impl AccountSession {
             store: Store::new(),
             clock_ms: 0,
             paused: false,
+            requested: BTreeSet::new(),
         }
     }
 
@@ -128,6 +135,22 @@ impl AccountSession {
     /// Tells the source which context the user looks at.
     pub fn focus(&mut self, context: Option<&ContextId>) {
         self.source_mut().focus(context);
+    }
+
+    /// Asks the source again for message bodies a view shows but the
+    /// store's bounded cache no longer holds. Each body is asked once until
+    /// it arrives (or the bodies are dropped on lock).
+    pub fn request_bodies(&mut self, moments: &[MomentId]) {
+        let fresh: Vec<MomentId> = moments
+            .iter()
+            .filter(|id| self.store.body(id).is_none() && !self.requested.contains(*id))
+            .cloned()
+            .collect();
+        if fresh.is_empty() {
+            return;
+        }
+        self.requested.extend(fresh.iter().cloned());
+        self.source_mut().request_bodies(&fresh);
     }
 
     /// The account's store, read-only.
@@ -211,6 +234,7 @@ impl AccountSession {
         let Backing::Mock { source, .. } = &mut self.backing else { return Applied::default() };
         source.rewind();
         self.store = Store::new();
+        self.requested.clear();
         self.clock_ms = ms;
         let mut applied = self.pump();
         let mut changes = ChangeSet::reset();
@@ -283,6 +307,10 @@ impl AccountSession {
         let now = self.now();
         for env in self.source_mut().drain(now) {
             self.apply(&env, &mut applied);
+        }
+        if !self.requested.is_empty() {
+            let store = &self.store;
+            self.requested.retain(|id| store.body(id).is_none() && store.moment(id).is_some());
         }
         applied
     }

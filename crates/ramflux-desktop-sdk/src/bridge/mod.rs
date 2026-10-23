@@ -16,7 +16,7 @@ mod scope;
 use std::collections::BTreeMap;
 use std::sync::mpsc as std_mpsc;
 
-use ramflux_desktop_core::{ContextId, DomainEvent, Effect, Timestamp};
+use ramflux_desktop_core::{ContextId, DomainEvent, Effect, MomentId, Timestamp};
 use tokio::sync::mpsc;
 
 use crate::config::SdkConfig;
@@ -39,6 +39,8 @@ pub(crate) enum Command {
     Effect { scope: Scope, effect: Effect },
     /// The user looks at `context` in `scope`.
     Focus { scope: Scope, context: Option<ContextId> },
+    /// A view needs these messages' bodies again in `scope`.
+    Bodies { scope: Scope, moments: Vec<MomentId> },
     /// Stop serving `scope`.
     Detach { scope: Scope },
 }
@@ -87,6 +89,11 @@ async fn serve(config: SdkConfig, mut inbox: mpsc::UnboundedReceiver<Command>) {
             Command::Focus { scope, context } => {
                 if let Some(tx) = scopes.get(&scope) {
                     let _ = tx.send(scope::ScopeCommand::Focus(context));
+                }
+            }
+            Command::Bodies { scope, moments } => {
+                if let Some(tx) = scopes.get(&scope) {
+                    let _ = tx.send(scope::ScopeCommand::Bodies(moments));
                 }
             }
             Command::Detach { scope } => {

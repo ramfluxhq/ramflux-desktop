@@ -16,7 +16,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Context, Entity, EventEmitter, IntoElement, Render, SharedString, Subscription, Window, div,
 };
-use ramflux_desktop_core::{ContextId, ContextKind, Lifecycle, Listing, Store, selectors};
+use ramflux_desktop_core::{ContextId, ContextKind, Listing, Store, selectors};
 
 use crate::actions::OpenPalette;
 use crate::app::{StoreEvent, StoreHandle};
@@ -87,10 +87,7 @@ fn entries(store: &Store, current: Option<&ContextId>) -> Vec<Entry> {
     ids.into_iter()
         .filter_map(|id| {
             let context = store.context(&id)?;
-            let needs_me = store
-                .moments()
-                .filter(|m| m.context_id == id && m.lifecycle == Lifecycle::NeedsMe)
-                .count();
+            let needs_me = selectors::needs_me_count(store, &id);
             Some(Entry {
                 title: context.title.clone().into(),
                 kind: context.kind,

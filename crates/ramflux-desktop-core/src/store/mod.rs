@@ -9,8 +9,13 @@
 //! - [`changes`]: [`Changes`], [`ApplyError`] and [`Rejection`].
 //! - `reducer`: one validated arm per domain event.
 //! - `surface_ops`: agent surface patch operations.
+//! - [`bodies`]: the bounded message-body cache.
+//! - `index`: secondary indexes the reducer maintains (timelines, needs-me,
+//!   in progress, members, grant and task presenters).
 
+pub mod bodies;
 mod changes;
+mod index;
 mod reducer;
 mod surface_ops;
 
@@ -26,7 +31,10 @@ use crate::model::{
     Integrations, Listing, Moment, Node, Object, Participant, StandingApproval, Task,
 };
 
+pub use bodies::{BodyCache, MAX_BODIES};
 pub use changes::{ApplyError, Changes, Rejection};
+
+use index::Indexes;
 
 /// Maximum number of rejections kept for inspection.
 pub const MAX_REJECTIONS: usize = 64;
@@ -38,6 +46,10 @@ pub const MAX_AUDIT: usize = 512;
 pub const MAX_FAILURES: usize = 32;
 
 /// Normalized domain state.
+///
+/// Moment rows hold metadata; message text lives in a bounded body cache
+/// ([`Store::body`]). Secondary indexes keep every selector proportional to
+/// its result.
 #[derive(Debug, Clone, Default)]
 pub struct Store {
     accounts: BTreeMap<AccountId, Account>,
@@ -61,12 +73,19 @@ pub struct Store {
     source_status: SourceStatus,
     last_seq: u64,
     rejections: Vec<Rejection>,
+    index: Indexes,
+    bodies: BodyCache,
 }
 
 impl Store {
     /// Creates an empty store.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Creates an empty store keeping at most `capacity` message bodies.
+    pub fn with_body_capacity(capacity: usize) -> Self {
+        Self { bodies: BodyCache::with_capacity(capacity), ..Self::default() }
     }
 
     /// Applies one envelope.
@@ -263,6 +282,92 @@ impl Store {
     /// Task by id.
     pub fn task(&self, id: &TaskId) -> Option<&Task> {
         self.tasks.get(id)
+    }
+
+    /// The text of a message moment, while its body is in memory. `None`
+    /// for other kinds and for bodies evicted or dropped on lock; the view
+    /// then asks the source to deliver it again.
+    pub fn body(&self, id: &MomentId) -> Option<&str> {
+        self.bodies.get(id).map(|text| &**text)
+    }
+
+    /// The message-body cache (size and capacity).
+    pub fn bodies(&self) -> &BodyCache {
+        &self.bodies
+    }
+
+    /// Moments of one context ordered by `(at, id)`; O(k).
+    pub fn context_moments(&self, id: &ContextId) -> impl DoubleEndedIterator<Item = &Moment> {
+        self.index
+            .timeline
+            .get(id)
+            .into_iter()
+            .flatten()
+            .filter_map(|(_, moment)| self.moments.get(moment))
+    }
+
+    /// Number of moments in one context.
+    pub fn context_moment_count(&self, id: &ContextId) -> usize {
+        self.index.timeline.get(id).map_or(0, std::collections::BTreeSet::len)
+    }
+
+    /// `NeedsMe` moments with the time they entered it, oldest first (then
+    /// by id); O(k).
+    pub fn needs_me(&self) -> impl Iterator<Item = (Timestamp, &Moment)> {
+        self.index
+            .needs_me
+            .iter()
+            .filter_map(|(since, id)| self.moments.get(id).map(|m| (*since, m)))
+    }
+
+    /// `NeedsMe` moments of one context, by id.
+    pub fn needs_me_in(&self, context: &ContextId) -> impl Iterator<Item = &Moment> {
+        self.index
+            .needs_me_by_context
+            .get(context)
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.moments.get(id))
+    }
+
+    /// `InProgress` moments, by id.
+    pub fn in_progress(&self) -> impl Iterator<Item = &Moment> {
+        self.index.in_progress.iter().filter_map(|id| self.moments.get(id))
+    }
+
+    /// Contexts `participant` is a member of, by id.
+    pub fn contexts_of(&self, participant: &ParticipantId) -> impl Iterator<Item = &Context> {
+        self.index
+            .contexts_by_participant
+            .get(participant)
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.contexts.get(id))
+    }
+
+    /// Moments presenting `grant` (interventions, approval blocks), by id.
+    pub fn grant_presenters(&self, grant: &GrantId) -> impl Iterator<Item = &Moment> {
+        self.index
+            .grant_presenters
+            .get(grant)
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.moments.get(id))
+    }
+
+    /// Task progress moments presenting `task`, by id.
+    pub fn task_presenters(&self, task: &TaskId) -> impl Iterator<Item = &Moment> {
+        self.index
+            .task_presenters
+            .get(task)
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.moments.get(id))
+    }
+
+    /// Tasks with a step waiting on `grant`, by id.
+    pub fn step_owners(&self, grant: &GrantId) -> impl Iterator<Item = &Task> {
+        self.index.step_owners.get(grant).into_iter().flatten().filter_map(|id| self.tasks.get(id))
     }
 
     /// All tasks ordered by id.

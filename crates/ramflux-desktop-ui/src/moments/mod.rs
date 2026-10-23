@@ -29,6 +29,7 @@ mod task_progress;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::diff::DiffState;
 use gpui_kit::component::input::InputState;
@@ -86,11 +87,41 @@ impl RowRefs {
     }
 }
 
+/// Audit records by subject (moment or grant id) with their position in
+/// the store's audit trail, built once per refresh instead of per row.
+#[derive(Debug, Default)]
+pub struct AuditIndex<'a> {
+    by_subject: BTreeMap<&'a str, Vec<(usize, &'a AuditEntry)>>,
+}
+
+impl<'a> AuditIndex<'a> {
+    /// Indexes the store's audit trail.
+    pub fn new(store: &'a Store) -> Self {
+        let mut by_subject: BTreeMap<&str, Vec<(usize, &AuditEntry)>> = BTreeMap::new();
+        for (ix, entry) in store.audit().iter().enumerate() {
+            by_subject.entry(entry.subject.as_str()).or_default().push((ix, entry));
+        }
+        Self { by_subject }
+    }
+
+    /// Records about any of `subjects`, oldest first.
+    fn about<'s>(&self, subjects: impl Iterator<Item = &'s str>) -> Vec<AuditEntry> {
+        let mut found: Vec<(usize, &AuditEntry)> =
+            subjects.filter_map(|s| self.by_subject.get(s)).flatten().copied().collect();
+        found.sort_by_key(|(ix, _)| *ix);
+        found.dedup_by_key(|(ix, _)| *ix);
+        found.into_iter().map(|(_, entry)| entry.clone()).collect()
+    }
+}
+
 /// Presentation snapshot of one moment.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MomentRow {
     /// The moment.
     pub moment: Moment,
+    /// A message's text while its body is in memory; `None` shows a
+    /// placeholder and asks the source for it again.
+    pub body: Option<SharedString>,
     /// Display name of the origin participant.
     pub author: SharedString,
     /// Resolved references.
@@ -104,21 +135,43 @@ pub struct MomentRow {
 impl MomentRow {
     /// Builds the snapshot for `moment`; `me` is the local user's participant.
     pub fn build(store: &Store, moment: &Moment, me: Option<&ParticipantId>) -> Self {
+        Self::build_with(store, moment, me, &AuditIndex::new(store))
+    }
+
+    /// [`MomentRow::build`] with an audit index shared across many rows.
+    pub fn build_with(
+        store: &Store,
+        moment: &Moment,
+        me: Option<&ParticipantId>,
+        audit: &AuditIndex<'_>,
+    ) -> Self {
         let author = store.participant(&moment.origin).map_or_else(
             || SharedString::from(moment.origin.to_string()),
             |p| p.display.clone().into(),
         );
+        let body = match &moment.kind {
+            MomentKind::Message(_) => {
+                store.bodies().get(&moment.id).map(|text| SharedString::from(text.clone()))
+            }
+            _ => None,
+        };
         Self {
             moment: moment.clone(),
+            body,
             author,
-            refs: refs(store, moment),
+            refs: refs(store, moment, audit),
             day_header: None,
             outbound: me == Some(&moment.origin),
         }
     }
+
+    /// A message whose text is not in memory (evicted or dropped on lock).
+    pub fn is_missing_body(&self) -> bool {
+        matches!(&self.moment.kind, MomentKind::Message(p) if !p.tombstone) && self.body.is_none()
+    }
 }
 
-fn refs(store: &Store, moment: &Moment) -> RowRefs {
+fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
     let mut refs = RowRefs::default();
     let grant = |id: &GrantId, refs: &mut RowRefs| {
         if let Some(g) = store.grant(id) {
@@ -191,15 +244,8 @@ fn refs(store: &Store, moment: &Moment) -> RowRefs {
             refs.people.insert(id.clone(), p.clone());
         }
     }
-    refs.audit = store
-        .audit()
-        .iter()
-        .filter(|entry| {
-            entry.subject == moment.id.as_str()
-                || refs.grants.keys().any(|grant| grant.as_str() == entry.subject)
-        })
-        .cloned()
-        .collect();
+    refs.audit = audit
+        .about(std::iter::once(moment.id.as_str()).chain(refs.grants.keys().map(|g| g.as_str())));
     for entry in &refs.audit {
         if let Actor::Agent(id) = &entry.proposed_by
             && let Some(p) = store.participant(id)
@@ -247,7 +293,8 @@ impl RenderOnce for MomentView {
         let lifecycle = moment.lifecycle;
         let body = match &moment.kind {
             MomentKind::Message(p) => {
-                message::render(p, &row.refs, row.outbound, &sink, cx).into_any_element()
+                message::render(p, row.body.as_ref(), &row.refs, row.outbound, &sink, cx)
+                    .into_any_element()
             }
             MomentKind::AgentSurface(p) => {
                 surface::SurfaceBody::new(p.clone(), &row.refs, sink.clone(), &state)
@@ -290,6 +337,7 @@ impl RenderOnce for MomentView {
         let _ = window;
         v_flex()
             .id(domain_id("moment", &moment.id))
+            .test_support()
             .w_full()
             .min_w_0()
             .gap_1()

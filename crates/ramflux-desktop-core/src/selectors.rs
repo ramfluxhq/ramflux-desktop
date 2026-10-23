@@ -2,11 +2,14 @@
 // Copyright (c) 2026 Span Brain
 
 //! Pure, read-only views derived from the store.
+//!
+//! Each selector reads the store's indexes, so its cost follows the size of
+//! its result, not the number of moments in the store.
 
 use std::collections::BTreeSet;
 
-use crate::ids::{ContextId, MomentId, Timestamp};
-use crate::model::{Grant, GrantState, Lifecycle, Moment, MomentKind, Object, Participant};
+use crate::ids::{ContextId, GrantId, MomentId, ParticipantId, Timestamp};
+use crate::model::{Context, Grant, GrantState, Moment, MomentKind, Object, Participant};
 use crate::store::Store;
 
 /// Maximum number of contexts in the context stack.
@@ -92,15 +95,18 @@ pub struct TaskStepRef {
 /// task with a step waiting on it. One moment, one place: such a decision
 /// renders only inside the task step, and the standalone intervention for
 /// the same grant collapses to a reference.
-pub fn owning_task_step(store: &Store, grant: &crate::ids::GrantId) -> Option<TaskStepRef> {
-    store.moments().find_map(|m| match &m.kind {
-        MomentKind::TaskProgress(p) => {
-            let task = store.task(&p.task_id)?;
+///
+/// When several task moments qualify, the one with the smallest moment id
+/// owns the decision.
+pub fn owning_task_step(store: &Store, grant: &GrantId) -> Option<TaskStepRef> {
+    store
+        .step_owners(grant)
+        .filter_map(|task| {
             let step = task.steps.iter().position(|s| s.grant_id.as_ref() == Some(grant))?;
-            Some(TaskStepRef { moment_id: m.id.clone(), task_id: task.id.clone(), step })
-        }
-        _ => None,
-    })
+            let moment = store.task_presenters(&task.id).next()?;
+            Some(TaskStepRef { moment_id: moment.id.clone(), task_id: task.id.clone(), step })
+        })
+        .min_by(|a, b| a.moment_id.cmp(&b.moment_id))
 }
 
 /// Whether `moment` is an intervention whose grant a task step owns.
@@ -114,18 +120,47 @@ pub fn is_task_owned_intervention(store: &Store, moment: &Moment) -> bool {
 /// An intervention owned by a task step is not listed on its own: the task
 /// moment carries the attention (one moment, one place).
 pub fn attention(store: &Store) -> Vec<AttentionItem> {
-    let mut items: Vec<AttentionItem> = store
-        .moments()
-        .filter(|m| m.lifecycle == Lifecycle::NeedsMe && !is_task_owned_intervention(store, m))
-        .map(|m| AttentionItem {
+    store
+        .needs_me()
+        .filter(|(_, m)| !is_task_owned_intervention(store, m))
+        .map(|(since, m)| AttentionItem {
             context_id: m.context_id.clone(),
             moment_id: m.id.clone(),
             reason: AttentionReason::of(&m.kind),
-            since: store.needs_me_since(&m.id).unwrap_or(m.at),
+            since,
         })
-        .collect();
-    items.sort_by(|a, b| a.since.cmp(&b.since).then_with(|| a.moment_id.cmp(&b.moment_id)));
-    items
+        .collect()
+}
+
+/// Number of `NeedsMe` moments in one context (as the context stack shows).
+pub fn needs_me_count(store: &Store, context: &ContextId) -> usize {
+    store.needs_me_in(context).count()
+}
+
+/// Open contact requests (`NeedsMe` contact request moments), oldest first.
+pub fn contact_requests(store: &Store) -> Vec<&Moment> {
+    store
+        .needs_me()
+        .map(|(_, m)| m)
+        .filter(|m| matches!(m.kind, MomentKind::ContactRequest(_)))
+        .collect()
+}
+
+/// The moment that presents `grant` for a decision: an intervention or an
+/// approval block, or the task step that owns it; the smallest moment id
+/// when several do.
+pub fn presenting_moment<'a>(store: &'a Store, grant: &GrantId) -> Option<&'a Moment> {
+    let direct = store.grant_presenters(grant).next();
+    let owned = owning_task_step(store, grant).and_then(|step| store.moment(&step.moment_id));
+    match (direct, owned) {
+        (Some(a), Some(b)) => Some(if a.id <= b.id { a } else { b }),
+        (a, b) => a.or(b),
+    }
+}
+
+/// Contexts `participant` is a member of, by id.
+pub fn contexts_with<'a>(store: &'a Store, participant: &ParticipantId) -> Vec<&'a Context> {
+    store.contexts_of(participant).collect()
 }
 
 /// Pinned contexts in pin order, then contexts with a `NeedsMe` moment
@@ -142,24 +177,19 @@ pub fn context_stack(store: &Store) -> Vec<ContextId> {
 /// `InProgress` moments plus task moments whose task is not terminal,
 /// ordered by `(at, id)`.
 pub fn in_flight(store: &Store) -> Vec<MomentId> {
-    let mut moments: Vec<&Moment> = store
-        .moments()
-        .filter(|m| {
-            m.lifecycle == Lifecycle::InProgress
-                || matches!(&m.kind, MomentKind::TaskProgress(p)
-                    if store.task(&p.task_id).is_some_and(|t| !t.lifecycle.is_terminal()))
-        })
-        .collect();
+    let running_tasks = store
+        .tasks()
+        .filter(|t| !t.lifecycle.is_terminal())
+        .flat_map(|t| store.task_presenters(&t.id));
+    let mut moments: Vec<&Moment> = store.in_progress().chain(running_tasks).collect();
     moments.sort_by(|a, b| (a.at, &a.id).cmp(&(b.at, &b.id)));
+    moments.dedup_by(|a, b| a.id == b.id);
     moments.into_iter().map(|m| m.id.clone()).collect()
 }
 
-/// Moments of one context ordered by `(at, id)`.
+/// Moments of one context ordered by `(at, id)`; O(k) in the context's size.
 pub fn timeline<'a>(store: &'a Store, context_id: &ContextId) -> Vec<&'a Moment> {
-    let mut moments: Vec<&Moment> =
-        store.moments().filter(|m| &m.context_id == context_id).collect();
-    moments.sort_by(|a, b| (a.at, &a.id).cmp(&(b.at, &b.id)));
-    moments
+    store.context_moments(context_id).collect()
 }
 
 /// Objects dock: all objects ordered by id.

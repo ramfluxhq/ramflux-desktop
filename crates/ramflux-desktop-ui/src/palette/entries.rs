@@ -119,15 +119,20 @@ fn contexts(store: &Store) -> Group {
     Group { label: tr("palette.contexts"), entries }
 }
 
+/// Most history rows the palette searches: the most recently loaded
+/// message bodies (only bodies in memory are searchable).
+pub const HISTORY_CAP: usize = 500;
+
 fn history(store: &Store) -> Group {
     let mut moments: Vec<_> = store
-        .moments()
-        .filter_map(|m| match &m.kind {
-            MomentKind::Message(p) if !p.tombstone && !p.text.is_empty() => {
-                Some((m, p.text.clone()))
-            }
-            _ => None,
+        .bodies()
+        .recent()
+        .filter(|(_, text)| !text.is_empty())
+        .filter_map(|(id, text)| {
+            let m = store.moment(id)?;
+            matches!(&m.kind, MomentKind::Message(p) if !p.tombstone).then(|| (m, text.to_owned()))
         })
+        .take(HISTORY_CAP)
         .collect();
     moments.sort_by(|a, b| (b.0.at, &b.0.id).cmp(&(a.0.at, &a.0.id)));
     let entries = moments

@@ -2,12 +2,13 @@
 // Copyright (c) 2026 Span Brain
 
 //! Message moments: text, delivery receipt (outbound), tombstones and an
-//! attachment row.
+//! attachment row. The text comes from the store's body cache; while it is
+//! not in memory a placeholder shows and the conversation asks for it.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{App, IntoElement, div};
+use gpui_kit::{App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{MessagePayload, Receipt};
 
 use super::RowRefs;
@@ -17,6 +18,7 @@ use crate::i18n::{self, tr};
 /// Renders a message body.
 pub fn render(
     payload: &MessagePayload,
+    body: Option<&SharedString>,
     refs: &RowRefs,
     outbound: bool,
     _sink: &EventSink,
@@ -55,12 +57,23 @@ pub fn render(
         Receipt::Read => cx.theme().success,
         Receipt::Sending | Receipt::Sent | Receipt::Delivered => muted,
     };
+    let text = body.cloned();
     v_flex()
         .id("message-body")
         .gap_1()
         .text_sm()
         .text_color(cx.theme().foreground)
-        .when(!payload.text.is_empty(), |body| body.child(payload.text.clone()))
+        .when_some(text.filter(|t| !t.is_empty()), |col, text| col.child(text))
+        .when(body.is_none(), |col| {
+            col.child(
+                div()
+                    .id("message-not-loaded")
+                    .italic()
+                    .text_color(muted)
+                    .child(tr("moment.message.not_loaded"))
+                    .test_support(),
+            )
+        })
         .children(attachment)
         .when(outbound || payload.receipt == Receipt::Sending, |body| {
             body.child(

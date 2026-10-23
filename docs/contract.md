@@ -148,6 +148,19 @@ lack.
 The store also tracks the order in which contexts were pinned and the time
 each moment entered `NeedsMe` (the envelope `at`).
 
+Moment rows hold metadata only. A message's text moves into a bounded,
+memory-only body cache (`Store::body`, `MAX_BODIES` = 4 096 per store; the
+least recently loaded body is evicted first; recency moves only on apply, so
+replay stays deterministic). An account that locks drops every body
+(`Changes::bodies_cleared`). A view that shows a message whose body is not in
+memory asks the source again (`Source::request_bodies`); the body comes back
+as a `MomentUpdated` carrying the message payload.
+
+The reducer maintains secondary indexes with the collections they index (a
+timeline per context, `NeedsMe` and `InProgress` sets, the contexts of each
+participant, the moments presenting a grant or a task, the tasks waiting on a
+grant), so every selector costs O(k) in the size of its result.
+
 ## Selectors
 
 All selectors are pure functions of `&Store`.
@@ -159,6 +172,9 @@ All selectors are pure functions of `&Store`.
 | `owning_task_step` | `TaskStepRef { moment_id, task_id, step }` of the task step waiting on a grant. |
 | `in_flight` | `InProgress` moments and `TaskProgress` moments whose task is not terminal, ordered by `(at, id)`. |
 | `timeline` | The moments of one context, ordered by `(at, id)`. |
+| `needs_me_count(context)`, `contact_requests` | Attention per context; open contact requests. |
+| `presenting_moment(grant)` | The intervention, approval block or owning task step that presents a grant. |
+| `contexts_with(participant)` | The contexts a participant is a member of. |
 | `objects`, `contacts`, `grants(Pending or All)`, `participants(context)` | Dock views. |
 
 ## Intents, policy and effects
@@ -248,6 +264,7 @@ pub trait Source {
     fn submit(&mut self, effect: Effect);
     fn drain(&mut self, now: Timestamp) -> Vec<EventEnvelope>;
     fn focus(&mut self, _context: Option<&ContextId>) {}
+    fn request_bodies(&mut self, _moments: &[MomentId]) {}
 }
 ```
 
@@ -255,6 +272,10 @@ The trait does not depend on any async runtime. An SDK-backed source
 (`crates/ramflux-desktop-sdk`) runs its own bridge thread and buffers events
 until `drain` is called. `focus` tells a pulling source which context the user
 looks at, so it can keep it fresh until the daemon pushes events itself.
+`request_bodies` asks a source to deliver evicted message bodies again; the
+mock source re-delivers the newest payload it already delivered, the SDK
+source re-reads the context (a group's text is known only while its
+decrypted copy is kept, bounded as well).
 
 ## Scenarios (`crates/ramflux-desktop-test`)
 

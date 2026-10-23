@@ -11,6 +11,7 @@
 //! form values to surface actions before they bubble on (rule B3).
 
 mod header;
+mod rows;
 mod view_state;
 
 use std::rc::Rc;
@@ -23,15 +24,16 @@ use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
     StyleRefinement, Subscription, WeakEntity, Window, div,
 };
-use ramflux_desktop_core::{ContextId, Listing, MomentId, Scope, UiEvent, UiEventKind, selectors};
+use ramflux_desktop_core::{ContextId, Listing, MomentId, Scope, UiEvent, UiEventKind};
 
-use crate::app::{StoreEvent, StoreHandle};
+use crate::app::{ChangeSet, StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
-use crate::i18n::{self, tr};
-use crate::moments::{MomentRow, MomentView};
+use crate::i18n::tr;
+use crate::moments::MomentView;
 use crate::root::{ConfirmHost, IntentRoot};
 
 use super::composer::Composer;
+use rows::{RowUpdate, Rows};
 use view_state::ViewState;
 
 pub use header::{TIMERS, timer_label};
@@ -42,7 +44,7 @@ pub struct Conversation {
     root: Entity<IntentRoot>,
     root_sink: EventSink,
     context_id: Option<ContextId>,
-    rows: Rc<Vec<MomentRow>>,
+    rows: Rows,
     scroller: Entity<MessageScrollerState>,
     view: ViewState,
     highlighted: Option<MomentId>,
@@ -108,7 +110,7 @@ impl Conversation {
                     return;
                 };
                 if changes.touches_context(store.read(cx).store(), &context_id) {
-                    this.sync_rows(cx);
+                    this.sync_rows(Some(changes), cx);
                 }
             }),
             cx.observe(&root, |_, _, cx| cx.notify()),
@@ -118,7 +120,7 @@ impl Conversation {
             store,
             root,
             context_id: None,
-            rows: Rc::new(Vec::new()),
+            rows: Rows::default(),
             scroller,
             view: ViewState::default(),
             highlighted: None,
@@ -135,12 +137,35 @@ impl Conversation {
 
     /// Ids of the shown rows in timeline order.
     pub fn row_ids(&self) -> Vec<MomentId> {
-        self.rows.iter().map(|row| row.moment.id.clone()).collect()
+        self.rows.as_slice().iter().map(|row| row.moment.id.clone()).collect()
+    }
+
+    /// Number of shown rows.
+    pub fn row_count(&self) -> usize {
+        self.rows.as_slice().len()
+    }
+
+    /// Whether the shown row of `id` has its message text (false while the
+    /// body is being loaded again).
+    pub fn has_body(&self, id: &MomentId) -> bool {
+        self.rows
+            .position(id)
+            .and_then(|ix| self.rows.as_slice().get(ix))
+            .is_some_and(|row| row.body.is_some())
+    }
+
+    /// The scroller state (virtual list bookkeeping), for tests.
+    pub fn scroller(&self) -> &Entity<MessageScrollerState> {
+        &self.scroller
     }
 
     /// Day headers in row order (`None` for rows that continue a day).
     pub fn day_headers(&self) -> Vec<Option<String>> {
-        self.rows.iter().map(|row| row.day_header.as_ref().map(ToString::to_string)).collect()
+        self.rows
+            .as_slice()
+            .iter()
+            .map(|row| row.day_header.as_ref().map(ToString::to_string))
+            .collect()
     }
 
     /// Whether a row's disclosure is expanded.
@@ -161,13 +186,13 @@ impl Conversation {
         self.context_id = context_id;
         self.view = ViewState::default();
         self.highlighted = None;
-        self.rows = Rc::new(Vec::new());
-        self.sync_rows(cx);
+        self.rows.clear();
+        self.sync_rows(None, cx);
     }
 
     /// Highlights a moment and scrolls it into view.
     pub fn focus_moment(&mut self, id: &MomentId, cx: &mut Context<Self>) {
-        let Some(ix) = self.rows.iter().position(|row| &row.moment.id == id) else { return };
+        let Some(ix) = self.rows.position(id) else { return };
         self.highlighted = Some(id.clone());
         self.scroller.update(cx, |state, cx| {
             let _ = state.scroll_to_item(ix, cx);
@@ -176,7 +201,7 @@ impl Conversation {
     }
 
     fn remeasure(&mut self, id: &MomentId, cx: &mut Context<Self>) {
-        if let Some(ix) = self.rows.iter().position(|row| &row.moment.id == id) {
+        if let Some(ix) = self.rows.position(id) {
             self.scroller.update(cx, |state, cx| {
                 let _ = state.remeasure_items(ix..ix + 1, cx);
             });
@@ -202,52 +227,24 @@ impl Conversation {
         );
     }
 
-    fn sync_rows(&mut self, cx: &mut Context<Self>) {
-        let rows: Vec<MomentRow> = match &self.context_id {
-            Some(id) => {
-                let handle = self.store.read(cx);
-                let store = handle.store();
-                let now = handle.session().map(|s| s.now()).unwrap_or_default();
-                let me = selectors::self_participant(store);
-                let mut last_day = None;
-                selectors::timeline(store, id)
-                    .into_iter()
-                    .map(|m| {
-                        let mut row = MomentRow::build(store, m, me.as_ref());
-                        let day = i18n::clock::local_day(m.at);
-                        if day != last_day {
-                            row.day_header = Some(i18n::day_label(m.at, now));
-                            last_day = day;
-                        }
-                        row
-                    })
-                    .collect()
-            }
-            None => Vec::new(),
+    /// Brings the rows up to date (patched for `changes` when possible)
+    /// and tells the virtual list exactly what moved.
+    fn sync_rows(&mut self, changes: Option<&ChangeSet>, cx: &mut Context<Self>) {
+        let update = match &self.context_id {
+            Some(id) => self.rows.sync(self.store.read(cx), id, changes),
+            None => self.rows.clear(),
         };
-        let old = Rc::clone(&self.rows);
-        let same_prefix = old.len() <= rows.len()
-            && old.iter().zip(rows.iter()).all(|(a, b)| a.moment.id == b.moment.id);
-        let changed: Vec<usize> = old
-            .iter()
-            .zip(rows.iter())
-            .enumerate()
-            .filter(|(_, (a, b))| a != b)
-            .map(|(ix, _)| ix)
-            .collect();
-        let added = rows.len().saturating_sub(old.len());
-        let count = rows.len();
-        self.rows = Rc::new(rows);
-        self.scroller.update(cx, |state, cx| {
-            if same_prefix && state.item_count() == old.len() {
+        let count = self.rows.as_slice().len();
+        self.scroller.update(cx, |state, cx| match update {
+            RowUpdate::None => {}
+            RowUpdate::Reset => state.reset(count, cx),
+            RowUpdate::Patched { changed, appended } => {
                 for ix in changed {
                     let _ = state.remeasure_items(ix..ix + 1, cx);
                 }
-                if added > 0 {
-                    let _ = state.append(added, cx);
+                if appended > 0 {
+                    let _ = state.append(appended, cx);
                 }
-            } else {
-                state.reset(count, cx);
             }
         });
         cx.notify();
@@ -289,11 +286,8 @@ impl Conversation {
                     let action_id = action_id.clone();
                     let collected = this
                         .read_with(cx, |field, cx| {
-                            field
-                                .rows
-                                .iter()
-                                .find(|row| row.moment.id == moment_id)
-                                .map(|row| field.view.values(row, cx))
+                            let row = field.rows.position(&moment_id)?;
+                            field.rows.as_slice().get(row).map(|row| field.view.values(row, cx))
                         })
                         .ok()
                         .flatten()
@@ -311,8 +305,8 @@ impl Conversation {
 
 impl Render for Conversation {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let rows = Rc::clone(&self.rows);
-        self.view.ensure(&rows, window, cx);
+        let rows = self.rows.shared();
+        self.view.ensure(self.rows.stateful(), window, cx);
         let store = self.store.read(cx).store();
         let context = self.context_id.as_ref().and_then(|id| store.context(id));
         let context_sink =
@@ -350,21 +344,26 @@ impl Render for Conversation {
                     .into_any_element()
             }
             Some(context_sink) => {
-                let states: Rc<Vec<_>> = Rc::new(
-                    rows.iter()
-                        .map(|row| {
-                            let id = &row.moment.id;
-                            self.view.row_state(id, self.highlighted.as_ref() == Some(id))
-                        })
-                        .collect(),
-                );
+                // Only visible rows render: the per-row view state is looked
+                // up in the renderer, not prepared for every row.
+                let view = Rc::new(self.view.clone());
+                let highlighted = self.highlighted.clone();
                 let this = cx.weak_entity();
-                MessageScroller::new("conversation", self.scroller.clone(), move |ix, _, _| {
-                    let (Some(row), Some(state)) = (rows.get(ix), states.get(ix)) else {
+                let store = self.store.downgrade();
+                MessageScroller::new("conversation", self.scroller.clone(), move |ix, _, cx| {
+                    let Some(row) = rows.get(ix) else {
                         return div().into_any_element();
                     };
-                    let sink = Self::moment_sink(this.clone(), &context_sink, &row.moment.id);
-                    MomentView::new(row.clone(), sink, state.clone()).into_any_element()
+                    let id = &row.moment.id;
+                    if row.is_missing_body() {
+                        let (store, id) = (store.clone(), id.clone());
+                        cx.defer(move |cx| {
+                            store.update(cx, |store, _| store.request_bodies(&[id])).ok();
+                        });
+                    }
+                    let state = view.row_state(id, highlighted.as_ref() == Some(id));
+                    let sink = Self::moment_sink(this.clone(), &context_sink, id);
+                    MomentView::new(row.clone(), sink, state).into_any_element()
                 })
                 .with_jump_button_label(tr("conversation.jump_latest"))
                 .with_row_style(StyleRefinement::default().pb_2())

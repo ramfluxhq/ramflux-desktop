@@ -28,7 +28,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, EventEmitter, Task};
 use ramflux_desktop_core::{
-    AccountId, AttentionItem, ContextId, DomainEvent, Intent, Store, Timestamp, selectors,
+    AccountId, AttentionItem, ContextId, DomainEvent, Intent, MomentId, Store, Timestamp, selectors,
 };
 use ramflux_desktop_test::{Scenario, load_fixture};
 
@@ -186,6 +186,14 @@ impl StoreHandle {
     pub fn focus(&mut self, context: Option<&ContextId>) {
         if let Some(session) = self.active_session_mut() {
             session.focus(context);
+        }
+    }
+
+    /// Asks the rendered account's source for message bodies a view shows
+    /// but the store's body cache no longer holds.
+    pub fn request_bodies(&mut self, moments: &[MomentId]) {
+        if let Some(session) = self.active_session_mut() {
+            session.request_bodies(moments);
         }
     }
 

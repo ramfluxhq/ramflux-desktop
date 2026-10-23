@@ -9,6 +9,7 @@
 //! - [`local_echo`]: built-in local-echo and audit responses for every scenario.
 //! - [`ScenarioPlayer`]: owns a store and a mock source and offers pause,
 //!   step, advance, and seek for tests and the developer panel.
+//! - [`scale`]: generated large scenarios for scale tests.
 //! - `fake_bus` (feature `fake-bus`): a fake daemon local bus for adapter tests.
 
 #![forbid(unsafe_code)]
@@ -18,6 +19,7 @@ pub mod fake_bus;
 pub mod local_echo;
 pub mod mock_source;
 pub mod player;
+pub mod scale;
 pub mod scenario;
 
 pub use mock_source::{EffectRecord, MockSource};
