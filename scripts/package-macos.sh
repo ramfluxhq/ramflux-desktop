@@ -147,6 +147,7 @@ cat >"$CONTENTS/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>$MIN_MACOS</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.social-networking</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSLocalNetworkUsageDescription</key><string>Ramflux Desktop connects to Ramflux nodes on your local network, and so does the local daemon it starts.</string>
   <key>NSHumanReadableCopyright</key><string>Copyright (c) 2026 Span Brain. AGPL-3.0-or-later.</string>
   <key>RamfluxBuildRevision</key><string>$REV</string>
 </dict>

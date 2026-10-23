@@ -74,14 +74,30 @@ Command line and environment override the saved choices for one run:
 `--source mock|rfd`, `--socket PATH`, `RAMFLUX_DESKTOP_SOURCE`,
 `RAMFLUX_DESKTOP_SOCKET`.
 
-## 4. Add a node by URL
+## 4. Allow Local Network access (macOS)
+
+A node on your local network (a LAN address such as `192.168.x.y`) can only
+be reached after macOS allows it: Local Network privacy blocks apps until
+the user agrees, while Apple's own tools (`curl`) still connect. The app
+declares why it asks (`NSLocalNetworkUsageDescription`), so macOS shows a
+prompt the first time the app or the daemon it started reaches the node;
+choose **Allow**. A daemon the app starts inherits the app's permission.
+
+If the prompt was dismissed, enable **Ramflux Desktop** in System Settings ›
+Privacy & Security › Local Network. Until then a node lookup fails with an
+unreachable host (os error 65), and the node step says exactly that, with
+where to allow it. A daemon you start yourself from a terminal is covered by
+the terminal's permission instead. Nodes reached over the internet need no
+permission.
+
+## 5. Add a node by URL
 
 On the node step type the node's discovery URL and press **Look up**. The
 node's signed record is checked before anything is saved; the card shows its
 endpoints, fingerprint and expiry. A node that is not from an invitation is
 trusted on first use, which needs a hold-to-confirm. Supported today.
 
-## 5. Create an account
+## 6. Create an account
 
 On the account step choose **Create account**, name it, set a passphrase and
 create. The workspace opens once the daemon reports the account unlocked.
@@ -89,7 +105,7 @@ Unlock, lock, passphrase change and restore from a backup file are supported.
 Joining as a new device with an activation code is not available from the
 daemon yet (shown disabled).
 
-## 6. Add a contact
+## 7. Add a contact
 
 Open the contacts dock (`secondary-alt-2`, or **Add a contact…** in the command
 palette), paste the id the contact shared with you (their principal id) and
@@ -114,7 +130,7 @@ node and marks the safety number verified (it needs the node, and the contact's
 identity, which the daemon lists once it has fetched their device manifest, for
 example after a message).
 
-## 7. Send a message or an attachment
+## 8. Send a message or an attachment
 
 | What | Today |
 |---|---|

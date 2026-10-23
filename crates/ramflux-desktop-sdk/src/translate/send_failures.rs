@@ -47,6 +47,17 @@ impl Translator {
                 members.iter().map(|device| self.member_name(device)).collect();
             return keyed(key::GROUP_ROUTES_UNRESOLVED, &[("members", &names.join(", "))]);
         }
+        if matches!(method, methods::NODE_ADD | methods::NODE_PROBE)
+            && super::node_failures::local_network_permission_applies()
+        {
+            let message = error.message();
+            if super::node_failures::is_host_unreachable(&message) {
+                return key::LOCAL_NETWORK.to_owned();
+            }
+            if let Some(host) = super::node_failures::failed_local_request(&message) {
+                return keyed(key::LOCAL_NETWORK_MAYBE, &[("host", &host)]);
+            }
+        }
         error.message()
     }
 
@@ -73,5 +84,46 @@ mod tests {
         let message = r#"local bus error: group routes unresolved: {"group_id":"g","unreachable_members":["d-1","d-2"]}"#;
         assert_eq!(unreachable_members(message), Some(vec!["d-1".to_owned(), "d-2".to_owned()]));
         assert_eq!(unreachable_members("account not open"), None);
+    }
+
+    #[test]
+    fn an_unreachable_node_host_on_macos_names_the_local_network_permission() {
+        use crate::translate::Scope;
+        let translator = Translator::new(Scope::Daemon, "rfd.sock");
+        let error = BusError::Daemon {
+            code: "node".to_owned(),
+            message: "node error: client record fetch failed: HostUnreachable (os error 65)"
+                .to_owned(),
+        };
+        let add = translator.failure_message(methods::NODE_ADD, &error);
+        let probe = translator.failure_message(methods::NODE_PROBE, &error);
+        if cfg!(target_os = "macos") {
+            assert_eq!(add, key::LOCAL_NETWORK);
+            assert_eq!(probe, key::LOCAL_NETWORK);
+        } else {
+            assert_eq!(add, error.message(), "only macOS asks for Local Network access");
+        }
+        assert_eq!(
+            translator.failure_message(methods::SEND_MESSAGE, &error),
+            error.message(),
+            "only node lookups are explained this way"
+        );
+        let refused = BusError::Daemon {
+            code: "node".to_owned(),
+            message: "client record verification failed".to_owned(),
+        };
+        assert_eq!(translator.failure_message(methods::NODE_ADD, &refused), refused.message());
+        let lan = BusError::Daemon {
+            code: "node".to_owned(),
+            message: "local bus error: error sending request for url \
+                      (http://192.168.0.10:8080/.well-known/ramflux/client)"
+                .to_owned(),
+        };
+        if cfg!(target_os = "macos") {
+            assert_eq!(
+                translator.failure_message(methods::NODE_ADD, &lan),
+                keyed(key::LOCAL_NETWORK_MAYBE, &[("host", "192.168.0.10")])
+            );
+        }
     }
 }

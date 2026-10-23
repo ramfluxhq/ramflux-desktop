@@ -99,6 +99,9 @@ entry:
     add_title:
       en: "Add a node by address"
       zh-CN: "按地址添加节点"
+    add_failed:
+      en: "The node could not be looked up"
+      zh-CN: "无法查询该节点"
     url_placeholder:
       en: "https://node.example.org"
       zh-CN: "https://node.example.org"

@@ -6,13 +6,14 @@
 //! rows. The hold strip for trust-on-first-use pins is the page's footer.
 
 use gpui_kit::TestSupportExt as _;
+use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{Context, IntoElement, Role, Window, div};
-use ramflux_desktop_core::{ListState, Listing, Node, UiEventKind};
+use gpui_kit::{Context, IntoElement, Role, SharedString, Window, div};
+use ramflux_desktop_core::{ListState, Listing, Node, UiEventKind, methods};
 
 use super::{EntryPage, NodeCard};
 use crate::i18n::tr;
@@ -25,10 +26,25 @@ impl EntryPage {
             return;
         }
         self.inputs.node_url.update(cx, |input, cx| input.set_value("", window, cx));
+        self.node_lookup = Some(self.store.read(cx).store().failures_total());
         self.sink.emit(UiEventKind::AddNodeRequested { url }, window, cx);
     }
 
+    /// Why the last node lookup failed, translated (an unreachable host on
+    /// macOS names the Local Network permission).
+    fn node_lookup_failure(&self, cx: &Context<Self>) -> Option<SharedString> {
+        let since = self.node_lookup?;
+        let store = self.store.read(cx).store();
+        store
+            .failures_since(since)
+            .iter()
+            .rev()
+            .find(|f| f.method == methods::NODE_ADD || f.method == methods::NODE_PROBE)
+            .map(|f| crate::i18n::backend_text(&f.message))
+    }
+
     pub(super) fn render_node_step(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let lookup_failure = self.node_lookup_failure(cx);
         let store = self.store.read(cx).store();
         let (pending_nodes, known): (Vec<Node>, Vec<Node>) =
             store.nodes().cloned().partition(|n| !n.confirmed);
@@ -141,7 +157,18 @@ impl EntryPage {
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
                             .child(tr("entry.node.add_help")),
-                    ),
+                    )
+                    .children(lookup_failure.map(|reason| {
+                        div()
+                            .id("entry-node-add-failure")
+                            .role(Role::Alert)
+                            .aria_label(reason.clone())
+                            .test_support()
+                            .child(
+                                Alert::error("entry-node-add-failure-alert", reason)
+                                    .title(tr("entry.node.add_failed")),
+                            )
+                    })),
             )
             .when(usable, |step| {
                 step.child(div().pt_2().text_sm().child(tr("entry.node.known"))).children(rows)

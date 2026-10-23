@@ -21,6 +21,7 @@
 //! - `grants`: approvals, grants and standing approvals.
 //! - `interventions`: approvals shown in their conversation.
 //! - `grant_failures`: fail-closed grant errors.
+//! - `node_failures`: why a node lookup failed (Local Network privacy).
 //! - `send_failures`: why a send failed, in the user's terms.
 //! - `effects`: answers to effects, and the audit record of confirmed ones.
 //! - `reason`: locale keys with arguments.
@@ -35,6 +36,7 @@ mod grants;
 mod identity;
 mod interventions;
 mod messages;
+mod node_failures;
 mod objects;
 pub mod pages;
 pub mod reason;

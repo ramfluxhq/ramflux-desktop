@@ -81,6 +81,12 @@ backend:
     group_routes_unresolved:
       en: "Not sent to anyone: no route to %{members}. Nothing was delivered."
       zh-CN: "未发送给任何人：无法路由到 %{members}。没有任何投递。"
+    local_network:
+      en: "The node cannot be reached because Ramflux Desktop may not use the local network. Allow it in System Settings › Privacy & Security › Local Network, then try again."
+      zh-CN: "无法连接节点：Ramflux Desktop 尚未获准访问本地网络。请在“系统设置 › 隐私与安全性 › 本地网络”中允许后重试。"
+    local_network_maybe:
+      en: "The node at %{host} on your local network did not answer. If macOS has not allowed Ramflux Desktop to use the local network, allow it in System Settings › Privacy & Security › Local Network, then try again."
+      zh-CN: "本地网络上的节点 %{host} 没有响应。如果 macOS 尚未允许 Ramflux Desktop 访问本地网络，请在“系统设置 › 隐私与安全性 › 本地网络”中允许后重试。"
     partial:
       en: "Stopped after %{done} of %{total}: %{reason}"
       zh-CN: "完成 %{done}/%{total} 后停止：%{reason}"

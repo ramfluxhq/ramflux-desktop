@@ -101,6 +101,9 @@ pub struct EntryPage {
     node: Option<NodeId>,
     review_nodes: bool,
     submitted: Option<AccountId>,
+    /// The store's failure count when a node was last looked up; a node
+    /// lookup failure after it is shown under the add-node form.
+    node_lookup: Option<u64>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -148,6 +151,7 @@ impl EntryPage {
             node: None,
             review_nodes: false,
             submitted: None,
+            node_lookup: None,
             _subscriptions: subscriptions,
         }
     }

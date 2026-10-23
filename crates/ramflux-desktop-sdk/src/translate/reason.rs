@@ -37,11 +37,17 @@ pub mod key {
     pub const FILE: &str = "backend.failure.file";
     /// A group send reached no one: `members` could not be resolved.
     pub const GROUP_ROUTES_UNRESOLVED: &str = "backend.failure.group_routes_unresolved";
+    /// The node's host is unreachable because Local Network access was not
+    /// allowed (macOS privacy).
+    pub const LOCAL_NETWORK: &str = "backend.failure.local_network";
+    /// A request to `host` on the local network failed without a reason
+    /// the daemon passed on; Local Network access may be missing.
+    pub const LOCAL_NETWORK_MAYBE: &str = "backend.failure.local_network_maybe";
     /// A multi-step effect stopped (`done` of `total` applied, `reason`).
     pub const PARTIAL: &str = "backend.failure.partial";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 12] = [
+    pub const ALL: [&str; 14] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -53,6 +59,8 @@ pub mod key {
         ATTACHMENT_TOO_LARGE,
         FILE,
         GROUP_ROUTES_UNRESOLVED,
+        LOCAL_NETWORK,
+        LOCAL_NETWORK_MAYBE,
         PARTIAL,
     ];
 }
