@@ -1,9 +1,8 @@
 // s07 Contract-first moments not yet backed by the SDK: a CAS conflict on a
 // shared object, masked content revealed with an audit record, and a
 // cross-device handoff.
-// Demonstrates: Conflict + ResolveConflict, PrivacyReveal + Reveal, Handoff.
-// Note: there is no "accept handoff" intent in the F0 contract yet, so the
-// handoff completes as a source fact.
+// Demonstrates: Conflict + ResolveConflict, PrivacyReveal + Reveal, Handoff +
+// AcceptHandoff / DeclineHandoff.
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
@@ -29,10 +28,21 @@
         (400, MomentAdded(id: "m-handoff", context_id: "c-ledger", origin: "d-desk", at: 0,
             kind: Handoff(from_device: "d-desk", summary: "Continue reviewing the ledger draft"),
             lifecycle: NeedsMe)),
-        (6000, MomentUpdated(moment_id: "m-handoff", lifecycle: Done,
-            kind: Handoff(from_device: "d-desk", to_device: "d-laptop", summary: "Continue reviewing the ledger draft"))),
     ],
     responses: [
+        (
+            on: Call(method: "handoff.accept", fields: {"moment_id": "m-handoff"}),
+            emit: [
+                (100, MomentUpdated(moment_id: "m-handoff", lifecycle: Done,
+                    kind: Handoff(from_device: "d-desk", to_device: "d-laptop", summary: "Continue reviewing the ledger draft"))),
+            ],
+        ),
+        (
+            on: Call(method: "handoff.decline", fields: {"moment_id": "m-handoff"}),
+            emit: [
+                (100, MomentUpdated(moment_id: "m-handoff", lifecycle: Dismissed)),
+            ],
+        ),
         (
             on: Call(method: "object.resolve_conflict", fields: {"moment_id": "m-conflict", "resolution": "KeepBoth"}),
             emit: [

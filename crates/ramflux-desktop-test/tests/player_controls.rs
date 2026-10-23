@@ -35,7 +35,7 @@ fn step_moves_time_to_the_next_event() {
     let total = p.run_to_end();
     assert!(total > 0);
     assert!(!p.step());
-    assert_eq!(p.now_ms(), 5000);
+    assert_eq!(p.now_ms(), 500);
 }
 
 #[test]
@@ -43,14 +43,21 @@ fn seek_backwards_rebuilds_the_store() {
     let scenario = load_fixture("s04_safety").expect("fixture");
     let mut p = ScenarioPlayer::new(&scenario);
     p.advance(6000);
+    let verify = IntentKind::VerifySafetyNumber { participant_id: ParticipantId::new("p-mira") };
+    p.dispatch(Intent::human(verify)).expect("verify");
+    p.advance(200);
     let full = p.store().last_seq();
+    assert_eq!(
+        p.store().moment(&MomentId::new("m-key")).expect("m-key").lifecycle,
+        Lifecycle::Done
+    );
 
     p.seek(1000);
 
     let key = p.store().moment(&MomentId::new("m-key")).expect("m-key");
     assert_eq!(key.lifecycle, Lifecycle::NeedsMe);
     assert!(p.store().last_seq() < full);
-    p.seek(6000);
+    p.seek(6200);
     assert_eq!(p.store().last_seq(), full);
     assert!(p.errors().is_empty());
 }

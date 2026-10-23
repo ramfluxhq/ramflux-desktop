@@ -69,11 +69,15 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::UnpinContext { .. } => "UnpinContext",
         IntentKind::AcceptContact { .. } => "AcceptContact",
         IntentKind::RejectContact { .. } => "RejectContact",
+        IntentKind::VerifySafetyNumber { .. } => "VerifySafetyNumber",
+        IntentKind::Governance { .. } => "Governance",
+        IntentKind::AcceptHandoff { .. } => "AcceptHandoff",
+        IntentKind::DeclineHandoff { .. } => "DeclineHandoff",
         IntentKind::Unlock { .. } => "Unlock",
     }
 }
 /// Serializable intent variants (all but `Unlock`).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 13;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 17;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -229,6 +233,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             surface_id: SurfaceId::new("s-1"),
             action_id: "run".into(),
             values: json!({ "count": 2 }),
+            confirmed: false,
         },
         IntentKind::Approve { grant_id: GrantId::new("g-1"), confirmed: true },
         IntentKind::Deny { grant_id: GrantId::new("g-1") },
@@ -243,6 +248,17 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::UnpinContext { context_id: ContextId::new("c-1") },
         IntentKind::AcceptContact { moment_id: MomentId::new("m-1") },
         IntentKind::RejectContact { moment_id: MomentId::new("m-1") },
+        IntentKind::VerifySafetyNumber { participant_id: ParticipantId::new("p-1") },
+        IntentKind::Governance {
+            context_id: ContextId::new("c-1"),
+            op: GovernanceOp::SetRole {
+                participant_id: ParticipantId::new("p-1"),
+                role: Role::Admin,
+            },
+            confirmed: false,
+        },
+        IntentKind::AcceptHandoff { moment_id: MomentId::new("m-1") },
+        IntentKind::DeclineHandoff { moment_id: MomentId::new("m-1") },
     ]
 }
 

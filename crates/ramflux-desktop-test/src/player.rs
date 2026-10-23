@@ -117,16 +117,17 @@ impl ScenarioPlayer {
         delivered
     }
 
-    /// Validates an intent against the store, submits the resulting calls to
-    /// the source, and returns the effects the app must handle itself
-    /// (confirmation requests).
+    /// Validates an intent against the store at the current scenario time,
+    /// submits the resulting calls to the source, and returns the effects the
+    /// app must handle itself (confirmation requests).
     ///
     /// # Errors
     ///
     /// Returns [`IntentError`] when the intent is refused.
     pub fn dispatch(&mut self, intent: Intent) -> Result<Vec<Effect>, IntentError> {
+        let now = self.source.epoch().saturating_add_ms(self.now_ms);
         let mut for_app = Vec::new();
-        for effect in handle_intent(&self.store, intent)? {
+        for effect in handle_intent(&self.store, intent, now)? {
             match effect {
                 Effect::RequireConfirmation { .. } => for_app.push(effect),
                 Effect::Call { .. } | Effect::Unlock { .. } => self.source.submit(effect),

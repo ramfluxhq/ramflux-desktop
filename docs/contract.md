@@ -137,22 +137,31 @@ All selectors are pure functions of `&Store`.
 `Agent(ParticipantId)`. The kinds are `SendMessage`, `AttachObject`,
 `SurfaceAction`, `Approve { grant_id, confirmed }`, `Deny`, `Reveal`,
 `ResolveConflict`, `StartTask`, `CancelTask`, `PinContext`, `UnpinContext`,
-`AcceptContact`, `RejectContact` and `Unlock`.
+`AcceptContact`, `RejectContact`, `VerifySafetyNumber`,
+`Governance { context_id, op, confirmed }`, `AcceptHandoff`, `DeclineHandoff`
+and `Unlock`. `GovernanceOp` is one of `AddMember`, `RemoveMember`, `Kick`,
+`Ban`, `SetRole` and `CreateInvite`; `Kick`, `Ban` and `SetRole` are high risk.
 
 `Unlock` carries a `SecretInput`. This one-shot handle is not `Clone` and not
-`Serialize`, and its `Debug` output is `<redacted>`. `Unlock` is excluded from
-serde: serializing it returns an error and it cannot be deserialized.
+`Serialize`, its `Debug` output is `<redacted>`, and its buffer is zeroized on
+drop. `Unlock` is excluded from serde: serializing it returns an error and it
+cannot be deserialized.
 
-`handle_intent(&Store, Intent) -> Result<Vec<Effect>, IntentError>` checks the
-intent against the store and never mutates it.
+`handle_intent(&Store, Intent, now: Timestamp) -> Result<Vec<Effect>, IntentError>`
+checks the intent against the store at time `now` and never mutates it.
 
-- `Approve` on a grant that is not pending is an error.
-- `Approve` on a `High` or `Critical` grant without `confirmed: true` returns
-  `[Effect::RequireConfirmation { intent }]`. The app then shows the
-  hold-to-confirm bar and submits a confirmed human intent.
+- `Approve` or `Deny` on a grant that is not pending, or whose expiry is at or
+  before `now`, is an error.
+- `Approve` on a `High` or `Critical` grant, a `SurfaceAction` whose action is
+  `High` or `Critical`, and a high-risk `Governance` operation without human
+  confirmation return `[Effect::RequireConfirmation { intent }]`. The app then
+  shows the hold-to-confirm strip and submits
+  `intent.into_human_confirmed()`, which sets `confirmed` and makes the human
+  the actor of the decision.
 - Agent intents follow the same rules. The agent must be a known `Agent`
   participant. An agent cannot provide human confirmation, so `confirmed` is
-  ignored on an agent's high-risk approval. Agents may not unlock.
+  always ignored for agents. Agents may not unlock, verify a safety number, or
+  answer a handoff.
 
 `Effect` is one of the following:
 

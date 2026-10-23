@@ -7,15 +7,17 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use zeroize::Zeroize;
 
-use crate::ids::{AccountId, ContextId, GrantId, MomentId, SurfaceId, TaskId};
-use crate::model::{Actor, ConflictResolution};
+use crate::ids::{AccountId, ContextId, GrantId, MomentId, ParticipantId, SurfaceId, TaskId};
+use crate::model::{Actor, ConflictResolution, Risk, Role};
 
 /// A one-shot secret (passphrase, PIN) handed from the UI to the source.
 ///
 /// It is deliberately not `Clone`, not `Serialize`, and its `Debug` output is
 /// `<redacted>`, so it cannot leak through logs, scenario files, or the event
-/// inspector. The source consumes it with [`SecretInput::expose`].
+/// inspector. The source reads it with [`SecretInput::expose`]; the buffer is
+/// zeroized when the handle is dropped.
 pub struct SecretInput(String);
 
 impl SecretInput {
@@ -24,9 +26,20 @@ impl SecretInput {
         Self(secret.into())
     }
 
-    /// Consumes the handle and returns the secret.
-    pub fn expose(self) -> String {
-        self.0
+    /// Borrows the secret. Do not copy it into longer-lived storage.
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+
+    /// Whether the secret is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Drop for SecretInput {
+    fn drop(&mut self) {
+        self.0.zeroize();
     }
 }
 
@@ -51,6 +64,130 @@ impl Intent {
     /// Builds a human intent.
     pub fn human(kind: IntentKind) -> Self {
         Self { actor: Actor::Human, kind }
+    }
+
+    /// Returns this intent as confirmed by the attended human.
+    ///
+    /// Used only by the hold-to-confirm strip after the gesture completes: the
+    /// actor becomes [`Actor::Human`] (the human makes the decision, whoever
+    /// proposed it) and `confirmed` is set on kinds that carry it. Other kinds
+    /// are returned unchanged apart from the actor.
+    #[must_use]
+    pub fn into_human_confirmed(self) -> Self {
+        let kind = match self.kind {
+            IntentKind::Approve { grant_id, .. } => {
+                IntentKind::Approve { grant_id, confirmed: true }
+            }
+            IntentKind::SurfaceAction { moment_id, surface_id, action_id, values, .. } => {
+                IntentKind::SurfaceAction {
+                    moment_id,
+                    surface_id,
+                    action_id,
+                    values,
+                    confirmed: true,
+                }
+            }
+            IntentKind::Governance { context_id, op, .. } => {
+                IntentKind::Governance { context_id, op, confirmed: true }
+            }
+            other => other,
+        };
+        Self { actor: Actor::Human, kind }
+    }
+
+    /// Whether this intent claims human confirmation.
+    pub fn is_confirmed(&self) -> bool {
+        matches!(
+            self.kind,
+            IntentKind::Approve { confirmed: true, .. }
+                | IntentKind::SurfaceAction { confirmed: true, .. }
+                | IntentKind::Governance { confirmed: true, .. }
+        )
+    }
+}
+
+/// A group or space governance operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GovernanceOp {
+    /// Add a known participant as a member.
+    AddMember {
+        /// Participant to add.
+        participant_id: ParticipantId,
+        /// Initial role.
+        role: Role,
+    },
+    /// Remove a member (for example on their request).
+    RemoveMember {
+        /// Member to remove.
+        participant_id: ParticipantId,
+    },
+    /// Remove a member against their will.
+    Kick {
+        /// Member to remove.
+        participant_id: ParticipantId,
+    },
+    /// Remove and block a participant from rejoining.
+    Ban {
+        /// Participant to ban.
+        participant_id: ParticipantId,
+    },
+    /// Change a member's role.
+    SetRole {
+        /// Member.
+        participant_id: ParticipantId,
+        /// New role.
+        role: Role,
+    },
+    /// Create an invitation link for a new member.
+    CreateInvite {
+        /// Role granted on joining.
+        role: Role,
+    },
+}
+
+impl GovernanceOp {
+    /// Policy risk of the operation. `Kick`, `Ban` and `SetRole` are high risk
+    /// and need human confirmation.
+    pub const fn risk(&self) -> Risk {
+        match self {
+            Self::Kick { .. } | Self::Ban { .. } | Self::SetRole { .. } => Risk::High,
+            Self::RemoveMember { .. } => Risk::Medium,
+            Self::AddMember { .. } | Self::CreateInvite { .. } => Risk::Low,
+        }
+    }
+
+    /// Contract method name.
+    pub const fn method(&self) -> &'static str {
+        match self {
+            Self::AddMember { .. } => methods::GROUP_ADD_MEMBER,
+            Self::RemoveMember { .. } => methods::GROUP_REMOVE_MEMBER,
+            Self::Kick { .. } => methods::GROUP_KICK,
+            Self::Ban { .. } => methods::GROUP_BAN,
+            Self::SetRole { .. } => methods::GROUP_SET_ROLE,
+            Self::CreateInvite { .. } => methods::GROUP_CREATE_INVITE,
+        }
+    }
+
+    /// Participant the operation targets, if any.
+    pub const fn target(&self) -> Option<&ParticipantId> {
+        match self {
+            Self::AddMember { participant_id, .. }
+            | Self::RemoveMember { participant_id }
+            | Self::Kick { participant_id }
+            | Self::Ban { participant_id }
+            | Self::SetRole { participant_id, .. } => Some(participant_id),
+            Self::CreateInvite { .. } => None,
+        }
+    }
+
+    /// Role carried by the operation, if any.
+    pub const fn role(&self) -> Option<Role> {
+        match self {
+            Self::AddMember { role, .. }
+            | Self::SetRole { role, .. }
+            | Self::CreateInvite { role } => Some(*role),
+            Self::RemoveMember { .. } | Self::Kick { .. } | Self::Ban { .. } => None,
+        }
     }
 }
 
@@ -85,6 +222,9 @@ pub enum IntentKind {
         /// Form values collected by the surface.
         #[serde(default)]
         values: Value,
+        /// The human completed the hold-to-confirm gesture (high-risk actions).
+        #[serde(default)]
+        confirmed: bool,
     },
     /// Approve a pending grant.
     Approve {
@@ -143,6 +283,31 @@ pub enum IntentKind {
         /// ContactRequest moment.
         moment_id: MomentId,
     },
+    /// Mark a participant's safety number as verified out of band. Human only.
+    VerifySafetyNumber {
+        /// Participant.
+        participant_id: ParticipantId,
+    },
+    /// Change group or space membership or roles.
+    Governance {
+        /// Group or space.
+        context_id: ContextId,
+        /// Operation.
+        op: GovernanceOp,
+        /// The human completed the hold-to-confirm gesture (high-risk operations).
+        #[serde(default)]
+        confirmed: bool,
+    },
+    /// Continue the offered context on this device. Human only.
+    AcceptHandoff {
+        /// Handoff moment.
+        moment_id: MomentId,
+    },
+    /// Decline a handoff offer. Human only.
+    DeclineHandoff {
+        /// Handoff moment.
+        moment_id: MomentId,
+    },
     /// Unlock an account. Not serializable.
     #[serde(skip)]
     Unlock {
@@ -184,6 +349,24 @@ pub mod methods {
     pub const CONTACT_ACCEPT: &str = "contact.accept";
     /// Reject a contact request.
     pub const CONTACT_REJECT: &str = "contact.reject";
+    /// Verify a safety number.
+    pub const SAFETY_VERIFY: &str = "safety.verify";
+    /// Add a group member.
+    pub const GROUP_ADD_MEMBER: &str = "group.add_member";
+    /// Remove a group member.
+    pub const GROUP_REMOVE_MEMBER: &str = "group.remove_member";
+    /// Kick a group member.
+    pub const GROUP_KICK: &str = "group.kick";
+    /// Ban a participant from a group.
+    pub const GROUP_BAN: &str = "group.ban";
+    /// Change a member's role.
+    pub const GROUP_SET_ROLE: &str = "group.set_role";
+    /// Create a group invitation.
+    pub const GROUP_CREATE_INVITE: &str = "group.create_invite";
+    /// Accept a handoff.
+    pub const HANDOFF_ACCEPT: &str = "handoff.accept";
+    /// Decline a handoff.
+    pub const HANDOFF_DECLINE: &str = "handoff.decline";
 }
 
 /// What a source must do as a result of an intent.

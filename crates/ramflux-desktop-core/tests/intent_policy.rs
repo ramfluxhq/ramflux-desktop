@@ -70,6 +70,12 @@ fn store_with_grants() -> Store {
     feed.store
 }
 
+const NOW: Timestamp = Timestamp(10);
+
+fn handle_intent_now(store: &Store, intent: Intent) -> Result<Vec<Effect>, IntentError> {
+    handle_intent(store, intent, NOW)
+}
+
 fn approve(grant: &str, confirmed: bool) -> IntentKind {
     IntentKind::Approve { grant_id: GrantId::new(grant), confirmed }
 }
@@ -84,7 +90,7 @@ fn high_risk_approve_without_confirmation_requires_confirmation() {
     let store = store_with_grants();
     for grant in ["g-high", "g-crit"] {
         let effect =
-            single(handle_intent(&store, Intent::human(approve(grant, false))).expect("ok"));
+            single(handle_intent_now(&store, Intent::human(approve(grant, false))).expect("ok"));
         let Effect::RequireConfirmation { intent } = effect else {
             panic!("expected RequireConfirmation for {grant}");
         };
@@ -95,7 +101,8 @@ fn high_risk_approve_without_confirmation_requires_confirmation() {
 #[test]
 fn high_risk_approve_with_confirmation_calls_source() {
     let store = store_with_grants();
-    let effect = single(handle_intent(&store, Intent::human(approve("g-high", true))).expect("ok"));
+    let effect =
+        single(handle_intent_now(&store, Intent::human(approve("g-high", true))).expect("ok"));
     let Effect::Call { method, body } = effect else { panic!("expected Call") };
     assert_eq!(method, methods::GRANT_APPROVE);
     assert_eq!(body["grant_id"], "g-high");
@@ -107,7 +114,8 @@ fn high_risk_approve_with_confirmation_calls_source() {
 #[test]
 fn low_risk_approve_needs_no_confirmation() {
     let store = store_with_grants();
-    let effect = single(handle_intent(&store, Intent::human(approve("g-low", false))).expect("ok"));
+    let effect =
+        single(handle_intent_now(&store, Intent::human(approve("g-low", false))).expect("ok"));
     assert_eq!(effect.method(), Some(methods::GRANT_APPROVE));
 }
 
@@ -118,14 +126,14 @@ fn agent_cannot_self_confirm_high_risk() {
         actor: Actor::Agent(ParticipantId::new("p-agent")),
         kind: approve("g-high", true),
     };
-    let effect = single(handle_intent(&store, agent).expect("ok"));
+    let effect = single(handle_intent_now(&store, agent).expect("ok"));
     assert!(matches!(effect, Effect::RequireConfirmation { .. }));
 
     let low = Intent {
         actor: Actor::Agent(ParticipantId::new("p-agent")),
         kind: approve("g-low", false),
     };
-    let Effect::Call { body, .. } = single(handle_intent(&store, low).expect("ok")) else {
+    let Effect::Call { body, .. } = single(handle_intent_now(&store, low).expect("ok")) else {
         panic!("expected Call");
     };
     assert_eq!(body["actor"]["Agent"], "p-agent");
@@ -138,7 +146,7 @@ fn unknown_or_non_agent_actor_is_rejected() {
         let intent =
             Intent { actor: Actor::Agent(ParticipantId::new(id)), kind: approve("g-low", false) };
         assert_eq!(
-            handle_intent(&store, intent).err(),
+            handle_intent_now(&store, intent).err(),
             Some(IntentError::UnknownAgent(ParticipantId::new(id)))
         );
     }
@@ -147,10 +155,12 @@ fn unknown_or_non_agent_actor_is_rejected() {
 #[test]
 fn approving_a_decided_grant_is_an_error() {
     let store = store_with_grants();
-    let result = handle_intent(&store, Intent::human(approve("g-done", true)));
+    let result = handle_intent_now(&store, Intent::human(approve("g-done", true)));
     assert_eq!(result.err(), Some(IntentError::GrantNotPending(GrantId::new("g-done"))));
-    let missing =
-        handle_intent(&store, Intent::human(IntentKind::Deny { grant_id: GrantId::new("g-x") }));
+    let missing = handle_intent_now(
+        &store,
+        Intent::human(IntentKind::Deny { grant_id: GrantId::new("g-x") }),
+    );
     assert_eq!(missing.err(), Some(IntentError::UnknownGrant(GrantId::new("g-x"))));
 }
 
@@ -166,7 +176,7 @@ fn handling_intents_never_mutates_the_store() {
         IntentKind::AcceptContact { moment_id: MomentId::new("m-contact") },
     ];
     for kind in intents {
-        let _ = handle_intent(&store, Intent::human(kind));
+        let _ = handle_intent_now(&store, Intent::human(kind));
     }
     assert_eq!(format!("{store:?}"), before);
 }
@@ -180,16 +190,17 @@ fn surface_action_is_validated_against_the_surface() {
             surface_id: SurfaceId::new(surface),
             action_id: id.to_owned(),
             values: serde_json::json!({}),
+            confirmed: false,
         })
     };
-    let ok = single(handle_intent(&store, action("run", "s-1")).expect("ok"));
+    let ok = single(handle_intent_now(&store, action("run", "s-1")).expect("ok"));
     assert_eq!(ok.method(), Some(methods::SURFACE_ACTION));
     assert!(matches!(
-        handle_intent(&store, action("export", "s-1")),
+        handle_intent_now(&store, action("export", "s-1")),
         Err(IntentError::ActionDisabled { .. })
     ));
     assert!(matches!(
-        handle_intent(&store, action("run", "s-other")),
+        handle_intent_now(&store, action("run", "s-other")),
         Err(IntentError::UnknownAction { .. })
     ));
 }
@@ -199,20 +210,20 @@ fn message_and_pin_and_contact_validation() {
     let store = store_with_grants();
     let empty = IntentKind::SendMessage { context_id: ContextId::new("c-1"), text: "  ".into() };
     assert_eq!(
-        handle_intent(&store, Intent::human(empty)).err(),
+        handle_intent_now(&store, Intent::human(empty)).err(),
         Some(IntentError::Empty("message text"))
     );
     let unpin = IntentKind::UnpinContext { context_id: ContextId::new("c-1") };
     assert_eq!(
-        handle_intent(&store, Intent::human(unpin)).err(),
+        handle_intent_now(&store, Intent::human(unpin)).err(),
         Some(IntentError::PinUnchanged(ContextId::new("c-1")))
     );
     let accept = IntentKind::AcceptContact { moment_id: MomentId::new("m-contact") };
-    let effect = single(handle_intent(&store, Intent::human(accept)).expect("ok"));
+    let effect = single(handle_intent_now(&store, Intent::human(accept)).expect("ok"));
     assert_eq!(effect.method(), Some(methods::CONTACT_ACCEPT));
     let wrong = IntentKind::RejectContact { moment_id: MomentId::new("m-s") };
     assert!(matches!(
-        handle_intent(&store, Intent::human(wrong)),
+        handle_intent_now(&store, Intent::human(wrong)),
         Err(IntentError::WrongMomentKind { expected: "ContactRequest", .. })
     ));
 }
@@ -224,13 +235,14 @@ fn unlock_passes_the_secret_only_to_the_source() {
         account_id: AccountId::new("a-1"),
         secret: SecretInput::new("correct horse"),
     };
-    let effect = single(handle_intent(&store, Intent::human(unlock())).expect("ok"));
+    let effect = single(handle_intent_now(&store, Intent::human(unlock())).expect("ok"));
     let Effect::Unlock { account_id, secret } = effect else { panic!("expected Unlock") };
     assert_eq!(account_id, AccountId::new("a-1"));
     assert_eq!(secret.expose(), "correct horse");
+    assert!(!secret.is_empty());
 
     let agent = Intent { actor: Actor::Agent(ParticipantId::new("p-agent")), kind: unlock() };
-    assert!(matches!(handle_intent(&store, agent), Err(IntentError::AgentForbidden(_))));
+    assert!(matches!(handle_intent_now(&store, agent), Err(IntentError::AgentForbidden(_))));
 }
 
 #[test]

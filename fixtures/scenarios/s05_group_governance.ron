@@ -1,49 +1,47 @@
-// s05 Group governance: an invitation is accepted, a member is promoted, and
-// removing a member goes through a high-risk confirmation bar bound to a
-// grant before the removal is applied.
-// Demonstrates: Governance moments, ContextUpserted membership changes, and a
-// grant-bound removal.
-// Note: governance intents (invite, set role, remove) are not in the F0
-// IntentKind list, so the removal is modeled as an approval.
+// s05 Group governance through intents: adding a member, promoting a member
+// (SetRole, high risk) and kicking a member (Kick, high risk). The high-risk
+// operations go through the hold-to-confirm strip before the call reaches the
+// source; response rules then emit the membership facts.
+// Demonstrates: Governance intents, the high-risk governance policy,
+// Governance moments, and ContextUpserted membership changes.
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s05_group_governance",
-    description: "Invite, role change, member removal with confirmation bar",
+    description: "Add member, role change and kick with confirmation strip",
     timeline: [
         (0, SourceStatusChanged(Connected)),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
         (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", contact: true)),
         (0, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", contact: true)),
         (0, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", contact: true)),
-        (10, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-tomas"])),
-        (200, MomentAdded(id: "m-invite", context_id: "c-garden", origin: "p-me", at: 0,
-            kind: Governance(action: Invited, target: "p-mira", role: Member), lifecycle: Done)),
-        (1200, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-tomas", "p-mira"])),
-        (1200, MomentAdded(id: "m-joined", context_id: "c-garden", origin: "p-mira", at: 0,
-            kind: Governance(action: Joined, target: "p-mira"), lifecycle: Done)),
-        (2000, MomentAdded(id: "m-role", context_id: "c-garden", origin: "p-me", at: 0,
-            kind: Governance(action: RoleChanged, target: "p-lena", role: Admin), lifecycle: Done)),
-        (3000, GrantRequested(
-            id: "g-remove",
-            scope: "group.remove_member",
-            risk: High,
-            single_use: true,
-            args_hash: "sha256:9b7e21c04d5a",
-        )),
-        (3000, MomentAdded(id: "m-remove", context_id: "c-garden", origin: "p-me", at: 0,
-            kind: Intervention(grant_id: "g-remove", risk: High,
-                summary: "Remove Tomas Reyes from Community garden"),
-            lifecycle: NeedsMe)),
+        (10, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-tomas"], pinned: true)),
+        (100, MomentAdded(id: "m-garden-1", context_id: "c-garden", origin: "p-lena", at: 0,
+            kind: Message(text: "Seed swap is on Saturday. Can we add Mira?"), lifecycle: Done)),
     ],
     responses: [
         (
-            on: Call(method: "grant.approve", fields: {"grant_id": "g-remove"}),
+            on: Call(method: "group.add_member", fields: {"context_id": "c-garden", "participant_id": "p-mira"}),
             emit: [
-                (100, GrantResolved(grant_id: "g-remove", state: Approved)),
-                (150, MomentUpdated(moment_id: "m-remove", lifecycle: Done)),
-                (200, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-mira"])),
-                (200, MomentAdded(id: "m-removed", context_id: "c-garden", origin: "p-me", at: 0,
+                (100, MomentAdded(id: "m-invite", context_id: "c-garden", origin: "p-me", at: 0,
+                    kind: Governance(action: Invited, target: "p-mira", role: Member), lifecycle: Done)),
+                (1000, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-tomas", "p-mira"], pinned: true)),
+                (1000, MomentAdded(id: "m-joined", context_id: "c-garden", origin: "p-mira", at: 0,
+                    kind: Governance(action: Joined, target: "p-mira"), lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "group.set_role", fields: {"context_id": "c-garden", "participant_id": "p-lena", "role": "Admin"}),
+            emit: [
+                (100, MomentAdded(id: "m-role", context_id: "c-garden", origin: "p-me", at: 0,
+                    kind: Governance(action: RoleChanged, target: "p-lena", role: Admin), lifecycle: Done)),
+            ],
+        ),
+        (
+            on: Call(method: "group.kick", fields: {"context_id": "c-garden", "participant_id": "p-tomas"}),
+            emit: [
+                (100, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-mira"], pinned: true)),
+                (100, MomentAdded(id: "m-removed", context_id: "c-garden", origin: "p-me", at: 0,
                     kind: Governance(action: Removed, target: "p-tomas"), lifecycle: Done)),
             ],
         ),

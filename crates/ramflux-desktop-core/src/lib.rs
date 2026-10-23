@@ -34,7 +34,7 @@ pub use ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, ObjectId, ParticipantId, SurfaceId,
     TaskId, Timestamp,
 };
-pub use intent::{Effect, Intent, IntentKind, SecretInput, methods};
+pub use intent::{Effect, GovernanceOp, Intent, IntentKind, SecretInput, methods};
 pub use model::*;
 pub use policy::{IntentError, handle_intent};
 pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter};

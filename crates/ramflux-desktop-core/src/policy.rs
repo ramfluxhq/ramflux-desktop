@@ -9,9 +9,11 @@
 use serde_json::{Value, json};
 use thiserror::Error;
 
-use crate::ids::{AccountId, ContextId, GrantId, MomentId, ParticipantId, TaskId};
-use crate::intent::{Effect, Intent, IntentKind, methods};
-use crate::model::{Actor, GrantState, Lifecycle, MomentKind, ParticipantKind};
+use crate::ids::{AccountId, ContextId, GrantId, MomentId, ParticipantId, TaskId, Timestamp};
+use crate::intent::{Effect, GovernanceOp, Intent, IntentKind, methods};
+use crate::model::{
+    Actor, ContextKind, GrantState, Lifecycle, MomentKind, ParticipantKind, Risk, SafetyState,
+};
 use crate::store::Store;
 
 /// Why an intent was refused.
@@ -77,22 +79,60 @@ pub enum IntentError {
     /// Context already in the requested pin state.
     #[error("context {0} is already in that pin state")]
     PinUnchanged(ContextId),
+    /// Grant expiry is at or before the intent time.
+    #[error("grant {0} has expired")]
+    GrantExpired(GrantId),
+    /// Participant not in the store.
+    #[error("unknown participant {0}")]
+    UnknownParticipant(ParticipantId),
+    /// Safety number already verified.
+    #[error("participant {0} is already verified")]
+    AlreadyVerified(ParticipantId),
+    /// Governance on a direct context.
+    #[error("context {0} is not a group or space")]
+    NotAGroup(ContextId),
+    /// Target is not a member of the context.
+    #[error("{participant} is not a member of {context}")]
+    NotAMember {
+        /// Context.
+        context: ContextId,
+        /// Participant.
+        participant: ParticipantId,
+    },
+    /// Target is already a member of the context.
+    #[error("{participant} is already a member of {context}")]
+    AlreadyMember {
+        /// Context.
+        context: ContextId,
+        /// Participant.
+        participant: ParticipantId,
+    },
 }
 
-/// Validates `intent` against `store` and returns the effects to submit.
+/// Validates `intent` against `store` at time `now` and returns the effects to submit.
 ///
-/// Policy: approving a `High` or `Critical` grant without `confirmed` yields
+/// Policy: approving a `High` or `Critical` grant, invoking a `High` or
+/// `Critical` surface action, or a high-risk governance operation (`Kick`,
+/// `Ban`, `SetRole`) without human confirmation yields
 /// [`Effect::RequireConfirmation`]. Agent intents follow the same rules; an
-/// agent cannot supply human confirmation, so for agents `confirmed` is
-/// ignored on high-risk approvals, and agents may never unlock an account.
+/// agent cannot supply human confirmation, so for agents `confirmed` is always
+/// ignored. Agents may never unlock an account, verify a safety number, or
+/// accept or decline a handoff. Grants whose expiry is at or before `now`
+/// cannot be approved or denied.
 ///
 /// # Errors
 ///
 /// Returns [`IntentError`] when the intent references unknown entities, targets
 /// a moment in the wrong kind or state, or is not allowed for the actor.
-pub fn handle_intent(store: &Store, intent: Intent) -> Result<Vec<Effect>, IntentError> {
+pub fn handle_intent(
+    store: &Store,
+    intent: Intent,
+    now: Timestamp,
+) -> Result<Vec<Effect>, IntentError> {
     let actor = actor_json(store, &intent.actor)?;
     let is_agent = matches!(intent.actor, Actor::Agent(_));
+    let human_confirmed = intent.is_confirmed() && !is_agent;
+    let needs_confirmation = |risk: Risk| risk.requires_confirmation() && !human_confirmed;
     let call = |method: &str, mut body: Value| {
         if let Value::Object(map) = &mut body {
             map.insert("actor".to_owned(), actor.clone());
@@ -115,7 +155,7 @@ pub fn handle_intent(store: &Store, intent: Intent) -> Result<Vec<Effect>, Inten
             }
             call(methods::ATTACH_OBJECT, json!({ "context_id": context_id, "path": path }))
         }
-        IntentKind::SurfaceAction { moment_id, surface_id, action_id, values } => {
+        IntentKind::SurfaceAction { moment_id, surface_id, action_id, values, .. } => {
             let moment = require_moment(store, moment_id)?;
             let MomentKind::AgentSurface(surface) = &moment.kind else {
                 return Err(IntentError::WrongMomentKind {
@@ -137,6 +177,9 @@ pub fn handle_intent(store: &Store, intent: Intent) -> Result<Vec<Effect>, Inten
                     reason: reason.clone(),
                 });
             }
+            if needs_confirmation(action.risk) {
+                return Ok(vec![Effect::RequireConfirmation { intent: Box::new(intent) }]);
+            }
             call(
                 methods::SURFACE_ACTION,
                 json!({
@@ -144,13 +187,13 @@ pub fn handle_intent(store: &Store, intent: Intent) -> Result<Vec<Effect>, Inten
                     "surface_id": surface_id,
                     "action_id": action_id,
                     "values": values,
+                    "confirmed": human_confirmed,
                 }),
             )
         }
-        IntentKind::Approve { grant_id, confirmed } => {
-            let grant = require_pending_grant(store, grant_id)?;
-            let human_confirmed = *confirmed && !is_agent;
-            if grant.risk.requires_confirmation() && !human_confirmed {
+        IntentKind::Approve { grant_id, .. } => {
+            let grant = require_open_grant(store, grant_id, now)?;
+            if needs_confirmation(grant.risk) {
                 return Ok(vec![Effect::RequireConfirmation { intent: Box::new(intent) }]);
             }
             call(
@@ -159,7 +202,7 @@ pub fn handle_intent(store: &Store, intent: Intent) -> Result<Vec<Effect>, Inten
             )
         }
         IntentKind::Deny { grant_id } => {
-            require_pending_grant(store, grant_id)?;
+            require_open_grant(store, grant_id, now)?;
             call(methods::GRANT_DENY, json!({ "grant_id": grant_id }))
         }
         IntentKind::Reveal { moment_id } => {
@@ -233,6 +276,52 @@ pub fn handle_intent(store: &Store, intent: Intent) -> Result<Vec<Effect>, Inten
             let method = if accept { methods::CONTACT_ACCEPT } else { methods::CONTACT_REJECT };
             call(method, json!({ "moment_id": moment_id, "from": payload.from }))
         }
+        IntentKind::VerifySafetyNumber { participant_id } => {
+            if is_agent {
+                return Err(IntentError::AgentForbidden("verify a safety number"));
+            }
+            let participant = store
+                .participant(participant_id)
+                .ok_or_else(|| IntentError::UnknownParticipant(participant_id.clone()))?;
+            if participant.safety == SafetyState::Verified {
+                return Err(IntentError::AlreadyVerified(participant_id.clone()));
+            }
+            call(methods::SAFETY_VERIFY, json!({ "participant_id": participant_id }))
+        }
+        IntentKind::Governance { context_id, op, .. } => {
+            check_governance(store, context_id, op)?;
+            if needs_confirmation(op.risk()) {
+                return Ok(vec![Effect::RequireConfirmation { intent: Box::new(intent) }]);
+            }
+            let mut body = json!({ "context_id": context_id, "confirmed": human_confirmed });
+            if let Value::Object(map) = &mut body {
+                if let Some(target) = op.target() {
+                    map.insert("participant_id".to_owned(), json!(target));
+                }
+                if let Some(role) = op.role() {
+                    map.insert("role".to_owned(), json!(role));
+                }
+            }
+            call(op.method(), body)
+        }
+        IntentKind::AcceptHandoff { moment_id } | IntentKind::DeclineHandoff { moment_id } => {
+            let accept = matches!(intent.kind, IntentKind::AcceptHandoff { .. });
+            if is_agent {
+                return Err(IntentError::AgentForbidden("answer a handoff"));
+            }
+            let moment = require_moment(store, moment_id)?;
+            let MomentKind::Handoff(payload) = &moment.kind else {
+                return Err(IntentError::WrongMomentKind {
+                    moment: moment_id.clone(),
+                    expected: "Handoff",
+                });
+            };
+            if moment.lifecycle != Lifecycle::NeedsMe {
+                return Err(IntentError::NotActionable(moment_id.clone()));
+            }
+            let method = if accept { methods::HANDOFF_ACCEPT } else { methods::HANDOFF_DECLINE };
+            call(method, json!({ "moment_id": moment_id, "from_device": payload.from_device }))
+        }
         IntentKind::Unlock { account_id, .. } => {
             if is_agent {
                 return Err(IntentError::AgentForbidden("unlock an account"));
@@ -276,14 +365,52 @@ fn require_moment<'a>(
     store.moment(id).ok_or_else(|| IntentError::UnknownMoment(id.clone()))
 }
 
-fn require_pending_grant<'a>(
+fn require_open_grant<'a>(
     store: &'a Store,
     id: &GrantId,
+    now: Timestamp,
 ) -> Result<&'a crate::model::Grant, IntentError> {
     let grant = store.grant(id).ok_or_else(|| IntentError::UnknownGrant(id.clone()))?;
-    if grant.state == GrantState::Pending {
-        Ok(grant)
-    } else {
-        Err(IntentError::GrantNotPending(id.clone()))
+    if grant.state != GrantState::Pending {
+        return Err(IntentError::GrantNotPending(id.clone()));
+    }
+    if grant.expiry.is_some_and(|expiry| expiry <= now) {
+        return Err(IntentError::GrantExpired(id.clone()));
+    }
+    Ok(grant)
+}
+
+fn check_governance(
+    store: &Store,
+    context_id: &ContextId,
+    op: &GovernanceOp,
+) -> Result<(), IntentError> {
+    let context = require_context(store, context_id)?;
+    if context.kind == ContextKind::Direct {
+        return Err(IntentError::NotAGroup(context_id.clone()));
+    }
+    let Some(target) = op.target() else {
+        return Ok(());
+    };
+    if store.participant(target).is_none() {
+        return Err(IntentError::UnknownParticipant(target.clone()));
+    }
+    let is_member = context.participants.contains(target);
+    match op {
+        GovernanceOp::AddMember { .. } if is_member => Err(IntentError::AlreadyMember {
+            context: context_id.clone(),
+            participant: target.clone(),
+        }),
+        GovernanceOp::RemoveMember { .. }
+        | GovernanceOp::Kick { .. }
+        | GovernanceOp::SetRole { .. }
+            if !is_member =>
+        {
+            Err(IntentError::NotAMember {
+                context: context_id.clone(),
+                participant: target.clone(),
+            })
+        }
+        _ => Ok(()),
     }
 }

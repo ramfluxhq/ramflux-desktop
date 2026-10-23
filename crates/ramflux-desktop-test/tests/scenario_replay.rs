@@ -140,40 +140,76 @@ fn s03_confirmed_approval_resolves_grant_and_closes_intervention() {
 }
 
 #[test]
+fn s03_approval_is_refused_after_the_grant_expires() {
+    let mut p = player("s03_intervention");
+    // The fixture grant expires ten minutes after the scenario epoch.
+    p.advance(600_000);
+    assert_eq!(
+        p.dispatch(approve("g-rotate", true)).err(),
+        Some(IntentError::GrantExpired(GrantId::new("g-rotate")))
+    );
+    assert!(p.source().effects().is_empty());
+}
+
+#[test]
 fn s04_key_change_is_sticky_until_verified() {
     let mut p = player("s04_safety");
     p.advance(1000);
     let mira = ParticipantId::new("p-mira");
     assert_eq!(p.store().participant(&mira).expect("mira").safety, SafetyState::KeyChanged);
     assert_eq!(attention(p.store())[0].reason, AttentionReason::Safety);
-    p.advance(3000);
+    p.advance(5000);
     assert_eq!(lifecycle(&p, "m-key"), Lifecycle::NeedsMe, "warning must stay until verified");
 
-    p.advance(2000);
+    let verify = IntentKind::VerifySafetyNumber { participant_id: mira.clone() };
+    assert!(p.dispatch(Intent::human(verify)).expect("verify").is_empty());
+    p.advance(200);
 
     assert_clean(&p);
     assert_eq!(p.store().participant(&mira).expect("mira").safety, SafetyState::Verified);
     assert_eq!(lifecycle(&p, "m-key"), Lifecycle::Done);
+    assert_eq!(lifecycle(&p, "m-verified"), Lifecycle::Done);
     assert!(attention_ids(&p).is_empty());
 }
 
+fn garden(op: GovernanceOp, confirmed: bool) -> Intent {
+    Intent::human(IntentKind::Governance { context_id: ContextId::new("c-garden"), op, confirmed })
+}
+
+fn members(p: &ScenarioPlayer) -> Vec<String> {
+    participants(p.store(), &ContextId::new("c-garden")).iter().map(|m| m.id.to_string()).collect()
+}
+
 #[test]
-fn s05_member_removal_requires_confirmation_then_applies() {
+fn s05_governance_runs_through_intents_and_confirmation() {
     let mut p = player("s05_group_governance");
-    p.advance(3500);
-    assert_eq!(attention_ids(&p), ["m-remove"]);
-    let pending = p.dispatch(approve("g-remove", false)).expect("approve");
+    p.advance(500);
+    assert_eq!(members(&p), ["p-me", "p-lena", "p-tomas"]);
+
+    let add = GovernanceOp::AddMember { participant_id: "p-mira".into(), role: Role::Member };
+    assert!(p.dispatch(garden(add, false)).expect("add").is_empty(), "adding is low risk");
+    p.advance(1500);
+    assert_eq!(members(&p), ["p-me", "p-lena", "p-tomas", "p-mira"]);
+
+    let promote = GovernanceOp::SetRole { participant_id: "p-lena".into(), role: Role::Admin };
+    let pending = p.dispatch(garden(promote.clone(), false)).expect("set role");
     assert!(matches!(pending.as_slice(), [Effect::RequireConfirmation { .. }]));
-    assert!(p.dispatch(approve("g-remove", true)).expect("approve").is_empty());
+    let kick = GovernanceOp::Kick { participant_id: "p-tomas".into() };
+    let pending = p.dispatch(garden(kick.clone(), false)).expect("kick");
+    assert!(matches!(pending.as_slice(), [Effect::RequireConfirmation { .. }]));
+    let calls = p.source().effects().len();
+    p.advance(500);
+    assert_eq!(members(&p), ["p-me", "p-lena", "p-tomas", "p-mira"], "nothing applied unconfirmed");
+    assert_eq!(p.source().effects().len(), calls);
+
+    assert!(p.dispatch(garden(promote, true)).expect("set role").is_empty());
+    assert!(p.dispatch(garden(kick, true)).expect("kick").is_empty());
     p.advance(500);
 
     assert_clean(&p);
-    let members: Vec<_> = participants(p.store(), &ContextId::new("c-garden"))
-        .iter()
-        .map(|m| m.id.to_string())
-        .collect();
-    assert_eq!(members, ["p-me", "p-lena", "p-mira"]);
-    assert_eq!(lifecycle(&p, "m-remove"), Lifecycle::Done);
+    assert_eq!(members(&p), ["p-me", "p-lena", "p-mira"]);
+    let role = p.store().moment(&MomentId::new("m-role")).expect("role moment");
+    assert!(matches!(&role.kind, MomentKind::Governance(g) if g.role == Some(Role::Admin)));
     assert!(p.store().moment(&MomentId::new("m-removed")).is_some());
 }
 
@@ -214,6 +250,15 @@ fn s07_conflict_reveal_and_handoff_complete() {
     let mut p = player("s07_conflict_privacy_handoff");
     p.advance(500);
     assert_eq!(attention_ids(&p), ["m-conflict", "m-handoff"]);
+    let declined_elsewhere = {
+        let mut other = player("s07_conflict_privacy_handoff");
+        other.advance(500);
+        let decline = IntentKind::DeclineHandoff { moment_id: MomentId::new("m-handoff") };
+        assert!(other.dispatch(Intent::human(decline)).expect("decline").is_empty());
+        other.advance(200);
+        lifecycle(&other, "m-handoff")
+    };
+    assert_eq!(declined_elsewhere, Lifecycle::Dismissed);
     let resolve = IntentKind::ResolveConflict {
         moment_id: MomentId::new("m-conflict"),
         resolution: ConflictResolution::KeepBoth,
@@ -222,6 +267,10 @@ fn s07_conflict_reveal_and_handoff_complete() {
     let reveal = IntentKind::Reveal { moment_id: MomentId::new("m-iban") };
     assert!(p.dispatch(Intent::human(reveal)).expect("reveal").is_empty());
     p.advance(6000);
+    assert_eq!(lifecycle(&p, "m-handoff"), Lifecycle::NeedsMe, "handoff waits for the user");
+    let accept = IntentKind::AcceptHandoff { moment_id: MomentId::new("m-handoff") };
+    assert!(p.dispatch(Intent::human(accept)).expect("accept").is_empty());
+    p.advance(200);
 
     assert_clean(&p);
     let store = p.store();

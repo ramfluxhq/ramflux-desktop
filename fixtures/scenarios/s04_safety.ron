@@ -1,9 +1,9 @@
 // s04 Safety: a verified contact's identity key changes. A sticky SafetyChange
-// moment needs the user until the safety number is verified again, after
-// which the warning is closed and a verification moment is recorded.
-// Demonstrates: ParticipantUpserted safety states and SafetyChange moments.
-// Note: there is no "verify safety number" intent in the F0 contract yet, so
-// verification arrives as source facts.
+// moment needs the user until the user verifies the safety number again
+// (VerifySafetyNumber intent), after which the warning is closed and a
+// verification moment is recorded.
+// Demonstrates: ParticipantUpserted safety states, SafetyChange moments, and
+// a safety.verify response rule.
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
@@ -19,9 +19,16 @@
         (500, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: KeyChanged, contact: true)),
         (500, MomentAdded(id: "m-key", context_id: "c-mira", origin: "p-mira", at: 0,
             kind: SafetyChange(participant_id: "p-mira", change: KeyChanged), lifecycle: NeedsMe)),
-        (5000, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true)),
-        (5000, MomentAdded(id: "m-verified", context_id: "c-mira", origin: "p-me", at: 0,
-            kind: SafetyChange(participant_id: "p-mira", change: Verified), lifecycle: Done)),
-        (5000, MomentUpdated(moment_id: "m-key", lifecycle: Done)),
+    ],
+    responses: [
+        (
+            on: Call(method: "safety.verify", fields: {"participant_id": "p-mira"}),
+            emit: [
+                (100, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true)),
+                (100, MomentAdded(id: "m-verified", context_id: "c-mira", origin: "p-me", at: 0,
+                    kind: SafetyChange(participant_id: "p-mira", change: Verified), lifecycle: Done)),
+                (100, MomentUpdated(moment_id: "m-key", lifecycle: Done)),
+            ],
+        ),
     ],
 )
