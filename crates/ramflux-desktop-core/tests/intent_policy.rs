@@ -62,6 +62,7 @@ fn store_with_grants() -> Store {
         DomainEvent::AccountUpdated(Account {
             id: AccountId::new("a-1"),
             label: "Personal".to_owned(),
+            kind: AccountKind::HumanInteractive,
             node_id: None,
             device_id: None,
             lock_state: LockState::Locked,
@@ -76,8 +77,12 @@ fn handle_intent_now(store: &Store, intent: Intent) -> Result<Vec<Effect>, Inten
     handle_intent(store, intent, NOW)
 }
 
-fn approve(grant: &str, confirmed: bool) -> IntentKind {
-    IntentKind::Approve { grant_id: GrantId::new(grant), confirmed }
+fn approve(grant: &str) -> IntentKind {
+    IntentKind::Approve { grant_id: GrantId::new(grant) }
+}
+
+fn held(intent: Intent) -> Intent {
+    intent.confirmed_by_human(HumanConfirmation::hold(1_200))
 }
 
 fn single(effects: Vec<Effect>) -> Effect {
@@ -89,12 +94,12 @@ fn single(effects: Vec<Effect>) -> Effect {
 fn high_risk_approve_without_confirmation_requires_confirmation() {
     let store = store_with_grants();
     for grant in ["g-high", "g-crit"] {
-        let effect =
-            single(handle_intent_now(&store, Intent::human(approve(grant, false))).expect("ok"));
+        let effect = single(handle_intent_now(&store, Intent::human(approve(grant))).expect("ok"));
         let Effect::RequireConfirmation { intent } = effect else {
             panic!("expected RequireConfirmation for {grant}");
         };
-        assert!(matches!(intent.kind, IntentKind::Approve { confirmed: false, .. }));
+        assert!(matches!(intent.kind, IntentKind::Approve { .. }));
+        assert!(!intent.is_confirmed());
     }
 }
 
@@ -102,49 +107,42 @@ fn high_risk_approve_without_confirmation_requires_confirmation() {
 fn high_risk_approve_with_confirmation_calls_source() {
     let store = store_with_grants();
     let effect =
-        single(handle_intent_now(&store, Intent::human(approve("g-high", true))).expect("ok"));
+        single(handle_intent_now(&store, held(Intent::human(approve("g-high")))).expect("ok"));
     let Effect::Call { method, body } = effect else { panic!("expected Call") };
     assert_eq!(method, methods::GRANT_APPROVE);
     assert_eq!(body["grant_id"], "g-high");
     assert_eq!(body["args_hash"], "hash-g-high");
-    assert_eq!(body["confirmed"], true);
-    assert_eq!(body["actor"], "Human");
+    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["proposed_by"], "Human");
 }
 
 #[test]
 fn low_risk_approve_needs_no_confirmation() {
     let store = store_with_grants();
-    let effect =
-        single(handle_intent_now(&store, Intent::human(approve("g-low", false))).expect("ok"));
+    let effect = single(handle_intent_now(&store, Intent::human(approve("g-low"))).expect("ok"));
     assert_eq!(effect.method(), Some(methods::GRANT_APPROVE));
 }
 
 #[test]
 fn agent_cannot_self_confirm_high_risk() {
     let store = store_with_grants();
-    let agent = Intent {
-        actor: Actor::Agent(ParticipantId::new("p-agent")),
-        kind: approve("g-high", true),
-    };
+    let agent = Intent::agent(ParticipantId::new("p-agent"), approve("g-high"));
     let effect = single(handle_intent_now(&store, agent).expect("ok"));
     assert!(matches!(effect, Effect::RequireConfirmation { .. }));
 
-    let low = Intent {
-        actor: Actor::Agent(ParticipantId::new("p-agent")),
-        kind: approve("g-low", false),
-    };
+    let low = Intent::agent(ParticipantId::new("p-agent"), approve("g-low"));
     let Effect::Call { body, .. } = single(handle_intent_now(&store, low).expect("ok")) else {
         panic!("expected Call");
     };
-    assert_eq!(body["actor"]["Agent"], "p-agent");
+    assert_eq!(body["proposed_by"]["Agent"], "p-agent");
+    assert!(body["confirmed_by"].is_null());
 }
 
 #[test]
 fn unknown_or_non_agent_actor_is_rejected() {
     let store = store_with_grants();
     for id in ["p-ghost", "p-human"] {
-        let intent =
-            Intent { actor: Actor::Agent(ParticipantId::new(id)), kind: approve("g-low", false) };
+        let intent = Intent::agent(ParticipantId::new(id), approve("g-low"));
         assert_eq!(
             handle_intent_now(&store, intent).err(),
             Some(IntentError::UnknownAgent(ParticipantId::new(id)))
@@ -155,7 +153,7 @@ fn unknown_or_non_agent_actor_is_rejected() {
 #[test]
 fn approving_a_decided_grant_is_an_error() {
     let store = store_with_grants();
-    let result = handle_intent_now(&store, Intent::human(approve("g-done", true)));
+    let result = handle_intent_now(&store, held(Intent::human(approve("g-done"))));
     assert_eq!(result.err(), Some(IntentError::GrantNotPending(GrantId::new("g-done"))));
     let missing = handle_intent_now(
         &store,
@@ -169,8 +167,8 @@ fn handling_intents_never_mutates_the_store() {
     let store = store_with_grants();
     let before = format!("{store:?}");
     let intents = [
-        approve("g-high", true),
-        approve("g-high", false),
+        approve("g-high"),
+        approve("g-low"),
         IntentKind::SendMessage { context_id: ContextId::new("c-1"), text: "hi".into() },
         IntentKind::PinContext { context_id: ContextId::new("c-1") },
         IntentKind::AcceptContact { moment_id: MomentId::new("m-contact") },
@@ -190,7 +188,6 @@ fn surface_action_is_validated_against_the_surface() {
             surface_id: SurfaceId::new(surface),
             action_id: id.to_owned(),
             values: serde_json::json!({}),
-            confirmed: false,
         })
     };
     let ok = single(handle_intent_now(&store, action("run", "s-1")).expect("ok"));
@@ -236,12 +233,16 @@ fn unlock_passes_the_secret_only_to_the_source() {
         secret: SecretInput::new("correct horse"),
     };
     let effect = single(handle_intent_now(&store, Intent::human(unlock())).expect("ok"));
-    let Effect::Unlock { account_id, secret } = effect else { panic!("expected Unlock") };
-    assert_eq!(account_id, AccountId::new("a-1"));
-    assert_eq!(secret.expose(), "correct horse");
-    assert!(!secret.is_empty());
+    let Effect::SecretCall { method, body, secrets } = effect else {
+        panic!("expected SecretCall")
+    };
+    assert_eq!(method, methods::ACCOUNT_UNLOCK);
+    assert_eq!(body["account_id"], "a-1");
+    assert!(!body.to_string().contains("correct horse"), "the body never holds the secret");
+    assert_eq!(secrets.len(), 1);
+    assert_eq!(secrets[0].expose(), "correct horse");
 
-    let agent = Intent { actor: Actor::Agent(ParticipantId::new("p-agent")), kind: unlock() };
+    let agent = Intent::agent(ParticipantId::new("p-agent"), unlock());
     assert!(matches!(handle_intent_now(&store, agent), Err(IntentError::AgentForbidden(_))));
 }
 

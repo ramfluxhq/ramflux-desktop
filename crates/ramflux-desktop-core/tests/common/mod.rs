@@ -40,6 +40,10 @@ pub fn context(id: &str, pinned: bool) -> Context {
         participants: Vec::new(),
         pinned,
         unread: 0,
+        muted: false,
+        disappearing_secs: None,
+        roles: std::collections::BTreeMap::new(),
+        epoch: None,
     }
 }
 
@@ -48,6 +52,8 @@ pub fn message(text: &str) -> MomentKind {
         text: text.to_owned(),
         receipt: Receipt::Sent,
         tombstone: false,
+        attachment: None,
+        franking: None,
     })
 }
 
@@ -85,6 +91,7 @@ pub fn participant(id: &str, kind: ParticipantKind, display: &str, contact: bool
         display: display.to_owned(),
         safety: SafetyState::Unverified,
         contact,
+        safety_number: None,
     }
 }
 

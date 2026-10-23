@@ -31,14 +31,14 @@ pub mod ui_event;
 
 pub use event::{DomainEvent, EVENT_SCHEMA, EventEnvelope, SourceStatus, SurfaceOp};
 pub use ids::{
-    AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, ObjectId, ParticipantId, SurfaceId,
-    TaskId, Timestamp,
+    AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
+    StandingApprovalId, SurfaceId, TaskId, Timestamp,
 };
-pub use intent::{Effect, GovernanceOp, Intent, IntentKind, SecretInput, methods};
+pub use intent::{Effect, GovernanceOp, Intent, IntentKind, SecretInput, SyncDirection, methods};
 pub use model::*;
 pub use policy::{IntentError, handle_intent};
 pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter};
 pub use serde_json::Value as JsonValue;
 pub use source::Source;
-pub use store::{ApplyError, Changes, MAX_REJECTIONS, Rejection, Store};
-pub use ui_event::{Scope, UiEvent, UiEventKind};
+pub use store::{ApplyError, Changes, MAX_AUDIT, MAX_REJECTIONS, Rejection, Store};
+pub use ui_event::{NodeAction, ObjectAction, Scope, UiEvent, UiEventKind};

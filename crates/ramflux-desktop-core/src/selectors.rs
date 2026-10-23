@@ -152,3 +152,21 @@ pub fn participants<'a>(store: &'a Store, context_id: &ContextId) -> Vec<&'a Par
         .map(|c| c.participants.iter().filter_map(|id| store.participant(id)).collect())
         .unwrap_or_default()
 }
+
+/// The local user's participant: the human present in every context.
+///
+/// The contract has no explicit "self" field yet; every source lists the
+/// local user in each of their contexts, which identifies them.
+pub fn self_participant(store: &Store) -> Option<crate::ids::ParticipantId> {
+    let mut contexts = store.contexts();
+    let first = contexts.next()?;
+    let rest: Vec<_> = contexts.collect();
+    first
+        .participants
+        .iter()
+        .filter(|id| {
+            store.participant(id).is_some_and(|p| p.kind == crate::model::ParticipantKind::Human)
+        })
+        .find(|id| rest.iter().all(|c| c.participants.contains(id)))
+        .cloned()
+}

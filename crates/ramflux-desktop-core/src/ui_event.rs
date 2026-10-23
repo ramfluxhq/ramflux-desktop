@@ -4,7 +4,8 @@
 //! UI events: what happened in the interface, with a bubbling scope path.
 //!
 //! The path runs from the root to the emitting element:
-//! `[Workspace, Context, Moment, Surface, Block]`. A child emits an event with
+//! `[Workspace, Context, Moment, Surface, Block]` (or a `Panel` level for
+//! pages, docks and overlays). A child emits an event with
 //! its own scope; each parent prepends its scope with [`UiEvent::within`]
 //! before passing it up. Business events bubble to the workspace root, which
 //! turns them into intents (rules B1 to B5).
@@ -12,14 +13,21 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::ids::{BlockId, ContextId, MomentId, SurfaceId};
+use crate::ids::{
+    AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
+    StandingApprovalId, SurfaceId,
+};
+use crate::intent::{GovernanceOp, SyncDirection};
 use crate::model::ConflictResolution;
 
 /// One level of the UI nesting.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Scope {
-    /// The workspace root.
+    /// The root (the workspace root receives every page's events).
     Workspace,
+    /// A page, dock or overlay below the root, named by a stable key
+    /// (`entry`, `settings.nodes`, `dock.members`, `palette`).
+    Panel(String),
     /// A context field.
     Context(ContextId),
     /// A moment.
@@ -30,7 +38,35 @@ pub enum Scope {
     Block(BlockId),
 }
 
-/// Semantic interaction kinds. Secrets never travel in UI events.
+/// A transfer action on an object.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ObjectAction {
+    /// Download an inbound object.
+    Pull,
+    /// Save a downloaded object to a local path.
+    Save {
+        /// Local path.
+        path: String,
+    },
+    /// Retry a failed transfer.
+    Retry,
+}
+
+/// A settings action on a node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NodeAction {
+    /// Probe gateway and relay.
+    Probe,
+    /// Remove the profile.
+    Remove,
+    /// Make it the default for new accounts.
+    SetDefault,
+    /// Enable or disable it for new accounts.
+    SetEnabled(bool),
+}
+
+/// Semantic interaction kinds. Secrets never travel in UI events, and no UI
+/// event can carry human confirmation: only the hold-to-confirm strip adds it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum UiEventKind {
     /// Composer submitted text.
@@ -43,7 +79,8 @@ pub enum UiEventKind {
         /// Local path.
         path: String,
     },
-    /// A surface action was invoked.
+    /// A surface action was invoked. The moment level fills `values` from
+    /// the surface's view-local form state (rule B3).
     ActionInvoked {
         /// Action id.
         action_id: String,
@@ -51,12 +88,9 @@ pub enum UiEventKind {
         #[serde(default)]
         values: Value,
     },
-    /// Approve pressed; `confirmed` after a completed hold-to-confirm.
-    ApprovePressed {
-        /// Hold-to-confirm completed.
-        confirmed: bool,
-    },
-    /// Deny pressed.
+    /// Approve pressed on an intervention or a task step.
+    ApprovePressed,
+    /// Deny pressed on an intervention or a task step.
     DenyPressed,
     /// Reveal pressed on masked content.
     RevealPressed,
@@ -77,15 +111,108 @@ pub enum UiEventKind {
         /// New pinned state.
         pinned: bool,
     },
+    /// Mute toggled.
+    MuteToggled {
+        /// New muted state.
+        muted: bool,
+    },
+    /// A disappearing-message timer was chosen.
+    DisappearingChosen {
+        /// Seconds; `None` turns it off.
+        seconds: Option<u32>,
+    },
     /// Contact request answered.
     ContactAnswered {
         /// Accepted or rejected.
         accept: bool,
     },
+    /// Verify pressed for a participant's safety number.
+    VerifySafetyPressed {
+        /// Participant.
+        participant_id: ParticipantId,
+    },
+    /// Handoff offer answered.
+    HandoffAnswered {
+        /// Accepted or declined.
+        accept: bool,
+    },
+    /// A transfer action on an object.
+    ObjectActionPressed {
+        /// Object.
+        object_id: ObjectId,
+        /// Action.
+        action: ObjectAction,
+    },
+    /// A governance operation was requested on the scoped context.
+    GovernanceRequested {
+        /// Operation.
+        op: GovernanceOp,
+    },
+    /// Revoke pressed on an approved grant.
+    RevokeGrantPressed {
+        /// Grant.
+        grant_id: GrantId,
+    },
+    /// Revoke pressed on a standing approval.
+    RevokeStandingPressed {
+        /// Standing approval.
+        approval_id: StandingApprovalId,
+    },
+    /// A node address was submitted for discovery.
+    AddNodeRequested {
+        /// URL or node id.
+        url: String,
+    },
+    /// Confirm pressed on a discovered node.
+    ConfirmNodePressed {
+        /// Node.
+        node_id: NodeId,
+    },
+    /// A settings action on a node.
+    NodeActionPressed {
+        /// Node.
+        node_id: NodeId,
+        /// Action.
+        action: NodeAction,
+    },
+    /// Lock pressed for an account.
+    LockPressed {
+        /// Account.
+        account_id: AccountId,
+    },
+    /// Backup export requested.
+    ExportBackupRequested {
+        /// Account.
+        account_id: AccountId,
+        /// Local path.
+        path: String,
+    },
+    /// Revoke pressed on a device.
+    RevokeDevicePressed {
+        /// Device.
+        device_id: DeviceId,
+    },
+    /// Own-device sync requested.
+    DeviceSyncRequested {
+        /// Direction.
+        direction: SyncDirection,
+        /// Local path.
+        path: String,
+    },
+    /// Redacted diagnostics export requested.
+    DiagnosticsExportRequested {
+        /// Local path.
+        path: String,
+    },
     /// View-local: expand or collapse. Never reaches the store.
     ExpandToggled {
         /// New expanded state.
         expanded: bool,
+    },
+    /// View-local: a surface form field changed. Never reaches the store.
+    FieldChanged {
+        /// New value.
+        value: String,
     },
 }
 
@@ -150,7 +277,7 @@ impl UiEvent {
 
     /// Whether the event is view-local and must be consumed below the root (B1).
     pub fn is_view_local(&self) -> bool {
-        matches!(self.kind, UiEventKind::ExpandToggled { .. })
+        matches!(self.kind, UiEventKind::ExpandToggled { .. } | UiEventKind::FieldChanged { .. })
     }
 }
 

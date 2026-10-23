@@ -1,0 +1,411 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Span Brain
+
+//! The reducer: one arm per domain event.
+//!
+//! Each arm validates fully before its first mutation, so a rejected event
+//! leaves the store untouched.
+
+use std::mem;
+
+use super::changes::{ApplyError, Changes};
+use super::surface_ops::apply_surface_op;
+use super::{MAX_AUDIT, Store};
+use crate::event::{DomainEvent, SurfaceOp};
+use crate::ids::{AccountId, ContextId, GrantId, MomentId, NodeId, SurfaceId, Timestamp};
+use crate::model::{
+    Context, Disappearing, GrantState, Lifecycle, LockState, Moment, MomentKind, NodeHealth,
+    NodeProbe, Task,
+};
+
+impl Store {
+    pub(super) fn reduce(
+        &mut self,
+        at: Timestamp,
+        event: &DomainEvent,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        match event {
+            DomainEvent::AccountUpdated(account) => {
+                changes.accounts.insert(account.id.clone());
+                self.accounts.insert(account.id.clone(), account.clone());
+            }
+            DomainEvent::AccountLockChanged { account_id, lock_state } => {
+                self.set_lock(account_id, *lock_state, changes)?;
+            }
+            DomainEvent::NodeUpserted(node) => {
+                changes.nodes.insert(node.id.clone());
+                self.nodes.insert(node.id.clone(), node.clone());
+            }
+            DomainEvent::NodeHealthChanged { node_id, health } => {
+                self.node_mut(node_id)?.health = *health;
+                changes.nodes.insert(node_id.clone());
+            }
+            DomainEvent::NodeSettingsChanged { node_id, enabled, is_default } => {
+                self.node_settings(node_id, *enabled, *is_default, changes)?;
+            }
+            DomainEvent::NodeProbed { node_id, probe } => {
+                let node = self.node_mut(node_id)?;
+                node.health = probe_health(probe);
+                node.probe = Some(probe.clone());
+                changes.nodes.insert(node_id.clone());
+            }
+            DomainEvent::NodeRemoved { node_id } => {
+                if self.nodes.remove(node_id).is_none() {
+                    return Err(ApplyError::UnknownNode(node_id.clone()));
+                }
+                changes.nodes.insert(node_id.clone());
+            }
+            DomainEvent::DeviceUpserted(device) => {
+                changes.devices.insert(device.id.clone());
+                self.devices.insert(device.id.clone(), device.clone());
+            }
+            DomainEvent::ParticipantUpserted(participant) => {
+                changes.participants.insert(participant.id.clone());
+                self.participants.insert(participant.id.clone(), participant.clone());
+            }
+            DomainEvent::ContextUpserted(context) => self.upsert_context(context, changes),
+            DomainEvent::ContextSettingsChanged { context_id, pinned, muted, disappearing } => {
+                self.context_settings(context_id, *pinned, *muted, *disappearing, changes)?;
+            }
+            DomainEvent::ContextRemoved { context_id } => {
+                self.remove_context(context_id, changes)?;
+            }
+            DomainEvent::MomentAdded(moment) => self.add_moment(at, moment, changes)?,
+            DomainEvent::MomentUpdated { moment_id, lifecycle, kind } => {
+                self.update_moment(at, moment_id, *lifecycle, kind.as_ref(), changes)?;
+            }
+            DomainEvent::SurfacePatched { moment_id, surface_id, ops } => {
+                self.patch_surface(moment_id, surface_id, ops, changes)?;
+            }
+            DomainEvent::ObjectUpserted(object) => {
+                changes.objects.insert(object.id.clone());
+                self.objects.insert(object.id.clone(), object.clone());
+            }
+            DomainEvent::GrantRequested(grant) => {
+                if self.grants.contains_key(&grant.id) {
+                    return Err(ApplyError::DuplicateGrant(grant.id.clone()));
+                }
+                let mut grant = grant.clone();
+                grant.state = GrantState::Pending;
+                changes.grants.insert(grant.id.clone());
+                self.grants.insert(grant.id.clone(), grant);
+            }
+            DomainEvent::GrantResolved { grant_id, state } => {
+                self.resolve_grant(grant_id, *state, changes)?;
+            }
+            DomainEvent::GrantRevoked { grant_id } => {
+                let grant = self
+                    .grants
+                    .get_mut(grant_id)
+                    .ok_or_else(|| ApplyError::UnknownGrant(grant_id.clone()))?;
+                if grant.state != GrantState::Approved {
+                    return Err(ApplyError::GrantNotApproved(grant_id.clone()));
+                }
+                grant.state = GrantState::Revoked;
+                changes.grants.insert(grant_id.clone());
+            }
+            DomainEvent::StandingApprovalUpserted(approval) => {
+                changes.standing_approvals = true;
+                self.standing_approvals.insert(approval.id.clone(), approval.clone());
+            }
+            DomainEvent::AuditAppended(entry) => {
+                if self.audit.len() == MAX_AUDIT {
+                    self.audit.remove(0);
+                }
+                self.audit.push(entry.clone());
+                changes.audit = true;
+            }
+            DomainEvent::IntegrationsUpdated(integrations) => {
+                self.integrations = integrations.clone();
+                changes.integrations = true;
+            }
+            DomainEvent::TaskUpserted(task) => self.upsert_task(task, changes)?,
+            DomainEvent::TaskStepChanged { task_id, index, lifecycle } => {
+                let task = self
+                    .tasks
+                    .get_mut(task_id)
+                    .ok_or_else(|| ApplyError::UnknownTask(task_id.clone()))?;
+                let step =
+                    usize::try_from(*index).ok().and_then(|i| task.steps.get_mut(i)).ok_or_else(
+                        || ApplyError::StepOutOfRange { task: task_id.clone(), index: *index },
+                    )?;
+                check_transition(
+                    || format!("task {task_id} step {index}"),
+                    step.lifecycle,
+                    *lifecycle,
+                )?;
+                step.lifecycle = *lifecycle;
+                changes.tasks.insert(task_id.clone());
+            }
+            DomainEvent::SourceStatusChanged(status) => {
+                if self.source_status != *status {
+                    self.source_status = *status;
+                    changes.source_status = true;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn node_mut(&mut self, node_id: &NodeId) -> Result<&mut crate::model::Node, ApplyError> {
+        self.nodes.get_mut(node_id).ok_or_else(|| ApplyError::UnknownNode(node_id.clone()))
+    }
+
+    fn set_lock(
+        &mut self,
+        account_id: &AccountId,
+        lock_state: LockState,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        let account = self
+            .accounts
+            .get_mut(account_id)
+            .ok_or_else(|| ApplyError::UnknownAccount(account_id.clone()))?;
+        account.lock_state = lock_state;
+        changes.accounts.insert(account_id.clone());
+        Ok(())
+    }
+
+    fn node_settings(
+        &mut self,
+        node_id: &NodeId,
+        enabled: Option<bool>,
+        is_default: Option<bool>,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        if !self.nodes.contains_key(node_id) {
+            return Err(ApplyError::UnknownNode(node_id.clone()));
+        }
+        if is_default == Some(true) {
+            for node in self.nodes.values_mut().filter(|n| n.is_default && &n.id != node_id) {
+                node.is_default = false;
+                changes.nodes.insert(node.id.clone());
+            }
+        }
+        let node = self.node_mut(node_id)?;
+        if let Some(enabled) = enabled {
+            node.enabled = enabled;
+        }
+        if let Some(is_default) = is_default {
+            node.is_default = is_default;
+        }
+        changes.nodes.insert(node_id.clone());
+        Ok(())
+    }
+
+    fn resolve_grant(
+        &mut self,
+        grant_id: &GrantId,
+        state: GrantState,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        let grant = self
+            .grants
+            .get_mut(grant_id)
+            .ok_or_else(|| ApplyError::UnknownGrant(grant_id.clone()))?;
+        if matches!(state, GrantState::Pending | GrantState::Revoked) {
+            return Err(ApplyError::InvalidGrantResolution(grant_id.clone()));
+        }
+        if grant.state != GrantState::Pending {
+            return Err(ApplyError::GrantNotPending(grant_id.clone()));
+        }
+        grant.state = state;
+        changes.grants.insert(grant_id.clone());
+        Ok(())
+    }
+
+    fn upsert_context(&mut self, context: &Context, changes: &mut Changes) {
+        self.sync_pin_order(&context.id, context.pinned, changes);
+        changes.contexts.insert(context.id.clone());
+        self.contexts.insert(context.id.clone(), context.clone());
+    }
+
+    fn sync_pin_order(&mut self, id: &ContextId, pinned: bool, changes: &mut Changes) {
+        let in_order = self.pin_order.contains(id);
+        if pinned && !in_order {
+            self.pin_order.push(id.clone());
+            changes.pin_order = true;
+        } else if !pinned && in_order {
+            self.pin_order.retain(|other| other != id);
+            changes.pin_order = true;
+        }
+    }
+
+    fn context_settings(
+        &mut self,
+        context_id: &ContextId,
+        pinned: Option<bool>,
+        muted: Option<bool>,
+        disappearing: Option<Disappearing>,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        let context = self
+            .contexts
+            .get_mut(context_id)
+            .ok_or_else(|| ApplyError::UnknownContext(context_id.clone()))?;
+        if let Some(muted) = muted {
+            context.muted = muted;
+        }
+        if let Some(disappearing) = disappearing {
+            context.disappearing_secs = match disappearing {
+                Disappearing::Off => None,
+                Disappearing::After(secs) => Some(secs),
+            };
+        }
+        if let Some(pinned) = pinned {
+            context.pinned = pinned;
+            self.sync_pin_order(context_id, pinned, changes);
+        }
+        changes.contexts.insert(context_id.clone());
+        Ok(())
+    }
+
+    fn remove_context(
+        &mut self,
+        context_id: &ContextId,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        if self.contexts.remove(context_id).is_none() {
+            return Err(ApplyError::UnknownContext(context_id.clone()));
+        }
+        changes.contexts.insert(context_id.clone());
+        if self.pin_order.contains(context_id) {
+            self.pin_order.retain(|id| id != context_id);
+            changes.pin_order = true;
+        }
+        let removed: Vec<MomentId> = self
+            .moments
+            .values()
+            .filter(|m| &m.context_id == context_id)
+            .map(|m| m.id.clone())
+            .collect();
+        for id in removed {
+            self.moments.remove(&id);
+            self.needs_me_since.remove(&id);
+            changes.moments.insert(id);
+        }
+        Ok(())
+    }
+
+    fn add_moment(
+        &mut self,
+        at: Timestamp,
+        moment: &Moment,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        if self.moments.contains_key(&moment.id) {
+            return Err(ApplyError::DuplicateMoment(moment.id.clone()));
+        }
+        if !self.contexts.contains_key(&moment.context_id) {
+            return Err(ApplyError::UnknownContext(moment.context_id.clone()));
+        }
+        if moment.lifecycle == Lifecycle::NeedsMe {
+            self.needs_me_since.insert(moment.id.clone(), at);
+        }
+        changes.moments.insert(moment.id.clone());
+        self.moments.insert(moment.id.clone(), moment.clone());
+        Ok(())
+    }
+
+    fn update_moment(
+        &mut self,
+        at: Timestamp,
+        moment_id: &MomentId,
+        lifecycle: Option<Lifecycle>,
+        kind: Option<&MomentKind>,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        let moment = self
+            .moments
+            .get_mut(moment_id)
+            .ok_or_else(|| ApplyError::UnknownMoment(moment_id.clone()))?;
+        let next = lifecycle.unwrap_or(moment.lifecycle);
+        if next != moment.lifecycle {
+            check_transition(|| format!("moment {moment_id}"), moment.lifecycle, next)?;
+        }
+        if let Some(kind) = kind
+            && mem::discriminant(kind) != mem::discriminant(&moment.kind)
+        {
+            return Err(ApplyError::KindMismatch(moment_id.clone()));
+        }
+        if next != moment.lifecycle {
+            if next == Lifecycle::NeedsMe {
+                self.needs_me_since.insert(moment_id.clone(), at);
+            } else {
+                self.needs_me_since.remove(moment_id);
+            }
+            moment.lifecycle = next;
+        }
+        if let Some(kind) = kind {
+            moment.kind = kind.clone();
+        }
+        changes.moments.insert(moment_id.clone());
+        Ok(())
+    }
+
+    fn patch_surface(
+        &mut self,
+        moment_id: &MomentId,
+        surface_id: &SurfaceId,
+        ops: &[SurfaceOp],
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        let moment = self
+            .moments
+            .get_mut(moment_id)
+            .ok_or_else(|| ApplyError::UnknownMoment(moment_id.clone()))?;
+        let mismatch = || ApplyError::SurfaceMismatch {
+            moment: moment_id.clone(),
+            surface: surface_id.clone(),
+        };
+        let MomentKind::AgentSurface(surface) = &mut moment.kind else {
+            return Err(mismatch());
+        };
+        if &surface.surface_id != surface_id {
+            return Err(mismatch());
+        }
+        let mut patched = surface.clone();
+        for op in ops {
+            apply_surface_op(&mut patched, op)?;
+        }
+        *surface = patched;
+        changes.moments.insert(moment_id.clone());
+        Ok(())
+    }
+
+    fn upsert_task(&mut self, task: &Task, changes: &mut Changes) -> Result<(), ApplyError> {
+        if !self.contexts.contains_key(&task.context_id) {
+            return Err(ApplyError::UnknownContext(task.context_id.clone()));
+        }
+        if let Some(current) = self.tasks.get(&task.id)
+            && current.lifecycle != task.lifecycle
+        {
+            check_transition(|| format!("task {}", task.id), current.lifecycle, task.lifecycle)?;
+        }
+        changes.tasks.insert(task.id.clone());
+        self.tasks.insert(task.id.clone(), task.clone());
+        Ok(())
+    }
+}
+
+/// Health implied by a probe: both services up is healthy, one is degraded.
+fn probe_health(probe: &NodeProbe) -> NodeHealth {
+    match (probe.gateway.ok, probe.relay.ok) {
+        (true, true) => NodeHealth::Healthy,
+        (true, false) | (false, true) => NodeHealth::Degraded,
+        (false, false) => NodeHealth::Unreachable,
+    }
+}
+
+fn check_transition(
+    entity: impl FnOnce() -> String,
+    from: Lifecycle,
+    to: Lifecycle,
+) -> Result<(), ApplyError> {
+    if Lifecycle::can_transition(from, to) {
+        Ok(())
+    } else {
+        Err(ApplyError::IllegalTransition { entity: entity(), from, to })
+    }
+}

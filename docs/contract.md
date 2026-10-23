@@ -28,12 +28,13 @@ UiEvent -> Intent -> Effect -> Source -> EventEnvelope -> Store -> selectors -> 
 | R3 | Core has no GPUI, async runtime, or SDK dependency (only `serde`, `serde_json`, `thiserror`). |
 | R4 | View-local state (expanded, hover, scroll) never enters the store. |
 | R5 | Optimistic UI uses only a `Pending` moment, which a later event confirms or rolls back. |
-| R6 | Humans and agents share one pipeline. Every `Intent` carries an `Actor`. |
+| R6 | Humans and agents share one pipeline. Every `Intent` records who proposed it (`proposed_by: Actor`) and, after a hold, that the human confirmed it (`confirmed_by`). |
 
 ## Identifiers and time
 
-`AccountId`, `NodeId`, `ParticipantId`, `ContextId`, `MomentId`, `ObjectId`,
-`GrantId`, `TaskId`, `SurfaceId` and `BlockId` are string newtypes that
+`AccountId`, `NodeId`, `DeviceId`, `ParticipantId`, `ContextId`, `MomentId`,
+`ObjectId`, `GrantId`, `StandingApprovalId`, `TaskId`, `SurfaceId` and
+`BlockId` are string newtypes that
 serialize as plain strings. `Timestamp(i64)` holds unix milliseconds and also
 serializes as a plain number. Core never reads the clock. Every time value
 comes from a source.
@@ -44,14 +45,21 @@ The store keeps each entity in its own collection, keyed by id:
 
 | Entity | Key fields |
 |---|---|
-| `Account` | label, node, device, `lock_state` |
-| `Node` | endpoints, `fingerprint` (optional), `pin_source`, `health` |
-| `Participant` | `kind` (Human, Agent, Device, Node), `display`, `safety`, `contact` |
-| `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread` |
+| `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state` |
+| `Node` | NODE-01 profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
+| `Device` | account, label, `this_device`, `revoked`, `last_seen` |
+| `Participant` | `kind` (Human, Agent, Device, Node), `display`, `safety`, `contact`, `safety_number` |
+| `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread`, `muted`, `disappearing_secs`, `roles`, `epoch` |
 | `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind`, `lifecycle` |
-| `Object` | name, size, direction, `transfer` |
-| `Grant` | scope, `risk`, `single_use`, `args_hash`, expiry, `state` |
-| `Task` | intent id, context, `actor`, `steps`, `lifecycle` |
+| `Object` | name, size, direction, `transfer`, `saved_to`, `preview` |
+| `Grant` | scope, `risk`, `single_use`, `args_hash`, expiry, `state` (Pending, Approved, Denied, Expired, Revoked) |
+| `StandingApproval` | scope, `max_risk`, expiry, `uses`, `revoked` |
+| `AuditEntry` | `at`, `action` (method), `subject` (id), `proposed_by`, `human_confirmed` |
+| `Integrations` | read-only MCP servers and pending A2I events |
+| `Task` | intent id, context, `actor`, `steps` (each may wait on a `grant_id`), `lifecycle`, `result` |
+
+Messages carry an optional `attachment` and a `franking` commitment; conflict
+sides carry the conflicting `lines` for a side-by-side compare.
 
 `MomentKind` has one variant per inline moment, and each variant carries its
 own payload struct: `Message`, `AgentSurface`, `ObjectTransfer`,
@@ -95,8 +103,13 @@ pub struct EventEnvelope { pub schema: String, pub seq: u64, pub at: Timestamp, 
 of the same kind), `SurfacePatched` (`AppendBlocks`, `ReplaceBlock`,
 `ReplaceBlocks`, `AppendText`, `SetActions`, `SetStreaming`; all or nothing),
 `ObjectUpserted`, `GrantRequested`, `GrantResolved`, `TaskUpserted`,
-`TaskStepChanged` and `SourceStatusChanged` (Connected, Disconnected,
-Locked).
+`TaskStepChanged`, `SourceStatusChanged` (Connected, Disconnected,
+Locked), `ContextSettingsChanged` (pin, mute, disappearing timer),
+`AccountLockChanged`, `NodeSettingsChanged` (enabled; setting a default clears
+the previous one), `NodeProbed` (also sets health), `NodeRemoved`,
+`DeviceUpserted`, `GrantRevoked` (Approved to Revoked only),
+`StandingApprovalUpserted`, `AuditAppended` (the last 512 are kept) and
+`IntegrationsUpdated`.
 
 ## Store
 
@@ -133,52 +146,77 @@ All selectors are pure functions of `&Store`.
 
 ## Intents, policy and effects
 
-`Intent { actor: Actor, kind: IntentKind }`. `Actor` is `Human` or
-`Agent(ParticipantId)`. The kinds are `SendMessage`, `AttachObject`,
-`SurfaceAction`, `Approve { grant_id, confirmed }`, `Deny`, `Reveal`,
-`ResolveConflict`, `StartTask`, `CancelTask`, `PinContext`, `UnpinContext`,
-`AcceptContact`, `RejectContact`, `VerifySafetyNumber`,
-`Governance { context_id, op, confirmed }`, `AcceptHandoff`, `DeclineHandoff`
-and `Unlock`. `GovernanceOp` is one of `AddMember`, `RemoveMember`, `Kick`,
-`Ban`, `SetRole` and `CreateInvite`; `Kick`, `Ban` and `SetRole` are high risk.
+`Intent { proposed_by: Actor, confirmed_by: Option<HumanConfirmation>, kind: IntentKind }`.
+`Actor` is `Human` or `Agent(ParticipantId)`. `HumanConfirmation { gesture:
+Hold, held_ms }` is added only by the hold-to-confirm strip after the gesture
+completes (`Intent::confirmed_by_human`); it never changes `proposed_by`, so an
+agent proposal confirmed by the human keeps the agent as proposer. Agent
+intents are built without a confirmation (`Intent::agent`) and no UI event can
+carry one.
 
-`Unlock` carries a `SecretInput`. This one-shot handle is not `Clone` and not
-`Serialize`, its `Debug` output is `<redacted>`, and its buffer is zeroized on
-drop. `Unlock` is excluded from serde: serializing it returns an error and it
-cannot be deserialized.
+The kinds, by area:
+
+- Conversation: `SendMessage`, `AttachObject`, `PinContext`, `UnpinContext`,
+  `MuteContext`, `SetDisappearing`, `StartTask`, `CancelTask`.
+- Moments: `SurfaceAction`, `Approve`, `Deny`, `Reveal`, `ResolveConflict`,
+  `AcceptContact`, `RejectContact`, `VerifySafetyNumber`, `AcceptHandoff`,
+  `DeclineHandoff`.
+- Objects: `PullObject` (queued inbound only), `SaveObject` (complete only),
+  `RetryTransfer` (failed only).
+- Governance and approvals: `Governance { context_id, op }` (`AddMember`,
+  `RemoveMember`, `Kick`, `Ban`, `SetRole`, `CreateInvite`), `RevokeGrant`,
+  `RevokeStandingApproval`.
+- Entry: `Unlock`, `CreateAccount { kind, label, node_id, secret }`,
+  `ActivateDevice { node_id, device_label, code }`, `RestoreBackup { path,
+  secret }`, `AddNode { url }`, `ConfirmNode { node_id, pin_source }`.
+- Settings: `LockAccount`, `RotatePassphrase { current, next }`,
+  `ExportBackup`, `RevokeDevice`, `SyncDevices`, `ProbeNode`, `RemoveNode`,
+  `SetDefaultNode`, `SetNodeEnabled`, `ExportDiagnostics`.
+
+Kinds that carry a `SecretInput` (unlock, create, activate, restore, rotate)
+are excluded from serde. A `SecretInput` is not `Clone`, not `Serialize`, its
+`Debug` output is `<redacted>`, and its buffer is zeroized on drop.
 
 `handle_intent(&Store, Intent, now: Timestamp) -> Result<Vec<Effect>, IntentError>`
 checks the intent against the store at time `now` and never mutates it.
 
-- `Approve` or `Deny` on a grant that is not pending, or whose expiry is at or
-  before `now`, is an error.
-- `Approve` on a `High` or `Critical` grant, a `SurfaceAction` whose action is
-  `High` or `Critical`, and a high-risk `Governance` operation without human
-  confirmation return `[Effect::RequireConfirmation { intent }]`. The app then
-  shows the hold-to-confirm strip and submits
-  `intent.into_human_confirmed()`, which sets `confirmed` and makes the human
-  the actor of the decision.
-- Agent intents follow the same rules. The agent must be a known `Agent`
-  participant. An agent cannot provide human confirmation, so `confirmed` is
-  always ignored for agents. Agents may not unlock, verify a safety number, or
-  answer a handoff.
+- The attended human's hold is required (without `confirmed_by` the result is
+  `[Effect::RequireConfirmation { intent }]`) for: approving a `High` or
+  `Critical` grant, a `High` or `Critical` surface action, `Kick`, `Ban` and
+  `SetRole`, every `Reveal`, `RevokeGrant`, `RevokeStandingApproval`,
+  `RevokeDevice`, and `ConfirmNode` with a trust-on-first-use (`Manual`) pin.
+- Grants that are not pending, or whose expiry is at or before `now`, cannot
+  be approved or denied; only approved grants can be revoked.
+- `ConfirmNode` must match the discovered pin source; new accounts and new
+  devices bind only to confirmed nodes; a node with a bound account cannot be
+  removed; the default node cannot be disabled.
+- Agent proposals follow the same rules; the agent must be a known `Agent`
+  participant. Agents may never unlock, create, activate or restore an
+  account, rotate its passphrase, export a backup, sync or revoke devices,
+  confirm a node, verify a safety number, or answer a handoff.
 
 `Effect` is one of the following:
 
 - `Call { method, body }`. `method` is a contract method name from
-  `intent::methods`, such as `grant.approve`. `body` always includes `actor`.
+  `intent::methods`, such as `grant.approve`. Every body includes
+  `proposed_by` and `confirmed_by` (null or the hold record): the audit pair.
+- `SecretCall { method, body, secrets }`. The body never contains secret
+  material; the secrets travel beside it and only reach the source.
 - `RequireConfirmation { intent }`. The app handles this one; it never goes to
   the source.
-- `Unlock { account_id, secret }`. The secret only reaches the source.
 
 ## UI events and bubbling
 
 `UiEvent { scope_path: Vec<Scope>, kind: UiEventKind }`. The path runs from the
-root to the leaf: `Workspace, Context, Moment, Surface, Block`. An element
+root to the leaf: `Workspace, Context, Moment, Surface, Block`, with a
+`Panel(name)` level for pages, docks and overlays (`entry`,
+`settings.nodes`, `dock.members`, `palette`). An element
 emits an event with its own scope, and each parent prepends its scope with
 `UiEvent::within` before passing the event up.
 
-View-local events such as `ExpandToggled` are consumed below the root (B1).
+View-local events (`ExpandToggled`, `FieldChanged`) are consumed below the
+root (B1); a level may add context it owns (the moment level adds collected
+form values to `ActionInvoked`, B3).
 Events that change business state reach the root, where they become intents
 (B2 to B4). A UI event never carries a secret.
 
@@ -202,12 +240,19 @@ its own bridge thread and buffer events until `drain` is called.
 Scenario { name, description, epoch (optional), timeline: [(offset_ms, DomainEvent)],
            responses: [ResponseRule { on: EffectMatcher, emit: [(delay_ms, DomainEvent)] }] }
 EffectMatcher = Call { method, fields } | Unlock { account_id }
+Scenario.companions = [Companion { account_id, scenario }]   (background accounts)
 ```
 
 `MockSource` plays a scenario as a `Source`:
 
 - It assigns `seq` from 1 and sets `at = epoch + offset`.
-- It stamps `at` onto every added moment, so fixtures write `at: 0`.
+- An added moment written with `at: 0` is stamped with the delivery time; any
+  other `at` is a signed offset from the epoch (history such as yesterday).
+  Reveal records and node probes written with `at: 0` are stamped too.
+- Effects no rule answers fall back to the built-in local echo (pin, unpin,
+  mute, disappearing timer, default, enabled and removed nodes, account lock),
+  so local intents round-trip in every scenario. Every call confirmed with a
+  hold is also echoed as an `AuditAppended` record.
 - When a submitted effect matches a rule, it schedules that rule's events
   after the submission time.
 
@@ -224,11 +269,12 @@ controls:
 
 | Scenario | Demonstrates |
 |---|---|
-| `s01_first_launch` | No daemon, then connect, join a node, create an account, unlock, enter the workspace |
+| `s01_first_launch` | No daemon, then bootstrap and invite nodes, a node added by URL (TOFU, hold), create, join or restore an account, lock and unlock |
 | `s02_daily` | Three contexts, unread counts, a streaming agent reply, an object transfer |
 | `s03_intervention` | A high-risk tool request, hold-to-confirm approval, the result in the conversation |
 | `s04_safety` | A contact's key changes, a sticky warning, the safety number verified |
 | `s05_group_governance` | An invitation, a role change, a member removal with a confirmation bar |
 | `s06_in_progress` | A one-sentence request becomes a multi-step task that needs the user midway, then completes |
 | `s07_conflict_privacy_handoff` | A CAS conflict, an audited privacy reveal, a cross-device handoff |
-| `s08_failures` | A daemon disconnect, an unhealthy node, a failed transfer, an unknown block rendered as fallback |
+| `s08_failures` | A daemon disconnect, an unhealthy node, a failed transfer and its retry, an unknown block rendered as fallback |
+| `s09_multi_account_day` | Two accounts (companion `s09_work_account`), attention in the background account, switch and resolve; node, device and integration data for settings |

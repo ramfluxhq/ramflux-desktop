@@ -1,0 +1,191 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Span Brain
+
+//! What one applied envelope changed, and why an envelope was rejected.
+
+use std::collections::BTreeSet;
+
+use thiserror::Error;
+
+use crate::ids::{
+    AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
+    SurfaceId, TaskId,
+};
+use crate::model::Lifecycle;
+
+/// Why an envelope was not applied.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ApplyError {
+    /// The envelope carries a different schema.
+    #[error("schema mismatch: expected {expected}, found {found}")]
+    SchemaMismatch {
+        /// Supported schema.
+        expected: &'static str,
+        /// Received schema.
+        found: String,
+    },
+    /// Account not in the store.
+    #[error("unknown account {0}")]
+    UnknownAccount(AccountId),
+    /// Node not in the store.
+    #[error("unknown node {0}")]
+    UnknownNode(NodeId),
+    /// Context not in the store.
+    #[error("unknown context {0}")]
+    UnknownContext(ContextId),
+    /// Moment not in the store.
+    #[error("unknown moment {0}")]
+    UnknownMoment(MomentId),
+    /// Grant not in the store.
+    #[error("unknown grant {0}")]
+    UnknownGrant(GrantId),
+    /// Task not in the store.
+    #[error("unknown task {0}")]
+    UnknownTask(TaskId),
+    /// A moment with this id already exists.
+    #[error("moment {0} already exists")]
+    DuplicateMoment(MomentId),
+    /// A grant with this id already exists.
+    #[error("grant {0} already exists")]
+    DuplicateGrant(GrantId),
+    /// Lifecycle transition not allowed by [`Lifecycle::can_transition`].
+    #[error("illegal lifecycle transition for {entity}: {from:?} -> {to:?}")]
+    IllegalTransition {
+        /// Moment, task, or task step identifier.
+        entity: String,
+        /// Current lifecycle.
+        from: Lifecycle,
+        /// Requested lifecycle.
+        to: Lifecycle,
+    },
+    /// Grant already decided.
+    #[error("grant {0} is not pending")]
+    GrantNotPending(GrantId),
+    /// A grant cannot be resolved back to pending.
+    #[error("grant {0} cannot be resolved to pending")]
+    InvalidGrantResolution(GrantId),
+    /// Only approved grants can be revoked.
+    #[error("grant {0} is not approved")]
+    GrantNotApproved(GrantId),
+    /// A payload update tried to change the moment kind.
+    #[error("moment {0} cannot change kind")]
+    KindMismatch(MomentId),
+    /// The moment does not hold the referenced surface.
+    #[error("moment {moment} does not hold surface {surface}")]
+    SurfaceMismatch {
+        /// Moment.
+        moment: MomentId,
+        /// Surface.
+        surface: SurfaceId,
+    },
+    /// Block not in the surface.
+    #[error("unknown block {0}")]
+    UnknownBlock(BlockId),
+    /// Text was appended to a block without a string `text` field.
+    #[error("block {0} has no text field")]
+    NotTextBlock(BlockId),
+    /// Task step index out of range.
+    #[error("task {task} has no step {index}")]
+    StepOutOfRange {
+        /// Task.
+        task: TaskId,
+        /// Requested index.
+        index: u32,
+    },
+}
+
+/// A rejected envelope, kept for the event inspector.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rejection {
+    /// Envelope sequence.
+    pub seq: u64,
+    /// Reason.
+    pub error: ApplyError,
+}
+
+/// Ids changed by one applied envelope, per collection, so views can notify precisely.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Changes {
+    /// Changed accounts.
+    pub accounts: BTreeSet<AccountId>,
+    /// Changed or removed nodes.
+    pub nodes: BTreeSet<NodeId>,
+    /// Changed devices.
+    pub devices: BTreeSet<DeviceId>,
+    /// Changed participants.
+    pub participants: BTreeSet<ParticipantId>,
+    /// Changed or removed contexts.
+    pub contexts: BTreeSet<ContextId>,
+    /// Changed or removed moments.
+    pub moments: BTreeSet<MomentId>,
+    /// Changed objects.
+    pub objects: BTreeSet<ObjectId>,
+    /// Changed grants.
+    pub grants: BTreeSet<GrantId>,
+    /// Changed tasks.
+    pub tasks: BTreeSet<TaskId>,
+    /// Standing approvals changed.
+    pub standing_approvals: bool,
+    /// The audit trail grew.
+    pub audit: bool,
+    /// The integrations snapshot changed.
+    pub integrations: bool,
+    /// The pinned order changed.
+    pub pin_order: bool,
+    /// The source status changed.
+    pub source_status: bool,
+}
+
+impl Changes {
+    /// Returns true when nothing changed.
+    pub fn is_empty(&self) -> bool {
+        self.accounts.is_empty()
+            && self.nodes.is_empty()
+            && self.devices.is_empty()
+            && self.participants.is_empty()
+            && self.contexts.is_empty()
+            && self.moments.is_empty()
+            && self.objects.is_empty()
+            && self.grants.is_empty()
+            && self.tasks.is_empty()
+            && !self.standing_approvals
+            && !self.audit
+            && !self.integrations
+            && !self.pin_order
+            && !self.source_status
+    }
+
+    /// Adds every change of `other` to `self`.
+    pub fn merge(&mut self, other: Changes) {
+        let Changes {
+            accounts,
+            nodes,
+            devices,
+            participants,
+            contexts,
+            moments,
+            objects,
+            grants,
+            tasks,
+            standing_approvals,
+            audit,
+            integrations,
+            pin_order,
+            source_status,
+        } = other;
+        self.accounts.extend(accounts);
+        self.nodes.extend(nodes);
+        self.devices.extend(devices);
+        self.participants.extend(participants);
+        self.contexts.extend(contexts);
+        self.moments.extend(moments);
+        self.objects.extend(objects);
+        self.grants.extend(grants);
+        self.tasks.extend(tasks);
+        self.standing_approvals |= standing_approvals;
+        self.audit |= audit;
+        self.integrations |= integrations;
+        self.pin_order |= pin_order;
+        self.source_status |= source_status;
+    }
+}

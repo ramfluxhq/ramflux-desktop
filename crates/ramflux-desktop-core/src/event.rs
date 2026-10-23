@@ -5,10 +5,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{BlockId, ContextId, GrantId, MomentId, NodeId, SurfaceId, TaskId, Timestamp};
+use crate::ids::{
+    AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, SurfaceId, TaskId, Timestamp,
+};
 use crate::model::{
-    Account, Block, Context, Grant, GrantState, Lifecycle, Moment, MomentKind, Node, NodeHealth,
-    Object, Participant, SurfaceAction, Task,
+    Account, AuditEntry, Block, Context, Device, Disappearing, Grant, GrantState, Integrations,
+    Lifecycle, LockState, Moment, MomentKind, Node, NodeHealth, NodeProbe, Object, Participant,
+    StandingApproval, SurfaceAction, Task,
 };
 
 /// Schema tag carried by every envelope. The store rejects any other value.
@@ -137,4 +140,61 @@ pub enum DomainEvent {
     },
     /// Source connectivity changed.
     SourceStatusChanged(SourceStatus),
+    /// Local settings of a context changed. `None` fields are unchanged.
+    ContextSettingsChanged {
+        /// Context.
+        context_id: ContextId,
+        /// New pin state.
+        #[serde(default)]
+        pinned: Option<bool>,
+        /// New mute state.
+        #[serde(default)]
+        muted: Option<bool>,
+        /// New disappearing timer.
+        #[serde(default)]
+        disappearing: Option<Disappearing>,
+    },
+    /// An account was locked or unlocked.
+    AccountLockChanged {
+        /// Account.
+        account_id: AccountId,
+        /// New state.
+        lock_state: LockState,
+    },
+    /// Local node settings changed. Setting a default clears the previous one.
+    NodeSettingsChanged {
+        /// Node.
+        node_id: NodeId,
+        /// New enabled state.
+        #[serde(default)]
+        enabled: Option<bool>,
+        /// Becomes the default node (only `Some(true)` is meaningful).
+        #[serde(default)]
+        is_default: Option<bool>,
+    },
+    /// A node probe finished.
+    NodeProbed {
+        /// Node.
+        node_id: NodeId,
+        /// Result.
+        probe: NodeProbe,
+    },
+    /// A node profile was removed.
+    NodeRemoved {
+        /// Node.
+        node_id: NodeId,
+    },
+    /// Device inserted or replaced (revocation keeps the record).
+    DeviceUpserted(Device),
+    /// An approved grant was revoked before use.
+    GrantRevoked {
+        /// Grant.
+        grant_id: GrantId,
+    },
+    /// Standing approval inserted or replaced (revocation keeps the record).
+    StandingApprovalUpserted(StandingApproval),
+    /// One audit record appended.
+    AuditAppended(AuditEntry),
+    /// The read-only integrations snapshot was replaced.
+    IntegrationsUpdated(Integrations),
 }

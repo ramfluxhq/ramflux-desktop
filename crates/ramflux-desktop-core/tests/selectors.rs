@@ -118,6 +118,7 @@ fn in_flight_covers_in_progress_moments_and_open_tasks() {
         title: id.to_owned(),
         steps: Vec::new(),
         lifecycle,
+        result: None,
     };
     feed.ok(2, DomainEvent::TaskUpserted(task("t-open", Lifecycle::NeedsMe)));
     feed.ok(2, DomainEvent::TaskUpserted(task("t-done", Lifecycle::Done)));
@@ -187,6 +188,8 @@ fn dock_selectors_filter_and_order() {
             size: 12,
             direction: Direction::Outbound,
             transfer: TransferState::Complete,
+            saved_to: None,
+            preview: None,
         }),
     );
 

@@ -31,9 +31,19 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::TaskUpserted(_) => "TaskUpserted",
         DomainEvent::TaskStepChanged { .. } => "TaskStepChanged",
         DomainEvent::SourceStatusChanged(_) => "SourceStatusChanged",
+        DomainEvent::ContextSettingsChanged { .. } => "ContextSettingsChanged",
+        DomainEvent::AccountLockChanged { .. } => "AccountLockChanged",
+        DomainEvent::NodeSettingsChanged { .. } => "NodeSettingsChanged",
+        DomainEvent::NodeProbed { .. } => "NodeProbed",
+        DomainEvent::NodeRemoved { .. } => "NodeRemoved",
+        DomainEvent::DeviceUpserted(_) => "DeviceUpserted",
+        DomainEvent::GrantRevoked { .. } => "GrantRevoked",
+        DomainEvent::StandingApprovalUpserted(_) => "StandingApprovalUpserted",
+        DomainEvent::AuditAppended(_) => "AuditAppended",
+        DomainEvent::IntegrationsUpdated(_) => "IntegrationsUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 15;
+const DOMAIN_EVENT_VARIANTS: usize = 25;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -73,18 +83,40 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::Governance { .. } => "Governance",
         IntentKind::AcceptHandoff { .. } => "AcceptHandoff",
         IntentKind::DeclineHandoff { .. } => "DeclineHandoff",
-        IntentKind::Unlock { .. } => "Unlock",
+        IntentKind::MuteContext { .. } => "MuteContext",
+        IntentKind::SetDisappearing { .. } => "SetDisappearing",
+        IntentKind::PullObject { .. } => "PullObject",
+        IntentKind::SaveObject { .. } => "SaveObject",
+        IntentKind::RetryTransfer { .. } => "RetryTransfer",
+        IntentKind::RevokeGrant { .. } => "RevokeGrant",
+        IntentKind::RevokeStandingApproval { .. } => "RevokeStandingApproval",
+        IntentKind::AddNode { .. } => "AddNode",
+        IntentKind::ConfirmNode { .. } => "ConfirmNode",
+        IntentKind::LockAccount { .. } => "LockAccount",
+        IntentKind::ExportBackup { .. } => "ExportBackup",
+        IntentKind::RevokeDevice { .. } => "RevokeDevice",
+        IntentKind::SyncDevices { .. } => "SyncDevices",
+        IntentKind::ProbeNode { .. } => "ProbeNode",
+        IntentKind::RemoveNode { .. } => "RemoveNode",
+        IntentKind::SetDefaultNode { .. } => "SetDefaultNode",
+        IntentKind::SetNodeEnabled { .. } => "SetNodeEnabled",
+        IntentKind::ExportDiagnostics { .. } => "ExportDiagnostics",
+        IntentKind::Unlock { .. }
+        | IntentKind::CreateAccount { .. }
+        | IntentKind::ActivateDevice { .. }
+        | IntentKind::RestoreBackup { .. }
+        | IntentKind::RotatePassphrase { .. } => "secret",
     }
 }
-/// Serializable intent variants (all but `Unlock`).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 17;
+/// Serializable intent variants (all but the five secret-carrying kinds).
+const SERIALIZABLE_INTENT_VARIANTS: usize = 35;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
         UiEventKind::AttachFile { .. } => "AttachFile",
         UiEventKind::ActionInvoked { .. } => "ActionInvoked",
-        UiEventKind::ApprovePressed { .. } => "ApprovePressed",
+        UiEventKind::ApprovePressed => "ApprovePressed",
         UiEventKind::DenyPressed => "DenyPressed",
         UiEventKind::RevealPressed => "RevealPressed",
         UiEventKind::ConflictResolved { .. } => "ConflictResolved",
@@ -93,9 +125,26 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::PinToggled { .. } => "PinToggled",
         UiEventKind::ContactAnswered { .. } => "ContactAnswered",
         UiEventKind::ExpandToggled { .. } => "ExpandToggled",
+        UiEventKind::MuteToggled { .. } => "MuteToggled",
+        UiEventKind::DisappearingChosen { .. } => "DisappearingChosen",
+        UiEventKind::VerifySafetyPressed { .. } => "VerifySafetyPressed",
+        UiEventKind::HandoffAnswered { .. } => "HandoffAnswered",
+        UiEventKind::ObjectActionPressed { .. } => "ObjectActionPressed",
+        UiEventKind::GovernanceRequested { .. } => "GovernanceRequested",
+        UiEventKind::RevokeGrantPressed { .. } => "RevokeGrantPressed",
+        UiEventKind::RevokeStandingPressed { .. } => "RevokeStandingPressed",
+        UiEventKind::AddNodeRequested { .. } => "AddNodeRequested",
+        UiEventKind::ConfirmNodePressed { .. } => "ConfirmNodePressed",
+        UiEventKind::NodeActionPressed { .. } => "NodeActionPressed",
+        UiEventKind::LockPressed { .. } => "LockPressed",
+        UiEventKind::ExportBackupRequested { .. } => "ExportBackupRequested",
+        UiEventKind::RevokeDevicePressed { .. } => "RevokeDevicePressed",
+        UiEventKind::DeviceSyncRequested { .. } => "DeviceSyncRequested",
+        UiEventKind::DiagnosticsExportRequested { .. } => "DiagnosticsExportRequested",
+        UiEventKind::FieldChanged { .. } => "FieldChanged",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 12;
+const UI_EVENT_KIND_VARIANTS: usize = 29;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -123,8 +172,16 @@ fn all_moment_kinds() -> Vec<MomentKind> {
         MomentKind::TaskProgress(TaskProgressPayload { task_id: TaskId::new("t-1") }),
         MomentKind::Conflict(ConflictPayload {
             object_id: ObjectId::new("o-2"),
-            local: ConflictSide { version: "v3".to_owned(), summary: "Local edit".to_owned() },
-            remote: ConflictSide { version: "v4".to_owned(), summary: "Remote edit".to_owned() },
+            local: ConflictSide {
+                version: "v3".to_owned(),
+                summary: "Local edit".to_owned(),
+                lines: vec!["groceries 120".to_owned()],
+            },
+            remote: ConflictSide {
+                version: "v4".to_owned(),
+                summary: "Remote edit".to_owned(),
+                lines: Vec::new(),
+            },
             resolution: Some(ConflictResolution::KeepBoth),
         }),
         MomentKind::PrivacyReveal(PrivacyRevealPayload {
@@ -150,6 +207,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
         DomainEvent::AccountUpdated(Account {
             id: AccountId::new("a-1"),
             label: "Personal".to_owned(),
+            kind: AccountKind::HeadlessAi,
             node_id: Some(NodeId::new("n-1")),
             device_id: Some("dev-1".to_owned()),
             lock_state: LockState::Unlocked,
@@ -160,6 +218,13 @@ fn all_domain_events() -> Vec<DomainEvent> {
             fingerprint: Some("SHA256:0011".to_owned()),
             pin_source: PinSource::Invite,
             health: NodeHealth::Healthy,
+            capabilities: vec!["relay".to_owned()],
+            expires_at: Some(Timestamp(99)),
+            confirmed: false,
+            builtin: false,
+            enabled: true,
+            is_default: false,
+            probe: None,
         }),
         DomainEvent::NodeHealthChanged {
             node_id: NodeId::new("n-1"),
@@ -199,6 +264,8 @@ fn all_domain_events() -> Vec<DomainEvent> {
             size: 2048,
             direction: Direction::Inbound,
             transfer: TransferState::Transferring { transferred: 1024 },
+            saved_to: None,
+            preview: Some("Quarterly report".to_owned()),
         }),
         DomainEvent::GrantRequested(grant("g-1", Risk::Critical)),
         DomainEvent::GrantResolved { grant_id: GrantId::new("g-1"), state: GrantState::Approved },
@@ -208,8 +275,13 @@ fn all_domain_events() -> Vec<DomainEvent> {
             context_id: ContextId::new("c-1"),
             actor: Actor::Agent(ParticipantId::new("p-1")),
             title: "Book travel".to_owned(),
-            steps: vec![TaskStep { label: "Search".to_owned(), lifecycle: Lifecycle::Done }],
+            steps: vec![TaskStep {
+                label: "Search".to_owned(),
+                lifecycle: Lifecycle::Done,
+                grant_id: Some(GrantId::new("g-1")),
+            }],
             lifecycle: Lifecycle::InProgress,
+            result: None,
         }),
         DomainEvent::TaskStepChanged {
             task_id: TaskId::new("t-1"),
@@ -217,6 +289,62 @@ fn all_domain_events() -> Vec<DomainEvent> {
             lifecycle: Lifecycle::NeedsMe,
         },
         DomainEvent::SourceStatusChanged(SourceStatus::Locked),
+        DomainEvent::ContextSettingsChanged {
+            context_id: ContextId::new("c-1"),
+            pinned: None,
+            muted: Some(true),
+            disappearing: Some(Disappearing::After(3_600)),
+        },
+        DomainEvent::AccountLockChanged {
+            account_id: AccountId::new("a-1"),
+            lock_state: LockState::Locked,
+        },
+        DomainEvent::NodeSettingsChanged {
+            node_id: NodeId::new("n-1"),
+            enabled: Some(false),
+            is_default: None,
+        },
+        DomainEvent::NodeProbed {
+            node_id: NodeId::new("n-1"),
+            probe: NodeProbe {
+                at: Timestamp(5),
+                gateway: ProbeOutcome { ok: true, latency_ms: Some(18), detail: String::new() },
+                relay: ProbeOutcome { ok: false, latency_ms: None, detail: "timeout".to_owned() },
+            },
+        },
+        DomainEvent::NodeRemoved { node_id: NodeId::new("n-2") },
+        DomainEvent::DeviceUpserted(Device {
+            id: DeviceId::new("dev-1"),
+            account_id: AccountId::new("a-1"),
+            label: "Laptop".to_owned(),
+            this_device: true,
+            revoked: false,
+            last_seen: Some(Timestamp(4)),
+        }),
+        DomainEvent::GrantRevoked { grant_id: GrantId::new("g-1") },
+        DomainEvent::StandingApprovalUpserted(StandingApproval {
+            id: StandingApprovalId::new("sa-1"),
+            scope: "tool.calendar.read".to_owned(),
+            max_risk: Risk::Medium,
+            expiry: None,
+            uses: 3,
+            revoked: false,
+        }),
+        DomainEvent::AuditAppended(AuditEntry {
+            at: Timestamp(6),
+            action: "privacy.reveal".to_owned(),
+            subject: "m-1".to_owned(),
+            proposed_by: Actor::Human,
+            human_confirmed: true,
+        }),
+        DomainEvent::IntegrationsUpdated(Integrations {
+            mcp_servers: vec![McpServer {
+                name: "files".to_owned(),
+                tools: vec!["read".to_owned()],
+                healthy: true,
+            }],
+            a2i_pending: vec![A2iItem { id: "a2i-1".to_owned(), summary: "Pause".to_owned() }],
+        }),
     ];
     for (i, kind) in all_moment_kinds().into_iter().enumerate() {
         let id = format!("m-{i}");
@@ -234,9 +362,8 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             surface_id: SurfaceId::new("s-1"),
             action_id: "run".into(),
             values: json!({ "count": 2 }),
-            confirmed: false,
         },
-        IntentKind::Approve { grant_id: GrantId::new("g-1"), confirmed: true },
+        IntentKind::Approve { grant_id: GrantId::new("g-1") },
         IntentKind::Deny { grant_id: GrantId::new("g-1") },
         IntentKind::Reveal { moment_id: MomentId::new("m-1") },
         IntentKind::ResolveConflict {
@@ -256,10 +383,27 @@ fn all_intent_kinds() -> Vec<IntentKind> {
                 participant_id: ParticipantId::new("p-1"),
                 role: Role::Admin,
             },
-            confirmed: false,
         },
         IntentKind::AcceptHandoff { moment_id: MomentId::new("m-1") },
         IntentKind::DeclineHandoff { moment_id: MomentId::new("m-1") },
+        IntentKind::MuteContext { context_id: ContextId::new("c-1"), muted: true },
+        IntentKind::SetDisappearing { context_id: ContextId::new("c-1"), seconds: Some(60) },
+        IntentKind::PullObject { object_id: ObjectId::new("o-1") },
+        IntentKind::SaveObject { object_id: ObjectId::new("o-1"), path: "/tmp/o".into() },
+        IntentKind::RetryTransfer { object_id: ObjectId::new("o-1") },
+        IntentKind::RevokeGrant { grant_id: GrantId::new("g-1") },
+        IntentKind::RevokeStandingApproval { approval_id: StandingApprovalId::new("sa-1") },
+        IntentKind::AddNode { url: "https://node.example.test".into() },
+        IntentKind::ConfirmNode { node_id: NodeId::new("n-1"), pin_source: PinSource::Manual },
+        IntentKind::LockAccount { account_id: AccountId::new("a-1") },
+        IntentKind::ExportBackup { account_id: AccountId::new("a-1"), path: "/tmp/b".into() },
+        IntentKind::RevokeDevice { device_id: DeviceId::new("dev-2") },
+        IntentKind::SyncDevices { direction: SyncDirection::Export, path: "/tmp/s".into() },
+        IntentKind::ProbeNode { node_id: NodeId::new("n-1") },
+        IntentKind::RemoveNode { node_id: NodeId::new("n-1") },
+        IntentKind::SetDefaultNode { node_id: NodeId::new("n-1") },
+        IntentKind::SetNodeEnabled { node_id: NodeId::new("n-1"), enabled: false },
+        IntentKind::ExportDiagnostics { path: "/tmp/d".into() },
     ]
 }
 
@@ -268,7 +412,7 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::SubmitMessage { text: "hi".into() },
         UiEventKind::AttachFile { path: "/tmp/a.txt".into() },
         UiEventKind::ActionInvoked { action_id: "run".into(), values: json!(null) },
-        UiEventKind::ApprovePressed { confirmed: false },
+        UiEventKind::ApprovePressed,
         UiEventKind::DenyPressed,
         UiEventKind::RevealPressed,
         UiEventKind::ConflictResolved { resolution: ConflictResolution::KeepRemote },
@@ -277,6 +421,37 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::PinToggled { pinned: true },
         UiEventKind::ContactAnswered { accept: false },
         UiEventKind::ExpandToggled { expanded: true },
+        UiEventKind::MuteToggled { muted: true },
+        UiEventKind::DisappearingChosen { seconds: None },
+        UiEventKind::VerifySafetyPressed { participant_id: ParticipantId::new("p-1") },
+        UiEventKind::HandoffAnswered { accept: true },
+        UiEventKind::ObjectActionPressed {
+            object_id: ObjectId::new("o-1"),
+            action: ObjectAction::Save { path: "/tmp/o".into() },
+        },
+        UiEventKind::GovernanceRequested {
+            op: GovernanceOp::Kick { participant_id: ParticipantId::new("p-2") },
+        },
+        UiEventKind::RevokeGrantPressed { grant_id: GrantId::new("g-1") },
+        UiEventKind::RevokeStandingPressed { approval_id: StandingApprovalId::new("sa-1") },
+        UiEventKind::AddNodeRequested { url: "https://node.example.test".into() },
+        UiEventKind::ConfirmNodePressed { node_id: NodeId::new("n-1") },
+        UiEventKind::NodeActionPressed {
+            node_id: NodeId::new("n-1"),
+            action: NodeAction::SetEnabled(false),
+        },
+        UiEventKind::LockPressed { account_id: AccountId::new("a-1") },
+        UiEventKind::ExportBackupRequested {
+            account_id: AccountId::new("a-1"),
+            path: "/tmp/b".into(),
+        },
+        UiEventKind::RevokeDevicePressed { device_id: DeviceId::new("dev-2") },
+        UiEventKind::DeviceSyncRequested {
+            direction: SyncDirection::Import,
+            path: "/tmp/s".into(),
+        },
+        UiEventKind::DiagnosticsExportRequested { path: "/tmp/d".into() },
+        UiEventKind::FieldChanged { value: "x".into() },
     ]
 }
 
@@ -312,26 +487,49 @@ fn every_serializable_intent_kind_round_trips() {
     let names: BTreeSet<_> = kinds.iter().map(intent_kind_name).collect();
     assert_eq!(names.len(), SERIALIZABLE_INTENT_VARIANTS, "an IntentKind variant has no sample");
     for kind in kinds {
-        let intent = Intent { actor: Actor::Agent(ParticipantId::new("p-1")), kind };
+        let intent = Intent::agent(ParticipantId::new("p-1"), kind)
+            .confirmed_by_human(HumanConfirmation::hold(1_250));
         let first = serde_json::to_value(&intent).expect("serialize intent");
         let back: Intent = serde_json::from_value(first.clone()).expect("deserialize intent");
         let second = serde_json::to_value(&back).expect("re-serialize intent");
         assert_eq!(first, second);
-        assert_eq!(back.actor, intent.actor);
+        assert_eq!(back.proposed_by, intent.proposed_by);
+        assert_eq!(back.confirmed_by, intent.confirmed_by);
     }
 }
 
 #[test]
-fn unlock_intent_refuses_to_serialize() {
-    let intent = Intent::human(IntentKind::Unlock {
-        account_id: AccountId::new("a-1"),
-        secret: SecretInput::new("correct horse"),
-    });
-    assert_eq!(intent_kind_name(&intent.kind), "Unlock");
-    let result = serde_json::to_string(&intent);
-    assert!(result.is_err(), "Unlock must not serialize");
-    let parsed = serde_json::from_str::<IntentKind>(r#"{"Unlock":{"account_id":"a-1"}}"#);
-    assert!(parsed.is_err(), "Unlock must not deserialize");
+fn secret_intents_refuse_to_serialize() {
+    let secret = || SecretInput::new("correct horse");
+    let kinds = [
+        IntentKind::Unlock { account_id: AccountId::new("a-1"), secret: secret() },
+        IntentKind::CreateAccount {
+            kind: AccountKind::HumanInteractive,
+            label: "Me".into(),
+            node_id: NodeId::new("n-1"),
+            secret: secret(),
+        },
+        IntentKind::ActivateDevice {
+            node_id: NodeId::new("n-1"),
+            device_label: "Laptop".into(),
+            code: secret(),
+        },
+        IntentKind::RestoreBackup { path: "/tmp/b".into(), secret: secret() },
+        IntentKind::RotatePassphrase {
+            account_id: AccountId::new("a-1"),
+            current: secret(),
+            next: secret(),
+        },
+    ];
+    for kind in kinds {
+        assert_eq!(intent_kind_name(&kind), "secret");
+        let intent = Intent::human(kind);
+        assert!(serde_json::to_string(&intent).is_err(), "secret intents must not serialize");
+    }
+    for name in ["Unlock", "CreateAccount", "ActivateDevice", "RestoreBackup", "RotatePassphrase"] {
+        let text = format!(r#"{{"{name}":{{"account_id":"a-1"}}}}"#);
+        assert!(serde_json::from_str::<IntentKind>(&text).is_err(), "{name} must not deserialize");
+    }
 }
 
 #[test]

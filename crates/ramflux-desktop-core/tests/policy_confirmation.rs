@@ -12,7 +12,11 @@ use ramflux_desktop_core::*;
 const NOW: Timestamp = Timestamp(1_000);
 
 fn agent(kind: IntentKind) -> Intent {
-    Intent { actor: Actor::Agent(ParticipantId::new("p-agent")), kind }
+    Intent::agent(ParticipantId::new("p-agent"), kind)
+}
+
+fn held(intent: Intent) -> Intent {
+    intent.confirmed_by_human(HumanConfirmation::hold(1_200))
 }
 
 fn store() -> Store {
@@ -77,15 +81,15 @@ fn call_body(effects: Vec<Effect>) -> (String, JsonValue) {
     }
 }
 
-fn governance(op: GovernanceOp, confirmed: bool) -> IntentKind {
-    IntentKind::Governance { context_id: ContextId::new("c-group"), op, confirmed }
+fn governance(op: GovernanceOp) -> IntentKind {
+    IntentKind::Governance { context_id: ContextId::new("c-group"), op }
 }
 
 #[test]
 fn expired_grants_are_refused_at_expiry() {
     let store = store();
     for kind in [
-        IntentKind::Approve { grant_id: GrantId::new("g-old"), confirmed: false },
+        IntentKind::Approve { grant_id: GrantId::new("g-old") },
         IntentKind::Deny { grant_id: GrantId::new("g-old") },
     ] {
         assert_eq!(
@@ -93,32 +97,30 @@ fn expired_grants_are_refused_at_expiry() {
             Some(IntentError::GrantExpired(GrantId::new("g-old")))
         );
     }
-    let later = IntentKind::Approve { grant_id: GrantId::new("g-later"), confirmed: false };
+    let later = IntentKind::Approve { grant_id: GrantId::new("g-later") };
     assert_eq!(effects(&store, Intent::human(later)).len(), 1);
 }
 
 #[test]
 fn critical_surface_action_needs_human_confirmation() {
     let store = store();
-    let wipe = |confirmed| IntentKind::SurfaceAction {
+    let wipe = || IntentKind::SurfaceAction {
         moment_id: MomentId::new("m-risky"),
         surface_id: SurfaceId::new("s-risky"),
         action_id: "wipe".to_owned(),
         values: JsonValue::Null,
-        confirmed,
     };
-    assert!(is_confirmation(&effects(&store, Intent::human(wipe(false)))));
-    assert!(is_confirmation(&effects(&store, agent(wipe(true)))), "agents cannot confirm");
-    let (method, body) = call_body(effects(&store, Intent::human(wipe(true))));
+    assert!(is_confirmation(&effects(&store, Intent::human(wipe()))));
+    assert!(is_confirmation(&effects(&store, agent(wipe()))), "an agent proposal waits for a hold");
+    let (method, body) = call_body(effects(&store, held(Intent::human(wipe()))));
     assert_eq!(method, methods::SURFACE_ACTION);
-    assert_eq!(body["confirmed"], true);
+    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
 
     let run = IntentKind::SurfaceAction {
         moment_id: MomentId::new("m-risky"),
         surface_id: SurfaceId::new("s-risky"),
         action_id: "run".to_owned(),
         values: JsonValue::Null,
-        confirmed: false,
     };
     assert!(!is_confirmation(&effects(&store, Intent::human(run))));
 }
@@ -133,25 +135,25 @@ fn kick_ban_and_set_role_need_confirmation_add_and_invite_do_not() {
         GovernanceOp::SetRole { participant_id: bo(), role: Role::Admin },
     ];
     for op in high {
-        assert!(is_confirmation(&effects(&store, Intent::human(governance(op.clone(), false)))));
-        assert!(is_confirmation(&effects(&store, agent(governance(op.clone(), true)))));
-        let (method, body) =
-            call_body(effects(&store, Intent::human(governance(op.clone(), true))));
+        assert!(is_confirmation(&effects(&store, Intent::human(governance(op.clone())))));
+        assert!(is_confirmation(&effects(&store, agent(governance(op.clone())))));
+        let (method, body) = call_body(effects(&store, held(agent(governance(op.clone())))));
         assert_eq!(method, op.method());
         assert_eq!(body["participant_id"], "p-bo");
         assert_eq!(body["context_id"], "c-group");
-        assert_eq!(body["confirmed"], true);
+        assert_eq!(body["proposed_by"]["Agent"], "p-agent", "the proposer is kept");
+        assert_eq!(body["confirmed_by"]["held_ms"], 1_200);
     }
     let add =
         GovernanceOp::AddMember { participant_id: ParticipantId::new("p-cy"), role: Role::Member };
-    let (method, body) = call_body(effects(&store, Intent::human(governance(add, false))));
+    let (method, body) = call_body(effects(&store, Intent::human(governance(add))));
     assert_eq!(method, methods::GROUP_ADD_MEMBER);
     assert_eq!(body["role"], "Member");
     let invite = GovernanceOp::CreateInvite { role: Role::Guest };
-    let (method, _) = call_body(effects(&store, Intent::human(governance(invite, false))));
+    let (method, _) = call_body(effects(&store, Intent::human(governance(invite))));
     assert_eq!(method, methods::GROUP_CREATE_INVITE);
     let remove = GovernanceOp::RemoveMember { participant_id: bo() };
-    let (method, _) = call_body(effects(&store, Intent::human(governance(remove, false))));
+    let (method, _) = call_body(effects(&store, Intent::human(governance(remove))));
     assert_eq!(method, methods::GROUP_REMOVE_MEMBER);
 }
 
@@ -162,17 +164,14 @@ fn governance_validates_context_and_membership() {
     let direct = IntentKind::Governance {
         context_id: ContextId::new("c-direct"),
         op: GovernanceOp::CreateInvite { role: Role::Member },
-        confirmed: false,
     };
     assert_eq!(refuse(direct), Some(IntentError::NotAGroup(ContextId::new("c-direct"))));
-    let kick_outsider = governance(GovernanceOp::Kick { participant_id: "p-cy".into() }, true);
+    let kick_outsider = governance(GovernanceOp::Kick { participant_id: "p-cy".into() });
     assert!(matches!(refuse(kick_outsider), Some(IntentError::NotAMember { .. })));
-    let add_member = governance(
-        GovernanceOp::AddMember { participant_id: "p-ana".into(), role: Role::Member },
-        false,
-    );
+    let add_member =
+        governance(GovernanceOp::AddMember { participant_id: "p-ana".into(), role: Role::Member });
     assert!(matches!(refuse(add_member), Some(IntentError::AlreadyMember { .. })));
-    let ghost = governance(GovernanceOp::Ban { participant_id: "p-ghost".into() }, true);
+    let ghost = governance(GovernanceOp::Ban { participant_id: "p-ghost".into() });
     assert_eq!(refuse(ghost), Some(IntentError::UnknownParticipant("p-ghost".into())));
 }
 
@@ -216,17 +215,13 @@ fn handoff_answers_target_open_handoff_moments() {
 }
 
 #[test]
-fn human_confirmation_rewrites_actor_and_flag() {
-    let proposed = agent(IntentKind::Approve { grant_id: GrantId::new("g-1"), confirmed: false });
+fn human_confirmation_keeps_the_proposer() {
+    let proposed = agent(IntentKind::Approve { grant_id: GrantId::new("g-1") });
     assert!(!proposed.is_confirmed());
-    let confirmed = proposed.into_human_confirmed();
-    assert_eq!(confirmed.actor, Actor::Human);
+    let confirmed = held(proposed);
+    assert_eq!(confirmed.proposed_by, Actor::Agent(ParticipantId::new("p-agent")));
+    assert_eq!(confirmed.confirmed_by, Some(HumanConfirmation::hold(1_200)));
     assert!(confirmed.is_confirmed());
-
-    let op = governance(GovernanceOp::Kick { participant_id: "p-bo".into() }, false);
-    assert!(Intent::human(op).into_human_confirmed().is_confirmed());
-    let send = IntentKind::SendMessage { context_id: "c-1".into(), text: "hi".into() };
-    assert!(!Intent::human(send).into_human_confirmed().is_confirmed());
 }
 
 #[test]

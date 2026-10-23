@@ -86,6 +86,14 @@ string_id!(
     SurfaceId
 );
 string_id!(
+    /// One of the account's devices.
+    DeviceId
+);
+string_id!(
+    /// A standing approval (a pre-authorized, bounded grant policy).
+    StandingApprovalId
+);
+string_id!(
     /// A block inside an agent surface.
     BlockId
 );

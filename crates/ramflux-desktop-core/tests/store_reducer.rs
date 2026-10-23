@@ -210,8 +210,13 @@ fn task_lifecycle_and_steps_are_validated() {
         context_id: ContextId::new("c-1"),
         actor: Actor::Human,
         title: "Prepare report".to_owned(),
-        steps: vec![TaskStep { label: "Collect".to_owned(), lifecycle: Lifecycle::Pending }],
+        steps: vec![TaskStep {
+            label: "Collect".to_owned(),
+            lifecycle: Lifecycle::Pending,
+            grant_id: None,
+        }],
         lifecycle: Lifecycle::InProgress,
+        result: None,
     };
     feed.ok(30, DomainEvent::TaskUpserted(task.clone()));
     feed.ok(
