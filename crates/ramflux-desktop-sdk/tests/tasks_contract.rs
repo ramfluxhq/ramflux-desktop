@@ -3,13 +3,21 @@
 
 //! The K3b r4 task contract on the SDK source (`docs/conversation_tasks.md`
 //! of the product): refusals are read from the daemon's typed
-//! `error.code`, never from its text.
+//! `error.code`, never from its text; a finished task shows its signed
+//! summary; the assignee's own kind marker is shown; a pending resolution
+//! is read back from the daemon after a restart and says when the assignee
+//! has not confirmed it in time; compaction is announced.
 
 mod common;
 
 use common::task_world::*;
 use ramflux_desktop_core::Source as _;
-use ramflux_desktop_core::{Effect, TaskAnswer, TaskRefusal, methods};
+use ramflux_desktop_core::{
+    ConfirmationIssuer, Effect, GrantId, IntentKind, StepId, TaskAnswer, TaskRefusal, TaskState,
+    methods,
+};
+use ramflux_desktop_test::fake_tasks::{approval_step, task_step};
+use ramflux_protocol::TaskStatus;
 use serde_json::json;
 
 #[test]
@@ -52,5 +60,71 @@ fn a_proposal_id_is_not_an_acceptance() {
         matches!(reply, Some(ramflux_desktop_test::fake_bus::Reply::Error("invalid_request", _))),
         "acceptance is task.accept {{task_id, version}} only"
     );
+    world.fake.shutdown();
+}
+
+#[test]
+fn a_finished_task_shows_its_signed_summary_and_the_assignees_own_kind() {
+    let (world, path) = World::start("summary");
+    let mut account = open(&path);
+    world.tasks.verify_kind(BOT);
+    world.tasks.start_as("principal-me", GROUP, "t-1", BOT, "Inspect the logs").unwrap();
+    let id = key(GROUP, "t-1");
+    account.until("the task", |s, _| s.task(&id).is_some());
+    // The view's own marker stays false; the assignee's is what is shown.
+    assert_eq!(world.tasks.view(GROUP, "t-1")["actor_kind_verified"], false);
+    assert!(account.store.task(&id).is_some_and(|t| t.flags.kind_verified));
+    assert_eq!(account.store.task(&id).and_then(|t| t.result.clone()), None);
+
+    let done = vec![task_step("a", "Inspect", TaskStatus::Done)];
+    world.tasks.finish(GROUP, "t-1", TaskStatus::Done, done, "Inspection complete").unwrap();
+    account.until("done with its summary", |s, _| {
+        s.task(&id).is_some_and(|t| {
+            t.state == TaskState::Done && t.result.as_deref() == Some("Inspection complete")
+        })
+    });
+    // Compaction keeps the summary and is announced: no reopen needed.
+    world.tasks.compact(GROUP, "t-1");
+    account.until("compacted", |s, _| s.task(&id).is_some_and(|t| t.flags.compacted));
+    assert_eq!(
+        account.store.task(&id).and_then(|t| t.result.clone()).as_deref(),
+        Some("Inspection complete")
+    );
+    assert!(account.store.rejections().is_empty(), "{:?}", account.store.rejections());
+    world.fake.shutdown();
+}
+
+#[test]
+fn a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_long() {
+    let (world, path) = World::start("pending");
+    let mut account = open(&path);
+    world.tasks.start_as("principal-me", GROUP, "t-1", BOT, "Deploy to staging").unwrap();
+    world.approvals.lock().unwrap().push(approval("appr-7", "high"));
+    world.fake.publish(ACCOUNT, "mcp.approval.request", json!({ "approval_id": "appr-7" }));
+    account.until("the approval", |s, _| s.grant(&GrantId::new("appr-7")).is_some());
+    let steps = vec![approval_step("deploy", "Deploy to staging", "grant_appr-7")];
+    world.tasks.update(GROUP, "t-1", TaskStatus::NeedsMe, steps, None).unwrap();
+    let id = key(GROUP, "t-1");
+    account.until("needs me", |s, _| s.task(&id).is_some_and(|t| t.state == TaskState::NeedsMe));
+    let mut intent = human(IntentKind::Approve { grant_id: GrantId::new("appr-7") });
+    intent.confirmed_by = ConfirmationIssuer::new().issue_hold(1_200);
+    act(&mut account, intent);
+    let step = StepId::new("deploy");
+    let pending = Some(TaskAnswer::DecisionPending { step_id: step.clone() });
+    account.until("pending", |s, _| s.task(&id).is_some_and(|t| t.answer == pending));
+    drop(account);
+
+    // A new desktop session reads the daemon's durable pending resolution.
+    let mut account = open(&path);
+    account.until("still pending", |s, _| s.task(&id).is_some_and(|t| t.answer == pending));
+    world.tasks.time_out_decisions();
+    let unconfirmed = Some(TaskAnswer::DecisionUnconfirmed { step_id: step });
+    account.until("unconfirmed", |s, _| s.task(&id).is_some_and(|t| t.answer == unconfirmed));
+
+    // The assignee can still commit it: the next version clears the notice.
+    assert_eq!(world.tasks.confirm_decisions(), 1);
+    account.until("running", |s, _| {
+        s.task(&id).is_some_and(|t| t.state == TaskState::Running && t.answer.is_none())
+    });
     world.fake.shutdown();
 }

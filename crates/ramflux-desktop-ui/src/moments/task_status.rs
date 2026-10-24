@@ -80,6 +80,16 @@ pub fn answer(answer: &TaskAnswer, assignee: &SharedString, cx: &App) -> AnyElem
             let text = tr_args("moment.task.answer.pending", &[("name", assignee)]);
             return quiet("task-answer", IconName::LoaderCircle, text, cx);
         }
+        TaskAnswer::DecisionUnconfirmed { .. } => {
+            return notice(
+                "task-answer",
+                IconName::TriangleAlert,
+                cx.theme().warning,
+                tr_args("moment.task.answer.unconfirmed.title", &[("name", assignee)]),
+                tr("moment.task.answer.unconfirmed.text"),
+                cx,
+            );
+        }
         TaskAnswer::Refused(refusal) => refusal,
     };
     let (title, text) = match refusal {

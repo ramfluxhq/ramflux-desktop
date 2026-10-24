@@ -49,9 +49,15 @@ impl Translator {
         };
         let mut events = Vec::new();
         let mut surface_rows = Vec::new();
+        let mut task_rows = Vec::new();
         for record in list(value, "messages") {
-            // A task message is the task's record; its task card shows it.
-            if text(record, "sender_id").is_empty() || text(record, "content_type") == "task" {
+            // A task message is the task's record; its task card shows it
+            // (a task not shown yet is read by the `task_id` it names).
+            if text(record, "content_type") == "task" {
+                task_rows.push(record);
+                continue;
+            }
+            if text(record, "sender_id").is_empty() {
                 continue;
             }
             // A surface message is shown as its surface (one moment per
@@ -63,7 +69,8 @@ impl Translator {
             let moment = self.message_moment(context, kind, record, now);
             events.extend(self.report_moment(moment));
         }
-        let follow = self.surface_rows(context, &surface_rows);
+        let mut follow = self.surface_rows(context, &surface_rows);
+        follow.extend(self.task_rows(context, &task_rows));
         Translated { events, follow }
     }
 

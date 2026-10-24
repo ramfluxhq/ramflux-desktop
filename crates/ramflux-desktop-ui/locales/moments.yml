@@ -274,6 +274,13 @@ moment:
       pending:
         en: "Decision sent. Waiting for %{name} to confirm it."
         zh-CN: "决定已发送，正在等待 %{name} 确认。"
+      unconfirmed:
+        title:
+          en: "%{name} hasn't confirmed your decision yet"
+          zh-CN: "%{name} 尚未确认你的决定"
+        text:
+          en: "It stays pending and can still be confirmed. You can cancel the task."
+          zh-CN: "该决定仍在等待中，之后仍可被确认。你可以取消此任务。"
     refused:
       title:
         en: "Nothing was done"

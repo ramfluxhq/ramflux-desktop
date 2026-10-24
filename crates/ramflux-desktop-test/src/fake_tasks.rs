@@ -16,14 +16,18 @@
 //!   nobody parses;
 //! - acceptance has one form, `task.accept {task_id, version}`;
 //!   `proposal_id` is refused;
-//! - `task.get` / `task.list` answer the daemon's view (the protocol task
-//!   plus `id`, `actor_kind_verified: false`, times, and the stalled and
-//!   compacted markers);
+//! - `task.get` / `task.list` answer the daemon's view (the protocol task,
+//!   with its signed `result_summary`, plus `id`, `actor_kind_verified:
+//!   false`, per-actor `actors.{requester,assignee,acceptor}`, times, the
+//!   stalled and compacted markers, and `pending_resolution`);
 //! - every accepted change is announced as `task.changed` (metadata only)
-//!   and leaves a `content_type: "task"` message with its fallback text;
+//!   and leaves a `content_type: "task"` message with its `task_id` and
+//!   fallback text; compaction is announced too;
 //! - a requester's resolution is pending until the assignee confirms it,
 //!   which it does only for a decision the grant flow recorded
-//!   ([`FakeTasks::decide`], [`FakeTasks::confirm_decisions`]).
+//!   ([`FakeTasks::decide`], [`FakeTasks::confirm_decisions`]); until then
+//!   the view carries `pending_resolution` (`awaiting_executor`, or
+//!   `executor_timeout` after [`FakeTasks::time_out_decisions`]).
 //!
 //! The assignee (an AI participant) is played by the test through
 //! [`FakeTasks::propose`] and [`FakeTasks::update`].
@@ -132,6 +136,10 @@ struct Held {
     compacted: bool,
     /// Requester resolutions waiting for the assignee, by decision id.
     pending: BTreeMap<String, (TaskEvent, Member)>,
+    /// The pending resolution's message id and queue time.
+    pending_since: Option<(String, i64)>,
+    /// The pending resolution outlived the requester's wait.
+    timed_out: bool,
 }
 
 #[derive(Default)]
@@ -147,6 +155,8 @@ struct Inner {
     clock: i64,
     ids: u64,
     refuse_next: Option<(String, Refused)>,
+    /// Principals whose kind is verified (none until identities carry one).
+    verified: Vec<String>,
 }
 
 /// The daemon's tasks of one account. Cheap to clone; clones share state.
@@ -247,6 +257,10 @@ impl FakeTasks {
                     rejected.push(key.clone());
                 }
             }
+            if held.pending.is_empty() {
+                held.pending_since = None;
+                held.timed_out = false;
+            }
         }
         let count = confirmed.len();
         for ((conversation, task), event, member) in confirmed {
@@ -301,6 +315,34 @@ impl FakeTasks {
         steps: Vec<TaskStep>,
         result_ref: Option<&str>,
     ) -> Result<u64, String> {
+        self.assignee_update((conversation, task_id), state, steps, (result_ref, None))
+    }
+
+    /// The assignee finishes the task in the terminal `state` with its
+    /// signed result summary (the protocol allows one on a terminal
+    /// update only).
+    ///
+    /// # Errors
+    ///
+    /// The protocol's (or the quota's) refusal.
+    pub fn finish(
+        &self,
+        conversation: &str,
+        task_id: &str,
+        state: TaskStatus,
+        steps: Vec<TaskStep>,
+        summary: &str,
+    ) -> Result<u64, String> {
+        self.assignee_update((conversation, task_id), state, steps, (None, Some(summary)))
+    }
+
+    fn assignee_update(
+        &self,
+        (conversation, task_id): (&str, &str),
+        state: TaskStatus,
+        steps: Vec<TaskStep>,
+        (result_ref, result_summary): (Option<&str>, Option<&str>),
+    ) -> Result<u64, String> {
         let mut inner = self.inner();
         let key = (conversation.to_owned(), task_id.to_owned());
         let held = inner.tasks.get(&key).ok_or("task does not exist")?;
@@ -317,7 +359,7 @@ impl FakeTasks {
             state,
             steps,
             result_ref: result_ref.map(str::to_owned),
-            result_summary: None,
+            result_summary: result_summary.map(str::to_owned),
         });
         inner.commit(conversation, task_id, &member, body).map_err(|(_, m)| m)
     }
@@ -378,20 +420,50 @@ impl FakeTasks {
         inner.announce(meta);
     }
 
-    /// Maintenance compacted the task's history (its view is kept). Like
-    /// the daemon, this is not announced; the next read shows it.
+    /// Maintenance compacted the task's history (its view is kept),
+    /// announced as `task.changed {compacted}` like the daemon does.
     pub fn compact(&self, conversation: &str, task_id: &str) {
-        if let Some(held) =
-            self.inner().tasks.get_mut(&(conversation.to_owned(), task_id.to_owned()))
-        {
-            held.compacted = true;
+        let mut inner = self.inner();
+        let Some(held) = inner.tasks.get_mut(&(conversation.to_owned(), task_id.to_owned())) else {
+            return;
+        };
+        held.compacted = true;
+        let version = held.state.task().map_or(0, |t| t.version);
+        inner.announce(json!({ "conversation_id": conversation, "task_id": task_id,
+                               "version": version, "compacted": true, "removed": false }));
+    }
+
+    /// The requester's wait for the assignee ran out: pending resolutions
+    /// stay pending (the assignee may still confirm them) as
+    /// `executor_timeout`.
+    pub fn time_out_decisions(&self) {
+        let mut inner = self.inner();
+        let mut timed_out = Vec::new();
+        for ((conversation, task), held) in &mut inner.tasks {
+            if held.pending_since.is_some() && !held.timed_out {
+                held.timed_out = true;
+                timed_out.push((conversation.clone(), task.clone()));
+            }
         }
+        for (conversation, task) in timed_out {
+            inner.announce(json!({ "conversation_id": conversation, "task_id": task,
+                                   "pending": true, "pending_state": "executor_timeout" }));
+        }
+    }
+
+    /// The kind of `principal` is verified from now on (as once
+    /// identities carry a signed kind).
+    pub fn verify_kind(&self, principal: &str) {
+        self.inner().verified.push(principal.to_owned());
     }
 
     /// The daemon's view of a task (`task.get`), or null.
     pub fn view(&self, conversation: &str, task_id: &str) -> Value {
         let inner = self.inner();
-        inner.tasks.get(&(conversation.to_owned(), task_id.to_owned())).map_or(Value::Null, view)
+        inner
+            .tasks
+            .get(&(conversation.to_owned(), task_id.to_owned()))
+            .map_or(Value::Null, |h| inner.view(h))
     }
 
     /// The task's current revision (0 when unknown).
@@ -460,11 +532,26 @@ fn meta(task: &ramflux_protocol::Task) -> Value {
     })
 }
 
-fn view(held: &Held) -> Value {
+fn view(held: &Held, verified: &[String]) -> Value {
     let Some(task) = held.state.task() else { return Value::Null };
     let mut view = serde_json::to_value(task).unwrap_or(Value::Null);
     view["id"] = json!(task.task_id);
     view["actor_kind_verified"] = json!(false);
+    let actor = |principal: Option<&str>| {
+        json!({ "principal_id": principal,
+                "actor_kind_verified": principal.is_some_and(|p| verified.iter().any(|v| v == p)) })
+    };
+    view["actors"] = json!({
+        "requester": actor(task.requester.as_deref()),
+        "assignee": actor(Some(&task.assignee)),
+        "acceptor": actor(None),
+    });
+    view["pending_resolution"] =
+        held.pending_since.as_ref().map_or(Value::Null, |(message, at)| {
+            json!({ "task_id": task.task_id, "conversation_id": task.conversation_id,
+                "message_id": message, "executor_device_id": "device-bo", "queued_at": at,
+                "state": if held.timed_out { "executor_timeout" } else { "awaiting_executor" } })
+        });
     view["created_at"] = json!(held.created_at);
     view["updated_at"] = json!(held.updated_at);
     if held.stalled && !task.state.is_terminal() {
@@ -479,6 +566,10 @@ fn view(held: &Held) -> Value {
 }
 
 impl Inner {
+    fn view(&self, held: &Held) -> Value {
+        view(held, &self.verified)
+    }
+
     fn member(&self, principal: &str) -> Result<Member, Refused> {
         self.members
             .iter()
@@ -544,7 +635,8 @@ impl Inner {
         let fallback = format!("{} (actor kind unverified)", event.fallback_text());
         self.messages.entry(conversation.to_owned()).or_default().push(json!({
             "conversation_id": conversation, "message_id": format!("task-msg-{}", self.ids),
-            "sender_id": member.device, "content_type": "task", "body_utf8": fallback,
+            "sender_id": member.device, "content_type": "task", "task_id": task_id,
+            "body_utf8": fallback,
             "encrypted_body": fallback.as_bytes(), "actor_kind_verified": false,
             "deleted": false, "created_at": at, "receipts": [],
         }));
@@ -578,7 +670,8 @@ impl Inner {
             "task.get" => {
                 let conversation = self.conversation_of(body).unwrap_or_default();
                 let task = field(body, "task_id")?;
-                Ok(self.tasks.get(&(conversation, task.to_owned())).map_or(Value::Null, view))
+                let held = self.tasks.get(&(conversation, task.to_owned()));
+                Ok(held.map_or(Value::Null, |h| self.view(h)))
             }
             "task.list" => self.list(body),
             _ => self.author(method, body),
@@ -595,7 +688,7 @@ impl Inner {
             .tasks
             .iter()
             .filter(|((c, _), _)| c == conversation)
-            .map(|(_, held)| view(held))
+            .map(|(_, held)| self.view(held))
             .filter(|v| state.is_none_or(|s| v["state"] == s))
             .collect();
         let page: Vec<Value> = rows.iter().skip(skip).take(limit).cloned().collect();
@@ -655,6 +748,10 @@ impl Inner {
             let mut preflight = held.state.clone();
             apply(&mut preflight, &signed, &local)?;
             held.pending.insert(decision, (signed, local));
+            held.pending_since = Some((message.clone(), self.clock));
+            held.timed_out = false;
+            self.announce(json!({ "conversation_id": conversation, "task_id": task_id,
+                                  "pending": true, "pending_state": "awaiting_executor" }));
             return Ok(answer(true));
         }
         self.commit(&conversation, &task_id, &local, event)?;
