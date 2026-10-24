@@ -395,7 +395,7 @@ pub fn accessible_label(row: &MomentRow) -> SharedString {
             ("kind", &i18n::moment_kind(&moment.kind)),
             ("author", &row.author),
             ("time", &i18n::time_of_day(moment.at)),
-            ("state", &i18n::lifecycle(moment.lifecycle)),
+            ("state", &state_label(row).0),
         ],
     );
     match &moment.kind {
@@ -418,23 +418,53 @@ fn day_header(day: SharedString, cx: &App) -> impl IntoElement {
         .child(div().h_px().flex_1().bg(cx.theme().border))
 }
 
+/// The state a row names, and whether its header shows it. A task row
+/// names its task's state, in every state, with the words of its card; any
+/// other row names its lifecycle, except a quiet `Done` (a delivered
+/// message is not news).
+fn state_label(row: &MomentRow) -> (SharedString, Option<StateTone>) {
+    if let (MomentKind::TaskProgress(_), Some(task)) = (&row.moment.kind, &row.refs.task) {
+        return (i18n::task_state(task.state), Some(StateTone::Task(task.state)));
+    }
+    let tone = match row.moment.lifecycle {
+        Lifecycle::Done => None,
+        lifecycle => Some(StateTone::Lifecycle(lifecycle)),
+    };
+    (i18n::lifecycle(row.moment.lifecycle), tone)
+}
+
+/// Which color a shown state takes.
+#[derive(Clone, Copy)]
+enum StateTone {
+    Task(ramflux_desktop_core::TaskState),
+    Lifecycle(Lifecycle),
+}
+
+impl StateTone {
+    fn color(self, cx: &App) -> gpui_kit::Hsla {
+        match self {
+            Self::Task(state) => task_progress::state_color(state, cx),
+            Self::Lifecycle(Lifecycle::NeedsMe) => cx.theme().warning,
+            Self::Lifecycle(Lifecycle::Failed) => cx.theme().danger,
+            Self::Lifecycle(Lifecycle::Done) => cx.theme().success,
+            Self::Lifecycle(Lifecycle::Pending | Lifecycle::InProgress | Lifecycle::Dismissed) => {
+                cx.theme().muted_foreground
+            }
+        }
+    }
+}
+
 fn header(row: &MomentRow, cx: &App) -> impl IntoElement {
     let moment = &row.moment;
-    let marker = match moment.lifecycle {
-        Lifecycle::Done => None,
-        Lifecycle::NeedsMe => Some(cx.theme().warning),
-        Lifecycle::Failed => Some(cx.theme().danger),
-        Lifecycle::Pending | Lifecycle::InProgress | Lifecycle::Dismissed => {
-            Some(cx.theme().muted_foreground)
-        }
-    };
+    let (label, tone) = state_label(row);
+    let marker = tone.map(|tone| (label, tone.color(cx)));
     h_flex()
         .gap_2()
         .text_xs()
         .child(div().font_semibold().text_color(cx.theme().foreground).child(row.author.clone()))
         .child(div().text_color(cx.theme().muted_foreground).child(i18n::time_of_day(moment.at)))
-        .when_some(marker, |header, color| {
-            header.child(div().text_color(color).child(i18n::lifecycle(moment.lifecycle)))
+        .when_some(marker, |header, (label, color)| {
+            header.child(div().id("row-state").text_color(color).child(label).test_support())
         })
         .when_some(
             row.surface

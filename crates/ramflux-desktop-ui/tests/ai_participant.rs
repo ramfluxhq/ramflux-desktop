@@ -189,6 +189,47 @@ fn the_requester_declines_a_proposal_and_cancels_a_running_task(cx: &mut TestApp
     assert!(!exists_in(cx, handle, "moment-m-task", "step-decision"), "nothing left to decide");
 }
 
+/// The task row's header names the task's state with the card's words:
+/// the state mark is drawn and the row's accessible name carries it.
+fn names_state(
+    cx: &mut TestAppContext,
+    handle: gpui_kit::WindowHandle<gpui_kit::base::Root>,
+    state: TaskState,
+) {
+    let word = ramflux_desktop_ui::i18n::task_state(state);
+    assert!(exists_in(cx, handle, "moment-m-task", "row-state"), "{state:?} has a state mark");
+    let label = in_window(cx, handle, |window, _| {
+        window.find("moment-m-task").label().map(str::to_owned).unwrap_or_default()
+    });
+    assert!(label.contains(word.as_ref()), "{state:?}: {label:?} names {word:?}");
+}
+
+#[gpui_kit::test]
+fn a_task_row_names_its_state_in_every_state(cx: &mut TestAppContext) {
+    let (handle, shell) = asked(cx);
+    advance(cx, 1_100);
+    names_state(cx, handle, TaskState::Proposed);
+    click_in(cx, handle, "moment-m-task", "task-cancel");
+    advance(cx, 200);
+    assert_eq!(task(cx, &shell, "t-launch").state, TaskState::Cancelled);
+    names_state(cx, handle, TaskState::Cancelled);
+
+    let (handle, shell) = at_approval(cx);
+    assert_eq!(task(cx, &shell, "t-launch").state, TaskState::NeedsMe);
+    names_state(cx, handle, TaskState::NeedsMe);
+    click_in(cx, handle, "moment-m-task", "step-approve");
+    hold_confirm(cx, handle);
+    advance(cx, 1_600);
+    assert_eq!(task(cx, &shell, "t-launch").state, TaskState::Done);
+    names_state(cx, handle, TaskState::Done);
+
+    let (handle, shell) = at_approval(cx);
+    click_in(cx, handle, "moment-m-task", "step-deny");
+    advance(cx, 400);
+    assert_eq!(task(cx, &shell, "t-launch").state, TaskState::Failed);
+    names_state(cx, handle, TaskState::Failed);
+}
+
 #[gpui_kit::test]
 fn agents_never_start_a_proposal_for_the_user(cx: &mut TestAppContext) {
     let (handle, shell) = asked(cx);

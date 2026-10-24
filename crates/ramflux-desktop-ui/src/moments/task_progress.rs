@@ -126,7 +126,8 @@ fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
         })
 }
 
-fn state_color(state: TaskState, cx: &App) -> Hsla {
+/// The color of a task state, on the card and in its row header.
+pub(super) fn state_color(state: TaskState, cx: &App) -> Hsla {
     match state {
         TaskState::Proposed | TaskState::NeedsMe => cx.theme().warning,
         TaskState::Done => cx.theme().success,
