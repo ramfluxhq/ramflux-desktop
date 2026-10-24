@@ -48,13 +48,24 @@ pub trait DemoDaemon {
     ///
     /// The CLI's failure.
     fn dm_read(&self, account: &str, conversation: &str) -> Result<(), String>;
+
+    /// Runs the reference CLI with `args` and returns its JSON answer (the
+    /// live steps that need what the desktop cannot do itself, such as
+    /// creating a group).
+    ///
+    /// # Errors
+    ///
+    /// The CLI's failure; a daemon without the reference CLI says so.
+    fn cli(&self, args: &[&str]) -> Result<Value, String> {
+        Err(format!("no reference CLI on this daemon (rf {})", args.join(" ")))
+    }
 }
 
 /// Runs the reference CLI on `daemon` and parses its JSON answer.
 fn rf_json(daemon: &LiveDaemon, args: &[&str]) -> Result<Value, String> {
     let out = daemon.rf(args).map_err(|e| format!("cannot run rf: {e}"))?;
     if !out.status.success() {
-        let verb = args.iter().take(2).copied().collect::<Vec<_>>().join(" ");
+        let verb = args.iter().take(3).copied().collect::<Vec<_>>().join(" ");
         return Err(format!(
             "rf {verb} failed: {}",
             String::from_utf8_lossy(&out.stderr).trim().lines().last().unwrap_or("no output")
@@ -86,5 +97,9 @@ impl DemoDaemon for LiveDaemon {
     fn dm_read(&self, account: &str, conversation: &str) -> Result<(), String> {
         rf_json(self, &["dm", "read", "--account", account, "--conversation", conversation])
             .map(drop)
+    }
+
+    fn cli(&self, args: &[&str]) -> Result<Value, String> {
+        rf_json(self, args)
     }
 }

@@ -142,9 +142,10 @@ pub fn accounts<H: Host, D: DemoDaemon>(
 ) -> Result<(), String> {
     let node = demo.node.clone().ok_or("no confirmed node")?;
     for ix in 0..2 {
-        let (name, secret) = (demo.sides[ix].name, demo.sides[ix].passphrase.clone());
+        let name = demo.sides[ix].label.clone();
+        let secret = demo.sides[ix].passphrase.clone();
         let desk = demo.sides[ix].desk()?;
-        desk.type_into(demo.host, "account-label", name)?;
+        desk.type_into(demo.host, "account-label", &name)?;
         desk.type_into(demo.host, "account-secret", &secret)?;
         desk.click(demo.host, None, "account-create")?;
         let limit = demo.config.limits.answer;
@@ -171,6 +172,12 @@ pub fn accounts<H: Host, D: DemoDaemon>(
             target: text("target_delivery_id"),
         });
         notes.add(format!("{name} = {} on {node}", short(&principal)));
+        if let Some(facts) = &demo.sides[ix].facts {
+            notes.add(format!(
+                "{name}: account {}, principal {}, device {}, target {}",
+                facts.account, facts.principal, facts.device, facts.target
+            ));
+        }
         demo.shots(ix, "03_account", notes)?;
     }
     Ok(())

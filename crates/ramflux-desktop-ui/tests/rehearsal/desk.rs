@@ -54,6 +54,17 @@ impl Desk {
         Self { tag, handle, shell }
     }
 
+    /// Closes the window, as quitting the desktop does: the window root, its
+    /// store and its source are dropped (the source saves its stream cursor
+    /// as it goes).
+    pub fn close(self, host: &mut impl Host) -> Result<(), String> {
+        let Self { handle, shell, .. } = self;
+        drop(shell);
+        host.window(handle.into(), |window, _| window.remove_window())?;
+        host.advance(100);
+        Ok(())
+    }
+
     /// Reads this desktop's active store.
     pub fn store<R>(&self, host: &mut impl Host, f: impl FnOnce(&Store) -> R) -> R {
         host.app(|cx| f(self.shell.read(cx).store().read(cx).store()))

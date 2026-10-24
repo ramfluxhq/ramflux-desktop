@@ -46,18 +46,32 @@ mod live {
 
     use crate::rehearsal::config::{self, DemoConfig};
     use crate::rehearsal::flow::{self, Demo, Side};
+    use crate::rehearsal::tap::Tap;
 
     /// The desktop's options on a daemon at `socket`: the event stream
     /// only, polling off, so every message the desktop shows came through
     /// the stream (Diagnostics says "not updated" if the daemon refuses it).
+    /// The desktop attaches through the frame tap next to the daemon socket
+    /// (`desk.sock`, see `rehearsal::tap`) and keeps its settings, the
+    /// stream cursor included, in `desktop-settings.json` beside it, so a
+    /// reopened desktop resumes from the cursor its predecessor saved.
     fn options(socket: &Path) -> ShellOptions {
+        let dir = socket.parent().unwrap_or(Path::new("/tmp"));
         let config = SdkConfig {
             poll_fallback: false,
             reconnect_backoff: Duration::from_millis(300),
-            ..SdkConfig::new(socket)
+            settings_path: Some(dir.join(SETTINGS_FILE)),
+            ..SdkConfig::new(dir.join(TAP_SOCKET))
         };
         ShellOptions { source: SourceChoice::Rfd(config), ..ShellOptions::for_scenario("", true) }
     }
+
+    /// The desktop's socket: the tap in front of the daemon.
+    const TAP_SOCKET: &str = "desk.sock";
+    /// The tap's frame log.
+    const TAP_LOG: &str = "tap.jsonl";
+    /// The desktop settings file (stream cursors).
+    const SETTINGS_FILE: &str = "desktop-settings.json";
 
     /// A scratch folder removed on drop.
     struct Work(PathBuf);
@@ -90,6 +104,16 @@ mod live {
         std::fs::create_dir_all(&work.0).expect("work folder");
         let alice = LiveDaemon::start("demo-a").unwrap_or_else(|e| panic!("daemon A: {e}"));
         let bob = LiveDaemon::start("demo-b").unwrap_or_else(|e| panic!("daemon B: {e}"));
+        let taps: Vec<Tap> = [&alice, &bob]
+            .iter()
+            .map(|d| {
+                Tap::start(&d.dir().join(TAP_SOCKET), &d.socket(), &d.dir().join(TAP_LOG))
+                    .unwrap_or_else(|e| panic!("frame tap: {e}"))
+            })
+            .collect();
+        for daemon in [&alice, &bob] {
+            println!("daemon dir {}", daemon.dir().display());
+        }
         let mut cx = HeadlessAppContext::with_platform(
             gpui_kit::platform::current_platform(true).text_system(),
             Arc::new(Assets),
@@ -100,21 +124,23 @@ mod live {
             ramflux_desktop_ui::init(cx);
         });
         println!("demo rehearsal {} against {}", config.run_id, config.node_url);
+        let run = config.run_id.clone();
         let mut demo = Demo::new(
             &mut cx,
             config,
             Box::new(options),
-            Side::new("a", "Alice", alice),
-            Side::new("b", "Bob", bob),
+            Side::new("a", "Alice", alice).labelled(format!("rehearsal-alice-{run}")),
+            Side::new("b", "Bob", bob).labelled(format!("rehearsal-bob-{run}")),
             work.0.clone(),
         );
-        let steps = flow::run(&mut demo);
+        let steps = flow::run_live(&mut demo);
         let table = steps.markdown();
         println!("\n{table}");
         std::fs::write(dir.join("steps.md"), &table).expect("write the step table");
         println!("screenshots and steps.md in {}", dir.display());
         drop(demo);
         drop(cx);
+        drop(taps);
         drop(work);
         assert!(steps.all_passed(), "the rehearsal did not pass every step");
     }

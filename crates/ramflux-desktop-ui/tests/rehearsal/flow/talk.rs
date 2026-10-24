@@ -126,6 +126,7 @@ pub fn messages<H: Host, D: DemoDaemon>(
     });
     if found.is_err() {
         demo.sides[1].daemon.dm_read(&bob.account, context.as_str())?;
+        demo.fallbacks.push("rf dm read for Bob's first DM".to_owned());
         notes.add(
             "Bob's desktop did not get the new conversation from the event stream in time; \
              the reference CLI received it (rf dm read)",

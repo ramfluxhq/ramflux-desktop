@@ -17,7 +17,10 @@
 //! screenshots. Steps live in `setup` (1 to 3), `talk` (4 to 6) and
 //! `resume` (7); `probe` reads the stores.
 
+mod evidence;
+mod group;
 mod probe;
+mod reopen;
 mod resume;
 mod setup;
 mod talk;
@@ -52,8 +55,11 @@ pub struct Facts {
 pub struct Side<D> {
     /// Short tag for files and messages ("a", "b").
     pub tag: &'static str,
-    /// Account label.
+    /// Who this is in notes and messages ("Alice", "Bob").
     pub name: &'static str,
+    /// The account label typed at account creation (the name by default; a
+    /// live run on a shared node uses a marked test label).
+    pub label: String,
     /// The daemon.
     pub daemon: D,
     /// The desktop, once opened.
@@ -67,7 +73,22 @@ pub struct Side<D> {
 impl<D> Side<D> {
     /// A side named `name` on `daemon`.
     pub fn new(tag: &'static str, name: &'static str, daemon: D) -> Self {
-        Self { tag, name, daemon, desk: None, passphrase: config::passphrase(), facts: None }
+        Self {
+            tag,
+            name,
+            label: name.to_owned(),
+            daemon,
+            desk: None,
+            passphrase: config::passphrase(),
+            facts: None,
+        }
+    }
+
+    /// The same side with the account label `label`.
+    #[must_use]
+    pub fn labelled(mut self, label: impl Into<String>) -> Self {
+        self.label = label.into();
+        self
     }
 
     fn desk(&self) -> Result<&Desk, String> {
@@ -93,6 +114,11 @@ pub struct Demo<'h, H: Host, D: DemoDaemon> {
     /// The direct conversation Alice starts in step 5 (empty until then).
     conversation: ContextId,
     texts: Vec<String>,
+    /// The group conversation of the live group step and its texts.
+    group: Option<(ContextId, Vec<String>)>,
+    /// Where the reference CLI had to receive for a desktop (the stream did
+    /// not deliver in time).
+    fallbacks: Vec<String>,
 }
 
 impl<'h, H: Host, D: DemoDaemon> Demo<'h, H, D> {
@@ -116,6 +142,8 @@ impl<'h, H: Host, D: DemoDaemon> Demo<'h, H, D> {
             node: None,
             conversation,
             texts: Vec::new(),
+            group: None,
+            fallbacks: Vec::new(),
         }
     }
 
@@ -193,6 +221,36 @@ pub fn run<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
     steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
     steps.run(6, "Alice sends Bob an attachment", &[5], |n| talk::attachment(demo, n));
     steps.run(7, "Lock and unlock Alice; restart her daemon; history kept", &[5], |n| {
+        resume::lock_and_restart(demo, n)
+    });
+    steps
+}
+
+/// Runs the live rehearsal: steps 1 to 6 as [`run`], then the steps a real
+/// node adds (7: a group made on Alice's daemon, messages both ways in it
+/// from the composers; 8: Bob's desktop quits and reopens and resumes from
+/// its stream cursor; 9: what the frame taps saw, polling off), then
+/// Alice's lock and daemon restart as step 10.
+pub fn run_live<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
+    let mut steps = Steps::default();
+    steps.run(1, "Two desktops attach to two daemons", &[], |n| setup::start(demo, n));
+    steps.run(2, "Add the node by URL, check its key, confirm with the hold", &[1], |n| {
+        setup::node(demo, n)
+    });
+    steps.run(3, "Create Alice and Bob on the node", &[2], |n| setup::accounts(demo, n));
+    steps.run(4, "Add each other as contacts; verify safety numbers", &[3], |n| {
+        talk::contacts(demo, n)
+    });
+    steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
+    steps.run(6, "Alice sends Bob an attachment", &[5], |n| talk::attachment(demo, n));
+    steps.run(7, "A group with both; messages both ways in it", &[4], |n| group::group(demo, n));
+    steps.run(8, "Bob's desktop quits and reopens; resumes from its cursor", &[5], |n| {
+        reopen::reopen(demo, n)
+    });
+    steps.run(9, "Live receive on the event stream, polling off (frame taps)", &[5], |n| {
+        evidence::stream(demo, n)
+    });
+    steps.run(10, "Lock and unlock Alice; restart her daemon; history kept", &[5], |n| {
         resume::lock_and_restart(demo, n)
     });
     steps

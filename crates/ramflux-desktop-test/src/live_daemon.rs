@@ -26,6 +26,14 @@ pub const ENABLE_ENV: &str = "RAMFLUX_LIVE_DAEMON";
 /// The `rf` binary to run.
 pub const RF_BIN_ENV: &str = "RAMFLUX_RF_BIN";
 
+/// The folder daemon directories are made in (default `/tmp`). Keep it
+/// short: the socket path must fit a Unix socket address.
+pub const ROOT_ENV: &str = "RAMFLUX_LIVE_DAEMON_ROOT";
+
+/// When `1`, a dropped daemon is stopped but its directory (data, log) is
+/// kept, for evidence.
+pub const KEEP_ENV: &str = "RAMFLUX_LIVE_DAEMON_KEEP";
+
 /// How long a daemon may take to answer after starting.
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -80,14 +88,16 @@ pub struct LiveDaemon {
 }
 
 impl LiveDaemon {
-    /// Starts a daemon in `/tmp/rf-f3-<pid>-<tag>` and waits until it answers.
+    /// Starts a daemon in `<root>/rf-f3-<pid>-<tag>` (root: [`ROOT_ENV`],
+    /// else `/tmp`) and waits until it answers.
     ///
     /// # Errors
     ///
     /// Returns why it did not start (no binary, no answer in time), with
     /// the daemon's log.
     pub fn start(tag: &str) -> Result<Self, String> {
-        let dir = PathBuf::from(format!("/tmp/rf-f3-{}-{tag}", std::process::id()));
+        let root = std::env::var_os(ROOT_ENV).map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
+        let dir = root.join(format!("rf-f3-{}-{tag}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         let mut daemon = Self { rf: rf_binary()?, dir, child: None };
@@ -208,7 +218,9 @@ impl LiveDaemon {
 impl Drop for LiveDaemon {
     fn drop(&mut self) {
         self.stop();
-        let _ = fs::remove_dir_all(&self.dir);
+        if std::env::var(KEEP_ENV).ok().as_deref() != Some("1") {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
     }
 }
 
