@@ -48,7 +48,8 @@ The store keeps each entity in its own collection, keyed by id:
 | `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state`, `self_participant_id` (the participant that is this account; outbound moments and receipts key on it, never guessed) |
 | `Node` | NODE-01 profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
 | `Device` | account, label, `this_device`, `revoked`, `last_seen` |
-| `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `safety`, `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported) |
+| `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `safety`, `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported), `reachable` (`Some(true)` when this account holds a verified device to send to, `None` when not reported), `kind_asserted` (the kind is only the participant's own claim) |
+| `ContactCard` | This account's own card as the backend exported it: `text`, optional `link` (`Store::own_contact_card`, from `DomainEvent::OwnContactCardUpdated`) |
 | `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread`, `muted`, `disappearing_secs`, `roles` (Owner, Admin, Member, Bot: exactly the daemon's roles), `epoch` |
 | `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind`, `lifecycle` |
 | `Object` | `name` and `size` (each `None` when not reported; `label()` shows the id for a missing name), direction, `transfer`, `saved_to`, `preview` |
@@ -274,6 +275,18 @@ The kinds, by area:
   `contact.accept`, `contact.reject`, `contact.block`, `contact.unblock`,
   `contact.remove`; `contact.request` names sending a request to the
   contact's node. `check_add_contact` is the add check the form also runs.
+  `AddContactCard { card }` (human only; method `contact.card.import`) adds
+  the contact a pasted or imported card names; `ExportContactCard` (human
+  only; `contact.card.export`) asks for this account's own card.
+  `classify_contact_input` tells a card (a link with a scheme, several lines,
+  or longer than any id) from a principal id; `check_add_contact_card` is the
+  card check. A start is refused with `NotReachable` while the contact is
+  reported unreachable.
+- Groups: `CreateGroup { context_id, title, members }` (human only; method
+  `group.create`; a fresh conversation id, a name, and accepted contacts a
+  conversation could start with now, each once; `check_create_group`) and
+  `RenameContext { context_id, title }` (groups only; `conversation.rename`;
+  the name this account keeps).
 - Objects: `PullObject` (queued inbound only), `SaveObject` (complete only),
   `RetryTransfer` (failed only).
 - Governance and approvals: `Governance { context_id, op }` (`AddMember`,
@@ -308,7 +321,8 @@ checks the intent against the store at time `now` and never mutates it.
 - Agent proposals follow the same rules; the agent must be a known `Agent`
   participant. Agents may never unlock, create, activate or restore an
   account, rotate its passphrase, export a backup, sync or revoke devices,
-  confirm a node, verify a safety number, answer a handoff, or add a contact.
+  confirm a node, verify a safety number, answer a handoff, add a contact,
+  share the contact card, start a conversation, or create a group.
 
 `Effect` is one of the following:
 

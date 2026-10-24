@@ -108,10 +108,21 @@ daemon yet (shown disabled).
 ## 7. Add a contact
 
 Open the contacts dock (`secondary-alt-2`, or **Add a contact…** in the command
-palette), paste the id the contact shared with you (their principal id) and
-press **Add**. The contact is added on this account at once; the field explains
-an id it cannot use, and a daemon error is shown under the field. Supported
-today.
+palette) and paste what the contact shared with you: their **contact card** (or
+a link to it), or their **principal id**, then press **Add**. **Import card
+file…** adds a card saved as a file. The line under the field says which one it
+is and how far it is trusted: a card is checked against its signature and pins
+the identity it names; an id is looked up on the contact's node and trusted on
+first use. Either way the contact is **unverified until you compare safety
+numbers**, and the row says so, with whether the contact is reachable and what
+kind of party it is (marked when that is only its own claim). A contact that is
+reachable can be messaged at once. The field explains text it cannot use, and a
+daemon error is shown under it. Adding by card and resolving an id at add time
+need a daemon with contact resolution; an older daemon adds the link only.
+
+**Your contact card** › **Show my card** shows this account's card as a QR code
+and as text, with **Copy card** and **Copy link**. Share it in person or over a
+channel you trust.
 
 Adding does not send the contact a request: a request travels to the contact's
 node over a federation route, which the daemon does not list for a contact.
@@ -135,6 +146,7 @@ example after a message).
 | Message in a group | Supported. The daemon resolves every member's route first; if a member cannot be reached nothing is sent, and the failure names who. Incoming messages arrive through the daemon's event stream; a daemon without the stream is polled instead (1.5 s, slowing to 12 s when quiet), and Settings › Diagnostics shows which. |
 | Direct message | Supported in a conversation the daemon lists a route for (recorded once a message was exchanged with the contact's verified device). Without one the send fails with that reason; start the conversation with `rf dm send`. |
 | Attachment | Supported in direct conversations, up to 512 KiB per file (one message frame). Sent attachments are listed in the objects dock, where they can be saved and a paused upload resumed. Received attachments are not downloaded yet: receiving never waits on an attachment, and the daemon has no way to fetch one after its message arrived (pending daemon support). Groups carry no attachments. |
+| New group | The context stack's **+** › **New group…** (or the command palette): a name and accepted, reachable contacts as first members, then **Create group**. The group shows as a conversation. The name is the one this account keeps (the header's **…** › **Rename…** changes it); other members name the group themselves. |
 | Group members | Add or invite a contact whose devices the daemon has verified (members dock); remove, kick, ban and roles act on the member's devices in the group. |
 | Approvals | An approval requested from a conversation appears in that conversation and in "needs me"; the others in the approvals dock only. |
 
