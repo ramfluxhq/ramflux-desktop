@@ -99,9 +99,10 @@ fn a_direct_message_is_submitted_over_the_listed_route() {
     assert_eq!(submit.target_delivery_id, "target-ana");
     assert_eq!(submit.plaintext_body_base64, Some(ramflux_protocol::encode_base64url(b"hi")));
     assert!(submit.attachments.is_empty() && submit.federation.is_none());
-    assert!(
-        submit.message_id.starts_with("desk-msg-") && submit.envelope_id.starts_with("desk-env-")
-    );
+    // One id: the recipient's daemon and the receipt name the message by
+    // its envelope id.
+    assert!(submit.message_id.starts_with("desk-msg-"));
+    assert_eq!(submit.envelope_id, submit.message_id);
     assert_eq!(submit.ttl, 300);
 }
 

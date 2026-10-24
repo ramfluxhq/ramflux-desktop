@@ -80,6 +80,9 @@ struct Held {
     to_target: String,
     conversation: String,
     message: String,
+    /// The envelope id: what the recipient's daemon stores as the message
+    /// id and what its receipt names (bound into the AEAD associated data).
+    envelope: String,
     from: Peer,
     text: String,
     at: u64,
@@ -492,11 +495,13 @@ impl World {
             to_target: recipient.target,
             conversation,
             message: message.clone(),
+            envelope: text(body, "envelope_id"),
             from,
             text: body_text,
             at,
         });
-        Reply::Ok(json!({ "message_id": message, "accepted": true }))
+        // The daemon's answer does not name the message.
+        Reply::Ok(json!({ "accepted": true }))
     }
 
     /// Takes the node's held messages of `conversation` for account `id`;
@@ -518,8 +523,8 @@ impl World {
                     messages: Vec::new(),
                 })
                 .messages
-                .push(rows::message(&held.message, &held.from.device, &held.text, held.at, false));
-            decrypted.push(json!({ "message_id": held.message, "body_utf8": held.text }));
+                .push(rows::message(&held.envelope, &held.from.device, &held.text, held.at, false));
+            decrypted.push(json!({ "message_id": held.envelope, "body_utf8": held.text }));
             self.mark_delivered(&held);
         }
         json!({ "entries": [], "decrypted_messages": decrypted })
@@ -536,7 +541,8 @@ impl World {
             return;
         };
         for message in &mut conversation.messages {
-            if message["message_id"] == held.message.as_str() {
+            // The receipt names the envelope id it acknowledges.
+            if message["message_id"] == held.envelope.as_str() {
                 message["receipts"] = json!([{ "state": "delivered" }]);
             }
         }
