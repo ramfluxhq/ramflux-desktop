@@ -126,8 +126,16 @@ impl Translator {
                     .map_or(Disappearing::Off, Disappearing::After);
                 self.context_setting(&context(), None, Some(timer))
             }
-            methods::CONTACT_ADD
-            | methods::CONTACT_ACCEPT
+            methods::CONTACT_ADD => self.added_contact(answer, false),
+            methods::CONTACT_CARD_IMPORT => self.added_contact(answer, true),
+            methods::CONTACT_ACCEPT if answer["contact"].is_object() => {
+                // The local accept answers the link record and the resolved
+                // contact.
+                let mut events = self.contact_record(answer);
+                events.extend(self.added_contact(answer, false));
+                events
+            }
+            methods::CONTACT_ACCEPT
             | methods::CONTACT_REJECT
             | methods::CONTACT_BLOCK
             | methods::CONTACT_UNBLOCK
@@ -135,9 +143,6 @@ impl Translator {
                 // The daemon answers with the link record (the federated
                 // accept wraps it in `link`).
                 self.contact_record(answer.get("link").unwrap_or(answer))
-            }
-            methods::CONTACT_CARD_IMPORT => {
-                self.imported_record(answer.get("link").unwrap_or(answer))
             }
             methods::CONTACT_CARD_EXPORT => crate::plan::contact_card::exported_card(answer)
                 .map(DomainEvent::OwnContactCardUpdated)

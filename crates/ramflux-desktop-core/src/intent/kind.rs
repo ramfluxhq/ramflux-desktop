@@ -187,6 +187,11 @@ pub enum IntentKind {
     AddContactCard {
         /// The card, as shared.
         card: String,
+        /// The provisional root (from a name lookup) the user confirmed
+        /// the card's root replaces, after comparing both; `None` for a
+        /// plain add.
+        #[serde(default)]
+        replace_provisional_root: Option<String>,
     },
     /// Export this account's own contact card to share it.
     ExportContactCard,

@@ -32,6 +32,7 @@
 //! - `reason`: locale keys with arguments.
 
 mod account;
+mod contact_failures;
 mod contacts;
 mod conversation;
 mod daemon;

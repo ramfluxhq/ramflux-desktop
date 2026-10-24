@@ -125,7 +125,11 @@ impl ContactsDock {
                 self.sink.emit(UiEventKind::AddContactRequested { participant_id }, window, cx);
             }
             Some(Submission::Card(card)) => {
-                self.sink.emit(UiEventKind::AddContactCardRequested { card }, window, cx);
+                self.sink.emit(
+                    UiEventKind::AddContactCardRequested { card, replace_provisional_root: None },
+                    window,
+                    cx,
+                );
             }
             None => {}
         }

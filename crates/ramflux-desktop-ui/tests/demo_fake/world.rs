@@ -328,22 +328,29 @@ impl World {
                 json!({ "groups": rows, "next_cursor": null })
             }
             "contact.list" => json!({ "contacts": me.links }),
-            "contact.add" => {
+            "contact.add" if body.get("card").is_none() => {
                 let principal = text(body, "principal_id");
                 if self.by_principal(&principal).is_none() {
-                    return Reply::Error(
-                        "ValidationFailed",
-                        format!("{principal} is not known to its home node"),
-                    );
+                    return Reply::Refused {
+                        code: "ValidationFailed",
+                        message: "unknown_principal".to_owned(),
+                        reason_code: "unknown_principal",
+                        details: None,
+                    };
                 }
-                let link = rows::link(&body["link_id"], &body["requester_id"], &body["target_id"]);
+                let link = rows::link(
+                    &json!(format!("link-{principal}")),
+                    &json!(me.principal),
+                    &json!(principal),
+                    "lookup",
+                );
                 self.account(side, id).expect("account").links.push(link.clone());
-                link
+                json!({ "contact": link })
             }
             "contact.card.export" => {
                 json!({ "card": card_of(&me), "link": format!("ramflux:contact/{}", me.principal) })
             }
-            "contact.card.import" => {
+            "contact.add" => {
                 let card = text(body, "card");
                 let named = self
                     .daemons
@@ -354,18 +361,21 @@ impl World {
                     })
                     .map(|a| a.principal.clone());
                 let Some(principal) = named else {
-                    return Reply::Error(
-                        "ValidationFailed",
-                        "contact card signature does not verify".to_owned(),
-                    );
+                    return Reply::Refused {
+                        code: "ValidationFailed",
+                        message: "card_signature_invalid".to_owned(),
+                        reason_code: "card_signature_invalid",
+                        details: None,
+                    };
                 };
                 let link = rows::link(
                     &json!(format!("link-card-{principal}")),
                     &json!(me.principal),
                     &json!(principal),
+                    "card",
                 );
                 self.account(side, id).expect("account").links.push(link.clone());
-                json!({ "link": link })
+                json!({ "contact": link })
             }
             "group.create" => {
                 let gid = text(body, "group_id");

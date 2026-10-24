@@ -13,21 +13,23 @@
 //! `Unknown` and safety `Unverified` until the identity directory says
 //! otherwise.
 //!
-//! A daemon that resolves contacts at add time also reports, on each link
-//! record:
+//! The daemon resolves contacts at add time and reports, on each
+//! `contact.list` row (the link record joined with the contact entry) and
+//! as `contact` in the answer to `contact.add`:
 //!
 //! | field | desktop |
 //! |---|---|
+//! | `principal_id` | the contact (the link's ids may be root commitments) |
 //! | `reachable` (bool) | `reachable`: it holds a verified device to send to |
 //! | `verified` (bool) | safety `Verified`, when the identity directory has no row |
-//! | `kind_asserted` (kind name) | the kind, when the identity directory declares none, marked as self-declared |
-//! | `kind_asserted` (bool) | the kind shown is the contact's own claim |
+//! | `kind_asserted` (kind name or null) | the kind, when the identity directory declares none, marked as self-declared |
+//! | `root_source` `lookup` / `card` / `verified` | `root_source`: provisional name lookup, pinned by a card, or compared |
 //!
-//! A record without these fields leaves them unreported (`reachable` none,
-//! the kind not marked as self-declared).
+//! A record without these fields leaves them unreported (`reachable` and
+//! `root_source` none, the kind not marked as self-declared).
 
 use ramflux_desktop_core::{
-    ContactLink, DomainEvent, Participant, ParticipantId, ParticipantKind, SafetyState,
+    ContactLink, DomainEvent, Participant, ParticipantId, ParticipantKind, RootSource, SafetyState,
 };
 use serde_json::Value;
 
@@ -45,6 +47,18 @@ pub(crate) struct Facts {
     pub safety: SafetyState,
     /// Persisted safety number.
     pub safety_number: Option<String>,
+    /// Where the pinned root came from.
+    pub root_source: Option<RootSource>,
+}
+
+/// `root_source` of a contact or identity row.
+pub(crate) fn root_source(row: &Value) -> Option<RootSource> {
+    match row["root_source"].as_str() {
+        Some("lookup") => Some(RootSource::Lookup),
+        Some("card") => Some(RootSource::Card),
+        Some("verified") => Some(RootSource::Verified),
+        _ => None,
+    }
 }
 
 /// What a friend-link record of a resolving daemon says about the contact.
@@ -58,6 +72,8 @@ pub(crate) struct Resolution {
     pub kind: Option<ParticipantKind>,
     /// Whether the kind is only the contact's own claim.
     pub kind_asserted: bool,
+    /// Where the pinned root came from.
+    pub root_source: Option<RootSource>,
 }
 
 impl Resolution {
@@ -72,6 +88,7 @@ impl Resolution {
             verified: record["verified"].as_bool().unwrap_or(false),
             kind,
             kind_asserted,
+            root_source: root_source(record),
         }
     }
 }
@@ -79,7 +96,7 @@ impl Resolution {
 fn kind_of(name: &str) -> Option<ParticipantKind> {
     match name {
         "human" => Some(ParticipantKind::Human),
-        "headless_ai" | "bot" | "agent" => Some(ParticipantKind::Agent),
+        "headless_ai" | "bot" | "agent" | "workflow" => Some(ParticipantKind::Agent),
         _ => None,
     }
 }
@@ -117,6 +134,7 @@ impl Person {
             link: self.link,
             reachable: resolution.reachable,
             kind_asserted,
+            root_source: facts.root_source.or(resolution.root_source),
         }
     }
 }
@@ -134,9 +152,17 @@ impl Translator {
     /// daemon lists links oldest first).
     pub(super) fn contact_record(&mut self, record: &Value) -> Vec<DomainEvent> {
         let me = self.directory.self_principal.clone().unwrap_or_default();
+        let own = |id: &str| {
+            !id.is_empty() && (id == me || self.directory.self_commitment.as_deref() == Some(id))
+        };
         let (requester, target) = (text(record, "requester_id"), text(record, "target_id"));
-        let outgoing = !me.is_empty() && requester == me;
-        let other = if outgoing { target } else { requester };
+        let outgoing = own(requester);
+        // The daemon names the contact; the link's ids may be commitments.
+        let other = match text(record, "principal_id") {
+            "" if outgoing => target,
+            "" => requester,
+            principal => principal,
+        };
         if other.is_empty() || other == me || text(record, "link_id").is_empty() {
             return Vec::new();
         }
@@ -157,19 +183,30 @@ impl Translator {
         self.report_person(&id)
     }
 
-    /// A link record as [`Self::contact_record`], reporting the contact
-    /// even when nothing about it changed: the answer to a card import says
-    /// which contact the card named.
-    pub(super) fn imported_record(&mut self, record: &Value) -> Vec<DomainEvent> {
-        let events = self.contact_record(record);
-        if !events.is_empty() {
+    /// The answer to `contact.add` (by id or card): `{contact}`, the
+    /// resolved contact, whose link is accepted. With `always`, the contact
+    /// is reported even when nothing about it changed: the answer to a card
+    /// import says which contact the card named.
+    pub(super) fn added_contact(&mut self, answer: &Value, always: bool) -> Vec<DomainEvent> {
+        let contact = &answer["contact"];
+        let principal = text(contact, "principal_id");
+        if principal.is_empty() {
+            // An older answer: the link record itself.
+            return self.contact_record(answer.get("link").unwrap_or(answer));
+        }
+        let id = ParticipantId::new(principal);
+        let person = self.people.entry(id.clone()).or_default();
+        person.link = ContactLink::Accepted;
+        person.resolution = Resolution::from_record(contact);
+        if let Some(link) = self.links.get_mut(&id) {
+            link.state = ContactLink::Accepted;
+        }
+        let events = self.report_person(&id);
+        if !events.is_empty() || !always {
             return events;
         }
-        let me = self.directory.self_principal.clone().unwrap_or_default();
-        let (requester, target) = (text(record, "requester_id"), text(record, "target_id"));
-        let other = if !me.is_empty() && requester == me { target } else { requester };
         self.reported_people
-            .get(&ParticipantId::new(other))
+            .get(&id)
             .map(|p| DomainEvent::ParticipantUpserted(p.clone()))
             .into_iter()
             .collect()

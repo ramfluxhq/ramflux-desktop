@@ -157,6 +157,10 @@ pub enum UiEventKind {
     AddContactCardRequested {
         /// The card text (already checked by the form).
         card: String,
+        /// The provisional root the user confirmed the card replaces
+        /// (after the daemon asked); `None` for a plain add.
+        #[serde(default)]
+        replace_provisional_root: Option<String>,
     },
     /// The user asked to see this account's contact card to share it.
     ShareContactCardRequested,

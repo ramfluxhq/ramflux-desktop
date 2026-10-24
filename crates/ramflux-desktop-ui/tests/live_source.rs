@@ -144,7 +144,19 @@ fn the_contacts_dock_adds_and_answers_through_the_daemon(cx: &mut TestAppContext
         let mut links = store.lock().expect("links");
         match method {
             "contact.list" => Reply::Ok(json!({ "contacts": links.clone() })),
-            "contact.add" | "contact.accept" => {
+            "contact.add" => {
+                // The daemon resolves `{principal_id}` and derives the link.
+                let principal = body["principal_id"].as_str().unwrap_or_default();
+                let row = json!({
+                    "link_id": format!("link-{principal}"), "requester_id": "principal-me",
+                    "target_id": principal, "state": "accepted", "remove_scope": null,
+                    "blocked": false, "capability_revoked_at": null, "principal_id": principal,
+                    "reachable": true, "verified": false, "root_source": "lookup",
+                });
+                links.push(row.clone());
+                Reply::Ok(json!({ "contact": row }))
+            }
+            "contact.accept" => {
                 let row = json!({
                     "link_id": body["link_id"], "requester_id": body["requester_id"],
                     "target_id": body["target_id"], "state": "accepted", "remove_scope": null,
@@ -178,10 +190,6 @@ fn the_contacts_dock_adds_and_answers_through_the_daemon(cx: &mut TestAppContext
     click(cx, handle, "contact-add");
     wait(cx, "added", |cx| exists(cx, handle, "contacts-principal-kai"));
     let add = fake.seen().into_iter().find(|s| s.method == "contact.add").expect("frame");
-    assert_eq!(add.body["requester_id"], "principal-me");
-    assert_eq!(add.body["target_id"], "principal-kai");
-    assert!(add.body["link_id"].as_str().is_some_and(|id| id.starts_with("link-")));
-    assert_eq!(add.body["principal_id"], "principal-kai");
-    assert_eq!(add.body.as_object().map(serde_json::Map::len), Some(4));
+    assert_eq!(add.body, json!({ "principal_id": "principal-kai" }), "exactly the selector");
     fake.shutdown();
 }

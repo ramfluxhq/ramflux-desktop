@@ -9,8 +9,8 @@
 mod common;
 
 use ramflux_desktop_core::{
-    AccountId, ContactCard, ContextId, ContextKind, DomainEvent, Effect, FailureCode, Participant,
-    ParticipantKind, SafetyState, Timestamp, methods,
+    AccountId, ContactCard, ContactLink, ContextId, ContextKind, DomainEvent, Effect, FailureCode,
+    Participant, ParticipantKind, RootSource, SafetyState, Timestamp, methods,
 };
 use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::directory::Directory;
@@ -74,7 +74,8 @@ fn a_card_goes_to_the_daemon_as_pasted_and_the_contact_is_read_back() {
     else {
         panic!("a call");
     };
-    assert_eq!((request.method.as_str(), request.sdk_api), ("contact.card.import", "contact"));
+    // A card import is the daemon's `contact.add {card}`.
+    assert_eq!((request.method.as_str(), request.sdk_api), ("contact.add", "contact"));
     assert_eq!(request.wire_body(), json!({ "card": "rf-card\nsig" }));
     assert!(request.operation_id.is_some(), "adding a contact is a mutation with a retry key");
     assert_eq!(refresh, vec![Fetch::ContactList, Fetch::first(Paged::Identities)]);
@@ -83,6 +84,20 @@ fn a_card_goes_to_the_daemon_as_pasted_and_the_contact_is_read_back() {
         panic!("refused");
     };
     assert_eq!(code, FailureCode::Daemon("invalid".to_owned()));
+    // A confirmed replacement of a provisional root names the old root.
+    let Plan::Call { request, .. } = planned(
+        call(
+            methods::CONTACT_CARD_IMPORT,
+            json!({ "card": "rf-card", "replace_provisional_root": "root-lookup" }),
+        ),
+        &fake(),
+    ) else {
+        panic!("a call");
+    };
+    assert_eq!(
+        request.wire_body(),
+        json!({ "card": "rf-card", "replace_provisional_root": "root-lookup" })
+    );
 }
 
 #[test]
@@ -126,10 +141,12 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
         }
         record
     };
-    let answer = record(
-        "principal-kai",
-        json!({ "reachable": true, "verified": false, "kind_asserted": "headless_ai" }),
-    );
+    // `contact.add {card}` answers the resolved contact.
+    let answer = json!({ "contact": {
+        "principal_id": "principal-kai", "display_name": null, "reachable": true,
+        "verified": false, "kind_asserted": "headless_ai", "root_commitment": "root-kai",
+        "root_source": "card", "node": null,
+    } });
     let kai = participants(&t.effect_done(
         methods::CONTACT_CARD_IMPORT,
         &json!({}),
@@ -140,6 +157,8 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
     assert_eq!(kai[0].reachable, Some(true));
     assert_eq!((kai[0].kind, kai[0].kind_asserted), (ParticipantKind::Agent, true));
     assert_eq!(kai[0].safety, SafetyState::Unverified);
+    assert_eq!(kai[0].root_source, Some(RootSource::Card), "the card pinned the root");
+    assert_eq!(kai[0].link, ContactLink::Accepted);
     let again = participants(&t.effect_done(
         methods::CONTACT_CARD_IMPORT,
         &json!({}),
@@ -149,12 +168,22 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
     assert_eq!(again, kai, "importing a known card still names the contact");
 
     let listed = json!({ "contacts": [
-        record("principal-lu", json!({ "reachable": false, "verified": true })),
+        record(
+            "root-lu",
+            json!({
+                "principal_id": "principal-lu", "reachable": false, "verified": true,
+                "root_source": "lookup",
+            }),
+        ),
         record("principal-old", json!({})),
     ] });
     let people = participants(&t.fetched(&Fetch::ContactList, &listed, Timestamp(2)).events);
     let lu = people.iter().find(|p| p.id.as_str() == "principal-lu").expect("lu");
-    assert_eq!((lu.reachable, lu.safety), (Some(false), SafetyState::Verified));
+    // The row names the contact even when the link names its root.
+    assert_eq!(
+        (lu.reachable, lu.safety, lu.root_source),
+        (Some(false), SafetyState::Verified, Some(RootSource::Lookup))
+    );
     let old = people.iter().find(|p| p.id.as_str() == "principal-old").expect("old");
     assert_eq!(
         (old.reachable, old.kind_asserted),
@@ -165,15 +194,15 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
     // The identity directory stays the authority for safety and kind.
     let identities = json!({ "identities": [{
         "principal_id": "principal-lu", "kind": "human", "safety_state": "unverified",
-        "devices": [],
+        "root_source": "verified", "devices": [],
     }], "next_cursor": null });
     let people = participants(
         &t.fetched(&Fetch::first(Paged::Identities), &identities, Timestamp(3)).events,
     );
     let lu = people.iter().find(|p| p.id.as_str() == "principal-lu").expect("lu");
     assert_eq!(
-        (lu.kind, lu.kind_asserted, lu.safety),
-        (ParticipantKind::Human, false, SafetyState::Unverified)
+        (lu.kind, lu.kind_asserted, lu.safety, lu.root_source),
+        (ParticipantKind::Human, false, SafetyState::Unverified, Some(RootSource::Verified))
     );
 }
 

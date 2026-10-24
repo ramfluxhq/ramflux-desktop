@@ -69,15 +69,33 @@ fn a_card_is_imported_trimmed_by_the_human_only() {
     let store = store();
     let effects = human(
         &store,
-        IntentKind::AddContactCard { card: "  ramflux:contact/abc\nsig  ".to_owned() },
+        IntentKind::AddContactCard {
+            card: "  ramflux:contact/abc\nsig  ".to_owned(),
+            replace_provisional_root: None,
+        },
     )
     .expect("allowed");
     let (method, body) = call(&effects);
     assert_eq!(method, methods::CONTACT_CARD_IMPORT);
     assert_eq!(body["card"], "ramflux:contact/abc\nsig");
     assert_eq!(body["proposed_by"], "Human");
+    assert!(body.get("replace_provisional_root").is_none(), "a plain add replaces nothing");
+    let confirmed = human(
+        &store,
+        IntentKind::AddContactCard {
+            card: "ramflux-card:v1:abc".to_owned(),
+            replace_provisional_root: Some("root-lookup".to_owned()),
+        },
+    )
+    .expect("allowed");
+    let (_, body) = call(&confirmed);
+    assert_eq!(body["replace_provisional_root"], "root-lookup");
     let refused = |card: &str| {
-        human(&store, IntentKind::AddContactCard { card: card.to_owned() }).expect_err("refused")
+        human(
+            &store,
+            IntentKind::AddContactCard { card: card.to_owned(), replace_provisional_root: None },
+        )
+        .expect_err("refused")
     };
     assert_eq!(refused("   "), IntentError::InvalidContactCard(ContactCardProblem::Empty));
     assert_eq!(
@@ -86,7 +104,13 @@ fn a_card_is_imported_trimmed_by_the_human_only() {
     );
     assert_eq!(refused("card\u{0}"), IntentError::InvalidContactCard(ContactCardProblem::Control));
     assert!(matches!(
-        agent(&store, IntentKind::AddContactCard { card: "ramflux:x".to_owned() }),
+        agent(
+            &store,
+            IntentKind::AddContactCard {
+                card: "ramflux:x".to_owned(),
+                replace_provisional_root: None
+            }
+        ),
         Err(IntentError::AgentForbidden(_))
     ));
 }

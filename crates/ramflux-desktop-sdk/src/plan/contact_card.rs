@@ -12,16 +12,23 @@
 //! commitment the card names and resolves the identity through its
 //! verification chain, and it shows the exported text as it came.
 //!
-//! - `contact.card.import` `{card}`: answers with the contact link it made
-//!   (bare or as `link`), like `contact.add`. The identity directory and
-//!   the contact list are read again, so the contact's devices (and with
-//!   them a route for a first message and the safety number) show at once.
-//! - `contact.card.export` `{}`: answers `{card, link?}`. A card answered as
+//! - Importing a card is `contact.add` `{card}` (the desktop's
+//!   `contact.card.import`): the daemon verifies the card's root
+//!   commitment, signature and expiry, pins the root it names
+//!   (`root_source: card`) and answers `{contact}` like an add by id. The
+//!   identity directory and the contact list are read again, so the
+//!   contact's devices (and with them a route for a first message and the
+//!   safety number) show at once.
+//! - When the card names another root than a provisional name lookup
+//!   cached, the daemon refuses with
+//!   `root_replacement_confirmation_required` and both roots in `details`;
+//!   after the user compared them, the same card goes again with
+//!   `replace_provisional_root` (the old root, a compare-and-replace guard).
+//! - `contact.card.export` `{}`: answers `{card, link}`. A card answered as
 //!   a JSON object is shown as its compact JSON text.
 //!
-//! These shapes follow the contact-resolution contract; until the pinned
-//! daemon serves them it answers "unsupported local bus method", which is
-//! shown as the failure.
+//! Both need the account's home-node profile on the daemon: a card is
+//! accepted only for the account's own home node.
 
 use ramflux_desktop_core::ContactCard;
 use serde_json::{Value, json};
@@ -42,8 +49,13 @@ pub(super) fn import(acct: Option<&str>, body: &Value) -> Plan {
     if card.is_empty() {
         return refuse_invalid("no contact card given");
     }
+    let mut add = json!({ "card": card });
+    let replace = text(body, "replace_provisional_root");
+    if !replace.is_empty() {
+        add["replace_provisional_root"] = json!(replace);
+    }
     Plan::Call {
-        request: BusRequest::new(acct, "contact", "contact.card.import", json!({ "card": card })),
+        request: BusRequest::new(acct, "contact", "contact.add", add),
         refresh: contact_refresh(),
     }
 }

@@ -547,7 +547,10 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::RejectContact { moment_id: MomentId::new("m-1") },
         IntentKind::VerifySafetyNumber { participant_id: ParticipantId::new("p-1") },
         IntentKind::AddContact { participant_id: ParticipantId::new("principal-ana") },
-        IntentKind::AddContactCard { card: "ramflux:contact/card".to_owned() },
+        IntentKind::AddContactCard {
+            card: "ramflux:contact/card".to_owned(),
+            replace_provisional_root: Some("root-old".to_owned()),
+        },
         IntentKind::ExportContactCard,
         IntentKind::CreateGroup {
             context_id: ContextId::new("g-new"),
@@ -621,7 +624,10 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::DisappearingChosen { seconds: None },
         UiEventKind::VerifySafetyPressed { participant_id: ParticipantId::new("p-1") },
         UiEventKind::AddContactRequested { participant_id: ParticipantId::new("principal-ana") },
-        UiEventKind::AddContactCardRequested { card: "ramflux:contact/card".to_owned() },
+        UiEventKind::AddContactCardRequested {
+            card: "ramflux:contact/card".to_owned(),
+            replace_provisional_root: None,
+        },
         UiEventKind::ShareContactCardRequested,
         UiEventKind::CreateGroupRequested {
             context_id: ContextId::new("g-new"),

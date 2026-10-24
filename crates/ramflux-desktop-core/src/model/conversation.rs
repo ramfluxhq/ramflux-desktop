@@ -24,6 +24,27 @@ pub enum ParticipantKind {
     Unknown,
 }
 
+/// Where the daemon's pinned identity root of a contact came from
+/// (`root_source` on contact and identity rows).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RootSource {
+    /// A name lookup on the home node: provisional (trusted on first use)
+    /// until a card pins the root or safety numbers are compared.
+    Lookup,
+    /// The contact card they shared: the root it names is pinned.
+    Card,
+    /// Safety numbers were compared and confirmed.
+    Verified,
+}
+
+impl RootSource {
+    /// Whether the root is only what a name lookup returned.
+    pub const fn is_provisional(self) -> bool {
+        matches!(self, Self::Lookup)
+    }
+}
+
 /// Key verification state for a participant.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SafetyState {
@@ -98,6 +119,10 @@ pub struct Participant {
     /// proven by anything the daemon verified).
     #[serde(default)]
     pub kind_asserted: bool,
+    /// Where the daemon's pinned identity root came from; `None` when not
+    /// reported.
+    #[serde(default)]
+    pub root_source: Option<RootSource>,
 }
 
 impl Participant {
