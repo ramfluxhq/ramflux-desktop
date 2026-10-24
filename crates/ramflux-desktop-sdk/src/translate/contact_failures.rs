@@ -9,6 +9,11 @@
 //! | `unknown_principal`, `invalid_card`, `card_signature_invalid`, `card_expired`, `self_contact`, `already_contact`, `root_conflict`, `manifest_invalid`, `principal_id_ambiguous`, `rate_limited`, `principal_id_taken`, `device_id_taken` | `backend.contact.<reason_code>` |
 //! | `root_replacement_confirmation_required` | [`key::CONTACT_ROOT_REPLACEMENT`] with `name`, `previous`, `proposed` from `details` |
 //! | none, code `Unavailable` | [`key::CONTACT_UNAVAILABLE`] |
+//! | `home_insecure_transport`, `home_profile_missing`, `home_profile_stale` (CONTACT-FU-02) | the home node's address cannot go on a card / no home node / refresh the home node |
+//!
+//! A refused `contact.card.export` is about this account's own card: its
+//! typed reasons map to export wording ([`key::CONTACT_EXPORT_FAILED`] for
+//! `invalid_card` and codes not known yet), never to the import text.
 //!
 //! Card import and export need the account's home-node profile on the
 //! daemon. A card refused as `invalid_card` (or an export refused) while
@@ -51,8 +56,26 @@ fn reason_key(reason: &str) -> Option<&'static str> {
         "rate_limited" => key::CONTACT_RATE_LIMITED,
         "principal_id_taken" => key::PRINCIPAL_ID_TAKEN,
         "device_id_taken" => key::DEVICE_ID_TAKEN,
+        "home_insecure_transport" => key::CONTACT_HOME_INSECURE,
+        "home_profile_missing" => key::CONTACT_NO_HOME_NODE,
+        "home_profile_stale" => key::CONTACT_HOME_STALE,
         _ => return None,
     })
+}
+
+/// The key of a refused `contact.card.export`: the card is this account's
+/// own, so a reason never says the card is someone else's or invalid. An
+/// untyped refusal (`None`) is shown as the daemon wrote it.
+fn export_key(reason: &str) -> &'static str {
+    match reason {
+        "home_insecure_transport" => key::CONTACT_HOME_INSECURE,
+        "home_profile_missing" => key::CONTACT_NO_HOME_NODE,
+        "home_profile_stale" => key::CONTACT_HOME_STALE,
+        "rate_limited" => key::CONTACT_RATE_LIMITED,
+        // `invalid_card` (today's code for a home locator a card cannot
+        // carry) and any code not known yet.
+        _ => key::CONTACT_EXPORT_FAILED,
+    }
 }
 
 /// The root replacement to confirm, from the refusal's `details`.
@@ -94,6 +117,9 @@ impl Translator {
             return Some(key::CONTACT_NO_HOME_NODE.to_owned());
         }
         match reason_code.as_deref() {
+            Some(reason) if method == methods::CONTACT_CARD_EXPORT => {
+                Some(export_key(reason).to_owned())
+            }
             Some(ROOT_REPLACEMENT_REQUIRED) => replacement(details.as_deref()),
             Some(reason) => reason_key(reason).map(str::to_owned),
             None if code == "Unavailable" => Some(key::CONTACT_UNAVAILABLE.to_owned()),
@@ -166,6 +192,37 @@ mod tests {
 
     fn status_of(id: &str) -> crate::plan::fetch::Fetch {
         crate::plan::fetch::Fetch::AccountStatus(ramflux_desktop_core::AccountId::new(id))
+    }
+
+    #[test]
+    fn an_export_refusal_is_about_this_account_own_card() {
+        use ramflux_desktop_core::{AccountId, Timestamp};
+        let mut t = Translator::new(Scope::Account(AccountId::new("acct-main")), "rfd.sock");
+        let status = json!({ "principal_id": "principal-me", "node_id": "node-1" });
+        let _ = t.fetched(&status_of("acct-main"), &status, Timestamp(0));
+        let export = methods::CONTACT_CARD_EXPORT;
+        for (reason, expected) in [
+            ("invalid_card", key::CONTACT_EXPORT_FAILED),
+            ("home_insecure_transport", key::CONTACT_HOME_INSECURE),
+            ("home_profile_missing", key::CONTACT_NO_HOME_NODE),
+            ("home_profile_stale", key::CONTACT_HOME_STALE),
+            ("rate_limited", key::CONTACT_RATE_LIMITED),
+            ("some_future_code", key::CONTACT_EXPORT_FAILED),
+        ] {
+            assert_eq!(t.failure_message(export, &refused(Some(reason), None)), expected);
+        }
+        // The same codes on an import keep the import wording.
+        let import = methods::CONTACT_CARD_IMPORT;
+        assert_eq!(
+            t.failure_message(import, &refused(Some("invalid_card"), None)),
+            key::CONTACT_INVALID_CARD
+        );
+        assert_eq!(
+            t.failure_message(import, &refused(Some("home_insecure_transport"), None)),
+            key::CONTACT_HOME_INSECURE
+        );
+        // Untyped: the daemon's own text.
+        assert_eq!(t.failure_message(export, &refused(None, None)), "refused");
     }
 
     #[test]
