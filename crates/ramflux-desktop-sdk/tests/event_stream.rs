@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 use common::*;
 use ramflux_desktop_core::{AccountId, ContextId, DaemonSyncState, LockState, SyncMode};
 use ramflux_desktop_sdk::SdkConfig;
+use ramflux_desktop_sdk::plan::fetch::Fetch;
 use ramflux_desktop_test::fake_bus::Seen;
 use serde_json::{Value, json};
 
@@ -71,6 +72,21 @@ impl World {
     fn subscribes(&self) -> Vec<Seen> {
         self.since(0, "bus.subscribe")
     }
+
+    /// Whether every read of the account snapshot reached the fake after
+    /// the last `bus.subscribe`: the reload a scope does when its stream
+    /// opens from the head.
+    fn reloaded(&self) -> bool {
+        let seen = self.fake.seen();
+        let Some(subscribed) = seen.iter().rposition(|s| s.method == "bus.subscribe") else {
+            return false;
+        };
+        let after = &seen[subscribed + 1..];
+        Fetch::account_snapshot(&AccountId::new(ACCOUNT))
+            .iter()
+            .map(|fetch| fetch.request(Some(ACCOUNT)).method)
+            .all(|method| after.iter().any(|s| s.method == method))
+    }
 }
 
 fn settings_file(name: &str) -> PathBuf {
@@ -92,6 +108,14 @@ fn streaming(world: &World, config: SdkConfig) -> Fed {
             && s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Stream)
     });
     assert!(world.fake.streaming(ACCOUNT));
+    // Opened from the head (no cursor), the scope reads everything again so
+    // that nothing between its snapshot and the subscription is missed. The
+    // stream shows as open before those reads reach the daemon; wait for
+    // them, so the requests a test counts afterwards are its own.
+    let opened = world.subscribes().pop().expect("subscribed");
+    if opened.body.get("since_seq").is_none() {
+        account.until("the reload on open", |_, _| world.reloaded());
+    }
     account
 }
 
