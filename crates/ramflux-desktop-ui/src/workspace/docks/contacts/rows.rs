@@ -14,7 +14,14 @@
 //! A contact row says how far the contact is trusted: its safety state
 //! (unverified until safety numbers are compared), whether this account can
 //! reach it, and what kind of party it is, marked when that is only the
-//! contact's own claim.
+//! contact's own claim. It also says where the identity it holds came
+//! from: looked up by id (provisional: anyone could have registered the
+//! name first), pinned by the contact's card, or compared.
+//!
+//! Verify does not mark anything at once: it opens the safety number
+//! comparison in the row, with the number and what to compare it with, and
+//! only "The numbers match" marks the contact verified. Without a number
+//! to compare there is nothing to confirm.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -25,7 +32,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, Window, div};
 use ramflux_desktop_core::{
     ContactAction, ContactLink, Moment, MomentKind, Participant, ParticipantId, ParticipantKind,
-    SafetyState, Scope, Store, UiEventKind, selectors,
+    RootSource, SafetyState, Scope, Store, UiEventKind, selectors,
 };
 
 use crate::bubble::EventSink;
@@ -170,15 +177,33 @@ fn actions_menu(contact: &Participant, sink: &EventSink) -> impl IntoElement + u
         })
 }
 
-/// A contact with its safety state, safety number, Verify while unverified,
-/// Message once accepted, and the actions menu.
+/// A button handler.
+pub type Click = Box<dyn Fn(&gpui_kit::ClickEvent, &mut Window, &mut App)>;
+
+/// The Verify action of a contact row and its comparison.
+pub struct VerifyHandlers {
+    /// Why verifying is unavailable, if it is.
+    pub reason: Option<SharedString>,
+    /// Whether the comparison is open in this row.
+    pub open: bool,
+    /// Verify pressed: open the comparison.
+    pub start: Click,
+    /// The numbers match: mark verified.
+    pub confirm: Click,
+    /// Cancel pressed.
+    pub cancel: Click,
+}
+
+/// A contact with its safety state, safety number, Verify while unverified
+/// (opening the comparison), Message once accepted, and the actions menu.
 pub fn contact_row(
     contact: &Participant,
     sink: &EventSink,
-    verify_reason: Option<&SharedString>,
+    verify: VerifyHandlers,
     on_message: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> AnyElement {
+    let VerifyHandlers { reason: verify_reason, open, start, confirm, cancel } = verify;
     let unreachable = (contact.reachable == Some(false))
         .then(|| tr_args("dock.contacts.unreachable_reason", &[("name", &contact.display)]));
     let message = (contact.link_state() == ContactLink::Accepted).then(|| {
@@ -200,22 +225,23 @@ pub fn contact_row(
         SafetyState::Unverified => cx.theme().muted_foreground,
         SafetyState::KeyChanged | SafetyState::Forked => cx.theme().danger,
     };
-    let verify = (contact.safety != SafetyState::Verified).then(|| {
-        let sink = sink.clone();
-        let participant_id = contact.id.clone();
+    let unverified = contact.safety != SafetyState::Verified;
+    let verify = (unverified && !open).then(|| {
         crate::gate::gated(
-            Button::new("verify").xsmall().outline().label(tr("moment.safety.verify")).on_click(
-                move |_, window, cx| {
-                    sink.emit(
-                        UiEventKind::VerifySafetyPressed { participant_id: participant_id.clone() },
-                        window,
-                        cx,
-                    );
-                },
-            ),
-            verify_reason.cloned(),
+            Button::new("verify")
+                .xsmall()
+                .outline()
+                .label(tr("moment.safety.verify"))
+                .accessibility_label(tr_args(
+                    "dock.contacts.verify_for",
+                    &[("name", &contact.display)],
+                ))
+                .on_click(start),
+            verify_reason.clone(),
         )
     });
+    let comparison = (unverified && open)
+        .then(|| comparison(contact, confirm, cancel, verify_reason.as_ref(), cx));
     v_flex()
         .id(domain_id("contacts", &contact.id))
         .test_support()
@@ -261,6 +287,23 @@ pub fn contact_row(
                     )
                 }),
         )
+        .when_some(contact.root_source, |col, source| {
+            let label = root_label(source);
+            let color = if source.is_provisional() {
+                cx.theme().warning
+            } else {
+                cx.theme().muted_foreground
+            };
+            col.child(
+                div()
+                    .id("contact-root")
+                    .aria_label(label.clone())
+                    .test_support()
+                    .text_xs()
+                    .text_color(color)
+                    .child(label),
+            )
+        })
         .when_some(contact.safety_number.clone(), |col, number| {
             col.child(
                 div()
@@ -270,6 +313,83 @@ pub fn contact_row(
                     .child(tr_args("dock.contacts.safety_number", &[("number", &number)])),
             )
         })
+        .children(comparison)
+        .into_any_element()
+}
+
+/// Where the contact's identity came from, as the row says it.
+pub fn root_label(source: RootSource) -> SharedString {
+    tr(match source {
+        RootSource::Lookup => "dock.contacts.root.lookup",
+        RootSource::Card => "dock.contacts.root.card",
+        RootSource::Verified => "dock.contacts.root.verified",
+    })
+}
+
+/// The safety number comparison: what to compare, the number, and "The
+/// numbers match" (only with a number to compare) or Cancel.
+fn comparison(
+    contact: &Participant,
+    confirm: Click,
+    cancel: Click,
+    reason: Option<&SharedString>,
+    cx: &App,
+) -> AnyElement {
+    let name = contact.display.as_str();
+    let number = contact.safety_number.clone();
+    let help = if number.is_some() {
+        tr_args("dock.contacts.verify.compare", &[("name", name)])
+    } else {
+        tr_args("dock.contacts.verify.no_number", &[("name", name)])
+    };
+    let blocked = reason.cloned().or_else(|| {
+        number.is_none().then(|| tr_args("dock.contacts.verify.no_number", &[("name", name)]))
+    });
+    v_flex()
+        .id("contact-verify")
+        .gap_1()
+        .p_2()
+        .rounded(cx.theme().radius)
+        .border_1()
+        .border_color(cx.theme().border)
+        .child(
+            div()
+                .id("contact-verify-help")
+                .role(gpui_kit::Role::Status)
+                .aria_label(help.clone())
+                .test_support()
+                .text_xs()
+                .child(help),
+        )
+        .when_some(number, |col, number| {
+            col.child(
+                div()
+                    .id("contact-verify-number")
+                    .test_support()
+                    .text_sm()
+                    .font_family(cx.theme().mono_font_family.clone())
+                    .child(number),
+            )
+        })
+        .child(
+            h_flex()
+                .gap_2()
+                .child(crate::gate::gated(
+                    Button::new("verify-confirm")
+                        .xsmall()
+                        .primary()
+                        .label(tr("dock.contacts.verify.confirm"))
+                        .on_click(confirm),
+                    blocked,
+                ))
+                .child(
+                    Button::new("verify-cancel")
+                        .xsmall()
+                        .ghost()
+                        .label(tr("dock.contacts.verify.cancel"))
+                        .on_click(cancel),
+                ),
+        )
         .into_any_element()
 }
 

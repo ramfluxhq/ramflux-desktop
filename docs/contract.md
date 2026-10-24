@@ -48,7 +48,7 @@ The store keeps each entity in its own collection, keyed by id:
 | `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state`, `self_participant_id` (the participant that is this account; outbound moments and receipts key on it, never guessed) |
 | `Node` | NODE-01 profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
 | `Device` | account, label, `this_device`, `revoked`, `last_seen` |
-| `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `safety`, `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported), `reachable` (`Some(true)` when this account holds a verified device to send to, `None` when not reported), `kind_asserted` (the kind is only the participant's own claim) |
+| `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `safety`, `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported), `reachable` (`Some(true)` when this account holds a verified device to send to, `None` when not reported), `kind_asserted` (the kind is only the participant's own claim), `root_source` (`RootSource`: Lookup = provisional name lookup, Card = pinned by their card, Verified = safety numbers compared; `None` when not reported) |
 | `ContactCard` | This account's own card as the backend exported it: `text`, optional `link` (`Store::own_contact_card`, from `DomainEvent::OwnContactCardUpdated`) |
 | `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread`, `muted`, `disappearing_secs`, `roles` (Owner, Admin, Member, Bot: exactly the daemon's roles), `epoch` |
 | `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind`, `lifecycle` |
@@ -275,8 +275,11 @@ The kinds, by area:
   `contact.accept`, `contact.reject`, `contact.block`, `contact.unblock`,
   `contact.remove`; `contact.request` names sending a request to the
   contact's node. `check_add_contact` is the add check the form also runs.
-  `AddContactCard { card }` (human only; method `contact.card.import`) adds
-  the contact a pasted or imported card names; `ExportContactCard` (human
+  `AddContactCard { card, replace_provisional_root }` (human only; method
+  `contact.card.import`, the daemon's `contact.add {card}`) adds the contact a
+  pasted or imported card names; `replace_provisional_root` is set only after
+  the user compared both roots of a `root_replacement_confirmation_required`
+  refusal and confirmed the card replaces the looked-up root; `ExportContactCard` (human
   only; `contact.card.export`) asks for this account's own card.
   `classify_contact_input` tells a card (a link with a scheme, several lines,
   or longer than any id) from a principal id; `check_add_contact_card` is the

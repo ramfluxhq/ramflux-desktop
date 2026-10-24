@@ -23,20 +23,31 @@ mod sdk_fake;
 use common::*;
 use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::{MouseButton, TestAppContext, WindowHandle};
-use ramflux_desktop_core::{ContactLink, ContextId, ContextKind, ParticipantId, SafetyState};
+use ramflux_desktop_core::{
+    ContactLink, ContextId, ContextKind, ParticipantId, RootSource, SafetyState,
+};
 use ramflux_desktop_ui::i18n::{tr, tr_args};
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::docks::contacts::add_form::FormNote;
 use ramflux_desktop_ui::workspace::docks::contacts::my_card::CardView;
 use ramflux_desktop_ui::workspace::new_group::Phase;
 use sdk_fake::wait;
+use serde_json::json;
 
 type Handle = WindowHandle<gpui_kit::base::Root>;
 type ShellEntity = gpui_kit::Entity<ramflux_desktop_ui::Shell>;
 type Fake = ramflux_desktop_test::fake_bus::FakeBus;
 
 fn open(cx: &mut TestAppContext, name: &str) -> (Handle, ShellEntity, resolve_fake::Shared, Fake) {
-    let (fake, state, path) = resolve_fake::start(name);
+    open_with_home(cx, name, true)
+}
+
+fn open_with_home(
+    cx: &mut TestAppContext,
+    name: &str,
+    home: bool,
+) -> (Handle, ShellEntity, resolve_fake::Shared, Fake) {
+    let (fake, state, path) = resolve_fake::start_with(name, !home);
     let (handle, shell) = open_with(cx, sdk_fake::options(&path));
     wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
     wait(cx, "the account", |cx| {
@@ -411,5 +422,95 @@ fn a_direct_conversation_has_no_rename_and_cancel_leaves_no_group(cx: &mut TestA
     assert!(!exists(cx, handle, "new-group"));
     assert!(current(cx, &shell).is_some(), "a conversation is shown again");
     assert!(seen(&state, "group.create").is_empty());
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn a_looked_up_identity_is_provisional_until_a_card_replaces_it_after_confirmation(
+    cx: &mut TestAppContext,
+) {
+    let (handle, shell, state, fake) = open(cx, "f14-root-replace");
+    add(cx, handle, "principal-kai");
+    wait(cx, "kai provisional", |cx| {
+        contact(cx, &shell, "principal-kai")
+            .is_some_and(|p| p.root_source == Some(RootSource::Lookup))
+    });
+    wait(cx, "the field cleared", |cx| note(cx, &shell).is_none());
+    assert_eq!(
+        label_in(cx, handle, "contacts-principal-kai", "contact-root").as_deref(),
+        Some(tr("dock.contacts.root.lookup").as_ref())
+    );
+
+    // A card naming another root is held until the user compares both.
+    clear(cx, handle, "contact-add-id");
+    add(cx, handle, "ramflux:contact/principal-kai#other-root");
+    wait(cx, "the confirmation", |cx| matches!(note(cx, &shell), Some(FormNote::ConfirmRoot(_))));
+    let Some(FormNote::ConfirmRoot(text)) = note(cx, &shell) else { unreachable!() };
+    assert!(
+        text.contains("cm-principal-kai") && text.contains("cm-other-principal-kai"),
+        "both roots are shown: {text}"
+    );
+    assert_eq!(
+        contact(cx, &shell, "principal-kai").and_then(|p| p.root_source),
+        Some(RootSource::Lookup),
+        "nothing is replaced before the user confirms"
+    );
+    click(cx, handle, "contact-root-keep");
+    assert_eq!(note(cx, &shell), None, "Keep drops the card");
+    click(cx, handle, "contact-add");
+    wait(cx, "asked again", |cx| matches!(note(cx, &shell), Some(FormNote::ConfirmRoot(_))));
+    click(cx, handle, "contact-root-replace");
+    wait(cx, "the card's root", |cx| {
+        contact(cx, &shell, "principal-kai")
+            .is_some_and(|p| p.root_source == Some(RootSource::Card))
+    });
+    let adds = seen(&state, "contact.add");
+    assert_eq!(
+        adds.last().map(|b| b["replace_provisional_root"].clone()),
+        Some(json!("cm-principal-kai"))
+    );
+    assert!(
+        adds.iter().filter(|b| b.get("replace_provisional_root").is_some()).count() == 1,
+        "only the confirmed card names the root it replaces"
+    );
+    wait(cx, "pinned label", |cx| {
+        label_in(cx, handle, "contacts-principal-kai", "contact-root").as_deref()
+            == Some(tr("dock.contacts.root.card").as_ref())
+    });
+
+    // Verify compares the number first; then the identity is confirmed.
+    click_in(cx, handle, "contacts-principal-kai", "verify");
+    assert!(exists(cx, handle, "contact-verify-number"));
+    assert!(seen(&state, "contact.verify").is_empty(), "opening the comparison changes nothing");
+    click_in(cx, handle, "contacts-principal-kai", "verify-confirm");
+    wait(cx, "verified", |cx| {
+        contact(cx, &shell, "principal-kai")
+            .is_some_and(|p| p.root_source == Some(RootSource::Verified))
+    });
+    assert_eq!(
+        seen(&state, "contact.verify")[0]["contact_identity_commitment"],
+        "cm-other-principal-kai"
+    );
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn without_a_home_node_cards_say_so_and_nothing_is_sent(cx: &mut TestAppContext) {
+    let (handle, shell, state, fake) = open_with_home(cx, "f14-no-home", false);
+    let dock = {
+        let workspace = workspace(cx, &shell);
+        cx.update(|cx| workspace.read(cx).contacts_dock().clone())
+    };
+    wait(cx, "the account's status", |cx| {
+        cx.update(|cx| dock.read(cx).card_view(cx)) == CardView::NoHomeNode
+    });
+    assert_eq!(
+        label(cx, handle, "contact-card-status").as_deref(),
+        Some(tr("backend.contact.no_home_node").as_ref())
+    );
+    add(cx, handle, "ramflux:contact/principal-kai#sig-kai");
+    assert_eq!(note(cx, &shell), Some(FormNote::Error(tr("backend.contact.no_home_node"))));
+    assert!(cards_sent(&state).is_empty(), "no card reaches the daemon");
+    assert!(seen(&state, "contact.card.export").is_empty());
     fake.shutdown();
 }
