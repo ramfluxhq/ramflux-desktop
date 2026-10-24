@@ -329,6 +329,10 @@ impl Translator {
         if meta["removed"] == Value::Bool(true) {
             return known.is_some();
         }
+        if self.surface_decision_waits(reference) {
+            // An action answering a task step waits for its receipt.
+            return true;
+        }
         known.is_none_or(|known| {
             meta["version"].as_u64() != Some(known.version)
                 || text(meta, "surface_hash") != known.hash.as_str()
@@ -351,6 +355,7 @@ impl Translator {
                 None => Vec::new(),
             };
         }
+        self.surface_receipts(reference, value);
         let Some(view) = View::read(value) else { return Vec::new() };
         let context = ContextId::new(&view.target.conversation_id);
         if !self.contexts.contains_key(&context) {

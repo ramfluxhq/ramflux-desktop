@@ -66,7 +66,7 @@ impl Task {
                 let events = self.translator.effect_done(method, body, &answer, now());
                 self.emit(events);
                 self.spawn_fetches(refresh);
-                self.resolve_task_step(method, body);
+                self.resolve_task_step(method, body, &answer);
                 self.interval = self.config.poll_fast;
                 if method == ramflux_desktop_core::methods::ACCOUNT_LOCK
                     && self.scope.account().is_some()
@@ -111,15 +111,19 @@ impl Task {
 impl Task {
     /// After the grant flow decided an approval a task step waits on, sends
     /// the requester's resolution of that step (the task records the
-    /// decision; the grant alone authorizes the tool).
-    fn resolve_task_step(&mut self, method: &str, body: &Value) {
+    /// decision; the grant alone authorizes the tool). It names the
+    /// decision id the grant flow answered (the original MCP decision);
+    /// the approval id when the answer names none (the daemon accepts a
+    /// scoped approval id and canonicalizes it).
+    fn resolve_task_step(&mut self, method: &str, body: &Value, answer: &Value) {
         let approved = match method {
             ramflux_desktop_core::methods::GRANT_APPROVE => true,
             ramflux_desktop_core::methods::GRANT_DENY => false,
             _ => return,
         };
         let grant = ramflux_desktop_core::GrantId::new(crate::plan::text(body, "grant_id"));
-        if let Some(resolution) = self.translator.task_resolution(&grant, approved) {
+        let decision = answer["decision_id"].as_str().filter(|d| !d.is_empty());
+        if let Some(resolution) = self.translator.task_resolution(&grant, approved, decision) {
             self.effect(Effect::Call {
                 method: ramflux_desktop_core::methods::TASK_RESOLVE.to_owned(),
                 body: resolution,

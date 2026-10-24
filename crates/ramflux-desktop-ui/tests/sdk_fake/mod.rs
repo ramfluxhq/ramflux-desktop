@@ -182,11 +182,14 @@ fn approvals(
             let id = body["approval_id"].as_str().unwrap_or_default().to_owned();
             let position = state.approvals.iter().position(|r| r["approval_id"] == id.as_str())?;
             let record = state.approvals.remove(position);
+            let decision = format!("mcpd_{id}");
             if let Some(tasks) = tasks {
-                tasks.decide(&id, method == "grant.approve");
+                tasks.decide(&id, &decision, method == "grant.approve");
             }
             let grant = record["details"]["requested_grant_id"].clone();
-            Some(Reply::Ok(json!({ "grant_id": grant, "approval_id": id })))
+            Some(Reply::Ok(
+                json!({ "grant_id": grant, "approval_id": id, "decision_id": decision }),
+            ))
         }
         _ => None,
     }

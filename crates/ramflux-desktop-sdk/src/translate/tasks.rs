@@ -18,7 +18,7 @@
 //! | step `cancelled` | step `Skipped` |
 //! | `requester` this account / another / none (a proposal) | `Human` / `Member` / `Human` (this account may accept) |
 //! | `needs_me` `approval{grant_id}` | the desktop grant of the approval that requested that grant |
-//! | `needs_me` `choice` / `input` `{surface_id}` | that surface id |
+//! | `needs_me` `choice` / `input` `{surface_id}` | the assignee's surface (its `surface_ref`); answered there, see `task_decisions` |
 //! | `result_ref` | the result's surface |
 //! | `result_summary` (signed by the assignee, terminal only) | the task's result text |
 //! | `stalled_by_assignee`, `compacted` | the task's flags |
@@ -177,6 +177,16 @@ impl Translator {
             Some(principal) => Actor::Member(ParticipantId::new(principal)),
             None => Actor::Human,
         };
+        // The step names the assignee's own surface id; the desktop's is
+        // the daemon's scoped reference of it.
+        let assignee = text(view, "assignee");
+        let surface = |place: &Value| {
+            let id = text(place, "surface_id");
+            SurfaceId::new(
+                crate::surface::surface_ref(context.as_str(), assignee, id)
+                    .unwrap_or_else(|| id.to_owned()),
+            )
+        };
         let mut steps = Vec::new();
         let mut places = Vec::new();
         for row in list(view, "steps") {
@@ -185,12 +195,8 @@ impl Translator {
                 "approval" => Some(NeedsMe::Approval {
                     grant_id: self.desktop_grant(text(&row["needs_me"], "grant_id")),
                 }),
-                "choice" => Some(NeedsMe::Choice {
-                    surface_id: SurfaceId::new(text(&row["needs_me"], "surface_id")),
-                }),
-                "input" => Some(NeedsMe::Input {
-                    surface_id: SurfaceId::new(text(&row["needs_me"], "surface_id")),
-                }),
+                "choice" => Some(NeedsMe::Choice { surface_id: surface(&row["needs_me"]) }),
+                "input" => Some(NeedsMe::Input { surface_id: surface(&row["needs_me"]) }),
                 _ => None,
             };
             if !row["needs_me"].is_null() {
@@ -316,9 +322,15 @@ impl Translator {
 
     /// The contract body that records the requester's decision on the
     /// approval `grant` in the task step waiting on it, if this account
-    /// asked for that task. The decision is the grant flow's own (the
-    /// approval id names it).
-    pub fn task_resolution(&self, grant: &GrantId, approved: bool) -> Option<Value> {
+    /// asked for that task. The decision is the grant flow's own:
+    /// `decision_id` when the grant flow answered one, else the approval
+    /// id.
+    pub fn task_resolution(
+        &self,
+        grant: &GrantId,
+        approved: bool,
+        decision_id: Option<&str>,
+    ) -> Option<Value> {
         self.tasks.iter().find_map(|(id, known)| {
             if known.shown.requester != Actor::Human {
                 return None;
@@ -333,7 +345,7 @@ impl Translator {
                 "base_revision": known.shown.version,
                 "step_id": step.id,
                 "target": target,
-                "decision_id": grant,
+                "decision_id": decision_id.unwrap_or(grant.as_str()),
                 "decision": if approved { "resume" } else { "deny" },
             }))
         })

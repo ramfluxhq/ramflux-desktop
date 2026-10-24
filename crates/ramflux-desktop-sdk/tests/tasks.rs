@@ -189,7 +189,7 @@ fn an_approval_resolves_its_step_through_the_grant_flow_once() {
     assert_eq!(resolve.body["base_revision"], shown.version);
     assert_eq!(resolve.body["step_id"], "deploy");
     assert_eq!(resolve.body["target"], json!({ "kind": "approval", "grant_id": "grant_appr-7" }));
-    assert_eq!(resolve.body["decision_id"], "appr-7");
+    assert_eq!(resolve.body["decision_id"], decision_id("appr-7"), "the grant's decision id");
     assert_eq!(resolve.body["decision"], "resume");
     assert_eq!(world.tasks.pending(), 1);
 
@@ -200,7 +200,8 @@ fn an_approval_resolves_its_step_through_the_grant_flow_once() {
     });
     assert_eq!(account.store.task(&id).map(|t| t.steps[0].state), Some(StepState::Running));
 
-    // The same decision again is refused on the task.
+    // The same decision again (by the scoped approval id, which the daemon
+    // canonicalizes to the decision id) is refused on the task.
     account.source.submit(Effect::Call {
         method: methods::TASK_RESOLVE.into(),
         body: json!({

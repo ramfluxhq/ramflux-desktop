@@ -150,6 +150,8 @@ struct Inner {
     messages: BTreeMap<String, Vec<Value>>,
     /// Grant-flow decisions the assignee can verify, by approval id.
     decided: BTreeMap<String, bool>,
+    /// Scoped approval ids and the decision ids they stand for.
+    aliases: BTreeMap<String, String>,
     announce: Option<(Publisher, String)>,
     quiet: bool,
     clock: i64,
@@ -178,6 +180,10 @@ fn payload<T: DeserializeOwned>(body: &Value, drop: &[&str]) -> Result<T, Refuse
         }
     }
     serde_json::from_value(body).map_err(invalid)
+}
+
+fn text_of<'a>(body: &'a Value, name: &str) -> &'a str {
+    body[name].as_str().unwrap_or_default()
 }
 
 fn field<'a>(body: &'a Value, name: &str) -> Result<&'a str, Refused> {
@@ -227,10 +233,15 @@ impl FakeTasks {
         self.inner().refuse_next = Some((method.to_owned(), (code, message.to_owned())));
     }
 
-    /// Records the grant flow's decision on an approval, which the assignee
-    /// checks before it confirms a resolution naming it.
-    pub fn decide(&self, approval_id: &str, approved: bool) {
-        self.inner().decided.insert(approval_id.to_owned(), approved);
+    /// Records the grant flow's decision on the approval `approval_id`
+    /// (the scoped id the desktop shows) whose original MCP decision id is
+    /// `decision_id`; the assignee checks it before it confirms a
+    /// resolution naming it. Like the daemon, a resolution naming the
+    /// scoped approval id is canonicalized to the decision id.
+    pub fn decide(&self, approval_id: &str, decision_id: &str, approved: bool) {
+        let mut inner = self.inner();
+        inner.decided.insert(decision_id.to_owned(), approved);
+        inner.aliases.insert(approval_id.to_owned(), decision_id.to_owned());
     }
 
     /// The assignee confirms every pending resolution whose decision the
@@ -509,6 +520,13 @@ pub fn task_step(id: &str, title: &str, state: TaskStatus) -> TaskStep {
     step(id, title, state, None)
 }
 
+/// A step that waits on a choice in the assignee's surface `surface_id`
+/// (the assignee's own id of it).
+pub fn choice_step(id: &str, title: &str, surface_id: &str) -> TaskStep {
+    let place = NeedsMe::Choice { surface_id: surface_id.to_owned() };
+    step(id, title, TaskStatus::NeedsMe, Some(place))
+}
+
 /// A step that waits on an approval of the grant `grant_id`.
 pub fn approval_step(id: &str, title: &str, grant_id: &str) -> TaskStep {
     step(id, title, TaskStatus::NeedsMe, Some(NeedsMe::Approval { grant_id: grant_id.to_owned() }))
@@ -728,7 +746,13 @@ impl Inner {
                 }
                 TaskEventBody::Cancel(payload::<TaskCancel>(&cancel, &extras)?)
             }
-            "task.resolve" => TaskEventBody::Resolve(payload::<TaskResolve>(body, &extras)?),
+            "task.resolve" => {
+                let mut resolve = body.clone();
+                if let Some(decision) = self.aliases.get(text_of(body, "decision_id")) {
+                    resolve["decision_id"] = json!(decision);
+                }
+                TaskEventBody::Resolve(payload::<TaskResolve>(&resolve, &extras)?)
+            }
             _ => return Err(invalid("unsupported task method")),
         };
         let resolution = match &event {

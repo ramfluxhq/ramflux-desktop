@@ -54,6 +54,7 @@ pub mod stream;
 mod surface_answers;
 mod surfaces;
 pub mod task_answers;
+mod task_decisions;
 pub mod tasks;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -175,6 +176,13 @@ pub struct Translator {
     /// Tasks whose request was refused as changed: said again on the newer
     /// task read back.
     review_again: BTreeSet<ramflux_desktop_core::TaskId>,
+    /// Surface actions answering a task step, waiting for the author's
+    /// receipt.
+    surface_decisions: Vec<task_decisions::SurfaceDecision>,
+    /// Task resolutions to send, taken by the bridge after each read.
+    resolutions: Vec<Value>,
+    /// Action receipts a resolution already named.
+    resolved_receipts: BTreeSet<String>,
     mcp_tools: Option<BTreeMap<String, Vec<String>>>,
     mcp_servers: Option<Vec<Value>>,
     integrations: Option<ramflux_desktop_core::Integrations>,
@@ -225,6 +233,9 @@ impl Translator {
             tasks: BTreeMap::new(),
             requested_grants: BTreeMap::new(),
             review_again: BTreeSet::new(),
+            surface_decisions: Vec::new(),
+            resolutions: Vec::new(),
+            resolved_receipts: BTreeSet::new(),
             mcp_tools: None,
             mcp_servers: None,
             integrations: None,

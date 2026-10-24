@@ -537,7 +537,15 @@ impl Task {
             Ok(value) => {
                 let translated = self.translator.fetched(fetch, &value, now());
                 self.spawn_fetches(translated.follow);
-                self.emit(translated.events)
+                let emitted = self.emit(translated.events);
+                // A surface answer to a task step, now with its receipt.
+                for body in self.translator.take_task_resolutions() {
+                    self.effect(ramflux_desktop_core::Effect::Call {
+                        method: ramflux_desktop_core::methods::TASK_RESOLVE.to_owned(),
+                        body,
+                    });
+                }
+                emitted
             }
             Err(error) if error.is_connection_lost() => {
                 self.lost();

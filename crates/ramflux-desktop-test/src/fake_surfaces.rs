@@ -18,6 +18,12 @@
 //! - `surface.action`: validated with the protocol's `validate_action` on
 //!   the current state (the daemon's preflight); a refusal carries the
 //!   daemon's `reason_code`;
+//! - `surface.get` `actions[]`: this account's actions once the author's
+//!   creator receipt for them arrived ([`FakeSurfaces::deliver_receipts`]),
+//!   as the K3b r4 daemon lists them: `action_receipt_id`,
+//!   `receipt_verified: true`, the sender, version and the action's
+//!   `wire_base64`; the view's `action_receipt_id` / metadata
+//!   `last_action_id` name the latest;
 //! - `surface.request_resync`: `not_found` / `not_out_of_sync` error
 //!   frames, one request per surface per 60-second window (a second one is
 //!   answered `rate_limited`), else submitted to the author's device.
@@ -71,6 +77,19 @@ struct Inner {
     /// The author's clock (seconds), `None` for undated carriers.
     clock: Option<i64>,
     removed: Vec<String>,
+    /// Accepted actions, by surface, with their receipt once delivered.
+    actions: Vec<HeldAction>,
+}
+
+/// An accepted action and the author's receipt for it.
+#[derive(Debug, Clone)]
+struct HeldAction {
+    surface_ref: String,
+    message_id: Value,
+    version: u64,
+    wire_base64: String,
+    /// The receipt id and the action's sender, once the receipt arrived.
+    receipt: Option<(String, String)>,
 }
 
 /// The fake's first author time (seconds).
@@ -189,6 +208,23 @@ impl FakeSurfaces {
         }
     }
 
+    /// The author's creator receipts for every action accepted so far
+    /// arrive; the actions were sent by `sender` (this account's
+    /// principal). Returns the surfaces whose actions got one.
+    pub fn deliver_receipts(&self, sender: &str) -> Vec<String> {
+        let mut inner = self.inner();
+        let mut next = inner.actions.iter().filter(|a| a.receipt.is_some()).count();
+        let mut touched = Vec::new();
+        for action in inner.actions.iter_mut().filter(|a| a.receipt.is_none()) {
+            next += 1;
+            action.receipt = Some((format!("rcpt-{next}"), sender.to_owned()));
+            if !touched.contains(&action.surface_ref) {
+                touched.push(action.surface_ref.clone());
+            }
+        }
+        touched
+    }
+
     /// Actions accepted so far.
     pub fn acted(&self) -> Vec<Acted> {
         self.inner().acted.clone()
@@ -211,7 +247,7 @@ impl FakeSurfaces {
     pub fn meta(&self, reference: &str) -> Value {
         let inner = self.inner();
         match inner.surfaces.get(reference) {
-            Some(held) => meta(reference, held),
+            Some(held) => inner.meta(reference, held),
             None if inner.removed.iter().any(|r| r == reference) => {
                 json!({ "surface_id": reference, "surface_ref": reference, "removed": true })
             }
@@ -225,24 +261,26 @@ impl FakeSurfaces {
         Some(match method {
             "surface.get" => {
                 let reference = text("surface_ref");
-                Reply::Ok(self.inner().surfaces.get(&reference).map_or(Value::Null, |held| {
-                    let mut view = meta(&reference, held);
+                let inner = self.inner();
+                Reply::Ok(inner.surfaces.get(&reference).map_or(Value::Null, |held| {
+                    let mut view = inner.meta(&reference, held);
                     view["snapshot"] =
                         serde_json::to_value(held.state.content()).unwrap_or_default();
                     view["fallback_text"] =
                         json!(held.state.content().map(|c| c.fallback_text.clone()));
-                    view["actions"] = json!([]);
+                    view["actions"] = json!(inner.action_rows(&reference));
+                    view["action_receipt_id"] = view["last_action_id"].clone();
                     view
                 }))
             }
             "surface.list" => {
                 let conversation = text("conversation_id");
-                let rows: Vec<Value> = self
-                    .inner()
+                let inner = self.inner();
+                let rows: Vec<Value> = inner
                     .surfaces
                     .iter()
                     .filter(|(_, held)| held.conversation == conversation)
-                    .map(|(reference, held)| meta(reference, held))
+                    .map(|(reference, held)| inner.meta(reference, held))
                     .collect();
                 Reply::Ok(json!({ "surfaces": rows, "next_cursor": null }))
             }
@@ -288,6 +326,13 @@ impl FakeSurfaces {
             let error = json!({ "code": "renderer_error", "reject": reject });
             return Reply::Ok(rejected(error, code));
         }
+        inner.actions.push(HeldAction {
+            surface_ref: reference.clone(),
+            message_id: body["message_id"].clone(),
+            version: action.version(),
+            wire_base64: body["wire_base64"].as_str().unwrap_or_default().to_owned(),
+            receipt: None,
+        });
         inner.acted.push(Acted {
             surface_ref: reference.clone(),
             version: action.version(),
@@ -323,6 +368,39 @@ impl FakeSurfaces {
 fn rejected(error: Value, code: &str) -> Value {
     json!({ "accepted": false, "fallback_text": "[Surface rejected]", "renderer_error": error,
             "reason_code": code })
+}
+
+impl Inner {
+    /// The metadata of a surface, with its latest received action.
+    fn meta(&self, reference: &str, held: &Held) -> Value {
+        let mut meta = meta(reference, held);
+        meta["last_action_id"] = self
+            .actions
+            .iter()
+            .rev()
+            .find(|a| a.surface_ref == reference && a.receipt.is_some())
+            .and_then(|a| a.receipt.as_ref())
+            .map_or(Value::Null, |(id, _)| json!(id));
+        meta
+    }
+
+    /// `surface.get` `actions[]` of a surface: the actions whose receipt
+    /// arrived.
+    fn action_rows(&self, reference: &str) -> Vec<Value> {
+        self.actions
+            .iter()
+            .filter(|a| a.surface_ref == reference)
+            .filter_map(|a| {
+                let (id, sender) = a.receipt.as_ref()?;
+                Some(json!({
+                    "id": id, "action_receipt_id": id, "receipt_verified": true,
+                    "message_id": a.message_id, "sender_principal_id": sender,
+                    "version": a.version, "actionable": false,
+                    "wire_base64": a.wire_base64, "signature": "",
+                }))
+            })
+            .collect()
+    }
 }
 
 fn meta(reference: &str, held: &Held) -> Value {
