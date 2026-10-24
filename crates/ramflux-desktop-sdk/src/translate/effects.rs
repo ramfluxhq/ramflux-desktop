@@ -21,6 +21,7 @@ impl Translator {
         answer: &Value,
         now: Timestamp,
     ) -> Vec<DomainEvent> {
+        self.note_surface_decision(method, body, answer);
         let mut events = self.effect_events(method, body, answer, now);
         if !body["confirmed_by"].is_null() {
             events.push(audit(method, body, now));

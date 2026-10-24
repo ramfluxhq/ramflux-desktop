@@ -6,17 +6,21 @@
 //! `error.code`, never from its text; a finished task shows its signed
 //! summary; the assignee's own kind marker is shown; a pending resolution
 //! is read back from the daemon after a restart and says when the assignee
-//! has not confirmed it in time; compaction is announced.
+//! has not confirmed it in time; compaction is announced; an approval is
+//! resolved with the grant flow's decision id; a choice answered in the
+//! assignee's surface is resolved with the action's verified receipt id.
 
 mod common;
 
 use common::task_world::*;
 use ramflux_desktop_core::Source as _;
 use ramflux_desktop_core::{
-    ConfirmationIssuer, Effect, GrantId, IntentKind, StepId, TaskAnswer, TaskRefusal, TaskState,
-    methods,
+    ConfirmationIssuer, DomainEvent, Effect, GrantId, IntentKind, StepId, SurfaceEvent, SurfaceId,
+    TaskAnswer, TaskRefusal, TaskState, methods,
 };
-use ramflux_desktop_test::fake_tasks::{approval_step, task_step};
+use ramflux_desktop_sdk::surface::author::Author;
+use ramflux_desktop_sdk::surface::surface_ref;
+use ramflux_desktop_test::fake_tasks::{approval_step, choice_step, task_step};
 use ramflux_protocol::TaskStatus;
 use serde_json::json;
 
@@ -126,5 +130,84 @@ fn a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_
     account.until("running", |s, _| {
         s.task(&id).is_some_and(|t| t.state == TaskState::Running && t.answer.is_none())
     });
+    world.fake.shutdown();
+}
+
+/// The assignee posts its surface `s-pick` (the first surface of s11) in
+/// the group; returns the desktop's id of it.
+fn post_pick_surface(world: &World) -> String {
+    let scenario = ramflux_desktop_test::load_fixture("s11_surface_versions").expect("fixture");
+    let create = scenario
+        .timeline
+        .iter()
+        .find_map(|(_, e)| match e {
+            DomainEvent::Surface(event @ SurfaceEvent::Create { .. }) => Some(event.clone()),
+            _ => None,
+        })
+        .expect("a create");
+    let mut author = Author::default();
+    let mut reference = None;
+    author
+        .send(GROUP, &create, |bytes| {
+            reference = world.surfaces.author_event(BOT, bytes).ok();
+            reference.is_some()
+        })
+        .expect("authored");
+    let reference = reference.expect("accepted");
+    world.fake.publish(ACCOUNT, "surface.changed", world.surfaces.meta(&reference));
+    reference
+}
+
+#[test]
+fn a_choice_is_answered_in_the_surface_then_resolved_with_its_verified_receipt() {
+    let (world, path) = World::start("choice");
+    let mut account = open(&path);
+    let reference = post_pick_surface(&world);
+    assert_eq!(Some(reference.clone()), surface_ref(GROUP, BOT, "s-pick"));
+    world.tasks.start_as("principal-me", GROUP, "t-day", BOT, "Pick the release day").unwrap();
+    let steps = vec![choice_step("pick", "Pick the day", "s-pick")];
+    world.tasks.update(GROUP, "t-day", TaskStatus::NeedsMe, steps, None).unwrap();
+    let id = key(GROUP, "t-day");
+    account.until("needs me in the surface", |s, _| {
+        s.task(&id).is_some_and(|t| t.state == TaskState::NeedsMe)
+            && s.surface_moment(&SurfaceId::new(&reference)).is_some()
+    });
+    let place = account.store.task(&id).and_then(|t| t.steps[0].needs_me.clone());
+    assert_eq!(
+        place.as_ref().and_then(|p| p.surface()).map(SurfaceId::as_str),
+        Some(reference.as_str()),
+        "the step names the assignee's surface by its scoped reference"
+    );
+
+    // The user answers in the surface.
+    let (version, hash) = world.surfaces.current(&reference).expect("held");
+    account.source.submit(Effect::Call {
+        method: methods::SURFACE_ACTION.into(),
+        body: json!({ "surface_id": reference, "version": version, "surface_hash": hash,
+                      "action_id": "thu", "values": { "decision": "resume" } }),
+    });
+    account.until("the action", |_, _| world.surfaces.acted().len() == 1);
+    account.settle(300);
+    assert!(world.since(0, "task.resolve").is_empty(), "nothing before the author's receipt");
+
+    // The receipt arrives: the step is resolved with its id, once.
+    world.surfaces.deliver_receipts("principal-me");
+    world.fake.publish(ACCOUNT, "surface.changed", world.surfaces.meta(&reference));
+    let step = StepId::new("pick");
+    let pending = Some(TaskAnswer::DecisionPending { step_id: step });
+    account.until("pending", |s, _| s.task(&id).is_some_and(|t| t.answer == pending));
+    let resolves = world.since(0, "task.resolve");
+    assert_eq!(resolves.len(), 1);
+    let resolve = &resolves[0].body;
+    assert_eq!(resolve["decision_id"], "rcpt-1", "the action receipt id, not the action name");
+    assert_eq!(resolve["decision"], "resume");
+    assert_eq!(resolve["step_id"], "pick");
+    assert_eq!(resolve["target"], json!({ "kind": "choice", "surface_id": "s-pick" }));
+    assert_eq!(resolve["base_revision"], world.tasks.version(GROUP, "t-day"));
+    // Another change of the surface resolves nothing more.
+    world.fake.publish(ACCOUNT, "surface.changed", world.surfaces.meta(&reference));
+    account.settle(300);
+    assert_eq!(world.since(0, "task.resolve").len(), 1);
+    assert!(account.store.failures().is_empty(), "{:?}", account.store.failures());
     world.fake.shutdown();
 }

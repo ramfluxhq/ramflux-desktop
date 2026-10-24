@@ -19,6 +19,14 @@ pub mod action;
 pub mod author;
 pub mod catalog;
 
+/// The daemon's scoped reference (`surface_ref`, the desktop's surface
+/// id) of the author's surface `surface_id` in `conversation`; `None` when
+/// the ids are not canonical JSON strings.
+pub fn surface_ref(conversation: &str, author: &str, surface_id: &str) -> Option<String> {
+    let bytes = ramflux_protocol::canonical_json_bytes(&(conversation, author, surface_id)).ok()?;
+    Some(ramflux_protocol::hash_base64url("ramflux.surface.identity.v1", &bytes))
+}
+
 /// Where a surface lives, as the daemon scopes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceTarget {

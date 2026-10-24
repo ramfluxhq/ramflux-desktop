@@ -178,7 +178,7 @@ fn s10_replays_through_the_daemon_to_the_same_task() {
     let resolve = world.since(0, "task.resolve").pop().expect("the deploy step was resolved");
     assert_eq!(
         (resolve.body["decision_id"].as_str(), resolve.body["base_revision"].as_u64()),
-        (Some(GRANT), Some(5))
+        (Some(decision_id(GRANT).as_str()), Some(5))
     );
     assert!(account.store.rejections().is_empty(), "{:?}", account.store.rejections());
     world.fake.shutdown();

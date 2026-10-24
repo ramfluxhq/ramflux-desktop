@@ -141,7 +141,8 @@ fn an_approval_is_decided_in_its_step_with_the_hold_then_confirmed(cx: &mut Test
     wait(cx, "on its way", |cx| task(cx, &opened, &id).is_some_and(|t| t.answer.is_some()));
     advance(cx, 50);
     assert!(shown(cx, &opened, &id, "task-answer"), "the card says the decision is on its way");
-    assert_eq!(sent(&opened.fake, "task.resolve")[0]["decision_id"], "appr-9");
+    let resolve = &sent(&opened.fake, "task.resolve")[0];
+    assert_eq!(resolve["decision_id"], "mcpd_appr-9", "the decision id the grant flow answered");
     assert_eq!(opened.tasks.confirm_decisions(), 1);
     wait(cx, "running", |cx| {
         task(cx, &opened, &id).is_some_and(|t| t.state == TaskState::Running && t.answer.is_none())

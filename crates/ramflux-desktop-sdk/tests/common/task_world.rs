@@ -14,6 +14,7 @@ use ramflux_desktop_core::{
     AccountId, ContextId, Intent, IntentKind, Store, Task, TaskId, Timestamp, handle_intent,
 };
 use ramflux_desktop_test::fake_bus::Seen;
+use ramflux_desktop_test::fake_surfaces::FakeSurfaces;
 use ramflux_desktop_test::fake_tasks::{FakeTasks, Member};
 use serde_json::{Value, json};
 
@@ -27,10 +28,12 @@ pub fn key(conversation: &str, task: &str) -> TaskId {
     ramflux_desktop_sdk::translate::tasks::task_key(conversation, task)
 }
 
-/// The daemon: the fixture, tasks, and the approvals the test adds.
+/// The daemon: the fixture, tasks, the assignee's surfaces, and the
+/// approvals the test adds.
 pub struct World {
     pub fake: FakeBus,
     pub tasks: FakeTasks,
+    pub surfaces: Arc<FakeSurfaces>,
     pub approvals: Arc<Mutex<Vec<Value>>>,
 }
 
@@ -38,9 +41,16 @@ pub fn approval(id: &str, risk: &str) -> Value {
     json!({
         "approval_id": id, "status": "pending", "server_id": "deploy", "tool_name": "staging",
         "tool_scope": null, "risk_level": risk, "expires_at": 1_990_000_000,
+        "decision_id": decision_id(id),
         "details": { "arguments_hash": "sha256:aa", "single_use": true,
                      "requested_grant_id": format!("grant_{id}") },
     })
+}
+
+/// The original MCP decision id behind the approval `approval_id` (what
+/// `grant.approve` answers and `task.resolve` names).
+pub fn decision_id(approval_id: &str) -> String {
+    format!("mcpd_{approval_id}")
 }
 
 impl World {
@@ -52,9 +62,10 @@ impl World {
         );
         tasks.add_member(Member::human("principal-ana", "device-ana", 11));
         let approvals: Arc<Mutex<Vec<Value>>> = Arc::default();
-        let (t, a) = (tasks.clone(), approvals.clone());
+        let surfaces = Arc::new(FakeSurfaces::default());
+        let (t, a, s) = (tasks.clone(), approvals.clone(), surfaces.clone());
         let fake = FakeBus::start(&path, move |method, _, body| {
-            if let Some(reply) = t.handle(method, body) {
+            if let Some(reply) = t.handle(method, body).or_else(|| s.handle(method, body)) {
                 return reply;
             }
             match method {
@@ -65,9 +76,10 @@ impl World {
                 // The grant flow records the decision the assignee checks.
                 "grant.approve" | "grant.deny" => {
                     let id = body["approval_id"].as_str().unwrap_or_default().to_owned();
-                    t.decide(&id, method == "grant.approve");
+                    t.decide(&id, &decision_id(&id), method == "grant.approve");
                     a.lock().expect("approvals").retain(|r| r["approval_id"] != id.as_str());
-                    Reply::Ok(json!({ "grant_id": format!("grant_{id}"), "approval_id": id }))
+                    Reply::Ok(json!({ "grant_id": format!("grant_{id}"), "approval_id": id,
+                                      "decision_id": decision_id(&id) }))
                 }
                 "message.list" | "group.receive" => {
                     let conversation = body["conversation_id"].as_str().unwrap_or_default();
@@ -84,7 +96,7 @@ impl World {
         });
         fake.enable_stream();
         tasks.announce_to(fake.publisher(), ACCOUNT);
-        (Self { fake, tasks, approvals }, path)
+        (Self { fake, tasks, surfaces, approvals }, path)
     }
 
     pub fn since(&self, mark: usize, method: &str) -> Vec<Seen> {
