@@ -47,12 +47,12 @@ mod live {
     use crate::rehearsal::config::{self, DemoConfig};
     use crate::rehearsal::flow::{self, Demo, Side};
 
-    /// The desktop's options on a daemon at `socket`, polling a little
-    /// faster than the default so the rehearsal does not idle.
+    /// The desktop's options on a daemon at `socket`: the event stream
+    /// only, polling off, so every message the desktop shows came through
+    /// the stream (Diagnostics says "not updated" if the daemon refuses it).
     fn options(socket: &Path) -> ShellOptions {
         let config = SdkConfig {
-            poll_fast: Duration::from_millis(500),
-            poll_slow: Duration::from_secs(2),
+            poll_fallback: false,
             reconnect_backoff: Duration::from_millis(300),
             ..SdkConfig::new(socket)
         };

@@ -22,7 +22,7 @@ pub const SHOTS_ENV: &str = "RAMFLUX_DEMO_SHOTS_DIR";
 pub struct Limits {
     /// For a daemon or node answer the step needs.
     pub answer: Duration,
-    /// For a message to arrive by the desktop's own polling before the
+    /// For a message to arrive through the desktop's event stream before the
     /// reference CLI is asked to receive it.
     pub discover: Duration,
     /// For a delivery receipt.

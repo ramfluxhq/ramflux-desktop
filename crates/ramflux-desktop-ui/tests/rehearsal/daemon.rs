@@ -4,11 +4,12 @@
 //! The daemon behind one desktop, and the reference CLI on the same socket.
 //!
 //! The desktop does everything it can itself, starting conversations and
-//! sending attachments included. The reference CLI is used to cross-check
-//! what the desktop shows and for the one step the daemon cannot take yet
-//! (recorded as a note in the step table): receiving a conversation the
-//! receiving desktop does not know yet. Until the daemon routes a first
-//! message from an unknown conversation itself, `rf dm read` fetches it.
+//! sending attachments included, and follows its daemon's event stream with
+//! polling off. The reference CLI is used to cross-check what the desktop
+//! shows. If a receiving desktop does not see a conversation someone else
+//! started within the discovery limit, `rf dm read` is run as a last resort
+//! and the step table says so: a run that needs it shows the daemon did not
+//! deliver the first message through the stream.
 
 use std::path::PathBuf;
 

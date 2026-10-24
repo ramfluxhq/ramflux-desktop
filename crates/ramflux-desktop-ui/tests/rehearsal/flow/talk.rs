@@ -102,8 +102,9 @@ fn verify<H: Host, D: DemoDaemon>(
 /// dock (a draft, then the first message from the composer), then Bob
 /// replies and Alice writes again from their desktops; both see all three,
 /// and each sent message is delivered. Bob's desktop learns a conversation
-/// it did not start only once his daemon lists it; until the daemon routes
-/// first messages itself, the reference CLI receives it (a note says so).
+/// it did not start from his daemon's event stream (`conversation.changed`);
+/// should it not arrive in time, the reference CLI receives it and a note
+/// says the stream did not deliver it.
 pub fn messages<H: Host, D: DemoDaemon>(
     demo: &mut Demo<'_, H, D>,
     notes: &mut Notes,
@@ -126,15 +127,14 @@ pub fn messages<H: Host, D: DemoDaemon>(
     if found.is_err() {
         demo.sides[1].daemon.dm_read(&bob.account, context.as_str())?;
         notes.add(
-            "Bob received the new conversation with the reference CLI (rf dm read): until the \
-             daemon routes a first message from an unknown conversation itself, his desktop \
-             cannot know it",
+            "Bob's desktop did not get the new conversation from the event stream in time; \
+             the reference CLI received it (rf dm read)",
         );
         demo.wait(1, limits.answer, "the conversation", |desk, host| {
             desk.store(host, |s| s.context(&context).is_some())
         })?;
     } else {
-        notes.add("Bob's desktop listed the new conversation by itself");
+        notes.add("Bob's desktop got the new conversation from the event stream");
     }
     demo.sides[1].desk()?.show_context(demo.host, &context)?;
     see(demo, 1, &opener)?;
