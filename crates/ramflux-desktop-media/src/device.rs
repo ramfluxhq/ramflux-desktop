@@ -228,6 +228,99 @@ fn fill<T: SizedSample + FromSample<f32>>(
     }
 }
 
+/// Ring tone level (of full scale): audible, not startling.
+const RING_LEVEL: f32 = 0.12;
+/// Ring cadence: two seconds of tone, four of silence.
+const RING_ON_MS: u64 = 2_000;
+const RING_PERIOD_MS: u64 = 6_000;
+
+/// The ring tone of an incoming call on the speaker, until dropped: 440 Hz
+/// plus 480 Hz, two seconds on and four off.
+pub struct Ringer {
+    _stream: Stream,
+}
+
+impl std::fmt::Debug for Ringer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Ringer")
+    }
+}
+
+impl Ringer {
+    /// Starts ringing on the chosen speaker (`None`: the default one).
+    ///
+    /// # Errors
+    ///
+    /// No speaker, or it refuses the stream.
+    pub fn start(output: Option<&str>) -> Result<Self, DeviceError> {
+        let host = cpal::default_host();
+        let device = match output {
+            Some(id) => host
+                .output_devices()
+                .into_iter()
+                .flatten()
+                .find(|d| device_id(d).as_deref() == Some(id)),
+            None => host.default_output_device(),
+        }
+        .ok_or(DeviceError::NoOutput)?;
+        let supported =
+            device.default_output_config().map_err(|e| DeviceError::Stream(e.to_string()))?;
+        let config: StreamConfig = supported.config();
+        let channels = usize::from(config.channels).max(1);
+        let mut tone = RingTone::new(config.sample_rate);
+        macro_rules! build {
+            ($t:ty) => {
+                device.build_output_stream(
+                    config,
+                    move |data: &mut [$t], _: &cpal::OutputCallbackInfo| {
+                        for frame in data.chunks_mut(channels) {
+                            frame.fill(<$t>::from_sample(tone.next_sample()));
+                        }
+                    },
+                    |_| {},
+                    None,
+                )
+            };
+        }
+        let stream = match supported.sample_format() {
+            SampleFormat::F32 => build!(f32),
+            SampleFormat::I16 => build!(i16),
+            SampleFormat::I32 => build!(i32),
+            SampleFormat::U16 => build!(u16),
+            other => return Err(DeviceError::Stream(format!("unsupported sample format {other}"))),
+        }
+        .map_err(|e| DeviceError::Stream(e.to_string()))?;
+        stream.play().map_err(|e| DeviceError::Stream(e.to_string()))?;
+        Ok(Self { _stream: stream })
+    }
+}
+
+/// The ring tone's samples at one device rate.
+#[derive(Debug, Clone)]
+pub struct RingTone {
+    rate: u64,
+    position: u64,
+}
+
+impl RingTone {
+    /// The tone at `rate` Hz.
+    pub fn new(rate: u32) -> Self {
+        Self { rate: u64::from(rate.max(1)), position: 0 }
+    }
+
+    /// The next sample.
+    pub fn next_sample(&mut self) -> f32 {
+        let at = self.position;
+        self.position = (self.position + 1) % (self.rate * RING_PERIOD_MS / 1000);
+        if at * 1000 / self.rate >= RING_ON_MS {
+            return 0.0;
+        }
+        let t = at as f32 / self.rate as f32;
+        let tau = 2.0 * std::f32::consts::PI;
+        RING_LEVEL * 0.5 * ((tau * 440.0 * t).sin() + (tau * 480.0 * t).sin())
+    }
+}
+
 /// A streaming linear resampler of a mono signal.
 #[derive(Debug, Clone)]
 pub struct Resampler {
@@ -358,6 +451,19 @@ mod tests {
             assert!(out.len().abs_diff(expected) <= 1, "{from}->{to}: {}", out.len());
             assert!(out.iter().skip(4).all(|s| (*s - 0.5).abs() < 1e-6), "{from}->{to}: settles");
         }
+    }
+
+    #[test]
+    fn the_ring_tone_follows_its_cadence() {
+        let mut tone = RingTone::new(8_000);
+        let samples: Vec<f32> = (0..8_000 * 6).map(|_| tone.next_sample()).collect();
+        let on = &samples[..8_000 * 2];
+        let off = &samples[8_000 * 2..];
+        assert!(on.iter().any(|s| s.abs() > 0.05));
+        assert!(on.iter().all(|s| s.abs() <= RING_LEVEL));
+        assert!(off.iter().all(|s| *s == 0.0));
+        // The cadence repeats.
+        assert_eq!(tone.next_sample(), samples[0]);
     }
 
     #[test]
