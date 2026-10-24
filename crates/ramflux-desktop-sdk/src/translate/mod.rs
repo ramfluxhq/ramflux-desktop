@@ -170,6 +170,9 @@ pub struct Translator {
     focus: Option<ContextId>,
     listed: BTreeSet<Listing>,
     completed: BTreeSet<Paged>,
+    /// Received direct messages listed since the bridge last took them
+    /// (delivery receipts to send, see [`crate::receipts`]).
+    delivered: Vec<crate::receipts::Delivered>,
 }
 
 impl Translator {
@@ -214,6 +217,7 @@ impl Translator {
             focus: None,
             listed: BTreeSet::new(),
             completed: BTreeSet::new(),
+            delivered: Vec::new(),
         }
     }
 

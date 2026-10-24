@@ -33,6 +33,9 @@ fn options(socket: &std::path::Path) -> ShellOptions {
         poll_fast: Duration::from_millis(80),
         poll_slow: Duration::from_millis(300),
         reconnect_backoff: Duration::from_millis(150),
+        // Per desktop, as in a live run: cursors, pins and the delivery
+        // receipts sent survive a reopened account.
+        settings_path: Some(socket.with_extension("settings.json")),
         ..SdkConfig::new(socket)
     };
     ShellOptions { source: SourceChoice::Rfd(config), ..ShellOptions::for_scenario("", true) }
@@ -97,8 +100,15 @@ fn rehearse(
 
 #[gpui_kit::test]
 fn every_step_passes_on_a_node_that_behaves(cx: &mut TestAppContext) {
-    let steps = rehearse(cx, "f9-ok", KEY, |steps, demo, _| {
+    let steps = rehearse(cx, "f9-ok", KEY, |steps, demo, world| {
         assert!(steps.all_passed(), "{}", steps.markdown());
+        // Each received direct message was acknowledged once, by its
+        // recipient's desktop (the daemon sends no receipt by itself), even
+        // across the lock and daemon restart of step 8.
+        let asked = world.lock().expect("world").receipts_asked.clone();
+        let unique: std::collections::BTreeSet<_> = asked.iter().cloned().collect();
+        assert!(asked.len() >= 3, "the three direct messages are acknowledged: {asked:?}");
+        assert_eq!(unique.len(), asked.len(), "no receipt is asked for twice: {asked:?}");
         assert_eq!(demo.node(), Some(&NodeId::new("demo-node")));
         let [alice, bob] = demo.sides();
         let (alice, bob) = (alice.facts.clone().expect("alice"), bob.facts.clone().expect("bob"));

@@ -47,6 +47,7 @@ use crate::config::SdkConfig;
 use crate::cursor::CursorStore;
 use crate::pins::PinStore;
 use crate::plan::fetch::{Fetch, Paged};
+use crate::receipts::Receipts;
 use crate::translate::{Scope, Translator};
 
 /// What the bridge forwards to a scope.
@@ -66,7 +67,17 @@ pub(super) enum Internal {
     Snapshot(Vec<Read>),
     Fetched(Read),
     PollDone,
-    EffectDone { method: String, body: Value, result: Result<Value, BusError>, refresh: Vec<Fetch> },
+    EffectDone {
+        method: String,
+        body: Value,
+        result: Result<Value, BusError>,
+        refresh: Vec<Fetch>,
+    },
+    /// A delivery receipt's answer: its key and whether it was sent.
+    ReceiptDone {
+        key: String,
+        sent: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +115,8 @@ pub(super) struct Task {
     pub(super) listings_sent: Arc<AtomicU64>,
     /// The number of the listing last applied, per list.
     pub(super) listing_applied: BTreeMap<Paged, u64>,
+    /// Delivery receipts of received direct messages (account scope).
+    pub(super) receipts: Option<Receipts>,
 }
 
 /// Sends one read; a listing's first page gets the next listing number
@@ -132,10 +145,13 @@ pub(crate) async fn run(
         BusClient::new(config.socket_path.clone(), config.connect_timeout, config.deadlines);
     let start = Instant::now();
     let pins = PinStore::new(config.settings_path.clone());
-    let mut translator = Translator::new(scope.clone(), socket);
+    let mut translator = Translator::new(scope.clone(), socket.clone());
     if let Some(recorded) = scope.account().and_then(|account| pins.load(account)) {
         translator.set_pins(recorded);
     }
+    let receipts = scope.account().map(|account| {
+        Receipts::new(config.settings_path.clone(), socket.clone(), account.clone())
+    });
     let mut task = Task {
         interval: config.poll_fast,
         translator,
@@ -160,6 +176,7 @@ pub(crate) async fn run(
         alive: true,
         listings_sent: Arc::new(AtomicU64::new(0)),
         listing_applied: BTreeMap::new(),
+        receipts,
     };
     task.emit(vec![DomainEvent::CapabilitiesUpdated(capabilities::capabilities())]);
     task.show_sync(true);
@@ -227,6 +244,9 @@ impl Task {
                 if let Some(open_at) = self.sync.open_at {
                     wake = wake.min(open_at);
                 }
+                if let Some(due) = self.receipts.as_ref().and_then(Receipts::next_due) {
+                    wake = wake.min(due);
+                }
                 wake
             }
             Link::Attaching | Link::Locked => far,
@@ -252,6 +272,7 @@ impl Task {
                 if polls && self.polls_in_flight == 0 && now >= self.next_poll {
                     self.poll();
                 }
+                self.send_receipts();
             }
             _ => {}
         }
@@ -429,6 +450,37 @@ impl Task {
             Internal::EffectDone { method, body, result, refresh } => {
                 self.on_effect_done(&method, &body, result, refresh);
             }
+            Internal::ReceiptDone { key, sent } => {
+                if let Some(receipts) = &mut self.receipts {
+                    receipts.answered(&key, sent, Instant::now());
+                }
+            }
+        }
+        self.send_receipts();
+    }
+
+    /// Queues the received direct messages listed since the last call and
+    /// sends the delivery receipts that are due, each on its own: nothing
+    /// waits for them, and a failed one is retried later (see
+    /// [`crate::receipts`]).
+    fn send_receipts(&mut self) {
+        let listed = self.translator.take_delivered();
+        let (Some(receipts), Some(account)) = (&mut self.receipts, self.scope.account()) else {
+            return;
+        };
+        let now = Instant::now();
+        receipts.observe(listed, now);
+        if self.link != Link::Live {
+            return;
+        }
+        for delivered in receipts.due(now) {
+            let request = delivered.request(account.as_str());
+            let (client, internal, key) =
+                (self.client.clone(), self.internal.clone(), delivered.key());
+            tokio::spawn(async move {
+                let sent = client.call(&request).await.is_ok();
+                let _ = internal.send(Internal::ReceiptDone { key, sent });
+            });
         }
     }
 

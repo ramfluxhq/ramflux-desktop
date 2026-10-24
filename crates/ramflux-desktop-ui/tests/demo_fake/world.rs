@@ -119,6 +119,8 @@ pub struct World {
     held: Vec<Held>,
     groups: BTreeMap<String, Group>,
     clock: u64,
+    /// Every delivery receipt asked for: conversation and message.
+    pub receipts_asked: Vec<(String, String)>,
 }
 
 /// The contact card of `account` (the fake's own format).
@@ -148,6 +150,7 @@ impl World {
             held: Vec::new(),
             groups: BTreeMap::new(),
             clock: 1_790_000_100,
+            receipts_asked: Vec::new(),
         }
     }
 
@@ -445,6 +448,7 @@ impl World {
             }
             "message.submit" => return self.submit(side, id, body),
             "message.receive" => self.receive(side, id, &text(body, "conversation_id")),
+            "message.receipt.delivered" => return self.receipt_delivered(body),
             "message.list" => {
                 let messages = me
                     .conversations
@@ -527,27 +531,41 @@ impl World {
                 })
                 .messages
                 .push(rows::message(&held.envelope, &held.from.device, &held.text, held.at, false));
+            // Like the daemon, receiving sends no delivery receipt: the
+            // recipient's client asks for one (`message.receipt.delivered`).
             decrypted.push(json!({ "message_id": held.envelope, "body_utf8": held.text }));
-            self.mark_delivered(&held);
         }
         json!({ "entries": [], "decrypted_messages": decrypted })
     }
 
-    fn mark_delivered(&mut self, held: &Held) {
+    /// `message.receipt.delivered` from the recipient: the receipt goes to
+    /// the sender's device (`recipient_device_id` at `target_delivery_id`),
+    /// whose copy of the message (named by its envelope id) becomes
+    /// delivered. Every receipt asked for is counted.
+    pub fn receipt_delivered(&mut self, body: &Value) -> Reply {
+        let (conversation, message) = (text(body, "conversation_id"), text(body, "message_id"));
+        let (device, target) =
+            (text(body, "recipient_device_id"), text(body, "target_delivery_id"));
+        if conversation.is_empty()
+            || message.is_empty()
+            || text(body, "receiver_device_id").is_empty()
+        {
+            return Reply::Error("ValidationFailed", "missing field".to_owned());
+        }
+        self.receipts_asked.push((conversation.clone(), message.clone()));
         let sender = self
             .daemons
             .iter_mut()
             .flat_map(|d| d.accounts.iter_mut())
-            .find(|a| a.principal == held.from.principal);
-        let Some(conversation) = sender.and_then(|a| a.conversations.get_mut(&held.conversation))
-        else {
-            return;
+            .find(|a| a.device == device && a.target == target);
+        let Some(copy) = sender.and_then(|a| a.conversations.get_mut(&conversation)) else {
+            return Reply::Error("ValidationFailed", "unknown receipt recipient".to_owned());
         };
-        for message in &mut conversation.messages {
-            // The receipt names the envelope id it acknowledges.
-            if message["message_id"] == held.envelope.as_str() {
-                message["receipts"] = json!([{ "state": "delivered" }]);
+        for stored in &mut copy.messages {
+            if stored["message_id"] == message.as_str() {
+                stored["receipts"] = json!([{ "state": "delivered" }]);
             }
         }
+        Reply::Ok(json!({ "conversation_id": conversation, "scope": "local_projection" }))
     }
 }

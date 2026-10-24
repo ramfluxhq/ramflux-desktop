@@ -3,7 +3,8 @@
 
 //! The desktop settings file: a small versioned JSON file holding desktop
 //! preferences and local bookkeeping only (pinned contexts, launch choices,
-//! event-stream cursors), never content, keys or secrets.
+//! event-stream cursors, ids of delivery receipts sent), never content,
+//! keys or secrets.
 //!
 //! Every writer reads, changes its own part and replaces the file
 //! atomically (write a sibling, then rename), so one writer never drops
@@ -44,6 +45,10 @@ pub struct DesktopSettings {
     /// (a sequence number, not content).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub stream_cursors: BTreeMap<String, BTreeMap<AccountId, u64>>,
+    /// Delivery receipts sent, per daemon socket and account: conversation
+    /// and message ids only (see [`crate::receipts`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub delivery_receipts: BTreeMap<String, BTreeMap<AccountId, Vec<String>>>,
 }
 
 /// Why the settings file was not written.

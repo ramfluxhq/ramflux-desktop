@@ -59,11 +59,46 @@ impl Translator {
                 surface_rows.push(record);
                 continue;
             }
+            if kind == ContextKind::Direct {
+                self.note_received(context, record);
+            }
             let moment = self.message_moment(context, kind, record, now);
             events.extend(self.report_moment(moment));
         }
         let follow = self.surface_rows(context, &surface_rows);
         Translated { events, follow }
+    }
+
+    /// Notes a listed direct message from a peer's device, for its delivery
+    /// receipt: never this device's own, nor another device of this account,
+    /// nor a deleted one; skipped while the sender's target is not listed.
+    fn note_received(&mut self, context: &ContextId, record: &Value) {
+        let (message, sender) = (text(record, "message_id"), text(record, "sender_id"));
+        let Some(me) = self.self_device.clone() else { return };
+        if message.is_empty() || sender == me || record["deleted"].as_bool().unwrap_or(false) {
+            return;
+        }
+        let principal = self.directory.principal_of_device(sender);
+        if principal.is_none() || principal == self.directory.self_principal.as_deref() {
+            return;
+        }
+        let target = principal
+            .and_then(|p| self.directory.identities.get(p))
+            .and_then(|i| i.devices.iter().find(|d| d.device_id == sender))
+            .and_then(|d| d.target.clone());
+        let Some(sender_target) = target else { return };
+        self.delivered.push(crate::receipts::Delivered {
+            conversation_id: context.to_string(),
+            message_id: message.to_owned(),
+            receiver_device_id: me,
+            sender_device_id: sender.to_owned(),
+            sender_target,
+        });
+    }
+
+    /// The received direct messages listed since the last call.
+    pub fn take_delivered(&mut self) -> Vec<crate::receipts::Delivered> {
+        std::mem::take(&mut self.delivered)
     }
 
     /// The participant a sending device stands for.
