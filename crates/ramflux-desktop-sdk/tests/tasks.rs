@@ -145,7 +145,7 @@ fn a_task_started_from_the_composer_runs_and_is_cancelled_by_its_requester() {
     act(&mut account, human(IntentKind::CancelTask { task_id: id.clone() }));
     account.until("cancelled", |s, _| s.task(&id).is_some_and(|t| t.state == TaskState::Cancelled));
     let cancel = world.since(0, "task.cancel").pop().expect("task.cancel");
-    assert_eq!(cancel.body["base_revision"], 2, "the revision the user saw");
+    assert_eq!(cancel.body["version"], 2, "the version the user saw");
     assert_eq!(cancel.body["conversation_id"], GROUP);
     let cancelled = account.store.task(&id).cloned().expect("task");
     assert_eq!(cancelled.steps[0].state, StepState::Skipped);

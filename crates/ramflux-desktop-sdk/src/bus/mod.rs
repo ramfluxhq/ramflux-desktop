@@ -227,11 +227,36 @@ const DAEMON_CODES: [&str; 6] = [
     "RemoteAppApprovalRequired",
 ];
 
+/// The typed task refusal codes (`docs/conversation_tasks.md` of the
+/// product) and the over-cap task delivery code.
+const TASK_CODES: [&str; 18] = [
+    "invalid_request",
+    "invalid_event",
+    "not_requester",
+    "not_assignee",
+    "not_member",
+    "not_eligible_acceptor",
+    "human_required",
+    "stale_revision",
+    "terminal",
+    "task_stalled",
+    "not_found",
+    "already_exists",
+    "no_local_role",
+    "quota_exhausted",
+    "rate_limited",
+    "decision_consumed",
+    "decision_mismatch",
+    "TaskDeliveryTooLarge",
+];
+
 /// Whether `code` is a code the daemon puts on error frames: one of
-/// [`DAEMON_CODES`] or a typed surface refusal (`not_out_of_sync`,
-/// `too_large`, …, as the SDK defines them).
+/// [`DAEMON_CODES`], a typed task refusal ([`TASK_CODES`]) or a typed
+/// surface refusal (`not_out_of_sync`, `too_large`, …, as the SDK defines
+/// them).
 fn daemon_code(code: &str) -> bool {
     DAEMON_CODES.contains(&code)
+        || TASK_CODES.contains(&code)
         || serde_json::from_value::<ramflux_sdk::SurfaceRefusalCode>(serde_json::Value::from(code))
             .is_ok()
 }
@@ -304,6 +329,39 @@ mod tests {
         let unavailable =
             BusError::from(SdkError::LocalBus("Unavailable: contact lookup unavailable".into()));
         assert!(matches!(&unavailable, BusError::Daemon { code, .. } if code == "Unavailable"));
+        // So is a typed task refusal, and an over-cap task delivery.
+        for code in ["stale_revision", "quota_exhausted", "TaskDeliveryTooLarge"] {
+            let refused = BusError::from(SdkError::LocalBus(format!("{code}: no")));
+            assert_eq!(refused, BusError::daemon(code, "no"));
+        }
+    }
+
+    #[test]
+    fn every_sdk_task_refusal_code_is_a_daemon_code() {
+        use ramflux_sdk::TaskRefusalCode as C;
+        let all = [
+            C::RateLimited,
+            C::InvalidRequest,
+            C::InvalidEvent,
+            C::NotRequester,
+            C::NotAssignee,
+            C::NotMember,
+            C::NotEligibleAcceptor,
+            C::HumanRequired,
+            C::StaleRevision,
+            C::Terminal,
+            C::TaskStalled,
+            C::NotFound,
+            C::AlreadyExists,
+            C::NoLocalRole,
+            C::SignerQuotaExhausted,
+            C::TaskQuotaExhausted,
+            C::DecisionConsumed,
+            C::DecisionMismatch,
+        ];
+        for code in all {
+            assert!(daemon_code(code.as_str()), "{}", code.as_str());
+        }
     }
 
     #[test]

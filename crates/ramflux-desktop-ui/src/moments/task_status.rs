@@ -98,6 +98,10 @@ pub fn answer(answer: &TaskAnswer, assignee: &SharedString, cx: &App) -> AnyElem
         TaskRefusal::TooLarge => {
             (tr("moment.task.refused.title"), tr("moment.task.refused.too_large"))
         }
+        TaskRefusal::Stalled => {
+            (tr("moment.task.refused.title"), tr("moment.task.refused.stalled"))
+        }
+        TaskRefusal::Busy => (tr("moment.task.refused.title"), tr("moment.task.refused.busy")),
         TaskRefusal::DecisionRejected => (
             tr_args("moment.task.refused.rejected.title", &[("name", assignee)]),
             tr("moment.task.refused.rejected.text"),
