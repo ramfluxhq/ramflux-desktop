@@ -272,8 +272,17 @@ fn open_diagnostics(
         if visible(cx, handle, "launch-daemon-status") {
             return;
         }
+        // The wheel lands on the anchor's center. An anchor scrolled mostly
+        // under the page header still counts as visible while its center is
+        // outside the list, so the lowest anchor shown is the one scrolled at.
         let anchors = ["diagnostics-preview", "renderer-profile", "launch-socket", "launch-save"];
-        let Some(anchor) = anchors.into_iter().find(|id| visible(cx, handle, id)) else { return };
+        let anchor = in_window(cx, handle, |window, _| {
+            let bottom = window.viewport_size().height;
+            anchors.into_iter().rev().find(|id| {
+                window.try_find(*id).is_some_and(|e| e.visible() && e.bounds().center().y < bottom)
+            })
+        });
+        let Some(anchor) = anchor else { return };
         in_window(cx, handle, |window, cx| {
             let delta = ScrollDelta::Pixels(point(px(0.), px(-300.)));
             window.scroll(anchor, delta, cx);
