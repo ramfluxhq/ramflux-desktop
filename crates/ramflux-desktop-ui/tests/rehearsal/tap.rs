@@ -158,6 +158,7 @@ fn summary(n: usize, dir: &str, body: &[u8]) -> Value {
         );
         // Ids only (no text): which id each stored row carries.
         line["message_ids"] = rows.iter().map(|r| r["message_id"].clone()).collect();
+        line["sender_ids"] = rows.iter().map(|r| r["sender_id"].clone()).collect();
     }
     if method == "message.submit" {
         // Ids only: the ids the desktop chose and the ones the daemon answers.
