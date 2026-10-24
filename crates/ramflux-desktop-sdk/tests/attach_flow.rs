@@ -109,12 +109,15 @@ fn an_attachment_shows_its_transfer_then_its_message() {
     assert_eq!(object.name.as_deref(), Some("report.txt"));
     assert_eq!(object.size, Some(8192), "the size of the file sent");
     assert_eq!(object.transfer, TransferState::Transferring { transferred: 0 }, "no bytes claimed");
-    let submitted = fake
-        .seen()
-        .into_iter()
-        .find(|s| s.method == "message.submit")
-        .map(|s| s.body)
-        .expect("submitted");
+    // "Sending" shows before the request reaches the fake; wait for it to arrive.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let submitted = loop {
+        if let Some(seen) = fake.seen().into_iter().find(|s| s.method == "message.submit") {
+            break seen.body;
+        }
+        assert!(std::time::Instant::now() < deadline, "submitted");
+        std::thread::sleep(Duration::from_millis(10));
+    };
     let message = submitted["message_id"].as_str().expect("message id").to_owned();
     assert_eq!(moment.id, MomentId::new(format!("msg:dm-ana:{message}")), "the message's own id");
     assert_eq!(
