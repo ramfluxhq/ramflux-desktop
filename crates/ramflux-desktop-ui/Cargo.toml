@@ -33,6 +33,12 @@ path = "tests/screenshots.rs"
 test = false
 harness = false
 
+# Has its own main: the test binary is also the stand-in daemon it starts.
+[[test]]
+name = "first_run"
+path = "tests/first_run.rs"
+harness = false
+
 # Offscreen screenshot of the window on a live daemon; run explicitly with
 # RAMFLUX_SHOTS_SOCKET set, not part of `cargo test`.
 [[test]]

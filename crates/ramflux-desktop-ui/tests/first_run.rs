@@ -9,12 +9,14 @@
 //! Diagnostics persist; a daemon left behind by a crashed session is offered
 //! for a graceful stop, and a daemon the user started is not.
 //!
-//! A shell script stands in for `rf` (it records its arguments and waits),
-//! so no real daemon runs here.
-
-#![cfg(unix)]
+//! This test binary stands in for `rf` (it records its arguments, then
+//! waits or exits as the test set up, see `stand_in`), so no real daemon
+//! runs here and no newly written program is started. It has its own
+//! `main` for that, and runs its tests through `harness`.
 
 mod common;
+mod harness;
+mod stand_in;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -31,6 +33,7 @@ use ramflux_desktop_ui::launch::{DaemonLauncher, LaunchFailure, LaunchOptions, L
 use ramflux_desktop_ui::route::{EntryStep, Page};
 use ramflux_desktop_ui::settings::SettingsSection;
 use ramflux_desktop_ui::shell::{ShellOptions, SourceChoice};
+use stand_in::Behavior;
 
 struct Fixture {
     dir: PathBuf,
@@ -44,19 +47,11 @@ impl Fixture {
         Self { dir }
     }
 
-    /// A stand-in `rf`: records its arguments, then runs `then`. The
-    /// arguments are renamed into place once written, so `args` exists
-    /// only when complete.
-    fn program(&self, then: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt as _;
-        let path = self.dir.join("rf");
-        let (partial, args) = (self.dir.join("args.partial"), self.dir.join("args"));
-        let (partial, args) = (partial.display(), args.display());
-        let script =
-            format!("#!/bin/sh\necho \"$@\" > '{partial}'\nmv '{partial}' '{args}'\n{then}\n");
-        std::fs::write(&path, script).expect("script");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("mode");
-        path
+    /// The stand-in `rf` for this fixture's socket: records its
+    /// arguments, then behaves as `behavior`. The arguments are renamed
+    /// into place once written, so `args` exists only when complete.
+    fn program(&self, behavior: Behavior<'_>) -> PathBuf {
+        stand_in::program(&self.dir, behavior)
     }
 
     fn socket(&self) -> PathBuf {
@@ -115,10 +110,9 @@ fn wait(cx: &mut TestAppContext, what: &str, mut done: impl FnMut(&mut TestAppCo
     }
 }
 
-#[gpui_kit::test]
 fn no_daemon_offers_a_start_and_starts_nothing_by_itself(cx: &mut TestAppContext) {
     let fx = Fixture::new("offer");
-    let program = fx.program("exec sleep 30");
+    let program = fx.program(Behavior::Wait);
     let (handle, shell) =
         open_with(cx, fx.options(Some(program.clone()), LaunchStore::in_memory()));
     let launcher = launcher(cx, &shell);
@@ -160,7 +154,6 @@ fn no_daemon_offers_a_start_and_starts_nothing_by_itself(cx: &mut TestAppContext
     assert!(exists(cx, handle, "entry-daemon-start"), "the offer comes back");
 }
 
-#[gpui_kit::test]
 fn a_missing_program_disables_the_start_and_points_to_settings(cx: &mut TestAppContext) {
     let fx = Fixture::new("missing");
     let (handle, shell) = open_with(cx, fx.options(None, LaunchStore::in_memory()));
@@ -183,10 +176,9 @@ fn a_missing_program_disables_the_start_and_points_to_settings(cx: &mut TestAppC
     );
 }
 
-#[gpui_kit::test]
 fn a_daemon_that_exits_at_once_is_reported_and_can_be_retried(cx: &mut TestAppContext) {
     let fx = Fixture::new("exit");
-    let program = fx.program("exit 3");
+    let program = fx.program(Behavior::Exit { code: 3, message: "" });
     let (handle, shell) = open_with(cx, fx.options(Some(program), LaunchStore::in_memory()));
     let launcher = launcher(cx, &shell);
     advance(cx, 500);
@@ -197,7 +189,6 @@ fn a_daemon_that_exits_at_once_is_reported_and_can_be_retried(cx: &mut TestAppCo
     assert!(exists(cx, handle, "entry-daemon-start"), "and can be retried");
 }
 
-#[gpui_kit::test]
 fn a_configured_program_that_is_gone_is_named(cx: &mut TestAppContext) {
     let fx = Fixture::new("gone");
     let gone = fx.dir.join("no-such-rf");
@@ -212,7 +203,6 @@ fn a_configured_program_that_is_gone_is_named(cx: &mut TestAppContext) {
     assert!(exists(cx, handle, "entry-daemon-failed"));
 }
 
-#[gpui_kit::test]
 fn launch_settings_typed_in_diagnostics_persist(cx: &mut TestAppContext) {
     let fx = Fixture::new("save");
     let file = fx.dir.join("desktop-settings.json");
@@ -236,7 +226,6 @@ fn launch_settings_typed_in_diagnostics_persist(cx: &mut TestAppContext) {
     assert_eq!(binary.path(), Some(Path::new("/opt/ramflux/bin/rf")), "used by the next start");
 }
 
-#[gpui_kit::test]
 fn scenarios_show_the_wait_without_an_offer(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s01_first_launch");
     advance(cx, 1);
@@ -299,7 +288,6 @@ fn answering_daemon(socket: &Path) -> FakeBus {
     })
 }
 
-#[gpui_kit::test]
 fn a_daemon_left_behind_by_a_crash_is_offered_and_stopped_gracefully(cx: &mut TestAppContext) {
     let fx = Fixture::new("left");
     fx.owned().record(&OwnedDaemon { pid: 4242, socket: fx.socket() });
@@ -326,7 +314,6 @@ fn a_daemon_left_behind_by_a_crash_is_offered_and_stopped_gracefully(cx: &mut Te
     assert!(!cx.update(|cx| launcher.read(cx).can_stop(cx)));
 }
 
-#[gpui_kit::test]
 fn a_daemon_the_user_started_is_never_offered_for_stopping(cx: &mut TestAppContext) {
     let fx = Fixture::new("theirs");
     let fake = answering_daemon(&fx.socket());
@@ -344,4 +331,39 @@ fn a_daemon_the_user_started_is_never_offered_for_stopping(cx: &mut TestAppConte
     advance(cx, 500);
     assert!(fake.seen().iter().all(|s| s.method != "daemon.stop"), "never asked");
     fake.shutdown();
+}
+
+const TESTS: &[harness::Test] = &[
+    (
+        "no_daemon_offers_a_start_and_starts_nothing_by_itself",
+        no_daemon_offers_a_start_and_starts_nothing_by_itself,
+    ),
+    (
+        "a_missing_program_disables_the_start_and_points_to_settings",
+        a_missing_program_disables_the_start_and_points_to_settings,
+    ),
+    (
+        "a_daemon_that_exits_at_once_is_reported_and_can_be_retried",
+        a_daemon_that_exits_at_once_is_reported_and_can_be_retried,
+    ),
+    ("a_configured_program_that_is_gone_is_named", a_configured_program_that_is_gone_is_named),
+    ("launch_settings_typed_in_diagnostics_persist", launch_settings_typed_in_diagnostics_persist),
+    ("scenarios_show_the_wait_without_an_offer", scenarios_show_the_wait_without_an_offer),
+    (
+        "a_daemon_left_behind_by_a_crash_is_offered_and_stopped_gracefully",
+        a_daemon_left_behind_by_a_crash_is_offered_and_stopped_gracefully,
+    ),
+    (
+        "a_daemon_the_user_started_is_never_offered_for_stopping",
+        a_daemon_the_user_started_is_never_offered_for_stopping,
+    ),
+];
+
+fn main() {
+    stand_in::run_if_started();
+    // The stand-in is stopped with a terminate signal.
+    if cfg!(unix) {
+        harness::main(TESTS);
+    }
+    println!("first run: skipped; the stand-in daemon needs unix signals");
 }

@@ -15,8 +15,14 @@
 //! progress, a daemon that exited at once, and (with `RAMFLUX_RF_BIN`) a real
 //! daemon started from the app's own button and attached, with Settings ›
 //! Diagnostics showing it. Every daemon and directory made here is removed.
+//!
+//! This binary stands in for the waiting and the exiting daemon (see
+//! `stand_in`), so no newly written program is started.
+
+mod stand_in;
 
 fn main() {
+    stand_in::run_if_started();
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     shots::run();
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -25,7 +31,7 @@ fn main() {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod shots {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -44,6 +50,8 @@ mod shots {
     use ramflux_desktop_ui::launch::{LaunchOptions, LaunchState};
     use ramflux_desktop_ui::settings::SettingsSection;
     use ramflux_desktop_ui::shell::{ShellOptions, SourceChoice};
+
+    use crate::stand_in::Behavior;
 
     struct Shots {
         cx: HeadlessAppContext,
@@ -161,14 +169,6 @@ mod shots {
         }
     }
 
-    fn program(dir: &Path, name: &str, body: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt as _;
-        let path = dir.join(name);
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("script");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("mode");
-        path
-    }
-
     pub fn run() {
         let out = std::env::var_os("RAMFLUX_SHOTS_DIR").map_or_else(
             || PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("shots"),
@@ -189,11 +189,18 @@ mod shots {
             ramflux_desktop_ui::init(cx);
         });
         let mut s = Shots { cx, out, dir: dir.clone() };
-        let waiting = program(&dir, "rf-wait", "exec sleep 60");
-        let exiting = program(&dir, "rf-exit", "echo 'cannot bind socket' >&2\nexit 3");
+        // The stand-in behaves as written next to the socket of each window.
+        let stand_in = |tag: &str, behavior: Behavior<'_>| {
+            let socket_dir = dir.join(tag);
+            std::fs::create_dir_all(&socket_dir).expect("dir");
+            crate::stand_in::program(&socket_dir, behavior)
+        };
+        let waiting = stand_in("offer", Behavior::Wait);
+        let starting = stand_in("starting", Behavior::Wait);
+        let exiting = stand_in("exit", Behavior::Exit { code: 3, message: "cannot bind socket" });
 
         // 18. No daemon: where the app looks, and the start offer.
-        let w = s.window("offer", Some(waiting.clone()));
+        let w = s.window("offer", Some(waiting));
         s.both(&w, "18_first_run_no_daemon_offer");
 
         // 19. No daemon program set: the offer is disabled, settings are named.
@@ -201,7 +208,7 @@ mod shots {
         s.both(&w, "19_first_run_no_program");
 
         // 20. A start in progress.
-        let w = s.window("starting", Some(waiting));
+        let w = s.window("starting", Some(starting));
         s.in_window(&w, |window, cx| window.click("entry-daemon-start", cx));
         s.tick(2);
         s.both(&w, "20_first_run_starting");
