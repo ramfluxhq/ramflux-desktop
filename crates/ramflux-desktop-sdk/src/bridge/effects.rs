@@ -130,13 +130,13 @@ async fn in_order(client: &BusClient, requests: Vec<BusRequest>) -> Result<Value
         wipe(request.body);
         match result {
             Ok(answer) => last = answer,
-            Err(BusError::Daemon { code, message }) if done > 0 => {
+            Err(BusError::Daemon { code, message, reason_code, details }) if done > 0 => {
                 let (done, total) = (done.to_string(), total.to_string());
                 let message = keyed(
                     key::PARTIAL,
                     &[("done", &done), ("total", &total), ("reason", &message)],
                 );
-                return Err(BusError::Daemon { code, message });
+                return Err(BusError::Daemon { code, message, reason_code, details });
             }
             Err(error) => return Err(error),
         }
@@ -172,14 +172,13 @@ async fn open(
 }
 
 fn file_error(reason: &str) -> BusError {
-    BusError::Daemon { code: "io".to_owned(), message: keyed(key::FILE, &[("reason", reason)]) }
+    BusError::daemon("io", keyed(key::FILE, &[("reason", reason)]))
 }
 
 async fn write_diagnostics(client: &BusClient, path: &str) -> Result<Value, BusError> {
     let status = client.call(&Fetch::DaemonStatus.request(None)).await?;
     let nodes = client.call(&Fetch::NodeList.request(None)).await?;
     let text = crate::diagnostics::bundle(&status, &nodes);
-    std::fs::write(path, text)
-        .map_err(|error| BusError::Daemon { code: "io".to_owned(), message: error.to_string() })?;
+    std::fs::write(path, text).map_err(|error| BusError::daemon("io", error.to_string()))?;
     Ok(json!({ "path": path }))
 }

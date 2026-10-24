@@ -138,6 +138,12 @@ pub enum BusError {
         code: String,
         /// Daemon message.
         message: String,
+        /// The typed reason of the refusal (`reason_code` on the error
+        /// frame), when the daemon gave one.
+        reason_code: Option<String>,
+        /// Structured details of the refusal (`details` on the error
+        /// frame), e.g. both roots of a root replacement to confirm.
+        details: Option<Box<Value>>,
     },
     /// No connection, or it broke.
     Transport(String),
@@ -146,6 +152,41 @@ pub enum BusError {
 }
 
 impl BusError {
+    /// A daemon refusal without a typed reason.
+    pub fn daemon(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Daemon {
+            code: code.into(),
+            message: message.into(),
+            reason_code: None,
+            details: None,
+        }
+    }
+
+    /// A daemon error frame's body as the refusal it is. A missed deadline
+    /// is a timeout, whichever side noticed it.
+    pub fn from_error_body(error: Option<ramflux_sdk::LocalBusErrorBody>) -> Self {
+        let Some(error) = error else {
+            return Self::daemon("ValidationFailed", "unknown local bus error");
+        };
+        if error.message.contains(DEADLINE_EXCEEDED) {
+            return Self::Timeout;
+        }
+        Self::Daemon {
+            code: error.code,
+            message: error.message,
+            reason_code: error.reason_code,
+            details: error.details,
+        }
+    }
+
+    /// The typed reason of a daemon refusal.
+    pub fn reason_code(&self) -> Option<&str> {
+        match self {
+            Self::Daemon { reason_code, .. } => reason_code.as_deref(),
+            _ => None,
+        }
+    }
+
     /// Whether the connection to the daemon is gone (not a per-request refusal).
     pub fn is_connection_lost(&self) -> bool {
         matches!(self, Self::Transport(_))
@@ -177,8 +218,9 @@ const DEADLINE_EXCEEDED: &str = "request deadline exceeded";
 
 /// Error codes the daemon puts on error frames (besides the typed surface
 /// refusal codes, [`daemon_code`]).
-const DAEMON_CODES: [&str; 5] = [
+const DAEMON_CODES: [&str; 6] = [
     "ValidationFailed",
+    "Unavailable",
     "CapabilityDenied",
     "GrantInvalidated",
     "SignatureVerificationFailed",
@@ -202,9 +244,7 @@ impl From<SdkError> for BusError {
             SdkError::LocalBus(text) if text.contains(DEADLINE_EXCEEDED) => Self::Timeout,
             // An error frame reaches the client as `LocalBus("<code>: <message>")`.
             SdkError::LocalBus(text) => match text.split_once(": ") {
-                Some((code, message)) if daemon_code(code) => {
-                    Self::Daemon { code: code.to_owned(), message: message.to_owned() }
-                }
+                Some((code, message)) if daemon_code(code) => Self::daemon(code, message),
                 _ => Self::Transport(text),
             },
             other => Self::Transport(other.to_string()),
@@ -225,10 +265,7 @@ mod tests {
         ));
         assert_eq!(
             daemon,
-            BusError::Daemon {
-                code: "ValidationFailed".to_owned(),
-                message: "local bus error: account not open: a".to_owned(),
-            }
+            BusError::daemon("ValidationFailed", "local bus error: account not open: a")
         );
         assert!(!daemon.is_connection_lost());
         let broken = BusError::from(SdkError::Io(std::io::Error::other("broken pipe")));
@@ -241,14 +278,32 @@ mod tests {
         let refused = BusError::from(SdkError::LocalBus(
             "not_out_of_sync: surface is not out of sync".to_owned(),
         ));
-        assert_eq!(
-            refused,
-            BusError::Daemon {
-                code: "not_out_of_sync".to_owned(),
-                message: "surface is not out of sync".to_owned(),
-            }
+        assert_eq!(refused, BusError::daemon("not_out_of_sync", "surface is not out of sync"));
+        assert!(!refused.is_connection_lost());
+    }
+
+    #[test]
+    fn error_frames_keep_their_typed_reason_and_details() {
+        let body = |message: &str| ramflux_sdk::LocalBusErrorBody {
+            details: Some(Box::new(json!({ "principal_id": "ana" }))),
+            reason_code: Some("root_replacement_confirmation_required".to_owned()),
+            code: "ValidationFailed".to_owned(),
+            message: message.to_owned(),
+            retry_after_ms: None,
+            cause: None,
+        };
+        let refused = BusError::from_error_body(Some(body("contact root replacement")));
+        assert_eq!(refused.reason_code(), Some("root_replacement_confirmation_required"));
+        assert!(
+            matches!(&refused, BusError::Daemon { details: Some(d), .. } if d["principal_id"] == "ana")
         );
         assert!(!refused.is_connection_lost());
+        let late = BusError::from_error_body(Some(body("request deadline exceeded")));
+        assert_eq!(late, BusError::Timeout);
+        // A retryable lookup failure is the daemon's answer, not a lost link.
+        let unavailable =
+            BusError::from(SdkError::LocalBus("Unavailable: contact lookup unavailable".into()));
+        assert!(matches!(&unavailable, BusError::Daemon { code, .. } if code == "Unavailable"));
     }
 
     #[test]
