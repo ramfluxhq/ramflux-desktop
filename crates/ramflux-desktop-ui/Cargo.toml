@@ -90,3 +90,11 @@ name = "polish_shots"
 path = "tests/polish_shots.rs"
 test = false
 harness = false
+
+# Offscreen screenshots of tasks on the SDK source (a fake daemon); run
+# explicitly, not part of `cargo test`.
+[[test]]
+name = "task_shots"
+path = "tests/task_shots.rs"
+test = false
+harness = false

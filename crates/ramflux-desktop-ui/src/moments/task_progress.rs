@@ -15,6 +15,14 @@
 //! Deny scoped to that step (`Block(step-N)`), through the same grant flow
 //! and hold-to-confirm strip as any approval. A choice or an input lives in
 //! the agent's surface; the step only points there and brings it into view.
+//! Only the requester decides a step; on someone else's task the step says
+//! who decides.
+//!
+//! Trust is stated, not implied: until participants carry a signed kind,
+//! that the assignee is an AI participant is only its own claim, and the
+//! card says so. A stalled assignee, a compacted history and the source's
+//! answer to the user's last request are shown in the card
+//! (`task_status`).
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -63,6 +71,7 @@ pub fn render(refs: &RowRefs, sink: &EventSink, state: &RowState, cx: &App) -> i
     #[allow(clippy::cast_precision_loss)]
     let percent = if total == 0 { 0.0 } else { done as f32 / total as f32 * 100.0 };
     let attention = matches!(task.state, TaskState::NeedsMe | TaskState::Proposed);
+    let stalled = task.flags.stalled && !task.state.is_terminal();
     v_flex()
         .id("task-progress")
         .gap_2()
@@ -80,13 +89,19 @@ pub fn render(refs: &RowRefs, sink: &EventSink, state: &RowState, cx: &App) -> i
                     .child(tr_args("moment.task.proposal_hint", &[("name", &assignee)])),
             )
         })
-        .when(!proposal, |col| {
+        // A cancelled task did not get through its skipped steps: no bar.
+        .when(!proposal && task.state != TaskState::Cancelled, |col| {
             col.child(
                 Progress::new("task-bar").value(percent).accessibility_label(task.title.clone()),
             )
         })
+        .when(stalled, |col| col.child(super::task_status::stalled(&assignee, mine, cx)))
         .children(steps)
-        .child(footer(&task, mine, state.expanded, sink, cx))
+        .when_some(task.answer.as_ref(), |col, answer| {
+            col.child(super::task_status::answer(answer, &assignee, cx))
+        })
+        .when(task.flags.compacted, |col| col.child(super::task_status::compacted(cx)))
+        .child(footer(&task, mine, &requester(&task, refs), state.expanded, sink, cx))
         .when_some(result(&task, refs.result_surface.clone(), sink, cx), |col, result| {
             col.child(result)
         })
@@ -110,6 +125,16 @@ fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
                         .child(
                             div().text_color(cx.theme().muted_foreground).child(assignee.clone()),
                         )
+                        .when(!task.flags.kind_verified, |row| {
+                            row.child(div().text_color(cx.theme().muted_foreground).child("·"))
+                                .child(
+                                    div()
+                                        .id("task-kind")
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(tr("moment.task.kind_unverified"))
+                                        .test_support(),
+                                )
+                        })
                         .child(div().text_color(cx.theme().muted_foreground).child("·"))
                         .child(
                             div()
@@ -119,7 +144,7 @@ fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
                         .test_support(),
                 ),
         )
-        .when(task.state != TaskState::Proposed, |row| {
+        .when(!matches!(task.state, TaskState::Proposed | TaskState::Cancelled), |row| {
             row.child(div().text_xs().text_color(cx.theme().muted_foreground).child(tr_args(
                 "moment.task.count",
                 &[
@@ -147,7 +172,14 @@ pub(super) fn state_color(state: TaskState, cx: &App) -> Hsla {
 
 /// Start / Decline for a proposal, Cancel for a running task (both only
 /// for the requester), and the steps disclosure.
-fn footer(task: &Task, mine: bool, expanded: bool, sink: &EventSink, cx: &App) -> AnyElement {
+fn footer(
+    task: &Task,
+    mine: bool,
+    requester: &SharedString,
+    expanded: bool,
+    sink: &EventSink,
+    cx: &App,
+) -> AnyElement {
     let proposal = task.state == TaskState::Proposed;
     let disclosure = sink.scoped(Scope::Block(BlockId::new("steps")));
     let cancel = sink.scoped(Scope::Block(BlockId::new("cancel")));
@@ -202,7 +234,25 @@ fn footer(task: &Task, mine: bool, expanded: bool, sink: &EventSink, cx: &App) -
                     .child(tr("moment.task.not_yours")),
             )
         })
+        .when(!mine && !proposal && !task.state.is_terminal(), |row| {
+            row.child(
+                div()
+                    .id("task-asked-by")
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(tr_args("moment.task.asked_by", &[("name", requester)]))
+                    .test_support(),
+            )
+        })
         .into_any_element()
+}
+
+/// Who asked for the task, by name (empty for this account).
+fn requester(task: &Task, refs: &RowRefs) -> SharedString {
+    match &task.requester {
+        Actor::Agent(id) | Actor::Member(id) => refs.name(id),
+        Actor::Human => SharedString::default(),
+    }
 }
 
 fn result(
@@ -260,7 +310,12 @@ fn step_row(
         StepState::Pending | StepState::Skipped => (IconName::Dash, cx.theme().muted_foreground),
     };
     let asking = (step.state == StepState::NeedsMe).then_some(step.needs_me.as_ref()).flatten();
+    let mine = refs.task.as_ref().is_some_and(|t| t.requester == Actor::Human);
     let place = asking.map(|needs_me| match needs_me {
+        NeedsMe::Approval { .. } if !mine => {
+            let name = refs.task.as_ref().map(|t| requester(t, refs)).unwrap_or_default();
+            not_mine(&name, cx)
+        }
         NeedsMe::Approval { grant_id } => match refs.grants.get(grant_id) {
             Some(grant) => decision(ix, grant, sink, cx),
             None => missing_place(cx),
@@ -286,6 +341,18 @@ fn step_row(
                 ),
         )
         .children(place)
+        .test_support()
+        .into_any_element()
+}
+
+/// A step of someone else's task: its requester decides.
+fn not_mine(requester: &SharedString, cx: &App) -> AnyElement {
+    div()
+        .id("step-not-mine")
+        .ml_5()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(tr_args("moment.task.decided_by", &[("name", requester)]))
         .test_support()
         .into_any_element()
 }

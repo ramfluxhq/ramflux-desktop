@@ -248,6 +248,65 @@ moment:
     missing:
       en: "Task details are not available yet"
       zh-CN: "任务详情暂不可用"
+    kind_unverified:
+      en: "AI participant (not verified)"
+      zh-CN: "AI 参与者（未验证）"
+    asked_by:
+      en: "Asked by %{name}, who decides and can cancel it"
+      zh-CN: "由 %{name} 发起，由其决定或取消"
+    decided_by:
+      en: "Waiting for %{name} to decide"
+      zh-CN: "等待 %{name} 决定"
+    compacted:
+      en: "Older history was compacted; the outcome is kept"
+      zh-CN: "较早的记录已压缩，结果仍保留"
+    stalled:
+      title:
+        en: "Stalled by %{name}"
+        zh-CN: "%{name} 已停滞"
+      text:
+        en: "%{name} can't send more updates to this task for now."
+        zh-CN: "%{name} 暂时无法再更新此任务。"
+      text_mine:
+        en: "%{name} can't send more updates to this task for now. You can still cancel it."
+        zh-CN: "%{name} 暂时无法再更新此任务。你仍可以取消它。"
+    answer:
+      pending:
+        en: "Decision sent. Waiting for %{name} to confirm it."
+        zh-CN: "决定已发送，正在等待 %{name} 确认。"
+    refused:
+      title:
+        en: "Nothing was done"
+        zh-CN: "未执行任何操作"
+      changed:
+        title:
+          en: "Changed since you looked"
+          zh-CN: "你查看后任务已变更"
+        text:
+          en: "Nothing was done. Review the task again, then decide."
+          zh-CN: "未执行任何操作。请重新查看任务后再决定。"
+      finished:
+        en: "This task has already finished."
+        zh-CN: "此任务已经结束。"
+      not_allowed:
+        en: "Only the person who asked for this task can do that."
+        zh-CN: "只有发起此任务的人可以这样做。"
+      already_decided:
+        en: "That decision was already used."
+        zh-CN: "该决定已被使用过。"
+      too_large:
+        en: "The request is too large to send as a task message."
+        zh-CN: "请求过大，无法作为任务消息发送。"
+      rejected:
+        title:
+          en: "%{name} couldn't confirm your decision"
+          zh-CN: "%{name} 无法确认你的决定"
+        text:
+          en: "The step still needs you."
+          zh-CN: "此步骤仍需要你处理。"
+      other:
+        en: "The daemon refused it: %{reason}"
+        zh-CN: "守护进程拒绝了该请求：%{reason}"
   conflict:
     title:
       en: "%{name} changed in two places"
