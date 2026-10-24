@@ -65,6 +65,7 @@ impl Task {
                 let events = self.translator.effect_done(method, body, &answer, now());
                 self.emit(events);
                 self.spawn_fetches(refresh);
+                self.resolve_task_step(method, body);
                 self.interval = self.config.poll_fast;
                 if method == ramflux_desktop_core::methods::ACCOUNT_LOCK
                     && self.scope.account().is_some()
@@ -81,13 +82,18 @@ impl Task {
                 let message = self.translator.failure_message(method, &error);
                 let closed = self.translator.effect_failed(method, body, &code, &message, now());
                 // A refused update request is answered in its surface, next
-                // to the button; it is not a status-strip error as well.
+                // to the button, and a refused task request on its task, next
+                // to the controls that sent it; neither is a status-strip
+                // error as well.
+                let on_task = self.translator.task_refused(method, body, &code, &message);
                 let mut events = if method == ramflux_desktop_core::methods::SURFACE_REQUEST_RESYNC
                 {
                     Vec::new()
-                } else {
+                } else if on_task.is_empty() {
                     let failure = EffectFailure { method: method.to_owned(), code, message };
                     vec![DomainEvent::EffectFailed(failure)]
+                } else {
+                    on_task
                 };
                 events.extend(closed);
                 self.emit(events);
@@ -97,6 +103,26 @@ impl Task {
                     self.lost();
                 }
             }
+        }
+    }
+}
+
+impl Task {
+    /// After the grant flow decided an approval a task step waits on, sends
+    /// the requester's resolution of that step (the task records the
+    /// decision; the grant alone authorizes the tool).
+    fn resolve_task_step(&mut self, method: &str, body: &Value) {
+        let approved = match method {
+            ramflux_desktop_core::methods::GRANT_APPROVE => true,
+            ramflux_desktop_core::methods::GRANT_DENY => false,
+            _ => return,
+        };
+        let grant = ramflux_desktop_core::GrantId::new(crate::plan::text(body, "grant_id"));
+        if let Some(resolution) = self.translator.task_resolution(&grant, approved) {
+            self.effect(Effect::Call {
+                method: ramflux_desktop_core::methods::TASK_RESOLVE.to_owned(),
+                body: resolution,
+            });
         }
     }
 }

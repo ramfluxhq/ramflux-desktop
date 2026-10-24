@@ -22,7 +22,7 @@ use super::{Translator, seconds, text};
 use crate::plan::fetch::{Fetch, Paged};
 
 /// Topics whose events call for reads.
-pub const READ_TOPICS: [&str; 15] = [
+pub const READ_TOPICS: [&str; 16] = [
     "conversation.changed",
     "message.received",
     "message.updated",
@@ -38,6 +38,7 @@ pub const READ_TOPICS: [&str; 15] = [
     "message.unrouted",
     "surface.changed",
     "surface.rejected",
+    "task.changed",
 ];
 
 /// The daemon's state topics, read directly.
@@ -101,6 +102,14 @@ pub fn conversation_of(topic: &str, body: &Value) -> Option<ContextId> {
 }
 
 impl Translator {
+    /// What a stream event shows by itself (a task decision the assignee
+    /// could not confirm), and the reads it calls for.
+    pub fn streamed(&mut self, topic: &str, body: &Value) -> super::Translated {
+        let events =
+            if topic == "task.changed" { self.task_decision_rejected(body) } else { Vec::new() };
+        super::Translated { events, follow: self.stream_reads(topic, body) }
+    }
+
     /// The reads a stream event calls for (none for other topics).
     pub fn stream_reads(&self, topic: &str, body: &Value) -> Vec<Fetch> {
         let conversations = Fetch::first(Paged::Conversations);
@@ -140,6 +149,17 @@ impl Translator {
                     _ if topic == "surface.changed" && !self.surface_stale(body) => Vec::new(),
                     reference => vec![Fetch::Surface(reference.to_owned())],
                 };
+                if context.is_some() && kind.is_none() {
+                    reads.push(conversations);
+                }
+                reads
+            }
+            // Metadata only: read the task when it names a state not shown.
+            "task.changed" => {
+                let mut reads: Vec<Fetch> = Vec::new();
+                if self.task_stale(body) {
+                    reads.extend(Self::task_read(body));
+                }
                 if context.is_some() && kind.is_none() {
                     reads.push(conversations);
                 }

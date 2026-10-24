@@ -80,6 +80,10 @@ pub enum Fetch {
     Surfaces(ContextId, Option<String>),
     /// `surface.get` of one surface, by the daemon's scoped `surface_ref`.
     Surface(String),
+    /// `task.list` of one conversation; `None` asks for the first page.
+    Tasks(ContextId, Option<String>),
+    /// `task.get` of one task: its conversation and the daemon's task id.
+    Task(ContextId, String),
     /// `group.receive` for one group conversation (pull from the node);
     /// answers with the conversation's stored messages.
     GroupReceive {
@@ -163,6 +167,18 @@ impl Fetch {
                 "surface",
                 "surface.get",
                 json!({ "surface_ref": reference }),
+            ),
+            Self::Tasks(context, cursor) => BusRequest::new(
+                account,
+                "task",
+                "task.list",
+                json!({ "conversation_id": context, "limit": PAGE_LIMIT, "cursor": cursor }),
+            ),
+            Self::Task(context, task) => BusRequest::new(
+                account,
+                "task",
+                "task.get",
+                json!({ "conversation_id": context, "task_id": task }),
             ),
             Self::GroupReceive { context, group } => BusRequest::new(
                 account,

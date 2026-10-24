@@ -50,7 +50,8 @@ impl Translator {
         let mut events = Vec::new();
         let mut surface_rows = Vec::new();
         for record in list(value, "messages") {
-            if text(record, "sender_id").is_empty() {
+            // A task message is the task's record; its task card shows it.
+            if text(record, "sender_id").is_empty() || text(record, "content_type") == "task" {
                 continue;
             }
             // A surface message is shown as its surface (one moment per

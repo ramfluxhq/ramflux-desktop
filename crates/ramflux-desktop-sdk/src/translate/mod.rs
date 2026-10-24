@@ -28,6 +28,8 @@
 //! - `stream`: the reads a pushed list-changing event calls for.
 //! - `surfaces`: agent surfaces the daemon holds, as surface moments.
 //! - `surface_answers`: the daemon's answers to surface effects.
+//! - `tasks`: conversation tasks the daemon holds, as task moments.
+//! - `task_answers`: the daemon's answers to task effects, on their task.
 //! - `effects`: answers to effects, and the audit record of confirmed ones.
 //! - `reason`: locale keys with arguments.
 
@@ -50,6 +52,8 @@ mod send_failures;
 pub mod stream;
 mod surface_answers;
 mod surfaces;
+pub mod task_answers;
+pub mod tasks;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -157,6 +161,13 @@ pub struct Translator {
     /// When each surface was posted (conversation, surface id, author), from
     /// its first message.
     surface_times: BTreeMap<(ContextId, String, String), Timestamp>,
+    /// Tasks reported, by desktop task id.
+    tasks: BTreeMap<ramflux_desktop_core::TaskId, tasks::KnownTask>,
+    /// The approval (desktop grant) that requested each daemon grant id.
+    requested_grants: BTreeMap<String, String>,
+    /// Tasks whose request was refused as changed: said again on the newer
+    /// task read back.
+    review_again: BTreeSet<ramflux_desktop_core::TaskId>,
     mcp_tools: Option<BTreeMap<String, Vec<String>>>,
     mcp_servers: Option<Vec<Value>>,
     integrations: Option<ramflux_desktop_core::Integrations>,
@@ -199,6 +210,9 @@ impl Translator {
             message_objects: BTreeMap::new(),
             surfaces: BTreeMap::new(),
             surface_times: BTreeMap::new(),
+            tasks: BTreeMap::new(),
+            requested_grants: BTreeMap::new(),
+            review_again: BTreeSet::new(),
             mcp_tools: None,
             mcp_servers: None,
             integrations: None,
@@ -257,6 +271,8 @@ impl Translator {
         if !reads.is_empty() {
             // The conversation's surfaces come with its messages.
             reads.push(Self::surfaces_read(context));
+            // The conversation's tasks come with its messages.
+            reads.push(Fetch::Tasks(context.clone(), None));
         }
         reads
     }
@@ -348,6 +364,8 @@ impl Translator {
                 Translated { events: Vec::new(), follow: self.surface_list(context, value) }
             }
             Fetch::Surface(reference) => Translated::events(self.surface_view(reference, value)),
+            Fetch::Tasks(context, _) => self.task_list(context, value),
+            Fetch::Task(..) => Translated::events(self.task_view(value)),
             Fetch::Receive(_) => {
                 self.remember_plaintext(value);
                 Translated::default()
@@ -447,6 +465,10 @@ impl Known for Translator {
 
     fn surface(&self, surface_ref: &str) -> Option<&crate::surface::SurfaceTarget> {
         self.surface_target(surface_ref)
+    }
+
+    fn task(&self, task_id: &str) -> Option<&crate::plan::task::TaskTarget> {
+        self.task_target(task_id)
     }
 }
 

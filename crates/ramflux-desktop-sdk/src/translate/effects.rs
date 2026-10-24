@@ -115,6 +115,9 @@ impl Translator {
             methods::GRANT_DENY => {
                 self.resolve(&GrantId::new(text(body, "grant_id")), GrantState::Denied)
             }
+            methods::TASK_START | methods::TASK_CANCEL | methods::TASK_RESOLVE => {
+                self.task_answer(method, body, answer)
+            }
             methods::GRANT_REVOKE => self.revoked(&GrantId::new(text(body, "grant_id"))),
             methods::CONTEXT_MUTE => {
                 self.context_setting(&context(), body["muted"].as_bool(), None)

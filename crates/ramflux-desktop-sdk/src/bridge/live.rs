@@ -230,8 +230,9 @@ impl Task {
                 }
             }
             _ => {
-                let reads = self.translator.stream_reads(topic, body);
-                self.request_reads(reads);
+                let streamed = self.translator.streamed(topic, body);
+                self.emit(streamed.events);
+                self.request_reads(streamed.follow);
             }
         }
         self.save_cursor(false);

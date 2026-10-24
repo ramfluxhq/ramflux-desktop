@@ -38,7 +38,8 @@ fn an_empty_daemon_reaches_the_node_step_with_its_real_status() {
         "an answered empty node list is empty, not loading"
     );
     assert_eq!(daemon.store.accounts().count(), 0);
-    assert!(daemon.store.unsupported_reason(methods::TASK_START).is_some());
+    assert!(daemon.store.unsupported_reason(methods::PRIVACY_REVEAL).is_some());
+    assert!(daemon.store.unsupported_reason(methods::TASK_START).is_none());
     assert!(daemon.store.unsupported_reason(methods::NODE_ADD).is_none());
     assert_eq!(daemon.names()[0], "CapabilitiesUpdated", "capabilities come first");
     let seqs: Vec<u64> = daemon.envelopes.iter().map(|e| e.seq).collect();

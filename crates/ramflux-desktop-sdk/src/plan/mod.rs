@@ -19,6 +19,8 @@
 //! - [`object`]: opening, saving and resuming objects.
 //! - [`group`]: membership, roles and invitations.
 //! - [`surface`]: surface actions and update requests.
+//! - [`task`]: starting, accepting, declining, cancelling and resolving
+//!   conversation tasks.
 
 pub mod contact;
 pub mod conversation;
@@ -28,6 +30,7 @@ pub mod identity;
 pub mod message;
 pub mod object;
 pub mod surface;
+pub mod task;
 
 use ramflux_desktop_core::{
     AccountId, AccountKind, ContextId, ContextKind, Effect, FailureCode, NodeId, PinSource,
@@ -65,6 +68,11 @@ pub trait Known {
     /// Where a reported surface lives, by its desktop id (`surface_ref`).
     fn surface(&self, surface_ref: &str) -> Option<&crate::surface::SurfaceTarget> {
         let _ = surface_ref;
+        None
+    }
+    /// Where a reported task lives, by its desktop id.
+    fn task(&self, task_id: &str) -> Option<&task::TaskTarget> {
+        let _ = task_id;
         None
     }
 }
@@ -359,6 +367,9 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         methods::SAFETY_VERIFY => contact::verify(acct, body, known),
         methods::SURFACE_ACTION => surface::action(acct, body, known),
         methods::SURFACE_REQUEST_RESYNC => surface::request_resync(acct, body, known),
+        methods::TASK_START | methods::TASK_CANCEL | methods::TASK_RESOLVE => {
+            task::task_call(acct, method, body, known)
+        }
         methods::CONTACT_ADD
         | methods::CONTACT_ACCEPT
         | methods::CONTACT_REJECT

@@ -7,7 +7,9 @@
 //! pending grant, and the daemon's grant record that an approval produces is
 //! the same desktop grant, approved (its daemon grant id is kept for
 //! revocation). An approval that names the conversation it came from is
-//! also shown there (see `interventions`).
+//! also shown there (see `interventions`). A task step that waits on the
+//! grant an approval requests (`details.requested_grant_id`) is decided
+//! through that approval (see `tasks`).
 
 use ramflux_desktop_core::{
     DomainEvent, Grant, GrantId, GrantState, Risk, StandingApproval, StandingApprovalId, Timestamp,
@@ -60,6 +62,11 @@ impl Translator {
         };
         let mut events = vec![DomainEvent::GrantRequested(grant.clone())];
         events.extend(self.intervene(&grant, record, now));
+        // A task step waiting on the grant this approval requests decides it.
+        if let Some(requested) = record["details"]["requested_grant_id"].as_str() {
+            self.requested_grants.insert(requested.to_owned(), id.to_string());
+            events.extend(self.tasks_naming(requested));
+        }
         events
     }
 
