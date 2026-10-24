@@ -156,6 +156,14 @@ fn summary(n: usize, dir: &str, body: &[u8]) -> Value {
         line["with_text"] = json!(
             rows.iter().filter(|r| r["body_utf8"].is_string() || r["text"].is_string()).count()
         );
+        // Ids only (no text): which id each stored row carries.
+        line["message_ids"] = rows.iter().map(|r| r["message_id"].clone()).collect();
+    }
+    if method == "message.submit" {
+        // Ids only: the ids the desktop chose and the ones the daemon answers.
+        let body = &frame["body"];
+        line["message_id"] = body["message_id"].clone();
+        line["envelope_id"] = body["envelope_id"].clone();
     }
     line
 }
