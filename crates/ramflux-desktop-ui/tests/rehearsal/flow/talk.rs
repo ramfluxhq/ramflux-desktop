@@ -125,8 +125,9 @@ fn shown_card<H: Host, D: DemoDaemon>(
     Ok(card)
 }
 
-/// Presses Verify on the contact row when the daemon offers it and notes
-/// the safety state either way.
+/// Presses Verify on the contact row when the daemon offers it, then "The
+/// numbers match" in the comparison it opens, and notes the safety state
+/// either way.
 fn verify<H: Host, D: DemoDaemon>(
     demo: &mut Demo<'_, H, D>,
     me: usize,
@@ -142,7 +143,10 @@ fn verify<H: Host, D: DemoDaemon>(
     // limit passes.
     while start.elapsed() < limit {
         let desk = demo.sides[me].desk()?;
+        // Verify opens the comparison; the numbers match is the confirmation.
         let _ = desk.click(demo.host, Some(row), "verify");
+        demo.host.tick();
+        let _ = desk.click(demo.host, Some(row), "verify-confirm");
         let pressed = std::time::Instant::now();
         while pressed.elapsed() < std::time::Duration::from_secs(1) {
             demo.host.tick();

@@ -11,6 +11,8 @@
 //! so; a refusal is shown with the daemon's reason. Hide folds it away. The
 //! card names this account's identity and home node only; it holds no key
 //! that grants access, so showing it is not a confirmation-worthy action.
+//! A card names the account's home node: without one the section says so
+//! instead of offering a card.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -33,6 +35,9 @@ pub enum Copied {
 /// What the section shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardView {
+    /// The account names no home node, which a card needs: no card can be
+    /// shown until it joins one.
+    NoHomeNode,
     /// Folded: only Show my card.
     Hidden,
     /// Asked; the daemon has not answered.
@@ -74,6 +79,9 @@ impl MyCard {
     /// What the section shows now. A card exported before this request is
     /// still this account's card, so it is shown while a fresh one comes.
     pub fn view(&self, store: &Store) -> CardView {
+        if super::without_home_node(store) {
+            return CardView::NoHomeNode;
+        }
         if !self.shown {
             return CardView::Hidden;
         }
@@ -144,6 +152,11 @@ pub fn render(state: &MyCard, store: &Store, handlers: Handlers, cx: &App) -> An
                     .on_click(show),
             )
             .into_any_element(),
+        CardView::NoHomeNode => status(
+            "contact-card-status",
+            tr("backend.contact.no_home_node"),
+            crate::tone::text(cx.theme().warning, cx),
+        ),
         CardView::Preparing => {
             status("contact-card-status", tr("dock.contacts.card.preparing"), muted)
         }

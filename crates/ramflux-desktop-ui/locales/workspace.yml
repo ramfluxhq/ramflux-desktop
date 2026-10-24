@@ -245,8 +245,8 @@ dock:
         en: "Contact card: the daemon checks its signature and pins the identity it names."
         zh-CN: "联系人名片：守护进程会校验签名，并固定名片所指的身份。"
       kind_id:
-        en: "Principal id: looked up on their node and trusted on first use. Unverified until you compare safety numbers."
-        zh-CN: "主体 ID：在对方节点上查询，首次使用即信任。比对安全码之前均为未验证。"
+        en: "Principal id: looked up on your home node and trusted on first use. Provisional until their card pins it or you compare safety numbers."
+        zh-CN: "主体 ID：在你的主节点上查询，首次使用即信任。在对方名片固定其身份或你比对安全码之前均为临时身份。"
       adding:
         en: "Adding %{id}…"
         zh-CN: "正在添加 %{id}…"
@@ -256,6 +256,12 @@ dock:
       failed:
         en: "Not added: %{reason}"
         zh-CN: "未添加：%{reason}"
+      root_replace:
+        en: "Use the card's identity"
+        zh-CN: "使用名片中的身份"
+      root_keep:
+        en: "Keep the current one"
+        zh-CN: "保留当前身份"
       import:
         en: "Import card file…"
         zh-CN: "导入名片文件…"
@@ -327,6 +333,32 @@ dock:
     unverified:
       en: "Unverified — compare safety numbers"
       zh-CN: "未验证——请比对安全码"
+    root:
+      lookup:
+        en: "Identity looked up by id — provisional until their card or a safety number check confirms it"
+        zh-CN: "按 ID 查询到的身份——在对方名片或安全码核对确认之前均为临时"
+      card:
+        en: "Identity pinned by their contact card"
+        zh-CN: "身份已由对方的联系人名片固定"
+      verified:
+        en: "Identity confirmed by comparing safety numbers"
+        zh-CN: "身份已通过比对安全码确认"
+    verify_for:
+      en: "Compare safety numbers with %{name}"
+      zh-CN: "与 %{name} 比对安全码"
+    verify:
+      compare:
+        en: "Compare this number with %{name} in person or on a call you trust. Mark it verified only if every digit matches."
+        zh-CN: "请当面或通过你信任的通话与 %{name} 比对此号码。仅在每一位都一致时才标记为已验证。"
+      no_number:
+        en: "No safety number for %{name} yet. It appears once their devices are listed."
+        zh-CN: "%{name} 暂无安全码。列出对方设备后才会显示。"
+      confirm:
+        en: "The numbers match"
+        zh-CN: "号码一致"
+      cancel:
+        en: "Cancel"
+        zh-CN: "取消"
     reachable:
       en: "Reachable"
       zh-CN: "可联系"

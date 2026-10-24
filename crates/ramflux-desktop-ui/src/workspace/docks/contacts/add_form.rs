@@ -20,6 +20,13 @@
 //! daemon's reason. Editing the field forgets a pending submission. A card
 //! file is read here (at most [`MAX_CONTACT_CARD_LEN`] bytes of text) and
 //! submitted as it is.
+//!
+//! A card naming another identity than an earlier lookup by id found is not
+//! applied by the daemon until the user confirms: the line under the field
+//! then shows both roots with Replace and Keep. Replace sends the same card
+//! again naming the looked-up root it replaces; Keep drops the card. Cards
+//! need the account's home node: without one, the form says so and sends
+//! nothing.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -47,6 +54,24 @@ pub enum FormNote {
     AddingCard,
     /// The id or card was refused before or by the daemon.
     Error(SharedString),
+    /// The card names another identity than the provisional (looked-up)
+    /// one: the translated explanation with both roots, waiting for
+    /// Replace or Keep.
+    ConfirmRoot(SharedString),
+}
+
+/// The daemon's key for a root replacement to confirm (written by the SDK
+/// translator with `name`, `previous` and `proposed`).
+const ROOT_REPLACEMENT: &str = "backend.contact.root_replacement";
+
+/// The looked-up root a root replacement message names, if it is one.
+fn replaced_root(message: &str) -> Option<String> {
+    let (key, args) = message.split_once(' ')?;
+    if key != ROOT_REPLACEMENT {
+        return None;
+    }
+    let args: serde_json::Value = serde_json::from_str(args).ok()?;
+    args["previous"].as_str().filter(|r| !r.is_empty()).map(str::to_owned)
 }
 
 /// What the form emits.
@@ -56,6 +81,14 @@ pub enum Submission {
     Id(ParticipantId),
     /// Add from a contact card.
     Card(String),
+    /// Add from a contact card that replaces the provisional root the user
+    /// compared and confirmed.
+    CardReplacing {
+        /// The card.
+        card: String,
+        /// The looked-up root it replaces.
+        previous_root: String,
+    },
 }
 
 /// A submission waiting for its outcome.
@@ -65,7 +98,7 @@ enum Pending {
     Id(ParticipantId, u64),
     /// By card (typed, or from a file); done when the answer names a
     /// contact.
-    Card(u64, bool),
+    Card { since: u64, from_file: bool, card: String },
 }
 
 /// View-local state of the form.
@@ -75,6 +108,9 @@ pub struct AddForm {
     pending: Option<Pending>,
     /// The field value the note belongs to; editing it clears the note.
     noted_value: String,
+    /// A card waiting for the user to confirm it replaces a looked-up root:
+    /// the card and that root.
+    confirming: Option<(String, String, bool)>,
 }
 
 /// Whether `id` names an established or requested contact in `store`.
@@ -89,7 +125,7 @@ impl AddForm {
     pub fn new(window: &mut Window, cx: &mut App) -> Self {
         let input =
             i18n::localized_input("dock.contacts.add.placeholder", window, cx, |input| input);
-        Self { input, note: None, pending: None, noted_value: String::new() }
+        Self { input, note: None, pending: None, noted_value: String::new(), confirming: None }
     }
 
     /// The field.
@@ -122,9 +158,18 @@ impl AddForm {
             return None;
         }
         self.noted_value = self.input.read(cx).value().trim().to_owned();
+        self.confirming = None;
+        if super::without_home_node(store) {
+            self.note = Some(FormNote::Error(tr("backend.contact.no_home_node")));
+            return None;
+        }
         match check_add_contact_card(text) {
             Ok(card) => {
-                self.pending = Some(Pending::Card(store.failures_total(), true));
+                self.pending = Some(Pending::Card {
+                    since: store.failures_total(),
+                    from_file: true,
+                    card: card.to_owned(),
+                });
                 self.note = Some(FormNote::AddingCard);
                 Some(Submission::Card(card.to_owned()))
             }
@@ -144,9 +189,21 @@ impl AddForm {
         if self.pending.is_some() {
             return None;
         }
+        self.confirming = None;
+        if matches!(classify_contact_input(value), ContactInput::Card(_))
+            && super::without_home_node(store)
+        {
+            self.note = Some(FormNote::Error(tr("backend.contact.no_home_node")));
+            return None;
+        }
         let checked = match classify_contact_input(value) {
             ContactInput::Card(card) => check_add_contact_card(card).map(|card| {
-                (Pending::Card(store.failures_total(), false), Submission::Card(card.into()))
+                let pending = Pending::Card {
+                    since: store.failures_total(),
+                    from_file: false,
+                    card: card.to_owned(),
+                };
+                (pending, Submission::Card(card.into()))
             }),
             ContactInput::PrincipalId(id) => check_add_contact(store, id)
                 .map(|id| (Pending::Id(id.clone(), store.failures_total()), Submission::Id(id))),
@@ -155,7 +212,7 @@ impl AddForm {
             Ok((pending, submission)) => {
                 self.note = Some(match &submission {
                     Submission::Id(id) => FormNote::Adding(id.clone()),
-                    Submission::Card(_) => FormNote::AddingCard,
+                    Submission::Card(_) | Submission::CardReplacing { .. } => FormNote::AddingCard,
                 });
                 self.pending = Some(pending);
                 Some(submission)
@@ -167,6 +224,28 @@ impl AddForm {
         }
     }
 
+    /// Replace pressed on a root to confirm: the same card again, naming
+    /// the looked-up root it replaces.
+    pub fn confirm_root(&mut self, store: &Store) -> Option<Submission> {
+        let (card, previous_root, from_file) = self.confirming.take()?;
+        self.pending =
+            Some(Pending::Card { since: store.failures_total(), from_file, card: card.clone() });
+        self.note = Some(FormNote::AddingCard);
+        Some(Submission::CardReplacing { card, previous_root })
+    }
+
+    /// Keep pressed on a root to confirm: the card is dropped and the
+    /// contact keeps the identity it has.
+    pub fn keep_root(&mut self) {
+        self.confirming = None;
+        self.note = None;
+    }
+
+    /// Whether a root replacement waits for the user.
+    pub fn is_confirming(&self) -> bool {
+        self.confirming.is_some()
+    }
+
     /// Follows the store after a submission: the contact appeared (clear the
     /// field) or the add failed (show why). Returns whether the field must
     /// be cleared.
@@ -176,6 +255,7 @@ impl AddForm {
             // The user edited the field: what was said no longer applies.
             self.note = None;
             self.pending = None;
+            self.confirming = None;
             self.noted_value = value;
             return false;
         }
@@ -184,7 +264,7 @@ impl AddForm {
             Some(Pending::Id(id, since)) => {
                 (is_contact(store, &id), since, methods::CONTACT_ADD, true)
             }
-            Some(Pending::Card(since, from_file)) => {
+            Some(Pending::Card { since, from_file, .. }) => {
                 let named = changes
                     .is_some_and(|changes| changes.participants().any(|id| is_contact(store, id)));
                 (named, since, methods::CONTACT_CARD_IMPORT, !from_file)
@@ -200,7 +280,15 @@ impl AddForm {
         }
         if let Some(failure) = store.failures_since(since).iter().rev().find(|f| f.method == method)
         {
-            self.pending = None;
+            let pending = self.pending.take();
+            if let (Some(previous), Some(Pending::Card { card, from_file, .. })) =
+                (replaced_root(&failure.message), pending)
+            {
+                // Nothing was replaced: both roots are shown to compare.
+                self.confirming = Some((card, previous, from_file));
+                self.note = Some(FormNote::ConfirmRoot(i18n::backend_text(&failure.message)));
+                return false;
+            }
             self.note = Some(FormNote::Error(tr_args(
                 "dock.contacts.add.failed",
                 &[("reason", &i18n::backend_text(&failure.message))],
@@ -283,10 +371,22 @@ fn refusal(error: &IntentError) -> SharedString {
 pub struct Controls<A, I> {
     /// Why adding is unavailable, if it is.
     pub disabled: Option<SharedString>,
+    /// Why adding a card is unavailable (no home node), if it is.
+    pub card_disabled: Option<SharedString>,
     /// Add pressed.
     pub on_add: A,
     /// Import card file… pressed.
     pub on_import: I,
+    /// Replace and Keep pressed on a root to confirm.
+    pub on_root: RootHandlers,
+}
+
+/// Handlers of a root replacement's Replace and Keep.
+pub struct RootHandlers {
+    /// Replace pressed.
+    pub replace: super::rows::Click,
+    /// Keep pressed.
+    pub keep: super::rows::Click,
 }
 
 /// The form: field and Add button, the trust line, the note line, and the
@@ -296,7 +396,7 @@ where
     A: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
     I: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
 {
-    let Controls { disabled, on_add, on_import } = controls;
+    let Controls { disabled, card_disabled, on_add, on_import, on_root } = controls;
     let button = Button::new("contact-add")
         .small()
         .outline()
@@ -321,6 +421,7 @@ where
                 (tr("dock.contacts.add.adding_card"), cx.theme().muted_foreground)
             }
             FormNote::Error(text) => (text.clone(), cx.theme().danger),
+            FormNote::ConfirmRoot(text) => (text.clone(), cx.theme().warning),
         };
         div()
             .id("contact-add-note")
@@ -330,6 +431,26 @@ where
             .text_xs()
             .text_color(color)
             .child(text)
+    });
+    let confirm = form.is_confirming().then(|| {
+        let RootHandlers { replace, keep } = on_root;
+        h_flex()
+            .id("contact-root-confirm")
+            .gap_2()
+            .child(
+                Button::new("contact-root-replace")
+                    .xsmall()
+                    .outline()
+                    .label(tr("dock.contacts.add.root_replace"))
+                    .on_click(replace),
+            )
+            .child(
+                Button::new("contact-root-keep")
+                    .xsmall()
+                    .ghost()
+                    .label(tr("dock.contacts.add.root_keep"))
+                    .on_click(keep),
+            )
     });
     let hint = form.kind_hint(cx);
     v_flex()
@@ -359,6 +480,7 @@ where
                 .child(hint),
         )
         .children(note)
-        .child(h_flex().child(crate::gate::gated(import, disabled)))
+        .children(confirm)
+        .child(h_flex().child(crate::gate::gated(import, disabled.or(card_disabled))))
         .into_any_element()
 }

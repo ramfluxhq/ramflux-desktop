@@ -25,7 +25,7 @@ use gpui_kit::component::v_flex;
 use gpui_kit::prelude::*;
 use gpui_kit::{Context, Entity, EventEmitter, IntoElement, Render, Subscription, Window, div};
 use ramflux_desktop_core::{
-    Listing, Participant, ParticipantId, Store, UiEventKind, methods, selectors,
+    Listing, LockState, Participant, ParticipantId, Store, UiEventKind, methods, selectors,
 };
 
 use super::section;
@@ -33,6 +33,12 @@ use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use add_form::{AddForm, FormNote, Submission};
 use my_card::{Copied, MyCard};
+
+/// Whether the open account names no home node: contact cards (import
+/// and export) need its home-node profile on the daemon.
+pub fn without_home_node(store: &Store) -> bool {
+    store.accounts().any(|a| a.lock_state == LockState::Unlocked && a.node_id.is_none())
+}
 
 /// Reported to the workspace (navigation, not intents).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +53,9 @@ pub struct ContactsDock {
     sink: EventSink,
     form: AddForm,
     card: MyCard,
+    /// The contact whose safety number is being compared before it is
+    /// marked verified.
+    verifying: Option<ParticipantId>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -81,6 +90,7 @@ impl ContactsDock {
             sink,
             form,
             card: MyCard::default(),
+            verifying: None,
             _subscriptions: vec![subscription, enter],
         }
     }
@@ -131,7 +141,42 @@ impl ContactsDock {
                     cx,
                 );
             }
+            Some(Submission::CardReplacing { card, previous_root }) => {
+                self.sink.emit(
+                    UiEventKind::AddContactCardRequested {
+                        card,
+                        replace_provisional_root: Some(previous_root),
+                    },
+                    window,
+                    cx,
+                );
+            }
             None => {}
+        }
+        cx.notify();
+    }
+
+    /// Replace pressed on a root to confirm.
+    pub fn confirm_root(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let submission = self.form.confirm_root(self.store.read(cx).store());
+        self.emit_submission(submission, window, cx);
+    }
+
+    /// Opens the safety number comparison of `participant` (Verify pressed).
+    pub fn start_verify(&mut self, participant: ParticipantId, cx: &mut Context<Self>) {
+        self.verifying = Some(participant);
+        cx.notify();
+    }
+
+    /// The contact whose safety number is being compared, for tests.
+    pub fn verifying(&self) -> Option<&ParticipantId> {
+        self.verifying.as_ref()
+    }
+
+    /// The numbers matched: marks the contact verified.
+    pub fn confirm_verify(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(participant_id) = self.verifying.take() {
+            self.sink.emit(UiEventKind::VerifySafetyPressed { participant_id }, window, cx);
         }
         cx.notify();
     }
@@ -213,12 +258,23 @@ impl Render for ContactsDock {
         let blocked: Vec<Participant> =
             selectors::blocked_contacts(store).into_iter().cloned().collect();
         let card_reason = crate::gate::reason(store, methods::CONTACT_CARD_IMPORT);
+        let no_home = without_home_node(store);
         let form = add_form::render(
             &self.form,
             add_form::Controls {
                 disabled: add_reason.or(card_reason),
+                card_disabled: no_home.then(|| crate::i18n::tr("backend.contact.no_home_node")),
                 on_add: cx.listener(|this, _, window, cx| this.submit_add(window, cx)),
                 on_import: cx.listener(|this, _, window, cx| this.pick_card_file(window, cx)),
+                on_root: add_form::RootHandlers {
+                    replace: Box::new(
+                        cx.listener(|this, _, window, cx| this.confirm_root(window, cx)),
+                    ),
+                    keep: Box::new(cx.listener(|this, _, _, cx| {
+                        this.form.keep_root();
+                        cx.notify();
+                    })),
+                },
             },
             cx,
         );
@@ -282,7 +338,22 @@ impl Render for ContactsDock {
                 let on_message = cx.listener(move |_, _, _, cx| {
                     cx.emit(ContactsDockEvent::MessageRequested(id.clone()));
                 });
-                rows::contact_row(c, &self.sink, verify_reason.as_ref(), on_message, cx)
+                let id = c.id.clone();
+                let verify = rows::VerifyHandlers {
+                    reason: verify_reason.clone(),
+                    open: self.verifying.as_ref() == Some(&c.id),
+                    start: Box::new(cx.listener(move |this, _, _, cx| {
+                        this.start_verify(id.clone(), cx);
+                    })),
+                    confirm: Box::new(
+                        cx.listener(|this, _, window, cx| this.confirm_verify(window, cx)),
+                    ),
+                    cancel: Box::new(cx.listener(|this, _, _, cx| {
+                        this.verifying = None;
+                        cx.notify();
+                    })),
+                };
+                rows::contact_row(c, &self.sink, verify, on_message, cx)
             }))
             .when(!blocked.is_empty(), |col| {
                 col.child(section("dock.contacts.blocked", cx))

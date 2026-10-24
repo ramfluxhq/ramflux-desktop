@@ -112,13 +112,23 @@ palette) and paste what the contact shared with you: their **contact card** (or
 a link to it), or their **principal id**, then press **Add**. **Import card
 file…** adds a card saved as a file. The line under the field says which one it
 is and how far it is trusted: a card is checked against its signature and pins
-the identity it names; an id is looked up on the contact's node and trusted on
-first use. Either way the contact is **unverified until you compare safety
-numbers**, and the row says so, with whether the contact is reachable and what
+the identity it names; an id is looked up on your home node and trusted on
+first use. Each contact row says where its identity came from: **looked up by
+id** (provisional: names are first come, first served), **pinned by their
+contact card**, or **confirmed by comparing safety numbers**. **Verify** opens
+the comparison with the safety number; only **The numbers match** marks the
+contact verified. The row also says whether the contact is reachable and what
 kind of party it is (marked when that is only its own claim). A contact that is
 reachable can be messaged at once. The field explains text it cannot use, and a
-daemon error is shown under it. Adding by card and resolving an id at add time
-need a daemon with contact resolution; an older daemon adds the link only.
+daemon refusal is explained under it (unknown id, expired or forged card,
+already a contact, too many lookups, home node unreachable).
+
+If a card names a different identity than an earlier lookup by id found, the
+field shows both and asks: **Use the card's identity** replaces the looked-up
+one, **Keep the current one** drops the card. Compare with the contact first.
+
+Cards (adding one, or showing yours) need the account's home node. An account
+without one says so in both places and sends nothing.
 
 **Your contact card** › **Show my card** shows this account's card as a QR code
 and as text, with **Copy card** and **Copy link**. Share it in person or over a

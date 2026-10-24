@@ -53,7 +53,20 @@ fn contacts_dock_answers_requests_and_verifies(cx: &mut TestAppContext) {
         window.within("contacts-request-m-noor").click("accept", cx)
     });
     assert_eq!(last_body(cx, &shell, methods::CONTACT_ACCEPT)["moment_id"], "m-noor");
+    // Verify opens the comparison; nothing is marked until the numbers match.
+    let verifies = |cx: &mut TestAppContext| {
+        bodies(cx, &shell).iter().filter(|(m, _)| m == methods::SAFETY_VERIFY).count()
+    };
+    let before = verifies(cx);
     in_window(cx, handle, |window, cx| window.within("contacts-p-mira").click("verify", cx));
+    assert!(exists(cx, handle, "contact-verify-number"), "the number to compare is shown");
+    assert_eq!(verifies(cx), before, "opening the comparison verifies nothing");
+    in_window(cx, handle, |window, cx| window.within("contacts-p-mira").click("verify-cancel", cx));
+    assert!(!exists(cx, handle, "contact-verify"));
+    in_window(cx, handle, |window, cx| window.within("contacts-p-mira").click("verify", cx));
+    in_window(cx, handle, |window, cx| {
+        window.within("contacts-p-mira").click("verify-confirm", cx)
+    });
     assert_eq!(last_body(cx, &shell, methods::SAFETY_VERIFY)["participant_id"], "p-mira");
     advance(cx, 200);
     let safety = with_store(cx, &shell, |s| s.participant(&"p-mira".into()).map(|p| p.safety));

@@ -86,6 +86,9 @@ pub struct State {
     pub direct: BTreeMap<String, (String, Value)>,
     /// Every request seen, in order (method and body).
     pub seen: Vec<(String, Value)>,
+    /// The account names no home node (`account.status` without
+    /// `node_id`).
+    pub without_home: bool,
 }
 
 /// The shared state.
@@ -236,6 +239,11 @@ fn handle(state: &mut State, all: &BTreeMap<String, Value>, method: &str, body: 
             let rows: Vec<Value> = state.contacts.iter().map(|(p, r, s)| link(p, r, s)).collect();
             json!({ "contacts": rows })
         }
+        "account.status" if state.without_home => {
+            let mut status = fixture();
+            status.as_object_mut().map(|s| s.remove("node_id"));
+            status
+        }
         "contact.add" if body.get("card").is_some() => return add_card(state, body),
         "contact.add" => {
             let principal = text(body, "principal_id");
@@ -352,8 +360,14 @@ fn handle(state: &mut State, all: &BTreeMap<String, Value>, method: &str, body: 
 
 /// Starts the fake daemon at a socket named after `name`.
 pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
+    start_with(name, false)
+}
+
+/// Starts the fake daemon; `without_home`: the account names no home node.
+pub fn start_with(name: &str, without_home: bool) -> (FakeBus, Shared, std::path::PathBuf) {
     let path = socket_path(name);
     let shared: Shared = Arc::default();
+    shared.lock().expect("state").without_home = without_home;
     let state = shared.clone();
     let all = crate::sdk_fake::frames();
     let fake = FakeBus::start(&path, move |method, _, body| {
