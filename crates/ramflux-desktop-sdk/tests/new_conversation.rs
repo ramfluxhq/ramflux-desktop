@@ -13,6 +13,7 @@ mod common;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use common::*;
 use ramflux_desktop_core::{
@@ -207,6 +208,70 @@ fn a_started_conversation_is_shown_with_its_first_message() {
         fake.seen().into_iter().filter(|s| s.method == "message.submit").collect();
     assert_eq!(submits.len(), 1);
     assert_eq!(submits[0].body["conversation_id"], NEW);
+    drop(account);
+    fake.shutdown();
+}
+
+/// A listing the daemon read before the start can reach the source after a
+/// newer one that already lists the conversation (requests share one
+/// connection and are answered as they finish). That older listing is out
+/// of date and must not remove what the newer one listed.
+#[test]
+fn a_listing_read_before_the_start_and_answered_last_removes_nothing() {
+    let path = socket_path("startlate");
+    let started = Arc::new(AtomicBool::new(false));
+    let hold = Arc::new(AtomicBool::new(false));
+    let (flag, held) = (started.clone(), hold.clone());
+    let fake = FakeBus::start(&path, move |method, _, body| match method {
+        "message.submit" => {
+            flag.store(true, Ordering::SeqCst);
+            Reply::Ok(json!({ "message_id": "desk-msg-first", "envelope_id": "e" }))
+        }
+        "conversation.directory" => {
+            let listed = flag.load(Ordering::SeqCst);
+            let frame = conversations(listed);
+            // Read now, answered after the start and its own listing.
+            if held.load(Ordering::SeqCst) && !listed {
+                Reply::Slow(Duration::from_millis(600), frame)
+            } else {
+                Reply::Ok(frame)
+            }
+        }
+        "message.list" if body["conversation_id"] == NEW => Reply::Ok(new_messages()),
+        _ => fixture(method),
+    });
+    let hub = hub(&path);
+    let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
+    account.until("the identities", |s, _| {
+        s.context(&ContextId::new("dm-ana")).is_some()
+            && s.participant(&"principal-ana".into()).is_some()
+    });
+    hold.store(true, Ordering::SeqCst);
+    let mark = fake.seen().len();
+    account.until("a listing read before the start", |_, _| {
+        fake.seen().iter().skip(mark).any(|s| s.method == "conversation.directory")
+    });
+    account.source.submit(Effect::Call {
+        method: methods::CONVERSATION_START.to_owned(),
+        body: start_body(NEW, "principal-ana"),
+    });
+    let id = ContextId::new(NEW);
+    account.until("a listing read after the start", |_, _| {
+        let seen = fake.seen();
+        seen.iter().position(|s| s.method == "message.submit").is_some_and(|submit| {
+            seen[submit + 1..].iter().any(|s| s.method == "conversation.directory")
+        })
+    });
+    account.until("the new conversation", |s, _| s.context(&id).is_some());
+    // The held listing arrives now.
+    account.settle(1_000);
+    assert!(account.store.context(&id).is_some(), "still shown");
+    assert!(
+        !account.envelopes.iter().any(|e| matches!(
+            &e.event, DomainEvent::ContextRemoved { context_id } if *context_id == id
+        )),
+        "an older listing answered last removes nothing"
+    );
     drop(account);
     fake.shutdown();
 }

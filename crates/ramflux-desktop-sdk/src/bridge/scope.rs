@@ -11,12 +11,22 @@
 //! answers arrive in). Every request ends by its deadline, so no effect or
 //! read stays pending: a missed deadline is a `Timeout` failure.
 //!
+//! A listing is a snapshot of the daemon at the time it was read, and
+//! answers on the shared connection arrive as they finish: an older listing
+//! can arrive after a newer one. Each listing's first page is numbered when
+//! it is sent, and an answer older than the listing last applied is dropped,
+//! so a listing never undoes a newer one (a conversation just started and
+//! listed is not removed by a listing read before the start).
+//!
 //! Lifecycle: attach, then snapshot. When every read answered the scope is
 //! live: an account follows the daemon's event stream from its cursor (see
 //! [`super::live`]), and polls only as a fallback; the daemon scope polls
 //! the daemon status and account list. A lost connection reports
 //! `Disconnected` and re-snapshots after a back-off.
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
@@ -49,9 +59,12 @@ pub(crate) enum ScopeCommand {
     Bodies(Vec<MomentId>),
 }
 
+/// A read's answer, with the listing number of a first page.
+pub(super) type Read = (Fetch, Option<u64>, Result<Value, BusError>);
+
 pub(super) enum Internal {
-    Snapshot(Vec<(Fetch, Result<Value, BusError>)>),
-    Fetched(Fetch, Result<Value, BusError>),
+    Snapshot(Vec<Read>),
+    Fetched(Read),
     PollDone,
     EffectDone { method: String, body: Value, result: Result<Value, BusError>, refresh: Vec<Fetch> },
 }
@@ -87,6 +100,19 @@ pub(super) struct Task {
     pub(super) next_poll: Instant,
     pub(super) reconnect_at: Instant,
     pub(super) alive: bool,
+    /// Numbers listings' first pages in the order they are sent.
+    pub(super) listings_sent: Arc<AtomicU64>,
+    /// The number of the listing last applied, per list.
+    pub(super) listing_applied: BTreeMap<Paged, u64>,
+}
+
+/// Sends one read; a listing's first page gets the next listing number
+/// just before it is sent.
+async fn read(client: &BusClient, fetch: Fetch, account: Option<&str>, sent: &AtomicU64) -> Read {
+    let request = fetch.request(account);
+    let number = matches!(fetch, Fetch::Page(_, None)).then(|| sent.fetch_add(1, Ordering::SeqCst));
+    let result = client.call(&request).await;
+    (fetch, number, result)
 }
 
 /// Runs one scope until its command channel closes or its source is gone.
@@ -132,6 +158,8 @@ pub(crate) async fn run(
         next_poll: start,
         reconnect_at: start,
         alive: true,
+        listings_sent: Arc::new(AtomicU64::new(0)),
+        listing_applied: BTreeMap::new(),
     };
     task.emit(vec![DomainEvent::CapabilitiesUpdated(capabilities::capabilities())]);
     task.show_sync(true);
@@ -242,19 +270,21 @@ impl Task {
         let client = self.client.clone();
         let account = self.account();
         let internal = self.internal.clone();
+        let sent = self.listings_sent.clone();
         tokio::spawn(async move {
             let mut set = JoinSet::new();
             for (index, fetch) in reads.into_iter().enumerate() {
-                let client = client.clone();
-                let request = fetch.request(account.as_deref());
-                set.spawn(async move { (index, fetch, client.call(&request).await) });
+                let (client, account, sent) = (client.clone(), account.clone(), sent.clone());
+                set.spawn(
+                    async move { (index, read(&client, fetch, account.as_deref(), &sent).await) },
+                );
             }
             let mut results = Vec::new();
             while let Some(Ok(answer)) = set.join_next().await {
                 results.push(answer);
             }
-            results.sort_by_key(|(index, _, _)| *index);
-            let results = results.into_iter().map(|(_, fetch, result)| (fetch, result)).collect();
+            results.sort_by_key(|(index, _)| *index);
+            let results = results.into_iter().map(|(_, read)| read).collect();
             let _ = internal.send(Internal::Snapshot(results));
         });
     }
@@ -324,12 +354,11 @@ impl Task {
 
     pub(super) fn spawn_fetches(&self, fetches: Vec<Fetch>) {
         for fetch in fetches {
-            let client = self.client.clone();
-            let request = fetch.request(self.account().as_deref());
-            let internal = self.internal.clone();
+            let (client, account) = (self.client.clone(), self.account());
+            let (internal, sent) = (self.internal.clone(), self.listings_sent.clone());
             tokio::spawn(async move {
-                let result = client.call(&request).await;
-                let _ = internal.send(Internal::Fetched(fetch, result));
+                let read = read(&client, fetch, account.as_deref(), &sent).await;
+                let _ = internal.send(Internal::Fetched(read));
             });
         }
     }
@@ -349,9 +378,11 @@ impl Task {
             let client = self.client.clone();
             let account = self.account();
             let internal = self.internal.clone();
+            let sent = self.listings_sent.clone();
             tokio::spawn(async move {
                 for fetch in sequence {
-                    let result = client.call(&fetch.request(account.as_deref())).await;
+                    let (fetch, number, result) =
+                        read(&client, fetch, account.as_deref(), &sent).await;
                     // A failed pull from the node (`message.receive`) never
                     // stops the read of what is already stored: the
                     // conversation keeps showing its messages.
@@ -359,7 +390,7 @@ impl Task {
                         Err(error) => error.is_connection_lost() || !fetch.is_pull(),
                         Ok(_) => false,
                     };
-                    let _ = internal.send(Internal::Fetched(fetch, result));
+                    let _ = internal.send(Internal::Fetched((fetch, number, result)));
                     if stop {
                         break;
                     }
@@ -372,13 +403,15 @@ impl Task {
     fn internal(&mut self, internal: Internal) {
         match internal {
             Internal::Snapshot(results) => self.on_snapshot(results),
-            Internal::Fetched(fetch, result) => {
+            Internal::Fetched((fetch, number, result)) => {
                 let finished = last_page(&fetch, &result);
-                if self.on_read(&fetch, result) && self.polls_in_flight > 0 {
-                    self.poll_changed = true;
-                }
-                if matches!(fetch, Fetch::Page(Paged::Conversations | Paged::Groups, _)) {
-                    self.restore_pins();
+                if !self.outdated(&fetch, number, &result) {
+                    if self.on_read(&fetch, result) && self.polls_in_flight > 0 {
+                        self.poll_changed = true;
+                    }
+                    if matches!(fetch, Fetch::Page(Paged::Conversations | Paged::Groups, _)) {
+                        self.restore_pins();
+                    }
                 }
                 self.read_ended(&fetch, finished);
             }
@@ -399,21 +432,23 @@ impl Task {
         }
     }
 
-    fn on_snapshot(&mut self, results: Vec<(Fetch, Result<Value, BusError>)>) {
+    fn on_snapshot(&mut self, results: Vec<Read>) {
         let unanswered = |r: &Result<Value, BusError>| {
             r.as_ref().is_err_and(|e| e.is_connection_lost() || *e == BusError::Timeout)
         };
         // A daemon that accepts the connection but answers none of the reads
         // in time is treated as gone (and retried), not as an empty one.
-        if results.iter().any(|(_, r)| r.as_ref().is_err_and(BusError::is_connection_lost))
-            || results.iter().all(|(_, r)| unanswered(r))
+        if results.iter().any(|(_, _, r)| r.as_ref().is_err_and(BusError::is_connection_lost))
+            || results.iter().all(|(_, _, r)| unanswered(r))
         {
             self.lost();
             return;
         }
         self.link = Link::Live;
-        for (fetch, result) in results {
-            self.on_read(&fetch, result);
+        for (fetch, number, result) in results {
+            if !self.outdated(&fetch, number, &result) {
+                self.on_read(&fetch, result);
+            }
         }
         // Every list is known now, so pins come back in their saved order.
         self.restore_pins();
@@ -423,6 +458,25 @@ impl Task {
             self.subscribe_at = Instant::now();
             self.live_after_snapshot();
         }
+    }
+
+    /// Whether this answer is a listing older than the one last applied of
+    /// its list (it is dropped); a newer one becomes the last applied.
+    /// Failures are never dropped.
+    fn outdated(
+        &mut self,
+        fetch: &Fetch,
+        number: Option<u64>,
+        result: &Result<Value, BusError>,
+    ) -> bool {
+        let (Fetch::Page(paged, None), Some(number), Ok(_)) = (fetch, number, result) else {
+            return false;
+        };
+        if self.listing_applied.get(paged).is_some_and(|applied| *applied > number) {
+            return true;
+        }
+        self.listing_applied.insert(*paged, number);
+        false
     }
 
     /// Translates one read; returns whether it produced events.
