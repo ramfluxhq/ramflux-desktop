@@ -47,8 +47,8 @@ pub struct AddForm {
 impl AddForm {
     /// A form with an empty field.
     pub fn new(window: &mut Window, cx: &mut App) -> Self {
-        let placeholder = tr("dock.contacts.add.placeholder");
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
+        let input =
+            i18n::localized_input("dock.contacts.add.placeholder", window, cx, |input| input);
         Self { input, note: None, pending: None, noted_value: String::new() }
     }
 

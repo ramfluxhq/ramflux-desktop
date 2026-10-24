@@ -35,7 +35,7 @@ use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
-use crate::i18n::tr;
+use crate::i18n::{self, tr};
 use crate::launch::DaemonLauncher;
 use crate::root::{ConfirmHost, IntentRoot};
 use crate::route::{EntryStep, Page, page_for};
@@ -68,13 +68,11 @@ struct Inputs {
 
 impl Inputs {
     fn new(window: &mut Window, cx: &mut App) -> Self {
-        let plain = |key: &str, window: &mut Window, cx: &mut App| {
-            let placeholder = tr(key);
-            cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
+        let plain = |key: &'static str, window: &mut Window, cx: &mut App| {
+            i18n::localized_input(key, window, cx, |input| input)
         };
-        let masked = |key: &str, window: &mut Window, cx: &mut App| {
-            let placeholder = tr(key);
-            cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(placeholder))
+        let masked = |key: &'static str, window: &mut Window, cx: &mut App| {
+            i18n::localized_input(key, window, cx, |input| input.masked(true))
         };
         Self {
             passphrase: masked("entry.account.passphrase", window, cx),

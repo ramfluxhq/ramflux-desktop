@@ -110,6 +110,9 @@ impl Composer {
                     }
                 }
             }),
+            crate::i18n::observe_locale(window, cx, |this, window, cx| {
+                this.set_placeholder(window, cx);
+            }),
         ];
         Self {
             store,

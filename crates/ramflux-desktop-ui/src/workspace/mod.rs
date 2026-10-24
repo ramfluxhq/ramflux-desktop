@@ -233,6 +233,8 @@ impl Workspace {
                     }
                 }
             }),
+            // The composer keeps the backend's reasons translated.
+            crate::i18n::observe_locale(window, cx, |this, _, cx| this.sync_composer(cx)),
         ];
         for slot in &tools {
             subscriptions.push(cx.subscribe_in(

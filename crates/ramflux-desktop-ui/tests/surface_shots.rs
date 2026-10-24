@@ -139,7 +139,7 @@ mod shots {
         cx.update(|cx| {
             gpui_kit::init(cx);
             ramflux_desktop_ui::init(cx);
-            // Inputs take their placeholder when the window opens.
+            // Shots start in English.
             ramflux_desktop_ui::i18n::select_locale("en", cx);
         });
         let options = sdk_fake::options(&socket);

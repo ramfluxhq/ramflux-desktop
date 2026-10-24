@@ -121,7 +121,7 @@ fn actions(object: &Object, sink: &EventSink) -> AnyElement {
 pub struct ObjectsDock {
     store: Entity<StoreHandle>,
     table: Entity<TableState<ObjectsDelegate>>,
-    _subscription: Subscription,
+    _subscriptions: [Subscription; 2],
 }
 
 impl ObjectsDock {
@@ -147,7 +147,11 @@ impl ObjectsDock {
                 cx.notify();
             }
         });
-        Self { store, table, _subscription: subscription }
+        // The column headers are kept by the table; translate them again.
+        let locale = crate::i18n::observe_locale(window, cx, |this, _, cx| {
+            this.table.update(cx, |table, cx| table.refresh(cx));
+        });
+        Self { store, table, _subscriptions: [subscription, locale] }
     }
 
     /// Ids of the listed objects, in table order.

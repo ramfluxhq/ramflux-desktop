@@ -50,13 +50,9 @@ fn shown(path: &Path) -> String {
 impl LaunchInputs {
     /// Inputs filled with the saved choices; placeholders show the defaults.
     pub fn new(launcher: &Entity<DaemonLauncher>, window: &mut Window, cx: &mut App) -> Self {
-        let (saved, binary_default) = {
+        let (saved, bundled) = {
             let launcher = launcher.read(cx);
-            let binary_default = launcher.bundled().map_or_else(
-                || tr("settings.launch.binary_placeholder"),
-                |path| SharedString::from(shown(path)),
-            );
-            (launcher.settings().clone(), binary_default)
+            (launcher.settings().clone(), launcher.bundled().map(shown))
         };
         let socket_default = shown(&LaunchSettings::default().socket_or_default());
         let data_default = LaunchSettings::default()
@@ -69,9 +65,22 @@ impl LaunchInputs {
             let value = value.map(|p| shown(p)).unwrap_or_default();
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder).default_value(value))
         };
+        // Without a bundled daemon the placeholder is a translated hint.
+        let binary = match bundled {
+            Some(path) => input(saved.daemon_binary.as_ref(), path.into(), window, cx),
+            None => {
+                let value = saved.daemon_binary.as_ref().map(|p| shown(p)).unwrap_or_default();
+                crate::i18n::localized_input(
+                    "settings.launch.binary_placeholder",
+                    window,
+                    cx,
+                    |input| input.default_value(value),
+                )
+            }
+        };
         Self {
             socket: input(saved.socket_path.as_ref(), socket_default.into(), window, cx),
-            binary: input(saved.daemon_binary.as_ref(), binary_default, window, cx),
+            binary,
             data_dir: input(saved.data_dir.as_ref(), data_default.into(), window, cx),
         }
     }

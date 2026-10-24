@@ -13,7 +13,8 @@
 pub mod clock;
 pub mod labels;
 
-use gpui_kit::{App, SharedString};
+use gpui_kit::component::input::InputState;
+use gpui_kit::{App, AppContext as _, Context, Entity, Global, SharedString, Subscription, Window};
 use ramflux_desktop_core::{EffectFailure, Store};
 
 pub use clock::{bytes, date_time, day_label, offset, size, time_of_day};
@@ -44,10 +45,45 @@ pub fn locale() -> String {
     rust_i18n::locale().to_string()
 }
 
-/// Selects a locale and redraws every window.
+/// Marks a locale switch: views observe it to translate again what they
+/// keep between frames (input placeholders, table headers, cached reasons).
+struct LocaleSwitch;
+
+impl Global for LocaleSwitch {}
+
+/// Selects a locale, tells the views keeping translated state, and redraws
+/// every window.
 pub fn select_locale(locale: &str, cx: &mut App) {
     rust_i18n::set_locale(locale);
+    cx.set_global(LocaleSwitch);
     cx.refresh_windows();
+}
+
+/// Calls `f` on the view after every locale switch.
+pub fn observe_locale<T: 'static>(
+    window: &Window,
+    cx: &mut Context<T>,
+    f: impl FnMut(&mut T, &mut Window, &mut Context<T>) + 'static,
+) -> Subscription {
+    cx.observe_global_in::<LocaleSwitch>(window, f)
+}
+
+/// A text input whose placeholder is the translation of `key`, translated
+/// again after every locale switch for as long as the input lives.
+/// `configure` sets everything else (masking, a starting value).
+pub fn localized_input(
+    key: &'static str,
+    window: &mut Window,
+    cx: &mut App,
+    configure: impl FnOnce(InputState) -> InputState,
+) -> Entity<InputState> {
+    cx.new(|cx| {
+        observe_locale(window, cx, move |input: &mut InputState, window, cx| {
+            input.set_placeholder(tr(key), window, cx);
+        })
+        .detach();
+        configure(InputState::new(window, cx).placeholder(tr(key)))
+    })
 }
 
 /// Why `method` is unavailable on the attached backend, translated, or

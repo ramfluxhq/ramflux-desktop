@@ -153,9 +153,8 @@ impl SettingsPage {
             cx.observe(&launcher, |_, _, cx| cx.notify()),
         ];
         let launch_inputs = local_setup::LaunchInputs::new(&launcher, window, cx);
-        let masked = |key: &str, window: &mut Window, cx: &mut Context<Self>| {
-            let placeholder = tr(key);
-            cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(placeholder))
+        let masked = |key: &'static str, window: &mut Window, cx: &mut Context<Self>| {
+            crate::i18n::localized_input(key, window, cx, |input| input.masked(true))
         };
         let inputs = account::AccountInputs {
             current: masked("settings.account.current", window, cx),
