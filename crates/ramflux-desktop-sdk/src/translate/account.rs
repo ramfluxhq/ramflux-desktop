@@ -27,6 +27,12 @@ impl Translator {
             if let Some(commitment) = field(value, "principal_commitment") {
                 self.directory.self_commitment = Some(commitment);
             }
+            // The daemon names this account's own device in its status; it
+            // wins over the local device that `device.list` reports.
+            if let Some(device) = field(value, "device_id") {
+                self.self_device = Some(device);
+                self.status_device = true;
+            }
             account.device_id.clone_from(&self.self_device);
             // The participant that is this account is its principal: contacts,
             // members and conversation participants are principals too.
@@ -49,7 +55,7 @@ impl Translator {
         let Some(account_id) = self.scope.account().cloned() else { return Vec::new() };
         let local = value["local_device_id"].as_str().map(str::to_owned);
         let mut events = Vec::new();
-        if local.is_some() && local != self.self_device {
+        if local.is_some() && local != self.self_device && !self.status_device {
             self.self_device.clone_from(&local);
             let mut account = self.account_record(&account_id);
             account.device_id.clone_from(&local);
@@ -131,5 +137,29 @@ impl Translator {
         }
         self.integrations = Some(integrations.clone());
         vec![DomainEvent::IntegrationsUpdated(integrations)]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ramflux_desktop_core::Timestamp;
+    use serde_json::json;
+
+    use super::*;
+    use crate::plan::fetch::Fetch;
+
+    #[test]
+    fn the_status_device_wins_over_the_listed_local_device() {
+        let id = AccountId::new("acct-main");
+        let mut t = Translator::new(Scope::Account(id.clone()), "rfd.sock");
+        let listed = json!({ "local_device_id": "device-listed", "devices": [] });
+        let _ = t.fetched(&Fetch::DeviceList, &listed, Timestamp(0));
+        assert_eq!(t.self_device.as_deref(), Some("device-listed"));
+        let status = json!({ "principal_id": "principal-me", "device_id": "device-status" });
+        let _ = t.fetched(&Fetch::AccountStatus(id.clone()), &status, Timestamp(1));
+        assert_eq!(t.self_device.as_deref(), Some("device-status"));
+        let _ = t.fetched(&Fetch::DeviceList, &listed, Timestamp(2));
+        assert_eq!(t.self_device.as_deref(), Some("device-status"), "the status stays the source");
+        assert_eq!(t.accounts.get(&id).and_then(|a| a.device_id.as_deref()), Some("device-status"));
     }
 }
