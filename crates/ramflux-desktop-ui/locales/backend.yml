@@ -191,6 +191,15 @@ backend:
     root_replacement:
       en: "This card names another identity for %{name} than the earlier lookup found (lookup: %{previous}; card: %{proposed}). Compare with %{name} before replacing it."
       zh-CN: "此名片为 %{name} 给出的身份与之前查询到的不同（查询：%{previous}；名片：%{proposed}）。替换前请与 %{name} 核对。"
+    home_insecure_transport:
+      en: "Your home node's address is plain HTTP on the network, which a contact card cannot carry. The node needs an HTTPS address."
+      zh-CN: "你的主节点地址是网络上的明文 HTTP，联系人名片无法携带。该节点需要 HTTPS 地址。"
+    home_profile_stale:
+      en: "Your home node's profile is out of date. Refresh the node in Settings › Nodes, then try again."
+      zh-CN: "你的主节点资料已过期。请在“设置 › 节点”中刷新该节点后重试。"
+    export_failed:
+      en: "this account's home node cannot be named on a contact card."
+      zh-CN: "此账户的主节点无法写入联系人名片。"
     no_home_node:
       en: "Contact cards need this account's home node, and none is set up. Join your home node in Settings › Nodes first."
       zh-CN: "联系人名片需要此账户的主节点，但尚未设置。请先在“设置 › 节点”中加入你的主节点。"

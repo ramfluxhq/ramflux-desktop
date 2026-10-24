@@ -123,8 +123,17 @@ pub mod key {
     /// Contact refusal `no_home_node`: The account has no home node profile.
     pub const CONTACT_NO_HOME_NODE: &str = "backend.contact.no_home_node";
 
+    /// Contact refusal `home_insecure_transport`: the home node's address
+    /// is plain HTTP on the network, which a card cannot carry.
+    pub const CONTACT_HOME_INSECURE: &str = "backend.contact.home_insecure_transport";
+    /// Contact refusal `home_profile_stale`: the home-node profile must be
+    /// refreshed first.
+    pub const CONTACT_HOME_STALE: &str = "backend.contact.home_profile_stale";
+    /// A refused card export (`invalid_card` or a code not known yet).
+    pub const CONTACT_EXPORT_FAILED: &str = "backend.contact.export_failed";
+
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 48] = [
+    pub const ALL: [&str; 51] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -173,6 +182,9 @@ pub mod key {
         CONTACT_UNAVAILABLE,
         CONTACT_ROOT_REPLACEMENT,
         CONTACT_NO_HOME_NODE,
+        CONTACT_HOME_INSECURE,
+        CONTACT_HOME_STALE,
+        CONTACT_EXPORT_FAILED,
     ];
 }
 
