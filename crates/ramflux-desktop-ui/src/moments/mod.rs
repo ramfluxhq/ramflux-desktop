@@ -406,10 +406,13 @@ pub fn accessible_label(row: &MomentRow) -> SharedString {
     }
 }
 
+/// A day header: its rules share the row content's inset (`px_2`), so they
+/// end where the cards below end.
 fn day_header(day: SharedString, cx: &App) -> impl IntoElement {
     h_flex()
         .w_full()
         .gap_2()
+        .px_2()
         .pt_2()
         .text_xs()
         .text_color(cx.theme().muted_foreground)
@@ -457,7 +460,7 @@ impl StateTone {
 fn header(row: &MomentRow, cx: &App) -> impl IntoElement {
     let moment = &row.moment;
     let (label, tone) = state_label(row);
-    let marker = tone.map(|tone| (label, tone.color(cx)));
+    let marker = tone.map(|tone| (label, crate::tone::text(tone.color(cx), cx)));
     h_flex()
         .gap_2()
         .text_xs()

@@ -46,6 +46,7 @@ pub mod root;
 pub mod route;
 pub mod settings;
 pub mod shell;
+pub mod tone;
 pub mod workspace;
 
 pub use shell::Shell;

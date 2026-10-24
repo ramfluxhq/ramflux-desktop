@@ -129,7 +129,7 @@ pub fn render(
         other => i18n::transfer(other).to_string(),
     };
     let status_color = match object.transfer {
-        TransferState::Failed { .. } => cx.theme().danger,
+        TransferState::Failed { .. } => crate::tone::text(cx.theme().danger, cx),
         _ => muted,
     };
     v_flex()

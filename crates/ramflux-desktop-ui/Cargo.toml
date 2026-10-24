@@ -82,3 +82,11 @@ name = "surface_shots"
 path = "tests/surface_shots.rs"
 test = false
 harness = false
+
+# Offscreen screenshots of the conversation view for a design review, at two
+# window sizes, both languages and both themes; run explicitly.
+[[test]]
+name = "polish_shots"
+path = "tests/polish_shots.rs"
+test = false
+harness = false

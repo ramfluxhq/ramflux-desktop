@@ -159,7 +159,7 @@ fn account_switcher(
     };
     let background: usize =
         accounts.iter().filter(|(id, _, _)| Some(id) != active.as_ref()).map(|(_, _, n)| n).sum();
-    let warning = cx.theme().warning;
+    let warning = crate::tone::text(cx.theme().warning, cx);
     h_flex()
         .id("status-account")
         .gap_1()

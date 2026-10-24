@@ -147,6 +147,8 @@ impl Render for ContextStack {
         let theme = cx.theme();
         let (muted, warning, border, sidebar) =
             (theme.muted_foreground, theme.warning, theme.border, theme.sidebar);
+        // Text on a row, selected (the darker background) or not.
+        let warning = crate::tone::on(warning, theme.secondary_active);
 
         let list = rows.into_iter().map(|entry| {
             let selected = self.current.as_ref() == Some(&entry.id);
@@ -176,11 +178,19 @@ impl Render for ContextStack {
                         .when(entry.muted, |row| {
                             row.child(div().text_xs().text_color(muted).child(tr("stack.muted")))
                         })
+                        // The bell and count, as the title bar's Needs me: a
+                        // worded badge pushed long titles into an ellipsis.
+                        // The row's accessible name says it in words.
                         .when(entry.needs_me > 0, |row| {
-                            row.child(div().text_xs().text_color(warning).child(tr_args(
-                                "stack.needs_me",
-                                &[("count", &entry.needs_me.to_string())],
-                            )))
+                            row.child(
+                                h_flex()
+                                    .flex_none()
+                                    .gap_0p5()
+                                    .text_xs()
+                                    .text_color(warning)
+                                    .child(Icon::new(IconName::Bell).xsmall())
+                                    .child(entry.needs_me.to_string()),
+                            )
                         })
                         .when(entry.needs_me == 0 && entry.unread > 0, |row| {
                             row.child(

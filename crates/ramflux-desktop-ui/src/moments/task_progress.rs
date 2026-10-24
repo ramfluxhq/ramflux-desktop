@@ -111,7 +111,11 @@ fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
                             div().text_color(cx.theme().muted_foreground).child(assignee.clone()),
                         )
                         .child(div().text_color(cx.theme().muted_foreground).child("·"))
-                        .child(div().text_color(state_color).child(i18n::task_state(task.state)))
+                        .child(
+                            div()
+                                .text_color(card_text(state_color, cx))
+                                .child(i18n::task_state(task.state)),
+                        )
                         .test_support(),
                 ),
         )
@@ -124,6 +128,11 @@ fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
                 ],
             )))
         })
+}
+
+/// A status color made readable as text on the card's background.
+fn card_text(color: Hsla, cx: &App) -> Hsla {
+    crate::tone::on(color, cx.theme().group_box)
 }
 
 /// The color of a task state, on the card and in its row header.
@@ -269,7 +278,12 @@ fn step_row(
                 .text_sm()
                 .child(Icon::new(icon).xsmall().text_color(color))
                 .child(div().flex_1().min_w_0().child(step.label.clone()))
-                .child(div().text_xs().text_color(color).child(i18n::step_state(step.state))),
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(card_text(color, cx))
+                        .child(i18n::step_state(step.state)),
+                ),
         )
         .children(place)
         .test_support()
@@ -305,7 +319,7 @@ fn pointer(
         .ml_5()
         .gap_2()
         .text_xs()
-        .text_color(cx.theme().warning)
+        .text_color(card_text(cx.theme().warning, cx))
         .child(div().flex_1().min_w_0().child(tr_args(key, &[("name", assignee)])))
         .when_some(surface, |row, target| {
             row.child(
@@ -342,7 +356,7 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
             h_flex()
                 .gap_2()
                 .text_xs()
-                .child(div().text_color(cx.theme().warning).child(tr_args(
+                .child(div().text_color(card_text(cx.theme().warning, cx)).child(tr_args(
                     "moment.intervention.risk",
                     &[("risk", &i18n::risk(grant.risk))],
                 )))

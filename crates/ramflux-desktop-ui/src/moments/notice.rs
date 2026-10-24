@@ -21,7 +21,9 @@ pub fn system(payload: &SystemPayload, cx: &App) -> impl IntoElement {
         .gap_2()
         .text_sm()
         .child(Icon::new(icon).small().text_color(color))
-        .child(div().text_color(color).child(i18n::system_level(payload.level)))
+        .child(
+            div().text_color(crate::tone::text(color, cx)).child(i18n::system_level(payload.level)),
+        )
         .child(div().min_w_0().text_color(cx.theme().foreground).child(payload.text.clone()))
 }
 

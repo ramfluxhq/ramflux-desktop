@@ -52,7 +52,7 @@ pub fn render(
             ),
             other => format!("{} · {}", i18n::size(o.size), i18n::transfer(other)),
         });
-        let detail_color = if failed { cx.theme().danger } else { muted };
+        let detail_color = if failed { crate::tone::text(cx.theme().danger, cx) } else { muted };
         h_flex()
             .id("message-attachment")
             .gap_2()
@@ -72,7 +72,7 @@ pub fn render(
             .test_support()
     });
     let receipt_color = match payload.receipt {
-        Receipt::Read => cx.theme().success,
+        Receipt::Read => crate::tone::text(cx.theme().success, cx),
         Receipt::Sending | Receipt::Sent | Receipt::Delivered => muted,
     };
     let text = body.cloned();
