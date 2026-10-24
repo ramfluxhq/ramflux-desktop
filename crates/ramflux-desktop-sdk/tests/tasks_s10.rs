@@ -8,7 +8,7 @@
 //! policy and the SDK as on the real daemon. Every version the scenario
 //! shows is shown on the SDK path with the same state and steps; the
 //! deploy step is decided through its approval, and the task ends done
-//! with its result surface (the daemon reports no result text).
+//! with its result surface (s10 carries no result summary).
 
 mod common;
 

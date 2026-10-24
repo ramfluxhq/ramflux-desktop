@@ -9,7 +9,7 @@
 //! limits, resulting hash, stream finality), so every hash and stream state
 //! the fake reports is the protocol's. Surfaces are scoped by conversation,
 //! author and surface id (`surface_ref`, derived as the daemon derives it).
-//! The fake answers as the pinned daemon (8eebac1) does:
+//! The fake answers as the pinned daemon (K3b r4, ee117bb) does:
 //!
 //! - `surface.get` / `surface.list`: the view with `streams` (`open` /
 //!   `final` per text component), `posted_at` / `created_at` /
