@@ -129,6 +129,9 @@ pub struct Translator {
     accounts: BTreeMap<AccountId, Account>,
     node_relays: BTreeMap<NodeId, String>,
     self_device: Option<String>,
+    /// Whether `self_device` came from `account.status.device_id` (which
+    /// `device.list` then does not override).
+    status_device: bool,
     devices: BTreeMap<DeviceId, ramflux_desktop_core::Device>,
     directory: Directory,
     pages: Pages,
@@ -179,6 +182,7 @@ impl Translator {
             accounts: BTreeMap::new(),
             node_relays: BTreeMap::new(),
             self_device: None,
+            status_device: false,
             devices: BTreeMap::new(),
             directory: Directory::default(),
             pages: Pages::default(),
