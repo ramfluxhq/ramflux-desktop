@@ -276,6 +276,7 @@ impl FakeTasks {
             state,
             steps,
             result_ref: result_ref.map(str::to_owned),
+            result_summary: None,
         });
         inner.commit(conversation, task_id, &member, body)
     }

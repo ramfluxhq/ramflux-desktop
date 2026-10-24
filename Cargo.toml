@@ -27,9 +27,9 @@ serde_json = "1"
 thiserror = "2"
 zeroize = "1.8"
 # The product SDK (local-bus client, request types), pinned by full commit.
-ramflux-sdk = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "97955ee16f84ad7ae5e85cf5e01d02e5bdb1eee3" }
-ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "97955ee16f84ad7ae5e85cf5e01d02e5bdb1eee3" }
-ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "97955ee16f84ad7ae5e85cf5e01d02e5bdb1eee3" }
+ramflux-sdk = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "a9a26026e4dc3c37c6769dba5a2c282f74c3c5c7" }
+ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "a9a26026e4dc3c37c6769dba5a2c282f74c3c5c7" }
+ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "a9a26026e4dc3c37c6769dba5a2c282f74c3c5c7" }
 # Only on the SDK bridge thread; never in GPUI tasks or core.
 tokio = { version = "1.42", default-features = false, features = ["rt", "net", "sync", "time", "macros", "io-util"] }
 ramflux-desktop-core = { path = "crates/ramflux-desktop-core" }
