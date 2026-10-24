@@ -29,6 +29,10 @@ pub struct Limits {
     pub receipt: Duration,
     /// For a safety number to become verifiable and be verified.
     pub verify: Duration,
+    /// For the receiver's daemon to fetch a received attachment; `None`
+    /// reports the receiver's objects as they are without requiring it (the
+    /// fake daemon does not fetch).
+    pub fetch: Option<Duration>,
 }
 
 impl Limits {
@@ -38,6 +42,7 @@ impl Limits {
         discover: Duration::from_secs(20),
         receipt: Duration::from_secs(60),
         verify: Duration::from_secs(30),
+        fetch: Some(Duration::from_secs(90)),
     };
 
     /// Limits for the fake daemon (they only bound a failure).
@@ -46,6 +51,7 @@ impl Limits {
         discover: Duration::from_secs(2),
         receipt: Duration::from_secs(30),
         verify: Duration::from_secs(10),
+        fetch: None,
     };
 }
 

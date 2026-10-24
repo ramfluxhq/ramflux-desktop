@@ -38,14 +38,10 @@ pub fn group<H: Host, D: DemoDaemon>(
     let created = demo.sides[0].daemon.cli(&[
         "group",
         "create",
-        "--account",
-        &alice.account,
-        "--group",
-        &group,
-        "--creator",
-        &alice.device,
-        "--creator-target-delivery",
-        &alice.target,
+        &format!("--account={}", alice.account),
+        &format!("--group={}", group),
+        &format!("--creator={}", alice.device),
+        &format!("--creator-target-delivery={}", alice.target),
     ])?;
     notes.add(format!(
         "rf group create {group} on Alice's daemon: roles {}",
@@ -55,16 +51,11 @@ pub fn group<H: Host, D: DemoDaemon>(
         "group",
         "member",
         "add",
-        "--account",
-        &alice.account,
-        "--group",
-        &group,
-        "--member-device",
-        &bob.device,
-        "--member-principal-commitment",
-        &bob.commitment,
-        "--target-delivery",
-        &bob.target,
+        &format!("--account={}", alice.account),
+        &format!("--group={}", group),
+        &format!("--member-device={}", bob.device),
+        &format!("--member-principal-commitment={}", bob.commitment),
+        &format!("--target-delivery={}", bob.target),
     ])?;
     if added["roles"][bob.device.as_str()] != "member" {
         return Err(format!("Bob is not a member after group member add: {added}"));
@@ -82,18 +73,12 @@ pub fn group<H: Host, D: DemoDaemon>(
         demo.sides[0].daemon.cli(&[
             "group",
             "send",
-            "--account",
-            &alice.account,
-            "--group",
-            &group,
-            "--conversation",
-            &conversation,
-            "--message",
-            &message,
-            "--sender",
-            &alice.device,
-            "--body",
-            &opener,
+            &format!("--account={}", alice.account),
+            &format!("--group={}", group),
+            &format!("--conversation={}", conversation),
+            &format!("--message={}", message),
+            &format!("--sender={}", alice.device),
+            &format!("--body={}", opener),
         ])?;
         opened_by_cli = true;
         notes.add(format!(
@@ -121,12 +106,9 @@ pub fn group<H: Host, D: DemoDaemon>(
         demo.sides[1].daemon.cli(&[
             "group",
             "read",
-            "--account",
-            &bob.account,
-            "--group",
-            &group,
-            "--conversation",
-            context.as_str(),
+            &format!("--account={}", bob.account),
+            &format!("--group={}", group),
+            &format!("--conversation={}", context.as_str()),
         ])?;
         demo.fallbacks.push("rf group read for Bob's group conversation".to_owned());
         notes.add(
