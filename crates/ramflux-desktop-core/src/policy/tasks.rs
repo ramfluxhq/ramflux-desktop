@@ -8,6 +8,11 @@
 //! proposal starts the task, so only the attended human does it (agents
 //! never confirm). Only the requester cancels a task or declines a
 //! proposal.
+//!
+//! Every body names the conversation and the version the user saw, so the
+//! source can tell a decision made on an older view (the task is scoped by
+//! its conversation; a task id alone may repeat across conversations).
+//! Declining a proposal is a cancel with `decline: true`.
 
 use serde_json::json;
 
@@ -48,6 +53,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                         "text": task.title,
                         "constraints": null,
                         "proposal_id": task_id,
+                        "version": task.version,
                     }),
                 ))
             })
@@ -59,7 +65,12 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             requester(p, task)?;
             Ok(Decision::Call(
                 methods::TASK_CANCEL,
-                json!({ "task_id": task_id, "version": task.version }),
+                json!({
+                    "task_id": task_id,
+                    "version": task.version,
+                    "conversation_id": task.context_id,
+                    "decline": task.state == TaskState::Proposed,
+                }),
             ))
         }),
         _ => return None,
@@ -71,7 +82,7 @@ fn task<'a>(p: &Policy<'a>, id: &TaskId) -> Result<&'a Task, IntentError> {
 }
 
 /// Only the task's requester acts on it.
-fn requester(p: &Policy<'_>, task: &Task) -> Result<(), IntentError> {
+pub(super) fn requester(p: &Policy<'_>, task: &Task) -> Result<(), IntentError> {
     if &task.requester == p.proposer {
         Ok(())
     } else {

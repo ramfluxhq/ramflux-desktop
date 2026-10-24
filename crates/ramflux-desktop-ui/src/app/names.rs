@@ -182,6 +182,8 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::TaskUpserted(_) => "TaskUpserted",
         DomainEvent::TaskStepChanged { .. } => "TaskStepChanged",
         DomainEvent::TaskStateChanged { .. } => "TaskStateChanged",
+        DomainEvent::TaskSnapshot(_) => "TaskSnapshot",
+        DomainEvent::TaskAnswered { .. } => "TaskAnswered",
         DomainEvent::SourceStatusChanged(_) => "SourceStatusChanged",
         DomainEvent::CapabilitiesUpdated(_) => "CapabilitiesUpdated",
         DomainEvent::DaemonInfoUpdated(_) => "DaemonInfoUpdated",

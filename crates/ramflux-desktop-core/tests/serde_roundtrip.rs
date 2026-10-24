@@ -32,6 +32,8 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::TaskUpserted(_) => "TaskUpserted",
         DomainEvent::TaskStepChanged { .. } => "TaskStepChanged",
         DomainEvent::TaskStateChanged { .. } => "TaskStateChanged",
+        DomainEvent::TaskSnapshot(_) => "TaskSnapshot",
+        DomainEvent::TaskAnswered { .. } => "TaskAnswered",
         DomainEvent::SourceStatusChanged(_) => "SourceStatusChanged",
         DomainEvent::ContextSettingsChanged { .. } => "ContextSettingsChanged",
         DomainEvent::AccountLockChanged { .. } => "AccountLockChanged",
@@ -52,7 +54,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 34;
+const DOMAIN_EVENT_VARIANTS: usize = 36;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -327,6 +329,8 @@ fn all_domain_events() -> Vec<DomainEvent> {
             version: 3,
             result: Some("Booked".to_owned()),
             result_ref: Some(SurfaceId::new("s-result")),
+            flags: TaskFlags::default(),
+            answer: None,
         }),
         DomainEvent::TaskStepChanged {
             task_id: TaskId::new("t-1"),
@@ -340,6 +344,25 @@ fn all_domain_events() -> Vec<DomainEvent> {
             version: 5,
             state: TaskState::Cancelled,
             result: Some("Cancelled".into()),
+        },
+        DomainEvent::TaskSnapshot(Task {
+            id: TaskId::new("t-2"),
+            intent_id: None,
+            context_id: ContextId::new("c-1"),
+            requester: Actor::Member(ParticipantId::new("p-2")),
+            assignee: ParticipantId::new("p-1"),
+            title: "Check".to_owned(),
+            steps: Vec::new(),
+            state: TaskState::Running,
+            version: 9,
+            result: None,
+            result_ref: None,
+            flags: TaskFlags { stalled: true, compacted: true, kind_verified: false },
+            answer: Some(TaskAnswer::Refused(TaskRefusal::Other("x".into()))),
+        }),
+        DomainEvent::TaskAnswered {
+            task_id: TaskId::new("t-2"),
+            answer: TaskAnswer::DecisionPending { step_id: StepId::new("s") },
         },
         DomainEvent::Surface(SurfaceEvent::Create {
             moment_id: MomentId::new("m-s"),

@@ -123,7 +123,7 @@ pub fn handle_intent(
         store,
         now,
         proposer: &intent.proposed_by,
-        is_agent: matches!(intent.proposed_by, Actor::Agent(_)),
+        is_agent: !matches!(intent.proposed_by, Actor::Human),
         human_confirmed: intent
             .confirmed_by
             .as_ref()
@@ -190,5 +190,8 @@ fn actor_json(store: &Store, actor: &Actor) -> Result<Value, IntentError> {
                 Err(IntentError::UnknownAgent(id.clone()))
             }
         }
+        // Another member of a conversation is shown as a task's requester;
+        // it never proposes an intent on this desktop.
+        Actor::Member(id) => Err(IntentError::UnknownAgent(id.clone())),
     }
 }

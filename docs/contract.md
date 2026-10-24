@@ -57,7 +57,7 @@ The store keeps each entity in its own collection, keyed by id:
 | `StandingApproval` | scope, `max_risk`, expiry, `uses`, `revoked` |
 | `AuditEntry` | `at`, `action` (method), `subject` (id), `proposed_by`, `human_confirmed` |
 | `Integrations` | read-only MCP servers (`healthy`: `None` while the backend has not checked) and pending A2I events |
-| `Task` | intent id, context, `requester` (Actor), `assignee` (participant), `steps`, `state` (Proposed, Running, NeedsMe, Done, Failed, Cancelled), rising `version`, `result`, `result_ref` (surface) |
+| `Task` | intent id, context, `requester` (Actor), `assignee` (participant), `steps`, `state` (Proposed, Running, NeedsMe, Done, Failed, Cancelled), rising `version`, `result`, `result_ref` (surface), `flags` (stalled, compacted, kind_verified), `answer` |
 | `TaskStep` | `id`, `label`, `state` (Pending, Running, NeedsMe, Done, Failed, Skipped), `needs_me`: `Approval { grant_id }` \| `Choice { surface_id }` \| `Input { surface_id }` (required while NeedsMe; kept afterwards as the record) |
 
 Messages carry an optional `attachment` and a `franking` commitment; conflict
@@ -156,7 +156,14 @@ of the same kind), `SurfacePatched` (`AppendBlocks`, `ReplaceBlock`,
 `Surface` (versioned surface events, see above), `ObjectUpserted`,
 `GrantRequested`, `GrantResolved`, `TaskUpserted` (full update, rising
 version), `TaskStepChanged` (one step, rising version), `TaskStateChanged`
-(state only; ending a task skips its unfinished steps), `SourceStatusChanged` (Connected, Disconnected,
+(state only; ending a task skips its unfinished steps), `TaskSnapshot` (the
+whole task at its authority's version: versions may skip, the same version
+changes only flags and step places, a proposal gets its requester when
+accepted, a finished task is frozen), `TaskAnswered` (the source's answer to
+this desktop's last request about a task: a decision pending confirmation, or
+a typed refusal `Changed`, `Finished`, `NotAllowed`, `AlreadyDecided`,
+`TooLarge`, `DecisionRejected`, `Other`; kept until the version rises),
+`SourceStatusChanged` (Connected, Disconnected,
 Locked), `ContextSettingsChanged` (pin, mute, disappearing timer),
 `AccountLockChanged`, `NodeSettingsChanged` (enabled; setting a default clears
 the previous one), `NodeProbed` (also sets health), `NodeRemoved`,
@@ -257,8 +264,13 @@ The kinds, by area:
   `MuteContext`, `SetDisappearing`.
 - Tasks: `StartTask { context_id, assignee, text }` (an agent member of the
   context; body `{conversation_id, assignee, text, constraints, proposal_id}`),
-  `AcceptTaskProposal` (human only; `task.start` with `proposal_id`),
-  `CancelTask` (only the requester; also declines a proposal).
+  `AcceptTaskProposal` (human only; `task.start` with `proposal_id` and the
+  `version` shown), `CancelTask` (only the requester; body adds
+  `conversation_id` and `decline: true` for a proposal). A task's flags say
+  whether its assignee is stalled, its history compacted and its actors'
+  kinds verified (`Actor::Member` is another member who asked for a task).
+  Approving or denying a grant a task step waits on is the requester's
+  only; the SDK source then sends `task.resolve` for that step.
   `SurfaceAction` carries the `version` and `surface_hash` it was shown on
   (the source hashes its arguments with the protocol's argument hash); a
   closed, out-of-date, out-of-sync, over-limit or changed surface refuses it.

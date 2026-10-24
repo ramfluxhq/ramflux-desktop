@@ -85,6 +85,15 @@ pub fn task_text(store: &Store, task: &Task) -> String {
     if task.state == TaskState::Proposed {
         out.push_str("\n  needs you: start or decline this proposal");
     }
+    if task.flags.stalled && !task.state.is_terminal() {
+        out.push_str(&format!("\n  stalled by {assignee}: it cannot send more updates"));
+    }
+    if task.flags.compacted {
+        out.push_str("\n  history compacted: the outcome is kept");
+    }
+    if !task.flags.kind_verified {
+        out.push_str("\n  (actor kind unverified)");
+    }
     if let Some(result) = &task.result {
         out.push_str(&format!("\n  result: {result}"));
     }

@@ -203,6 +203,66 @@ pub struct Task {
     /// The surface that holds the full result, if any.
     #[serde(default)]
     pub result_ref: Option<SurfaceId>,
+    /// What the source reports about the task beyond its state.
+    #[serde(default)]
+    pub flags: TaskFlags,
+    /// The source's answer to this desktop's last request about the task
+    /// (a decision on its way, or a refusal), until the task changes.
+    #[serde(default)]
+    pub answer: Option<TaskAnswer>,
+}
+
+/// What the source reports about a task beyond its state and steps.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskFlags {
+    /// The assignee used up what it may send: its further updates are
+    /// refused and the task stays where it is. The requester can still
+    /// cancel it.
+    #[serde(default)]
+    pub stalled: bool,
+    /// The task's history was compacted: its outcome and steps are kept,
+    /// the events that led there are not.
+    #[serde(default)]
+    pub compacted: bool,
+    /// Whether the kinds of the task's actors (who is a person, who is an
+    /// AI participant) were verified. Until participants carry a signed
+    /// kind, a kind is only what each side asserts.
+    #[serde(default)]
+    pub kind_verified: bool,
+}
+
+/// Why the source refused a request about a task.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TaskRefusal {
+    /// The task changed since it was shown (an older revision, or the
+    /// decision it answered is no longer open): review it again.
+    Changed,
+    /// The task has finished.
+    Finished,
+    /// This account may not do that (only the requester decides, cancels
+    /// or resolves; agents never confirm).
+    NotAllowed,
+    /// That decision was already used.
+    AlreadyDecided,
+    /// The request is larger than a task message may be.
+    TooLarge,
+    /// The assignee could not confirm the decision.
+    DecisionRejected,
+    /// Another reason, as the source gave it.
+    Other(String),
+}
+
+/// The source's answer to this desktop's request about a task.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TaskAnswer {
+    /// The decision on a step was sent; the assignee confirms it once it
+    /// has checked the grant or the surface answer.
+    DecisionPending {
+        /// The step decided.
+        step_id: StepId,
+    },
+    /// The request was refused; nothing changed.
+    Refused(TaskRefusal),
 }
 
 const fn first_version() -> u64 {

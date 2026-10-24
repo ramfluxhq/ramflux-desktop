@@ -14,6 +14,9 @@ pub enum Actor {
     Human,
     /// An agent participant acting through the same policy as the human.
     Agent(ParticipantId),
+    /// Another member of the conversation who asked for a task (a person
+    /// or an agent; its kind is not verified). Never proposes intents here.
+    Member(ParticipantId),
 }
 
 /// The gesture the attended human completed.

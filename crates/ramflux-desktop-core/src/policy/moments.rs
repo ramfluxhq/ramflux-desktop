@@ -10,7 +10,7 @@ use super::{Decision, IntentError, Policy};
 use crate::conformance::SurfaceHash;
 use crate::ids::{GrantId, MomentId};
 use crate::intent::{IntentKind, methods};
-use crate::model::{Grant, GrantState, Lifecycle, MomentKind, Risk, SafetyState};
+use crate::model::{Grant, GrantState, Lifecycle, MomentKind, Risk, SafetyState, StepState};
 use crate::store::SurfaceState;
 
 /// Decides moment-area kinds; `None` for kinds of other areas.
@@ -216,6 +216,14 @@ fn open_grant<'a>(p: &Policy<'a>, id: &GrantId) -> Result<&'a Grant, IntentError
     }
     if grant.expiry.is_some_and(|expiry| expiry <= p.now) {
         return Err(IntentError::GrantExpired(id.clone()));
+    }
+    // A step of someone else's task is decided by its requester.
+    if let Some(task) = p
+        .store
+        .step_owners(id)
+        .find(|t| t.steps.iter().any(|s| s.state == StepState::NeedsMe && s.grant_id() == Some(id)))
+    {
+        super::tasks::requester(p, task)?;
     }
     Ok(grant)
 }

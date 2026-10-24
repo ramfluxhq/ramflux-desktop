@@ -41,6 +41,9 @@ pub const CONFLICT_RESOLVE: &str = "object.resolve_conflict";
 pub const TASK_START: &str = "task.start";
 /// Cancel a task.
 pub const TASK_CANCEL: &str = "task.cancel";
+/// Record the requester's decision on a task step (sent by a source after
+/// the grant or surface decision it refers to; never an intent of its own).
+pub const TASK_RESOLVE: &str = "task.resolve";
 /// Pin a context.
 pub const CONTEXT_PIN: &str = "context.pin";
 /// Unpin a context.
