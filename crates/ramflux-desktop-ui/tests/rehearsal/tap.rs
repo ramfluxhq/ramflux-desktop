@@ -124,6 +124,22 @@ fn summary(n: usize, dir: &str, body: &[u8]) -> Value {
             }
         }
     }
+    if method == "identity.directory" && dir == "down" {
+        // Public directory data only: who is listed and with how many
+        // devices (evidence for routes the desktop can or cannot use).
+        let rows = frame["body"]["identities"].as_array().cloned().unwrap_or_default();
+        line["identities"] = rows
+            .iter()
+            .map(|r| {
+                json!({
+                    "principal_id": r["principal_id"],
+                    "is_self": r["is_self"],
+                    "has_commitment": !r["contact_identity_commitment"].is_null(),
+                    "devices": r["devices"].as_array().map_or(0, Vec::len),
+                })
+            })
+            .collect();
+    }
     if frame["kind"] == "error" {
         line["code"] = frame["body"]["code"].clone();
     }

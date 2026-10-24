@@ -68,7 +68,12 @@ fn rf_json(daemon: &LiveDaemon, args: &[&str]) -> Result<Value, String> {
         let verb = args.iter().take(3).copied().collect::<Vec<_>>().join(" ");
         return Err(format!(
             "rf {verb} failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim().lines().last().unwrap_or("no output")
+            String::from_utf8_lossy(&out.stderr)
+                .trim()
+                .lines()
+                .take(4)
+                .collect::<Vec<_>>()
+                .join(" | ")
         ));
     }
     serde_json::from_slice(&out.stdout).map_err(|e| format!("rf answered no JSON: {e}"))

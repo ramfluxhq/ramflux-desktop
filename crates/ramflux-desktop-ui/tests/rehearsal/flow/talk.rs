@@ -113,7 +113,14 @@ pub fn messages<H: Host, D: DemoDaemon>(
     let run = demo.config.run_id.clone();
     let limits = demo.config.limits;
     let opener = format!("Hello Bob, this is Alice ({run})");
-    start(demo, &bob.principal, &opener, notes)?;
+    if let Err(error) = start(demo, &bob.principal, &opener, notes) {
+        if let Ok(links) =
+            demo.sides[0].daemon.cli(&["contact", "list", "--account", &alice.account])
+        {
+            notes.add(format!("Alice's daemon: rf contact list {links}"));
+        }
+        return Err(error);
+    }
     let context = demo.conversation.clone();
     notes.add(format!(
         "opener started from the contacts dock (Message on Bob, first message from the \
@@ -285,22 +292,100 @@ pub fn attachment<H: Host, D: DemoDaemon>(
         desk.store(host, |s| s.context_moment_count(&context) > before)
     })?;
     notes.add("Bob: the message arrived");
-    let received = demo.read(1, |s| {
-        s.objects()
-            .filter(|o| o.direction == Direction::Inbound)
-            .map(|o| o.transfer.clone())
-            .collect::<Vec<_>>()
-    })?;
-    if received.contains(&TransferState::Complete) {
-        notes.add("Bob: an incoming object is listed as available; compare its bytes by hand");
+    if let Some(fetch) = limits_fetch(demo) {
+        received(demo, &name, &bytes, fetch, notes)?;
     } else {
-        notes.add(format!(
-            "Bob: attachment not fetched ({} incoming objects listed; the daemon cannot fetch a \
-             received attachment yet)",
-            received.len()
-        ));
+        let received = demo.read(1, |s| {
+            s.objects()
+                .filter(|o| o.direction == Direction::Inbound)
+                .map(|o| o.transfer.clone())
+                .collect::<Vec<_>>()
+        })?;
+        if received.contains(&TransferState::Complete) {
+            notes.add("Bob: an incoming object is listed as available; compare its bytes by hand");
+        } else {
+            notes.add(format!(
+                "Bob: attachment not fetched ({} incoming objects listed; the daemon cannot \
+                 fetch a received attachment yet)",
+                received.len()
+            ));
+        }
     }
     demo.shots(0, "06_attachment", notes)?;
     demo.shots(1, "06_attachment", notes)?;
+    Ok(())
+}
+
+fn limits_fetch<H: Host, D: DemoDaemon>(demo: &Demo<'_, H, D>) -> Option<std::time::Duration> {
+    demo.config.limits.fetch
+}
+
+/// Live: Bob's desktop must list the attachment as received (its daemon
+/// fetched it), and the bytes must be the ones Alice sent: read from where
+/// the desktop says it was saved, else fetched with `rf object get` from
+/// Bob's daemon (noted).
+fn received<H: Host, D: DemoDaemon>(
+    demo: &mut Demo<'_, H, D>,
+    name: &str,
+    sent: &[u8],
+    limit: std::time::Duration,
+    notes: &mut Notes,
+) -> Result<(), String> {
+    let inbound = |s: &ramflux_desktop_core::Store| {
+        s.objects()
+            .filter(|o| o.direction == Direction::Inbound)
+            .map(|o| {
+                (o.id.to_string(), o.name.clone(), o.size, o.transfer.clone(), o.saved_to.clone())
+            })
+            .collect::<Vec<_>>()
+    };
+    let waited = demo.wait(1, limit, "the received attachment", |desk, host| {
+        desk.store(host, |s| {
+            s.objects()
+                .any(|o| o.direction == Direction::Inbound && o.transfer == TransferState::Complete)
+        })
+    });
+    let listed = demo.read(1, inbound)?;
+    notes.add(format!("Bob: incoming objects {listed:?}"));
+    if waited.is_err() {
+        return Err(format!(
+            "Bob's desktop never listed the attachment as received within {limit:?}: {listed:?}"
+        ));
+    }
+    let Some((id, _, _, _, saved)) =
+        listed.iter().find(|o| o.3 == TransferState::Complete).cloned()
+    else {
+        return Err("no complete incoming object".to_owned());
+    };
+    let got = if let Some(path) = saved.as_deref().filter(|p| std::path::Path::new(p).exists()) {
+        notes.add(format!("Bob: read the attachment from where the desktop saved it ({path})"));
+        std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?
+    } else {
+        let bob = demo.sides[1].facts()?.account.clone();
+        let out = demo.work.join(format!("received-{name}"));
+        let out_text = out.display().to_string();
+        let answer = demo.sides[1].daemon.cli(&[
+            "object",
+            "get",
+            "--account",
+            &bob,
+            "--object",
+            &id,
+            &out_text,
+        ])?;
+        notes.add(format!(
+            "Bob: no saved path shown; bytes read with rf object get from Bob's daemon ({})",
+            answer.get("status").or_else(|| answer.get("state")).cloned().unwrap_or_default()
+        ));
+        std::fs::read(&out).map_err(|e| format!("cannot read {}: {e}", out.display()))?
+    };
+    if got != sent {
+        return Err(format!(
+            "Bob's attachment {id} differs from what Alice sent ({} bytes vs {})",
+            got.len(),
+            sent.len()
+        ));
+    }
+    notes.add(format!("Bob: attachment {id} received, {} bytes identical", got.len()));
     Ok(())
 }
