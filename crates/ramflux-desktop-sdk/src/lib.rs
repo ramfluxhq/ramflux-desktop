@@ -43,6 +43,6 @@ pub use plan::message::ATTACHMENT_LIMIT;
 /// The product revision the `ramflux-sdk`, `ramflux-protocol` and
 /// `ramflux-crypto` dependencies are pinned to (checked against
 /// `Cargo.lock` by a test).
-pub const PRODUCT_REV: &str = "7e665e1da4fbf08d9feff0a4a699ce222947da26";
+pub const PRODUCT_REV: &str = "9227749eb27725d40aab9e7e92abf173fcb3a4f5";
 pub use source::{DaemonStop, SdkHub, SdkSource};
 pub use translate::Scope;
