@@ -69,7 +69,7 @@ pub fn identity(who: &Account, viewer: &Account) -> Value {
         "safety_state": if verified { "verified" } else { "unverified" },
         // Resolving a contact caches the safety number (CONTACT-01), so it
         // is listed to compare before it is verified.
-        "safety_number": if is_self { Value::Null } else { json!("31415 92653 58979 32384") },
+        "safety_number": if is_self { Value::Null } else { json!(["31415", "92653", "58979", "32384"]) },
         "safety_number_available": !is_self,
     })
 }

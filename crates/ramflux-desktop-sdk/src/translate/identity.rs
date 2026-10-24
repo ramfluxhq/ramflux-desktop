@@ -8,7 +8,7 @@
 //! | `display_name` | display (the id when null) |
 //! | `kind` `human` / `headless_ai` / `bot` | `Human` / `Agent` / `Agent`; null is `Unknown` |
 //! | `safety_state` `verified` / `verification_stale` | `Verified` / `KeyChanged` (the verified device set changed); else `Unverified` |
-//! | `safety_number` | the persisted number, or none |
+//! | `safety_number` | the persisted number (a string, or the daemon's digit groups joined by spaces), or none |
 //! | `root_source` `lookup` / `card` / `verified` | where the pinned root came from |
 //! | `devices` | routes for sends, adds and invites (the directory) |
 //! | `is_self` | this account's principal and commitment |
@@ -28,6 +28,19 @@ fn kind(row: &Value) -> Option<ParticipantKind> {
         Some("human") => Some(ParticipantKind::Human),
         Some("headless_ai" | "bot") => Some(ParticipantKind::Agent),
         _ => None,
+    }
+}
+
+/// The persisted safety number: the daemon stores the digit groups it
+/// computed (an array of strings); a single string is taken as it is.
+fn safety_number(row: &Value) -> Option<String> {
+    match &row["safety_number"] {
+        Value::Array(groups) => {
+            let groups: Vec<&str> =
+                groups.iter().filter_map(Value::as_str).filter(|g| !g.is_empty()).collect();
+            (!groups.is_empty()).then(|| groups.join(" "))
+        }
+        _ => field(row, "safety_number"),
     }
 }
 
@@ -61,7 +74,7 @@ impl Translator {
                 display: field(row, "display_name"),
                 kind: kind(row),
                 safety: safety(row),
-                safety_number: field(row, "safety_number"),
+                safety_number: safety_number(row),
                 root_source: super::contacts::root_source(row),
             };
             events.extend(self.set_facts(&ParticipantId::new(principal.as_str()), facts));
@@ -69,5 +82,24 @@ impl Translator {
         }
         self.directory.identities = listed;
         events
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::safety_number;
+
+    #[test]
+    fn the_daemon_digit_groups_are_one_number() {
+        let row = json!({ "safety_number": ["12345", "67890", "13579"] });
+        assert_eq!(safety_number(&row).as_deref(), Some("12345 67890 13579"));
+        assert_eq!(
+            safety_number(&json!({ "safety_number": "12345 67890" })).as_deref(),
+            Some("12345 67890")
+        );
+        assert_eq!(safety_number(&json!({ "safety_number": [] })), None);
+        assert_eq!(safety_number(&json!({ "safety_number": null })), None);
     }
 }

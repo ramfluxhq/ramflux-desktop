@@ -185,7 +185,7 @@ fn identity(principal: &str, root: &str, source: &str) -> Option<Value> {
         "display_name": who.name, "kind": if who.kind == "human" { Value::from("human") } else { Value::Null },
         "is_self": false, "devices": devices,
         "safety_state": if source == "verified" { "verified" } else { "unverified" },
-        "safety_number": format!("{:0>60}", principal.len()), "safety_number_available": true,
+        "safety_number": ["31415", "92653", format!("{:0>5}", principal.len())], "safety_number_available": true,
         "root_source": source,
     }))
 }
