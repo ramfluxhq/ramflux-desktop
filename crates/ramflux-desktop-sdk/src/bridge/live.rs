@@ -222,11 +222,13 @@ impl Task {
                 self.show_sync(false);
             }
             "account.state" => {
-                if self.account().is_some_and(|account| locks(body, &account)) {
-                    self.save_cursor(true);
-                    self.sync.stop();
-                    self.locked();
-                    return;
+                // A `locked` entry may be replayed after the account was
+                // unlocked again (a source resuming from a cursor saved
+                // before the lock): the daemon's account status decides; it
+                // answers "account not open" while locked, which locks.
+                if let Some(account) = self.account().filter(|account| locks(body, account)) {
+                    let account = ramflux_desktop_core::AccountId::new(account);
+                    self.request_reads(vec![Fetch::AccountStatus(account)]);
                 }
             }
             _ => {

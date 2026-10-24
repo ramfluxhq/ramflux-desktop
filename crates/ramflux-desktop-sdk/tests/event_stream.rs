@@ -43,6 +43,8 @@ fn conversations(with_new: bool) -> Value {
 struct World {
     fake: FakeBus,
     listed: Arc<AtomicBool>,
+    /// The account is locked: `account.status` answers as the daemon does.
+    locked: Arc<AtomicBool>,
 }
 
 impl World {
@@ -50,14 +52,20 @@ impl World {
         let path = socket_path(&format!("es-{name}"));
         let listed = Arc::new(AtomicBool::new(false));
         let flag = listed.clone();
+        let locked = Arc::new(AtomicBool::new(false));
+        let lock = locked.clone();
         let fake = FakeBus::start(&path, move |method, _, _| match method {
             "conversation.directory" => Reply::Ok(conversations(flag.load(Ordering::SeqCst))),
+            "account.status" if lock.load(Ordering::SeqCst) => Reply::Error(
+                "ValidationFailed",
+                format!("local bus error: account not open: {ACCOUNT}"),
+            ),
             _ => fixture(method),
         });
         if stream {
             fake.enable_stream();
         }
-        (Self { fake, listed }, path)
+        (Self { fake, listed, locked }, path)
     }
 
     fn mark(&self) -> usize {
@@ -301,6 +309,7 @@ fn a_lock_stops_the_stream_and_the_next_source_resumes_from_the_cursor() {
     let mark = world.mark();
     world.fake.publish(ACCOUNT, "object.changed", json!({ "id": "o" }));
     wait_for(&world, &mut account, mark, "object.directory");
+    world.locked.store(true, Ordering::SeqCst);
     let locked = world.fake.publish(
         ACCOUNT,
         "account.state",
@@ -322,12 +331,51 @@ fn a_lock_stops_the_stream_and_the_next_source_resumes_from_the_cursor() {
     assert_eq!(saved, Some(locked), "the cursor is saved on lock");
     drop(account);
     // Unlock: the app makes a new source for the account.
+    world.locked.store(false, Ordering::SeqCst);
     let before = world.subscribes().len();
     let hub = ramflux_desktop_sdk::SdkHub::start(config).expect("bridge");
     let mut again = Fed::new(hub.account_source(me));
     again.until("resubscribed", |_, _| world.subscribes().len() > before);
     assert_eq!(world.subscribes()[before].body["since_seq"], locked);
     drop(again);
+    world.fake.shutdown();
+    let _ = std::fs::remove_dir_all(settings.parent().expect("dir"));
+}
+
+#[test]
+fn a_replayed_lock_of_an_account_unlocked_since_does_not_lock_it() {
+    // The desktop locked the account itself, so its stream stopped before
+    // the daemon's `locked` entry; after the unlock the new source resumes
+    // from the older cursor and is replayed that entry (then `unlocked`).
+    let (world, path) = World::start("relock", true);
+    let before = world.fake.publish(ACCOUNT, "object.changed", json!({ "id": "o" }));
+    world.fake.publish(
+        ACCOUNT,
+        "account.state",
+        json!({ "local_account_id": ACCOUNT, "state": "locked" }),
+    );
+    world.fake.publish(
+        ACCOUNT,
+        "account.state",
+        json!({ "local_account_id": ACCOUNT, "state": "unlocked" }),
+    );
+    let settings = settings_file("relock");
+    ramflux_desktop_sdk::cursor::CursorStore::new(Some(settings.clone()), path.to_string_lossy())
+        .save(&AccountId::new(ACCOUNT), before);
+    let mut account = streaming(&world, config_with(&path, Some(settings.clone())));
+    assert_eq!(world.subscribes()[0].body["since_seq"], before, "the lock entry is replayed");
+    account.settle(500);
+    let me = AccountId::new(ACCOUNT);
+    assert_ne!(
+        account.store.account(&me).map(|a| a.lock_state),
+        Some(LockState::Locked),
+        "the daemon says the account is open"
+    );
+    // The stream stays open: a later change still arrives.
+    let mark = world.mark();
+    world.fake.publish(ACCOUNT, "object.changed", json!({ "id": "o" }));
+    wait_for(&world, &mut account, mark, "object.directory");
+    drop(account);
     world.fake.shutdown();
     let _ = std::fs::remove_dir_all(settings.parent().expect("dir"));
 }
