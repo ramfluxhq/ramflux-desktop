@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use ramflux_sdk::{LocalBusClient, LocalBusFrame};
+use ramflux_sdk::{LocalBusClient, LocalBusFrame, LocalBusFrameKind};
 use serde_json::Value;
 use tokio::sync::{Mutex, Semaphore};
 
@@ -113,12 +113,19 @@ impl BusClient {
         );
         frame.deadline_ms = Some(deadline_ms(budget));
         frame.operation_id.clone_from(&request.operation_id);
-        let answer = tokio::time::timeout(budget + DEADLINE_GRACE, client.request_frame(frame))
-            .await
-            .unwrap_or_else(|_| {
-                Err(ramflux_sdk::SdkError::LocalBus("request deadline exceeded".to_owned()))
-            })
-            .map_err(BusError::from);
+        // The whole response frame: a refusal keeps its typed reason and
+        // details, which the convenience `request_frame` flattens to text.
+        let answer =
+            tokio::time::timeout(budget + DEADLINE_GRACE, client.request_frame_response(frame))
+                .await
+                .unwrap_or_else(|_| {
+                    Err(ramflux_sdk::SdkError::LocalBus("request deadline exceeded".to_owned()))
+                })
+                .map_err(BusError::from)
+                .and_then(|response| match response.kind {
+                    LocalBusFrameKind::Error => Err(BusError::from_error_body(response.error)),
+                    _ => Ok(response.body),
+                });
         if answer.as_ref().is_err_and(BusError::is_connection_lost) {
             self.forget(generation).await;
         }

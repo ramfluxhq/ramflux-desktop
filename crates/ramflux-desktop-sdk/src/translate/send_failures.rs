@@ -98,11 +98,10 @@ mod tests {
     fn an_unreachable_node_host_on_macos_names_the_local_network_permission() {
         use crate::translate::Scope;
         let translator = Translator::new(Scope::Daemon, "rfd.sock");
-        let error = BusError::Daemon {
-            code: "node".to_owned(),
-            message: "node error: client record fetch failed: HostUnreachable (os error 65)"
-                .to_owned(),
-        };
+        let error = BusError::daemon(
+            "node",
+            "node error: client record fetch failed: HostUnreachable (os error 65)",
+        );
         let add = translator.failure_message(methods::NODE_ADD, &error);
         let probe = translator.failure_message(methods::NODE_PROBE, &error);
         if cfg!(target_os = "macos") {
@@ -116,17 +115,13 @@ mod tests {
             error.message(),
             "only node lookups are explained this way"
         );
-        let refused = BusError::Daemon {
-            code: "node".to_owned(),
-            message: "client record verification failed".to_owned(),
-        };
+        let refused = BusError::daemon("node", "client record verification failed");
         assert_eq!(translator.failure_message(methods::NODE_ADD, &refused), refused.message());
-        let lan = BusError::Daemon {
-            code: "node".to_owned(),
-            message: "local bus error: error sending request for url \
-                      (http://192.168.0.10:8080/.well-known/ramflux/client)"
-                .to_owned(),
-        };
+        let lan = BusError::daemon(
+            "node",
+            "local bus error: error sending request for url \
+             (http://192.168.0.10:8080/.well-known/ramflux/client)",
+        );
         if cfg!(target_os = "macos") {
             assert_eq!(
                 translator.failure_message(methods::NODE_ADD, &lan),
