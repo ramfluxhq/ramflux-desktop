@@ -10,7 +10,7 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, Block, Capabilities, ContactCard, Context, DaemonInfo, Device,
+    Account, AuditEntry, Block, Call, Capabilities, ContactCard, Context, DaemonInfo, Device,
     Disappearing, EffectFailure, Grant, GrantFailure, GrantState, Integrations, Lifecycle, Listing,
     LockState, Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant,
     StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskAnswer, TaskState,
@@ -279,4 +279,9 @@ pub enum DomainEvent {
     ListingsLoaded(Vec<Listing>),
     /// This account's contact card, as the backend exported it.
     OwnContactCardUpdated(ContactCard),
+    /// A voice call as the daemon reports it (the whole call). The version
+    /// must rise, the state follow [`crate::CallState::can_transition`], and
+    /// the conversation, peer, caller and direction stay. The store keeps
+    /// the call's timeline record with it.
+    CallUpserted(Call),
 }

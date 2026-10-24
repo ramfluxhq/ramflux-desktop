@@ -13,6 +13,7 @@
 //! and read view-local state ([`RowState`]) owned by the conversation field;
 //! they never touch the store.
 
+pub mod call;
 mod conflict;
 mod contact;
 mod governance;
@@ -41,8 +42,8 @@ use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, FocusHandle, IntoElement, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
-    Actor, AuditEntry, BlockId, BlockKind, Grant, GrantId, Lifecycle, Moment, MomentId, MomentKind,
-    Object, ObjectId, Participant, ParticipantId, Store, Task, selectors,
+    Actor, AuditEntry, BlockId, BlockKind, Call, Grant, GrantId, Lifecycle, Moment, MomentId,
+    MomentKind, Object, ObjectId, Participant, ParticipantId, Store, Task, selectors,
 };
 
 use crate::bubble::EventSink;
@@ -77,6 +78,10 @@ pub struct RowRefs {
     /// For a failed or cancelled task without a result: how it ended and
     /// who ended it, and whether that was the local user.
     pub ending: Option<(selectors::TaskEnding, bool)>,
+    /// The call a call record presents.
+    pub call: Option<Call>,
+    /// For an ended call: whether a call back could be placed now.
+    pub call_back: bool,
 }
 
 /// The task step an intervention belongs to.
@@ -277,6 +282,13 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
         MomentKind::Handoff(p) => p.to_device.iter().chain([&p.from_device]).collect(),
         MomentKind::PrivacyReveal(p) => p.revealed.iter().map(|r| &r.by).collect(),
         MomentKind::Fallback(_) | MomentKind::System(_) => Vec::new(),
+        MomentKind::Call(p) => {
+            refs.call = store.call(&p.call_id).cloned();
+            refs.call_back = ramflux_desktop_core::check_start_call(store, &moment.context_id)
+                .is_ok()
+                && store.unsupported_reason(ramflux_desktop_core::methods::CALL_INVITE).is_none();
+            refs.call.as_ref().map(|c| vec![&c.peer]).unwrap_or_default()
+        }
     };
     for id in people {
         if let Some(p) = store.participant(id) {
@@ -382,6 +394,7 @@ impl RenderOnce for MomentView {
             MomentKind::System(p) => notice::system(p, cx).into_any_element(),
             MomentKind::Fallback(p) => notice::fallback(p, cx).into_any_element(),
             MomentKind::TaskEvent(p) => task_event::render(p, &row, cx).into_any_element(),
+            MomentKind::Call(_) => call::render(&row.refs, &sink, cx).into_any_element(),
         };
         // A task event is one compact line: it carries its own time.
         let compact = matches!(moment.kind, MomentKind::TaskEvent(_));

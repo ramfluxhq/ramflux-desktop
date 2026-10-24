@@ -6,7 +6,7 @@
 use thiserror::Error;
 
 use crate::ids::{
-    AccountId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
+    AccountId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
     StandingApprovalId, TaskId,
 };
 
@@ -226,4 +226,17 @@ pub enum IntentError {
     /// The device running this client cannot revoke itself.
     #[error("device {0} is this device")]
     ThisDevice(DeviceId),
+    /// Call not in the store.
+    #[error("unknown call {0}")]
+    UnknownCall(CallId),
+    /// Voice calls are one-to-one: only in a direct conversation.
+    #[error("context {0} is not a direct conversation")]
+    CallNeedsDirect(ContextId),
+    /// Another call is under way (one call at a time).
+    #[error("another call is under way")]
+    CallInProgress,
+    /// The call is not in a state this intent applies to (answering or
+    /// declining a call that no longer rings, hanging up an ended one).
+    #[error("call {0} cannot do this in its current state")]
+    CallState(CallId),
 }

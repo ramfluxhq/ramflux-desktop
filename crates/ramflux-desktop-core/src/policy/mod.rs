@@ -15,9 +15,11 @@
 //! - `contacts`: adding contacts and acting on contact links.
 //! - `start`: starting a direct conversation with a contact.
 //! - `groups`: creating and renaming a group.
+//! - `calls`: placing, answering, declining and hanging up voice calls.
 //! - `accounts`: entry (accounts, devices, nodes) and settings.
 
 mod accounts;
+mod calls;
 mod contacts;
 mod conversation;
 mod error;
@@ -34,6 +36,7 @@ use crate::intent::{Effect, Intent, IntentKind, SecretInput};
 use crate::model::{Actor, Context, Moment, ParticipantKind, Risk};
 use crate::store::Store;
 
+pub use calls::{call_peer, check_start_call};
 pub use contacts::{check_add_contact, check_add_contact_card, contact_action_current};
 pub use error::IntentError;
 pub use groups::{
@@ -136,6 +139,7 @@ pub fn handle_intent(
         .or_else(|| contacts::decide(&policy, &intent.kind))
         .or_else(|| start::decide(&policy, &intent.kind))
         .or_else(|| groups::decide(&policy, &intent.kind))
+        .or_else(|| calls::decide(&policy, &intent.kind))
         .or_else(|| accounts::decide(&policy, &intent.kind))
         .unwrap_or_else(|| unreachable!("every intent kind belongs to one area"))?;
     let method = match &decision {

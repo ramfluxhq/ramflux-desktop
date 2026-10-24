@@ -101,6 +101,10 @@ string_id!(
     /// A step of a task, unique within its task.
     StepId
 );
+string_id!(
+    /// A voice call (the daemon's fresh 128-bit call id).
+    CallId
+);
 
 impl ParticipantId {
     /// A short form of the id for display when no name is known: a

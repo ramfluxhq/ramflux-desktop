@@ -8,10 +8,10 @@ use std::collections::BTreeSet;
 use thiserror::Error;
 
 use crate::ids::{
-    AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
-    StepId, SurfaceId, TaskId,
+    AccountId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
+    ParticipantId, StepId, SurfaceId, TaskId,
 };
-use crate::model::{Lifecycle, StepState, TaskState};
+use crate::model::{CallState, Lifecycle, StepState, TaskState};
 
 /// Why an envelope was not applied.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -166,6 +166,29 @@ pub enum ApplyError {
         /// Requested step.
         step: StepId,
     },
+    /// A call update whose version does not rise.
+    #[error("call {call}: version {found} is not after {current}")]
+    StaleCallVersion {
+        /// Call.
+        call: CallId,
+        /// Version in the store.
+        current: u64,
+        /// Version of the update.
+        found: u64,
+    },
+    /// A call update changed its conversation, peer, caller or direction.
+    #[error("call {0} cannot change its conversation, peer, caller or direction")]
+    CallIdentityChanged(CallId),
+    /// Call state transition not allowed by [`CallState::can_transition`].
+    #[error("illegal call transition for {call}: {from:?} -> {to:?}")]
+    IllegalCallTransition {
+        /// Call.
+        call: CallId,
+        /// Current state.
+        from: CallState,
+        /// Requested state.
+        to: CallState,
+    },
     /// A task whose steps and state disagree (who needs the requester,
     /// where, whether a proposal started).
     #[error("task {task}: {problem}")]
@@ -210,6 +233,8 @@ pub struct Changes {
     pub grants: BTreeSet<GrantId>,
     /// Changed tasks.
     pub tasks: BTreeSet<TaskId>,
+    /// Changed calls.
+    pub calls: BTreeSet<CallId>,
     /// Standing approvals changed.
     pub standing_approvals: bool,
     /// The audit trail grew.
@@ -241,6 +266,7 @@ impl Changes {
             && self.objects.is_empty()
             && self.grants.is_empty()
             && self.tasks.is_empty()
+            && self.calls.is_empty()
             && !self.standing_approvals
             && !self.audit
             && !self.integrations
@@ -263,6 +289,7 @@ impl Changes {
             objects,
             grants,
             tasks,
+            calls,
             standing_approvals,
             audit,
             integrations,
@@ -281,6 +308,7 @@ impl Changes {
         self.objects.extend(objects);
         self.grants.extend(grants);
         self.tasks.extend(tasks);
+        self.calls.extend(calls);
         self.standing_approvals |= standing_approvals;
         self.audit |= audit;
         self.integrations |= integrations;

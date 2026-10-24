@@ -88,6 +88,14 @@ pub const GROUP_BAN: &str = "group.ban";
 pub const GROUP_SET_ROLE: &str = "group.set_role";
 /// Create a group invitation.
 pub const GROUP_CREATE_INVITE: &str = "group.create_invite";
+/// Place a voice call in a direct conversation (CALL-01 §6 `call.invite`).
+pub const CALL_INVITE: &str = "call.invite";
+/// Answer a ringing call.
+pub const CALL_ANSWER: &str = "call.answer";
+/// Decline a ringing call.
+pub const CALL_REJECT: &str = "call.reject";
+/// Hang up (or cancel) a call.
+pub const CALL_HANGUP: &str = "call.hangup";
 /// Accept a handoff.
 pub const HANDOFF_ACCEPT: &str = "handoff.accept";
 /// Decline a handoff.

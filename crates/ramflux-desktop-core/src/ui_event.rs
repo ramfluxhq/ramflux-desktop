@@ -15,8 +15,8 @@ use serde_json::Value;
 
 use crate::conformance::SurfaceHash;
 use crate::ids::{
-    AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
-    StandingApprovalId, SurfaceId,
+    AccountId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
+    ParticipantId, StandingApprovalId, SurfaceId,
 };
 use crate::intent::{ContactAction, GovernanceOp, SyncDirection};
 use crate::model::ConflictResolution;
@@ -196,6 +196,20 @@ pub enum UiEventKind {
     HandoffAnswered {
         /// Accepted or declined.
         accept: bool,
+    },
+    /// The call button of the scoped direct conversation was pressed.
+    CallStartRequested,
+    /// A ringing call was answered or declined.
+    CallAnswered {
+        /// The call.
+        call_id: CallId,
+        /// Answered (or declined).
+        accept: bool,
+    },
+    /// Hang up pressed on a call (or cancel on one still ringing).
+    CallHangUpPressed {
+        /// The call.
+        call_id: CallId,
     },
     /// A transfer action on an object.
     ObjectActionPressed {

@@ -15,11 +15,13 @@
 //!   stream, close) and the renderer limits at the reducer edge.
 //! - `tasks`: task updates, step changes and where a step needs the
 //!   requester; task moments follow their task's state.
+//! - `calls`: voice calls and their timeline records.
 //! - [`bodies`]: the bounded message-body cache.
 //! - `index`: secondary indexes the reducer maintains (timelines, needs-me,
 //!   in progress, members, grant and task presenters).
 
 pub mod bodies;
+mod calls;
 mod changes;
 mod index;
 mod reducer;
@@ -32,13 +34,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::event::{EVENT_SCHEMA, EventEnvelope, SourceStatus};
 use crate::ids::{
-    AccountId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
+    AccountId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
     StandingApprovalId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, Capabilities, ContactCard, Context, DaemonInfo, Device, EffectFailure,
-    Grant, Integrations, Listing, Moment, Node, Object, Participant, StandingApproval, SyncStatus,
-    Task,
+    Account, AuditEntry, Call, Capabilities, ContactCard, Context, DaemonInfo, Device,
+    EffectFailure, Grant, Integrations, Listing, Moment, Node, Object, Participant,
+    StandingApproval, SyncStatus, Task,
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
@@ -73,6 +75,7 @@ pub struct Store {
     grants: BTreeMap<GrantId, Grant>,
     standing_approvals: BTreeMap<StandingApprovalId, StandingApproval>,
     tasks: BTreeMap<TaskId, Task>,
+    calls: BTreeMap<CallId, Call>,
     audit: Vec<AuditEntry>,
     integrations: Integrations,
     capabilities: Capabilities,
@@ -412,5 +415,15 @@ impl Store {
     /// All tasks ordered by id.
     pub fn tasks(&self) -> impl Iterator<Item = &Task> {
         self.tasks.values()
+    }
+
+    /// Call by id.
+    pub fn call(&self, id: &CallId) -> Option<&Call> {
+        self.calls.get(id)
+    }
+
+    /// All calls ordered by id.
+    pub fn calls(&self) -> impl Iterator<Item = &Call> {
+        self.calls.values()
     }
 }

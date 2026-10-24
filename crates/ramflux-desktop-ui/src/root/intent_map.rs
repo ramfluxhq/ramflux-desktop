@@ -47,6 +47,7 @@ fn context_intent(event: &UiEvent) -> Option<IntentKind> {
         UiEventKind::RenameRequested { title } => {
             IntentKind::RenameContext { context_id, title: title.clone() }
         }
+        UiEventKind::CallStartRequested => IntentKind::StartCall { context_id },
         _ => return None,
     })
 }
@@ -163,6 +164,15 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
             }
         }
         UiEventKind::ShareContactCardRequested => IntentKind::ExportContactCard,
+        UiEventKind::CallAnswered { call_id, accept: true } => {
+            IntentKind::AnswerCall { call_id: call_id.clone() }
+        }
+        UiEventKind::CallAnswered { call_id, accept: false } => {
+            IntentKind::RejectCall { call_id: call_id.clone() }
+        }
+        UiEventKind::CallHangUpPressed { call_id } => {
+            IntentKind::HangUpCall { call_id: call_id.clone() }
+        }
         UiEventKind::CreateGroupRequested { context_id, title, members } => {
             IntentKind::CreateGroup {
                 context_id: context_id.clone(),

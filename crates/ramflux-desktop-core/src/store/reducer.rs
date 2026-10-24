@@ -170,6 +170,7 @@ impl Store {
                 changes.integrations = true;
             }
             DomainEvent::TaskUpserted(task) => self.upsert_task(at, task, changes)?,
+            DomainEvent::CallUpserted(call) => self.upsert_call(at, call, changes)?,
             DomainEvent::TaskStepChanged { task_id, version, step_id, state, needs_me } => {
                 let step = StepChange {
                     task_id,
@@ -363,6 +364,16 @@ impl Store {
             changes.moments.insert(id);
         }
         self.index.remove_context(context_id, &context.participants);
+        let calls: Vec<_> = self
+            .calls
+            .values()
+            .filter(|c| &c.context_id == context_id)
+            .map(|c| c.id.clone())
+            .collect();
+        for call in calls {
+            self.calls.remove(&call);
+            changes.calls.insert(call);
+        }
         Ok(())
     }
 
@@ -412,9 +423,13 @@ impl Store {
             .moments
             .get_mut(moment_id)
             .ok_or_else(|| ApplyError::UnknownMoment(moment_id.clone()))?;
-        // A task moment follows its task, not lifecycle updates.
-        let follows_task = matches!(&moment.kind, MomentKind::TaskProgress(p)
-            if self.tasks.contains_key(&p.task_id));
+        // A task or call moment follows its task or call, not lifecycle
+        // updates.
+        let follows_task = match &moment.kind {
+            MomentKind::TaskProgress(p) => self.tasks.contains_key(&p.task_id),
+            MomentKind::Call(p) => self.calls.contains_key(&p.call_id),
+            _ => false,
+        };
         let next =
             if follows_task { moment.lifecycle } else { lifecycle.unwrap_or(moment.lifecycle) };
         if next != moment.lifecycle {

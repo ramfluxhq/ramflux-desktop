@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 
 use crate::ids::{ContextId, GrantId, MomentId, ParticipantId, Timestamp};
 use crate::model::{
-    Context, Grant, GrantState, Moment, MomentKind, Object, Participant, TaskState,
+    Call, CallState, Context, Grant, GrantState, Moment, MomentKind, Object, Participant, TaskState,
 };
 use crate::store::Store;
 
@@ -36,6 +36,8 @@ pub enum AttentionReason {
     SurfaceInput,
     /// A handoff offer.
     Handoff,
+    /// An incoming voice call rings.
+    IncomingCall,
     /// Any other kind.
     Other,
 }
@@ -50,6 +52,7 @@ impl AttentionReason {
             MomentKind::SafetyChange(_) => Self::Safety,
             MomentKind::AgentSurface(_) => Self::SurfaceInput,
             MomentKind::Handoff(_) => Self::Handoff,
+            MomentKind::Call(_) => Self::IncomingCall,
             MomentKind::Message(_)
             | MomentKind::ObjectTransfer(_)
             | MomentKind::Governance(_)
@@ -334,4 +337,32 @@ pub fn self_participant(store: &Store) -> Option<crate::ids::ParticipantId> {
         .find(|a| a.lock_state == crate::model::LockState::Unlocked)
         .or_else(|| store.accounts().next())
         .and_then(|a| a.self_participant_id.clone())
+}
+
+/// The call this device is placing or in (outgoing ringing, connecting or
+/// active), the most recently placed first if there were ever several.
+/// Calls are few; this reads them all.
+pub fn current_call(store: &Store) -> Option<&Call> {
+    store
+        .calls()
+        .filter(|c| {
+            matches!(
+                c.state,
+                CallState::OutgoingRinging | CallState::Connecting | CallState::Active
+            )
+        })
+        .max_by(|a, b| (a.started_at, &a.id).cmp(&(b.started_at, &b.id)))
+}
+
+/// Incoming calls ringing on this device, the earliest first.
+pub fn ringing_calls(store: &Store) -> Vec<&Call> {
+    let mut calls: Vec<&Call> =
+        store.calls().filter(|c| c.state == CallState::IncomingRinging).collect();
+    calls.sort_by(|a, b| (a.started_at, &a.id).cmp(&(b.started_at, &b.id)));
+    calls
+}
+
+/// Whether any call is under way (ringing either way, connecting or active).
+pub fn call_under_way(store: &Store) -> bool {
+    store.calls().any(|c| !c.state.is_ended())
 }

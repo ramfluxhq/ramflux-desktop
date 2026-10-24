@@ -53,9 +53,10 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::EffectFailed(_) => "EffectFailed",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
+        DomainEvent::CallUpserted(_) => "CallUpserted",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 37;
+const DOMAIN_EVENT_VARIANTS: usize = 38;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -73,9 +74,10 @@ fn moment_kind_name(kind: &MomentKind) -> &'static str {
         MomentKind::Fallback(_) => "Fallback",
         MomentKind::System(_) => "System",
         MomentKind::TaskEvent(_) => "TaskEvent",
+        MomentKind::Call(_) => "Call",
     }
 }
-const MOMENT_KIND_VARIANTS: usize = 14;
+const MOMENT_KIND_VARIANTS: usize = 15;
 
 fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
@@ -123,6 +125,10 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::SetDefaultNode { .. } => "SetDefaultNode",
         IntentKind::SetNodeEnabled { .. } => "SetNodeEnabled",
         IntentKind::ExportDiagnostics { .. } => "ExportDiagnostics",
+        IntentKind::StartCall { .. } => "StartCall",
+        IntentKind::AnswerCall { .. } => "AnswerCall",
+        IntentKind::RejectCall { .. } => "RejectCall",
+        IntentKind::HangUpCall { .. } => "HangUpCall",
         IntentKind::Unlock { .. }
         | IntentKind::CreateAccount { .. }
         | IntentKind::ActivateDevice { .. }
@@ -132,7 +138,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the six secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 44;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 48;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -175,9 +181,12 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::DiagnosticsExportRequested { .. } => "DiagnosticsExportRequested",
         UiEventKind::FieldChanged { .. } => "FieldChanged",
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
+        UiEventKind::CallStartRequested => "CallStartRequested",
+        UiEventKind::CallAnswered { .. } => "CallAnswered",
+        UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 39;
+const UI_EVENT_KIND_VARIANTS: usize = 42;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -236,6 +245,7 @@ fn all_moment_kinds() -> Vec<MomentKind> {
             task_id: TaskId::new("t-1"),
             event: TaskEventKind::Denied { step_id: Some(StepId::new("deploy")) },
         }),
+        MomentKind::Call(CallPayload { call_id: CallId::new("k-1") }),
     ]
 }
 
@@ -539,6 +549,18 @@ fn all_domain_events() -> Vec<DomainEvent> {
             code: FailureCode::Daemon("ValidationFailed".to_owned()),
             message: "approval expired".to_owned(),
         }),
+        DomainEvent::CallUpserted(Call {
+            id: CallId::new("k-1"),
+            context_id: ContextId::new("c-1"),
+            peer: ParticipantId::new("p-1"),
+            caller: ParticipantId::new("p-1"),
+            direction: CallDirection::Incoming,
+            state: CallState::Ended(CallEndReason::Timeout),
+            version: 2,
+            started_at: Timestamp(10),
+            answered_at: None,
+            ended_at: Some(Timestamp(45_010)),
+        }),
     ];
     for (i, kind) in all_moment_kinds().into_iter().enumerate() {
         let id = format!("m-{i}");
@@ -630,6 +652,10 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::SetDefaultNode { node_id: NodeId::new("n-1") },
         IntentKind::SetNodeEnabled { node_id: NodeId::new("n-1"), enabled: false },
         IntentKind::ExportDiagnostics { path: "/tmp/d".into() },
+        IntentKind::StartCall { context_id: "c-1".into() },
+        IntentKind::AnswerCall { call_id: "k-1".into() },
+        IntentKind::RejectCall { call_id: "k-1".into() },
+        IntentKind::HangUpCall { call_id: "k-1".into() },
     ]
 }
 
@@ -707,6 +733,9 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::DiagnosticsExportRequested { path: "/tmp/d".into() },
         UiEventKind::FieldChanged { value: "x".into() },
         UiEventKind::FocusMomentRequested { moment_id: "m-1".into() },
+        UiEventKind::CallStartRequested,
+        UiEventKind::CallAnswered { call_id: "k-1".into(), accept: false },
+        UiEventKind::CallHangUpPressed { call_id: "k-1".into() },
     ]
 }
 

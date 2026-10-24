@@ -19,10 +19,13 @@
 //! - [`task`]: tasks, their steps and where a step needs the requester.
 //! - [`integrations`]: read-only MCP and A2I snapshots.
 //! - [`listing`]: whether a collection was listed yet (loading vs empty).
+//! - [`call`]: voice calls, their states and outcomes, and the secret
+//!   media session that never enters the store.
 
 mod account;
 mod actor;
 mod backend;
+mod call;
 mod conversation;
 mod grant;
 mod integrations;
@@ -40,6 +43,7 @@ pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MI
 pub use backend::{
     Capabilities, DaemonInfo, DaemonSyncState, EffectFailure, FailureCode, SyncMode, SyncStatus,
 };
+pub use call::{Call, CallDirection, CallEndReason, CallKey, CallMedia, CallOutcome, CallState};
 pub use conversation::{
     ContactCard, ContactLink, Context, ContextKind, Disappearing, Participant, ParticipantKind,
     Role, RootSource, SafetyState,
@@ -48,11 +52,11 @@ pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingAppro
 pub use integrations::{A2iItem, Integrations, McpServer};
 pub use listing::{ListState, Listing};
 pub use moment::{
-    AgentSurfacePayload, ConflictPayload, ConflictResolution, ConflictSide, ContactRequestPayload,
-    FallbackPayload, GovernanceAction, GovernancePayload, HandoffPayload, InterventionPayload,
-    Lifecycle, MessagePayload, Moment, MomentKind, ObjectTransferPayload, PrivacyRevealPayload,
-    Receipt, RevealRecord, SafetyChangeKind, SafetyChangePayload, SystemLevel, SystemPayload,
-    TaskEventKind, TaskEventPayload, TaskProgressPayload,
+    AgentSurfacePayload, CallPayload, ConflictPayload, ConflictResolution, ConflictSide,
+    ContactRequestPayload, FallbackPayload, GovernanceAction, GovernancePayload, HandoffPayload,
+    InterventionPayload, Lifecycle, MessagePayload, Moment, MomentKind, ObjectTransferPayload,
+    PrivacyRevealPayload, Receipt, RevealRecord, SafetyChangeKind, SafetyChangePayload,
+    SystemLevel, SystemPayload, TaskEventKind, TaskEventPayload, TaskProgressPayload,
 };
 pub use object::{Direction, Object, TransferState};
 pub use protected::Protected;

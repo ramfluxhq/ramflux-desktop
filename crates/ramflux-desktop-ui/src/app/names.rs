@@ -69,6 +69,9 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::ExpandToggled { .. } => "ExpandToggled",
         UiEventKind::FieldChanged { .. } => "FieldChanged",
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
+        UiEventKind::CallStartRequested => "CallStartRequested",
+        UiEventKind::CallAnswered { .. } => "CallAnswered",
+        UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
 
@@ -130,6 +133,10 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::SetDefaultNode { .. } => "SetDefaultNode",
         IntentKind::SetNodeEnabled { .. } => "SetNodeEnabled",
         IntentKind::ExportDiagnostics { .. } => "ExportDiagnostics",
+        IntentKind::StartCall { .. } => "StartCall",
+        IntentKind::AnswerCall { .. } => "AnswerCall",
+        IntentKind::RejectCall { .. } => "RejectCall",
+        IntentKind::HangUpCall { .. } => "HangUpCall",
     }
 }
 
@@ -194,6 +201,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::EffectFailed(_) => "EffectFailed",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
+        DomainEvent::CallUpserted(_) => "CallUpserted",
     }
 }
 

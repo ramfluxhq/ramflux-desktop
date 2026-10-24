@@ -185,13 +185,15 @@ impl Store {
             MomentKind::TaskProgress(p) => {
                 self.tasks.get(&p.task_id).map(|t| t.state.moment_lifecycle())
             }
+            MomentKind::Call(p) => self.calls.get(&p.call_id).map(|c| c.state.moment_lifecycle()),
             _ => None,
         }
     }
 
-    /// Moves a task moment to `lifecycle` (derived, so not a transition
-    /// the source asked for and not checked against the moment table).
-    fn follow_task(
+    /// Moves a task (or call) moment to `lifecycle` (derived, so not a
+    /// transition the source asked for and not checked against the moment
+    /// table).
+    pub(super) fn follow_task(
         &mut self,
         at: Timestamp,
         moment_id: &MomentId,

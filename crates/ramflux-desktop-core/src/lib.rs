@@ -42,8 +42,8 @@ pub use event::{
     SurfacePatchOp, SurfaceSnapshot,
 };
 pub use ids::{
-    AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
-    StandingApprovalId, StepId, SurfaceId, TaskId, Timestamp,
+    AccountId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
+    ParticipantId, StandingApprovalId, StepId, SurfaceId, TaskId, Timestamp,
 };
 pub use intent::{
     ContactAction, ContactCardProblem, ContactIdProblem, ContactInput, Effect, GovernanceOp,
@@ -52,9 +52,9 @@ pub use intent::{
 };
 pub use model::*;
 pub use policy::{
-    GroupProblem, IntentError, MAX_GROUP_MEMBERS, MAX_GROUP_TITLE_LEN, check_add_contact,
-    check_add_contact_card, check_create_group, check_group_title, check_start_conversation,
-    contact_action_current, handle_intent,
+    GroupProblem, IntentError, MAX_GROUP_MEMBERS, MAX_GROUP_TITLE_LEN, call_peer,
+    check_add_contact, check_add_contact_card, check_create_group, check_group_title,
+    check_start_call, check_start_conversation, contact_action_current, handle_intent,
 };
 pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter, TaskStepRef};
 pub use serde_json::Value as JsonValue;

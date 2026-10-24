@@ -43,6 +43,9 @@ moment:
     system:
       en: "System"
       zh-CN: "系统"
+    call:
+      en: "Call"
+      zh-CN: "通话"
   a11y:
     row:
       en: "%{kind} from %{author} at %{time}, %{state}"
@@ -452,6 +455,46 @@ moment:
     denied_any:
       en: "%{name} denied a task step"
       zh-CN: "%{name}拒绝了一个任务步骤"
+  call:
+    outgoing:
+      en: "Outgoing call"
+      zh-CN: "去电"
+    incoming:
+      en: "Incoming call"
+      zh-CN: "来电"
+    missed:
+      en: "Missed call"
+      zh-CN: "未接来电"
+    ringing:
+      en: "Ringing"
+      zh-CN: "正在响铃"
+    connecting:
+      en: "Connecting"
+      zh-CN: "正在连接"
+    active:
+      en: "In call"
+      zh-CN: "通话中"
+    declined:
+      en: "Declined"
+      zh-CN: "已拒绝"
+    no_answer:
+      en: "No answer"
+      zh-CN: "无人接听"
+    busy:
+      en: "Busy"
+      zh-CN: "对方忙线"
+    cancelled:
+      en: "Cancelled"
+      zh-CN: "已取消"
+    answered_elsewhere:
+      en: "Answered on another device"
+      zh-CN: "已在其他设备接听"
+    failed:
+      en: "Call failed"
+      zh-CN: "通话失败"
+    call_back:
+      en: "Call back"
+      zh-CN: "回拨"
 surface:
   streaming:
     en: "Writing…"

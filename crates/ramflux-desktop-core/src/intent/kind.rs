@@ -9,7 +9,7 @@ use serde_json::Value;
 use super::{ContactAction, GovernanceOp, SecretInput};
 use crate::conformance::SurfaceHash;
 use crate::ids::{
-    AccountId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
+    AccountId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
     StandingApprovalId, SurfaceId, TaskId,
 };
 use crate::model::{AccountKind, ConflictResolution, PinSource};
@@ -107,6 +107,29 @@ pub enum IntentKind {
     RetryTaskDecision {
         /// Task.
         task_id: TaskId,
+    },
+
+    // Calls.
+    /// Place a voice call to the other participant of a direct
+    /// conversation. Human only.
+    StartCall {
+        /// The direct conversation.
+        context_id: ContextId,
+    },
+    /// Answer a call ringing on this device. Human only.
+    AnswerCall {
+        /// The call.
+        call_id: CallId,
+    },
+    /// Decline a call ringing on this device. Human only.
+    RejectCall {
+        /// The call.
+        call_id: CallId,
+    },
+    /// Hang up a call (or cancel one still ringing). Human only.
+    HangUpCall {
+        /// The call.
+        call_id: CallId,
     },
 
     // Moments.

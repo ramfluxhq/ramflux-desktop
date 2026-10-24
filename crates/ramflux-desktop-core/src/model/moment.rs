@@ -11,7 +11,7 @@ use super::grant::Risk;
 use super::protected::Protected;
 use super::surface::{Block, SurfaceAction};
 use crate::ids::{
-    ContextId, GrantId, MomentId, ObjectId, ParticipantId, SurfaceId, TaskId, Timestamp,
+    CallId, ContextId, GrantId, MomentId, ObjectId, ParticipantId, SurfaceId, TaskId, Timestamp,
 };
 
 /// Moment lifecycle. "Needs me" and "in flight" views derive from it.
@@ -223,6 +223,14 @@ pub struct TaskEventPayload {
     pub event: TaskEventKind,
 }
 
+/// Payload of a [`MomentKind::Call`]: a voice call's record in its
+/// conversation. The call (state, times, outcome) lives in the store.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CallPayload {
+    /// The call.
+    pub call_id: CallId,
+}
+
 /// One side of a version conflict.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConflictSide {
@@ -356,6 +364,8 @@ pub enum MomentKind {
     Fallback(FallbackPayload),
     /// System status note.
     System(SystemPayload),
+    /// A voice call's record (derived by the store from the call).
+    Call(CallPayload),
 }
 
 /// A moment in a context timeline.

@@ -95,7 +95,31 @@ fn body(store: &Store, moment: &Moment) -> String {
                 }
             }
         }
+        MomentKind::Call(p) => match store.call(&p.call_id) {
+            Some(call) => call_text(call),
+            None => format!("[call] {}", p.call_id),
+        },
     }
+}
+
+/// One line for a voice call: its direction and how it went.
+pub fn call_text(call: &crate::model::Call) -> String {
+    use crate::model::{CallDirection, CallOutcome, CallState};
+    let direction = match call.direction {
+        CallDirection::Outgoing => "outgoing",
+        CallDirection::Incoming => "incoming",
+    };
+    let how = match (call.state, call.outcome()) {
+        (_, Some(CallOutcome::Answered { duration_ms })) => {
+            let secs = duration_ms / 1000;
+            format!("{}:{:02}", secs / 60, secs % 60)
+        }
+        (_, Some(outcome)) => format!("{outcome:?}").to_lowercase(),
+        (CallState::OutgoingRinging | CallState::IncomingRinging, None) => "ringing".to_owned(),
+        (CallState::Connecting, None) => "connecting".to_owned(),
+        (_, None) => "in progress".to_owned(),
+    };
+    format!("[call] {direction}, {how}")
 }
 
 /// A task as plain text: header, steps, what it waits on, result.

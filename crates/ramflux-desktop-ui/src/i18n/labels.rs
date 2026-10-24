@@ -191,5 +191,6 @@ pub fn moment_kind(kind: &MomentKind) -> SharedString {
         MomentKind::Handoff(_) => "moment.kind.handoff",
         MomentKind::Fallback(_) => "moment.kind.fallback",
         MomentKind::System(_) => "moment.kind.system",
+        MomentKind::Call(_) => "moment.kind.call",
     })
 }
