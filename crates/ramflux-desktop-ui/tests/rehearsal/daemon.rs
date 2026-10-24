@@ -49,9 +49,9 @@ pub trait DemoDaemon {
     /// The CLI's failure.
     fn dm_read(&self, account: &str, conversation: &str) -> Result<(), String>;
 
-    /// Runs the reference CLI with `args` and returns its JSON answer (the
-    /// live steps that need what the desktop cannot do itself, such as
-    /// creating a group).
+    /// Runs the reference CLI with `args` and returns its JSON answer (to
+    /// cross-check what a desktop shows; flag values are passed as
+    /// `--flag=value`, so a value starting with `-` is never read as a flag).
     ///
     /// # Errors
     ///
@@ -89,7 +89,7 @@ impl DemoDaemon for LiveDaemon {
     }
 
     fn account_status(&self, account: &str) -> Result<Value, String> {
-        rf_json(self, &["account", "status", "--account", account])
+        rf_json(self, &["account", "status", &format!("--account={account}")])
     }
 
     fn node_public_key(&self, node: &str) -> Result<Option<String>, String> {
@@ -100,8 +100,16 @@ impl DemoDaemon for LiveDaemon {
     }
 
     fn dm_read(&self, account: &str, conversation: &str) -> Result<(), String> {
-        rf_json(self, &["dm", "read", "--account", account, "--conversation", conversation])
-            .map(drop)
+        rf_json(
+            self,
+            &[
+                "dm",
+                "read",
+                &format!("--account={account}"),
+                &format!("--conversation={conversation}"),
+            ],
+        )
+        .map(drop)
     }
 
     fn cli(&self, args: &[&str]) -> Result<Value, String> {

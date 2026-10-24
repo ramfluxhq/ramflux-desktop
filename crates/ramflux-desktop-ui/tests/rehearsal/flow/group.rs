@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Live step: a group with Alice and Bob, and messages both ways in it.
+//! The group step: Alice makes a group with Bob on her desktop, and both
+//! write in it.
 //!
-//! The desktop has no "new group" control (it governs groups the daemon
-//! lists: members, roles, invitations), so the group is made with the
-//! reference CLI on Alice's daemon: `group create` with her device as owner,
-//! then `group member add` for Bob's device with his commitment and delivery
-//! target. Everything after that is the desktops: each sends from its
-//! composer, and each sees the other's message arrive through its event
-//! stream with polling off. If the daemon lists no conversation for a new
-//! group until a first message names one, that first message is sent with
-//! `rf group send` and the step says so.
+//! Alice opens the context stack's "+" and chooses New group…, names the
+//! group, ticks Bob among her contacts and presses Create group; the form
+//! closes once her daemon lists the group conversation, which is then
+//! shown. Everything after that is the desktops too: each sends from its
+//! composer and sees the other's message arrive. Bob's desktop must learn
+//! the group conversation from his daemon; nothing is done with the
+//! reference CLI, so a daemon that does not deliver it fails the step with
+//! what was waited for.
 
-use ramflux_desktop_core::{ContextId, ContextKind, Store};
+use ramflux_desktop_core::{ContextId, ParticipantId};
+use ramflux_desktop_ui::i18n::tr;
 
 use super::setup::short;
 use super::{Demo, probe};
@@ -21,106 +22,61 @@ use crate::rehearsal::daemon::DemoDaemon;
 use crate::rehearsal::host::Host;
 use crate::rehearsal::steps::Notes;
 
-/// The group context of a store (each rehearsal account is in one group).
-fn group_context(store: &Store) -> Option<ContextId> {
-    store.contexts().find(|c| c.kind == ContextKind::Group).map(|c| c.id.clone())
-}
-
-/// The live group step.
+/// The group step.
 pub fn group<H: Host, D: DemoDaemon>(
     demo: &mut Demo<'_, H, D>,
     notes: &mut Notes,
 ) -> Result<(), String> {
-    let (alice, bob) = (demo.sides[0].facts()?.clone(), demo.sides[1].facts()?.clone());
+    let bob = demo.sides[1].facts()?.clone();
     let run = demo.config.run_id.clone();
     let limits = demo.config.limits;
-    let group = format!("rehearsal-group-{run}");
-    let created = demo.sides[0].daemon.cli(&[
-        "group",
-        "create",
-        &format!("--account={}", alice.account),
-        &format!("--group={}", group),
-        &format!("--creator={}", alice.device),
-        &format!("--creator-target-delivery={}", alice.target),
-    ])?;
+    let name = format!("Rehearsal group {run}");
+
+    let desk = demo.sides[0].desk()?;
+    desk.click(demo.host, None, "stack-new")?;
+    desk.click_label(demo.host, &tr("stack.new_group"))?;
+    let Some(Some(context)) = desk.group_form(demo.host) else {
+        return Err("New group… opened no form with a fresh group id".to_owned());
+    };
+    desk.type_into(demo.host, "new-group-name", &name)?;
+    let member = format!("new-group-member-{}", bob.principal);
+    desk.click(demo.host, None, &member)
+        .map_err(|e| format!("{e}: Bob is not offered as a member ({member})"))?;
+    demo.shots(0, "07_new_group", notes)?;
+    let desk = demo.sides[0].desk()?;
+    desk.click(demo.host, None, "new-group-create")?;
+    let created = demo.wait(0, limits.answer, "the group conversation shown", |desk, host| {
+        desk.current_context(host).as_ref() == Some(&context)
+    });
+    if let Err(error) = created {
+        let status = demo.sides[0].desk()?.label(demo.host, "new-group-status");
+        return Err(status.map_or(error.clone(), |status| format!("{error}: {status}")));
+    }
+    let shown = demo.read(0, |s| s.context(&context).cloned())?.ok_or("no group context")?;
+    if shown.title != name {
+        return Err(format!("the group is shown as {:?}, not {name:?}", shown.title));
+    }
+    if !shown.participants.contains(&ParticipantId::new(&bob.principal)) {
+        return Err(format!("Bob is not a member of the new group: {:?}", shown.participants));
+    }
     notes.add(format!(
-        "rf group create {group} on Alice's daemon: roles {}",
-        created.get("roles").cloned().unwrap_or_default()
+        "Alice made the group with the New group form (name {name:?}, Bob {} ticked); \
+         conversation {}",
+        short(&bob.principal),
+        short(context.as_str())
     ));
-    let added = demo.sides[0].daemon.cli(&[
-        "group",
-        "member",
-        "add",
-        &format!("--account={}", alice.account),
-        &format!("--group={}", group),
-        &format!("--member-device={}", bob.device),
-        &format!("--member-principal-commitment={}", bob.commitment),
-        &format!("--target-delivery={}", bob.target),
-    ])?;
-    if added["roles"][bob.device.as_str()] != "member" {
-        return Err(format!("Bob is not a member after group member add: {added}"));
-    }
-    notes.add(format!("rf group member add: Bob's device {} is member", short(&bob.device)));
 
-    let listed = demo.wait(0, limits.discover, "the group conversation", |desk, host| {
-        desk.store(host, |s| group_context(s).is_some())
-    });
     let opener = format!("Group hello from Alice ({run})");
-    let mut opened_by_cli = false;
-    if listed.is_err() {
-        let conversation = format!("rehearsal-group-conv-{run}");
-        let message = format!("rehearsal-group-msg-{run}");
-        demo.sides[0].daemon.cli(&[
-            "group",
-            "send",
-            &format!("--account={}", alice.account),
-            &format!("--group={}", group),
-            &format!("--conversation={}", conversation),
-            &format!("--message={}", message),
-            &format!("--sender={}", alice.device),
-            &format!("--body={}", opener),
-        ])?;
-        opened_by_cli = true;
-        notes.add(format!(
-            "the daemon listed no conversation for the new group; first message with rf group \
-             send ({conversation})"
-        ));
-        demo.wait(0, limits.answer, "the group conversation", |desk, host| {
-            desk.store(host, |s| group_context(s).is_some())
-        })?;
-    } else {
-        notes.add("Alice's desktop listed the group conversation after create");
-    }
-    let context = demo.read(0, group_context)?.ok_or("no group context")?;
-    notes.add(format!("group conversation {}", context.as_str()));
-    demo.sides[0].desk()?.show_context(demo.host, &context)?;
-    if !opened_by_cli {
-        send(demo, 0, &context, &opener)?;
-    }
-    see(demo, 0, &context, &opener)?;
-
-    let found = demo.wait(1, limits.discover, "the group conversation", |desk, host| {
+    send(demo, 0, &context, &opener)?;
+    demo.wait(1, limits.discover, "the group conversation", |desk, host| {
         desk.store(host, |s| s.context(&context).is_some())
-    });
-    if found.is_err() {
-        demo.sides[1].daemon.cli(&[
-            "group",
-            "read",
-            &format!("--account={}", bob.account),
-            &format!("--group={}", group),
-            &format!("--conversation={}", context.as_str()),
-        ])?;
-        demo.fallbacks.push("rf group read for Bob's group conversation".to_owned());
-        notes.add(
-            "Bob's desktop did not get the group conversation from the event stream in time; \
-             the reference CLI received it (rf group read)",
-        );
-        demo.wait(1, limits.answer, "the group conversation", |desk, host| {
-            desk.store(host, |s| s.context(&context).is_some())
-        })?;
-    } else {
-        notes.add("Bob's desktop got the group conversation from the event stream");
-    }
+    })?;
+    let bob_title = demo.read(1, |s| s.context(&context).map(|c| c.title.clone()))?;
+    notes.add(format!(
+        "Bob's desktop got the group conversation from his daemon (shown as {:?}; the name is \
+         Alice's own)",
+        bob_title.unwrap_or_default()
+    ));
     demo.sides[1].desk()?.show_context(demo.host, &context)?;
     see(demo, 1, &context, &opener)?;
     let reply = format!("Group reply from Bob ({run})");
@@ -129,7 +85,11 @@ pub fn group<H: Host, D: DemoDaemon>(
     let again = format!("Group note from Alice ({run})");
     send(demo, 0, &context, &again)?;
     see(demo, 1, &context, &again)?;
-    notes.add("both group messages from the composers seen on the other desktop");
+    notes.add("messages both ways from the composers, each seen on the other desktop");
+    let kept = demo.read(0, |s| s.context(&context).map(|c| c.title.clone()))?;
+    if kept.as_deref() != Some(name.as_str()) {
+        return Err(format!("Alice's group name did not survive the group reads: {kept:?}"));
+    }
     demo.group = Some((context, vec![opener, reply, again]));
     demo.shots(0, "07_group", notes)?;
     demo.shots(1, "07_group", notes)?;

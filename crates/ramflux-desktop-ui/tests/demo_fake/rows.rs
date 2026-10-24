@@ -6,7 +6,7 @@
 
 use serde_json::{Value, json};
 
-use super::world::{Account, Conversation, NodeRecord};
+use super::world::{Account, Conversation, Group, NodeRecord};
 
 /// A node profile (`node.add` answer's `node`, `node.confirm`, `node.list`).
 pub fn node_profile(node: &NodeRecord) -> Value {
@@ -89,11 +89,48 @@ pub fn conversation(id: &str, conversation: &Conversation, owner: &Account) -> V
     })
 }
 
-/// An accepted friend link.
+/// An accepted friend link of a resolving daemon: the contact's devices
+/// are held (reachable), the safety number not compared yet.
 pub fn link(id: &Value, requester: &Value, target: &Value) -> Value {
     json!({
         "link_id": id, "requester_id": requester, "target_id": target, "state": "accepted",
         "remove_scope": null, "blocked": false, "capability_revoked_at": null,
+        "reachable": true, "verified": false, "kind_asserted": null,
+    })
+}
+
+/// A `group.list` row.
+pub fn group(id: &str, group: &Group) -> Value {
+    let roles: serde_json::Map<String, Value> = group
+        .members
+        .iter()
+        .enumerate()
+        .map(|(ix, (device, _))| (device.clone(), json!(if ix == 0 { "owner" } else { "member" })))
+        .collect();
+    let routes: Vec<Value> = group
+        .members
+        .iter()
+        .map(|(device, principal)| {
+            json!({ "member_id": device, "principal_id": principal, "delivery_target_known": true })
+        })
+        .collect();
+    json!({
+        "group_id": id, "id": id, "group_epoch": 1, "roles": roles, "member_routes": routes,
+        "conversation_id": group.conversation, "conversation_ids": [group.conversation],
+    })
+}
+
+/// The conversation row of `group` as `owner` sees it (with the name its
+/// own daemon keeps).
+pub fn group_conversation(id: &str, group: &Group, owner: &Account) -> Value {
+    let participants: Vec<&String> = group.members.iter().map(|(_, p)| p).collect();
+    json!({
+        "id": group.conversation, "archived": false, "hidden": false, "last_activity": null,
+        "unread_count": 0, "is_unread": false, "muted": false, "mute_until": null,
+        "disappearing": null, "kind": "group",
+        "title": group.titles.get(&owner.principal).cloned().unwrap_or(Value::Null),
+        "participants": participants, "group_id": id, "direct_route": null,
+        "self_principal_id": owner.principal,
     })
 }
 

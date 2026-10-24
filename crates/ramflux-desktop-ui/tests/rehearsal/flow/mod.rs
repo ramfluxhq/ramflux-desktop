@@ -7,15 +7,19 @@
 //! 2. each adds the node by URL, checks the shown key fingerprint against
 //!    the expected key and confirms it with the hold;
 //! 3. each creates its account (Alice, Bob) on the node;
-//! 4. each adds the other as a contact and verifies the safety number
-//!    where the daemon offers it;
+//! 4. Alice adds Bob from the contact card Bob's desktop shows, Bob adds
+//!    Alice by principal id; both are reachable at once, and each verifies
+//!    the other's safety number where the daemon offers it;
 //! 5. direct messages both ways, with receipts;
 //! 6. Alice sends Bob an attachment;
-//! 7. Alice locks and unlocks, her daemon restarts, the history stays.
+//! 7. Alice makes a group with Bob in the New group form; messages both
+//!    ways in it;
+//! 8. Alice locks and unlocks, her daemon restarts, the history stays.
 //!
 //! Each step asserts the resulting store state and takes light and dark
-//! screenshots. Steps live in `setup` (1 to 3), `talk` (4 to 6) and
-//! `resume` (7); `probe` reads the stores.
+//! screenshots. Contacts and groups are made through the desktop only (the
+//! reference CLI only cross-checks). Steps live in `setup` (1 to 3), `talk`
+//! (4 to 6), `group` (7) and `resume` (8); `probe` reads the stores.
 
 mod evidence;
 mod group;
@@ -220,17 +224,19 @@ pub fn run<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
     });
     steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
     steps.run(6, "Alice sends Bob an attachment", &[5], |n| talk::attachment(demo, n));
-    steps.run(7, "Lock and unlock Alice; restart her daemon; history kept", &[5], |n| {
+    steps.run(7, "A new group with both from the desktop; messages both ways", &[4], |n| {
+        group::group(demo, n)
+    });
+    steps.run(8, "Lock and unlock Alice; restart her daemon; history kept", &[5], |n| {
         resume::lock_and_restart(demo, n)
     });
     steps
 }
 
-/// Runs the live rehearsal: steps 1 to 6 as [`run`], then the steps a real
-/// node adds (7: a group made on Alice's daemon, messages both ways in it
-/// from the composers; 8: Bob's desktop quits and reopens and resumes from
-/// its stream cursor; 9: what the frame taps saw, polling off), then
-/// Alice's lock and daemon restart as step 10.
+/// Runs the live rehearsal: steps 1 to 7 as [`run`], then the steps a real
+/// node adds (8: Bob's desktop quits and reopens and resumes from its
+/// stream cursor; 9: what the frame taps saw, polling off), then Alice's
+/// lock and daemon restart as step 10.
 pub fn run_live<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
     let mut steps = Steps::default();
     steps.run(1, "Two desktops attach to two daemons", &[], |n| setup::start(demo, n));
@@ -243,7 +249,9 @@ pub fn run_live<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
     });
     steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
     steps.run(6, "Alice sends Bob an attachment", &[5], |n| talk::attachment(demo, n));
-    steps.run(7, "A group with both; messages both ways in it", &[4], |n| group::group(demo, n));
+    steps.run(7, "A new group with both from the desktop; messages both ways", &[4], |n| {
+        group::group(demo, n)
+    });
     steps.run(8, "Bob's desktop quits and reopens; resumes from its cursor", &[5], |n| {
         reopen::reopen(demo, n)
     });

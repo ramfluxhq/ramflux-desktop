@@ -105,11 +105,16 @@ fn every_step_passes_on_a_node_that_behaves(cx: &mut TestAppContext) {
         assert_ne!(alice.principal, bob.principal);
         assert!(!alice.commitment.is_empty() && !bob.target.is_empty());
     });
-    assert_eq!(steps.rows().len(), 7);
+    assert_eq!(steps.rows().len(), 8);
     let notes = |n: u8| steps.rows()[usize::from(n - 1)].notes.join("; ");
     assert!(notes(2).contains("confirmed with the hold"), "{}", notes(2));
     assert!(notes(2).contains("the daemon pinned that key"), "{}", notes(2));
     assert!(notes(4).contains("safety number verified"), "{}", notes(4));
+    assert!(notes(4).contains("from the contact card Bob's desktop shows"), "{}", notes(4));
+    assert!(notes(4).contains("by principal id"), "{}", notes(4));
+    assert!(notes(4).contains("reachable at once"), "{}", notes(4));
+    assert!(notes(7).contains("New group form"), "{}", notes(7));
+    assert!(notes(7).contains("messages both ways"), "{}", notes(7));
     assert!(notes(5).contains("started from the contacts dock"), "{}", notes(5));
     assert!(
         notes(5).contains("rf dm read"),
@@ -120,8 +125,8 @@ fn every_step_passes_on_a_node_that_behaves(cx: &mut TestAppContext) {
     assert!(notes(6).contains("staged: rehearsal-"), "{}", notes(6));
     assert!(notes(5).contains("Delivered"), "{}", notes(5));
     assert!(notes(6).contains("attachment not fetched"), "{}", notes(6));
-    assert!(notes(7).contains("locked again"), "{}", notes(7));
-    assert!(notes(7).contains("history kept"), "{}", notes(7));
+    assert!(notes(8).contains("locked again"), "{}", notes(8));
+    assert!(notes(8).contains("history kept"), "{}", notes(8));
 }
 
 #[gpui_kit::test]

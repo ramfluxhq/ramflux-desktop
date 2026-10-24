@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::base::Root;
 use gpui_kit::component::{Theme, ThemeMode};
-use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
+use gpui_kit::test::{TestEventExt as _, TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::{
     AppContext as _, Bounds, Entity, MouseButton, Point, WindowBounds, WindowHandle, WindowOptions,
     px, size,
@@ -118,6 +118,28 @@ impl Desk {
             present
         })?;
         if found { Ok(()) } else { Err(format!("desktop {}: no control to click", self.tag)) }
+    }
+
+    /// Clicks the painted element labeled `label` (a menu item).
+    pub fn click_label(&self, host: &mut impl Host, label: &str) -> Result<(), String> {
+        let label = label.to_owned();
+        let found = host.window(self.handle.into(), move |window, cx| {
+            let found = window.find_all_by_label(&label);
+            let at = found.first()?.bounds().center();
+            window.pointer_down(at, MouseButton::Left, cx);
+            window.pointer_up(at, MouseButton::Left, cx);
+            Some(())
+        })?;
+        found.ok_or_else(|| format!("desktop {}: nothing labeled to click", self.tag))
+    }
+
+    /// Whether the new-group form is open, and the id its group gets.
+    pub fn group_form(&self, host: &mut impl Host) -> Option<Option<ContextId>> {
+        host.app(|cx| {
+            let workspace = self.shell.read(cx).workspace().read(cx);
+            let form = workspace.new_group().read(cx);
+            form.is_open().then(|| form.context_id().cloned())
+        })
     }
 
     /// Focuses the input `id` and types `text`.

@@ -15,18 +15,26 @@ use crate::rehearsal::daemon::DemoDaemon;
 use crate::rehearsal::host::Host;
 use crate::rehearsal::steps::Notes;
 
-/// Step 4: each side adds the other by principal id in the contacts dock
-/// (both directions, as the daemon links contacts one way per add), then
-/// verifies the other's safety number where the daemon offers it.
+/// Step 4: contacts both ways through the contacts dock, one way each:
+/// Bob shows his contact card (Show my card) and Alice adds Bob by pasting
+/// the card his desktop shows; Bob adds Alice by her principal id, which the
+/// form says is trusted on first use. Each contact must be listed as
+/// accepted and reachable (the daemon resolved it when it was added); then
+/// each side verifies the other's safety number where the daemon offers it.
 pub fn contacts<H: Host, D: DemoDaemon>(
     demo: &mut Demo<'_, H, D>,
     notes: &mut Notes,
 ) -> Result<(), String> {
-    for (me, peer) in [(0, 1), (1, 0)] {
+    let card = shown_card(demo, 1, notes)?;
+    for (me, peer, by_card) in [(0, 1, true), (1, 0, false)] {
         let id = demo.sides[peer].facts()?.principal.clone();
+        let text = if by_card { card.clone() } else { id.clone() };
         let desk = demo.sides[me].desk()?;
-        desk.click(demo.host, None, "rail-contacts")?;
-        desk.type_into(demo.host, "contact-add-id", &id)?;
+        if !desk.exists(demo.host, "contact-add-id") {
+            desk.click(demo.host, None, "rail-contacts")?;
+        }
+        desk.type_into(demo.host, "contact-add-id", &text)?;
+        let trust = desk.label(demo.host, "contact-add-kind").unwrap_or_default();
         desk.click(demo.host, None, "contact-add")?;
         let row = format!("contacts-{id}");
         let participant = ParticipantId::new(&id);
@@ -42,17 +50,79 @@ pub fn contacts<H: Host, D: DemoDaemon>(
             let note = demo.sides[me].desk()?.label(demo.host, "contact-add-note");
             return Err(note.map_or(error.clone(), |note| format!("{error}: {note}")));
         }
+        let how =
+            if by_card { "from the contact card Bob's desktop shows" } else { "by principal id" };
         notes.add(format!(
-            "{} added {} ({})",
+            "{} added {} {how} ({}); the form said: {trust}",
             demo.sides[me].name,
             demo.sides[peer].name,
             short(&id)
         ));
+        let reach = demo.wait(me, limit, "the contact reachable", |desk, host| {
+            desk.store(host, |s| {
+                s.participant(&participant).is_some_and(|p| p.reachable == Some(true))
+            })
+        });
+        let shown = demo.read(me, |s| {
+            s.participant(&participant).map(|p| (p.reachable, p.safety, p.kind, p.kind_asserted))
+        })?;
+        if reach.is_err() {
+            return Err(format!(
+                "{} cannot reach {} after adding them: {shown:?} (the daemon did not resolve the \
+                 contact)",
+                demo.sides[me].name, demo.sides[peer].name
+            ));
+        }
+        notes.add(format!(
+            "{}: {} is reachable at once ({shown:?})",
+            demo.sides[me].name, demo.sides[peer].name
+        ));
+        demo.shots(me, if by_card { "04_add_by_card" } else { "04_add_by_id" }, notes)?;
         verify(demo, me, &participant, &row, notes)?;
         demo.shots(me, "04_contacts", notes)?;
         demo.sides[me].desk()?.click(demo.host, None, "rail-contacts")?;
     }
     Ok(())
+}
+
+/// Shows side `ix`'s own contact card in its contacts dock and returns the
+/// card as the desktop shows it (its link when the card text spans lines,
+/// which one field cannot hold).
+fn shown_card<H: Host, D: DemoDaemon>(
+    demo: &mut Demo<'_, H, D>,
+    ix: usize,
+    notes: &mut Notes,
+) -> Result<String, String> {
+    let desk = demo.sides[ix].desk()?;
+    if !desk.exists(demo.host, "contact-card-show") {
+        desk.click(demo.host, None, "rail-contacts")?;
+    }
+    desk.click(demo.host, None, "contact-card-show")?;
+    let limit = demo.config.limits.answer;
+    let shown = demo.wait(ix, limit, "the contact card", |desk, host| {
+        desk.label(host, "contact-card-text").is_some()
+    });
+    if let Err(error) = shown {
+        let status = demo.sides[ix].desk()?.label(demo.host, "contact-card-status");
+        return Err(status.map_or(error.clone(), |status| format!("{error}: {status}")));
+    }
+    let desk = demo.sides[ix].desk()?;
+    let text = desk.label(demo.host, "contact-card-text").unwrap_or_default();
+    let qr = desk.exists(demo.host, "contact-card-qr");
+    let card = if text.contains('\n') {
+        demo.read(ix, |s| s.own_contact_card().and_then(|c| c.link.clone()))?.unwrap_or(text)
+    } else {
+        text
+    };
+    notes.add(format!(
+        "{} showed the contact card ({} bytes{})",
+        demo.sides[ix].name,
+        card.len(),
+        if qr { ", with its QR code" } else { "" }
+    ));
+    demo.shots(ix, "04_my_card", notes)?;
+    demo.sides[ix].desk()?.click(demo.host, None, "contact-card-hide")?;
+    Ok(card)
 }
 
 /// Presses Verify on the contact row when the daemon offers it and notes
@@ -115,7 +185,7 @@ pub fn messages<H: Host, D: DemoDaemon>(
     let opener = format!("Hello Bob, this is Alice ({run})");
     if let Err(error) = start(demo, &bob.principal, &opener, notes) {
         if let Ok(links) =
-            demo.sides[0].daemon.cli(&["contact", "list", "--account", &alice.account])
+            demo.sides[0].daemon.cli(&["contact", "list", &format!("--account={}", alice.account)])
         {
             notes.add(format!("Alice's daemon: rf contact list {links}"));
         }
@@ -367,10 +437,8 @@ fn received<H: Host, D: DemoDaemon>(
         let answer = demo.sides[1].daemon.cli(&[
             "object",
             "get",
-            "--account",
-            &bob,
-            "--object",
-            &id,
+            &format!("--account={bob}"),
+            &format!("--object={id}"),
             &out_text,
         ])?;
         notes.add(format!(

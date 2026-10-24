@@ -2,11 +2,13 @@
 // Copyright (c) 2026 Span Brain
 
 //! A fake demo node with two daemons on it: node discovery and pinning,
-//! accounts with passphrases, one-way contact links, direct messages held
-//! by the node until the recipient receives them, delivery receipts once
-//! received, attachments listed on the sender's side only (a received
-//! attachment is not fetched), and a restart that locks a daemon's
-//! accounts.
+//! accounts with passphrases, one-way contact links resolved when they are
+//! added (by principal id or from a contact card, as the contact-resolution
+//! contract has it), direct messages held by the node until the recipient
+//! receives them, delivery receipts once received, attachments listed on
+//! the sender's side only (a received attachment is not fetched), groups
+//! with their conversation (each member's daemon keeps the name its own
+//! group calls carry), and a restart that locks a daemon's accounts.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -90,13 +92,32 @@ struct Daemon {
     accounts: Vec<Account>,
 }
 
+/// A group on the node.
+#[derive(Debug, Clone, Default)]
+pub struct Group {
+    /// Its conversation.
+    pub conversation: String,
+    /// Member devices with their principals, owner first.
+    pub members: Vec<(String, String)>,
+    /// The name each member's daemon keeps, by principal.
+    pub titles: BTreeMap<String, Value>,
+    /// Messages: id, sender device, text, time.
+    pub messages: Vec<(String, String, String, u64)>,
+}
+
 /// The node and both daemons.
 #[derive(Debug)]
 pub struct World {
     node: NodeRecord,
     daemons: [Daemon; 2],
     held: Vec<Held>,
+    groups: BTreeMap<String, Group>,
     clock: u64,
+}
+
+/// The contact card of `account` (the fake's own format).
+pub fn card_of(account: &Account) -> String {
+    format!("ramflux:contact/{}#sig-{}", account.principal, account.device)
 }
 
 fn text(body: &Value, field: &str) -> String {
@@ -115,7 +136,13 @@ impl World {
     pub fn new(url: &str, key: &str) -> Self {
         let node =
             NodeRecord { id: "demo-node".to_owned(), url: url.to_owned(), key: key.to_owned() };
-        Self { node, daemons: Default::default(), held: Vec::new(), clock: 1_790_000_100 }
+        Self {
+            node,
+            daemons: Default::default(),
+            held: Vec::new(),
+            groups: BTreeMap::new(),
+            clock: 1_790_000_100,
+        }
     }
 
     /// Restarting daemon `side` closes its accounts.
@@ -136,6 +163,19 @@ impl World {
 
     fn by_principal(&self, principal: &str) -> Option<&Account> {
         self.daemons.iter().flat_map(|d| &d.accounts).find(|a| a.principal == principal)
+    }
+
+    fn by_device(&self, device: &str) -> Option<&Account> {
+        self.daemons.iter().flat_map(|d| &d.accounts).find(|a| a.device == device)
+    }
+
+    /// The groups `principal` is a member of.
+    fn groups_of(&self, principal: &str) -> Vec<(String, Group)> {
+        self.groups
+            .iter()
+            .filter(|(_, g)| g.members.iter().any(|(_, p)| p == principal))
+            .map(|(id, g)| (id.clone(), g.clone()))
+            .collect()
     }
 
     fn by_target(&self, target: &str) -> Option<&Account> {
@@ -266,20 +306,121 @@ impl World {
                 json!({ "identities": rows, "next_cursor": null })
             }
             "conversation.directory" => {
-                let rows: Vec<Value> = me
+                let mut rows: Vec<Value> = me
                     .conversations
                     .iter()
                     .map(|(cid, c)| rows::conversation(cid, c, &me))
                     .collect();
+                rows.extend(
+                    self.groups_of(&me.principal)
+                        .iter()
+                        .map(|(gid, g)| rows::group_conversation(gid, g, &me)),
+                );
                 json!({ "conversations": rows, "next_cursor": null })
             }
             "object.directory" => json!({ "objects": me.objects, "next_cursor": null }),
-            "group.list" => json!({ "groups": [], "next_cursor": null }),
+            "group.list" => {
+                let rows: Vec<Value> = self
+                    .groups_of(&me.principal)
+                    .iter()
+                    .map(|(gid, g)| rows::group(gid, g))
+                    .collect();
+                json!({ "groups": rows, "next_cursor": null })
+            }
             "contact.list" => json!({ "contacts": me.links }),
             "contact.add" => {
+                let principal = text(body, "principal_id");
+                if self.by_principal(&principal).is_none() {
+                    return Reply::Error(
+                        "ValidationFailed",
+                        format!("{principal} is not known to its home node"),
+                    );
+                }
                 let link = rows::link(&body["link_id"], &body["requester_id"], &body["target_id"]);
                 self.account(side, id).expect("account").links.push(link.clone());
                 link
+            }
+            "contact.card.export" => {
+                json!({ "card": card_of(&me), "link": format!("ramflux:contact/{}", me.principal) })
+            }
+            "contact.card.import" => {
+                let card = text(body, "card");
+                let named = self
+                    .daemons
+                    .iter()
+                    .flat_map(|d| &d.accounts)
+                    .find(|a| {
+                        card_of(a) == card || format!("ramflux:contact/{}", a.principal) == card
+                    })
+                    .map(|a| a.principal.clone());
+                let Some(principal) = named else {
+                    return Reply::Error(
+                        "ValidationFailed",
+                        "contact card signature does not verify".to_owned(),
+                    );
+                };
+                let link = rows::link(
+                    &json!(format!("link-card-{principal}")),
+                    &json!(me.principal),
+                    &json!(principal),
+                );
+                self.account(side, id).expect("account").links.push(link.clone());
+                json!({ "link": link })
+            }
+            "group.create" => {
+                let gid = text(body, "group_id");
+                let mut group = Group {
+                    conversation: text(body, "conversation_id"),
+                    members: vec![(me.device.clone(), me.principal.clone())],
+                    ..Group::default()
+                };
+                group.titles.insert(me.principal.clone(), body["title"].clone());
+                self.groups.insert(gid.clone(), group);
+                json!({ "group_id": gid, "group_epoch": 1, "members": [me.device] })
+            }
+            "group.member.add" => {
+                let device = text(body, "member_id");
+                let principal = self.by_device(&device).map(|a| a.principal.clone());
+                let (Some(group), Some(principal)) =
+                    (self.groups.get_mut(&text(body, "group_id")), principal)
+                else {
+                    return Reply::Error("ValidationFailed", "unknown group or member".to_owned());
+                };
+                group.members.push((device, principal));
+                json!({ "added": true })
+            }
+            "group.send" | "group.receive" => {
+                self.clock += 1;
+                let at = self.clock;
+                let Some(group) = self.groups.get_mut(&text(body, "group_id")) else {
+                    return Reply::Error("ValidationFailed", "unknown group".to_owned());
+                };
+                // Each daemon records the name its own group calls carry.
+                group.titles.insert(me.principal.clone(), body["title"].clone());
+                if method == "group.send" {
+                    let message = text(body, "message_id");
+                    group.messages.push((
+                        message.clone(),
+                        me.device.clone(),
+                        decoded(body["plaintext_body_base64"].as_str().unwrap_or_default()),
+                        at,
+                    ));
+                    json!({ "message_id": message })
+                } else {
+                    let messages: Vec<Value> = group
+                        .messages
+                        .iter()
+                        .map(|(m, sender, text, at)| rows::message(m, sender, text, *at, false))
+                        .collect();
+                    // The daemon decrypts what it received for this member.
+                    let decrypted: Vec<Value> = group
+                        .messages
+                        .iter()
+                        .filter(|(_, sender, _, _)| sender != &me.device)
+                        .map(|(m, _, text, _)| json!({ "message_id": m, "body_utf8": text }))
+                        .collect();
+                    json!({ "messages": messages, "decrypted_messages": decrypted })
+                }
             }
             "contact.verify" => {
                 let commitment = text(body, "contact_identity_commitment");

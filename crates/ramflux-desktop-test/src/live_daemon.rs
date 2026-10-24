@@ -123,10 +123,9 @@ impl LiveDaemon {
             .map_err(|e| format!("cannot open the daemon log: {e}"))?;
         let err = log.try_clone().map_err(|e| format!("cannot open the daemon log: {e}"))?;
         let child = Command::new(&self.rf)
-            .arg("--socket")
-            .arg(self.socket())
-            .args(["daemon", "start", "--data-root"])
-            .arg(self.dir.join("data"))
+            .arg(flag("--socket", &self.socket()))
+            .args(["daemon", "start"])
+            .arg(flag("--data-root", &self.dir.join("data")))
             .stdin(Stdio::null())
             .stdout(log)
             .stderr(err)
@@ -143,14 +142,14 @@ impl LiveDaemon {
         Err(format!("the daemon did not answer in time; log:\n{}", self.log()))
     }
 
-    /// Runs `rf --socket <socket> <args>` (to cross-check what the desktop
+    /// Runs `rf --socket=<socket> <args>` (to cross-check what the desktop
     /// shows against the reference CLI).
     ///
     /// # Errors
     ///
     /// Returns the I/O error when the binary cannot run.
     pub fn rf(&self, args: &[&str]) -> std::io::Result<Output> {
-        Command::new(&self.rf).arg("--socket").arg(self.socket()).args(args).output()
+        Command::new(&self.rf).arg(flag("--socket", &self.socket())).args(args).output()
     }
 
     /// The daemon's log so far.
@@ -222,6 +221,14 @@ impl Drop for LiveDaemon {
             let _ = fs::remove_dir_all(&self.dir);
         }
     }
+}
+
+/// `--name=value` for a path value, as one argument (a value is never read
+/// as a flag).
+fn flag(name: &str, value: &Path) -> std::ffi::OsString {
+    let mut flag = std::ffi::OsString::from(format!("{name}="));
+    flag.push(value);
+    flag
 }
 
 #[cfg(test)]
