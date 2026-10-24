@@ -82,10 +82,15 @@ pub fn conversation(id: &str, conversation: &Conversation, owner: &Account) -> V
         "unread_count": 0, "is_unread": false, "muted": false, "mute_until": null,
         "disappearing": null, "kind": "direct", "title": conversation.title,
         "participants": [peer.principal, owner.principal], "group_id": null,
-        "direct_route": {
-            "recipient_principal_commitment": peer.commitment,
-            "recipient_device_ids": [peer.device],
-            "target_delivery_id": peer.target, "federation": null,
+        // Captured from this account's own submissions only.
+        "direct_route": if conversation.route_captured {
+            json!({
+                "recipient_principal_commitment": peer.commitment,
+                "recipient_device_ids": [peer.device],
+                "target_delivery_id": peer.target, "federation": null,
+            })
+        } else {
+            Value::Null
         },
         "self_principal_id": owner.principal,
     })

@@ -113,17 +113,28 @@ fn a_conversation_without_a_route_is_refused_with_the_reason() {
         json!({ "context_id": "dm-unrouted", "text": "x" }),
     ));
     assert_eq!(reason, "backend.gap.no_route");
-    // A route whose selected device is no longer verified is listed as null.
+    // No captured route (a conversation the contact started, or a selected
+    // device no longer verified): the client selects the other
+    // participant's verified device from the identity directory.
     let mut directory = common::directory();
     if let Some(dm) = directory.conversations.get_mut(&ContextId::new("dm-ana")) {
         dm.direct_route = None;
+        dm.participants = vec!["principal-me".to_owned(), "principal-ana".to_owned()];
     }
-    let plan = planned_with(
-        directory,
-        methods::SEND_MESSAGE,
-        json!({ "context_id": "dm-ana", "text": "x" }),
+    let send = json!({ "context_id": "dm-ana", "text": "x" });
+    let request = one(planned_with(directory.clone(), methods::SEND_MESSAGE, send.clone()));
+    let submit: LocalBusMessageSubmitRequest = typed(&request, &[]);
+    assert_eq!(submit.recipient_device_id.as_deref(), Some("device-ana"));
+    assert_eq!(submit.recipient_principal_commitment.as_deref(), Some("cm-ana"));
+    assert_eq!(submit.target_delivery_id, "target-ana");
+    // Without a verified device of the peer there is still no route.
+    if let Some(ana) = directory.identities.get_mut("principal-ana") {
+        ana.devices.clear();
+    }
+    assert_eq!(
+        refused(planned_with(directory, methods::SEND_MESSAGE, send)),
+        "backend.gap.no_route"
     );
-    assert_eq!(refused(plan), "backend.gap.no_route");
 }
 
 #[test]

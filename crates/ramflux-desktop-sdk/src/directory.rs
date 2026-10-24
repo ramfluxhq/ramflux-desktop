@@ -54,6 +54,8 @@ pub struct Conversation {
     pub group_id: Option<String>,
     /// The route of a direct conversation, when known and active.
     pub direct_route: Option<DirectRoute>,
+    /// Known participant principals (this account included).
+    pub participants: Vec<String>,
 }
 
 /// The route of a direct conversation.
@@ -138,7 +140,17 @@ impl Conversation {
             target: field(route, "target_delivery_id"),
             federation: route.get("federation").filter(|f| f.is_object()).cloned(),
         });
-        Self { kind, title: field(row, "title"), group_id: field(row, "group_id"), direct_route }
+        let participants = row["participants"]
+            .as_array()
+            .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+            .unwrap_or_default();
+        Self {
+            kind,
+            title: field(row, "title"),
+            group_id: field(row, "group_id"),
+            direct_route,
+            participants,
+        }
     }
 }
 
@@ -270,7 +282,13 @@ mod tests {
             Conversation::from_row(&json!({ "id": "c", "kind": null, "direct_route": null }));
         assert_eq!(
             legacy,
-            Conversation { kind: None, title: None, group_id: None, direct_route: None }
+            Conversation {
+                kind: None,
+                title: None,
+                group_id: None,
+                direct_route: None,
+                participants: Vec::new()
+            }
         );
         let dm = Conversation::from_row(&json!({
             "kind": "direct",

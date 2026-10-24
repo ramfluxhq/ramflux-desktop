@@ -119,6 +119,28 @@ struct Attachment<'a> {
     relay: String,
 }
 
+/// The route to the other participant of a direct conversation whose
+/// route the daemon has not captured (one this account did not start: the
+/// daemon captures routes from its own submissions). As the read model
+/// says, the client selects an active device: the peer's first verified
+/// device with a signing key and a delivery target, on this home node.
+fn route_from_identity(
+    directory: &crate::directory::Directory,
+    participants: &[String],
+) -> Option<crate::directory::DirectRoute> {
+    let me = directory.self_principal.as_deref();
+    let mut peers = participants.iter().filter(|p| Some(p.as_str()) != me);
+    let (peer, None) = (peers.next()?, peers.next()) else { return None };
+    let identity = directory.identities.get(peer)?;
+    let device = identity.devices.iter().find(|d| d.routable())?;
+    Some(crate::directory::DirectRoute {
+        commitment: Some(identity.commitment.clone()?),
+        device_ids: vec![device.device_id.clone()],
+        target: device.target.clone(),
+        federation: None,
+    })
+}
+
 fn direct(
     acct: Option<&str>,
     context: &ContextId,
@@ -127,7 +149,13 @@ fn direct(
     known: &impl Known,
 ) -> Plan {
     let Some(directory) = known.directory() else { return refuse(key::NO_ROUTE) };
-    let Some(route) = directory.conversations.get(context).and_then(|c| c.direct_route.as_ref())
+    let Some(conversation) = directory.conversations.get(context) else {
+        return refuse(key::NO_ROUTE);
+    };
+    let Some(route) = conversation
+        .direct_route
+        .clone()
+        .or_else(|| route_from_identity(directory, &conversation.participants))
     else {
         return refuse(key::NO_ROUTE);
     };

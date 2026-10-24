@@ -44,6 +44,9 @@ pub struct Conversation {
     /// The local title the first submission named (the daemon records it).
     pub title: Option<String>,
     pub messages: Vec<Value>,
+    /// Whether this account submitted in it: the daemon captures a direct
+    /// route only from its own successful submissions.
+    pub route_captured: bool,
 }
 
 /// A local account of one daemon.
@@ -469,15 +472,14 @@ impl World {
         let from = me.peer();
         let stored = rows::message(&message, &from.device, &body_text, at, false);
         let title = body["title"].as_str().map(str::to_owned);
-        me.conversations
-            .entry(conversation.clone())
-            .or_insert_with(|| Conversation {
-                peer: recipient.clone(),
-                title,
-                messages: Vec::new(),
-            })
-            .messages
-            .push(stored);
+        let held = me.conversations.entry(conversation.clone()).or_insert_with(|| Conversation {
+            peer: recipient.clone(),
+            title,
+            messages: Vec::new(),
+            route_captured: true,
+        });
+        held.messages.push(stored);
+        held.route_captured = true;
         for attachment in body["attachments"].as_array().into_iter().flatten() {
             let bytes = ramflux_protocol::decode_base64url(
                 attachment["plaintext_base64"].as_str().unwrap_or_default(),
@@ -521,6 +523,7 @@ impl World {
                     peer: held.from.clone(),
                     title: None,
                     messages: Vec::new(),
+                    route_captured: false,
                 })
                 .messages
                 .push(rows::message(&held.envelope, &held.from.device, &held.text, held.at, false));

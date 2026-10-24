@@ -405,6 +405,7 @@ fn read_model_requests() -> Vec<ramflux_desktop_sdk::bus::BusRequest> {
                 target: Some("target-ana".to_owned()),
                 federation: None,
             }),
+            participants: vec!["principal-me".to_owned(), "principal-ana".to_owned()],
         },
     );
     directory.identities.insert(
