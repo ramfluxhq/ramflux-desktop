@@ -69,30 +69,46 @@ impl Translator {
         Translated { events, follow }
     }
 
-    /// Notes a listed direct message from a peer's device, for its delivery
-    /// receipt: never this device's own, nor another device of this account,
-    /// nor a deleted one; skipped while the sender's target is not listed.
+    /// Notes a listed direct message from a peer, for its delivery receipt:
+    /// never this device's own, nor one from this account's principal or
+    /// its other devices, nor a deleted one. A received row names its
+    /// sender by principal (this device's own rows name the device), so the
+    /// receipt goes to that peer's first verified device with a delivery
+    /// target (the row does not say which device sent it); a row naming a
+    /// device sends to that device. Skipped while no target is listed.
     fn note_received(&mut self, context: &ContextId, record: &Value) {
         let (message, sender) = (text(record, "message_id"), text(record, "sender_id"));
         let Some(me) = self.self_device.clone() else { return };
         if message.is_empty() || sender == me || record["deleted"].as_bool().unwrap_or(false) {
             return;
         }
-        let principal = self.directory.principal_of_device(sender);
-        if principal.is_none() || principal == self.directory.self_principal.as_deref() {
+        let principal = match self.directory.principal_of_device(sender) {
+            Some(principal) => principal,
+            None if self.directory.identities.contains_key(sender) => sender,
+            None => return,
+        };
+        if Some(principal) == self.directory.self_principal.as_deref() {
             return;
         }
-        let target = principal
-            .and_then(|p| self.directory.identities.get(p))
-            .and_then(|i| i.devices.iter().find(|d| d.device_id == sender))
-            .and_then(|d| d.target.clone());
-        let Some(sender_target) = target else { return };
+        let Some(identity) = self.directory.identities.get(principal) else { return };
+        if identity.is_self {
+            return;
+        }
+        let device = if sender == principal {
+            identity.devices.iter().find(|d| d.routable())
+        } else {
+            identity.devices.iter().find(|d| d.device_id == sender)
+        };
+        let Some((device, Some(target))) = device.map(|d| (d.device_id.clone(), d.target.clone()))
+        else {
+            return;
+        };
         self.delivered.push(crate::receipts::Delivered {
             conversation_id: context.to_string(),
             message_id: message.to_owned(),
             receiver_device_id: me,
-            sender_device_id: sender.to_owned(),
-            sender_target,
+            sender_device_id: device,
+            sender_target: target,
         });
     }
 

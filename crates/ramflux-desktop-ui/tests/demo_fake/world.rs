@@ -530,7 +530,14 @@ impl World {
                     route_captured: false,
                 })
                 .messages
-                .push(rows::message(&held.envelope, &held.from.device, &held.text, held.at, false));
+                .push(rows::message(
+                    &held.envelope,
+                    // A received row names its sender by principal.
+                    &held.from.principal,
+                    &held.text,
+                    held.at,
+                    false,
+                ));
             // Like the daemon, receiving sends no delivery receipt: the
             // recipient's client asks for one (`message.receipt.delivered`).
             decrypted.push(json!({ "message_id": held.envelope, "body_utf8": held.text }));
