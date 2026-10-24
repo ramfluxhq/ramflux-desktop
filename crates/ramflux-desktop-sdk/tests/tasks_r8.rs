@@ -182,3 +182,32 @@ fn a_restarted_requester_resolves_a_choice_from_the_signed_binding_alone() {
     assert_eq!(resolves[0].body["step_id"], "pick");
     world.fake.shutdown();
 }
+
+#[test]
+fn a_remote_approval_listed_only_in_grant_list_decides_its_step() {
+    let (world, path) = World::start("remote-approval");
+    let mut account = open(&path);
+    world.tasks.start_as("principal-me", GROUP, "t-1", BOT, "Deploy to staging").unwrap();
+    let mut row = approval("task_approval_k1", "high");
+    row["details"]["requested_grant_id"] = json!("grant_bo_1");
+    row["task_binding"] =
+        json!({ "conversation_id": GROUP, "task_id": "t-1", "step_id": "deploy" });
+    world.remote.lock().unwrap().push(row);
+    let steps = vec![approval_step("deploy", "Deploy to staging", "grant_bo_1")];
+    world.tasks.update(GROUP, "t-1", TaskStatus::NeedsMe, steps, None).unwrap();
+    world.fake.publish(
+        ACCOUNT,
+        "mcp.approval.request",
+        json!({ "approval_id": "task_approval_k1" }),
+    );
+    let id = key(GROUP, "t-1");
+    let grant = GrantId::new("task_approval_k1");
+    account.until("decidable in its step", |s, _| {
+        s.grant(&grant).is_some()
+            && s.task(&id).is_some_and(|t| {
+                t.steps[0].needs_me
+                    == Some(ramflux_desktop_core::NeedsMe::Approval { grant_id: grant.clone() })
+            })
+    });
+    world.fake.shutdown();
+}

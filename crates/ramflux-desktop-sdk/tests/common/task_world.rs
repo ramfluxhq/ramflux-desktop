@@ -35,6 +35,9 @@ pub struct World {
     pub tasks: FakeTasks,
     pub surfaces: Arc<FakeSurfaces>,
     pub approvals: Arc<Mutex<Vec<Value>>>,
+    /// Approvals listed only in `grant.list` (a task assignee's approval
+    /// that reached this requester, as the daemon lists it).
+    pub remote: Arc<Mutex<Vec<Value>>>,
 }
 
 pub fn approval(id: &str, risk: &str) -> Value {
@@ -64,12 +67,18 @@ impl World {
         let approvals: Arc<Mutex<Vec<Value>>> = Arc::default();
         let surfaces = Arc::new(FakeSurfaces::default());
         surfaces.acting_as("principal-me");
-        let (t, a, s) = (tasks.clone(), approvals.clone(), surfaces.clone());
+        let remote: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let (t, a, s, r) = (tasks.clone(), approvals.clone(), surfaces.clone(), remote.clone());
         let fake = FakeBus::start(&path, move |method, _, body| {
             if let Some(reply) = t.handle(method, body).or_else(|| s.handle(method, body)) {
                 return reply;
             }
             match method {
+                "grant.list" => {
+                    let Reply::Ok(mut frame) = fixture(method) else { return fixture(method) };
+                    frame["approvals"] = json!(r.lock().expect("remote").clone());
+                    Reply::Ok(frame)
+                }
                 "mcp.approval.list" => {
                     let rows = a.lock().expect("approvals").clone();
                     Reply::Ok(json!({ "approvals": rows, "next_cursor": null }))
@@ -108,7 +117,7 @@ impl World {
         });
         fake.enable_stream();
         tasks.announce_to(fake.publisher(), ACCOUNT);
-        (Self { fake, tasks, surfaces, approvals }, path)
+        (Self { fake, tasks, surfaces, approvals, remote }, path)
     }
 
     pub fn since(&self, mark: usize, method: &str) -> Vec<Seen> {

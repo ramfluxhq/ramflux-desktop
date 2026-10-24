@@ -377,7 +377,7 @@ impl Translator {
                 }
             },
             Fetch::ContactList => Translated::events(self.contact_list(value)),
-            Fetch::Grants => Translated::events(self.grant_list(value)),
+            Fetch::Grants => Translated::events(self.grant_list(value, now)),
             Fetch::StandingApprovals => Translated::events(self.standing_list(value)),
             Fetch::McpTools => Translated::events(self.mcp_tools(value)),
             Fetch::Messages(context) => self.messages(context, value, now),

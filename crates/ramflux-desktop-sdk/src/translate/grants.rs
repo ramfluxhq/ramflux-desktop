@@ -9,7 +9,9 @@
 //! revocation). An approval that names the conversation it came from is
 //! also shown there (see `interventions`). A task step that waits on the
 //! grant an approval requests (`details.requested_grant_id`) is decided
-//! through that approval (see `tasks`).
+//! through that approval (see `tasks`). Pending approvals are read from
+//! `mcp.approval.list` and from `grant.list` `approvals` (where a task
+//! assignee's remote approval to this requester is listed).
 
 use ramflux_desktop_core::{
     DomainEvent, Grant, GrantId, GrantState, Risk, StandingApproval, StandingApprovalId, Timestamp,
@@ -106,9 +108,13 @@ impl Translator {
     }
 
     /// Approved grants. One the desktop has not seen pending is reported as
-    /// requested then approved, which is what happened.
-    pub(super) fn grant_list(&mut self, value: &Value) -> Vec<DomainEvent> {
-        let mut events = Vec::new();
+    /// requested then approved, which is what happened. The pending
+    /// approvals `grant.list` also names are taken first: a task assignee's
+    /// approval that reached this requester (`task_approval_…`, with its
+    /// `task_binding`) is listed there, not in the `mcp.approval.list`
+    /// read model.
+    pub(super) fn grant_list(&mut self, value: &Value, now: Timestamp) -> Vec<DomainEvent> {
+        let mut events = self.approval_list(list(value, "approvals"), now);
         for record in list(value, "grants") {
             let body = &record["signing_body"];
             let approval = text(body, "approval_id");
