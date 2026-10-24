@@ -13,10 +13,11 @@
 use std::sync::mpsc as std_mpsc;
 
 use ramflux_desktop_core::{
-    AccountId, ContextId, Effect, EventEnvelope, MomentId, RendererProfile, Source, Timestamp,
+    AccountId, CallId, CallMedia, ContextId, Effect, EventEnvelope, MomentId, RendererProfile,
+    Source, Timestamp,
 };
 
-use crate::bridge::{Bridge, Command, Delivery};
+use crate::bridge::{Bridge, Command, Delivery, MediaAnswer};
 use crate::bus::BusError;
 use crate::config::SdkConfig;
 use crate::translate::Scope;
@@ -103,6 +104,7 @@ pub struct SdkSource {
     bridge: Bridge,
     scope: Scope,
     inbox: std_mpsc::Receiver<Delivery>,
+    media: (std_mpsc::Sender<MediaAnswer>, std_mpsc::Receiver<MediaAnswer>),
     last_seq: u64,
     profile: Option<RendererProfile>,
 }
@@ -120,7 +122,7 @@ impl SdkSource {
     fn attach(bridge: Bridge, scope: Scope) -> Self {
         let (outbox, inbox) = std_mpsc::channel();
         bridge.send(Command::Attach { scope: scope.clone(), outbox });
-        Self { bridge, scope, inbox, last_seq: 0, profile: None }
+        Self { bridge, scope, inbox, media: std_mpsc::channel(), last_seq: 0, profile: None }
     }
 
     /// The scope served.
@@ -168,6 +170,18 @@ impl Source for SdkSource {
             self.bridge
                 .send(Command::Bodies { scope: self.scope.clone(), moments: moments.to_vec() });
         }
+    }
+
+    fn request_call_media(&mut self, call: &CallId) {
+        self.bridge.send(Command::CallMedia {
+            scope: self.scope.clone(),
+            call_id: call.clone(),
+            reply: self.media.0.clone(),
+        });
+    }
+
+    fn take_call_media(&mut self) -> Option<(CallId, Result<CallMedia, String>)> {
+        self.media.1.try_recv().ok()
     }
 }
 

@@ -31,9 +31,11 @@
 //! - `tasks`: conversation tasks the daemon holds, as task moments.
 //! - `task_answers`: the daemon's answers to task effects, on their task.
 //! - `effects`: answers to effects, and the audit record of confirmed ones.
+//! - `calls`: voice call rows, and the media session read for the engine.
 //! - `reason`: locale keys with arguments.
 
 mod account;
+pub mod calls;
 mod contact_failures;
 mod contacts;
 mod conversation;
@@ -198,6 +200,10 @@ pub struct Translator {
     /// Received direct messages listed since the bridge last took them
     /// (delivery receipts to send, see [`crate::receipts`]).
     delivered: Vec<crate::receipts::Delivered>,
+    /// The sequence number of each call last reported.
+    reported_calls: BTreeMap<ramflux_desktop_core::CallId, u64>,
+    /// Call rows waiting for their conversation to be listed.
+    pending_calls: BTreeMap<ramflux_desktop_core::CallId, Value>,
 }
 
 impl Translator {
@@ -251,6 +257,8 @@ impl Translator {
             listed: BTreeSet::new(),
             completed: BTreeSet::new(),
             delivered: Vec::new(),
+            reported_calls: BTreeMap::new(),
+            pending_calls: BTreeMap::new(),
         }
     }
 
@@ -417,7 +425,11 @@ impl Translator {
         match paged {
             Paged::Identities => Translated::events(self.identities(rows)),
             Paged::Groups => Translated::events(self.groups(rows)),
-            Paged::Conversations => self.conversations(rows),
+            Paged::Conversations => {
+                let mut translated = self.conversations(rows);
+                translated.events.extend(self.listed_calls());
+                translated
+            }
             Paged::Objects => Translated::events(self.object_listing(rows)),
             Paged::Approvals => Translated::events(self.approval_list(rows, now)),
             Paged::McpServers => Translated::events(self.mcp_servers(rows)),
@@ -469,6 +481,7 @@ impl Translator {
                 }
             }
             "mcp.approval.granted" => self.approval_decided(body, GrantState::Approved),
+            "call.changed" => self.call_row(body).events,
             "mcp.approval.denied" => self.approval_decided(body, GrantState::Denied),
             // Tool starts and A2UI action records are not bound to a
             // conversation yet; they have no moment to land in (gap ledger).

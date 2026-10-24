@@ -22,6 +22,7 @@ use super::now;
 use super::scope::{Internal, Link, Task};
 use crate::bus::client::BusClient;
 use crate::bus::{BusError, BusRequest, idempotency, wipe};
+use crate::capabilities;
 use crate::plan::fetch::Fetch;
 use crate::plan::{Plan, plan};
 use crate::translate::node_failures;
@@ -29,6 +30,17 @@ use crate::translate::reason::{key, keyed};
 
 impl Task {
     pub(super) fn effect(&mut self, effect: Effect) {
+        if !self.config.call_api
+            && let Some(method) = effect.method().filter(|m| capabilities::CALL_METHODS.contains(m))
+        {
+            let failure = EffectFailure {
+                method: method.to_owned(),
+                code: FailureCode::UnsupportedByBackend,
+                message: capabilities::reason::CALLS.to_owned(),
+            };
+            self.emit(vec![DomainEvent::EffectFailed(failure)]);
+            return;
+        }
         let planned = plan(self.scope.account(), effect, &self.translator);
         let (method, mut body) = (planned.method, planned.body);
         self.translator.decision_sent(&method, &body);

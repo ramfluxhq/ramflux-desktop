@@ -286,3 +286,38 @@ fn local_and_unsupported_methods_never_reach_the_daemon() {
     let no_account = plan(None, call(methods::GRANT_APPROVE, json!({ "grant_id": "a" })), &fake());
     assert!(matches!(no_account.plan, Plan::Refuse { .. }));
 }
+
+#[test]
+fn voice_call_methods_map_to_the_call_api_with_retry_keys() {
+    let (m, a, b, refresh) = mapped(call(
+        methods::CALL_INVITE,
+        json!({ "context_id": "dm-ana", "peer": "principal-ana", "proposed_by": "Human" }),
+    ));
+    assert_eq!(
+        (m.as_str(), a.as_deref(), b, refresh),
+        ("call.invite", Some("acct-main"), json!({ "conversation_id": "dm-ana" }), Vec::new())
+    );
+    for (method, daemon) in [
+        (methods::CALL_ANSWER, "call.answer"),
+        (methods::CALL_REJECT, "call.reject"),
+        (methods::CALL_HANGUP, "call.hangup"),
+    ] {
+        let (m, _, b, _) = mapped(call(method, json!({ "call_id": "call-1" })));
+        assert_eq!((m.as_str(), b), (daemon, json!({ "call_id": "call-1" })));
+        let account = AccountId::new("acct-main");
+        let Plan::Call { request, .. } =
+            plan(Some(&account), call(method, json!({ "call_id": "call-1" })), &fake()).plan
+        else {
+            panic!("a call");
+        };
+        assert!(request.operation_id.is_some(), "{method} changes daemon state");
+        let refused = plan(Some(&account), call(method, json!({})), &fake());
+        assert!(matches!(refused.plan, Plan::Refuse { .. }), "{method} without a call id");
+    }
+    // Without the call API, the capabilities declare every call method.
+    let declared = capabilities::capabilities(false);
+    for method in capabilities::CALL_METHODS {
+        assert_eq!(declared.unsupported_reason(method), Some(capabilities::reason::CALLS));
+    }
+    assert!(capabilities::capabilities(true).unsupported_reason(methods::CALL_INVITE).is_none());
+}

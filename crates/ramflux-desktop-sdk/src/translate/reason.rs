@@ -116,6 +116,8 @@ pub mod key {
     pub const PRINCIPAL_ID_TAKEN: &str = "backend.contact.principal_id_taken";
     /// Contact refusal `device_id_taken`: The device id is registered to another identity.
     pub const DEVICE_ID_TAKEN: &str = "backend.contact.device_id_taken";
+    /// The daemon's media session of a call could not be read.
+    pub const CALL_MEDIA: &str = "backend.call.media";
     /// Contact refusal `unavailable`: The home node could not be reached.
     pub const CONTACT_UNAVAILABLE: &str = "backend.contact.unavailable";
     /// Contact refusal `root_replacement`: The card names another identity than the lookup (`name`, `previous`, `proposed`).

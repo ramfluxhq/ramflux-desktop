@@ -36,7 +36,13 @@ pub mod reason {
     pub const ACTIVATION: &str = "backend.gap.activation";
     /// Device sync needs a relay route and a target device.
     pub const DEVICE_SYNC: &str = "backend.gap.device_sync";
+    /// Voice calls need the daemon's call API (CALL-01).
+    pub const CALLS: &str = "backend.gap.calls";
 }
+
+/// The voice call methods, which need the daemon's call API (CALL-01).
+pub const CALL_METHODS: [&str; 4] =
+    [methods::CALL_INVITE, methods::CALL_ANSWER, methods::CALL_REJECT, methods::CALL_HANGUP];
 
 /// Every unsupported contract method (or `method@ContextKind`) with its reason.
 pub fn unsupported() -> BTreeMap<String, &'static str> {
@@ -63,11 +69,17 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
     table
 }
 
-/// The capabilities event payload.
-pub fn capabilities() -> Capabilities {
-    Capabilities {
-        unsupported: unsupported().into_iter().map(|(m, r)| (m, r.to_owned())).collect(),
+/// The capabilities event payload; without the call API (`call_api`
+/// false) the call methods are unsupported too.
+pub fn capabilities(call_api: bool) -> Capabilities {
+    let mut unsupported: BTreeMap<String, String> =
+        unsupported().into_iter().map(|(m, r)| (m, r.to_owned())).collect();
+    if !call_api {
+        for method in CALL_METHODS {
+            unsupported.insert(method.to_owned(), reason::CALLS.to_owned());
+        }
     }
+    Capabilities { unsupported }
 }
 
 /// Why `method` is unsupported, if it is.

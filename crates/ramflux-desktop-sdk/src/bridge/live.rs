@@ -163,7 +163,11 @@ impl Task {
             // is open, so what happened before is read.
             self.sync.reload_on_open = true;
         }
-        let subscription = Subscription { account, topics: topics(), since_seq };
+        let mut topics = topics();
+        if self.config.call_api {
+            topics.push(crate::translate::stream::CALL_TOPIC);
+        }
+        let subscription = Subscription { account, topics, since_seq };
         let socket = self.config.socket_path.clone();
         let (connect, deadlines) = (self.config.connect_timeout, self.config.deadlines);
         let out = self.streamed.clone();
@@ -220,6 +224,11 @@ impl Task {
             "sync.status" => {
                 self.sync.daemon = Some(DaemonSync::from_body(body));
                 self.show_sync(false);
+            }
+            crate::translate::stream::CALL_TOPIC => {
+                let translated = self.translator.call_row(body);
+                self.request_reads(translated.follow);
+                self.emit(translated.events);
             }
             "account.state" => {
                 // A `locked` entry may be replayed after the account was

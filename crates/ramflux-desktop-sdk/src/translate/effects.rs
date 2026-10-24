@@ -116,6 +116,10 @@ impl Translator {
                 events.extend(self.approval_answer(&id, text(body, "args_hash"), answer, now));
                 events
             }
+            methods::CALL_INVITE
+            | methods::CALL_ANSWER
+            | methods::CALL_REJECT
+            | methods::CALL_HANGUP => self.call_row(answer).events,
             methods::GRANT_DENY => {
                 self.resolve(&GrantId::new(text(body, "grant_id")), GrantState::Denied)
             }

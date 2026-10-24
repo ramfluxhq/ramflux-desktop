@@ -13,6 +13,9 @@ backend:
     reveal:
       en: "Revealing hidden content is not available from the daemon yet."
       zh-CN: "守护进程尚不支持显示隐藏内容。"
+    calls:
+      en: "Voice calls are not available from the daemon yet."
+      zh-CN: "守护进程尚不支持语音通话。"
     contact_route:
       en: "A contact request travels to the contact's node and needs a federation route to it, which the daemon does not list."
       zh-CN: "联系人请求需发送到对方节点，需要通往该节点的联邦路由，守护进程未提供。"
@@ -95,6 +98,10 @@ backend:
     invalid_request:
       en: "the daemon could not accept the request."
       zh-CN: "守护进程无法接受此请求。"
+  call:
+    media:
+      en: "Couldn't set up the call's audio connection."
+      zh-CN: "无法建立通话的音频连接。"
   message:
     encrypted_at_rest:
       en: "This message is stored encrypted; its text is shown only when it is received or sent here."

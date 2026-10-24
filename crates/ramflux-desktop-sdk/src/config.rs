@@ -46,6 +46,12 @@ pub struct SdkConfig {
     /// macOS Local Network privacy may have blocked; a zero ends the
     /// repeats. (Milliseconds keep the settings as small as before.)
     pub local_network_retry_ms: [u16; 2],
+    /// Whether the daemon has the CALL-01 voice call API (`call.invite`,
+    /// `call.answer`, `call.reject`, `call.hangup`, `call.media.session`
+    /// and the `call.changed` event). Off, the call methods are declared
+    /// unsupported (`backend.gap.calls`); the pinned daemon does not have
+    /// them yet.
+    pub call_api: bool,
 }
 
 impl SdkConfig {
@@ -62,6 +68,7 @@ impl SdkConfig {
             reconnect_backoff: Duration::from_secs(2),
             settings_path: None,
             local_network_retry_ms: LOCAL_NETWORK_RETRY_MS,
+            call_api: false,
         }
     }
 }

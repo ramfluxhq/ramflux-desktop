@@ -58,6 +58,8 @@ pub(crate) enum ScopeCommand {
     Focus(Option<ContextId>),
     /// A view needs these messages' bodies again.
     Bodies(Vec<MomentId>),
+    /// The media engine needs a call's media session.
+    CallMedia(ramflux_desktop_core::CallId, std_mpsc::Sender<super::MediaAnswer>),
 }
 
 /// A read's answer, with the listing number of a first page.
@@ -178,7 +180,8 @@ pub(crate) async fn run(
         listing_applied: BTreeMap::new(),
         receipts,
     };
-    task.emit(vec![DomainEvent::CapabilitiesUpdated(capabilities::capabilities())]);
+    let declared = capabilities::capabilities(task.config.call_api);
+    task.emit(vec![DomainEvent::CapabilitiesUpdated(declared)]);
     task.show_sync(true);
     task.snapshot();
     while task.alive {
@@ -582,6 +585,32 @@ impl Task {
         }
     }
 
+    /// Reads a call's media session for the engine. Its secrets go
+    /// straight to the source that asked: never to the translator, an
+    /// event or a log.
+    fn call_media(
+        &self,
+        call_id: ramflux_desktop_core::CallId,
+        reply: std_mpsc::Sender<super::MediaAnswer>,
+    ) {
+        let account = match self.account() {
+            Some(account) if self.config.call_api => account,
+            _ => {
+                let _ = reply.send((call_id, Err(capabilities::reason::CALLS.to_owned())));
+                return;
+            }
+        };
+        let client = self.client.clone();
+        tokio::spawn(async move {
+            let request = crate::plan::call::media_session(&account, call_id.as_str());
+            let answer = match client.call(&request).await {
+                Ok(answer) => crate::translate::calls::call_media(&call_id, answer),
+                Err(error) => Err(error.message()),
+            };
+            let _ = reply.send((call_id, answer));
+        });
+    }
+
     fn command(&mut self, command: ScopeCommand) {
         match command {
             ScopeCommand::Focus(context) => {
@@ -600,6 +629,7 @@ impl Task {
                 let reads = self.translator.request_bodies(&moments);
                 self.spawn_fetches(reads);
             }
+            ScopeCommand::CallMedia(call_id, reply) => self.call_media(call_id, reply),
         }
     }
 }

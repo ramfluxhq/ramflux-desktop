@@ -12,8 +12,9 @@
 //! - [`scale`]: generated large scenarios for scale tests.
 //! - `fake_bus` (feature `fake-bus`): a fake daemon local bus for adapter tests,
 //!   with its event journal in `fake_journal`, its agent surfaces (on the
-//!   protocol's state machine) in `fake_surfaces` and conversation tasks
-//!   (on the protocol's state machine) in `fake_tasks`.
+//!   protocol's state machine) in `fake_surfaces`, conversation tasks
+//!   (on the protocol's state machine) in `fake_tasks` and its voice calls
+//!   (the CALL-01 bus API) in `fake_calls`.
 //! - `live_daemon` (feature `live-daemon`): a real `rf daemon` from the
 //!   pinned product revision for live tests.
 
@@ -21,6 +22,8 @@
 
 #[cfg(feature = "fake-bus")]
 pub mod fake_bus;
+#[cfg(feature = "fake-bus")]
+pub mod fake_calls;
 #[cfg(feature = "fake-bus")]
 pub mod fake_journal;
 #[cfg(feature = "fake-bus")]

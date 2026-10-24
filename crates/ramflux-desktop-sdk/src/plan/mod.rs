@@ -23,7 +23,9 @@
 //! - [`group_create`]: creating and renaming a group.
 //! - [`task`]: starting, accepting, declining, cancelling and resolving
 //!   conversation tasks.
+//! - [`call`]: placing, answering, declining and hanging up voice calls.
 
+pub mod call;
 pub mod contact;
 pub mod contact_card;
 pub mod conversation;
@@ -204,7 +206,7 @@ pub(crate) fn text<'a>(body: &'a Value, field: &str) -> &'a str {
     body.get(field).and_then(Value::as_str).unwrap_or_default()
 }
 
-fn call(request: BusRequest) -> Plan {
+pub(crate) fn call(request: BusRequest) -> Plan {
     Plan::Call { request, refresh: Vec::new() }
 }
 
@@ -386,6 +388,10 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         methods::CONTACT_CARD_IMPORT => contact_card::import(acct, body),
         methods::CONTACT_CARD_EXPORT => contact_card::export(acct),
         methods::GROUP_CREATE => group_create::create(acct, body, known),
+        methods::CALL_INVITE
+        | methods::CALL_ANSWER
+        | methods::CALL_REJECT
+        | methods::CALL_HANGUP => call::call_effect(acct, method, body),
         methods::CONTEXT_RENAME => group_create::rename(acct, body, known),
         methods::TASK_START | methods::TASK_CANCEL | methods::TASK_RESOLVE => {
             task::task_call(acct, method, body, known)

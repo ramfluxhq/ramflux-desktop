@@ -44,6 +44,10 @@ pub const READ_TOPICS: [&str; 16] = [
 /// The daemon's state topics, read directly.
 pub const STATE_TOPICS: [&str; 2] = ["account.state", "sync.status"];
 
+/// The voice call topic (CALL-01 §6), subscribed only to a daemon with the
+/// call API; its body is the call row, read directly.
+pub const CALL_TOPIC: &str = "call.changed";
+
 /// Every topic the desktop subscribes to on the stream. Not subscribed:
 /// `node.health` (it names no node), tool starts and the older A2UI records
 /// (they have no conversation to land in; conversation surfaces come through

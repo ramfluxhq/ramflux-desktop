@@ -30,7 +30,7 @@ pub enum Weight {
 }
 
 /// Methods that reach a node, or derive keys from a passphrase.
-const NETWORK: [&str; 22] = [
+const NETWORK: [&str; 27] = [
     "account.create",
     "account.unlock",
     "account.backup.import",
@@ -53,6 +53,11 @@ const NETWORK: [&str; 22] = [
     "object.get",
     "object.transfer.resume",
     "subscription.open",
+    "call.invite",
+    "call.answer",
+    "call.reject",
+    "call.hangup",
+    "call.media.session",
 ];
 
 /// Methods that only read.

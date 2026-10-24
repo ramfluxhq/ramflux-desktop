@@ -22,7 +22,9 @@ mod scope;
 use std::collections::BTreeMap;
 use std::sync::mpsc as std_mpsc;
 
-use ramflux_desktop_core::{ContextId, DomainEvent, Effect, MomentId, Timestamp};
+use ramflux_desktop_core::{
+    CallId, CallMedia, ContextId, DomainEvent, Effect, MomentId, Timestamp,
+};
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -40,6 +42,9 @@ pub struct Delivery {
     pub event: DomainEvent,
 }
 
+/// A call's media session, or why it could not be had (a locale key).
+pub type MediaAnswer = (CallId, Result<CallMedia, String>);
+
 /// A request from a source to the bridge.
 pub(crate) enum Command {
     /// Start serving `scope`, delivering into `outbox`.
@@ -50,6 +55,8 @@ pub(crate) enum Command {
     Focus { scope: Scope, context: Option<ContextId> },
     /// A view needs these messages' bodies again in `scope`.
     Bodies { scope: Scope, moments: Vec<MomentId> },
+    /// The media engine needs a call's media session in `scope`.
+    CallMedia { scope: Scope, call_id: CallId, reply: std_mpsc::Sender<MediaAnswer> },
     /// Stop serving `scope`.
     Detach { scope: Scope },
     /// Ask the daemon to stop (`daemon.stop`) and report its answer.
@@ -107,6 +114,14 @@ async fn serve(config: SdkConfig, mut inbox: mpsc::UnboundedReceiver<Command>) {
                     let _ = tx.send(scope::ScopeCommand::Bodies(moments));
                 }
             }
+            Command::CallMedia { scope, call_id, reply } => match scopes.get(&scope) {
+                Some(tx) => {
+                    let _ = tx.send(scope::ScopeCommand::CallMedia(call_id, reply));
+                }
+                None => {
+                    let _ = reply.send((call_id, Err("backend.call.media".to_owned())));
+                }
+            },
             Command::Detach { scope } => {
                 scopes.remove(&scope);
             }
