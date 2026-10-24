@@ -20,14 +20,20 @@
 //!   with its signed `result_summary`, plus `id`, `actor_kind_verified:
 //!   false`, per-actor `actors.{requester,assignee,acceptor}`, times, the
 //!   stalled and compacted markers, and `pending_resolution`);
-//! - every accepted change is announced as `task.changed` (metadata only)
-//!   and leaves a `content_type: "task"` message with its `task_id` and
-//!   fallback text; compaction is announced too;
+//! - every accepted change is announced as `task.changed` (metadata only,
+//!   typed by `kind`: `updated`, `compacted` or `removed`) and leaves a
+//!   `content_type: "task"` message with its `task_id` and fallback text;
+//!   compaction and pruning are announced too;
+//! - the requester's decision on a step's approval has a delivery state
+//!   (`task.get` `approval_decisions[]`): [`FakeTasks::fail_delivery`]
+//!   marks it `failed` (retries ran out), and the same `grant.approve` /
+//!   `grant.deny` again resends it ([`FakeTasks::redeliver`]);
 //! - a requester's resolution is pending until the assignee confirms it,
 //!   which it does only for a decision the grant flow recorded
 //!   ([`FakeTasks::decide`], [`FakeTasks::confirm_decisions`]); until then
 //!   the view carries `pending_resolution` (`awaiting_executor`, or
-//!   `executor_timeout` after [`FakeTasks::time_out_decisions`]).
+//!   `executor_timeout` after [`FakeTasks::time_out_decisions`]) naming the
+//!   step it decides (`step_id`).
 //!
 //! The assignee (an AI participant) is played by the test through
 //! [`FakeTasks::propose`] and [`FakeTasks::update`].
@@ -136,8 +142,8 @@ struct Held {
     compacted: bool,
     /// Requester resolutions waiting for the assignee, by decision id.
     pending: BTreeMap<String, (TaskEvent, Member)>,
-    /// The pending resolution's message id and queue time.
-    pending_since: Option<(String, i64)>,
+    /// The pending resolution's message id, queue time and step.
+    pending_since: Option<(String, i64, String)>,
     /// The pending resolution outlived the requester's wait.
     timed_out: bool,
 }
@@ -159,6 +165,19 @@ struct Inner {
     refuse_next: Option<(String, Refused)>,
     /// Principals whose kind is verified (none until identities carry one).
     verified: Vec<String>,
+    /// The requester's approval decisions and their delivery, by approval
+    /// id: (conversation, task, step), approved, delivery state.
+    deliveries: BTreeMap<String, Delivery>,
+}
+
+/// One approval decision on its way to the assignee.
+#[derive(Clone)]
+struct Delivery {
+    conversation: String,
+    task: String,
+    step: String,
+    approved: bool,
+    state: &'static str,
 }
 
 /// The daemon's tasks of one account. Cheap to clone; clones share state.
@@ -440,8 +459,57 @@ impl FakeTasks {
         };
         held.compacted = true;
         let version = held.state.task().map_or(0, |t| t.version);
-        inner.announce(json!({ "conversation_id": conversation, "task_id": task_id,
-                               "version": version, "compacted": true, "removed": false }));
+        inner.announce(json!({ "kind": "compacted", "conversation_id": conversation,
+                               "task_id": task_id, "version": version, "compacted": true,
+                               "removed": false }));
+    }
+
+    /// Maintenance pruned the task: the daemon no longer holds it
+    /// (`task.get` answers null), announced as `task.changed {kind:
+    /// removed}` like the daemon does.
+    pub fn remove(&self, conversation: &str, task_id: &str) {
+        let mut inner = self.inner();
+        let Some(held) = inner.tasks.remove(&(conversation.to_owned(), task_id.to_owned())) else {
+            return;
+        };
+        let version = held.state.task().map_or(0, |t| t.version);
+        inner.announce(json!({ "kind": "removed", "conversation_id": conversation,
+                               "task_id": task_id, "version": version, "compacted": false,
+                               "removed": true }));
+    }
+
+    /// The requester's decision on the approval `approval_id` (the scoped
+    /// id) of step `step` could not reach the assignee: its delivery is
+    /// `failed` (`retry_exhausted`), announced like the daemon does.
+    pub fn fail_delivery(&self, conversation: &str, task_id: &str, step: &str, approval_id: &str) {
+        let mut inner = self.inner();
+        let decision = inner.aliases.get(approval_id).cloned().unwrap_or_default();
+        let approved = inner.decided.get(&decision).copied().unwrap_or(true);
+        let delivery = Delivery {
+            conversation: conversation.to_owned(),
+            task: task_id.to_owned(),
+            step: step.to_owned(),
+            approved,
+            state: "failed",
+        };
+        inner.deliveries.insert(approval_id.to_owned(), delivery.clone());
+        inner.announce_delivery(approval_id, &delivery);
+    }
+
+    /// `grant.approve` / `grant.deny` on an approval whose decision was
+    /// not delivered: the same decision is sent again (`Some(true)`), a
+    /// conflicting one is refused (`Some(false)`); `None` when no
+    /// decision of it failed to arrive.
+    pub fn redeliver(&self, approval_id: &str, approved: bool) -> Option<bool> {
+        let mut inner = self.inner();
+        let delivery = inner.deliveries.get_mut(approval_id)?;
+        if delivery.approved != approved {
+            return Some(false);
+        }
+        delivery.state = "submitted";
+        let delivery = delivery.clone();
+        inner.announce_delivery(approval_id, &delivery);
+        Some(true)
     }
 
     /// The requester's wait for the assignee ran out: pending resolutions
@@ -550,6 +618,18 @@ fn meta(task: &ramflux_protocol::Task) -> Value {
     })
 }
 
+/// A decision row as `task.get` `approval_decisions[]` lists it.
+fn delivery_row(approval_id: &str, d: &Delivery) -> Value {
+    json!({ "approval_id": approval_id, "decision_id": format!("mcpd_{approval_id}"),
+            "grant_id": format!("grant_{approval_id}"),
+            "task_binding": { "conversation_id": d.conversation, "task_id": d.task,
+                              "step_id": d.step },
+            "status": if d.approved { "approved" } else { "denied" },
+            "delivery_state": d.state,
+            "reason_code": (d.state == "failed").then_some("retry_exhausted"),
+            "expires_at": 1_990_000_000 })
+}
+
 fn view(held: &Held, verified: &[String]) -> Value {
     let Some(task) = held.state.task() else { return Value::Null };
     let mut view = serde_json::to_value(task).unwrap_or(Value::Null);
@@ -565,9 +645,10 @@ fn view(held: &Held, verified: &[String]) -> Value {
         "acceptor": actor(None),
     });
     view["pending_resolution"] =
-        held.pending_since.as_ref().map_or(Value::Null, |(message, at)| {
+        held.pending_since.as_ref().map_or(Value::Null, |(message, at, step)| {
             json!({ "task_id": task.task_id, "conversation_id": task.conversation_id,
-                "message_id": message, "executor_device_id": "device-bo", "queued_at": at,
+                "step_id": step, "message_id": message, "executor_device_id": "device-bo",
+                "queued_at": at,
                 "state": if held.timed_out { "executor_timeout" } else { "awaiting_executor" } })
         });
     view["created_at"] = json!(held.created_at);
@@ -585,7 +666,25 @@ fn view(held: &Held, verified: &[String]) -> Value {
 
 impl Inner {
     fn view(&self, held: &Held) -> Value {
-        view(held, &self.verified)
+        let mut view = view(held, &self.verified);
+        if let Some(task) = held.state.task() {
+            let rows: Vec<Value> = self
+                .deliveries
+                .iter()
+                .filter(|(_, d)| d.conversation == task.conversation_id && d.task == task.task_id)
+                .map(|(id, d)| delivery_row(id, d))
+                .collect();
+            view["approval_decisions"] = json!(rows);
+        }
+        view
+    }
+
+    fn announce_delivery(&self, approval_id: &str, delivery: &Delivery) {
+        let reason = (delivery.state == "failed").then_some("retry_exhausted");
+        self.announce(json!({ "kind": "updated", "conversation_id": delivery.conversation,
+                              "task_id": delivery.task, "step_id": delivery.step,
+                              "approval_id": approval_id, "delivery_state": delivery.state,
+                              "reason_code": reason }));
     }
 
     fn member(&self, principal: &str) -> Result<Member, Refused> {
@@ -756,7 +855,7 @@ impl Inner {
             _ => return Err(invalid("unsupported task method")),
         };
         let resolution = match &event {
-            TaskEventBody::Resolve(r) => Some(r.decision_id.clone()),
+            TaskEventBody::Resolve(r) => Some((r.decision_id.clone(), r.step_id.clone())),
             _ => None,
         };
         let answer = |pending: bool| {
@@ -764,7 +863,7 @@ impl Inner {
                     "message_id": message, "delivery_state": "submitted",
                     "actor_kind_verified": false })
         };
-        if let Some(decision) = resolution {
+        if let Some((decision, step)) = resolution {
             let signed = local.sign(&conversation, event)?;
             let key = (conversation.clone(), task_id.clone());
             let held =
@@ -772,7 +871,7 @@ impl Inner {
             let mut preflight = held.state.clone();
             apply(&mut preflight, &signed, &local)?;
             held.pending.insert(decision, (signed, local));
-            held.pending_since = Some((message.clone(), self.clock));
+            held.pending_since = Some((message.clone(), self.clock, step));
             held.timed_out = false;
             self.announce(json!({ "conversation_id": conversation, "task_id": task_id,
                                   "pending": true, "pending_state": "awaiting_executor" }));

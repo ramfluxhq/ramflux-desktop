@@ -89,6 +89,10 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
             let MomentKind::TaskProgress(payload) = &moment.kind else { return None };
             IntentKind::CancelTask { task_id: payload.task_id.clone() }
         }
+        UiEventKind::RetryDecisionPressed => {
+            let MomentKind::TaskProgress(payload) = &moment.kind else { return None };
+            IntentKind::RetryTaskDecision { task_id: payload.task_id.clone() }
+        }
         UiEventKind::ProposalAccepted => {
             let MomentKind::TaskProgress(payload) = &moment.kind else { return None };
             IntentKind::AcceptTaskProposal { task_id: payload.task_id.clone() }

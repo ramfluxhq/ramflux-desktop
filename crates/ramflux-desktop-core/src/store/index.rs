@@ -136,6 +136,13 @@ impl Indexes {
         }
     }
 
+    /// Drops a removed task's step grants.
+    pub fn remove_task(&mut self, task: &Task) {
+        for grant in task.step_grants() {
+            remove_from(&mut self.step_owners, grant, &task.id);
+        }
+    }
+
     fn enter(&mut self, moment: &Moment, lifecycle: Lifecycle, since: Option<Timestamp>) {
         match lifecycle {
             Lifecycle::NeedsMe => {

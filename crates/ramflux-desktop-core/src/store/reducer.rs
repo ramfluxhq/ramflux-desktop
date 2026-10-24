@@ -193,6 +193,7 @@ impl Store {
             DomainEvent::TaskAnswered { task_id, answer } => {
                 self.answer_task(task_id, answer, changes)?;
             }
+            DomainEvent::TaskRemoved { task_id } => self.remove_task(task_id, changes)?,
             DomainEvent::SourceStatusChanged(status) => {
                 if self.source_status != *status {
                     self.source_status = *status;

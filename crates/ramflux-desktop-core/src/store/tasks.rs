@@ -134,6 +134,31 @@ impl Store {
         Ok(())
     }
 
+    /// Drops a task the source no longer holds, with the moments that
+    /// present it.
+    pub(super) fn remove_task(
+        &mut self,
+        task_id: &TaskId,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        let task =
+            self.tasks.remove(task_id).ok_or_else(|| ApplyError::UnknownTask(task_id.clone()))?;
+        self.index.remove_task(&task);
+        let presenters: Vec<MomentId> =
+            self.index.task_presenters.get(task_id).into_iter().flatten().cloned().collect();
+        for moment_id in presenters {
+            if let Some(moment) = self.moments.remove(&moment_id) {
+                let since = self.needs_me_since.remove(&moment_id);
+                self.index.remove_moment(&moment, since);
+                changes.contexts.insert(moment.context_id);
+            }
+            self.bodies.remove(&moment_id);
+            changes.moments.insert(moment_id);
+        }
+        changes.tasks.insert(task_id.clone());
+        Ok(())
+    }
+
     fn commit_task(&mut self, at: Timestamp, mut task: Task, changes: &mut Changes) {
         // An answer belongs to the version it answered.
         match self.tasks.get(&task.id) {

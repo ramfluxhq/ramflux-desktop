@@ -118,6 +118,9 @@ pub enum IntentError {
     /// The task is not a proposal waiting for confirmation.
     #[error("task {0} is not a proposal")]
     NotAProposal(TaskId),
+    /// No decision of the task waits to be sent again.
+    #[error("task {0} has no undelivered decision")]
+    NothingToRetry(TaskId),
     /// A task is asked of an AI participant only.
     #[error("{0} is not an AI participant")]
     NotAnAgent(ParticipantId),

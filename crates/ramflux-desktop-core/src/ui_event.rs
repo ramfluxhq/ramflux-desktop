@@ -127,6 +127,8 @@ pub enum UiEventKind {
     ProposalAccepted,
     /// Cancel pressed on a task (or Decline on a proposal).
     CancelPressed,
+    /// Retry pressed on a task decision that was not delivered.
+    RetryDecisionPressed,
     /// Pin toggled.
     PinToggled {
         /// New pinned state.

@@ -21,11 +21,16 @@ pub fn action(acct: Option<&str>, body: &Value, known: &impl Known) -> Plan {
     let Some(target) = known.surface(reference) else {
         return refuse_invalid("unknown surface");
     };
+    // An answer to a task step carries the step it answers, signed with
+    // the action (so the step resolves from the author's receipt alone).
+    let decides = matches!(body["values"]["decision"].as_str(), Some("resume" | "deny"));
+    let binding = decides.then(|| known.surface_task_binding(reference)).flatten();
     let shown = Shown {
         version: body["version"].as_u64().unwrap_or(0),
         surface_hash: text(body, "surface_hash"),
         action_id: text(body, "action_id"),
         values: &body["values"],
+        task_binding: binding.as_ref().map(|(task, step)| (task.as_str(), step.as_str())),
     };
     match action_body(target, &shown) {
         Ok(request) => Plan::Call {

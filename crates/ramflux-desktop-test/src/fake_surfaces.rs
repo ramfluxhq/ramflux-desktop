@@ -9,7 +9,7 @@
 //! limits, resulting hash, stream finality), so every hash and stream state
 //! the fake reports is the protocol's. Surfaces are scoped by conversation,
 //! author and surface id (`surface_ref`, derived as the daemon derives it).
-//! The fake answers as the pinned daemon (K3b r4, ee117bb) does:
+//! The fake answers as the pinned daemon (K3b as merged, 6fcf0e9) does:
 //!
 //! - `surface.get` / `surface.list`: the view with `streams` (`open` /
 //!   `final` per text component), `posted_at` / `created_at` /
@@ -20,10 +20,13 @@
 //!   daemon's `reason_code`;
 //! - `surface.get` `actions[]`: this account's actions once the author's
 //!   creator receipt for them arrived ([`FakeSurfaces::deliver_receipts`]),
-//!   as the K3b r4 daemon lists them: `action_receipt_id`,
-//!   `receipt_verified: true`, the sender, version and the action's
-//!   `wire_base64`; the view's `action_receipt_id` / metadata
-//!   `last_action_id` name the latest;
+//!   as the K3b daemon lists them: `action_receipt_id`,
+//!   `receipt_verified: true`, the sender, version, the action's
+//!   `wire_base64` and its signed `task_binding` (or null); the view's
+//!   `action_receipt_id` / metadata `last_action_id` name the latest.
+//!   Before its receipt, an action bound to a task step is listed as the
+//!   requester's own retained outgoing action (`receipt_verified: false`,
+//!   sender [`FakeSurfaces::acting_as`]), under the same receipt id;
 //! - `surface.request_resync`: `not_found` / `not_out_of_sync` error
 //!   frames, one request per surface per 60-second window (a second one is
 //!   answered `rate_limited`), else submitted to the author's device.
@@ -79,11 +82,15 @@ struct Inner {
     removed: Vec<String>,
     /// Accepted actions, by surface, with their receipt once delivered.
     actions: Vec<HeldAction>,
+    /// This account's principal (the sender of its retained actions).
+    acting: Option<String>,
 }
 
 /// An accepted action and the author's receipt for it.
 #[derive(Debug, Clone)]
 struct HeldAction {
+    /// The delivery receipt id (the same before and after the receipt).
+    id: String,
     surface_ref: String,
     message_id: Value,
     version: u64,
@@ -213,16 +220,20 @@ impl FakeSurfaces {
     /// principal). Returns the surfaces whose actions got one.
     pub fn deliver_receipts(&self, sender: &str) -> Vec<String> {
         let mut inner = self.inner();
-        let mut next = inner.actions.iter().filter(|a| a.receipt.is_some()).count();
         let mut touched = Vec::new();
         for action in inner.actions.iter_mut().filter(|a| a.receipt.is_none()) {
-            next += 1;
-            action.receipt = Some((format!("rcpt-{next}"), sender.to_owned()));
+            action.receipt = Some((action.id.clone(), sender.to_owned()));
             if !touched.contains(&action.surface_ref) {
                 touched.push(action.surface_ref.clone());
             }
         }
         touched
+    }
+
+    /// The principal of this account: its retained task-bound actions are
+    /// listed as sent by it before their receipt.
+    pub fn acting_as(&self, principal: &str) {
+        self.inner().acting = Some(principal.to_owned());
     }
 
     /// Actions accepted so far.
@@ -326,7 +337,9 @@ impl FakeSurfaces {
             let error = json!({ "code": "renderer_error", "reject": reject });
             return Reply::Ok(rejected(error, code));
         }
+        let id = format!("rcpt-{}", inner.actions.len() + 1);
         inner.actions.push(HeldAction {
+            id,
             surface_ref: reference.clone(),
             message_id: body["message_id"].clone(),
             version: action.version(),
@@ -385,17 +398,25 @@ impl Inner {
     }
 
     /// `surface.get` `actions[]` of a surface: the actions whose receipt
-    /// arrived.
+    /// arrived, and this account's task-bound ones still waiting for it.
     fn action_rows(&self, reference: &str) -> Vec<Value> {
         self.actions
             .iter()
             .filter(|a| a.surface_ref == reference)
             .filter_map(|a| {
-                let (id, sender) = a.receipt.as_ref()?;
+                let binding = ramflux_protocol::decode_base64url(&a.wire_base64)
+                    .ok()
+                    .and_then(|w| A2uiSurfaceAction::from_wire_bytes(&w).ok())
+                    .and_then(|action| action.task_binding().cloned());
+                let (sender, verified) = match &a.receipt {
+                    Some((_, sender)) => (sender.clone(), true),
+                    None if binding.is_some() => (self.acting.clone()?, false),
+                    None => return None,
+                };
                 Some(json!({
-                    "id": id, "action_receipt_id": id, "receipt_verified": true,
+                    "id": a.id, "action_receipt_id": a.id, "receipt_verified": verified,
                     "message_id": a.message_id, "sender_principal_id": sender,
-                    "version": a.version, "actionable": false,
+                    "version": a.version, "actionable": false, "task_binding": binding,
                     "wire_base64": a.wire_base64, "signature": "",
                 }))
             })

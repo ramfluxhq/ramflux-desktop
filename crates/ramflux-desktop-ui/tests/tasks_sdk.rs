@@ -4,8 +4,8 @@
 //! Tasks in the production window on the SDK source, against a fake daemon
 //! that holds them on the protocol's state machine (see `sdk_fake`): asked
 //! from the composer and cancelled from the card, a proposal started from
-//! its card, an approval decided in its step with the hold and confirmed by
-//! the assignee, a stalled assignee, a refusal shown on the card, and
+//! its card, an approval decided in its step with the hold, not delivered
+//! and sent again with Retry, then confirmed by the assignee, a stalled assignee, a refusal shown on the card, and
 //! someone else's task that this account does not decide. Each drives real
 //! input and asserts what reached the daemon.
 
@@ -143,6 +143,27 @@ fn an_approval_is_decided_in_its_step_with_the_hold_then_confirmed(cx: &mut Test
     assert!(shown(cx, &opened, &id, "task-answer"), "the card says the decision is on its way");
     let resolve = &sent(&opened.fake, "task.resolve")[0];
     assert_eq!(resolve["decision_id"], "mcpd_appr-9", "the decision id the grant flow answered");
+
+    // The decision did not reach the assignee: the card says so, and Retry
+    // sends the same approval again (no second hold, no second resolution).
+    opened.tasks.fail_delivery(GROUP, "t-deploy", "deploy", "appr-9");
+    wait(cx, "not delivered", |cx| {
+        task(cx, &opened, &id).is_some_and(|t| {
+            matches!(t.answer, Some(ramflux_desktop_core::TaskAnswer::DecisionUndelivered { .. }))
+        })
+    });
+    advance(cx, 50);
+    assert!(shown(cx, &opened, &id, "task-retry-decision"));
+    click_on(cx, &opened, &id, "task-retry-decision");
+    wait(cx, "sent again", |_| sent(&opened.fake, "grant.approve").len() == 2);
+    wait(cx, "on its way again", |cx| {
+        task(cx, &opened, &id).is_some_and(|t| {
+            matches!(t.answer, Some(ramflux_desktop_core::TaskAnswer::DecisionPending { .. }))
+        })
+    });
+    assert!(!strip_open(cx, &opened.shell), "the decision was already confirmed");
+    assert_eq!(sent(&opened.fake, "grant.approve")[1]["approval_id"], "appr-9");
+    assert_eq!(sent(&opened.fake, "task.resolve").len(), 1);
     assert_eq!(opened.tasks.confirm_decisions(), 1);
     wait(cx, "running", |cx| {
         task(cx, &opened, &id).is_some_and(|t| t.state == TaskState::Running && t.answer.is_none())

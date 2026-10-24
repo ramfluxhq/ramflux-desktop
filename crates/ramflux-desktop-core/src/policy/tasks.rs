@@ -19,7 +19,7 @@ use serde_json::json;
 use super::{Decision, IntentError, Policy};
 use crate::ids::{ContextId, ParticipantId, TaskId};
 use crate::intent::{IntentKind, methods};
-use crate::model::{ParticipantKind, Task, TaskState};
+use crate::model::{ParticipantKind, Task, TaskAnswer, TaskState};
 
 /// Decides task kinds; `None` for other kinds.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
@@ -72,6 +72,17 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                     "decline": task.state == TaskState::Proposed,
                 }),
             ))
+        }),
+        IntentKind::RetryTaskDecision { task_id } => task(p, task_id).and_then(|task| {
+            requester(p, task)?;
+            let Some(TaskAnswer::DecisionUndelivered { grant_id, approved, .. }) = &task.answer
+            else {
+                return Err(IntentError::NothingToRetry(task_id.clone()));
+            };
+            // The decision was already made (and held to confirm when it
+            // needed it): this sends the same signed decision again.
+            let method = if *approved { methods::GRANT_APPROVE } else { methods::GRANT_DENY };
+            Ok(Decision::Call(method, json!({ "grant_id": grant_id, "retry": true })))
         }),
         _ => return None,
     })

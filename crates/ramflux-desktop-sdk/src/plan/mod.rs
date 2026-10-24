@@ -84,6 +84,13 @@ pub trait Known {
         let _ = task_id;
         None
     }
+    /// The task step (the daemon's task id and the step id) that an
+    /// action on `surface_ref` answers, if a task this account asked for
+    /// waits on that surface.
+    fn surface_task_binding(&self, surface_ref: &str) -> Option<(String, String)> {
+        let _ = surface_ref;
+        None
+    }
 }
 
 /// How to perform one effect.

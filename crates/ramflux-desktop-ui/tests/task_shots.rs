@@ -5,8 +5,8 @@
 //! source (a fake daemon holding them on the protocol's state machine, see
 //! `sdk_fake`), light and dark, in English and Chinese, with the developer
 //! panel closed: a running task, a step that needs the user's approval, an
-//! assignee that stalled, the stalled task cancelled by its requester, and
-//! the approved task done.
+//! assignee that stalled, the stalled task cancelled by its requester, an
+//! approval whose delivery failed (with Retry), and the approved task done.
 //!
 //! Not part of `cargo test`; run explicitly:
 //!
@@ -239,6 +239,23 @@ mod shots {
         run.window(move |window, cx| window.pointer_up(center, gpui_kit::MouseButton::Left, cx));
         run.until("the decision on its way", |r| {
             r.task(&deploy).is_some_and(|t| t.answer.is_some())
+        });
+        // Its delivery to the assignee failed: not delivered, with Retry.
+        tasks.fail_delivery(GROUP, "t-deploy", "deploy", "appr-deploy");
+        run.until("not delivered", |r| {
+            r.task(&deploy).is_some_and(|t| {
+                matches!(
+                    t.answer,
+                    Some(ramflux_desktop_core::TaskAnswer::DecisionUndelivered { .. })
+                )
+            })
+        });
+        run.shot("f13b_06_task_decision_not_delivered");
+        run.click(scope(&deploy), "task-retry-decision");
+        run.until("on its way again", |r| {
+            r.task(&deploy).is_some_and(|t| {
+                matches!(t.answer, Some(ramflux_desktop_core::TaskAnswer::DecisionPending { .. }))
+            })
         });
         tasks.confirm_decisions();
         run.until("running again", |r| {

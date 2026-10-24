@@ -192,10 +192,26 @@ impl BusError {
         matches!(self, Self::Transport(_))
     }
 
+    /// Whether trying the same request again later may work: a transient
+    /// outage, a lost link or a missed deadline. A refusal, an
+    /// unauthenticated session and a failed trust check are not retried.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Daemon { code, .. } => code == "Unavailable",
+            Self::Transport(_) | Self::Timeout => true,
+        }
+    }
+
     /// Short text for the user.
     pub fn message(&self) -> String {
         match self {
             Self::Daemon { message, .. } if message.contains(RECONCILE) => RECONCILE_KEY.to_owned(),
+            Self::Daemon { code, .. } if code == "Unauthenticated" => {
+                UNAUTHENTICATED_KEY.to_owned()
+            }
+            Self::Daemon { code, .. } if code == "TransportSecurity" => {
+                TRANSPORT_SECURITY_KEY.to_owned()
+            }
             Self::Daemon { message, .. } => message.clone(),
             Self::Transport(message) => message.clone(),
             Self::Timeout => TIMEOUT_KEY.to_owned(),
@@ -205,6 +221,13 @@ impl BusError {
 
 /// Locale key of the timeout message (translated by the UI).
 pub const TIMEOUT_KEY: &str = "backend.failure.timeout";
+
+/// Locale key of the message for a session the node refused as
+/// unauthenticated (not retried).
+pub const UNAUTHENTICATED_KEY: &str = "backend.failure.unauthenticated";
+
+/// Locale key of the message for a failed TLS or pin check (not retried).
+pub const TRANSPORT_SECURITY_KEY: &str = "backend.failure.transport_security";
 
 /// Locale key of the message for an operation the daemon cannot replay.
 pub const RECONCILE_KEY: &str = "backend.failure.reconcile";
@@ -217,10 +240,15 @@ const RECONCILE: &str = "operation requires reconciliation";
 const DEADLINE_EXCEEDED: &str = "request deadline exceeded";
 
 /// Error codes the daemon puts on error frames (besides the typed surface
-/// refusal codes, [`daemon_code`]).
-const DAEMON_CODES: [&str; 6] = [
+/// refusal codes, [`daemon_code`]). The transport codes are the product's
+/// `docs/local_bus_errors.md`: `Unavailable` is a transient outage (a
+/// retry may work), `Unauthenticated` and `TransportSecurity` are not
+/// retried (sign in again, or repair the trusted binding, first).
+const DAEMON_CODES: [&str; 8] = [
     "ValidationFailed",
     "Unavailable",
+    "Unauthenticated",
+    "TransportSecurity",
     "CapabilityDenied",
     "GrantInvalidated",
     "SignatureVerificationFailed",
@@ -329,6 +357,15 @@ mod tests {
         let unavailable =
             BusError::from(SdkError::LocalBus("Unavailable: contact lookup unavailable".into()));
         assert!(matches!(&unavailable, BusError::Daemon { code, .. } if code == "Unavailable"));
+        // The transport codes are answers too; only an outage is retried.
+        let outage = BusError::from(SdkError::LocalBus("Unavailable: QUIC deadline".into()));
+        assert!(!outage.is_connection_lost() && outage.is_retryable());
+        for code in ["Unauthenticated", "TransportSecurity"] {
+            let refused = BusError::from(SdkError::LocalBus(format!("{code}: tls")));
+            assert!(matches!(&refused, BusError::Daemon { code: c, .. } if c == code));
+            assert!(!refused.is_connection_lost() && !refused.is_retryable(), "{code}");
+            assert!(refused.message().starts_with("backend.failure."), "{code}: a clear text");
+        }
         // So is a typed task refusal, and an over-cap task delivery.
         for code in ["stale_revision", "quota_exhausted", "TaskDeliveryTooLarge"] {
             let refused = BusError::from(SdkError::LocalBus(format!("{code}: no")));

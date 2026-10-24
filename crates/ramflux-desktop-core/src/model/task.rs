@@ -251,9 +251,19 @@ pub enum TaskRefusal {
     /// The task is stalled (it reached what it may hold); the requester
     /// can still cancel or resolve it.
     Stalled,
-    /// Too many requests or tasks for now (a quota or rate limit); trying
-    /// later may work.
+    /// Too many requests for now (a rate limit); trying later may work.
     Busy,
+    /// A task quota is used up: trying again only helps once a task
+    /// finishes or is cancelled (never retried on its own).
+    QuotaExhausted,
+    /// The node could not be reached for now; trying again may work.
+    Unreachable,
+    /// The node refused the session as unauthenticated: not retried
+    /// until the account signs in again.
+    Unauthenticated,
+    /// The node's TLS certificate or pin did not verify: nothing is
+    /// retried until the trusted binding is repaired.
+    Untrusted,
     /// Another reason, as the source gave it.
     Other(String),
 }
@@ -273,6 +283,17 @@ pub enum TaskAnswer {
     DecisionUnconfirmed {
         /// The step decided.
         step_id: StepId,
+    },
+    /// The decision on a step was signed but could not be delivered to
+    /// the assignee (its retries ran out): sending the same decision again
+    /// retries it unchanged.
+    DecisionUndelivered {
+        /// The step decided.
+        step_id: StepId,
+        /// The approval decided.
+        grant_id: GrantId,
+        /// Whether it was approved (else denied).
+        approved: bool,
     },
     /// The request was refused; nothing changed.
     Refused(TaskRefusal),

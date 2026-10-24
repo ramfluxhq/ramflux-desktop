@@ -116,6 +116,10 @@ impl Task {
     /// the approval id when the answer names none (the daemon accepts a
     /// scoped approval id and canonicalizes it).
     fn resolve_task_step(&mut self, method: &str, body: &Value, answer: &Value) {
+        if body["retry"] == true {
+            // The same decision sent again: the step was resolved with it.
+            return;
+        }
         let approved = match method {
             ramflux_desktop_core::methods::GRANT_APPROVE => true,
             ramflux_desktop_core::methods::GRANT_DENY => false,

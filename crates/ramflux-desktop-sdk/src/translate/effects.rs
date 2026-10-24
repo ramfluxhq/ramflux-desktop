@@ -104,6 +104,9 @@ impl Translator {
                 let id = AccountId::new(text(body, "account_id"));
                 self.set_lock(&id, LockState::Locked)
             }
+            methods::GRANT_APPROVE | methods::GRANT_DENY if body["retry"] == true => {
+                self.task_decision_resent(text(body, "grant_id"))
+            }
             methods::GRANT_APPROVE => {
                 let id = GrantId::new(text(body, "grant_id"));
                 if let Some(grant) = answer["grant_id"].as_str() {

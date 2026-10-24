@@ -169,7 +169,12 @@ fn every_reason_the_sdk_source_writes_is_translated() {
     let reasons = ramflux_desktop_sdk::capabilities::unsupported()
         .into_values()
         .chain(ramflux_desktop_sdk::translate::reason::key::ALL)
-        .chain([ramflux_desktop_sdk::bus::TIMEOUT_KEY, ramflux_desktop_sdk::bus::RECONCILE_KEY]);
+        .chain([
+            ramflux_desktop_sdk::bus::TIMEOUT_KEY,
+            ramflux_desktop_sdk::bus::RECONCILE_KEY,
+            ramflux_desktop_sdk::bus::UNAUTHENTICATED_KEY,
+            ramflux_desktop_sdk::bus::TRANSPORT_SECURITY_KEY,
+        ]);
     for key in reasons {
         assert!(entries.contains_key(key), "{key} has no translation");
     }

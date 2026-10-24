@@ -63,6 +63,7 @@ impl World {
         tasks.add_member(Member::human("principal-ana", "device-ana", 11));
         let approvals: Arc<Mutex<Vec<Value>>> = Arc::default();
         let surfaces = Arc::new(FakeSurfaces::default());
+        surfaces.acting_as("principal-me");
         let (t, a, s) = (tasks.clone(), approvals.clone(), surfaces.clone());
         let fake = FakeBus::start(&path, move |method, _, body| {
             if let Some(reply) = t.handle(method, body).or_else(|| s.handle(method, body)) {
@@ -76,6 +77,17 @@ impl World {
                 // The grant flow records the decision the assignee checks.
                 "grant.approve" | "grant.deny" => {
                     let id = body["approval_id"].as_str().unwrap_or_default().to_owned();
+                    // A decision that was not delivered is sent again as it was.
+                    match t.redeliver(&id, method == "grant.approve") {
+                        Some(true) => {
+                            return Reply::Ok(json!({ "approval_id": id,
+                                                     "decision_id": decision_id(&id) }));
+                        }
+                        Some(false) => {
+                            return Reply::Error("ValidationFailed", "conflicting decision".into());
+                        }
+                        None => {}
+                    }
                     t.decide(&id, &decision_id(&id), method == "grant.approve");
                     a.lock().expect("approvals").retain(|r| r["approval_id"] != id.as_str());
                     Reply::Ok(json!({ "grant_id": format!("grant_{id}"), "approval_id": id,

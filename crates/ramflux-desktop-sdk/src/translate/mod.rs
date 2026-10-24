@@ -499,6 +499,10 @@ impl Known for Translator {
     fn task(&self, task_id: &str) -> Option<&crate::plan::task::TaskTarget> {
         self.task_target(task_id)
     }
+
+    fn surface_task_binding(&self, surface_ref: &str) -> Option<(String, String)> {
+        self.surface_step(surface_ref)
+    }
 }
 
 /// Unix seconds to contract milliseconds.

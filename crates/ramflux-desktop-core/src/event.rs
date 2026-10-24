@@ -193,6 +193,12 @@ pub enum DomainEvent {
         /// The answer.
         answer: TaskAnswer,
     },
+    /// The source no longer holds a task (its history was pruned): the
+    /// task and the moments presenting it are dropped.
+    TaskRemoved {
+        /// Task.
+        task_id: TaskId,
+    },
     /// Source connectivity changed.
     SourceStatusChanged(SourceStatus),
     /// Local settings of a context changed. `None` fields are unchanged.

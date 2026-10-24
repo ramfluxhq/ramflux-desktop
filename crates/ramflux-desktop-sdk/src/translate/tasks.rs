@@ -23,11 +23,20 @@
 //! | `result_summary` (signed by the assignee, terminal only) | the task's result text |
 //! | `stalled_by_assignee`, `compacted` | the task's flags |
 //! | `actors.assignee.actor_kind_verified` (else the view's `actor_kind_verified`) | the flag on the assignee's kind |
-//! | `pending_resolution.state` `awaiting_executor` / `executor_timeout` | `DecisionPending` / `DecisionUnconfirmed` on the open step |
+//! | `pending_resolution.state` `awaiting_executor` / `executor_timeout` | `DecisionPending` / `DecisionUnconfirmed` on the step it names (`pending_resolution.step_id`) |
+//! | `approval_decisions[]` `delivery_state: failed` (this account's decision on a step's approval) | `DecisionUndelivered`, with Retry (the same `grant.approve` / `grant.deny` again) |
 //!
 //! `pending_resolution` survives a restart of the daemon (and of the
 //! desktop): a decision sent before either is still shown as on its way
-//! until the assignee commits it (the task's next version).
+//! until the assignee commits it (the task's next version). A decision
+//! whose delivery to the assignee ran out of retries is shown as not
+//! delivered until a later read says it is on its way again.
+//!
+//! `task.changed` is typed by `kind`: `updated` (read the task again when
+//! it names another version or a marker), `compacted` (the history was
+//! compacted; the task is read again and keeps its outcome) and `removed`
+//! (the daemon pruned the task: its row and moment are dropped, nothing is
+//! read).
 
 use ramflux_desktop_core::{
     Actor, ContextId, DomainEvent, GrantId, Lifecycle, Moment, MomentId, MomentKind, NeedsMe,
@@ -37,6 +46,11 @@ use ramflux_desktop_core::{
 use serde_json::{Value, json};
 
 use super::{Translator, list, seconds, text};
+
+/// Whether a `task.changed` body announces a pruned task (`kind: removed`).
+fn is_removal(body: &Value) -> bool {
+    body["kind"] == "removed" || body["removed"] == Value::Bool(true)
+}
 use crate::plan::fetch::Fetch;
 use crate::plan::task::TaskTarget;
 
@@ -50,9 +64,12 @@ pub(crate) struct KnownTask {
     /// Each step's `needs_me` exactly as the daemon reported it (a
     /// resolution names it back).
     pub places: Vec<(StepId, Value)>,
-    /// The state of this account's resolution still waiting for the
-    /// assignee (`pending_resolution.state`), as last shown.
-    pub pending: Option<String>,
+    /// This account's resolution still waiting for the assignee
+    /// (`pending_resolution`: its state and the step it decides), as last
+    /// shown.
+    pub pending: Option<(String, String)>,
+    /// The approval whose decision was not delivered, as last shown.
+    pub undelivered: Option<String>,
 }
 
 /// The desktop id of the task `task_id` in `conversation`.
@@ -89,14 +106,43 @@ fn step_state(value: &Value) -> Option<StepState> {
     })
 }
 
-/// What a pending resolution says on the step it decides (the open one).
-fn pending_answer(task: &Task, pending: Option<&str>) -> Option<TaskAnswer> {
-    let step_id = task.steps.iter().find(|s| s.state == StepState::NeedsMe)?.id.clone();
-    match pending? {
+/// A pending resolution: its state and the step it names.
+fn pending_of(view: &Value) -> Option<(String, String)> {
+    let pending = &view["pending_resolution"];
+    let state = pending["state"].as_str()?;
+    let step = pending["step_id"].as_str().filter(|s| !s.is_empty())?;
+    Some((state.to_owned(), step.to_owned()))
+}
+
+/// What a pending resolution says on the step it names.
+fn pending_answer(task: &Task, pending: Option<&(String, String)>) -> Option<TaskAnswer> {
+    let (state, step) = pending?;
+    let step_id = task.steps.iter().find(|s| s.id.as_str() == step)?.id.clone();
+    match state.as_str() {
         "awaiting_executor" => Some(TaskAnswer::DecisionPending { step_id }),
         "executor_timeout" => Some(TaskAnswer::DecisionUnconfirmed { step_id }),
         _ => None,
     }
+}
+
+/// This account's decision on the approval of one of `task`'s steps that
+/// could not be delivered (`delivery_state: failed`), from the decision
+/// rows (`task.get` `approval_decisions`, or `grant.list` approvals).
+fn undelivered(task: &Task, rows: &[Value]) -> Option<(String, TaskAnswer)> {
+    rows.iter().find_map(|row| {
+        if text(row, "delivery_state") != "failed" {
+            return None;
+        }
+        let approval = text(row, "approval_id");
+        let step = text(&row["task_binding"], "step_id");
+        let step = task.steps.iter().find(|s| s.id.as_str() == step)?;
+        let answer = TaskAnswer::DecisionUndelivered {
+            step_id: step.id.clone(),
+            grant_id: GrantId::new(approval),
+            approved: text(row, "status") == "approved",
+        };
+        (!approval.is_empty()).then(|| (approval.to_owned(), answer))
+    })
 }
 
 impl Translator {
@@ -129,23 +175,39 @@ impl Translator {
         let Some((task, places)) = self.desktop_task(&id, &context, view) else {
             return Vec::new();
         };
-        let pending = view["pending_resolution"]["state"].as_str().map(str::to_owned);
+        let pending = pending_of(view);
+        let failed = undelivered(&task, list(view, "approval_decisions"));
+        let undelivered = failed.as_ref().map(|(approval, _)| approval.clone());
         let known = self.tasks.get(&id);
         if let Some(known) = known
             && (task.version < known.shown.version
-                || (task == known.shown && pending == known.pending))
+                || (task == known.shown
+                    && pending == known.pending
+                    && undelivered == known.undelivered))
         {
             return Vec::new();
         }
         let first = known.is_none();
         let rose = known.is_some_and(|k| task.version > k.shown.version);
-        let answer = pending_answer(&task, pending.as_deref());
+        let redelivered = known.is_some_and(|k| k.undelivered.is_some()) && failed.is_none();
+        let answer =
+            failed.map(|(_, answer)| answer).or_else(|| pending_answer(&task, pending.as_ref()));
         let target = TaskTarget { conversation: context.clone(), task_id: task_id.to_owned() };
-        self.tasks.insert(id.clone(), KnownTask { target, shown: task.clone(), places, pending });
+        let shown = task.clone();
+        self.tasks.insert(id.clone(), KnownTask { target, shown, places, pending, undelivered });
         let origin = task.assignee.clone();
+        let step = task.needs_me_step().map(|(_, s)| s.id.clone());
         let mut events = vec![DomainEvent::TaskSnapshot(task)];
-        if let Some(answer) = answer {
-            events.push(DomainEvent::TaskAnswered { task_id: id.clone(), answer });
+        match (answer, step) {
+            (Some(answer), _) => {
+                events.push(DomainEvent::TaskAnswered { task_id: id.clone(), answer });
+            }
+            // A decision sent again is on its way once more.
+            (None, Some(step_id)) if redelivered && !rose => {
+                let answer = TaskAnswer::DecisionPending { step_id };
+                events.push(DomainEvent::TaskAnswered { task_id: id.clone(), answer });
+            }
+            _ => {}
         }
         if rose && self.review_again.remove(&id) {
             let answer = TaskAnswer::Refused(ramflux_desktop_core::TaskRefusal::Changed);
@@ -280,15 +342,62 @@ impl Translator {
 
     /// Whether a `task.changed` body names a task state the desktop has
     /// not shown (or one it does not know): another version, a marker, a
-    /// compaction, or a change of this account's pending resolution.
+    /// compaction, a change of this account's pending resolution, or of
+    /// the delivery of its decision on an approval. A removal is never
+    /// read (see [`Self::task_removed`]).
     pub(super) fn task_stale(&self, body: &Value) -> bool {
+        if is_removal(body) {
+            return false;
+        }
         let id = task_key(text(body, "conversation_id"), text(body, "task_id"));
         let Some(known) = self.tasks.get(&id) else { return true };
-        let markers =
-            ["stalled_by_assignee", "resync_required", "decision_rejected", "pending", "removed"];
-        body["version"].as_u64() != Some(known.shown.version)
+        let markers = ["stalled_by_assignee", "resync_required", "decision_rejected", "pending"];
+        let delivery = body.get("delivery_state").is_some_and(|d| {
+            (d == "failed") != (known.undelivered.as_deref() == Some(text(body, "approval_id")))
+        });
+        let other_version = match body["version"].as_u64() {
+            Some(version) => version != known.shown.version,
+            None => body.get("delivery_state").is_none(),
+        };
+        other_version
             || markers.iter().any(|m| body[*m].as_bool() == Some(true))
             || body["compacted"].as_bool().is_some_and(|c| c != known.shown.flags.compacted)
+            || delivery
+    }
+
+    /// The daemon took the same decision on `grant` again (Retry on a
+    /// decision that was not delivered): it is on its way once more.
+    pub(super) fn task_decision_resent(&mut self, grant: &str) -> Vec<DomainEvent> {
+        let mut events = Vec::new();
+        for (id, known) in &mut self.tasks {
+            if known.undelivered.as_deref() != Some(grant) {
+                continue;
+            }
+            known.undelivered = None;
+            let step = known.shown.steps.iter().find(|s| {
+                matches!(&s.needs_me, Some(NeedsMe::Approval { grant_id }) if grant_id.as_str() == grant)
+            });
+            if let Some(step) = step {
+                let answer = TaskAnswer::DecisionPending { step_id: step.id.clone() };
+                events.push(DomainEvent::TaskAnswered { task_id: id.clone(), answer });
+            }
+        }
+        events
+    }
+
+    /// A `task.changed` that says the daemon pruned a task: the task and
+    /// its moment are dropped (no read follows; the daemon no longer holds
+    /// it).
+    pub(super) fn task_removed(&mut self, body: &Value) -> Vec<DomainEvent> {
+        if !is_removal(body) {
+            return Vec::new();
+        }
+        let id = task_key(text(body, "conversation_id"), text(body, "task_id"));
+        self.review_again.remove(&id);
+        match self.tasks.remove(&id) {
+            Some(_) => vec![DomainEvent::TaskRemoved { task_id: id }],
+            None => Vec::new(),
+        }
     }
 
     /// The read of the task a `task.changed` body names.

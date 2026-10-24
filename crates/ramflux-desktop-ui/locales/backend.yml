@@ -109,6 +109,12 @@ backend:
     timeout:
       en: "The daemon did not answer in time."
       zh-CN: "守护进程未在规定时间内响应。"
+    unauthenticated:
+      en: "The node refused this device's session as not signed in. Nothing was sent, and it will not be retried until you sign in again."
+      zh-CN: "节点认为本设备的会话未登录并拒绝了它。未发送任何内容，在你重新登录前不会重试。"
+    transport_security:
+      en: "The node's certificate did not match the one this device trusts. Nothing was sent, and it will not be retried until the node's trust is repaired."
+      zh-CN: "节点证书与本设备信任的证书不符。未发送任何内容，在修复节点信任前不会重试。"
     reconcile:
       en: "The daemon cannot tell whether this was applied after an interrupted attempt. Check the result before trying again."
       zh-CN: "上次尝试中断，守护进程无法确定此操作是否已生效。请先核对结果再重试。"

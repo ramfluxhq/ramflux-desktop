@@ -281,6 +281,19 @@ moment:
         text:
           en: "It stays pending and can still be confirmed. You can cancel the task."
           zh-CN: "该决定仍在等待中，之后仍可被确认。你可以取消此任务。"
+      undelivered:
+        title:
+          en: "Your decision was not delivered to %{name}"
+          zh-CN: "你的决定未能送达 %{name}"
+        text_approved:
+          en: "You approved this step, but it could not reach %{name}. Retry sends the same approval again."
+          zh-CN: "你已批准此步骤，但未能送达 %{name}。重试将再次发送同一份批准。"
+        text_denied:
+          en: "You denied this step, but it could not reach %{name}. Retry sends the same denial again."
+          zh-CN: "你已拒绝此步骤，但未能送达 %{name}。重试将再次发送同一份拒绝。"
+        retry:
+          en: "Retry"
+          zh-CN: "重试"
     refused:
       title:
         en: "Nothing was done"
@@ -310,6 +323,18 @@ moment:
       busy:
         en: "Too many task requests right now. Try again in a minute."
         zh-CN: "当前任务请求过多，请稍后再试。"
+      quota:
+        en: "The task allowance here is used up. Finish or cancel a task, then try again."
+        zh-CN: "此处的任务额度已用完。请先完成或取消一个任务，再重试。"
+      unreachable:
+        en: "The node could not be reached. Nothing was sent; try again."
+        zh-CN: "无法连接节点。未发送任何内容，请重试。"
+      unauthenticated:
+        en: "The node refused this device's session. Nothing was sent, and it will not be retried until you sign in again."
+        zh-CN: "节点拒绝了本设备的会话。未发送任何内容，在你重新登录前不会重试。"
+      untrusted:
+        en: "The node's certificate did not match the trusted one. Nothing was sent, and it will not be retried until the node's trust is repaired."
+        zh-CN: "节点证书与受信任的证书不符。未发送任何内容，在修复节点信任前不会重试。"
       rejected:
         title:
           en: "%{name} couldn't confirm your decision"

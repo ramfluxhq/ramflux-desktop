@@ -98,7 +98,7 @@ pub fn render(refs: &RowRefs, sink: &EventSink, state: &RowState, cx: &App) -> i
         .when(stalled, |col| col.child(super::task_status::stalled(&assignee, mine, cx)))
         .children(steps)
         .when_some(task.answer.as_ref(), |col, answer| {
-            col.child(super::task_status::answer(answer, &assignee, cx))
+            col.child(super::task_status::answer(answer, &assignee, mine.then_some(sink), cx))
         })
         .when(task.flags.compacted, |col| col.child(super::task_status::compacted(cx)))
         .child(footer(&task, mine, &requester(&task, refs), state.expanded, sink, cx))

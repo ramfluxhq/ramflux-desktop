@@ -180,6 +180,14 @@ fn approvals(
         }
         "grant.approve" | "grant.deny" => {
             let id = body["approval_id"].as_str().unwrap_or_default().to_owned();
+            // A decision that was not delivered is sent again as it was.
+            if let Some(sent) = tasks.and_then(|t| t.redeliver(&id, method == "grant.approve")) {
+                return Some(if sent {
+                    Reply::Ok(json!({ "approval_id": id, "decision_id": format!("mcpd_{id}") }))
+                } else {
+                    Reply::Error("ValidationFailed", "conflicting decision".to_owned())
+                });
+            }
             let position = state.approvals.iter().position(|r| r["approval_id"] == id.as_str())?;
             let record = state.approvals.remove(position);
             let decision = format!("mcpd_{id}");

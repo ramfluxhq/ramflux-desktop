@@ -17,8 +17,12 @@
 //! | `decision_consumed` | `AlreadyDecided` |
 //! | `not_requester`, `not_assignee`, `not_member`, `not_eligible_acceptor`, `human_required`, `no_local_role` | `NotAllowed` |
 //! | `task_stalled` | `Stalled` |
-//! | `quota_exhausted`, `rate_limited` | `Busy` |
+//! | `rate_limited` | `Busy` (try again later) |
+//! | `quota_exhausted` | `QuotaExhausted` (not retried until capacity frees) |
 //! | `TaskDeliveryTooLarge` | `TooLarge` |
+//! | `Unavailable` | `Unreachable` (a transient outage: try again) |
+//! | `Unauthenticated` | `Unauthenticated` (not retried) |
+//! | `TransportSecurity` | `Untrusted` (not retried) |
 //! | anything else | `Other` with the daemon's text |
 //!
 //! A task that changed since the user looked is read back, and the
@@ -56,8 +60,12 @@ pub fn refusal(code: &FailureCode, message: &str) -> TaskRefusal {
         | "human_required"
         | "no_local_role" => TaskRefusal::NotAllowed,
         "task_stalled" => TaskRefusal::Stalled,
-        "quota_exhausted" | "rate_limited" => TaskRefusal::Busy,
+        "rate_limited" => TaskRefusal::Busy,
+        "quota_exhausted" => TaskRefusal::QuotaExhausted,
         "TaskDeliveryTooLarge" => TaskRefusal::TooLarge,
+        "Unavailable" => TaskRefusal::Unreachable,
+        "Unauthenticated" => TaskRefusal::Unauthenticated,
+        "TransportSecurity" => TaskRefusal::Untrusted,
         _ => TaskRefusal::Other(
             message.strip_prefix("local bus error: ").unwrap_or(message).to_owned(),
         ),
@@ -142,9 +150,12 @@ mod tests {
             ("human_required", TaskRefusal::NotAllowed),
             ("no_local_role", TaskRefusal::NotAllowed),
             ("task_stalled", TaskRefusal::Stalled),
-            ("quota_exhausted", TaskRefusal::Busy),
+            ("quota_exhausted", TaskRefusal::QuotaExhausted),
             ("rate_limited", TaskRefusal::Busy),
             ("TaskDeliveryTooLarge", TaskRefusal::TooLarge),
+            ("Unavailable", TaskRefusal::Unreachable),
+            ("Unauthenticated", TaskRefusal::Unauthenticated),
+            ("TransportSecurity", TaskRefusal::Untrusted),
         ];
         for (code, expected) in cases {
             // The text is arbitrary: only the code decides.

@@ -101,6 +101,13 @@ pub enum IntentKind {
         /// Task.
         task_id: TaskId,
     },
+    /// Send again the decision on a task step that could not be delivered
+    /// to the assignee: the same signed decision, unchanged. Only its
+    /// requester may.
+    RetryTaskDecision {
+        /// Task.
+        task_id: TaskId,
+    },
 
     // Moments.
     /// Invoke an action of an agent surface.

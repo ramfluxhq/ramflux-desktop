@@ -1,22 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The K3b r4 task contract on the SDK source (`docs/conversation_tasks.md`
+//! The K3b task contract (r4, as merged at 6fcf0e9) on the SDK source (`docs/conversation_tasks.md`
 //! of the product): refusals are read from the daemon's typed
 //! `error.code`, never from its text; a finished task shows its signed
 //! summary; the assignee's own kind marker is shown; a pending resolution
 //! is read back from the daemon after a restart and says when the assignee
 //! has not confirmed it in time; compaction is announced; an approval is
 //! resolved with the grant flow's decision id; a choice answered in the
-//! assignee's surface is resolved with the action's verified receipt id.
+//! assignee's surface signs the step it answers and is resolved with the
+//! action's receipt id. The r5–r8 additions (a pruned task, an
+//! undelivered decision, a restarted requester) are in `tasks_r8`.
 
 mod common;
 
 use common::task_world::*;
 use ramflux_desktop_core::Source as _;
 use ramflux_desktop_core::{
-    ConfirmationIssuer, DomainEvent, Effect, GrantId, IntentKind, StepId, SurfaceEvent, SurfaceId,
-    TaskAnswer, TaskRefusal, TaskState, methods,
+    ConfirmationIssuer, DomainEvent, Effect, GrantId, IntentKind, SourceStatus, StepId,
+    SurfaceEvent, SurfaceId, TaskAnswer, TaskRefusal, TaskState, methods,
 };
 use ramflux_desktop_sdk::surface::author::Author;
 use ramflux_desktop_sdk::surface::surface_ref;
@@ -34,10 +36,15 @@ fn refusals_come_from_typed_codes_whatever_the_text_says() {
     // The text would read as "changed" or "not allowed" if it were parsed.
     let cases = [
         ("task_stalled", TaskRefusal::Stalled),
-        ("quota_exhausted", TaskRefusal::Busy),
+        ("quota_exhausted", TaskRefusal::QuotaExhausted),
         ("not_requester", TaskRefusal::NotAllowed),
         ("rate_limited", TaskRefusal::Busy),
         ("terminal", TaskRefusal::Finished),
+        // Transport codes (`docs/local_bus_errors.md`): an outage may be
+        // retried; an unauthenticated session or a failed trust check not.
+        ("Unavailable", TaskRefusal::Unreachable),
+        ("Unauthenticated", TaskRefusal::Unauthenticated),
+        ("TransportSecurity", TaskRefusal::Untrusted),
     ];
     for (code, expected) in cases {
         world.tasks.refuse_next("task.cancel", code, "expected task revision 9; requester only");
@@ -49,6 +56,8 @@ fn refusals_come_from_typed_codes_whatever_the_text_says() {
         account.until(code, |s, _| s.task(&id).is_some_and(|t| t.answer == answer));
     }
     assert!(account.store.failures().is_empty(), "answered on the task, not the status strip");
+    let status = account.store.source_status();
+    assert_eq!(status, SourceStatus::Connected, "a transport code is an answer, not a lost link");
     world.fake.shutdown();
 }
 
@@ -159,7 +168,7 @@ fn post_pick_surface(world: &World) -> String {
 }
 
 #[test]
-fn a_choice_is_answered_in_the_surface_then_resolved_with_its_verified_receipt() {
+fn a_choice_is_answered_in_the_surface_then_resolved_by_its_signed_task_binding() {
     let (world, path) = World::start("choice");
     let mut account = open(&path);
     let reference = post_pick_surface(&world);
@@ -179,7 +188,7 @@ fn a_choice_is_answered_in_the_surface_then_resolved_with_its_verified_receipt()
         "the step names the assignee's surface by its scoped reference"
     );
 
-    // The user answers in the surface.
+    // The user answers in the surface: the action signs the step it answers.
     let (version, hash) = world.surfaces.current(&reference).expect("held");
     account.source.submit(Effect::Call {
         method: methods::SURFACE_ACTION.into(),
@@ -187,12 +196,15 @@ fn a_choice_is_answered_in_the_surface_then_resolved_with_its_verified_receipt()
                       "action_id": "thu", "values": { "decision": "resume" } }),
     });
     account.until("the action", |_, _| world.surfaces.acted().len() == 1);
-    account.settle(300);
-    assert!(world.since(0, "task.resolve").is_empty(), "nothing before the author's receipt");
+    let sent = &world.since(0, "surface.action")[0].body;
+    let wire = ramflux_protocol::decode_base64url(sent["wire_base64"].as_str().expect("wire"))
+        .expect("base64url");
+    let action = ramflux_protocol::A2uiSurfaceAction::from_wire_bytes(&wire).expect("action");
+    let binding = action.task_binding().expect("a task binding in the signed action");
+    assert_eq!((binding.task_id.as_str(), binding.step_id.as_str()), ("t-day", "pick"));
 
-    // The receipt arrives: the step is resolved with its id, once.
-    world.surfaces.deliver_receipts("principal-me");
-    world.fake.publish(ACCOUNT, "surface.changed", world.surfaces.meta(&reference));
+    // The daemon lists the requester's own bound action at once (its
+    // receipt not there yet): the step resolves with its receipt id, once.
     let step = StepId::new("pick");
     let pending = Some(TaskAnswer::DecisionPending { step_id: step });
     account.until("pending", |s, _| s.task(&id).is_some_and(|t| t.answer == pending));
@@ -204,7 +216,9 @@ fn a_choice_is_answered_in_the_surface_then_resolved_with_its_verified_receipt()
     assert_eq!(resolve["step_id"], "pick");
     assert_eq!(resolve["target"], json!({ "kind": "choice", "surface_id": "s-pick" }));
     assert_eq!(resolve["base_revision"], world.tasks.version(GROUP, "t-day"));
-    // Another change of the surface resolves nothing more.
+    // The receipt arriving, and another change of the surface, resolve
+    // nothing more.
+    world.surfaces.deliver_receipts("principal-me");
     world.fake.publish(ACCOUNT, "surface.changed", world.surfaces.meta(&reference));
     account.settle(300);
     assert_eq!(world.since(0, "task.resolve").len(), 1);

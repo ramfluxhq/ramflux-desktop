@@ -6,7 +6,10 @@
 //!
 //! The bytes are canonical JSON of the protocol's v2 action (the arguments
 //! hashed with the protocol's own argument hash), checked by the protocol's
-//! only ingress constructor before they leave. The daemon signs, dedupes
+//! only ingress constructor before they leave. An action that answers a
+//! task step carries `taskBinding {task_id, step_id}` inside the signed
+//! bytes, so the step can be resolved from the action (or the author's
+//! receipt, which embeds it) alone, even after a restart. The daemon signs, dedupes
 //! and delivers them to the author; it refuses an action on a version that
 //! is no longer current (`stale`), which the desktop shows as "changed
 //! after you reviewed it".
@@ -27,6 +30,9 @@ pub struct Shown<'a> {
     pub action_id: &'a str,
     /// Values the surface collected (`null` when none).
     pub values: &'a Value,
+    /// The task step the action answers (the daemon's task id, the step
+    /// id), signed as the action's `taskBinding`.
+    pub task_binding: Option<(&'a str, &'a str)>,
 }
 
 /// The canonical action bytes.
@@ -38,7 +44,7 @@ pub struct Shown<'a> {
 pub fn action_bytes(target: &SurfaceTarget, shown: &Shown<'_>) -> Result<Vec<u8>, String> {
     let values = if shown.values.is_null() { json!({}) } else { shown.values.clone() };
     let args_hash = ramflux_protocol::surface_args_hash(&values).map_err(|e| e.to_string())?;
-    let action = json!({
+    let mut action = json!({
         "schema": A2UI_ACTION_SCHEMA,
         "conversationId": target.conversation_id,
         "surfaceId": target.surface_id,
@@ -48,6 +54,9 @@ pub fn action_bytes(target: &SurfaceTarget, shown: &Shown<'_>) -> Result<Vec<u8>
         "values": values,
         "argsHash": args_hash,
     });
+    if let Some((task_id, step_id)) = shown.task_binding {
+        action["taskBinding"] = json!({ "task_id": task_id, "step_id": step_id });
+    }
     let bytes = ramflux_protocol::canonical_json_bytes(&action).map_err(|e| e.to_string())?;
     A2uiSurfaceAction::from_wire_bytes(&bytes).map_err(|e| e.to_string())?;
     Ok(bytes)
@@ -82,7 +91,13 @@ mod tests {
     #[test]
     fn the_action_binds_the_shown_version_and_hashes_its_arguments() {
         let values = json!({ "note": "x" });
-        let shown = Shown { version: 3, surface_hash: "Qh3", action_id: "thu", values: &values };
+        let shown = Shown {
+            version: 3,
+            surface_hash: "Qh3",
+            action_id: "thu",
+            values: &values,
+            task_binding: None,
+        };
         let body = action_body(&target(), &shown).expect("body");
         assert_eq!(body["conversation_id"], "thread-team");
         assert_eq!(body["author_principal_id"], "principal-bo");
@@ -101,9 +116,32 @@ mod tests {
 
     #[test]
     fn a_button_without_values_sends_an_empty_object() {
-        let shown = Shown { version: 1, surface_hash: "h", action_id: "ok", values: &Value::Null };
+        let shown = Shown {
+            version: 1,
+            surface_hash: "h",
+            action_id: "ok",
+            values: &Value::Null,
+            task_binding: None,
+        };
         let wire = action_bytes(&target(), &shown).expect("bytes");
         let action = A2uiSurfaceAction::from_wire_bytes(&wire).expect("action");
         assert_eq!(action.values(), &json!({}));
+        assert!(action.task_binding().is_none());
+    }
+
+    #[test]
+    fn an_answer_to_a_task_step_signs_the_step_it_answers() {
+        let values = json!({ "decision": "resume" });
+        let shown = Shown {
+            version: 2,
+            surface_hash: "h",
+            action_id: "thu",
+            values: &values,
+            task_binding: Some(("t-day", "pick")),
+        };
+        let wire = action_bytes(&target(), &shown).expect("bytes");
+        let action = A2uiSurfaceAction::from_wire_bytes(&wire).expect("action");
+        let binding = action.task_binding().expect("bound");
+        assert_eq!((binding.task_id.as_str(), binding.step_id.as_str()), ("t-day", "pick"));
     }
 }

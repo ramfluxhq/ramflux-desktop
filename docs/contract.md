@@ -161,10 +161,14 @@ whole task at its authority's version: versions may skip, the same version
 changes only flags and step places, a proposal gets its requester when
 accepted, a finished task is frozen), `TaskAnswered` (the source's answer to
 this desktop's last request about a task: a decision pending confirmation, a
-decision the assignee has not confirmed in time (`DecisionUnconfirmed`), or
-a typed refusal `Changed`, `Finished`, `NotAllowed`, `AlreadyDecided`,
-`TooLarge`, `DecisionRejected`, `Stalled`, `Busy`, `Other`; kept until the
-version rises),
+decision the assignee has not confirmed in time (`DecisionUnconfirmed`), a
+decision on an approval that could not be delivered to the assignee
+(`DecisionUndelivered { step_id, grant_id, approved }`, retried unchanged),
+or a typed refusal `Changed`, `Finished`, `NotAllowed`, `AlreadyDecided`,
+`TooLarge`, `DecisionRejected`, `Stalled`, `Busy`, `QuotaExhausted`,
+`Unreachable` (retryable), `Unauthenticated`, `Untrusted` (neither
+retried), `Other`; kept until the version rises), `TaskRemoved` (the source
+pruned the task: it and its moments are dropped),
 `SourceStatusChanged` (Connected, Disconnected,
 Locked), `ContextSettingsChanged` (pin, mute, disappearing timer),
 `AccountLockChanged`, `NodeSettingsChanged` (enabled; setting a default clears
@@ -270,16 +274,25 @@ The kinds, by area:
   `version` shown, which the SDK source sends as the daemon's only
   acceptance, `task.accept {task_id, version}`), `CancelTask` (only the
   requester; body adds `conversation_id` and `decline: true` for a
-  proposal). A task's flags say whether its assignee is stalled, its
+  proposal), `RetryTaskDecision` (only the requester, only while the task's
+  answer is `DecisionUndelivered`: `grant.approve` / `grant.deny` with
+  `retry: true` for the same approval, no new confirmation and no second
+  `task.resolve`; the daemon resends the same signed decision). A task's flags say whether its assignee is stalled, its
   history compacted and the assignee's kind verified (`Actor::Member` is
   another member who asked for a task); a finished task's `result` is the
   assignee's signed summary. Approving or denying a grant a task step waits
   on is the requester's only; the SDK source then sends `task.resolve` for
   that step with the decision id the grant flow answered. A choice or input
   step is answered in the assignee's surface (an action whose values carry
-  `decision: "resume"` or `"deny"`); once the author's receipt for it is
-  verified, the SDK source resolves the step with that receipt's id. Task
-  refusals are read from the daemon's typed codes, never its text.
+  `decision: "resume"` or `"deny"`, and whose signed bytes carry the step it
+  answers, `taskBinding {task_id, step_id}`); a surface read that lists this
+  account's bound action (its own retained outgoing action, or the author's
+  receipt) resolves the step the binding names with that row's
+  `action_receipt_id`, also after a restart. A pending resolution is shown on
+  the step `pending_resolution.step_id` names. Task refusals are read from
+  the daemon's typed codes, never its text; the transport codes are
+  `Unavailable` (retryable), `Unauthenticated` and `TransportSecurity` (not
+  retried; shown as such, never as a lost connection).
   `SurfaceAction` carries the `version` and `surface_hash` it was shown on
   (the source hashes its arguments with the protocol's argument hash); a
   closed, out-of-date, out-of-sync, over-limit or changed surface refuses it.

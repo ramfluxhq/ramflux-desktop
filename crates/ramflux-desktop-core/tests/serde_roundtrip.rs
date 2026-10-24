@@ -34,6 +34,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::TaskStateChanged { .. } => "TaskStateChanged",
         DomainEvent::TaskSnapshot(_) => "TaskSnapshot",
         DomainEvent::TaskAnswered { .. } => "TaskAnswered",
+        DomainEvent::TaskRemoved { .. } => "TaskRemoved",
         DomainEvent::SourceStatusChanged(_) => "SourceStatusChanged",
         DomainEvent::ContextSettingsChanged { .. } => "ContextSettingsChanged",
         DomainEvent::AccountLockChanged { .. } => "AccountLockChanged",
@@ -54,7 +55,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 36;
+const DOMAIN_EVENT_VARIANTS: usize = 37;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -88,6 +89,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::ResolveConflict { .. } => "ResolveConflict",
         IntentKind::StartTask { .. } => "StartTask",
         IntentKind::CancelTask { .. } => "CancelTask",
+        IntentKind::RetryTaskDecision { .. } => "RetryTaskDecision",
         IntentKind::AcceptTaskProposal { .. } => "AcceptTaskProposal",
         IntentKind::PinContext { .. } => "PinContext",
         IntentKind::UnpinContext { .. } => "UnpinContext",
@@ -129,7 +131,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the six secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 43;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 44;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -144,6 +146,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::ConflictResolved { .. } => "ConflictResolved",
         UiEventKind::TaskRequested { .. } => "TaskRequested",
         UiEventKind::CancelPressed => "CancelPressed",
+        UiEventKind::RetryDecisionPressed => "RetryDecisionPressed",
         UiEventKind::ProposalAccepted => "ProposalAccepted",
         UiEventKind::PinToggled { .. } => "PinToggled",
         UiEventKind::ContactAnswered { .. } => "ContactAnswered",
@@ -173,7 +176,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 38;
+const UI_EVENT_KIND_VARIANTS: usize = 39;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -364,6 +367,15 @@ fn all_domain_events() -> Vec<DomainEvent> {
             task_id: TaskId::new("t-2"),
             answer: TaskAnswer::DecisionPending { step_id: StepId::new("s") },
         },
+        DomainEvent::TaskAnswered {
+            task_id: TaskId::new("t-2"),
+            answer: TaskAnswer::DecisionUndelivered {
+                step_id: StepId::new("s"),
+                grant_id: GrantId::new("g-1"),
+                approved: true,
+            },
+        },
+        DomainEvent::TaskRemoved { task_id: TaskId::new("t-2") },
         DomainEvent::Surface(SurfaceEvent::Create {
             moment_id: MomentId::new("m-s"),
             context_id: ContextId::new("c-1"),
@@ -564,6 +576,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         },
         IntentKind::AcceptTaskProposal { task_id: TaskId::new("t-1") },
         IntentKind::CancelTask { task_id: TaskId::new("t-1") },
+        IntentKind::RetryTaskDecision { task_id: TaskId::new("t-1") },
         IntentKind::PinContext { context_id: ContextId::new("c-1") },
         IntentKind::UnpinContext { context_id: ContextId::new("c-1") },
         IntentKind::AcceptContact { moment_id: MomentId::new("m-1") },
@@ -640,6 +653,7 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         },
         UiEventKind::ProposalAccepted,
         UiEventKind::CancelPressed,
+        UiEventKind::RetryDecisionPressed,
         UiEventKind::PinToggled { pinned: true },
         UiEventKind::ContactAnswered { accept: false },
         UiEventKind::ExpandToggled { expanded: true },
