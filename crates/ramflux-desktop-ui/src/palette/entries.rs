@@ -44,6 +44,8 @@ pub enum PaletteChoice {
     OpenDock(DockTool),
     /// Open the contacts dock at its add-contact field.
     AddContact,
+    /// Open the new-group form.
+    NewGroup,
     /// Address the composer's next request to an AI participant of the
     /// shown conversation (view-local; the request itself is an intent).
     AskAgent(ParticipantId),
@@ -204,6 +206,7 @@ fn actions(
         }
     }
     entries.push(entry(tr("palette.add_contact"), IconName::Plus, PaletteChoice::AddContact));
+    entries.push(entry(tr("palette.new_group"), IconName::Plus, PaletteChoice::NewGroup));
     for tool in DockTool::ALL {
         entries.push(entry(
             tr_args("palette.open_dock", &[("dock", &tool.title())]),

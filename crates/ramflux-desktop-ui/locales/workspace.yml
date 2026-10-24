@@ -136,6 +136,9 @@ conversation:
       key_changed:
         en: "%{name}'s safety number changed. Verify it in Contacts before starting a conversation."
         zh-CN: "%{name} 的安全码已变更，请先在联系人中验证后再开启会话。"
+      unreachable:
+        en: "%{name} is not reachable yet: this account has none of their devices. Add them from their contact card in Contacts."
+        zh-CN: "暂时无法联系 %{name}：此账户还没有对方的任何设备。请在联系人中通过对方的联系人名片添加。"
   jump_latest:
     en: "Jump to latest"
     zh-CN: "跳到最新"
@@ -170,6 +173,9 @@ stack:
   add_contact:
     en: "Add a contact"
     zh-CN: "添加联系人"
+  new_group:
+    en: "New group…"
+    zh-CN: "新建群组…"
   search_more:
     en: "Search %{count} more"
     zh-CN: "搜索其余 %{count} 个"
@@ -224,33 +230,60 @@ dock:
         en: "Add a contact"
         zh-CN: "添加联系人"
       label:
-        en: "Contact id"
-        zh-CN: "联系人 ID"
+        en: "Contact card or id"
+        zh-CN: "联系人名片或 ID"
       placeholder:
-        en: "Paste the id they shared"
-        zh-CN: "粘贴对方分享的 ID"
+        en: "Paste their contact card, link or id"
+        zh-CN: "粘贴对方的联系人名片、链接或 ID"
       submit:
         en: "Add"
         zh-CN: "添加"
       help:
-        en: "Adds the contact on this account. It does not send them a request."
-        zh-CN: "在此账户中添加联系人，不会向对方发送请求。"
+        en: "Paste the contact card they shared, or their principal id."
+        zh-CN: "粘贴对方分享的联系人名片，或对方的主体 ID。"
+      kind_card:
+        en: "Contact card: the daemon checks its signature and pins the identity it names."
+        zh-CN: "联系人名片：守护进程会校验签名，并固定名片所指的身份。"
+      kind_id:
+        en: "Principal id: looked up on their node and trusted on first use. Unverified until you compare safety numbers."
+        zh-CN: "主体 ID：在对方节点上查询，首次使用即信任。比对安全码之前均为未验证。"
       adding:
         en: "Adding %{id}…"
         zh-CN: "正在添加 %{id}…"
+      adding_card:
+        en: "Adding the contact card…"
+        zh-CN: "正在添加联系人名片…"
       failed:
         en: "Not added: %{reason}"
         zh-CN: "未添加：%{reason}"
+      import:
+        en: "Import card file…"
+        zh-CN: "导入名片文件…"
+      import_prompt:
+        en: "Import"
+        zh-CN: "导入"
+      file_unreadable:
+        en: "Couldn't read the file: %{reason}"
+        zh-CN: "无法读取该文件：%{reason}"
+      file_not_text:
+        en: "That file is not a contact card: it is not text."
+        zh-CN: "该文件不是联系人名片：不是文本。"
       error:
         empty:
-          en: "Type or paste the contact's id."
-          zh-CN: "请输入或粘贴联系人的 ID。"
+          en: "Paste their contact card or type their id."
+          zh-CN: "请粘贴对方的联系人名片或输入对方的 ID。"
         spaces:
           en: "An id has no spaces or line breaks."
           zh-CN: "ID 中不能有空格或换行。"
         too_long:
           en: "That is longer than any contact id."
           zh-CN: "该内容超出了联系人 ID 的长度。"
+        card_too_long:
+          en: "That is longer than any contact card."
+          zh-CN: "该内容超出了联系人名片的长度。"
+        card_control:
+          en: "That text has characters no contact card contains."
+          zh-CN: "该文本含有联系人名片不会包含的字符。"
         exists:
           en: "Already in your contacts."
           zh-CN: "已在联系人中。"
@@ -260,6 +293,59 @@ dock:
         incoming:
           en: "They already asked you. Answer their request below."
           zh-CN: "对方已向你发出请求，请在下方回应。"
+    card:
+      title:
+        en: "Your contact card"
+        zh-CN: "你的联系人名片"
+      help:
+        en: "Others add you with it. Share it in person or over a channel you trust."
+        zh-CN: "他人用它添加你。请当面或通过你信任的渠道分享。"
+      show:
+        en: "Show my card"
+        zh-CN: "显示我的名片"
+      preparing:
+        en: "Getting your card…"
+        zh-CN: "正在获取你的名片…"
+      failed:
+        en: "Couldn't get your card: %{reason}"
+        zh-CN: "无法获取你的名片：%{reason}"
+      qr:
+        en: "QR code of your contact card"
+        zh-CN: "你的联系人名片二维码"
+      copy:
+        en: "Copy card"
+        zh-CN: "复制名片"
+      copy_link:
+        en: "Copy link"
+        zh-CN: "复制链接"
+      copied:
+        en: "Copied"
+        zh-CN: "已复制"
+      hide:
+        en: "Hide"
+        zh-CN: "隐藏"
+    unverified:
+      en: "Unverified — compare safety numbers"
+      zh-CN: "未验证——请比对安全码"
+    reachable:
+      en: "Reachable"
+      zh-CN: "可联系"
+    unreachable:
+      en: "Not reachable yet"
+      zh-CN: "暂不可联系"
+    unreachable_reason:
+      en: "%{name} is not reachable yet: this account has none of their devices. Add them from their contact card."
+      zh-CN: "暂时无法联系 %{name}：此账户还没有对方的任何设备。请通过对方的联系人名片添加。"
+    kind:
+      human:
+        en: "Person"
+        zh-CN: "个人"
+      agent:
+        en: "AI agent"
+        zh-CN: "AI 智能体"
+      asserted:
+        en: "%{kind} (self-declared)"
+        zh-CN: "%{kind}（自称）"
     requests:
       en: "Requests"
       zh-CN: "请求"
@@ -389,7 +475,89 @@ dock:
     no_node:
       en: "No node known"
       zh-CN: "未知节点"
+group:
+  new:
+    title:
+      en: "New group"
+      zh-CN: "新建群组"
+    name:
+      en: "Name"
+      zh-CN: "名称"
+    name_placeholder:
+      en: "What the group is for"
+      zh-CN: "群组的用途"
+    name_help:
+      en: "This name is kept on your account. Members name the group themselves."
+      zh-CN: "此名称保存在你的账户中，成员各自为群组命名。"
+    members:
+      en: "Members"
+      zh-CN: "成员"
+    no_contacts:
+      en: "No contacts yet. Add contacts first, then make a group with them."
+      zh-CN: "还没有联系人。请先添加联系人，再与他们建群。"
+    not_available:
+      en: "Not available"
+      zh-CN: "不可选"
+    cancel:
+      en: "Cancel"
+      zh-CN: "取消"
+    create:
+      en: "Create group"
+      zh-CN: "创建群组"
+    creating:
+      en: "Creating the group and adding its members…"
+      zh-CN: "正在创建群组并添加成员…"
+    failed:
+      en: "Not created: %{reason}"
+      zh-CN: "未创建：%{reason}"
+    error:
+      empty_name:
+        en: "Give the group a name."
+        zh-CN: "请为群组命名。"
+      long_name:
+        en: "That name is too long."
+        zh-CN: "名称过长。"
+      bad_name:
+        en: "A name has no control characters."
+        zh-CN: "名称中不能有控制字符。"
+      no_members:
+        en: "Choose at least one member."
+        zh-CN: "请至少选择一位成员。"
+      too_many:
+        en: "That is more members than a new group starts with. Add the others later."
+        zh-CN: "成员数超过新群组的初始上限，请稍后再添加其他成员。"
+      unreachable:
+        en: "%{name} is not reachable yet, so they cannot be added."
+        zh-CN: "暂时无法联系 %{name}，无法添加。"
+      key_changed:
+        en: "%{name}'s safety number changed. Verify it in Contacts first."
+        zh-CN: "%{name} 的安全码已变更，请先在联系人中验证。"
+      not_a_contact:
+        en: "%{name} is not an accepted contact."
+        zh-CN: "%{name} 不是已接受的联系人。"
+  rename:
+    action:
+      en: "Rename…"
+      zh-CN: "重命名…"
+    label:
+      en: "Group name"
+      zh-CN: "群组名称"
+    save:
+      en: "Save"
+      zh-CN: "保存"
+    cancel:
+      en: "Cancel"
+      zh-CN: "取消"
+    help:
+      en: "Only you see this name."
+      zh-CN: "只有你能看到此名称。"
+    failed:
+      en: "Not renamed: %{reason}"
+      zh-CN: "未重命名：%{reason}"
 palette:
+  new_group:
+    en: "New group…"
+    zh-CN: "新建群组…"
   ask_agent:
     en: "Ask %{name} to…"
     zh-CN: "请 %{name} 处理…"

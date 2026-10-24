@@ -7,7 +7,8 @@
 //! through the command palette, which the footer opens. Choosing a context is
 //! navigation (view-local), so it is reported to the workspace as a
 //! [`ContextStackEvent`], not a UI event. The "+" in the header lists the
-//! accepted contacts to start a conversation with (and adding a contact).
+//! accepted contacts to start a conversation with, then making a new group
+//! and adding a contact.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -36,6 +37,8 @@ pub enum ContextStackEvent {
     NewConversation(ParticipantId),
     /// The user chose to add a contact first.
     AddContact,
+    /// The user chose to make a new group.
+    NewGroup,
 }
 
 /// The context stack view.
@@ -230,10 +233,15 @@ impl Render for ContextStack {
                 } else {
                     menu
                 };
-                menu.separator().item(
-                    PopupMenuItem::new(tr("stack.add_contact"))
-                        .on_click(emit(ContextStackEvent::AddContact)),
-                )
+                menu.separator()
+                    .item(
+                        PopupMenuItem::new(tr("stack.new_group"))
+                            .on_click(emit(ContextStackEvent::NewGroup)),
+                    )
+                    .item(
+                        PopupMenuItem::new(tr("stack.add_contact"))
+                            .on_click(emit(ContextStackEvent::AddContact)),
+                    )
             });
         v_flex()
             .id("context-stack")

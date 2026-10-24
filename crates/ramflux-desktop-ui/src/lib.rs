@@ -23,6 +23,7 @@
 //! - [`launch`]: the local daemon launcher and launch settings.
 //! - [`gate`]: controls for actions the backend cannot perform.
 //! - [`list_state`]: loading and empty placeholders of lists.
+//! - [`qr`]: QR codes of the user's own contact card.
 
 #![forbid(unsafe_code)]
 
@@ -42,6 +43,7 @@ pub mod launch;
 pub mod list_state;
 pub mod moments;
 pub mod palette;
+pub mod qr;
 pub mod root;
 pub mod route;
 pub mod settings;

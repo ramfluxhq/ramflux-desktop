@@ -9,7 +9,8 @@
 //! everything (see `palette`).
 //!
 //! Every view here emits through the [`IntentRoot`] sink; the workspace owns
-//! navigation only: the shown context (or a new-conversation draft), which
+//! navigation only: the shown context (or a new-conversation draft, or the
+//! new-group form), which
 //! tool is open or pinned, and the "take me to what needs me" cursor across
 //! contexts and accounts.
 
@@ -18,6 +19,7 @@ mod context_stack;
 mod conversation;
 pub mod docks;
 pub mod new_conversation;
+pub mod new_group;
 mod status_strip;
 
 use std::sync::Arc;
@@ -47,6 +49,7 @@ pub use conversation::{Conversation, TIMERS, timer_label};
 pub use docks::prefs::{DockPrefs, LAYOUT_SCHEMA, PrefsStore};
 pub use docks::{DockRail, DockTool, DockToolEvent, DockToolPanel};
 pub use new_conversation::{NewConversation, NewConversationEvent};
+pub use new_group::{NewGroup, NewGroupEvent};
 pub use status_strip::StatusStrip;
 
 use docks::approvals::ApprovalsDock;
@@ -73,6 +76,7 @@ pub struct Workspace {
     conversation: Entity<Conversation>,
     composer: Entity<Composer>,
     new_conversation: Entity<NewConversation>,
+    new_group: Entity<NewGroup>,
     dock_area: Entity<DockArea>,
     tools: Vec<ToolSlot>,
     objects: Entity<ObjectsDock>,
@@ -106,6 +110,7 @@ impl Workspace {
         let sink = IntentRoot::sink(&root);
         let composer = cx.new(|cx| Composer::new(store.clone(), window, cx));
         let new_conversation = cx.new(|cx| NewConversation::new(store.clone(), cx));
+        let new_group = cx.new(|cx| NewGroup::new(store.clone(), window, cx));
         let stack = cx.new(|cx| ContextStack::new(store.clone(), cx));
         let conversation =
             cx.new(|cx| Conversation::new(store.clone(), root.clone(), composer.clone(), cx));
@@ -187,6 +192,7 @@ impl Workspace {
                         this.open_conversation_with(participant.clone(), window, cx);
                     }
                     ContextStackEvent::AddContact => this.open_add_contact(window, cx),
+                    ContextStackEvent::NewGroup => this.open_new_group(window, cx),
                 }
             }),
             cx.subscribe_in(&contacts, window, |this, _, event: &ContactsDockEvent, window, cx| {
@@ -206,6 +212,18 @@ impl Workspace {
                 },
             ),
             cx.observe(&new_conversation, |this, _, cx| this.sync_composer(cx)),
+            cx.subscribe_in(&new_group, window, |this, _, event: &NewGroupEvent, window, cx| {
+                match event {
+                    NewGroupEvent::Created(id) => {
+                        this.select_context(Some(id.clone()), window, cx);
+                        this.composer.update(cx, |composer, cx| composer.focus(window, cx));
+                    }
+                    NewGroupEvent::Cancelled => {
+                        this.conversation.update(cx, |field, cx| field.set_group_form(None, cx));
+                        this.ensure_current(window, cx);
+                    }
+                }
+            }),
             cx.subscribe_in(&root, window, |this, _, event: &RootEvent, window, cx| match event {
                 RootEvent::ConfirmClosed => {
                     this.composer.update(cx, |composer, cx| composer.focus(window, cx));
@@ -257,6 +275,7 @@ impl Workspace {
             conversation,
             composer,
             new_conversation,
+            new_group,
             dock_area,
             tools,
             objects,
@@ -306,6 +325,38 @@ impl Workspace {
     /// The new-conversation draft.
     pub fn new_conversation(&self) -> &Entity<NewConversation> {
         &self.new_conversation
+    }
+
+    /// The new-group form.
+    pub fn new_group(&self) -> &Entity<NewGroup> {
+        &self.new_group
+    }
+
+    /// Opens the new-group form in the conversation field (no context is
+    /// shown meanwhile) and focuses its name.
+    pub fn open_new_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.new_conversation.update(cx, NewConversation::close);
+        if self.current.take().is_some() {
+            self.store.update(cx, |store, _| store.focus(None));
+        }
+        let sink = IntentRoot::sink(&self.root);
+        self.new_group.update(cx, |form, cx| form.open(&sink, window, cx));
+        let form = self.new_group.clone();
+        self.conversation.update(cx, |field, cx| {
+            field.set_context(None, cx);
+            field.set_draft(None, cx);
+            field.set_group_form(Some(form), cx);
+        });
+        self.composer.update(cx, |composer, cx| composer.set_sink(None, None, window, cx));
+        self.stack.update(cx, |stack, cx| stack.set_current(None, cx));
+        self.members.update(cx, |dock, cx| dock.set_context(None, cx));
+        self.evidence.update(cx, |dock, cx| dock.set_context(None, cx));
+        if let Some(open) = self.open_tool
+            && self.prefs.pinned != Some(open)
+        {
+            self.close_dock(window, cx);
+        }
+        cx.notify();
     }
 
     /// Shows the direct conversation with `participant`, or opens a draft
@@ -401,7 +452,11 @@ impl Workspace {
         let changed = self.current != id;
         self.current = id.clone();
         self.new_conversation.update(cx, NewConversation::close);
-        self.conversation.update(cx, |field, cx| field.set_draft(None, cx));
+        self.new_group.update(cx, NewGroup::close);
+        self.conversation.update(cx, |field, cx| {
+            field.set_draft(None, cx);
+            field.set_group_form(None, cx);
+        });
         let sink =
             id.as_ref().map(|id| IntentRoot::sink(&self.root).scoped(Scope::Context(id.clone())));
         if changed {
@@ -451,7 +506,7 @@ impl Workspace {
     /// Keeps the current context valid: when it disappears (or none is
     /// chosen yet) the first stacked context, else the first context, is shown.
     fn ensure_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.new_conversation.read(cx).is_open() {
+        if self.new_conversation.read(cx).is_open() || self.new_group.read(cx).is_open() {
             return;
         }
         let store = self.store.read(cx).store();

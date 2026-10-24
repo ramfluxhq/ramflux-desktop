@@ -11,12 +11,14 @@
 //! form values to surface actions before they bubble on (rule B3).
 
 mod header;
+mod rename;
 mod rows;
 mod view_state;
 
 use std::rc::Rc;
 
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::message_scroller::{MessageScroller, MessageScrollerState};
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
@@ -51,6 +53,9 @@ pub struct Conversation {
     highlighted: Option<MomentId>,
     composer: Entity<Composer>,
     draft: Option<Entity<NewConversation>>,
+    group_form: Option<Entity<crate::workspace::new_group::NewGroup>>,
+    rename: Option<rename::Rename>,
+    rename_subscription: Option<Subscription>,
     focus_handle: FocusHandle,
     highlight_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
@@ -105,6 +110,7 @@ impl Conversation {
         let subscriptions = vec![
             cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
                 let StoreEvent::Changed(changes) = event else { return };
+                this.follow_rename(cx);
                 if changes.is_reset() {
                     // A new world (scenario, account switch): a "review again"
                     // notice belongs to the old one.
@@ -141,6 +147,9 @@ impl Conversation {
             highlighted: None,
             composer,
             draft: None,
+            group_form: None,
+            rename: None,
+            rename_subscription: None,
             focus_handle: cx.focus_handle(),
             highlight_focus: cx.focus_handle().tab_stop(true),
             _subscriptions: subscriptions,
@@ -153,6 +162,77 @@ impl Conversation {
             self.draft = draft;
             cx.notify();
         }
+    }
+
+    /// Shows the new-group form in place of a context (without the
+    /// composer), or stops.
+    pub fn set_group_form(
+        &mut self,
+        form: Option<Entity<crate::workspace::new_group::NewGroup>>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.group_form.as_ref().map(Entity::entity_id) != form.as_ref().map(Entity::entity_id) {
+            self.group_form = form;
+            cx.notify();
+        }
+    }
+
+    /// Opens the inline rename of the shown group conversation.
+    pub fn start_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(context) = self.context_id.clone() else { return };
+        let title = self.store.read(cx).store().context(&context).map(|c| c.title.clone());
+        let input =
+            cx.new(|cx| InputState::new(window, cx).default_value(title.unwrap_or_default()));
+        input.update(cx, |input, cx| input.focus(window, cx));
+        self.rename_subscription =
+            Some(cx.subscribe_in(&input, window, |this, _, event, window, cx| match event {
+                InputEvent::PressEnter { .. } => this.save_rename(window, cx),
+                InputEvent::Change => {
+                    if let Some(rename) = &mut this.rename
+                        && matches!(rename.phase, rename::Phase::Failed(_))
+                    {
+                        rename.phase = rename::Phase::Editing;
+                        cx.notify();
+                    }
+                }
+                _ => {}
+            }));
+        self.rename = Some(rename::Rename { context, input, phase: rename::Phase::Editing });
+        cx.notify();
+    }
+
+    /// Submits the inline rename.
+    pub fn save_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(rename) = &mut self.rename else { return };
+        let title = rename.take(self.store.read(cx).store(), cx);
+        let sink = self.root_sink.scoped(Scope::Context(rename.context.clone()));
+        if let Some(title) = title {
+            sink.emit(UiEventKind::RenameRequested { title }, window, cx);
+        }
+        self.follow_rename(cx);
+        cx.notify();
+    }
+
+    /// Closes the inline rename without renaming.
+    pub fn cancel_rename(&mut self, cx: &mut Context<Self>) {
+        if self.rename.take().is_some() {
+            self.rename_subscription = None;
+            cx.notify();
+        }
+    }
+
+    /// Whether a rename is open, for tests.
+    pub fn is_renaming(&self) -> bool {
+        self.rename.is_some()
+    }
+
+    fn follow_rename(&mut self, cx: &mut Context<Self>) {
+        let Some(rename) = &mut self.rename else { return };
+        if rename.follow(self.store.read(cx).store()) {
+            self.rename = None;
+            self.rename_subscription = None;
+        }
+        cx.notify();
     }
 
     /// The shown context.
@@ -209,6 +289,8 @@ impl Conversation {
             return;
         }
         self.context_id = context_id;
+        self.rename = None;
+        self.rename_subscription = None;
         self.view = ViewState::default();
         self.highlighted = None;
         self.rows.clear();
@@ -390,7 +472,25 @@ impl Render for Conversation {
         let context = self.context_id.as_ref().and_then(|id| store.context(id));
         let context_sink =
             self.context_id.clone().map(|id| self.root_sink.scoped(Scope::Context(id)));
-        let header = header::render(store, context, context_sink.clone(), cx);
+        let this = cx.weak_entity();
+        let renaming = header::Renaming {
+            field: self
+                .rename
+                .as_ref()
+                .filter(|r| Some(&r.context) == self.context_id.as_ref())
+                .map(|rename| {
+                    rename::render(
+                        rename,
+                        cx.listener(|this, _, window, cx| this.save_rename(window, cx)),
+                        cx.listener(|this, _, _, cx| this.cancel_rename(cx)),
+                        cx,
+                    )
+                }),
+            start: Rc::new(move |window, cx| {
+                this.update(cx, |field, cx| field.start_rename(window, cx)).ok();
+            }),
+        };
+        let header = header::render(store, context, context_sink.clone(), renaming, cx);
         let body = match context_sink.filter(|_| !rows.is_empty()) {
             None => {
                 let no_contexts = store.contexts().next().is_none();
@@ -457,17 +557,20 @@ impl Render for Conversation {
         let root = self.root.read(cx);
         let strip = (root.host() == ConfirmHost::Workspace).then(|| root.confirm_strip().clone());
         let draft = self.draft.clone().filter(|_| self.context_id.is_none());
+        let group_form = self.group_form.clone().filter(|_| self.context_id.is_none());
+        let composer = group_form.is_none().then(|| self.composer.clone());
         v_flex()
             .id("conversation")
             .track_focus(&self.focus_handle)
             .size_full()
             .min_w_0()
             .bg(cx.theme().background)
-            .map(|field| match draft {
-                Some(draft) => field.child(draft),
-                None => field.child(header).child(body),
+            .map(|field| match (group_form, draft) {
+                (Some(form), _) => field.child(form),
+                (None, Some(draft)) => field.child(draft),
+                (None, None) => field.child(header).child(body),
             })
             .children(strip)
-            .child(self.composer.clone())
+            .children(composer)
     }
 }

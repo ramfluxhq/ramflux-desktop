@@ -8,7 +8,13 @@
 //! Every action emits a UI event; the root turns it into an intent. Block
 //! and Remove revoke what was shared with the contact and need the hold.
 //! Message (on an accepted contact) is navigation: it shows the direct
-//! conversation with the contact, or a draft of a new one.
+//! conversation with the contact, or a draft of a new one; it is disabled,
+//! with the reason, while the contact is not reachable yet.
+//!
+//! A contact row says how far the contact is trusted: its safety state
+//! (unverified until safety numbers are compared), whether this account can
+//! reach it, and what kind of party it is, marked when that is only the
+//! contact's own claim.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -18,8 +24,8 @@ use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, Window, div};
 use ramflux_desktop_core::{
-    ContactAction, ContactLink, Moment, MomentKind, Participant, ParticipantId, SafetyState, Scope,
-    Store, UiEventKind, selectors,
+    ContactAction, ContactLink, Moment, MomentKind, Participant, ParticipantId, ParticipantKind,
+    SafetyState, Scope, Store, UiEventKind, selectors,
 };
 
 use crate::bubble::EventSink;
@@ -173,13 +179,21 @@ pub fn contact_row(
     on_message: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> AnyElement {
+    let unreachable = (contact.reachable == Some(false))
+        .then(|| tr_args("dock.contacts.unreachable_reason", &[("name", &contact.display)]));
     let message = (contact.link_state() == ContactLink::Accepted).then(|| {
-        Button::new("message")
-            .xsmall()
-            .outline()
-            .label(tr("dock.contacts.message"))
-            .accessibility_label(tr_args("dock.contacts.message_to", &[("name", &contact.display)]))
-            .on_click(on_message)
+        crate::gate::gated(
+            Button::new("message")
+                .xsmall()
+                .outline()
+                .label(tr("dock.contacts.message"))
+                .accessibility_label(tr_args(
+                    "dock.contacts.message_to",
+                    &[("name", &contact.display)],
+                ))
+                .on_click(on_message),
+            unreachable,
+        )
     });
     let color = match contact.safety {
         SafetyState::Verified => cx.theme().success,
@@ -212,12 +226,40 @@ pub fn contact_row(
             h_flex()
                 .gap_2()
                 .child(
-                    div().flex_1().min_w_0().text_sm().font_medium().child(contact.display.clone()),
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_sm()
+                        .font_medium()
+                        .child(contact.display.clone()),
                 )
-                .child(div().text_xs().text_color(color).child(i18n::safety(contact.safety)))
                 .children(verify)
                 .children(message)
                 .child(actions_menu(contact, sink)),
+        )
+        .child(
+            h_flex()
+                .flex_wrap()
+                .gap_x_1()
+                .text_xs()
+                .child(
+                    div()
+                        .id("contact-safety")
+                        .test_support()
+                        .text_color(color)
+                        .child(safety_label(contact.safety)),
+                )
+                .when_some(trust_line(contact), |line, trust| {
+                    line.child(div().text_color(cx.theme().muted_foreground).child("·")).child(
+                        div()
+                            .id("contact-trust")
+                            .aria_label(trust.clone())
+                            .test_support()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(trust),
+                    )
+                }),
         )
         .when_some(contact.safety_number.clone(), |col, number| {
             col.child(
@@ -229,6 +271,38 @@ pub fn contact_row(
             )
         })
         .into_any_element()
+}
+
+/// The safety state as a contact row says it: an unverified contact is
+/// unverified until safety numbers are compared.
+pub fn safety_label(safety: SafetyState) -> SharedString {
+    match safety {
+        SafetyState::Unverified => tr("dock.contacts.unverified"),
+        other => i18n::safety(other),
+    }
+}
+
+/// Reachability and kind, as far as the daemon reported them: "Reachable ·
+/// Person", "Not reachable yet · AI agent (self-declared)"; `None` when
+/// neither is known.
+pub fn trust_line(contact: &Participant) -> Option<SharedString> {
+    let reach = contact.reachable.map(|reachable| {
+        tr(if reachable { "dock.contacts.reachable" } else { "dock.contacts.unreachable" })
+    });
+    let kind = match contact.kind {
+        ParticipantKind::Human => Some("dock.contacts.kind.human"),
+        ParticipantKind::Agent => Some("dock.contacts.kind.agent"),
+        _ => None,
+    }
+    .map(|key| {
+        if contact.kind_asserted {
+            tr_args("dock.contacts.kind.asserted", &[("kind", &tr(key))])
+        } else {
+            tr(key)
+        }
+    });
+    let parts: Vec<SharedString> = reach.into_iter().chain(kind).collect();
+    (!parts.is_empty()).then(|| SharedString::from(parts.join(" · ")))
 }
 
 /// A blocked participant with Unblock and Remove.

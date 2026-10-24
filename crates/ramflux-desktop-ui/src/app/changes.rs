@@ -37,6 +37,11 @@ impl ChangeSet {
         self.reset
     }
 
+    /// Participants added or changed in this batch.
+    pub fn participants(&self) -> impl Iterator<Item = &ramflux_desktop_core::ParticipantId> {
+        self.changes.participants.iter()
+    }
+
     /// Moments added, changed or removed in this batch.
     pub fn moments(&self) -> impl Iterator<Item = &ramflux_desktop_core::MomentId> {
         self.changes.moments.iter()

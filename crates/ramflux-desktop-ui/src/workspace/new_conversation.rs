@@ -215,6 +215,7 @@ fn refusal(store: &Store, participant: &ParticipantId, error: &IntentError) -> S
             "conversation.new.error.not_a_contact"
         }
         IntentError::SafetyUnresolved(_) => "conversation.new.error.key_changed",
+        IntentError::NotReachable(_) => "conversation.new.error.unreachable",
         other => return SharedString::from(other.to_string()),
     };
     tr_args(key, &[("name", &name)])

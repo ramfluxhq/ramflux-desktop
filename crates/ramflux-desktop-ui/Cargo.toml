@@ -19,6 +19,8 @@ serde.workspace = true
 serde_json.workspace = true
 # Local wall-clock time for moment headers (already in the dependency graph).
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# QR code of the user's own contact card (MIT, no dependencies).
+qrcodegen = "1.8"
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
@@ -66,6 +68,14 @@ harness = false
 [[test]]
 name = "conversation_shots"
 path = "tests/conversation_shots.rs"
+test = false
+harness = false
+
+# Offscreen screenshots of adding contacts, the contact card and a new
+# group; run explicitly, not part of `cargo test`.
+[[test]]
+name = "contacts_shots"
+path = "tests/contacts_shots.rs"
 test = false
 harness = false
 

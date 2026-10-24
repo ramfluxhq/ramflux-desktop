@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The conversation header: title, members, local settings (pin, mute,
-//! disappearing timer behind a menu, the secondary entry besides the command
-//! palette), and a sticky safety banner while any member's key change is
-//! unresolved.
+//! The conversation header: title (a field while a group is renamed),
+//! members, local settings (pin, mute, disappearing timer behind a menu, the
+//! secondary entry besides the command palette; Rename… for a group), and a
+//! sticky safety banner while any member's key change is unresolved.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -13,7 +13,9 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, div};
-use ramflux_desktop_core::{Context, Participant, Scope, Store, UiEventKind, selectors};
+use ramflux_desktop_core::{
+    Context, ContextKind, Participant, Scope, Store, UiEventKind, selectors,
+};
 
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
@@ -35,11 +37,24 @@ pub fn timer_label(seconds: Option<u32>) -> SharedString {
     )
 }
 
+/// A command run with the window.
+pub type Command = std::rc::Rc<dyn Fn(&mut gpui_kit::Window, &mut App)>;
+
+/// What renaming adds to the header: the inline field while a rename is
+/// open, and the Rename… command.
+pub struct Renaming {
+    /// The field shown in place of the title.
+    pub field: Option<AnyElement>,
+    /// Rename… chosen.
+    pub start: Command,
+}
+
 /// Renders the header for `context`, emitting through the context sink.
 pub fn render(
     store: &Store,
     context: Option<&Context>,
     sink: Option<EventSink>,
+    renaming: Renaming,
     cx: &App,
 ) -> AnyElement {
     let Some((context, sink)) = context.zip(sink) else {
@@ -64,12 +79,23 @@ pub fn render(
     let timer = context.disappearing_secs;
     let menu_sink = sink.clone();
     let muted_color = cx.theme().muted_foreground;
+    let is_group = context.kind == ContextKind::Group;
+    let Renaming { field, start } = renaming;
+    let title = field.unwrap_or_else(|| {
+        div()
+            .id("conversation-title")
+            .test_support()
+            .font_semibold()
+            .text_color(cx.theme().foreground)
+            .child(context.title.clone())
+            .into_any_element()
+    });
     let row = h_flex()
         .w_full()
         .gap_2()
         .px_4()
         .py_2()
-        .child(div().font_semibold().text_color(cx.theme().foreground).child(context.title.clone()))
+        .child(title)
         .when(members > 0, |row| {
             row.child(
                 div()
@@ -118,6 +144,16 @@ pub fn render(
                 .tooltip(tr("conversation.more"))
                 .dropdown_menu(move |menu, _, _| {
                     let mute = menu_sink.clone();
+                    let menu = if is_group {
+                        let start = start.clone();
+                        menu.item(
+                            PopupMenuItem::new(tr("group.rename.action"))
+                                .on_click(move |_, window, cx| start(window, cx)),
+                        )
+                        .separator()
+                    } else {
+                        menu
+                    };
                     let mut menu = menu.item(
                         PopupMenuItem::new(tr(if muted {
                             "conversation.unmute"
