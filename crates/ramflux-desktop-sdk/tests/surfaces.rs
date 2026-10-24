@@ -5,7 +5,7 @@
 //! the protocol's own state machine (every hash is the protocol's snapshot
 //! hash and stream state), publishes `surface.changed` metadata on the
 //! event stream, and answers `surface.get`/`list`/`action`/`request_resync`
-//! as the pinned daemon (8eebac1) does.
+//! as the pinned daemon does (8eebac1; K3b r4 ee117bb adds action rows).
 //! The AI participant of scenarios s10 and s11 is played as the author.
 //!
 //! Each test waits until the desktop shows one version before the author
