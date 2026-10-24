@@ -6152,6 +6152,7 @@ dependencies = [
  "ramflux-desktop-sdk",
  "ramflux-desktop-test",
  "ramflux-protocol",
+ "ramflux-sdk",
  "rust-i18n",
  "serde",
  "serde_json",

@@ -27,6 +27,8 @@ gpui-kit = { workspace = true, features = ["test-support"] }
 ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon"] }
 # The node key fingerprint and base64 of the demo rehearsal (already in the graph).
 ramflux-protocol.workspace = true
+# The principal commitment of the demo ③ rehearsal's accounts (already in the graph).
+ramflux-sdk.workspace = true
 
 # Offscreen reference screenshots; run explicitly, not part of `cargo test`.
 [[test]]
@@ -106,5 +108,13 @@ harness = false
 [[test]]
 name = "task_shots"
 path = "tests/task_shots.rs"
+test = false
+harness = false
+
+# Demo ③ (tasks with human approval) rehearsed against a real node; run
+# explicitly with RAMFLUX_DEMO_REHEARSAL=1 and the node's URL and key.
+[[test]]
+name = "task_rehearsal"
+path = "tests/task_rehearsal.rs"
 test = false
 harness = false
