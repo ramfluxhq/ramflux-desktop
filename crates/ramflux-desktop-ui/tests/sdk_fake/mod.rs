@@ -12,8 +12,11 @@
 //!
 //! A successful `message.submit` adds its conversation (and attachment) to
 //! the directories, as the daemon records them; `fail_submit` makes it fail.
+//! Agent surfaces are held on the protocol's state machine (`surfaces`).
 
 #![allow(dead_code)]
+
+pub mod author;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -79,6 +82,8 @@ pub struct State {
     pub fail_submit: Option<String>,
     /// Delay before a submission answers.
     pub submit_delay: Duration,
+    /// Agent surfaces the daemon holds.
+    pub surfaces: Arc<ramflux_desktop_test::fake_surfaces::FakeSurfaces>,
 }
 
 /// The shared state.
@@ -155,6 +160,10 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
     let state = shared.clone();
     let all = frames();
     let fake = FakeBus::start(&path, move |method, _, body| {
+        let surfaces = state.lock().expect("state").surfaces.clone();
+        if let Some(reply) = surfaces.handle(method, body) {
+            return reply;
+        }
         if method == "message.submit" {
             let delay = state.lock().expect("state").submit_delay;
             std::thread::sleep(delay);

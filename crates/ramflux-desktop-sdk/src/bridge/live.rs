@@ -126,6 +126,7 @@ impl SyncState {
 fn read_key(fetch: &Fetch) -> Fetch {
     match fetch {
         Fetch::Page(paged, _) => Fetch::first(*paged),
+        Fetch::Surfaces(context, _) => Fetch::Surfaces(context.clone(), None),
         other => other.clone(),
     }
 }
@@ -357,7 +358,9 @@ impl Task {
 /// Whether a read's answer was its last page.
 pub(super) fn last_page(fetch: &Fetch, answer: &Result<Value, BusError>) -> bool {
     match (fetch, answer) {
-        (Fetch::Page(..), Ok(value)) => value.get("next_cursor").and_then(Value::as_str).is_none(),
+        (Fetch::Page(..) | Fetch::Surfaces(..), Ok(value)) => {
+            value.get("next_cursor").and_then(Value::as_str).is_none_or(str::is_empty)
+        }
         _ => true,
     }
 }

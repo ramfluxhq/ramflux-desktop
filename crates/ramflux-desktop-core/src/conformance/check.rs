@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use super::error::{RendererError, RendererErrorKind};
-use super::hash::{SurfaceHash, canonical_len, surface_hash};
+use super::hash::{SurfaceHash, encoded_len};
 use super::profile::{LimitKind, Limits, RendererProfile};
 use super::schema::shape_ok;
 use crate::ids::{BlockId, MomentId};
@@ -88,17 +88,19 @@ pub fn over_limit(surface: &AgentSurfacePayload, limits: &Limits) -> Option<Limi
     if text > limits.max_text_chars {
         return Some(LimitKind::TextLength);
     }
-    let bytes: usize = surface.blocks.iter().map(|b| canonical_len(&b.data)).sum();
+    let bytes: usize = surface.blocks.iter().map(|b| encoded_len(&b.data)).sum();
     (bytes > limits.max_data_bytes).then_some(LimitKind::DataBytes)
 }
 
-/// Checks `surface` (held by `moment`) against `profile`.
+/// Checks `surface` (held by `moment`, at the version `hash` names)
+/// against `profile`.
 pub fn check_surface(
     moment: &MomentId,
     surface: &AgentSurfacePayload,
+    hash: &SurfaceHash,
     profile: &RendererProfile,
 ) -> SurfaceVerdict {
-    let hash = surface_hash(surface);
+    let hash = hash.clone();
     let error = |block: Option<(&BlockId, BlockKind)>, kind| RendererError {
         moment_id: moment.clone(),
         surface_id: surface.surface_id.clone(),
@@ -189,7 +191,8 @@ mod tests {
         assert_eq!(over_limit(&long, &limits), Some(LimitKind::TextLength));
         let bulky = surface((0..3).map(|i| text(&format!("b{i}"), "0123456789")).collect(), 0);
         assert_eq!(over_limit(&bulky, &limits), Some(LimitKind::DataBytes));
-        let verdict = check_surface(&MomentId::new("m"), &long, &profile());
+        let verdict =
+            check_surface(&MomentId::new("m"), &long, &SurfaceHash::of_version(1), &profile());
         assert!(!verdict.renders());
         assert!(verdict.blocks.is_empty());
         assert_eq!(verdict.errors.len(), 1);
@@ -203,7 +206,12 @@ mod tests {
             Block::new("chart", BlockKind::Unsupported, json!({})),
             Block::new("bad", BlockKind::Text, json!({ "text": 1 })),
         ];
-        let verdict = check_surface(&MomentId::new("m"), &surface(blocks, 0), &profile());
+        let verdict = check_surface(
+            &MomentId::new("m"),
+            &surface(blocks, 0),
+            &SurfaceHash::of_version(1),
+            &profile(),
+        );
         assert!(verdict.renders());
         let issues: Vec<(&str, BlockIssue)> =
             verdict.blocks.iter().map(|(id, issue)| (id.as_str(), *issue)).collect();

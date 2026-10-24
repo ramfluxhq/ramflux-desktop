@@ -7,7 +7,7 @@
 use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
-use crate::conformance::{SurfaceHash, action_args_hash};
+use crate::conformance::SurfaceHash;
 use crate::ids::{GrantId, MomentId};
 use crate::intent::{IntentKind, methods};
 use crate::model::{Grant, GrantState, Lifecycle, MomentKind, Risk, SafetyState};
@@ -36,9 +36,24 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                         "surface_hash": surface_hash,
                         "action_id": action_id,
                         "values": values,
-                        "args_hash": action_args_hash(values),
                     }),
                 )
+            })
+        }
+        IntentKind::RequestSurfaceUpdate { moment_id, surface_id } => {
+            p.human_only("ask for a surface's current state").and_then(|()| {
+                let record = p
+                    .store
+                    .surface(moment_id)
+                    .filter(|r| &r.surface_id == surface_id)
+                    .ok_or_else(|| wrong_kind(moment_id, "AgentSurface"))?;
+                if record.state != SurfaceState::OutOfSync {
+                    return Err(IntentError::SurfaceInSync(moment_id.clone()));
+                }
+                Ok(Decision::Call(
+                    methods::SURFACE_REQUEST_RESYNC,
+                    json!({ "moment_id": moment_id, "surface_id": surface_id }),
+                ))
             })
         }
         IntentKind::Approve { grant_id } => open_grant(p, grant_id).map(|grant| {
@@ -167,6 +182,7 @@ fn surface_action(
         SurfaceState::OverLimit(_) => {
             return Err(IntentError::SurfaceOverLimit(moment_id.clone()));
         }
+        SurfaceState::OutOfSync => return Err(IntentError::SurfaceOutOfSync(moment_id.clone())),
         SurfaceState::Open => {}
     }
     let version_known = shown.version != 0;

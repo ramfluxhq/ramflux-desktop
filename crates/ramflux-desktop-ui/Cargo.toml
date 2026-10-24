@@ -68,3 +68,11 @@ name = "sync_shots"
 path = "tests/sync_shots.rs"
 test = false
 harness = false
+
+
+# Offscreen screenshots of agent surfaces from a (fake) daemon; run explicitly.
+[[test]]
+name = "surface_shots"
+path = "tests/surface_shots.rs"
+test = false
+harness = false

@@ -436,4 +436,14 @@ fn header(row: &MomentRow, cx: &App) -> impl IntoElement {
         .when_some(marker, |header, color| {
             header.child(div().text_color(color).child(i18n::lifecycle(moment.lifecycle)))
         })
+        .when_some(
+            row.surface
+                .as_ref()
+                .and_then(|s| s.updated_at)
+                .and_then(|updated| surface::updated_mark(moment.at, updated, cx)),
+            |header, mark| header.child(mark),
+        )
+        .when(matches!(&moment.kind, MomentKind::AgentSurface(p) if p.streaming), |header| {
+            header.child(surface::writing_mark(cx))
+        })
 }

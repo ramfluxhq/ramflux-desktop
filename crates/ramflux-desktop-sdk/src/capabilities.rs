@@ -18,7 +18,8 @@ use ramflux_desktop_core::{Capabilities, ContextKind, methods};
 pub mod reason {
     /// Tasks need the intent and task API (K3).
     pub const TASKS: &str = "backend.gap.tasks";
-    /// Agent surfaces need A2UI bound to conversations and streaming (K2).
+    /// Reporting renderer errors to a surface's author has no daemon
+    /// counterpart (K2 carries surfaces, not renderer reports).
     pub const SURFACES: &str = "backend.gap.surfaces";
     /// Handoff (K7).
     pub const HANDOFF: &str = "backend.gap.handoff";
@@ -44,7 +45,6 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
     let mut table: BTreeMap<String, &'static str> = [
         (methods::TASK_START, reason::TASKS),
         (methods::TASK_CANCEL, reason::TASKS),
-        (methods::SURFACE_ACTION, reason::SURFACES),
         (methods::RENDERER_ERROR, reason::SURFACES),
         (methods::HANDOFF_ACCEPT, reason::HANDOFF),
         (methods::HANDOFF_DECLINE, reason::HANDOFF),

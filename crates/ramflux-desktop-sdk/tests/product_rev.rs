@@ -6,5 +6,9 @@
 #[test]
 fn the_shown_product_revision_is_the_pinned_one() {
     let pinned = ramflux_desktop_test::live_daemon::pinned_product_rev().expect("pinned revision");
-    assert_eq!(ramflux_desktop_sdk::PRODUCT_REV, pinned, "update PRODUCT_REV with the pin");
+    assert_eq!(
+        ramflux_desktop_sdk::PRODUCT_REV,
+        pinned,
+        "PRODUCT_REV is read from the lockfile at build time"
+    );
 }

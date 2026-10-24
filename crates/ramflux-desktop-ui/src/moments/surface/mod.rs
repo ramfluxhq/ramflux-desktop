@@ -14,8 +14,9 @@
 //! renderer still cannot read falls back the same way. Every action carries
 //! the surface version it was shown on (hash and version number). Streaming
 //! text re-renders the growing block in place; an open stream that has no
-//! text yet holds one line, and the "writing" mark sits in the frame's
-//! corner, so a stream starting or ending never shifts the layout. A closed
+//! text yet holds one line, and the "writing" mark sits in the row header
+//! beside the time ([`writing_mark`]), never over the text, so a stream
+//! starting or ending never shifts the layout. A closed
 //! surface is frozen: its fallback text, with the final view behind a
 //! disclosure and no actions. Long read-only surfaces collapse in place.
 //!
@@ -48,12 +49,12 @@ use gpui_kit::{AnyElement, App, Entity, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::conformance::BlockIssue;
 use ramflux_desktop_core::{
     AgentSurfacePayload, Block, BlockId, BlockKind, Grant, GrantId, Scope, SurfaceAction,
-    SurfaceHash, UiEventKind,
+    SurfaceHash, Timestamp, UiEventKind,
 };
 
 use super::{RowRefs, RowState};
 use crate::bubble::EventSink;
-use crate::i18n::{tr, tr_args};
+use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 
 /// Blocks shown while a long surface is collapsed.
@@ -183,23 +184,10 @@ impl RenderOnce for SurfaceBody {
             .cloned()
             .collect();
         frame
-            .when(self.payload.streaming, |col| {
-                // Out of the flow: starting or ending a stream moves nothing.
-                col.child(
-                    h_flex()
-                        .id("surface-streaming")
-                        .absolute()
-                        .top_2()
-                        .right_3()
-                        .gap_1()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(Icon::new(IconName::LoaderCircle).xsmall())
-                        .child(tr("surface.streaming"))
-                        .test_support(),
-                )
-            })
             .when(self.status.conflict, |col| col.child(status::conflict(cx)))
+            .when(self.status.out_of_sync, |col| {
+                col.child(status::out_of_sync(self.status.update.as_ref(), &surface_sink, cx))
+            })
             .children(blocks)
             .when(collapsible || (expanded && total > COLLAPSED_BLOCKS + 1), |col| {
                 let label = if expanded {
@@ -268,6 +256,37 @@ impl SurfaceBody {
             })
             .collect()
     }
+}
+
+/// The "writing" mark of a surface whose author is still streaming, for the
+/// row header (the same height as the header's text).
+pub fn writing_mark(cx: &App) -> AnyElement {
+    h_flex()
+        .id("surface-streaming")
+        .gap_1()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(Icon::new(IconName::LoaderCircle).xsmall())
+        .child(tr("surface.streaming"))
+        .test_support()
+        .into_any_element()
+}
+
+/// The surface's last-updated time for the row header, beside its posting
+/// time: shown when it reads differently from the posting time (another
+/// minute; with the date on another day).
+pub fn updated_mark(posted: Timestamp, updated: Timestamp, cx: &App) -> Option<AnyElement> {
+    let same_day = i18n::date_time(posted).get(..10) == i18n::date_time(updated).get(..10);
+    let time = if same_day { i18n::time_of_day(updated) } else { i18n::date_time(updated) };
+    (updated > posted && time != i18n::time_of_day(posted)).then(|| {
+        div()
+            .id("surface-updated")
+            .text_xs()
+            .text_color(cx.theme().muted_foreground)
+            .child(tr_args("surface.updated", &[("time", &time)]))
+            .test_support()
+            .into_any_element()
+    })
 }
 
 /// An open stream with no text yet: one line of the body text's height, so

@@ -80,8 +80,15 @@ impl Task {
                 };
                 let message = self.translator.failure_message(method, &error);
                 let closed = self.translator.effect_failed(method, body, &code, &message, now());
-                let failure = EffectFailure { method: method.to_owned(), code, message };
-                let mut events = vec![DomainEvent::EffectFailed(failure)];
+                // A refused update request is answered in its surface, next
+                // to the button; it is not a status-strip error as well.
+                let mut events = if method == ramflux_desktop_core::methods::SURFACE_REQUEST_RESYNC
+                {
+                    Vec::new()
+                } else {
+                    let failure = EffectFailure { method: method.to_owned(), code, message };
+                    vec![DomainEvent::EffectFailed(failure)]
+                };
                 events.extend(closed);
                 self.emit(events);
                 // What applied before a failure is read back.

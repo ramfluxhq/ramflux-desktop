@@ -10,8 +10,11 @@
 // Timeline: 200 ms create v1 + step needs me; 1500 ms patch v2 (adds
 // Monday); 2500 ms patch v3 against v1 (conflict); 3500 ms the same patch v3
 // against v2 (applied). Answer after 3.5 s: the response patches v4 against
-// v3, closes the surface (v5) and finishes the task. `base_hash` values
-// are content hashes; the test `s11_hashes_match_the_contract` checks them.
+// v3, closes the surface (v5) and finishes the task. The fixture carries no
+// content hashes (the surface protocol computes those; the SDK replay of this
+// scenario gets them from the fake daemon), so each version is labelled `vN`
+// and `base_hash` names the label of the version patched; the test
+// `s11_hashes_match_the_contract` checks them.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s11_surface_versions",
@@ -55,7 +58,7 @@
         ))),
         (200, TaskStepChanged(task_id: "t-day", version: 2, step_id: "pick", state: NeedsMe,
             needs_me: Choice(surface_id: "s-pick"))),
-        (1500, Surface(Patch(surface_id: "s-pick", version: 2, base_hash: "sha256:79a41494ab548f3e7e791511f47b31287f30c665b62927f5b11f0d22273a80ce", ops: [
+        (1500, Surface(Patch(surface_id: "s-pick", version: 2, base_hash: "v1", ops: [
             ReplaceBlock(block: (id: "b-q", kind: Text,
                 data: {"text": "Which day should the release go out? Monday works too now."})),
             SetActions(actions: [
@@ -64,11 +67,11 @@
                 (id: "mon", label: "Monday"),
             ]),
         ]))),
-        (2500, Surface(Patch(surface_id: "s-pick", version: 3, base_hash: "sha256:79a41494ab548f3e7e791511f47b31287f30c665b62927f5b11f0d22273a80ce", ops: [
+        (2500, Surface(Patch(surface_id: "s-pick", version: 3, base_hash: "v1", ops: [
             InsertBlock(index: 1, block: (id: "b-note", kind: Warning,
                 data: {"text": "QA is booked until Thursday noon."})),
         ]))),
-        (3500, Surface(Patch(surface_id: "s-pick", version: 3, base_hash: "sha256:46403b85cfedd0f3d871f9483839a12535a70e49db8e75de43e088c4db06fa30", ops: [
+        (3500, Surface(Patch(surface_id: "s-pick", version: 3, base_hash: "v2", ops: [
             InsertBlock(index: 1, block: (id: "b-note", kind: Warning,
                 data: {"text": "QA is booked until Thursday noon."})),
         ]))),
@@ -77,7 +80,7 @@
         (
             on: Call(method: "surface.action", fields: {"surface_id": "s-pick", "action_id": "thu"}),
             emit: [
-                (200, Surface(Patch(surface_id: "s-pick", version: 4, base_hash: "sha256:23f05c927afca2cc4b93f7224d84db3d0b56d8437598cf5c876b313726886592", ops: [
+                (200, Surface(Patch(surface_id: "s-pick", version: 4, base_hash: "v3", ops: [
                     InsertBlock(index: 2, block: (id: "b-answer", kind: Success,
                         data: {"text": "You chose Thursday."})),
                     SetActions(actions: []),
@@ -93,7 +96,7 @@
         (
             on: Call(method: "surface.action", fields: {"surface_id": "s-pick", "action_id": "mon"}),
             emit: [
-                (200, Surface(Patch(surface_id: "s-pick", version: 4, base_hash: "sha256:23f05c927afca2cc4b93f7224d84db3d0b56d8437598cf5c876b313726886592", ops: [
+                (200, Surface(Patch(surface_id: "s-pick", version: 4, base_hash: "v3", ops: [
                     InsertBlock(index: 2, block: (id: "b-answer", kind: Success,
                         data: {"text": "You chose Monday."})),
                     SetActions(actions: []),
@@ -109,7 +112,7 @@
         (
             on: Call(method: "surface.action", fields: {"surface_id": "s-pick", "action_id": "fri"}),
             emit: [
-                (200, Surface(Patch(surface_id: "s-pick", version: 4, base_hash: "sha256:23f05c927afca2cc4b93f7224d84db3d0b56d8437598cf5c876b313726886592", ops: [
+                (200, Surface(Patch(surface_id: "s-pick", version: 4, base_hash: "v3", ops: [
                     InsertBlock(index: 2, block: (id: "b-answer", kind: Success,
                         data: {"text": "You chose Friday."})),
                     SetActions(actions: []),

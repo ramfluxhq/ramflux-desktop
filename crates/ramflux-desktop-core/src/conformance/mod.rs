@@ -6,7 +6,8 @@
 //!
 //! - [`profile`]: the renderer profile (device class, block kinds and
 //!   versions, input and output modes, surface modes, limits).
-//! - [`hash`]: the canonical content hash every surface version carries.
+//! - [`hash`]: the content hash every surface version carries (its source
+//!   computes it; the desktop has no encoder of its own).
 //! - [`schema`]: the data shape each block kind needs.
 //! - [`check`]: a surface against a profile: limits, unsupported blocks,
 //!   shape mismatches, display-blocked blocks.
@@ -24,7 +25,7 @@ pub mod schema;
 
 pub use check::{BlockIssue, SurfaceVerdict, check_surface, over_limit};
 pub use error::{RendererError, RendererErrorKind};
-pub use hash::{SurfaceHash, action_args_hash, surface_hash};
+pub use hash::SurfaceHash;
 pub use profile::{
     BlockSupport, DeviceClass, InputMode, LimitKind, Limits, OutputMode, RendererProfile,
     SurfaceMode,

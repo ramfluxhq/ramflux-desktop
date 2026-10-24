@@ -35,10 +35,11 @@ pub mod surface_event;
 pub mod ui_event;
 
 pub use conformance::{
-    RendererError, RendererErrorKind, RendererProfile, SurfaceHash, SurfaceVerdict, surface_hash,
+    RendererError, RendererErrorKind, RendererProfile, SurfaceHash, SurfaceVerdict,
 };
 pub use event::{
-    DomainEvent, EVENT_SCHEMA, EventEnvelope, SourceStatus, SurfaceEvent, SurfaceOp, SurfacePatchOp,
+    DomainEvent, EVENT_SCHEMA, EventEnvelope, SourceStatus, SurfaceEvent, SurfaceOp,
+    SurfacePatchOp, SurfaceSnapshot,
 };
 pub use ids::{
     AccountId, BlockId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
@@ -57,6 +58,6 @@ pub use serde_json::Value as JsonValue;
 pub use source::Source;
 pub use store::{
     ApplyError, BodyCache, Changes, MAX_AUDIT, MAX_BODIES, MAX_FAILURES, MAX_REJECTIONS, Rejection,
-    Store, StreamState, SurfaceRecord, SurfaceState,
+    Store, StreamState, SurfaceRecord, SurfaceState, UpdateRequest,
 };
 pub use ui_event::{NodeAction, ObjectAction, Scope, UiEvent, UiEventKind};

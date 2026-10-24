@@ -375,6 +375,25 @@ surface:
     action:
       en: "Unavailable until the surface is up to date"
       zh-CN: "界面更新前不可用"
+  updated:
+    en: "updated %{time}"
+    zh-CN: "更新于 %{time}"
+  out_of_sync:
+    title:
+      en: "Not up to date"
+      zh-CN: "未同步到最新"
+    text:
+      en: "This device missed an update from the author, so what you see may be an older version. Actions are paused until it catches up."
+      zh-CN: "本设备错过了作者的一次更新，你看到的可能是旧版本。在同步到最新之前，操作暂停。"
+    request:
+      en: "Request update"
+      zh-CN: "请求更新"
+    requested:
+      en: "Update requested. The author's current version replaces this view when it arrives."
+      zh-CN: "已请求更新。作者的当前版本到达后将替换此界面。"
+    refused:
+      en: "Couldn't request an update: %{reason}"
+      zh-CN: "无法请求更新：%{reason}"
   review_again:
     title:
       en: "Changed after you reviewed it"

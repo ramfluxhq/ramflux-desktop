@@ -346,6 +346,7 @@ fn a_choice_needs_me_at_its_surface_not_at_the_task() {
             blocks: vec![Block::new("b-q", BlockKind::Text, json!({ "text": "Which day?" }))],
             actions: Vec::new(),
             fallback_text: "Orbit asks which day to release".to_owned(),
+            hash: None,
         }),
     );
     let choice = NeedsMe::Choice { surface_id: SurfaceId::new("s-pick") };

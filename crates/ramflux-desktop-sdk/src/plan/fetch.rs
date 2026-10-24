@@ -76,6 +76,10 @@ pub enum Fetch {
     /// `message.receive` for one direct context (pull from the node), read
     /// back through [`Fetch::Messages`].
     Receive(ContextId),
+    /// `surface.list` of one conversation; `None` asks for the first page.
+    Surfaces(ContextId, Option<String>),
+    /// `surface.get` of one surface, by the daemon's scoped `surface_ref`.
+    Surface(String),
     /// `group.receive` for one group conversation (pull from the node);
     /// answers with the conversation's stored messages.
     GroupReceive {
@@ -143,6 +147,22 @@ impl Fetch {
                     "conversation_id": context,
                     "auto_fetch_attachments": false,
                 }),
+            ),
+            Self::Surfaces(context, cursor) => BusRequest::new(
+                account,
+                "surface",
+                "surface.list",
+                json!({
+                    "conversation_id": context,
+                    "limit": PAGE_LIMIT,
+                    "cursor": cursor.as_deref().unwrap_or_default(),
+                }),
+            ),
+            Self::Surface(reference) => BusRequest::new(
+                account,
+                "surface",
+                "surface.get",
+                json!({ "surface_ref": reference }),
             ),
             Self::GroupReceive { context, group } => BusRequest::new(
                 account,

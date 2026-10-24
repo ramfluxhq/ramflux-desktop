@@ -65,6 +65,13 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                 version: *version,
             }
         }
+        UiEventKind::SurfaceUpdateRequested => {
+            let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
+            IntentKind::RequestSurfaceUpdate {
+                moment_id,
+                surface_id: event.surface_id().unwrap_or(&surface.surface_id).clone(),
+            }
+        }
         UiEventKind::ApprovePressed => {
             IntentKind::Approve { grant_id: decision_grant(event, moment, store)? }
         }

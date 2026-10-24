@@ -84,8 +84,13 @@ pub fn renderer_summary(profile: &RendererProfile, errors: Option<&RendererError
         format!("surface modes: {:?}", profile.surface_modes),
         format!("blocks: {}", blocks.join(", ")),
         format!(
-            "limits: blocks={} actions={} text={} data_bytes={}",
-            limits.max_blocks, limits.max_actions, limits.max_text_chars, limits.max_data_bytes
+            "limits: blocks={} actions={} text={} data_bytes={} delta_bytes={} stream_chars={}",
+            limits.max_blocks,
+            limits.max_actions,
+            limits.max_text_chars,
+            limits.max_data_bytes,
+            limits.max_text_delta_bytes,
+            limits.max_stream_chars
         ),
     ];
     if let Some(errors) = errors {

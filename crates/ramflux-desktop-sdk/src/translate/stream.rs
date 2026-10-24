@@ -22,7 +22,7 @@ use super::{Translator, seconds, text};
 use crate::plan::fetch::{Fetch, Paged};
 
 /// Topics whose events call for reads.
-pub const READ_TOPICS: [&str; 13] = [
+pub const READ_TOPICS: [&str; 15] = [
     "conversation.changed",
     "message.received",
     "message.updated",
@@ -36,14 +36,17 @@ pub const READ_TOPICS: [&str; 13] = [
     "mcp.approval.granted",
     "mcp.approval.denied",
     "message.unrouted",
+    "surface.changed",
+    "surface.rejected",
 ];
 
 /// The daemon's state topics, read directly.
 pub const STATE_TOPICS: [&str; 2] = ["account.state", "sync.status"];
 
 /// Every topic the desktop subscribes to on the stream. Not subscribed:
-/// `node.health` (it names no node), tool starts and A2UI action records
-/// (they have no conversation to land in yet; see the gap ledger).
+/// `node.health` (it names no node), tool starts and the older A2UI records
+/// (they have no conversation to land in; conversation surfaces come through
+/// `surface.changed`).
 pub fn topics() -> Vec<&'static str> {
     READ_TOPICS.iter().chain(STATE_TOPICS.iter()).copied().collect()
 }
@@ -129,6 +132,19 @@ impl Translator {
             }
             // Held until the daemon can route it; it lists it then.
             "message.unrouted" => vec![conversations],
+            // Metadata only: read the surface when it names another state
+            // than the one shown (a rejection names the surface, if any).
+            "surface.changed" | "surface.rejected" => {
+                let mut reads: Vec<Fetch> = match text(body, "surface_ref") {
+                    "" => Vec::new(),
+                    _ if topic == "surface.changed" && !self.surface_stale(body) => Vec::new(),
+                    reference => vec![Fetch::Surface(reference.to_owned())],
+                };
+                if context.is_some() && kind.is_none() {
+                    reads.push(conversations);
+                }
+                reads
+            }
             _ => Vec::new(),
         }
     }

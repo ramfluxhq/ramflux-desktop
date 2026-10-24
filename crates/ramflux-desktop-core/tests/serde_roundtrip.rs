@@ -78,6 +78,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::StartConversation { .. } => "StartConversation",
         IntentKind::AttachObject { .. } => "AttachObject",
         IntentKind::SurfaceAction { .. } => "SurfaceAction",
+        IntentKind::RequestSurfaceUpdate { .. } => "RequestSurfaceUpdate",
         IntentKind::Approve { .. } => "Approve",
         IntentKind::Deny { .. } => "Deny",
         IntentKind::Reveal { .. } => "Reveal",
@@ -121,7 +122,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the six secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 38;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 39;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -129,6 +130,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::StartConversationRequested { .. } => "StartConversationRequested",
         UiEventKind::AttachFile { .. } => "AttachFile",
         UiEventKind::ActionInvoked { .. } => "ActionInvoked",
+        UiEventKind::SurfaceUpdateRequested => "SurfaceUpdateRequested",
         UiEventKind::ApprovePressed => "ApprovePressed",
         UiEventKind::DenyPressed => "DenyPressed",
         UiEventKind::RevealPressed => "RevealPressed",
@@ -160,7 +162,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 33;
+const UI_EVENT_KIND_VARIANTS: usize = 34;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -344,6 +346,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
                 disabled_reason: None,
             }],
             fallback_text: "A reply".into(),
+            hash: Some(SurfaceHash::new("Qh1")),
         }),
         DomainEvent::Surface(SurfaceEvent::Patch {
             surface_id: SurfaceId::new("s-1"),
@@ -359,7 +362,9 @@ fn all_domain_events() -> Vec<DomainEvent> {
                 },
                 SurfacePatchOp::RemoveBlock { block_id: BlockId::new("b-0") },
                 SurfacePatchOp::SetActions { actions: Vec::new() },
+                SurfacePatchOp::SetFallback { fallback_text: "Done".into() },
             ],
+            hash: None,
         }),
         DomainEvent::Surface(SurfaceEvent::StreamAppend {
             surface_id: SurfaceId::new("s-1"),
@@ -367,8 +372,37 @@ fn all_domain_events() -> Vec<DomainEvent> {
             block_id: BlockId::new("b-1"),
             text_delta: "more".into(),
             is_final: true,
+            hash: Some(SurfaceHash::new("Qh3")),
         }),
         DomainEvent::Surface(SurfaceEvent::Close { surface_id: SurfaceId::new("s-1"), version: 4 }),
+        DomainEvent::Surface(SurfaceEvent::Snapshot(Box::new(SurfaceSnapshot {
+            moment_id: MomentId::new("m-s"),
+            context_id: ContextId::new("c-1"),
+            origin: ParticipantId::new("p-1"),
+            at: Some(Timestamp(9)),
+            surface_id: SurfaceId::new("s-1"),
+            version: 7,
+            hash: SurfaceHash::new("Qh7"),
+            blocks: vec![Block::new("b-1", BlockKind::Text, json!({ "text": "x" }))],
+            actions: Vec::new(),
+            fallback_text: "A reply".into(),
+            closed: false,
+            out_of_sync: true,
+            open_streams: vec![BlockId::new("b-1")],
+        }))),
+        DomainEvent::Surface(SurfaceEvent::ActionRefused {
+            surface_id: SurfaceId::new("s-1"),
+            version: 6,
+        }),
+        DomainEvent::Surface(SurfaceEvent::UpdateRequested {
+            surface_id: SurfaceId::new("s-1"),
+            refused: Some("backend.surface.rate_limited".into()),
+        }),
+        DomainEvent::Surface(SurfaceEvent::UpdatedAt {
+            surface_id: SurfaceId::new("s-1"),
+            at: Timestamp(1_790_000_090_000),
+        }),
+        DomainEvent::Surface(SurfaceEvent::Removed { surface_id: SurfaceId::new("s-1") }),
         DomainEvent::SourceStatusChanged(SourceStatus::Locked),
         DomainEvent::ContextSettingsChanged {
             context_id: ContextId::new("c-1"),
@@ -476,6 +510,10 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             surface_hash: SurfaceHash::new("sha256:abc"),
             version: 2,
         },
+        IntentKind::RequestSurfaceUpdate {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+        },
         IntentKind::Approve { grant_id: GrantId::new("g-1") },
         IntentKind::Deny { grant_id: GrantId::new("g-1") },
         IntentKind::Reveal { moment_id: MomentId::new("m-1") },
@@ -544,6 +582,7 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
             surface_hash: SurfaceHash::new("sha256:abc"),
             version: 2,
         },
+        UiEventKind::SurfaceUpdateRequested,
         UiEventKind::ApprovePressed,
         UiEventKind::DenyPressed,
         UiEventKind::RevealPressed,

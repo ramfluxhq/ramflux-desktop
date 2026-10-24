@@ -175,7 +175,8 @@ const RECONCILE: &str = "operation requires reconciliation";
 /// How the client and the daemon describe a missed deadline.
 const DEADLINE_EXCEEDED: &str = "request deadline exceeded";
 
-/// Error codes the daemon puts on error frames.
+/// Error codes the daemon puts on error frames (besides the typed surface
+/// refusal codes, [`daemon_code`]).
 const DAEMON_CODES: [&str; 5] = [
     "ValidationFailed",
     "CapabilityDenied",
@@ -183,6 +184,15 @@ const DAEMON_CODES: [&str; 5] = [
     "SignatureVerificationFailed",
     "RemoteAppApprovalRequired",
 ];
+
+/// Whether `code` is a code the daemon puts on error frames: one of
+/// [`DAEMON_CODES`] or a typed surface refusal (`not_out_of_sync`,
+/// `too_large`, …, as the SDK defines them).
+fn daemon_code(code: &str) -> bool {
+    DAEMON_CODES.contains(&code)
+        || serde_json::from_value::<ramflux_sdk::SurfaceRefusalCode>(serde_json::Value::from(code))
+            .is_ok()
+}
 
 impl From<SdkError> for BusError {
     fn from(error: SdkError) -> Self {
@@ -192,7 +202,7 @@ impl From<SdkError> for BusError {
             SdkError::LocalBus(text) if text.contains(DEADLINE_EXCEEDED) => Self::Timeout,
             // An error frame reaches the client as `LocalBus("<code>: <message>")`.
             SdkError::LocalBus(text) => match text.split_once(": ") {
-                Some((code, message)) if DAEMON_CODES.contains(&code) => {
+                Some((code, message)) if daemon_code(code) => {
                     Self::Daemon { code: code.to_owned(), message: message.to_owned() }
                 }
                 _ => Self::Transport(text),
@@ -227,6 +237,18 @@ mod tests {
         assert!(odd.is_connection_lost());
         let closed = BusError::from(SdkError::LocalBus("local bus connection closed".to_owned()));
         assert!(closed.is_connection_lost());
+        // A typed surface refusal is the daemon's answer, not a lost link.
+        let refused = BusError::from(SdkError::LocalBus(
+            "not_out_of_sync: surface is not out of sync".to_owned(),
+        ));
+        assert_eq!(
+            refused,
+            BusError::Daemon {
+                code: "not_out_of_sync".to_owned(),
+                message: "surface is not out of sync".to_owned(),
+            }
+        );
+        assert!(!refused.is_connection_lost());
     }
 
     #[test]

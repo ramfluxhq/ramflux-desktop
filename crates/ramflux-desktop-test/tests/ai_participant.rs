@@ -236,7 +236,8 @@ fn over_limit_values_match_the_protocol_budgets() {
     let limits = conformance::Limits::DESKTOP;
     assert_eq!(
         (limits.max_blocks, limits.max_actions, limits.max_text_chars, limits.max_data_bytes),
-        (64, 16, 16_384, 65_536)
+        (64, 16, 16_384, 16_384),
+        "the protocol's bounds (the SDK crate checks them against its constants)"
     );
     assert_eq!((limits.max_text_delta_bytes, limits.max_stream_chars), (4_096, 16_384));
     let _ = LimitKind::TextDelta;
@@ -339,7 +340,7 @@ fn s11_a_choice_waits_at_its_surface_survives_a_conflict_and_closes() {
     assert!(p.dispatch(pick(&p, "thu")).expect("thursday").is_empty());
     let body = &p.source().effects().last().expect("effect").body;
     assert_eq!((body["version"].as_u64(), body["action_id"].as_str()), (Some(3), Some("thu")));
-    assert!(body["args_hash"].as_str().is_some_and(|h| h.starts_with("sha256:")));
+    assert!(body.get("args_hash").is_none(), "the source hashes the arguments");
     p.advance(1_500);
     let (payload, record) = surface(&p, "m-pick");
     assert_eq!((record.version, &record.state), (5, &SurfaceState::Closed));

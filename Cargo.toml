@@ -24,14 +24,12 @@ ron = "0.12"
 rust-i18n = "4.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Content hash of agent surfaces (already in the tree through the product crates).
-sha2 = { version = "0.10", default-features = false }
 thiserror = "2"
 zeroize = "1.8"
 # The product SDK (local-bus client, request types), pinned by full commit.
-ramflux-sdk = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "9227749eb27725d40aab9e7e92abf173fcb3a4f5" }
-ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "9227749eb27725d40aab9e7e92abf173fcb3a4f5" }
-ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "9227749eb27725d40aab9e7e92abf173fcb3a4f5" }
+ramflux-sdk = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "8eebac153c7479e22f1166348d247f1277b66021" }
+ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "8eebac153c7479e22f1166348d247f1277b66021" }
+ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "8eebac153c7479e22f1166348d247f1277b66021" }
 # Only on the SDK bridge thread; never in GPUI tasks or core.
 tokio = { version = "1.42", default-features = false, features = ["rt", "net", "sync", "time", "macros", "io-util"] }
 ramflux-desktop-core = { path = "crates/ramflux-desktop-core" }

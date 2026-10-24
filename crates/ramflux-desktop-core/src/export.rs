@@ -37,6 +37,7 @@ fn body(store: &Store, moment: &Moment) -> String {
                 Some(SurfaceState::Closed) => " [closed]",
                 Some(SurfaceState::Conflict { .. }) => " [out of date]",
                 Some(SurfaceState::OverLimit(_)) => " [too large to show; summary]",
+                Some(SurfaceState::OutOfSync) => " [out of sync]",
                 Some(SurfaceState::Open) | None if p.streaming => " [writing]",
                 Some(SurfaceState::Open) | None => "",
             };

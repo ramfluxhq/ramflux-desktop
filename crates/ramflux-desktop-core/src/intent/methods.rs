@@ -21,6 +21,8 @@ pub const OBJECT_SAVE: &str = "object.save";
 pub const OBJECT_RETRY: &str = "object.transfer.resume";
 /// Invoke a surface action.
 pub const SURFACE_ACTION: &str = "surface.action";
+/// Ask the author of an out-of-sync surface for its current state.
+pub const SURFACE_REQUEST_RESYNC: &str = "surface.request_resync";
 /// Report what a renderer could not show (to the surface producer).
 pub const RENDERER_ERROR: &str = "surface.renderer_error";
 /// Approve a grant.

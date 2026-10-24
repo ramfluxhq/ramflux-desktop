@@ -58,10 +58,9 @@ fn text_of(feed: &Feed) -> String {
 }
 
 #[test]
-fn the_store_hash_is_the_canonical_hash_of_the_payload() {
+fn an_unhashed_surface_is_labelled_by_its_version() {
     let feed = seeded();
-    let MomentKind::AgentSurface(payload) = surface("s-1") else { unreachable!() };
-    assert_eq!(hash(&feed), surface_hash(&payload));
+    assert_eq!(hash(&feed), SurfaceHash::of_version(1));
 }
 
 #[test]

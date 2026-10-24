@@ -26,6 +26,8 @@
 //! - `outgoing`: a started conversation and an attachment on its way,
 //!   before the daemon lists them.
 //! - `stream`: the reads a pushed list-changing event calls for.
+//! - `surfaces`: agent surfaces the daemon holds, as surface moments.
+//! - `surface_answers`: the daemon's answers to surface effects.
 //! - `effects`: answers to effects, and the audit record of confirmed ones.
 //! - `reason`: locale keys with arguments.
 
@@ -46,6 +48,8 @@ pub mod pages;
 pub mod reason;
 mod send_failures;
 pub mod stream;
+mod surface_answers;
+mod surfaces;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -148,6 +152,11 @@ pub struct Translator {
     /// listed yet: a listing read before the start does not remove them.
     started: BTreeSet<ContextId>,
     message_objects: BTreeMap<String, ObjectId>,
+    /// Surfaces reported, by the daemon's scoped `surface_ref`.
+    surfaces: BTreeMap<String, surfaces::KnownSurface>,
+    /// When each surface was posted (conversation, surface id, author), from
+    /// its first message.
+    surface_times: BTreeMap<(ContextId, String, String), Timestamp>,
     mcp_tools: Option<BTreeMap<String, Vec<String>>>,
     mcp_servers: Option<Vec<Value>>,
     integrations: Option<ramflux_desktop_core::Integrations>,
@@ -188,6 +197,8 @@ impl Translator {
             sent_attachments: BTreeMap::new(),
             started: BTreeSet::new(),
             message_objects: BTreeMap::new(),
+            surfaces: BTreeMap::new(),
+            surface_times: BTreeMap::new(),
             mcp_tools: None,
             mcp_servers: None,
             integrations: None,
@@ -242,6 +253,15 @@ impl Translator {
     /// is received through the group the directory links it to (none when
     /// no group is linked).
     fn messages_read(&self, context: &ContextId, kind: ContextKind, pull: bool) -> Vec<Fetch> {
+        let mut reads = self.message_reads(context, kind, pull);
+        if !reads.is_empty() {
+            // The conversation's surfaces come with its messages.
+            reads.push(Self::surfaces_read(context));
+        }
+        reads
+    }
+
+    fn message_reads(&self, context: &ContextId, kind: ContextKind, pull: bool) -> Vec<Fetch> {
         match kind {
             ContextKind::Group => self
                 .directory
@@ -319,11 +339,15 @@ impl Translator {
             Fetch::Grants => Translated::events(self.grant_list(value)),
             Fetch::StandingApprovals => Translated::events(self.standing_list(value)),
             Fetch::McpTools => Translated::events(self.mcp_tools(value)),
-            Fetch::Messages(context) => Translated::events(self.messages(context, value, now)),
+            Fetch::Messages(context) => self.messages(context, value, now),
             Fetch::GroupReceive { context, .. } => {
                 self.remember_plaintext(value);
-                Translated::events(self.messages(context, value, now))
+                self.messages(context, value, now)
             }
+            Fetch::Surfaces(context, _) => {
+                Translated { events: Vec::new(), follow: self.surface_list(context, value) }
+            }
+            Fetch::Surface(reference) => Translated::events(self.surface_view(reference, value)),
             Fetch::Receive(_) => {
                 self.remember_plaintext(value);
                 Translated::default()
@@ -419,6 +443,10 @@ impl Known for Translator {
 
     fn directory(&self) -> Option<&Directory> {
         Some(&self.directory)
+    }
+
+    fn surface(&self, surface_ref: &str) -> Option<&crate::surface::SurfaceTarget> {
+        self.surface_target(surface_ref)
     }
 }
 

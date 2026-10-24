@@ -42,7 +42,7 @@ use crate::model::{
 
 pub use bodies::{BodyCache, MAX_BODIES};
 pub use changes::{ApplyError, Changes, Rejection};
-pub use surfaces::{StreamState, SurfaceRecord, SurfaceState};
+pub use surfaces::{StreamState, SurfaceRecord, SurfaceState, UpdateRequest};
 
 use index::Indexes;
 

@@ -47,6 +47,14 @@ impl Translator {
                 members.iter().map(|device| self.member_name(device)).collect();
             return keyed(key::GROUP_ROUTES_UNRESOLVED, &[("members", &names.join(", "))]);
         }
+        if method == methods::SURFACE_ACTION
+            && let BusError::Daemon { code, .. } = error
+            && super::surface_answers::code_of(code).is_some()
+        {
+            // A typed surface refusal: its text, never the English message.
+            let reason = super::surface_answers::refusal_text(code);
+            return keyed(key::SURFACE_ACTION_REJECTED, &[("reason", &reason)]);
+        }
         if matches!(method, methods::NODE_ADD | methods::NODE_PROBE)
             && super::node_failures::local_network_permission_applies()
         {

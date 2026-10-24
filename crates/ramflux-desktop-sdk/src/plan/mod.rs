@@ -18,6 +18,7 @@
 //! - [`message`]: direct and group sends, attachments.
 //! - [`object`]: opening, saving and resuming objects.
 //! - [`group`]: membership, roles and invitations.
+//! - [`surface`]: surface actions and update requests.
 
 pub mod contact;
 pub mod conversation;
@@ -26,6 +27,7 @@ pub mod group;
 pub mod identity;
 pub mod message;
 pub mod object;
+pub mod surface;
 
 use ramflux_desktop_core::{
     AccountId, AccountKind, ContextId, ContextKind, Effect, FailureCode, NodeId, PinSource,
@@ -58,6 +60,11 @@ pub trait Known {
     }
     /// What the client directories listed (routes, devices, commitments).
     fn directory(&self) -> Option<&Directory> {
+        None
+    }
+    /// Where a reported surface lives, by its desktop id (`surface_ref`).
+    fn surface(&self, surface_ref: &str) -> Option<&crate::surface::SurfaceTarget> {
+        let _ = surface_ref;
         None
     }
 }
@@ -350,6 +357,8 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         | methods::GROUP_ADD_MEMBER
         | methods::GROUP_CREATE_INVITE => group::governance(acct, method, body, known),
         methods::SAFETY_VERIFY => contact::verify(acct, body, known),
+        methods::SURFACE_ACTION => surface::action(acct, body, known),
+        methods::SURFACE_REQUEST_RESYNC => surface::request_resync(acct, body, known),
         methods::CONTACT_ADD
         | methods::CONTACT_ACCEPT
         | methods::CONTACT_REJECT

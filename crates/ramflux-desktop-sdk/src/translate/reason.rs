@@ -55,8 +55,41 @@ pub mod key {
     /// no verified signing key.
     pub const START_UNVERIFIED_KEY: &str = "backend.failure.start_unverified_key";
 
+    /// The daemon did not send a surface action (`reason`).
+    pub const SURFACE_ACTION_REJECTED: &str = "backend.failure.surface_action_rejected";
+    /// The daemon refused a surface request with a code the desktop does
+    /// not know (`code`).
+    pub const SURFACE_REFUSED: &str = "backend.surface.refused";
+    /// Typed surface refusals (the daemon's `reason_code`), one key each.
+    /// The surface had a newer version than the one shown.
+    pub const SURFACE_STALE_VERSION: &str = "backend.surface.stale_version";
+    /// The surface's content changed after it was shown.
+    pub const SURFACE_STALE_HASH: &str = "backend.surface.stale_hash";
+    /// Only the surface's author may do it.
+    pub const SURFACE_NOT_AUTHOR: &str = "backend.surface.not_author";
+    /// The surface is up to date (nothing to request).
+    pub const SURFACE_NOT_OUT_OF_SYNC: &str = "backend.surface.not_out_of_sync";
+    /// Asked too recently.
+    pub const SURFACE_RATE_LIMITED: &str = "backend.surface.rate_limited";
+    /// Too large to send.
+    pub const SURFACE_TOO_LARGE: &str = "backend.surface.too_large";
+    /// The daemon no longer holds the surface.
+    pub const SURFACE_NOT_FOUND: &str = "backend.surface.not_found";
+    /// The surface is out of sync.
+    pub const SURFACE_OUT_OF_SYNC: &str = "backend.surface.out_of_sync";
+    /// Another device of the account takes the surface's actions.
+    pub const SURFACE_NOT_ACTION_EXECUTOR: &str = "backend.surface.not_action_executor";
+    /// The action was used already.
+    pub const SURFACE_ALREADY_USED: &str = "backend.surface.already_used";
+    /// The surface is closed.
+    pub const SURFACE_CLOSED: &str = "backend.surface.closed";
+    /// Not permitted on this surface.
+    pub const SURFACE_NOT_PERMITTED: &str = "backend.surface.not_permitted";
+    /// The daemon could not accept the request.
+    pub const SURFACE_INVALID_REQUEST: &str = "backend.surface.invalid_request";
+
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 17] = [
+    pub const ALL: [&str; 32] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -74,6 +107,21 @@ pub mod key {
         START_NO_IDENTITY,
         START_NO_TARGET,
         START_UNVERIFIED_KEY,
+        SURFACE_ACTION_REJECTED,
+        SURFACE_REFUSED,
+        SURFACE_STALE_VERSION,
+        SURFACE_STALE_HASH,
+        SURFACE_NOT_AUTHOR,
+        SURFACE_NOT_OUT_OF_SYNC,
+        SURFACE_RATE_LIMITED,
+        SURFACE_TOO_LARGE,
+        SURFACE_NOT_FOUND,
+        SURFACE_OUT_OF_SYNC,
+        SURFACE_NOT_ACTION_EXECUTOR,
+        SURFACE_ALREADY_USED,
+        SURFACE_CLOSED,
+        SURFACE_NOT_PERMITTED,
+        SURFACE_INVALID_REQUEST,
     ];
 }
 

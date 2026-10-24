@@ -16,7 +16,7 @@ use crate::model::{
     StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskState,
 };
 
-pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp};
+pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
 
 /// Schema tag carried by every envelope. The store rejects any other value.
 pub const EVENT_SCHEMA: &str = "ramflux.desktop.event.v1";

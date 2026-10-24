@@ -201,6 +201,9 @@ pub struct Changes {
     pub contexts: BTreeSet<ContextId>,
     /// Changed or removed moments.
     pub moments: BTreeSet<MomentId>,
+    /// Surface moments on which the authority refused an action because the
+    /// surface had changed: the user reviews them again.
+    pub surface_refusals: BTreeSet<MomentId>,
     /// Changed objects.
     pub objects: BTreeSet<ObjectId>,
     /// Changed grants.
@@ -234,6 +237,7 @@ impl Changes {
             && self.participants.is_empty()
             && self.contexts.is_empty()
             && self.moments.is_empty()
+            && self.surface_refusals.is_empty()
             && self.objects.is_empty()
             && self.grants.is_empty()
             && self.tasks.is_empty()
@@ -255,6 +259,7 @@ impl Changes {
             participants,
             contexts,
             moments,
+            surface_refusals,
             objects,
             grants,
             tasks,
@@ -272,6 +277,7 @@ impl Changes {
         self.participants.extend(participants);
         self.contexts.extend(contexts);
         self.moments.extend(moments);
+        self.surface_refusals.extend(surface_refusals);
         self.objects.extend(objects);
         self.grants.extend(grants);
         self.tasks.extend(tasks);

@@ -101,22 +101,43 @@ Cancelled is Dismissed); `MomentUpdated` lifecycles on them are ignored.
 
 `DomainEvent::Surface(SurfaceEvent)` carries the surface protocol events:
 `Create { moment_id, context_id, origin, surface_id, version: 1, blocks,
-actions, fallback_text }` (fallback required), `Patch { surface_id, version,
-base_hash, ops }` with ops `ReplaceBlock`, `InsertBlock { index }`,
-`RemoveBlock`, `SetActions`, `StreamAppend { surface_id, version, block_id,
-text_delta, final }` (Text, Markdown and LogStream blocks) and `Close`. Every
-change consumes exactly the next version. A patch whose `base_hash` is not the
-current content hash is not applied and leaves the surface in conflict until
-a change against the current version arrives. Limits are enforced at the
-reducer edge (64 blocks, 16 actions, 16,384 characters per string, 65,536
-bytes of block data, 4,096-byte text deltas, 16,384 characters streamed per
-block): a surface or change over a limit leaves only the fallback text
-(`SurfaceState::OverLimit`), never a partial rendering, and refuses further
-changes except `Close`. A closed surface is a frozen record. The store keeps a
-`SurfaceRecord` (version, hash, state, streams) per surface. The content hash
-and the action arguments hash live only in `conformance::surface_hash` and
-`conformance::action_args_hash`; adopting the protocol hash replaces those two
-bodies. `export::timeline_text` renders any conversation as plain text
+actions, fallback_text, hash? }` (fallback required), `Patch { surface_id,
+version, base_hash, ops, hash? }` with ops `ReplaceBlock`, `InsertBlock {
+index }`, `RemoveBlock`, `SetActions`, `SetFallback`, `StreamAppend {
+surface_id, version, block_id, text_delta, final, hash? }` (Text, Markdown and
+LogStream blocks) and `Close`. Every change consumes exactly the next version.
+A patch whose `base_hash` is not the current hash is not applied and leaves
+the surface in conflict until a change against the current version arrives.
+
+A source that reads surfaces from an authority (the SDK source reads the
+daemon) sends `Snapshot(SurfaceSnapshot)`: the whole state at a version, which
+may skip versions, with `closed`, `out_of_sync` (the authority knows it missed
+an author's change: `SurfaceState::OutOfSync`, actions refused) and the blocks
+being written (open streams the author is appending to; a block's stream
+ends exactly when the authority reports it final). The authority's answers
+are `ActionRefused { surface_id, version }` (the surface changed after the
+user reviewed it: the store lists the moment in `Changes::surface_refusals`,
+the row asks for a new review) and `UpdateRequested { surface_id, refused? }`
+(the answer to the user's request for the author's current state, kept as
+`SurfaceRecord::update`; a refusal is the text key of the authority's typed
+refusal code). `UpdatedAt { surface_id, at }` records the author's
+last-updated time (`SurfaceRecord::updated_at`, display only; the moment's
+`at` is the author's posting time), and `Removed { surface_id }` removes the
+moment of a surface the authority no longer holds.
+
+Hashes come from the source: the surface protocol's snapshot hash, which the
+daemon computes. The desktop has no hash encoder. A version without a source
+hash (fixtures, unversioned payloads) is labelled `v<version>`
+(`SurfaceHash::of_version`), which binds actions to the version number only;
+fixtures name their patch bases by these labels.
+
+Limits are enforced at the reducer edge and match the protocol (64 blocks, 16
+actions, 16,384 characters per string, a 16,384-byte state, 4,096-byte text
+deltas, 16,384 characters streamed per block): a surface or change over a
+limit leaves only the fallback text (`SurfaceState::OverLimit`), never a
+partial rendering, and refuses further changes except `Close`. A closed
+surface is a frozen record. The store keeps a `SurfaceRecord` (version, hash,
+state, streams, update request, last-updated time) per surface. `export::timeline_text` renders any conversation as plain text
 (surfaces as their fallback text), the terminal degradation.
 
 ## Events
@@ -237,10 +258,13 @@ The kinds, by area:
   context; body `{conversation_id, assignee, text, constraints, proposal_id}`),
   `AcceptTaskProposal` (human only; `task.start` with `proposal_id`),
   `CancelTask` (only the requester; also declines a proposal).
-  `SurfaceAction` carries the `version` and `surface_hash` it was shown on;
-  its body adds `args_hash`; a closed, out-of-date, over-limit or changed
-  surface refuses it.
-- Moments: `SurfaceAction`, `Approve`, `Deny`, `Reveal`, `ResolveConflict`,
+  `SurfaceAction` carries the `version` and `surface_hash` it was shown on
+  (the source hashes its arguments with the protocol's argument hash); a
+  closed, out-of-date, out-of-sync, over-limit or changed surface refuses it.
+  `RequestSurfaceUpdate` (human only) asks the author of an out-of-sync
+  surface for its current state (`surface.request_resync`; the daemon
+  rate-limits it and only the author answers).
+- Moments: `SurfaceAction`, `RequestSurfaceUpdate`, `Approve`, `Deny`, `Reveal`, `ResolveConflict`,
   `AcceptContact`, `RejectContact`, `VerifySafetyNumber`, `AcceptHandoff`,
   `DeclineHandoff`.
 - Contacts: `AddContact { participant_id }` (the id the contact shared; human

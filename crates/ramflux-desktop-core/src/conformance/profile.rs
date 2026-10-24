@@ -94,15 +94,16 @@ const fn default_stream_chars() -> usize {
 }
 
 impl Limits {
-    /// The desktop renderer's limits (the same numbers the surface protocol
-    /// declares: 64 blocks, 16 actions, 16,384 characters per string,
-    /// 65,536 bytes of block data, 4,096-byte text deltas and 16,384
-    /// characters streamed into one block).
+    /// The desktop renderer's limits: the numbers the surface protocol
+    /// declares (64 blocks, 16 actions, 16,384 characters per string, a
+    /// 16,384-byte state, 4,096-byte text deltas), and the same state bound
+    /// for the characters streamed into one block. The SDK source checks
+    /// these against the protocol's constants.
     pub const DESKTOP: Self = Self {
         max_blocks: 64,
         max_actions: 16,
         max_text_chars: 16_384,
-        max_data_bytes: 65_536,
+        max_data_bytes: 16_384,
         max_text_delta_bytes: 4_096,
         max_stream_chars: 16_384,
     };

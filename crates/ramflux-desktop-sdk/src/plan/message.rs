@@ -152,6 +152,8 @@ fn direct(
         .enumerate()
         .map(|(index, a)| {
             let input = LocalBusMessageAttachmentInput {
+                name: None,
+                mime: None,
                 object_id: format!("attachment:{message_id}:{index}"),
                 plaintext_base64: ramflux_protocol::encode_base64url(a.bytes),
                 chunk_size: ATTACHMENT_CHUNK,

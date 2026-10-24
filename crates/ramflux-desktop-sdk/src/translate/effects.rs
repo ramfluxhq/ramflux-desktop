@@ -144,6 +144,9 @@ impl Translator {
                 }
                 Vec::new()
             }
+            methods::SURFACE_ACTION | methods::SURFACE_REQUEST_RESYNC => {
+                self.surface_effect_done(method, body, answer)
+            }
             methods::OBJECT_SAVE => match answer["saved_to"].as_str() {
                 Some(path) => self.object_saved(&ObjectId::new(text(body, "object_id")), path),
                 None => Vec::new(),

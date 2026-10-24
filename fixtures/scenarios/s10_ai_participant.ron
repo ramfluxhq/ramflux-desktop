@@ -11,9 +11,10 @@
 // milliseconds, timeline offsets from the start, response offsets from the
 // submitted effect. Surfaces use the versioned surface events (Create,
 // StreamAppend with `final`, Patch with `base_hash`); tasks use rising
-// versions. `base_hash` is the content hash of the version patched; the
-// test `s10_hashes_match_the_contract` checks it, and prints the value to
-// use if the hash algorithm changes.
+// versions. The fixture carries no content hashes (the surface protocol
+// computes those; the SDK replay gets them from the fake daemon), so
+// `base_hash` is the label `vN` of the version patched; the test
+// `s10_hashes_match_the_contract` checks it.
 //
 // Rules: message.send in the group -> streamed reply + proposal;
 // task.start with the proposal -> task runs, asks for g-deploy;
@@ -118,7 +119,7 @@
                 (900, Surface(Patch(
                     surface_id: "s-status",
                     version: 2,
-                    base_hash: "sha256:8bb9797409864020be96fbecae9b457f1a6b3a6be50bbd302da2b77b53691d86",
+                    base_hash: "v1",
                     ops: [
                         ReplaceBlock(block: (id: "b-items", kind: KeyValue, data: {"items": [
                             ["Release notes", "Drafted"],

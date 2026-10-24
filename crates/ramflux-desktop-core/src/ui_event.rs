@@ -103,6 +103,8 @@ pub enum UiEventKind {
         #[serde(default)]
         version: u64,
     },
+    /// "Request update" pressed on an out-of-sync surface.
+    SurfaceUpdateRequested,
     /// Approve pressed on an intervention or a task step.
     ApprovePressed,
     /// Deny pressed on an intervention or a task step.

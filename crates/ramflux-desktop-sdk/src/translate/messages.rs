@@ -10,7 +10,8 @@ use ramflux_desktop_core::{
 use serde_json::Value;
 
 use super::conversation::message_moment_id;
-use super::{Translator, list, seconds, text};
+use super::surfaces::is_surface_row;
+use super::{Translated, Translator, list, seconds, text};
 
 impl Translator {
     /// Keeps decrypted bodies the daemon returned from a receive: a group's
@@ -42,17 +43,27 @@ impl Translator {
         context: &ContextId,
         value: &Value,
         now: Timestamp,
-    ) -> Vec<DomainEvent> {
-        let Some(kind) = self.contexts.get(context).map(|c| c.kind) else { return Vec::new() };
+    ) -> Translated {
+        let Some(kind) = self.contexts.get(context).map(|c| c.kind) else {
+            return Translated::default();
+        };
         let mut events = Vec::new();
+        let mut surface_rows = Vec::new();
         for record in list(value, "messages") {
             if text(record, "sender_id").is_empty() {
+                continue;
+            }
+            // A surface message is shown as its surface (one moment per
+            // surface, however many versions), never as message text.
+            if is_surface_row(record) {
+                surface_rows.push(record);
                 continue;
             }
             let moment = self.message_moment(context, kind, record, now);
             events.extend(self.report_moment(moment));
         }
-        events
+        let follow = self.surface_rows(context, &surface_rows);
+        Translated { events, follow }
     }
 
     /// The participant a sending device stands for.

@@ -22,6 +22,8 @@
 //! - [`cursor`]: event-stream cursors persisted in the desktop settings file.
 //! - [`local`]: files, launch settings, a started daemon and the app log.
 //! - [`source`]: the `Source` implementation.
+//! - [`surface`]: agent surfaces: the daemon's snapshots as blocks, and
+//!   actions as the protocol's action bytes.
 
 #![forbid(unsafe_code)]
 
@@ -36,15 +38,16 @@ pub mod local;
 pub mod pins;
 pub mod plan;
 pub mod source;
+pub mod surface;
 pub mod translate;
 
 pub use config::{DEFAULT_SOCKET, Deadlines, SdkConfig};
 pub use plan::conversation::fresh_conversation_id;
 pub use plan::message::ATTACHMENT_LIMIT;
 
-/// The product revision the `ramflux-sdk`, `ramflux-protocol` and
-/// `ramflux-crypto` dependencies are pinned to (checked against
-/// `Cargo.lock` by a test).
-pub const PRODUCT_REV: &str = "9227749eb27725d40aab9e7e92abf173fcb3a4f5";
+/// The product commit the `ramflux-sdk`, `ramflux-protocol` and
+/// `ramflux-crypto` dependencies are built from, read from `Cargo.lock` at
+/// build time (so it always names the commit compiled in).
+pub const PRODUCT_REV: &str = env!("RAMFLUX_PRODUCT_REV");
 pub use source::{DaemonStop, SdkHub, SdkSource};
 pub use translate::Scope;

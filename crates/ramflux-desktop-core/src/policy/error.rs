@@ -94,6 +94,13 @@ pub enum IntentError {
     /// The surface exceeds a renderer limit and shows only its fallback.
     #[error("surface of moment {0} exceeds a renderer limit")]
     SurfaceOverLimit(MomentId),
+    /// The surface is behind its author; nothing can be acted on until it
+    /// catches up.
+    #[error("surface of moment {0} is out of sync with its author")]
+    SurfaceOutOfSync(MomentId),
+    /// Only an out-of-sync surface needs the author's current state.
+    #[error("surface of moment {0} is in sync")]
+    SurfaceInSync(MomentId),
     /// The backend refused the grant; it is closed and never retried.
     #[error("grant {grant} failed: {failure:?}")]
     GrantFailed {

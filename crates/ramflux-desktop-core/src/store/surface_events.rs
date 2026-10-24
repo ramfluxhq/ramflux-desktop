@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Span Brain
 
 //! The versioned surface events: create, patch against a base hash, stream
-//! text, close.
+//! text, close; an authority's snapshot; the authority's answers to the
+//! user's actions and update requests.
 //!
 //! Each arm checks everything before its first mutation, so a rejected
 //! event leaves the store untouched. Order of checks for a change to an
@@ -12,6 +13,10 @@
 //! be exactly the next one; then the content. A change that would exceed a
 //! renderer limit is not applied: the surface shows only its fallback text
 //! from then on (never a partial rendering).
+//!
+//! A snapshot replaces the whole state at its version (it may skip versions
+//! and is how a surface first appears when the source reads it from an
+//! authority). It is never older than what the store holds.
 
 use std::collections::BTreeSet;
 
@@ -21,10 +26,11 @@ use super::Store;
 use super::changes::{ApplyError, Changes};
 use super::index::presented_grants;
 use super::surfaces::{
-    SurfaceRecord, SurfaceState, any_open, open_streams, streamable, to_fallback,
+    StreamState, SurfaceRecord, SurfaceState, UpdateRequest, any_open, open_streams, streamable,
+    to_fallback,
 };
-use crate::conformance::{LimitKind, Limits, over_limit, surface_hash};
-use crate::event::{SurfaceEvent, SurfacePatchOp};
+use crate::conformance::{LimitKind, Limits, SurfaceHash, over_limit};
+use crate::event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
 use crate::ids::{BlockId, MomentId, SurfaceId, Timestamp};
 use crate::model::{AgentSurfacePayload, Block, Lifecycle, Moment, MomentKind};
 
@@ -44,6 +50,7 @@ impl Store {
             blocks,
             actions,
             fallback_text,
+            hash,
         } = event
         {
             if *version != 1 {
@@ -73,7 +80,13 @@ impl Store {
             };
             // Validates the moment and context, records version 1.
             self.add_moment(at, &moment, changes)?;
+            if let (Some(hash), Some(record)) = (hash, self.surfaces.get_mut(moment_id)) {
+                record.hash = hash.clone();
+            }
             return self.open_created_streams(moment_id);
+        }
+        if let SurfaceEvent::Snapshot(snapshot) = event {
+            return self.surface_snapshot(at, snapshot, changes);
         }
         let surface_id = event.surface_id();
         let moment_id = self
@@ -82,6 +95,37 @@ impl Store {
             .cloned()
             .ok_or_else(|| ApplyError::UnknownSurface(surface_id.clone()))?;
         let record = self.surfaces.get(&moment_id).cloned().ok_or_else(|| unknown(surface_id))?;
+        match event {
+            SurfaceEvent::ActionRefused { .. } => {
+                changes.surface_refusals.insert(moment_id.clone());
+                changes.moments.insert(moment_id);
+                return Ok(());
+            }
+            SurfaceEvent::UpdateRequested { refused, .. } => {
+                if let Some(r) = self.surfaces.get_mut(&moment_id) {
+                    r.update = Some(match refused {
+                        Some(reason) => UpdateRequest::Refused(reason.clone()),
+                        None => UpdateRequest::Sent,
+                    });
+                }
+                changes.moments.insert(moment_id);
+                return Ok(());
+            }
+            SurfaceEvent::UpdatedAt { at, .. } => {
+                if let Some(r) = self.surfaces.get_mut(&moment_id)
+                    && r.updated_at != Some(*at)
+                {
+                    r.updated_at = Some(*at);
+                    changes.moments.insert(moment_id);
+                }
+                return Ok(());
+            }
+            SurfaceEvent::Removed { .. } => {
+                self.remove_surface_moment(&moment_id, changes);
+                return Ok(());
+            }
+            _ => {}
+        }
         match record.state {
             SurfaceState::Closed => return Err(ApplyError::SurfaceClosed(surface_id.clone())),
             SurfaceState::OverLimit(_) if !matches!(event, SurfaceEvent::Close { .. }) => {
@@ -110,16 +154,22 @@ impl Store {
         };
         let mut next = record.clone();
         next.version = expected;
+        next.update = None;
         let mut content = current;
+        let reported: Option<SurfaceHash>;
         match event {
-            SurfaceEvent::Patch { ops, .. } => {
+            SurfaceEvent::Patch { ops, hash, .. } => {
                 for op in ops {
                     patch(&mut content, op)?;
                 }
-                next.state = SurfaceState::Open;
+                reported = hash.clone();
+                if next.state != SurfaceState::OutOfSync {
+                    next.state = SurfaceState::Open;
+                }
                 next.streams.retain(|id, _| content.blocks.iter().any(|b| &b.id == id));
             }
-            SurfaceEvent::StreamAppend { block_id, text_delta, is_final, .. } => {
+            SurfaceEvent::StreamAppend { block_id, text_delta, is_final, hash, .. } => {
+                reported = hash.clone();
                 if let Some(limit) = stream(&mut content, &mut next, block_id, text_delta)? {
                     next.state = SurfaceState::OverLimit(limit);
                 }
@@ -128,12 +178,19 @@ impl Store {
                 }
             }
             SurfaceEvent::Close { .. } => {
+                // Closing changes no content: the hash stays.
+                reported = Some(record.hash.clone());
                 next.state = SurfaceState::Closed;
                 for stream in next.streams.values_mut() {
                     stream.finished = true;
                 }
             }
-            SurfaceEvent::Create { .. } => unreachable!("handled above"),
+            SurfaceEvent::Create { .. }
+            | SurfaceEvent::Snapshot(_)
+            | SurfaceEvent::ActionRefused { .. }
+            | SurfaceEvent::UpdateRequested { .. }
+            | SurfaceEvent::UpdatedAt { .. }
+            | SurfaceEvent::Removed { .. } => unreachable!("handled above"),
         }
         if next.over_limit().is_none()
             && next.state != SurfaceState::Closed
@@ -151,8 +208,110 @@ impl Store {
             }
         }
         content.streaming = next.state != SurfaceState::Closed && any_open(&next.streams);
-        next.hash = surface_hash(&content);
+        next.hash = if next.version == record.version {
+            record.hash.clone()
+        } else {
+            reported.unwrap_or_else(|| SurfaceHash::of_version(next.version))
+        };
         self.replace_surface(&moment_id, content, next, changes);
+        Ok(())
+    }
+
+    /// Applies an authority's whole state of a surface; creates its moment
+    /// when the surface is new.
+    fn surface_snapshot(
+        &mut self,
+        at: Timestamp,
+        snapshot: &SurfaceSnapshot,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        let surface_id = &snapshot.surface_id;
+        if snapshot.version == 0 {
+            return Err(version_error(surface_id, 1, 0));
+        }
+        if snapshot.fallback_text.trim().is_empty() {
+            return Err(ApplyError::MissingFallback(surface_id.clone()));
+        }
+        unique_blocks(&snapshot.blocks)?;
+        let mut content = AgentSurfacePayload {
+            surface_id: surface_id.clone(),
+            fallback_text: snapshot.fallback_text.clone(),
+            blocks: snapshot.blocks.clone(),
+            actions: snapshot.actions.clone(),
+            streaming: false,
+        };
+        let previous = match self.surface_ids.get(surface_id).cloned() {
+            Some(moment_id) => {
+                if moment_id != snapshot.moment_id {
+                    return Err(ApplyError::SurfaceMismatch {
+                        moment: snapshot.moment_id.clone(),
+                        surface: surface_id.clone(),
+                    });
+                }
+                let record =
+                    self.surfaces.get(&moment_id).cloned().ok_or_else(|| unknown(surface_id))?;
+                if record.state == SurfaceState::Closed {
+                    return Err(ApplyError::SurfaceClosed(surface_id.clone()));
+                }
+                if snapshot.version < record.version {
+                    return Err(version_error(surface_id, record.version, snapshot.version));
+                }
+                Some(record)
+            }
+            None => {
+                let moment = Moment {
+                    id: snapshot.moment_id.clone(),
+                    context_id: snapshot.context_id.clone(),
+                    origin: snapshot.origin.clone(),
+                    at: snapshot.at.unwrap_or(at),
+                    kind: MomentKind::AgentSurface(content.clone()),
+                    lifecycle: Lifecycle::Done,
+                };
+                self.add_moment(at, &moment, changes)?;
+                None
+            }
+        };
+        let limit = over_limit(&content, &Limits::DESKTOP);
+        if limit.is_some() {
+            to_fallback(&mut content);
+        }
+        let open = |id: &BlockId| snapshot.open_streams.contains(id) && !snapshot.closed;
+        let streams = content
+            .blocks
+            .iter()
+            .filter(|b| {
+                streamable(b.kind)
+                    && (open(&b.id)
+                        || previous.as_ref().is_some_and(|r| r.streams.contains_key(&b.id)))
+            })
+            .map(|b| {
+                let chars =
+                    b.data.get("text").and_then(Value::as_str).map_or(0, |t| t.chars().count());
+                (b.id.clone(), StreamState { chars, finished: !open(&b.id) })
+            })
+            .collect();
+        let state = match limit {
+            _ if snapshot.closed => SurfaceState::Closed,
+            Some(limit) => SurfaceState::OverLimit(limit),
+            None if snapshot.out_of_sync => SurfaceState::OutOfSync,
+            None => SurfaceState::Open,
+        };
+        let update = previous.as_ref().and_then(|r| {
+            (snapshot.out_of_sync && r.version == snapshot.version)
+                .then(|| r.update.clone())
+                .flatten()
+        });
+        let record = SurfaceRecord {
+            surface_id: surface_id.clone(),
+            version: snapshot.version,
+            hash: snapshot.hash.clone(),
+            state,
+            streams,
+            update,
+            updated_at: previous.as_ref().and_then(|r| r.updated_at),
+        };
+        content.streaming = !snapshot.closed && any_open(&record.streams);
+        self.replace_surface(&snapshot.moment_id, content, record, changes);
         Ok(())
     }
 
@@ -238,6 +397,12 @@ fn patch(content: &mut AgentSurfacePayload, op: &SurfacePatchOp) -> Result<(), A
             content.blocks.remove(ix);
         }
         SurfacePatchOp::SetActions { actions } => content.actions.clone_from(actions),
+        SurfacePatchOp::SetFallback { fallback_text } => {
+            if fallback_text.trim().is_empty() {
+                return Err(ApplyError::MissingFallback(content.surface_id.clone()));
+            }
+            content.fallback_text.clone_from(fallback_text);
+        }
     }
     Ok(())
 }

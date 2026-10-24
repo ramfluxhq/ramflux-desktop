@@ -110,6 +110,11 @@ impl Conversation {
                     // notice belongs to the old one.
                     this.view.clear_reviews();
                 }
+                // The authority refused an action: the surface changed after
+                // the user reviewed it (rows below remeasure: they changed).
+                for id in changes.surface_refusals() {
+                    this.view.set_review_again(id, true);
+                }
                 let Some(context_id) = this.context_id.clone() else {
                     // The placeholder tells loading from no conversations.
                     if changes.touches_listings() {

@@ -6,8 +6,9 @@
 //! unversioned paths that change a surface (a full copy in a moment
 //! payload, [`DomainEvent::SurfacePatched`](crate::DomainEvent)).
 //!
-//! The hash is recomputed whenever content changes, and every content
-//! change raises the version by one. A patch that names a base version
+//! Every content change raises the version by one; its hash is the one the
+//! source reported, or, for a surface whose source reports none (an
+//! unversioned payload), the version label [`SurfaceHash::of_version`]. A patch that names a base version
 //! other than the current one is not applied: the surface is in conflict
 //! (the user sees it is out of date and its actions are refused) until the
 //! author sends a change against the current version, or a full copy
@@ -25,9 +26,9 @@ use super::Store;
 use super::changes::{ApplyError, Changes};
 use super::index::presented_grants;
 use super::surface_ops::apply_surface_op;
-use crate::conformance::{LimitKind, Limits, SurfaceHash, over_limit, surface_hash};
+use crate::conformance::{LimitKind, Limits, SurfaceHash, over_limit};
 use crate::event::SurfaceOp;
-use crate::ids::{BlockId, MomentId, SurfaceId};
+use crate::ids::{BlockId, MomentId, SurfaceId, Timestamp};
 use crate::model::{AgentSurfacePayload, BlockKind, MomentKind};
 
 /// The state of one surface version.
@@ -47,6 +48,21 @@ pub enum SurfaceState {
     OverLimit(LimitKind),
     /// The author closed it: a frozen record.
     Closed,
+    /// The authority holding the surface knows it missed a change of the
+    /// author's: what is shown is not current, and nothing can be acted on
+    /// until it catches up (the user can ask the author for the current
+    /// state).
+    OutOfSync,
+}
+
+/// The user's request for the author's current state of an out-of-sync
+/// surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateRequest {
+    /// Sent; the author answers with its current state.
+    Sent,
+    /// Could not be sent, with the reason.
+    Refused(String),
 }
 
 /// A text stream of one block.
@@ -71,6 +87,11 @@ pub struct SurfaceRecord {
     pub state: SurfaceState,
     /// Text streams by block.
     pub streams: BTreeMap<BlockId, StreamState>,
+    /// The user's request for the current state, while it is relevant.
+    pub update: Option<UpdateRequest>,
+    /// When the author last changed it, as the authority reports (the
+    /// author's clock; display only).
+    pub updated_at: Option<Timestamp>,
 }
 
 impl SurfaceRecord {
@@ -132,8 +153,8 @@ impl Store {
         if limit.is_some() {
             to_fallback(surface);
         }
-        let hash = surface_hash(surface);
         let previous = self.surfaces.get(id);
+        let version = previous.map_or(1, |r| r.version.saturating_add(1));
         let closed = previous.is_some_and(|r| r.state == SurfaceState::Closed);
         let state = match limit {
             _ if closed => SurfaceState::Closed,
@@ -142,10 +163,12 @@ impl Store {
         };
         let record = SurfaceRecord {
             surface_id: surface.surface_id.clone(),
-            version: previous.map_or(1, |r| r.version.saturating_add(1)),
-            hash,
+            version,
+            hash: SurfaceHash::of_version(version),
             state,
             streams: previous.map_or_else(|| open_streams(surface), |r| r.streams.clone()),
+            update: None,
+            updated_at: previous.and_then(|r| r.updated_at),
         };
         if let Some(previous) = previous
             && previous.surface_id != record.surface_id
@@ -164,6 +187,18 @@ impl Store {
         {
             self.surface_ids.remove(&record.surface_id);
         }
+    }
+
+    /// Removes a surface's moment (its authority no longer holds it).
+    pub(super) fn remove_surface_moment(&mut self, id: &MomentId, changes: &mut Changes) {
+        if let Some(moment) = self.moments.remove(id) {
+            let since = self.needs_me_since.remove(id);
+            self.index.remove_moment(&moment, since);
+            changes.contexts.insert(moment.context_id);
+        }
+        self.bodies.remove(id);
+        self.forget_surface(id);
+        changes.moments.insert(id.clone());
     }
 
     pub(super) fn patch_surface(
@@ -194,7 +229,7 @@ impl Store {
             SurfaceState::OverLimit(_) => {
                 return Err(ApplyError::SurfaceOverLimit(surface_id.clone()));
             }
-            SurfaceState::Open | SurfaceState::Conflict { .. } => {}
+            SurfaceState::Open | SurfaceState::Conflict { .. } | SurfaceState::OutOfSync => {}
         }
         if let Some(base) = base_hash
             && &record.hash != base
@@ -211,11 +246,17 @@ impl Store {
         if let Some(limit) = over_limit(&patched, &Limits::DESKTOP) {
             to_fallback(&mut patched);
             record.state = SurfaceState::OverLimit(limit);
-        } else {
+        } else if record.state != SurfaceState::OutOfSync {
             record.state = SurfaceState::Open;
         }
-        record.hash = surface_hash(&patched);
-        record.version = record.version.saturating_add(1);
+        // The streaming flag is not content: a change of only it keeps the
+        // version (actions shown on it stay current).
+        let mut unflagged = patched.clone();
+        unflagged.streaming = surface.streaming;
+        if unflagged != *surface || record.over_limit().is_some() {
+            record.version = record.version.saturating_add(1);
+            record.hash = SurfaceHash::of_version(record.version);
+        }
         let old = MomentKind::AgentSurface(mem::replace(surface, patched));
         if presented_grants(&old) != presented_grants(&moment.kind) {
             self.index.change_kind(moment_id, &old, &moment.kind);
@@ -233,6 +274,12 @@ impl Store {
     /// date.
     pub fn surface_conflict(&self, id: &MomentId) -> bool {
         self.surfaces.get(id).is_some_and(|r| matches!(r.state, SurfaceState::Conflict { .. }))
+    }
+
+    /// Whether the authority holding this surface knows it is behind the
+    /// author.
+    pub fn surface_out_of_sync(&self, id: &MomentId) -> bool {
+        self.surfaces.get(id).is_some_and(|r| r.state == SurfaceState::OutOfSync)
     }
 
     /// Version, hash, state and streams of the surface a moment holds.

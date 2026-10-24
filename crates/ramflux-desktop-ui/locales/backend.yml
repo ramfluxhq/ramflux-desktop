@@ -55,11 +55,57 @@ backend:
     device_sync:
       en: "Device sync needs a relay route and a target device the desktop cannot choose yet."
       zh-CN: "设备同步需要中继路由和目标设备，桌面端暂不能选择。"
+  surface:
+    refused:
+      en: "the daemon refused it (%{code})."
+      zh-CN: "守护进程拒绝了此请求（%{code}）。"
+    stale_version:
+      en: "the surface changed after you saw it."
+      zh-CN: "界面在你查看后已更改。"
+    stale_hash:
+      en: "the surface's content changed after you saw it."
+      zh-CN: "界面内容在你查看后已更改。"
+    not_author:
+      en: "only the surface's author can do that."
+      zh-CN: "只有界面作者可以执行此操作。"
+    not_out_of_sync:
+      en: "this surface is already up to date."
+      zh-CN: "此界面已是最新。"
+    rate_limited:
+      en: "an update was requested less than a minute ago. Try again shortly."
+      zh-CN: "不到一分钟前已请求过更新，请稍后再试。"
+    too_large:
+      en: "the surface is too large to send."
+      zh-CN: "界面过大，无法发送。"
+    not_found:
+      en: "the daemon no longer has this surface."
+      zh-CN: "守护进程中已没有此界面。"
+    out_of_sync:
+      en: "this surface is not up to date. Request an update first."
+      zh-CN: "此界面未同步到最新，请先请求更新。"
+    not_action_executor:
+      en: "another of your devices takes this surface's actions."
+      zh-CN: "此界面的操作由你的另一台设备处理。"
+    already_used:
+      en: "this action was already used."
+      zh-CN: "此操作已使用过。"
+    closed:
+      en: "the surface is closed."
+      zh-CN: "界面已关闭。"
+    not_permitted:
+      en: "that is not permitted on this surface."
+      zh-CN: "此界面不允许该操作。"
+    invalid_request:
+      en: "the daemon could not accept the request."
+      zh-CN: "守护进程无法接受此请求。"
   message:
     encrypted_at_rest:
       en: "This message is stored encrypted; its text is shown only when it is received or sent here."
       zh-CN: "此消息以密文存储，仅在本机收发时显示正文。"
   failure:
+    surface_action_rejected:
+      en: "The daemon did not send the action: %{reason}"
+      zh-CN: "守护进程未发送此操作：%{reason}"
     label:
       en: "Last error"
       zh-CN: "上次错误"

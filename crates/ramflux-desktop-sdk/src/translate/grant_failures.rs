@@ -85,6 +85,9 @@ impl Translator {
         if method == methods::ATTACH_OBJECT {
             return self.attachment_failed(body, message);
         }
+        if method == methods::SURFACE_REQUEST_RESYNC {
+            return self.surface_effect_failed(method, body, code, message);
+        }
         if !matches!(method, methods::GRANT_APPROVE | methods::GRANT_DENY) {
             return Vec::new();
         }

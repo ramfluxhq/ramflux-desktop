@@ -8,7 +8,7 @@
 mod common;
 
 use common::*;
-use ramflux_desktop_core::conformance::{LimitKind, action_args_hash};
+use ramflux_desktop_core::conformance::LimitKind;
 use ramflux_desktop_core::*;
 use serde_json::json;
 
@@ -51,6 +51,7 @@ fn create(blocks: Vec<Block>, actions: Vec<SurfaceAction>) -> DomainEvent {
         blocks,
         actions,
         fallback_text: "Orbit replied".to_owned(),
+        hash: None,
     })
 }
 
@@ -68,11 +69,18 @@ fn append(version: u64, text: &str, is_final: bool) -> DomainEvent {
         block_id: BlockId::new("b-reply"),
         text_delta: text.to_owned(),
         is_final,
+        hash: None,
     })
 }
 
 fn patch(version: u64, base: SurfaceHash, ops: Vec<SurfacePatchOp>) -> DomainEvent {
-    DomainEvent::Surface(SurfaceEvent::Patch { surface_id: sid(), version, base_hash: base, ops })
+    DomainEvent::Surface(SurfaceEvent::Patch {
+        surface_id: sid(),
+        version,
+        base_hash: base,
+        ops,
+        hash: None,
+    })
 }
 
 fn close(version: u64) -> DomainEvent {
@@ -123,7 +131,7 @@ fn create_makes_version_one_and_opens_its_empty_text_blocks() {
     assert_eq!(moment.origin.as_str(), "p-ai");
     let r = record(&feed);
     assert_eq!((r.version, &r.state), (1, &SurfaceState::Open));
-    assert_eq!(r.hash, surface_hash(&payload(&feed)));
+    assert_eq!(r.hash, SurfaceHash::of_version(1), "no source hash: the version label");
     assert!(payload(&feed).streaming, "an empty text block is a stream about to start");
     assert_eq!(feed.store.surface_moment(&sid()), Some(&mid()));
 }
@@ -220,6 +228,7 @@ fn streaming_into_a_block_without_text_is_refused() {
         block_id: BlockId::new("b-none"),
         text_delta: "x".to_owned(),
         is_final: false,
+        hash: None,
     });
     assert_eq!(feed.push(12, missing), Err(ApplyError::UnknownBlock(BlockId::new("b-none"))));
     assert_eq!(record(&feed).version, 1);
@@ -249,16 +258,18 @@ fn a_delta_over_four_kilobytes_leaves_only_the_fallback() {
 }
 
 #[test]
-fn a_stream_longer_than_the_text_limit_leaves_only_the_fallback() {
+fn a_stream_past_the_state_bound_leaves_only_the_fallback() {
+    // The protocol bounds the whole state at 16,384 bytes; a stream reaches
+    // that bound before its own character bound.
     let mut feed = seeded();
     feed.ok(10, reply());
     let chunk = "y".repeat(4_096);
-    for version in 2..=5 {
+    for version in 2..=4 {
         feed.ok(10 + i64::try_from(version).unwrap_or(0), append(version, &chunk, false));
     }
-    assert_eq!(record(&feed).streams[&BlockId::new("b-reply")].chars, 16_384);
-    feed.ok(20, append(6, "z", false));
-    assert_eq!(record(&feed).state, SurfaceState::OverLimit(LimitKind::StreamLength));
+    assert_eq!(record(&feed).streams[&BlockId::new("b-reply")].chars, 12_288);
+    feed.ok(20, append(5, &chunk, false));
+    assert_eq!(record(&feed).state, SurfaceState::OverLimit(LimitKind::DataBytes));
     assert!(payload(&feed).blocks.is_empty());
 }
 
@@ -292,7 +303,7 @@ fn a_patch_against_the_current_version_applies_every_op() {
     let r = record(&feed);
     assert_eq!((r.version, &r.state), (2, &SurfaceState::Open));
     assert_ne!(r.hash, base);
-    assert_eq!(r.hash, surface_hash(&p));
+    assert_eq!(r.hash, SurfaceHash::of_version(2));
 }
 
 #[test]
@@ -426,7 +437,7 @@ fn an_action_is_bound_to_the_version_it_was_shown_on() {
     let body = effects[0].body().expect("call");
     assert_eq!(body["version"], 1);
     assert_eq!(body["surface_hash"], json!(shown.0));
-    assert_eq!(body["args_hash"], json!(action_args_hash(&json!({ "pick": "thu" }))));
+    assert_eq!(body["values"], json!({ "pick": "thu" }), "the source hashes the arguments");
     feed.ok(11, append(2, "changed", false));
     assert!(
         matches!(act(&feed, shown.0.clone(), shown.1), Err(IntentError::SurfaceChanged(_))),

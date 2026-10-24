@@ -42,6 +42,12 @@ impl ChangeSet {
         self.changes.moments.iter()
     }
 
+    /// Surface moments on which the authority refused an action because the
+    /// surface had changed since the user reviewed it.
+    pub fn surface_refusals(&self) -> impl Iterator<Item = &ramflux_desktop_core::MomentId> {
+        self.changes.surface_refusals.iter()
+    }
+
     /// Whether what rows of `context_id` reference (participants, grants,
     /// objects, tasks, the context itself) or their bodies changed, so its
     /// rows must be rebuilt rather than patched.

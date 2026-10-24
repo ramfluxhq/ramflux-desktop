@@ -121,6 +121,13 @@ pub enum IntentKind {
         #[serde(default)]
         version: u64,
     },
+    /// Ask the author of an out-of-sync surface for its current state.
+    RequestSurfaceUpdate {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+    },
     /// Approve a pending grant.
     Approve {
         /// Grant.
