@@ -74,11 +74,16 @@ pub fn reopen<H: Host, D: DemoDaemon>(
         desk.type_into(demo.host, "composer-input", text)?;
         desk.click(demo.host, None, "composer-send")?;
         let context = dm.clone();
-        demo.wait(0, limits.receipt, "the offline message delivered", |desk, host| {
-            desk.store(host, |s| probe::delivered(probe::receipt(s, &context, text, &alice)))
+        demo.wait(0, limits.receipt, "the offline message accepted", |desk, host| {
+            desk.store(host, |s| {
+                probe::receipt(s, &context, text, &alice)
+                    .is_some_and(|r| r != ramflux_desktop_core::Receipt::Sending)
+            })
         })?;
     }
-    notes.add("Alice sent two messages while Bob's desktop was closed; both Delivered");
+    // The recipient's desktop acknowledges delivery (the daemon does not by
+    // itself yet), so these become Delivered once Bob's desktop is back.
+    notes.add("Alice sent two messages while Bob's desktop was closed; both accepted");
 
     let options = (demo.options)(&demo.sides[1].daemon.socket());
     let reopened = std::time::Instant::now();
@@ -138,6 +143,14 @@ pub fn reopen<H: Host, D: DemoDaemon>(
         "after the restart all {} messages (DM before, DM while closed, group) shown exactly once",
         counts.len()
     ));
+    for text in &offline {
+        let context = dm.clone();
+        demo.wait(0, limits.receipt, "the offline message delivered", |desk, host| {
+            desk.store(host, |s| probe::delivered(probe::receipt(s, &context, text, &alice)))
+        })?;
+    }
+    notes
+        .add("both messages sent while Bob's desktop was closed became Delivered once it reopened");
     let after = demo.read(1, |s| s.sync_status().and_then(|x| x.cursor))?;
 
     let lines = tap::read_log(&log);
