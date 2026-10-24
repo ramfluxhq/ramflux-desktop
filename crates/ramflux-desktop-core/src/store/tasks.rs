@@ -13,13 +13,19 @@
 //! The moments that present a task follow its state (a proposal or a step
 //! waiting on the requester makes them "needs me"), so attention derives
 //! from the task and never from a second, separately sent fact.
+//!
+//! A source that reads whole tasks from their authority sends snapshots:
+//! the version may skip, only the flags may change at the same version,
+//! and a proposal gets its requester when it is accepted. The source's
+//! answer to this desktop's last request stays on the task until its
+//! version rises.
 
 use std::collections::BTreeSet;
 
 use super::Store;
 use super::changes::{ApplyError, Changes};
 use crate::ids::{MomentId, StepId, TaskId, Timestamp};
-use crate::model::{Lifecycle, MomentKind, NeedsMe, StepState, Task, TaskState};
+use crate::model::{Lifecycle, MomentKind, NeedsMe, StepState, Task, TaskAnswer, TaskState};
 
 impl Store {
     pub(super) fn upsert_task(
@@ -98,7 +104,44 @@ impl Store {
         Ok(())
     }
 
-    fn commit_task(&mut self, at: Timestamp, task: Task, changes: &mut Changes) {
+    pub(super) fn snapshot_task(
+        &mut self,
+        at: Timestamp,
+        task: &Task,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        if !self.contexts.contains_key(&task.context_id) {
+            return Err(ApplyError::UnknownContext(task.context_id.clone()));
+        }
+        validate(task)?;
+        if let Some(current) = self.tasks.get(&task.id) {
+            check_snapshot(current, task)?;
+        }
+        self.commit_task(at, task.clone(), changes);
+        Ok(())
+    }
+
+    pub(super) fn answer_task(
+        &mut self,
+        task_id: &TaskId,
+        answer: &TaskAnswer,
+        changes: &mut Changes,
+    ) -> Result<(), ApplyError> {
+        let task =
+            self.tasks.get_mut(task_id).ok_or_else(|| ApplyError::UnknownTask(task_id.clone()))?;
+        task.answer = Some(answer.clone());
+        changes.tasks.insert(task_id.clone());
+        Ok(())
+    }
+
+    fn commit_task(&mut self, at: Timestamp, mut task: Task, changes: &mut Changes) {
+        // An answer belongs to the version it answered.
+        match self.tasks.get(&task.id) {
+            Some(current) if current.version == task.version => {
+                task.answer.clone_from(&current.answer);
+            }
+            _ => task.answer = None,
+        }
         let lifecycle = task.state.moment_lifecycle();
         let presenters: Vec<MomentId> =
             self.index.task_presenters.get(&task.id).into_iter().flatten().cloned().collect();
@@ -202,6 +245,49 @@ fn validate(task: &Task) -> Result<(), ApplyError> {
         }
         _ => Ok(()),
     }
+}
+
+/// A snapshot against the stored task: not older, at the same version only
+/// its flags and step places, same conversation and assignee, and the
+/// requester changes only when a proposal is accepted.
+fn check_snapshot(current: &Task, next: &Task) -> Result<(), ApplyError> {
+    let stale = || ApplyError::StaleTaskVersion {
+        task: next.id.clone(),
+        current: current.version,
+        found: next.version,
+    };
+    if next.version < current.version {
+        return Err(stale());
+    }
+    if next.version == current.version {
+        // The same version may only refine how it is shown: its flags, or
+        // the place a step names once the source can resolve it.
+        let states = |t: &Task| -> Vec<(StepId, StepState)> {
+            t.steps.iter().map(|s| (s.id.clone(), s.state)).collect()
+        };
+        let same = next.state == current.state
+            && next.requester == current.requester
+            && next.context_id == current.context_id
+            && next.assignee == current.assignee
+            && next.title == current.title
+            && states(next) == states(current);
+        return if same { Ok(()) } else { Err(stale()) };
+    }
+    let requester_set = current.state == TaskState::Proposed;
+    if next.context_id != current.context_id
+        || next.assignee != current.assignee
+        || (next.requester != current.requester && !requester_set)
+    {
+        return Err(ApplyError::TaskIdentityChanged(next.id.clone()));
+    }
+    if current.state.is_terminal() {
+        return Err(ApplyError::IllegalTaskTransition {
+            task: next.id.clone(),
+            from: current.state,
+            to: next.state,
+        });
+    }
+    Ok(())
 }
 
 /// An update against the stored task: rising version, same identity,

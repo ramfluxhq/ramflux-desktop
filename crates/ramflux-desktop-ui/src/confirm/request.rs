@@ -26,7 +26,7 @@ impl ConfirmRequest {
         let (summary, detail, risk) = describe_kind(store, &intent.kind);
         let proposed_by = match &intent.proposed_by {
             Actor::Human => None,
-            Actor::Agent(id) => Some(display_name(store, id).into()),
+            Actor::Agent(id) | Actor::Member(id) => Some(display_name(store, id).into()),
         };
         Self { summary, detail, risk, proposed_by }
     }

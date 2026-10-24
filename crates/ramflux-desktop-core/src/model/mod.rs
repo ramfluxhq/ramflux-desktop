@@ -57,4 +57,4 @@ pub use moment::{
 pub use object::{Direction, Object, TransferState};
 pub use protected::Protected;
 pub use surface::{Block, BlockKind, DEFAULT_BLOCK_VERSION, SurfaceAction};
-pub use task::{NeedsMe, StepState, Task, TaskState, TaskStep};
+pub use task::{NeedsMe, StepState, Task, TaskAnswer, TaskFlags, TaskRefusal, TaskState, TaskStep};

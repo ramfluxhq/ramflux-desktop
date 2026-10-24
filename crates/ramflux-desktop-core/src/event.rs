@@ -13,7 +13,7 @@ use crate::model::{
     Account, AuditEntry, Block, Capabilities, Context, DaemonInfo, Device, Disappearing,
     EffectFailure, Grant, GrantFailure, GrantState, Integrations, Lifecycle, Listing, LockState,
     Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant,
-    StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskState,
+    StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskAnswer, TaskState,
 };
 
 pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
@@ -175,6 +175,23 @@ pub enum DomainEvent {
         /// Result summary, when it changes.
         #[serde(default)]
         result: Option<String>,
+    },
+    /// A task as its authority holds it, at a version that may skip the
+    /// versions in between (a source that reads the whole task, not each
+    /// update). An older version is refused; the same version may only
+    /// change the flags and the places steps name. Conversation and assignee never change; the
+    /// requester is set when a proposal is accepted. Legal transitions
+    /// between the shown and the new state are not checked (the steps in
+    /// between were not seen); the task's own consistency is.
+    TaskSnapshot(Task),
+    /// The source's answer to this desktop's request about a task (a
+    /// decision on its way, or a refusal). Kept on the task until its
+    /// version rises.
+    TaskAnswered {
+        /// Task.
+        task_id: TaskId,
+        /// The answer.
+        answer: TaskAnswer,
     },
     /// Source connectivity changed.
     SourceStatusChanged(SourceStatus),

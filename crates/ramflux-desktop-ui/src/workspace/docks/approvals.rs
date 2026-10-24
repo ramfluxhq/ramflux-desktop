@@ -221,7 +221,7 @@ fn standing_row(approval: &StandingApproval, sink: &EventSink, cx: &App) -> AnyE
 fn audit_row(store: &Store, entry: &AuditEntry, cx: &App) -> AnyElement {
     let who = match &entry.proposed_by {
         Actor::Human => tr("audit.you"),
-        Actor::Agent(id) => store
+        Actor::Agent(id) | Actor::Member(id) => store
             .participant(id)
             .map_or_else(|| id.to_string().into(), |p| p.display.clone().into()),
     };

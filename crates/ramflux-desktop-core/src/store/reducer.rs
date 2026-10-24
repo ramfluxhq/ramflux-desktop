@@ -183,6 +183,10 @@ impl Store {
                 };
                 self.change_task_state(at, update, changes)?;
             }
+            DomainEvent::TaskSnapshot(task) => self.snapshot_task(at, task, changes)?,
+            DomainEvent::TaskAnswered { task_id, answer } => {
+                self.answer_task(task_id, answer, changes)?;
+            }
             DomainEvent::SourceStatusChanged(status) => {
                 if self.source_status != *status {
                     self.source_status = *status;
