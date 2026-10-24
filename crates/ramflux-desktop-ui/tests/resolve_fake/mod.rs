@@ -7,12 +7,18 @@
 //!
 //! - The node's directory knows `principal-kai` (a person with one device)
 //!   and `principal-lu` (no device listed: added, but not reachable).
-//!   `contact.add {principal_id}` resolves a known principal (identity with
-//!   devices and commitment; the link record says `reachable` and
-//!   `verified: false`); an unknown one fails as the node answers.
-//! - `contact.card.import {card}` accepts `ramflux:contact/<principal>`
-//!   cards of known principals (`principal-bot` is an AI agent whose kind is
-//!   self-declared) and refuses anything else with a signature error.
+//!   `contact.add {principal_id}` resolves a known principal provisionally
+//!   (`root_source: lookup`; identity with devices and commitment; the row
+//!   says `reachable` and `verified: false`) and answers `{contact}`; an
+//!   unknown one is refused with `reason_code: unknown_principal`.
+//! - `contact.add {card}` accepts `ramflux:contact/<principal>#<sig>` cards
+//!   of known principals (`principal-bot` is an AI agent whose kind is
+//!   self-declared) and pins their root (`root_source: card`); anything else
+//!   is refused with `card_signature_invalid`. A card whose signature part
+//!   starts with `other-root` names another root: for a contact looked up by
+//!   id it is refused with `root_replacement_confirmation_required` and both
+//!   roots, until `replace_provisional_root` names the looked-up root.
+//! - `contact.verify` marks the contact verified (`root_source: verified`).
 //! - `contact.card.export` answers this account's card and link.
 //! - `group.create` records the group with its creator, conversation and
 //!   name; `group.member.add` adds a member device; `group.list` and
@@ -72,8 +78,8 @@ pub struct Group {
 /// What the fake account holds.
 #[derive(Default)]
 pub struct State {
-    /// Resolved contacts: principal and how they were added.
-    pub contacts: Vec<(String, bool)>,
+    /// Resolved contacts: principal, root commitment and `root_source`.
+    pub contacts: Vec<(String, String, &'static str)>,
     /// Groups by group id.
     pub groups: BTreeMap<String, Group>,
     /// Direct conversations started, by id, with their peer.
@@ -85,18 +91,79 @@ pub struct State {
 /// The shared state.
 pub type Shared = Arc<Mutex<State>>;
 
-fn link(principal: &str, by_card: bool) -> Value {
+/// The contact entry the daemon answers and joins into its rows.
+fn entry(principal: &str, root: &str, source: &str) -> Value {
     let who = known(principal);
     json!({
-        "link_id": format!("link-{principal}"), "requester_id": "principal-me",
-        "target_id": principal, "state": "accepted", "blocked": false,
+        "principal_id": principal, "display_name": who.map(|k| k.name),
         "reachable": who.is_some_and(|k| !k.devices.is_empty()),
-        "verified": false,
-        "kind_asserted": if by_card { who.map(|k| k.kind) } else { None },
+        "verified": source == "verified",
+        "kind_asserted": if source == "card" { who.map(|k| k.kind) } else { None },
+        "root_commitment": root, "root_source": source, "node": null,
     })
 }
 
-fn identity(principal: &str) -> Option<Value> {
+/// A `contact.list` row: the link record joined with the contact entry.
+fn link(principal: &str, root: &str, source: &str) -> Value {
+    let mut row = json!({
+        "link_id": format!("link-{principal}"), "requester_id": "principal-me",
+        "target_id": root, "state": "accepted", "blocked": false,
+    });
+    if let (Value::Object(row), Value::Object(entry)) = (&mut row, entry(principal, root, source)) {
+        row.extend(entry);
+    }
+    row
+}
+
+fn refused(reason: &'static str, details: Option<Value>) -> Reply {
+    Reply::Refused {
+        code: "ValidationFailed",
+        message: reason.to_owned(),
+        reason_code: reason,
+        details,
+    }
+}
+
+/// `contact.add {card}` or `{card, replace_provisional_root}`.
+fn add_card(state: &mut State, body: &Value) -> Reply {
+    let card = text(body, "card");
+    let (principal, signature) = card
+        .strip_prefix("ramflux:contact/")
+        .and_then(|rest| rest.split_once('#'))
+        .unwrap_or_default();
+    if known(principal).is_none() {
+        return refused("card_signature_invalid", None);
+    }
+    let root = if signature.starts_with("other-root") {
+        format!("cm-other-{principal}")
+    } else {
+        format!("cm-{principal}")
+    };
+    let held = state.contacts.iter().find(|(p, ..)| p == principal).cloned();
+    if let Some((_, previous, source)) = held
+        && previous != root
+    {
+        let replace = text(body, "replace_provisional_root");
+        if source != "lookup" {
+            return refused("root_conflict", None);
+        }
+        if replace.is_empty() {
+            let details = json!({
+                "principal_id": principal, "previous_root_commitment": previous,
+                "proposed_root_commitment": root,
+            });
+            return refused("root_replacement_confirmation_required", Some(details));
+        }
+        if replace != previous {
+            return refused("root_conflict", None);
+        }
+    }
+    state.contacts.retain(|(p, ..)| p != principal);
+    state.contacts.push((principal.to_owned(), root.clone(), "card"));
+    Reply::Ok(json!({ "contact": entry(principal, &root, "card") }))
+}
+
+fn identity(principal: &str, root: &str, source: &str) -> Option<Value> {
     let who = known(principal)?;
     let devices: Vec<Value> = who
         .devices
@@ -110,11 +177,13 @@ fn identity(principal: &str) -> Option<Value> {
         .collect();
     Some(json!({
         "id": principal, "principal_id": principal,
-        "principal_commitment": format!("cm-{principal}"),
-        "contact_identity_commitment": format!("cm-{principal}"),
+        "principal_commitment": root,
+        "contact_identity_commitment": root,
         "display_name": who.name, "kind": if who.kind == "human" { Value::from("human") } else { Value::Null },
         "is_self": false, "devices": devices,
-        "safety_state": "unverified", "safety_number": null, "safety_number_available": true,
+        "safety_state": if source == "verified" { "verified" } else { "unverified" },
+        "safety_number": format!("{:0>60}", principal.len()), "safety_number_available": true,
+        "root_source": source,
     }))
 }
 
@@ -164,40 +233,40 @@ fn handle(state: &mut State, all: &BTreeMap<String, Value>, method: &str, body: 
     let fixture = || all.get(method).cloned().unwrap_or(json!({}));
     Reply::Ok(match method {
         "contact.list" => {
-            json!({ "contacts": state.contacts.iter().map(|(p, card)| link(p, *card)).collect::<Vec<_>>() })
+            let rows: Vec<Value> = state.contacts.iter().map(|(p, r, s)| link(p, r, s)).collect();
+            json!({ "contacts": rows })
         }
+        "contact.add" if body.get("card").is_some() => return add_card(state, body),
         "contact.add" => {
             let principal = text(body, "principal_id");
-            if known(&principal).is_none() {
-                return Reply::Error(
-                    "ValidationFailed",
-                    format!("{principal} is not known to its home node"),
-                );
+            if body.as_object().is_none_or(|b| b.len() != 1) {
+                return refused("invalid_card", None);
             }
-            state.contacts.retain(|(p, _)| p != &principal);
-            state.contacts.push((principal.clone(), false));
-            link(&principal, false)
+            if known(&principal).is_none() {
+                return refused("unknown_principal", None);
+            }
+            if state.contacts.iter().any(|(p, ..)| p == &principal) {
+                return refused("already_contact", None);
+            }
+            let root = format!("cm-{principal}");
+            state.contacts.push((principal.clone(), root.clone(), "lookup"));
+            json!({ "contact": entry(&principal, &root, "lookup") })
         }
-        "contact.card.import" => {
-            let card = text(body, "card");
-            let principal = card.strip_prefix("ramflux:contact/").unwrap_or_default();
-            let principal = principal.split('#').next().unwrap_or_default().to_owned();
-            if known(&principal).is_none() {
-                return Reply::Error(
-                    "ValidationFailed",
-                    "contact card signature does not verify".to_owned(),
-                );
+        "contact.verify" => {
+            let commitment = text(body, "contact_identity_commitment");
+            for contact in &mut state.contacts {
+                if contact.1 == commitment {
+                    contact.2 = "verified";
+                }
             }
-            state.contacts.retain(|(p, _)| p != &principal);
-            state.contacts.push((principal.clone(), true));
-            json!({ "link": link(&principal, true) })
+            json!({ "verification_state": "verified" })
         }
         "contact.card.export" => json!({ "card": MY_CARD, "link": MY_LINK }),
         "identity.directory" => {
             let mut frame = all["identity.directory"].clone();
             let rows = frame["identities"].as_array_mut().expect("rows");
             rows.retain(|r| r["is_self"].as_bool().unwrap_or(false));
-            rows.extend(state.contacts.iter().filter_map(|(p, _)| identity(p)));
+            rows.extend(state.contacts.iter().filter_map(|(p, r, s)| identity(p, r, s)));
             frame
         }
         "group.create" => {
@@ -276,7 +345,7 @@ fn handle(state: &mut State, all: &BTreeMap<String, Value>, method: &str, body: 
             json!({ "message_id": body["message_id"], "accepted": true })
         }
         "message.list" => json!({ "messages": [] }),
-        "group.members" | "contact.verify" => json!({}),
+        "group.members" => json!({}),
         _ => fixture(),
     })
 }

@@ -38,6 +38,18 @@ pub enum Reply {
     Ok(Value),
     /// An error frame.
     Error(&'static str, String),
+    /// An error frame with a typed reason (`reason_code`) and optional
+    /// `details`, as the daemon writes a contact refusal.
+    Refused {
+        /// Error code (`ValidationFailed`, `Unavailable`).
+        code: &'static str,
+        /// Message.
+        message: String,
+        /// Typed reason.
+        reason_code: &'static str,
+        /// Structured details.
+        details: Option<Value>,
+    },
     /// Wait, then answer.
     Slow(Duration, Value),
     /// Apply (the receipt records this answer), then close the connection
@@ -326,6 +338,19 @@ fn answer(
                 "error".into(),
                 json!({ "code": code, "message": message, "retry_after_ms": null }),
             );
+        }
+        Reply::Refused { code, message, reason_code, details } => {
+            map.insert("kind".into(), json!("error"));
+            map.insert("ok".into(), json!(false));
+            map.insert("body".into(), Value::Null);
+            let mut error = json!({
+                "code": code, "message": message, "retry_after_ms": null,
+                "reason_code": reason_code,
+            });
+            if let Some(details) = details {
+                error["details"] = details;
+            }
+            map.insert("error".into(), error);
         }
     }
     let _ = write_frame(&mut writer.lock().expect("writer"), &frame);

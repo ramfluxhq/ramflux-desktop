@@ -152,8 +152,11 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::AddContactRequested { participant_id } => {
             IntentKind::AddContact { participant_id: participant_id.clone() }
         }
-        UiEventKind::AddContactCardRequested { card } => {
-            IntentKind::AddContactCard { card: card.clone() }
+        UiEventKind::AddContactCardRequested { card, replace_provisional_root } => {
+            IntentKind::AddContactCard {
+                card: card.clone(),
+                replace_provisional_root: replace_provisional_root.clone(),
+            }
         }
         UiEventKind::ShareContactCardRequested => IntentKind::ExportContactCard,
         UiEventKind::CreateGroupRequested { context_id, title, members } => {

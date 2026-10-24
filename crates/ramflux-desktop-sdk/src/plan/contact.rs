@@ -9,13 +9,13 @@
 //! desktop names a contact by participant (principal) id; the daemon names
 //! a link by link id, which the source knows from `contact.list`.
 //!
-//! - `contact.add`: this account (requester) to the typed principal
-//!   (target), also named as `principal_id`: a daemon that resolves
-//!   contacts looks the principal up on its home node at add time (trust on
-//!   first use: unverified until safety numbers are compared), so the
-//!   contact is reachable at once; an older daemon reads the link fields
-//!   and ignores the rest. The link id is derived from both ids, so adding
-//!   the same contact again re-establishes the same link.
+//! - `contact.add` `{principal_id}` (exactly that field: the daemon refuses
+//!   any other): the daemon looks the principal up through the account's
+//!   authenticated home-node session, verifies its device manifest and
+//!   caches it with an accepted link, so the contact is reachable at once.
+//!   A name lookup is provisional (`root_source: lookup`, trust on first
+//!   use) until a card pins the root or safety numbers are compared. The
+//!   daemon derives the link id.
 //! - `contact.accept`: the local form (requester, target of the pending
 //!   link). The federated form, which also notifies the requester, needs the
 //!   requester's device route; the daemon does not list it.
@@ -43,9 +43,6 @@ use super::{Known, Plan, refuse, refuse_invalid, text};
 use crate::bus::BusRequest;
 use crate::translate::reason::key;
 
-/// Domain tag of desktop-derived link ids.
-const LINK_ID_DOMAIN: &str = "ramflux.desktop.contact_link.v1";
-
 /// Scope of `contact.remove` (the reference CLI's default).
 pub const REMOVE_SCOPE: &str = "me";
 
@@ -60,13 +57,6 @@ pub struct KnownLink {
     pub target_id: String,
     /// State.
     pub state: ContactLink,
-}
-
-/// The link id the desktop uses for a link from `requester` to `target`.
-pub fn derived_link_id(requester: &str, target: &str) -> String {
-    let digest =
-        ramflux_protocol::hash_hex(LINK_ID_DOMAIN, format!("{requester}\n{target}").as_bytes());
-    format!("link-{}", &digest[..32])
 }
 
 /// Plans a `contact.*` effect for account `acct`.
@@ -102,20 +92,7 @@ pub(super) fn contact_call(
         if participant == me {
             return refuse_invalid("that is this account's own id");
         }
-        let link_id = known
-            .contact_link(participant)
-            .filter(|link| link.requester_id == me)
-            .map_or_else(|| derived_link_id(me, participant), |link| link.link_id.clone());
-        let add = LocalBusContactAddRequest {
-            link_id,
-            requester_id: me.to_owned(),
-            target_id: participant.to_owned(),
-        };
-        let add = serde_json::to_value(add).map(|mut add| {
-            add["principal_id"] = Value::from(participant);
-            add
-        });
-        return request("contact.add", add);
+        return request("contact.add", Ok(serde_json::json!({ "principal_id": participant })));
     }
     let Some(link) = known.contact_link(participant) else {
         return refuse_invalid("the daemon lists no link with this contact");
@@ -163,18 +140,5 @@ pub(super) fn verify(acct: Option<&str>, body: &Value, known: &impl Known) -> Pl
             refresh: vec![Fetch::first(Paged::Identities)],
         },
         Err(error) => refuse_invalid(&error.to_string()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn derived_link_ids_are_stable_and_directional() {
-        let id = derived_link_id("principal-me", "principal-ana");
-        assert_eq!(id, derived_link_id("principal-me", "principal-ana"));
-        assert_ne!(id, derived_link_id("principal-ana", "principal-me"));
-        assert!(id.starts_with("link-") && id.len() == 37);
     }
 }

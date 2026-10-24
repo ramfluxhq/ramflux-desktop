@@ -9,6 +9,7 @@
 //! | `kind` `human` / `headless_ai` / `bot` | `Human` / `Agent` / `Agent`; null is `Unknown` |
 //! | `safety_state` `verified` / `verification_stale` | `Verified` / `KeyChanged` (the verified device set changed); else `Unverified` |
 //! | `safety_number` | the persisted number, or none |
+//! | `root_source` `lookup` / `card` / `verified` | where the pinned root came from |
 //! | `devices` | routes for sends, adds and invites (the directory) |
 //! | `is_self` | this account's principal and commitment |
 //!
@@ -61,6 +62,7 @@ impl Translator {
                 kind: kind(row),
                 safety: safety(row),
                 safety_number: field(row, "safety_number"),
+                root_source: super::contacts::root_source(row),
             };
             events.extend(self.set_facts(&ParticipantId::new(principal.as_str()), facts));
             listed.insert(principal, identity);

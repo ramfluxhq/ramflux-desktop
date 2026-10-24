@@ -101,6 +101,11 @@ fn current(cx: &mut TestAppContext, shell: &ShellEntity) -> Option<ContextId> {
     cx.update(|cx| workspace.read(cx).current_context().cloned())
 }
 
+/// The cards sent with `contact.add {card}`, in order.
+fn cards_sent(state: &resolve_fake::Shared) -> Vec<serde_json::Value> {
+    seen(state, "contact.add").into_iter().filter_map(|b| b.get("card").cloned()).collect()
+}
+
 fn seen(state: &resolve_fake::Shared, method: &str) -> Vec<serde_json::Value> {
     state
         .lock()
@@ -166,13 +171,16 @@ fn cards_add_the_contact_they_name_and_refusals_show_the_daemon_reason(cx: &mut 
     add(cx, handle, "principal-nobody");
     wait(cx, "the node's answer", |cx| matches!(note(cx, &shell), Some(FormNote::Error(_))));
     let Some(FormNote::Error(reason)) = note(cx, &shell) else { unreachable!() };
-    assert!(reason.contains("not known to its home node"), "{reason}");
+    // The typed reason, in the user's words (never the daemon's code).
+    let unknown = tr("backend.contact.unknown_principal");
+    assert!(reason.contains(unknown.as_ref()), "{reason}");
 
     clear(cx, handle, "contact-add-id");
     add(cx, handle, "ramflux:contact/forged#sig");
     wait(cx, "the card refused", |cx| matches!(note(cx, &shell), Some(FormNote::Error(_))));
     let Some(FormNote::Error(reason)) = note(cx, &shell) else { unreachable!() };
-    assert!(reason.contains("signature does not verify"), "{reason}");
+    let forged = tr("backend.contact.card_signature_invalid");
+    assert!(reason.contains(forged.as_ref()), "{reason}");
 
     clear(cx, handle, "contact-add-id");
     type_into(cx, handle, "contact-add-id", "ramflux:contact/principal-bot#sig-bot");
@@ -188,8 +196,7 @@ fn cards_add_the_contact_they_name_and_refusals_show_the_daemon_reason(cx: &mut 
         (bot.kind, bot.kind_asserted, bot.reachable),
         (ramflux_desktop_core::ParticipantKind::Agent, true, Some(true))
     );
-    let cards: Vec<serde_json::Value> =
-        seen(&state, "contact.card.import").into_iter().map(|b| b["card"].clone()).collect();
+    let cards: Vec<serde_json::Value> = cards_sent(&state);
     assert_eq!(cards, ["ramflux:contact/forged#sig", "ramflux:contact/principal-bot#sig-bot"]);
     wait(cx, "the field cleared", |cx| note(cx, &shell).is_none());
     let agent =
@@ -209,10 +216,7 @@ fn cards_add_the_contact_they_name_and_refusals_show_the_daemon_reason(cx: &mut 
         dock.update(cx, |dock, cx| dock.import_card_file(&file, window, cx));
     });
     wait(cx, "the file's contact", |cx| contact(cx, &shell, "principal-kai").is_some());
-    assert_eq!(
-        seen(&state, "contact.card.import")[2]["card"],
-        "ramflux:contact/principal-kai#sig-kai"
-    );
+    assert_eq!(cards_sent(&state)[2], "ramflux:contact/principal-kai#sig-kai");
     let missing = dir.join("missing.rfcard");
     in_window(cx, handle, |window, cx| {
         dock.update(cx, |dock, cx| dock.import_card_file(&missing, window, cx));

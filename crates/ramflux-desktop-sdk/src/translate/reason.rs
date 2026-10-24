@@ -92,8 +92,39 @@ pub mod key {
     /// is listed for the member (`name`), so the group is not created.
     pub const GROUP_MEMBER_ROUTE: &str = "backend.failure.group_member_route";
 
+    /// Contact refusal `unknown_principal`: No one is registered under this id on the home node.
+    pub const CONTACT_UNKNOWN_PRINCIPAL: &str = "backend.contact.unknown_principal";
+    /// Contact refusal `invalid_card`: This is not a contact card for your home node.
+    pub const CONTACT_INVALID_CARD: &str = "backend.contact.invalid_card";
+    /// Contact refusal `card_signature_invalid`: The card's signature does not match its identity.
+    pub const CONTACT_CARD_SIGNATURE_INVALID: &str = "backend.contact.card_signature_invalid";
+    /// Contact refusal `card_expired`: The card has expired.
+    pub const CONTACT_CARD_EXPIRED: &str = "backend.contact.card_expired";
+    /// Contact refusal `self_contact`: That is this account itself.
+    pub const CONTACT_SELF: &str = "backend.contact.self_contact";
+    /// Contact refusal `already_contact`: Already a contact.
+    pub const CONTACT_ALREADY: &str = "backend.contact.already_contact";
+    /// Contact refusal `root_conflict`: The contact's identity changed while it was being confirmed.
+    pub const CONTACT_ROOT_CONFLICT: &str = "backend.contact.root_conflict";
+    /// Contact refusal `manifest_invalid`: The contact's published identity could not be verified.
+    pub const CONTACT_MANIFEST_INVALID: &str = "backend.contact.manifest_invalid";
+    /// Contact refusal `principal_id_ambiguous`: Several identities hold this id on the node.
+    pub const CONTACT_AMBIGUOUS: &str = "backend.contact.principal_id_ambiguous";
+    /// Contact refusal `rate_limited`: Too many lookups.
+    pub const CONTACT_RATE_LIMITED: &str = "backend.contact.rate_limited";
+    /// Contact refusal `principal_id_taken`: The id is registered to another identity.
+    pub const PRINCIPAL_ID_TAKEN: &str = "backend.contact.principal_id_taken";
+    /// Contact refusal `device_id_taken`: The device id is registered to another identity.
+    pub const DEVICE_ID_TAKEN: &str = "backend.contact.device_id_taken";
+    /// Contact refusal `unavailable`: The home node could not be reached.
+    pub const CONTACT_UNAVAILABLE: &str = "backend.contact.unavailable";
+    /// Contact refusal `root_replacement`: The card names another identity than the lookup (`name`, `previous`, `proposed`).
+    pub const CONTACT_ROOT_REPLACEMENT: &str = "backend.contact.root_replacement";
+    /// Contact refusal `no_home_node`: The account has no home node profile.
+    pub const CONTACT_NO_HOME_NODE: &str = "backend.contact.no_home_node";
+
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 33] = [
+    pub const ALL: [&str; 48] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -127,6 +158,21 @@ pub mod key {
         SURFACE_NOT_PERMITTED,
         SURFACE_INVALID_REQUEST,
         GROUP_MEMBER_ROUTE,
+        CONTACT_UNKNOWN_PRINCIPAL,
+        CONTACT_INVALID_CARD,
+        CONTACT_CARD_SIGNATURE_INVALID,
+        CONTACT_CARD_EXPIRED,
+        CONTACT_SELF,
+        CONTACT_ALREADY,
+        CONTACT_ROOT_CONFLICT,
+        CONTACT_MANIFEST_INVALID,
+        CONTACT_AMBIGUOUS,
+        CONTACT_RATE_LIMITED,
+        PRINCIPAL_ID_TAKEN,
+        DEVICE_ID_TAKEN,
+        CONTACT_UNAVAILABLE,
+        CONTACT_ROOT_REPLACEMENT,
+        CONTACT_NO_HOME_NODE,
     ];
 }
 

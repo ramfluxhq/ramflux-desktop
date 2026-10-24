@@ -42,7 +42,7 @@ pub use backend::{
 };
 pub use conversation::{
     ContactCard, ContactLink, Context, ContextKind, Disappearing, Participant, ParticipantKind,
-    Role, SafetyState,
+    Role, RootSource, SafetyState,
 };
 pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingApproval};
 pub use integrations::{A2iItem, Integrations, McpServer};

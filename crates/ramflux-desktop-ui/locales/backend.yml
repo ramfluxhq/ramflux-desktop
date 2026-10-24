@@ -148,6 +148,52 @@ backend:
     start_unverified_key:
       en: "%{name}'s device keys are not verified for this account yet. Open Contacts and verify %{name}'s safety number, then try again."
       zh-CN: "%{name} 的设备密钥尚未在此账户中验证。请打开联系人，验证 %{name} 的安全码后重试。"
+  contact:
+    unknown_principal:
+      en: "No one is registered under this id on your home node. Check the id, or ask for their contact card."
+      zh-CN: "你的主节点上没有以此 ID 注册的人。请核对 ID，或向对方索取联系人名片。"
+    invalid_card:
+      en: "This is not a contact card this account can use. Cards work only for people on your own home node."
+      zh-CN: "这不是此账户可用的联系人名片。名片仅适用于与你同一主节点上的人。"
+    card_signature_invalid:
+      en: "The card's signature does not match the identity it names. Do not use it; ask for a new card in person."
+      zh-CN: "名片的签名与其所述身份不符。请勿使用，并当面索取新名片。"
+    card_expired:
+      en: "This contact card has expired. Ask for a fresh one."
+      zh-CN: "此联系人名片已过期。请索取新名片。"
+    self_contact:
+      en: "That is this account itself."
+      zh-CN: "这是此账户自己。"
+    already_contact:
+      en: "Already a contact."
+      zh-CN: "已经是联系人。"
+    root_conflict:
+      en: "The contact's identity changed while you were confirming it. Nothing was replaced; review it again."
+      zh-CN: "确认期间对方身份发生了变化。未做任何替换，请重新核对。"
+    manifest_invalid:
+      en: "The contact's published identity could not be verified. Nothing was added."
+      zh-CN: "无法验证对方发布的身份。未添加任何内容。"
+    principal_id_ambiguous:
+      en: "Several identities hold this id on the node, so it cannot be added by id. Ask for their contact card."
+      zh-CN: "节点上有多个身份使用此 ID，无法按 ID 添加。请索取对方的联系人名片。"
+    rate_limited:
+      en: "Too many lookups in the last minute. Try again in a minute."
+      zh-CN: "过去一分钟内查询过多。请一分钟后重试。"
+    principal_id_taken:
+      en: "This id is already registered to another identity on the node. Choose another id."
+      zh-CN: "此 ID 已在节点上注册给另一个身份。请换一个 ID。"
+    device_id_taken:
+      en: "This device id is already registered to another identity on the node. Start again to get a new device id."
+      zh-CN: "此设备 ID 已在节点上注册给另一个身份。请重新开始以获得新的设备 ID。"
+    unavailable:
+      en: "Your home node could not be reached. Nothing was added; try again."
+      zh-CN: "无法连接你的主节点。未添加任何内容，请重试。"
+    root_replacement:
+      en: "This card names another identity for %{name} than the earlier lookup found (lookup: %{previous}; card: %{proposed}). Compare with %{name} before replacing it."
+      zh-CN: "此名片为 %{name} 给出的身份与之前查询到的不同（查询：%{previous}；名片：%{proposed}）。替换前请与 %{name} 核对。"
+    no_home_node:
+      en: "Contact cards need this account's home node, and none is set up. Join your home node in Settings › Nodes first."
+      zh-CN: "联系人名片需要此账户的主节点，但尚未设置。请先在“设置 › 节点”中加入你的主节点。"
   daemon:
     socket:
       en: "Attached to %{path} · %{accounts} open accounts"

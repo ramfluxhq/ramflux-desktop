@@ -18,9 +18,9 @@ use std::sync::{Arc, Mutex};
 use common::*;
 use ramflux_desktop_core::{
     AccountId, ContactLink, ContextId, ContextKind, Effect, FailureCode, Listing, ParticipantId,
-    Source as _, Store, methods,
+    ParticipantKind, RootSource, Source as _, Store, methods,
 };
-use ramflux_desktop_sdk::plan::contact::{REMOVE_SCOPE, derived_link_id};
+use ramflux_desktop_sdk::plan::contact::REMOVE_SCOPE;
 use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
 use ramflux_desktop_sdk::plan::{Known, KnownLink, Plan, plan};
 use ramflux_sdk::{
@@ -113,23 +113,11 @@ fn every_contact_method_builds_the_sdk_request() {
     assert_eq!(m, "contact.add");
     // The contact's identity follows the link: both are read again.
     assert_eq!(refresh, vec![Fetch::ContactList, Fetch::first(Paged::Identities)]);
-    // The principal is also named on its own, for a daemon that looks it up.
-    assert_eq!(body["principal_id"], "principal-kai");
-    let mut link = body.clone();
-    link.as_object_mut().map(|b| b.remove("principal_id"));
-    let add: LocalBusContactAddRequest = sdk_shaped(&link);
-    assert_eq!(add.link_id, derived_link_id(ME, "principal-kai"));
-    assert_eq!((add.requester_id.as_str(), add.target_id.as_str()), (ME, "principal-kai"));
-
-    // Adding a contact again reuses the link this account requested.
+    // Exactly the principal id: the daemon resolves it and derives the link
+    // (it refuses any other field next to a selector).
+    assert_eq!(body, json!({ "principal_id": "principal-kai" }));
     let (_, body, _) = mapped(call(methods::CONTACT_ADD, on("principal-ana")), &known);
-    assert_eq!(
-        body,
-        json!({
-            "link_id": "l1", "requester_id": ME, "target_id": "principal-ana",
-            "principal_id": "principal-ana",
-        })
-    );
+    assert_eq!(body, json!({ "principal_id": "principal-ana" }));
 
     // Accept is the daemon's local form: the pending link's own ids.
     let (m, body, refresh) = mapped(call(methods::CONTACT_ACCEPT, on("principal-noor")), &known);
@@ -228,10 +216,34 @@ fn friend_daemon(links: Arc<Mutex<Vec<Value>>>) -> impl Fn(&str, Option<&str>, &
         };
         match method {
             "contact.list" => Reply::Ok(json!({ "contacts": links.clone() })),
-            "contact.add" | "contact.accept" => {
-                if body["target_id"] == "principal-locked" {
+            "contact.add" => {
+                let principal = body["principal_id"].as_str().unwrap_or_default();
+                if body.as_object().is_none_or(|b| b.len() != 1) || principal.is_empty() {
+                    return Reply::Refused {
+                        code: "ValidationFailed",
+                        message: "invalid_card".to_owned(),
+                        reason_code: "invalid_card",
+                        details: None,
+                    };
+                }
+                if principal == "principal-locked" {
                     return error(LOCKED);
                 }
+                let contact = json!({
+                    "principal_id": principal, "display_name": null, "reachable": true,
+                    "verified": false, "kind_asserted": "human", "root_commitment": "root-1",
+                    "root_source": "lookup", "node": null,
+                });
+                // A listed row is the link record joined with the contact.
+                let mut row =
+                    record(&format!("link-{principal}"), ME, principal, "accepted", false);
+                if let (Value::Object(row), Value::Object(fields)) = (&mut row, contact.clone()) {
+                    row.extend(fields);
+                }
+                links.push(row);
+                Reply::Ok(json!({ "contact": contact }))
+            }
+            "contact.accept" => {
                 let row = record(
                     &id,
                     body["requester_id"].as_str().unwrap_or_default(),
@@ -297,13 +309,14 @@ fn contact_actions_reach_the_daemon_and_its_records_update_the_contacts() {
         link_of(s, "principal-kai") == Some(ContactLink::Accepted)
             && s.participant(&ParticipantId::new("principal-kai")).is_some_and(|p| p.contact)
     });
-    let mut added = frame("contact.add");
+    assert_eq!(frame("contact.add"), json!({ "principal_id": "principal-kai" }));
+    let kai = account.store.participant(&ParticipantId::new("principal-kai")).cloned();
+    let kai = kai.expect("kai");
+    // A name lookup is provisional until a card pins it or numbers match.
     assert_eq!(
-        added.as_object_mut().and_then(|b| b.remove("principal_id")),
-        Some(json!("principal-kai"))
+        (kai.reachable, kai.root_source, kai.kind, kai.kind_asserted),
+        (Some(true), Some(RootSource::Lookup), ParticipantKind::Human, true)
     );
-    let add: LocalBusContactAddRequest = sdk_shaped(&added);
-    assert_eq!(add.target_id, "principal-kai");
 
     submit(&mut account, methods::CONTACT_ACCEPT, "principal-noor");
     account

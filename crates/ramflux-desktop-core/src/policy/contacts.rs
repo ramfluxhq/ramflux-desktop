@@ -18,10 +18,16 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             check_add_contact(p.store, participant_id.as_str())?;
             Ok(Decision::Call(methods::CONTACT_ADD, json!({ "participant_id": participant_id })))
         }),
-        IntentKind::AddContactCard { card } => p.human_only("add a contact").and_then(|()| {
-            let card = check_add_contact_card(card)?;
-            Ok(Decision::Call(methods::CONTACT_CARD_IMPORT, json!({ "card": card })))
-        }),
+        IntentKind::AddContactCard { card, replace_provisional_root } => {
+            p.human_only("add a contact").and_then(|()| {
+                let card = check_add_contact_card(card)?;
+                let mut body = json!({ "card": card });
+                if let Some(root) = replace_provisional_root.as_deref().filter(|r| !r.is_empty()) {
+                    body["replace_provisional_root"] = json!(root);
+                }
+                Ok(Decision::Call(methods::CONTACT_CARD_IMPORT, body))
+            })
+        }
         IntentKind::ExportContactCard => p
             .human_only("share the contact card")
             .map(|()| Decision::Call(methods::CONTACT_CARD_EXPORT, json!({}))),

@@ -91,11 +91,12 @@ pub fn conversation(id: &str, conversation: &Conversation, owner: &Account) -> V
 
 /// An accepted friend link of a resolving daemon: the contact's devices
 /// are held (reachable), the safety number not compared yet.
-pub fn link(id: &Value, requester: &Value, target: &Value) -> Value {
+pub fn link(id: &Value, requester: &Value, target: &Value, root_source: &str) -> Value {
     json!({
         "link_id": id, "requester_id": requester, "target_id": target, "state": "accepted",
         "remove_scope": null, "blocked": false, "capability_revoked_at": null,
-        "reachable": true, "verified": false, "kind_asserted": null,
+        "principal_id": target, "reachable": true, "verified": false, "kind_asserted": null,
+        "root_source": root_source,
     })
 }
 
