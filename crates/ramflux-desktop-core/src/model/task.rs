@@ -224,9 +224,9 @@ pub struct TaskFlags {
     /// the events that led there are not.
     #[serde(default)]
     pub compacted: bool,
-    /// Whether the kinds of the task's actors (who is a person, who is an
-    /// AI participant) were verified. Until participants carry a signed
-    /// kind, a kind is only what each side asserts.
+    /// Whether the assignee's kind (a person or an AI participant) was
+    /// verified. Until participants carry a signed kind, a kind is only
+    /// what each side asserts.
     #[serde(default)]
     pub kind_verified: bool,
 }
@@ -264,6 +264,13 @@ pub enum TaskAnswer {
     /// The decision on a step was sent; the assignee confirms it once it
     /// has checked the grant or the surface answer.
     DecisionPending {
+        /// The step decided.
+        step_id: StepId,
+    },
+    /// The decision was sent but the assignee has not confirmed it in
+    /// time; it stays pending (the assignee may still commit it) and the
+    /// task can still be cancelled.
+    DecisionUnconfirmed {
         /// The step decided.
         step_id: StepId,
     },
