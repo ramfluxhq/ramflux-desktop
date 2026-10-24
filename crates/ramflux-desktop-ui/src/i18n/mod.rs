@@ -68,6 +68,15 @@ pub fn observe_locale<T: 'static>(
     cx.observe_global_in::<LocaleSwitch>(window, f)
 }
 
+/// Calls `f` on the view after every locale switch, for views that need no
+/// window to translate again.
+pub fn on_locale_switch<T: 'static>(
+    cx: &mut Context<T>,
+    f: impl FnMut(&mut T, &mut Context<T>) + 'static,
+) -> Subscription {
+    cx.observe_global::<LocaleSwitch>(f)
+}
+
 /// A text input whose placeholder is the translation of `key`, translated
 /// again after every locale switch for as long as the input lives.
 /// `configure` sets everything else (masking, a starting value).

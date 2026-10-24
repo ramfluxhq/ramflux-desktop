@@ -127,6 +127,8 @@ impl Conversation {
                 }
             }),
             cx.observe(&root, |_, _, cx| cx.notify()),
+            // Rows keep translated text (day headers): build them again.
+            crate::i18n::on_locale_switch(cx, |this, cx| this.retranslate_rows(cx)),
         ];
         Self {
             root_sink: IntentRoot::sink(&root),
@@ -295,6 +297,22 @@ impl Conversation {
                 if appended > 0 {
                     let _ = state.append(appended, cx);
                 }
+            }
+        });
+        cx.notify();
+    }
+
+    /// Builds every row again in the new locale, keeping the scroll
+    /// position; rows whose text changed length are measured again.
+    fn retranslate_rows(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.context_id.clone() else { return };
+        let _ = self.rows.sync(self.store.read(cx), &id, None);
+        let count = self.rows.as_slice().len();
+        self.scroller.update(cx, |state, cx| {
+            if state.item_count() == count {
+                state.remeasure(cx);
+            } else {
+                state.reset(count, cx);
             }
         });
         cx.notify();

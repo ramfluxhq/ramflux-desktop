@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Span Brain
 
 //! UI integration test of a language switch from Settings › Appearance: the
-//! text the window keeps from the moment it was built (input placeholders)
-//! follows the selected locale at once, both ways.
+//! text the window keeps from the moment it was built (input placeholders,
+//! the conversation's day headers) follows the selected locale at once, both
+//! ways.
 //!
 //! Its own test binary: the locale is process-wide, so switching it must not
 //! race the other UI tests.
@@ -57,6 +58,20 @@ fn placeholders(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<SharedStr
     })
 }
 
+/// The day headers shown in the conversation.
+fn day_headers(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<String> {
+    let workspace = workspace(cx, shell);
+    cx.update(|cx| {
+        let conversation = workspace.read(cx).conversation().read(cx);
+        conversation.day_headers().into_iter().flatten().collect()
+    })
+}
+
+/// The day headers of s02's design team, translated in the active locale.
+fn expected_days() -> Vec<String> {
+    ["clock.yesterday", "clock.today"].into_iter().map(|key| tr(key).to_string()).collect()
+}
+
 /// What [`placeholders`] reads, translated in the active locale.
 fn expected() -> Vec<SharedString> {
     [
@@ -77,8 +92,11 @@ fn window_strings_follow_a_language_switch_both_ways(cx: &mut TestAppContext) {
     advance(cx, 1_000);
     assert_eq!(page(cx, &shell), Page::Workspace);
     assert_eq!(i18n::locale(), i18n::DEFAULT_LOCALE);
+    show_context(cx, handle, &shell, "c-team");
     let chinese = expected();
+    let chinese_days = expected_days();
     assert_eq!(placeholders(cx, &shell), chinese, "built in the default locale");
+    assert_eq!(day_headers(cx, &shell), chinese_days);
 
     cx.update(|cx| {
         shell.update(cx, |shell, cx| shell.open_settings_at(SettingsSection::Appearance, cx))
@@ -89,7 +107,9 @@ fn window_strings_follow_a_language_switch_both_ways(cx: &mut TestAppContext) {
     assert_eq!(english[0].as_ref(), "Write a message");
     assert_ne!(english, chinese);
     assert_eq!(placeholders(cx, &shell), english, "switched to English without a restart");
+    assert_eq!(day_headers(cx, &shell), ["Yesterday", "Today"], "rows are built again");
 
     pick_language(cx, handle, "zh-CN");
     assert_eq!(placeholders(cx, &shell), chinese, "switched back to Chinese");
+    assert_eq!(day_headers(cx, &shell), chinese_days);
 }
