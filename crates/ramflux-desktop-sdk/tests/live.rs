@@ -69,13 +69,11 @@ fn effects_reach_the_daemon_and_their_answers_become_events() {
 
     // An unsupported method never reaches the daemon.
     let before = fake.seen().len();
-    account
-        .source
-        .submit(call(methods::TASK_START, json!({ "context_id": "dm-ana", "request": "x" })));
+    account.source.submit(call(methods::PRIVACY_REVEAL, json!({ "moment_id": "m1" })));
     account.until("unsupported", |s, _| s.failures().len() == 2);
     assert_eq!(account.store.failures()[1].code, FailureCode::UnsupportedByBackend);
-    assert_eq!(account.store.failures()[1].message, "backend.gap.tasks");
-    assert!(fake.seen()[before..].iter().all(|s| s.method != "task.start"));
+    assert_eq!(account.store.failures()[1].message, "backend.gap.reveal");
+    assert!(fake.seen()[before..].iter().all(|s| s.method != "privacy.reveal"));
 
     // A pin is a desktop-local preference.
     account.source.submit(call(methods::CONTEXT_PIN, json!({ "context_id": "thread-team" })));

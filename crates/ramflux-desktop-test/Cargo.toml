@@ -9,6 +9,9 @@ repository.workspace = true
 
 [dependencies]
 ramflux-desktop-core.workspace = true
+# The fake daemon holds tasks on the protocol's own state machine, with
+# signed events (feature `fake-bus`).
+ramflux-crypto = { workspace = true, optional = true }
 ramflux-protocol = { workspace = true, optional = true }
 ron.workspace = true
 serde.workspace = true
@@ -17,6 +20,6 @@ thiserror.workspace = true
 
 [features]
 # A fake daemon local bus (std only) for adapter and UI tests.
-fake-bus = ["dep:ramflux-protocol"]
+fake-bus = ["dep:ramflux-protocol", "dep:ramflux-crypto"]
 # A real `rf daemon` from the pinned product revision for live tests.
 live-daemon = []

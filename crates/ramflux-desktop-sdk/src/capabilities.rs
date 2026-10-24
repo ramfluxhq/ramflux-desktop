@@ -16,8 +16,6 @@ use ramflux_desktop_core::{Capabilities, ContextKind, methods};
 
 /// Reason keys, one per gap.
 pub mod reason {
-    /// Tasks need the intent and task API (K3).
-    pub const TASKS: &str = "backend.gap.tasks";
     /// Reporting renderer errors to a surface's author has no daemon
     /// counterpart (K2 carries surfaces, not renderer reports).
     pub const SURFACES: &str = "backend.gap.surfaces";
@@ -43,8 +41,6 @@ pub mod reason {
 /// Every unsupported contract method (or `method@ContextKind`) with its reason.
 pub fn unsupported() -> BTreeMap<String, &'static str> {
     let mut table: BTreeMap<String, &'static str> = [
-        (methods::TASK_START, reason::TASKS),
-        (methods::TASK_CANCEL, reason::TASKS),
         (methods::RENDERER_ERROR, reason::SURFACES),
         (methods::HANDOFF_ACCEPT, reason::HANDOFF),
         (methods::HANDOFF_DECLINE, reason::HANDOFF),

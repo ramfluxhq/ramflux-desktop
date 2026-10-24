@@ -83,6 +83,20 @@ pub struct Seen {
     pub replayed: bool,
 }
 
+/// Appends events to a fake daemon's journal (see [`FakeBus::publisher`]).
+#[derive(Clone)]
+pub struct Publisher {
+    journal: Arc<Mutex<Journal>>,
+}
+
+impl Publisher {
+    /// Appends an event to `account`'s journal and delivers it; returns its
+    /// sequence number.
+    pub fn publish(&self, account: &str, topic: &str, body: Value) -> u64 {
+        self.journal.lock().expect("journal").publish(account, topic, body)
+    }
+}
+
 /// The fake daemon. Dropping it does not stop it; call [`FakeBus::shutdown`].
 pub struct FakeBus {
     path: PathBuf,
@@ -168,6 +182,12 @@ impl FakeBus {
     /// streams; returns its sequence number.
     pub fn publish(&self, account: &str, topic: &str, body: Value) -> u64 {
         self.journal().publish(account, topic, body)
+    }
+
+    /// A handle that appends to the journal from elsewhere (a fake domain
+    /// answering a request announces what it changed, as the daemon does).
+    pub fn publisher(&self) -> Publisher {
+        Publisher { journal: self.journal.clone() }
     }
 
     /// Writes an event with any sequence number to `account`'s streams

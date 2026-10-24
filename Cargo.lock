@@ -6132,6 +6132,7 @@ dependencies = [
 name = "ramflux-desktop-test"
 version = "0.1.0"
 dependencies = [
+ "ramflux-crypto",
  "ramflux-desktop-core",
  "ramflux-protocol",
  "ron",

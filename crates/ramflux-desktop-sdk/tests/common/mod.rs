@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 pub mod fake_bus;
+pub mod task_world;
 
 use std::time::{Duration, Instant};
 

@@ -21,6 +21,8 @@
 //! - [`group`]: membership, roles and invitations.
 //! - [`surface`]: surface actions and update requests.
 //! - [`group_create`]: creating and renaming a group.
+//! - [`task`]: starting, accepting, declining, cancelling and resolving
+//!   conversation tasks.
 
 pub mod contact;
 pub mod contact_card;
@@ -32,6 +34,7 @@ pub mod identity;
 pub mod message;
 pub mod object;
 pub mod surface;
+pub mod task;
 
 use ramflux_desktop_core::{
     AccountId, AccountKind, ContextId, ContextKind, Effect, FailureCode, NodeId, PinSource,
@@ -75,6 +78,11 @@ pub trait Known {
     /// first), which group calls carry.
     fn kept_title(&self, context: &ContextId) -> Option<&str> {
         self.directory().and_then(|d| d.title_of(context))
+    }
+    /// Where a reported task lives, by its desktop id.
+    fn task(&self, task_id: &str) -> Option<&task::TaskTarget> {
+        let _ = task_id;
+        None
     }
 }
 
@@ -372,6 +380,9 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         methods::CONTACT_CARD_EXPORT => contact_card::export(acct),
         methods::GROUP_CREATE => group_create::create(acct, body, known),
         methods::CONTEXT_RENAME => group_create::rename(acct, body, known),
+        methods::TASK_START | methods::TASK_CANCEL | methods::TASK_RESOLVE => {
+            task::task_call(acct, method, body, known)
+        }
         methods::CONTACT_ADD
         | methods::CONTACT_ACCEPT
         | methods::CONTACT_REJECT
