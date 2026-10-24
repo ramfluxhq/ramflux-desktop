@@ -1,0 +1,25 @@
+[package]
+name = "ramflux-desktop-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+# SFrame (RFC 9605) cipher suites: AES-GCM with HKDF-SHA-512 / SHA-256
+# (already in the graph through ramflux-crypto).
+aes-gcm = { version = "0.10", features = ["zeroize"] }
+aes = { version = "0.8", features = ["zeroize"] }
+hkdf = "0.12"
+sha2 = "0.10"
+getrandom = "0.3"
+thiserror.workspace = true
+zeroize.workspace = true
+# The reference libopus (RFC 6716), statically built from the bundled
+# source (needs cmake at build time).
+opus = "0.4"
+# Microphone and speaker I/O (Core Audio on macOS, ALSA on Linux: needs
+# libasound2-dev at build time).
+cpal = "0.18"

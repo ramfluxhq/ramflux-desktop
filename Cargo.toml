@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "apps/ramflux-desktop",
     "crates/ramflux-desktop-core",
+    "crates/ramflux-desktop-media",
     "crates/ramflux-desktop-sdk",
     "crates/ramflux-desktop-test",
     "crates/ramflux-desktop-ui",
@@ -33,6 +34,7 @@ ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "a9a2
 # Only on the SDK bridge thread; never in GPUI tasks or core.
 tokio = { version = "1.42", default-features = false, features = ["rt", "net", "sync", "time", "macros", "io-util"] }
 ramflux-desktop-core = { path = "crates/ramflux-desktop-core" }
+ramflux-desktop-media = { path = "crates/ramflux-desktop-media" }
 ramflux-desktop-sdk = { path = "crates/ramflux-desktop-sdk" }
 ramflux-desktop-test = { path = "crates/ramflux-desktop-test" }
 ramflux-desktop-ui = { path = "crates/ramflux-desktop-ui" }
