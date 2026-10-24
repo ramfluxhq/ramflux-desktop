@@ -25,6 +25,7 @@ pub mod fake_bus;
 pub mod fake_journal;
 #[cfg(feature = "fake-bus")]
 pub mod fake_surfaces;
+#[cfg(feature = "fake-bus")]
 pub mod fake_tasks;
 #[cfg(feature = "live-daemon")]
 pub mod live_daemon;

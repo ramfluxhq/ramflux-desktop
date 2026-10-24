@@ -152,6 +152,59 @@ impl LiveDaemon {
         Command::new(&self.rf).arg(flag("--socket", &self.socket())).args(args).output()
     }
 
+    /// One local-bus request (`ramflux.local_bus.v1`, a 4-byte big-endian
+    /// length and the JSON frame) on a fresh connection, for a test that
+    /// plays a participant without a desktop (an AI assignee). Returns the
+    /// answer's body, or the error frame's `code: message`.
+    ///
+    /// # Errors
+    ///
+    /// The daemon's refusal, or why the request could not be made.
+    pub fn call(
+        &self,
+        account: Option<&str>,
+        sdk_api: &str,
+        method: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        use std::io::{Read as _, Write as _};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let id = format!("live-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
+        let frame = serde_json::json!({
+            "bus_protocol": "ramflux.local_bus.v1", "frame_id": format!("frame_{id}"),
+            "kind": "request", "request_id": id, "account_id": account, "sdk_api": sdk_api,
+            "method": method, "body": body, "trace_id": null,
+        });
+        let bytes = serde_json::to_vec(&frame).map_err(|e| e.to_string())?;
+        let length = u32::try_from(bytes.len()).map_err(|e| e.to_string())?;
+        let mut stream = std::os::unix::net::UnixStream::connect(self.socket())
+            .map_err(|e| format!("cannot connect to the daemon: {e}"))?;
+        stream.set_read_timeout(Some(Duration::from_secs(60))).map_err(|e| e.to_string())?;
+        stream.write_all(&length.to_be_bytes()).map_err(|e| e.to_string())?;
+        stream.write_all(&bytes).map_err(|e| e.to_string())?;
+        loop {
+            let mut len = [0_u8; 4];
+            stream.read_exact(&mut len).map_err(|e| format!("{method}: no answer: {e}"))?;
+            let mut answer = vec![0_u8; u32::from_be_bytes(len) as usize];
+            stream.read_exact(&mut answer).map_err(|e| format!("{method}: no answer: {e}"))?;
+            let answer: serde_json::Value =
+                serde_json::from_slice(&answer).map_err(|e| e.to_string())?;
+            if answer["request_id"] != id.as_str() {
+                continue;
+            }
+            if answer["kind"] == "error" || answer["ok"] == false {
+                let error = &answer["error"];
+                return Err(format!(
+                    "{method}: {}: {}",
+                    error["code"].as_str().unwrap_or("error"),
+                    error["message"].as_str().unwrap_or_default()
+                ));
+            }
+            return Ok(answer["body"].clone());
+        }
+    }
+
     /// The daemon's log so far.
     pub fn log(&self) -> String {
         fs::read_to_string(self.dir.join("rfd.log")).unwrap_or_default()
