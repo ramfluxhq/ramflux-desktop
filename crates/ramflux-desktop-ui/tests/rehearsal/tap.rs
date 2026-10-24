@@ -141,7 +141,21 @@ fn summary(n: usize, dir: &str, body: &[u8]) -> Value {
             .collect();
     }
     if frame["kind"] == "error" {
-        line["code"] = frame["body"]["code"].clone();
+        // The daemon's error frame: code, typed reason and message (never
+        // secret material; the message is the daemon's own text).
+        let error = &frame["error"];
+        line["code"] = error["code"].clone();
+        line["reason_code"] = error["reason_code"].clone();
+        line["message"] = error["message"].clone();
+    }
+    if dir == "down" && matches!(method, "message.list" | "message.receive" | "conversation.start")
+    {
+        // Counts only: how many rows and whether their text was readable.
+        let rows = frame["body"]["messages"].as_array().cloned().unwrap_or_default();
+        line["messages"] = json!(rows.len());
+        line["with_text"] = json!(
+            rows.iter().filter(|r| r["body_utf8"].is_string() || r["text"].is_string()).count()
+        );
     }
     line
 }
