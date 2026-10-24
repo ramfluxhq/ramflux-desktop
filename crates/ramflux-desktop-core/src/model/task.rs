@@ -248,6 +248,12 @@ pub enum TaskRefusal {
     TooLarge,
     /// The assignee could not confirm the decision.
     DecisionRejected,
+    /// The task is stalled (it reached what it may hold); the requester
+    /// can still cancel or resolve it.
+    Stalled,
+    /// Too many requests or tasks for now (a quota or rate limit); trying
+    /// later may work.
+    Busy,
     /// Another reason, as the source gave it.
     Other(String),
 }

@@ -297,6 +297,12 @@ moment:
       too_large:
         en: "The request is too large to send as a task message."
         zh-CN: "请求过大，无法作为任务消息发送。"
+      stalled:
+        en: "This task is stalled. You can still cancel it."
+        zh-CN: "此任务已停滞。你仍可以取消它。"
+      busy:
+        en: "Too many task requests right now. Try again in a minute."
+        zh-CN: "当前任务请求过多，请稍后再试。"
       rejected:
         title:
           en: "%{name} couldn't confirm your decision"

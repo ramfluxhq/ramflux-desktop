@@ -10,7 +10,12 @@
 //!
 //! - tasks are scoped by (conversation, task id);
 //! - requests use the daemon's bodies, unknown fields are refused, and a
-//!   refusal is a `ValidationFailed` error frame with the daemon's text;
+//!   refusal is an error frame with the daemon's typed `error.code`
+//!   (`stale_revision`, `terminal`, `not_requester`, `decision_consumed`,
+//!   ...; the protocol's refusals map as the daemon maps them) and a text
+//!   nobody parses;
+//! - acceptance has one form, `task.accept {task_id, version}`;
+//!   `proposal_id` is refused;
 //! - `task.get` / `task.list` answer the daemon's view (the protocol task
 //!   plus `id`, `actor_kind_verified: false`, times, and the stalled and
 //!   compacted markers);
@@ -28,8 +33,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use ramflux_protocol::{
     ActorType, NeedsMe, SignatureAlg, SignedFields, TaskAccept, TaskCancel, TaskDecline, TaskEvent,
-    TaskEventBody, TaskProposal, TaskResolve, TaskSigner, TaskStart, TaskState, TaskStatus,
-    TaskStep, TaskUpdate,
+    TaskEventBody, TaskProposal, TaskReject, TaskResolve, TaskSigner, TaskStart, TaskState,
+    TaskStatus, TaskStep, TaskUpdate,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -66,7 +71,11 @@ impl Member {
         ramflux_crypto::public_key_base64url_from_seed(self.seed)
     }
 
-    fn sign(&self, conversation: &str, body: TaskEventBody) -> Result<TaskEvent, String> {
+    fn sign(&self, conversation: &str, body: TaskEventBody) -> Result<TaskEvent, Refused> {
+        self.signed(conversation, body).map_err(|e| ("invalid_event", e))
+    }
+
+    fn signed(&self, conversation: &str, body: TaskEventBody) -> Result<TaskEvent, String> {
         let signed = SignedFields {
             signing_key_id: self.device.clone(),
             signature_alg: SignatureAlg::Ed25519,
@@ -84,6 +93,33 @@ impl Member {
 
 fn text(error: impl std::fmt::Display) -> String {
     error.to_string()
+}
+
+/// A refusal: the daemon's typed code and its text.
+type Refused = (&'static str, String);
+
+fn invalid(message: impl std::fmt::Display) -> Refused {
+    ("invalid_request", message.to_string())
+}
+
+/// The daemon's code for a protocol refusal.
+fn reject_code(reject: &TaskReject) -> &'static str {
+    match reject {
+        TaskReject::StaleVersion { .. }
+        | TaskReject::StaleDecision { .. }
+        | TaskReject::InvalidVersion => "stale_revision",
+        TaskReject::Terminal => "terminal",
+        TaskReject::HumanRequired => "human_required",
+        TaskReject::NotFound => "not_found",
+        TaskReject::AlreadyExists => "already_exists",
+        TaskReject::DecisionReplay => "decision_consumed",
+        TaskReject::DecisionMismatch | TaskReject::HumanDecisionPending => "decision_mismatch",
+        _ => "invalid_event",
+    }
+}
+
+fn rejected(reject: &TaskReject) -> Refused {
+    (reject_code(reject), reject.to_string())
 }
 
 /// One task as the daemon holds it.
@@ -110,32 +146,35 @@ struct Inner {
     quiet: bool,
     clock: i64,
     ids: u64,
-    refuse_next: Option<(String, String)>,
+    refuse_next: Option<(String, Refused)>,
 }
 
 /// The daemon's tasks of one account. Cheap to clone; clones share state.
 #[derive(Clone, Default)]
 pub struct FakeTasks(Arc<Mutex<Inner>>);
 
-/// The daemon's text for a refused task request.
-fn refused(message: impl std::fmt::Display) -> Reply {
-    Reply::Error("ValidationFailed", format!("local bus error: {message}"))
+/// The daemon's error frame for a refused task request.
+fn refused((code, message): Refused) -> Reply {
+    Reply::Error(code, format!("local bus error: {message}"))
 }
 
 /// Parses a request body into a protocol payload after removing the
 /// fields the daemon handles itself; anything else unknown is refused.
-fn payload<T: DeserializeOwned>(body: &Value, drop: &[&str]) -> Result<T, String> {
+fn payload<T: DeserializeOwned>(body: &Value, drop: &[&str]) -> Result<T, Refused> {
     let mut body = body.clone();
     if let Some(map) = body.as_object_mut() {
         for field in drop {
             map.remove(*field);
         }
     }
-    serde_json::from_value(body).map_err(text)
+    serde_json::from_value(body).map_err(invalid)
 }
 
-fn field<'a>(body: &'a Value, name: &str) -> Result<&'a str, String> {
-    body[name].as_str().filter(|v| !v.is_empty()).ok_or_else(|| format!("task {name} required"))
+fn field<'a>(body: &'a Value, name: &str) -> Result<&'a str, Refused> {
+    body[name]
+        .as_str()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| invalid(format!("task {name} required")))
 }
 
 impl FakeTasks {
@@ -172,9 +211,10 @@ impl FakeTasks {
         self.inner().quiet = quiet;
     }
 
-    /// Refuses the next request of `method` with the daemon's `message`.
-    pub fn refuse_next(&self, method: &str, message: &str) {
-        self.inner().refuse_next = Some((method.to_owned(), message.to_owned()));
+    /// Refuses the next request of `method` with the daemon's typed
+    /// `code` and a `message` (which the desktop must not need).
+    pub fn refuse_next(&self, method: &str, code: &'static str, message: &str) {
+        self.inner().refuse_next = Some((method.to_owned(), (code, message.to_owned())));
     }
 
     /// Records the grant flow's decision on an approval, which the assignee
@@ -233,7 +273,7 @@ impl FakeTasks {
         steps: &[(&str, &str)],
     ) -> Result<u64, String> {
         let mut inner = self.inner();
-        let member = inner.agent()?;
+        let member = inner.agent().map_err(|(_, m)| m)?;
         let steps =
             steps.iter().map(|(id, title)| step(id, title, TaskStatus::Proposed, None)).collect();
         let body = TaskEventBody::Proposal(TaskProposal {
@@ -244,7 +284,7 @@ impl FakeTasks {
             title: title.to_owned(),
             steps,
         });
-        inner.commit(conversation, task_id, &member, body)
+        inner.commit(conversation, task_id, &member, body).map_err(|(_, m)| m)
     }
 
     /// The task's assignee updates it to `state` with `steps` (the next
@@ -264,9 +304,10 @@ impl FakeTasks {
         let mut inner = self.inner();
         let key = (conversation.to_owned(), task_id.to_owned());
         let held = inner.tasks.get(&key).ok_or("task does not exist")?;
+        let held_stalled = held.stalled;
         let assignee = held.state.task().map(|t| t.assignee.clone()).unwrap_or_default();
-        let member = inner.member(&assignee)?;
-        if held.stalled {
+        let member = inner.member(&assignee).map_err(|(_, m)| m)?;
+        if held_stalled {
             return Err("task signer quota exceeded".to_owned());
         }
         let version = held.state.task().map_or(0, |t| t.version) + 1;
@@ -278,7 +319,7 @@ impl FakeTasks {
             result_ref: result_ref.map(str::to_owned),
             result_summary: None,
         });
-        inner.commit(conversation, task_id, &member, body)
+        inner.commit(conversation, task_id, &member, body).map_err(|(_, m)| m)
     }
 
     /// Another member `principal` starts a task for `assignee`.
@@ -295,7 +336,7 @@ impl FakeTasks {
         text: &str,
     ) -> Result<u64, String> {
         let mut inner = self.inner();
-        let member = inner.member(principal)?;
+        let member = inner.member(principal).map_err(|(_, m)| m)?;
         let body = TaskEventBody::Start(TaskStart {
             task_id: task_id.to_owned(),
             conversation_id: conversation.to_owned(),
@@ -304,7 +345,7 @@ impl FakeTasks {
             text: text.to_owned(),
             constraints: None,
         });
-        inner.commit(conversation, task_id, &member, body)
+        inner.commit(conversation, task_id, &member, body).map_err(|(_, m)| m)
     }
 
     /// Another member `principal` accepts a proposal.
@@ -319,10 +360,10 @@ impl FakeTasks {
         task_id: &str,
     ) -> Result<u64, String> {
         let mut inner = self.inner();
-        let member = inner.member(principal)?;
-        let version = inner.version(conversation, task_id)? + 1;
+        let member = inner.member(principal).map_err(|(_, m)| m)?;
+        let version = inner.version(conversation, task_id).map_err(|(_, m)| m)? + 1;
         let body = TaskEventBody::Accept(TaskAccept { task_id: task_id.to_owned(), version });
-        inner.commit(conversation, task_id, &member, body)
+        inner.commit(conversation, task_id, &member, body).map_err(|(_, m)| m)
     }
 
     /// The assignee used up its quota: its tasks show "stalled by
@@ -376,9 +417,9 @@ impl FakeTasks {
         }
         let mut inner = self.inner();
         if inner.refuse_next.as_ref().is_some_and(|(m, _)| m == method)
-            && let Some((_, message)) = inner.refuse_next.take()
+            && let Some((_, refusal)) = inner.refuse_next.take()
         {
-            return Some(refused(message));
+            return Some(refused(refusal));
         }
         Some(match inner.request(method, body) {
             Ok(answer) => Reply::Ok(answer),
@@ -401,7 +442,7 @@ pub fn approval_step(id: &str, title: &str, grant_id: &str) -> TaskStep {
     step(id, title, TaskStatus::NeedsMe, Some(NeedsMe::Approval { grant_id: grant_id.to_owned() }))
 }
 
-fn apply(state: &mut TaskState, event: &TaskEvent, member: &Member) -> Result<u64, String> {
+fn apply(state: &mut TaskState, event: &TaskEvent, member: &Member) -> Result<u64, Refused> {
     let public = member.public();
     let signer = TaskSigner {
         principal_id: &member.principal,
@@ -409,7 +450,7 @@ fn apply(state: &mut TaskState, event: &TaskEvent, member: &Member) -> Result<u6
         signing_key_id: &member.device,
         public_key_base64url: &public,
     };
-    state.apply(event, &signer).map(|t| t.version).map_err(text)
+    state.apply(event, &signer).map(|t| t.version).map_err(|e| rejected(&e))
 }
 
 fn meta(task: &ramflux_protocol::Task) -> Value {
@@ -438,24 +479,24 @@ fn view(held: &Held) -> Value {
 }
 
 impl Inner {
-    fn member(&self, principal: &str) -> Result<Member, String> {
+    fn member(&self, principal: &str) -> Result<Member, Refused> {
         self.members
             .iter()
             .find(|m| m.principal == principal)
             .cloned()
-            .ok_or_else(|| format!("not a member: {principal}"))
+            .ok_or_else(|| ("not_member", format!("not a member: {principal}")))
     }
 
-    fn agent(&self) -> Result<Member, String> {
+    fn agent(&self) -> Result<Member, Refused> {
         self.members
             .iter()
             .find(|m| m.kind == ActorType::Bot)
             .cloned()
-            .ok_or_else(|| "no AI participant".to_owned())
+            .ok_or_else(|| invalid("no AI participant"))
     }
 
-    fn local(&self) -> Result<Member, String> {
-        self.local.clone().ok_or_else(|| "no local account".to_owned())
+    fn local(&self) -> Result<Member, Refused> {
+        self.local.clone().ok_or_else(|| ("no_local_role", "no local account".to_owned()))
     }
 
     fn announce(&self, meta: Value) {
@@ -475,7 +516,7 @@ impl Inner {
         task_id: &str,
         member: &Member,
         body: TaskEventBody,
-    ) -> Result<u64, String> {
+    ) -> Result<u64, Refused> {
         let event = member.sign(conversation, body)?;
         let key = (conversation.to_owned(), task_id.to_owned());
         let mut next = self.tasks.get(&key).map(|h| h.state.clone()).unwrap_or_default();
@@ -510,16 +551,16 @@ impl Inner {
         self.announce(meta);
     }
 
-    fn version(&self, conversation: &str, task_id: &str) -> Result<u64, String> {
+    fn version(&self, conversation: &str, task_id: &str) -> Result<u64, Refused> {
         self.tasks
             .get(&(conversation.to_owned(), task_id.to_owned()))
             .and_then(|h| h.state.task())
             .map(|t| t.version)
-            .ok_or_else(|| "task not found".to_owned())
+            .ok_or_else(|| ("not_found", "task not found".to_owned()))
     }
 
     /// The conversation a request names, or the only one holding its task.
-    fn conversation_of(&self, body: &Value) -> Result<String, String> {
+    fn conversation_of(&self, body: &Value) -> Result<String, Refused> {
         if let Some(conversation) = body["conversation_id"].as_str() {
             return Ok(conversation.to_owned());
         }
@@ -527,12 +568,12 @@ impl Inner {
         let mut found = self.tasks.keys().filter(|(_, t)| t == task);
         match (found.next(), found.next()) {
             (Some((conversation, _)), None) => Ok(conversation.clone()),
-            (Some(_), Some(_)) => Err("ambiguous task id; conversation_id is required".to_owned()),
-            _ => Err("task not found".to_owned()),
+            (Some(_), Some(_)) => Err(invalid("ambiguous task id; conversation_id is required")),
+            _ => Err(("not_found", "task not found".to_owned())),
         }
     }
 
-    fn request(&mut self, method: &str, body: &Value) -> Result<Value, String> {
+    fn request(&mut self, method: &str, body: &Value) -> Result<Value, Refused> {
         match method {
             "task.get" => {
                 let conversation = self.conversation_of(body).unwrap_or_default();
@@ -544,11 +585,11 @@ impl Inner {
         }
     }
 
-    fn list(&self, body: &Value) -> Result<Value, String> {
+    fn list(&self, body: &Value) -> Result<Value, Refused> {
         let conversation = field(body, "conversation_id")?;
         let state = body["state"].as_str();
         let limit =
-            usize::try_from(body["limit"].as_u64().unwrap_or(50).clamp(1, 100)).map_err(text)?;
+            usize::try_from(body["limit"].as_u64().unwrap_or(50).clamp(1, 100)).map_err(invalid)?;
         let skip: usize = body["cursor"].as_str().and_then(|c| c.parse().ok()).unwrap_or(0);
         let rows: Vec<Value> = self
             .tasks
@@ -564,24 +605,21 @@ impl Inner {
 
     /// A change the local person makes: signed by its key, preflighted on
     /// the protocol, then applied (a resolution waits for the assignee).
-    fn author(&mut self, method: &str, body: &Value) -> Result<Value, String> {
+    fn author(&mut self, method: &str, body: &Value) -> Result<Value, Refused> {
         let local = self.local()?;
         let conversation = self.conversation_of(body)?;
         self.ids += 1;
-        let task_id = body["task_id"]
-            .as_str()
-            .or_else(|| body["proposal_id"].as_str())
-            .map_or_else(|| format!("task-{}", self.ids), str::to_owned);
+        if body.get("proposal_id").is_some() {
+            return Err(invalid("proposal acceptance uses task.accept {task_id,version}"));
+        }
+        let task_id =
+            body["task_id"].as_str().map_or_else(|| format!("task-{}", self.ids), str::to_owned);
         let message = body["message_id"]
             .as_str()
             .map_or_else(|| format!("task-req-{}", self.ids), str::to_owned);
-        let extras = ["conversation_id", "message_id", "proposal_id"];
-        let start_extras = ["message_id", "proposal_id"];
+        let extras = ["conversation_id", "message_id"];
+        let start_extras = ["message_id"];
         let event = match method {
-            "task.start" if body["proposal_id"].is_string() => {
-                let version = self.version(&conversation, &task_id)? + 1;
-                TaskEventBody::Accept(TaskAccept { task_id: task_id.clone(), version })
-            }
             "task.start" => {
                 let mut start = body.clone();
                 start["requester"] = json!(local.principal);
@@ -598,7 +636,7 @@ impl Inner {
                 TaskEventBody::Cancel(payload::<TaskCancel>(&cancel, &extras)?)
             }
             "task.resolve" => TaskEventBody::Resolve(payload::<TaskResolve>(body, &extras)?),
-            _ => return Err("unsupported task method".to_owned()),
+            _ => return Err(invalid("unsupported task method")),
         };
         let resolution = match &event {
             TaskEventBody::Resolve(r) => Some(r.decision_id.clone()),
@@ -612,7 +650,8 @@ impl Inner {
         if let Some(decision) = resolution {
             let signed = local.sign(&conversation, event)?;
             let key = (conversation.clone(), task_id.clone());
-            let held = self.tasks.get_mut(&key).ok_or("task not found")?;
+            let held =
+                self.tasks.get_mut(&key).ok_or(("not_found", "task not found".to_owned()))?;
             let mut preflight = held.state.clone();
             apply(&mut preflight, &signed, &local)?;
             held.pending.insert(decision, (signed, local));

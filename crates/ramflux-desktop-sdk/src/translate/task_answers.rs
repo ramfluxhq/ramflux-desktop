@@ -6,22 +6,23 @@
 //! A resolution is answered `pending: true`: the assignee confirms it once
 //! it has checked the decision, so the task says the decision is on its
 //! way until its next revision arrives. A refusal is shown on its task
-//! (next to the controls that sent it), never as a status-strip error:
+//! (next to the controls that sent it), never as a status-strip error.
+//! The refusal is the daemon's typed `error.code`; its text is never
+//! parsed:
 //!
-//! | daemon text | refusal |
+//! | `error.code` | refusal |
 //! |---|---|
-//! | `expected task revision`, `stale decision`, `does not match the current step` | `Changed` (review again) |
-//! | `terminal task cannot change` | `Finished` |
-//! | `already consumed`, `already been consumed` | `AlreadyDecided` |
-//! | `only a human`, `attended human`, `signing identity`, `requester` | `NotAllowed` |
-//! | code `TaskDeliveryTooLarge` | `TooLarge` |
+//! | `stale_revision`, `decision_mismatch` | `Changed` (review again) |
+//! | `terminal` | `Finished` |
+//! | `decision_consumed` | `AlreadyDecided` |
+//! | `not_requester`, `not_assignee`, `not_member`, `not_eligible_acceptor`, `human_required`, `no_local_role` | `NotAllowed` |
+//! | `task_stalled` | `Stalled` |
+//! | `quota_exhausted`, `rate_limited` | `Busy` |
+//! | `TaskDeliveryTooLarge` | `TooLarge` |
 //! | anything else | `Other` with the daemon's text |
 //!
 //! A task that changed since the user looked is read back, and the
 //! refusal is said again on the newer task, the one to review.
-//!
-//! The daemon reports refusals as text; these phrases are its current
-//! wording (a typed code per refusal would replace this table).
 
 use ramflux_desktop_core::{
     DomainEvent, FailureCode, StepId, TaskAnswer, TaskId, TaskRefusal, methods,
@@ -39,22 +40,27 @@ pub fn answered_on_task(method: &str, body: &Value) -> bool {
     }
 }
 
-/// The refusal a daemon error stands for.
+/// The refusal a daemon error stands for, by its typed code.
 pub fn refusal(code: &FailureCode, message: &str) -> TaskRefusal {
-    if matches!(code, FailureCode::Daemon(c) if c == "TaskDeliveryTooLarge") {
-        return TaskRefusal::TooLarge;
-    }
-    let has = |phrases: &[&str]| phrases.iter().any(|p| message.contains(p));
-    if has(&["expected task revision", "stale decision", "does not match the current step"]) {
-        TaskRefusal::Changed
-    } else if has(&["terminal task cannot change"]) {
-        TaskRefusal::Finished
-    } else if has(&["already consumed", "already been consumed"]) {
-        TaskRefusal::AlreadyDecided
-    } else if has(&["only a human", "attended human", "signing identity", "requester"]) {
-        TaskRefusal::NotAllowed
-    } else {
-        TaskRefusal::Other(message.strip_prefix("local bus error: ").unwrap_or(message).to_owned())
+    let FailureCode::Daemon(code) = code else {
+        return TaskRefusal::Other(message.to_owned());
+    };
+    match code.as_str() {
+        "stale_revision" | "decision_mismatch" => TaskRefusal::Changed,
+        "terminal" => TaskRefusal::Finished,
+        "decision_consumed" => TaskRefusal::AlreadyDecided,
+        "not_requester"
+        | "not_assignee"
+        | "not_member"
+        | "not_eligible_acceptor"
+        | "human_required"
+        | "no_local_role" => TaskRefusal::NotAllowed,
+        "task_stalled" => TaskRefusal::Stalled,
+        "quota_exhausted" | "rate_limited" => TaskRefusal::Busy,
+        "TaskDeliveryTooLarge" => TaskRefusal::TooLarge,
+        _ => TaskRefusal::Other(
+            message.strip_prefix("local bus error: ").unwrap_or(message).to_owned(),
+        ),
     }
 }
 
@@ -123,30 +129,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_daemon_wording_maps_to_refusals() {
-        let daemon = FailureCode::Daemon("ValidationFailed".into());
+    fn the_daemon_codes_map_to_refusals_whatever_the_text() {
         let cases = [
-            ("local bus error: expected task revision 4, received 3", TaskRefusal::Changed),
-            (
-                "local bus error: stale decision for step deploy: NewerThanObserved",
-                TaskRefusal::Changed,
-            ),
-            ("local bus error: terminal task cannot change", TaskRefusal::Finished),
-            (
-                "local bus error: human decision or single-use approval was already consumed",
-                TaskRefusal::AlreadyDecided,
-            ),
-            ("local bus error: only a human may make this decision", TaskRefusal::NotAllowed),
-            (
-                "local bus error: task signing identity or key differs from the authorized participant",
-                TaskRefusal::NotAllowed,
-            ),
-            ("local bus error: disk full", TaskRefusal::Other("disk full".into())),
+            ("stale_revision", TaskRefusal::Changed),
+            ("decision_mismatch", TaskRefusal::Changed),
+            ("terminal", TaskRefusal::Finished),
+            ("decision_consumed", TaskRefusal::AlreadyDecided),
+            ("not_requester", TaskRefusal::NotAllowed),
+            ("not_assignee", TaskRefusal::NotAllowed),
+            ("not_member", TaskRefusal::NotAllowed),
+            ("not_eligible_acceptor", TaskRefusal::NotAllowed),
+            ("human_required", TaskRefusal::NotAllowed),
+            ("no_local_role", TaskRefusal::NotAllowed),
+            ("task_stalled", TaskRefusal::Stalled),
+            ("quota_exhausted", TaskRefusal::Busy),
+            ("rate_limited", TaskRefusal::Busy),
+            ("TaskDeliveryTooLarge", TaskRefusal::TooLarge),
         ];
-        for (message, expected) in cases {
-            assert_eq!(refusal(&daemon, message), expected, "{message}");
+        for (code, expected) in cases {
+            // The text is arbitrary: only the code decides.
+            let daemon = FailureCode::Daemon(code.into());
+            assert_eq!(refusal(&daemon, "local bus error: requester terminal"), expected, "{code}");
         }
-        let large = FailureCode::Daemon("TaskDeliveryTooLarge".into());
-        assert_eq!(refusal(&large, "too large"), TaskRefusal::TooLarge);
+        let other = FailureCode::Daemon("ValidationFailed".into());
+        assert_eq!(
+            refusal(&other, "local bus error: expected task revision 4, received 3"),
+            TaskRefusal::Other("expected task revision 4, received 3".into()),
+            "old wording is not parsed"
+        );
     }
 }

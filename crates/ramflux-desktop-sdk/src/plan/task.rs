@@ -6,8 +6,8 @@
 //! | contract | daemon |
 //! |---|---|
 //! | `task.start` | `task.start {conversation_id, assignee, text, task_id, message_id}` (fresh ids) |
-//! | `task.start` with `proposal_id` | `task.accept {conversation_id, task_id, version + 1, message_id}` |
-//! | `task.cancel` | `task.cancel {conversation_id, task_id, base_revision, message_id}` |
+//! | `task.start` with `proposal_id` | `task.accept {conversation_id, task_id, version + 1, message_id}` (the daemon's only acceptance) |
+//! | `task.cancel` | `task.cancel {conversation_id, task_id, version, message_id}` (the version seen) |
 //! | `task.cancel` with `decline` | `task.decline {conversation_id, task_id, version + 1, message_id}` |
 //! | `task.resolve` | `task.resolve {conversation_id, task_id, base_revision, step_id, target, decision_id, decision, message_id}` |
 //!
@@ -78,7 +78,7 @@ pub fn task_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kn
             if body["decline"].as_bool() == Some(true) {
                 request("task.decline", json!({ "version": shown + 1 }), &target)
             } else {
-                request("task.cancel", json!({ "base_revision": shown }), &target)
+                request("task.cancel", json!({ "version": shown }), &target)
             }
         }
         methods::TASK_RESOLVE => {

@@ -92,7 +92,7 @@ fn a_task_asked_from_the_composer_runs_and_is_cancelled_from_its_card(cx: &mut T
     wait(cx, "cancelled", |cx| {
         task(cx, &opened, &id).is_some_and(|t| t.state == TaskState::Cancelled)
     });
-    assert_eq!(sent(&opened.fake, "task.cancel")[0]["base_revision"], 1);
+    assert_eq!(sent(&opened.fake, "task.cancel")[0]["version"], 1);
     advance(cx, 50);
     assert!(!shown(cx, &opened, &id, "task-cancel"), "a finished task has nothing to cancel");
     opened.fake.shutdown();
