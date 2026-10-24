@@ -118,10 +118,8 @@ node over a federation route, which the daemon does not list for a contact.
 Send one with the reference CLI against the same socket (`rf contact request …`;
 see `rf contact --help`).
 
-A request appears under **Requests** in the dock within one poll once the
-daemon has recorded it, which it does when it receives the request message in
-that conversation (the desktop receives only the conversations you have open or
-pinned; `rf dm read …` receives others). **Accept** adds the contact on
+A request appears under **Requests** in the dock as soon as the daemon has
+recorded it (its event stream says so). **Accept** adds the contact on
 this account and **Reject** declines.
 The requester is not told yet, for the same reason. A contact's menu blocks or
 removes them (both revoke what you shared and need a hold-to-confirm); blocked
@@ -134,7 +132,7 @@ example after a message).
 
 | What | Today |
 |---|---|
-| Message in a group | Supported. The daemon resolves every member's route first; if a member cannot be reached nothing is sent, and the failure names who. Incoming messages are fetched by polling (1.5 s, slowing to 12 s when quiet). |
+| Message in a group | Supported. The daemon resolves every member's route first; if a member cannot be reached nothing is sent, and the failure names who. Incoming messages arrive through the daemon's event stream; a daemon without the stream is polled instead (1.5 s, slowing to 12 s when quiet), and Settings › Diagnostics shows which. |
 | Direct message | Supported in a conversation the daemon lists a route for (recorded once a message was exchanged with the contact's verified device). Without one the send fails with that reason; start the conversation with `rf dm send`. |
 | Attachment | Supported in direct conversations, up to 512 KiB per file (one message frame). Sent attachments are listed in the objects dock, where they can be saved and a paused upload resumed. Received attachments are not downloaded yet: receiving never waits on an attachment, and the daemon has no way to fetch one after its message arrived (pending daemon support). Groups carry no attachments. |
 | Group members | Add or invite a contact whose devices the daemon has verified (members dock); remove, kick, ban and roles act on the member's devices in the group. |

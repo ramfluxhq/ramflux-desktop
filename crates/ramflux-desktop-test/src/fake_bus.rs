@@ -146,6 +146,12 @@ impl FakeBus {
         self.journal().set_enabled(true);
     }
 
+    /// Refuses `bus.subscribe` again (as a daemon without the stream);
+    /// open streams keep running until ended.
+    pub fn disable_stream(&self) {
+        self.journal().set_enabled(false);
+    }
+
     /// Appends an event to `account`'s journal and delivers it to its
     /// streams; returns its sequence number.
     pub fn publish(&self, account: &str, topic: &str, body: Value) -> u64 {

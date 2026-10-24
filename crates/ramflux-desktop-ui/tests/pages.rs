@@ -237,8 +237,8 @@ fn settings_rotate_passphrase_and_export_diagnostics(cx: &mut TestAppContext) {
     settings(cx, handle, &shell, SettingsSection::Diagnostics);
     assert!(exists(cx, handle, "diagnostics-preview"));
     assert!(
-        exists(cx, handle, "diagnostics-sync-note"),
-        "what the daemon does not deliver yet is said in Diagnostics only"
+        !exists(cx, handle, "diagnostics-sync"),
+        "scenarios have no daemon to keep them up to date (shown on a daemon: sync_ui)"
     );
     assert!(exists(cx, handle, "renderer-profile"), "the renderer profile is shown read-only");
     click(cx, handle, "diagnostics-export");

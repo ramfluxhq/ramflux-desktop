@@ -14,6 +14,8 @@
 //! - [`nodes`]: node profiles, probe results, default, enable, remove.
 //! - [`integrations`]: MCP servers and pending A2I events (read-only).
 //! - [`diagnostics`]: redacted export preview and export.
+//! - [`sync`]: how the account is kept up to date and the polling fallback
+//!   (local preference).
 //! - [`local_setup`]: source, socket, daemon program and data folder, the
 //!   local daemon, version and log locations (local preference).
 //! - [`appearance`]: theme and language (local preference).
@@ -25,6 +27,7 @@ pub mod diagnostics;
 pub mod integrations;
 pub mod local_setup;
 pub mod nodes;
+pub mod sync;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::FocusTrapElement as _;

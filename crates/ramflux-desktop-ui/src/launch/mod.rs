@@ -466,6 +466,13 @@ impl DaemonLauncher {
         cx.notify();
     }
 
+    /// Saves whether polling stands in for a missing event stream (applies
+    /// the next time the application connects to the daemon).
+    pub fn set_poll_fallback(&mut self, on: bool, cx: &mut Context<Self>) {
+        let settings = LaunchSettings { poll_fallback: Some(on), ..self.settings.clone() };
+        self.save(settings, cx);
+    }
+
     /// Saves the source choice alone.
     pub fn set_source(&mut self, source: SourceKind, cx: &mut Context<Self>) {
         let settings = LaunchSettings { source: Some(source), ..self.settings.clone() };

@@ -57,12 +57,22 @@ pub fn open_with(
     cx: &mut TestAppContext,
     options: ramflux_desktop_ui::shell::ShellOptions,
 ) -> Opened {
+    open_sized(cx, options, 860.)
+}
+
+/// Opens the production window, `height` pixels tall (for pages whose
+/// lower groups a test operates).
+pub fn open_sized(
+    cx: &mut TestAppContext,
+    options: ramflux_desktop_ui::shell::ShellOptions,
+    height: f32,
+) -> Opened {
     cx.update(|cx| {
         gpui_kit::init(cx);
         ramflux_desktop_ui::init(cx);
     });
     let (handle, shell) = cx.update(|cx| {
-        let bounds = Bounds { origin: Point::default(), size: size(px(1280.), px(860.)) };
+        let bounds = Bounds { origin: Point::default(), size: size(px(1280.), px(height)) };
         let (window, shell) = gpui_kit::open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),

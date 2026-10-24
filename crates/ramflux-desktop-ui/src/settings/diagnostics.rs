@@ -6,11 +6,11 @@
 //! built from the store, which never holds keys, tokens, nonces or message
 //! plaintext; identifiers that could link people are reduced to counts.
 //!
-//! A read-only group shows the renderer profile this client
-//! declares to its source and the renderer errors found this session, and
-//! a note says what the daemon does not deliver yet (messages in
-//! conversations this device does not know arrive with the daemon's
-//! background sync). The local setup groups ([`super::local_setup`]) follow.
+//! A read-only group shows the renderer profile this client declares to its
+//! source and the renderer errors found this session. The local setup groups
+//! ([`super::local_setup`]) follow, with the message sync group
+//! ([`super::sync`]: how the account is kept up to date) after the local
+//! daemon.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
@@ -41,6 +41,18 @@ pub fn preview(store: &Store) -> String {
         format!("contexts: {}", store.contexts().count()),
         format!("moments: {}", store.moments().count()),
     ];
+    if let Some(sync) = store.sync_status() {
+        lines.push(format!("sync.mode: {:?}", sync.mode));
+        if let Some(cursor) = sync.cursor {
+            lines.push(format!("sync.cursor: {cursor}"));
+        }
+        if let Some(state) = sync.daemon_sync {
+            lines.push(format!("sync.daemon: {state:?}"));
+        }
+        if let Some(unrouted) = sync.unrouted {
+            lines.push(format!("sync.unrouted: {unrouted}"));
+        }
+    }
     for node in store.nodes() {
         lines.push(format!(
             "node {}: health={:?} pin={:?} endpoints={} key=[redacted]",
@@ -121,20 +133,6 @@ fn renderer_group(context: &SectionContext, cx: &App) -> SettingGroup {
     SettingGroup::new().title(tr("settings.diagnostics.renderer")).item(item)
 }
 
-fn sync_group(cx: &App) -> SettingGroup {
-    let muted = cx.theme().muted_foreground;
-    let item = SettingItem::render(move |_, _, _: &mut App| {
-        div()
-            .id("diagnostics-sync-note")
-            .test_support()
-            .text_xs()
-            .text_color(muted)
-            .child(tr("settings.diagnostics.sync_note"))
-            .into_any_element()
-    });
-    SettingGroup::new().title(tr("settings.diagnostics.sync")).item(item)
-}
-
 /// The diagnostics section: the export and the renderer profile, then the
 /// local setup, the local daemon, version and logs.
 pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> SettingPage {
@@ -178,13 +176,15 @@ pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Settin
             )
             .into_any_element()
     });
-    SettingPage::new(tr("settings.section.diagnostics"))
+    let mut page = SettingPage::new(tr("settings.section.diagnostics"))
         .group(SettingGroup::new().title(tr("settings.diagnostics.export_title")).item(item))
         .group(renderer_group(context, cx))
-        .group(sync_group(cx))
         .group(setup)
-        .group(daemon)
-        .group(about)
+        .group(daemon);
+    if let Some(sync) = super::sync::group(context, cx) {
+        page = page.group(sync);
+    }
+    page.group(about)
 }
 
 #[cfg(test)]

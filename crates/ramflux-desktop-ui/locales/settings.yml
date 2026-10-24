@@ -204,9 +204,53 @@ settings:
     sync:
       en: "Message sync"
       zh-CN: "消息同步"
-    sync_note:
-      en: "New messages from unknown conversations arrive after the background sync update of the daemon. Until then, a conversation someone else starts reaches this device only once the daemon lists it; it then appears without a restart."
-      zh-CN: "来自未知会话的新消息将在守护进程的后台同步更新后送达。在此之前，他人发起的会话只有在守护进程列出后才会到达本设备，届时无需重启即可显示。"
+    sync_updates:
+      en: "Updates"
+      zh-CN: "更新方式"
+    sync_mode:
+      connecting:
+        en: "Connecting to the event stream"
+        zh-CN: "正在连接事件流"
+      stream:
+        en: "Live, from the daemon's event stream"
+        zh-CN: "实时，来自守护进程的事件流"
+      polling:
+        en: "Polling, the event stream is unavailable"
+        zh-CN: "轮询，事件流不可用"
+      off:
+        en: "Not updated, the event stream is unavailable and polling is off"
+        zh-CN: "不更新：事件流不可用且轮询已关闭"
+    sync_reason:
+      en: "Event stream"
+      zh-CN: "事件流"
+    daemon_sync:
+      label:
+        en: "Daemon sync"
+        zh-CN: "守护进程同步"
+      running:
+        en: "Receiving"
+        zh-CN: "正在接收"
+      idle:
+        en: "Up to date"
+        zh-CN: "已是最新"
+      error:
+        en: "Failed, the node may be unreachable"
+        zh-CN: "失败，节点可能无法访问"
+      with_time:
+        en: "%{state}, last run %{time}"
+        zh-CN: "%{state}，上次运行 %{time}"
+    sync_unrouted:
+      en: "Waiting to be routed"
+      zh-CN: "等待路由"
+    sync_cursor:
+      en: "Stream position"
+      zh-CN: "事件流位置"
+    poll_fallback:
+      en: "Poll when the event stream is unavailable"
+      zh-CN: "事件流不可用时轮询"
+    poll_fallback_help:
+      en: "Applies the next time the app connects to the daemon."
+      zh-CN: "下次连接守护进程时生效。"
   launch:
     title:
       en: "Startup"

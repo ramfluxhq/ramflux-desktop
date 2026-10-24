@@ -4,7 +4,9 @@
 //! The data source of a window: command-line flags, then the environment
 //! (`RAMFLUX_DESKTOP_SOURCE`, `RAMFLUX_DESKTOP_SOCKET`), then the saved
 //! launch settings, then the build's default (scenarios in debug builds,
-//! the daemon at the reference CLI's socket in release builds).
+//! the daemon at the reference CLI's socket in release builds). Whether the
+//! source polls when the daemon offers no event stream comes from the saved
+//! launch settings.
 //!
 //! A socket given on the command line or in the environment without a
 //! source there means the daemon.
@@ -74,7 +76,10 @@ pub fn resolve(overrides: &Overrides, settings: &LaunchSettings) -> Result<Sourc
                 .socket
                 .as_ref()
                 .map_or_else(|| settings.socket_or_default(), std::path::PathBuf::from);
-            SourceChoice::Rfd(SdkConfig::new(socket))
+            SourceChoice::Rfd(SdkConfig {
+                poll_fallback: settings.poll_fallback_or_default(),
+                ..SdkConfig::new(socket)
+            })
         }
     })
 }
@@ -138,6 +143,19 @@ mod tests {
         }
         let rfd = resolve(&args(&["--source", "rfd"]), &LaunchSettings::default()).expect("rfd");
         assert_eq!(socket(&rfd), Some(Path::new(DEFAULT_SOCKET)));
+    }
+
+    #[test]
+    fn the_polling_fallback_comes_from_the_saved_settings() {
+        let fallback = |saved: Option<bool>| {
+            let settings = LaunchSettings { poll_fallback: saved, ..LaunchSettings::default() };
+            match resolve(&args(&["--source", "rfd"]), &settings).expect("rfd") {
+                SourceChoice::Rfd(config) => config.poll_fallback,
+                SourceChoice::Mock => panic!("the daemon was asked for"),
+            }
+        };
+        assert!(fallback(None), "on unless turned off");
+        assert!(!fallback(Some(false)));
     }
 
     #[test]

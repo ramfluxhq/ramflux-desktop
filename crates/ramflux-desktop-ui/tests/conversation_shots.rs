@@ -280,13 +280,13 @@ mod shots {
         }
         run.shot("f10_11_attach_failed");
 
-        // The note in Settings › Diagnostics.
+        // Settings › Diagnostics (this fake offers no event stream: polling).
         let shell = run.shell.clone();
         run.cx.update(|cx| {
             shell.update(cx, |s, cx| s.open_settings_at(SettingsSection::Diagnostics, cx));
         });
         run.tick();
-        run.shot("f10_12_diagnostics_sync_note");
+        run.shot("f10_12_diagnostics_sync");
 
         fake.shutdown();
         let _ = std::fs::remove_dir_all(files);
