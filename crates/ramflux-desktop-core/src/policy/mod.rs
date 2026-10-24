@@ -14,6 +14,7 @@
 //! - `governance`: membership, roles and grant revocation.
 //! - `contacts`: adding contacts and acting on contact links.
 //! - `start`: starting a direct conversation with a contact.
+//! - `groups`: creating and renaming a group.
 //! - `accounts`: entry (accounts, devices, nodes) and settings.
 
 mod accounts;
@@ -21,6 +22,7 @@ mod contacts;
 mod conversation;
 mod error;
 mod governance;
+mod groups;
 mod moments;
 mod start;
 mod tasks;
@@ -32,8 +34,11 @@ use crate::intent::{Effect, Intent, IntentKind, SecretInput};
 use crate::model::{Actor, Context, Moment, ParticipantKind, Risk};
 use crate::store::Store;
 
-pub use contacts::{check_add_contact, contact_action_current};
+pub use contacts::{check_add_contact, check_add_contact_card, contact_action_current};
 pub use error::IntentError;
+pub use groups::{
+    GroupProblem, MAX_GROUP_MEMBERS, MAX_GROUP_TITLE_LEN, check_create_group, check_group_title,
+};
 pub use start::check_start_conversation;
 
 /// What an area decided about one intent.
@@ -97,7 +102,7 @@ impl Policy<'_> {
 /// follow the same rules. Agents may never unlock, create, activate or
 /// restore an account, rotate its passphrase, export a backup, sync or revoke
 /// devices, confirm a node, verify a safety number, answer a handoff, add a
-/// contact, or start a conversation. Grants whose expiry is at or before `now` cannot be approved or
+/// contact, share the contact card, start a conversation, or create a group. Grants whose expiry is at or before `now` cannot be approved or
 /// denied.
 ///
 /// Every call body carries `proposed_by` and `confirmed_by`. An intent whose
@@ -130,6 +135,7 @@ pub fn handle_intent(
         .or_else(|| governance::decide(&policy, &intent.kind))
         .or_else(|| contacts::decide(&policy, &intent.kind))
         .or_else(|| start::decide(&policy, &intent.kind))
+        .or_else(|| groups::decide(&policy, &intent.kind))
         .or_else(|| accounts::decide(&policy, &intent.kind))
         .unwrap_or_else(|| unreachable!("every intent kind belongs to one area"))?;
     let method = match &decision {

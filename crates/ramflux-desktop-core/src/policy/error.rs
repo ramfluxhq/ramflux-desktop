@@ -192,6 +192,16 @@ pub enum IntentError {
     /// The typed contact id cannot be used.
     #[error("contact id is not usable: {0:?}")]
     InvalidContactId(crate::intent::ContactIdProblem),
+    /// The pasted or imported contact card cannot be used.
+    #[error("contact card is not usable: {0:?}")]
+    InvalidContactCard(crate::intent::ContactCardProblem),
+    /// The contact is listed but this account cannot send to them yet (the
+    /// daemon holds none of their verified devices).
+    #[error("{0} is not reachable yet")]
+    NotReachable(ParticipantId),
+    /// The new group's name or member list cannot be used.
+    #[error("group is not usable: {0:?}")]
+    InvalidGroup(super::GroupProblem),
     /// The contact link is not in a state that allows the intent.
     #[error("contact {participant} is {link:?}")]
     ContactLinkState {

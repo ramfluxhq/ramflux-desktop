@@ -87,6 +87,11 @@ pub enum Fetch {
         context: ContextId,
         /// The group it belongs to, as the conversation directory links it.
         group: String,
+        /// The name this account keeps for the conversation. The daemon
+        /// records the name from every group call that names the
+        /// conversation and clears it when the call carries none, so each
+        /// call carries it.
+        title: Option<String>,
     },
 }
 
@@ -164,12 +169,14 @@ impl Fetch {
                 "surface.get",
                 json!({ "surface_ref": reference }),
             ),
-            Self::GroupReceive { context, group } => BusRequest::new(
-                account,
-                "group",
-                "group.receive",
-                json!({ "group_id": group, "conversation_id": context, "limit": 100 }),
-            ),
+            Self::GroupReceive { context, group, title } => {
+                let mut body =
+                    json!({ "group_id": group, "conversation_id": context, "limit": 100 });
+                if let Some(title) = title {
+                    body["title"] = json!(title);
+                }
+                BusRequest::new(account, "group", "group.receive", body)
+            }
         }
     }
 

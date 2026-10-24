@@ -22,7 +22,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Actor, HumanConfirmation};
 
-pub use contact::{ContactAction, ContactIdProblem, MAX_CONTACT_ID_LEN, check_contact_id};
+pub use contact::{
+    ContactAction, ContactCardProblem, ContactIdProblem, ContactInput, MAX_CONTACT_CARD_LEN,
+    MAX_CONTACT_ID_LEN, check_contact_card, check_contact_id, classify_contact_input,
+};
 pub use effect::Effect;
 pub use governance::GovernanceOp;
 pub use kind::{IntentKind, SyncDirection};

@@ -49,9 +49,10 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::SyncStatusChanged(_) => "SyncStatusChanged",
         DomainEvent::EffectFailed(_) => "EffectFailed",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
+        DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 33;
+const DOMAIN_EVENT_VARIANTS: usize = 34;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -92,6 +93,10 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::RejectContact { .. } => "RejectContact",
         IntentKind::VerifySafetyNumber { .. } => "VerifySafetyNumber",
         IntentKind::AddContact { .. } => "AddContact",
+        IntentKind::AddContactCard { .. } => "AddContactCard",
+        IntentKind::ExportContactCard => "ExportContactCard",
+        IntentKind::CreateGroup { .. } => "CreateGroup",
+        IntentKind::RenameContext { .. } => "RenameContext",
         IntentKind::Contact { .. } => "Contact",
         IntentKind::Governance { .. } => "Governance",
         IntentKind::AcceptHandoff { .. } => "AcceptHandoff",
@@ -122,7 +127,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the six secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 39;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 43;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -145,6 +150,10 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::DisappearingChosen { .. } => "DisappearingChosen",
         UiEventKind::VerifySafetyPressed { .. } => "VerifySafetyPressed",
         UiEventKind::AddContactRequested { .. } => "AddContactRequested",
+        UiEventKind::AddContactCardRequested { .. } => "AddContactCardRequested",
+        UiEventKind::ShareContactCardRequested => "ShareContactCardRequested",
+        UiEventKind::CreateGroupRequested { .. } => "CreateGroupRequested",
+        UiEventKind::RenameRequested { .. } => "RenameRequested",
         UiEventKind::ContactActionPressed { .. } => "ContactActionPressed",
         UiEventKind::HandoffAnswered { .. } => "HandoffAnswered",
         UiEventKind::ObjectActionPressed { .. } => "ObjectActionPressed",
@@ -162,7 +171,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 34;
+const UI_EVENT_KIND_VARIANTS: usize = 38;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -480,6 +489,10 @@ fn all_domain_events() -> Vec<DomainEvent> {
             unrouted: Some(1),
         }),
         DomainEvent::ListingsLoaded(Listing::ALL.to_vec()),
+        DomainEvent::OwnContactCardUpdated(ContactCard {
+            text: "card-text".to_owned(),
+            link: Some("ramflux:contact/card".to_owned()),
+        }),
         DomainEvent::EffectFailed(EffectFailure {
             method: "grant.approve".to_owned(),
             code: FailureCode::Daemon("ValidationFailed".to_owned()),
@@ -534,6 +547,14 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::RejectContact { moment_id: MomentId::new("m-1") },
         IntentKind::VerifySafetyNumber { participant_id: ParticipantId::new("p-1") },
         IntentKind::AddContact { participant_id: ParticipantId::new("principal-ana") },
+        IntentKind::AddContactCard { card: "ramflux:contact/card".to_owned() },
+        IntentKind::ExportContactCard,
+        IntentKind::CreateGroup {
+            context_id: ContextId::new("g-new"),
+            title: "Team".to_owned(),
+            members: vec![ParticipantId::new("p-1")],
+        },
+        IntentKind::RenameContext { context_id: ContextId::new("g-1"), title: "Crew".to_owned() },
         IntentKind::Contact {
             participant_id: ParticipantId::new("p-1"),
             action: ContactAction::Remove,
@@ -600,6 +621,14 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::DisappearingChosen { seconds: None },
         UiEventKind::VerifySafetyPressed { participant_id: ParticipantId::new("p-1") },
         UiEventKind::AddContactRequested { participant_id: ParticipantId::new("principal-ana") },
+        UiEventKind::AddContactCardRequested { card: "ramflux:contact/card".to_owned() },
+        UiEventKind::ShareContactCardRequested,
+        UiEventKind::CreateGroupRequested {
+            context_id: ContextId::new("g-new"),
+            title: "Team".to_owned(),
+            members: vec![ParticipantId::new("p-1")],
+        },
+        UiEventKind::RenameRequested { title: "Crew".to_owned() },
         UiEventKind::ContactActionPressed {
             participant_id: ParticipantId::new("p-1"),
             action: ContactAction::Block,

@@ -91,7 +91,7 @@ pub(super) fn governance(
 }
 
 /// Why requests could not be built.
-enum Why {
+pub(super) enum Why {
     /// A reason key.
     Reason(&'static str),
     /// A malformed request.
@@ -99,7 +99,7 @@ enum Why {
 }
 
 impl Why {
-    fn plan(self) -> Plan {
+    pub(super) fn plan(self) -> Plan {
         match self {
             Self::Reason(reason) => refuse(reason),
             Self::Invalid(message) => refuse_invalid(&message),
@@ -156,7 +156,7 @@ fn members(
 }
 
 /// Add or invite each verified device of the participant.
-fn invitations(
+pub(super) fn invitations(
     directory: &Directory,
     group: &str,
     actor: &str,

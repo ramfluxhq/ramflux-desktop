@@ -182,6 +182,14 @@ pub enum IntentKind {
         /// The contact's id (their principal id on the daemon).
         participant_id: ParticipantId,
     },
+    /// Add a contact from the contact card they shared (pasted text or
+    /// link, or a card file's contents). Human only.
+    AddContactCard {
+        /// The card, as shared.
+        card: String,
+    },
+    /// Export this account's own contact card to share it.
+    ExportContactCard,
     /// Act on the contact link with a participant.
     Contact {
         /// Participant.
@@ -210,6 +218,24 @@ pub enum IntentKind {
     },
 
     // Governance and approvals.
+    /// Create a group: its conversation (under a fresh id chosen by the
+    /// caller, so a retry names the same one), its name, and the accepted
+    /// contacts added as its first members. Human only.
+    CreateGroup {
+        /// The new group conversation's id.
+        context_id: ContextId,
+        /// The group's name.
+        title: String,
+        /// Contacts to add as members.
+        members: Vec<ParticipantId>,
+    },
+    /// Rename a group conversation.
+    RenameContext {
+        /// Group conversation.
+        context_id: ContextId,
+        /// New name.
+        title: String,
+    },
     /// Change group or space membership or roles.
     Governance {
         /// Group or space.

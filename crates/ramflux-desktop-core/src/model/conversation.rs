@@ -90,6 +90,14 @@ pub struct Participant {
     /// The contact link, when the source reports one.
     #[serde(default)]
     pub link: ContactLink,
+    /// Whether this account can send to the participant now (the daemon
+    /// holds a verified device of theirs); `None` when not reported.
+    #[serde(default)]
+    pub reachable: Option<bool>,
+    /// Whether `kind` is only what the participant says about itself (not
+    /// proven by anything the daemon verified).
+    #[serde(default)]
+    pub kind_asserted: bool,
 }
 
 impl Participant {
@@ -100,6 +108,17 @@ impl Participant {
             link => link,
         }
     }
+}
+
+/// This account's own contact card: what others add to reach it, shared
+/// out of band (copied as text or a link, or shown as a QR code).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContactCard {
+    /// The card as text, exactly as the backend exported it.
+    pub text: String,
+    /// The same card as a link, when the backend offers one.
+    #[serde(default)]
+    pub link: Option<String>,
 }
 
 /// Context shape.

@@ -14,16 +14,20 @@
 //! - [`fetch`]: the reads.
 //! - [`identity`]: fresh identity material for account creation.
 //! - [`contact`]: contact effects and the links they name, and verification.
+//! - [`contact_card`]: adding a contact from a card, exporting this account's.
 //! - [`conversation`]: starting a direct conversation (its first message).
 //! - [`message`]: direct and group sends, attachments.
 //! - [`object`]: opening, saving and resuming objects.
 //! - [`group`]: membership, roles and invitations.
 //! - [`surface`]: surface actions and update requests.
+//! - [`group_create`]: creating and renaming a group.
 
 pub mod contact;
+pub mod contact_card;
 pub mod conversation;
 pub mod fetch;
 pub mod group;
+pub mod group_create;
 pub mod identity;
 pub mod message;
 pub mod object;
@@ -66,6 +70,11 @@ pub trait Known {
     fn surface(&self, surface_ref: &str) -> Option<&crate::surface::SurfaceTarget> {
         let _ = surface_ref;
         None
+    }
+    /// The name this account keeps for a conversation (a rename on its way
+    /// first), which group calls carry.
+    fn kept_title(&self, context: &ContextId) -> Option<&str> {
+        self.directory().and_then(|d| d.title_of(context))
     }
 }
 
@@ -359,6 +368,10 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         methods::SAFETY_VERIFY => contact::verify(acct, body, known),
         methods::SURFACE_ACTION => surface::action(acct, body, known),
         methods::SURFACE_REQUEST_RESYNC => surface::request_resync(acct, body, known),
+        methods::CONTACT_CARD_IMPORT => contact_card::import(acct, body),
+        methods::CONTACT_CARD_EXPORT => contact_card::export(acct),
+        methods::GROUP_CREATE => group_create::create(acct, body, known),
+        methods::CONTEXT_RENAME => group_create::rename(acct, body, known),
         methods::CONTACT_ADD
         | methods::CONTACT_ACCEPT
         | methods::CONTACT_REJECT

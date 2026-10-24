@@ -88,8 +88,12 @@ pub mod key {
     /// The daemon could not accept the request.
     pub const SURFACE_INVALID_REQUEST: &str = "backend.surface.invalid_request";
 
+    /// A new group: no verified device (signing key and delivery target)
+    /// is listed for the member (`name`), so the group is not created.
+    pub const GROUP_MEMBER_ROUTE: &str = "backend.failure.group_member_route";
+
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 32] = [
+    pub const ALL: [&str; 33] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -122,6 +126,7 @@ pub mod key {
         SURFACE_CLOSED,
         SURFACE_NOT_PERMITTED,
         SURFACE_INVALID_REQUEST,
+        GROUP_MEMBER_ROUTE,
     ];
 }
 

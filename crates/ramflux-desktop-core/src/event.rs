@@ -10,9 +10,9 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, Block, Capabilities, Context, DaemonInfo, Device, Disappearing,
-    EffectFailure, Grant, GrantFailure, GrantState, Integrations, Lifecycle, Listing, LockState,
-    Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant,
+    Account, AuditEntry, Block, Capabilities, ContactCard, Context, DaemonInfo, Device,
+    Disappearing, EffectFailure, Grant, GrantFailure, GrantState, Integrations, Lifecycle, Listing,
+    LockState, Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant,
     StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskState,
 };
 
@@ -254,4 +254,6 @@ pub enum DomainEvent {
     EffectFailed(EffectFailure),
     /// The source answered these collections in full (each may be empty).
     ListingsLoaded(Vec<Listing>),
+    /// This account's contact card, as the backend exported it.
+    OwnContactCardUpdated(ContactCard),
 }

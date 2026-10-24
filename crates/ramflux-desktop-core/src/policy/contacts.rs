@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Policy for contacts: adding one by id, and acting on a contact link
-//! (accept, reject, block, unblock, remove).
+//! Policy for contacts: adding one by principal id or contact card,
+//! exporting this account's own card, and acting on a contact link (accept,
+//! reject, block, unblock, remove).
 
 use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
-use crate::intent::{ContactAction, IntentKind, check_contact_id, methods};
+use crate::intent::{ContactAction, IntentKind, check_contact_card, check_contact_id, methods};
 use crate::model::ContactLink;
 
 /// Decides contact-area kinds; `None` for kinds of other areas.
@@ -17,6 +18,13 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             check_add_contact(p.store, participant_id.as_str())?;
             Ok(Decision::Call(methods::CONTACT_ADD, json!({ "participant_id": participant_id })))
         }),
+        IntentKind::AddContactCard { card } => p.human_only("add a contact").and_then(|()| {
+            let card = check_add_contact_card(card)?;
+            Ok(Decision::Call(methods::CONTACT_CARD_IMPORT, json!({ "card": card })))
+        }),
+        IntentKind::ExportContactCard => p
+            .human_only("share the contact card")
+            .map(|()| Decision::Call(methods::CONTACT_CARD_EXPORT, json!({}))),
         IntentKind::Contact { participant_id, action } => p
             .store
             .participant(participant_id)
@@ -58,6 +66,18 @@ pub fn check_add_contact(
         return Err(IntentError::ContactLinkState { participant, link });
     }
     Ok(participant)
+}
+
+/// Checks contact card text before it is added; returns it trimmed. The
+/// form runs the same check to explain a refusal next to the field.
+///
+/// # Errors
+///
+/// [`IntentError::InvalidContactCard`].
+pub fn check_add_contact_card(card: &str) -> Result<&str, IntentError> {
+    let card = card.trim();
+    check_contact_card(card).map_err(IntentError::InvalidContactCard)?;
+    Ok(card)
 }
 
 /// Whether a pending contact intent still matches the store (the link did

@@ -41,8 +41,8 @@ pub use backend::{
     Capabilities, DaemonInfo, DaemonSyncState, EffectFailure, FailureCode, SyncMode, SyncStatus,
 };
 pub use conversation::{
-    ContactLink, Context, ContextKind, Disappearing, Participant, ParticipantKind, Role,
-    SafetyState,
+    ContactCard, ContactLink, Context, ContextKind, Disappearing, Participant, ParticipantKind,
+    Role, SafetyState,
 };
 pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingApproval};
 pub use integrations::{A2iItem, Integrations, McpServer};

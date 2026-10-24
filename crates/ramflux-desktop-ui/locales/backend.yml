@@ -137,11 +137,14 @@ backend:
       en: "Stopped after %{done} of %{total}: %{reason}"
       zh-CN: "完成 %{done}/%{total} 后停止：%{reason}"
     start_no_identity:
-      en: "This account does not list %{name}'s devices yet, so the first message has no route. They are listed once the contact exchange with %{name} is complete; try again shortly."
-      zh-CN: "此账户尚未列出 %{name} 的设备，第一条消息没有路由。与 %{name} 的联系人交换完成后才会列出，请稍后重试。"
+      en: "This account does not list %{name}'s devices yet, so the first message has no route. Add %{name} from their contact card, or try again once their node lists them."
+      zh-CN: "此账户尚未列出 %{name} 的设备，第一条消息没有路由。请通过 %{name} 的联系人名片添加，或在其节点列出后重试。"
     start_no_target:
       en: "None of %{name}'s devices has a delivery address yet, so the first message cannot be addressed. Ask %{name} to open Ramflux once so their device registers, then try again."
       zh-CN: "%{name} 的设备都还没有投递地址，第一条消息无法寻址。请 %{name} 打开一次 Ramflux 以注册设备，然后重试。"
+    group_member_route:
+      en: "No verified device is listed for %{name}, so the group was not created. Add %{name} from their contact card first."
+      zh-CN: "未列出 %{name} 的已验证设备，群组未创建。请先通过 %{name} 的联系人名片添加。"
     start_unverified_key:
       en: "%{name}'s device keys are not verified for this account yet. Open Contacts and verify %{name}'s safety number, then try again."
       zh-CN: "%{name} 的设备密钥尚未在此账户中验证。请打开联系人，验证 %{name} 的安全码后重试。"

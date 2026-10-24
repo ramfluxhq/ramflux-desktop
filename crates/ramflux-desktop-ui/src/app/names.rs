@@ -47,6 +47,10 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::DisappearingChosen { .. } => "DisappearingChosen",
         UiEventKind::ContactAnswered { .. } => "ContactAnswered",
         UiEventKind::AddContactRequested { .. } => "AddContactRequested",
+        UiEventKind::AddContactCardRequested { .. } => "AddContactCardRequested",
+        UiEventKind::ShareContactCardRequested => "ShareContactCardRequested",
+        UiEventKind::CreateGroupRequested { .. } => "CreateGroupRequested",
+        UiEventKind::RenameRequested { .. } => "RenameRequested",
         UiEventKind::ContactActionPressed { .. } => "ContactActionPressed",
         UiEventKind::VerifySafetyPressed { .. } => "VerifySafetyPressed",
         UiEventKind::HandoffAnswered { .. } => "HandoffAnswered",
@@ -95,6 +99,10 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::RejectContact { .. } => "RejectContact",
         IntentKind::VerifySafetyNumber { .. } => "VerifySafetyNumber",
         IntentKind::AddContact { .. } => "AddContact",
+        IntentKind::AddContactCard { .. } => "AddContactCard",
+        IntentKind::ExportContactCard => "ExportContactCard",
+        IntentKind::CreateGroup { .. } => "CreateGroup",
+        IntentKind::RenameContext { .. } => "RenameContext",
         IntentKind::Contact { .. } => "Contact",
         IntentKind::AcceptHandoff { .. } => "AcceptHandoff",
         IntentKind::DeclineHandoff { .. } => "DeclineHandoff",
@@ -180,6 +188,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::SyncStatusChanged(_) => "SyncStatusChanged",
         DomainEvent::EffectFailed(_) => "EffectFailed",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
+        DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
     }
 }
 

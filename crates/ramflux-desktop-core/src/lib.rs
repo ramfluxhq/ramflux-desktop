@@ -46,12 +46,15 @@ pub use ids::{
     StandingApprovalId, StepId, SurfaceId, TaskId, Timestamp,
 };
 pub use intent::{
-    ContactAction, ContactIdProblem, Effect, GovernanceOp, Intent, IntentKind, MAX_CONTACT_ID_LEN,
-    SecretInput, SyncDirection, check_contact_id, methods,
+    ContactAction, ContactCardProblem, ContactIdProblem, ContactInput, Effect, GovernanceOp,
+    Intent, IntentKind, MAX_CONTACT_CARD_LEN, MAX_CONTACT_ID_LEN, SecretInput, SyncDirection,
+    check_contact_card, check_contact_id, classify_contact_input, methods,
 };
 pub use model::*;
 pub use policy::{
-    IntentError, check_add_contact, check_start_conversation, contact_action_current, handle_intent,
+    GroupProblem, IntentError, MAX_GROUP_MEMBERS, MAX_GROUP_TITLE_LEN, check_add_contact,
+    check_add_contact_card, check_create_group, check_group_title, check_start_conversation,
+    contact_action_current, handle_intent,
 };
 pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter, TaskStepRef};
 pub use serde_json::Value as JsonValue;

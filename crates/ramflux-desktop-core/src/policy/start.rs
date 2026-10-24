@@ -54,7 +54,8 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
 ///
 /// [`IntentError::UnknownParticipant`], [`IntentError::SelfParticipant`],
 /// [`IntentError::ContactLinkState`] (not an accepted contact) or
-/// [`IntentError::SafetyUnresolved`] (key changed or forked).
+/// [`IntentError::SafetyUnresolved`] (key changed or forked) or
+/// [`IntentError::NotReachable`] (none of their devices is known yet).
 pub fn check_start_conversation(
     store: &Store,
     participant: &ParticipantId,
@@ -71,6 +72,9 @@ pub fn check_start_conversation(
     }
     if matches!(contact.safety, SafetyState::KeyChanged | SafetyState::Forked) {
         return Err(IntentError::SafetyUnresolved(participant.clone()));
+    }
+    if contact.reachable == Some(false) {
+        return Err(IntentError::NotReachable(participant.clone()));
     }
     Ok(())
 }

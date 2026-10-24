@@ -397,6 +397,7 @@ fn read_model_requests() -> Vec<ramflux_desktop_sdk::bus::BusRequest> {
         ContextId::new("dm-ana"),
         Conversation {
             kind: Some(ContextKind::Direct),
+            title: None,
             group_id: Some("g-team".to_owned()),
             direct_route: Some(DirectRoute {
                 commitment: Some("cm-ana".to_owned()),

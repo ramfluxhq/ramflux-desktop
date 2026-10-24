@@ -181,6 +181,7 @@ fn the_contacts_dock_adds_and_answers_through_the_daemon(cx: &mut TestAppContext
     assert_eq!(add.body["requester_id"], "principal-me");
     assert_eq!(add.body["target_id"], "principal-kai");
     assert!(add.body["link_id"].as_str().is_some_and(|id| id.starts_with("link-")));
-    assert_eq!(add.body.as_object().map(serde_json::Map::len), Some(3));
+    assert_eq!(add.body["principal_id"], "principal-kai");
+    assert_eq!(add.body.as_object().map(serde_json::Map::len), Some(4));
     fake.shutdown();
 }

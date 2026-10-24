@@ -51,6 +51,10 @@ pub const CONTEXT_MUTE: &str = "conversation.mute";
 pub const CONTEXT_DISAPPEARING: &str = "conversation.disappearing.set";
 /// Add a contact by the id they shared.
 pub const CONTACT_ADD: &str = "contact.add";
+/// Add a contact from the contact card they shared.
+pub const CONTACT_CARD_IMPORT: &str = "contact.card.import";
+/// Export this account's own contact card.
+pub const CONTACT_CARD_EXPORT: &str = "contact.card.export";
 /// Send a contact request to the contact's node.
 pub const CONTACT_REQUEST: &str = "contact.request";
 /// Accept a contact request.
@@ -65,6 +69,10 @@ pub const CONTACT_UNBLOCK: &str = "contact.unblock";
 pub const CONTACT_REMOVE: &str = "contact.remove";
 /// Verify a safety number.
 pub const SAFETY_VERIFY: &str = "safety.verify";
+/// Create a group with its conversation and first members.
+pub const GROUP_CREATE: &str = "group.create";
+/// Rename a group conversation (the name this account keeps for it).
+pub const CONTEXT_RENAME: &str = "conversation.rename";
 /// Add a group member.
 pub const GROUP_ADD_MEMBER: &str = "group.add_member";
 /// Remove a group member.

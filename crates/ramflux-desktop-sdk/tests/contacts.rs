@@ -21,7 +21,7 @@ use ramflux_desktop_core::{
     Source as _, Store, methods,
 };
 use ramflux_desktop_sdk::plan::contact::{REMOVE_SCOPE, derived_link_id};
-use ramflux_desktop_sdk::plan::fetch::Fetch;
+use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
 use ramflux_desktop_sdk::plan::{Known, KnownLink, Plan, plan};
 use ramflux_sdk::{
     LocalBusContactAddRequest, LocalBusContactLinkRequest, LocalBusContactRemoveRequest,
@@ -111,18 +111,32 @@ fn every_contact_method_builds_the_sdk_request() {
     let known = Fake::new();
     let (m, body, refresh) = mapped(call(methods::CONTACT_ADD, on("principal-kai")), &known);
     assert_eq!(m, "contact.add");
-    assert_eq!(refresh, vec![Fetch::ContactList]);
-    let add: LocalBusContactAddRequest = sdk_shaped(&body);
+    // The contact's identity follows the link: both are read again.
+    assert_eq!(refresh, vec![Fetch::ContactList, Fetch::first(Paged::Identities)]);
+    // The principal is also named on its own, for a daemon that looks it up.
+    assert_eq!(body["principal_id"], "principal-kai");
+    let mut link = body.clone();
+    link.as_object_mut().map(|b| b.remove("principal_id"));
+    let add: LocalBusContactAddRequest = sdk_shaped(&link);
     assert_eq!(add.link_id, derived_link_id(ME, "principal-kai"));
     assert_eq!((add.requester_id.as_str(), add.target_id.as_str()), (ME, "principal-kai"));
 
     // Adding a contact again reuses the link this account requested.
     let (_, body, _) = mapped(call(methods::CONTACT_ADD, on("principal-ana")), &known);
-    assert_eq!(body, json!({ "link_id": "l1", "requester_id": ME, "target_id": "principal-ana" }));
+    assert_eq!(
+        body,
+        json!({
+            "link_id": "l1", "requester_id": ME, "target_id": "principal-ana",
+            "principal_id": "principal-ana",
+        })
+    );
 
     // Accept is the daemon's local form: the pending link's own ids.
     let (m, body, refresh) = mapped(call(methods::CONTACT_ACCEPT, on("principal-noor")), &known);
-    assert_eq!((m.as_str(), refresh), ("contact.accept", vec![Fetch::ContactList]));
+    assert_eq!(
+        (m.as_str(), refresh),
+        ("contact.accept", vec![Fetch::ContactList, Fetch::first(Paged::Identities)])
+    );
     let accept: LocalBusContactAddRequest = sdk_shaped(&body);
     assert_eq!(
         (accept.link_id.as_str(), accept.requester_id.as_str(), accept.target_id.as_str()),
@@ -283,7 +297,12 @@ fn contact_actions_reach_the_daemon_and_its_records_update_the_contacts() {
         link_of(s, "principal-kai") == Some(ContactLink::Accepted)
             && s.participant(&ParticipantId::new("principal-kai")).is_some_and(|p| p.contact)
     });
-    let add: LocalBusContactAddRequest = sdk_shaped(&frame("contact.add"));
+    let mut added = frame("contact.add");
+    assert_eq!(
+        added.as_object_mut().and_then(|b| b.remove("principal_id")),
+        Some(json!("principal-kai"))
+    );
+    let add: LocalBusContactAddRequest = sdk_shaped(&added);
     assert_eq!(add.target_id, "principal-kai");
 
     submit(&mut account, methods::CONTACT_ACCEPT, "principal-noor");

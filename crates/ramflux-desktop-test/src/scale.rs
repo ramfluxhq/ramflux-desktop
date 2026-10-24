@@ -30,6 +30,8 @@ fn participant(id: &str, display: &str) -> DomainEvent {
         contact: true,
         safety_number: None,
         link: ramflux_desktop_core::ContactLink::None,
+        reachable: None,
+        kind_asserted: false,
     })
 }
 

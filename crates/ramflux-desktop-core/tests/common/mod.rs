@@ -94,6 +94,8 @@ pub fn participant(id: &str, kind: ParticipantKind, display: &str, contact: bool
         contact,
         safety_number: None,
         link: ramflux_desktop_core::ContactLink::None,
+        reachable: None,
+        kind_asserted: false,
     }
 }
 

@@ -152,6 +152,28 @@ pub enum UiEventKind {
         /// The id the contact shared (already checked by the form).
         participant_id: ParticipantId,
     },
+    /// A contact card was submitted from the add-contact form (pasted, or
+    /// read from a card file).
+    AddContactCardRequested {
+        /// The card text (already checked by the form).
+        card: String,
+    },
+    /// The user asked to see this account's contact card to share it.
+    ShareContactCardRequested,
+    /// The new-group form was submitted.
+    CreateGroupRequested {
+        /// The new group conversation's id, chosen when the form opened.
+        context_id: ContextId,
+        /// The group's name.
+        title: String,
+        /// Contacts to add as members.
+        members: Vec<ParticipantId>,
+    },
+    /// A new name was entered for the scoped group conversation.
+    RenameRequested {
+        /// New name.
+        title: String,
+    },
     /// An action on a contact link was chosen.
     ContactActionPressed {
         /// Participant.

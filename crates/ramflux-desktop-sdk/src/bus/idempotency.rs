@@ -22,8 +22,8 @@
 
 /// Methods that are planned as effects but do not change daemon state.
 /// `object.get` answers with the object's bytes, which must never be kept
-/// in a receipt.
-const NOT_MUTATIONS: [&str; 2] = ["node.probe", "object.get"];
+/// in a receipt; `contact.card.export` only reads this account's card.
+const NOT_MUTATIONS: [&str; 3] = ["node.probe", "object.get", "contact.card.export"];
 
 /// Prefix of desktop keys (readable in daemon traces).
 const KEY_PREFIX: &str = "desk-op-";

@@ -204,8 +204,11 @@ fn grant_conversation_device_and_group_frames_are_the_sdk_requests() {
     assert_eq!(ttl.ttl_secs, 60);
     let _: LocalBusDeviceRevokeRequest =
         mutation(call(methods::DEVICE_REVOKE, json!({ "device_id": "device-x" })));
-    let send: LocalBusGroupSendRequest =
-        mutation(call(methods::SEND_MESSAGE, json!({ "context_id": "thread-team", "text": "hi" })));
+    // A group call carries the name this account keeps for the conversation
+    // (the daemon records it from every group call that names one).
+    let sent =
+        keyed(call(methods::SEND_MESSAGE, json!({ "context_id": "thread-team", "text": "hi" })));
+    let send: LocalBusGroupSendRequest = parses_with(&sent, &["title"]);
     assert_eq!(
         (send.group_id.as_str(), send.conversation_id.as_str(), send.sender_id.as_str()),
         ("g-team", "thread-team", "device-me"),
@@ -238,7 +241,8 @@ fn reads_and_pulls_are_the_sdk_requests_without_retry_keys() {
     let pulled: LocalBusMessageReceiveRequest = parses(&receive);
     assert_eq!(pulled.conversation_id.as_deref(), Some("dm-ana"));
     let group = group_receive().request(Some("acct-main"));
-    let received: LocalBusGroupReceiveRequest = parses(&group);
+    let received: LocalBusGroupReceiveRequest = parses_with(&group, &["title"]);
+    assert_eq!(group.wire_body()["title"], "Team");
     assert_eq!(
         (received.group_id.as_str(), received.conversation_id.as_str()),
         ("g-team", "thread-team")
@@ -269,7 +273,11 @@ fn reads_and_pulls_are_the_sdk_requests_without_retry_keys() {
 }
 
 fn group_receive() -> Fetch {
-    Fetch::GroupReceive { context: ContextId::new("thread-team"), group: "g-team".to_owned() }
+    Fetch::GroupReceive {
+        context: ContextId::new("thread-team"),
+        group: "g-team".to_owned(),
+        title: Some("Team".to_owned()),
+    }
 }
 
 fn receive_of(context: &str) -> Fetch {

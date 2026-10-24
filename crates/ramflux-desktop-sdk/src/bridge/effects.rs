@@ -27,6 +27,7 @@ impl Task {
         let planned = plan(self.scope.account(), effect, &self.translator);
         let (method, mut body) = (planned.method, planned.body);
         self.translator.decision_sent(&method, &body);
+        self.translator.rename_sent(&method, &body);
         if method == ramflux_desktop_core::methods::ATTACH_OBJECT
             && let Plan::Call { request, .. } = &planned.plan
         {

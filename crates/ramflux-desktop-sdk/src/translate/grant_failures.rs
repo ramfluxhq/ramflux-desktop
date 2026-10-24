@@ -88,6 +88,10 @@ impl Translator {
         if method == methods::SURFACE_REQUEST_RESYNC {
             return self.surface_effect_failed(method, body, code, message);
         }
+        if method == methods::CONTEXT_RENAME {
+            self.rename_failed(body);
+            return Vec::new();
+        }
         if !matches!(method, methods::GRANT_APPROVE | methods::GRANT_DENY) {
             return Vec::new();
         }

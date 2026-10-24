@@ -44,6 +44,9 @@ fn context_intent(event: &UiEvent) -> Option<IntentKind> {
         UiEventKind::GovernanceRequested { op } => {
             IntentKind::Governance { context_id, op: op.clone() }
         }
+        UiEventKind::RenameRequested { title } => {
+            IntentKind::RenameContext { context_id, title: title.clone() }
+        }
         _ => return None,
     })
 }
@@ -148,6 +151,17 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         }
         UiEventKind::AddContactRequested { participant_id } => {
             IntentKind::AddContact { participant_id: participant_id.clone() }
+        }
+        UiEventKind::AddContactCardRequested { card } => {
+            IntentKind::AddContactCard { card: card.clone() }
+        }
+        UiEventKind::ShareContactCardRequested => IntentKind::ExportContactCard,
+        UiEventKind::CreateGroupRequested { context_id, title, members } => {
+            IntentKind::CreateGroup {
+                context_id: context_id.clone(),
+                title: title.clone(),
+                members: members.clone(),
+            }
         }
         UiEventKind::ContactActionPressed { participant_id, action } => {
             IntentKind::Contact { participant_id: participant_id.clone(), action: *action }

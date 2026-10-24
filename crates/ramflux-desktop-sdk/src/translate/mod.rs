@@ -151,6 +151,9 @@ pub struct Translator {
     /// Conversations this device started that the directory has not
     /// listed yet: a listing read before the start does not remove them.
     started: BTreeSet<ContextId>,
+    /// Names this device gave group conversations that the directory does
+    /// not list yet; group calls carry them meanwhile.
+    renames: BTreeMap<ContextId, String>,
     message_objects: BTreeMap<String, ObjectId>,
     /// Surfaces reported, by the daemon's scoped `surface_ref`.
     surfaces: BTreeMap<String, surfaces::KnownSurface>,
@@ -196,6 +199,7 @@ impl Translator {
             objects: BTreeMap::new(),
             sent_attachments: BTreeMap::new(),
             started: BTreeSet::new(),
+            renames: BTreeMap::new(),
             message_objects: BTreeMap::new(),
             surfaces: BTreeMap::new(),
             surface_times: BTreeMap::new(),
@@ -269,6 +273,7 @@ impl Translator {
                 .map(|group| Fetch::GroupReceive {
                     context: context.clone(),
                     group: group.to_owned(),
+                    title: self.kept_title(context).map(str::to_owned),
                 })
                 .into_iter()
                 .collect(),
@@ -447,6 +452,10 @@ impl Known for Translator {
 
     fn surface(&self, surface_ref: &str) -> Option<&crate::surface::SurfaceTarget> {
         self.surface_target(surface_ref)
+    }
+
+    fn kept_title(&self, context: &ContextId) -> Option<&str> {
+        self.renames.get(context).map(String::as_str).or_else(|| self.directory.title_of(context))
     }
 }
 

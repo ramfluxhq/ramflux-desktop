@@ -136,6 +136,13 @@ impl Translator {
                 // accept wraps it in `link`).
                 self.contact_record(answer.get("link").unwrap_or(answer))
             }
+            methods::CONTACT_CARD_IMPORT => {
+                self.imported_record(answer.get("link").unwrap_or(answer))
+            }
+            methods::CONTACT_CARD_EXPORT => crate::plan::contact_card::exported_card(answer)
+                .map(DomainEvent::OwnContactCardUpdated)
+                .into_iter()
+                .collect(),
             methods::CONVERSATION_START => self.conversation_started(body, answer),
             methods::ATTACH_OBJECT => self.attachment_sent(body),
             methods::SEND_MESSAGE => {

@@ -195,7 +195,8 @@ fn account_methods_map_to_daemon_requests() {
         r,
         vec![Fetch::GroupReceive {
             context: ContextId::new("thread-team"),
-            group: "g-team".to_owned()
+            group: "g-team".to_owned(),
+            title: b["title"].as_str().map(str::to_owned),
         }]
     );
     let (m, _, b, r) =

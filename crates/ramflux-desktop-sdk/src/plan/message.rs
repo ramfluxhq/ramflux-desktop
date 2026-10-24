@@ -13,7 +13,9 @@
 //! A group message is `group.send` to the group the conversation names,
 //! without delivery fields, so the daemon resolves every member's route
 //! before anything is encrypted or stored, and refuses the whole send when
-//! one is missing (see `translate::send_failures`).
+//! one is missing (see `translate::send_failures`). It carries the name this
+//! account keeps for the conversation: the daemon records the name from
+//! every group call that names the conversation.
 //!
 //! An attachment travels with a direct message (`message.submit`
 //! `attachments`), read from the chosen file at send time and limited to
@@ -259,14 +261,21 @@ fn group_send(acct: Option<&str>, context: &ContextId, message: &str, known: &im
         federation: None,
         ttl: None,
     };
+    let title = known.kept_title(context).map(str::to_owned);
     match serde_json::to_value(send) {
-        Ok(body) => Plan::Call {
-            request: BusRequest::new(acct, "group", "group.send", body),
-            refresh: vec![Fetch::GroupReceive {
-                context: context.clone(),
-                group: group.to_owned(),
-            }],
-        },
+        Ok(mut body) => {
+            if let Some(title) = &title {
+                body["title"] = json!(title);
+            }
+            Plan::Call {
+                request: BusRequest::new(acct, "group", "group.send", body),
+                refresh: vec![Fetch::GroupReceive {
+                    context: context.clone(),
+                    group: group.to_owned(),
+                    title,
+                }],
+            }
+        }
         Err(error) => refuse_invalid(&error.to_string()),
     }
 }

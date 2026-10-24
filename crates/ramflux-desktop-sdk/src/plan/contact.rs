@@ -10,11 +10,17 @@
 //! a link by link id, which the source knows from `contact.list`.
 //!
 //! - `contact.add`: this account (requester) to the typed principal
-//!   (target). The link id is derived from both ids, so adding the same
-//!   contact again re-establishes the same link.
+//!   (target), also named as `principal_id`: a daemon that resolves
+//!   contacts looks the principal up on its home node at add time (trust on
+//!   first use: unverified until safety numbers are compared), so the
+//!   contact is reachable at once; an older daemon reads the link fields
+//!   and ignores the rest. The link id is derived from both ids, so adding
+//!   the same contact again re-establishes the same link.
 //! - `contact.accept`: the local form (requester, target of the pending
 //!   link). The federated form, which also notifies the requester, needs the
 //!   requester's device route; the daemon does not list it.
+//! - Adding and accepting read the identity directory again with the
+//!   contact list: the contact's devices and safety state follow the link.
 //! - `contact.reject`, `contact.block`, `contact.unblock`: the link id.
 //! - `contact.remove`: the link id and the reference CLI's default scope `me`.
 //! - `safety.verify`: `contact.verify` with the contact's identity
@@ -81,7 +87,11 @@ pub(super) fn contact_call(
     let request = |daemon: &str, value: Result<Value, serde_json::Error>| match value {
         Ok(value) => Plan::Call {
             request: BusRequest::new(acct, "contact", daemon, value),
-            refresh: vec![Fetch::ContactList],
+            refresh: if matches!(daemon, "contact.add" | "contact.accept") {
+                super::contact_card::contact_refresh()
+            } else {
+                vec![Fetch::ContactList]
+            },
         },
         Err(error) => refuse_invalid(&error.to_string()),
     };
@@ -101,7 +111,11 @@ pub(super) fn contact_call(
             requester_id: me.to_owned(),
             target_id: participant.to_owned(),
         };
-        return request("contact.add", serde_json::to_value(add));
+        let add = serde_json::to_value(add).map(|mut add| {
+            add["principal_id"] = Value::from(participant);
+            add
+        });
+        return request("contact.add", add);
     }
     let Some(link) = known.contact_link(participant) else {
         return refuse_invalid("the daemon lists no link with this contact");

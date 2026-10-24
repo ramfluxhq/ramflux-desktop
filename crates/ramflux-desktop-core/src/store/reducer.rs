@@ -154,6 +154,12 @@ impl Store {
                 self.failures_total += 1;
                 changes.source_status = true;
             }
+            DomainEvent::OwnContactCardUpdated(card) => {
+                if self.own_card.as_ref() != Some(card) {
+                    self.own_card = Some(card.clone());
+                    changes.source_status = true;
+                }
+            }
             DomainEvent::ListingsLoaded(listings) => {
                 for listing in listings {
                     changes.listings |= self.listed.insert(*listing);

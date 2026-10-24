@@ -47,6 +47,9 @@ pub struct Directory {
 pub struct Conversation {
     /// Kind; `None` for a legacy row without a classification.
     pub kind: Option<ContextKind>,
+    /// The name this account keeps for the conversation; `None` when the
+    /// row has none (it is never filled in from the id).
+    pub title: Option<String>,
     /// The group this conversation belongs to.
     pub group_id: Option<String>,
     /// The route of a direct conversation, when known and active.
@@ -135,7 +138,7 @@ impl Conversation {
             target: field(route, "target_delivery_id"),
             federation: route.get("federation").filter(|f| f.is_object()).cloned(),
         });
-        Self { kind, group_id: field(row, "group_id"), direct_route }
+        Self { kind, title: field(row, "title"), group_id: field(row, "group_id"), direct_route }
     }
 }
 
@@ -219,6 +222,21 @@ impl Directory {
             })
     }
 
+    /// The name this account keeps for a conversation, when it has one.
+    pub fn title_of(&self, context: &ContextId) -> Option<&str> {
+        self.conversations.get(context).and_then(|c| c.title.as_deref())
+    }
+
+    /// This device's own verified device row (signing key and delivery
+    /// target), from this account's identity.
+    pub fn own_device(&self, device: &str) -> Option<&IdentityDevice> {
+        self.identities
+            .values()
+            .filter(|identity| identity.is_self)
+            .flat_map(|identity| &identity.devices)
+            .find(|d| d.device_id == device)
+    }
+
     /// The group of a conversation, when the daemon linked one.
     pub fn group_of(&self, context: &ContextId) -> Option<&str> {
         self.conversations.get(context).and_then(|c| c.group_id.as_deref())
@@ -250,7 +268,10 @@ mod tests {
     fn rows_keep_unknown_fields_unknown() {
         let legacy =
             Conversation::from_row(&json!({ "id": "c", "kind": null, "direct_route": null }));
-        assert_eq!(legacy, Conversation { kind: None, group_id: None, direct_route: None });
+        assert_eq!(
+            legacy,
+            Conversation { kind: None, title: None, group_id: None, direct_route: None }
+        );
         let dm = Conversation::from_row(&json!({
             "kind": "direct",
             "direct_route": { "recipient_principal_commitment": "cm", "recipient_device_ids": ["d1", "d2"],

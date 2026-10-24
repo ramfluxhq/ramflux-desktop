@@ -18,11 +18,11 @@
 use std::collections::BTreeMap;
 
 use ramflux_desktop_core::{
-    Context, ContextId, ContextKind, DomainEvent, MomentId, ParticipantId, Role,
+    Context, ContextId, ContextKind, DomainEvent, MomentId, ParticipantId, Role, methods,
 };
 use serde_json::Value;
 
-use super::{Translated, Translator};
+use super::{Translated, Translator, text};
 use crate::directory::{Conversation, Group, field};
 use crate::plan::fetch::Fetch;
 
@@ -79,7 +79,24 @@ impl Translator {
             })
             .collect();
         self.conversation_rows = Some(rows.to_vec());
+        let directory = &self.directory;
+        self.renames.retain(|id, title| directory.title_of(id) != Some(title.as_str()));
         self.rebuild_contexts()
+    }
+
+    /// Notes a rename on its way, so group calls carry the new name until
+    /// the directory lists it.
+    pub fn rename_sent(&mut self, method: &str, body: &Value) {
+        if method == methods::CONTEXT_RENAME
+            && let Some(title) = body["title"].as_str()
+        {
+            self.renames.insert(ContextId::new(text(body, "context_id")), title.to_owned());
+        }
+    }
+
+    /// Forgets a rename the daemon refused.
+    pub(super) fn rename_failed(&mut self, body: &Value) {
+        self.renames.remove(&ContextId::new(text(body, "context_id")));
     }
 
     /// Contexts from the latest conversation rows and groups; removes the
