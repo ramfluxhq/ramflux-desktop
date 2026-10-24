@@ -6,7 +6,8 @@
 //!
 //! - A started conversation is shown as soon as the daemon accepted its
 //!   first message; its `conversation.directory` row follows with the next
-//!   read and replaces it.
+//!   read and replaces it. Until the directory lists it once, a listing
+//!   without it (read before the start) does not remove it.
 //! - An attachment is one `message.submit` carrying the file. While that
 //!   request runs, the conversation shows the message at once (its own
 //!   moment id, receipt "sending", in progress) with the object as its
@@ -59,6 +60,7 @@ impl Translator {
         let mut participants: BTreeSet<String> =
             self.directory.self_principal.iter().cloned().collect();
         participants.insert(text(body, "participant_id").to_owned());
+        self.started.insert(id.clone());
         let title = field(body, "title").unwrap_or_else(|| id.to_string());
         let context = Context {
             id,
@@ -185,5 +187,36 @@ mod tests {
         assert_eq!(decoded_len(&ramflux_protocol::encode_base64url([1_u8; 7])), 7);
         assert_eq!(decoded_len("AAE="), 2);
         assert_eq!(decoded_len(""), 0);
+    }
+
+    #[test]
+    fn a_listing_read_before_the_start_does_not_remove_the_started_conversation() {
+        use crate::plan::fetch::{Fetch, Paged};
+        let mut translator = Translator::new(
+            super::super::Scope::Account(ramflux_desktop_core::AccountId::new("a")),
+            "s",
+        );
+        let listing = |ids: &[&str]| {
+            let rows: Vec<Value> = ids
+                .iter()
+                .map(|id| json!({ "id": id, "kind": "direct", "participants": [] }))
+                .collect();
+            json!({ "conversations": rows, "next_cursor": null })
+        };
+        let read = Fetch::first(Paged::Conversations);
+        let removed = |events: &[DomainEvent]| {
+            events.iter().any(|e| matches!(e, DomainEvent::ContextRemoved { .. }))
+        };
+        let _ = translator.fetched(&read, &listing(&["old"]), Timestamp(0));
+        let body = json!({ "context_id": "new", "participant_id": "p", "text": "hi" });
+        let shown = translator.conversation_started(&body, &json!({ "message_id": "m" }));
+        assert!(!shown.is_empty());
+        // A listing that was read before the start.
+        let stale = translator.fetched(&read, &listing(&["old"]), Timestamp(0));
+        assert!(!removed(&stale.events), "kept until the directory lists it");
+        let _ = translator.fetched(&read, &listing(&["old", "new"]), Timestamp(0));
+        // Once listed, it follows the directory like any other.
+        let gone = translator.fetched(&read, &listing(&["old"]), Timestamp(0));
+        assert!(removed(&gone.events));
     }
 }

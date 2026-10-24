@@ -144,6 +144,9 @@ pub struct Translator {
     standing: BTreeMap<StandingApprovalId, StandingApproval>,
     objects: BTreeMap<ObjectId, Object>,
     sent_attachments: BTreeMap<String, ObjectId>,
+    /// Conversations this device started that the directory has not
+    /// listed yet: a listing read before the start does not remove them.
+    started: BTreeSet<ContextId>,
     message_objects: BTreeMap<String, ObjectId>,
     mcp_tools: Option<BTreeMap<String, Vec<String>>>,
     mcp_servers: Option<Vec<Value>>,
@@ -183,6 +186,7 @@ impl Translator {
             standing: BTreeMap::new(),
             objects: BTreeMap::new(),
             sent_attachments: BTreeMap::new(),
+            started: BTreeSet::new(),
             message_objects: BTreeMap::new(),
             mcp_tools: None,
             mcp_servers: None,

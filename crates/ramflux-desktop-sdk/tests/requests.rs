@@ -78,7 +78,11 @@ fn the_reads_of_a_scope_run_concurrently_on_one_connection() {
     let seen = fake.seen();
     let requests: Vec<_> = seen
         .iter()
-        .filter(|s| s.account.as_deref() == Some("acct-main") && s.method != "subscription.open")
+        // The event stream (or push subscription) has its own connection.
+        .filter(|s| {
+            s.account.as_deref() == Some("acct-main")
+                && !matches!(s.method.as_str(), "subscription.open" | "bus.subscribe")
+        })
         .collect();
     assert!(requests.len() >= 10, "the whole snapshot: {}", requests.len());
     let connection = requests[0].connection;

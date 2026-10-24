@@ -108,8 +108,16 @@ impl Translator {
             }
             listed.push(id);
         }
-        let gone: Vec<ContextId> =
-            self.contexts.keys().filter(|id| !listed.contains(id)).cloned().collect();
+        // A conversation this device started stays until the directory has
+        // listed it once: a listing that was read before the start (and
+        // answered after it) does not know it yet.
+        self.started.retain(|id| !listed.contains(id));
+        let gone: Vec<ContextId> = self
+            .contexts
+            .keys()
+            .filter(|id| !listed.contains(id) && !self.started.contains(*id))
+            .cloned()
+            .collect();
         for id in gone {
             out.events.push(self.remove_context(&id));
         }
