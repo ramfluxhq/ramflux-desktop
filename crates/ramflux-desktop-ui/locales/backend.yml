@@ -1,9 +1,6 @@
 _version: 2
 backend:
   gap:
-    tasks:
-      en: "Tasks need the daemon's task API (K3)."
-      zh-CN: "任务需要守护进程的任务接口（K3）。"
     surfaces:
       en: "Agent surfaces need A2UI bound to conversations (K2)."
       zh-CN: "智能体界面需要绑定到会话的 A2UI（K2）。"

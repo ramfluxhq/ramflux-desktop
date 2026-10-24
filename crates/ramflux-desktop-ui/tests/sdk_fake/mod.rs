@@ -13,6 +13,10 @@
 //! A successful `message.submit` adds its conversation (and attachment) to
 //! the directories, as the daemon records them; `fail_submit` makes it fail.
 //! Agent surfaces are held on the protocol's state machine (`surfaces`).
+//!
+//! With `tasks` set, the daemon also holds conversation tasks (on the
+//! protocol's state machine, see `fake_tasks`) and lists `approvals`; its
+//! grant flow records each decision for the task's assignee to check.
 
 #![allow(dead_code)]
 
@@ -84,6 +88,12 @@ pub struct State {
     pub submit_delay: Duration,
     /// Agent surfaces the daemon holds.
     pub surfaces: Arc<ramflux_desktop_test::fake_surfaces::FakeSurfaces>,
+    /// Conversation tasks the daemon holds.
+    pub tasks: Option<ramflux_desktop_test::fake_tasks::FakeTasks>,
+    /// Pending approvals listed instead of the fixture's, when any.
+    pub approvals: Vec<Value>,
+    /// Display names the identity directory reports, by principal.
+    pub names: BTreeMap<String, String>,
 }
 
 /// The shared state.
@@ -153,6 +163,35 @@ fn submitted(state: &mut State, body: &Value) -> Reply {
     Reply::Ok(json!({ "message_id": message }))
 }
 
+/// The approvals the test listed, and the grant flow's decisions on them.
+fn approvals(
+    state: &Shared,
+    tasks: Option<&ramflux_desktop_test::fake_tasks::FakeTasks>,
+    method: &str,
+    body: &Value,
+) -> Option<Reply> {
+    let mut state = state.lock().expect("state");
+    if state.approvals.is_empty() && tasks.is_none() {
+        return None;
+    }
+    match method {
+        "mcp.approval.list" if tasks.is_some() || !state.approvals.is_empty() => {
+            Some(Reply::Ok(json!({ "approvals": state.approvals.clone(), "next_cursor": null })))
+        }
+        "grant.approve" | "grant.deny" => {
+            let id = body["approval_id"].as_str().unwrap_or_default().to_owned();
+            let position = state.approvals.iter().position(|r| r["approval_id"] == id.as_str())?;
+            let record = state.approvals.remove(position);
+            if let Some(tasks) = tasks {
+                tasks.decide(&id, method == "grant.approve");
+            }
+            let grant = record["details"]["requested_grant_id"].clone();
+            Some(Reply::Ok(json!({ "grant_id": grant, "approval_id": id })))
+        }
+        _ => None,
+    }
+}
+
 /// Starts the fake daemon at a socket named after `name`.
 pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
     let path = socket_path(name);
@@ -160,8 +199,17 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
     let state = shared.clone();
     let all = frames();
     let fake = FakeBus::start(&path, move |method, _, body| {
-        let surfaces = state.lock().expect("state").surfaces.clone();
+        let (surfaces, tasks) = {
+            let state = state.lock().expect("state");
+            (state.surfaces.clone(), state.tasks.clone())
+        };
         if let Some(reply) = surfaces.handle(method, body) {
+            return reply;
+        }
+        if let Some(reply) = tasks.as_ref().and_then(|t| t.handle(method, body)) {
+            return reply;
+        }
+        if let Some(reply) = approvals(&state, tasks.as_ref(), method, body) {
             return reply;
         }
         if method == "message.submit" {
@@ -177,7 +225,16 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
         let fixture = || all.get(method).cloned().unwrap_or(json!({}));
         Reply::Ok(match method {
             "contact.list" => contacts(),
-            "identity.directory" => identities(&all),
+            "identity.directory" => {
+                let mut frame = identities(&all);
+                for row in frame["identities"].as_array_mut().expect("rows") {
+                    let principal = row["principal_id"].as_str().unwrap_or_default();
+                    if let Some(name) = state.names.get(principal) {
+                        row["display_name"] = json!(name);
+                    }
+                }
+                frame
+            }
             "conversation.directory" => {
                 let mut frame = fixture();
                 let rows = frame["conversations"].as_array_mut().expect("rows");
@@ -200,10 +257,50 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
                 }
                 let extra = state.messages.get(conversation).cloned().unwrap_or_default();
                 frame["messages"].as_array_mut().expect("rows").extend(extra);
+                if let Some(tasks) = &tasks {
+                    frame["messages"]
+                        .as_array_mut()
+                        .expect("rows")
+                        .extend(tasks.messages(conversation));
+                }
                 frame
             }
             _ => fixture(),
         })
     });
     (fake, shared, path)
+}
+
+/// The bot member of the fixture's group, which plays the AI participant.
+pub const BOT: &str = "principal-bo";
+/// The fixture's group conversation.
+pub const GROUP: &str = "thread-team";
+
+/// Starts the fake daemon with conversation tasks: this account
+/// (`principal-me`), the bot, and Ana as another member. Changes are
+/// announced on the event stream, which is on.
+pub fn start_with_tasks(
+    name: &str,
+) -> (FakeBus, Shared, std::path::PathBuf, ramflux_desktop_test::fake_tasks::FakeTasks) {
+    use ramflux_desktop_test::fake_tasks::{FakeTasks, Member};
+    let (fake, shared, path) = start(name);
+    let tasks = FakeTasks::new(
+        Member::human("principal-me", "device-me", 7),
+        Member::agent(BOT, "device-bo", 9),
+    );
+    tasks.add_member(Member::human("principal-ana", "device-ana", 11));
+    tasks.announce_to(fake.publisher(), "acct-main");
+    shared.lock().expect("state").tasks = Some(tasks.clone());
+    fake.enable_stream();
+    (fake, shared, path, tasks)
+}
+
+/// A pending approval whose decision grants `grant_<id>`.
+pub fn approval(id: &str, risk: &str) -> Value {
+    json!({
+        "approval_id": id, "status": "pending", "server_id": "deploy", "tool_name": "staging",
+        "tool_scope": null, "risk_level": risk, "expires_at": 1_990_000_000,
+        "details": { "arguments_hash": "sha256:5f1c09a2d7e4", "single_use": true,
+                     "requested_grant_id": format!("grant_{id}") },
+    })
 }

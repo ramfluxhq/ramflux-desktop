@@ -26,6 +26,7 @@ mod privacy;
 mod safety;
 pub mod surface;
 mod task_progress;
+mod task_status;
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -244,7 +245,13 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
                 .and_then(|t| t.result_ref.as_ref())
                 .and_then(|s| store.surface_moment(s))
                 .cloned();
-            refs.task.as_ref().map(|t| vec![&t.assignee]).unwrap_or_default()
+            refs.task
+                .as_ref()
+                .map(|t| match &t.requester {
+                    Actor::Agent(id) | Actor::Member(id) => vec![&t.assignee, id],
+                    Actor::Human => vec![&t.assignee],
+                })
+                .unwrap_or_default()
         }
         MomentKind::SafetyChange(p) => vec![&p.participant_id],
         MomentKind::Governance(p) => vec![&p.target],
