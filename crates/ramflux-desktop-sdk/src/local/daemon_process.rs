@@ -215,55 +215,8 @@ mod tests {
         dir
     }
 
-    /// A stand-in daemon: records its arguments, then waits. The arguments
-    /// are written to a temporary file and renamed into place, so the file
-    /// exists only once it is complete (a shell redirection creates it
-    /// empty first, and a reader polling for it could see it empty).
-    fn fake_rf(dir: &Path) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt as _;
-        let path = dir.join("rf");
-        let (partial, args) = (dir.join("args.partial"), dir.join("args"));
-        let script = format!(
-            "#!/bin/sh\necho \"$@\" > '{}'\nmv '{}' '{}'\necho started\nexec sleep 30\n",
-            partial.display(),
-            partial.display(),
-            args.display()
-        );
-        std::fs::write(&path, script).expect("script");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("mode");
-        path
-    }
-
-    #[test]
-    fn a_started_daemon_gets_the_socket_and_data_root_and_stops() {
-        let dir = dir("run");
-        let command = DaemonCommand {
-            binary: fake_rf(&dir),
-            socket: dir.join("rfd.sock"),
-            data_dir: dir.join("data"),
-            log_file: Some(dir.join("logs/rfd.log")),
-        };
-        let mut process = DaemonProcess::spawn(&command).expect("spawn");
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while !dir.join("args").exists() && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        let args = std::fs::read_to_string(dir.join("args")).expect("args");
-        assert_eq!(
-            args.trim(),
-            format!(
-                "--socket {} daemon start --data-root {}",
-                dir.join("rfd.sock").display(),
-                dir.join("data").display()
-            )
-        );
-        assert_eq!(process.exit_code(), None, "still running");
-        process.stop(Duration::from_secs(3));
-        assert!(process.child.is_none(), "reaped");
-        let log = std::fs::read_to_string(dir.join("logs/rfd.log")).expect("log");
-        assert!(log.contains("started"), "output goes to the log");
-        let _ = std::fs::remove_dir_all(dir);
-    }
+    // A started daemon's arguments, output and stop are tested in
+    // `tests/daemon_process.rs`, whose binary stands in for the daemon.
 
     #[test]
     fn missing_and_non_executable_binaries_are_refused() {

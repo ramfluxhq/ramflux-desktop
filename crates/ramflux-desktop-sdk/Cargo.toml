@@ -20,3 +20,10 @@ zeroize.workspace = true
 
 [dev-dependencies]
 ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon"] }
+
+# Its own binary is the stand-in daemon it starts (see the file), so it has
+# its own `main` instead of the libtest harness.
+[[test]]
+name = "daemon_process"
+path = "tests/daemon_process.rs"
+harness = false
