@@ -455,3 +455,59 @@ controls:
 | `s10_ai_participant` | Demo 3: ask the AI participant in a group, streamed reply, task proposal, needs-me approval with a hold, result patch, done (deny and cancel branches) |
 | `s11_surface_versions` | A choice answered in a surface, a change during review, a conflicting patch and its resend, close |
 | `s12_surface_limits` | A surface over the action limit, a stream over the delta limit |
+
+## Voice calls (DESK-F16, contract-first on CALL-01)
+
+One-to-one voice calls in direct conversations. Built against the fake
+daemon (`ramflux-desktop-test` `fake_calls`) until the daemon has the call
+API; `SdkConfig::call_api` (off by default, `RAMFLUX_DESKTOP_CALLS=1` in the
+application) says whether it does. Off, the call methods are declared
+unsupported (`backend.gap.calls`) and the call button is disabled with that
+reason.
+
+**Store.** A `Call` (conversation, peer, caller, direction, `CallState`:
+`OutgoingRinging`, `IncomingRinging`, `Connecting`, `Active`,
+`Ended(CallEndReason)` with `HungUp`, `Rejected`, `Busy`, `Timeout`,
+`AnsweredElsewhere`, `Failed`; the daemon's rising per-call `version`; placed,
+answered and ended times) arrives whole as `DomainEvent::CallUpserted`. The
+reducer refuses a version that does not rise, a changed conversation, peer,
+caller or direction, and an illegal transition (ringing → connecting or
+ended, connecting → active or ended, active → ended). Each call keeps one
+derived `MomentKind::Call` record (`call:<call id>`) in its conversation whose
+lifecycle follows the call (a ringing incoming call needs the user; an ended
+one is done). `Call::outcome` reads an ended call from this account's side:
+answered (duration), missed, declined, no answer, busy, cancelled, answered
+elsewhere, failed. Selectors: `current_call`, `ringing_calls`,
+`call_under_way`.
+
+**Intents.** `StartCall { context_id }` (human only; a direct conversation;
+the peer not in a changed key state nor unreachable; one call at a time),
+`AnswerCall` (a call ringing here, no other call under way), `RejectCall`,
+`HangUpCall` (not ended): methods `call.invite`, `call.answer`,
+`call.reject`, `call.hangup`. Agents never take part in calls.
+
+**Daemon API assumed (CALL-01 §6).** `call.invite {conversation_id}`,
+`call.answer|reject|hangup {call_id}`, each answering with the call row;
+event `call.changed` with the call row: `call_id`, `conversation_id`,
+`peer_id`, `direction` (`outgoing`/`incoming`), `state`
+(`outgoing_ringing`, `incoming_ringing`, `connecting`, `active`, `ended`),
+`end_reason`, `seq`, `created_at`, `answered_at`, `ended_at` (Unix seconds).
+`call.media.session {call_id}` answers `relay.endpoint` (`host:port`),
+`relay.token` (base64url, opaque), `sframe.cipher_suite` (IANA id) and
+`sframe.send` / `sframe.receive` `{kid, base_key}` (base64url).
+
+**Media session.** Secret, so never an event: the media engine asks the
+source (`Source::request_call_media`, `take_call_media`); the SDK hands the
+parsed `CallMedia` (wiped on drop, never printed) straight to it.
+
+**Media (`ramflux-desktop-media`).** Opus 48 kHz mono 20 ms (libopus, VoIP,
+in-band FEC) in a minimal RTP packet (V=2, PT 111, seq, timestamp, SSRC)
+whose payload is SFrame (RFC 9605, AES_256_GCM_SHA512_128; the RTP header is
+the authenticated metadata; per-key replay window). Towards the relay each
+datagram is `u32be(token length) || token || packet`; the relay forwards the
+packet alone; packets from any other address are dropped. Adaptive jitter
+buffer (target from RFC 3550 jitter, FEC or concealment for a lost frame).
+No echo cancellation yet (webrtc-audio-processing needs meson): calls are
+headset-only, and the in-call bar says so. On macOS the bundle carries
+`NSMicrophoneUsageDescription`; a denied microphone delivers silence, which
+the engine reports and the bar explains with a shortcut to System Settings.
