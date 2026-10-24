@@ -39,9 +39,9 @@ mod live {
     use std::time::Duration;
 
     use gpui_kit::HeadlessAppContext;
-    use gpui_kit::assets::Assets;
     use ramflux_desktop_sdk::SdkConfig;
     use ramflux_desktop_test::live_daemon::LiveDaemon;
+    use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::shell::{ShellOptions, SourceChoice};
 
     use crate::rehearsal::config::{self, DemoConfig};

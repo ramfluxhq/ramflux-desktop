@@ -91,6 +91,9 @@ impl ShellOptions {
     }
 }
 
+/// Set to `1` to use the daemon's voice call API (CALL-01).
+pub const CALLS_ENV: &str = "RAMFLUX_DESKTOP_CALLS";
+
 /// The window root view.
 pub struct Shell {
     store: Entity<StoreHandle>,
@@ -136,6 +139,9 @@ impl Shell {
                 if config.settings_path.is_none() {
                     config.settings_path = ramflux_desktop_sdk::local::paths::settings_file();
                 }
+                // The pinned daemon has no call API yet; a daemon with
+                // CALL-01 is tried with RAMFLUX_DESKTOP_CALLS=1.
+                config.call_api |= std::env::var(CALLS_ENV).is_ok_and(|value| value == "1");
                 SourceChoice::Rfd(config)
             }
             SourceChoice::Mock => SourceChoice::Mock,
@@ -148,7 +154,12 @@ impl Shell {
             prefs: PrefsStore::default_location(),
             launch: LaunchOptions::application(),
         };
-        Self::with_options(options, window, cx)
+        let shell = Self::with_options(options, window, cx);
+        // Calls use the computer's microphone and speaker.
+        shell.store.update(cx, |store, _| {
+            store.set_call_audio(std::rc::Rc::new(crate::app::DeviceAudio::default()));
+        });
+        shell
     }
 
     /// A root playing the bundled scenario `name` deterministically. With

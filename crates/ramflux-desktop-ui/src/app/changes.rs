@@ -64,6 +64,17 @@ impl ChangeSet {
             || !self.changes.grants.is_empty()
             || !self.changes.objects.is_empty()
             || !self.changes.tasks.is_empty()
+            || !self.changes.calls.is_empty()
+    }
+
+    /// Calls: the incoming-call card, the in-call bar and the call button
+    /// (which also follows contexts, participants and capabilities).
+    pub fn touches_calls(&self) -> bool {
+        self.reset
+            || !self.changes.calls.is_empty()
+            || !self.changes.contexts.is_empty()
+            || !self.changes.participants.is_empty()
+            || self.changes.source_status
     }
 
     /// Whether the session clock moved.

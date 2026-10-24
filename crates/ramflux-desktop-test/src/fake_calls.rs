@@ -41,8 +41,14 @@ use crate::fake_bus::Reply;
 
 /// Ring timeout (CALL-01 §2).
 pub const RING_TIMEOUT: Duration = Duration::from_secs(45);
-/// The fake clock's start (Unix seconds).
-pub const FIRST_CALL_TIME: i64 = 1_790_000_000;
+/// The fake clock's start: the wall clock when the fake was made (Unix
+/// seconds), so durations a window measures against its own clock read as
+/// they would with a daemon on the same machine.
+fn first_call_time() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
+}
 /// The SFrame suite the fake hands out (AES_256_GCM_SHA512_128).
 pub const SUITE: u16 = 0x0005;
 
@@ -92,6 +98,7 @@ struct Inner {
     /// Conversation id to the peer's principal.
     conversations: BTreeMap<String, String>,
     clock: Duration,
+    start: i64,
     next: u64,
     relay: String,
     media_sessions: Vec<String>,
@@ -99,7 +106,7 @@ struct Inner {
 
 impl Inner {
     fn now(&self) -> i64 {
-        FIRST_CALL_TIME + i64::try_from(self.clock.as_secs()).unwrap_or(0)
+        self.start + i64::try_from(self.clock.as_secs()).unwrap_or(0)
     }
 
     fn fresh_id(&mut self) -> String {
@@ -165,7 +172,7 @@ fn key(call: &str, direction: &str) -> String {
 impl FakeCalls {
     /// Calls whose media goes to `relay` (`host:port`).
     pub fn new(relay: impl Into<String>) -> Self {
-        let inner = Inner { relay: relay.into(), ..Inner::default() };
+        let inner = Inner { relay: relay.into(), start: first_call_time(), ..Inner::default() };
         Self { inner: Mutex::new(inner), publisher: Mutex::new(None) }
     }
 

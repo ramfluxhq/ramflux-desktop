@@ -172,6 +172,19 @@ impl AccountSession {
         self.source_mut().request_bodies(&fresh);
     }
 
+    /// Asks the source for a call's media session (for the media engine).
+    pub fn request_call_media(&mut self, call: &ramflux_desktop_core::CallId) {
+        self.source_mut().request_call_media(call);
+    }
+
+    /// A media session that arrived from the source, if any.
+    pub fn take_call_media(
+        &mut self,
+    ) -> Option<(ramflux_desktop_core::CallId, Result<ramflux_desktop_core::CallMedia, String>)>
+    {
+        self.source_mut().take_call_media()
+    }
+
     /// The account's store, read-only.
     pub fn store(&self) -> &Store {
         &self.store

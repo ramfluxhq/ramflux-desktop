@@ -32,7 +32,6 @@ mod shots {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use gpui_kit::assets::Assets;
     use gpui_kit::base::Root;
     use gpui_kit::component::{Theme, ThemeMode};
     use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
@@ -45,6 +44,7 @@ mod shots {
         SourceStatus, Timestamp,
     };
     use ramflux_desktop_test::{Scenario, load_conformance, load_fixture};
+    use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
     use ramflux_desktop_ui::actions::OpenPalette;
     use ramflux_desktop_ui::settings::SettingsSection;

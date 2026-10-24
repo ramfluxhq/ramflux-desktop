@@ -659,3 +659,94 @@ palette:
   theme:
     en: "Switch theme"
     zh-CN: "切换主题"
+call:
+  start:
+    en: "Call"
+    zh-CN: "通话"
+  start_a11y:
+    en: "Call %{name}"
+    zh-CN: "呼叫 %{name}"
+  blocked:
+    in_progress:
+      en: "Another call is under way"
+      zh-CN: "另一通话正在进行"
+    safety:
+      en: "Verify the safety number first"
+      zh-CN: "请先核对安全码"
+    unreachable:
+      en: "Not reachable yet"
+      zh-CN: "暂时无法联系"
+    unavailable:
+      en: "Calls are not available here"
+      zh-CN: "此处无法通话"
+  incoming:
+    a11y:
+      en: "Incoming call from %{name}"
+      zh-CN: "%{name} 来电"
+    more:
+      en: "%{count} more calling"
+      zh-CN: "另有 %{count} 个来电"
+  decline:
+    en: "Decline"
+    zh-CN: "拒绝"
+  answer:
+    en: "Answer"
+    zh-CN: "接听"
+  calling:
+    en: "Calling…"
+    zh-CN: "正在呼叫…"
+  connecting:
+    en: "Connecting…"
+    zh-CN: "正在连接…"
+  ended:
+    en: "Ended"
+    zh-CN: "已结束"
+  quality:
+    waiting:
+      en: "Waiting for audio"
+      zh-CN: "等待音频"
+    good:
+      en: "Good connection"
+      zh-CN: "连接良好"
+    fair:
+      en: "Fair connection"
+      zh-CN: "连接一般"
+    poor:
+      en: "Poor connection"
+      zh-CN: "连接较差"
+    lost:
+      en: "Connection lost"
+      zh-CN: "连接中断"
+  headset:
+    en: "Use headphones: echo cancellation isn't available yet."
+    zh-CN: "请使用耳机：暂不支持回声消除。"
+  mute:
+    en: "Mute"
+    zh-CN: "静音"
+  unmute:
+    en: "Unmute"
+    zh-CN: "取消静音"
+  cancel:
+    en: "Cancel"
+    zh-CN: "取消"
+  hang_up:
+    en: "Hang up"
+    zh-CN: "挂断"
+  microphone:
+    blocked:
+      en: "Ramflux Desktop can't use the microphone. Allow it in System Settings > Privacy & Security > Microphone."
+      zh-CN: "Ramflux Desktop 无法使用麦克风。请在“系统设置 > 隐私与安全性 > 麦克风”中允许。"
+    open_settings:
+      en: "Open System Settings…"
+      zh-CN: "打开系统设置…"
+  audio:
+    failed:
+      en: "No audio: %{reason}"
+      zh-CN: "没有音频：%{reason}"
+    none:
+      en: "This window has no audio for calls."
+      zh-CN: "此窗口没有用于通话的音频。"
+  bar:
+    a11y:
+      en: "Call with %{name}"
+      zh-CN: "与 %{name} 通话"

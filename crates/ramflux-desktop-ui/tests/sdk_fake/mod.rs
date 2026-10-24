@@ -12,7 +12,8 @@
 //!
 //! A successful `message.submit` adds its conversation (and attachment) to
 //! the directories, as the daemon records them; `fail_submit` makes it fail.
-//! Agent surfaces are held on the protocol's state machine (`surfaces`).
+//! Agent surfaces are held on the protocol's state machine (`surfaces`),
+//! voice calls by the call fake (`calls`).
 //!
 //! With `tasks` set, the daemon also holds conversation tasks (on the
 //! protocol's state machine, see `fake_tasks`) and lists `approvals`; its
@@ -97,6 +98,9 @@ pub struct State {
     pub approvals: Vec<Value>,
     /// Display names the identity directory reports, by principal.
     pub names: BTreeMap<String, String>,
+    /// Voice calls (the CALL-01 API); `dm-ana` is a direct conversation
+    /// with `principal-ana`.
+    pub calls: Arc<ramflux_desktop_test::fake_calls::FakeCalls>,
 }
 
 /// The shared state.
@@ -212,12 +216,16 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
     let shared: Shared = Arc::default();
     let state = shared.clone();
     let all = frames();
-    let fake = FakeBus::start(&path, move |method, _, body| {
-        let (surfaces, tasks) = {
+    shared.lock().expect("state").calls.conversation("dm-ana", "principal-ana");
+    let fake = FakeBus::start(&path, move |method, account, body| {
+        let (surfaces, tasks, calls) = {
             let state = state.lock().expect("state");
-            (state.surfaces.clone(), state.tasks.clone())
+            (state.surfaces.clone(), state.tasks.clone(), state.calls.clone())
         };
         if let Some(reply) = surfaces.handle(method, body) {
+            return reply;
+        }
+        if let Some(reply) = calls.handle(method, account, body) {
             return reply;
         }
         if let Some(reply) = tasks.as_ref().and_then(|t| t.handle(method, body)) {

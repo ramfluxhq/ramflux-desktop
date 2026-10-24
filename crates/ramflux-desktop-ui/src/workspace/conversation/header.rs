@@ -10,7 +10,9 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, h_flex, v_flex,
+};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{
@@ -125,6 +127,9 @@ pub fn render(
             )
         })
         .child(div().flex_1())
+        .when(context.kind == ContextKind::Direct, |row| {
+            row.child(call_button(store, context, &sink))
+        })
         .child(
             Button::new("conversation-pin")
                 .ghost()
@@ -191,6 +196,27 @@ pub fn render(
         .border_color(cx.theme().border)
         .child(row)
         .children(warnings.into_iter().map(|participant| safety_banner(&participant, &sink, cx)))
+        .into_any_element()
+}
+
+/// The call button of a direct conversation: disabled, with the reason as
+/// its tooltip, while a call cannot be placed.
+fn call_button(store: &Store, context: &Context, sink: &EventSink) -> AnyElement {
+    let blocked = crate::workspace::call_blocked(store, &context.id);
+    let sink = sink.clone();
+    let name = selectors::participants(store, &context.id)
+        .into_iter()
+        .find(|p| Some(&p.id) == ramflux_desktop_core::call_peer(store, &context.id).as_ref())
+        .map_or_else(|| context.title.clone(), |p| p.display.clone());
+    Button::new("conversation-call")
+        .ghost()
+        .small()
+        .icon(gpui_kit::assets::IconName::Phone)
+        .label(tr("call.start"))
+        .accessibility_label(tr_args("call.start_a11y", &[("name", &name)]))
+        .disabled(blocked.is_some())
+        .when_some(blocked, |button, reason| button.tooltip(reason))
+        .on_click(move |_, window, cx| sink.emit(UiEventKind::CallStartRequested, window, cx))
         .into_any_element()
 }
 

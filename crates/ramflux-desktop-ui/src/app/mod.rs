@@ -15,6 +15,7 @@
 //! unlocked account; sessions appear when the daemon reports an account
 //! unlocked and disappear when it reports it locked. See `live`.
 
+mod call_audio;
 mod changes;
 mod inspector;
 mod live;
@@ -29,10 +30,15 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, EventEmitter, Task};
 use ramflux_desktop_core::{
-    AccountId, AttentionItem, ContextId, DomainEvent, Intent, MomentId, Store, Timestamp, selectors,
+    AccountId, AttentionItem, CallState, ContextId, DomainEvent, Intent, MomentId, Store,
+    Timestamp, selectors,
 };
 use ramflux_desktop_test::{Scenario, load_fixture};
 
+pub use call_audio::{
+    CallAudio, CallAudioView, CallQuality, DeviceAudio, LiveCall, LiveStatus, NO_AUDIO,
+    media_session,
+};
 pub use changes::ChangeSet;
 pub use inspector::{INSPECTOR_CAP, Inspector, InspectorEntry, UiOutcome};
 pub use names::{
@@ -59,6 +65,8 @@ pub enum StoreEvent {
     BackgroundChanged(AccountId),
     /// The inspector log grew without a store change.
     Inspected,
+    /// The current call's audio changed (started, failed, muted).
+    CallAudio,
 }
 
 /// One "needs me" item in any account.
@@ -79,6 +87,10 @@ pub struct StoreHandle {
     last_tick: Option<Instant>,
     wall_clock: bool,
     live: Option<live::LiveLink>,
+    call_audio: Option<Rc<dyn CallAudio>>,
+    call: Option<call_audio::CallLink>,
+    ringer: Option<Box<dyn std::any::Any>>,
+    ringing: bool,
 }
 
 impl EventEmitter<StoreEvent> for StoreHandle {}
@@ -100,6 +112,10 @@ impl StoreHandle {
             last_tick: None,
             wall_clock: false,
             live: None,
+            call_audio: None,
+            call: None,
+            ringer: None,
+            ringing: false,
         }
     }
 
@@ -273,6 +289,74 @@ impl StoreHandle {
         self.advance(ms, cx);
     }
 
+    /// Installs the audio calls use (the computer's devices in the
+    /// application, a stand-in in tests). Without it calls show but carry
+    /// no audio.
+    pub fn set_call_audio(&mut self, audio: Rc<dyn CallAudio>) {
+        self.call_audio = Some(audio);
+    }
+
+    /// The current call's audio, while a call is answered.
+    pub fn call_audio(&self) -> Option<CallAudioView> {
+        self.call.as_ref().map(call_audio::CallLink::view)
+    }
+
+    /// Mutes or unmutes the current call's microphone.
+    pub fn set_call_muted(&mut self, muted: bool, cx: &mut Context<Self>) {
+        if let Some(link) = self.call.as_mut() {
+            link.set_muted(muted);
+            cx.emit(StoreEvent::CallAudio);
+        }
+    }
+
+    /// Makes the audio follow the rendered account's calls: the ring tone
+    /// while a call rings, the media engine while one is answered.
+    fn drive_calls(&mut self, cx: &mut Context<Self>) {
+        let mut changed = false;
+        let audio = self.call_audio.clone();
+        let account = self.active.clone();
+        let session = account.as_ref().and_then(|id| self.sessions.get_mut(id));
+        let Some((account, session)) = account.zip(session) else {
+            changed |= self.call.take().is_some();
+            self.ringer = None;
+            self.ringing = false;
+            if changed {
+                cx.emit(StoreEvent::CallAudio);
+            }
+            return;
+        };
+        while let Some((id, answer)) = session.take_call_media() {
+            if let Some(link) =
+                self.call.as_mut().filter(|l| l.call_id == id && l.account == account)
+            {
+                link.media(answer, audio.as_ref());
+                changed = true;
+            }
+        }
+        let store = session.store();
+        let answered = selectors::current_call(store)
+            .filter(|c| matches!(c.state, CallState::Connecting | CallState::Active))
+            .map(|c| c.id.clone());
+        let linked = self.call.as_ref().map(|l| (&l.account, &l.call_id));
+        if answered.as_ref().map(|id| (&account, id)) != linked {
+            self.call = answered.map(|id| {
+                session.request_call_media(&id);
+                call_audio::CallLink::new(account.clone(), id)
+            });
+            changed = true;
+        }
+        let store = session.store();
+        let ringing =
+            !selectors::ringing_calls(store).is_empty() && selectors::current_call(store).is_none();
+        if ringing != self.ringing {
+            self.ringing = ringing;
+            self.ringer = if ringing { audio.as_ref().and_then(|a| a.ring()) } else { None };
+        }
+        if changed {
+            cx.emit(StoreEvent::CallAudio);
+        }
+    }
+
     /// Moves every unpaused session's clock forward by `ms`.
     pub fn advance(&mut self, ms: u64, cx: &mut Context<Self>) {
         let active = self.active.clone();
@@ -293,6 +377,7 @@ impl StoreHandle {
             cx.emit(StoreEvent::BackgroundChanged(account));
         }
         self.advance_live(ms, cx);
+        self.drive_calls(cx);
     }
 
     /// Whether the active session's clock is frozen.

@@ -57,7 +57,7 @@ fn main() {
     if let Some(log) = log {
         app_log::info(&format!("log: {}", log.display()));
     }
-    application().with_assets(assets::Assets).run(move |cx| {
+    application().with_assets(ramflux_desktop_ui::AppAssets).run(move |cx| {
         init(cx);
         ramflux_desktop_ui::init(cx);
         cx.on_window_closed(|cx, _| cx.quit()).detach();

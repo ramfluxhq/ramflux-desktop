@@ -14,6 +14,7 @@
 //! tool is open or pinned, and the "take me to what needs me" cursor across
 //! contexts and accounts.
 
+mod call;
 pub(crate) mod composer;
 mod context_stack;
 mod conversation;
@@ -42,6 +43,7 @@ use crate::bubble::EventSink;
 use crate::confirm::ConfirmStrip;
 use crate::root::{IntentRoot, RootEvent};
 
+pub use call::{CallBar, IncomingCall, call_blocked, call_status};
 pub use composer::attachment::Staged;
 pub use composer::{Composer, ComposerMode, DraftTarget};
 pub use context_stack::{ContextStack, ContextStackEvent};
@@ -83,6 +85,8 @@ pub struct Workspace {
     contacts: Entity<ContactsDock>,
     members: Entity<MembersDock>,
     evidence: Entity<EvidenceDock>,
+    call_bar: Entity<CallBar>,
+    incoming_call: Entity<IncomingCall>,
     open_tool: Option<DockTool>,
     prefs: DockPrefs,
     prefs_store: PrefsStore,
@@ -123,6 +127,8 @@ impl Workspace {
         let members = cx.new(|cx| MembersDock::new(store.clone(), sink.clone(), cx));
         let approvals = cx.new(|cx| ApprovalsDock::new(store.clone(), sink.clone(), cx));
         let evidence = cx.new(|cx| EvidenceDock::new(store.clone(), cx));
+        let call_bar = cx.new(|cx| CallBar::new(store.clone(), sink.clone(), cx));
+        let incoming_call = cx.new(|cx| IncomingCall::new(store.clone(), sink.clone(), cx));
         let contents: [(DockTool, gpui_kit::AnyView); 5] = [
             (DockTool::Objects, objects.clone().into()),
             (DockTool::Contacts, contacts.clone().into()),
@@ -282,6 +288,8 @@ impl Workspace {
             contacts,
             members,
             evidence,
+            call_bar,
+            incoming_call,
             open_tool: None,
             prefs,
             prefs_store,
@@ -684,7 +692,22 @@ impl Render for Workspace {
             .min_h_0()
             .bg(cx.theme().background)
             .child(self.stack.clone())
-            .child(gpui_kit::div().flex_1().min_w_0().h_full().child(self.dock_area.clone()))
+            .child(
+                gpui_kit::component::v_flex()
+                    .relative()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .child(self.call_bar.clone())
+                    .child(gpui_kit::div().flex_1().min_h_0().child(self.dock_area.clone()))
+                    .child(
+                        gpui_kit::div()
+                            .absolute()
+                            .top_3()
+                            .right_3()
+                            .child(self.incoming_call.clone()),
+                    ),
+            )
             .child(DockRail::new(self.open_tool, move |tool, window, cx| {
                 this.update(cx, |workspace, cx| workspace.toggle_tool(tool, window, cx)).ok();
             }))

@@ -12,6 +12,8 @@ gpui-kit.workspace = true
 ramflux-desktop-core.workspace = true
 # The real source over the daemon (its tokio runtime stays on the bridge thread).
 ramflux-desktop-sdk.workspace = true
+# The voice call media engine and the audio devices (its own threads).
+ramflux-desktop-media.workspace = true
 # The scenario-playing mock source drives the UI until the SDK source lands (F2).
 ramflux-desktop-test.workspace = true
 rust-i18n.workspace = true
@@ -116,5 +118,13 @@ harness = false
 [[test]]
 name = "task_rehearsal"
 path = "tests/task_rehearsal.rs"
+test = false
+harness = false
+
+# Offscreen screenshots of voice calls (button, card, bar, records); run
+# explicitly, not part of `cargo test`.
+[[test]]
+name = "call_shots"
+path = "tests/call_shots.rs"
 test = false
 harness = false

@@ -6355,6 +6355,7 @@ dependencies = [
  "gpui-kit",
  "qrcodegen",
  "ramflux-desktop-core",
+ "ramflux-desktop-media",
  "ramflux-desktop-sdk",
  "ramflux-desktop-test",
  "ramflux-protocol",

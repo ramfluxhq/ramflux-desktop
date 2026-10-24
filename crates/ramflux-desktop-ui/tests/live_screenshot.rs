@@ -26,7 +26,6 @@ mod shot {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use gpui_kit::assets::Assets;
     use gpui_kit::base::Root;
     use gpui_kit::component::{Theme, ThemeMode};
     use gpui_kit::test::TestWindowExt as _;
@@ -35,6 +34,7 @@ mod shot {
     };
     use ramflux_desktop_core::SourceStatus;
     use ramflux_desktop_sdk::SdkConfig;
+    use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
     use ramflux_desktop_ui::shell::{ShellOptions, SourceChoice};
     use ramflux_desktop_ui::workspace::PrefsStore;

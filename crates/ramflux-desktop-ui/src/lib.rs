@@ -31,6 +31,7 @@ rust_i18n::i18n!("locales", fallback = "en");
 
 pub mod actions;
 pub mod app;
+pub mod assets;
 pub mod bubble;
 pub mod confirm;
 pub mod dev;
@@ -51,6 +52,7 @@ pub mod shell;
 pub mod tone;
 pub mod workspace;
 
+pub use assets::AppAssets;
 pub use shell::Shell;
 pub use workspace::Workspace;
 
