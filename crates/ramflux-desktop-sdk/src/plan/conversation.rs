@@ -94,9 +94,11 @@ pub(super) fn start(acct: Option<&str>, body: &Value, known: &impl Known) -> Pla
     else {
         return refuse(key::NO_SELF);
     };
-    let ids = fresh_id("desk-msg-").and_then(|m| Ok((m, fresh_id("desk-env-")?)));
-    let (message_id, envelope_id) = match ids {
-        Ok(ids) => ids,
+    // One id for the message and its envelope: the daemon binds the
+    // envelope id into the AEAD associated data, and the recipient's daemon
+    // (and the receipt) name the message by it.
+    let (message_id, envelope_id) = match fresh_id("desk-msg-") {
+        Ok(id) => (id.clone(), id),
         Err(error) => return refuse_invalid(&error),
     };
     let request = submit_request(SubmitParts {

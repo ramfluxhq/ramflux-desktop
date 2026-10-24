@@ -138,9 +138,13 @@ pub fn group_conversation(id: &str, group: &Group, owner: &Account) -> Value {
 }
 
 /// A stored message.
+///
+/// Like the daemon's `message.list`, a direct message row carries its text
+/// as `body_utf8`; `encrypted_body` holds the ciphertext (not UTF-8 here).
 pub fn message(id: &str, sender: &str, text: &str, at: u64, delivered: bool) -> Value {
+    let ciphertext: Vec<u8> = text.bytes().map(|b| b ^ 0xA5).chain([0xFF]).collect();
     json!({
-        "message_id": id, "sender_id": sender, "encrypted_body": text.as_bytes(),
+        "message_id": id, "sender_id": sender, "encrypted_body": ciphertext, "body_utf8": text,
         "created_at": at, "deleted": false,
         "receipts": if delivered { json!([{ "state": "delivered" }]) } else { json!([]) },
     })

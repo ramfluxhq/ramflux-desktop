@@ -115,13 +115,13 @@ impl Translator {
                 bytes.iter().map(|b| b.as_u64().and_then(|v| u8::try_from(v).ok())).collect();
             bytes.and_then(|b| String::from_utf8(b).ok())
         });
-        // A direct message is stored decrypted; a group message is stored as
+        // A direct message row carries its text as `body_utf8` (an older
+        // daemon stored it as the body bytes); a group message is stored as
         // ciphertext, so only a received or sent copy gives its text.
-        let body = self
-            .plaintext
-            .get(&MomentId::new(message))
-            .map(ToString::to_string)
-            .or_else(|| (kind != ContextKind::Group).then_some(stored).flatten());
+        let direct = (kind != ContextKind::Group)
+            .then(|| record["body_utf8"].as_str().map(str::to_owned).or(stored))
+            .flatten();
+        let body = self.plaintext.get(&MomentId::new(message)).map(ToString::to_string).or(direct);
         let deleted = record["deleted"].as_bool().unwrap_or(false);
         let payload = match body {
             Some(text) => MomentKind::Message(MessagePayload {
