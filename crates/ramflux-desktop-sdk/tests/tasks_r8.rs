@@ -170,6 +170,10 @@ fn a_restarted_requester_resolves_a_choice_from_the_signed_binding_alone() {
     // its signed binding, which names the step: resolved with it.
     let mark = world.mark();
     let mut account = open(&path);
+    // The surface's change is read once the task is shown: its step names
+    // the surface the action answers.
+    account
+        .until("the task again", |s, _| s.task(&id).is_some_and(|t| t.state == TaskState::NeedsMe));
     world.fake.publish(ACCOUNT, "surface.changed", world.surfaces.meta(&reference));
     let pending = Some(TaskAnswer::DecisionPending { step_id: StepId::new("pick") });
     account.until("resolved after the restart", |s, _| {
@@ -205,7 +209,8 @@ fn a_remote_approval_listed_only_in_grant_list_decides_its_step() {
     account.until("decidable in its step", |s, _| {
         s.grant(&grant).is_some()
             && s.task(&id).is_some_and(|t| {
-                t.steps[0].needs_me
+                // Until the update is read, the started task has no steps.
+                t.steps.first().and_then(|step| step.needs_me.clone())
                     == Some(ramflux_desktop_core::NeedsMe::Approval { grant_id: grant.clone() })
             })
     });
