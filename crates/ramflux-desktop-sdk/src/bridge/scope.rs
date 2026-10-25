@@ -119,6 +119,10 @@ pub(super) struct Task {
     pub(super) listing_applied: BTreeMap<Paged, u64>,
     /// Delivery receipts of received direct messages (account scope).
     pub(super) receipts: Option<Receipts>,
+    /// The daemon answered `call.list`: it has the call API (and calls are
+    /// not turned off in the settings). Until then the call methods are
+    /// declared unsupported.
+    pub(super) calls_live: bool,
 }
 
 /// Sends one read; a listing's first page gets the next listing number
@@ -179,8 +183,9 @@ pub(crate) async fn run(
         listings_sent: Arc::new(AtomicU64::new(0)),
         listing_applied: BTreeMap::new(),
         receipts,
+        calls_live: false,
     };
-    let declared = capabilities::capabilities(task.config.call_api);
+    let declared = capabilities::capabilities(false);
     task.emit(vec![DomainEvent::CapabilitiesUpdated(declared)]);
     task.show_sync(true);
     task.snapshot();
@@ -284,7 +289,24 @@ impl Task {
     fn reads_for_snapshot(&self) -> Vec<Fetch> {
         match &self.scope {
             Scope::Daemon => Fetch::daemon_snapshot(),
-            Scope::Account(id) => Fetch::account_snapshot(id),
+            Scope::Account(id) => {
+                let mut reads = Fetch::account_snapshot(id);
+                // Calls and call records come back with every snapshot;
+                // the answer also says whether the daemon has the call API.
+                if self.config.call_api {
+                    reads.push(Fetch::Calls);
+                }
+                reads
+            }
+        }
+    }
+
+    /// Whether the daemon has the call API, as its `call.list` answer
+    /// says: the call methods are declared supported or not accordingly.
+    fn calls_answered(&mut self, live: bool) {
+        if live != self.calls_live {
+            self.calls_live = live;
+            self.emit(vec![DomainEvent::CapabilitiesUpdated(capabilities::capabilities(live))]);
         }
     }
 
@@ -536,6 +558,13 @@ impl Task {
 
     /// Translates one read; returns whether it produced events.
     fn on_read(&mut self, fetch: &Fetch, result: Result<Value, BusError>) -> bool {
+        if matches!(fetch, Fetch::Calls) {
+            match &result {
+                Ok(_) => self.calls_answered(true),
+                Err(BusError::Daemon { .. }) => self.calls_answered(false),
+                Err(_) => {}
+            }
+        }
         match result {
             Ok(value) => {
                 let translated = self.translator.fetched(fetch, &value, now());
@@ -594,7 +623,7 @@ impl Task {
         reply: std_mpsc::Sender<super::MediaAnswer>,
     ) {
         let account = match self.account() {
-            Some(account) if self.config.call_api => account,
+            Some(account) if self.calls_live => account,
             _ => {
                 let _ = reply.send((call_id, Err(capabilities::reason::CALLS.to_owned())));
                 return;

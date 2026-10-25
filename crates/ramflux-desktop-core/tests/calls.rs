@@ -96,7 +96,7 @@ fn a_call_brings_its_record_which_follows_its_state() {
     assert_eq!(selectors::current_call(&feed.store).map(|c| c.id.as_str()), Some("k1"));
     feed.ok(4, upsert(call("k1", CallDirection::Incoming, CallState::Active, 3)));
     let ended = Call {
-        state: CallState::Ended(CallEndReason::HungUp),
+        state: CallState::Ended(CallEndReason::Completed),
         version: 4,
         ended_at: Some(Timestamp(65_000)),
         ..call("k1", CallDirection::Incoming, CallState::Active, 3)

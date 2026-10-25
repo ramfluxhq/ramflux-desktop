@@ -396,6 +396,7 @@ impl Translator {
             Fetch::Grants => Translated::events(self.grant_list(value, now)),
             Fetch::StandingApprovals => Translated::events(self.standing_list(value)),
             Fetch::McpTools => Translated::events(self.mcp_tools(value)),
+            Fetch::Calls => self.call_list(value),
             Fetch::Messages(context) => self.messages(context, value, now),
             Fetch::GroupReceive { context, .. } => {
                 self.remember_plaintext(value);

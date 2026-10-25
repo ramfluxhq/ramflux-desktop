@@ -169,12 +169,15 @@ fn an_outgoing_call_from_the_header_runs_and_hangs_up(cx: &mut TestAppContext) {
     world.calls.peer_answers(id.as_str());
     wait(cx, "audio", |_| world.audio.0.borrow().running);
     let (endpoint, suite, send, receive) = world.audio.0.borrow().started[0].clone();
-    assert_eq!((endpoint.as_str(), suite, send, receive), ("203.0.113.7:3478", 5, 1, 2));
+    assert_eq!((endpoint.as_str(), suite, send, receive), ("203.0.113.7:3478", 5, 0, 1));
     wait(cx, "active", |cx| call_state(cx, &world, &id) == Some(CallState::Active));
     wait(cx, "quality shown", |cx| {
         label(cx, &world, "call-bar-quality").as_deref() == Some(&*tr("call.quality.good"))
     });
     assert_eq!(label(cx, &world, "call-hang-up").as_deref(), Some(&*tr("call.hang_up")));
+    // The media session is asked for once: its keys start once.
+    advance(cx, 1_100);
+    assert_eq!(world.calls.media_sessions(), [id.as_str()]);
 
     click(cx, world.handle, "call-mute");
     assert!(world.audio.0.borrow().muted);
@@ -195,7 +198,7 @@ fn an_outgoing_call_from_the_header_runs_and_hangs_up(cx: &mut TestAppContext) {
 
     click(cx, world.handle, "call-hang-up");
     wait(cx, "ended", |cx| {
-        call_state(cx, &world, &id) == Some(CallState::Ended(CallEndReason::HungUp))
+        call_state(cx, &world, &id) == Some(CallState::Ended(CallEndReason::Completed))
     });
     wait(cx, "audio stopped", |_| !world.audio.0.borrow().running);
     advance(cx, 100);
@@ -224,11 +227,11 @@ fn an_incoming_call_rings_and_is_answered_from_its_card(cx: &mut TestAppContext)
     assert!(!world.audio.0.borrow().ringing, "the ring tone stopped");
     assert!(!exists(cx, world.handle, "incoming-answer"));
     assert!(exists(cx, world.handle, "call-bar-status"));
-    assert_eq!(world.audio.0.borrow().started[0].2, 2, "the callee sends under its own key");
+    assert_eq!(world.audio.0.borrow().started[0].2, 1, "the callee sends under its own key");
 
     world.calls.peer_hangs_up(id.as_str());
     wait(cx, "ended", |cx| {
-        call_state(cx, &world, &id) == Some(CallState::Ended(CallEndReason::HungUp))
+        call_state(cx, &world, &id) == Some(CallState::Ended(CallEndReason::Completed))
     });
     wait(cx, "audio stopped", |_| !world.audio.0.borrow().running);
 }
@@ -241,7 +244,7 @@ fn a_declined_or_unanswered_call_leaves_its_record(cx: &mut TestAppContext) {
     advance(cx, 100);
     click(cx, world.handle, "incoming-decline");
     wait(cx, "declined", |cx| {
-        call_state(cx, &world, &declined) == Some(CallState::Ended(CallEndReason::Rejected))
+        call_state(cx, &world, &declined) == Some(CallState::Ended(CallEndReason::Declined))
     });
     advance(cx, 100);
     assert!(!exists(cx, world.handle, "incoming-call-name"));
@@ -253,7 +256,7 @@ fn a_declined_or_unanswered_call_leaves_its_record(cx: &mut TestAppContext) {
     wait(cx, "ringing", |cx| call_state(cx, &world, &missed) == Some(CallState::IncomingRinging));
     world.calls.advance(Duration::from_secs(45));
     wait(cx, "missed", |cx| {
-        call_state(cx, &world, &missed) == Some(CallState::Ended(CallEndReason::Timeout))
+        call_state(cx, &world, &missed) == Some(CallState::Ended(CallEndReason::Missed))
     });
     let outcome = with_store(cx, &world.shell, |s| s.call(&missed).and_then(|c| c.outcome()));
     assert_eq!(outcome, Some(CallOutcome::Missed));

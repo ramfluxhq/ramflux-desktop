@@ -52,6 +52,11 @@ impl Translator {
         let mut task_rows = Vec::new();
         let mut copies = Vec::new();
         for record in list(value, "messages") {
+            // A call record is its call: the call's own moment shows it.
+            if text(record, "kind") == "call" {
+                events.extend(self.call_row(&record["call"]).events);
+                continue;
+            }
             // A task message is the task's record; its task card shows it
             // (a task not shown yet is read by the `task_id` it names), and
             // what a member did to it besides updating it is a line.

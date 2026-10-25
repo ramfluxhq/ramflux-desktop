@@ -29,21 +29,28 @@ pub enum CallDirection {
     Incoming,
 }
 
-/// Why a call ended.
+/// Why a call ended, as the daemon reports it from this account's side
+/// (`end_reason`: `completed`, `cancelled`, `declined`, `busy`, `timeout`,
+/// `answered_elsewhere`, `failed`, `missed`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CallEndReason {
-    /// Someone hung up (before an answer: the caller cancelled).
-    HungUp,
+    /// An answered call was hung up (either side).
+    Completed,
+    /// The caller hung up before an answer (the caller's view).
+    Cancelled,
     /// The callee declined.
-    Rejected,
+    Declined,
     /// The callee was in another call.
     Busy,
-    /// Nobody answered within the ring timeout (45 s).
+    /// Nobody answered within the ring timeout, 45 s (the caller's view).
     Timeout,
     /// Another device of this account answered.
     AnsweredElsewhere,
-    /// Signaling or media failed.
+    /// Signaling or media failed, or the daemon restarted, or a device or
+    /// key changed during the call.
     Failed,
+    /// The callee's view of a call that timed out or was cancelled.
+    Missed,
 }
 
 /// Where a call is (CALL-01 §6: `outgoing_ringing`, `incoming_ringing`,
@@ -161,12 +168,18 @@ impl Call {
         let incoming = self.direction == CallDirection::Incoming;
         Some(match reason {
             CallEndReason::AnsweredElsewhere => CallOutcome::AnsweredElsewhere,
-            CallEndReason::Rejected => CallOutcome::Declined,
+            CallEndReason::Declined => CallOutcome::Declined,
             CallEndReason::Failed => CallOutcome::Failed,
-            CallEndReason::HungUp | CallEndReason::Timeout | CallEndReason::Busy if incoming => {
+            CallEndReason::Missed => CallOutcome::Missed,
+            CallEndReason::Completed
+            | CallEndReason::Cancelled
+            | CallEndReason::Timeout
+            | CallEndReason::Busy
+                if incoming =>
+            {
                 CallOutcome::Missed
             }
-            CallEndReason::HungUp => CallOutcome::Cancelled,
+            CallEndReason::Completed | CallEndReason::Cancelled => CallOutcome::Cancelled,
             CallEndReason::Timeout => CallOutcome::NoAnswer,
             CallEndReason::Busy => CallOutcome::Busy,
         })
@@ -203,9 +216,28 @@ impl std::fmt::Debug for CallKey {
     }
 }
 
-/// The media session of a call (`call.media.session`): where to send, the
-/// relay allocation token, the SFrame suite and both directions' keys.
-/// Secret: it goes from the source to the media engine and nowhere else.
+/// What lets this side move its relay binding to a new address (CALL-01
+/// r2 rebinding): the lease, which side of it this device is, and this
+/// side's private rebind key. Secret like the rest of [`CallMedia`].
+pub struct CallRebind {
+    /// The relay lease id (16 bytes).
+    pub lease_id: [u8; 16],
+    /// This device's side of the lease: 0 the caller, 1 the callee.
+    pub side: u8,
+    /// This side's rebind key (32 bytes, HMAC-SHA256 key). Wiped on drop.
+    pub key: Zeroizing<Vec<u8>>,
+}
+
+impl std::fmt::Debug for CallRebind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CallRebind").field("side", &self.side).finish_non_exhaustive()
+    }
+}
+
+/// The media session of a call (`call.media.session`): where to send, this
+/// side's relay allocation token and rebind credential, the SFrame suite
+/// and both directions' keys. Secret: it goes from the source to the media
+/// engine and nowhere else, and the daemon hands it out once per call.
 pub struct CallMedia {
     /// The call.
     pub call_id: CallId,
@@ -213,6 +245,8 @@ pub struct CallMedia {
     pub endpoint: String,
     /// The opaque allocation token (empty: a direct endpoint).
     pub token: Zeroizing<Vec<u8>>,
+    /// The relay rebinding credential (`None`: a direct endpoint).
+    pub rebind: Option<CallRebind>,
     /// The SFrame cipher suite (IANA id).
     pub suite: u16,
     /// This device's sending key.
@@ -226,6 +260,7 @@ impl std::fmt::Debug for CallMedia {
         f.debug_struct("CallMedia")
             .field("call_id", &self.call_id)
             .field("endpoint", &self.endpoint)
+            .field("rebind", &self.rebind)
             .field("suite", &self.suite)
             .field("send", &self.send)
             .field("receive", &self.receive)
@@ -240,7 +275,7 @@ mod tests {
     #[test]
     fn transition_table() {
         use CallState::*;
-        let ended = Ended(CallEndReason::HungUp);
+        let ended = Ended(CallEndReason::Completed);
         let all = [OutgoingRinging, IncomingRinging, Connecting, Active, ended];
         let allowed = [
             (OutgoingRinging, Connecting),
@@ -283,20 +318,22 @@ mod tests {
         use CallDirection::{Incoming, Outgoing};
         use CallEndReason::*;
         let answered = CallOutcome::Answered { duration_ms: 63_000 };
-        assert_eq!(call(Outgoing, HungUp, true).outcome(), Some(answered));
+        assert_eq!(call(Outgoing, Completed, true).outcome(), Some(answered));
         assert_eq!(call(Incoming, Failed, true).outcome(), Some(answered));
-        assert_eq!(call(Incoming, HungUp, false).outcome(), Some(CallOutcome::Missed));
+        assert_eq!(call(Incoming, Missed, false).outcome(), Some(CallOutcome::Missed));
+        assert_eq!(call(Incoming, Cancelled, false).outcome(), Some(CallOutcome::Missed));
         assert_eq!(call(Incoming, Timeout, false).outcome(), Some(CallOutcome::Missed));
-        assert_eq!(call(Incoming, Rejected, false).outcome(), Some(CallOutcome::Declined));
+        assert_eq!(call(Incoming, Declined, false).outcome(), Some(CallOutcome::Declined));
+        assert_eq!(call(Incoming, Failed, false).outcome(), Some(CallOutcome::Failed));
         assert_eq!(
             call(Incoming, AnsweredElsewhere, false).outcome(),
             Some(CallOutcome::AnsweredElsewhere)
         );
-        assert_eq!(call(Outgoing, HungUp, false).outcome(), Some(CallOutcome::Cancelled));
+        assert_eq!(call(Outgoing, Cancelled, false).outcome(), Some(CallOutcome::Cancelled));
         assert_eq!(call(Outgoing, Timeout, false).outcome(), Some(CallOutcome::NoAnswer));
         assert_eq!(call(Outgoing, Busy, false).outcome(), Some(CallOutcome::Busy));
-        assert_eq!(call(Outgoing, Rejected, false).outcome(), Some(CallOutcome::Declined));
-        let mut ringing = call(Outgoing, HungUp, false);
+        assert_eq!(call(Outgoing, Declined, false).outcome(), Some(CallOutcome::Declined));
+        let mut ringing = call(Outgoing, Cancelled, false);
         ringing.state = CallState::OutgoingRinging;
         assert_eq!(ringing.outcome(), None);
     }
@@ -307,12 +344,18 @@ mod tests {
             call_id: CallId::new("c"),
             endpoint: "relay:3478".to_owned(),
             token: Zeroizing::new(b"token-bytes".to_vec()),
+            rebind: Some(CallRebind {
+                lease_id: [0x5a; 16],
+                side: 1,
+                key: Zeroizing::new(vec![0xef; 32]),
+            }),
             suite: 5,
             send: CallKey::new(1, vec![0xab; 32]),
             receive: CallKey::new(2, vec![0xcd; 32]),
         };
         let printed = format!("{media:?}");
         assert!(!printed.contains("token-bytes") && !printed.contains("171"), "{printed}");
+        assert!(!printed.contains("239") && !printed.contains("90,"), "{printed}");
         assert!(printed.contains("kid: 1"));
     }
 }

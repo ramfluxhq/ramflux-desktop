@@ -1,28 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The fake daemon's voice calls: the CALL-01 §6 bus API, built ahead of
-//! the daemon (contract-first), on the CALL-01 §2 signaling rules.
+//! The fake daemon's voice calls: the CALL-01 bus API as the daemon
+//! implements it (product `docs/voice-calls.md`).
 //!
 //! Requests (account scoped):
 //!
 //! - `call.invite {conversation_id}` → the call row, `outgoing_ringing`.
 //!   Refused (`Busy`) while this account has a call under way, and
 //!   (`NotFound`) for a conversation the fake does not know.
-//! - `call.answer {call_id}` → `connecting` (a call ringing here only).
-//! - `call.reject {call_id}` → `ended`, reason `rejected`.
-//! - `call.hangup {call_id}` → `ended`, reason `hangup`.
-//! - `call.media.session {call_id}` → the relay endpoint, the opaque
-//!   allocation token and both directions' SFrame keys (base64url); only
-//!   once the call was answered. The fake takes the first media session as
-//!   media flowing: the call becomes `active`.
+//! - `call.answer {call_id}` → `connecting` (a call ringing here only);
+//!   signaling then completes at once and the call becomes `active` (an
+//!   event after the answer).
+//! - `call.reject {call_id}` → `ended`, reason `declined`.
+//! - `call.hangup {call_id}` → `ended`: `completed` once answered,
+//!   `cancelled` by the caller before, `missed` by a ringing callee.
+//! - `call.list {}` → `{calls: [rows]}`, newest first.
+//! - `call.media.session {call_id}` → this side's relay endpoint, token,
+//!   lease id, side and rebind key, and both directions' SFrame keys
+//!   (base64url; KID 0 caller to callee, 1 back); only while the call is
+//!   `active`, and only once per call (the keys start once).
 //!
 //! The call row (also the `call.changed` event body): `call_id`,
 //! `conversation_id`, `peer_id`, `direction` (`outgoing` / `incoming`),
 //! `state` (`outgoing_ringing`, `incoming_ringing`, `connecting`, `active`,
-//! `ended`), `end_reason` (`hangup`, `rejected`, `busy`, `timeout`,
-//! `answered_elsewhere`, `failed`; null until ended), `seq` (per call,
-//! rising), `created_at`, `answered_at`, `ended_at` (Unix seconds).
+//! `ended`), `end_reason` (`completed`, `cancelled`, `declined`, `busy`,
+//! `timeout`, `answered_elsewhere`, `failed`, `missed`; null until ended),
+//! `seq` (per call, rising), `created_at`, `answered_at` (when it became
+//! active), `ended_at` (Unix seconds), `media_generation` (0).
 //!
 //! The other side is simulated: a test rings this account
 //! ([`FakeCalls::incoming`]), answers, declines or hangs up as the peer, has
@@ -88,6 +93,7 @@ impl Held {
             "created_at": self.created_at,
             "answered_at": self.answered_at,
             "ended_at": self.ended_at,
+            "media_generation": 0,
         })
     }
 }
@@ -102,6 +108,8 @@ struct Inner {
     next: u64,
     relay: String,
     media_sessions: Vec<String>,
+    /// Calls whose media session was handed out (once per call).
+    media_taken: std::collections::BTreeSet<String>,
 }
 
 impl Inner {
@@ -111,7 +119,11 @@ impl Inner {
 
     fn fresh_id(&mut self) -> String {
         self.next += 1;
-        format!("call-{:032x}", self.next)
+        // Base64url of 16 bytes, as the daemon's (never starting with '-').
+        let mut bytes = [0_u8; 16];
+        bytes[8..].copy_from_slice(&self.next.to_be_bytes());
+        bytes[0] = 0xc4;
+        ramflux_protocol::encode_base64url(bytes)
     }
 
     fn under_way(&self, account: &str) -> bool {
@@ -125,7 +137,7 @@ impl Inner {
         held.state = state;
         held.end_reason = reason;
         held.seq += 1;
-        if state == "connecting" && held.answered_at.is_none() {
+        if state == "active" && held.answered_at.is_none() {
             held.answered_at = Some(now);
         }
         if state == "ended" {
@@ -141,6 +153,8 @@ type Event = (String, Value);
 pub struct FakeCalls {
     inner: Mutex<Inner>,
     publisher: Mutex<Option<Publisher>>,
+    /// Off: a daemon without the call API (every `call.*` is unknown).
+    available: std::sync::atomic::AtomicBool,
 }
 
 impl std::fmt::Debug for FakeCalls {
@@ -159,6 +173,28 @@ fn refused(code: &'static str, message: &str) -> Reply {
     Reply::Error(code, message.to_owned())
 }
 
+/// Why a hangup ends `held`, as the daemon records it on this side: by
+/// this account (`local`) or by the peer.
+fn hangup_reason(held: &Held, local: bool) -> &'static str {
+    match (held.answered_at.is_some(), held.outgoing, local) {
+        (true, ..) => "completed",
+        // This account cancelled its own call.
+        (false, true, true) => "cancelled",
+        // The callee hung up a call it had not answered.
+        (false, true, false) => "declined",
+        // A ringing call cancelled by its caller, or ignored here.
+        (false, false, _) => "missed",
+    }
+}
+
+fn lease_id(call: &str) -> [u8; 16] {
+    let mut bytes = [0_u8; 16];
+    for (i, b) in format!("lease/{call}").bytes().cycle().take(16).enumerate() {
+        bytes[i] = b ^ (i as u8);
+    }
+    bytes
+}
+
 fn key(call: &str, direction: &str) -> String {
     // Deterministic per call and direction (a test reads them back); a
     // real daemon draws them at random (CALL-01 §3).
@@ -173,7 +209,11 @@ impl FakeCalls {
     /// Calls whose media goes to `relay` (`host:port`).
     pub fn new(relay: impl Into<String>) -> Self {
         let inner = Inner { relay: relay.into(), start: first_call_time(), ..Inner::default() };
-        Self { inner: Mutex::new(inner), publisher: Mutex::new(None) }
+        Self {
+            inner: Mutex::new(inner),
+            publisher: Mutex::new(None),
+            available: std::sync::atomic::AtomicBool::new(true),
+        }
     }
 
     fn inner(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -220,10 +260,19 @@ impl FakeCalls {
         self.inner().media_sessions.clone()
     }
 
+    /// Makes the daemon one without the call API (`false`), or with it.
+    pub fn set_available(&self, available: bool) {
+        self.available.store(available, std::sync::atomic::Ordering::SeqCst);
+    }
+
     /// Answers a call request; `None` for any other method.
     pub fn handle(&self, method: &str, account: Option<&str>, body: &Value) -> Option<Reply> {
         if !method.starts_with("call.") {
             return None;
+        }
+        if !self.available.load(std::sync::atomic::Ordering::SeqCst) {
+            let message = format!("unsupported local bus method: {method}");
+            return Some(refused("LocalBus", &message));
         }
         let account = account.unwrap_or_default();
         let call_id = body["call_id"].as_str().unwrap_or_default();
@@ -232,6 +281,7 @@ impl FakeCalls {
             match method {
                 "call.invite" => Self::invite(&mut inner, account, body),
                 "call.media.session" => Self::media(&mut inner, account, call_id),
+                "call.list" => (Self::list(&inner, account), Vec::new()),
                 "call.answer" | "call.reject" | "call.hangup" => {
                     Self::local(&mut inner, account, method, call_id)
                 }
@@ -274,44 +324,59 @@ impl FakeCalls {
             return (refused("NotFound", "call not found"), Vec::new());
         };
         let ringing_here = held.state == "incoming_ringing";
+        let reason = hangup_reason(held, true);
         let event = match method {
             "call.answer" if ringing_here => inner.set(id, "connecting", None),
-            "call.reject" if ringing_here => inner.set(id, "ended", Some("rejected")),
-            "call.hangup" if !held.ended() => inner.set(id, "ended", Some("hangup")),
+            "call.reject" if ringing_here => inner.set(id, "ended", Some("declined")),
+            "call.hangup" if !held.ended() => inner.set(id, "ended", Some(reason)),
             _ => return (refused("InvalidState", "the call is not in that state"), Vec::new()),
         };
-        (Reply::Ok(event.1.clone()), vec![event])
+        let reply = Reply::Ok(event.1.clone());
+        let mut events = vec![event];
+        if method == "call.answer" {
+            // Signaling completes: the caller's ack reached this side.
+            events.push(inner.set(id, "active", None));
+        }
+        (reply, events)
     }
 
     fn media(inner: &mut Inner, account: &str, id: &str) -> (Reply, Vec<Event>) {
         let Some(held) = inner.calls.get(id).filter(|c| c.account == account) else {
             return (refused("NotFound", "call not found"), Vec::new());
         };
-        if !matches!(held.state, "connecting" | "active") {
-            return (refused("InvalidState", "the call is not connected"), Vec::new());
+        if held.state != "active" || inner.media_taken.contains(id) {
+            let message =
+                "media session unavailable; start a fresh call before restarting the media engine";
+            return (refused("InvalidState", message), Vec::new());
         }
+        let (side, send_kid) = if held.outgoing { (0, 0) } else { (1, 1) };
         let (send, receive) =
             if held.outgoing { ("caller", "callee") } else { ("callee", "caller") };
         let session = json!({
-            "call_id": id,
             "relay": {
                 "endpoint": inner.relay,
-                "token": ramflux_protocol::encode_base64url(format!("{{\"allocation\":\"{id}/{send}\"}}")),
-                "expires_at": inner.now() + 600,
+                "token": key(id, &format!("token/{send}")),
+                "lease_id": ramflux_protocol::encode_base64url(lease_id(id)),
+                "side": side,
+                "rebind_key": key(id, &format!("rebind/{send}")),
             },
             "sframe": {
                 "cipher_suite": SUITE,
-                "send": { "kid": if held.outgoing { 1 } else { 2 }, "base_key": key(id, send) },
-                "receive": { "kid": if held.outgoing { 2 } else { 1 }, "base_key": key(id, receive) },
+                "send": { "kid": send_kid, "base_key": key(id, send) },
+                "receive": { "kid": send_kid ^ 1, "base_key": key(id, receive) },
             },
         });
         inner.media_sessions.push(id.to_owned());
-        let events = if held.state == "connecting" {
-            vec![inner.set(id, "active", None)]
-        } else {
-            Vec::new()
-        };
-        (Reply::Ok(session), events)
+        inner.media_taken.insert(id.to_owned());
+        (Reply::Ok(session), Vec::new())
+    }
+
+    fn list(inner: &Inner, account: &str) -> Reply {
+        let mut calls: Vec<(&String, &Held)> =
+            inner.calls.iter().filter(|(_, c)| c.account == account).collect();
+        calls.sort_by_key(|(id, c)| std::cmp::Reverse((c.created_at, (*id).clone())));
+        let rows: Vec<Value> = calls.iter().take(128).map(|(id, c)| c.row(id)).collect();
+        Reply::Ok(json!({ "calls": rows }))
     }
 
     /// The peer of `conversation` calls `account`. While `account` has a
@@ -357,14 +422,16 @@ impl FakeCalls {
         self.publish(events);
     }
 
-    /// The peer answers an outgoing call.
+    /// The peer answers an outgoing call; signaling completes and the call
+    /// becomes active.
     pub fn peer_answers(&self, id: &str) {
         self.peer(id, &["outgoing_ringing"], "connecting", None);
+        self.peer(id, &["connecting"], "active", None);
     }
 
     /// The peer declines an outgoing call.
     pub fn peer_rejects(&self, id: &str) {
-        self.peer(id, &["outgoing_ringing"], "ended", Some("rejected"));
+        self.peer(id, &["outgoing_ringing"], "ended", Some("declined"));
     }
 
     /// The peer is in another call.
@@ -372,10 +439,11 @@ impl FakeCalls {
         self.peer(id, &["outgoing_ringing"], "ended", Some("busy"));
     }
 
-    /// The peer hangs up (or cancels its ringing call).
+    /// The peer hangs up (or cancels its ringing call: a missed call here).
     pub fn peer_hangs_up(&self, id: &str) {
         let live = ["outgoing_ringing", "incoming_ringing", "connecting", "active"];
-        self.peer(id, &live, "ended", Some("hangup"));
+        let reason = self.inner().calls.get(id).map(|c| hangup_reason(c, false));
+        self.peer(id, &live, "ended", reason);
     }
 
     /// Another device of this account answered the call ringing here.
@@ -402,7 +470,12 @@ impl FakeCalls {
                 .filter(|(_, c)| c.state.ends_with("_ringing") && clock - c.rang_at >= RING_TIMEOUT)
                 .map(|(id, _)| id.clone())
                 .collect();
-            due.iter().map(|id| inner.set(id, "ended", Some("timeout"))).collect()
+            due.iter()
+                .map(|id| {
+                    let outgoing = inner.calls.get(id).is_some_and(|c| c.outgoing);
+                    inner.set(id, "ended", Some(if outgoing { "timeout" } else { "missed" }))
+                })
+                .collect()
         };
         self.publish(events);
     }
@@ -446,13 +519,22 @@ mod tests {
             Some(Reply::Error("Busy", _))
         ));
         calls.peer_answers(&id);
-        let session = ok(calls.handle("call.media.session", Some("a"), &json!({ "call_id": id })));
+        let media = json!({ "call_id": id });
+        let session = ok(calls.handle("call.media.session", Some("a"), &media));
         assert_eq!(session["sframe"]["cipher_suite"], 5);
-        assert_eq!(session["sframe"]["send"]["kid"], 1);
+        assert_eq!(session["sframe"]["send"]["kid"], 0);
+        assert_eq!(session["relay"]["side"], 0);
+        // Once per call: the keys start once.
+        assert!(matches!(
+            calls.handle("call.media.session", Some("a"), &media),
+            Some(Reply::Error("InvalidState", _))
+        ));
+        let listed = ok(calls.handle("call.list", Some("a"), &json!({})));
+        assert_eq!(listed["calls"][0]["state"], "active");
         let hung = ok(calls.handle("call.hangup", Some("a"), &json!({ "call_id": id })));
         assert_eq!(
             (hung["state"].as_str(), hung["end_reason"].as_str()),
-            (Some("ended"), Some("hangup"))
+            (Some("ended"), Some("completed"))
         );
         let states: Vec<String> = seen
             .lock()
@@ -473,7 +555,7 @@ mod tests {
         calls.advance(Duration::from_secs(44));
         assert_eq!(calls.row(&id).unwrap()["state"], "incoming_ringing");
         calls.advance(Duration::from_secs(1));
-        assert_eq!(calls.row(&id).unwrap()["end_reason"], "timeout");
+        assert_eq!(calls.row(&id).unwrap()["end_reason"], "missed");
         let first = calls.incoming("a", "dm-ana");
         let second = calls.incoming("a", "dm-ana");
         assert_eq!(calls.row(&first).unwrap()["state"], "incoming_ringing");

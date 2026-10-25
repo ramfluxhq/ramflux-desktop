@@ -91,7 +91,8 @@ impl ShellOptions {
     }
 }
 
-/// Set to `1` to use the daemon's voice call API (CALL-01).
+/// Set to `0` to turn voice calls off. Otherwise calls are on whenever the
+/// daemon has the call API (CALL-01): it answers `call.list`.
 pub const CALLS_ENV: &str = "RAMFLUX_DESKTOP_CALLS";
 
 /// The window root view.
@@ -139,9 +140,10 @@ impl Shell {
                 if config.settings_path.is_none() {
                     config.settings_path = ramflux_desktop_sdk::local::paths::settings_file();
                 }
-                // The pinned daemon has no call API yet; a daemon with
-                // CALL-01 is tried with RAMFLUX_DESKTOP_CALLS=1.
-                config.call_api |= std::env::var(CALLS_ENV).is_ok_and(|value| value == "1");
+                // Calls follow the daemon's call API unless turned off.
+                if std::env::var(CALLS_ENV).is_ok_and(|value| value == "0") {
+                    config.call_api = false;
+                }
                 SourceChoice::Rfd(config)
             }
             SourceChoice::Mock => SourceChoice::Mock,

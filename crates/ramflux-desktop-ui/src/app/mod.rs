@@ -309,12 +309,15 @@ impl StoreHandle {
         }
     }
 
-    /// Makes the audio follow the rendered account's calls: the ring tone
-    /// while a call rings, the media engine while one is answered.
+    /// Makes the audio follow the calls: the ring tone while a call rings
+    /// in the rendered account, the media engine while a call is under way.
+    /// A call's audio stays with its account while another one is shown
+    /// (its keys start once: stopping it would end its audio for good).
     fn drive_calls(&mut self, cx: &mut Context<Self>) {
         let mut changed = false;
         let audio = self.call_audio.clone();
-        let account = self.active.clone();
+        let account =
+            self.call.as_ref().map(|link| link.account.clone()).or_else(|| self.active.clone());
         let session = account.as_ref().and_then(|id| self.sessions.get_mut(id));
         let Some((account, session)) = account.zip(session) else {
             changed |= self.call.take().is_some();
@@ -333,16 +336,19 @@ impl StoreHandle {
                 changed = true;
             }
         }
-        let store = session.store();
-        let answered = selectors::current_call(store)
+        let (answered, active) = selectors::current_call(session.store())
             .filter(|c| matches!(c.state, CallState::Connecting | CallState::Active))
-            .map(|c| c.id.clone());
+            .map_or((None, false), |c| (Some(c.id.clone()), c.state == CallState::Active));
         let linked = self.call.as_ref().map(|l| (&l.account, &l.call_id));
         if answered.as_ref().map(|id| (&account, id)) != linked {
-            self.call = answered.map(|id| {
-                session.request_call_media(&id);
-                call_audio::CallLink::new(account.clone(), id)
-            });
+            self.call = answered.map(|id| call_audio::CallLink::new(account.clone(), id));
+            changed = true;
+        }
+        // The daemon hands the media session out once the call is active,
+        // and only once: it is asked for once per call.
+        if let Some(link) = self.call.as_mut().filter(|link| active && !link.requested) {
+            link.requested = true;
+            session.request_call_media(&link.call_id);
             changed = true;
         }
         let store = session.store();

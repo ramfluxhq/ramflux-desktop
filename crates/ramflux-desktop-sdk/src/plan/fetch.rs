@@ -84,6 +84,9 @@ pub enum Fetch {
     Tasks(ContextId, Option<String>),
     /// `task.get` of one task: its conversation and the daemon's task id.
     Task(ContextId, String),
+    /// `call.list`: the account's ringing and active calls and recent call
+    /// records. Its answer also tells whether the daemon has the call API.
+    Calls,
     /// `group.receive` for one group conversation (pull from the node);
     /// answers with the conversation's stored messages.
     GroupReceive {
@@ -137,6 +140,7 @@ impl Fetch {
                 BusRequest::new(account, "grant", "grant.list_standing_approvals", empty)
             }
             Self::McpTools => BusRequest::new(account, "mcp", "mcp.tool.list", empty),
+            Self::Calls => BusRequest::new(account, "call", "call.list", empty),
             Self::Messages(context) => BusRequest::new(
                 account,
                 "message",

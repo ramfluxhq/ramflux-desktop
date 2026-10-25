@@ -30,7 +30,7 @@ use crate::translate::reason::{key, keyed};
 
 impl Task {
     pub(super) fn effect(&mut self, effect: Effect) {
-        if !self.config.call_api
+        if !self.calls_live
             && let Some(method) = effect.method().filter(|m| capabilities::CALL_METHODS.contains(m))
         {
             let failure = EffectFailure {

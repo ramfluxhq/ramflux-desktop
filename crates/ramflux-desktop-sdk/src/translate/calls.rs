@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Voice calls (CALL-01 §6): the daemon's call rows as `CallUpserted`, and
-//! the media session as the secret `CallMedia`.
+//! Voice calls (CALL-01): the daemon's call rows as `CallUpserted`, and the
+//! media session as the secret `CallMedia`.
 //!
-//! A call row comes as the answer to a call effect and as the body of each
-//! `call.changed` event (stream or push). Rows are reported once per
+//! A call row comes as the answer to a call effect, as the body of each
+//! `call.changed` event (stream or push), in the `calls` of a `call.list`
+//! (read with every snapshot, so calls come back after a reload), and as
+//! the `call` of a `message.list` row of kind `call`. Rows are reported once per
 //! sequence number: a replayed or repeated row, or one older than the last
 //! reported, changes nothing. A row whose conversation is not listed yet
 //! waits for the conversation listing it calls for, then is reported.
@@ -13,14 +15,15 @@
 //! Row fields: `call_id`, `conversation_id`, `peer_id`, `direction`
 //! (`outgoing` / `incoming`), `state` (`outgoing_ringing`,
 //! `incoming_ringing`, `connecting`, `active`, `ended`), `end_reason`
-//! (`hangup`, `rejected`, `busy`, `timeout`, `answered_elsewhere`,
-//! `failed`), `seq`, `created_at`, `answered_at`, `ended_at` (Unix seconds).
-//! A row missing what a call needs, or naming an unknown state, is dropped
-//! (nothing is guessed).
+//! (`completed`, `cancelled`, `declined`, `busy`, `timeout`,
+//! `answered_elsewhere`, `failed`, `missed`), `seq`, `created_at`,
+//! `answered_at`, `ended_at` (Unix seconds), and the reserved
+//! `media_generation` (zero; not read). A row missing what a call needs, or
+//! naming an unknown state, is dropped (nothing is guessed).
 
 use ramflux_desktop_core::{
-    Call, CallDirection, CallEndReason, CallId, CallKey, CallMedia, CallState, ContextId,
-    DomainEvent, ParticipantId,
+    Call, CallDirection, CallEndReason, CallId, CallKey, CallMedia, CallRebind, CallState,
+    ContextId, DomainEvent, ParticipantId,
 };
 use serde_json::Value;
 use zeroize::{Zeroize as _, Zeroizing};
@@ -31,11 +34,13 @@ use crate::translate::reason::{key, keyed};
 
 fn end_reason(row: &Value) -> CallEndReason {
     match text(row, "end_reason") {
-        "hangup" => CallEndReason::HungUp,
-        "rejected" => CallEndReason::Rejected,
+        "completed" => CallEndReason::Completed,
+        "cancelled" => CallEndReason::Cancelled,
+        "declined" => CallEndReason::Declined,
         "busy" => CallEndReason::Busy,
         "timeout" => CallEndReason::Timeout,
         "answered_elsewhere" => CallEndReason::AnsweredElsewhere,
+        "missed" => CallEndReason::Missed,
         // An ended call whose reason this desktop does not know failed as
         // far as it can tell.
         _ => CallEndReason::Failed,
@@ -111,6 +116,22 @@ impl Translator {
         Translated::events(vec![DomainEvent::CallUpserted(call)])
     }
 
+    /// Translates a `call.list` answer (`calls`: the daemon's ringing and
+    /// active calls and its recent records).
+    pub fn call_list(&mut self, value: &Value) -> Translated {
+        let mut out = Translated::default();
+        for row in value["calls"].as_array().map(Vec::as_slice).unwrap_or_default() {
+            let translated = self.call_row(row);
+            out.events.extend(translated.events);
+            for fetch in translated.follow {
+                if !out.follow.contains(&fetch) {
+                    out.follow.push(fetch);
+                }
+            }
+        }
+        out
+    }
+
     /// Reports held call rows whose conversation is listed now.
     pub(super) fn listed_calls(&mut self) -> Vec<DomainEvent> {
         let ready: Vec<Value> = self
@@ -126,8 +147,11 @@ impl Translator {
 /// Reads a `call.media.session` answer and wipes its secrets from it.
 ///
 /// Answer fields: `relay.endpoint` (`host:port`), `relay.token` (base64url,
-/// opaque), `sframe.cipher_suite`, `sframe.send` / `sframe.receive`, each
-/// `{kid, base_key}` (base64url).
+/// this side's opaque token), `relay.lease_id` (base64url, 16 bytes),
+/// `relay.side` (0 caller, 1 callee), `relay.rebind_key` (base64url, 32
+/// bytes, this side's only), `sframe.cipher_suite`, `sframe.send` /
+/// `sframe.receive`, each `{kid, base_key}` (base64url). The daemon answers
+/// once per call: the keys start once.
 ///
 /// # Errors
 ///
@@ -135,7 +159,13 @@ impl Translator {
 /// decodable.
 pub fn call_media(call_id: &CallId, mut answer: Value) -> Result<CallMedia, String> {
     let media = parse_media(call_id, &answer);
-    for path in [["relay", "token"], ["sframe", "send"], ["sframe", "receive"]] {
+    for path in [
+        ["relay", "token"],
+        ["relay", "rebind_key"],
+        ["relay", "lease_id"],
+        ["sframe", "send"],
+        ["sframe", "receive"],
+    ] {
         if let Some(value) = answer.get_mut(path[0]).and_then(|v| v.get_mut(path[1])) {
             wipe_value(value);
         }
@@ -167,10 +197,22 @@ fn parse_media(call_id: &CallId, answer: &Value) -> Option<CallMedia> {
     if endpoint.is_empty() {
         return None;
     }
+    let token = decode(&relay["token"])?;
+    // A relay allocation comes with this side's rebind credential; a
+    // direct endpoint (no token) has none.
+    let rebind = if token.is_empty() {
+        None
+    } else {
+        let lease_id = <[u8; 16]>::try_from(decode(&relay["lease_id"])?.as_slice()).ok()?;
+        let side = u8::try_from(relay["side"].as_u64()?).ok().filter(|side| *side <= 1)?;
+        let key = decode(&relay["rebind_key"]).filter(|key| key.len() == 32)?;
+        Some(CallRebind { lease_id, side, key })
+    };
     Some(CallMedia {
         call_id: call_id.clone(),
         endpoint: endpoint.to_owned(),
-        token: decode(&relay["token"])?,
+        token,
+        rebind,
         suite: u16::try_from(sframe["cipher_suite"].as_u64()?).ok()?,
         send: direction_key(&sframe["send"])?,
         receive: direction_key(&sframe["receive"])?,

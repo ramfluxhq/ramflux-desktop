@@ -8,9 +8,14 @@
 //!
 //! - an incoming call rings (and no call is under way): the ring tone plays
 //!   until it stops ringing;
-//! - a call is answered (connecting or active): the handle asks the source
-//!   for its media session once and starts the media engine with it; the
-//!   session's keys go from the source to the engine and nowhere else;
+//! - a call is answered and the daemon reports it active (signaling done,
+//!   relay allocated): the handle asks the source for its media session,
+//!   once per call, and starts the media engine with it; the session's
+//!   keys go from the source to the engine and nowhere else. The daemon
+//!   hands them out once and each key starts once, at counter zero: audio
+//!   that fails is not started again on the same call (a fresh call brings
+//!   fresh keys), and the audio stays with its call while another account
+//!   is shown;
 //! - the call ends (or another one takes its place): the engine stops.
 //!
 //! Audio is a [`CallAudio`] the application installs: the computer's
@@ -102,11 +107,13 @@ pub(super) struct CallLink {
     pub(super) live: Option<Box<dyn LiveCall>>,
     pub(super) muted: bool,
     pub(super) error: Option<String>,
+    /// The media session was asked for (once per call, ever).
+    pub(super) requested: bool,
 }
 
 impl CallLink {
     pub(super) fn new(account: AccountId, call_id: CallId) -> Self {
-        Self { account, call_id, live: None, muted: false, error: None }
+        Self { account, call_id, live: None, muted: false, error: None, requested: false }
     }
 
     pub(super) fn view(&self) -> CallAudioView {

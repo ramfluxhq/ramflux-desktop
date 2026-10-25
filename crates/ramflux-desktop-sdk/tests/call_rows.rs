@@ -3,13 +3,17 @@
 
 //! The translator's view of call rows and media sessions: each sequence
 //! number is reported once, a row for a conversation not listed yet waits
-//! for the listing it asks for, a malformed row is dropped, and a media
-//! session is read with its secrets wiped from the answer.
+//! for the listing it asks for, a malformed row is dropped, `call.list` and
+//! the call records of `message.list` are the same rows, the daemon's end
+//! reasons are read as such, and a media session is read with its secrets
+//! wiped from the answer.
 
 mod common;
 
 use common::*;
-use ramflux_desktop_core::{AccountId, CallEndReason, CallId, CallState, DomainEvent, Timestamp};
+use ramflux_desktop_core::{
+    AccountId, CallEndReason, CallId, CallState, ContextId, DomainEvent, Timestamp,
+};
 use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
 use ramflux_desktop_sdk::translate::Translator;
 use ramflux_desktop_sdk::translate::calls::call_media;
@@ -32,6 +36,7 @@ fn row(conversation: &str, state: &str, seq: u64) -> Value {
         "call_id": "call-1", "conversation_id": conversation, "peer_id": "principal-ana",
         "direction": "outgoing", "state": state, "end_reason": null, "seq": seq,
         "created_at": 1_790_000_000, "answered_at": null, "ended_at": null,
+        "media_generation": 0,
     })
 }
 
@@ -108,29 +113,89 @@ fn malformed_rows_are_dropped() {
 }
 
 #[test]
+fn listed_calls_and_call_records_are_the_same_rows() {
+    let mut translator = translator();
+    let listed = translator.fetched(
+        &Fetch::Calls,
+        &json!({ "calls": [row("dm-ana", "incoming_ringing", 2)] }),
+        Timestamp(0),
+    );
+    assert_eq!(calls(&listed.events), [(CallState::IncomingRinging, 2)]);
+    let mut ended = row("dm-ana", "ended", 3);
+    ended["end_reason"] = json!("missed");
+    ended["ended_at"] = json!(1_790_000_045);
+    let messages = json!({ "messages": [{
+        "id": "call-1", "message_id": "call-1", "conversation_id": "dm-ana", "kind": "call",
+        "created_at": 1_790_000_000, "call": ended, "duration_seconds": null, "missed": true,
+    }] });
+    let read =
+        translator.fetched(&Fetch::Messages(ContextId::new("dm-ana")), &messages, Timestamp(0));
+    assert_eq!(calls(&read.events), [(CallState::Ended(CallEndReason::Missed), 3)]);
+    // Never a message moment of its own.
+    assert!(!read.events.iter().any(|e| matches!(e, DomainEvent::MomentAdded(_))));
+}
+
+#[test]
+fn the_daemons_end_reasons_are_read_as_such() {
+    for (reason, read) in [
+        ("completed", CallEndReason::Completed),
+        ("cancelled", CallEndReason::Cancelled),
+        ("declined", CallEndReason::Declined),
+        ("busy", CallEndReason::Busy),
+        ("timeout", CallEndReason::Timeout),
+        ("answered_elsewhere", CallEndReason::AnsweredElsewhere),
+        ("failed", CallEndReason::Failed),
+        ("missed", CallEndReason::Missed),
+    ] {
+        let mut translator = translator();
+        let mut ended = row("dm-ana", "ended", 4);
+        ended["end_reason"] = json!(reason);
+        assert_eq!(
+            calls(&translator.call_row(&ended).events),
+            [(CallState::Ended(read), 4)],
+            "{reason}"
+        );
+    }
+}
+
+#[test]
 fn a_media_session_is_read_and_its_secrets_wiped() {
     let key = |byte: u8| ramflux_protocol::encode_base64url([byte; 32]);
     let answer = json!({
-        "call_id": "call-1",
-        "relay": { "endpoint": "relay.example:3478", "token": ramflux_protocol::encode_base64url(b"tok") },
+        "relay": {
+            "endpoint": "relay.example:3478",
+            "token": key(9),
+            "lease_id": ramflux_protocol::encode_base64url([4_u8; 16]),
+            "side": 1,
+            "rebind_key": key(3),
+        },
         "sframe": {
             "cipher_suite": 5,
-            "send": { "kid": 7, "base_key": key(1) },
-            "receive": { "kid": 8, "base_key": key(2) },
+            "send": { "kid": 1, "base_key": key(1) },
+            "receive": { "kid": 0, "base_key": key(2) },
         },
     });
     let media = call_media(&CallId::new("call-1"), answer.clone()).expect("session");
     assert_eq!(media.endpoint, "relay.example:3478");
-    assert_eq!(&media.token[..], b"tok");
-    assert_eq!((media.suite, media.send.kid(), media.receive.kid()), (5, 7, 8));
+    assert_eq!(&media.token[..], [9; 32]);
+    assert_eq!((media.suite, media.send.kid(), media.receive.kid()), (5, 1, 0));
     assert_eq!(media.send.base_key(), [1; 32]);
-    assert!(!format!("{media:?}").contains(&key(1)));
+    let rebind = media.rebind.as_ref().expect("rebind credential");
+    assert_eq!((rebind.lease_id, rebind.side, &rebind.key[..]), ([4; 16], 1, &[3; 32][..]));
+    let printed = format!("{media:?}");
+    assert!(!printed.contains(&key(1)) && !printed.contains(&key(3)), "{printed}");
+    let broken = |path: [&str; 2], value: Value| {
+        let mut a = answer.clone();
+        a[path[0]][path[1]] = value;
+        a
+    };
     for broken in [
-        {
-            let mut a = answer.clone();
-            a["relay"]["endpoint"] = json!("");
-            a
-        },
+        broken(["relay", "endpoint"], json!("")),
+        broken(["relay", "lease_id"], json!(ramflux_protocol::encode_base64url([4_u8; 8]))),
+        broken(["relay", "side"], json!(2)),
+        broken(["relay", "rebind_key"], json!(ramflux_protocol::encode_base64url([3_u8; 16]))),
+        broken(["relay", "rebind_key"], Value::Null),
+        broken(["sframe", "cipher_suite"], json!(70_000)),
         {
             let mut a = answer.clone();
             a["sframe"]["send"]["base_key"] = json!("!!");
@@ -139,11 +204,6 @@ fn a_media_session_is_read_and_its_secrets_wiped() {
         {
             let mut a = answer.clone();
             a["sframe"]["receive"]["kid"] = Value::Null;
-            a
-        },
-        {
-            let mut a = answer.clone();
-            a["sframe"]["cipher_suite"] = json!(70_000);
             a
         },
     ] {

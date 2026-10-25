@@ -43,7 +43,9 @@ pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MI
 pub use backend::{
     Capabilities, DaemonInfo, DaemonSyncState, EffectFailure, FailureCode, SyncMode, SyncStatus,
 };
-pub use call::{Call, CallDirection, CallEndReason, CallKey, CallMedia, CallOutcome, CallState};
+pub use call::{
+    Call, CallDirection, CallEndReason, CallKey, CallMedia, CallOutcome, CallRebind, CallState,
+};
 pub use conversation::{
     ContactCard, ContactLink, Context, ContextKind, Disappearing, Participant, ParticipantKind,
     Role, RootSource, SafetyState,

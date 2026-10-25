@@ -2,13 +2,14 @@
 // Copyright (c) 2026 Span Brain
 
 //! Voice calls through the SDK source and a fake daemon with the CALL-01
-//! call API (contract-first): placing, answering, declining and hanging up
+//! call API (as the daemon implements it): placing, answering, declining and hanging up
 //! reach the daemon as `call.*` requests; `call.changed` events (stream or
 //! push) drive the store's state machine (outgoing and incoming ringing,
 //! connecting, active, ended with its reason, including timeout, busy and
 //! answered elsewhere); the media session reaches the engine through the
-//! source, never the store; and without the call API every call method is
-//! declared unsupported with its reason.
+//! source, never the store, once per call; calls come back with a reload
+//! (`call.list`); and with a daemon without the call API, or calls turned
+//! off, every call method is declared unsupported with its reason.
 
 mod common;
 
@@ -148,26 +149,32 @@ fn an_outgoing_call_rings_connects_carries_media_and_hangs_up() {
         IntentError::CallInProgress
     );
 
+    // No media before the call is active.
+    assert!(media(&mut account, &call.id).is_err());
     world.calls.peer_answers(call.id.as_str());
-    account.until("connecting", state_is(CallState::Connecting));
+    account.until("active", state_is(CallState::Active));
+    assert!(the_call(&account.store).unwrap().answered_at.is_some());
 
     let session = media(&mut account, &call.id).expect("media session");
     assert_eq!(session.endpoint, "203.0.113.7:3478");
     assert_eq!(session.suite, 0x0005);
-    assert_eq!((session.send.kid(), session.receive.kid()), (1, 2));
+    assert_eq!((session.send.kid(), session.receive.kid()), (0, 1));
     assert_eq!(session.send.base_key().len(), 32);
     assert_ne!(session.send.base_key(), session.receive.base_key());
-    let token: Value = serde_json::from_slice(&session.token).expect("opaque token as sent");
-    assert!(token["allocation"].as_str().unwrap().ends_with("/caller"));
-    // The fake takes the media session as media flowing.
-    account.until("active", state_is(CallState::Active));
+    assert_eq!(session.token.len(), 32);
+    let rebind = session.rebind.as_ref().expect("the caller's rebind credential");
+    assert_eq!((rebind.side, rebind.key.len()), (0, 32));
+    // Once per call: the keys start once, so they are never handed out again.
+    assert!(media(&mut account, &call.id).is_err());
+    assert_eq!(world.calls.media_sessions(), [call.id.as_str()]);
     // The keys never entered the store or an event.
     let printed = format!("{:?}", account.envelopes);
-    let encoded = ramflux_protocol::encode_base64url(session.send.base_key());
-    assert!(!printed.contains(&encoded));
+    for secret in [session.send.base_key(), &session.token, &rebind.key] {
+        assert!(!printed.contains(&ramflux_protocol::encode_base64url(secret)));
+    }
 
     dispatch(&mut account, IntentKind::HangUpCall { call_id: call.id.clone() });
-    account.until("ended", state_is(CallState::Ended(CallEndReason::HungUp)));
+    account.until("ended", state_is(CallState::Ended(CallEndReason::Completed)));
     let ended = the_call(&account.store).unwrap();
     assert!(matches!(ended.outcome(), Some(CallOutcome::Answered { .. })));
     assert_eq!(
@@ -196,14 +203,14 @@ fn an_incoming_call_rings_here_and_is_answered_or_declined() {
     assert!(media(&mut account, &first).is_err());
 
     dispatch(&mut account, IntentKind::AnswerCall { call_id: first.clone() });
-    account.until("connecting", state_is(CallState::Connecting));
+    account.until("active", state_is(CallState::Active));
     assert_eq!(world.requests("call.answer")[0]["call_id"], first.as_str());
     assert_eq!(ringing_attention(&account.store), 0);
     let session = media(&mut account, &first).expect("media");
-    assert_eq!((session.send.kid(), session.receive.kid()), (2, 1));
-    account.until("active", state_is(CallState::Active));
+    assert_eq!((session.send.kid(), session.receive.kid()), (1, 0));
+    assert_eq!(session.rebind.as_ref().map(|r| r.side), Some(1));
     world.calls.peer_hangs_up(first.as_str());
-    account.until("ended", state_is(CallState::Ended(CallEndReason::HungUp)));
+    account.until("ended", state_is(CallState::Ended(CallEndReason::Completed)));
 
     world.calls.advance(Duration::from_secs(60));
     let second = CallId::new(world.calls.incoming(ACCOUNT, DM));
@@ -212,7 +219,7 @@ fn an_incoming_call_rings_here_and_is_answered_or_declined() {
     });
     dispatch(&mut account, IntentKind::RejectCall { call_id: second.clone() });
     account.until("declined", |s, _| {
-        s.call(&second).is_some_and(|c| c.state == CallState::Ended(CallEndReason::Rejected))
+        s.call(&second).is_some_and(|c| c.state == CallState::Ended(CallEndReason::Declined))
     });
     assert_eq!(account.store.call(&second).unwrap().outcome(), Some(CallOutcome::Declined));
     // Each call is one record in the conversation.
@@ -240,7 +247,7 @@ fn timeout_busy_and_answered_elsewhere_end_calls_with_their_reason() {
     let missed = CallId::new(world.calls.incoming(ACCOUNT, DM));
     account.until("ringing", state_is(CallState::IncomingRinging));
     world.calls.advance(Duration::from_secs(45));
-    wait_end(&mut account, &missed, CallEndReason::Timeout);
+    wait_end(&mut account, &missed, CallEndReason::Missed);
     assert_eq!(account.store.call(&missed).unwrap().outcome(), Some(CallOutcome::Missed));
 
     // Another device answers: not a missed call here.
@@ -286,8 +293,42 @@ fn without_the_stream_calls_change_through_the_push_subscription() {
     let id = CallId::new(world.calls.incoming(ACCOUNT, DM));
     account.until("ringing", state_is(CallState::IncomingRinging));
     world.calls.peer_hangs_up(id.as_str());
-    account.until("cancelled by the caller", state_is(CallState::Ended(CallEndReason::HungUp)));
+    account.until("cancelled by the caller", state_is(CallState::Ended(CallEndReason::Missed)));
     assert_eq!(account.store.call(&id).unwrap().outcome(), Some(CallOutcome::Missed));
+    world.stop();
+}
+
+#[test]
+fn calls_come_back_with_a_reload() {
+    let world = World::start("reload", true);
+    let ringing = world.calls.incoming(ACCOUNT, DM);
+    let account = live(&world, true, true);
+    let call = account.store.call(&CallId::new(ringing.clone())).expect("listed");
+    assert_eq!(call.state, CallState::IncomingRinging);
+    assert_eq!(world.requests("call.list").len(), 1);
+    // A call record in the conversation's messages is the same call.
+    let mut feed = account;
+    world.calls.peer_hangs_up(&ringing);
+    feed.until("missed", state_is(CallState::Ended(CallEndReason::Missed)));
+    let records = feed
+        .store
+        .context_moments(&ContextId::new(DM))
+        .filter(|m| matches!(m.kind, MomentKind::Call(_)))
+        .count();
+    assert_eq!(records, 1);
+    world.stop();
+}
+
+#[test]
+fn a_daemon_without_the_call_api_has_calls_unsupported() {
+    let world = World::start("old-daemon", true);
+    world.calls.set_available(false);
+    let account = live(&world, true, true);
+    assert_eq!(world.requests("call.list").len(), 1);
+    assert_eq!(
+        account.store.unsupported_reason(methods::CALL_INVITE),
+        Some(ramflux_desktop_sdk::capabilities::reason::CALLS)
+    );
     world.stop();
 }
 
@@ -295,6 +336,7 @@ fn without_the_stream_calls_change_through_the_push_subscription() {
 fn without_the_call_api_calls_are_unsupported_with_a_reason() {
     let world = World::start("no-api", true);
     let mut account = live(&world, false, true);
+    assert!(world.requests("call.list").is_empty());
     assert_eq!(
         account.store.unsupported_reason(methods::CALL_INVITE),
         Some(ramflux_desktop_sdk::capabilities::reason::CALLS)
