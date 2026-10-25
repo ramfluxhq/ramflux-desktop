@@ -6,8 +6,8 @@
 use thiserror::Error;
 
 use crate::ids::{
-    AccountId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
-    StandingApprovalId, TaskId,
+    AccountId, BackupJobId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
+    ParticipantId, StandingApprovalId, TaskId,
 };
 
 /// Why an intent was refused.
@@ -245,4 +245,15 @@ pub enum IntentError {
     /// declining a call that no longer rings, hanging up an ended one).
     #[error("call {0} cannot do this in its current state")]
     CallState(CallId),
+    /// Backup or restore job not in the store.
+    #[error("unknown backup job {0}")]
+    UnknownBackupJob(BackupJobId),
+    /// Another backup or restore is running (one at a time).
+    #[error("another backup or restore is running")]
+    BackupInProgress,
+    /// The job is not in a phase this intent applies to (installing a
+    /// restore that is not verified, cancelling one that is installing or
+    /// has ended, installing a backup).
+    #[error("backup job {0} cannot do this in its current phase")]
+    BackupJobPhase(BackupJobId),
 }

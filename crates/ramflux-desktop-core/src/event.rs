@@ -10,7 +10,7 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, Block, Call, Capabilities, ContactCard, ContactRequest, Context,
+    Account, AuditEntry, BackupJob, Block, Call, Capabilities, ContactCard, ContactRequest, Context,
     DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure, GrantState, Integrations,
     Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe,
     Object, Participant, RequestPolicy, StandingApproval, StepState, SurfaceAction, SyncStatus,
@@ -299,4 +299,8 @@ pub enum DomainEvent {
     /// message for the user. The requests already known stay; the next
     /// listing clears it.
     ContactRequestsReadFailed(String),
+    /// A full backup or restore job as the daemon reports it (the whole
+    /// job). The version must rise, the kind and file stay, and the phase
+    /// follow [`crate::BackupPhase::can_transition`].
+    BackupJobUpdated(BackupJob),
 }

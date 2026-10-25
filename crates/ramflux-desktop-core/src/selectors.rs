@@ -389,3 +389,17 @@ pub fn ringing_calls(store: &Store) -> Vec<&Call> {
 pub fn call_under_way(store: &Store) -> bool {
     store.calls().any(|c| !c.state.is_ended())
 }
+
+/// The backup or restore job running (not ended), if any; a daemon runs
+/// one at a time per account.
+pub fn running_backup_job(store: &Store) -> Option<&crate::model::BackupJob> {
+    store
+        .backup_jobs()
+        .filter(|j| !j.phase.is_terminal())
+        .max_by(|a, b| (a.started_at, &a.id).cmp(&(b.started_at, &b.id)))
+}
+
+/// The most recently started backup or restore job, ended or not.
+pub fn latest_backup_job(store: &Store) -> Option<&crate::model::BackupJob> {
+    store.backup_jobs().max_by(|a, b| (a.started_at, &a.id).cmp(&(b.started_at, &b.id)))
+}

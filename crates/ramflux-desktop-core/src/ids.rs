@@ -105,6 +105,10 @@ string_id!(
     /// A voice call (the daemon's fresh 128-bit call id).
     CallId
 );
+string_id!(
+    /// A full backup or restore job (the daemon's job id).
+    BackupJobId
+);
 
 impl ParticipantId {
     /// A short form of the id for display when no name is known: a

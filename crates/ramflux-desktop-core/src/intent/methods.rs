@@ -120,6 +120,14 @@ pub const ACCOUNT_ROTATE_PASSPHRASE: &str = "account.passphrase.rotate";
 pub const ACCOUNT_BACKUP_EXPORT: &str = "account.backup.export";
 /// Restore an account from a backup (carries a secret).
 pub const ACCOUNT_BACKUP_IMPORT: &str = "account.backup.import";
+/// Start a full backup of an account to a file (carries a secret).
+pub const BACKUP_CREATE: &str = "backup.create";
+/// Start reading and verifying a full backup file (carries a secret).
+pub const RESTORE_VERIFY: &str = "restore.verify";
+/// Install a verified backup (merging with an account already here).
+pub const RESTORE_INSTALL: &str = "restore.install";
+/// Cancel a running backup, or a restore before it installs.
+pub const BACKUP_CANCEL: &str = "backup.cancel";
 /// Join an existing identity as a new device (carries a secret).
 pub const DEVICE_ACTIVATE: &str = "device.activate";
 /// Revoke a device.

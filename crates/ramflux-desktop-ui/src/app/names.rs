@@ -141,6 +141,10 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::AnswerCall { .. } => "AnswerCall",
         IntentKind::RejectCall { .. } => "RejectCall",
         IntentKind::HangUpCall { .. } => "HangUpCall",
+        IntentKind::CreateBackup { .. } => "CreateBackup",
+        IntentKind::VerifyRestore { .. } => "VerifyRestore",
+        IntentKind::InstallRestore { .. } => "InstallRestore",
+        IntentKind::CancelBackupJob { .. } => "CancelBackupJob",
     }
 }
 
@@ -210,6 +214,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContactRequestUpserted(_) => "ContactRequestUpserted",
         DomainEvent::ContactRequestPolicyUpdated(_) => "ContactRequestPolicyUpdated",
         DomainEvent::ContactRequestsReadFailed(_) => "ContactRequestsReadFailed",
+        DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
     }
 }
 

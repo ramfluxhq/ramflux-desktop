@@ -9,8 +9,8 @@ use serde_json::Value;
 use super::{ContactAction, GovernanceOp, SecretInput};
 use crate::conformance::SurfaceHash;
 use crate::ids::{
-    AccountId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
-    StandingApprovalId, SurfaceId, TaskId,
+    AccountId, BackupJobId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
+    ParticipantId, StandingApprovalId, SurfaceId, TaskId,
 };
 use crate::model::{AccountKind, ConflictResolution, PinSource, RequestAnswer, RequestPolicy};
 
@@ -26,7 +26,7 @@ pub enum SyncDirection {
 /// Every intent kind.
 ///
 /// Kinds that carry a [`SecretInput`] (unlock, create, activate, restore,
-/// backup export, passphrase rotation) are excluded from serde: serializing them is an error
+/// backup export, full backup and restore verification, passphrase rotation) are excluded from serde: serializing them is an error
 /// and they cannot be deserialized.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum IntentKind {
@@ -379,6 +379,38 @@ pub enum IntentKind {
         path: String,
         /// Passphrase the backup is encrypted with.
         secret: SecretInput,
+    },
+    /// Write a full backup of an account (everything it holds, every file)
+    /// to a local path. Not serializable.
+    #[serde(skip)]
+    CreateBackup {
+        /// Account.
+        account_id: AccountId,
+        /// Local path chosen by the user.
+        path: String,
+        /// Passphrase the backup is encrypted with.
+        secret: SecretInput,
+    },
+    /// Read and verify a whole backup file into staging, without
+    /// installing anything yet. Not serializable.
+    #[serde(skip)]
+    VerifyRestore {
+        /// Backup file chosen by the user.
+        path: String,
+        /// Backup passphrase.
+        secret: SecretInput,
+    },
+    /// Install a verified backup the user reviewed: added as a new account,
+    /// or merged into the account already here (the newer item wins).
+    InstallRestore {
+        /// The verified restore job.
+        job_id: BackupJobId,
+    },
+    /// Cancel a running backup, or a restore before it installs (its
+    /// staged copy is discarded).
+    CancelBackupJob {
+        /// Job.
+        job_id: BackupJobId,
     },
     /// Revoke one of the account's devices (needs a hold).
     RevokeDevice {

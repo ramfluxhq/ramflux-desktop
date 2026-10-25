@@ -17,10 +17,12 @@
 //!   requester; task moments follow their task's state.
 //! - `calls`: voice calls and their timeline records.
 //! - `contact_requests`: contact requests both ways.
+//! - `backup`: full backup and restore jobs.
 //! - [`bodies`]: the bounded message-body cache.
 //! - `index`: secondary indexes the reducer maintains (timelines, needs-me,
 //!   in progress, members, grant and task presenters).
 
+mod backup;
 pub mod bodies;
 mod calls;
 mod changes;
@@ -36,13 +38,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::event::{EVENT_SCHEMA, EventEnvelope, SourceStatus};
 use crate::ids::{
-    AccountId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
-    StandingApprovalId, SurfaceId, TaskId, Timestamp,
+    AccountId, BackupJobId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
+    ParticipantId, StandingApprovalId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, Call, Capabilities, ContactCard, ContactRequest, Context, DaemonInfo,
-    Device, EffectFailure, Grant, Integrations, Listing, Moment, Node, Object, Participant,
-    RequestDirection, RequestPolicy, StandingApproval, SyncStatus, Task,
+    Account, AuditEntry, BackupJob, Call, Capabilities, ContactCard, ContactRequest, Context,
+    DaemonInfo, Device, EffectFailure, Grant, Integrations, Listing, Moment, Node, Object,
+    Participant, RequestDirection, RequestPolicy, StandingApproval, SyncStatus, Task,
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
@@ -78,6 +80,7 @@ pub struct Store {
     standing_approvals: BTreeMap<StandingApprovalId, StandingApproval>,
     tasks: BTreeMap<TaskId, Task>,
     calls: BTreeMap<CallId, Call>,
+    backup_jobs: BTreeMap<BackupJobId, BackupJob>,
     audit: Vec<AuditEntry>,
     integrations: Integrations,
     capabilities: Capabilities,
@@ -460,5 +463,15 @@ impl Store {
     /// All calls ordered by id.
     pub fn calls(&self) -> impl Iterator<Item = &Call> {
         self.calls.values()
+    }
+
+    /// Backup or restore job by id.
+    pub fn backup_job(&self, id: &BackupJobId) -> Option<&BackupJob> {
+        self.backup_jobs.get(id)
+    }
+
+    /// All backup and restore jobs ordered by id.
+    pub fn backup_jobs(&self) -> impl Iterator<Item = &BackupJob> {
+        self.backup_jobs.values()
     }
 }

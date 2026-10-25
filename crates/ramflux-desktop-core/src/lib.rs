@@ -42,8 +42,8 @@ pub use event::{
     SurfacePatchOp, SurfaceSnapshot,
 };
 pub use ids::{
-    AccountId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
-    ParticipantId, StandingApprovalId, StepId, SurfaceId, TaskId, Timestamp,
+    AccountId, BackupJobId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId,
+    ObjectId, ParticipantId, StandingApprovalId, StepId, SurfaceId, TaskId, Timestamp,
 };
 pub use intent::{
     ContactAction, ContactCardProblem, ContactIdProblem, ContactInput, Effect, GovernanceOp,

@@ -109,11 +109,12 @@ impl ChangeSet {
             || self.changes.source_status
     }
 
-    /// The settings page: accounts, nodes, devices, integrations and the
-    /// source status (diagnostics).
+    /// The settings page: accounts, nodes, devices, integrations, backup
+    /// and restore jobs, and the source status (diagnostics).
     pub fn touches_settings(&self) -> bool {
         self.reset
             || !self.changes.accounts.is_empty()
+            || !self.changes.backup_jobs.is_empty()
             || !self.changes.nodes.is_empty()
             || !self.changes.devices.is_empty()
             || self.changes.integrations

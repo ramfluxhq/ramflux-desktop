@@ -189,6 +189,7 @@ impl Store {
                     changes.contact_requests = true;
                 }
             }
+            DomainEvent::BackupJobUpdated(job) => self.upsert_backup_job(job, changes)?,
             DomainEvent::TaskStepChanged { task_id, version, step_id, state, needs_me } => {
                 let step = StepChange {
                     task_id,

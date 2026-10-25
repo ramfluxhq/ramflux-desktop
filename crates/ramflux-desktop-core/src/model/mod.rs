@@ -21,12 +21,14 @@
 //! - [`listing`]: whether a collection was listed yet (loading vs empty).
 //! - [`contact_request`]: contact requests and the held messages they
 //!   carry, and the account's request setting.
+//! - [`backup`]: full backup and restore jobs.
 //! - [`call`]: voice calls, their states and outcomes, and the secret
 //!   media session that never enters the store.
 
 mod account;
 mod actor;
 mod backend;
+mod backup;
 mod call;
 mod contact_request;
 mod conversation;
@@ -45,6 +47,10 @@ pub use account::{
 pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MIN_HOLD_MS};
 pub use backend::{
     Capabilities, DaemonInfo, DaemonSyncState, EffectFailure, FailureCode, SyncMode, SyncStatus,
+};
+pub use backup::{
+    AttachmentCheck, BackupCategory, BackupCounts, BackupFailure, BackupJob, BackupJobKind,
+    BackupPhase, BackupProgress, BackupSummary, RestorePreview, RestoreReport,
 };
 pub use call::{
     Call, CallDirection, CallEndReason, CallKey, CallMedia, CallOutcome, CallRebind, CallState,

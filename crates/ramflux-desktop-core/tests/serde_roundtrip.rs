@@ -58,9 +58,10 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContactRequestUpserted(_) => "ContactRequestUpserted",
         DomainEvent::ContactRequestPolicyUpdated(_) => "ContactRequestPolicyUpdated",
         DomainEvent::ContactRequestsReadFailed(_) => "ContactRequestsReadFailed",
+        DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 42;
+const DOMAIN_EVENT_VARIANTS: usize = 43;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -135,16 +136,20 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::AnswerCall { .. } => "AnswerCall",
         IntentKind::RejectCall { .. } => "RejectCall",
         IntentKind::HangUpCall { .. } => "HangUpCall",
+        IntentKind::InstallRestore { .. } => "InstallRestore",
+        IntentKind::CancelBackupJob { .. } => "CancelBackupJob",
         IntentKind::Unlock { .. }
         | IntentKind::CreateAccount { .. }
         | IntentKind::ActivateDevice { .. }
         | IntentKind::RestoreBackup { .. }
         | IntentKind::ExportBackup { .. }
+        | IntentKind::CreateBackup { .. }
+        | IntentKind::VerifyRestore { .. }
         | IntentKind::RotatePassphrase { .. } => "secret",
     }
 }
-/// Serializable intent variants (all but the six secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 50;
+/// Serializable intent variants (all but the eight secret-carrying kinds).
+const SERIALIZABLE_INTENT_VARIANTS: usize = 52;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -577,6 +582,37 @@ fn all_domain_events() -> Vec<DomainEvent> {
         }),
         DomainEvent::ContactRequestPolicyUpdated(RequestPolicy::AutoAccept),
         DomainEvent::ContactRequestsReadFailed("Unavailable".to_owned()),
+        DomainEvent::BackupJobUpdated(BackupJob {
+            id: BackupJobId::new("j-1"),
+            kind: BackupJobKind::Restore,
+            path: "/tmp/b".to_owned(),
+            phase: BackupPhase::Done,
+            version: 7,
+            started_at: Timestamp(10),
+            finished_at: Some(Timestamp(90)),
+            progress: BackupProgress {
+                category: Some(BackupCategory::Attachments),
+                items_done: 3,
+                items_total: Some(3),
+                bytes_done: 30,
+                bytes_total: Some(30),
+            },
+            summary: None,
+            preview: Some(RestorePreview {
+                account_id: AccountId::new("a-1"),
+                account_label: Some("Me".to_owned()),
+                created_at: Timestamp(5),
+                counts: BackupCounts { messages: 2, attachments: 1, ..BackupCounts::default() },
+                file_bytes: 30,
+                merge: true,
+            }),
+            report: Some(RestoreReport {
+                restored: BackupCounts { messages: 1, ..BackupCounts::default() },
+                kept_newer: 1,
+                attachments: AttachmentCheck { verified: 1, mismatched: 0, missing: 0 },
+            }),
+            failure: Some(BackupFailure::InsufficientSpace { needed: Some(9), available: None }),
+        }),
     ];
     for (i, kind) in all_moment_kinds().into_iter().enumerate() {
         let id = format!("m-{i}");
@@ -691,6 +727,8 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::AnswerCall { call_id: "k-1".into() },
         IntentKind::RejectCall { call_id: "k-1".into() },
         IntentKind::HangUpCall { call_id: "k-1".into() },
+        IntentKind::InstallRestore { job_id: "j-1".into() },
+        IntentKind::CancelBackupJob { job_id: "j-1".into() },
     ]
 }
 
@@ -852,6 +890,12 @@ fn secret_intents_refuse_to_serialize() {
             current: secret(),
             next: secret(),
         },
+        IntentKind::CreateBackup {
+            account_id: AccountId::new("a-1"),
+            path: "/tmp/b".into(),
+            secret: secret(),
+        },
+        IntentKind::VerifyRestore { path: "/tmp/b".into(), secret: secret() },
     ];
     for kind in kinds {
         assert_eq!(intent_kind_name(&kind), "secret");
@@ -865,6 +909,8 @@ fn secret_intents_refuse_to_serialize() {
         "RestoreBackup",
         "ExportBackup",
         "RotatePassphrase",
+        "CreateBackup",
+        "VerifyRestore",
     ] {
         let text = format!(r#"{{"{name}":{{"account_id":"a-1"}}}}"#);
         assert!(serde_json::from_str::<IntentKind>(&text).is_err(), "{name} must not deserialize");

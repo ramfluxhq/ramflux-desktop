@@ -8,10 +8,10 @@ use std::collections::BTreeSet;
 use thiserror::Error;
 
 use crate::ids::{
-    AccountId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
-    ParticipantId, StepId, SurfaceId, TaskId,
+    AccountId, BackupJobId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId,
+    ObjectId, ParticipantId, StepId, SurfaceId, TaskId,
 };
-use crate::model::{CallState, Lifecycle, StepState, TaskState};
+use crate::model::{BackupJobKind, BackupPhase, CallState, Lifecycle, StepState, TaskState};
 
 /// Why an envelope was not applied.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -189,6 +189,32 @@ pub enum ApplyError {
         /// Requested state.
         to: CallState,
     },
+    /// A backup job update whose version does not rise.
+    #[error("backup job {job}: version {found} is not after {current}")]
+    StaleBackupVersion {
+        /// Job.
+        job: BackupJobId,
+        /// Version in the store.
+        current: u64,
+        /// Version of the update.
+        found: u64,
+    },
+    /// A backup job update changed its kind or file.
+    #[error("backup job {0} cannot change its kind or file")]
+    BackupJobChanged(BackupJobId),
+    /// A job phase change not allowed by [`BackupPhase::can_transition`],
+    /// or a first report in a phase the job's kind does not start in.
+    #[error("illegal {kind:?} job transition for {job}: {from:?} -> {to:?}")]
+    IllegalBackupTransition {
+        /// Job.
+        job: BackupJobId,
+        /// Its kind.
+        kind: BackupJobKind,
+        /// Current phase (the requested one for a first report).
+        from: BackupPhase,
+        /// Requested phase.
+        to: BackupPhase,
+    },
     /// A task whose steps and state disagree (who needs the requester,
     /// where, whether a proposal started).
     #[error("task {task}: {problem}")]
@@ -237,6 +263,8 @@ pub struct Changes {
     pub calls: BTreeSet<CallId>,
     /// Contact requests or the request setting changed.
     pub contact_requests: bool,
+    /// Changed backup and restore jobs.
+    pub backup_jobs: BTreeSet<BackupJobId>,
     /// Standing approvals changed.
     pub standing_approvals: bool,
     /// The audit trail grew.
@@ -270,6 +298,7 @@ impl Changes {
             && self.tasks.is_empty()
             && self.calls.is_empty()
             && !self.contact_requests
+            && self.backup_jobs.is_empty()
             && !self.standing_approvals
             && !self.audit
             && !self.integrations
@@ -294,6 +323,7 @@ impl Changes {
             tasks,
             calls,
             contact_requests,
+            backup_jobs,
             standing_approvals,
             audit,
             integrations,
@@ -314,6 +344,7 @@ impl Changes {
         self.tasks.extend(tasks);
         self.calls.extend(calls);
         self.contact_requests |= contact_requests;
+        self.backup_jobs.extend(backup_jobs);
         self.standing_approvals |= standing_approvals;
         self.audit |= audit;
         self.integrations |= integrations;

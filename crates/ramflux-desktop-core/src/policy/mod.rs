@@ -17,8 +17,10 @@
 //! - `groups`: creating and renaming a group.
 //! - `calls`: placing, answering, declining and hanging up voice calls.
 //! - `accounts`: entry (accounts, devices, nodes) and settings.
+//! - `backup`: full backup and restore.
 
 mod accounts;
+mod backup;
 mod calls;
 mod contacts;
 mod conversation;
@@ -103,7 +105,8 @@ impl Policy<'_> {
 /// trust-on-first-use node all need the attended human's hold: without
 /// `confirmed_by` they yield [`Effect::RequireConfirmation`]. Agent proposals
 /// follow the same rules. Agents may never unlock, create, activate or
-/// restore an account, rotate its passphrase, export a backup, sync or revoke
+/// restore an account, rotate its passphrase, export a backup, back up or
+/// restore in full, sync or revoke
 /// devices, confirm a node, verify a safety number, answer a handoff, add a
 /// contact, share the contact card, start a conversation, or create a group. Grants whose expiry is at or before `now` cannot be approved or
 /// denied.
@@ -141,6 +144,7 @@ pub fn handle_intent(
         .or_else(|| groups::decide(&policy, &intent.kind))
         .or_else(|| calls::decide(&policy, &intent.kind))
         .or_else(|| accounts::decide(&policy, &intent.kind))
+        .or_else(|| backup::decide(&policy, &intent.kind))
         .unwrap_or_else(|| unreachable!("every intent kind belongs to one area"))?;
     let method = match &decision {
         Decision::Call(method, _) | Decision::SecretCall(method, _) | Decision::Confirm(method) => {
@@ -176,7 +180,9 @@ fn take_secrets(kind: IntentKind) -> Vec<SecretInput> {
         IntentKind::Unlock { secret, .. }
         | IntentKind::CreateAccount { secret, .. }
         | IntentKind::RestoreBackup { secret, .. }
-        | IntentKind::ExportBackup { secret, .. } => vec![secret],
+        | IntentKind::ExportBackup { secret, .. }
+        | IntentKind::CreateBackup { secret, .. }
+        | IntentKind::VerifyRestore { secret, .. } => vec![secret],
         IntentKind::ActivateDevice { code, .. } => vec![code],
         IntentKind::RotatePassphrase { current, next, .. } => vec![current, next],
         _ => Vec::new(),
