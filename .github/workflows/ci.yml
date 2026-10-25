@@ -106,4 +106,16 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --no-fail-fast
+        # Hosted macOS runners give no real-time scheduling guarantees, so the
+        # real-time media loopback test (two_engines_talk_through_a_relay)
+        # misses its jitter deadlines there. It stays blocking in the Linux x3
+        # job and locally; only this hosted job skips it (CALL-FU-01). Every
+        # other macOS test stays blocking.
+        env:
+          RAMFLUX_CI_HOSTED_MACOS: "1"
+        run: |
+          skip=()
+          if [ "$RAMFLUX_CI_HOSTED_MACOS" = "1" ]; then
+            skip=(--skip two_engines_talk_through_a_relay --exact)
+          fi
+          cargo test --workspace --no-fail-fast -- "${skip[@]}"
