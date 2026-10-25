@@ -51,6 +51,15 @@ fn pid_exists(pid: u32) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// A `ps` column of `pid`.
+fn ps(pid: u32, column: &str) -> Option<u32> {
+    let out = std::process::Command::new("ps")
+        .args(["-o", &format!("{column}="), "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+}
+
 fn a_started_daemon_gets_the_socket_and_data_root_and_stops() {
     let dir = dir("run");
     let command = DaemonCommand {
@@ -76,6 +85,14 @@ fn a_started_daemon_gets_the_socket_and_data_root_and_stops() {
     );
     assert_eq!(process.exit_code(), None, "still running");
     let pid = process.pid();
+    // The daemon stays the app's own child, in the app's process group:
+    // macOS attributes its local network use to the app that spawned it
+    // (the responsible code, TN3179), so the app's Local Network
+    // permission covers it. A daemon that detached itself (a new session,
+    // or a launchd job) would need a permission of its own (DESK-F19).
+    let me = std::process::id();
+    assert_eq!(ps(pid, "ppid"), Some(me), "the daemon is this process's child");
+    assert_eq!(ps(pid, "pgid"), ps(me, "pgid"), "in this process's group");
     process.stop(Duration::from_secs(3));
     assert!(process.wait_exit(Duration::ZERO), "exited");
     assert!(!pid_exists(pid), "reaped");

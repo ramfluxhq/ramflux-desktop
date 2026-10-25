@@ -9,17 +9,22 @@
 //! order and stops at the first failure, reporting how many were applied.
 //! An object read (`Plan::Open`) writes the bytes where the user chose and
 //! wipes them; only the path reaches the translator. Request bodies (which
-//! may carry an attachment's bytes) are wiped after sending.
+//! may carry an attachment's bytes) are wiped after sending. A node lookup
+//! that macOS Local Network privacy may have blocked is repeated a moment
+//! later (see [`node_lookup`]).
 
-use ramflux_desktop_core::{DomainEvent, Effect, EffectFailure, FailureCode};
+use std::time::Duration;
+
+use ramflux_desktop_core::{DomainEvent, Effect, EffectFailure, FailureCode, methods};
 use serde_json::{Value, json};
 
 use super::now;
 use super::scope::{Internal, Link, Task};
 use crate::bus::client::BusClient;
-use crate::bus::{BusError, BusRequest, wipe};
+use crate::bus::{BusError, BusRequest, idempotency, wipe};
 use crate::plan::fetch::Fetch;
 use crate::plan::{Plan, plan};
+use crate::translate::node_failures;
 use crate::translate::reason::{key, keyed};
 
 impl Task {
@@ -46,8 +51,15 @@ impl Task {
             other => {
                 let client = self.client.clone();
                 let internal = self.internal.clone();
+                let retries: Vec<Duration> = self
+                    .config
+                    .local_network_retry_ms
+                    .iter()
+                    .take_while(|ms| **ms > 0)
+                    .map(|ms| Duration::from_millis(u64::from(*ms)))
+                    .collect();
                 tokio::spawn(async move {
-                    let (result, refresh) = perform(&client, other).await;
+                    let (result, refresh) = perform(&client, other, &retries).await;
                     let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
                 });
             }
@@ -138,8 +150,15 @@ impl Task {
 
 /// Performs a plan that talks to the daemon; returns its result and the
 /// reads that follow it.
-async fn perform(client: &BusClient, plan: Plan) -> (Result<Value, BusError>, Vec<Fetch>) {
+async fn perform(
+    client: &BusClient,
+    plan: Plan,
+    local_network_retries: &[Duration],
+) -> (Result<Value, BusError>, Vec<Fetch>) {
     match plan {
+        Plan::Call { request, refresh } if is_node_lookup(&request.method) => {
+            (node_lookup(client, request, local_network_retries).await, refresh)
+        }
         Plan::Call { request, refresh } => {
             let result = client.call(&request).await;
             wipe(request.body);
@@ -152,6 +171,47 @@ async fn perform(client: &BusClient, plan: Plan) -> (Result<Value, BusError>, Ve
         Plan::Diagnostics { path } => (write_diagnostics(client, &path).await, Vec::new()),
         Plan::Local | Plan::Refuse { .. } => (Ok(Value::Null), Vec::new()),
     }
+}
+
+fn is_node_lookup(method: &str) -> bool {
+    matches!(method, methods::NODE_ADD | methods::NODE_PROBE)
+}
+
+/// A node lookup, repeated after each of `retries` while it fails the way
+/// a macOS Local Network privacy block does (see
+/// [`node_failures::may_be_local_network_block`]): the blocked attempt is
+/// what makes the system refresh its record of the app or show its prompt,
+/// so the next one goes through. A repeat is a new attempt, so a mutating
+/// lookup gets a fresh retry key (the failed one is never replayed). A node
+/// lookup carries no secrets.
+async fn node_lookup(
+    client: &BusClient,
+    request: BusRequest,
+    retries: &[Duration],
+) -> Result<Value, BusError> {
+    let mut result = client.call(&request).await;
+    for wait in retries {
+        match &result {
+            Err(error) if node_failures::may_be_local_network_block(&error.message()) => {}
+            _ => break,
+        }
+        tokio::time::sleep(*wait).await;
+        let mut again = BusRequest::new(
+            request.account.as_deref(),
+            request.sdk_api,
+            request.method.clone(),
+            request.body.clone(),
+        );
+        if request.operation_id.is_some() {
+            match idempotency::fresh_key() {
+                Ok(key) => again = again.with_operation_id(key),
+                Err(_) => break,
+            }
+        }
+        result = client.call(&again).await;
+    }
+    wipe(request.body);
+    result
 }
 
 /// Runs `requests` in order; the first failure stops the rest. A failure

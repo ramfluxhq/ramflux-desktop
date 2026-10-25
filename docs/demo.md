@@ -21,6 +21,10 @@ The script builds a release binary (`cargo build --release --locked`), writes
 `Info.plist` (bundle id `org.ramflux.desktop`, version from `Cargo.toml`), a
 placeholder icon and the license notices, and signs the bundle ad hoc. An ad hoc
 signature only lets the bundle run on the machine that built it.
+`--identity NAME` signs with a code-signing identity from the keychain instead
+(an Apple Development certificate is enough for local use), which keeps the
+app's privacy permissions attached to it across builds; `--out DIR` writes the
+bundle somewhere other than `dist/`.
 
 Not done yet (later release work): Developer ID signing with the hardened
 runtime, notarization and stapling, a DMG, and auto-update.
@@ -82,6 +86,10 @@ the user agrees, while Apple's own tools (`curl`) still connect. The app
 declares why it asks (`NSLocalNetworkUsageDescription`), so macOS shows a
 prompt the first time the app or the daemon it started reaches the node;
 choose **Allow**. A daemon the app starts inherits the app's permission.
+Right after installing a new build, macOS may drop the first connection
+while it updates its record of the app; the app repeats the lookup a moment
+later, so it goes through without a restart. Details, the reasoning and a
+manual test: [local-network.md](local-network.md).
 
 If the prompt was dismissed, enable **Ramflux Desktop** in System Settings ›
 Privacy & Security › Local Network. Until then a node lookup fails with an

@@ -44,7 +44,7 @@ mod grants;
 mod identity;
 mod interventions;
 mod messages;
-mod node_failures;
+pub(crate) mod node_failures;
 mod objects;
 mod outgoing;
 pub mod pages;

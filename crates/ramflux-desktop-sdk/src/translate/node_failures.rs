@@ -50,6 +50,22 @@ pub const fn local_network_permission_applies() -> bool {
     cfg!(target_os = "macos")
 }
 
+/// Whether a failed node lookup may have been blocked by Local Network
+/// privacy, so repeating it shortly may succeed.
+///
+/// macOS records an allowed app by the UUID of its main executable. A new
+/// build of the app has a new UUID, so the first local network connection
+/// after an update is dropped (`EHOSTUNREACH`) while the system notices
+/// and refreshes its record; the same holds while its prompt is still
+/// open. The connection is dropped at once, not after a timeout, so the
+/// daemon's request fails before the user or the system could act.
+/// Repeating the lookup a moment later is what Apple expects of a program
+/// that hits this (TN3179).
+pub fn may_be_local_network_block(message: &str) -> bool {
+    local_network_permission_applies()
+        && (is_host_unreachable(message) || failed_local_request(message).is_some())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,5 +96,20 @@ mod tests {
         assert_eq!(failed("http://127.0.0.1:9"), None, "loopback needs no permission");
         assert_eq!(failed("https://node.example.org"), None, "an internet host");
         assert_eq!(failed_local_request("client record verification failed"), None);
+    }
+
+    #[test]
+    fn only_a_blocked_looking_failure_on_macos_is_worth_repeating() {
+        let unreachable = "client record fetch failed: io error: HostUnreachable (os error 65)";
+        let lan = "local bus error: error sending request for url \
+                   (http://192.168.31.136:59482/.well-known/ramflux/client)";
+        let internet = "error sending request for url (https://node.example.org/x)";
+        let macos = cfg!(target_os = "macos");
+        assert_eq!(may_be_local_network_block(lan), macos);
+        if macos {
+            assert!(may_be_local_network_block(unreachable));
+        }
+        assert!(!may_be_local_network_block(internet), "an internet host needs no permission");
+        assert!(!may_be_local_network_block("client record verification failed"));
     }
 }

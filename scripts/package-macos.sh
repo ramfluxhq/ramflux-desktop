@@ -7,6 +7,7 @@
 #   dist/Ramflux Desktop.app
 #
 # Usage: scripts/package-macos.sh [--rf PATH] [--no-build] [--no-sign]
+#                                 [--identity NAME] [--out DIR]
 #
 #   --rf PATH    also ship this `rf` binary inside the bundle (next to the
 #                desktop executable), so "Start local daemon" works without
@@ -14,6 +15,14 @@
 #   --no-build   package the existing target/release binary.
 #   --no-sign    leave the bundle unsigned (default: ad hoc signature, which
 #                is enough to run the bundle on the machine that built it).
+#   --identity NAME
+#                sign with this code-signing identity (an Apple Development
+#                or Developer ID certificate in the keychain) instead of ad
+#                hoc. RF_SIGN_IDENTITY=NAME does the same. macOS privacy
+#                settings such as Local Network follow an app by its code
+#                signature, and only an Apple-issued identity keeps that
+#                identity stable from one build to the next (TN3179).
+#   --out DIR    write the bundle to DIR instead of dist/.
 #
 # The result is a development build: it is not signed with a Developer ID
 # and not notarized, so it is not ready for distribution. See docs/demo.md.
@@ -43,6 +52,8 @@ cd "$ROOT"
 RF="${RF_BIN:-}"
 BUILD=1
 SIGN=1
+IDENTITY="${RF_SIGN_IDENTITY:-}"
+OUT=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --rf)
@@ -57,6 +68,16 @@ while [ $# -gt 0 ]; do
         --no-sign)
             SIGN=0
             shift
+            ;;
+        --identity)
+            [ $# -ge 2 ] || die "--identity needs a name"
+            IDENTITY="$2"
+            shift 2
+            ;;
+        --out)
+            [ $# -ge 2 ] || die "--out needs a directory"
+            OUT="$2"
+            shift 2
             ;;
         *) die "unknown argument: $1" ;;
     esac
@@ -77,7 +98,7 @@ fi
 BIN="target/release/$EXECUTABLE"
 [ -x "$BIN" ] || die "missing $BIN (build first or drop --no-build)"
 
-DIST="$ROOT/dist"
+DIST="${OUT:-$ROOT/dist}"
 APP="$DIST/$APP_NAME.app"
 CONTENTS="$APP/Contents"
 rm -rf "$APP"
@@ -161,12 +182,18 @@ unexpected=$(cd "$APP" && find . -type f | sed 's|^\./||' | grep -v -E \
 [ -z "$unexpected" ] || die "unexpected files in the bundle: $unexpected"
 
 if [ "$SIGN" -eq 1 ]; then
-    # Ad hoc, inside out: the nested rf first, then the bundle.
+    # Inside out: the nested rf first, then the bundle, with one identity
+    # (ad hoc unless one is named), so the daemon the app starts is signed
+    # like the app that is responsible for it.
+    SIGNER="${IDENTITY:--}"
     if [ -f "$CONTENTS/MacOS/rf" ]; then
-        codesign --force --sign - "$CONTENTS/MacOS/rf"
+        codesign --force --sign "$SIGNER" "$CONTENTS/MacOS/rf"
     fi
-    codesign --force --sign - "$APP"
+    codesign --force --sign "$SIGNER" "$APP"
     codesign --verify --strict "$APP" || die "signature does not verify"
+    if [ -z "$IDENTITY" ]; then
+        echo "package-macos: note: ad hoc signature; macOS may drop the first local network connection after each new build (see docs/local-network.md)" >&2
+    fi
 fi
 
 echo "built: $APP"

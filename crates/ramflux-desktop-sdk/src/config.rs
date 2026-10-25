@@ -12,6 +12,12 @@ pub use crate::bus::deadline::Deadlines;
 /// Default daemon socket (the reference CLI's default).
 pub const DEFAULT_SOCKET: &str = "/tmp/ramflux/rfd.sock";
 
+/// Default waits, in milliseconds, before repeating a node lookup that
+/// macOS Local Network privacy may have blocked: the system refreshes its
+/// record of the app (or shows its prompt) on the blocked attempt, so a
+/// repeat a moment later goes through.
+pub const LOCAL_NETWORK_RETRY_MS: [u16; 2] = [2_000, 4_000];
+
 /// Settings of the SDK source.
 #[derive(Debug, Clone)]
 pub struct SdkConfig {
@@ -36,6 +42,10 @@ pub struct SdkConfig {
     /// The desktop settings file holding pinned contexts; `None` keeps pins
     /// in memory only.
     pub settings_path: Option<PathBuf>,
+    /// Waits, in milliseconds, before each repeat of a node lookup that
+    /// macOS Local Network privacy may have blocked; a zero ends the
+    /// repeats. (Milliseconds keep the settings as small as before.)
+    pub local_network_retry_ms: [u16; 2],
 }
 
 impl SdkConfig {
@@ -51,6 +61,7 @@ impl SdkConfig {
             poll_slow: Duration::from_secs(12),
             reconnect_backoff: Duration::from_secs(2),
             settings_path: None,
+            local_network_retry_ms: LOCAL_NETWORK_RETRY_MS,
         }
     }
 }
