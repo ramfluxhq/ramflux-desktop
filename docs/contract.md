@@ -589,3 +589,86 @@ of byte values 0..31, decoded lease ID 0..15, side 1 and cookie 32..63, expected
 16-byte tags are `5a2ff8f9d9c805d3a158c94d51bb0bbe` for IPv4 `203.0.113.7:54321`
 and `07d911fa05814f8c69af12f9420b5aee` for IPv6 `[2001:db8::1234]:54321`.
 These are public test vectors, not deployment keys.
+
+## Contact requests (DESK-F21, contract-first on CONTACT-02)
+
+Adding a contact sends the peer a request; until the peer accepts, messages
+from the requester are held by the peer's daemon (a "message request") and
+delivered into the conversation on accept, dropped on decline or block. Built
+against the fake daemon (`ramflux-desktop-test` `fake_contact_requests`) while
+CONTACT-02 is in progress; the bus contract below is what the desktop assumes,
+aligned with the backend's work in progress where it was visible.
+
+**Store.** A `ContactRequest` (daemon `id`, `peer`, `RequestDirection`
+`Incoming` / `Outgoing`, `RequestState` `Pending`, `Accepted`, `Declined`,
+`Blocked`, `Expired`, the requester's `note`, the `safety_number` to compare,
+`held_messages` and a `preview` of the first, `expires_at`), one per peer and
+direction. `ContactRequestsListed` replaces the pending incoming requests (an
+answered one stays, so its end can be told); `ContactRequestUpserted` replaces
+one request (either direction); `ContactRequestPolicyUpdated` sets the
+account's `RequestPolicy` (`Manual` / `AutoAccept`). Selectors:
+`pending_contact_requests` (incoming, waiting, by name),
+`outgoing_contact_request(peer)` (this account's own request until accepted).
+
+**Intents.** `AnswerContactRequest { request_id, answer: Accept | Decline |
+Block }` (human only; a pending incoming request): methods
+`contact.request.accept`, `contact.request.decline`, `contact.request.block`;
+Block drops whatever the requester sends from now on and needs the hold.
+`SetContactRequestPolicy { policy }` (human only): `contact.requests.policy.set`.
+`AddContact` on a participant with a pending incoming request is refused
+(`ContactLinkState Incoming`): the request is answered instead. UI events:
+`ContactRequestAnswered { request_id, answer }`,
+`ContactRequestPolicySwitched { auto_accept }`.
+
+**Daemon API assumed (CONTACT-02).**
+
+- `contact.add {principal_id}` (and `contact.card.import`) sends the request;
+  the answer's `contact` row and every `contact.list` row carry
+  `request_state` (`pending`, `accepted`, `declined`, `blocked`, `expired`, or
+  null) for this account's own request to that contact, and `request_id` when
+  known.
+- `contact.requests.list {}` → `{requests: [row], contact_requests: "manual" |
+  "auto_accept"}`, the pending requests. A row: `request_id`, `principal_id`,
+  `direction` (`inbound` / `outbound`), `state`, `note` (quoted by the daemon),
+  `safety_number`, `message_count` (held), `preview` (the first held message,
+  as text), `expires_at` (Unix seconds). Read with every account snapshot (and
+  polled once the daemon answered it); a daemon that answers it has contact
+  requests and the request methods are declared supported, otherwise they are
+  unsupported (`backend.gap.contact_requests`).
+- `contact.accept | contact.decline | contact.block {request_id}` → `{request_id,
+  principal_id, state, direction}`. Accept delivers the held messages into the
+  direct conversation (the desktop reads the conversations again).
+- `contact.requests.policy.get {}` / `contact.requests.policy.set
+  {contact_requests}` → `{contact_requests}`.
+- Events (stream topics and the push subscription), body a row (at least
+  `request_id`, `principal_id`, `state`, `direction`): `contact.requested` (new
+  incoming request, and again when a held message arrives), `contact.accepted`,
+  `contact.declined`, `contact.blocked`, `contact.request.expired`. Each is
+  shown at once and calls for `contact.requests.list`, `contact.list` and the
+  identity directory; an accept also for the conversation directory.
+
+**Contacts dock.** Requests list the pending ones (who asks, the note, "N
+messages waiting until you answer" with the preview, the safety number, Block /
+Decline / Accept); the switch "Accept contact requests automatically" shows once
+the daemon reported the setting; a contact this account asked shows "Waiting
+for X to accept your request" (or that X has not accepted, or that it
+expired). Screenshots: `request_shots` (run explicitly).
+
+**Questions for the backend (CONTACT-02).**
+
+1. Does `contact.requests.list` list outgoing pending requests too, or only
+   incoming ones? (The desktop takes both; outgoing state otherwise comes from
+   `request_state` on `contact.list`.)
+2. Is `preview` plain text the desktop may show as is (length cap, quoting), and
+   is it dropped while the account is locked like other message bodies?
+3. Should a requester learn that it was blocked (`contact.blocked` outbound), or
+   see it as declined/expired? The desktop shows "has not accepted" for both.
+4. On accept, do held messages arrive as ordinary `message.received` events and
+   `message.list` rows (with their original send times)?
+5. Is a note settable on `contact.add` / `contact.card.import` (`note`), with
+   what length cap? The desktop does not send one yet.
+6. Does an incoming request create a participant entry in `identity.directory`
+   (name, kind) before accept, so the dock can name the requester?
+7. Error codes for a request that is gone or already answered (the desktop
+   shows the daemon's message), and the rate-limit refusal on `contact.add`.
+8. `request_id` on `contact.list` rows: present for this account's own request?
