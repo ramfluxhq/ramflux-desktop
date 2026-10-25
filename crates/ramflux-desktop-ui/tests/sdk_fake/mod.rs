@@ -23,6 +23,7 @@
 pub mod author;
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -86,6 +87,8 @@ pub struct State {
     pub fail_submit: Option<String>,
     /// Delay before a submission answers.
     pub submit_delay: Duration,
+    /// While set, submissions wait to answer (the test releases them).
+    pub submit_held: Arc<AtomicBool>,
     /// Agent surfaces the daemon holds.
     pub surfaces: Arc<ramflux_desktop_test::fake_surfaces::FakeSurfaces>,
     /// Conversation tasks the daemon holds.
@@ -224,8 +227,14 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
             return reply;
         }
         if method == "message.submit" {
-            let delay = state.lock().expect("state").submit_delay;
+            let (delay, held) = {
+                let state = state.lock().expect("state");
+                (state.submit_delay, state.submit_held.clone())
+            };
             std::thread::sleep(delay);
+            while held.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
             let mut state = state.lock().expect("state");
             if let Some(message) = state.fail_submit.clone() {
                 return Reply::Error("ValidationFailed", message);

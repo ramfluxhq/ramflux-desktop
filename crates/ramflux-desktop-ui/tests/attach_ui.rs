@@ -12,7 +12,6 @@ mod common;
 mod sdk_fake;
 
 use std::path::PathBuf;
-use std::time::Duration;
 
 use common::*;
 use gpui_kit::TestAppContext;
@@ -120,7 +119,10 @@ fn outgoing(
 #[gpui_kit::test]
 fn a_picked_file_is_staged_then_sent_and_shown_while_it_travels(cx: &mut TestAppContext) {
     let (handle, shell, state, fake) = open_ana(cx, "ui-attach-ok");
-    state.lock().expect("state").submit_delay = Duration::from_millis(700);
+    // The submission waits until the test has seen the message on its way
+    // (a fixed delay raced on loaded runners).
+    let held = state.lock().expect("state").submit_held.clone();
+    held.store(true, std::sync::atomic::Ordering::SeqCst);
     let file = Scratch::file("report", 8192);
     pick(cx, handle, &file.0);
     assert!(matches!(staged(cx, &shell), Some(Staged::Ready { size: 8192, .. })));
@@ -135,6 +137,7 @@ fn a_picked_file_is_staged_then_sent_and_shown_while_it_travels(cx: &mut TestApp
     assert_eq!(object.name.as_deref(), Some("report.txt"));
     assert!(row_shows_attachment(cx, handle, &shell), "the attachment row is shown");
     assert_eq!(staged(cx, &shell), None, "the chip leaves once the message shows it");
+    held.store(false, std::sync::atomic::Ordering::SeqCst);
     wait(cx, "the sent attachment", |cx| {
         outgoing(cx, &shell).is_some_and(|(l, r, o)| {
             l == Lifecycle::Done && r == Receipt::Sent && o.transfer == TransferState::Complete
