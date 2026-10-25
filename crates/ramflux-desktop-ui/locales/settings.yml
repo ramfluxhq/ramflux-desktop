@@ -194,7 +194,7 @@ settings:
       zh-CN: "渲染器"
     renderer_explain:
       en: "What this client can show in agent surfaces, as declared to the source."
-      zh-CN: "本客户端在智能体界面中可显示的内容，即向数据源声明的能力。"
+      zh-CN: "本客户端在智能体卡片中可显示的内容，即向数据源声明的能力。"
     renderer_errors:
       en: "Renderer errors this session: %{count}"
       zh-CN: "本次会话的渲染错误：%{count}"

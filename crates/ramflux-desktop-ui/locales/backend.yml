@@ -2,17 +2,17 @@ _version: 2
 backend:
   gap:
     surfaces:
-      en: "Agent surfaces need A2UI bound to conversations (K2)."
-      zh-CN: "智能体界面需要绑定到会话的 A2UI（K2）。"
+      en: "Agent surfaces are not available in conversations yet."
+      zh-CN: "会话中暂不支持智能体卡片。"
     handoff:
-      en: "Handoff is not available from the daemon yet (K7)."
-      zh-CN: "守护进程尚不支持接力（K7）。"
+      en: "Handoff is not available from the daemon yet."
+      zh-CN: "守护进程尚不支持接力。"
     conflicts:
-      en: "Resolving conflicts needs CAS objects (K8)."
-      zh-CN: "解决冲突需要 CAS 对象（K8）。"
+      en: "Resolving conflicts is not available from the daemon yet."
+      zh-CN: "守护进程尚不支持解决冲突。"
     reveal:
-      en: "Revealing needs the daemon's privacy audit (K9)."
-      zh-CN: "揭示内容需要守护进程的隐私审计（K9）。"
+      en: "Revealing hidden content is not available from the daemon yet."
+      zh-CN: "守护进程尚不支持显示隐藏内容。"
     contact_route:
       en: "A contact request travels to the contact's node and needs a federation route to it, which the daemon does not list."
       zh-CN: "联系人请求需发送到对方节点，需要通往该节点的联邦路由，守护进程未提供。"

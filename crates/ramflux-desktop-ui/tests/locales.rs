@@ -193,3 +193,27 @@ fn a_reason_with_arguments_is_translated_with_them() {
     let odd = ramflux_desktop_ui::i18n::backend_text("backend.failure.partial not-json");
     assert_eq!(odd.as_ref(), "backend.failure.partial not-json", "never a half translation");
 }
+
+/// User-facing text names no internal work items (card ids such as `K8`)
+/// and no protocol terms; those belong in docs and the dev panel's keys.
+#[test]
+fn user_facing_text_has_no_card_ids_or_protocol_terms() {
+    let card_id = |text: &str| {
+        let chars: Vec<char> = text.chars().collect();
+        chars
+            .windows(3)
+            .any(|w| matches!(w[0], '(' | '\u{FF08}') && w[1] == 'K' && w[2].is_ascii_digit())
+    };
+    const PROTOCOL_TERMS: [&str; 3] = ["A2UI", "CAS ", "principal id"];
+    for (key, texts) in parse_locales() {
+        for (locale, text) in &texts {
+            assert!(!card_id(text), "{key} ({locale}) names an internal card id: {text}");
+            for term in PROTOCOL_TERMS {
+                assert!(
+                    !text.to_lowercase().contains(&term.to_lowercase()),
+                    "{key} ({locale}) uses the protocol term {term:?}: {text}"
+                );
+            }
+        }
+    }
+}

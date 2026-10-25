@@ -6,7 +6,7 @@ moment:
       zh-CN: "消息"
     agent_surface:
       en: "Agent surface"
-      zh-CN: "智能体界面"
+      zh-CN: "智能体卡片"
     object_transfer:
       en: "Object transfer"
       zh-CN: "文件传输"
@@ -470,7 +470,7 @@ surface:
     zh-CN: "收起最终界面"
   show_all:
     en: "Show all %{count} blocks"
-    zh-CN: "显示全部 %{count} 个区块"
+    zh-CN: "显示全部 %{count} 个内容块"
   show_less:
     en: "Show less"
     zh-CN: "收起"
@@ -489,11 +489,11 @@ surface:
       zh-CN: "以摘要显示"
     text:
       en: "This surface is larger than this client shows (%{limit}), so only its summary is shown and it offers no actions."
-      zh-CN: "此界面超出本客户端的显示上限（%{limit}），因此仅显示摘要，且不提供任何操作。"
+      zh-CN: "此卡片超出本客户端的显示上限（%{limit}），因此仅显示摘要，且不提供任何操作。"
   limit:
     blocks:
       en: "too many blocks"
-      zh-CN: "区块过多"
+      zh-CN: "内容块过多"
     actions:
       en: "too many actions"
       zh-CN: "操作过多"

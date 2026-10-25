@@ -239,8 +239,8 @@ grant:
     en: "Scope"
     zh-CN: "范围"
   args_hash:
-    en: "Arguments hash"
-    zh-CN: "参数哈希"
+    en: "Arguments fingerprint"
+    zh-CN: "参数指纹"
   single_use:
     en: "Single use"
     zh-CN: "一次性"

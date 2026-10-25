@@ -188,7 +188,7 @@ stack:
 dock:
   title:
     objects:
-      en: "Objects"
+      en: "Files"
       zh-CN: "文件"
     contacts:
       en: "Contacts"
@@ -201,7 +201,7 @@ dock:
       zh-CN: "审批与授权"
     evidence:
       en: "Evidence"
-      zh-CN: "证据"
+      zh-CN: "记录"
   pin:
     en: "Pin"
     zh-CN: "固定"
@@ -242,14 +242,14 @@ dock:
         en: "Add"
         zh-CN: "添加"
       help:
-        en: "Paste the contact card they shared, or their principal id."
-        zh-CN: "粘贴对方分享的联系人名片，或对方的主体 ID。"
+        en: "Paste the contact card they shared, or their user ID."
+        zh-CN: "粘贴对方分享的联系人名片，或对方的用户 ID。"
       kind_card:
         en: "Contact card: the daemon checks its signature and pins the identity it names."
         zh-CN: "联系人名片：守护进程会校验签名，并固定名片所指的身份。"
       kind_id:
-        en: "Principal id: looked up on your home node and trusted on first use. Provisional until their card pins it or you compare safety numbers."
-        zh-CN: "主体 ID：在你的主节点上查询，首次使用即信任。在对方名片固定其身份或你比对安全码之前均为临时身份。"
+        en: "User ID: looked up on your home node and trusted on first use. Provisional until their card pins it or you compare safety numbers."
+        zh-CN: "用户 ID：在你的主节点上查询，首次使用即信任。在对方名片固定其身份或你比对安全码之前均为临时身份。"
       adding:
         en: "Adding %{id}…"
         zh-CN: "正在添加 %{id}…"
@@ -488,7 +488,7 @@ dock:
   evidence:
     none:
       en: "Choose a conversation to see its evidence"
-      zh-CN: "选择一个对话以查看证据"
+      zh-CN: "选择一个对话以查看记录"
     grants:
       en: "Grant binding"
       zh-CN: "授权绑定"
@@ -618,7 +618,7 @@ palette:
     en: "Contacts"
     zh-CN: "联系人"
   objects:
-    en: "Objects"
+    en: "Files"
     zh-CN: "文件"
   history:
     en: "History"

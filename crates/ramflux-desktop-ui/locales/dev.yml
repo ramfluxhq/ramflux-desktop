@@ -59,7 +59,7 @@ dev:
       en: "Pending grants"
       zh-CN: "待处理授权"
     objects:
-      en: "Objects"
+      en: "Files"
       zh-CN: "文件"
     tasks:
       en: "Tasks"
