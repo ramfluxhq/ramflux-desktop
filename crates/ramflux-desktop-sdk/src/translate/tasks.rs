@@ -409,6 +409,7 @@ impl Translator {
         }
         let id = task_key(text(body, "conversation_id"), text(body, "task_id"));
         self.review_again.remove(&id);
+        self.removed_tasks.insert(id.clone());
         match self.tasks.remove(&id) {
             Some(_) => vec![DomainEvent::TaskRemoved { task_id: id }],
             None => Vec::new(),
@@ -429,8 +430,11 @@ impl Translator {
         for row in rows {
             let task_id = text(row, "task_id");
             let read = Fetch::Task(context.clone(), task_id.to_owned());
+            let id = task_key(context.as_str(), task_id);
+            // A pruned task's messages may still be listed: it is not read.
             if !task_id.is_empty()
-                && !self.tasks.contains_key(&task_key(context.as_str(), task_id))
+                && !self.tasks.contains_key(&id)
+                && !self.removed_tasks.contains(&id)
                 && !reads.contains(&read)
             {
                 reads.push(read);

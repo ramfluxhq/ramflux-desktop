@@ -271,6 +271,7 @@ mod shots {
 
         // DESK-F17: what members did to tasks are lines, and a task whose
         // step was denied says who declined it (no empty summary).
+        tasks.announce_messages(true);
         tasks
             .propose(GROUP, "t-plan", "Deploy build 2.4.0-rc1 to production", &[("prod", "Deploy")])
             .unwrap();

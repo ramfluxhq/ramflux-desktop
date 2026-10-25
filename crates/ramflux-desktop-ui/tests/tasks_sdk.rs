@@ -247,6 +247,7 @@ fn line_says(cx: &mut TestAppContext, opened: &Opened, text: &str) -> bool {
 #[gpui_kit::test]
 fn starting_a_proposal_is_a_line_in_the_timeline_not_wire_text(cx: &mut TestAppContext) {
     let opened = open_group(cx, "ui-task-event-line");
+    opened.tasks.announce_messages(true);
     opened.tasks.propose(GROUP, "t-plan", "Draft the release notes", &[("a", "Draft")]).unwrap();
     let id = task_key(GROUP, "t-plan");
     wait(cx, "the proposal", |cx| task(cx, &opened, &id).is_some());
@@ -273,6 +274,7 @@ fn starting_a_proposal_is_a_line_in_the_timeline_not_wire_text(cx: &mut TestAppC
 #[gpui_kit::test]
 fn a_denied_task_says_who_declined_it_instead_of_an_empty_summary(cx: &mut TestAppContext) {
     let opened = open_group(cx, "ui-task-denied");
+    opened.tasks.announce_messages(true);
     opened.tasks.start_as("principal-me", GROUP, "t-prod", BOT, "Deploy to production").unwrap();
     opened.state.lock().unwrap().approvals.push(sdk_fake::approval("appr-4", "low"));
     opened.fake.publish(

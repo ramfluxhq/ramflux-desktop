@@ -159,16 +159,11 @@ impl Translator {
                 }
                 reads
             }
-            // Metadata only: read the task when it names a state not shown,
-            // and the conversation's messages, which hold the event that
-            // changed it (shown as a task event line).
+            // Metadata only: read the task when it names a state not shown.
             "task.changed" => {
                 let mut reads: Vec<Fetch> = Vec::new();
                 if self.task_stale(body) {
                     reads.extend(Self::task_read(body));
-                    if let (Some(context), Some(kind)) = (&context, kind) {
-                        reads.extend(self.messages_read(context, kind, false));
-                    }
                 }
                 if context.is_some() && kind.is_none() {
                     reads.push(conversations);

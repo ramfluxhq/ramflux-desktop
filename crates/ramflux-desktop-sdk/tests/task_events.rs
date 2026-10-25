@@ -8,7 +8,8 @@
 //! text); a sibling device's copy of this account's own event, listed
 //! without task fields as a live daemon lists it, is the same line; a
 //! peer's message that only looks like one stays that peer's message; and
-//! a denied task says who denied it.
+//! a denied task says who denied it. The fake announces each task message
+//! as `message.received`, as the daemon announces every projected message.
 
 mod common;
 
@@ -45,6 +46,7 @@ fn texts(store: &Store, context: &str) -> Vec<String> {
 #[test]
 fn accepting_and_cancelling_are_lines_by_who_signed_them_never_message_text() {
     let (world, path) = World::start("events-accept");
+    world.tasks.announce_messages(true);
     let mut account = open(&path);
     world.tasks.propose(GROUP, "t-1", "Check the release", &[("a", "Read")]).unwrap();
     let id = key(GROUP, "t-1");
@@ -75,6 +77,7 @@ fn accepting_and_cancelling_are_lines_by_who_signed_them_never_message_text() {
 #[test]
 fn a_sibling_copy_of_this_accounts_event_is_its_line_and_a_lookalike_stays_a_message() {
     let (world, path) = World::start("events-sibling");
+    world.tasks.announce_messages(true);
     world.tasks.propose(DM, "t-9", "Deploy build 2.4.0-rc1", &[("a", "Deploy")]).unwrap();
     // The account's other device accepted it; this device lists that event
     // the way a live daemon lists a sibling's copy: no task fields.
@@ -116,6 +119,7 @@ fn a_sibling_copy_of_this_accounts_event_is_its_line_and_a_lookalike_stays_a_mes
 #[test]
 fn a_denied_step_is_a_line_and_the_failed_task_says_who_declined_it() {
     let (world, path) = World::start("events-deny");
+    world.tasks.announce_messages(true);
     let mut account = open(&path);
     world.tasks.start_as("principal-me", GROUP, "t-1", BOT, "Deploy to production").unwrap();
     world.approvals.lock().unwrap().push(approval("appr-1", "low"));

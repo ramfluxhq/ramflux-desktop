@@ -160,6 +160,8 @@ struct Inner {
     aliases: BTreeMap<String, String>,
     announce: Option<(Publisher, String)>,
     quiet: bool,
+    /// Also announce each task message as `message.received`.
+    message_events: bool,
     clock: i64,
     ids: u64,
     refuse_next: Option<(String, Refused)>,
@@ -238,6 +240,14 @@ impl FakeTasks {
     /// Announces every change as `task.changed` on `account`'s journal.
     pub fn announce_to(&self, publisher: Publisher, account: &str) {
         self.inner().announce = Some((publisher, account.to_owned()));
+    }
+
+    /// Also announces each task message as `message.received` (metadata:
+    /// the message and its conversation), as the daemon announces every
+    /// message it projects; off by default, so the tests written before it
+    /// keep the reads they count.
+    pub fn announce_messages(&self, on: bool) {
+        self.inner().message_events = on;
     }
 
     /// Stops (or resumes) announcing changes: a change the desktop has not
@@ -800,6 +810,18 @@ impl Inner {
             "deleted": false, "created_at": at, "receipts": [],
         }));
         self.announce(meta);
+        if self.message_events
+            && !self.quiet
+            && let Some((publisher, account)) = &self.announce
+        {
+            let message = format!("task-msg-{}", self.ids);
+            publisher.publish(
+                account,
+                "message.received",
+                json!({ "message": { "id": message, "conversation_id": conversation },
+                        "conversation": { "id": conversation } }),
+            );
+        }
     }
 
     fn version(&self, conversation: &str, task_id: &str) -> Result<u64, Refused> {

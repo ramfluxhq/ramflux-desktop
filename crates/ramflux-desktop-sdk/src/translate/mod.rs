@@ -187,6 +187,8 @@ pub struct Translator {
     /// Surfaces read before the task step answered in them was shown: read
     /// again, so an action already listed there resolves the step.
     surface_rereads: Vec<String>,
+    /// Tasks the daemon pruned (`task.changed` `kind: removed`).
+    removed_tasks: BTreeSet<ramflux_desktop_core::TaskId>,
     mcp_tools: Option<BTreeMap<String, Vec<String>>>,
     mcp_servers: Option<Vec<Value>>,
     integrations: Option<ramflux_desktop_core::Integrations>,
@@ -241,6 +243,7 @@ impl Translator {
             resolutions: Vec::new(),
             resolved_receipts: BTreeSet::new(),
             surface_rereads: Vec::new(),
+            removed_tasks: BTreeSet::new(),
             mcp_tools: None,
             mcp_servers: None,
             integrations: None,
