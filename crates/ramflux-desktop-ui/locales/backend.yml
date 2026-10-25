@@ -19,6 +19,9 @@ backend:
     contact_requests:
       en: "Contact requests are not available from the daemon yet."
       zh-CN: "守护进程尚不支持联系人请求。"
+    full_backup:
+      en: "Full backup and restore need a newer daemon."
+      zh-CN: "完整备份与恢复需要更新版本的守护进程。"
     contact_route:
       en: "A contact request travels to the contact's node and needs a federation route to it, which the daemon does not list."
       zh-CN: "联系人请求需发送到对方节点，需要通往该节点的联邦路由，守护进程未提供。"
@@ -238,3 +241,31 @@ backend:
     socket:
       en: "Attached to %{path} · %{accounts} open accounts"
       zh-CN: "已连接 %{path} · 已打开 %{accounts} 个账户"
+  backup:
+    wrong_passphrase:
+      en: "This passphrase doesn't open the backup. Check it and try again."
+      zh-CN: "此口令无法打开该备份。请检查后重试。"
+    tampered:
+      en: "The backup file was changed or damaged, so it can't be trusted."
+      zh-CN: "备份文件已被修改或损坏，无法信任。"
+    truncated:
+      en: "The backup file is incomplete. It may not have finished copying."
+      zh-CN: "备份文件不完整，可能尚未复制完成。"
+    unsupported_version:
+      en: "This backup was made by a newer version of Ramflux."
+      zh-CN: "此备份由更新版本的 Ramflux 创建。"
+    insufficient_space:
+      en: "Not enough disk space: %{needed} needed, %{available} free."
+      zh-CN: "磁盘空间不足：需要 %{needed}，可用 %{available}。"
+    unreadable:
+      en: "The backup file can't be read."
+      zh-CN: "无法读取备份文件。"
+    not_writable:
+      en: "Can't write to the chosen location."
+      zh-CN: "无法写入所选位置。"
+    staging_expired:
+      en: "The checked copy expired before it was restored. Check the backup again."
+      zh-CN: "检查过的副本在恢复前已过期。请重新检查备份。"
+    interrupted:
+      en: "The daemon stopped while this was running. Nothing was changed."
+      zh-CN: "运行期间守护进程已停止，未作任何更改。"

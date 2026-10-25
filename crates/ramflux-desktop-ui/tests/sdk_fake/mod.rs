@@ -13,7 +13,8 @@
 //! A successful `message.submit` adds its conversation (and attachment) to
 //! the directories, as the daemon records them; `fail_submit` makes it fail.
 //! Agent surfaces are held on the protocol's state machine (`surfaces`),
-//! voice calls by the call fake (`calls`).
+//! voice calls by the call fake (`calls`), full backup and restore jobs by
+//! the backup fake (`backup`).
 //!
 //! With `tasks` set, the daemon also holds conversation tasks (on the
 //! protocol's state machine, see `fake_tasks`) and lists `approvals`; its
@@ -104,6 +105,8 @@ pub struct State {
     /// Contact requests (CONTACT-02, contract-first); a contact's row in
     /// `contact.list` carries this account's own request to it.
     pub requests: Arc<ramflux_desktop_test::fake_contact_requests::FakeContactRequests>,
+    /// Full backup and restore jobs (the assumed BACKUP-01 API).
+    pub backup: Arc<ramflux_desktop_test::fake_backup::FakeBackup>,
 }
 
 /// The shared state.
@@ -221,16 +224,20 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
     let all = frames();
     shared.lock().expect("state").calls.conversation("dm-ana", "principal-ana");
     let fake = FakeBus::start(&path, move |method, account, body| {
-        let (surfaces, tasks, calls, requests) = {
+        let (surfaces, tasks, calls, requests, backup) = {
             let state = state.lock().expect("state");
             (
                 state.surfaces.clone(),
                 state.tasks.clone(),
                 state.calls.clone(),
                 state.requests.clone(),
+                state.backup.clone(),
             )
         };
         if let Some(reply) = requests.handle(method, account, body) {
+            return reply;
+        }
+        if let Some(reply) = backup.handle(method, account, body) {
             return reply;
         }
         if let Some(reply) = surfaces.handle(method, body) {

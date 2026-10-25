@@ -10,6 +10,8 @@
 //!
 //! - [`account`]: lock, passphrase rotation, backup export (with its own
 //!   passphrase).
+//! - [`backup`]: full backup and full restore, with progress, the review
+//!   of a checked backup, and the final counts.
 //! - [`devices`]: devices, revocation (hold), own-device sync.
 //! - [`nodes`]: node profiles, probe results, default, enable, remove.
 //! - [`integrations`]: MCP servers and pending A2I events (read-only).
@@ -22,6 +24,7 @@
 
 pub mod account;
 pub mod appearance;
+pub mod backup;
 pub mod devices;
 pub mod diagnostics;
 pub mod integrations;
@@ -55,6 +58,8 @@ use crate::root::{ConfirmHost, IntentRoot};
 pub enum SettingsSection {
     /// Account.
     Account,
+    /// Full backup and restore.
+    Backup,
     /// Devices.
     Devices,
     /// Nodes.
@@ -69,8 +74,9 @@ pub enum SettingsSection {
 
 impl SettingsSection {
     /// Every section in sidebar order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Account,
+        Self::Backup,
         Self::Devices,
         Self::Nodes,
         Self::Integrations,
@@ -82,6 +88,7 @@ impl SettingsSection {
     pub const fn key(self) -> &'static str {
         match self {
             Self::Account => "account",
+            Self::Backup => "backup",
             Self::Devices => "devices",
             Self::Nodes => "nodes",
             Self::Integrations => "integrations",
@@ -119,6 +126,7 @@ impl SectionContext {
 pub struct SettingsPage {
     context: SectionContext,
     inputs: account::AccountInputs,
+    backup: Entity<backup::BackupPanel>,
     launch_inputs: local_setup::LaunchInputs,
     section: SettingsSection,
     opened: usize,
@@ -167,10 +175,13 @@ impl SettingsPage {
                 cx.notify();
             }
         }));
+        let backup = cx.new(|cx| backup::BackupPanel::new(store.clone(), root.clone(), window, cx));
+        subscriptions.push(cx.observe(&backup, |_, _, cx| cx.notify()));
         let sink = IntentRoot::sink(&root).scoped(Scope::Panel("settings".into()));
         Self {
             context: SectionContext { store, sink, root, launcher },
             inputs,
+            backup,
             launch_inputs,
             section: SettingsSection::Account,
             opened: 0,
@@ -206,6 +217,11 @@ impl SettingsPage {
         [&self.inputs.current, &self.inputs.next]
     }
 
+    /// The backup section's panel.
+    pub fn backup_panel(&self) -> &Entity<backup::BackupPanel> {
+        &self.backup
+    }
+
     /// The masked backup passphrase input.
     pub fn backup_input(&self) -> &Entity<InputState> {
         &self.inputs.backup
@@ -217,6 +233,7 @@ impl Render for SettingsPage {
         let context = &self.context;
         let pages = [
             account::page(context, &self.inputs, cx),
+            backup::page(&self.backup, cx),
             devices::page(context, cx),
             nodes::page(context, cx),
             integrations::page(context, cx),

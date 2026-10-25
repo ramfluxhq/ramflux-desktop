@@ -144,3 +144,11 @@ name = "call_shots"
 path = "tests/call_shots.rs"
 test = false
 harness = false
+
+# Offscreen screenshots of Settings · Backup (backup, restore, review,
+# results, failures); run explicitly, not part of `cargo test`.
+[[test]]
+name = "backup_shots"
+path = "tests/backup_shots.rs"
+test = false
+harness = false

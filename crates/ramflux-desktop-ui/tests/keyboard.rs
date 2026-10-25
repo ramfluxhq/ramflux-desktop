@@ -220,7 +220,7 @@ fn settings_open_trap_focus_step_sections_and_close_back(cx: &mut TestAppContext
     let section =
         |cx: &mut TestAppContext| cx.update(|cx| shell.read(cx).settings().read(cx).section());
     press(cx, handle, "ctrl-tab");
-    assert_eq!(section(cx), SettingsSection::Devices);
+    assert_eq!(section(cx), SettingsSection::Backup);
     press(cx, handle, "ctrl-shift-tab");
     press(cx, handle, "ctrl-shift-tab");
     assert_eq!(section(cx), SettingsSection::Appearance, "wraps around");

@@ -7,6 +7,9 @@ settings:
     account:
       en: "Account"
       zh-CN: "账户"
+    backup:
+      en: "Backup"
+      zh-CN: "备份"
     devices:
       en: "Devices"
       zh-CN: "设备"
@@ -57,14 +60,14 @@ settings:
       en: "Export backup…"
       zh-CN: "导出备份…"
     backup_title:
-      en: "Backup"
-      zh-CN: "备份"
+      en: "Key backup"
+      zh-CN: "密钥备份"
     backup_passphrase:
       en: "Backup passphrase"
       zh-CN: "备份口令"
     backup_help:
-      en: "The backup file is encrypted with this passphrase. You need it to restore."
-      zh-CN: "备份文件用此口令加密，恢复时需要它。"
+      en: "Keys and contacts only, without messages or files; to keep everything, use Backup. The file is encrypted with this passphrase."
+      zh-CN: "仅含密钥和联系人，不含消息和文件；要保留全部内容，请使用“备份”。文件用此口令加密。"
     rotate_title:
       en: "Change passphrase"
       zh-CN: "更改口令"
@@ -330,3 +333,206 @@ settings:
     none:
       en: "Not kept"
       zh-CN: "未保存"
+  backup:
+    create_title:
+      en: "Full backup"
+      zh-CN: "完整备份"
+    create_help:
+      en: "One encrypted file with everything in this account: all messages, groups, contacts and files."
+      zh-CN: "一个加密文件，包含此账户的全部内容：所有消息、群组、联系人和文件。"
+    last:
+      en: "Last backup %{time} · %{size}"
+      zh-CN: "上次备份 %{time} · %{size}"
+    create:
+      en: "Create backup…"
+      zh-CN: "创建备份…"
+    location:
+      en: "Location"
+      zh-CN: "位置"
+    no_location:
+      en: "No location chosen"
+      zh-CN: "未选择位置"
+    choose:
+      en: "Choose…"
+      zh-CN: "选择…"
+    passphrase:
+      en: "Backup passphrase"
+      zh-CN: "备份口令"
+    repeat:
+      en: "Repeat passphrase"
+      zh-CN: "再次输入口令"
+    passphrase_help:
+      en: "You need this passphrase to restore. It can't be recovered if you forget it."
+      zh-CN: "恢复时需要此口令。忘记后无法找回。"
+    strength:
+      too_short:
+        en: "Too short: use at least 12 characters."
+        zh-CN: "太短：至少需要 12 个字符。"
+      weak:
+        en: "Weak: add a few more words."
+        zh-CN: "较弱：再加几个词。"
+      fair:
+        en: "Fair"
+        zh-CN: "中等"
+      strong:
+        en: "Strong"
+        zh-CN: "强"
+    mismatch:
+      en: "The passphrases don't match."
+      zh-CN: "两次输入的口令不一致。"
+    start:
+      en: "Create backup"
+      zh-CN: "创建备份"
+    restore_title:
+      en: "Restore"
+      zh-CN: "恢复"
+    restore_help:
+      en: "Restore everything from a backup file. It merges with what is on this device: where both have the same item, the newer one is kept."
+      zh-CN: "从备份文件恢复全部内容，并与本设备上的数据合并：同一项目以较新的为准。"
+    restore:
+      en: "Restore from backup…"
+      zh-CN: "从备份恢复…"
+    file:
+      en: "Backup file"
+      zh-CN: "备份文件"
+    no_file:
+      en: "No file chosen"
+      zh-CN: "未选择文件"
+    verify:
+      en: "Check backup"
+      zh-CN: "检查备份"
+    verify_help:
+      en: "The whole file is checked before anything is restored."
+      zh-CN: "恢复前会先完整检查整个文件。"
+    size:
+      en: "Size"
+      zh-CN: "大小"
+    files_value:
+      en: "%{count} (%{size})"
+      zh-CN: "%{count} 个（%{size}）"
+    close:
+      en: "Done"
+      zh-CN: "完成"
+    no_space:
+      en: "Not enough disk space."
+      zh-CN: "磁盘空间不足。"
+    error_other:
+      en: "It stopped with an error (%{code})."
+      zh-CN: "因错误而停止（%{code}）。"
+    category:
+      identity:
+        en: "Keys and devices"
+        zh-CN: "密钥与设备"
+      contacts:
+        en: "Contacts"
+        zh-CN: "联系人"
+      conversations:
+        en: "Conversations"
+        zh-CN: "会话"
+      messages:
+        en: "Messages"
+        zh-CN: "消息"
+      groups:
+        en: "Groups"
+        zh-CN: "群组"
+      surfaces:
+        en: "Agent cards"
+        zh-CN: "智能体卡片"
+      tasks:
+        en: "Tasks"
+        zh-CN: "任务"
+      settings:
+        en: "Settings"
+        zh-CN: "设置"
+      attachments:
+        en: "Files"
+        zh-CN: "文件"
+    job:
+      creating:
+        en: "Creating backup"
+        zh-CN: "正在创建备份"
+      verifying:
+        en: "Checking backup"
+        zh-CN: "正在检查备份"
+      installing:
+        en: "Restoring"
+        zh-CN: "正在恢复"
+      preparing:
+        en: "Preparing"
+        zh-CN: "准备中"
+      working:
+        en: "Working"
+        zh-CN: "处理中"
+      of:
+        en: "%{done} of %{total}"
+        zh-CN: "%{done} / %{total}"
+      items:
+        en: "%{done} of %{total} items"
+        zh-CN: "%{done} / %{total} 项"
+      installing_note:
+        en: "The data on this device stays as it is until the restore finishes."
+        zh-CN: "恢复完成前，本设备上的数据保持不变。"
+      cancel_backup:
+        en: "Cancel backup"
+        zh-CN: "取消备份"
+      cancel_restore:
+        en: "Cancel restore"
+        zh-CN: "取消恢复"
+    verified:
+      title:
+        en: "Restore this backup?"
+        zh-CN: "恢复此备份？"
+      account:
+        en: "Account"
+        zh-CN: "账户"
+      made:
+        en: "Made"
+        zh-CN: "备份时间"
+      merge:
+        en: "This account is already on this device. The backup merges with it: where both have the same item, the newer one is kept. Nothing here is deleted."
+        zh-CN: "此账户已在本设备上。备份将与之合并：同一项目以较新的为准，本设备上的内容不会被删除。"
+      add:
+        en: "This account will be added to this device."
+        zh-CN: "此账户将被添加到本设备。"
+      install:
+        en: "Restore"
+        zh-CN: "恢复"
+    done:
+      backup:
+        en: "Backup created"
+        zh-CN: "备份已创建"
+      restore:
+        en: "Backup restored"
+        zh-CN: "备份已恢复"
+      kept_newer:
+        en: "Kept from this device (newer)"
+        zh-CN: "保留本设备上较新的项目"
+      files_verified:
+        en: "All %{count} files match their checksums."
+        zh-CN: "全部 %{count} 个文件均与校验值一致。"
+      files_problem:
+        en: "%{bad} of %{count} files didn't match their checksums and were not restored."
+        zh-CN: "%{count} 个文件中有 %{bad} 个与校验值不一致，未恢复。"
+    failed:
+      backup:
+        en: "Backup failed"
+        zh-CN: "备份失败"
+      restore:
+        en: "Restore failed"
+        zh-CN: "恢复失败"
+      unchanged:
+        en: "Nothing on this device was changed."
+        zh-CN: "本设备上的数据未作任何更改。"
+      retry:
+        en: "Try again…"
+        zh-CN: "重试…"
+    cancelled:
+      backup:
+        en: "Backup cancelled"
+        zh-CN: "备份已取消"
+      restore:
+        en: "Restore cancelled"
+        zh-CN: "恢复已取消"
+      note:
+        en: "Nothing was kept or changed."
+        zh-CN: "未保留或更改任何内容。"
