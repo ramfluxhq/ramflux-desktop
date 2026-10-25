@@ -192,6 +192,9 @@ backend:
     invalid_request_note:
       en: "The note can be one line of up to 140 characters."
       zh-CN: "附言须为一行，最多 140 个字符。"
+    request_unavailable:
+      en: "Contact requests can't be handled right now. Nothing changed; try again later."
+      zh-CN: "暂时无法处理联系人请求。未做任何更改，请稍后再试。"
     root_conflict:
       en: "The contact's identity changed while you were confirming it. Nothing was replaced; review it again."
       zh-CN: "确认期间对方身份发生了变化。未做任何替换，请重新核对。"
@@ -211,8 +214,8 @@ backend:
       en: "This device id is already registered to another identity on the node. Start again to get a new device id."
       zh-CN: "此设备 ID 已在节点上注册给另一个身份。请重新开始以获得新的设备 ID。"
     unavailable:
-      en: "Your home node could not be reached. Nothing was added; try again."
-      zh-CN: "无法连接你的主节点。未添加任何内容，请重试。"
+      en: "Your home node can't be reached or is busy right now. Nothing was added; try again later."
+      zh-CN: "你的主节点暂时无法连接或繁忙。未添加任何内容，请稍后再试。"
     root_replacement:
       en: "This card names another identity for %{name} than the earlier lookup found (lookup: %{previous}; card: %{proposed}). Compare with %{name} before replacing it."
       zh-CN: "此名片为 %{name} 给出的身份与之前查询到的不同（查询：%{previous}；名片：%{proposed}）。替换前请与 %{name} 核对。"

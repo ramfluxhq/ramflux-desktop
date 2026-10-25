@@ -107,6 +107,15 @@ pub fn request_of(row: &Value, default_state: Option<RequestState>) -> Option<Co
     })
 }
 
+/// The request calls whose `Unavailable` refusal is explained as "try
+/// again later" (`contact.add` has its own, [`key::CONTACT_UNAVAILABLE`]).
+const REQUEST_CALLS: [&str; 4] = [
+    methods::CONTACT_REQUEST_ACCEPT,
+    methods::CONTACT_REQUEST_DECLINE,
+    methods::CONTACT_REQUEST_BLOCK,
+    methods::CONTACT_REQUESTS_POLICY,
+];
+
 /// The state a request event reports, when the row does not say.
 fn topic_state(topic: &str) -> Option<RequestState> {
     Some(match topic {
@@ -188,10 +197,14 @@ impl Translator {
 
     /// The message of a refused request call, when the desktop can say
     /// more than the daemon's text: a typed decision refusal
-    /// (`request_closed`, `request_not_found`, `invalid_request_note`), or
+    /// (`request_closed`, `request_not_found`, `invalid_request_note`); a
+    /// decision or setting refused `Unavailable` (the daemon is busy, e.g.
+    /// its contact request capacity is exhausted, or cannot reach its node:
+    /// nothing changed, try again later; nothing is retried on its own); or
     /// asking again someone who declined this account's request while the
     /// decline cools down (the daemon refuses it untyped; the desktop knows
-    /// the request was declined).
+    /// the request was declined, from the request list or, once the list
+    /// pruned it, from the contact row's `request_state`).
     pub fn request_failure(&self, method: &str, body: &Value, error: &BusError) -> Option<String> {
         let BusError::Daemon { code, reason_code, .. } = error else { return None };
         match reason_code.as_deref() {
@@ -200,6 +213,9 @@ impl Translator {
             Some("invalid_request_note") => return Some(key::CONTACT_REQUEST_NOTE.to_owned()),
             Some(_) => return None,
             None => {}
+        }
+        if code == "Unavailable" && REQUEST_CALLS.contains(&method) {
+            return Some(key::CONTACT_REQUEST_UNAVAILABLE.to_owned());
         }
         if method != methods::CONTACT_ADD || code != "ValidationFailed" {
             return None;
@@ -267,5 +283,25 @@ mod tests {
             details: None,
         };
         assert_eq!(t.request_failure(methods::CONTACT_ADD, &add, &other), None);
+    }
+
+    #[test]
+    fn a_busy_daemon_is_asked_again_later() {
+        // CONTACT-02 r3: request capacity pressure is the bus's untyped
+        // `Unavailable`; a decision or the setting says to try again later.
+        let t = Translator::new(Scope::Daemon, "rfd.sock");
+        let busy = BusError::daemon("Unavailable", "contact request rate limit exceeded");
+        let body = json!({ "request_id": "rq1" });
+        for method in REQUEST_CALLS {
+            assert_eq!(
+                t.request_failure(method, &body, &busy).as_deref(),
+                Some(key::CONTACT_REQUEST_UNAVAILABLE),
+                "{method}"
+            );
+        }
+        // contact.add keeps its own explanation (the contact refusals).
+        let add = json!({ "participant_id": "p-ana" });
+        assert_eq!(t.request_failure(methods::CONTACT_ADD, &add, &busy), None);
+        assert_eq!(t.failure_message(methods::CONTACT_ADD, &busy), key::CONTACT_UNAVAILABLE);
     }
 }

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The fake daemon's contact requests (CONTACT-02 r2 at product
-//! `feat/contact-02` 8933fc1; the bus contract the desktop assumes is in
+//! The fake daemon's contact requests (CONTACT-02 as merged on product
+//! main 6158459; the bus contract the desktop assumes is in
 //! docs/contract.md).
 //!
 //! Requests (account scoped):
@@ -25,8 +25,12 @@
 //!   ([`FakeContactRequests::sent`]); expired, or declined after the
 //!   cooldown ([`FakeContactRequests::cooldown_over`]) → a new request;
 //!   declined within the 24 h cooldown → refused untyped
-//!   (`ValidationFailed`), as the daemon does. Any other add is not
-//!   answered here.
+//!   (`ValidationFailed`), as the daemon does, also once the closed row
+//!   is pruned from the list ([`FakeContactRequests::prune`]: the daemon
+//!   keeps the declined status). Any other add is not answered here.
+//! - While the daemon is busy ([`FakeContactRequests::set_busy`]: its
+//!   contact request capacity is exhausted), decisions and the setting are
+//!   refused `Unavailable`, untyped (product `ContactRequestCapacity`).
 //!
 //! A row: `request_id`, `principal_id`, `root_commitment`, `direction`
 //! (`inbound` / `outbound`), `state`, `note`, `safety_number` (twelve digit
@@ -68,6 +72,9 @@ struct Held {
     sent: u32,
     /// A decline whose 24 h cooldown is over.
     cooled: bool,
+    /// A closed request pruned from the list (an hour after it closed);
+    /// its state stays on the contact row.
+    pruned: bool,
 }
 
 impl Held {
@@ -117,6 +124,9 @@ struct Inner {
     next: u64,
     /// Messages delivered into conversations on accept: (account, peer, text).
     delivered: Vec<(String, String, String)>,
+    /// Request capacity exhausted: decisions and the setting are refused
+    /// `Unavailable`.
+    busy: bool,
 }
 
 /// Contact requests of the fake daemon (any number of accounts).
@@ -228,13 +238,20 @@ impl FakeContactRequests {
         let account = account.unwrap_or_default().to_owned();
         let (reply, events) = {
             let mut inner = self.inner();
+            let read = matches!(method, "contact.requests.list" | "contact.requests.policy.get");
+            if inner.busy && !read {
+                let busy = refused("Unavailable", "contact request rate limit exceeded");
+                return Some(busy);
+            }
             match method {
                 "contact.requests.list" => {
                     let mut rows: Vec<(bool, Value)> = inner
                         .requests
                         .iter()
                         .filter(|(_, r)| {
-                            r.account == account && (!r.incoming || r.state == "pending")
+                            r.account == account
+                                && !r.pruned
+                                && (!r.incoming || r.state == "pending")
                         })
                         .map(|(id, r)| (r.state != "pending", r.row(id)))
                         .collect();
@@ -344,6 +361,22 @@ impl FakeContactRequests {
             messages: Vec::new(),
             sent: 1,
             cooled: false,
+            pruned: false,
+        }
+    }
+
+    /// Makes the daemon's contact request capacity exhausted (`true`) or
+    /// free again.
+    pub fn set_busy(&self, busy: bool) {
+        self.inner().busy = busy;
+    }
+
+    /// The daemon prunes closed request `id` from the list (an hour after
+    /// it closed); the contact row keeps its state, and a decline still
+    /// cools down.
+    pub fn prune(&self, id: &str) {
+        if let Some(held) = self.inner().requests.get_mut(id).filter(|r| r.state != "pending") {
+            held.pruned = true;
         }
     }
 
@@ -394,6 +427,7 @@ impl FakeContactRequests {
                 messages: Vec::new(),
                 sent: 1,
                 cooled: false,
+                pruned: false,
             };
             let mut events = vec![(account.to_owned(), "contact.requested", held.event(&id))];
             inner.requests.insert(id.clone(), held);
@@ -526,6 +560,22 @@ mod tests {
     }
 
     #[test]
+    fn a_busy_daemon_refuses_decisions_unavailable_and_still_lists() {
+        let fake = FakeContactRequests::default();
+        let id = fake.incoming("a", "p-bo", None);
+        fake.set_busy(true);
+        assert!(matches!(
+            fake.handle("contact.accept", Some("a"), &json!({ "request_id": id })),
+            Some(Reply::Error("Unavailable", _))
+        ));
+        let listed = ok(fake.handle("contact.requests.list", Some("a"), &json!({})));
+        assert_eq!(listed["requests"][0]["state"], "pending");
+        fake.set_busy(false);
+        let answer = ok(fake.handle("contact.accept", Some("a"), &json!({ "request_id": id })));
+        assert_eq!(answer["state"], "accepted");
+    }
+
+    #[test]
     fn adding_again_retries_a_pending_request_and_respects_a_declines_cooldown() {
         let fake = FakeContactRequests::default();
         let add = json!({ "principal_id": "p-ana" });
@@ -538,6 +588,16 @@ mod tests {
         assert_eq!(listed["requests"][0]["direction"], "outbound");
 
         fake.peer_answers(&id, "declined");
+        assert!(matches!(
+            fake.handle("contact.add", Some("a"), &add),
+            Some(Reply::Error("ValidationFailed", _))
+        ));
+        // Pruned from the list, the decline still cools down and stays on
+        // the contact row.
+        fake.prune(&id);
+        let listed = ok(fake.handle("contact.requests.list", Some("a"), &json!({})));
+        assert_eq!(listed["requests"], json!([]));
+        assert_eq!(fake.own_state("a", "p-ana"), Some("declined"));
         assert!(matches!(
             fake.handle("contact.add", Some("a"), &add),
             Some(Reply::Error("ValidationFailed", _))

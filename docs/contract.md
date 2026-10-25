@@ -590,16 +590,15 @@ of byte values 0..31, decoded lease ID 0..15, side 1 and cookie 32..63, expected
 and `07d911fa05814f8c69af12f9420b5aee` for IPv6 `[2001:db8::1234]:54321`.
 These are public test vectors, not deployment keys.
 
-## Contact requests (DESK-F21, on CONTACT-02 r2)
+## Contact requests (DESK-F21, on CONTACT-02)
 
 Adding a contact sends the peer a request; until the peer accepts, messages
 from the requester are held by the peer's daemon (a "message request") and
 delivered into the conversation on accept, dropped on decline or block.
-Aligned with the CONTACT-02 r2 contract (product `feat/contact-02`
-`8933fc1`, `docs/contact_cards.md` "Contact consent and message requests");
-the desktop pins that product revision until CONTACT-02 merges. The fake
-daemon (`ramflux-desktop-test` `fake_contact_requests`) follows the same
-contract.
+Aligned with the CONTACT-02 contract as merged on product main (pinned
+`6158459`, `docs/contact_cards.md` "Contact consent and message requests",
+r4). The fake daemon (`ramflux-desktop-test` `fake_contact_requests`)
+follows the same contract.
 
 **Store.** A `ContactRequest` (daemon `id`, `peer`, `RequestDirection`
 `Incoming` / `Outgoing`, `RequestState` `Pending`, `Accepted`, `Declined`,
@@ -629,7 +628,7 @@ explicitly. UI events: `ContactRequestAnswered { request_id, answer }`,
 `ContactRequestPolicySwitched { auto_accept }`; Send again on a contact row
 emits `AddContactRequested`.
 
-**Daemon API (CONTACT-02 r2).**
+**Daemon API (CONTACT-02, product main).**
 
 - `contact.add {principal_id}` (and `contact.card.import`) sends the request;
   the answer's `contact` row and every `contact.list` row carry
@@ -640,13 +639,19 @@ emits `AddContactRequested`.
   explicit retry); an expired request, or a declined one after its 24 h
   cooldown, is asked anew. An accepted contact is refused `already_contact`.
   Within the cooldown the daemon refuses the add untyped (`ValidationFailed`,
-  no `reason_code`); the desktop, knowing the request was declined, says so
-  plainly (`backend.contact.request_cooldown`: they declined recently, ask
-  again a day after). The desktop never resends on its own.
+  no `reason_code`), also after the declined row was pruned from the list
+  (the daemon keeps the declined status, and the contact row still reports
+  it); the desktop, knowing the request was declined, says so plainly
+  (`backend.contact.request_cooldown`: they declined recently, ask again a
+  day after). The desktop never resends on its own. `Unavailable` (the home
+  node unreachable, or the daemon busy) is `backend.contact.unavailable`:
+  nothing was added, try again later.
 - `contact.requests.list {}` → `{requests: [row], contact_requests: "manual" |
   "auto_accept"}`: the pending incoming requests and up to 128 of this
   account's own (pending first, then the newest accepted / declined /
-  expired; closed rows are pruned after an hour). A row: `request_id`,
+  expired; closed rows are pruned after an hour). An incoming request past
+  its expiry is left out at once, and an own one shows `expired` at once,
+  whether or not the daemon's maintenance ran. A row: `request_id`,
   `link_id`, `principal_id`, `root_commitment`, `direction` (`inbound` /
   `outbound`), `state`, `expires_at` (Unix seconds), `note` and `preview`
   (delimited, sanitized quoted fields: shown as untrusted text; preview at
@@ -663,13 +668,23 @@ emits `AddContactRequested`.
   the desktop sends `request_id` only. The same decision again succeeds;
   another decision on a closed request is `ValidationFailed` /
   `request_closed`, an unknown id `request_not_found`
-  (`backend.contact.request_closed` / `request_not_found`). Accept delivers the
+  (`backend.contact.request_closed` / `request_not_found`). While the
+  daemon's contact request capacity is exhausted (`ContactRequestCapacity`,
+  r3) it refuses with the bus's untyped `Unavailable`; for a decision or the
+  setting the desktop says nothing changed and to try again later
+  (`backend.contact.request_unavailable`), keeps the request, and does not
+  retry on its own. Accept delivers the
   held messages as ordinary `message.received` / `message.list` with their
   original send times (the desktop reads the conversations again). Decline
   sends the requester a decline; block tells the requester nothing (their
   request looks pending until it expires).
 - `contact.requests.policy.get {}` / `contact.requests.policy.set
   {contact_requests}` → `{contact_requests}`.
+- Fences (r3/r4, daemon side; nothing for the desktop to send): a decline or
+  block fences the peer's requests and pair controls; `contact.unblock`
+  clears the fence; adding a peer whose request this account declined, or
+  accepting one, clears this side's decline fence and admits the peer's
+  answer; an accepted contact is never fenced.
 - Events (stream topics and the push subscription): `contact.requested`
   (a new incoming request, and again as held messages arrive),
   `contact.accepted`, `contact.declined`, `contact.blocked`,

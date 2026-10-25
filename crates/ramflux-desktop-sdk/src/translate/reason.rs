@@ -119,6 +119,10 @@ pub mod key {
     pub const CONTACT_REQUEST_NOT_FOUND: &str = "backend.contact.request_not_found";
     /// Contact request refusal `invalid_request_note`: the note is not usable.
     pub const CONTACT_REQUEST_NOTE: &str = "backend.contact.invalid_request_note";
+    /// A request decision or setting refused `Unavailable` (untyped): the
+    /// daemon is busy (contact request capacity, CONTACT-02 r3) or its node
+    /// is unreachable for now. Nothing changed; try again later.
+    pub const CONTACT_REQUEST_UNAVAILABLE: &str = "backend.contact.request_unavailable";
     /// Contact refusal `rate_limited`: Too many lookups.
     pub const CONTACT_RATE_LIMITED: &str = "backend.contact.rate_limited";
     /// Contact refusal `principal_id_taken`: The id is registered to another identity.
@@ -127,7 +131,8 @@ pub mod key {
     pub const DEVICE_ID_TAKEN: &str = "backend.contact.device_id_taken";
     /// The daemon's media session of a call could not be read.
     pub const CALL_MEDIA: &str = "backend.call.media";
-    /// Contact refusal `unavailable`: The home node could not be reached.
+    /// Contact refusal `unavailable`: the home node is unreachable or busy
+    /// (the daemon's `Unavailable` covers both); try again later.
     pub const CONTACT_UNAVAILABLE: &str = "backend.contact.unavailable";
     /// Contact refusal `root_replacement`: The card names another identity than the lookup (`name`, `previous`, `proposed`).
     pub const CONTACT_ROOT_REPLACEMENT: &str = "backend.contact.root_replacement";
@@ -144,7 +149,7 @@ pub mod key {
     pub const CONTACT_EXPORT_FAILED: &str = "backend.contact.export_failed";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 51] = [
+    pub const ALL: [&str; 56] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -187,6 +192,11 @@ pub mod key {
         CONTACT_ROOT_CONFLICT,
         CONTACT_MANIFEST_INVALID,
         CONTACT_AMBIGUOUS,
+        CONTACT_REQUEST_COOLDOWN,
+        CONTACT_REQUEST_CLOSED,
+        CONTACT_REQUEST_NOT_FOUND,
+        CONTACT_REQUEST_NOTE,
+        CONTACT_REQUEST_UNAVAILABLE,
         CONTACT_RATE_LIMITED,
         PRINCIPAL_ID_TAKEN,
         DEVICE_ID_TAKEN,

@@ -8,7 +8,9 @@
 //! accept reads the conversations again, where the held messages land);
 //! this account's own request shows on the contact, is sent again only when
 //! asked, shows a decline, and a re-request during the decline's cooldown
-//! is explained; the request setting is read and set; and a daemon without
+//! is explained (also once the list pruned the declined request); a busy
+//! daemon's refusal says to try again later; the request setting is read
+//! and set; and a daemon without
 //! requests has every request method declared unsupported.
 
 mod common;
@@ -277,6 +279,69 @@ fn asking_again_resends_a_pending_request_and_a_decline_cools_down() {
     account.until("a new request", |s, _| {
         selectors::outgoing_contact_request(s, &ana)
             .is_some_and(|r| r.state == RequestState::Pending && r.id != id)
+    });
+    world.stop();
+}
+
+#[test]
+fn a_decline_pruned_from_the_list_still_explains_the_cooldown() {
+    // CONTACT-02 r3: the daemon prunes a closed request from the list an
+    // hour after it closed and keeps the declined status, which the
+    // contact row reports and the cooldown still enforces.
+    let world = World::start("pruned", true);
+    let id = world.requests.outgoing(ACCOUNT, "principal-ana");
+    world.requests.peer_answers(&id, "declined");
+    world.requests.prune(&id);
+    let mut account = live(&world);
+    let ana = ParticipantId::new("principal-ana");
+    account.until("declined, from the contact row", |s, _| {
+        selectors::outgoing_contact_request(s, &ana)
+            .is_some_and(|r| r.state == RequestState::Declined)
+    });
+    dispatch(&mut account, IntentKind::AddContact { participant_id: ana.clone() })
+        .expect("allowed");
+    account.until("the cooldown explained", |s, _| {
+        s.failures().iter().any(|f| {
+            f.method == methods::CONTACT_ADD
+                && f.message.starts_with("backend.contact.request_cooldown ")
+        })
+    });
+    world.stop();
+}
+
+#[test]
+fn a_busy_daemon_is_asked_again_later_and_nothing_is_retried() {
+    // CONTACT-02 r3: exhausted request capacity is the bus's untyped
+    // `Unavailable`; the desktop says to try again later and does not.
+    let world = World::start("busy", true);
+    let mut account = live(&world);
+    let id = world.requests.incoming(ACCOUNT, "principal-cy", None);
+    account.until("the request", |s, _| pending(s) == ["principal-cy"]);
+    world.requests.set_busy(true);
+    let accept = || IntentKind::AnswerContactRequest {
+        request_id: id.clone(),
+        answer: RequestAnswer::Accept,
+    };
+    dispatch(&mut account, accept()).expect("allowed");
+    account.until("try again later", |s, _| {
+        s.failures().iter().any(|f| {
+            f.method == methods::CONTACT_REQUEST_ACCEPT
+                && f.code == FailureCode::Daemon("Unavailable".into())
+                && f.message == "backend.contact.request_unavailable"
+        })
+    });
+    for _ in 0..10 {
+        account.pump();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+    assert_eq!(world.requests("contact.accept").len(), 1, "no automatic retry");
+    assert_eq!(pending(&account.store), ["principal-cy"], "still waiting for an answer");
+
+    // Later, asked again by the user: accepted.
+    world.requests.set_busy(false);
+    dispatch(&mut account, accept()).expect("allowed");
+    account.until("accepted", |s, _| {
+        state_of(s, "principal-cy", RequestDirection::Incoming) == Some(RequestState::Accepted)
     });
     world.stop();
 }

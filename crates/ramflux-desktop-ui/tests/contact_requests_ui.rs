@@ -8,7 +8,8 @@
 //! daemon by request id; the auto-accept setting; this account's own
 //! request on a contact (Send again while it waits, a decline shown as
 //! such, a re-request during the decline's cooldown explained in the add
-//! form); and a daemon without requests.
+//! form); a busy daemon's refusal (try again later); and a daemon without
+//! requests.
 
 mod common;
 mod sdk_fake;
@@ -20,7 +21,7 @@ use gpui_kit::TestAppContext;
 use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{RequestPolicy, SyncMode};
 use ramflux_desktop_test::fake_contact_requests::FakeContactRequests;
-use ramflux_desktop_ui::i18n::tr_args;
+use ramflux_desktop_ui::i18n::{self, tr, tr_args};
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::docks::contacts::add_form::FormNote;
 use sdk_fake::wait;
@@ -126,6 +127,27 @@ fn decline_and_block_through_the_hold_reach_the_daemon(cx: &mut TestAppContext) 
     hold_confirm(cx, world.handle);
     wait(cx, "blocked", |_| world.requests.row(&blocked).is_some_and(|r| r["state"] == "blocked"));
     assert_eq!(sent(&world, "contact.block"), [json!({ "request_id": blocked })]);
+}
+
+#[gpui_kit::test]
+fn a_busy_daemon_asks_to_try_again_later(cx: &mut TestAppContext) {
+    // CONTACT-02 r3: exhausted request capacity is the bus's untyped
+    // `Unavailable`; the failure says to try again later, the request
+    // stays, and nothing is sent again on its own.
+    let world = open_requests(cx, "ui-request-busy", true);
+    let id = world.requests.incoming(ACCOUNT, "principal-busy", None);
+    wait(cx, "the request row", |cx| exists(cx, world.handle, &row("principal-busy")));
+    world.requests.set_busy(true);
+    click_in(cx, world.handle, &row("principal-busy"), "request-accept");
+    wait(cx, "the refusal", |cx| with_store(cx, &world.shell, |s| !s.failures().is_empty()));
+    // What the status strip shows for it.
+    let shown = with_store(cx, &world.shell, |s| s.failures().last().map(i18n::failure));
+    let later = tr("backend.contact.request_unavailable");
+    assert_ne!(later.as_ref(), "backend.contact.request_unavailable", "a translation exists");
+    assert!(shown.as_ref().is_some_and(|text| text.contains(later.as_ref())), "{shown:?}");
+    advance(cx, 300);
+    assert_eq!(sent(&world, "contact.accept"), [json!({ "request_id": id })], "no retry");
+    assert!(exists(cx, world.handle, &row("principal-busy")), "the request stays");
 }
 
 #[gpui_kit::test]
