@@ -438,6 +438,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             closed: false,
             out_of_sync: true,
             open_streams: vec![BlockId::new("b-1")],
+            final_streams: vec![BlockId::new("b-2")],
         }))),
         DomainEvent::Surface(SurfaceEvent::ActionRefused {
             surface_id: SurfaceId::new("s-1"),

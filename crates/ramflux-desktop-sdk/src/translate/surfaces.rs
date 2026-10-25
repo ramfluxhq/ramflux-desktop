@@ -28,6 +28,10 @@
 //! is writing, so a block is shown as being written while it is open and
 //! either was created empty or has grown since it was shown; the mark ends
 //! exactly when the daemon reports the block final (or the surface closed).
+//! A block reported final is never shown as written again, and once the
+//! author has ended a stream, a block it created empty and has not written
+//! into is not waited for any more (the daemon keeps it open only as a
+//! capability). Every snapshot carries the blocks the daemon reports final.
 //!
 //! Times: the daemon's `posted_at` (the author's signed posting time) dates
 //! the surface moment; for a surface without one, the earliest surface
@@ -445,6 +449,12 @@ impl Translator {
             closed: view.closed,
             out_of_sync: view.out_of_sync,
             open_streams: writing.iter().cloned().collect(),
+            final_streams: payload
+                .blocks
+                .iter()
+                .filter(|b| streamable(b.kind) && view.final_(&b.id))
+                .map(|b| b.id.clone())
+                .collect(),
         }))
     }
 
@@ -461,10 +471,20 @@ impl Translator {
         // Written: what was, while the daemon keeps it open; an append adds
         // its block, and so does growth across skipped versions (coalesced
         // appends). A patch that rewrites a text longer is not an append.
+        // A stream reported final stays final (never reopened by a later
+        // read), and once the author has ended a stream, the blocks it
+        // created empty and has not written into are not being written.
+        let any_final = payload.blocks.iter().any(|b| streamable(b.kind) && view.final_(&b.id));
+        let writes = |b: &BlockId| {
+            view.open(b)
+                && known.streams.get(b.as_str()) != Some(&true)
+                && !(any_final
+                    && payload.blocks.iter().any(|x| &x.id == b && block_text(x) == Some("")))
+        };
         let kept: BTreeSet<BlockId> =
-            known.streaming.iter().filter(|b| view.open(b)).cloned().collect();
+            known.streaming.iter().filter(|b| writes(b)).cloned().collect();
         let with = |extra: &BTreeSet<BlockId>| -> BTreeSet<BlockId> {
-            kept.iter().chain(extra.iter().filter(|b| view.open(b))).cloned().collect()
+            kept.iter().chain(extra.iter().filter(|b| writes(b))).cloned().collect()
         };
         let writing = if view.version > known.version + 1 {
             with(&grown_blocks(&known.payload, payload))

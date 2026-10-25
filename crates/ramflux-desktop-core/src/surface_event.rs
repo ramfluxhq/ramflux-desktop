@@ -102,6 +102,10 @@ pub struct SurfaceSnapshot {
     /// source can tell.
     #[serde(default)]
     pub open_streams: Vec<BlockId>,
+    /// Blocks whose stream the authority reports final (no more appends):
+    /// their streams end here, whatever was seen of them before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub final_streams: Vec<BlockId>,
 }
 
 /// A versioned event on one agent surface.

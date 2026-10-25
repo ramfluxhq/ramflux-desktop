@@ -9,17 +9,23 @@
 //! for its current state (`surface.request_resync`) with the daemon's typed
 //! answer shown in the surface; an action the daemon refuses because the
 //! surface changed asks the user to review it again; a surface the daemon
-//! removes leaves the conversation.
+//! removes leaves the conversation; a surface first read after its stream
+//! ended (the appends skipped) shows no writing mark, and no later version
+//! brings it back.
 
 mod common;
 mod sdk_fake;
 
 use common::*;
 use gpui_kit::TestAppContext;
-use ramflux_desktop_core::{SurfaceId, SurfaceState, SyncMode, UpdateRequest};
+use ramflux_desktop_core::{
+    Block, BlockId, BlockKind, ContextId, MomentId, ParticipantId, SurfaceEvent, SurfaceHash,
+    SurfaceId, SurfacePatchOp, SurfaceState, SyncMode, UpdateRequest,
+};
 use ramflux_desktop_ui::route::Page;
-use sdk_fake::author::{Bot, GROUP, scenario_surfaces};
+use sdk_fake::author::{BOT, Bot, GROUP, scenario_surfaces};
 use sdk_fake::wait;
+use serde_json::json;
 
 fn version(
     cx: &mut TestAppContext,
@@ -146,5 +152,77 @@ fn surfaces_from_the_daemon_stream_go_out_of_sync_and_ask_for_review(cx: &mut Te
         "the other surface stays"
     );
     assert!(!exists_in(cx, handle, &scope, "surface-streaming"), "a choice is not written");
+    fake.shutdown();
+}
+
+/// Atlas's surface as the AI participant writes it: a reply streamed into
+/// one of two blocks created empty (the other, its result, is filled when
+/// the user chooses; the daemon keeps it open), then its fallback.
+fn atlas(version: u64, base: &str) -> SurfaceEvent {
+    let id = || SurfaceId::new("s-atlas");
+    let empty = |id: &str| Block::new(id, BlockKind::Text, json!({ "text": "" }));
+    let append = |text: &str, is_final| SurfaceEvent::StreamAppend {
+        surface_id: id(),
+        version,
+        block_id: BlockId::new("reply"),
+        text_delta: text.into(),
+        is_final,
+        hash: None,
+    };
+    match version {
+        1 => SurfaceEvent::Create {
+            moment_id: MomentId::new("m-atlas"),
+            context_id: ContextId::new(GROUP),
+            origin: ParticipantId::new(BOT),
+            surface_id: id(),
+            version,
+            blocks: vec![empty("reply"), empty("result")],
+            actions: Vec::new(),
+            fallback_text: "Working".into(),
+            hash: None,
+        },
+        2 => append("Tuesday, Thursday ", false),
+        3 => append("or Friday?", true),
+        _ => SurfaceEvent::Patch {
+            surface_id: id(),
+            version,
+            base_hash: SurfaceHash::new(base),
+            ops: vec![SurfacePatchOp::SetFallback {
+                fallback_text: "Tuesday, Thursday or Friday?".into(),
+            }],
+            hash: None,
+        },
+    }
+}
+
+#[gpui_kit::test]
+fn a_surface_caught_up_after_its_stream_ended_drops_the_writing_mark(cx: &mut TestAppContext) {
+    let (fake, state, path) = sdk_fake::start("ui-catchup");
+    fake.enable_stream();
+    let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 1200.);
+    wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
+    wait(cx, "the stream", |cx| {
+        with_store(cx, &shell, |s| s.sync_status().is_some_and(|x| x.mode == SyncMode::Stream))
+    });
+    show_context(cx, handle, &shell, GROUP);
+    let mut bot = Bot::new();
+    let (reference, _) = bot.send(&fake, &state, &atlas(1, ""), true);
+    wait(cx, "created", |cx| version(cx, &shell, &reference) == 1);
+    in_window(cx, handle, |_, _| {});
+    let scope = moment_id(&reference);
+    assert!(exists_in(cx, handle, &scope, "surface-streaming"));
+    // The appends are read only once the stream has ended.
+    assert!(bot.send(&fake, &state, &atlas(2, ""), false).1);
+    assert!(bot.send(&fake, &state, &atlas(3, ""), true).1);
+    wait(cx, "caught up", |cx| version(cx, &shell, &reference) == 3);
+    in_window(cx, handle, |_, _| {});
+    assert!(!exists_in(cx, handle, &scope, "surface-streaming"), "the stream ended");
+    assert!(!exists_in(cx, handle, &scope, "block-waiting"), "nothing is waited for");
+    let surfaces = state.lock().expect("state").surfaces.clone();
+    let (_, base) = surfaces.current(&reference).expect("held");
+    assert!(bot.send(&fake, &state, &atlas(4, &base), true).1);
+    wait(cx, "its fallback", |cx| version(cx, &shell, &reference) == 4);
+    in_window(cx, handle, |_, _| {});
+    assert!(!exists_in(cx, handle, &scope, "surface-streaming"), "not reopened");
     fake.shutdown();
 }

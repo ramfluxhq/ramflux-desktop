@@ -538,3 +538,115 @@ fn surface_messages_are_not_messages_and_date_an_undated_surface() {
     assert_eq!(messages, 2, "the two text messages only; the surface message is the surface");
     world.fake.shutdown();
 }
+
+/// The AI participant's (Atlas's) surface: a reply streamed into one of two
+/// blocks created empty (the other, its result, is filled when the user
+/// chooses), then its fallback; the daemon keeps the result block open.
+fn atlas(version: u64, hash: &str) -> Vec<SurfaceEvent> {
+    use ramflux_desktop_core::{
+        Block, BlockId, BlockKind, MomentId, ParticipantId, Risk, SurfaceAction, SurfaceHash,
+        SurfacePatchOp,
+    };
+    let id = || SurfaceId::new("s-atlas");
+    let append = |version, text: &str, is_final| SurfaceEvent::StreamAppend {
+        surface_id: id(),
+        version,
+        block_id: BlockId::new("reply"),
+        text_delta: text.into(),
+        is_final,
+        hash: None,
+    };
+    let choice = |id: &str| SurfaceAction {
+        id: id.into(),
+        label: id.into(),
+        risk: Risk::Low,
+        disabled_reason: None,
+    };
+    match version {
+        1 => vec![SurfaceEvent::Create {
+            moment_id: MomentId::new("m-atlas"),
+            context_id: ContextId::new(GROUP),
+            origin: ParticipantId::new(BOT),
+            surface_id: id(),
+            version: 1,
+            blocks: vec![
+                Block::new("reply", BlockKind::Text, json!({ "text": "" })),
+                Block::new("result", BlockKind::Text, json!({ "text": "" })),
+            ],
+            actions: vec![choice("tue"), choice("thu"), choice("fri")],
+            fallback_text: "Working".into(),
+            hash: None,
+        }],
+        2 => vec![append(2, "Tuesday, Thursday ", false)],
+        3 => vec![append(3, "or Friday?", true)],
+        _ => vec![SurfaceEvent::Patch {
+            surface_id: id(),
+            version: 4,
+            base_hash: SurfaceHash::new(hash),
+            ops: vec![SurfacePatchOp::SetFallback {
+                fallback_text: "Tuesday, Thursday or Friday?".into(),
+            }],
+            hash: None,
+        }],
+    }
+}
+
+/// Sends Atlas's `versions`, announcing only the last one.
+fn send_atlas(world: &mut World, reference: &str, versions: std::ops::RangeInclusive<u64>) {
+    let last = *versions.end();
+    for version in versions {
+        let hash = world.surfaces.current(reference).map(|(_, h)| h).unwrap_or_default();
+        for event in atlas(version, &hash) {
+            assert!(world.send(GROUP, BOT, &event, version == last));
+        }
+    }
+}
+
+#[test]
+fn a_caught_up_surface_whose_stream_ended_is_not_written_any_more() {
+    let (mut world, path) = World::start("catchup", None);
+    let mut account = streaming(&path);
+    let reference = surface_ref(GROUP, BOT, "s-atlas");
+    send_atlas(&mut world, &reference, 1..=1);
+    shown(&mut account, &world, &reference, 1);
+    assert!(payload(&account.store, &reference).streaming, "created to be streamed into");
+    // The appends are not read one by one: the final one arrives in a
+    // snapshot that carries the daemon's final stream.
+    send_atlas(&mut world, &reference, 2..=3);
+    let mark = account.envelopes.len();
+    shown(&mut account, &world, &reference, 3);
+    assert_eq!(kinds(&account, mark), ["Snapshot"]);
+    let snapshot = account.envelopes[mark..].iter().find_map(|e| match &e.event {
+        DomainEvent::Surface(SurfaceEvent::Snapshot(s)) => Some(s.clone()),
+        _ => None,
+    });
+    let final_streams = snapshot.expect("snapshot").final_streams;
+    assert_eq!(final_streams, [ramflux_desktop_core::BlockId::new("reply")]);
+    let r = record(&account.store, &reference).expect("record");
+    assert!(r.streams[&ramflux_desktop_core::BlockId::new("reply")].finished);
+    assert!(
+        !r.streams.contains_key(&ramflux_desktop_core::BlockId::new("result")),
+        "the result block the daemon keeps open is not waited for"
+    );
+    assert!(!payload(&account.store, &reference).streaming, "the stream ended");
+    send_atlas(&mut world, &reference, 4..=4);
+    shown(&mut account, &world, &reference, 4);
+    let p = payload(&account.store, &reference);
+    assert!(!p.streaming, "a later version does not reopen it");
+    assert_eq!(p.fallback_text, "Tuesday, Thursday or Friday?");
+    world.fake.shutdown();
+}
+
+#[test]
+fn a_surface_read_version_by_version_ends_its_writing_with_the_final_append() {
+    let (mut world, path) = World::start("by-version", None);
+    let mut account = streaming(&path);
+    let reference = surface_ref(GROUP, BOT, "s-atlas");
+    for version in 1..=4 {
+        send_atlas(&mut world, &reference, version..=version);
+        shown(&mut account, &world, &reference, version);
+        let writing = payload(&account.store, &reference).streaming;
+        assert_eq!(writing, version < 3, "version {version}");
+    }
+    world.fake.shutdown();
+}

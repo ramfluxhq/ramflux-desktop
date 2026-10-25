@@ -4,7 +4,8 @@
 //! An authority's surface snapshots: creating a surface at any version,
 //! skipping versions, out-of-sync state and what it refuses, the
 //! authority's answers to actions and update requests, source hashes kept
-//! as reported, the authority's last-updated time, and removal.
+//! as reported, the authority's last-updated time, removal, and the
+//! authority's stream finality on a catch-up.
 
 mod common;
 
@@ -57,6 +58,7 @@ fn snapshot(version: u64, hash: &str, text: &str) -> SurfaceSnapshot {
         closed: false,
         out_of_sync: false,
         open_streams: Vec::new(),
+        final_streams: Vec::new(),
     }
 }
 
@@ -272,4 +274,99 @@ fn the_authority_dates_its_surface_and_can_remove_it() {
     // The id is free again: the authority may show it anew.
     feed.ok(16, snap(snapshot(5, "Qh5", "abc")));
     assert_eq!(record(&feed).version, 5);
+}
+
+/// The author creates the surface to stream its reply into (its result
+/// block, also empty, is filled later).
+fn created() -> Feed {
+    let mut feed = seeded();
+    let empty = |id: &str| Block::new(id, BlockKind::Text, json!({ "text": "" }));
+    feed.ok(
+        10,
+        DomainEvent::Surface(SurfaceEvent::Create {
+            moment_id: mid(),
+            context_id: ContextId::new("c-1"),
+            origin: ParticipantId::new("p-ai"),
+            surface_id: sid(),
+            version: 1,
+            blocks: vec![empty("reply"), empty("result")],
+            actions: Vec::new(),
+            fallback_text: "Orbit asks which day".to_owned(),
+            hash: None,
+        }),
+    );
+    assert!(payload(&feed).streaming, "created to be streamed into");
+    feed
+}
+
+/// The authority's state at `version`: the whole reply, its result empty.
+fn caught_up(version: u64) -> SurfaceSnapshot {
+    let mut s = snapshot(version, &format!("Qh{version}"), "Thursday works.");
+    s.blocks.push(Block::new("result", BlockKind::Text, json!({ "text": "" })));
+    s
+}
+
+#[test]
+fn a_snapshot_the_authority_reports_final_ends_the_stream_it_caught_up_with() {
+    let mut feed = created();
+    let mut later = caught_up(4);
+    later.final_streams = vec![BlockId::new("reply")];
+    feed.ok(11, snap(later));
+    let r = record(&feed);
+    assert_eq!(r.streams[&BlockId::new("reply")], StreamState { chars: 15, finished: true });
+    assert!(!r.streams.contains_key(&BlockId::new("result")), "not waited for");
+    assert!(!payload(&feed).streaming);
+    // A later snapshot that still lists it open never reopens it.
+    let mut stale = caught_up(5);
+    stale.open_streams = vec![BlockId::new("reply")];
+    feed.ok(12, snap(stale));
+    assert!(record(&feed).streams[&BlockId::new("reply")].finished);
+    assert!(!payload(&feed).streaming);
+}
+
+#[test]
+fn a_snapshot_without_final_metadata_keeps_the_open_stream_open() {
+    let mut feed = created();
+    let mut later = caught_up(3);
+    later.open_streams = vec![BlockId::new("reply"), BlockId::new("result")];
+    feed.ok(11, snap(later));
+    let r = record(&feed);
+    assert_eq!(r.streams[&BlockId::new("reply")], StreamState { chars: 15, finished: false });
+    assert!(!r.streams[&BlockId::new("result")].finished, "still waited for");
+    assert!(payload(&feed).streaming, "still being written");
+}
+
+#[test]
+fn a_final_append_stops_waiting_for_blocks_never_written_into() {
+    let mut feed = created();
+    let append = |version, text: &str, is_final| {
+        DomainEvent::Surface(SurfaceEvent::StreamAppend {
+            surface_id: sid(),
+            version,
+            block_id: BlockId::new("reply"),
+            text_delta: text.to_owned(),
+            is_final,
+            hash: None,
+        })
+    };
+    feed.ok(11, append(2, "Thursday ", false));
+    assert!(record(&feed).streams.contains_key(&BlockId::new("result")), "still waited for");
+    feed.ok(12, append(3, "works.", true));
+    let r = record(&feed);
+    assert!(r.streams[&BlockId::new("reply")].finished);
+    assert!(!r.streams.contains_key(&BlockId::new("result")));
+    assert!(!payload(&feed).streaming);
+    // The author may still stream into it: that is taken.
+    feed.ok(
+        13,
+        DomainEvent::Surface(SurfaceEvent::StreamAppend {
+            surface_id: sid(),
+            version: 4,
+            block_id: BlockId::new("result"),
+            text_delta: "Booked.".to_owned(),
+            is_final: false,
+            hash: None,
+        }),
+    );
+    assert!(payload(&feed).streaming);
 }

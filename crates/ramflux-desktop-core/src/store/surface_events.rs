@@ -17,8 +17,13 @@
 //! A snapshot replaces the whole state at its version (it may skip versions
 //! and is how a surface first appears when the source reads it from an
 //! authority). It is never older than what the store holds.
+//!
+//! Streams: a create opens one for each empty text block. A stream ends
+//! with its final append, the close, or a snapshot whose authority reports
+//! it final, and never reopens. Once one stream has ended, empty blocks
+//! never written into are no longer waited for.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
@@ -175,6 +180,7 @@ impl Store {
                 }
                 if *is_final {
                     next.streams.entry(block_id.clone()).or_default().finished = true;
+                    unwait(&mut next.streams);
                 }
             }
             SurfaceEvent::Close { .. } => {
@@ -275,21 +281,33 @@ impl Store {
         if limit.is_some() {
             to_fallback(&mut content);
         }
-        let open = |id: &BlockId| snapshot.open_streams.contains(id) && !snapshot.closed;
-        let streams = content
+        // A stream the authority reports final, or one already finished
+        // here, stays finished (a stream never reopens); one reported open
+        // is being written; any other is not a stream any more.
+        let prior = |id: &BlockId| previous.as_ref().and_then(|r| r.streams.get(id));
+        let ended = |id: &BlockId| {
+            snapshot.closed
+                || snapshot.final_streams.contains(id)
+                || prior(id).is_some_and(|s| s.finished)
+        };
+        let mut streams: BTreeMap<BlockId, StreamState> = content
             .blocks
             .iter()
-            .filter(|b| {
-                streamable(b.kind)
-                    && (open(&b.id)
-                        || previous.as_ref().is_some_and(|r| r.streams.contains_key(&b.id)))
-            })
-            .map(|b| {
+            .filter(|b| streamable(b.kind))
+            .filter_map(|b| {
+                let open = snapshot.open_streams.contains(&b.id);
+                let finished = ended(&b.id);
+                let tracked =
+                    open || prior(&b.id).is_some() || snapshot.final_streams.contains(&b.id);
                 let chars =
                     b.data.get("text").and_then(Value::as_str).map_or(0, |t| t.chars().count());
-                (b.id.clone(), StreamState { chars, finished: !open(&b.id) })
+                (tracked && (open || finished))
+                    .then(|| (b.id.clone(), StreamState { chars, finished }))
             })
             .collect();
+        if streams.values().any(|s| s.finished) {
+            unwait(&mut streams);
+        }
         let state = match limit {
             _ if snapshot.closed => SurfaceState::Closed,
             Some(limit) => SurfaceState::OverLimit(limit),
@@ -348,6 +366,14 @@ impl Store {
         self.surfaces.insert(moment_id.clone(), record);
         changes.moments.insert(moment_id.clone());
     }
+}
+
+/// Once the author has ended a stream, the blocks it created empty and has
+/// not written into are no longer waited for: they are not being written
+/// (an authority keeps such a block open only as a capability). An append
+/// into one later is still taken.
+fn unwait(streams: &mut BTreeMap<BlockId, StreamState>) {
+    streams.retain(|_, s| s.finished || s.chars > 0);
 }
 
 fn unknown(surface: &SurfaceId) -> ApplyError {
