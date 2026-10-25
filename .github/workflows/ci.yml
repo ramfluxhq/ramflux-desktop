@@ -106,6 +106,4 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Test
-        # One test thread: the hosted macOS runner has 3 vCPUs and the real-time
-        # media loopback tests miss their jitter deadlines when run in parallel.
-        run: cargo test --workspace --no-fail-fast -- --test-threads=1
+        run: cargo test --workspace --no-fail-fast
