@@ -174,7 +174,8 @@ Locked), `ContextSettingsChanged` (pin, mute, disappearing timer),
 `AccountLockChanged`, `NodeSettingsChanged` (enabled; setting a default clears
 the previous one), `NodeProbed` (also sets health), `NodeRemoved`,
 `DeviceUpserted`, `GrantRevoked` (Approved to Revoked only),
-`StandingApprovalUpserted`, `AuditAppended` (the last 512 are kept),
+`StandingApprovalUpserted`, `AuditAppended` (the last 512 are kept), `BackupJobUpdated` (a full
+backup or restore job, whole, rising version),
 `IntegrationsUpdated`, `CapabilitiesUpdated` (contract methods the backend
 cannot perform, each with the reason shown to the user), `DaemonInfoUpdated`
 (socket path, open accounts), `SyncStatusChanged` (how the source is kept up
@@ -336,9 +337,12 @@ The kinds, by area:
 - Settings: `LockAccount`, `RotatePassphrase { current, next }`,
   `ExportBackup { account_id, path, secret }`, `RevokeDevice`, `SyncDevices`, `ProbeNode`, `RemoveNode`,
   `SetDefaultNode`, `SetNodeEnabled`, `ExportDiagnostics`.
+- Backup: `CreateBackup { account_id, path, secret }`, `VerifyRestore {
+  path, secret }`, `InstallRestore { job_id }`, `CancelBackupJob { job_id }`
+  (see "Full backup and restore").
 
 Kinds that carry a `SecretInput` (unlock, create, activate, restore, backup
-export, rotate) are excluded from serde. A `SecretInput` is not `Clone`, not `Serialize`, its
+export, full backup, restore verification, rotate) are excluded from serde. A `SecretInput` is not `Clone`, not `Serialize`, its
 `Debug` output is `<redacted>`, and its buffer is zeroized on drop.
 
 `handle_intent(&Store, Intent, now: Timestamp) -> Result<Vec<Effect>, IntentError>`
@@ -781,3 +785,137 @@ history metadata use the event's relation role when reporting
 `actor_kind_verified`; a headless-AI profile cannot authenticate a human role.
 A corrupt cached profile makes that actor unverified without failing unrelated
 rows. These pre-1.0 field semantics require coordinated client/server releases.
+
+## Full backup and restore (DESK-F22, contract-first on BACKUP-01)
+
+Owner requirement: a full backup has no count limits and holds everything
+(all messages, groups, contacts and every attachment); a restore verifies
+the whole archive first and only then installs it in one step; restoring
+onto an account already on this device **merges**, the newer item winning;
+both show progress, and a restore ends with per-category counts and the
+attachment hash check. BACKUP-01 (product) is in progress, so the desktop
+implements the **assumed** job API below against its fake daemon
+(`ramflux-desktop-test` `fake_backup`). Each account snapshot reads
+`account.backup.jobs`: a daemon that answers it has the job API and the
+backup methods are declared supported; until then (or with
+`SdkConfig::backup_api` false) they are declared unsupported
+(`backend.gap.full_backup`) and Settings · Backup shows its buttons disabled
+with that reason. The older `account.backup.export` / `account.backup.import`
+(manifest and contacts only) stay as they are: Settings · Account calls it a
+key backup, and the entry page's restore still uses the import.
+
+**Store.** A `BackupJob` (`BackupJobId`, `kind` Backup | Restore, `path`,
+`phase`, the daemon's rising per-job `version`, `started_at`,
+`finished_at`, `progress {category, items_done, items_total, bytes_done,
+bytes_total}`, and once known: a backup's `summary {counts, file_bytes}`, a
+verified restore's `preview {account_id, account_label, created_at, counts,
+file_bytes, merge}`, a finished restore's `report {restored, kept_newer,
+attachments {verified, mismatched, missing}}`, a failure) arrives whole as
+`DomainEvent::BackupJobUpdated`. `BackupCounts`: contacts, conversations,
+messages, groups, surfaces, tasks, attachments, attachment_bytes. Phases:
+
+```text
+Backup:  Preparing -> Writing -> Done            (either: -> Failed | Cancelled)
+Restore: Verifying -> Verified -> Installing -> Done
+         Verifying | Verified -> Failed | Cancelled;  Installing -> Failed
+```
+
+The reducer refuses a version that does not rise, a changed kind or path,
+an illegal transition, and a first report in a phase the kind does not
+have. `BackupFailure`: `WrongPassphrase`, `Tampered`, `Truncated`,
+`UnsupportedVersion`, `InsufficientSpace {needed, available}`,
+`Unreadable`, `NotWritable`, `StagingExpired`, `Interrupted`,
+`Other(code)`. Selectors: `running_backup_job`, `latest_backup_job`.
+
+**Intents** (all human only; agents never back up or restore).
+`CreateBackup {account_id, path, secret}` → `backup.create`,
+`VerifyRestore {path, secret}` → `restore.verify` (both `SecretCall`; the
+passphrase never enters a body, an event, the store or the inspector; one
+job at a time: `BackupInProgress`), `InstallRestore {job_id}` →
+`restore.install` (only a `Verified` restore: `BackupJobPhase`),
+`CancelBackupJob {job_id}` → `backup.cancel` (until a restore installs).
+
+**Assumed daemon API (account scope; the requests go in the scope of the
+account the user is in, whose stream carries the job's changes).**
+
+| Request | Body | Answer |
+|---|---|---|
+| `account.backup.create` | `output_path`, secret `passphrase` | `{job}` (`preparing`) |
+| `account.restore.verify` | `input_path`, secret `passphrase` | `{job}` (`verifying`) |
+| `account.restore.install` | `job_id` | `{job}` (`installing`) |
+| `account.backup.cancel` | `job_id` | `{job}` (`cancelled`) |
+| `account.backup.jobs` | `{}` | `{jobs: [job]}` running and recent, newest first |
+
+Event `account.backup.job.changed`, body the job row (stream topic; also
+accepted on the push subscription; while polling, `account.backup.jobs` is
+read with every poll while a job runs). Job row: `job_id`, `kind`
+(`backup`/`restore`), `state` (`preparing`, `writing`, `verifying`,
+`verified`, `installing`, `done`, `failed`, `cancelled`), `seq` (per job,
+rising), `path`, `created_at`, `finished_at` (Unix seconds), `progress
+{category, items_done, items_total, bytes_done, bytes_total}` with
+`category` one of `identity`, `contacts`, `conversations`, `messages`,
+`groups`, `surfaces`, `tasks`, `settings`, `attachments`; `counts {contacts,
+conversations, messages, groups, surfaces, tasks, attachments,
+attachment_bytes}` and `archive_bytes` (a finished backup, a verified
+restore); `archive {local_account_id, account_label, created_at, merge}` (a
+verified restore; `merge` = the account is already on this device);
+`restored {counts}`, `kept_newer`, `attachments {verified, mismatched,
+missing}` (a finished restore); `error {code, needed_bytes,
+available_bytes}` (a failed job). Error codes: `wrong_passphrase`,
+`tampered`, `truncated`, `unsupported_version`, `insufficient_space`,
+`unreadable`, `not_writable`, `staging_expired`, `interrupted`; a refused
+start request carries the same code as `reason_code` (and the space figures
+in `details`). A restore that reaches `done` makes the source read the
+account again (what it installed shows as after a reload).
+
+**UI (Settings · Backup).** Full backup: Create backup… opens the form:
+location (native save dialog), passphrase typed twice (at least 12
+characters; a strength hint; a mismatch is named), Create backup. While it
+runs: what it is working on, a progress bar (bytes, else items), bytes and
+items, the file, Cancel backup. Then: file, size and every count, Done.
+Restore: Restore from backup… opens the form: backup file (native open
+dialog), passphrase, Check backup. While checking: progress and Cancel
+restore. Checked: "Restore this backup?" with the account, when it was
+made, its size and counts, and what installing does (merge, newer wins,
+nothing deleted; or the account is added), Cancel (discards the staged
+copy) and Restore. Installing: progress, no cancel ("the data on this
+device stays as it is until the restore finishes"). Done: the attachment
+check (all files match, or how many did not and were not restored), the
+restored counts and the items kept because this device's were newer.
+Failures are shown typed, with Try again… (the file is kept). Only one job
+runs at a time: while one runs it replaces both forms.
+
+**Questions for the backend (BACKUP-01).**
+
+1. Method and event names: are `account.backup.create`,
+   `account.restore.verify`, `account.restore.install`,
+   `account.backup.cancel`, `account.backup.jobs` and
+   `account.backup.job.changed` acceptable, or will the existing
+   `account.backup.export` / `account.backup.import` become job-based
+   (and how does the desktop tell the two apart)?
+2. Which scope runs a restore of an account that is *not* on this device
+   (or from the entry page, with no account open), and on which stream do
+   its job events arrive? The desktop sends it in the current account's
+   scope; with no account open it has no stream to follow.
+3. Is the staged, verified copy kept until `restore.install` without the
+   passphrase (assumed), how long (`staging_expired`), and is it discarded
+   by `account.backup.cancel`?
+4. Is a wrong passphrase detected when the request is made (a refused
+   request) or as the job's first failure (assumed; both are handled)?
+5. Does a cancelled or failed backup remove its partial file (assumed: no
+   partial file is left)? Is `insufficient_space` checked before writing,
+   with `needed_bytes` / `available_bytes`?
+6. Progress: is `bytes_total` known up front for a backup (from the
+   snapshot) and for a restore (the file size)? Are `items_total` counts
+   per archive or per category (the desktop shows one total)?
+7. Merge report: is `kept_newer` one number, or per category? Are
+   tombstones and restrictions counted in `restored`?
+8. Attachment check: is `missing` (listed without bytes) possible in a full
+   backup, or only `mismatched`? Are mismatched files skipped (assumed) or
+   is the restore failed?
+9. After a merge restore, does the daemon emit the usual
+   `conversation.changed` / `contact.changed` events, or must the client
+   reload (the desktop reloads the account on `done`)?
+10. Is a restore that would roll back an epoch or replace a pinned root
+    refused before installing (a typed `error.code`?), so the review can
+    say so?
