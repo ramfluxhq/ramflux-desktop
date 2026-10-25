@@ -793,9 +793,9 @@ Owner requirement: a full backup has no count limits and holds everything
 the whole archive first and only then installs it in one step; restoring
 onto an account already on this device **merges**, the newer item winning;
 both show progress, and a restore ends with per-category counts and the
-attachment hash check. BACKUP-01 (product) is in progress, so the desktop
-implements the **assumed** job API below against its fake daemon
-(`ramflux-desktop-test` `fake_backup`). Each account snapshot reads
+attachment hash check. The product implements the daemon job contract below.
+The desktop fake daemon (`ramflux-desktop-test` `fake_backup`) is a UI fixture;
+the desktop adapter must be reconciled with this wire contract when re-pinned. Each account snapshot reads
 `account.backup.jobs`: a daemon that answers it has the job API and the
 backup methods are declared supported; until then (or with
 `SdkConfig::backup_api` false) they are declared unsupported
@@ -835,8 +835,14 @@ job at a time: `BackupInProgress`), `InstallRestore {job_id}` →
 `restore.install` (only a `Verified` restore: `BackupJobPhase`),
 `CancelBackupJob {job_id}` → `backup.cancel` (until a restore installs).
 
-**Assumed daemon API (account scope; the requests go in the scope of the
-account the user is in, whose stream carries the job's changes).**
+**Daemon job API.** Create uses the account being backed up. Verify, install,
+cancel and jobs also work with no bound account, including on the entry page.
+Job events use the daemon-level subscription with no `account_id`, topics exactly
+`["account.backup.job.changed"]`, and `attended_frontend:true`. Other topics are
+refused in that scope. This is separate from the account journal subscription.
+The event frame `seq` is the daemon stream cursor (`since_seq` on reconnect);
+the body `seq` is the job's version. On `resync_required` or `lagged`, reload jobs
+and reopen the subscription. Polling jobs works in either scope.
 
 | Request | Body | Answer |
 |---|---|---|
@@ -859,18 +865,20 @@ conversations, messages, groups, surfaces, tasks, attachments,
 attachment_bytes}` and `archive_bytes` (a finished backup, a verified
 restore); `archive {local_account_id, account_label, created_at, merge}` (a
 verified restore; `merge` = the account is already on this device);
-`restored {counts}`, `kept_newer`, `attachments {verified, mismatched,
+`restored` and `kept_newer` (both per-category count objects with the same
+fields as `counts`, never scalar totals), `attachments {verified, mismatched,
 missing}` (a finished restore); `error {code, needed_bytes,
 available_bytes}` (a failed job). Error codes: `wrong_passphrase`,
 `tampered`, `truncated`, `unsupported_version`, `insufficient_space`,
-`unreadable`, `not_writable`, `staging_expired`, `interrupted`; a refused
+`unreadable`, `not_writable`, `staging_expired`, `interrupted`, `attachment_mismatch`, `identity_rollback`,
+`root_conflict`; a refused
 start request carries the same code as `reason_code` (and the space figures
 in `details`). A restore that reaches `done` makes the source read the
 account again (what it installed shows as after a reload).
 
 **UI (Settings · Backup).** Full backup: Create backup… opens the form:
 location (native save dialog), passphrase typed twice (at least 12
-characters; a strength hint; a mismatch is named), Create backup. While it
+characters and at least 16 UTF-8 bytes; a strength hint; a mismatch is named), Create backup. While it
 runs: what it is working on, a progress bar (bytes, else items), bytes and
 items, the file, Cancel backup. Then: file, size and every count, Done.
 Restore: Restore from backup… opens the form: backup file (native open
@@ -878,7 +886,10 @@ dialog), passphrase, Check backup. While checking: progress and Cancel
 restore. Checked: "Restore this backup?" with the account, when it was
 made, its size and counts, and what installing does (merge, newer wins,
 nothing deleted; or the account is added), Cancel (discards the staged
-copy) and Restore. Installing: progress, no cancel ("the data on this
+copy) and Restore. Verified staging is encrypted under a RAM-only key and expires
+after 30 minutes; cancel, failure or daemon restart discards it. Any missing or
+mismatched attachment prevents installation and must be shown with its check
+counts. Installing: progress, no cancel ("the data on this
 device stays as it is until the restore finishes"). Done: the attachment
 check (all files match, or how many did not and were not restored), the
 restored counts and the items kept because this device's were newer.
@@ -919,3 +930,21 @@ runs at a time: while one runs it replaces both forms.
 10. Is a restore that would roll back an epoch or replace a pinned root
     refused before installing (a typed `error.code`?), so the review can
     say so?
+
+**Outbound security after restore.** Full restore keeps all historical messages,
+attachment keys and inbound/archived ratchets. Saved outbound DM sessions and
+group sender chains are archived only; they are never resumed. A newly restored
+account performs fresh root-authorized device activation, starts fresh outbound
+DM sessions and rotates every group's sender key to a new chain ID before sending.
+The desktop shows **re-establishing secure sessions** while `account.status` or
+`sync.status.get` reports `secure_sessions:"reestablishing"`; sending stays refused
+until activation succeeds. `account.secure_sessions.changed` announces `ready`.
+History and files remain readable meanwhile. Merge retains the live local outbound
+state and does not reactivate backup outbound chains. Successful installation
+emits the normal contact/conversation/message events, followed by `account.restored`;
+reload the account after completion. Job rows are daemon-local; after daemon
+restart discard running rows from the previous daemon and reload `account.backup.jobs`.
+
+The desktop adapter/store must represent `kept_newer` per category and route the
+entry-page job subscription at daemon scope. These are required integration changes;
+fake-daemon UI coverage alone does not prove compatibility with the product.
