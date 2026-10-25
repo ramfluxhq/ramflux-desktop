@@ -387,6 +387,55 @@ dock:
     requests_local:
       en: "Accepting adds them on this account; they are not told yet."
       zh-CN: "接受后对方会加入此账户的联系人，但暂不会通知对方。"
+    request:
+      asks:
+        en: "%{name} wants to be your contact"
+        zh-CN: "%{name} 想添加你为联系人"
+      note:
+        en: "“%{note}”"
+        zh-CN: "“%{note}”"
+      held:
+        en: "%{count} messages waiting until you answer"
+        zh-CN: "%{count} 条消息等你回复后送达"
+      held_preview:
+        en: "%{count} messages waiting until you answer: “%{preview}”"
+        zh-CN: "%{count} 条消息等你回复后送达：“%{preview}”"
+      no_safety_number:
+        en: "No safety number to compare yet"
+        zh-CN: "暂无可比对的安全码"
+      accept:
+        en: "Accept"
+        zh-CN: "接受"
+      accept_for:
+        en: "Accept %{name}'s request"
+        zh-CN: "接受 %{name} 的请求"
+      decline:
+        en: "Decline"
+        zh-CN: "拒绝"
+      decline_for:
+        en: "Decline %{name}'s request"
+        zh-CN: "拒绝 %{name} 的请求"
+      block:
+        en: "Block"
+        zh-CN: "屏蔽"
+      block_for:
+        en: "Block %{name}"
+        zh-CN: "屏蔽 %{name}"
+      auto_accept:
+        en: "Accept contact requests automatically"
+        zh-CN: "自动接受联系人请求"
+      auto_accept_help:
+        en: "Off: each request waits here, and messages from the requester wait with it."
+        zh-CN: "关闭时，每个请求都在这里等你处理，对方的消息也会一并等待。"
+      waiting:
+        en: "Waiting for %{name} to accept your request"
+        zh-CN: "等待 %{name} 接受你的请求"
+      not_accepted:
+        en: "%{name} has not accepted your request"
+        zh-CN: "%{name} 未接受你的请求"
+      expired:
+        en: "Your request to %{name} expired"
+        zh-CN: "你给 %{name} 的请求已过期"
     blocked:
       en: "Blocked"
       zh-CN: "已屏蔽"

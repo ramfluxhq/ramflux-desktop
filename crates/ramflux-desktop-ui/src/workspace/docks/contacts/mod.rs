@@ -13,9 +13,13 @@
 //! - [`add_form`]: the add-contact form and its view-local state.
 //! - [`my_card`]: this account's contact card (QR code, text, copy).
 //! - [`rows`]: request, contact and blocked rows.
+//! - [`requests`]: pending contact requests from the daemon (note, held
+//!   messages, safety number, Accept / Decline / Block), the
+//!   auto-accept setting, and this account's own requests on its contacts.
 
 pub mod add_form;
 pub mod my_card;
+pub mod requests;
 pub mod rows;
 
 use gpui_kit::TestSupportExt as _;
@@ -253,6 +257,8 @@ impl Render for ContactsDock {
         // Answers to incoming links are local when requests cannot travel.
         let local_answers = crate::gate::reason(store, methods::CONTACT_REQUEST).is_some();
         let requests = rows::requests(store);
+        let pending = selectors::pending_contact_requests(store);
+        let request_reason = requests::reason(store);
         let has_link_requests = requests.iter().any(|r| matches!(r, rows::Request::Link(_)));
         let contacts: Vec<Participant> = selectors::contacts(store).into_iter().cloned().collect();
         let blocked: Vec<Participant> =
@@ -310,8 +316,17 @@ impl Render for ContactsDock {
             .child(form)
             .child(section("dock.contacts.card.title", cx))
             .child(card)
-            .when(!requests.is_empty(), |col| {
+            .when(!requests.is_empty() || !pending.is_empty(), |col| {
                 col.child(section("dock.contacts.requests", cx))
+                    .children(pending.iter().map(|r| {
+                        requests::pending_row(
+                            r,
+                            store.participant(&r.peer),
+                            &self.sink,
+                            request_reason.as_ref(),
+                            cx,
+                        )
+                    }))
                     .children(requests.iter().map(|r| rows::request_row(r, &self.sink, cx)))
                     .when(has_link_requests && local_answers, |col| {
                         col.child(
@@ -325,6 +340,9 @@ impl Render for ContactsDock {
                                 .child(crate::i18n::tr("dock.contacts.requests_local")),
                         )
                     })
+            })
+            .when(store.request_policy().is_some(), |col| {
+                col.child(requests::policy_switch(store, &self.sink, cx))
             })
             .child(section("dock.contacts.list", cx))
             .children(crate::list_state::placeholder(
@@ -353,7 +371,8 @@ impl Render for ContactsDock {
                         cx.notify();
                     })),
                 };
-                rows::contact_row(c, &self.sink, verify, on_message, cx)
+                let request = requests::outgoing_note(store, c);
+                rows::contact_row(c, &self.sink, verify, on_message, request, cx)
             }))
             .when(!blocked.is_empty(), |col| {
                 col.child(section("dock.contacts.blocked", cx))

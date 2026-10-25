@@ -70,6 +70,12 @@ pub fn requests(store: &Store) -> Vec<Request> {
         selectors::incoming_contact_requests(store)
             .into_iter()
             .filter(|p| !presented.contains(&p.id))
+            // A request the daemon lists is shown as such (see `requests`).
+            .filter(|p| {
+                !store
+                    .contact_request(&p.id, ramflux_desktop_core::RequestDirection::Incoming)
+                    .is_some_and(ramflux_desktop_core::ContactRequest::awaits_answer)
+            })
             .map(|p| Request::Link(p.clone())),
     );
     list
@@ -201,6 +207,7 @@ pub fn contact_row(
     sink: &EventSink,
     verify: VerifyHandlers,
     on_message: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
+    request: Option<SharedString>,
     cx: &App,
 ) -> AnyElement {
     let VerifyHandlers { reason: verify_reason, open, start, confirm, cancel } = verify;
@@ -297,6 +304,18 @@ pub fn contact_row(
                     )
                 }),
         )
+        // This account's own request, while they have not accepted it.
+        .when_some(request, |col, note| {
+            col.child(
+                div()
+                    .id("contact-request")
+                    .aria_label(note.clone())
+                    .test_support()
+                    .text_xs()
+                    .text_color(cx.theme().warning)
+                    .child(note),
+            )
+        })
         .when_some(contact.root_source, |col, source| {
             let label = root_label(source);
             let color = if source.is_provisional() {

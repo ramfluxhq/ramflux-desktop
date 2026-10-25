@@ -129,6 +129,14 @@ path = "tests/call_rehearsal.rs"
 test = false
 harness = false
 
+# Offscreen screenshots of contact requests in the contacts dock; run
+# explicitly, not part of `cargo test`.
+[[test]]
+name = "request_shots"
+path = "tests/request_shots.rs"
+test = false
+harness = false
+
 # Offscreen screenshots of voice calls (button, card, bar, records); run
 # explicitly, not part of `cargo test`.
 [[test]]
