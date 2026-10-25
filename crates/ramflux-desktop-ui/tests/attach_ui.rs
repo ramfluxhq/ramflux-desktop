@@ -84,14 +84,19 @@ fn submits(fake: &ramflux_desktop_test::fake_bus::FakeBus) -> Vec<serde_json::Va
     fake.seen().into_iter().filter(|s| s.method == "message.submit").map(|s| s.body).collect()
 }
 
-/// Whether the outgoing attachment message's row shows its attachment.
-fn row_shows_attachment(cx: &mut TestAppContext, handle: Handle, shell: &ShellEntity) -> bool {
+/// Whether the row of the message carrying the attachment `object` shows
+/// its attachment.
+fn row_shows_attachment(
+    cx: &mut TestAppContext,
+    handle: Handle,
+    shell: &ShellEntity,
+    object: &str,
+) -> bool {
     let id = with_store(cx, shell, |s| {
         s.moments()
             .find(|m| {
-                matches!(&m.kind, MomentKind::Message(p) if p.attachment.as_ref()
-                    .and_then(|o| s.object(o))
-                    .is_some_and(|o| o.direction == Direction::Outbound))
+                matches!(&m.kind, MomentKind::Message(p)
+                    if p.attachment.as_ref().is_some_and(|o| o.as_str() == object))
             })
             .map(|m| m.id.to_string())
     })
@@ -99,17 +104,32 @@ fn row_shows_attachment(cx: &mut TestAppContext, handle: Handle, shell: &ShellEn
     exists_in(cx, handle, &format!("moment-{id}"), "message-attachment")
 }
 
-/// The outbound attachment message of `dm-ana`, with its object.
+/// The object of the attachment Send submitted, once the submission reached
+/// the fake daemon (it is recorded as it arrives, before it is answered).
+fn submitted_object(
+    cx: &mut TestAppContext,
+    fake: &ramflux_desktop_test::fake_bus::FakeBus,
+) -> String {
+    wait(cx, "the submission", |_| !submits(fake).is_empty());
+    let sent = submits(fake);
+    sent[0]["attachments"][0]["object_id"].as_str().expect("object id").to_owned()
+}
+
+/// The `dm-ana` message that carries the outbound attachment `object`,
+/// with its object. The fixture's own outgoing attachment (`m2`, already
+/// delivered) is not it: which of the two the store shows first depends on
+/// whether the conversation's messages or the send arrive first.
 fn outgoing(
     cx: &mut TestAppContext,
     shell: &ShellEntity,
+    object: &str,
 ) -> Option<(Lifecycle, Receipt, ramflux_desktop_core::Object)> {
     with_store(cx, shell, |s| {
         s.moments().find_map(|m| match &m.kind {
             MomentKind::Message(p) if m.context_id.as_str() == "dm-ana" => {
-                let object = s.object(p.attachment.as_ref()?)?;
-                (object.direction == Direction::Outbound)
-                    .then(|| (m.lifecycle, p.receipt, object.clone()))
+                let found = s.object(p.attachment.as_ref()?)?;
+                (found.id.as_str() == object && found.direction == Direction::Outbound)
+                    .then(|| (m.lifecycle, p.receipt, found.clone()))
             }
             _ => None,
         })
@@ -130,16 +150,17 @@ fn a_picked_file_is_staged_then_sent_and_shown_while_it_travels(cx: &mut TestApp
     assert!(chip.starts_with("report.txt: "), "{chip}");
     assert!(submits(&fake).is_empty(), "nothing is sent before Send");
     click(cx, handle, "composer-send");
-    wait(cx, "the message on its way", |cx| outgoing(cx, &shell).is_some());
-    let (lifecycle, receipt, object) = outgoing(cx, &shell).expect("message");
+    let sent = submitted_object(cx, &fake);
+    wait(cx, "the message on its way", |cx| outgoing(cx, &shell, &sent).is_some());
+    let (lifecycle, receipt, object) = outgoing(cx, &shell, &sent).expect("message");
     assert_eq!((lifecycle, receipt), (Lifecycle::InProgress, Receipt::Sending));
     assert_eq!(object.transfer, TransferState::Transferring { transferred: 0 }, "no bytes claimed");
     assert_eq!(object.name.as_deref(), Some("report.txt"));
-    assert!(row_shows_attachment(cx, handle, &shell), "the attachment row is shown");
+    assert!(row_shows_attachment(cx, handle, &shell, &sent), "the attachment row is shown");
     assert_eq!(staged(cx, &shell), None, "the chip leaves once the message shows it");
     held.store(false, std::sync::atomic::Ordering::SeqCst);
     wait(cx, "the sent attachment", |cx| {
-        outgoing(cx, &shell).is_some_and(|(l, r, o)| {
+        outgoing(cx, &shell, &sent).is_some_and(|(l, r, o)| {
             l == Lifecycle::Done && r == Receipt::Sent && o.transfer == TransferState::Complete
         })
     });
@@ -199,15 +220,16 @@ fn a_failed_send_shows_the_reason_on_the_attachment(cx: &mut TestAppContext) {
     let file = Scratch::file("broken", 128);
     pick(cx, handle, &file.0);
     click(cx, handle, "composer-send");
+    let sent = submitted_object(cx, &fake);
     wait(cx, "the failed attachment", |cx| {
-        outgoing(cx, &shell).is_some_and(|(l, _, o)| {
+        outgoing(cx, &shell, &sent).is_some_and(|(l, _, o)| {
             l == Lifecycle::Failed && matches!(o.transfer, TransferState::Failed { .. })
         })
     });
-    let (_, _, object) = outgoing(cx, &shell).expect("message");
+    let (_, _, object) = outgoing(cx, &shell, &sent).expect("message");
     let TransferState::Failed { reason } = object.transfer else { unreachable!() };
     assert!(reason.contains("relay object upload failed"), "{reason}");
-    assert!(row_shows_attachment(cx, handle, &shell));
+    assert!(row_shows_attachment(cx, handle, &shell, &sent));
     let failures = with_store(cx, &shell, |s| s.failures().len());
     assert_eq!(failures, 1, "the status strip has it too");
     fake.shutdown();
