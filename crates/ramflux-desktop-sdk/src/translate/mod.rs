@@ -184,6 +184,9 @@ pub struct Translator {
     resolutions: Vec<Value>,
     /// Action receipts a resolution already named.
     resolved_receipts: BTreeSet<String>,
+    /// Surfaces read before the task step answered in them was shown: read
+    /// again, so an action already listed there resolves the step.
+    surface_rereads: Vec<String>,
     mcp_tools: Option<BTreeMap<String, Vec<String>>>,
     mcp_servers: Option<Vec<Value>>,
     integrations: Option<ramflux_desktop_core::Integrations>,
@@ -237,6 +240,7 @@ impl Translator {
             surface_decisions: Vec::new(),
             resolutions: Vec::new(),
             resolved_receipts: BTreeSet::new(),
+            surface_rereads: Vec::new(),
             mcp_tools: None,
             mcp_servers: None,
             integrations: None,
@@ -390,8 +394,14 @@ impl Translator {
                 Translated { events: Vec::new(), follow: self.surface_list(context, value) }
             }
             Fetch::Surface(reference) => Translated::events(self.surface_view(reference, value)),
-            Fetch::Tasks(context, _) => self.task_list(context, value),
-            Fetch::Task(..) => Translated::events(self.task_view(value)),
+            Fetch::Tasks(context, _) => {
+                let mut translated = self.task_list(context, value);
+                translated.follow.extend(self.take_surface_rereads());
+                translated
+            }
+            Fetch::Task(..) => {
+                Translated { events: self.task_view(value), follow: self.take_surface_rereads() }
+            }
             Fetch::Receive(_) => {
                 self.remember_plaintext(value);
                 Translated::default()

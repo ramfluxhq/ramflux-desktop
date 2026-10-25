@@ -148,6 +148,26 @@ impl Translator {
         }))
     }
 
+    /// A task this account asked for now shows `step` waiting on the
+    /// surface `reference`: when that surface was already read (it may have
+    /// listed an action answering the step before the step was shown), it
+    /// is read again.
+    pub(super) fn reread_answered_surface(&mut self, reference: &str) {
+        if self.surfaces.contains_key(reference)
+            && !self.surface_rereads.iter().any(|r| r == reference)
+        {
+            self.surface_rereads.push(reference.to_owned());
+        }
+    }
+
+    /// The surfaces to read again now.
+    pub(super) fn take_surface_rereads(&mut self) -> Vec<crate::plan::fetch::Fetch> {
+        std::mem::take(&mut self.surface_rereads)
+            .into_iter()
+            .map(crate::plan::fetch::Fetch::Surface)
+            .collect()
+    }
+
     /// The task resolutions to send now.
     pub fn take_task_resolutions(&mut self) -> Vec<Value> {
         std::mem::take(&mut self.resolutions)

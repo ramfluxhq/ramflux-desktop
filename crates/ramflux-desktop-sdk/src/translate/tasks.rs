@@ -197,6 +197,21 @@ impl Translator {
         self.tasks.insert(id.clone(), KnownTask { target, shown, places, pending, undelivered });
         let origin = task.assignee.clone();
         let step = task.needs_me_step().map(|(_, s)| s.id.clone());
+        // A step of this account's task answered in a surface: an action
+        // the surface already listed (read before the step was shown, as
+        // after a restart) resolves it on the surface's next read.
+        if (first || rose) && task.requester == Actor::Human {
+            let surfaces: Vec<String> = task
+                .steps
+                .iter()
+                .filter(|s| s.state == StepState::NeedsMe)
+                .filter_map(|s| s.needs_me.as_ref().and_then(NeedsMe::surface))
+                .map(ToString::to_string)
+                .collect();
+            for reference in surfaces {
+                self.reread_answered_surface(&reference);
+            }
+        }
         let mut events = vec![DomainEvent::TaskSnapshot(task)];
         match (answer, step) {
             (Some(answer), _) => {
