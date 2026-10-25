@@ -55,23 +55,23 @@ fn sessions(endpoint: &str, token_a: &[u8], token_b: &[u8]) -> (MediaSession, Me
         endpoint,
         token_a.to_vec(),
         AES_256_GCM_SHA512_128,
-        DirectionKey::new(1, a.clone()),
-        DirectionKey::new(2, b.clone()),
+        DirectionKey::new(0, a.clone()),
+        DirectionKey::new(1, b.clone()),
     );
     let b_session = MediaSession::new(
         endpoint,
         token_b.to_vec(),
         AES_256_GCM_SHA512_128,
-        DirectionKey::new(2, b),
-        DirectionKey::new(1, a),
+        DirectionKey::new(1, b),
+        DirectionKey::new(0, a),
     );
     (a_session, b_session)
 }
 
 #[test]
 fn frames_pass_encrypted_and_in_order_without_io() {
-    let (a, b) = sessions("127.0.0.1:9", b"alloc-a", b"alloc-b");
-    let mut outbound = Outbound::new(&a, 0x1234_5678, 65_530, 7).unwrap();
+    let (mut a, b) = sessions("127.0.0.1:9", b"alloc-a", b"alloc-b");
+    let mut outbound = Outbound::new(&mut a, 0x1234_5678, 65_530, 7).unwrap();
     let mut inbound = Inbound::new(&b).unwrap();
     let mut reference = Encoder::new().unwrap();
     let mut jitter = JitterBuffer::new();
@@ -90,7 +90,7 @@ fn frames_pass_encrypted_and_in_order_without_io() {
         assert_eq!(header.timestamp, 7 + (index * FRAME_SAMPLES) as u32);
         assert_eq!(header.marker, index == 0);
         let body = &packet[rtp::HEADER_LEN..];
-        let sframe_header = Header { kid: 1, ctr: index as u64 }.encode();
+        let sframe_header = Header { kid: 0, ctr: index as u64 }.encode();
         assert!(body.starts_with(&sframe_header));
         assert_eq!(body.len(), sframe_header.len() + opus.len() + 16, "header, ciphertext, tag");
         assert!(!body.windows(opus.len()).any(|w| w == opus.as_slice()), "frame {index}");
@@ -206,8 +206,8 @@ fn two_engines_talk_through_a_relay() {
     let (heard_by_a, heard_by_b) = (Recorder::default(), Recorder::default());
     let start = Instant::now() + Duration::from_millis(200);
     let capture = |hz| Box::new(Synthetic { hz, index: 0, frames: FRAMES, next: start });
-    let engine_b = Engine::start(&b, capture(660.0), Box::new(heard_by_b.clone())).unwrap();
-    let engine_a = Engine::start(&a, capture(440.0), Box::new(heard_by_a.clone())).unwrap();
+    let engine_b = Engine::start(b, capture(660.0), Box::new(heard_by_b.clone())).unwrap();
+    let engine_a = Engine::start(a, capture(440.0), Box::new(heard_by_a.clone())).unwrap();
     assert_eq!(engine_a.quality(), Quality::Connecting);
 
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -248,6 +248,6 @@ fn two_engines_talk_through_a_relay() {
         let header = rtp::RtpHeader::decode(packet).expect("rtp");
         assert_eq!(header.payload_type, rtp::OPUS_PAYLOAD_TYPE);
         let (sframe, _) = Header::decode(&packet[rtp::HEADER_LEN..]).unwrap();
-        assert!(sframe.kid == 1 || sframe.kid == 2);
+        assert!(sframe.kid == 0 || sframe.kid == 1);
     }
 }

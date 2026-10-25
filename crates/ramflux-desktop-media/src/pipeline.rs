@@ -11,7 +11,10 @@
 //! The packet on the wire is `rtp_header || sframe_header || ciphertext ||
 //! tag`: the relay sees sequence numbers and timestamps, never audio.
 
+use zeroize::Zeroizing;
+
 use crate::codec::{CodecError, Encoder, FRAME_SAMPLES, Frame};
+use crate::rebind::{self, Rebind};
 use crate::relay;
 use crate::rtp::{self, OPUS_PAYLOAD_TYPE, RtpHeader};
 use crate::session::MediaSession;
@@ -29,6 +32,10 @@ pub enum PipelineError {
     /// Not a minimal RTP packet with the Opus payload type.
     #[error("not an RTP packet of this call")]
     NotRtp,
+    /// The session's sending key was already taken by a sender: a key
+    /// starts once, at counter zero.
+    #[error("the session's sending key is in use; a fresh call brings fresh keys")]
+    SendKeyUsed,
 }
 
 /// The sending half of a call.
@@ -46,19 +53,21 @@ pub struct Outbound {
 impl Outbound {
     /// The sending half for `session`, with this stream's `ssrc` and
     /// initial sequence number and timestamp (random in a real call, RFC
-    /// 3550 §5.1).
+    /// 3550 §5.1). It takes the session's sending key: its SFrame counter
+    /// starts at zero, and no other sender can ever use that key.
     ///
     /// # Errors
     ///
-    /// An unknown suite or empty key, or libopus refused to start.
+    /// An unknown suite or empty key, the sending key already taken, or
+    /// libopus refused to start.
     pub fn new(
-        session: &MediaSession,
+        session: &mut MediaSession,
         ssrc: u32,
         sequence: u16,
         timestamp: u32,
     ) -> Result<Self, PipelineError> {
         let suite = sframe::suite(session.suite())?;
-        let key = session.send_key();
+        let key = session.take_send_key().ok_or(PipelineError::SendKeyUsed)?;
         Ok(Self {
             encoder: Encoder::new()?,
             sframe: sframe::Sender::new(suite, key.kid(), key.base_key().bytes())?,
@@ -104,6 +113,35 @@ impl Outbound {
 impl Drop for Outbound {
     fn drop(&mut self) {
         zeroize::Zeroize::zeroize(&mut self.token);
+    }
+}
+
+/// Answers the relay's rebinding challenges (see [`crate::rebind`]).
+#[derive(Debug)]
+pub struct Rebinder {
+    token: Zeroizing<Vec<u8>>,
+    rebind: Option<Rebind>,
+}
+
+impl Rebinder {
+    /// The answerer for `session`; it answers nothing without a relay
+    /// token or a rebind credential.
+    pub fn new(session: &mut MediaSession) -> Self {
+        Self { token: Zeroizing::new(session.token().to_vec()), rebind: session.take_rebind() }
+    }
+
+    /// The datagram answering `datagram` when it is a rebinding challenge
+    /// (to send back from the socket it arrived on); `None` otherwise.
+    pub fn answer(&self, datagram: &[u8]) -> Option<Vec<u8>> {
+        let rebind = self.rebind.as_ref().filter(|_| !self.token.is_empty())?;
+        let challenge = rebind::challenge(datagram)?;
+        Some(relay::frame(&self.token, &rebind.response(&challenge)))
+    }
+
+    /// Whether `datagram` is shaped like a rebinding challenge (answered
+    /// or not, it is never media).
+    pub fn is_challenge(datagram: &[u8]) -> bool {
+        rebind::challenge(datagram).is_some()
     }
 }
 

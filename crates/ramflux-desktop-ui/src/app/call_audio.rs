@@ -26,7 +26,7 @@ use std::rc::Rc;
 
 use ramflux_desktop_core::{AccountId, CallId, CallMedia};
 use ramflux_desktop_media::device::{self, DeviceChoice, Ringer, Streams};
-use ramflux_desktop_media::{BaseKey, DirectionKey, Engine, MediaSession, Quality};
+use ramflux_desktop_media::{BaseKey, DirectionKey, Engine, MediaSession, Quality, Rebind};
 
 /// How a call sounds, as the in-call bar shows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,13 +195,21 @@ pub fn media_session(media: CallMedia) -> MediaSession {
     let key = |key: &ramflux_desktop_core::CallKey| {
         DirectionKey::new(key.kid(), BaseKey::new(key.base_key().to_vec()))
     };
-    MediaSession::new(
+    let session = MediaSession::new(
         media.endpoint.clone(),
         media.token.to_vec(),
         media.suite,
         key(&media.send),
         key(&media.receive),
-    )
+    );
+    let rebind = media.rebind.as_ref().and_then(|rebind| {
+        let key = <&[u8; 32]>::try_from(rebind.key.as_slice()).ok()?;
+        Rebind::new(rebind.lease_id, rebind.side, key)
+    });
+    match rebind {
+        Some(rebind) => session.with_rebind(rebind),
+        None => session,
+    }
 }
 
 impl CallAudio for DeviceAudio {
@@ -209,7 +217,7 @@ impl CallAudio for DeviceAudio {
         let session = media_session(media);
         let (capture, playback, streams) =
             device::open(&self.choice).map_err(|error| error.to_string())?;
-        let engine = Engine::start(&session, Box::new(capture), Box::new(playback))
+        let engine = Engine::start(session, Box::new(capture), Box::new(playback))
             .map_err(|error| error.to_string())?;
         Ok(Box::new(DeviceCall { engine, _streams: streams }))
     }

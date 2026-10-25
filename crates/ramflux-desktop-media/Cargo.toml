@@ -13,6 +13,8 @@ repository.workspace = true
 aes-gcm = { version = "0.10", features = ["zeroize"] }
 aes = { version = "0.8", features = ["zeroize"] }
 hkdf = "0.12"
+# Relay rebinding answers (HMAC-SHA256, CALL-01 r2).
+hmac = "0.12"
 sha2 = "0.10"
 getrandom = "0.3"
 thiserror.workspace = true
@@ -23,3 +25,9 @@ opus = "0.4"
 # Microphone and speaker I/O (Core Audio on macOS, ALSA on Linux: needs
 # libasound2-dev at build time).
 cpal = "0.18"
+
+[dev-dependencies]
+# The product's own rebinding helper, to check this engine's answers
+# against the code the relay verifies with.
+ramflux-crypto.workspace = true
+ramflux-protocol.workspace = true

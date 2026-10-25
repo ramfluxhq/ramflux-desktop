@@ -10,7 +10,10 @@
 //! - **receive**: accepts datagrams from the endpoint only (anything else
 //!   is dropped unread), opens them and hands the Opus packets to the
 //!   jitter buffer. A new SSRC from the peer (it restarted its stream)
-//!   starts a fresh buffer.
+//!   starts a fresh buffer. A rebinding challenge from the relay (this
+//!   side's address changed, see [`crate::rebind`]) is answered at once
+//!   from the same socket; the SFrame sender and receiver go on as they
+//!   were.
 //! - **playout**: every 20 ms takes the jitter buffer's next frame and
 //!   plays the decoded audio, a frame rebuilt from forward error correction,
 //!   a concealed frame, or silence.
@@ -27,7 +30,7 @@ use std::time::{Duration, Instant};
 
 use crate::codec::{Decoder, FRAME_MS, FRAME_SAMPLES, Frame};
 use crate::jitter::{JitterBuffer, JitterStats, Playout};
-use crate::pipeline::{Inbound, Outbound, PipelineError};
+use crate::pipeline::{Inbound, Outbound, PipelineError, Rebinder};
 use crate::relay::MAX_DATAGRAM;
 use crate::session::MediaSession;
 
@@ -112,6 +115,8 @@ pub struct EngineStats {
     pub microphone_blocked: bool,
     /// A send failed (network down or endpoint refused).
     pub send_errors: u64,
+    /// Rebinding challenges from the relay answered.
+    pub rebinds_answered: u64,
 }
 
 #[derive(Debug, Default)]
@@ -144,14 +149,17 @@ fn random_u32() -> Result<u32, EngineError> {
 }
 
 impl Engine {
-    /// Starts carrying `session` with `capture` and `playback`.
+    /// Starts carrying `session` with `capture` and `playback`. The engine
+    /// consumes the session: its keys start here, once, at counter zero,
+    /// and are dropped (wiped) with the engine. An engine is never started
+    /// again on the same keys; a fresh call brings fresh ones.
     ///
     /// # Errors
     ///
     /// The endpoint does not resolve, the socket does not open, or the
     /// session's suite or keys are refused.
     pub fn start(
-        session: &MediaSession,
+        mut session: MediaSession,
         capture: Box<dyn Capture>,
         playback: Box<dyn Playback>,
     ) -> Result<Self, EngineError> {
@@ -168,8 +176,10 @@ impl Engine {
         let local = socket.local_addr()?;
         let ssrc = random_u32()?;
         let initial = random_u32()?;
-        let outbound = Outbound::new(session, ssrc, (initial >> 16) as u16, random_u32()?)?;
-        let inbound = Inbound::new(session)?;
+        let outbound = Outbound::new(&mut session, ssrc, (initial >> 16) as u16, random_u32()?)?;
+        let inbound = Inbound::new(&session)?;
+        let rebinder = Rebinder::new(&mut session);
+        drop(session);
         let decoder = Decoder::new().map_err(PipelineError::from)?;
 
         let stop = Arc::new(AtomicBool::new(false));
@@ -192,6 +202,7 @@ impl Engine {
             socket,
             endpoint,
             inbound,
+            rebinder,
             jitter: jitter.clone(),
             stop: stop.clone(),
             shared: shared.clone(),
@@ -336,6 +347,7 @@ struct ReceiveLoop {
     socket: UdpSocket,
     endpoint: SocketAddr,
     inbound: Inbound,
+    rebinder: Rebinder,
     jitter: Arc<Mutex<JitterBuffer>>,
     stop: Arc<AtomicBool>,
     shared: Arc<Mutex<Shared>>,
@@ -353,6 +365,16 @@ impl ReceiveLoop {
                 continue;
             }
             if len == 0 {
+                continue;
+            }
+            if Rebinder::is_challenge(&buffer[..len]) {
+                // From the relay only (checked above): answer from this
+                // socket, the address the relay saw change.
+                if let Some(answer) = self.rebinder.answer(&buffer[..len])
+                    && self.socket.send_to(&answer, self.endpoint).is_ok()
+                {
+                    lock(&self.shared).stats.rebinds_answered += 1;
+                }
                 continue;
             }
             match self.inbound.open(&buffer[..len]) {

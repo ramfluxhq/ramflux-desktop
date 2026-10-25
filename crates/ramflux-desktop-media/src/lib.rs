@@ -17,7 +17,9 @@
 //! - [`codec`]: Opus through the reference libopus (RFC 6716, RFC 7587).
 //! - [`jitter`]: the adaptive jitter buffer.
 //! - [`relay`]: datagram framing towards the relay allocation.
-//! - [`session`]: what one call needs (endpoint, token, keys).
+//! - [`rebind`]: answering the relay when this side's address changes.
+//! - [`session`]: what one call needs (endpoint, token, rebind credential,
+//!   keys), used once.
 //! - [`pipeline`]: one frame out, one packet in, without I/O.
 //! - [`engine`]: the send, receive and playout threads.
 //! - [`device`]: the microphone and speaker (cpal).
@@ -32,11 +34,13 @@ pub mod device;
 pub mod engine;
 pub mod jitter;
 pub mod pipeline;
+pub mod rebind;
 pub mod relay;
 pub mod rtp;
 pub mod session;
 pub mod sframe;
 
 pub use engine::{Capture, Engine, EngineError, EngineStats, Playback, Quality};
+pub use rebind::Rebind;
 pub use session::{DirectionKey, MediaSession};
 pub use sframe::BaseKey;
