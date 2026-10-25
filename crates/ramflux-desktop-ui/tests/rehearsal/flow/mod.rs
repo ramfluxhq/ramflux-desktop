@@ -21,6 +21,7 @@
 //! reference CLI only cross-checks). Steps live in `setup` (1 to 3), `talk`
 //! (4 to 6), `group` (7) and `resume` (8); `probe` reads the stores.
 
+pub mod call;
 mod evidence;
 mod group;
 mod probe;
@@ -260,6 +261,43 @@ pub fn run_live<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
     });
     steps.run(10, "Lock and unlock Alice; restart her daemon; history kept", &[5], |n| {
         resume::lock_and_restart(demo, n)
+    });
+    steps
+}
+
+/// Runs the voice call rehearsal: steps 1 to 5 as [`run`] (desktops,
+/// node, accounts, contacts, direct messages), then the calls of
+/// [`call`] with `audio` installed on Alice's and Bob's desktops.
+pub fn run_calls<H: Host, D: DemoDaemon>(
+    demo: &mut Demo<'_, H, D>,
+    audio: &[std::rc::Rc<call::ToneAudio>; 2],
+) -> Steps {
+    let mut steps = Steps::default();
+    steps.run(1, "Two desktops attach to two daemons", &[], |n| {
+        setup::start(demo, n)?;
+        for (ix, audio) in audio.iter().enumerate() {
+            let audio: std::rc::Rc<dyn ramflux_desktop_ui::app::CallAudio> = audio.clone();
+            demo.sides[ix].desk()?.set_call_audio(demo.host, audio);
+        }
+        Ok(())
+    });
+    steps.run(2, "Add the node by URL, check its key, confirm with the hold", &[1], |n| {
+        setup::node(demo, n)
+    });
+    steps.run(3, "Create Alice and Bob on the node", &[2], |n| setup::accounts(demo, n));
+    steps.run(4, "Add each other as contacts; verify safety numbers", &[3], |n| {
+        talk::contacts(demo, n)
+    });
+    steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
+    steps.run(
+        11,
+        "Alice calls Bob; he answers; tones both ways via the relay; hang up",
+        &[5],
+        |n| call::answered(demo, audio, n),
+    );
+    steps.run(12, "Alice calls again; Bob declines", &[5], |n| call::declined(demo, audio, n));
+    steps.run(13, "Alice calls; nobody answers in 45 s (timeout / missed)", &[5], |n| {
+        call::unanswered(demo, n)
     });
     steps
 }

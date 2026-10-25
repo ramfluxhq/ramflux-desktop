@@ -121,6 +121,14 @@ path = "tests/task_rehearsal.rs"
 test = false
 harness = false
 
+# Voice calls rehearsed against a real node with the voice relay; run
+# explicitly with RAMFLUX_DEMO_REHEARSAL=1 and the node's URL and key.
+[[test]]
+name = "call_rehearsal"
+path = "tests/call_rehearsal.rs"
+test = false
+harness = false
+
 # Offscreen screenshots of voice calls (button, card, bar, records); run
 # explicitly, not part of `cargo test`.
 [[test]]

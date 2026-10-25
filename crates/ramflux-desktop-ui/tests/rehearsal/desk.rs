@@ -65,6 +65,18 @@ impl Desk {
         Ok(())
     }
 
+    /// Installs the audio this desktop's calls use.
+    pub fn set_call_audio(
+        &self,
+        host: &mut impl Host,
+        audio: std::rc::Rc<dyn ramflux_desktop_ui::app::CallAudio>,
+    ) {
+        host.app(|cx| {
+            let store = self.shell.read(cx).store().clone();
+            store.update(cx, |store, _| store.set_call_audio(audio));
+        });
+    }
+
     /// Reads this desktop's active store.
     pub fn store<R>(&self, host: &mut impl Host, f: impl FnOnce(&Store) -> R) -> R {
         host.app(|cx| f(self.shell.read(cx).store().read(cx).store()))
