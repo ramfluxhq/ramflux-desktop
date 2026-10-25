@@ -199,6 +199,8 @@ fn a_conversation_the_daemon_lists_appears_without_a_restart(cx: &mut TestAppCon
         "title": null, "participants": ["principal-me", "principal-zoe"], "group_id": null,
         "direct_route": null, "self_principal_id": "principal-me",
     }));
+    // The fake pushes only to open subscriptions: wait for the shell's.
+    wait(cx, "the subscription", |_| fake.subscribed("acct-main"));
     fake.push("acct-main", "conversation.changed", json!({ "conversation_id": "dm-from-zoe" }));
     wait(cx, "the listed conversation", |cx| with_store(cx, &shell, |s| s.context(&new).is_some()));
     show_context(cx, handle, &shell, "dm-from-zoe");

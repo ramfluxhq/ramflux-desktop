@@ -182,7 +182,9 @@ fn an_intervention_closes_with_the_decision_on_its_grant() {
             .any(|a| a.moment_id == moment),
         "no longer needs me"
     );
-    // A pushed request of another conversation lands there.
+    // A pushed request of another conversation lands there. The fake
+    // pushes only to open subscriptions: wait for the hub's to reach it.
+    account.until("subscribed", |_, _| fake.subscribed("acct-main"));
     fake.push("acct-main", "mcp.approval.request", json!({
         "approval_id": "appr-9", "server_id": "files", "tool_name": "delete", "risk_level": "high",
         "expires_at": 1890000000, "status": "pending", "details": { "arguments_hash": "h-9" },
