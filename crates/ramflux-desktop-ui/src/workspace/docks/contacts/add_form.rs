@@ -39,7 +39,7 @@ use gpui_kit::{AnyElement, App, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
     ContactCardProblem, ContactIdProblem, ContactInput, ContactLink, IntentError,
     MAX_CONTACT_CARD_LEN, ParticipantId, Store, check_add_contact, check_add_contact_card,
-    classify_contact_input, methods,
+    classify_contact_input, methods, selectors,
 };
 
 use crate::app::ChangeSet;
@@ -118,6 +118,13 @@ fn is_contact(store: &Store, id: &ParticipantId) -> bool {
     store
         .participant(id)
         .is_some_and(|p| matches!(p.link_state(), ContactLink::Accepted | ContactLink::Outgoing))
+}
+
+/// Whether adding `id` asks again after this account's request to them
+/// ended unaccepted (declined or expired): the add is done once a new
+/// request waits, and a refusal (a decline cooling down) is shown.
+fn asking_again(store: &Store, id: &ParticipantId) -> bool {
+    selectors::outgoing_contact_request(store, id).is_some_and(|r| !r.state.is_pending())
 }
 
 impl AddForm {
@@ -261,9 +268,12 @@ impl AddForm {
         }
         let (added, since, method, typed) = match self.pending.clone() {
             None => return false,
-            Some(Pending::Id(id, since)) => {
-                (is_contact(store, &id), since, methods::CONTACT_ADD, true)
-            }
+            Some(Pending::Id(id, since)) => (
+                is_contact(store, &id) && !asking_again(store, &id),
+                since,
+                methods::CONTACT_ADD,
+                true,
+            ),
             Some(Pending::Card { since, from_file, .. }) => {
                 let named = changes
                     .is_some_and(|changes| changes.participants().any(|id| is_contact(store, id)));

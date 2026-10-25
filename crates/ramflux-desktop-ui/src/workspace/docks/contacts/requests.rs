@@ -9,8 +9,9 @@
 //!   first), and Accept, Decline and Block (Block drops anything they send
 //!   from now on, and needs the hold);
 //! - the account's setting: accept every request automatically;
-//! - on a contact this account asked: that the request waits for them, or
-//!   that they did not accept it.
+//! - on a contact this account asked: that the request waits for them
+//!   (with Send again, the explicit retry of the same request), that they
+//!   declined it, or that it expired (Send again asks anew).
 //!
 //! Every answer emits a UI event; the root turns it into an intent. While
 //! the daemon has no contact requests, the controls are disabled with the
@@ -181,15 +182,29 @@ pub fn policy_switch(store: &Store, sink: &EventSink, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
+/// This account's own request to a contact, while they have not accepted
+/// it: what the contact row says, and whether it offers to send it again.
+pub struct Outgoing {
+    /// "Waiting for …", "… declined your request", "… expired".
+    pub note: SharedString,
+    /// Send again (an explicit retry of the same request while it waits,
+    /// or a new one after it expired). Never offered after a decline: the
+    /// desktop does not ask again on its own, and the add form explains a
+    /// request refused while the decline cools down.
+    pub send_again: bool,
+}
+
 /// What a contact row says about this account's own request to `contact`,
 /// while they have not accepted it.
-pub fn outgoing_note(store: &Store, contact: &Participant) -> Option<SharedString> {
+pub fn outgoing(store: &Store, contact: &Participant) -> Option<Outgoing> {
     let request = selectors::outgoing_contact_request(store, &contact.id)?;
-    let key = match request.state {
-        RequestState::Pending => "dock.contacts.request.waiting",
-        RequestState::Declined | RequestState::Blocked => "dock.contacts.request.not_accepted",
-        RequestState::Expired => "dock.contacts.request.expired",
+    let (key, send_again) = match request.state {
+        RequestState::Pending => ("dock.contacts.request.waiting", true),
+        RequestState::Declined => ("dock.contacts.request.declined", false),
+        // A requester is not told about a block; shown as not accepted.
+        RequestState::Blocked => ("dock.contacts.request.not_accepted", false),
+        RequestState::Expired => ("dock.contacts.request.expired", true),
         RequestState::Accepted => return None,
     };
-    Some(tr_args(key, &[("name", &contact.display)]))
+    Some(Outgoing { note: tr_args(key, &[("name", &contact.display)]), send_again })
 }

@@ -1,22 +1,36 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The fake daemon's contact requests (CONTACT-02, contract-first; the bus
-//! contract the desktop assumes is in docs/contract.md).
+//! The fake daemon's contact requests (CONTACT-02 r2 at product
+//! `feat/contact-02` 8933fc1; the bus contract the desktop assumes is in
+//! docs/contract.md).
 //!
 //! Requests (account scoped):
 //!
 //! - `contact.requests.list {}` → `{requests: [row], contact_requests}`:
-//!   the pending requests both ways and the account's setting.
-//! - `contact.accept|decline|block {request_id}` → `{request_id,
-//!   principal_id, state, direction}`; only a pending incoming request.
-//!   Accepting delivers the held messages (see [`FakeContactRequests::delivered`]).
+//!   the pending incoming requests and this account's own requests
+//!   (pending first, then answered or expired ones).
+//! - `contact.accept|decline|block {request_id}` (or `{principal_id}`:
+//!   each selector matches only its own column) → `{request_id,
+//!   principal_id, root_commitment, state, direction}`; an incoming
+//!   request. The same answer again succeeds; another answer to an
+//!   answered request is refused `request_closed`, an unknown one
+//!   `request_not_found` (`ValidationFailed`). Accepting delivers the held
+//!   messages (see [`FakeContactRequests::delivered`]).
 //! - `contact.requests.policy.get {}` / `.set {contact_requests}` →
 //!   `{contact_requests}` (`manual` or `auto_accept`).
+//! - `contact.add {principal_id}` to a peer this account already asked
+//!   ([`FakeContactRequests::outgoing`]): accepted → refused
+//!   `already_contact`; pending → the same request sent again
+//!   ([`FakeContactRequests::sent`]); expired, or declined after the
+//!   cooldown ([`FakeContactRequests::cooldown_over`]) → a new request;
+//!   declined within the 24 h cooldown → refused untyped
+//!   (`ValidationFailed`), as the daemon does. Any other add is not
+//!   answered here.
 //!
-//! A row: `request_id`, `principal_id`, `direction` (`inbound` /
-//! `outbound`), `state`, `note`, `safety_number`, `message_count`,
-//! `preview`, `expires_at` (Unix seconds).
+//! A row: `request_id`, `principal_id`, `root_commitment`, `direction`
+//! (`inbound` / `outbound`), `state`, `note`, `safety_number` (twelve digit
+//! groups), `message_count`, `preview`, `expires_at` (Unix seconds).
 //!
 //! The peer side is simulated: a test has a peer ask this account
 //! ([`FakeContactRequests::incoming`]), hold messages from it
@@ -24,8 +38,11 @@
 //! ([`FakeContactRequests::outgoing`], [`FakeContactRequests::peer_answers`]).
 //! Every change is published (`contact.requested`, `contact.accepted`,
 //! `contact.declined`, `contact.blocked`, `contact.request.expired`) with
-//! the row as body through the publisher the test installs. With the
-//! setting `auto_accept`, an incoming request is accepted at once.
+//! identifiers and counts only (`request_id`, `principal_id`,
+//! `root_commitment`, `state`, `direction`, `message_count`) through the
+//! publisher the test installs; the note, preview and safety number are
+//! read through the list. With the setting `auto_accept`, an incoming
+//! request is accepted at once.
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -45,8 +62,12 @@ struct Held {
     incoming: bool,
     state: &'static str,
     note: Option<String>,
-    safety_number: String,
+    safety_number: Option<[&'static str; 12]>,
     messages: Vec<String>,
+    /// Times this request was sent (an explicit add again resends it).
+    sent: u32,
+    /// A decline whose 24 h cooldown is over.
+    cooled: bool,
 }
 
 impl Held {
@@ -54,6 +75,7 @@ impl Held {
         json!({
             "request_id": id,
             "principal_id": self.peer,
+            "root_commitment": format!("root-{}", self.peer),
             "direction": if self.incoming { "inbound" } else { "outbound" },
             "state": self.state,
             "note": self.note,
@@ -61,6 +83,29 @@ impl Held {
             "message_count": self.messages.len(),
             "preview": self.messages.first(),
             "expires_at": 1_790_604_800,
+        })
+    }
+
+    /// An event body: identifiers and counts only.
+    fn event(&self, id: &str) -> Value {
+        json!({
+            "request_id": id,
+            "principal_id": self.peer,
+            "root_commitment": format!("root-{}", self.peer),
+            "direction": if self.incoming { "inbound" } else { "outbound" },
+            "state": self.state,
+            "message_count": self.messages.len(),
+        })
+    }
+
+    /// A decision answer.
+    fn decision(&self, id: &str) -> Value {
+        json!({
+            "request_id": id,
+            "principal_id": self.peer,
+            "root_commitment": format!("root-{}", self.peer),
+            "direction": if self.incoming { "inbound" } else { "outbound" },
+            "state": self.state,
         })
     }
 }
@@ -100,6 +145,20 @@ impl std::fmt::Debug for FakeContactRequests {
 fn refused(code: &'static str, message: &str) -> Reply {
     Reply::Error(code, message.to_owned())
 }
+
+fn typed(reason_code: &'static str, message: &str) -> Reply {
+    Reply::Refused {
+        code: "ValidationFailed",
+        message: message.to_owned(),
+        reason_code,
+        details: None,
+    }
+}
+
+const SAFETY_NUMBER: [&str; 12] = [
+    "05173", "88420", "61937", "24459", "90314", "77502", "13579", "24680", "11223", "44556",
+    "77889", "99001",
+];
 
 type Event = (String, &'static str, Value);
 
@@ -144,6 +203,9 @@ impl FakeContactRequests {
 
     /// Answers a request call; `None` for any other method.
     pub fn handle(&self, method: &str, account: Option<&str>, body: &Value) -> Option<Reply> {
+        if method == "contact.add" {
+            return self.add(account.unwrap_or_default(), body);
+        }
         let ours = matches!(
             method,
             "contact.requests.list"
@@ -153,10 +215,11 @@ impl FakeContactRequests {
                 | "contact.decline"
                 | "contact.block"
         );
-        // contact.accept and contact.block name a request only with a
-        // request id; other forms are the older link calls.
+        // contact.accept and contact.block name a request with a request
+        // id or a principal id; other forms are the older link calls.
         let answer = matches!(method, "contact.accept" | "contact.decline" | "contact.block");
-        if !ours || (answer && body.get("request_id").is_none()) {
+        let named = body.get("request_id").is_some() || body.get("principal_id").is_some();
+        if !ours || (answer && !named) {
             return None;
         }
         if !self.available.load(Ordering::SeqCst) {
@@ -167,12 +230,17 @@ impl FakeContactRequests {
             let mut inner = self.inner();
             match method {
                 "contact.requests.list" => {
-                    let rows: Vec<Value> = inner
+                    let mut rows: Vec<(bool, Value)> = inner
                         .requests
                         .iter()
-                        .filter(|(_, r)| r.account == account && r.state == "pending")
-                        .map(|(id, r)| r.row(id))
+                        .filter(|(_, r)| {
+                            r.account == account && (!r.incoming || r.state == "pending")
+                        })
+                        .map(|(id, r)| (r.state != "pending", r.row(id)))
                         .collect();
+                    // Pending first (a stable sort keeps the order within).
+                    rows.sort_by_key(|(closed, _)| *closed);
+                    let rows: Vec<Value> = rows.into_iter().map(|(_, row)| row).collect();
                     let policy = inner.policy.get(&account).copied().unwrap_or("manual");
                     (Reply::Ok(json!({ "requests": rows, "contact_requests": policy })), Vec::new())
                 }
@@ -199,21 +267,96 @@ impl FakeContactRequests {
     }
 
     fn decide(inner: &mut Inner, account: &str, method: &str, body: &Value) -> (Reply, Vec<Event>) {
-        let id = body["request_id"].as_str().unwrap_or_default().to_owned();
-        let pending = inner
-            .requests
-            .get(&id)
-            .is_some_and(|r| r.account == account && r.incoming && r.state == "pending");
-        if !pending {
-            return (refused("NotFound", "contact request not found"), Vec::new());
-        }
+        // Each selector matches only its own column.
+        let found = inner.requests.iter().find(|(id, r)| {
+            r.account == account
+                && r.incoming
+                && match (body["request_id"].as_str(), body["principal_id"].as_str()) {
+                    (Some(wanted), _) => *id == wanted,
+                    (None, Some(peer)) => r.peer == peer,
+                    _ => false,
+                }
+        });
+        let Some((id, request)) = found else {
+            return (typed("request_not_found", "contact request not found"), Vec::new());
+        };
+        let id = id.clone();
         let (state, topic) = match method {
             "contact.accept" => ("accepted", "contact.accepted"),
             "contact.decline" => ("declined", "contact.declined"),
             _ => ("blocked", "contact.blocked"),
         };
+        if request.state == state {
+            return (Reply::Ok(request.decision(&id)), Vec::new());
+        }
+        // A block can still close an answered request.
+        if request.state != "pending" && state != "blocked" {
+            return (typed("request_closed", "contact request is closed"), Vec::new());
+        }
         let event = Self::set(inner, &id, state, topic);
-        (Reply::Ok(event.2.clone()), vec![event])
+        let answer = inner.requests[&id].decision(&id);
+        (Reply::Ok(answer), vec![event])
+    }
+
+    /// `contact.add` to a peer this account already asked; `None` for one
+    /// it did not (the add is answered elsewhere).
+    fn add(&self, account: &str, body: &Value) -> Option<Reply> {
+        let peer = body["principal_id"].as_str()?;
+        let mut inner = self.inner();
+        let (id, held) = inner
+            .requests
+            .iter_mut()
+            .rev()
+            .find(|(_, r)| r.account == account && r.peer == peer && !r.incoming)?;
+        let id = id.clone();
+        let reply = |id: &str, state: &str| {
+            Reply::Ok(json!({
+                "contact": { "principal_id": peer, "request_id": id, "request_state": state },
+                "request_delivery": "submitted",
+            }))
+        };
+        match held.state {
+            "accepted" => Some(typed("already_contact", "already a contact")),
+            "pending" => {
+                held.sent += 1;
+                Some(reply(&id, "pending"))
+            }
+            "declined" if !held.cooled => Some(refused(
+                "ValidationFailed",
+                "inbound rejected: contact request is closed or cooling down",
+            )),
+            _ => {
+                let fresh = Self::fresh_id(&mut inner);
+                inner.requests.insert(fresh.clone(), Self::asked(account, peer));
+                Some(reply(&fresh, "pending"))
+            }
+        }
+    }
+
+    fn asked(account: &str, peer: &str) -> Held {
+        Held {
+            account: account.to_owned(),
+            peer: peer.to_owned(),
+            incoming: false,
+            state: "pending",
+            note: None,
+            safety_number: Some(SAFETY_NUMBER),
+            messages: Vec::new(),
+            sent: 1,
+            cooled: false,
+        }
+    }
+
+    /// How many times request `id` was sent.
+    pub fn sent(&self, id: &str) -> u32 {
+        self.inner().requests.get(id).map_or(0, |r| r.sent)
+    }
+
+    /// The 24 h cooldown of a decline of `account`'s request `id` is over.
+    pub fn cooldown_over(&self, id: &str) {
+        if let Some(held) = self.inner().requests.get_mut(id) {
+            held.cooled = true;
+        }
     }
 
     fn set(inner: &mut Inner, id: &str, state: &'static str, topic: &'static str) -> Event {
@@ -221,7 +364,7 @@ impl FakeContactRequests {
         held.state = state;
         let messages = std::mem::take(&mut held.messages);
         let (account, peer) = (held.account.clone(), held.peer.clone());
-        let row = held.row(id);
+        let row = held.event(id);
         if state == "accepted" {
             inner
                 .delivered
@@ -247,10 +390,12 @@ impl FakeContactRequests {
                 incoming: true,
                 state: "pending",
                 note: note.map(str::to_owned),
-                safety_number: "05173 88420 61937 24459 90314 77502".to_owned(),
+                safety_number: Some(SAFETY_NUMBER),
                 messages: Vec::new(),
+                sent: 1,
+                cooled: false,
             };
-            let mut events = vec![(account.to_owned(), "contact.requested", held.row(&id))];
+            let mut events = vec![(account.to_owned(), "contact.requested", held.event(&id))];
             inner.requests.insert(id.clone(), held);
             if inner.policy.get(account) == Some(&"auto_accept") {
                 events.push(Self::set(&mut inner, &id, "accepted", "contact.accepted"));
@@ -263,7 +408,7 @@ impl FakeContactRequests {
 
     /// The requester of `id` sends `text` before an answer: the daemon holds
     /// it (a message request). Published as `contact.requested` again with
-    /// the new count and preview.
+    /// the new count (the preview is read through the list).
     pub fn hold(&self, id: &str, text: &str) {
         let events = {
             let mut inner = self.inner();
@@ -271,7 +416,7 @@ impl FakeContactRequests {
                 return;
             };
             held.messages.push(text.to_owned());
-            vec![(held.account.clone(), "contact.requested", held.row(id))]
+            vec![(held.account.clone(), "contact.requested", held.event(id))]
         };
         self.publish(events);
     }
@@ -281,18 +426,7 @@ impl FakeContactRequests {
     pub fn outgoing(&self, account: &str, peer: &str) -> String {
         let mut inner = self.inner();
         let id = Self::fresh_id(&mut inner);
-        inner.requests.insert(
-            id.clone(),
-            Held {
-                account: account.to_owned(),
-                peer: peer.to_owned(),
-                incoming: false,
-                state: "pending",
-                note: None,
-                safety_number: String::new(),
-                messages: Vec::new(),
-            },
-        );
+        inner.requests.insert(id.clone(), Self::asked(account, peer));
         id
     }
 
@@ -355,10 +489,22 @@ mod tests {
         let answer = ok(fake.handle("contact.accept", Some("a"), &json!({ "request_id": id })));
         assert_eq!(answer["state"], "accepted");
         assert_eq!(fake.delivered(), [("a".into(), "p-bo".into(), "hi, it's Bo".into())]);
+        // The same answer again succeeds; another one is refused.
+        let again = ok(fake.handle("contact.accept", Some("a"), &json!({ "request_id": id })));
+        assert_eq!(again["state"], "accepted");
         assert!(matches!(
             fake.handle("contact.decline", Some("a"), &json!({ "request_id": id })),
-            Some(Reply::Error("NotFound", _))
+            Some(Reply::Refused { reason_code: "request_closed", .. })
         ));
+        assert!(matches!(
+            fake.handle("contact.decline", Some("a"), &json!({ "request_id": "nope" })),
+            Some(Reply::Refused { reason_code: "request_not_found", .. })
+        ));
+        // Events carry identifiers and counts only.
+        for (_, body) in seen.lock().unwrap().iter() {
+            assert!(body.get("preview").is_none() && body.get("note").is_none(), "{body}");
+            assert!(body.get("safety_number").is_none(), "{body}");
+        }
         let topics: Vec<String> = seen.lock().unwrap().iter().map(|(t, _)| t.clone()).collect();
         assert_eq!(topics, ["contact.requested", "contact.requested", "contact.accepted"]);
         // The older link form is not a request call.
@@ -377,5 +523,33 @@ mod tests {
         ok(fake.handle("contact.decline", Some("b"), &json!({ "request_id": other })));
         assert!(fake.delivered().is_empty());
         assert_eq!(fake.row(&other).unwrap()["message_count"], 0);
+    }
+
+    #[test]
+    fn adding_again_retries_a_pending_request_and_respects_a_declines_cooldown() {
+        let fake = FakeContactRequests::default();
+        let add = json!({ "principal_id": "p-ana" });
+        assert!(fake.handle("contact.add", Some("a"), &add).is_none(), "not asked yet");
+        let id = fake.outgoing("a", "p-ana");
+        let again = ok(fake.handle("contact.add", Some("a"), &add));
+        assert_eq!(again["contact"]["request_id"], json!(id));
+        assert_eq!(fake.sent(&id), 2);
+        let listed = ok(fake.handle("contact.requests.list", Some("a"), &json!({})));
+        assert_eq!(listed["requests"][0]["direction"], "outbound");
+
+        fake.peer_answers(&id, "declined");
+        assert!(matches!(
+            fake.handle("contact.add", Some("a"), &add),
+            Some(Reply::Error("ValidationFailed", _))
+        ));
+        fake.cooldown_over(&id);
+        let fresh = ok(fake.handle("contact.add", Some("a"), &add));
+        assert_ne!(fresh["contact"]["request_id"], json!(id));
+        let fresh = fresh["contact"]["request_id"].as_str().unwrap().to_owned();
+        fake.peer_answers(&fresh, "accepted");
+        assert!(matches!(
+            fake.handle("contact.add", Some("a"), &add),
+            Some(Reply::Refused { reason_code: "already_contact", .. })
+        ));
     }
 }

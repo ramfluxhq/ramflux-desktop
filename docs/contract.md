@@ -590,14 +590,16 @@ of byte values 0..31, decoded lease ID 0..15, side 1 and cookie 32..63, expected
 and `07d911fa05814f8c69af12f9420b5aee` for IPv6 `[2001:db8::1234]:54321`.
 These are public test vectors, not deployment keys.
 
-## Contact requests (DESK-F21, contract-first on CONTACT-02)
+## Contact requests (DESK-F21, on CONTACT-02 r2)
 
 Adding a contact sends the peer a request; until the peer accepts, messages
 from the requester are held by the peer's daemon (a "message request") and
-delivered into the conversation on accept, dropped on decline or block. Built
-against the fake daemon (`ramflux-desktop-test` `fake_contact_requests`) while
-CONTACT-02 is in progress; the bus contract below is what the desktop assumes,
-aligned with the backend's work in progress where it was visible.
+delivered into the conversation on accept, dropped on decline or block.
+Aligned with the CONTACT-02 r2 contract (product `feat/contact-02`
+`8933fc1`, `docs/contact_cards.md` "Contact consent and message requests");
+the desktop pins that product revision until CONTACT-02 merges. The fake
+daemon (`ramflux-desktop-test` `fake_contact_requests`) follows the same
+contract.
 
 **Store.** A `ContactRequest` (daemon `id`, `peer`, `RequestDirection`
 `Incoming` / `Outgoing`, `RequestState` `Pending`, `Accepted`, `Declined`,
@@ -605,10 +607,14 @@ aligned with the backend's work in progress where it was visible.
 `held_messages` and a `preview` of the first, `expires_at`), one per peer and
 direction. `ContactRequestsListed` replaces the pending incoming requests (an
 answered one stays, so its end can be told); `ContactRequestUpserted` replaces
-one request (either direction); `ContactRequestPolicyUpdated` sets the
-account's `RequestPolicy` (`Manual` / `AutoAccept`). Selectors:
-`pending_contact_requests` (incoming, waiting, by name),
-`outgoing_contact_request(peer)` (this account's own request until accepted).
+one request (either direction), except that an update of the same request
+without the private fields (note, preview, safety number, expiry: what an
+event carries) keeps the ones the last listing gave. Locking the account
+drops every note, preview and safety number, as it drops message bodies.
+`ContactRequestPolicyUpdated` sets the account's `RequestPolicy` (`Manual` /
+`AutoAccept`). Selectors: `pending_contact_requests` (incoming, waiting, by
+name), `outgoing_contact_request(peer)` (this account's own request until
+accepted).
 
 **Intents.** `AnswerContactRequest { request_id, answer: Accept | Decline |
 Block }` (human only; a pending incoming request): methods
@@ -616,59 +622,70 @@ Block }` (human only; a pending incoming request): methods
 Block drops whatever the requester sends from now on and needs the hold.
 `SetContactRequestPolicy { policy }` (human only): `contact.requests.policy.set`.
 `AddContact` on a participant with a pending incoming request is refused
-(`ContactLinkState Incoming`): the request is answered instead. UI events:
-`ContactRequestAnswered { request_id, answer }`,
-`ContactRequestPolicySwitched { auto_accept }`.
+(`ContactLinkState Incoming`): the request is answered instead. `AddContact`
+on an accepted contact is refused, except when this account's own request to
+them is not accepted (pending, expired or declined): that asks again,
+explicitly. UI events: `ContactRequestAnswered { request_id, answer }`,
+`ContactRequestPolicySwitched { auto_accept }`; Send again on a contact row
+emits `AddContactRequested`.
 
-**Daemon API assumed (CONTACT-02).**
+**Daemon API (CONTACT-02 r2).**
 
 - `contact.add {principal_id}` (and `contact.card.import`) sends the request;
   the answer's `contact` row and every `contact.list` row carry
-  `request_state` (`pending`, `accepted`, `declined`, `blocked`, `expired`, or
-  null) for this account's own request to that contact, and `request_id` when
-  known.
+  `request_state` (`pending`, `accepted`, `declined`, `expired`, or null) for
+  this account's own request to that contact, and `request_id`; the state
+  stays on the contact row after the request history is pruned. Adding again
+  while the request is pending resends the same logical request (same id;
+  explicit retry); an expired request, or a declined one after its 24 h
+  cooldown, is asked anew. An accepted contact is refused `already_contact`.
+  Within the cooldown the daemon refuses the add untyped (`ValidationFailed`,
+  no `reason_code`); the desktop, knowing the request was declined, says so
+  plainly (`backend.contact.request_cooldown`: they declined recently, ask
+  again a day after). The desktop never resends on its own.
 - `contact.requests.list {}` → `{requests: [row], contact_requests: "manual" |
-  "auto_accept"}`, the pending requests. A row: `request_id`, `principal_id`,
-  `direction` (`inbound` / `outbound`), `state`, `note` (quoted by the daemon),
-  `safety_number`, `message_count` (held), `preview` (the first held message,
-  as text), `expires_at` (Unix seconds). Read with every account snapshot (and
+  "auto_accept"}`: the pending incoming requests and up to 128 of this
+  account's own (pending first, then the newest accepted / declined /
+  expired; closed rows are pruned after an hour). A row: `request_id`,
+  `link_id`, `principal_id`, `root_commitment`, `direction` (`inbound` /
+  `outbound`), `state`, `expires_at` (Unix seconds), `note` and `preview`
+  (delimited, sanitized quoted fields: shown as untrusted text; preview at
+  most 256 characters of the first held message), `message_count` (held),
+  `safety_number` (twelve digit groups, joined by spaces for display, or
+  null). Locked accounts cannot list. Read with every account snapshot (and
   polled once the daemon answered it); a daemon that answers it has contact
   requests and the request methods are declared supported, otherwise they are
   unsupported (`backend.gap.contact_requests`).
-- `contact.accept | contact.decline | contact.block {request_id}` → `{request_id,
-  principal_id, state, direction}`. Accept delivers the held messages into the
-  direct conversation (the desktop reads the conversations again).
+- `contact.accept | contact.decline | contact.block {request_id}` →
+  `{request_id, principal_id, direction, root_commitment, state}` (accept
+  also `contact`); `contact.request.*` are aliases. Each selector (`request_id`,
+  `link_id`, `root_commitment`, `principal_id`) matches only its own column;
+  the desktop sends `request_id` only. The same decision again succeeds;
+  another decision on a closed request is `ValidationFailed` /
+  `request_closed`, an unknown id `request_not_found`
+  (`backend.contact.request_closed` / `request_not_found`). Accept delivers the
+  held messages as ordinary `message.received` / `message.list` with their
+  original send times (the desktop reads the conversations again). Decline
+  sends the requester a decline; block tells the requester nothing (their
+  request looks pending until it expires).
 - `contact.requests.policy.get {}` / `contact.requests.policy.set
   {contact_requests}` → `{contact_requests}`.
-- Events (stream topics and the push subscription), body a row (at least
-  `request_id`, `principal_id`, `state`, `direction`): `contact.requested` (new
-  incoming request, and again when a held message arrives), `contact.accepted`,
-  `contact.declined`, `contact.blocked`, `contact.request.expired`. Each is
-  shown at once and calls for `contact.requests.list`, `contact.list` and the
-  identity directory; an accept also for the conversation directory.
+- Events (stream topics and the push subscription): `contact.requested`
+  (a new incoming request, and again as held messages arrive),
+  `contact.accepted`, `contact.declined`, `contact.blocked`,
+  `contact.request.expired`. A body carries identifiers and counts only:
+  `request_id`, `principal_id`, `root_commitment`, `state`, `direction`,
+  `message_count`; never the note, preview or safety number. Each is shown at
+  once and calls for `contact.requests.list` (where the private fields are
+  read while unlocked), `contact.list` and the identity directory; an accept
+  also for the conversation directory. A requester's own pending request has
+  no event; its decline arrives as `contact.declined` (`outbound`).
 
 **Contacts dock.** Requests list the pending ones (who asks, the note, "N
 messages waiting until you answer" with the preview, the safety number, Block /
 Decline / Accept); the switch "Accept contact requests automatically" shows once
-the daemon reported the setting; a contact this account asked shows "Waiting
-for X to accept your request" (or that X has not accepted, or that it
-expired). Screenshots: `request_shots` (run explicitly).
-
-**Questions for the backend (CONTACT-02).**
-
-1. Does `contact.requests.list` list outgoing pending requests too, or only
-   incoming ones? (The desktop takes both; outgoing state otherwise comes from
-   `request_state` on `contact.list`.)
-2. Is `preview` plain text the desktop may show as is (length cap, quoting), and
-   is it dropped while the account is locked like other message bodies?
-3. Should a requester learn that it was blocked (`contact.blocked` outbound), or
-   see it as declined/expired? The desktop shows "has not accepted" for both.
-4. On accept, do held messages arrive as ordinary `message.received` events and
-   `message.list` rows (with their original send times)?
-5. Is a note settable on `contact.add` / `contact.card.import` (`note`), with
-   what length cap? The desktop does not send one yet.
-6. Does an incoming request create a participant entry in `identity.directory`
-   (name, kind) before accept, so the dock can name the requester?
-7. Error codes for a request that is gone or already answered (the desktop
-   shows the daemon's message), and the rate-limit refusal on `contact.add`.
-8. `request_id` on `contact.list` rows: present for this account's own request?
+the daemon reported the setting. A contact this account asked says, in quiet
+text, "Waiting for X to accept your request" with Send again, "X declined your
+request" (nothing to resend; asking again in the add form during the cooldown
+is answered plainly), or "Your request to X expired" with Send again.
+Screenshots: `request_shots` (run explicitly).

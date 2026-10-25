@@ -371,7 +371,7 @@ impl Render for ContactsDock {
                         cx.notify();
                     })),
                 };
-                let request = requests::outgoing_note(store, c);
+                let request = requests::outgoing(store, c);
                 rows::contact_row(c, &self.sink, verify, on_message, request, cx)
             }))
             .when(!blocked.is_empty(), |col| {

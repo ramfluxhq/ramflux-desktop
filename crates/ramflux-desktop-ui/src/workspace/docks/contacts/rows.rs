@@ -207,7 +207,7 @@ pub fn contact_row(
     sink: &EventSink,
     verify: VerifyHandlers,
     on_message: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
-    request: Option<SharedString>,
+    request: Option<super::requests::Outgoing>,
     cx: &App,
 ) -> AnyElement {
     let VerifyHandlers { reason: verify_reason, open, start, confirm, cancel } = verify;
@@ -304,16 +304,45 @@ pub fn contact_row(
                     )
                 }),
         )
-        // This account's own request, while they have not accepted it.
-        .when_some(request, |col, note| {
+        // This account's own request, while they have not accepted it:
+        // quiet text, not a warning (waiting or declined is not a fault).
+        .when_some(request, |col, request| {
+            let send_again = request.send_again.then(|| {
+                let sink = sink.clone();
+                let participant_id = contact.id.clone();
+                Button::new("contact-request-again")
+                    .xsmall()
+                    .ghost()
+                    .label(tr("dock.contacts.request.send_again"))
+                    .accessibility_label(tr_args(
+                        "dock.contacts.request.send_again_for",
+                        &[("name", &contact.display)],
+                    ))
+                    .on_click(move |_, window, cx| {
+                        sink.emit(
+                            UiEventKind::AddContactRequested {
+                                participant_id: participant_id.clone(),
+                            },
+                            window,
+                            cx,
+                        );
+                    })
+            });
             col.child(
-                div()
-                    .id("contact-request")
-                    .aria_label(note.clone())
-                    .test_support()
-                    .text_xs()
-                    .text_color(cx.theme().warning)
-                    .child(note),
+                h_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .id("contact-request")
+                            .aria_label(request.note.clone())
+                            .test_support()
+                            .flex_1()
+                            .min_w_0()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(request.note),
+                    )
+                    .children(send_again),
             )
         })
         .when_some(contact.root_source, |col, source| {

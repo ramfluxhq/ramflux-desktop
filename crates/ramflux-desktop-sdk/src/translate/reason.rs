@@ -110,6 +110,15 @@ pub mod key {
     pub const CONTACT_MANIFEST_INVALID: &str = "backend.contact.manifest_invalid";
     /// Contact refusal `principal_id_ambiguous`: Several identities hold this id on the node.
     pub const CONTACT_AMBIGUOUS: &str = "backend.contact.principal_id_ambiguous";
+    /// Re-asking a contact refused while their decline cools down (24 h;
+    /// CONTACT-02 r2): `name`.
+    pub const CONTACT_REQUEST_COOLDOWN: &str = "backend.contact.request_cooldown";
+    /// Contact request refusal `request_closed`: answered or expired already.
+    pub const CONTACT_REQUEST_CLOSED: &str = "backend.contact.request_closed";
+    /// Contact request refusal `request_not_found`: no such request.
+    pub const CONTACT_REQUEST_NOT_FOUND: &str = "backend.contact.request_not_found";
+    /// Contact request refusal `invalid_request_note`: the note is not usable.
+    pub const CONTACT_REQUEST_NOTE: &str = "backend.contact.invalid_request_note";
     /// Contact refusal `rate_limited`: Too many lookups.
     pub const CONTACT_RATE_LIMITED: &str = "backend.contact.rate_limited";
     /// Contact refusal `principal_id_taken`: The id is registered to another identity.

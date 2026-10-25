@@ -6,9 +6,10 @@
 //! request arrives on the stream with its note, safety number and held
 //! messages; Accept, Decline and Block reach the daemon by request id (an
 //! accept reads the conversations again, where the held messages land);
-//! this account's own request shows on the contact; the request setting is
-//! read and set; and a daemon without requests has every request method
-//! declared unsupported.
+//! this account's own request shows on the contact, is sent again only when
+//! asked, shows a decline, and a re-request during the decline's cooldown
+//! is explained; the request setting is read and set; and a daemon without
+//! requests has every request method declared unsupported.
 
 mod common;
 
@@ -112,13 +113,21 @@ fn an_incoming_request_shows_its_held_messages_and_is_accepted() {
     let id = world.requests.incoming(ACCOUNT, "principal-cy", Some("we met at the meetup"));
     account.until("the request", |s, _| pending(s) == ["principal-cy"]);
     world.requests.hold(&id, "hi, it's Cy");
+    // The event carries the count; the preview comes with the list it
+    // calls for.
     account.until("the held message", |s, _| {
-        selectors::pending_contact_requests(s).first().is_some_and(|r| r.held_messages == 1)
+        selectors::pending_contact_requests(s)
+            .first()
+            .is_some_and(|r| r.held_messages == 1 && r.preview.is_some())
     });
     let request = selectors::pending_contact_requests(&account.store)[0].clone();
     assert_eq!(request.note.as_deref(), Some("we met at the meetup"));
     assert_eq!(request.preview.as_deref(), Some("hi, it's Cy"));
-    assert!(request.safety_number.is_some());
+    // The daemon's twelve digit groups, joined.
+    assert_eq!(
+        request.safety_number.as_deref(),
+        Some("05173 88420 61937 24459 90314 77502 13579 24680 11223 44556 77889 99001")
+    );
     assert!(account.store.participant(&ParticipantId::new("principal-cy")).is_some());
     // Adding someone who asked is answering their request instead.
     assert!(matches!(
@@ -219,6 +228,55 @@ fn this_accounts_own_request_shows_until_the_peer_answers() {
     world.requests.peer_answers(&id, "accepted");
     account.until("Ana accepted", |s, _| {
         selectors::outgoing_contact_request(s, &ParticipantId::new("principal-ana")).is_none()
+    });
+    world.stop();
+}
+
+#[test]
+fn asking_again_resends_a_pending_request_and_a_decline_cools_down() {
+    let world = World::start("again", true);
+    let id = world.requests.outgoing(ACCOUNT, "principal-ana");
+    let mut account = live(&world);
+    let ana = ParticipantId::new("principal-ana");
+    account.until("waiting for Ana", |s, _| {
+        selectors::outgoing_contact_request(s, &ana)
+            .is_some_and(|r| r.state == RequestState::Pending)
+    });
+    // Asked again explicitly: the same request goes out again.
+    dispatch(&mut account, IntentKind::AddContact { participant_id: ana.clone() })
+        .expect("allowed");
+    account.until("sent again", |_, _| world.requests.sent(&id) == 2);
+    assert_eq!(world.requests("contact.add"), [json!({ "principal_id": "principal-ana" })]);
+
+    // Ana declines: shown as declined, and nothing is sent on its own.
+    world.requests.peer_answers(&id, "declined");
+    account.until("declined", |s, _| {
+        selectors::outgoing_contact_request(s, &ana)
+            .is_some_and(|r| r.state == RequestState::Declined)
+    });
+    for _ in 0..10 {
+        account.pump();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+    assert_eq!(world.requests("contact.add").len(), 1, "no automatic retry");
+
+    // Asking again while the decline cools down is refused, plainly.
+    dispatch(&mut account, IntentKind::AddContact { participant_id: ana.clone() })
+        .expect("allowed");
+    account.until("the cooldown explained", |s, _| {
+        s.failures().iter().any(|f| {
+            f.method == methods::CONTACT_ADD
+                && f.message.starts_with("backend.contact.request_cooldown ")
+        })
+    });
+
+    // After the cooldown a new request goes out.
+    world.requests.cooldown_over(&id);
+    dispatch(&mut account, IntentKind::AddContact { participant_id: ana.clone() })
+        .expect("allowed");
+    account.until("a new request", |s, _| {
+        selectors::outgoing_contact_request(s, &ana)
+            .is_some_and(|r| r.state == RequestState::Pending && r.id != id)
     });
     world.stop();
 }

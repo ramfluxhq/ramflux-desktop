@@ -433,6 +433,15 @@ dock:
       not_accepted:
         en: "%{name} has not accepted your request"
         zh-CN: "%{name} 未接受你的请求"
+      declined:
+        en: "%{name} declined your request"
+        zh-CN: "%{name} 拒绝了你的请求"
+      send_again:
+        en: "Send again"
+        zh-CN: "再次发送"
+      send_again_for:
+        en: "Send your request to %{name} again"
+        zh-CN: "再次向 %{name} 发送请求"
       expired:
         en: "Your request to %{name} expired"
         zh-CN: "你给 %{name} 的请求已过期"

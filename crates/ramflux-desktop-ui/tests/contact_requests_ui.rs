@@ -6,7 +6,9 @@
 //! API (contract-first): a pending request with its note, held messages and
 //! safety number; Accept, Decline and Block (through the hold) reaching the
 //! daemon by request id; the auto-accept setting; this account's own
-//! request on a contact; and a daemon without requests.
+//! request on a contact (Send again while it waits, a decline shown as
+//! such, a re-request during the decline's cooldown explained in the add
+//! form); and a daemon without requests.
 
 mod common;
 mod sdk_fake;
@@ -20,6 +22,7 @@ use ramflux_desktop_core::{RequestPolicy, SyncMode};
 use ramflux_desktop_test::fake_contact_requests::FakeContactRequests;
 use ramflux_desktop_ui::i18n::tr_args;
 use ramflux_desktop_ui::route::Page;
+use ramflux_desktop_ui::workspace::docks::contacts::add_form::FormNote;
 use sdk_fake::wait;
 use serde_json::json;
 
@@ -81,9 +84,11 @@ fn a_request_shows_its_note_held_messages_and_safety_number_and_is_accepted(
     let world = open_requests(cx, "ui-request-accept", true);
     let id = world.requests.incoming(ACCOUNT, "principal-new", Some("we met at the meetup"));
     world.requests.hold(&id, "hi, it's me from the meetup");
+    // The event carries the count; the preview comes with the list read.
     wait(cx, "the request row", |cx| {
         exists(cx, world.handle, &row("principal-new"))
-            && exists_in(cx, world.handle, &row("principal-new"), "request-held")
+            && label_in(cx, &world, &row("principal-new"), "request-held")
+                .is_some_and(|held| held.contains("hi, it's me from the meetup"))
     });
     assert!(exists_in(cx, world.handle, &row("principal-new"), "request-note"));
     assert!(exists_in(cx, world.handle, &row("principal-new"), "request-safety"));
@@ -157,6 +162,44 @@ fn a_contact_says_this_accounts_request_waits_for_them(cx: &mut TestAppContext) 
     wait(cx, "the note gone", |cx| {
         label_in(cx, &world, "contacts-principal-ana", "contact-request").is_none()
     });
+}
+
+#[gpui_kit::test]
+fn a_waiting_request_is_sent_again_on_request_and_a_decline_cools_down(cx: &mut TestAppContext) {
+    let world = open_requests(cx, "ui-request-again", true);
+    let id = world.requests.outgoing(ACCOUNT, "principal-ana");
+    world.fake.publish(ACCOUNT, "contact.changed", json!({}));
+    wait(cx, "Send again", |cx| {
+        exists_in(cx, world.handle, "contacts-principal-ana", "contact-request-again")
+    });
+    click_in(cx, world.handle, "contacts-principal-ana", "contact-request-again");
+    wait(cx, "sent again", |_| world.requests.sent(&id) == 2);
+    assert_eq!(sent(&world, "contact.add"), [json!({ "principal_id": "principal-ana" })]);
+
+    // Ana declines: the row says so quietly, and offers nothing to resend.
+    world.requests.peer_answers(&id, "declined");
+    let ana = ramflux_desktop_core::ParticipantId::new("principal-ana");
+    let name = with_store(cx, &world.shell, move |s| s.participant(&ana).unwrap().display.clone());
+    let declined = tr_args("dock.contacts.request.declined", &[("name", &name)]).to_string();
+    wait(cx, "the decline", |cx| {
+        label_in(cx, &world, "contacts-principal-ana", "contact-request").as_deref()
+            == Some(declined.as_str())
+    });
+    assert!(!exists_in(cx, world.handle, "contacts-principal-ana", "contact-request-again"));
+    advance(cx, 300);
+    assert_eq!(sent(&world, "contact.add").len(), 1, "no automatic retry");
+
+    // Asking again in the add form during the cooldown: a plain answer.
+    type_into(cx, world.handle, "contact-add-id", "principal-ana");
+    click(cx, world.handle, "contact-add");
+    let note = |cx: &mut TestAppContext| {
+        let workspace = workspace(cx, &world.shell);
+        cx.update(|cx| workspace.read(cx).contacts_dock().read(cx).add_note().cloned())
+    };
+    wait(cx, "the cooldown", |cx| matches!(note(cx), Some(FormNote::Error(_))));
+    let Some(FormNote::Error(reason)) = note(cx) else { unreachable!() };
+    let cooldown = tr_args("backend.contact.request_cooldown", &[("name", &name)]);
+    assert!(reason.contains(cooldown.as_ref()), "{reason}");
 }
 
 #[gpui_kit::test]

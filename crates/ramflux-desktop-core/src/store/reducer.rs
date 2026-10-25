@@ -240,11 +240,13 @@ impl Store {
         Ok(())
     }
 
-    /// Message bodies never outlive an unlocked account in memory.
+    /// Message bodies (and what contact requesters wrote) never outlive
+    /// an unlocked account in memory.
     fn drop_bodies(&mut self, changes: &mut Changes) {
         if self.bodies.clear() {
             changes.bodies_cleared = true;
         }
+        self.drop_request_content(changes);
     }
 
     fn node_settings(

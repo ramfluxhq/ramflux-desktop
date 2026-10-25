@@ -33,7 +33,7 @@ fn kind(row: &Value) -> Option<ParticipantKind> {
 
 /// The persisted safety number: the daemon stores the digit groups it
 /// computed (an array of strings); a single string is taken as it is.
-fn safety_number(row: &Value) -> Option<String> {
+pub(super) fn safety_number(row: &Value) -> Option<String> {
     match &row["safety_number"] {
         Value::Array(groups) => {
             let groups: Vec<&str> =

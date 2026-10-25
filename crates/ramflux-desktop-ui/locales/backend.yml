@@ -180,6 +180,18 @@ backend:
     already_contact:
       en: "Already a contact."
       zh-CN: "已经是联系人。"
+    request_cooldown:
+      en: "%{name} declined your request recently. You can ask again a day after they declined."
+      zh-CN: "%{name} 最近拒绝了你的请求。对方拒绝一天后，你可以再次发送。"
+    request_closed:
+      en: "This request was already answered or has expired."
+      zh-CN: "此请求已处理或已过期。"
+    request_not_found:
+      en: "This request is no longer available."
+      zh-CN: "此请求已不存在。"
+    invalid_request_note:
+      en: "The note can be one line of up to 140 characters."
+      zh-CN: "附言须为一行，最多 140 个字符。"
     root_conflict:
       en: "The contact's identity changed while you were confirming it. Nothing was replaced; review it again."
       zh-CN: "确认期间对方身份发生了变化。未做任何替换，请重新核对。"

@@ -9,7 +9,9 @@ use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
 use crate::intent::{ContactAction, IntentKind, check_contact_card, check_contact_id, methods};
-use crate::model::{ContactLink, RequestAnswer, RequestDirection, RequestPolicy, Risk};
+use crate::model::{
+    ContactLink, RequestAnswer, RequestDirection, RequestPolicy, RequestState, Risk,
+};
 
 /// Decides contact-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
@@ -91,7 +93,8 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
 
 /// Checks a contact id the user typed before it is added: a usable id, and
 /// no accepted, blocked or incoming link with it (those are answered with
-/// their own actions; adding again would silently override them). The form
+/// their own actions; adding again would silently override them), except
+/// asking again when they have not accepted this account's request. The form
 /// runs the same check to explain a refusal next to the field.
 ///
 /// # Errors
@@ -111,7 +114,17 @@ pub fn check_add_contact(
     {
         link = ContactLink::Incoming;
     }
-    if matches!(link, ContactLink::Accepted | ContactLink::Blocked | ContactLink::Incoming) {
+    // This account's own request they have not accepted (pending, expired
+    // or declined) is asked again explicitly: the daemon resends the same
+    // request while it is pending, and refuses a new one while a decline
+    // cools down. It never retries on its own.
+    let asked_again = link == ContactLink::Accepted
+        && store
+            .contact_request(&participant, RequestDirection::Outgoing)
+            .is_some_and(|r| r.state != RequestState::Accepted);
+    if !asked_again
+        && matches!(link, ContactLink::Accepted | ContactLink::Blocked | ContactLink::Incoming)
+    {
         return Err(IntentError::ContactLinkState { participant, link });
     }
     Ok(participant)

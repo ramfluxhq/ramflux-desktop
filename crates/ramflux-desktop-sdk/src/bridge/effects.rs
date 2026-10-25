@@ -116,7 +116,10 @@ impl Task {
                     BusError::Transport(_) => FailureCode::Transport,
                     BusError::Timeout => FailureCode::Timeout,
                 };
-                let message = self.translator.failure_message(method, &error);
+                let message = self
+                    .translator
+                    .request_failure(method, body, &error)
+                    .unwrap_or_else(|| self.translator.failure_message(method, &error));
                 let closed = self.translator.effect_failed(method, body, &code, &message, now());
                 // A refused update request is answered in its surface, next
                 // to the button, and a refused task request on its task, next
