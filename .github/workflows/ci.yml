@@ -113,9 +113,14 @@ jobs:
         # other macOS test stays blocking.
         env:
           RAMFLUX_CI_HOSTED_MACOS: "1"
+        # The skip is scoped to the media crate: custom-harness test targets in
+        # other crates do not understand libtest's --skip/--exact.
         run: |
-          skip=()
-          if [ "$RAMFLUX_CI_HOSTED_MACOS" = "1" ]; then
-            skip=(--skip two_engines_talk_through_a_relay --exact)
+          if [ "$RAMFLUX_CI_HOSTED_MACOS" != "1" ]; then
+            exec cargo test --workspace --no-fail-fast
           fi
-          cargo test --workspace --no-fail-fast -- "${skip[@]}"
+          rc=0
+          cargo test --workspace --exclude ramflux-desktop-media --no-fail-fast || rc=1
+          cargo test -p ramflux-desktop-media --no-fail-fast -- \
+            --skip two_engines_talk_through_a_relay --exact || rc=1
+          exit "$rc"
