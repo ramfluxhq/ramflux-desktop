@@ -123,8 +123,9 @@ fn an_incoming_request_shows_its_held_messages_and_is_accepted() {
             .is_some_and(|r| r.held_messages == 1 && r.preview.is_some())
     });
     let request = selectors::pending_contact_requests(&account.store)[0].clone();
-    assert_eq!(request.note.as_deref(), Some("we met at the meetup"));
-    assert_eq!(request.preview.as_deref(), Some("hi, it's Cy"));
+    // As the daemon quoted them; kept as they are.
+    assert_eq!(request.note.as_deref(), Some("\"we met at the meetup\""));
+    assert_eq!(request.preview.as_deref(), Some("\"hi, it's Cy\""));
     // The daemon's twelve digit groups, joined.
     assert_eq!(
         request.safety_number.as_deref(),
@@ -344,6 +345,51 @@ fn a_busy_daemon_is_asked_again_later_and_nothing_is_retried() {
         state_of(s, "principal-cy", RequestDirection::Incoming) == Some(RequestState::Accepted)
     });
     world.stop();
+}
+
+/// A list read refused with `code` and `message` (not as an unknown
+/// method): the requests stay supported, the failure is said, and the next
+/// poll lists them.
+fn a_failed_list_read_is_recoverable(name: &str, code: &'static str, message: &str) {
+    let world = World::start(name, true);
+    world.requests.fail_list(Some((code, message)));
+    let mut account = live(&world);
+    account.until("the failed read said", |s, _| s.contact_requests_read_error().is_some());
+    let said = account.store.contact_requests_read_error().unwrap_or_default().to_owned();
+    assert!(said.starts_with("backend.contact.requests_unreadable "), "{said}");
+    assert!(
+        account.store.unsupported_reason(methods::CONTACT_REQUEST_ACCEPT).is_none(),
+        "the daemon has requests; reading them failed"
+    );
+    let id = world.requests.incoming(ACCOUNT, "principal-cy", Some("hello"));
+    world.requests.fail_list(None);
+    // The next poll (or the event's read) lists them; the failure clears.
+    account.until("listed again", |s, _| {
+        pending(s) == ["principal-cy"] && s.contact_requests_read_error().is_none()
+    });
+    dispatch(
+        &mut account,
+        IntentKind::AnswerContactRequest { request_id: id.clone(), answer: RequestAnswer::Accept },
+    )
+    .expect("still answerable");
+    account.until("accepted", |s, _| {
+        state_of(s, "principal-cy", RequestDirection::Incoming) == Some(RequestState::Accepted)
+    });
+    world.stop();
+}
+
+#[test]
+fn a_locked_account_list_failure_is_not_a_missing_feature() {
+    a_failed_list_read_is_recoverable(
+        "locked",
+        "ValidationFailed",
+        "local bus error: account not open: acct-main",
+    );
+}
+
+#[test]
+fn a_transient_list_failure_is_not_a_missing_feature() {
+    a_failed_list_read_is_recoverable("transient", "Unavailable", "QUIC deadline");
 }
 
 #[test]

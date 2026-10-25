@@ -43,7 +43,8 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 if !request.awaits_answer() {
                     return Err(IntentError::ContactRequestNotPending(request_id.clone()));
                 }
-                let body = json!({ "request_id": request_id, "participant_id": request.peer });
+                // The daemon is sent the request id only.
+                let body = json!({ "request_id": request_id });
                 Ok(match answer {
                     RequestAnswer::Accept => Decision::Call(methods::CONTACT_REQUEST_ACCEPT, body),
                     RequestAnswer::Decline => {

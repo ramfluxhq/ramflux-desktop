@@ -195,6 +195,9 @@ backend:
     request_unavailable:
       en: "Contact requests can't be handled right now. Nothing changed; try again later."
       zh-CN: "暂时无法处理联系人请求。未做任何更改，请稍后再试。"
+    requests_unreadable:
+      en: "Contact requests couldn't be read just now; trying again. (%{reason})"
+      zh-CN: "暂时无法读取联系人请求，正在重试。（%{reason}）"
     root_conflict:
       en: "The contact's identity changed while you were confirming it. Nothing was replaced; review it again."
       zh-CN: "确认期间对方身份发生了变化。未做任何替换，请重新核对。"

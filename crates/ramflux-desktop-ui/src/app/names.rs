@@ -209,6 +209,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContactRequestsListed(_) => "ContactRequestsListed",
         DomainEvent::ContactRequestUpserted(_) => "ContactRequestUpserted",
         DomainEvent::ContactRequestPolicyUpdated(_) => "ContactRequestPolicyUpdated",
+        DomainEvent::ContactRequestsReadFailed(_) => "ContactRequestsReadFailed",
     }
 }
 

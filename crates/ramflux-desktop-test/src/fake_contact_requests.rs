@@ -28,13 +28,20 @@
 //!   (`ValidationFailed`), as the daemon does, also once the closed row
 //!   is pruned from the list ([`FakeContactRequests::prune`]: the daemon
 //!   keeps the declined status). Any other add is not answered here.
+//! - The list can be refused like a locked account or an outage refuses
+//!   it ([`FakeContactRequests::fail_list`]); a daemon without requests
+//!   ([`FakeContactRequests::set_available`]) refuses every request method
+//!   as the daemon refuses a method it does not know (`ValidationFailed`,
+//!   "local bus error: unsupported local bus method: …").
 //! - While the daemon is busy ([`FakeContactRequests::set_busy`]: its
 //!   contact request capacity is exhausted), decisions and the setting are
 //!   refused `Unavailable`, untyped (product `ContactRequestCapacity`).
 //!
 //! A row: `request_id`, `principal_id`, `root_commitment`, `direction`
-//! (`inbound` / `outbound`), `state`, `note`, `safety_number` (twelve digit
-//! groups), `message_count`, `preview`, `expires_at` (Unix seconds).
+//! (`inbound` / `outbound`), `state`, `note` and `preview` (quoted by the
+//! product's own `quote_fallback_field`, exactly as the daemon sends them:
+//! `"…"` with `\"`, `\n`, `\u{…}` escapes), `safety_number` (twelve digit
+//! groups), `message_count`, `expires_at` (Unix seconds).
 //!
 //! The peer side is simulated: a test has a peer ask this account
 //! ([`FakeContactRequests::incoming`]), hold messages from it
@@ -52,6 +59,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use ramflux_protocol::text_safety::quote_fallback_field;
 use serde_json::{Value, json};
 
 use crate::fake_bus::Reply;
@@ -85,10 +93,15 @@ impl Held {
             "root_commitment": format!("root-{}", self.peer),
             "direction": if self.incoming { "inbound" } else { "outbound" },
             "state": self.state,
-            "note": self.note,
+            // As the daemon writes them: delimited, sanitized quoted fields
+            // (product `text_safety::quote_fallback_field`; the preview is
+            // the first 256 characters of the first held message).
+            "note": self.note.as_deref().map(quote_fallback_field),
             "safety_number": self.safety_number,
             "message_count": self.messages.len(),
-            "preview": self.messages.first(),
+            "preview": self.messages.first().map(|m| {
+                quote_fallback_field(&m.chars().take(256).collect::<String>())
+            }),
             "expires_at": 1_790_604_800,
         })
     }
@@ -127,6 +140,9 @@ struct Inner {
     /// Request capacity exhausted: decisions and the setting are refused
     /// `Unavailable`.
     busy: bool,
+    /// The list is refused with this code and message (a locked account,
+    /// an outage, a row the daemon could not read).
+    list_failure: Option<(&'static str, String)>,
 }
 
 /// Contact requests of the fake daemon (any number of accounts).
@@ -233,11 +249,18 @@ impl FakeContactRequests {
             return None;
         }
         if !self.available.load(Ordering::SeqCst) {
-            return Some(refused("LocalBus", &format!("unsupported local bus method: {method}")));
+            // As the daemon refuses a method it does not know.
+            let message = format!("local bus error: unsupported local bus method: {method}");
+            return Some(refused("ValidationFailed", &message));
         }
         let account = account.unwrap_or_default().to_owned();
         let (reply, events) = {
             let mut inner = self.inner();
+            if let (true, Some((code, message))) =
+                (method == "contact.requests.list", inner.list_failure.clone())
+            {
+                return Some(refused(code, &message));
+            }
             let read = matches!(method, "contact.requests.list" | "contact.requests.policy.get");
             if inner.busy && !read {
                 let busy = refused("Unavailable", "contact request rate limit exceeded");
@@ -369,6 +392,13 @@ impl FakeContactRequests {
     /// free again.
     pub fn set_busy(&self, busy: bool) {
         self.inner().busy = busy;
+    }
+
+    /// Refuses `contact.requests.list` with `code` and `message` (as the
+    /// daemon does for a locked account, an outage or a row it cannot
+    /// read), or lists again (`None`).
+    pub fn fail_list(&self, failure: Option<(&'static str, &str)>) {
+        self.inner().list_failure = failure.map(|(code, message)| (code, message.to_owned()));
     }
 
     /// The daemon prunes closed request `id` from the list (an hour after
@@ -518,7 +548,9 @@ mod tests {
         fake.hold(&id, "hi, it's Bo");
         let listed = ok(fake.handle("contact.requests.list", Some("a"), &json!({})));
         assert_eq!(listed["requests"][0]["message_count"], 1);
-        assert_eq!(listed["requests"][0]["preview"], "hi, it's Bo");
+        // Quoted as the daemon quotes them.
+        assert_eq!(listed["requests"][0]["preview"], "\"hi, it's Bo\"");
+        assert_eq!(listed["requests"][0]["note"], "\"from the meetup\"");
         assert_eq!(listed["contact_requests"], "manual");
         let answer = ok(fake.handle("contact.accept", Some("a"), &json!({ "request_id": id })));
         assert_eq!(answer["state"], "accepted");

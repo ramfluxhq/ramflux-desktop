@@ -120,9 +120,10 @@ pub(super) struct Task {
     /// Delivery receipts of received direct messages (account scope).
     pub(super) receipts: Option<Receipts>,
     /// The daemon answered `call.list` (it has the call API, and calls are
-    /// not turned off in the settings) and `contact.requests.list` (it has
-    /// contact requests). Until then those methods are declared
-    /// unsupported.
+    /// not turned off in the settings; until then the call methods are
+    /// declared unsupported), and whether it refused `contact.requests.list`
+    /// as an unknown method (then the request methods are). Only an unknown
+    /// method says an API is missing; other refusals are read failures.
     pub(super) found: capabilities::Found,
 }
 
@@ -315,7 +316,7 @@ impl Task {
     /// Whether the daemon has contact requests, as its
     /// `contact.requests.list` answer says.
     fn requests_answered(&mut self, live: bool) {
-        let found = capabilities::Found { requests: live, ..self.found };
+        let found = capabilities::Found { requests_missing: !live, ..self.found };
         self.found_now(found);
     }
 
@@ -433,7 +434,9 @@ impl Task {
             // pushed). Further pages follow on their own.
             Scope::Account(_) => Fetch::account_poll().into_iter().map(|f| vec![f]).collect(),
         };
-        if self.found.requests {
+        // Listed until the daemon says it has no requests: a failed read
+        // (locked, an outage) is tried again.
+        if !self.found.requests_missing {
             sequences.push(vec![Fetch::ContactRequests]);
         }
         sequences.extend(self.translator.poll_reads());
@@ -579,11 +582,20 @@ impl Task {
     fn on_read(&mut self, fetch: &Fetch, result: Result<Value, BusError>) -> bool {
         if matches!(fetch, Fetch::Calls | Fetch::ContactRequests) {
             let calls = matches!(fetch, Fetch::Calls);
+            // Only a method the daemon does not know says the API is
+            // missing; any other failure leaves what was found.
             let live = match &result {
                 Ok(_) => Some(true),
-                Err(BusError::Daemon { .. }) => Some(false),
+                Err(error) if error.is_unknown_method() => Some(false),
                 Err(_) => None,
             };
+            if let (false, Err(error)) = (calls, &result)
+                && !error.is_unknown_method()
+                && !error.is_connection_lost()
+            {
+                let failed = self.translator.requests_read_failed(error);
+                self.emit(failed);
+            }
             match (live, calls) {
                 (Some(live), true) => self.calls_answered(live),
                 (Some(live), false) => self.requests_answered(live),

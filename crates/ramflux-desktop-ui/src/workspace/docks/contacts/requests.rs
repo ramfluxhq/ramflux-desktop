@@ -15,7 +15,9 @@
 //!
 //! Every answer emits a UI event; the root turns it into an intent. While
 //! the daemon has no contact requests, the controls are disabled with the
-//! reason.
+//! reason. A list the daemon could not read just now (locked, an outage)
+//! is said so; the requests already known stay answerable, and the next
+//! poll reads them again.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -98,23 +100,33 @@ pub fn pending_row(
                         .child(tr_args("dock.contacts.request.asks", &[("name", &name)])),
                 ),
         )
+        // The daemon sends the note and the preview as delimited, sanitized
+        // quoted fields ("…" with escapes); they are shown exactly as sent,
+        // untrusted text, never quoted again.
         .when_some(request.note.clone(), |col, note| {
+            let note = tr_args("dock.contacts.request.note", &[("note", &note)]);
             col.child(
                 div()
                     .id("request-note")
+                    .aria_label(note.clone())
                     .test_support()
                     .text_sm()
-                    .child(tr_args("dock.contacts.request.note", &[("note", &note)])),
+                    .child(note),
             )
         })
         .when(request.held_messages > 0, |col| {
             let count = request.held_messages.to_string();
-            let held = match &request.preview {
-                Some(preview) => tr_args(
+            let one = request.held_messages == 1;
+            let held = match (&request.preview, one) {
+                (Some(preview), true) => {
+                    tr_args("dock.contacts.request.held_one_preview", &[("preview", preview)])
+                }
+                (Some(preview), false) => tr_args(
                     "dock.contacts.request.held_preview",
                     &[("count", &count), ("preview", preview)],
                 ),
-                None => tr_args("dock.contacts.request.held", &[("count", &count)]),
+                (None, true) => tr("dock.contacts.request.held_one"),
+                (None, false) => tr_args("dock.contacts.request.held", &[("count", &count)]),
             };
             col.child(
                 div()
@@ -149,6 +161,25 @@ pub fn pending_row(
         .into_any_element()
 }
 
+/// Why the requests could not be read just now, with the ones already
+/// known kept (and still answerable); the next poll tries again.
+pub fn read_error(store: &Store, cx: &App) -> Option<AnyElement> {
+    let message = store.contact_requests_read_error()?;
+    let text = crate::i18n::backend_text(message);
+    Some(
+        div()
+            .id("contacts-requests-error")
+            .aria_label(text.clone())
+            .test_support()
+            .px_3()
+            .pb_1()
+            .text_xs()
+            .text_color(cx.theme().warning)
+            .child(text)
+            .into_any_element(),
+    )
+}
+
 /// The setting: accept every contact request automatically.
 pub fn policy_switch(store: &Store, sink: &EventSink, cx: &App) -> AnyElement {
     let reason = crate::gate::reason(store, methods::CONTACT_REQUESTS_POLICY);
@@ -177,7 +208,13 @@ pub fn policy_switch(store: &Store, sink: &EventSink, cx: &App) -> AnyElement {
                 .test_support()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child(reason.unwrap_or_else(|| tr("dock.contacts.request.auto_accept_help"))),
+                .child(reason.unwrap_or_else(|| {
+                    tr(if auto {
+                        "dock.contacts.request.auto_accept_on_help"
+                    } else {
+                        "dock.contacts.request.auto_accept_help"
+                    })
+                })),
         )
         .into_any_element()
 }

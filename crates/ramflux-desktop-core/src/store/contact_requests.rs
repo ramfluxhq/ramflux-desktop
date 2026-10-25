@@ -12,7 +12,10 @@
 //! update of the same request without the private fields (note, preview,
 //! safety number, expiry) keeps the ones the last listing gave, until the
 //! listing the event calls for replaces them. The private fields are
-//! dropped when the account locks.
+//! dropped when the account locks, and what the requester wrote (note,
+//! preview) once an incoming request is answered or expired.
+//!
+//! A listing also clears a failed read (`ContactRequestsReadFailed`).
 
 use super::Store;
 use super::changes::Changes;
@@ -24,6 +27,9 @@ impl Store {
         requests: &[ContactRequest],
         changes: &mut Changes,
     ) {
+        if self.request_read_error.take().is_some() {
+            changes.contact_requests = true;
+        }
         let before = self.contact_requests.clone();
         self.contact_requests.retain(|(_, direction), request| {
             *direction != RequestDirection::Incoming || !request.state.is_pending()
@@ -53,6 +59,12 @@ impl Store {
             if request.held_messages > 0 {
                 request.preview = request.preview.or_else(|| known.preview.clone());
             }
+        }
+        // Answered or expired, what the requester wrote is not kept (the
+        // daemon deletes held content on decline and block).
+        if request.direction == RequestDirection::Incoming && !request.state.is_pending() {
+            request.note = None;
+            request.preview = None;
         }
         if self.contact_requests.get(&key) != Some(&request) {
             self.contact_requests.insert(key, request);

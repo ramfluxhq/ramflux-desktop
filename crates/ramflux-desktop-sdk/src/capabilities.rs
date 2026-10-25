@@ -56,8 +56,11 @@ pub const REQUEST_METHODS: [&str; 4] = [
 pub struct Found {
     /// The call API (it answered `call.list`).
     pub calls: bool,
-    /// Contact requests (it answered `contact.requests.list`).
-    pub requests: bool,
+    /// The daemon has no contact requests: it refused
+    /// `contact.requests.list` as a method it does not know. Any other
+    /// refusal of the list (a locked account, an outage, a row it could not
+    /// read) is not this.
+    pub requests_missing: bool,
 }
 
 /// The voice call methods, which need the daemon's call API (CALL-01).
@@ -99,7 +102,7 @@ pub fn capabilities(found: Found) -> Capabilities {
             unsupported.insert(method.to_owned(), reason::CALLS.to_owned());
         }
     }
-    if !found.requests {
+    if found.requests_missing {
         for method in REQUEST_METHODS {
             unsupported.insert(method.to_owned(), reason::CONTACT_REQUESTS.to_owned());
         }

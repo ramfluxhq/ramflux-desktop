@@ -294,4 +294,9 @@ pub enum DomainEvent {
     ContactRequestUpserted(ContactRequest),
     /// The account's contact request setting.
     ContactRequestPolicyUpdated(RequestPolicy),
+    /// The daemon has contact requests but could not list them now (a
+    /// locked account, a transient outage, a row it could not read): the
+    /// message for the user. The requests already known stay; the next
+    /// listing clears it.
+    ContactRequestsReadFailed(String),
 }

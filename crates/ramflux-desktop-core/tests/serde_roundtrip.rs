@@ -57,9 +57,10 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContactRequestsListed(_) => "ContactRequestsListed",
         DomainEvent::ContactRequestUpserted(_) => "ContactRequestUpserted",
         DomainEvent::ContactRequestPolicyUpdated(_) => "ContactRequestPolicyUpdated",
+        DomainEvent::ContactRequestsReadFailed(_) => "ContactRequestsReadFailed",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 41;
+const DOMAIN_EVENT_VARIANTS: usize = 42;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -575,6 +576,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             ..contact_request()
         }),
         DomainEvent::ContactRequestPolicyUpdated(RequestPolicy::AutoAccept),
+        DomainEvent::ContactRequestsReadFailed("Unavailable".to_owned()),
     ];
     for (i, kind) in all_moment_kinds().into_iter().enumerate() {
         let id = format!("m-{i}");

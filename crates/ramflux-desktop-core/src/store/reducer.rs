@@ -177,6 +177,12 @@ impl Store {
             DomainEvent::ContactRequestUpserted(request) => {
                 self.upsert_contact_request(request, changes);
             }
+            DomainEvent::ContactRequestsReadFailed(message) => {
+                if self.request_read_error.as_ref() != Some(message) {
+                    self.request_read_error = Some(message.clone());
+                    changes.contact_requests = true;
+                }
+            }
             DomainEvent::ContactRequestPolicyUpdated(policy) => {
                 if self.request_policy != Some(*policy) {
                     self.request_policy = Some(*policy);

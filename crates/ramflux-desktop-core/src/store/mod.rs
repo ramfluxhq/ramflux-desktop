@@ -86,6 +86,7 @@ pub struct Store {
     own_card: Option<ContactCard>,
     contact_requests: BTreeMap<(ParticipantId, RequestDirection), ContactRequest>,
     request_policy: Option<RequestPolicy>,
+    request_read_error: Option<String>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
     pin_order: Vec<ContextId>,
@@ -324,6 +325,12 @@ impl Store {
     /// The incoming request with id `id`, if there is one.
     pub fn contact_request_by_id(&self, id: &str) -> Option<&ContactRequest> {
         self.contact_requests.values().find(|r| r.id == id)
+    }
+
+    /// Why the contact requests could not be read just now, until they are
+    /// listed again (the daemon has them; the known ones may be stale).
+    pub fn contact_requests_read_error(&self) -> Option<&str> {
+        self.request_read_error.as_deref()
     }
 
     /// The account's contact request setting, once the source reported it.

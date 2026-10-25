@@ -187,6 +187,14 @@ impl BusError {
         }
     }
 
+    /// Whether the daemon refused the request as a method it does not know
+    /// (its API lacks it): `LocalBus("unsupported local bus method: …")`,
+    /// which reaches the bus untyped. Only this says a feature is missing;
+    /// any other refusal is about this request.
+    pub fn is_unknown_method(&self) -> bool {
+        matches!(self, Self::Daemon { message, .. } if message.contains(UNKNOWN_METHOD))
+    }
+
     /// Whether the connection to the daemon is gone (not a per-request refusal).
     pub fn is_connection_lost(&self) -> bool {
         matches!(self, Self::Transport(_))
@@ -235,6 +243,10 @@ pub const RECONCILE_KEY: &str = "backend.failure.reconcile";
 /// How the daemon refuses a retry of an operation that was interrupted (or
 /// failed) after it was reserved: it never guesses whether it applied.
 const RECONCILE: &str = "operation requires reconciliation";
+
+/// How the daemon describes a method it does not know (product
+/// `bus/daemon.rs`, `SdkError::LocalBus`).
+const UNKNOWN_METHOD: &str = "unsupported local bus method";
 
 /// How the client and the daemon describe a missed deadline.
 const DEADLINE_EXCEEDED: &str = "request deadline exceeded";
@@ -310,6 +322,19 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn only_an_unknown_method_says_an_api_is_missing() {
+        let unknown = BusError::daemon(
+            "ValidationFailed",
+            "local bus error: unsupported local bus method: contact.requests.list",
+        );
+        assert!(unknown.is_unknown_method());
+        let locked = BusError::daemon("ValidationFailed", "local bus error: account not open: a");
+        assert!(!locked.is_unknown_method());
+        assert!(!BusError::daemon("Unavailable", "down").is_unknown_method());
+        assert!(!BusError::Timeout.is_unknown_method());
+    }
 
     #[test]
     fn error_frames_become_daemon_errors_and_the_rest_transport() {

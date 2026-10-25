@@ -41,7 +41,7 @@ impl Task {
             self.emit(vec![DomainEvent::EffectFailed(failure)]);
             return;
         }
-        if !self.found.requests
+        if self.found.requests_missing
             && let Some(method) =
                 effect.method().filter(|m| capabilities::REQUEST_METHODS.contains(m))
         {

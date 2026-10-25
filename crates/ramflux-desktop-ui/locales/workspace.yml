@@ -392,17 +392,23 @@ dock:
         en: "%{name} wants to be your contact"
         zh-CN: "%{name} 想添加你为联系人"
       note:
-        en: "“%{note}”"
-        zh-CN: "“%{note}”"
+        en: "Note: %{note}"
+        zh-CN: "附言：%{note}"
+      held_one:
+        en: "1 message waiting until you answer"
+        zh-CN: "1 条消息等你回复后送达"
+      held_one_preview:
+        en: "1 message waiting until you answer: %{preview}"
+        zh-CN: "1 条消息等你回复后送达：%{preview}"
       held:
         en: "%{count} messages waiting until you answer"
         zh-CN: "%{count} 条消息等你回复后送达"
       held_preview:
-        en: "%{count} messages waiting until you answer: “%{preview}”"
-        zh-CN: "%{count} 条消息等你回复后送达：“%{preview}”"
+        en: "%{count} messages waiting until you answer: %{preview}"
+        zh-CN: "%{count} 条消息等你回复后送达：%{preview}"
       no_safety_number:
-        en: "No safety number to compare yet"
-        zh-CN: "暂无可比对的安全码"
+        en: "No safety number to compare, so you can't verify who this is yet"
+        zh-CN: "没有可比对的安全码，暂时无法核实对方身份"
       accept:
         en: "Accept"
         zh-CN: "接受"
@@ -427,6 +433,9 @@ dock:
       auto_accept_help:
         en: "Off: each request waits here, and messages from the requester wait with it."
         zh-CN: "关闭时，每个请求都在这里等你处理，对方的消息也会一并等待。"
+      auto_accept_on_help:
+        en: "On: new requests are accepted at once; requests already here still wait for you."
+        zh-CN: "开启时，新请求会被立即接受；已在这里的请求仍等你处理。"
       waiting:
         en: "Waiting for %{name} to accept your request"
         zh-CN: "等待 %{name} 接受你的请求"

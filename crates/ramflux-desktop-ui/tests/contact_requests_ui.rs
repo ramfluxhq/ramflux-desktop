@@ -124,6 +124,18 @@ fn decline_and_block_through_the_hold_reach_the_daemon(cx: &mut TestAppContext) 
     click_in(cx, world.handle, &row("principal-spam"), "request-block");
     advance(cx, 100);
     assert!(sent(&world, "contact.block").is_empty(), "nothing before the hold");
+    // The hold names who is blocked and what it does.
+    let name = with_store(cx, &world.shell, |s| {
+        let peer = ramflux_desktop_core::ParticipantId::new("principal-spam");
+        s.participant(&peer).map_or_else(|| peer.short(), |p| p.display.clone())
+    });
+    let strip = in_window(cx, world.handle, |window, _| {
+        window.find("confirm-strip").label().map(str::to_owned)
+    })
+    .unwrap_or_default();
+    let summary = tr_args("confirm.contact.request_block", &[("contact", &name)]);
+    assert!(strip.contains(summary.as_ref()), "{strip}");
+    assert!(summary.contains(&name), "{summary}");
     hold_confirm(cx, world.handle);
     wait(cx, "blocked", |_| world.requests.row(&blocked).is_some_and(|r| r["state"] == "blocked"));
     assert_eq!(sent(&world, "contact.block"), [json!({ "request_id": blocked })]);
@@ -148,6 +160,55 @@ fn a_busy_daemon_asks_to_try_again_later(cx: &mut TestAppContext) {
     advance(cx, 300);
     assert_eq!(sent(&world, "contact.accept"), [json!({ "request_id": id })], "no retry");
     assert!(exists(cx, world.handle, &row("principal-busy")), "the request stays");
+}
+
+#[gpui_kit::test]
+fn a_note_and_preview_are_shown_as_the_daemon_quoted_them(cx: &mut TestAppContext) {
+    // The daemon sends both as delimited, sanitized quoted fields (product
+    // `quote_fallback_field`); they are shown once quoted, escapes visible.
+    let world = open_requests(cx, "ui-request-quoted", true);
+    let id = world.requests.incoming(ACCOUNT, "principal-q", Some("say \"hi\"\nthere"));
+    world.requests.hold(&id, "line one\nline \"two\"");
+    let row = row("principal-q");
+    wait(cx, "the preview", |cx| {
+        exists(cx, world.handle, &row) && label_in(cx, &world, &row, "request-held").is_some()
+    });
+    let note = label_in(cx, &world, &row, "request-note").unwrap_or_default();
+    let quoted_note = r#""say \"hi\"\nthere""#;
+    assert_eq!(note, tr_args("dock.contacts.request.note", &[("note", quoted_note)]).as_ref());
+    let held = label_in(cx, &world, &row, "request-held").unwrap_or_default();
+    let quoted_preview = r#""line one\nline \"two\"""#;
+    // One message: singular, with the preview as sent.
+    let expected =
+        tr_args("dock.contacts.request.held_one_preview", &[("preview", quoted_preview)]);
+    assert_eq!(held, expected.as_ref());
+    for text in [&note, &held] {
+        assert!(!text.contains('“') && !text.contains('”'), "quoted once: {text}");
+    }
+}
+
+#[gpui_kit::test]
+fn a_failed_read_is_said_and_the_requests_stay_answerable(cx: &mut TestAppContext) {
+    // Only an unknown method means the daemon has no requests: an outage
+    // (or a locked account) is a failed read, retried, with the known
+    // requests still answerable.
+    let world = open_requests(cx, "ui-request-read-failed", true);
+    let id = world.requests.incoming(ACCOUNT, "principal-late", None);
+    wait(cx, "the request row", |cx| exists(cx, world.handle, &row("principal-late")));
+    world.requests.fail_list(Some(("Unavailable", "QUIC deadline")));
+    world.requests.hold(&id, "are you there?");
+    wait(cx, "the failed read", |cx| exists(cx, world.handle, "contacts-requests-error"));
+    let gap = tr("backend.gap.contact_requests");
+    assert!(!has_label(cx, world.handle, gap.as_ref()), "not claimed missing");
+    click_in(cx, world.handle, &row("principal-late"), "request-accept");
+    wait(cx, "accepted", |_| world.requests.row(&id).is_some_and(|r| r["state"] == "accepted"));
+    world.requests.fail_list(None);
+    // The next read (here the one a new request calls for) clears it.
+    world.requests.incoming(ACCOUNT, "principal-next", None);
+    wait(cx, "read again", |cx| {
+        !exists(cx, world.handle, "contacts-requests-error")
+            && exists(cx, world.handle, &row("principal-next"))
+    });
 }
 
 #[gpui_kit::test]

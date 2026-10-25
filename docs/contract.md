@@ -643,7 +643,10 @@ emits `AddContactRequested`.
   (the daemon keeps the declined status, and the contact row still reports
   it); the desktop, knowing the request was declined, says so plainly
   (`backend.contact.request_cooldown`: they declined recently, ask again a
-  day after). The desktop never resends on its own. `Unavailable` (the home
+  day after). This is explained for an add by id; a re-request by card
+  during the cooldown shows the daemon's own text (the card is opaque to
+  the desktop, which does not know whose it is before the daemon reads it).
+  The desktop never resends on its own. `Unavailable` (the home
   node unreachable, or the daemon busy) is `backend.contact.unavailable`:
   nothing was added, try again later.
 - `contact.requests.list {}` → `{requests: [row], contact_requests: "manual" |
@@ -654,13 +657,22 @@ emits `AddContactRequested`.
   whether or not the daemon's maintenance ran. A row: `request_id`,
   `link_id`, `principal_id`, `root_commitment`, `direction` (`inbound` /
   `outbound`), `state`, `expires_at` (Unix seconds), `note` and `preview`
-  (delimited, sanitized quoted fields: shown as untrusted text; preview at
-  most 256 characters of the first held message), `message_count` (held),
-  `safety_number` (twelve digit groups, joined by spaces for display, or
-  null). Locked accounts cannot list. Read with every account snapshot (and
-  polled once the daemon answered it); a daemon that answers it has contact
-  requests and the request methods are declared supported, otherwise they are
-  unsupported (`backend.gap.contact_requests`).
+  (delimited, sanitized quoted fields, product
+  `text_safety::quote_fallback_field`: `"…"` with `\"`, `\\`, `\n`,
+  `\u{…}` escapes; preview at most 256 characters of the first held
+  message). The desktop shows both exactly as sent, untrusted text, never
+  quoted again ("Note: "…""), `message_count` (held; "1 message" /
+  "N messages"), `safety_number` (exactly twelve digit groups, joined by
+  spaces for display; anything else is shown as no number to compare,
+  "you can't verify who this is yet", never a shorter one). Locked accounts
+  cannot list. Read with every account snapshot and polled until the daemon
+  refuses it as a method it does not know (`ValidationFailed`, "local bus
+  error: unsupported local bus method: …"): only then are the request
+  methods declared unsupported (`backend.gap.contact_requests`). Any other
+  refusal (a locked account, an outage, a row the daemon could not read,
+  a timeout) is a failed read: the requests already known stay answerable,
+  the Requests section says so (`backend.contact.requests_unreadable`), and
+  the next poll or request event reads the list again and clears it.
 - `contact.accept | contact.decline | contact.block {request_id}` →
   `{request_id, principal_id, direction, root_commitment, state}` (accept
   also `contact`); `contact.request.*` are aliases. Each selector (`request_id`,
@@ -677,7 +689,12 @@ emits `AddContactRequested`.
   held messages as ordinary `message.received` / `message.list` with their
   original send times (the desktop reads the conversations again). Decline
   sends the requester a decline; block tells the requester nothing (their
-  request looks pending until it expires).
+  request looks pending until it expires). Block needs the hold, whose
+  strip names the requester and the consequence (`confirm.contact.request_block`:
+  their request and waiting messages are deleted, and they can't message or
+  ask again until unblocked). Once a request is answered or expired the
+  desktop drops its note and preview; the translator keeps only the id and
+  state of this account's own requests (for the cooldown explanation).
 - `contact.requests.policy.get {}` / `contact.requests.policy.set
   {contact_requests}` → `{contact_requests}`.
 - Fences (r3/r4, daemon side; nothing for the desktop to send): a decline or
@@ -699,7 +716,9 @@ emits `AddContactRequested`.
 **Contacts dock.** Requests list the pending ones (who asks, the note, "N
 messages waiting until you answer" with the preview, the safety number, Block /
 Decline / Accept); the switch "Accept contact requests automatically" shows once
-the daemon reported the setting. A contact this account asked says, in quiet
+the daemon reported the setting, under the Requests heading (shown from then
+on), with help for each state (On: new requests are accepted at once; those
+already waiting still wait). A contact this account asked says, in quiet
 text, "Waiting for X to accept your request" with Send again, "X declined your
 request" (nothing to resend; asking again in the add form during the cooldown
 is answered plainly), or "Your request to X expired" with Send again.

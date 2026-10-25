@@ -316,30 +316,39 @@ impl Render for ContactsDock {
             .child(form)
             .child(section("dock.contacts.card.title", cx))
             .child(card)
+            // The heading stays once the setting is known, so the switch
+            // reads as part of Requests, not of the card above.
+            .when(
+                !requests.is_empty()
+                    || !pending.is_empty()
+                    || store.request_policy().is_some()
+                    || store.contact_requests_read_error().is_some(),
+                |col| col.child(section("dock.contacts.requests", cx)),
+            )
+            .children(requests::read_error(store, cx))
             .when(!requests.is_empty() || !pending.is_empty(), |col| {
-                col.child(section("dock.contacts.requests", cx))
-                    .children(pending.iter().map(|r| {
-                        requests::pending_row(
-                            r,
-                            store.participant(&r.peer),
-                            &self.sink,
-                            request_reason.as_ref(),
-                            cx,
-                        )
-                    }))
-                    .children(requests.iter().map(|r| rows::request_row(r, &self.sink, cx)))
-                    .when(has_link_requests && local_answers, |col| {
-                        col.child(
-                            div()
-                                .id("contacts-requests-local")
-                                .test_support()
-                                .px_3()
-                                .pb_1()
-                                .text_xs()
-                                .text_color(muted)
-                                .child(crate::i18n::tr("dock.contacts.requests_local")),
-                        )
-                    })
+                col.children(pending.iter().map(|r| {
+                    requests::pending_row(
+                        r,
+                        store.participant(&r.peer),
+                        &self.sink,
+                        request_reason.as_ref(),
+                        cx,
+                    )
+                }))
+                .children(requests.iter().map(|r| rows::request_row(r, &self.sink, cx)))
+                .when(has_link_requests && local_answers, |col| {
+                    col.child(
+                        div()
+                            .id("contacts-requests-local")
+                            .test_support()
+                            .px_3()
+                            .pb_1()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(crate::i18n::tr("dock.contacts.requests_local")),
+                    )
+                })
             })
             .when(store.request_policy().is_some(), |col| {
                 col.child(requests::policy_switch(store, &self.sink, cx))

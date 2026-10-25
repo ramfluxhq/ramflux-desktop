@@ -123,6 +123,9 @@ pub mod key {
     /// daemon is busy (contact request capacity, CONTACT-02 r3) or its node
     /// is unreachable for now. Nothing changed; try again later.
     pub const CONTACT_REQUEST_UNAVAILABLE: &str = "backend.contact.request_unavailable";
+    /// The contact requests could not be listed just now (`reason`): the
+    /// daemon has them; the next poll tries again.
+    pub const CONTACT_REQUESTS_UNREADABLE: &str = "backend.contact.requests_unreadable";
     /// Contact refusal `rate_limited`: Too many lookups.
     pub const CONTACT_RATE_LIMITED: &str = "backend.contact.rate_limited";
     /// Contact refusal `principal_id_taken`: The id is registered to another identity.
@@ -149,7 +152,7 @@ pub mod key {
     pub const CONTACT_EXPORT_FAILED: &str = "backend.contact.export_failed";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 56] = [
+    pub const ALL: [&str; 57] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -197,6 +200,7 @@ pub mod key {
         CONTACT_REQUEST_NOT_FOUND,
         CONTACT_REQUEST_NOTE,
         CONTACT_REQUEST_UNAVAILABLE,
+        CONTACT_REQUESTS_UNREADABLE,
         CONTACT_RATE_LIMITED,
         PRINCIPAL_ID_TAKEN,
         DEVICE_ID_TAKEN,

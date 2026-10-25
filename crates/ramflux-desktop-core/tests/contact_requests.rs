@@ -97,8 +97,8 @@ fn answers_go_to_pending_incoming_requests_and_block_needs_the_hold() {
     )
     .expect("accept");
     assert!(matches!(&effects[..], [Effect::Call { method, body }]
-        if method == methods::CONTACT_REQUEST_ACCEPT && body["request_id"] == "r-cy"
-            && body["participant_id"] == "p-cy"));
+        if method == methods::CONTACT_REQUEST_ACCEPT
+            && body["request_id"] == "r-cy" && body.get("participant_id").is_none()));
     let effects = handle_intent(
         &feed.store,
         Intent::human(answer("r-cy", RequestAnswer::Decline)),
@@ -213,6 +213,38 @@ fn a_count_only_event_keeps_the_listed_private_fields_and_a_lock_drops_them() {
         assert!(request.safety_number.is_none(), "{request:?}");
     }
     assert_eq!(pending(&feed.store).len(), 2, "the requests themselves stay");
+}
+
+#[test]
+fn an_answered_request_keeps_nothing_the_requester_wrote() {
+    let mut feed = feed();
+    let cy = ParticipantId::new("p-cy");
+    let written = ContactRequest {
+        note: Some("\"from the meetup\"".to_owned()),
+        ..request("r-cy", "p-cy", RequestDirection::Incoming, RequestState::Pending)
+    };
+    feed.ok(2, DomainEvent::ContactRequestUpserted(written));
+    // The decline event carries no private fields; none is kept from before.
+    let declined = ContactRequest {
+        held_messages: 0,
+        preview: None,
+        ..request("r-cy", "p-cy", RequestDirection::Incoming, RequestState::Declined)
+    };
+    feed.ok(3, DomainEvent::ContactRequestUpserted(declined));
+    let kept = feed.store.contact_request(&cy, RequestDirection::Incoming).expect("r-cy");
+    assert_eq!(kept.state, RequestState::Declined);
+    assert!(kept.note.is_none() && kept.preview.is_none(), "{kept:?}");
+}
+
+#[test]
+fn a_failed_read_is_kept_until_the_next_listing() {
+    let mut feed = feed();
+    let failed = DomainEvent::ContactRequestsReadFailed("backend.failure.timeout".to_owned());
+    assert!(feed.ok(2, failed).contact_requests);
+    assert_eq!(feed.store.contact_requests_read_error(), Some("backend.failure.timeout"));
+    assert_eq!(pending(&feed.store).len(), 2, "the known requests stay");
+    feed.ok(3, DomainEvent::ContactRequestsListed(Vec::new()));
+    assert_eq!(feed.store.contact_requests_read_error(), None);
 }
 
 #[test]

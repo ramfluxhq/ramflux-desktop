@@ -386,6 +386,9 @@ confirm:
     remove:
       en: "Remove %{contact} from your contacts; what you shared with them is revoked"
       zh-CN: "将 %{contact} 移出联系人，已共享给对方的内容将被撤销"
+    request_block:
+      en: "Block %{contact}: their request and waiting messages are deleted, and they can't message you or ask again until you unblock them"
+      zh-CN: "屏蔽 %{contact}：其请求和待送达的消息将被删除，在你解除屏蔽前，对方无法给你发消息或再次请求"
   governance:
     kick:
       en: "Remove %{member} from %{group}"

@@ -6,7 +6,8 @@
 
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
-    Actor, ContactAction, GovernanceOp, Intent, IntentKind, MomentKind, ParticipantId, Risk, Store,
+    Actor, ContactAction, GovernanceOp, Intent, IntentKind, MomentKind, ParticipantId,
+    RequestAnswer, Risk, Store,
 };
 
 use crate::i18n::{tr, tr_args};
@@ -149,6 +150,19 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
                 tr_args(key, &[("contact", &display_name(store, participant_id))]),
                 Some(SharedString::from(participant_id.to_string())),
                 action.risk(),
+            )
+        }
+        // Only Block needs a hold: it names who is blocked and what it does.
+        IntentKind::AnswerContactRequest { request_id, answer: RequestAnswer::Block } => {
+            let peer = store.contact_request_by_id(request_id).map(|r| r.peer.clone());
+            let contact =
+                peer.as_ref().map_or_else(|| request_id.clone(), |p| display_name(store, p));
+            (
+                tr_args("confirm.contact.request_block", &[("contact", &contact)]),
+                Some(SharedString::from(
+                    peer.map_or_else(|| request_id.clone(), |p| p.to_string()),
+                )),
+                Risk::High,
             )
         }
         _ => (tr("confirm.generic"), None, Risk::High),
