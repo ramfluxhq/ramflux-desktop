@@ -486,14 +486,16 @@ the peer not in a changed key state nor unreachable; one call at a time),
 `HangUpCall` (not ended): methods `call.invite`, `call.answer`,
 `call.reject`, `call.hangup`. Agents never take part in calls.
 
-**Daemon API assumed (CALL-01 §6).** `call.invite {conversation_id}`,
+**Daemon API (CALL-01 r2).** `call.invite {conversation_id}`,
 `call.answer|reject|hangup {call_id}`, each answering with the call row;
 event `call.changed` with the call row: `call_id`, `conversation_id`,
 `peer_id`, `direction` (`outgoing`/`incoming`), `state`
 (`outgoing_ringing`, `incoming_ringing`, `connecting`, `active`, `ended`),
 `end_reason`, `seq`, `created_at`, `answered_at`, `ended_at` (Unix seconds).
 `call.media.session {call_id}` answers `relay.endpoint` (`host:port`),
-`relay.token` (base64url, opaque), `sframe.cipher_suite` (IANA id) and
+`relay.token` (base64url, opaque), `relay.lease_id` (base64url, decoded 16 bytes),
+`relay.side` (0 caller, 1 callee), `relay.rebind_key` (base64url, decoded 32 bytes),
+`sframe.cipher_suite` (IANA id) and
 `sframe.send` / `sframe.receive` `{kid, base_key}` (base64url).
 
 **Media session.** Secret, so never an event: the media engine asks the
@@ -511,3 +513,58 @@ No echo cancellation yet (webrtc-audio-processing needs meson): calls are
 headset-only, and the in-call bar says so. On macOS the bundle carries
 `NSMicrophoneUsageDescription`; a denied microphone delivers silence, which
 the engine reports and the bar explains with a shortcut to System Settings.
+
+**CALL-01 r2 secret handoff and consent.** Each participant receives only its own
+relay token and rebind key over its authenticated gateway → daemon → media-engine
+channel. Neither secret travels through the peer. The caller sends a public lease
+offer; the callee signs consent binding call ID, both root-qualified endpoints,
+lease ID and hard expiry, then claims its own credentials through its gateway.
+The callee becomes active after authenticating that offer and obtaining its private
+allocation. The caller becomes active after authenticating the answer and allocating
+its own side. The gateway checks current root-signed active device keys and epochs.
+The node charges only the caller until consent, and the callee once after verified
+consent. There is a four-hour hard lease limit; ordinary authorization is 60 seconds
+and the caller renews every 20 seconds.
+
+`call.media.session` hands out keys once per call. Every SFrame key starts exactly
+once at counter zero; it cannot be reacquired after a media-engine restart or lost
+reply. A fresh call is required. Daemon restart, or device/key change, ends the call
+with `end_reason: failed`; live endpoint handoff/rekey is deferred. Tokens, rebind
+keys and media keys must never enter public state, events, timeline rows or logs.
+
+**CALL-01 r2 NAT rebinding contract (media-engine implementation required).**
+Ordinary media stays source-address pinned, with no per-packet MAC. Keepalives are
+empty token-framed payloads every five seconds and do not renew authorization.
+The connected media socket accepts a raw challenge only from its configured relay:
+
+```text
+challenge = ASCII("RFVC") || cookie[32] || new_addr_bytes
+new_addr_bytes = family_u8 || IP_octets || UDP_port_u16be
+family = 4 with 4 IPv4 octets, or 6 with 16 IPv6 octets
+```
+
+The relay provides the public NAT-mapped address it observed. Use those bytes, not
+the engine's local socket address. Challenge length is 43 bytes for IPv4 or 55 for
+IPv6. Within five seconds, compute and send from that socket:
+
+```text
+tag = HMAC-SHA256(decoded_rebind_key,
+  ASCII("ramflux.voice.rebind.v1") || decoded_lease_id[16] || side_u8 ||
+  cookie[32] || new_addr_bytes)[0..16]
+response_payload = ASCII("RFVE") || cookie[32] || tag[16]
+datagram = token_length_u32be || decoded_token || response_payload
+```
+
+Only a valid address/lease/side-bound HMAC echo moves the pin. A copied token and
+cookie alone cannot authorize a change. The relay consumes this control payload;
+it does not forward it as media. Each side has one outstanding five-second
+challenge and shares its normal bandwidth budget. Changing the UDP socket alone
+must preserve the SFrame sender counters and receiver replay window. Recreating
+the SFrame engine with the same keys is forbidden. Public `media_generation` stays
+zero; live handoff with incremented KIDs belongs to a later contract.
+
+The backend rebinding helper has independent known-answer tests. For an HMAC key
+of byte values 0..31, decoded lease ID 0..15, side 1 and cookie 32..63, expected
+16-byte tags are `5a2ff8f9d9c805d3a158c94d51bb0bbe` for IPv4 `203.0.113.7:54321`
+and `07d911fa05814f8c69af12f9420b5aee` for IPv6 `[2001:db8::1234]:54321`.
+These are public test vectors, not deployment keys.
