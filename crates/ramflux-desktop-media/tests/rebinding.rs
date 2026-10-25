@@ -175,8 +175,8 @@ struct Side {
 #[derive(Default)]
 struct Relayed {
     sides: [Side; 2],
-    /// SFrame (kid, ctr) of every media packet forwarded, in order.
-    forwarded: Vec<(u64, u64)>,
+    /// SFrame (kid, ctr) of every media packet admitted, in order.
+    admitted: Vec<(u64, u64)>,
     challenges: Vec<SocketAddr>,
     rebound: Vec<SocketAddr>,
     refused: u64,
@@ -241,10 +241,14 @@ fn stand_in_relay(stop: Arc<AtomicBool>, seen: Arc<Mutex<Relayed>>) -> SocketAdd
             if payload.is_empty() || response {
                 continue;
             }
-            let Some(target) = seen.sides[index ^ 1].source else { continue };
-            if let Ok((header, _)) = Header::decode(&payload[rtp::HEADER_LEN..]) {
-                seen.forwarded.push((header.kid, header.ctr));
+            // Every media packet admitted from the pinned source, whether
+            // or not the peer is pinned yet to receive it.
+            if let Some(body) = payload.get(rtp::HEADER_LEN..)
+                && let Ok((header, _)) = Header::decode(body)
+            {
+                seen.admitted.push((header.kid, header.ctr));
             }
+            let Some(target) = seen.sides[index ^ 1].source else { continue };
             let _ = socket.send_to(payload, target);
         }
     });
@@ -413,7 +417,7 @@ fn a_nat_rebinding_mid_call_is_answered_and_audio_goes_on() {
     let seen = seen.lock().unwrap();
     for kid in [0, 1] {
         let ctrs: Vec<u64> =
-            seen.forwarded.iter().filter(|(k, _)| *k == kid).map(|(_, c)| *c).collect();
+            seen.admitted.iter().filter(|(k, _)| *k == kid).map(|(_, c)| *c).collect();
         assert!(ctrs.len() > 60, "kid {kid}: {} packets", ctrs.len());
         assert_eq!(ctrs[0], 0, "kid {kid} starts at zero");
         assert!(ctrs.windows(2).all(|w| w[0] < w[1]), "kid {kid} counters rise: {ctrs:?}");
