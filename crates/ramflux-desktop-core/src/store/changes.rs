@@ -235,6 +235,8 @@ pub struct Changes {
     pub tasks: BTreeSet<TaskId>,
     /// Changed calls.
     pub calls: BTreeSet<CallId>,
+    /// Contact requests or the request setting changed.
+    pub contact_requests: bool,
     /// Standing approvals changed.
     pub standing_approvals: bool,
     /// The audit trail grew.
@@ -267,6 +269,7 @@ impl Changes {
             && self.grants.is_empty()
             && self.tasks.is_empty()
             && self.calls.is_empty()
+            && !self.contact_requests
             && !self.standing_approvals
             && !self.audit
             && !self.integrations
@@ -290,6 +293,7 @@ impl Changes {
             grants,
             tasks,
             calls,
+            contact_requests,
             standing_approvals,
             audit,
             integrations,
@@ -309,6 +313,7 @@ impl Changes {
         self.grants.extend(grants);
         self.tasks.extend(tasks);
         self.calls.extend(calls);
+        self.contact_requests |= contact_requests;
         self.standing_approvals |= standing_approvals;
         self.audit |= audit;
         self.integrations |= integrations;

@@ -70,6 +70,8 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::FieldChanged { .. } => "FieldChanged",
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
         UiEventKind::CallStartRequested => "CallStartRequested",
+        UiEventKind::ContactRequestAnswered { .. } => "ContactRequestAnswered",
+        UiEventKind::ContactRequestPolicySwitched { .. } => "ContactRequestPolicySwitched",
         UiEventKind::CallAnswered { .. } => "CallAnswered",
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
@@ -134,6 +136,8 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::SetNodeEnabled { .. } => "SetNodeEnabled",
         IntentKind::ExportDiagnostics { .. } => "ExportDiagnostics",
         IntentKind::StartCall { .. } => "StartCall",
+        IntentKind::AnswerContactRequest { .. } => "AnswerContactRequest",
+        IntentKind::SetContactRequestPolicy { .. } => "SetContactRequestPolicy",
         IntentKind::AnswerCall { .. } => "AnswerCall",
         IntentKind::RejectCall { .. } => "RejectCall",
         IntentKind::HangUpCall { .. } => "HangUpCall",
@@ -202,6 +206,9 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
         DomainEvent::CallUpserted(_) => "CallUpserted",
+        DomainEvent::ContactRequestsListed(_) => "ContactRequestsListed",
+        DomainEvent::ContactRequestUpserted(_) => "ContactRequestUpserted",
+        DomainEvent::ContactRequestPolicyUpdated(_) => "ContactRequestPolicyUpdated",
     }
 }
 

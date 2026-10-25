@@ -19,7 +19,7 @@ use crate::ids::{
     ParticipantId, StandingApprovalId, SurfaceId,
 };
 use crate::intent::{ContactAction, GovernanceOp, SyncDirection};
-use crate::model::ConflictResolution;
+use crate::model::{ConflictResolution, RequestAnswer};
 
 /// One level of the UI nesting.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -210,6 +210,18 @@ pub enum UiEventKind {
     CallHangUpPressed {
         /// The call.
         call_id: CallId,
+    },
+    /// An incoming contact request was answered.
+    ContactRequestAnswered {
+        /// The daemon's request id.
+        request_id: String,
+        /// The answer.
+        answer: RequestAnswer,
+    },
+    /// The "accept contact requests automatically" setting was switched.
+    ContactRequestPolicySwitched {
+        /// On: accept every request automatically.
+        auto_accept: bool,
     },
     /// A transfer action on an object.
     ObjectActionPressed {

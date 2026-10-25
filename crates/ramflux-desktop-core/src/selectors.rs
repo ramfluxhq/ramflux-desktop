@@ -231,6 +231,29 @@ pub fn incoming_contact_requests(store: &Store) -> Vec<&Participant> {
     linked(store, crate::model::ContactLink::Incoming)
 }
 
+/// Incoming contact requests waiting for an answer, ordered by the
+/// requester's display name then id.
+pub fn pending_contact_requests(store: &Store) -> Vec<&crate::model::ContactRequest> {
+    let display = |r: &crate::model::ContactRequest| {
+        store.participant(&r.peer).map_or_else(|| r.peer.short(), |p| p.display.clone())
+    };
+    let mut list: Vec<&crate::model::ContactRequest> =
+        store.contact_requests().filter(|r| r.awaits_answer()).collect();
+    list.sort_by_cached_key(|r| (display(r), r.peer.clone()));
+    list
+}
+
+/// This account's own request to `peer`, while the peer has not accepted
+/// it (pending, declined, blocked or expired).
+pub fn outgoing_contact_request<'a>(
+    store: &'a Store,
+    peer: &ParticipantId,
+) -> Option<&'a crate::model::ContactRequest> {
+    store
+        .contact_request(peer, crate::model::RequestDirection::Outgoing)
+        .filter(|r| r.state != crate::model::RequestState::Accepted)
+}
+
 /// Blocked participants, ordered by display name then id.
 pub fn blocked_contacts(store: &Store) -> Vec<&Participant> {
     linked(store, crate::model::ContactLink::Blocked)

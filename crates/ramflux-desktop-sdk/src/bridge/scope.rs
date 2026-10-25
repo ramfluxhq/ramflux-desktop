@@ -119,10 +119,11 @@ pub(super) struct Task {
     pub(super) listing_applied: BTreeMap<Paged, u64>,
     /// Delivery receipts of received direct messages (account scope).
     pub(super) receipts: Option<Receipts>,
-    /// The daemon answered `call.list`: it has the call API (and calls are
-    /// not turned off in the settings). Until then the call methods are
-    /// declared unsupported.
-    pub(super) calls_live: bool,
+    /// The daemon answered `call.list` (it has the call API, and calls are
+    /// not turned off in the settings) and `contact.requests.list` (it has
+    /// contact requests). Until then those methods are declared
+    /// unsupported.
+    pub(super) found: capabilities::Found,
 }
 
 /// Sends one read; a listing's first page gets the next listing number
@@ -183,9 +184,9 @@ pub(crate) async fn run(
         listings_sent: Arc::new(AtomicU64::new(0)),
         listing_applied: BTreeMap::new(),
         receipts,
-        calls_live: false,
+        found: capabilities::Found::default(),
     };
-    let declared = capabilities::capabilities(false);
+    let declared = capabilities::capabilities(capabilities::Found::default());
     task.emit(vec![DomainEvent::CapabilitiesUpdated(declared)]);
     task.show_sync(true);
     task.snapshot();
@@ -296,6 +297,9 @@ impl Task {
                 if self.config.call_api {
                     reads.push(Fetch::Calls);
                 }
+                // Pending contact requests and the request setting; the
+                // answer also says whether the daemon has requests.
+                reads.push(Fetch::ContactRequests);
                 reads
             }
         }
@@ -304,9 +308,21 @@ impl Task {
     /// Whether the daemon has the call API, as its `call.list` answer
     /// says: the call methods are declared supported or not accordingly.
     fn calls_answered(&mut self, live: bool) {
-        if live != self.calls_live {
-            self.calls_live = live;
-            self.emit(vec![DomainEvent::CapabilitiesUpdated(capabilities::capabilities(live))]);
+        let found = capabilities::Found { calls: live, ..self.found };
+        self.found_now(found);
+    }
+
+    /// Whether the daemon has contact requests, as its
+    /// `contact.requests.list` answer says.
+    fn requests_answered(&mut self, live: bool) {
+        let found = capabilities::Found { requests: live, ..self.found };
+        self.found_now(found);
+    }
+
+    fn found_now(&mut self, found: capabilities::Found) {
+        if found != self.found {
+            self.found = found;
+            self.emit(vec![DomainEvent::CapabilitiesUpdated(capabilities::capabilities(found))]);
         }
     }
 
@@ -417,6 +433,9 @@ impl Task {
             // pushed). Further pages follow on their own.
             Scope::Account(_) => Fetch::account_poll().into_iter().map(|f| vec![f]).collect(),
         };
+        if self.found.requests {
+            sequences.push(vec![Fetch::ContactRequests]);
+        }
         sequences.extend(self.translator.poll_reads());
         self.polls_in_flight = sequences.len();
         self.poll_changed = false;
@@ -558,11 +577,17 @@ impl Task {
 
     /// Translates one read; returns whether it produced events.
     fn on_read(&mut self, fetch: &Fetch, result: Result<Value, BusError>) -> bool {
-        if matches!(fetch, Fetch::Calls) {
-            match &result {
-                Ok(_) => self.calls_answered(true),
-                Err(BusError::Daemon { .. }) => self.calls_answered(false),
-                Err(_) => {}
+        if matches!(fetch, Fetch::Calls | Fetch::ContactRequests) {
+            let calls = matches!(fetch, Fetch::Calls);
+            let live = match &result {
+                Ok(_) => Some(true),
+                Err(BusError::Daemon { .. }) => Some(false),
+                Err(_) => None,
+            };
+            match (live, calls) {
+                (Some(live), true) => self.calls_answered(live),
+                (Some(live), false) => self.requests_answered(live),
+                (None, _) => {}
             }
         }
         match result {
@@ -600,6 +625,15 @@ impl Task {
     fn on_pushed(&mut self, pushed: Pushed) {
         match pushed {
             Pushed::Opened => {}
+            Pushed::Event { topic, body }
+                if crate::translate::contact_requests::TOPICS.contains(&topic.as_str()) =>
+            {
+                let translated = self.translator.contact_request_event(&topic, &body);
+                self.spawn_fetches(translated.follow);
+                if self.emit(translated.events) {
+                    self.interval = self.config.poll_fast;
+                }
+            }
             Pushed::Event { topic, body } => {
                 let events = self.translator.pushed(&topic, &body, now());
                 if self.emit(events) {
@@ -623,7 +657,7 @@ impl Task {
         reply: std_mpsc::Sender<super::MediaAnswer>,
     ) {
         let account = match self.account() {
-            Some(account) if self.calls_live => account,
+            Some(account) if self.found.calls => account,
             _ => {
                 let _ = reply.send((call_id, Err(capabilities::reason::CALLS.to_owned())));
                 return;

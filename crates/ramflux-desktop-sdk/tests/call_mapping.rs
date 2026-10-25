@@ -315,9 +315,10 @@ fn voice_call_methods_map_to_the_call_api_with_retry_keys() {
         assert!(matches!(refused.plan, Plan::Refuse { .. }), "{method} without a call id");
     }
     // Without the call API, the capabilities declare every call method.
-    let declared = capabilities::capabilities(false);
+    let declared = capabilities::capabilities(capabilities::Found::default());
     for method in capabilities::CALL_METHODS {
         assert_eq!(declared.unsupported_reason(method), Some(capabilities::reason::CALLS));
     }
-    assert!(capabilities::capabilities(true).unsupported_reason(methods::CALL_INVITE).is_none());
+    let calls = capabilities::Found { calls: true, ..Default::default() };
+    assert!(capabilities::capabilities(calls).unsupported_reason(methods::CALL_INVITE).is_none());
 }

@@ -136,6 +136,12 @@ pub enum IntentError {
     /// Participant not in the store.
     #[error("unknown participant {0}")]
     UnknownParticipant(ParticipantId),
+    /// No contact request with this id.
+    #[error("unknown contact request {0}")]
+    UnknownContactRequest(String),
+    /// The contact request was answered (or expired) already.
+    #[error("contact request {0} is not waiting for an answer")]
+    ContactRequestNotPending(String),
     /// Safety number already verified.
     #[error("participant {0} is already verified")]
     AlreadyVerified(ParticipantId),

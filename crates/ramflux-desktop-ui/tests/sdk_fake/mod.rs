@@ -101,6 +101,9 @@ pub struct State {
     /// Voice calls (the CALL-01 API); `dm-ana` is a direct conversation
     /// with `principal-ana`.
     pub calls: Arc<ramflux_desktop_test::fake_calls::FakeCalls>,
+    /// Contact requests (CONTACT-02, contract-first); a contact's row in
+    /// `contact.list` carries this account's own request to it.
+    pub requests: Arc<ramflux_desktop_test::fake_contact_requests::FakeContactRequests>,
 }
 
 /// The shared state.
@@ -218,10 +221,18 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
     let all = frames();
     shared.lock().expect("state").calls.conversation("dm-ana", "principal-ana");
     let fake = FakeBus::start(&path, move |method, account, body| {
-        let (surfaces, tasks, calls) = {
+        let (surfaces, tasks, calls, requests) = {
             let state = state.lock().expect("state");
-            (state.surfaces.clone(), state.tasks.clone(), state.calls.clone())
+            (
+                state.surfaces.clone(),
+                state.tasks.clone(),
+                state.calls.clone(),
+                state.requests.clone(),
+            )
         };
+        if let Some(reply) = requests.handle(method, account, body) {
+            return reply;
+        }
         if let Some(reply) = surfaces.handle(method, body) {
             return reply;
         }
@@ -252,7 +263,18 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
         let state = state.lock().expect("state");
         let fixture = || all.get(method).cloned().unwrap_or(json!({}));
         Reply::Ok(match method {
-            "contact.list" => contacts(),
+            "contact.list" => {
+                let mut listed = contacts();
+                let requests = state.requests.clone();
+                for row in listed["contacts"].as_array_mut().into_iter().flatten() {
+                    let peer = row["target_id"].as_str().unwrap_or_default().to_owned();
+                    if let Some(own) = requests.own_state("acct-main", &peer) {
+                        row["principal_id"] = json!(peer);
+                        row["request_state"] = json!(own);
+                    }
+                }
+                listed
+            }
             "identity.directory" => {
                 let mut frame = identities(&all);
                 for row in frame["identities"].as_array_mut().expect("rows") {

@@ -171,6 +171,18 @@ impl Store {
             }
             DomainEvent::TaskUpserted(task) => self.upsert_task(at, task, changes)?,
             DomainEvent::CallUpserted(call) => self.upsert_call(at, call, changes)?,
+            DomainEvent::ContactRequestsListed(requests) => {
+                self.list_contact_requests(requests, changes);
+            }
+            DomainEvent::ContactRequestUpserted(request) => {
+                self.upsert_contact_request(request, changes);
+            }
+            DomainEvent::ContactRequestPolicyUpdated(policy) => {
+                if self.request_policy != Some(*policy) {
+                    self.request_policy = Some(*policy);
+                    changes.contact_requests = true;
+                }
+            }
             DomainEvent::TaskStepChanged { task_id, version, step_id, state, needs_me } => {
                 let step = StepChange {
                     task_id,

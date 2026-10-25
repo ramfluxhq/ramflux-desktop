@@ -38,6 +38,26 @@ pub mod reason {
     pub const DEVICE_SYNC: &str = "backend.gap.device_sync";
     /// Voice calls need the daemon's call API (CALL-01).
     pub const CALLS: &str = "backend.gap.calls";
+    /// Contact requests need the daemon's request API (CONTACT-02).
+    pub const CONTACT_REQUESTS: &str = "backend.gap.contact_requests";
+}
+
+/// The contact request methods, which need the daemon's request API
+/// (CONTACT-02).
+pub const REQUEST_METHODS: [&str; 4] = [
+    methods::CONTACT_REQUEST_ACCEPT,
+    methods::CONTACT_REQUEST_DECLINE,
+    methods::CONTACT_REQUEST_BLOCK,
+    methods::CONTACT_REQUESTS_POLICY,
+];
+
+/// What the daemon was found to have.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Found {
+    /// The call API (it answered `call.list`).
+    pub calls: bool,
+    /// Contact requests (it answered `contact.requests.list`).
+    pub requests: bool,
 }
 
 /// The voice call methods, which need the daemon's call API (CALL-01).
@@ -69,14 +89,19 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
     table
 }
 
-/// The capabilities event payload; without the call API (`call_api`
-/// false) the call methods are unsupported too.
-pub fn capabilities(call_api: bool) -> Capabilities {
+/// The capabilities event payload; what the daemon was not `found` to
+/// have (the call API, contact requests) is unsupported too.
+pub fn capabilities(found: Found) -> Capabilities {
     let mut unsupported: BTreeMap<String, String> =
         unsupported().into_iter().map(|(m, r)| (m, r.to_owned())).collect();
-    if !call_api {
+    if !found.calls {
         for method in CALL_METHODS {
             unsupported.insert(method.to_owned(), reason::CALLS.to_owned());
+        }
+    }
+    if !found.requests {
+        for method in REQUEST_METHODS {
+            unsupported.insert(method.to_owned(), reason::CONTACT_REQUESTS.to_owned());
         }
     }
     Capabilities { unsupported }

@@ -187,7 +187,9 @@ impl Translator {
         let person = self.people.entry(id.clone()).or_default();
         person.link = state;
         person.resolution = Resolution::from_record(record);
-        self.report_person(&id)
+        let mut events = self.report_person(&id);
+        events.extend(self.own_request(record, &id));
+        events
     }
 
     /// The answer to `contact.add` (by id or card): `{contact}`, the
@@ -208,7 +210,8 @@ impl Translator {
         if let Some(link) = self.links.get_mut(&id) {
             link.state = ContactLink::Accepted;
         }
-        let events = self.report_person(&id);
+        let mut events = self.report_person(&id);
+        events.extend(self.own_request(contact, &id));
         if !events.is_empty() || !always {
             return events;
         }

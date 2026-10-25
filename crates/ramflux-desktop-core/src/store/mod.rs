@@ -16,6 +16,7 @@
 //! - `tasks`: task updates, step changes and where a step needs the
 //!   requester; task moments follow their task's state.
 //! - `calls`: voice calls and their timeline records.
+//! - `contact_requests`: contact requests both ways.
 //! - [`bodies`]: the bounded message-body cache.
 //! - `index`: secondary indexes the reducer maintains (timelines, needs-me,
 //!   in progress, members, grant and task presenters).
@@ -23,6 +24,7 @@
 pub mod bodies;
 mod calls;
 mod changes;
+mod contact_requests;
 mod index;
 mod reducer;
 mod surface_events;
@@ -38,9 +40,9 @@ use crate::ids::{
     StandingApprovalId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, Call, Capabilities, ContactCard, Context, DaemonInfo, Device,
-    EffectFailure, Grant, Integrations, Listing, Moment, Node, Object, Participant,
-    StandingApproval, SyncStatus, Task,
+    Account, AuditEntry, Call, Capabilities, ContactCard, ContactRequest, Context, DaemonInfo,
+    Device, EffectFailure, Grant, Integrations, Listing, Moment, Node, Object, Participant,
+    RequestDirection, RequestPolicy, StandingApproval, SyncStatus, Task,
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
@@ -82,6 +84,8 @@ pub struct Store {
     daemon: Option<DaemonInfo>,
     sync: Option<SyncStatus>,
     own_card: Option<ContactCard>,
+    contact_requests: BTreeMap<(ParticipantId, RequestDirection), ContactRequest>,
+    request_policy: Option<RequestPolicy>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
     pin_order: Vec<ContextId>,
@@ -301,6 +305,30 @@ impl Store {
     /// This account's contact card, once the backend exported it.
     pub fn own_contact_card(&self) -> Option<&ContactCard> {
         self.own_card.as_ref()
+    }
+
+    /// Contact requests both ways, by peer then direction.
+    pub fn contact_requests(&self) -> impl Iterator<Item = &ContactRequest> {
+        self.contact_requests.values()
+    }
+
+    /// The request with `peer` in `direction`, if there is one.
+    pub fn contact_request(
+        &self,
+        peer: &ParticipantId,
+        direction: RequestDirection,
+    ) -> Option<&ContactRequest> {
+        self.contact_requests.get(&(peer.clone(), direction))
+    }
+
+    /// The incoming request with id `id`, if there is one.
+    pub fn contact_request_by_id(&self, id: &str) -> Option<&ContactRequest> {
+        self.contact_requests.values().find(|r| r.id == id)
+    }
+
+    /// The account's contact request setting, once the source reported it.
+    pub fn request_policy(&self) -> Option<RequestPolicy> {
+        self.request_policy
     }
 
     /// Effects that failed, oldest first, at most [`MAX_FAILURES`].

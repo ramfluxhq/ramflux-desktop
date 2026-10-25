@@ -37,6 +37,7 @@
 mod account;
 pub mod calls;
 mod contact_failures;
+pub mod contact_requests;
 mod contacts;
 mod conversation;
 mod daemon;
@@ -202,6 +203,8 @@ pub struct Translator {
     delivered: Vec<crate::receipts::Delivered>,
     /// The sequence number of each call last reported.
     reported_calls: BTreeMap<ramflux_desktop_core::CallId, u64>,
+    /// This account's own contact requests, by peer, as last reported.
+    outgoing_requests: BTreeMap<ParticipantId, ramflux_desktop_core::ContactRequest>,
     /// Call rows waiting for their conversation to be listed.
     pending_calls: BTreeMap<ramflux_desktop_core::CallId, Value>,
 }
@@ -259,6 +262,7 @@ impl Translator {
             delivered: Vec::new(),
             reported_calls: BTreeMap::new(),
             pending_calls: BTreeMap::new(),
+            outgoing_requests: BTreeMap::new(),
         }
     }
 
@@ -397,6 +401,7 @@ impl Translator {
             Fetch::StandingApprovals => Translated::events(self.standing_list(value)),
             Fetch::McpTools => Translated::events(self.mcp_tools(value)),
             Fetch::Calls => self.call_list(value),
+            Fetch::ContactRequests => Translated::events(self.contact_request_list(value)),
             Fetch::Messages(context) => self.messages(context, value, now),
             Fetch::GroupReceive { context, .. } => {
                 self.remember_plaintext(value);
@@ -483,6 +488,9 @@ impl Translator {
             }
             "mcp.approval.granted" => self.approval_decided(body, GrantState::Approved),
             "call.changed" => self.call_row(body).events,
+            topic if contact_requests::TOPICS.contains(&topic) => {
+                self.contact_request_event(topic, body).events
+            }
             "mcp.approval.denied" => self.approval_decided(body, GrantState::Denied),
             // Tool starts and A2UI action records are not bound to a
             // conversation yet; they have no moment to land in (gap ledger).

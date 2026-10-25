@@ -10,10 +10,11 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, Block, Call, Capabilities, ContactCard, Context, DaemonInfo, Device,
-    Disappearing, EffectFailure, Grant, GrantFailure, GrantState, Integrations, Lifecycle, Listing,
-    LockState, Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant,
-    StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskAnswer, TaskState,
+    Account, AuditEntry, Block, Call, Capabilities, ContactCard, ContactRequest, Context,
+    DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure, GrantState, Integrations,
+    Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe,
+    Object, Participant, RequestPolicy, StandingApproval, StepState, SurfaceAction, SyncStatus,
+    Task, TaskAnswer, TaskState,
 };
 
 pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
@@ -284,4 +285,13 @@ pub enum DomainEvent {
     /// the conversation, peer, caller and direction stay. The store keeps
     /// the call's timeline record with it.
     CallUpserted(Call),
+    /// The incoming contact requests the daemon lists now (pending ones):
+    /// they replace every incoming request the store holds.
+    ContactRequestsListed(Vec<ContactRequest>),
+    /// One contact request, as it is now (a new one, an answer, an expiry,
+    /// or this account's own request to a peer). Keyed by peer and
+    /// direction: a peer has at most one request each way.
+    ContactRequestUpserted(ContactRequest),
+    /// The account's contact request setting.
+    ContactRequestPolicyUpdated(RequestPolicy),
 }

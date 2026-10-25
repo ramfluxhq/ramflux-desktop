@@ -54,9 +54,12 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
         DomainEvent::CallUpserted(_) => "CallUpserted",
+        DomainEvent::ContactRequestsListed(_) => "ContactRequestsListed",
+        DomainEvent::ContactRequestUpserted(_) => "ContactRequestUpserted",
+        DomainEvent::ContactRequestPolicyUpdated(_) => "ContactRequestPolicyUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 38;
+const DOMAIN_EVENT_VARIANTS: usize = 41;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -126,6 +129,8 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::SetNodeEnabled { .. } => "SetNodeEnabled",
         IntentKind::ExportDiagnostics { .. } => "ExportDiagnostics",
         IntentKind::StartCall { .. } => "StartCall",
+        IntentKind::AnswerContactRequest { .. } => "AnswerContactRequest",
+        IntentKind::SetContactRequestPolicy { .. } => "SetContactRequestPolicy",
         IntentKind::AnswerCall { .. } => "AnswerCall",
         IntentKind::RejectCall { .. } => "RejectCall",
         IntentKind::HangUpCall { .. } => "HangUpCall",
@@ -138,7 +143,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the six secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 48;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 50;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -182,11 +187,13 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::FieldChanged { .. } => "FieldChanged",
         UiEventKind::FocusMomentRequested { .. } => "FocusMomentRequested",
         UiEventKind::CallStartRequested => "CallStartRequested",
+        UiEventKind::ContactRequestAnswered { .. } => "ContactRequestAnswered",
+        UiEventKind::ContactRequestPolicySwitched { .. } => "ContactRequestPolicySwitched",
         UiEventKind::CallAnswered { .. } => "CallAnswered",
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 42;
+const UI_EVENT_KIND_VARIANTS: usize = 44;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -561,6 +568,13 @@ fn all_domain_events() -> Vec<DomainEvent> {
             answered_at: None,
             ended_at: Some(Timestamp(45_010)),
         }),
+        DomainEvent::ContactRequestsListed(vec![contact_request()]),
+        DomainEvent::ContactRequestUpserted(ContactRequest {
+            state: RequestState::Declined,
+            direction: RequestDirection::Outgoing,
+            ..contact_request()
+        }),
+        DomainEvent::ContactRequestPolicyUpdated(RequestPolicy::AutoAccept),
     ];
     for (i, kind) in all_moment_kinds().into_iter().enumerate() {
         let id = format!("m-{i}");
@@ -569,8 +583,27 @@ fn all_domain_events() -> Vec<DomainEvent> {
     events
 }
 
+fn contact_request() -> ContactRequest {
+    ContactRequest {
+        id: "rq-1".to_owned(),
+        peer: ParticipantId::new("p-1"),
+        direction: RequestDirection::Incoming,
+        state: RequestState::Pending,
+        note: Some("from the meetup".to_owned()),
+        safety_number: Some("12345 67890".to_owned()),
+        held_messages: 2,
+        preview: Some("hi there".to_owned()),
+        expires_at: Some(Timestamp(604_800_000)),
+    }
+}
+
 fn all_intent_kinds() -> Vec<IntentKind> {
     vec![
+        IntentKind::AnswerContactRequest {
+            request_id: "rq-1".to_owned(),
+            answer: RequestAnswer::Block,
+        },
+        IntentKind::SetContactRequestPolicy { policy: RequestPolicy::Manual },
         IntentKind::SendMessage { context_id: ContextId::new("c-1"), text: "hi".into() },
         IntentKind::StartConversation {
             context_id: ContextId::new("c-new"),
@@ -734,6 +767,11 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::FieldChanged { value: "x".into() },
         UiEventKind::FocusMomentRequested { moment_id: "m-1".into() },
         UiEventKind::CallStartRequested,
+        UiEventKind::ContactRequestAnswered {
+            request_id: "rq-1".to_owned(),
+            answer: RequestAnswer::Decline,
+        },
+        UiEventKind::ContactRequestPolicySwitched { auto_accept: true },
         UiEventKind::CallAnswered { call_id: "k-1".into(), accept: false },
         UiEventKind::CallHangUpPressed { call_id: "k-1".into() },
     ]

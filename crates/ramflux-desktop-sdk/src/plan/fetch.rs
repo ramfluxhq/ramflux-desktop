@@ -84,6 +84,10 @@ pub enum Fetch {
     Tasks(ContextId, Option<String>),
     /// `task.get` of one task: its conversation and the daemon's task id.
     Task(ContextId, String),
+    /// `contact.requests.list`: the pending contact requests and the
+    /// account's request setting. Its answer also tells whether the daemon
+    /// has contact requests (CONTACT-02).
+    ContactRequests,
     /// `call.list`: the account's ringing and active calls and recent call
     /// records. Its answer also tells whether the daemon has the call API.
     Calls,
@@ -141,6 +145,9 @@ impl Fetch {
             }
             Self::McpTools => BusRequest::new(account, "mcp", "mcp.tool.list", empty),
             Self::Calls => BusRequest::new(account, "call", "call.list", empty),
+            Self::ContactRequests => {
+                BusRequest::new(account, "contact", "contact.requests.list", empty)
+            }
             Self::Messages(context) => BusRequest::new(
                 account,
                 "message",

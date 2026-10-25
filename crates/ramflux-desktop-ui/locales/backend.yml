@@ -16,6 +16,9 @@ backend:
     calls:
       en: "Voice calls are not available from the daemon yet."
       zh-CN: "守护进程尚不支持语音通话。"
+    contact_requests:
+      en: "Contact requests are not available from the daemon yet."
+      zh-CN: "守护进程尚不支持联系人请求。"
     contact_route:
       en: "A contact request travels to the contact's node and needs a federation route to it, which the daemon does not list."
       zh-CN: "联系人请求需发送到对方节点，需要通往该节点的联邦路由，守护进程未提供。"

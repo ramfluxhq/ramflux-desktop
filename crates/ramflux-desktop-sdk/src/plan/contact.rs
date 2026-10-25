@@ -126,6 +126,54 @@ pub(super) fn contact_call(
     }
 }
 
+/// Plans an answer to an incoming contact request, or the request setting
+/// (CONTACT-02, contract-first): `contact.request.accept|decline|block`
+/// become the daemon's `contact.accept|decline|block {request_id}`; the
+/// setting is `contact.requests.policy.set {contact_requests}`. An answer
+/// reads the requests and contacts again, and an accept the conversations
+/// too (the held messages are delivered into the conversation).
+pub(super) fn request_call(acct: Option<&str>, method: &str, body: &Value) -> Plan {
+    if method == methods::CONTACT_REQUESTS_POLICY {
+        let policy = text(body, "contact_requests");
+        if crate::translate::contact_requests::policy(policy).is_none() {
+            return refuse_invalid("unknown contact request setting");
+        }
+        return Plan::Call {
+            request: BusRequest::new(
+                acct,
+                "contact",
+                "contact.requests.policy.set",
+                serde_json::json!({ "contact_requests": policy }),
+            ),
+            refresh: vec![Fetch::ContactRequests],
+        };
+    }
+    let request_id = text(body, "request_id");
+    if request_id.is_empty() {
+        return refuse_invalid("no contact request named");
+    }
+    let (daemon, accept) = match method {
+        methods::CONTACT_REQUEST_ACCEPT => ("contact.accept", true),
+        methods::CONTACT_REQUEST_DECLINE => ("contact.decline", false),
+        methods::CONTACT_REQUEST_BLOCK => ("contact.block", false),
+        _ => return refuse_invalid("no daemon counterpart"),
+    };
+    let mut refresh = vec![Fetch::ContactRequests];
+    refresh.extend(super::contact_card::contact_refresh());
+    if accept {
+        refresh.push(Fetch::first(Paged::Conversations));
+    }
+    Plan::Call {
+        request: BusRequest::new(
+            acct,
+            "contact",
+            daemon,
+            serde_json::json!({ "request_id": request_id }),
+        ),
+        refresh,
+    }
+}
+
 /// Plans `safety.verify` for account `acct`.
 pub(super) fn verify(acct: Option<&str>, body: &Value, known: &impl Known) -> Plan {
     let commitment = known

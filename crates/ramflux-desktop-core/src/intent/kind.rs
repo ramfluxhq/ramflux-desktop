@@ -12,7 +12,7 @@ use crate::ids::{
     AccountId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId, ParticipantId,
     StandingApprovalId, SurfaceId, TaskId,
 };
-use crate::model::{AccountKind, ConflictResolution, PinSource};
+use crate::model::{AccountKind, ConflictResolution, PinSource, RequestAnswer, RequestPolicy};
 
 /// Direction of an own-device sync transfer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -225,6 +225,18 @@ pub enum IntentKind {
     },
     /// Export this account's own contact card to share it.
     ExportContactCard,
+    /// Answer an incoming contact request. Human only.
+    AnswerContactRequest {
+        /// The daemon's request id.
+        request_id: String,
+        /// The answer.
+        answer: RequestAnswer,
+    },
+    /// Set how contact requests are answered. Human only.
+    SetContactRequestPolicy {
+        /// The setting.
+        policy: RequestPolicy,
+    },
     /// Act on the contact link with a participant.
     Contact {
         /// Participant.

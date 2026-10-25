@@ -396,6 +396,10 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         methods::TASK_START | methods::TASK_CANCEL | methods::TASK_RESOLVE => {
             task::task_call(acct, method, body, known)
         }
+        methods::CONTACT_REQUEST_ACCEPT
+        | methods::CONTACT_REQUEST_DECLINE
+        | methods::CONTACT_REQUEST_BLOCK
+        | methods::CONTACT_REQUESTS_POLICY => contact::request_call(acct, method, body),
         methods::CONTACT_ADD
         | methods::CONTACT_ACCEPT
         | methods::CONTACT_REJECT

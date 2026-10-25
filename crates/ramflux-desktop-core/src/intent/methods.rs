@@ -70,6 +70,14 @@ pub const CONTACT_BLOCK: &str = "contact.block";
 pub const CONTACT_UNBLOCK: &str = "contact.unblock";
 /// Remove a contact.
 pub const CONTACT_REMOVE: &str = "contact.remove";
+/// Accept an incoming contact request (its held messages are delivered).
+pub const CONTACT_REQUEST_ACCEPT: &str = "contact.request.accept";
+/// Decline an incoming contact request (its held messages are dropped).
+pub const CONTACT_REQUEST_DECLINE: &str = "contact.request.decline";
+/// Block the requester of an incoming contact request.
+pub const CONTACT_REQUEST_BLOCK: &str = "contact.request.block";
+/// Set how contact requests are answered (`manual` or `auto_accept`).
+pub const CONTACT_REQUESTS_POLICY: &str = "contact.requests.policy.set";
 /// Verify a safety number.
 pub const SAFETY_VERIFY: &str = "safety.verify";
 /// Create a group with its conversation and first members.

@@ -164,6 +164,7 @@ impl Task {
             self.sync.reload_on_open = true;
         }
         let mut topics = topics();
+        topics.extend(crate::translate::contact_requests::TOPICS);
         if self.config.call_api {
             topics.push(crate::translate::stream::CALL_TOPIC);
         }
@@ -224,6 +225,11 @@ impl Task {
             "sync.status" => {
                 self.sync.daemon = Some(DaemonSync::from_body(body));
                 self.show_sync(false);
+            }
+            topic if crate::translate::contact_requests::TOPICS.contains(&topic) => {
+                let translated = self.translator.contact_request_event(topic, body);
+                self.request_reads(translated.follow);
+                self.emit(translated.events);
             }
             crate::translate::stream::CALL_TOPIC => {
                 let translated = self.translator.call_row(body);

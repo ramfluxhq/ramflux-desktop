@@ -31,9 +31,13 @@ pub const PUSHED_TOPICS: [&str; 6] = [
     "ramflux.a2ui.action_result",
 ];
 
-/// Every topic the push subscription asks for.
+/// Every topic the push subscription asks for: the pushed ones, voice
+/// call rows and contact requests (both read directly).
 pub fn topics() -> Vec<&'static str> {
-    PUSHED_TOPICS.to_vec()
+    let mut topics = PUSHED_TOPICS.to_vec();
+    topics.push(crate::translate::stream::CALL_TOPIC);
+    topics.extend(crate::translate::contact_requests::TOPICS);
+    topics
 }
 
 /// What the subscription reports.

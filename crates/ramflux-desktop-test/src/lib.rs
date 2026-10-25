@@ -13,8 +13,9 @@
 //! - `fake_bus` (feature `fake-bus`): a fake daemon local bus for adapter tests,
 //!   with its event journal in `fake_journal`, its agent surfaces (on the
 //!   protocol's state machine) in `fake_surfaces`, conversation tasks
-//!   (on the protocol's state machine) in `fake_tasks` and its voice calls
-//!   (the CALL-01 bus API) in `fake_calls`.
+//!   (on the protocol's state machine) in `fake_tasks`, its voice calls
+//!   (the CALL-01 bus API) in `fake_calls` and its contact requests
+//!   (CONTACT-02, contract-first) in `fake_contact_requests`.
 //! - `live_daemon` (feature `live-daemon`): a real `rf daemon` from the
 //!   pinned product revision for live tests.
 
@@ -24,6 +25,8 @@
 pub mod fake_bus;
 #[cfg(feature = "fake-bus")]
 pub mod fake_calls;
+#[cfg(feature = "fake-bus")]
+pub mod fake_contact_requests;
 #[cfg(feature = "fake-bus")]
 pub mod fake_journal;
 #[cfg(feature = "fake-bus")]

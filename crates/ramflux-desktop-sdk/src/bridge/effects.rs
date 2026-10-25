@@ -30,13 +30,25 @@ use crate::translate::reason::{key, keyed};
 
 impl Task {
     pub(super) fn effect(&mut self, effect: Effect) {
-        if !self.calls_live
+        if !self.found.calls
             && let Some(method) = effect.method().filter(|m| capabilities::CALL_METHODS.contains(m))
         {
             let failure = EffectFailure {
                 method: method.to_owned(),
                 code: FailureCode::UnsupportedByBackend,
                 message: capabilities::reason::CALLS.to_owned(),
+            };
+            self.emit(vec![DomainEvent::EffectFailed(failure)]);
+            return;
+        }
+        if !self.found.requests
+            && let Some(method) =
+                effect.method().filter(|m| capabilities::REQUEST_METHODS.contains(m))
+        {
+            let failure = EffectFailure {
+                method: method.to_owned(),
+                code: FailureCode::UnsupportedByBackend,
+                message: capabilities::reason::CONTACT_REQUESTS.to_owned(),
             };
             self.emit(vec![DomainEvent::EffectFailed(failure)]);
             return;

@@ -183,6 +183,18 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::ContactActionPressed { participant_id, action } => {
             IntentKind::Contact { participant_id: participant_id.clone(), action: *action }
         }
+        UiEventKind::ContactRequestAnswered { request_id, answer } => {
+            IntentKind::AnswerContactRequest { request_id: request_id.clone(), answer: *answer }
+        }
+        UiEventKind::ContactRequestPolicySwitched { auto_accept } => {
+            IntentKind::SetContactRequestPolicy {
+                policy: if *auto_accept {
+                    ramflux_desktop_core::RequestPolicy::AutoAccept
+                } else {
+                    ramflux_desktop_core::RequestPolicy::Manual
+                },
+            }
+        }
         UiEventKind::ObjectActionPressed { object_id, action } => {
             let object_id = object_id.clone();
             match action {

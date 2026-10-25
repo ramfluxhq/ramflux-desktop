@@ -9,7 +9,7 @@ use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
 use crate::intent::{ContactAction, IntentKind, check_contact_card, check_contact_id, methods};
-use crate::model::ContactLink;
+use crate::model::{ContactLink, RequestAnswer, RequestDirection, RequestPolicy, Risk};
 
 /// Decides contact-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
@@ -31,6 +31,42 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
         IntentKind::ExportContactCard => p
             .human_only("share the contact card")
             .map(|()| Decision::Call(methods::CONTACT_CARD_EXPORT, json!({}))),
+        IntentKind::AnswerContactRequest { request_id, answer } => {
+            p.human_only("answer a contact request").and_then(|()| {
+                let request = p
+                    .store
+                    .contact_request_by_id(request_id)
+                    .filter(|r| r.direction == RequestDirection::Incoming)
+                    .ok_or_else(|| IntentError::UnknownContactRequest(request_id.clone()))?;
+                if !request.awaits_answer() {
+                    return Err(IntentError::ContactRequestNotPending(request_id.clone()));
+                }
+                let body = json!({ "request_id": request_id, "participant_id": request.peer });
+                Ok(match answer {
+                    RequestAnswer::Accept => Decision::Call(methods::CONTACT_REQUEST_ACCEPT, body),
+                    RequestAnswer::Decline => {
+                        Decision::Call(methods::CONTACT_REQUEST_DECLINE, body)
+                    }
+                    // Blocking drops whatever the requester sends from now
+                    // on: it needs the hold, as blocking a contact does.
+                    RequestAnswer::Block => {
+                        p.gated(Risk::High, methods::CONTACT_REQUEST_BLOCK, body)
+                    }
+                })
+            })
+        }
+        IntentKind::SetContactRequestPolicy { policy } => {
+            p.human_only("change the contact request setting").map(|()| {
+                let value = match policy {
+                    RequestPolicy::Manual => "manual",
+                    RequestPolicy::AutoAccept => "auto_accept",
+                };
+                Decision::Call(
+                    methods::CONTACT_REQUESTS_POLICY,
+                    json!({ "contact_requests": value }),
+                )
+            })
+        }
         IntentKind::Contact { participant_id, action } => p
             .store
             .participant(participant_id)
@@ -67,7 +103,14 @@ pub fn check_add_contact(
 ) -> Result<crate::ids::ParticipantId, IntentError> {
     check_contact_id(id).map_err(IntentError::InvalidContactId)?;
     let participant = crate::ids::ParticipantId::new(id);
-    let link = store.participant(&participant).map_or(ContactLink::None, |c| c.link_state());
+    let mut link = store.participant(&participant).map_or(ContactLink::None, |c| c.link_state());
+    // A pending request from them is answered, not added over.
+    if store
+        .contact_request(&participant, RequestDirection::Incoming)
+        .is_some_and(crate::model::ContactRequest::awaits_answer)
+    {
+        link = ContactLink::Incoming;
+    }
     if matches!(link, ContactLink::Accepted | ContactLink::Blocked | ContactLink::Incoming) {
         return Err(IntentError::ContactLinkState { participant, link });
     }

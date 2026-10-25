@@ -19,6 +19,8 @@
 //! - [`task`]: tasks, their steps and where a step needs the requester.
 //! - [`integrations`]: read-only MCP and A2I snapshots.
 //! - [`listing`]: whether a collection was listed yet (loading vs empty).
+//! - [`contact_request`]: contact requests and the held messages they
+//!   carry, and the account's request setting.
 //! - [`call`]: voice calls, their states and outcomes, and the secret
 //!   media session that never enters the store.
 
@@ -26,6 +28,7 @@ mod account;
 mod actor;
 mod backend;
 mod call;
+mod contact_request;
 mod conversation;
 mod grant;
 mod integrations;
@@ -45,6 +48,9 @@ pub use backend::{
 };
 pub use call::{
     Call, CallDirection, CallEndReason, CallKey, CallMedia, CallOutcome, CallRebind, CallState,
+};
+pub use contact_request::{
+    ContactRequest, RequestAnswer, RequestDirection, RequestPolicy, RequestState,
 };
 pub use conversation::{
     ContactCard, ContactLink, Context, ContextKind, Disappearing, Participant, ParticipantKind,
