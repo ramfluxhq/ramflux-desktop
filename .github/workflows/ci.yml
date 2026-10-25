@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: fmt, clippy, test
+  lint:
+    name: fmt, clippy (linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -42,7 +42,59 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc g++ clang libfontconfig-dev libwayland-dev \
             libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
-            libssl-dev libzstd-dev libvulkan1 libasound2-dev cmake
+            libssl-dev libzstd-dev libvulkan1 libasound2-dev cmake fonts-noto-cjk
+
+      - name: Cache
+        uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    # The workspace suite is repeated three times on separate runners to catch
+    # flaky tests; any failing repeat fails the workflow.
+    name: test linux (repeat ${{ matrix.repeat }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        repeat: [1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b9e0990d219a03df7633c93f6f005a8fecbcab22
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ clang libfontconfig-dev libwayland-dev \
+            libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libssl-dev libzstd-dev libvulkan1 libasound2-dev cmake fonts-noto-cjk
+
+      - name: Cache
+        uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb
+        with:
+          # One cache for all repeats; only the first finisher saves it.
+          shared-key: linux-test
+
+      - name: Test
+        run: cargo test --workspace --no-fail-fast
+
+  macos:
+    # GPUI tests use the headless test platform and the media tests use
+    # synthetic audio, so no display or audio device is needed. Runs on main,
+    # ci/* branches and on demand only, to keep macOS minutes low.
+    name: fmt, clippy, test (macos)
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/ci/')
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b9e0990d219a03df7633c93f6f005a8fecbcab22
 
       - name: Cache
         uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb
@@ -54,4 +106,4 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
