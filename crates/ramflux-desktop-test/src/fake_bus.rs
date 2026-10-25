@@ -270,9 +270,14 @@ fn serve(mut stream: UnixStream, connection: usize, shared: &Arc<Shared>) {
     let Ok(writer) = stream.try_clone() else { return };
     let writer: Writer = Arc::new(Mutex::new(writer));
     while let Some(request) = read_frame(&mut stream) {
+        // Recorded as it arrives, before it is answered on its own thread:
+        // `seen` keeps the order of the connection.
+        let receipt = record(&request, connection, shared);
         let (shared, writer) = (shared.clone(), writer.clone());
         let Ok(subscriber) = stream.try_clone() else { break };
-        thread::spawn(move || answer(&request, connection, &shared, &writer, subscriber));
+        thread::spawn(move || {
+            answer(&request, connection, receipt, &shared, &writer, subscriber);
+        });
     }
     shared.journal.lock().expect("journal").disconnect(connection);
 }
@@ -281,9 +286,30 @@ fn text(frame: &Value, field: &str) -> Option<String> {
     frame[field].as_str().map(str::to_owned)
 }
 
+/// Records a request in `seen`; returns the answer a receipt holds for its
+/// retry key, if any.
+fn record(request: &Value, connection: usize, shared: &Shared) -> Option<Value> {
+    let operation_id = text(request, "operation_id");
+    let receipt = operation_id
+        .as_ref()
+        .and_then(|key| shared.receipts.lock().expect("receipts").get(key).cloned());
+    shared.seen.lock().expect("seen").push(Seen {
+        method: text(request, "method").unwrap_or_default(),
+        account: text(request, "account_id"),
+        body: request["body"].clone(),
+        request_id: text(request, "request_id").unwrap_or_default(),
+        connection,
+        deadline_ms: request["deadline_ms"].as_u64(),
+        operation_id,
+        replayed: receipt.is_some(),
+    });
+    receipt
+}
+
 fn answer(
     request: &Value,
     connection: usize,
+    receipt: Option<Value>,
     shared: &Shared,
     writer: &Writer,
     subscriber: UnixStream,
@@ -292,19 +318,6 @@ fn answer(
     let account = text(request, "account_id");
     let body = request["body"].clone();
     let operation_id = text(request, "operation_id");
-    let receipt = operation_id
-        .as_ref()
-        .and_then(|key| shared.receipts.lock().expect("receipts").get(key).cloned());
-    shared.seen.lock().expect("seen").push(Seen {
-        method: method.clone(),
-        account: account.clone(),
-        body: body.clone(),
-        request_id: text(request, "request_id").unwrap_or_default(),
-        connection,
-        deadline_ms: request["deadline_ms"].as_u64(),
-        operation_id: operation_id.clone(),
-        replayed: receipt.is_some(),
-    });
     let reply = if let Some(stored) = receipt {
         Reply::Ok(stored)
     } else if method == "bus.subscribe" {

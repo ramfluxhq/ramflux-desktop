@@ -127,6 +127,34 @@ impl World {
     pub fn mark(&self) -> usize {
         self.fake.seen().len()
     }
+
+    /// The requests of `method` received in `seen[from..to]`.
+    pub fn between(&self, from: usize, to: usize, method: &str) -> Vec<Seen> {
+        let seen = self.fake.seen();
+        seen[from..to].iter().filter(|s| s.method == method).cloned().collect()
+    }
+
+    /// Waits until the source has handled every stream event published
+    /// before this call and returns the position in `seen` that every
+    /// request it sent before then precedes. The probe is a change of a
+    /// surface nobody holds, which the source reads with one request of its
+    /// own: it handles stream events in order and sends its requests on one
+    /// connection in the order it makes them, which the fake records as
+    /// they arrive.
+    pub fn barrier(&self, account: &mut Fed) -> usize {
+        static PROBES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let probe = format!("probe-{}", PROBES.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+        let from = self.mark();
+        self.fake.publish(ACCOUNT, "surface.changed", json!({ "surface_ref": probe }));
+        let position = |fake: &FakeBus| {
+            fake.seen()
+                .iter()
+                .skip(from)
+                .position(|s| s.method == "surface.get" && s.body["surface_ref"] == probe.as_str())
+        };
+        account.until("the probe read", |_, _| position(&self.fake).is_some());
+        from + position(&self.fake).expect("probe read")
+    }
 }
 
 /// The account source on the stream, looking at the group.

@@ -27,9 +27,8 @@ use serde_json::json;
 #[test]
 fn a_proposal_is_shown_once_and_accepted_with_the_version_seen() {
     let (world, path) = World::start("accept");
-    // Proposed before the account opens, so it is listed and not read on
-    // its own: no read of it can still be on its way when the replay below
-    // is counted (proposals arriving live are shown by the next test).
+    // Proposed before the account opens, so it is listed (proposals
+    // arriving live are shown by the next test).
     world.tasks.propose(GROUP, "t-1", "Check the release", &[("a", "Read the notes")]).unwrap();
     let mut account = open(&path);
     account.until("the proposal on the open stream", |s, _| {
@@ -46,13 +45,18 @@ fn a_proposal_is_shown_once_and_accepted_with_the_version_seen() {
     let moment = ramflux_desktop_sdk::translate::tasks::task_moment_id(&shown.id);
     assert!(account.store.moment(&moment).is_some(), "the task has its moment");
 
-    // The same metadata again changes nothing and reads nothing.
-    let mark = world.mark();
+    // The same metadata again changes nothing and reads nothing. Reads
+    // the opening still had on their way come before the first barrier
+    // (its group messages can name the proposal before its listing shows
+    // it, which reads it); a read for the replay would come before the
+    // second.
+    let mark = world.barrier(&mut account);
     let meta = json!({ "task_id": "t-1", "conversation_id": GROUP, "version": 1,
                        "state": "proposed", "actor_kind_verified": false });
     world.fake.publish(ACCOUNT, "task.changed", meta);
-    account.settle(300);
-    assert!(world.since(mark, "task.get").is_empty(), "a replayed change reads nothing");
+    let handled = world.barrier(&mut account);
+    let reads = world.between(mark, handled, "task.get");
+    assert!(reads.is_empty(), "a replayed change reads nothing: {reads:?}");
 
     act(&mut account, human(IntentKind::AcceptTaskProposal { task_id: shown.id.clone() }));
     account.until("running", |s, _| {
