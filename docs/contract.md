@@ -846,7 +846,7 @@ and reopen the subscription. Polling jobs works in either scope.
 
 | Request | Body | Answer |
 |---|---|---|
-| `account.backup.create` | `output_path`, secret `passphrase` | `{job}` (`preparing`) |
+| `account.backup.create` | `output_path`, secret `passphrase`, optional `allow_missing_attachments:false` | `{job}` (`preparing`) |
 | `account.restore.verify` | `input_path`, secret `passphrase` | `{job}` (`verifying`) |
 | `account.restore.install` | `job_id` | `{job}` (`installing`) |
 | `account.backup.cancel` | `job_id` | `{job}` (`cancelled`) |
@@ -867,11 +867,11 @@ restore); `archive {local_account_id, account_label, created_at, merge}` (a
 verified restore; `merge` = the account is already on this device);
 `restored` and `kept_newer` (both per-category count objects with the same
 fields as `counts`, never scalar totals), `attachments {verified, mismatched,
-missing}` (a finished restore); `error {code, needed_bytes,
+missing, unavailable_at_source}` (a finished restore); `error {code, needed_bytes,
 available_bytes}` (a failed job). Error codes: `wrong_passphrase`,
 `tampered`, `truncated`, `unsupported_version`, `insufficient_space`,
 `unreadable`, `not_writable`, `staging_expired`, `interrupted`, `attachment_mismatch`, `identity_rollback`,
-`root_conflict`; a refused
+`root_conflict`, `attachments_unavailable`; a refused
 start request carries the same code as `reason_code` (and the space figures
 in `details`). A restore that reaches `done` makes the source read the
 account again (what it installed shows as after a reload).
@@ -885,13 +885,11 @@ Restore: Restore from backup… opens the form: backup file (native open
 dialog), passphrase, Check backup. While checking: progress and Cancel
 restore. Checked: "Restore this backup?" with the account, when it was
 made, its size and counts, and what installing does (merge, newer wins,
-nothing deleted; or the account is added), Cancel (discards the staged
+including tombstones and newer removals; or the account is added), Cancel (discards the staged
 copy) and Restore. Verified staging is encrypted under a RAM-only key and expires
-after 30 minutes; cancel, failure or daemon restart discards it. Any missing or
-mismatched attachment prevents installation and must be shown with its check
-counts. Installing: progress, no cancel ("the data on this
+after 30 minutes; cancel, failure or daemon restart discards it. Any unapproved missing attachment or mismatch prevents installation and must be shown with its check counts. Explicit source omissions are shown separately as `unavailable_at_source`; any mismatch prevents installation. Installing: progress, no cancel ("the data on this
 device stays as it is until the restore finishes"). Done: the attachment
-check (all files match, or how many did not and were not restored), the
+check (every stored file matched, plus the count explicitly unavailable at source), the
 restored counts and the items kept because this device's were newer.
 Failures are shown typed, with Try again… (the file is kept). Only one job
 runs at a time: while one runs it replaces both forms.
@@ -930,6 +928,12 @@ runs at a time: while one runs it replaces both forms.
 10. Is a restore that would roll back an epoch or replace a pinned root
     refused before installing (a typed `error.code`?), so the review can
     say so?
+
+**Unavailable source files.** Create first attempts to fetch every missing referenced file. The default remains strict: if files remain unavailable, the failed job has `error.code:"attachments_unavailable"`, `unavailable_count`, a first page of up to 64 `unavailable_attachments` selectors, and `unavailable_next_cursor`. Read every remaining page using `account.backup.jobs {job_id, missing_after}`; the answer has `{job, unavailable_attachments, unavailable_count, unavailable_next_cursor}`. Continue until the cursor is null (an exact page multiple can end with an empty page). Diagnostics are encrypted under a RAM-only key for at most 30 minutes; expiration or restart requires retrying create. Paths, references and grants are not placed in error details.
+
+Offer an explicit confirmation before retrying create with `allow_missing_attachments:true`. It still tries fetching first, and records the remaining selectors and expected hashes in the authenticated source-omission manifest. Verify/install report `attachments.unavailable_at_source` (included in `missing`). Every stored file must authenticate, and any mismatch prevents installation; omissions are never silently inferred from a missing file. Merge accepts older-epoch backups while retaining the live manifest. New groups without a live outbound checkpoint receive a fresh unique sender chain.
+
+Daemon scope follows the same-user local-bus trust model: the peer UID is checked, while frontend attendance is self-asserted. Account-scoped headless restrictions are not a credential boundary against another process of the same user.
 
 **Outbound security after restore.** Full restore keeps all historical messages,
 attachment keys and inbound/archived ratchets. Saved outbound DM sessions and
