@@ -52,7 +52,7 @@ pub use moment::{
     FallbackPayload, GovernanceAction, GovernancePayload, HandoffPayload, InterventionPayload,
     Lifecycle, MessagePayload, Moment, MomentKind, ObjectTransferPayload, PrivacyRevealPayload,
     Receipt, RevealRecord, SafetyChangeKind, SafetyChangePayload, SystemLevel, SystemPayload,
-    TaskProgressPayload,
+    TaskEventKind, TaskEventPayload, TaskProgressPayload,
 };
 pub use object::{Direction, Object, TransferState};
 pub use protected::Protected;

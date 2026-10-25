@@ -102,6 +102,33 @@ string_id!(
     StepId
 );
 
+impl ParticipantId {
+    /// A short form of the id for display when no name is known: a
+    /// `kind-` prefix is kept with the first eight characters after it
+    /// (`principal-c786a534…`); any other long id keeps its first twelve.
+    /// Short ids are returned unchanged.
+    pub fn short(&self) -> String {
+        const KEEP: usize = 8;
+        let id = self.as_str();
+        let (prefix, rest) = match id.split_once('-') {
+            Some((prefix, rest))
+                if !prefix.is_empty()
+                    && prefix.len() <= 12
+                    && prefix.chars().all(|c| c.is_ascii_alphabetic()) =>
+            {
+                (&id[..=prefix.len()], rest)
+            }
+            _ => ("", id),
+        };
+        let keep = if prefix.is_empty() { 12 } else { KEEP };
+        if rest.chars().count() <= keep + 2 {
+            return id.to_owned();
+        }
+        let head: String = rest.chars().take(keep).collect();
+        format!("{prefix}{head}\u{2026}")
+    }
+}
+
 /// A point in time as unix milliseconds.
 ///
 /// Core never reads the wall clock; every timestamp is passed in by a source.
@@ -132,6 +159,18 @@ impl Timestamp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_long_participant_id_is_shortened_for_display() {
+        let id = ParticipantId::new("principal-c786a534839ad12fef6dd00033a374ef");
+        assert_eq!(id.short(), "principal-c786a534\u{2026}");
+        assert_eq!(ParticipantId::new("p-orbit").short(), "p-orbit");
+        assert_eq!(
+            ParticipantId::new("device-5e9182ab04cc1e9505bea48d137ab46c").short(),
+            "device-5e9182ab\u{2026}"
+        );
+        assert_eq!(ParticipantId::new("5e9182ab04cc1e9505bea48d").short(), "5e9182ab04cc\u{2026}");
+    }
 
     #[test]
     fn ids_serialize_as_plain_strings() {

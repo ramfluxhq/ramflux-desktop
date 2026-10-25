@@ -50,11 +50,26 @@ impl Translator {
         let mut events = Vec::new();
         let mut surface_rows = Vec::new();
         let mut task_rows = Vec::new();
+        let mut copies = Vec::new();
         for record in list(value, "messages") {
             // A task message is the task's record; its task card shows it
-            // (a task not shown yet is read by the `task_id` it names).
+            // (a task not shown yet is read by the `task_id` it names), and
+            // what a member did to it besides updating it is a line.
             if text(record, "content_type") == "task" {
                 task_rows.push(record);
+                let task_id = text(record, "task_id");
+                if let Some(moment) = self.task_event_moment(context, record, task_id, now) {
+                    events.extend(self.report_moment(moment));
+                }
+                continue;
+            }
+            // A copy of this account's own task event without the task
+            // fields: the same, never message text.
+            if let Some(task_id) = self.own_task_copy(record) {
+                if let Some(moment) = self.task_event_moment(context, record, &task_id, now) {
+                    events.extend(self.report_moment(moment));
+                }
+                copies.push(serde_json::json!({ "task_id": task_id }));
                 continue;
             }
             if text(record, "sender_id").is_empty() {
@@ -72,6 +87,7 @@ impl Translator {
             let moment = self.message_moment(context, kind, record, now);
             events.extend(self.report_moment(moment));
         }
+        task_rows.extend(copies.iter());
         let mut follow = self.surface_rows(context, &surface_rows);
         follow.extend(self.task_rows(context, &task_rows));
         Translated { events, follow }
@@ -126,7 +142,7 @@ impl Translator {
     }
 
     /// The participant a sending device stands for.
-    fn origin(&self, sender: &str) -> ParticipantId {
+    pub(super) fn origin(&self, sender: &str) -> ParticipantId {
         let own = self.self_device.as_deref() == Some(sender);
         let principal = if own {
             self.directory.self_principal.as_deref()
@@ -169,17 +185,11 @@ impl Translator {
         let message = text(record, "message_id");
         let sender = text(record, "sender_id");
         let outbound = self.self_device.as_deref() == Some(sender);
-        let stored: Option<String> = record["encrypted_body"].as_array().and_then(|bytes| {
-            let bytes: Option<Vec<u8>> =
-                bytes.iter().map(|b| b.as_u64().and_then(|v| u8::try_from(v).ok())).collect();
-            bytes.and_then(|b| String::from_utf8(b).ok())
-        });
         // A direct message row carries its text as `body_utf8` (an older
         // daemon stored it as the body bytes); a group message is stored as
         // ciphertext, so only a received or sent copy gives its text.
-        let direct = (kind != ContextKind::Group)
-            .then(|| record["body_utf8"].as_str().map(str::to_owned).or(stored))
-            .flatten();
+        let direct =
+            (kind != ContextKind::Group).then(|| super::task_events::row_text(record)).flatten();
         let body = self.plaintext.get(&MomentId::new(message)).map(ToString::to_string).or(direct);
         let deleted = record["deleted"].as_bool().unwrap_or(false);
         let payload = match body {

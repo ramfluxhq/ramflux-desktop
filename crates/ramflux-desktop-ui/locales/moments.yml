@@ -25,6 +25,9 @@ moment:
     task_progress:
       en: "Task"
       zh-CN: "任务"
+    task_event:
+      en: "Task activity"
+      zh-CN: "任务动态"
     conflict:
       en: "Version conflict"
       zh-CN: "版本冲突"
@@ -248,6 +251,16 @@ moment:
     missing:
       en: "Task details are not available yet"
       zh-CN: "任务详情暂不可用"
+    ending:
+      declined_by:
+        en: "Declined by %{name}"
+        zh-CN: "已被%{name}拒绝"
+      cancelled_by:
+        en: "Cancelled by %{name}"
+        zh-CN: "已被%{name}取消"
+      you:
+        en: "you"
+        zh-CN: "你"
     kind_unverified:
       en: "AI participant (not verified)"
       zh-CN: "AI 参与者（未验证）"
@@ -405,6 +418,40 @@ moment:
     declined:
       en: "Declined"
       zh-CN: "已拒绝"
+  task_event:
+    you:
+      en: "You"
+      zh-CN: "你"
+    accepted:
+      en: "%{name} accepted “%{object}”"
+      zh-CN: "%{name}接受了任务“%{object}”"
+    accepted_any:
+      en: "%{name} accepted a task"
+      zh-CN: "%{name}接受了一个任务"
+    declined:
+      en: "%{name} declined “%{object}”"
+      zh-CN: "%{name}拒绝了任务“%{object}”"
+    declined_any:
+      en: "%{name} declined a task"
+      zh-CN: "%{name}拒绝了一个任务"
+    cancelled:
+      en: "%{name} cancelled “%{object}”"
+      zh-CN: "%{name}取消了任务“%{object}”"
+    cancelled_any:
+      en: "%{name} cancelled a task"
+      zh-CN: "%{name}取消了一个任务"
+    approved:
+      en: "%{name} approved “%{object}”"
+      zh-CN: "%{name}批准了“%{object}”"
+    approved_any:
+      en: "%{name} approved a task step"
+      zh-CN: "%{name}批准了一个任务步骤"
+    denied:
+      en: "%{name} denied “%{object}”"
+      zh-CN: "%{name}拒绝了“%{object}”"
+    denied_any:
+      en: "%{name} denied a task step"
+      zh-CN: "%{name}拒绝了一个任务步骤"
 surface:
   streaming:
     en: "Writing…"

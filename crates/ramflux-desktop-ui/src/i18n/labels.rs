@@ -185,6 +185,7 @@ pub fn moment_kind(kind: &MomentKind) -> SharedString {
         MomentKind::Governance(_) => "moment.kind.governance",
         MomentKind::ContactRequest(_) => "moment.kind.contact_request",
         MomentKind::TaskProgress(_) => "moment.kind.task_progress",
+        MomentKind::TaskEvent(_) => "moment.kind.task_event",
         MomentKind::Conflict(_) => "moment.kind.conflict",
         MomentKind::PrivacyReveal(_) => "moment.kind.privacy_reveal",
         MomentKind::Handoff(_) => "moment.kind.handoff",

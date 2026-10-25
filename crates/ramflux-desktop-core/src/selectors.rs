@@ -55,6 +55,7 @@ impl AttentionReason {
             | MomentKind::Governance(_)
             | MomentKind::PrivacyReveal(_)
             | MomentKind::Fallback(_)
+            | MomentKind::TaskEvent(_)
             | MomentKind::System(_) => Self::Other,
         }
     }
@@ -253,6 +254,75 @@ pub fn participants<'a>(store: &'a Store, context_id: &ContextId) -> Vec<&'a Par
         .context(context_id)
         .map(|c| c.participants.iter().filter_map(|id| store.participant(id)).collect())
         .unwrap_or_default()
+}
+
+/// How a task without a result ended, and who ended it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskEnding {
+    /// What ended it.
+    pub how: TaskEndingKind,
+    /// The member who did.
+    pub by: ParticipantId,
+}
+
+/// What ended a task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskEndingKind {
+    /// What a step asked was refused (an approval denied).
+    Denied,
+    /// The task (or its proposal) was declined.
+    Declined,
+    /// The requester cancelled it.
+    Cancelled,
+}
+
+/// Who ended a failed or cancelled task, from its signed events shown in
+/// the timeline (the last refusal, decline or cancel), else from a denied
+/// approval of one of its steps (the requester decides those). `None` for
+/// a task still open, finished, or without either record.
+pub fn task_ending(store: &Store, task: &crate::model::Task) -> Option<TaskEnding> {
+    use crate::model::{GrantState, TaskEventKind, TaskState};
+    if !matches!(task.state, TaskState::Failed | TaskState::Cancelled) {
+        return None;
+    }
+    let from_event = store.context_moments(&task.context_id).rev().find_map(|m| match &m.kind {
+        MomentKind::TaskEvent(p) if p.task_id == task.id => {
+            let how = match p.event {
+                TaskEventKind::Denied { .. } => TaskEndingKind::Denied,
+                TaskEventKind::Declined => TaskEndingKind::Declined,
+                TaskEventKind::Cancelled => TaskEndingKind::Cancelled,
+                TaskEventKind::Accepted | TaskEventKind::Approved { .. } => return None,
+            };
+            Some(TaskEnding { how, by: m.origin.clone() })
+        }
+        _ => None,
+    });
+    if from_event.is_some() {
+        return from_event;
+    }
+    let denied =
+        task.step_grants().any(|g| store.grant(g).is_some_and(|g| g.state == GrantState::Denied));
+    let by = match &task.requester {
+        crate::model::Actor::Human => self_participant(store)?,
+        crate::model::Actor::Agent(id) | crate::model::Actor::Member(id) => id.clone(),
+    };
+    denied.then_some(TaskEnding { how: TaskEndingKind::Denied, by })
+}
+
+/// The title a context is shown with: its own title, except that a direct
+/// conversation without one (the source shows its id) is named after the
+/// other participant.
+pub fn context_title(store: &Store, context: &crate::model::Context) -> String {
+    if context.kind != crate::model::ContextKind::Direct || context.title != context.id.as_str() {
+        return context.title.clone();
+    }
+    let Some(me) = self_participant(store) else { return context.title.clone() };
+    context
+        .participants
+        .iter()
+        .filter(|id| **id != me)
+        .find_map(|id| store.participant(id))
+        .map_or_else(|| context.title.clone(), |p| p.display.clone())
 }
 
 /// The local user's participant: the `self_participant_id` the source

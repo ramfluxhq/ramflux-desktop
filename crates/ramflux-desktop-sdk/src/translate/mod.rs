@@ -55,6 +55,7 @@ mod surface_answers;
 mod surfaces;
 pub mod task_answers;
 mod task_decisions;
+mod task_events;
 pub mod tasks;
 
 use std::collections::{BTreeMap, BTreeSet};

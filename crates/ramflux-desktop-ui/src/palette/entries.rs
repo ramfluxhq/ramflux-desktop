@@ -115,7 +115,11 @@ fn contexts(store: &Store) -> Group {
                 ContextKind::Group => IconName::Building2,
                 ContextKind::Space => IconName::LayoutDashboard,
             };
-            let mut e = entry(c.title.clone(), icon, PaletteChoice::Context(c.id.clone()));
+            let mut e = entry(
+                selectors::context_title(store, c),
+                icon,
+                PaletteChoice::Context(c.id.clone()),
+            );
             e.keywords = c
                 .participants
                 .iter()

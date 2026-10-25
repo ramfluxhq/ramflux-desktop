@@ -9,7 +9,7 @@
 //! `contact.*` call answers with), which name a requester and a target
 //! principal; the other side of a link is the contact. A pending link is
 //! incoming unless this account is its requester. Whatever neither list
-//! reports stays unknown: the id is shown for a missing name, the kind is
+//! reports stays unknown: the short id is shown for a missing name, the kind is
 //! `Unknown` and safety `Unverified` until the identity directory says
 //! otherwise.
 //!
@@ -20,6 +20,7 @@
 //! | field | desktop |
 //! |---|---|
 //! | `principal_id` | the contact (the link's ids may be root commitments) |
+//! | `display_name` (string or null) | the name, when the identity directory has none (a card's name) |
 //! | `reachable` (bool) | `reachable`: it holds a verified device to send to |
 //! | `verified` (bool) | safety `Verified`, when the identity directory has no row |
 //! | `kind_asserted` (kind name or null) | the kind, when the identity directory declares none, marked as self-declared |
@@ -62,8 +63,10 @@ pub(crate) fn root_source(row: &Value) -> Option<RootSource> {
 }
 
 /// What a friend-link record of a resolving daemon says about the contact.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Resolution {
+    /// The name the contact's card gave, when one did.
+    pub display: Option<String>,
     /// Whether a verified device to send to is held.
     pub reachable: Option<bool>,
     /// Whether the contact's safety number was verified.
@@ -84,6 +87,7 @@ impl Resolution {
             _ => (None, false),
         };
         Self {
+            display: crate::directory::field(record, "display_name"),
             reachable: record["reachable"].as_bool(),
             verified: record["verified"].as_bool().unwrap_or(false),
             kind,
@@ -116,7 +120,7 @@ impl Person {
     fn participant(&self, id: &ParticipantId) -> Participant {
         let listed = self.facts.is_some();
         let facts = self.facts.clone().unwrap_or_default();
-        let resolution = self.resolution;
+        let resolution = &self.resolution;
         let safety =
             if !listed && resolution.verified { SafetyState::Verified } else { facts.safety };
         let (kind, kind_asserted) = match (facts.kind, resolution.kind) {
@@ -127,7 +131,10 @@ impl Person {
         Participant {
             id: id.clone(),
             kind,
-            display: facts.display.unwrap_or_else(|| id.to_string()),
+            display: facts
+                .display
+                .or_else(|| resolution.display.clone())
+                .unwrap_or_else(|| id.short()),
             safety,
             contact: self.link == ContactLink::Accepted,
             safety_number: facts.safety_number,

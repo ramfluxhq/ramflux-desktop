@@ -24,6 +24,9 @@ composer:
   no_agent:
     en: "No AI participant in this conversation"
     zh-CN: "此会话中没有 AI 参与者"
+  kind_unknown:
+    en: "Not known to be an AI participant: %{name} was added by ID, which does not say. Add them from their contact card to ask for tasks."
+    zh-CN: "无法确认 %{name} 是 AI 参与者：按 ID 添加的联系人不含此信息。通过对方的联系人名片添加后即可请求任务。"
   first_placeholder:
     en: "Write the first message"
     zh-CN: "输入第一条消息"

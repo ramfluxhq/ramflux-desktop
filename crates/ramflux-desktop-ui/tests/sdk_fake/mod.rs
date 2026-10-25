@@ -276,6 +276,16 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
                 }
                 frame
             }
+            // A group's task messages come with its receive, as the
+            // daemon lists them.
+            "group.receive" => {
+                let conversation = body["conversation_id"].as_str().unwrap_or_default();
+                let mut frame = fixture();
+                if let Some(tasks) = &tasks {
+                    frame["messages"] = json!(tasks.messages(conversation));
+                }
+                frame
+            }
             _ => fixture(),
         })
     });

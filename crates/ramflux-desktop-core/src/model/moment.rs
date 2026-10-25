@@ -190,6 +190,39 @@ pub struct TaskProgressPayload {
     pub task_id: TaskId,
 }
 
+/// What a member did to a task, as one of its signed task events says.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TaskEventKind {
+    /// Accepted the task (the assignee a started task, or the requester a
+    /// proposal).
+    Accepted,
+    /// Declined it.
+    Declined,
+    /// Cancelled it (its requester).
+    Cancelled,
+    /// Let a step that asked go on (approved its approval, or answered).
+    Approved {
+        /// The step decided, when the event names it.
+        step_id: Option<crate::ids::StepId>,
+    },
+    /// Refused what a step asked.
+    Denied {
+        /// The step decided, when the event names it.
+        step_id: Option<crate::ids::StepId>,
+    },
+}
+
+/// Payload of a [`MomentKind::TaskEvent`]: a compact line in the timeline
+/// for one signed event of a task (its card shows the task itself). The
+/// moment's origin is the member who signed it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskEventPayload {
+    /// The task.
+    pub task_id: TaskId,
+    /// What happened.
+    pub event: TaskEventKind,
+}
+
 /// One side of a version conflict.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConflictSide {
@@ -311,6 +344,8 @@ pub enum MomentKind {
     ContactRequest(ContactRequestPayload),
     /// Multi-step task progress.
     TaskProgress(TaskProgressPayload),
+    /// One event of a task, as a compact line.
+    TaskEvent(TaskEventPayload),
     /// CAS conflict.
     Conflict(ConflictPayload),
     /// Masked content with audited reveal.

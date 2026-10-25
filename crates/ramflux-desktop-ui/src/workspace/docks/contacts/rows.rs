@@ -285,6 +285,16 @@ pub fn contact_row(
                             .text_color(cx.theme().muted_foreground)
                             .child(trust),
                     )
+                })
+                // A named contact keeps its id in sight, as secondary text.
+                .when(contact.named(), |line| {
+                    line.child(div().text_color(cx.theme().muted_foreground).child("·")).child(
+                        div()
+                            .id("contact-id")
+                            .test_support()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(contact.id.short()),
+                    )
                 }),
         )
         .when_some(contact.root_source, |col, source| {

@@ -96,7 +96,29 @@ fn member_row(
         .gap_2()
         .px_3()
         .py_1()
-        .child(div().flex_1().min_w_0().text_sm().font_medium().child(member.display.clone()))
+        .child(
+            h_flex()
+                .flex_1()
+                .min_w_0()
+                .gap_2()
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_sm()
+                        .font_medium()
+                        .child(member.display.clone()),
+                )
+                .when(member.named(), |row| {
+                    row.child(
+                        div()
+                            .flex_none()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(member.id.short()),
+                    )
+                }),
+        )
         .child(div().text_xs().text_color(cx.theme().muted_foreground).child(i18n::role(role)))
         .when(member.safety.needs_attention(), |row| {
             row.child(

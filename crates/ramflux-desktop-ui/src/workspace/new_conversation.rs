@@ -194,7 +194,7 @@ impl NewConversation {
 
 /// The contact's name as shown.
 fn name(store: &Store, participant: &ParticipantId) -> String {
-    store.participant(participant).map_or_else(|| participant.to_string(), |p| p.display.clone())
+    store.participant(participant).map_or_else(|| participant.short(), |p| p.display.clone())
 }
 
 /// Why the policy refuses, with what to do about it.

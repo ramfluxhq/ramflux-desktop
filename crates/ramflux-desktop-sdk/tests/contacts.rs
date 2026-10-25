@@ -393,3 +393,63 @@ fn an_incoming_request_recorded_later_appears_on_the_next_poll() {
         .until("request polled", |s, _| link_of(s, "principal-sam") == Some(ContactLink::Incoming));
     fake.shutdown();
 }
+
+/// DESK-F17: a contact added by id (a name lookup) carries no name and no
+/// kind: the daemon answers `display_name: null` and `kind_asserted: null`
+/// (only a contact card supplies either, and the identity directory has no
+/// remote kind). It is shown by its short id, its kind stays unknown and a
+/// task is not addressed to it on a guess. A principal whose card was
+/// pinned earlier is answered with the card's name and asserted kind.
+#[test]
+fn a_contact_added_by_id_is_shown_by_its_short_id_and_its_kind_stays_unknown() {
+    const ORBIT: &str = "principal-c786a534839ad12fef6dd00033a374ef";
+    const CARDED: &str = "principal-0a1b2c3d4e5f60718293a4b5c6d7e8f9";
+    let path = socket_path("contacts-unnamed");
+    let links: Arc<Mutex<Vec<Value>>> = Arc::default();
+    let fake = FakeBus::start(&path, move |method, _, body| {
+        let mut links = links.lock().expect("links");
+        match method {
+            "contact.list" => Reply::Ok(json!({ "contacts": links.clone() })),
+            "contact.add" => {
+                let principal = body["principal_id"].as_str().unwrap_or_default();
+                let (name, kind) = if principal == CARDED {
+                    (json!("Ledger"), json!("headless_ai"))
+                } else {
+                    (Value::Null, Value::Null)
+                };
+                let contact = json!({
+                    "principal_id": principal, "display_name": name, "reachable": true,
+                    "verified": false, "kind_asserted": kind, "root_commitment": "root-1",
+                    "root_source": "lookup", "node": null,
+                });
+                let mut row =
+                    record(&format!("link-{principal}"), ME, principal, "accepted", false);
+                if let (Value::Object(row), Value::Object(fields)) = (&mut row, contact.clone()) {
+                    row.extend(fields);
+                }
+                links.push(row);
+                Reply::Ok(json!({ "contact": contact }))
+            }
+            other => fixture(other),
+        }
+    });
+    let hub = hub(&path);
+    let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
+    account.until("contacts listed", |s, _| s.is_listed(Listing::Contacts));
+    for principal in [ORBIT, CARDED] {
+        account.source.submit(call(methods::CONTACT_ADD, on(principal)));
+    }
+    let shown = |s: &Store, id: &str| s.participant(&ParticipantId::new(id)).cloned();
+    account.until("both added", |s, _| {
+        [ORBIT, CARDED].iter().all(|id| shown(s, id).is_some_and(|p| p.contact))
+    });
+    let orbit = shown(&account.store, ORBIT).expect("orbit");
+    assert_eq!(orbit.display, "principal-c786a534\u{2026}", "the short id, not the whole id");
+    assert!(!orbit.named());
+    assert_eq!(orbit.kind, ParticipantKind::Unknown, "a lookup says nothing about the kind");
+    let carded = shown(&account.store, CARDED).expect("carded");
+    assert_eq!(carded.display, "Ledger", "the name the card gave");
+    assert!(carded.named());
+    assert_eq!((carded.kind, carded.kind_asserted), (ParticipantKind::Agent, true));
+    fake.shutdown();
+}

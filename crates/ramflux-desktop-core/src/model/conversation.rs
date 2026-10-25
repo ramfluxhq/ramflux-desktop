@@ -97,7 +97,8 @@ pub struct Participant {
     pub id: ParticipantId,
     /// Kind.
     pub kind: ParticipantKind,
-    /// Display name.
+    /// Display name: the name a local source gave, else the short form of
+    /// the id ([`ParticipantId::short`]).
     pub display: String,
     /// Key verification state.
     #[serde(default)]
@@ -126,6 +127,12 @@ pub struct Participant {
 }
 
 impl Participant {
+    /// Whether `display` is a name (not the id or its short form standing
+    /// in for a missing one).
+    pub fn named(&self) -> bool {
+        self.display != self.id.as_str() && self.display != self.id.short()
+    }
+
     /// The contact link, reading the `contact` flag when no link was reported.
     pub fn link_state(&self) -> ContactLink {
         match self.link {

@@ -11,7 +11,9 @@
 //! conversation from these lines.
 
 use crate::ids::ContextId;
-use crate::model::{GrantState, Moment, MomentKind, NeedsMe, StepState, Task, TaskState};
+use crate::model::{
+    GrantState, Moment, MomentKind, NeedsMe, StepState, Task, TaskEventKind, TaskState,
+};
 use crate::store::{Store, SurfaceState};
 
 /// The conversation `context` as plain text, one entry per moment (an
@@ -67,6 +69,32 @@ fn body(store: &Store, moment: &Moment) -> String {
         MomentKind::Handoff(p) => format!("[handoff] {}", p.summary),
         MomentKind::Fallback(p) => p.text.clone(),
         MomentKind::System(p) => format!("[system] {}", p.text),
+        MomentKind::TaskEvent(p) => {
+            let title = store.task(&p.task_id).map_or(p.task_id.as_str(), |t| t.title.as_str());
+            let step = |id: &Option<crate::ids::StepId>| {
+                id.as_ref()
+                    .and_then(|id| {
+                        store
+                            .task(&p.task_id)?
+                            .steps
+                            .iter()
+                            .find(|s| &s.id == id)
+                            .map(|s| format!(" ({})", s.label))
+                    })
+                    .unwrap_or_default()
+            };
+            match &p.event {
+                TaskEventKind::Accepted => format!("[task] accepted {title}"),
+                TaskEventKind::Declined => format!("[task] declined {title}"),
+                TaskEventKind::Cancelled => format!("[task] cancelled {title}"),
+                TaskEventKind::Approved { step_id } => {
+                    format!("[task] approved {title}{}", step(step_id))
+                }
+                TaskEventKind::Denied { step_id } => {
+                    format!("[task] denied {title}{}", step(step_id))
+                }
+            }
+        }
     }
 }
 
@@ -96,6 +124,9 @@ pub fn task_text(store: &Store, task: &Task) -> String {
     }
     if let Some(result) = &task.result {
         out.push_str(&format!("\n  result: {result}"));
+    } else if let Some(ending) = crate::selectors::task_ending(store, task) {
+        let by = store.participant(&ending.by).map_or(ending.by.as_str(), |p| &p.display);
+        out.push_str(&format!("\n  ended: {:?} by {by}", ending.how));
     }
     out
 }

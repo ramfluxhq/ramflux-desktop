@@ -87,7 +87,7 @@ pub fn render(
             .test_support()
             .font_semibold()
             .text_color(cx.theme().foreground)
-            .child(context.title.clone())
+            .child(selectors::context_title(store, context))
             .into_any_element()
     });
     let row = h_flex()

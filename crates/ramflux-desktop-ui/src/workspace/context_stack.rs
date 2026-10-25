@@ -123,7 +123,7 @@ fn entries(store: &Store, current: Option<&ContextId>) -> Vec<Entry> {
             let context = store.context(&id)?;
             let needs_me = selectors::needs_me_count(store, &id);
             Some(Entry {
-                title: context.title.clone().into(),
+                title: selectors::context_title(store, context).into(),
                 kind: context.kind,
                 pinned: context.pinned,
                 muted: context.muted,

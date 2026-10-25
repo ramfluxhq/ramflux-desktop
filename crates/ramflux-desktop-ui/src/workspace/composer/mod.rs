@@ -36,7 +36,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window, div,
 };
-use ramflux_desktop_core::{ContextId, ParticipantId, UiEventKind};
+use ramflux_desktop_core::{ContextId, ParticipantId, ParticipantKind, UiEventKind, selectors};
 
 use assignee::Agent;
 
@@ -239,6 +239,23 @@ impl Composer {
             .unwrap_or_default()
     }
 
+    /// Why there is nobody to ask: a member whose kind nothing reported
+    /// (added by id: only a contact card says what kind of party it is)
+    /// may be an AI participant, but a task is never addressed on a guess.
+    pub fn no_agent_reason(&self, cx: &App) -> SharedString {
+        let store = self.store.read(cx).store();
+        let me = selectors::self_participant(store);
+        let unknown = self.context.as_ref().and_then(|c| {
+            selectors::participants(store, c)
+                .into_iter()
+                .find(|p| Some(&p.id) != me.as_ref() && p.kind == ParticipantKind::Unknown)
+        });
+        match unknown {
+            Some(p) => tr_args("composer.kind_unknown", &[("name", &p.display)]),
+            None => tr("composer.no_agent"),
+        }
+    }
+
     /// The AI participant a request without a mention goes to.
     pub fn addressee(&self, cx: &App) -> Option<Agent> {
         let agents = self.agents(cx);
@@ -348,7 +365,7 @@ impl Render for Composer {
         let can_send = enabled && reason.is_none();
         let nobody = enabled && self.draft.is_none() && self.agents(cx).is_empty();
         let task_reason =
-            self.unavailable.task.clone().or_else(|| nobody.then(|| tr("composer.no_agent")));
+            self.unavailable.task.clone().or_else(|| nobody.then(|| self.no_agent_reason(cx)));
         let in_draft = self.draft.is_some();
         let attach_reason = if in_draft {
             Some(tr("composer.attach.after_start"))

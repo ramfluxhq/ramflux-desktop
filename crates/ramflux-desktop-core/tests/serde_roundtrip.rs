@@ -72,9 +72,10 @@ fn moment_kind_name(kind: &MomentKind) -> &'static str {
         MomentKind::Handoff(_) => "Handoff",
         MomentKind::Fallback(_) => "Fallback",
         MomentKind::System(_) => "System",
+        MomentKind::TaskEvent(_) => "TaskEvent",
     }
 }
-const MOMENT_KIND_VARIANTS: usize = 13;
+const MOMENT_KIND_VARIANTS: usize = 14;
 
 fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
@@ -231,6 +232,10 @@ fn all_moment_kinds() -> Vec<MomentKind> {
             text: "Open on a newer client".to_owned(),
         }),
         MomentKind::System(SystemPayload { level: SystemLevel::Warning, text: "Node slow".into() }),
+        MomentKind::TaskEvent(TaskEventPayload {
+            task_id: TaskId::new("t-1"),
+            event: TaskEventKind::Denied { step_id: Some(StepId::new("deploy")) },
+        }),
     ]
 }
 

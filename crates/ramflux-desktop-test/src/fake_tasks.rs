@@ -555,6 +555,43 @@ impl FakeTasks {
         self.inner().tasks.values().map(|h| h.pending.len()).sum()
     }
 
+    /// Rewrites the last task message of `conversation` the way a sibling
+    /// device of the account that sent it lists that event (seen on a live
+    /// daemon: the second device of the account whose first device accepted
+    /// a proposal): the row names its sender by principal, keeps the
+    /// event's text rendering as `body_utf8`, and has no task fields
+    /// (`content_type`, `task_id`, `actor_kind_verified`).
+    pub fn as_sibling_copy(&self, conversation: &str) {
+        let mut inner = self.inner();
+        let members = inner.members.clone();
+        let Some(row) = inner.messages.get_mut(conversation).and_then(|rows| rows.last_mut())
+        else {
+            return;
+        };
+        let device = row["sender_id"].as_str().unwrap_or_default().to_owned();
+        if let Some(member) = members.iter().find(|m| m.device == device) {
+            row["sender_id"] = json!(member.principal);
+        }
+        if let Some(map) = row.as_object_mut() {
+            for field in ["content_type", "task_id", "actor_kind_verified"] {
+                map.remove(field);
+            }
+        }
+    }
+
+    /// Adds a plain message row (text a member wrote) to `conversation`.
+    pub fn push_message(&self, conversation: &str, sender: &str, text: &str) {
+        let mut inner = self.inner();
+        inner.clock += 1;
+        inner.ids += 1;
+        let (at, id) = (inner.clock, inner.ids);
+        inner.messages.entry(conversation.to_owned()).or_default().push(json!({
+            "conversation_id": conversation, "message_id": format!("plain-msg-{id}"),
+            "sender_id": sender, "body_utf8": text, "encrypted_body": text.as_bytes(),
+            "deleted": false, "created_at": at, "receipts": [],
+        }));
+    }
+
     /// The task messages of a conversation, as `message.list` rows.
     pub fn messages(&self, conversation: &str) -> Vec<Value> {
         self.inner().messages.get(conversation).cloned().unwrap_or_default()
@@ -749,7 +786,12 @@ impl Inner {
         held.updated_at = at;
         let Some(task) = held.state.task() else { return };
         let meta = meta(task);
-        let fallback = format!("{} (actor kind unverified)", event.fallback_text());
+        // As the daemon records it: the unverified actor kind is named once,
+        // after the rendering when the rendering does not name it itself.
+        let mut fallback = event.fallback_text();
+        if !fallback.contains("(actor kind unverified)") {
+            fallback.push_str(" (actor kind unverified)");
+        }
         self.messages.entry(conversation.to_owned()).or_default().push(json!({
             "conversation_id": conversation, "message_id": format!("task-msg-{}", self.ids),
             "sender_id": member.device, "content_type": "task", "task_id": task_id,

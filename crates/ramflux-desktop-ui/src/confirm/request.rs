@@ -53,7 +53,7 @@ impl ConfirmRequest {
 }
 
 fn display_name(store: &Store, id: &ParticipantId) -> String {
-    store.participant(id).map_or_else(|| id.to_string(), |p| p.display.clone())
+    store.participant(id).map_or_else(|| id.short(), |p| p.display.clone())
 }
 
 fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<SharedString>, Risk) {

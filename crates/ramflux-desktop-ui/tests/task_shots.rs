@@ -268,6 +268,50 @@ mod shots {
         tasks.update(GROUP, "t-deploy", TaskStatus::Done, steps, None).unwrap();
         run.until("done", |r| r.task(&deploy).is_some_and(|t| t.state == TaskState::Done));
         run.shot("f13b_05_task_done");
+
+        // DESK-F17: what members did to tasks are lines, and a task whose
+        // step was denied says who declined it (no empty summary).
+        tasks
+            .propose(GROUP, "t-plan", "Deploy build 2.4.0-rc1 to production", &[("prod", "Deploy")])
+            .unwrap();
+        let plan = task_key(GROUP, "t-plan");
+        run.until("the proposal", |r| r.task(&plan).is_some());
+        run.click(scope(&plan), "task-start");
+        run.until("started", |r| r.task(&plan).is_some_and(|t| t.state == TaskState::Running));
+        state.lock().expect("state").approvals.push(sdk_fake::approval("appr-prod", "low"));
+        fake.publish("acct-main", "mcp.approval.request", json!({ "approval_id": "appr-prod" }));
+        run.until("the production approval", |r| {
+            r.cx.update(|cx| {
+                r.shell
+                    .read(cx)
+                    .store()
+                    .read(cx)
+                    .store()
+                    .grant(&GrantId::new("appr-prod"))
+                    .is_some()
+            })
+        });
+        let steps = vec![approval_step("prod", "Deploy to production", "grant_appr-prod")];
+        tasks.update(GROUP, "t-plan", TaskStatus::NeedsMe, steps, None).unwrap();
+        run.until("asks", |r| r.task(&plan).is_some_and(|t| t.state == TaskState::NeedsMe));
+        run.click(scope(&plan), "step-deny");
+        run.until("denied", |r| r.task(&plan).is_some_and(|t| t.answer.is_some()));
+        // The denial ends the task as failed, without a result.
+        tasks.confirm_decisions();
+        run.until("failed", |r| r.task(&plan).is_some_and(|t| t.state == TaskState::Failed));
+        // The conversation's next read brings the event messages.
+        let workspace = run.cx.update(|cx| run.shell.read(cx).workspace().clone());
+        run.window(move |window, cx| {
+            workspace.update(cx, |w, cx| {
+                w.select_context(None, window, cx);
+                w.select_context(Some(ContextId::new(GROUP)), window, cx);
+            });
+        });
+        run.until("the lines", |r| {
+            r.window(|window, _| window.within(scope(&plan)).try_find("task-ending").is_some())
+                && r.window(|window, _| window.find_all("task-event").len() >= 2)
+        });
+        run.shot("f17_01_task_lines_and_declined");
         fake.shutdown();
     }
 }

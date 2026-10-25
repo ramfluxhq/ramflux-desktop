@@ -25,6 +25,7 @@ mod object_transfer;
 mod privacy;
 mod safety;
 pub mod surface;
+mod task_event;
 mod task_progress;
 mod task_status;
 
@@ -73,6 +74,9 @@ pub struct RowRefs {
     pub decision_surface: Option<MomentId>,
     /// For a task with a result surface: its moment.
     pub result_surface: Option<MomentId>,
+    /// For a failed or cancelled task without a result: how it ended and
+    /// who ended it, and whether that was the local user.
+    pub ending: Option<(selectors::TaskEnding, bool)>,
 }
 
 /// The task step an intervention belongs to.
@@ -89,9 +93,9 @@ pub struct OwningStep {
 }
 
 impl RowRefs {
-    /// Display name of a referenced participant, else its id.
+    /// Display name of a referenced participant, else its short id.
     pub fn name(&self, id: &ParticipantId) -> SharedString {
-        self.people.get(id).map_or_else(|| id.to_string().into(), |p| p.display.clone().into())
+        self.people.get(id).map_or_else(|| id.short().into(), |p| p.display.clone().into())
     }
 }
 
@@ -156,7 +160,7 @@ impl MomentRow {
         audit: &AuditIndex<'_>,
     ) -> Self {
         let author = store.participant(&moment.origin).map_or_else(
-            || SharedString::from(moment.origin.to_string()),
+            || SharedString::from(moment.origin.short()),
             |p| p.display.clone().into(),
         );
         let body = match &moment.kind {
@@ -245,13 +249,27 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
                 .and_then(|t| t.result_ref.as_ref())
                 .and_then(|s| store.surface_moment(s))
                 .cloned();
-            refs.task
+            refs.ending =
+                refs.task.as_ref().and_then(|t| selectors::task_ending(store, t)).map(|ending| {
+                    let mine = selectors::self_participant(store).as_ref() == Some(&ending.by);
+                    (ending, mine)
+                });
+            let mut people = refs
+                .task
                 .as_ref()
                 .map(|t| match &t.requester {
                     Actor::Agent(id) | Actor::Member(id) => vec![&t.assignee, id],
                     Actor::Human => vec![&t.assignee],
                 })
-                .unwrap_or_default()
+                .unwrap_or_default();
+            if let Some((ending, _)) = &refs.ending {
+                people.push(&ending.by);
+            }
+            people
+        }
+        MomentKind::TaskEvent(p) => {
+            refs.task = store.task(&p.task_id).cloned();
+            Vec::new()
         }
         MomentKind::SafetyChange(p) => vec![&p.participant_id],
         MomentKind::Governance(p) => vec![&p.target],
@@ -363,7 +381,10 @@ impl RenderOnce for MomentView {
             }
             MomentKind::System(p) => notice::system(p, cx).into_any_element(),
             MomentKind::Fallback(p) => notice::fallback(p, cx).into_any_element(),
+            MomentKind::TaskEvent(p) => task_event::render(p, &row, cx).into_any_element(),
         };
+        // A task event is one compact line: it carries its own time.
+        let compact = matches!(moment.kind, MomentKind::TaskEvent(_));
         let focused = state.focus.as_ref().is_some_and(|f| f.is_focused(window));
         v_flex()
             .id(domain_id("moment", &moment.id))
@@ -386,7 +407,7 @@ impl RenderOnce for MomentView {
                     .rounded(cx.theme().radius)
                     .when(state.highlighted, |r| r.bg(cx.theme().muted))
                     .when(focused, |r| r.focus_ring_style(window, cx))
-                    .child(header(&row, cx))
+                    .when(!compact, |col| col.child(header(&row, cx)))
                     .child(body),
             )
     }

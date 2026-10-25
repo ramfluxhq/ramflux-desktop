@@ -31,6 +31,7 @@ use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Hsla, IntoElement, SharedString, div};
+use ramflux_desktop_core::selectors::TaskEndingKind;
 use ramflux_desktop_core::{
     Actor, BlockId, Grant, GrantState, MomentId, NeedsMe, Scope, StepState, Task, TaskState,
     TaskStep, UiEventKind,
@@ -105,6 +106,38 @@ pub fn render(refs: &RowRefs, sink: &EventSink, state: &RowState, cx: &App) -> i
         .when_some(result(&task, refs.result_surface.clone(), sink, cx), |col, result| {
             col.child(result)
         })
+        .when_some(ending(&task, refs, cx), |col, ending| col.child(ending))
+}
+
+/// How a failed or cancelled task without a result ended, by whom: the
+/// typed record of its end (a denied step, a decline, a cancel), never an
+/// empty summary.
+fn ending(task: &Task, refs: &RowRefs, cx: &App) -> Option<AnyElement> {
+    if task.result.is_some() {
+        return None;
+    }
+    let (ending, mine) = refs.ending.as_ref()?;
+    let name = if *mine { tr("moment.task.ending.you") } else { refs.name(&ending.by) };
+    let key = match ending.how {
+        TaskEndingKind::Denied | TaskEndingKind::Declined => "moment.task.ending.declined_by",
+        TaskEndingKind::Cancelled => "moment.task.ending.cancelled_by",
+    };
+    let (icon, color) = match ending.how {
+        TaskEndingKind::Cancelled => (IconName::Dash, cx.theme().muted_foreground),
+        TaskEndingKind::Denied | TaskEndingKind::Declined => (IconName::CircleX, cx.theme().danger),
+    };
+    let text = tr_args(key, &[("name", &name)]);
+    Some(
+        h_flex()
+            .id("task-ending")
+            .aria_label(text.clone())
+            .gap_2()
+            .text_sm()
+            .child(Icon::new(icon).small().text_color(color))
+            .child(div().flex_1().min_w_0().child(text))
+            .test_support()
+            .into_any_element(),
+    )
 }
 
 fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
