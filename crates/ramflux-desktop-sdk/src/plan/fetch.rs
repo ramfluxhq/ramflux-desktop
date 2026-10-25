@@ -91,6 +91,10 @@ pub enum Fetch {
     /// `call.list`: the account's ringing and active calls and recent call
     /// records. Its answer also tells whether the daemon has the call API.
     Calls,
+    /// `account.backup.jobs`: the account's backup and restore jobs (running
+    /// and recent). Its answer also tells whether the daemon has the full
+    /// backup API.
+    BackupJobs,
     /// `group.receive` for one group conversation (pull from the node);
     /// answers with the conversation's stored messages.
     GroupReceive {
@@ -148,6 +152,7 @@ impl Fetch {
             Self::ContactRequests => {
                 BusRequest::new(account, "contact", "contact.requests.list", empty)
             }
+            Self::BackupJobs => BusRequest::new(account, "account", "account.backup.jobs", empty),
             Self::Messages(context) => BusRequest::new(
                 account,
                 "message",

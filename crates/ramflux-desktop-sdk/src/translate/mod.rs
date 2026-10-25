@@ -32,9 +32,11 @@
 //! - `task_answers`: the daemon's answers to task effects, on their task.
 //! - `effects`: answers to effects, and the audit record of confirmed ones.
 //! - `calls`: voice call rows, and the media session read for the engine.
+//! - `backup`: full backup and restore job rows.
 //! - `reason`: locale keys with arguments.
 
 mod account;
+pub mod backup;
 pub mod calls;
 mod contact_failures;
 pub mod contact_requests;
@@ -207,6 +209,10 @@ pub struct Translator {
     outgoing_requests: BTreeMap<ParticipantId, ramflux_desktop_core::ContactRequest>,
     /// Call rows waiting for their conversation to be listed.
     pending_calls: BTreeMap<ramflux_desktop_core::CallId, Value>,
+    /// The sequence number and phase of each backup or restore job last
+    /// reported.
+    reported_jobs:
+        BTreeMap<ramflux_desktop_core::BackupJobId, (u64, ramflux_desktop_core::BackupPhase)>,
 }
 
 impl Translator {
@@ -263,6 +269,7 @@ impl Translator {
             reported_calls: BTreeMap::new(),
             pending_calls: BTreeMap::new(),
             outgoing_requests: BTreeMap::new(),
+            reported_jobs: BTreeMap::new(),
         }
     }
 
@@ -402,6 +409,7 @@ impl Translator {
             Fetch::McpTools => Translated::events(self.mcp_tools(value)),
             Fetch::Calls => self.call_list(value),
             Fetch::ContactRequests => Translated::events(self.contact_request_list(value)),
+            Fetch::BackupJobs => self.backup_job_list(value),
             Fetch::Messages(context) => self.messages(context, value, now),
             Fetch::GroupReceive { context, .. } => {
                 self.remember_plaintext(value);
@@ -491,6 +499,7 @@ impl Translator {
             topic if contact_requests::TOPICS.contains(&topic) => {
                 self.contact_request_event(topic, body).events
             }
+            backup::TOPIC => self.backup_job_row(body).events,
             "mcp.approval.denied" => self.approval_decided(body, GrantState::Denied),
             // Tool starts and A2UI action records are not bound to a
             // conversation yet; they have no moment to land in (gap ledger).

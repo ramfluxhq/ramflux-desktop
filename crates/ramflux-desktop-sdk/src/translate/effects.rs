@@ -116,6 +116,10 @@ impl Translator {
                 events.extend(self.approval_answer(&id, text(body, "args_hash"), answer, now));
                 events
             }
+            methods::BACKUP_CREATE
+            | methods::RESTORE_VERIFY
+            | methods::RESTORE_INSTALL
+            | methods::BACKUP_CANCEL => self.backup_job_row(&answer["job"]).events,
             methods::CALL_INVITE
             | methods::CALL_ANSWER
             | methods::CALL_REJECT

@@ -53,6 +53,15 @@ pub struct SdkConfig {
     /// methods are declared supported; until then, with a daemon without
     /// it, or off, they are declared unsupported (`backend.gap.calls`).
     pub call_api: bool,
+    /// Whether full backup and restore may be used (on by default). On,
+    /// each account snapshot reads `account.backup.jobs`: a daemon that
+    /// answers it has the BACKUP-01 job API (`account.backup.create`,
+    /// `account.restore.verify`, `account.restore.install`,
+    /// `account.backup.cancel` and the `account.backup.job.changed` event),
+    /// and the backup methods are declared supported; until then, with a
+    /// daemon without it, or off, they are declared unsupported
+    /// (`backend.gap.full_backup`).
+    pub backup_api: bool,
 }
 
 impl SdkConfig {
@@ -70,6 +79,7 @@ impl SdkConfig {
             settings_path: None,
             local_network_retry_ms: LOCAL_NETWORK_RETRY_MS,
             call_api: true,
+            backup_api: true,
         }
     }
 }

@@ -14,13 +14,16 @@
 //!   with its event journal in `fake_journal`, its agent surfaces (on the
 //!   protocol's state machine) in `fake_surfaces`, conversation tasks
 //!   (on the protocol's state machine) in `fake_tasks`, its voice calls
-//!   (the CALL-01 bus API) in `fake_calls` and its contact requests
-//!   (CONTACT-02, contract-first) in `fake_contact_requests`.
+//!   (the CALL-01 bus API) in `fake_calls`, its contact requests
+//!   (CONTACT-02, contract-first) in `fake_contact_requests`, and full
+//!   backup and restore jobs (the assumed BACKUP-01 API) in `fake_backup`.
 //! - `live_daemon` (feature `live-daemon`): a real `rf daemon` from the
 //!   pinned product revision for live tests.
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "fake-bus")]
+pub mod fake_backup;
 #[cfg(feature = "fake-bus")]
 pub mod fake_bus;
 #[cfg(feature = "fake-bus")]

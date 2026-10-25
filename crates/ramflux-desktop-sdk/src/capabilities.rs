@@ -40,6 +40,8 @@ pub mod reason {
     pub const CALLS: &str = "backend.gap.calls";
     /// Contact requests need the daemon's request API (CONTACT-02).
     pub const CONTACT_REQUESTS: &str = "backend.gap.contact_requests";
+    /// Full backup and restore need the daemon's job API (BACKUP-01).
+    pub const FULL_BACKUP: &str = "backend.gap.full_backup";
 }
 
 /// The contact request methods, which need the daemon's request API
@@ -61,11 +63,22 @@ pub struct Found {
     /// refusal of the list (a locked account, an outage, a row it could not
     /// read) is not this.
     pub requests_missing: bool,
+    /// The full backup job API (BACKUP-01): `account.backup.jobs` answered.
+    pub backup: bool,
 }
 
 /// The voice call methods, which need the daemon's call API (CALL-01).
 pub const CALL_METHODS: [&str; 4] =
     [methods::CALL_INVITE, methods::CALL_ANSWER, methods::CALL_REJECT, methods::CALL_HANGUP];
+
+/// The full backup and restore methods, which need the daemon's job API
+/// (BACKUP-01).
+pub const BACKUP_METHODS: [&str; 4] = [
+    methods::BACKUP_CREATE,
+    methods::RESTORE_VERIFY,
+    methods::RESTORE_INSTALL,
+    methods::BACKUP_CANCEL,
+];
 
 /// Every unsupported contract method (or `method@ContextKind`) with its reason.
 pub fn unsupported() -> BTreeMap<String, &'static str> {
@@ -93,7 +106,8 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
 }
 
 /// The capabilities event payload; what the daemon was not `found` to
-/// have (the call API, contact requests) is unsupported too.
+/// have (the call API, contact requests, the full backup job API) is
+/// unsupported too.
 pub fn capabilities(found: Found) -> Capabilities {
     let mut unsupported: BTreeMap<String, String> =
         unsupported().into_iter().map(|(m, r)| (m, r.to_owned())).collect();
@@ -105,6 +119,11 @@ pub fn capabilities(found: Found) -> Capabilities {
     if found.requests_missing {
         for method in REQUEST_METHODS {
             unsupported.insert(method.to_owned(), reason::CONTACT_REQUESTS.to_owned());
+        }
+    }
+    if !found.backup {
+        for method in BACKUP_METHODS {
+            unsupported.insert(method.to_owned(), reason::FULL_BACKUP.to_owned());
         }
     }
     Capabilities { unsupported }

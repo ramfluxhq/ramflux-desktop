@@ -121,9 +121,11 @@ pub(super) struct Task {
     pub(super) receipts: Option<Receipts>,
     /// The daemon answered `call.list` (it has the call API, and calls are
     /// not turned off in the settings; until then the call methods are
-    /// declared unsupported), and whether it refused `contact.requests.list`
-    /// as an unknown method (then the request methods are). Only an unknown
-    /// method says an API is missing; other refusals are read failures.
+    /// declared unsupported), whether it refused `contact.requests.list`
+    /// as an unknown method (then the request methods are), and whether it
+    /// answered `account.backup.jobs` (the full backup job API; until then
+    /// the backup methods are declared unsupported). Only an unknown method
+    /// says an API is missing; other refusals are read failures.
     pub(super) found: capabilities::Found,
 }
 
@@ -301,6 +303,11 @@ impl Task {
                 // Pending contact requests and the request setting; the
                 // answer also says whether the daemon has requests.
                 reads.push(Fetch::ContactRequests);
+                // Jobs come back with every snapshot too; the answer also
+                // says whether the daemon has the full backup job API.
+                if self.config.backup_api {
+                    reads.push(Fetch::BackupJobs);
+                }
                 reads
             }
         }
@@ -325,6 +332,13 @@ impl Task {
             self.found = found;
             self.emit(vec![DomainEvent::CapabilitiesUpdated(capabilities::capabilities(found))]);
         }
+    }
+
+    /// Whether the daemon has the full backup job API, as its
+    /// `account.backup.jobs` answer says.
+    fn backup_answered(&mut self, live: bool) {
+        let found = capabilities::Found { backup: live, ..self.found };
+        self.found_now(found);
     }
 
     fn snapshot(&mut self) {
@@ -440,6 +454,10 @@ impl Task {
             sequences.push(vec![Fetch::ContactRequests]);
         }
         sequences.extend(self.translator.poll_reads());
+        // A running job is followed by its reads while there is no stream.
+        if self.found.backup && self.translator.backup_running() {
+            sequences.push(vec![Fetch::BackupJobs]);
+        }
         self.polls_in_flight = sequences.len();
         self.poll_changed = false;
         for sequence in sequences {
@@ -600,6 +618,13 @@ impl Task {
                 (Some(live), true) => self.calls_answered(live),
                 (Some(live), false) => self.requests_answered(live),
                 (None, _) => {}
+            }
+        }
+        if matches!(fetch, Fetch::BackupJobs) {
+            match &result {
+                Ok(_) => self.backup_answered(true),
+                Err(BusError::Daemon { .. }) => self.backup_answered(false),
+                Err(_) => {}
             }
         }
         match result {

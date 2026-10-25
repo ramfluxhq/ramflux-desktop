@@ -30,11 +30,13 @@ pub enum Weight {
 }
 
 /// Methods that reach a node, or derive keys from a passphrase.
-const NETWORK: [&str; 27] = [
+const NETWORK: [&str; 29] = [
     "account.create",
     "account.unlock",
     "account.backup.import",
     "account.backup.export",
+    "account.backup.create",
+    "account.restore.verify",
     "account.passphrase.rotate",
     "node.add",
     "node.probe",
@@ -61,7 +63,7 @@ const NETWORK: [&str; 27] = [
 ];
 
 /// Methods that only read.
-const READS: [&str; 18] = [
+const READS: [&str; 19] = [
     "daemon.status",
     "node.list",
     "account.list",
@@ -80,6 +82,7 @@ const READS: [&str; 18] = [
     "conversation.directory",
     "identity.directory",
     "object.directory",
+    "account.backup.jobs",
 ];
 
 /// The weight of `method`.

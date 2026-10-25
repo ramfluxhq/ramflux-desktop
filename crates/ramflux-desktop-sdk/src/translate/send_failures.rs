@@ -42,6 +42,12 @@ impl Translator {
         if let Some(message) = self.contact_failure(method, error) {
             return message;
         }
+        if crate::capabilities::BACKUP_METHODS.contains(&method)
+            && let BusError::Daemon { reason_code: Some(reason), details, .. } = error
+            && let Some(message) = super::backup::refusal_message(reason, details.as_deref())
+        {
+            return message;
+        }
         if method == methods::SEND_MESSAGE
             && let BusError::Daemon { message, .. } = error
             && let Some(members) = unreachable_members(message)

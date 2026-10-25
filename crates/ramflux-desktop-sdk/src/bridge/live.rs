@@ -168,6 +168,9 @@ impl Task {
         if self.config.call_api {
             topics.push(crate::translate::stream::CALL_TOPIC);
         }
+        if self.config.backup_api {
+            topics.push(crate::translate::backup::TOPIC);
+        }
         let subscription = Subscription { account, topics, since_seq };
         let socket = self.config.socket_path.clone();
         let (connect, deadlines) = (self.config.connect_timeout, self.config.deadlines);
@@ -233,6 +236,11 @@ impl Task {
             }
             crate::translate::stream::CALL_TOPIC => {
                 let translated = self.translator.call_row(body);
+                self.request_reads(translated.follow);
+                self.emit(translated.events);
+            }
+            crate::translate::backup::TOPIC => {
+                let translated = self.translator.backup_job_row(body);
                 self.request_reads(translated.follow);
                 self.emit(translated.events);
             }

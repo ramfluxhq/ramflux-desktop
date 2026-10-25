@@ -53,6 +53,18 @@ impl Task {
             self.emit(vec![DomainEvent::EffectFailed(failure)]);
             return;
         }
+        if !self.found.backup
+            && let Some(method) =
+                effect.method().filter(|m| capabilities::BACKUP_METHODS.contains(m))
+        {
+            let failure = EffectFailure {
+                method: method.to_owned(),
+                code: FailureCode::UnsupportedByBackend,
+                message: capabilities::reason::FULL_BACKUP.to_owned(),
+            };
+            self.emit(vec![DomainEvent::EffectFailed(failure)]);
+            return;
+        }
         let planned = plan(self.scope.account(), effect, &self.translator);
         let (method, mut body) = (planned.method, planned.body);
         self.translator.decision_sent(&method, &body);

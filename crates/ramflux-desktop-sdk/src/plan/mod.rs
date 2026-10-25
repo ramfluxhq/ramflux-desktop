@@ -23,8 +23,10 @@
 //! - [`group_create`]: creating and renaming a group.
 //! - [`task`]: starting, accepting, declining, cancelling and resolving
 //!   conversation tasks.
+//! - [`backup`]: full backup and restore jobs.
 //! - [`call`]: placing, answering, declining and hanging up voice calls.
 
+pub mod backup;
 pub mod call;
 pub mod contact;
 pub mod contact_card;
@@ -313,6 +315,13 @@ fn map(
                 _ => refuse_invalid("missing passphrases"),
             }
         }
+        methods::BACKUP_CREATE
+        | methods::RESTORE_VERIFY
+        | methods::RESTORE_INSTALL
+        | methods::BACKUP_CANCEL => match acct {
+            Some(_) => backup::backup_effect(acct, method, body, secrets),
+            None => refuse_invalid("this action needs an unlocked account"),
+        },
         methods::DIAGNOSTICS_EXPORT => Plan::Diagnostics { path: text(body, "path").to_owned() },
         methods::CONTEXT_PIN | methods::CONTEXT_UNPIN => Plan::Local,
         _ if acct.is_none() => refuse_invalid("this action needs an unlocked account"),
