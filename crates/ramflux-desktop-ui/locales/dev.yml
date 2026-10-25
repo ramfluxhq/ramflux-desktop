@@ -47,8 +47,8 @@ dev:
     zh-CN: "存储"
   count:
     contexts:
-      en: "Contexts"
-      zh-CN: "上下文"
+      en: "Conversations"
+      zh-CN: "对话"
     moments:
       en: "Moments"
       zh-CN: "时刻"
@@ -60,7 +60,7 @@ dev:
       zh-CN: "待处理授权"
     objects:
       en: "Objects"
-      zh-CN: "对象"
+      zh-CN: "文件"
     tasks:
       en: "Tasks"
       zh-CN: "任务"

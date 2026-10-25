@@ -63,11 +63,11 @@ conversation:
     en: "Conversation"
     zh-CN: "对话"
   none:
-    en: "No context"
-    zh-CN: "未选择上下文"
+    en: "No conversation"
+    zh-CN: "未选择对话"
   choose:
-    en: "Choose a context to continue"
-    zh-CN: "选择一个上下文以继续"
+    en: "Choose a conversation to continue"
+    zh-CN: "选择一个对话以继续"
   empty:
     en: "Nothing here yet"
     zh-CN: "这里还没有内容"
@@ -84,8 +84,8 @@ conversation:
     en: "Unpin"
     zh-CN: "取消固定"
   more:
-    en: "More for this context"
-    zh-CN: "此上下文的更多操作"
+    en: "More for this conversation"
+    zh-CN: "此对话的更多操作"
   mute:
     en: "Mute"
     zh-CN: "静音"
@@ -147,8 +147,8 @@ conversation:
     zh-CN: "跳到最新"
 stack:
   title:
-    en: "Contexts"
-    zh-CN: "上下文"
+    en: "Conversations"
+    zh-CN: "对话"
   needs_me:
     en: "%{count} need me"
     zh-CN: "%{count} 项需要我"
@@ -189,7 +189,7 @@ dock:
   title:
     objects:
       en: "Objects"
-      zh-CN: "对象"
+      zh-CN: "文件"
     contacts:
       en: "Contacts"
       zh-CN: "联系人"
@@ -226,7 +226,7 @@ dock:
       zh-CN: "操作"
     empty:
       en: "No objects yet"
-      zh-CN: "还没有对象"
+      zh-CN: "还没有文件"
   contacts:
     add:
       title:
@@ -487,8 +487,8 @@ dock:
       zh-CN: "最高风险 %{risk} · 已使用 %{uses} 次"
   evidence:
     none:
-      en: "Choose a context to see its evidence"
-      zh-CN: "选择一个上下文以查看证据"
+      en: "Choose a conversation to see its evidence"
+      zh-CN: "选择一个对话以查看证据"
     grants:
       en: "Grant binding"
       zh-CN: "授权绑定"
@@ -597,8 +597,8 @@ palette:
     en: "Ask %{name} to…"
     zh-CN: "请 %{name} 处理…"
   placeholder:
-    en: "Search contexts, people, objects, history, or type a command"
-    zh-CN: "搜索上下文、联系人、对象、历史，或输入命令"
+    en: "Search conversations, people, objects, history, or type a command"
+    zh-CN: "搜索对话、联系人、文件、历史，或输入命令"
   empty:
     en: "Nothing matches"
     zh-CN: "没有匹配项"
@@ -609,8 +609,8 @@ palette:
     en: "↑↓ move · Enter choose · Esc close"
     zh-CN: "↑↓ 移动 · Enter 选择 · Esc 关闭"
   contexts:
-    en: "Contexts"
-    zh-CN: "上下文"
+    en: "Conversations"
+    zh-CN: "对话"
   actions:
     en: "Actions"
     zh-CN: "操作"
@@ -619,7 +619,7 @@ palette:
     zh-CN: "联系人"
   objects:
     en: "Objects"
-    zh-CN: "对象"
+    zh-CN: "文件"
   history:
     en: "History"
     zh-CN: "历史"

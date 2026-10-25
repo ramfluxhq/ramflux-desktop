@@ -45,7 +45,7 @@ backend:
       zh-CN: "尚未获知此账户自身的身份。"
     no_direction:
       en: "It is not known whether this object was sent or received."
-      zh-CN: "无法确定此对象是发送还是接收的。"
+      zh-CN: "无法确定此文件是发送还是接收的。"
     activation:
       en: "Joining by activation code is not available from the daemon yet."
       zh-CN: "守护进程尚不支持通过激活码加入。"

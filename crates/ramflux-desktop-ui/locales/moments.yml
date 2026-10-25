@@ -9,7 +9,7 @@ moment:
       zh-CN: "智能体界面"
     object_transfer:
       en: "Object transfer"
-      zh-CN: "对象传输"
+      zh-CN: "文件传输"
     intervention:
       en: "Approval"
       zh-CN: "审批"
@@ -147,7 +147,7 @@ moment:
       zh-CN: "已保存到 %{path}"
     missing:
       en: "Object %{id} is not available yet"
-      zh-CN: "对象 %{id} 暂不可用"
+      zh-CN: "文件 %{id} 暂不可用"
     size_unknown:
       en: "size not reported"
       zh-CN: "大小未知"
