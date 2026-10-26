@@ -67,9 +67,11 @@ fn every_fixture_parses_and_is_listed() {
             expected.push(companion.scenario.clone());
         }
     }
+    // Variants only the UI tests play (not bundled scenarios).
+    expected.push("s05_group_safety".to_owned());
     on_disk.sort();
     expected.sort();
-    assert_eq!(on_disk, expected, "every fixture is listed or a companion");
+    assert_eq!(on_disk, expected, "every fixture is listed, a companion or a test variant");
 }
 
 #[test]
