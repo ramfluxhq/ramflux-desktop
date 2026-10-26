@@ -214,6 +214,24 @@ impl StoreHandle {
         })
     }
 
+    /// The source status the title bar shows. An account session that has
+    /// received nothing yet (it just opened) is `Disconnected` only because
+    /// it has not reported; the daemon's own session says whether the
+    /// daemon is there, so that one is shown until the account has data.
+    pub fn shown_source_status(&self) -> ramflux_desktop_core::SourceStatus {
+        let own = self.store().source_status();
+        let silent =
+            self.store().accounts().next().is_none() && self.store().contexts().next().is_none();
+        if own == ramflux_desktop_core::SourceStatus::Disconnected
+            && self.active.is_some()
+            && silent
+            && let Some(daemon) = self.daemon_store()
+        {
+            return daemon.source_status();
+        }
+        own
+    }
+
     /// Whether a live daemon feeds the handle.
     pub fn is_live(&self) -> bool {
         self.live.is_some()

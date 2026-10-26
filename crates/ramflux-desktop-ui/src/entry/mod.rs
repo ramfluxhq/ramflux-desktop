@@ -98,6 +98,20 @@ impl Inputs {
     }
 }
 
+/// How long a freshly opened account session is waited for before the page
+/// says it did not load and offers a way out.
+const SESSION_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The wait for a freshly opened account session.
+enum SessionWait {
+    /// Not waiting.
+    Idle,
+    /// Waiting; the task ends the wait after [`SESSION_WAIT`].
+    Loading { _timer: gpui_kit::Task<()> },
+    /// The bound passed (or the session reported a failure) without data.
+    Failed,
+}
+
 /// The entry page view.
 pub struct EntryPage {
     store: Entity<StoreHandle>,
@@ -119,6 +133,9 @@ pub struct EntryPage {
     /// The store's failure count when a node was last looked up; a node
     /// lookup failure after it is shown under the add-node form.
     node_lookup: Option<u64>,
+    /// Where the wait for a freshly opened account session is (see
+    /// [`EntryPage::awaits_session`]).
+    session_wait: SessionWait,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -144,6 +161,7 @@ impl EntryPage {
                     this.submitted = None;
                     cx.notify();
                 }
+                this.sync_session_wait(cx);
             }),
             cx.observe(&root, |_, _, cx| cx.notify()),
             cx.observe(&launcher, |_, _, cx| cx.notify()),
@@ -172,6 +190,7 @@ impl EntryPage {
             review_nodes: false,
             submitted: None,
             node_lookup: None,
+            session_wait: SessionWait::Idle,
             _subscriptions: subscriptions,
         }
     }
@@ -211,6 +230,43 @@ impl EntryPage {
         handle.is_live()
             && !handle.daemon_unreachable()
             && matches!(page_for(handle.store()), Page::Entry(EntryStep::Daemon))
+    }
+
+    /// Whether the wait for the account session has run out: the bound
+    /// passed, or the session reported a failure, and still no data.
+    pub fn session_failed(&self, cx: &App) -> bool {
+        self.awaits_session(cx)
+            && (matches!(self.session_wait, SessionWait::Failed)
+                || !self.store.read(cx).store().failures().is_empty())
+    }
+
+    /// Starts or ends the bounded wait as the store's state changes.
+    fn sync_session_wait(&mut self, cx: &mut Context<Self>) {
+        if !self.awaits_session(cx) {
+            self.session_wait = SessionWait::Idle;
+            return;
+        }
+        if matches!(self.session_wait, SessionWait::Idle) {
+            self.session_wait = SessionWait::Loading {
+                _timer: cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(SESSION_WAIT).await;
+                    let _ = this.update(cx, |this, cx| {
+                        if matches!(this.session_wait, SessionWait::Loading { .. }) {
+                            this.session_wait = SessionWait::Failed;
+                            cx.notify();
+                        }
+                    });
+                }),
+            };
+        }
+    }
+
+    /// Opens the account session again and waits for it anew.
+    pub fn retry_session(&mut self, cx: &mut Context<Self>) {
+        self.session_wait = SessionWait::Idle;
+        self.store.update(cx, |handle, cx| handle.reload_active_session(cx));
+        self.sync_session_wait(cx);
+        cx.notify();
     }
 
     /// Every masked secret input, for tests that check secrets are cleared.

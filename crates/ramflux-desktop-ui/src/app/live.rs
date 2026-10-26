@@ -12,7 +12,7 @@
 //! performed by the daemon session, everything else by the account's.
 
 use gpui_kit::Context;
-use ramflux_desktop_core::{AccountId, Intent, LockState, methods};
+use ramflux_desktop_core::{AccountId, Intent, IntentKind, LockState, methods};
 use ramflux_desktop_sdk::{DaemonStop, SdkHub};
 
 use super::{
@@ -81,6 +81,21 @@ impl StoreHandle {
         self.reconcile_live(cx);
     }
 
+    /// Opens the rendered account's session again (a live daemon only): a
+    /// fresh source, a fresh snapshot, an empty store until it answers.
+    pub fn reload_active_session(&mut self, cx: &mut Context<Self>) {
+        let (Some(id), true) = (self.active.clone(), self.live.is_some()) else { return };
+        // The old source goes first: it detaches by account, which must not
+        // reach the scope the new source attaches.
+        self.sessions.remove(&id);
+        if let Some(link) = self.live.as_ref() {
+            let source = link.hub.account_source(id.clone());
+            self.sessions
+                .insert(id.clone(), AccountSession::live(id.to_string(), Box::new(source)));
+        }
+        self.emit_reset(cx);
+    }
+
     fn reconcile_live(&mut self, cx: &mut Context<Self>) {
         let Some(link) = self.live.as_ref() else { return };
         let unlocked: Vec<AccountId> = link
@@ -117,7 +132,15 @@ impl StoreHandle {
         intent: Intent,
         cx: &mut Context<Self>,
     ) -> DispatchOutcome {
-        let Some(session) = self.session() else { return DispatchOutcome::NoAccount };
+        let Some(mut session) = self.session() else { return DispatchOutcome::NoAccount };
+        // An account whose own session has not loaded yet is known to the
+        // daemon's: locking it is decided there (and goes there anyway).
+        if let IntentKind::LockAccount { account_id } = &intent.kind
+            && session.store().account(account_id).is_none()
+            && let Some(link) = self.live.as_ref()
+        {
+            session = link.daemon();
+        }
         let (decided, records) = session.decide(intent);
         for record in records {
             self.inspector.push(record);

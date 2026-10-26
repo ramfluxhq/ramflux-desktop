@@ -91,7 +91,8 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
         }
         None => (tr("status.none"), None),
     };
-    let source_color = match store.source_status() {
+    let source = handle.shown_source_status();
+    let source_color = match source {
         SourceStatus::Connected => None,
         SourceStatus::Locked => Some(theme.warning),
         SourceStatus::Disconnected => Some(theme.danger),
@@ -128,7 +129,7 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
         Field {
             id: "status-source",
             label: tr("status.label.source"),
-            value: i18n::source_status(store.source_status()),
+            value: i18n::source_status(source),
             color: source_color,
         },
     ];
@@ -228,6 +229,9 @@ impl Render for StatusStrip {
                 .child(div().text_color(muted).child(field.label))
                 .child(
                     div()
+                        .id(SharedString::from(format!("{}-value", field.id)))
+                        .aria_label(field.value.clone())
+                        .test_support()
                         .max_w(gpui_kit::rems(24.))
                         .truncate()
                         .text_color(field.color.unwrap_or(foreground))

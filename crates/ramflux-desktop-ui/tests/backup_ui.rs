@@ -603,6 +603,11 @@ fn the_restore_result_stays_in_view_when_the_daemon_reopens_the_account(cx: &mut
     assert_eq!(page(cx, &world.shell), Page::Entry(EntryStep::Account));
     assert_eq!(world.step(cx), EntryStep::Account, "the rendered step follows the hold");
     assert!(exists(cx, world.handle, "entry-restore-finishing"));
+    // The title bar reads the daemon's own status while the account session
+    // is silent: the daemon is up, so it does not say it is disconnected.
+    let connected =
+        ramflux_desktop_ui::i18n::source_status(ramflux_desktop_core::SourceStatus::Connected);
+    assert_eq!(source_shown(cx, &world).as_deref(), Some(connected.as_ref()));
     assert!(exists(cx, world.handle, "backup-result"), "the last seen result stays in view");
     assert!(!exists(cx, world.handle, "passphrase"), "no unlock form for an open account");
     account_jobs.open();
@@ -679,6 +684,13 @@ fn only_the_installed_restore_is_held_not_an_old_one_after_lock_and_unlock(
     world.finish();
 }
 
+/// The source status the title bar shows.
+fn source_shown(cx: &mut TestAppContext, world: &Restoring) -> Option<String> {
+    in_window(cx, world.handle, |window, _| {
+        window.try_find("status-source-value").and_then(|e| e.label().map(str::to_owned))
+    })
+}
+
 #[gpui_kit::test]
 fn a_freshly_unlocked_account_shows_a_loading_line_not_the_daemon_step(cx: &mut TestAppContext) {
     let world = restoring(cx, "ui-backup-entry-fresh");
@@ -708,8 +720,81 @@ fn a_freshly_unlocked_account_shows_a_loading_line_not_the_daemon_step(cx: &mut 
     assert_eq!(world.step(cx), EntryStep::Account);
     assert!(exists(cx, world.handle, "entry-session-loading"));
     assert!(!exists(cx, world.handle, "entry-daemon-socket"), "no daemon step is rendered");
+    // The page value agrees with the rendered step, and the title bar
+    // reads the daemon's own status, not the empty session's.
+    assert_eq!(page(cx, &world.shell), Page::Entry(EntryStep::Account));
+    let connected =
+        ramflux_desktop_ui::i18n::source_status(ramflux_desktop_core::SourceStatus::Connected);
+    assert_eq!(source_shown(cx, &world).as_deref(), Some(connected.as_ref()));
     account_reads.open();
     wait(cx, "the first data", |cx| !exists(cx, world.handle, "entry-session-loading"));
+    world.finish();
+}
+
+/// A restored account that is locked and opened again while its new
+/// session's answers are held back for good: the loading line first, then
+/// (past the bound) the error. Returns the latch holding the answers.
+fn never_loading(cx: &mut TestAppContext, world: &Restoring) -> Arc<sdk_fake::Latch> {
+    let account_jobs = world.install_and_hold(cx);
+    account_jobs.open();
+    wait(cx, "the jobs listed", |cx| {
+        with_store(cx, &world.shell, |s| s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
+    });
+    advance(cx, 300);
+    world.set_account("locked");
+    wait(cx, "locked", |cx| {
+        with_store(cx, &world.shell, |s| {
+            s.accounts().next().map(|a| a.lock_state) != Some(LockState::Unlocked)
+        })
+    });
+    let account_reads = world.state.lock().expect("state").account_reads.clone();
+    account_reads.close();
+    world.set_account("unlocked");
+    wait(cx, "the loading line", |cx| exists(cx, world.handle, "entry-session-loading"));
+    assert!(!exists(cx, world.handle, "entry-session-retry"), "nothing to retry yet");
+    // Past the bound with no answer: the error and the ways out replace
+    // the spinner.
+    advance(cx, 10_500);
+    assert!(exists(cx, world.handle, "entry-session-failed"));
+    assert!(exists(cx, world.handle, "entry-session-retry"));
+    assert!(exists(cx, world.handle, "entry-session-lock"));
+    assert!(!exists(cx, world.handle, "entry-session-loading"));
+    assert_eq!(world.step(cx), EntryStep::Account);
+    account_reads
+}
+
+fn status_reads(world: &Restoring) -> usize {
+    world.fake.seen().iter().filter(|s| s.account.is_some() && s.method == "account.status").count()
+}
+
+#[gpui_kit::test]
+fn an_account_that_never_loads_says_so_and_try_again_opens_it_anew(cx: &mut TestAppContext) {
+    let world = restoring(cx, "ui-backup-entry-never");
+    let account_reads = never_loading(cx, &world);
+    let before = status_reads(&world);
+    click(cx, world.handle, "entry-session-retry");
+    // The loading line is back, and the daemon is asked again.
+    wait(cx, "the loading line again", |cx| exists(cx, world.handle, "entry-session-loading"));
+    assert!(!exists(cx, world.handle, "entry-session-retry"));
+    wait(cx, "the daemon asked again", |_| status_reads(&world) > before);
+    // This time the account answers.
+    account_reads.open();
+    wait(cx, "the account loaded", |cx| {
+        !exists(cx, world.handle, "entry-session-loading")
+            && !exists(cx, world.handle, "entry-session-failed")
+    });
+    world.finish();
+}
+
+#[gpui_kit::test]
+fn an_account_that_never_loads_can_be_locked_from_the_error(cx: &mut TestAppContext) {
+    let world = restoring(cx, "ui-backup-entry-never-lock");
+    let account_reads = never_loading(cx, &world);
+    click(cx, world.handle, "entry-session-lock");
+    wait(cx, "the daemon asked to lock it", |_| {
+        world.fake.seen().iter().any(|s| s.method == "account.lock")
+    });
+    account_reads.open();
     world.finish();
 }
 

@@ -9,6 +9,7 @@
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
+use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::spinner::Spinner;
@@ -18,7 +19,8 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{
-    Account, AccountKind, BackupPhase, IntentKind, LockState, NodeId, SecretInput, Store, methods,
+    Account, AccountKind, BackupPhase, IntentKind, LockState, NodeId, SecretInput, Store,
+    UiEventKind, methods,
 };
 
 use super::{AccountPath, EntryPage, RestoreKind};
@@ -132,16 +134,7 @@ impl EntryPage {
                 )
                 .into_any_element()
         } else if self.awaits_session(cx) {
-            h_flex()
-                .id("entry-session-loading")
-                .test_support()
-                .gap_2()
-                .items_center()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(Spinner::new().small())
-                .child(tr("entry.account.loading"))
-                .into_any_element()
+            self.render_session_wait(cx).into_any_element()
         } else if accounts.is_empty() {
             self.render_paths(&store, cx).into_any_element()
         } else {
@@ -174,6 +167,50 @@ impl EntryPage {
                 .into_any_element()
         };
         v_flex().id("entry-account").gap_3().child(body)
+    }
+
+    /// A freshly opened account session that has not answered: a neutral
+    /// loading line, and once the bound passed (or a read failed) the
+    /// error with the ways out.
+    fn render_session_wait(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.session_failed(cx) {
+            return h_flex()
+                .id("entry-session-loading")
+                .test_support()
+                .gap_2()
+                .items_center()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(Spinner::new().small())
+                .child(tr("entry.account.loading"))
+                .into_any_element();
+        }
+        let account = self.store.read(cx).active_account().cloned();
+        v_flex()
+            .id("entry-session-failed")
+            .test_support()
+            .gap_3()
+            .child(Alert::error("entry-session-failed-alert", tr("entry.account.load_failed")))
+            .child(
+                h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("entry-session-retry")
+                            .primary()
+                            .label(tr("entry.account.retry"))
+                            .on_click(cx.listener(|this, _, _, cx| this.retry_session(cx))),
+                    )
+                    .children(account.map(|account_id| {
+                        Button::new("entry-session-lock")
+                            .outline()
+                            .label(tr("entry.account.lock"))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                let account_id = account_id.clone();
+                                this.sink.emit(UiEventKind::LockPressed { account_id }, window, cx);
+                            }))
+                    })),
+            )
+            .into_any_element()
     }
 
     fn render_unlock(&self, accounts: &[Account], cx: &mut Context<Self>) -> impl IntoElement {
