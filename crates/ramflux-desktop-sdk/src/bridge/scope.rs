@@ -688,6 +688,13 @@ impl Task {
                 }
                 Err(_) => {}
             }
+            // A refusal that trying again will not change is the answer: the
+            // listing is not coming, and nobody should wait for it. (A lost
+            // connection or a missed deadline is retried, not given up.)
+            if result.as_ref().is_err_and(|error| !error.is_retryable()) {
+                let given_up = self.translator.backup_jobs_given_up();
+                self.emit(given_up);
+            }
         }
         match result {
             Ok(value) => {

@@ -191,7 +191,14 @@ impl EntryPage {
     /// daemon already reopened the restored account, until the user
     /// closes it.
     pub fn holds_restore(&self, cx: &App) -> bool {
-        self.full_restore.read(cx).followed_job(cx).is_some()
+        self.full_restore.read(cx).holds_result(cx)
+    }
+
+    /// Whether the restore result is held only until the store's first jobs
+    /// listing (the account session that took over is still empty): the
+    /// page then stays on the account step, whatever the empty store says.
+    pub fn awaits_restore_listing(&self, cx: &App) -> bool {
+        self.full_restore.read(cx).awaits_listing(cx)
     }
 
     /// Every masked secret input, for tests that check secrets are cleared.

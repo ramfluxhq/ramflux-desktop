@@ -127,6 +127,36 @@ pub struct State {
     /// More accepted contacts, each with one routable device (listed by
     /// `contact.list` and the identity directory).
     pub extra_peers: Vec<String>,
+    /// Holds the account-scoped `account.backup.jobs` answers while closed
+    /// (open by default): an account session's first jobs listing, on cue.
+    pub account_jobs: Arc<Latch>,
+}
+
+/// A gate a test closes to hold answers back and opens to let them go.
+#[derive(Default)]
+pub struct Latch {
+    closed: std::sync::Mutex<bool>,
+    changed: std::sync::Condvar,
+}
+
+impl Latch {
+    /// Holds what passes through from now on.
+    pub fn close(&self) {
+        *self.closed.lock().expect("latch") = true;
+    }
+
+    /// Lets everything held, and everything after, through.
+    pub fn open(&self) {
+        *self.closed.lock().expect("latch") = false;
+        self.changed.notify_all();
+    }
+
+    fn pass(&self) {
+        let mut closed = self.closed.lock().expect("latch");
+        while *closed {
+            closed = self.changed.wait(closed).expect("latch");
+        }
+    }
 }
 
 /// The shared state.
@@ -248,7 +278,7 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
         state.requests.set_profiles(state.profiles.clone());
     }
     let fake = FakeBus::start(&path, move |method, account, body| {
-        let (surfaces, tasks, calls, requests, backup) = {
+        let (surfaces, tasks, calls, requests, backup, account_jobs) = {
             let state = state.lock().expect("state");
             (
                 state.surfaces.clone(),
@@ -256,8 +286,12 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
                 state.calls.clone(),
                 state.requests.clone(),
                 state.backup.clone(),
+                state.account_jobs.clone(),
             )
         };
+        if method == "account.backup.jobs" && account.is_some() {
+            account_jobs.pass();
+        }
         if let Some(reply) = requests.handle(method, account, body) {
             return reply;
         }

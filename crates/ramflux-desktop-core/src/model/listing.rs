@@ -25,17 +25,21 @@ pub enum Listing {
     Objects,
     /// Approvals (grants).
     Approvals,
+    /// Full backup and restore jobs (declared once the daemon answered the
+    /// job listing, or refused it for good).
+    BackupJobs,
 }
 
 impl Listing {
     /// Every listing.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Nodes,
         Self::Accounts,
         Self::Contexts,
         Self::Contacts,
         Self::Objects,
         Self::Approvals,
+        Self::BackupJobs,
     ];
 }
 

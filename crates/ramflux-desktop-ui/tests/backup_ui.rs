@@ -505,7 +505,14 @@ fn the_restore_result_stays_in_view_when_the_daemon_reopens_the_account(cx: &mut
     }));
     state.lock().expect("state").accounts =
         Some(serde_json::json!({ "accounts": [], "account_details": [] }));
-    let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 900.);
+    // The held jobs listing must outlive the usual 3 s deadline: the test
+    // opens it on cue, never on a timer.
+    let mut options = sdk_fake::options(&path);
+    if let ramflux_desktop_ui::shell::SourceChoice::Rfd(config) = &mut options.source {
+        config.deadlines =
+            ramflux_desktop_sdk::Deadlines::uniform(std::time::Duration::from_secs(120));
+    }
+    let (handle, shell) = open_sized(cx, options, 900.);
     wait(cx, "the entry page", |cx| matches!(page(cx, &shell), Page::Entry(_)));
     if page(cx, &shell) == Page::Entry(EntryStep::Node) {
         click_in(cx, handle, "node-n-harbor", "node-confirm");
@@ -539,11 +546,32 @@ fn the_restore_result_stays_in_view_when_the_daemon_reopens_the_account(cx: &mut
         "account_details": [{ "id": ACCOUNT, "label": "Personal", "kind": "human",
                               "state": "unlocked" }],
     }));
+    // The reopened account's session starts empty: its first jobs listing is
+    // held back, so the interval before it is observed, not raced.
+    let account_jobs = state.lock().expect("state").account_jobs.clone();
+    account_jobs.close();
     click(cx, handle, "restore-install");
     backup.run_out();
-    wait(cx, "the account open", |cx| {
-        with_store(cx, &shell, |s| s.accounts().next().map(|a| a.lock_state))
-            == Some(LockState::Unlocked)
+    wait(cx, "the account's own session", |cx| {
+        let store = store_handle(cx, &shell);
+        cx.update(|cx| store.read(cx).active_account().is_some())
+    });
+    advance(cx, 300);
+    assert!(
+        with_store(cx, &shell, |s| !s.is_listed(ramflux_desktop_core::Listing::BackupJobs)),
+        "the account session has listed nothing yet"
+    );
+    assert_eq!(
+        page(cx, &shell),
+        Page::Entry(EntryStep::Account),
+        "the entry page is held until the account's first jobs listing: no flash of another page"
+    );
+    account_jobs.open();
+    wait(cx, "the jobs listed", |cx| {
+        with_store(cx, &shell, |s| {
+            s.is_listed(ramflux_desktop_core::Listing::BackupJobs)
+                && s.accounts().next().map(|a| a.lock_state) == Some(LockState::Unlocked)
+        })
     });
     advance(cx, 300);
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account), "the result is held in view");

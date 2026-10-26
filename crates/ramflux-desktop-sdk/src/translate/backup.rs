@@ -43,7 +43,7 @@ use std::collections::BTreeSet;
 
 use ramflux_desktop_core::{
     AccountId, AttachmentCheck, BackupCategory, BackupCounts, BackupFailure, BackupJob,
-    BackupJobId, BackupJobKind, BackupPhase, BackupProgress, BackupSummary, DomainEvent,
+    BackupJobId, BackupJobKind, BackupPhase, BackupProgress, BackupSummary, DomainEvent, Listing,
     RestorePreview, RestoreReport,
 };
 use serde_json::Value;
@@ -305,6 +305,13 @@ impl Translator {
             out.events.push(DomainEvent::BackupJobUpdated(Box::new(lost)));
         }
         out
+    }
+
+    /// The daemon refused the job listing for good (not a transient failure):
+    /// the jobs are declared listed all the same, so the UI does not wait
+    /// for a listing that will not come. Empty once declared.
+    pub fn backup_jobs_given_up(&mut self) -> Vec<DomainEvent> {
+        self.listed(&[Listing::BackupJobs]).into_iter().collect()
     }
 
     /// The job stream had to start over from the daemon's head: the cursor

@@ -330,7 +330,12 @@ impl Shell {
         let mut page = page_for(self.store.read(cx).store());
         // A full restore's result stays on the entry page until the user
         // closes it, even once the daemon reopened the restored account.
-        if page == Page::Workspace && self.entry.read(cx).holds_restore(cx) {
+        // The session that took over from the daemon's starts empty, so it
+        // would also route back to an earlier step (the daemon step) until
+        // its first jobs listing: the account step holds that interval too.
+        let entry = self.entry.read(cx);
+        if entry.holds_restore(cx) && (page == Page::Workspace || entry.awaits_restore_listing(cx))
+        {
             page = Page::Entry(EntryStep::Account);
         }
         if page != self.page {

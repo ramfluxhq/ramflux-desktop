@@ -187,6 +187,23 @@ fn verify(account: &mut Fed, path: &str, passphrase: &str) {
 }
 
 #[test]
+fn the_job_listing_is_declared_once_the_daemon_answered_it_or_refused_it_for_good() {
+    let world = World::start("listed", true);
+    let account = live(&world, true);
+    assert!(account.store.is_listed(ramflux_desktop_core::Listing::BackupJobs));
+    world.stop();
+
+    let world = World::start("listed-absent", true);
+    world.backup.set_available(false);
+    let hub = ramflux_desktop_sdk::SdkHub::start(config(&world.path)).expect("bridge");
+    let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
+    account.until("the refusal is the answer: nothing to wait for", |s, _| {
+        s.is_listed(ramflux_desktop_core::Listing::BackupJobs)
+    });
+    world.stop();
+}
+
+#[test]
 fn a_full_backup_writes_everything_with_progress_and_reports_its_counts() {
     let world = World::start("create", true);
     let mut account = live(&world, true);

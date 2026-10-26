@@ -385,6 +385,7 @@ impl Translator {
             Fetch::ContactList => Listing::Contacts,
             Fetch::Page(Paged::Approvals, _) if complete(Paged::Approvals) => Listing::Approvals,
             Fetch::Page(Paged::Objects, _) if complete(Paged::Objects) => Listing::Objects,
+            Fetch::BackupJobs => Listing::BackupJobs,
             _ => return None,
         };
         self.listed(&[listing])

@@ -377,6 +377,22 @@ impl BackupPanel {
         self.shown_job(cx).filter(|job| self.followed.contains(&job.id))
     }
 
+    /// Whether a result this panel follows is still to be shown: the job is
+    /// in the store, or the store has not listed the jobs yet (the account
+    /// session that took over from the daemon's starts empty, and the job
+    /// row only arrives with its first jobs listing). A job the user closed
+    /// does not count.
+    pub fn holds_result(&self, cx: &App) -> bool {
+        self.followed_job(cx).is_some() || self.awaits_listing(cx)
+    }
+
+    /// Whether the result this panel follows is out of view only because
+    /// the store has not listed the jobs yet.
+    pub fn awaits_listing(&self, cx: &App) -> bool {
+        !self.store.read(cx).store().is_listed(ramflux_desktop_core::Listing::BackupJobs)
+            && self.followed.iter().any(|id| !self.dismissed.contains(id))
+    }
+
     /// Closes a failed job's result and opens its form again, with the
     /// same file.
     pub fn retry(&mut self, job: &BackupJob, window: &mut Window, cx: &mut Context<Self>) {
