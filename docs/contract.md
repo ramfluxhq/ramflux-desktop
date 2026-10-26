@@ -738,7 +738,8 @@ never a boolean.
 `display_name`; a stale card assertion cannot override authenticated profile
 fields. Public names are NFC single-line text, at most 128 scalars/256 UTF-8
 bytes. Private account labels are not published. The default public name is the
-principal ID. Profile epochs cannot roll back or equivocate across restarts.
+principal ID when it fits this policy; otherwise the fixed safe name `Account`
+keeps legacy long/unsafe identifiers publishable. Profile epochs cannot roll back or equivocate across restarts.
 
 Task actors include `actor_kind: human | headless_ai | bot | null` and
 `actor_kind_verified`. Verification requires a root-signed profile and, for an
