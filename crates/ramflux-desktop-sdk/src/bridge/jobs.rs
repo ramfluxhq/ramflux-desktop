@@ -11,7 +11,8 @@
 //! daemon restart, which jobs went with the daemon). A stream that fell
 //! behind is opened again at once from its cursor; a lost one after the
 //! reconnect back-off; a refused one only after the next snapshot finds the
-//! API again.
+//! API again. The daemon scope keeps its link only while no account scope
+//! is attached: an account's link follows the jobs then.
 
 use tokio::time::Instant;
 
@@ -32,9 +33,36 @@ pub(super) enum Jobs {
 }
 
 impl Task {
+    /// Whether this scope leaves the jobs to another: the daemon scope
+    /// while an account scope is attached (that one follows them on its
+    /// own link, so one attended connection and one set of job reads).
+    pub(super) fn jobs_yield(&self) -> bool {
+        self.accounts_live && self.scope.account().is_none()
+    }
+
+    /// Daemon scope: an account scope attached (`live`) or the last one
+    /// detached. The link closes while one is attached and opens again
+    /// once none is.
+    pub(super) fn accounts_live(&mut self, live: bool) {
+        self.accounts_live = live;
+        if self.scope.account().is_some() {
+            return;
+        }
+        if live {
+            self.jobs_open_at = None;
+            if self.jobs != Jobs::Closed {
+                self.jobs = Jobs::Closed;
+                let link = self.job_link.clone();
+                tokio::spawn(async move { link.close().await });
+            }
+        } else if self.found.backup && self.jobs == Jobs::Closed {
+            self.jobs_open_at = Some(Instant::now());
+        }
+    }
+
     /// The daemon has (or lacks) the job API: open the link if it is closed.
     pub(super) fn jobs_found(&mut self, live: bool) {
-        if live && self.jobs == Jobs::Closed && self.jobs_open_at.is_none() {
+        if live && self.jobs == Jobs::Closed && self.jobs_open_at.is_none() && !self.jobs_yield() {
             self.jobs_open_at = Some(Instant::now());
         }
         if !live {
@@ -45,7 +73,7 @@ impl Task {
     /// Opens the job link (when due).
     pub(super) fn open_jobs(&mut self) {
         self.jobs_open_at = None;
-        if self.jobs != Jobs::Closed || !self.found.backup {
+        if self.jobs != Jobs::Closed || !self.found.backup || self.jobs_yield() {
             return;
         }
         self.jobs = Jobs::Opening;
@@ -78,7 +106,7 @@ impl Task {
                 self.jobs = Jobs::Closed;
                 let link = self.job_link.clone();
                 tokio::spawn(async move { link.close().await });
-                if self.link != Link::Live || !self.found.backup {
+                if self.link != Link::Live || !self.found.backup || self.jobs_yield() {
                     return;
                 }
                 let now = Instant::now();

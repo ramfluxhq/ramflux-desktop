@@ -61,6 +61,9 @@ pub(crate) enum ScopeCommand {
     Bodies(Vec<MomentId>),
     /// The media engine needs a call's media session.
     CallMedia(ramflux_desktop_core::CallId, std_mpsc::Sender<super::MediaAnswer>),
+    /// Daemon scope only: whether an account scope is attached (its own
+    /// link follows the backup jobs then, so the daemon scope's closes).
+    AccountsLive(bool),
 }
 
 /// A read's answer, with the listing number of a first page.
@@ -134,6 +137,9 @@ pub(super) struct Task {
     /// Where the job link is, and when to open it.
     pub(super) jobs: super::jobs::Jobs,
     pub(super) jobs_open_at: Option<Instant>,
+    /// Daemon scope: an account scope is attached, which follows the jobs
+    /// itself; this scope's link stays closed meanwhile.
+    pub(super) accounts_live: bool,
 }
 
 /// Sends one read; a listing's first page gets the next listing number
@@ -205,6 +211,7 @@ pub(crate) async fn run(
         job_link,
         jobs: super::jobs::Jobs::Closed,
         jobs_open_at: None,
+        accounts_live: false,
     };
     let declared = capabilities::capabilities(capabilities::Found::default());
     task.emit(vec![DomainEvent::CapabilitiesUpdated(declared)]);
@@ -488,8 +495,9 @@ impl Task {
             sequences.push(vec![Fetch::ContactRequests]);
         }
         sequences.extend(self.translator.poll_reads());
-        // A running job is followed by its reads while there is no stream.
-        if self.found.backup && self.translator.backup_running() {
+        // A running job is followed by its reads while there is no stream
+        // (not by the daemon scope while an account scope follows it).
+        if self.found.backup && self.translator.backup_running() && !self.jobs_yield() {
             sequences.push(vec![Fetch::BackupJobs]);
         }
         self.polls_in_flight = sequences.len();
@@ -771,6 +779,7 @@ impl Task {
                 self.spawn_fetches(reads);
             }
             ScopeCommand::CallMedia(call_id, reply) => self.call_media(call_id, reply),
+            ScopeCommand::AccountsLive(live) => self.accounts_live(live),
         }
     }
 }

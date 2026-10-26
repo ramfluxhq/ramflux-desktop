@@ -93,12 +93,33 @@ impl Bridge {
 
 async fn serve(config: SdkConfig, mut inbox: mpsc::UnboundedReceiver<Command>) {
     let mut scopes: BTreeMap<Scope, mpsc::UnboundedSender<scope::ScopeCommand>> = BTreeMap::new();
+    // The daemon scope follows the backup jobs only while no account scope
+    // is attached (an account's own link follows them then): it is told
+    // whenever the first account scope attaches or the last one detaches.
+    let mut account_scopes = 0_usize;
+    let accounts_live = |scopes: &BTreeMap<Scope, mpsc::UnboundedSender<scope::ScopeCommand>>,
+                         live: bool| {
+        if let Some(tx) = scopes.get(&Scope::Daemon) {
+            let _ = tx.send(scope::ScopeCommand::AccountsLive(live));
+        }
+    };
     while let Some(command) = inbox.recv().await {
         match command {
             Command::Attach { scope, outbox } => {
                 let (tx, rx) = mpsc::unbounded_channel();
                 tokio::spawn(scope::run(config.clone(), scope.clone(), outbox, rx));
+                let daemon = scope == Scope::Daemon;
                 scopes.insert(scope, tx);
+                if daemon {
+                    if account_scopes > 0 {
+                        accounts_live(&scopes, true);
+                    }
+                } else {
+                    account_scopes += 1;
+                    if account_scopes == 1 {
+                        accounts_live(&scopes, true);
+                    }
+                }
             }
             Command::Effect { scope, effect } => {
                 if let Some(tx) = scopes.get(&scope) {
@@ -124,7 +145,12 @@ async fn serve(config: SdkConfig, mut inbox: mpsc::UnboundedReceiver<Command>) {
                 }
             },
             Command::Detach { scope } => {
-                scopes.remove(&scope);
+                if scopes.remove(&scope).is_some() && scope != Scope::Daemon {
+                    account_scopes = account_scopes.saturating_sub(1);
+                    if account_scopes == 0 {
+                        accounts_live(&scopes, false);
+                    }
+                }
             }
             Command::StopDaemon { reply } => {
                 let client = BusClient::new(
