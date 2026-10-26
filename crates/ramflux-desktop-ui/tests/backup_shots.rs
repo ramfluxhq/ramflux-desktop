@@ -5,10 +5,13 @@
 //! daemon with the BACKUP-01 job API as merged: the section, the backup form,
 //! a backup in progress and done, the restore form, a backup being checked,
 //! the review before restoring (merge, newer wins), restoring, the result
-//! with its attachment check, and a wrong passphrase.
+//! with its attachment check, and a wrong passphrase; then, on a fresh
+//! device, the entry page finishing an installed restore while the
+//! reopened account's first jobs listing is awaited.
 //!
 //! Not part of `cargo test`; run explicitly (`RAMFLUX_SHOTS_LOCALE` picks
-//! the interface language, `en` by default):
+//! the interface language, `en` by default; `RAMFLUX_SHOTS_SET=restore-hold`
+//! takes only the entry page's finishing state):
 //!
 //! ```sh
 //! RAMFLUX_SHOTS_DIR=/some/dir cargo test -p ramflux-desktop-ui --test backup_shots
@@ -41,7 +44,7 @@ mod shots {
     use ramflux_desktop_test::fake_backup::{Archive, Counts, Defect, FakeBackup};
     use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
-    use ramflux_desktop_ui::route::Page;
+    use ramflux_desktop_ui::route::{EntryStep, Page};
     use ramflux_desktop_ui::settings::SettingsSection;
 
     use crate::sdk_fake;
@@ -57,6 +60,39 @@ mod shots {
     }
 
     impl Run {
+        /// A headless window with the production shell on `options`.
+        fn open(
+            mut cx: HeadlessAppContext,
+            options: ramflux_desktop_ui::shell::ShellOptions,
+            out: PathBuf,
+            locale: String,
+            height: f32,
+        ) -> Self {
+            let (handle, shell) = cx
+                .update(|cx| {
+                    let bounds =
+                        Bounds { origin: Point::default(), size: size(px(1280.), px(height)) };
+                    gpui_kit::open_window(
+                        WindowOptions {
+                            window_bounds: Some(WindowBounds::Windowed(bounds)),
+                            focus: false,
+                            show: false,
+                            ..Default::default()
+                        },
+                        cx,
+                        |window, cx| cx.new(|cx| Shell::with_options(options, window, cx)),
+                    )
+                })
+                .expect("offscreen window");
+            let handle = handle.downcast::<Root>().expect("Root");
+            Self { cx, handle, shell, out, locale }
+        }
+
+        fn click_in(&mut self, scope: &str, id: &'static str) {
+            let scope = scope.to_owned();
+            self.window(move |window, cx| window.within(scope).click(id, cx));
+        }
+
         fn tick(&mut self) {
             std::thread::sleep(Duration::from_millis(10));
             self.cx.advance_clock(Duration::from_millis(50));
@@ -171,13 +207,10 @@ mod shots {
 
     fn archive(defect: Option<Defect>, mismatched: u64) -> Archive {
         Archive {
-            passphrase: PASSPHRASE.to_owned(),
-            account_id: "acct-main".to_owned(),
-            label: "Personal".to_owned(),
             created_at: 1_792_900_000,
-            counts: holdings(),
             defect,
             mismatched,
+            ..Archive::new(PASSPHRASE, "acct-main", "Personal", holdings())
         }
     }
 
@@ -185,11 +218,101 @@ mod shots {
         backup.account("acct-main", holdings());
         backup.archive("/Users/me/Documents/ramflux-backup-2026-10-20.rfbackup", archive(None, 2));
         let bus = Arc::downgrade(fake);
-        backup.set_publisher(Box::new(move |account, topic, body| {
+        backup.set_publisher(Box::new(move |row| {
             if let Some(bus) = bus.upgrade() {
-                bus.publish(account, topic, body);
+                bus.publish_job(row);
             }
         }));
+    }
+
+    fn headless(locale: &str) -> HeadlessAppContext {
+        let mut cx = HeadlessAppContext::with_platform(
+            gpui_kit::platform::current_platform(true).text_system(),
+            Arc::new(Assets),
+            gpui_kit::platform::current_headless_renderer,
+        );
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            ramflux_desktop_ui::init(cx);
+            ramflux_desktop_ui::i18n::select_locale(locale, cx);
+        });
+        cx
+    }
+
+    /// A fresh device whose full restore was checked on the entry page and
+    /// installed: the daemon reopens the account, and the account session's
+    /// first jobs listing is held back, so the page shows "Finishing the
+    /// restore" with its spinner for as long as the shot takes.
+    fn restore_hold(out: &std::path::Path, locale: &str) {
+        let (fake, state, socket) = sdk_fake::start(&format!("f22-hold-shots-{locale}"));
+        fake.enable_stream();
+        let fake = Arc::new(fake);
+        let backup = state.lock().expect("state").backup.clone();
+        backup.archive("/Users/me/Documents/ramflux-backup-2026-10-20.rfbackup", archive(None, 0));
+        let bus = Arc::downgrade(&fake);
+        backup.set_publisher(Box::new(move |row| {
+            if let Some(bus) = bus.upgrade() {
+                bus.publish_job(row);
+            }
+        }));
+        state.lock().expect("state").accounts =
+            Some(serde_json::json!({ "accounts": [], "account_details": [] }));
+        let mut options = sdk_fake::options(&socket);
+        if let ramflux_desktop_ui::shell::SourceChoice::Rfd(config) = &mut options.source {
+            config.deadlines = ramflux_desktop_sdk::Deadlines::uniform(Duration::from_secs(120));
+        }
+        let mut run =
+            Run::open(headless(locale), options, out.to_path_buf(), locale.to_owned(), 1500.);
+        run.until("the entry page", |r| {
+            matches!(r.cx.update(|cx| r.shell.read(cx).page()), Page::Entry(_))
+        });
+        if run.cx.update(|cx| run.shell.read(cx).entry().read(cx).step(cx)) == EntryStep::Node {
+            run.click_in("node-n-harbor", "node-confirm");
+        }
+        run.until("the account step", |r| {
+            r.cx.update(|cx| r.shell.read(cx).page()) == Page::Entry(EntryStep::Account)
+        });
+        run.until("the job API at daemon scope", |r| {
+            r.store(|s| s.unsupported_reason(methods::RESTORE_VERIFY).is_none())
+        });
+        run.click("entry-path-2");
+        let panel = run.cx.update(|cx| run.shell.read(cx).entry().read(cx).full_restore().clone());
+        run.cx.update(|cx| {
+            panel.update(cx, |panel, cx| {
+                panel.set_file("/Users/me/Documents/ramflux-backup-2026-10-20.rfbackup".into(), cx);
+            });
+        });
+        run.settle();
+        let secret = panel.clone();
+        run.window(move |window, cx| {
+            let input = secret.read(cx).inputs()[2].clone();
+            input.update(cx, |input, cx| input.set_value(PASSPHRASE, window, cx));
+        });
+        run.click("restore-verify");
+        run.wait_phase(BackupPhase::Verifying);
+        backup.run_out();
+        run.wait_phase(BackupPhase::Verified);
+        // The daemon installs, reopens the account, unlocked.
+        {
+            let state = state.lock().expect("state");
+            state.account_jobs.close();
+        }
+        state.lock().expect("state").accounts = Some(serde_json::json!({
+            "accounts": ["acct-main"],
+            "account_details": [{ "id": "acct-main", "label": "Personal", "kind": "human",
+                                  "state": "unlocked" }],
+        }));
+        run.click("restore-install");
+        backup.run_out();
+        run.until("the account's own session", |r| {
+            r.cx.update(|cx| r.shell.read(cx).store().read(cx).active_account().is_some())
+        });
+        run.settle();
+        run.shot("f22_13_restore_finishing");
+        state.lock().expect("state").account_jobs.open();
+        if let Ok(fake) = Arc::try_unwrap(fake) {
+            fake.shutdown();
+        }
     }
 
     pub fn run() {
@@ -199,39 +322,18 @@ mod shots {
         );
         let locale = std::env::var("RAMFLUX_SHOTS_LOCALE").unwrap_or_else(|_| "en".to_owned());
         std::fs::create_dir_all(&out).expect("output directory");
+        if std::env::var("RAMFLUX_SHOTS_SET").is_ok_and(|set| set == "restore-hold") {
+            restore_hold(&out, &locale);
+            return;
+        }
         let (fake, state, socket) = sdk_fake::start(&format!("f22-shots-{locale}"));
         fake.enable_stream();
         let fake = Arc::new(fake);
         let backup = state.lock().expect("state").backup.clone();
         backup_fake(&fake, &backup);
-        let mut cx = HeadlessAppContext::with_platform(
-            gpui_kit::platform::current_platform(true).text_system(),
-            Arc::new(Assets),
-            gpui_kit::platform::current_headless_renderer,
-        );
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            ramflux_desktop_ui::init(cx);
-            ramflux_desktop_ui::i18n::select_locale(&locale, cx);
-        });
+        let cx = headless(&locale);
         let options = sdk_fake::options(&socket);
-        let (handle, shell) = cx
-            .update(|cx| {
-                let bounds = Bounds { origin: Point::default(), size: size(px(1280.), px(860.)) };
-                gpui_kit::open_window(
-                    WindowOptions {
-                        window_bounds: Some(WindowBounds::Windowed(bounds)),
-                        focus: false,
-                        show: false,
-                        ..Default::default()
-                    },
-                    cx,
-                    |window, cx| cx.new(|cx| Shell::with_options(options, window, cx)),
-                )
-            })
-            .expect("offscreen window");
-        let handle = handle.downcast::<Root>().expect("Root");
-        let mut run = Run { cx, handle, shell, out, locale };
+        let mut run = Run::open(cx, options, out.clone(), locale.clone(), 860.);
         run.until("the workspace", |r| {
             r.cx.update(|cx| r.shell.read(cx).page()) == Page::Workspace
         });
@@ -325,5 +427,7 @@ mod shots {
         if let Ok(fake) = Arc::try_unwrap(fake) {
             fake.shutdown();
         }
+        drop(run);
+        restore_hold(&out, &locale);
     }
 }

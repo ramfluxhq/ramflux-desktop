@@ -11,6 +11,7 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
 };
@@ -120,9 +121,13 @@ impl EntryPage {
                 .gap_3()
                 .children(held.then(|| self.full_restore.clone()))
                 .child(
-                    div()
+                    h_flex()
+                        .id("entry-restore-finishing-line")
+                        .gap_2()
+                        .items_center()
                         .text_sm()
                         .text_color(cx.theme().muted_foreground)
+                        .child(Spinner::new().small())
                         .child(tr("entry.restore.finishing")),
                 )
                 .into_any_element()
