@@ -278,3 +278,73 @@ fn a_changed_key_is_refused_without_an_acknowledgement(cx: &mut TestAppContext) 
         "nothing is placed"
     );
 }
+
+fn adds(cx: &mut TestAppContext, shell: &gpui_kit::Entity<ramflux_desktop_ui::Shell>) -> usize {
+    bodies(cx, shell)
+        .iter()
+        .filter(|(m, _)| m == methods::GROUP_ADD_MEMBER || m == methods::GROUP_CREATE_INVITE)
+        .count()
+}
+
+#[gpui_kit::test]
+fn adding_a_stale_contact_to_a_group_asks_before_any_request(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s05_group_safety");
+    advance(cx, 500);
+    click(cx, handle, "rail-members");
+    assert!(exists(cx, handle, "dock-content-members"));
+    in_window(cx, handle, |window, cx| window.within("member-add-p-sam").click("add", cx));
+    assert!(exists(cx, handle, "member-add-stale-ack"), "the inline acknowledgement");
+    let prompt = ramflux_desktop_ui::i18n::tr_args("identity.ack.add", &[("name", "Sam Ortiz")]);
+    assert!(has_label(cx, handle, &prompt), "names the contact: {prompt}");
+    assert_eq!(adds(cx, &shell), 0, "nothing is requested before Continue");
+    // Verify again leaves the question and requests nothing either.
+    in_window(cx, handle, |window, cx| {
+        window.within("member-add-stale-ack").click("stale-verify", cx)
+    });
+    assert_eq!(adds(cx, &shell), 0, "Verify again adds nobody");
+    in_window(cx, handle, |window, cx| {
+        window.within("member-add-stale-ack").click("stale-continue", cx)
+    });
+    assert!(!exists(cx, handle, "member-add-stale-ack"), "the question is answered");
+    let body = last_body(cx, &shell, methods::GROUP_ADD_MEMBER);
+    assert_eq!(
+        (body["participant_id"].as_str(), body["context_id"].as_str()),
+        (Some("p-sam"), Some("c-garden"))
+    );
+    assert_eq!(adds(cx, &shell), 1);
+}
+
+#[gpui_kit::test]
+fn inviting_a_stale_contact_asks_the_same_question(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s05_group_safety");
+    advance(cx, 500);
+    click(cx, handle, "rail-members");
+    in_window(cx, handle, |window, cx| window.within("member-add-p-sam").click("invite", cx));
+    assert!(exists(cx, handle, "member-add-stale-ack"));
+    assert_eq!(adds(cx, &shell), 0);
+    in_window(cx, handle, |window, cx| {
+        window.within("member-add-stale-ack").click("stale-continue", cx)
+    });
+    assert_eq!(last_body(cx, &shell, methods::GROUP_CREATE_INVITE)["participant_id"], "p-sam");
+}
+
+#[gpui_kit::test]
+fn a_changed_or_forked_contact_cannot_be_added_to_a_group(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s05_group_safety");
+    advance(cx, 500);
+    click(cx, handle, "rail-members");
+    for who in ["p-kay", "p-fox"] {
+        let row = format!("member-add-{who}");
+        for button in ["add", "invite"] {
+            let target = row.clone();
+            let disabled = in_window(cx, handle, move |window, _| {
+                window.within(target).find(button).disabled()
+            });
+            assert_eq!(disabled, Some(true), "{who} {button} is refused");
+            let target = row.clone();
+            in_window(cx, handle, move |window, cx| window.within(target).click(button, cx));
+        }
+    }
+    assert!(!exists(cx, handle, "member-add-stale-ack"), "no acknowledgement for a refusal");
+    assert_eq!(adds(cx, &shell), 0, "no request at all");
+}

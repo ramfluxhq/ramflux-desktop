@@ -6,7 +6,11 @@
 //! for another's (see [`crate::identity`]), their safety, and the
 //! governance actions. Role changes, kicks and bans are
 //! high risk: the root opens the hold-to-confirm strip before anything is
-//! sent. Adding a contact and creating an invitation are low risk.
+//! sent. Adding a contact and creating an invitation are low risk, but they
+//! go through the same identity gate as a new group: a contact whose key
+//! changed or forked is refused (the buttons are disabled with the reason),
+//! and one whose verification went stale first asks, inline, to verify
+//! again or continue; nothing is requested before Continue.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -16,8 +20,7 @@ use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_fl
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div};
 use ramflux_desktop_core::{
-    ContextId, ContextKind, GovernanceOp, Participant, ParticipantId, Role, Scope, UiEventKind,
-    selectors,
+    ContextId, ContextKind, GovernanceOp, Participant, Role, Scope, UiEventKind, selectors,
 };
 
 use super::{empty_line, section};
@@ -31,26 +34,46 @@ pub struct MembersDock {
     store: Entity<StoreHandle>,
     sink: EventSink,
     context_id: Option<ContextId>,
+    /// The add or invite waiting for the user to acknowledge a stale
+    /// verification of its contact.
+    asking: Option<GovernanceOp>,
     _subscription: Subscription,
 }
 
 impl MembersDock {
     /// A dock over `store`; `sink` is the root sink (the dock adds its scopes).
     pub fn new(store: Entity<StoreHandle>, sink: EventSink, cx: &mut Context<Self>) -> Self {
-        let subscription = cx.subscribe(&store, |_, _, event: &StoreEvent, cx| {
+        let subscription = cx.subscribe(&store, |this, _, event: &StoreEvent, cx| {
             if let StoreEvent::Changed(changes) = event
                 && changes.touches_docks()
             {
+                this.forget_settled_question(cx);
                 cx.notify();
             }
         });
-        Self { store, sink, context_id: None, _subscription: subscription }
+        Self { store, sink, context_id: None, asking: None, _subscription: subscription }
+    }
+
+    /// Drops the pending question once its contact is no longer stale
+    /// (verified again, or the key changed and the contact is refused).
+    fn forget_settled_question(&mut self, cx: &Context<Self>) {
+        let store = self.store.read(cx).store();
+        let stale = self
+            .asking
+            .as_ref()
+            .and_then(GovernanceOp::target)
+            .and_then(|id| store.participant(id))
+            .is_some_and(|p| p.safety.is_stale());
+        if !stale {
+            self.asking = None;
+        }
     }
 
     /// Shows the members of `context_id`.
     pub fn set_context(&mut self, context_id: Option<ContextId>, cx: &mut Context<Self>) {
         if self.context_id != context_id {
             self.context_id = context_id;
+            self.asking = None;
             cx.notify();
         }
     }
@@ -183,10 +206,10 @@ impl Render for MembersDock {
             .into_iter()
             .map(|p| (p.clone(), context.role_of(&p.id)))
             .collect();
-        let candidates: Vec<(ParticipantId, String)> = selectors::contacts(store)
+        let candidates: Vec<Participant> = selectors::contacts(store)
             .into_iter()
             .filter(|p| !context.participants.contains(&p.id))
-            .map(|p| (p.id.clone(), p.display.clone()))
+            .cloned()
             .collect();
         v_flex()
             .id("dock-members")
@@ -197,37 +220,127 @@ impl Render for MembersDock {
                 member_row(member, *role, me.as_ref() == Some(&member.id), &sink, cx)
             }))
             .child(section("dock.members.grow", cx))
-            .children(candidates.into_iter().map(|(id, name)| {
-                let add = op_sink(
+            .children(candidates.into_iter().map(|candidate| {
+                let ops = [
+                    GovernanceOp::AddMember {
+                        participant_id: candidate.id.clone(),
+                        role: Role::Member,
+                    },
+                    GovernanceOp::CreateInvite {
+                        participant_id: candidate.id.clone(),
+                        role: Role::Member,
+                    },
+                ];
+                let [add, invite] = ops;
+                candidate_row(
+                    &candidate,
+                    [(add, add_reason.clone()), (invite, invite_reason.clone())],
+                    self.asking.as_ref(),
                     &sink,
-                    GovernanceOp::AddMember { participant_id: id.clone(), role: Role::Member },
-                );
-                let invite = op_sink(
-                    &sink,
-                    GovernanceOp::CreateInvite { participant_id: id.clone(), role: Role::Member },
-                );
-                h_flex()
-                    .id(domain_id("member-add", &id))
-                    .gap_2()
-                    .px_3()
-                    .py_1()
-                    .child(div().flex_1().text_sm().child(name))
-                    .child(crate::gate::gated(
-                        Button::new("add")
-                            .xsmall()
-                            .outline()
-                            .label(tr("dock.members.add"))
-                            .on_click(add),
-                        add_reason.clone(),
-                    ))
-                    .child(crate::gate::gated(
-                        Button::new("invite")
-                            .xsmall()
-                            .ghost()
-                            .label(tr("dock.members.invite"))
-                            .on_click(invite),
-                        invite_reason.clone(),
-                    ))
+                    cx,
+                )
             }))
     }
+}
+
+/// How a button acts on a candidate: straight away, or by asking first.
+fn on_press(
+    safety: ramflux_desktop_core::SafetyState,
+    op: GovernanceOp,
+    sink: &EventSink,
+    cx: &Context<MembersDock>,
+) -> impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static {
+    let direct = op_sink(sink, op.clone());
+    let ask = cx.listener(move |this, _, _, cx| {
+        this.asking = Some(op.clone());
+        cx.notify();
+    });
+    move |event, window, cx| {
+        if safety.is_stale() {
+            ask(event, window, cx);
+        } else {
+            direct(event, window, cx);
+        }
+    }
+}
+
+/// One contact that could join: Add and Invite. A key change or fork
+/// disables both with the reason; a stale verification asks first.
+fn candidate_row(
+    candidate: &Participant,
+    [(add, add_reason), (invite, invite_reason)]: [(GovernanceOp, Option<gpui_kit::SharedString>);
+        2],
+    asking: Option<&GovernanceOp>,
+    sink: &EventSink,
+    cx: &Context<MembersDock>,
+) -> AnyElement {
+    let safety = candidate.safety;
+    let refused = safety.refuses_contact().then(|| i18n::safety(safety));
+    let reason = |backend: Option<gpui_kit::SharedString>| refused.clone().or(backend);
+    let question =
+        asking.filter(|op| op.target() == Some(&candidate.id) && safety.is_stale()).map(|op| {
+            let key = if matches!(op, GovernanceOp::CreateInvite { .. }) {
+                "identity.ack.invite"
+            } else {
+                "identity.ack.add"
+            };
+            (op.clone(), tr_args(key, &[("name", &candidate.display)]))
+        });
+    let verify = {
+        let (sink, id) = (sink.clone(), candidate.id.clone());
+        move |_: &gpui_kit::ClickEvent, window: &mut Window, cx: &mut App| {
+            sink.emit(UiEventKind::VerifySafetyPressed { participant_id: id.clone() }, window, cx);
+        }
+    };
+    v_flex()
+        .id(domain_id("member-add", &candidate.id))
+        .test_support()
+        .gap_1()
+        .px_3()
+        .py_1()
+        .child(
+            h_flex()
+                .gap_2()
+                .child(div().flex_1().text_sm().child(candidate.display.clone()))
+                .children(
+                    refused
+                        .clone()
+                        .map(|text| div().text_xs().text_color(cx.theme().danger).child(text)),
+                )
+                .children(crate::identity::stale_note("member-add-stale", safety, cx))
+                .child(crate::gate::gated(
+                    Button::new("add")
+                        .xsmall()
+                        .outline()
+                        .label(tr("dock.members.add"))
+                        .on_click(on_press(safety, add, sink, cx)),
+                    reason(add_reason),
+                ))
+                .child(crate::gate::gated(
+                    Button::new("invite")
+                        .xsmall()
+                        .ghost()
+                        .label(tr("dock.members.invite"))
+                        .on_click(on_press(safety, invite, sink, cx)),
+                    reason(invite_reason),
+                )),
+        )
+        .children(question.map(|(op, prompt)| {
+            let proceed = {
+                let direct = op_sink(sink, op);
+                cx.listener(move |this, event, window, cx| {
+                    this.asking = None;
+                    direct(event, window, cx);
+                    cx.notify();
+                })
+            };
+            crate::identity::stale_ack(
+                "member-add-stale-ack",
+                prompt,
+                Box::new(verify),
+                Box::new(proceed),
+                cx,
+            )
+        }))
+        .into_any_element()
 }

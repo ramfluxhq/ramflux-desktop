@@ -285,6 +285,12 @@ identity:
     group:
       en: "Add %{name} anyway? Their verification needs renewing."
       zh-CN: "仍要添加 %{name} 吗？需要重新验证。"
+    add:
+      en: "Add %{name} to this group anyway? Their verification needs renewing."
+      zh-CN: "仍要将 %{name} 加入本群吗？需要重新验证。"
+    invite:
+      en: "Invite %{name} anyway? Their verification needs renewing."
+      zh-CN: "仍要邀请 %{name} 吗？需要重新验证。"
     wait:
       en: "Verify %{name} again, or continue, before the first message."
       zh-CN: "发送第一条消息前，请重新验证 %{name} 或选择继续。"

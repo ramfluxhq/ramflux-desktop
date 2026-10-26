@@ -73,6 +73,15 @@ fn check(p: &Policy<'_>, context_id: &ContextId, op: &GovernanceOp) -> Result<()
                 participant: target.clone(),
             })
         }
+        // Bringing someone in is held to the same bar as a new group: a
+        // changed or forked identity is refused until verified again. A
+        // stale verification is not refused here; the UI asks the user to
+        // acknowledge it before the request is made.
+        GovernanceOp::AddMember { .. } | GovernanceOp::CreateInvite { .. }
+            if p.store.participant(target).is_some_and(|who| who.safety.refuses_contact()) =>
+        {
+            Err(IntentError::SafetyUnresolved(target.clone()))
+        }
         GovernanceOp::RemoveMember { .. }
         | GovernanceOp::Kick { .. }
         | GovernanceOp::SetRole { .. }

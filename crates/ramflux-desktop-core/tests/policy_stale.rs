@@ -4,7 +4,8 @@
 //! A stale verification (the contact's identity authority changed since the
 //! user verified it) refuses nothing: a new conversation, a new group and a
 //! call are allowed, and the UI asks the user to acknowledge it. A key
-//! change or a fork still refuses all three until verified again.
+//! change or a fork still refuses all three until verified again. Adding a
+//! contact to an existing group (or inviting them) is held to the same bar.
 
 mod common;
 
@@ -108,5 +109,67 @@ fn a_key_change_or_fork_still_refuses_all_three() {
             check_start_call(&store, &ContextId::new(context)),
             Err(IntentError::SafetyUnresolved(ParticipantId::new(who)))
         );
+    }
+}
+
+fn add(participant: &str) -> IntentKind {
+    IntentKind::Governance {
+        context_id: ContextId::new("c-garden"),
+        op: GovernanceOp::AddMember {
+            participant_id: ParticipantId::new(participant),
+            role: Role::Member,
+        },
+    }
+}
+
+fn invite(participant: &str) -> IntentKind {
+    IntentKind::Governance {
+        context_id: ContextId::new("c-garden"),
+        op: GovernanceOp::CreateInvite {
+            participant_id: ParticipantId::new(participant),
+            role: Role::Member,
+        },
+    }
+}
+
+fn with_garden() -> Store {
+    let mut feed = Feed::new();
+    feed.ok(
+        1,
+        DomainEvent::AccountUpdated(
+            serde_json::from_value(serde_json::json!({
+                "id": "acct-main", "label": "Main", "lock_state": "Unlocked",
+                "self_participant_id": "p-me",
+            }))
+            .expect("account"),
+        ),
+    );
+    feed.ok(1, person("p-me", SafetyState::Verified));
+    feed.ok(1, person("p-stale", SafetyState::VerificationStale));
+    feed.ok(1, person("p-changed", SafetyState::KeyChanged));
+    feed.ok(1, person("p-forked", SafetyState::Forked));
+    let mut garden = context("c-garden", false);
+    garden.participants = vec![ParticipantId::new("p-me")];
+    garden.roles.insert(ParticipantId::new("p-me"), Role::Owner);
+    feed.ok(1, DomainEvent::ContextUpserted(garden));
+    feed.store
+}
+
+#[test]
+fn adding_to_an_existing_group_allows_a_stale_verification() {
+    let store = with_garden();
+    for kind in [add("p-stale"), invite("p-stale")] {
+        let effects = human(&store, kind).expect("allowed");
+        assert!(!effects.is_empty());
+    }
+}
+
+#[test]
+fn adding_to_an_existing_group_refuses_a_key_change_or_fork() {
+    let store = with_garden();
+    for who in ["p-changed", "p-forked"] {
+        let unresolved = IntentError::SafetyUnresolved(ParticipantId::new(who));
+        assert_eq!(human(&store, add(who)).unwrap_err(), unresolved);
+        assert_eq!(human(&store, invite(who)).unwrap_err(), unresolved);
     }
 }
