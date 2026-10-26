@@ -48,16 +48,16 @@ The store keeps each entity in its own collection, keyed by id:
 | `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state`, `self_participant_id` (the participant that is this account; outbound moments and receipts key on it, never guessed) |
 | `Node` | NODE-01 profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
 | `Device` | account, label, `this_device`, `revoked`, `last_seen` |
-| `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `safety`, `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported), `reachable` (`Some(true)` when this account holds a verified device to send to, `None` when not reported), `kind_asserted` (the kind is only the participant's own claim), `root_source` (`RootSource`: Lookup = provisional name lookup, Card = pinned by their card, Verified = safety numbers compared; `None` when not reported) |
+| `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `safety` (`SafetyState`: Unverified, Verified, KeyChanged, Forked, VerificationStale = verified before the authority changed, verify again), `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported), `reachable` (`Some(true)` when this account holds a verified device to send to, `None` when not reported), `kind_claim` (`KindClaim`: None = nothing reported, the safe default; Asserted(`PeerKind` Human / HeadlessAi / Bot) = only the participant's own claim; Verified(kind) = a root-signed public profile states it), `name_warnings` (`NameWarnings`: `mixed_script`, `confusable_with` another principal; advisory only), `root_source` (`RootSource`: Lookup = provisional name lookup, Card = pinned by their card, Verified = safety numbers compared; `None` when not reported) |
 | `ContactCard` | This account's own card as the backend exported it: `text`, optional `link` (`Store::own_contact_card`, from `DomainEvent::OwnContactCardUpdated`) |
 | `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread`, `muted`, `disappearing_secs`, `roles` (Owner, Admin, Member, Bot: exactly the daemon's roles), `epoch` |
-| `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind`, `lifecycle` |
+| `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind` (a `TaskEvent` carries `actor_kind_verified`; a `NameChange` is an authenticated public rename: participant, old and new name), `lifecycle` |
 | `Object` | `name` and `size` (each `None` when not reported; `label()` shows the id for a missing name), direction, `transfer`, `saved_to`, `preview` |
 | `Grant` | scope, `risk`, `single_use`, `args_hash`, expiry, `state` (Pending, Approved, Denied, Expired, Revoked) |
 | `StandingApproval` | scope, `max_risk`, expiry, `uses`, `revoked` |
 | `AuditEntry` | `at`, `action` (method), `subject` (id), `proposed_by`, `human_confirmed` |
 | `Integrations` | read-only MCP servers (`healthy`: `None` while the backend has not checked) and pending A2I events |
-| `Task` | intent id, context, `requester` (Actor), `assignee` (participant), `steps`, `state` (Proposed, Running, NeedsMe, Done, Failed, Cancelled), rising `version`, `result`, `result_ref` (surface), `flags` (stalled, compacted, kind_verified), `answer` |
+| `Task` | intent id, context, `requester` (Actor), `assignee` (participant), `steps`, `state` (Proposed, Running, NeedsMe, Done, Failed, Cancelled), rising `version`, `result`, `result_ref` (surface), `flags` (stalled, compacted), `actors` (`TaskActors`: requester / assignee / acceptor, each a `TaskActor` with participant, `device_id` of its last event, profile `kind` and `kind_verified` for its role; `assignee_kind_verified()`), `answer` |
 | `TaskStep` | `id`, `label`, `state` (Pending, Running, NeedsMe, Done, Failed, Skipped), `needs_me`: `Approval { grant_id }` \| `Choice { surface_id }` \| `Input { surface_id }` (required while NeedsMe; kept afterwards as the record) |
 
 Messages carry an optional `attachment` and a `franking` commitment; conflict
@@ -1024,3 +1024,65 @@ refused by the daemon, and `account.secure_sessions.changed` announces
 `Reestablishing` the conversation workspace shows a persistent banner
 ("Re-establishing secure sessions…") until the daemon says `ready`; a send
 that fails meanwhile shows the daemon's reason in the status strip.
+
+## Verified peer kinds (DESK-F23, on KIND-01)
+
+How the desktop reads the section above, aligned with product main
+`eae12fb` (KIND-01 merged: `docs/identity_profiles.md`,
+`client/identity_authority/profile_read.rs`, `bus/read_model/rows.rs`,
+`client/contact_resolution.rs`, `client/task/read.rs`). The fake daemon
+(`ramflux-desktop-test` `fake_profiles`) joins the same fields.
+
+**Kind claim.** `kind_asserted` (contact, request and `contact.add` rows)
+and `kind` (identity rows) name `human`, `headless_ai` or `bot`, or null;
+`kind_verified` says a root-signed profile states it. The desktop keeps one
+`KindClaim`: `Verified(kind)` when the flag is true, `Asserted(kind)` when
+a kind is named without it (a card, or a legacy device-set kind), `None`
+when null, whatever the flag says. A verified claim from either list wins;
+otherwise the identity row's, then the contact row's. `ParticipantKind`
+stays the coarse classification (`Human`; `Agent` for both AI kinds;
+`Unknown` for `None`). A workflow principal names no peer kind. A claim is
+never a verified safety number: safety stays what `safety_state` says.
+
+**Safe default.** A principal nothing was reported about (a name lookup, a
+legacy identity without a profile, a row from an older daemon) is
+`KindClaim::None`, `SafetyState::Unverified`, no name warning, shown by
+its short id: unverified, its kind unknown.
+
+**Stale verification.** `safety_state: verification_stale` is
+`SafetyState::VerificationStale`: advisory (not `needs_attention`), with
+Verify again. The product sets it when the manually verified device-set
+hash changed, and also when a verified contact's signed kind can no longer
+be confirmed (`rows.rs`); the desktop needs no second signal.
+`safety_kind_verified` is reported only by `device.refresh`, which the
+desktop does not call for peers; the identity row's `safety_state` is the
+manual verification the desktop shows. (The section above lists it with
+the directory rows; the product exposes it on `device.refresh` alone.)
+
+**Name warnings.** `mixed_script` and `display_name_confusable_with`
+(contact, identity and request rows) are `NameWarnings`. Either shows a
+warning badge with the principal id next to the name — on the contact,
+the request, the member, the direct conversation's header and the author
+of a message. It never blocks anything and never marks the name verified;
+the kind mark belongs to the kind claim, never to the name.
+
+**Rename.** `contact.changed` with `reason: public_profile_renamed`
+(`principal_id`, `old_display_name`, `new_display_name`) becomes a
+`MomentKind::NameChange` in every known context the principal is in, by
+the principal, shown with the principal id; the contact and identity rows
+are read again (the stream already does). A replayed announcement adds
+nothing. A rename never touches the safety state.
+
+**Task actors.** `actors.{requester,assignee,acceptor}` (`principal_id`,
+`device_id` — empty when no event device is known — `actor_kind`,
+`actor_kind_verified`) are the task's `TaskActors`; the card shows the
+assignee's kind as verified for the task, and the requester's on "Asked
+by". A view without `actors` names the assignee alone with the view's
+`actor_kind_verified`. A task message row (`content_type: task`) carries
+`actor_kind_verified`; its line shows the signer's kind when verified,
+"kind not verified" otherwise. A sibling copy without the field is read
+from its text (an accept, a decline and a decision name an unverified
+actor; a cancel never says, so it is unverified). None of this is a
+permission.
+
+Screenshots: `peer_kind_shots` (run explicitly).
