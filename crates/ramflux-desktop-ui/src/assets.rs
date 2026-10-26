@@ -12,7 +12,7 @@ use gpui_kit::{AssetSource, Result, SharedString};
 gpui_kit::assets::icon_assets!(pub ExtraIcons, [
     Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Mic, MicOff,
     SignalHigh, SignalMedium, SignalLow, SignalZero,
-    BadgeCheck, Cpu, ShieldAlert, UserPen,
+    Cpu, ShieldAlert, Signature, UserPen,
 ]);
 
 /// GPUI Kit's default icons and [`ExtraIcons`].

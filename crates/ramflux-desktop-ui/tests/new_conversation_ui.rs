@@ -4,9 +4,9 @@
 //! Starting a direct conversation in the production window on a fake
 //! daemon: Message on a contact (or the context stack's "+", or the
 //! palette) opens a draft; the first message from the composer starts the
-//! conversation, which then shows. A contact whose key changed is refused
-//! before anything is typed; a missing route or an unverified key comes
-//! back as the reason in the draft, with the text kept for another try. A
+//! conversation, which then shows. A contact whose verification went stale is
+//! asked to be acknowledged (never refused); a missing route or an
+//! unverified key comes back as the reason in the draft, with the text kept for another try. A
 //! conversation someone else starts appears once the daemon lists it.
 
 mod common;
@@ -47,6 +47,15 @@ fn message_from_contacts(cx: &mut TestAppContext, handle: Handle, who: &str) {
         click(cx, handle, "rail-contacts");
     }
     click_in(cx, handle, &format!("contacts-{who}"), "message");
+}
+
+fn click_label(cx: &mut TestAppContext, handle: Handle, label: &str) {
+    let label = label.to_owned();
+    in_window(cx, handle, move |window, cx| {
+        let at = window.find_by_label(&label).bounds().center();
+        window.pointer_down(at, MouseButton::Left, cx);
+        window.pointer_up(at, MouseButton::Left, cx);
+    });
 }
 
 fn draft_open(cx: &mut TestAppContext, shell: &ShellEntity) -> bool {
@@ -112,18 +121,55 @@ fn the_first_message_starts_the_conversation_and_shows_it(cx: &mut TestAppContex
 }
 
 #[gpui_kit::test]
-fn a_contact_with_a_changed_key_is_refused_before_typing(cx: &mut TestAppContext) {
-    let (handle, shell, _, fake) = open_workspace(cx, "ui-start-key");
+fn a_stale_verification_asks_to_acknowledge_and_never_refuses(cx: &mut TestAppContext) {
+    let (handle, shell, _, fake) = open_workspace(cx, "ui-start-stale");
     message_from_contacts(cx, handle, "principal-cy");
     assert!(draft_open(cx, &shell));
-    let reason = tr_args("conversation.new.error.key_changed", &[("name", "principal-cy")]);
-    assert_eq!(label(cx, handle, "new-conversation-status").as_deref(), Some(reason.as_ref()));
-    assert!(exists(cx, handle, "composer-unavailable"), "the composer says why too");
+    // Inline acknowledgement, no refusal: the draft waits for Continue.
+    assert!(exists(cx, handle, "new-conversation-stale-ack"));
+    let prompt = tr_args("identity.ack.conversation", &[("name", "principal-cy")]);
+    assert_eq!(label(cx, handle, "new-conversation-stale-ack").as_deref(), Some(prompt.as_ref()));
+    assert!(!prompt.contains("keys"), "no claim that keys changed: {prompt}");
+    let refusal = tr_args("conversation.new.error.key_changed", &[("name", "principal-cy")]);
+    assert_ne!(label(cx, handle, "new-conversation-status").as_deref(), Some(refusal.as_ref()));
+    assert!(exists(cx, handle, "composer-unavailable"), "the composer waits for the answer");
     type_into(cx, handle, "composer-input", "hi");
     click(cx, handle, "composer-send");
     advance(cx, 300);
-    assert!(submits(&fake).is_empty(), "nothing is sent");
-    assert!(draft_open(cx, &shell));
+    assert!(submits(&fake).is_empty(), "nothing is sent before Continue");
+    // Continue: the acknowledgement goes and the first message is sent.
+    click_in(cx, handle, "new-conversation-stale-ack", "stale-continue");
+    assert!(!exists(cx, handle, "new-conversation-stale-ack"));
+    assert!(!exists(cx, handle, "composer-unavailable"));
+    type_into(cx, handle, "composer-input", "hi");
+    click(cx, handle, "composer-send");
+    wait(cx, "the first message", |_| !submits(&fake).is_empty());
+    assert_eq!(submits(&fake).len(), 1);
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn a_new_group_asks_to_acknowledge_a_stale_member_before_create(cx: &mut TestAppContext) {
+    let (handle, shell, _, fake) = open_workspace(cx, "ui-group-stale");
+    click(cx, handle, "stack-new");
+    click_label(cx, handle, &tr("stack.new_group"));
+    let form = {
+        let workspace = workspace(cx, &shell);
+        cx.update(|cx| workspace.read(cx).new_group().clone())
+    };
+    type_into(cx, handle, "new-group-name", "Trip");
+    click(cx, handle, "new-group-member-principal-cy");
+    assert_eq!(
+        cx.update(|cx| form.read(cx).members().to_vec()),
+        [ParticipantId::new("principal-cy")]
+    );
+    assert!(exists(cx, handle, "new-group-stale-principal-cy"), "the acknowledgement");
+    let disabled = in_window(cx, handle, |window, _| window.find("new-group-create").disabled());
+    assert_eq!(disabled, Some(true), "Create waits for the answer");
+    click_in(cx, handle, "new-group-stale-principal-cy", "stale-continue");
+    assert!(!exists(cx, handle, "new-group-stale-principal-cy"));
+    let disabled = in_window(cx, handle, |window, _| window.find("new-group-create").disabled());
+    assert_ne!(disabled, Some(true));
     fake.shutdown();
 }
 

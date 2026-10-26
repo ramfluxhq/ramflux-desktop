@@ -126,7 +126,10 @@ fn member_row(
                             )
                         }),
                 )
-                .children(crate::identity::kind_mark("member-kind", member.kind_claim, cx))
+                // Not on this account's own row: it says nothing to the user.
+                .when(!is_self, |row| {
+                    row.children(crate::identity::kind_mark("member-kind", member.kind_claim, cx))
+                })
                 .child(
                     div().text_xs().text_color(cx.theme().muted_foreground).child(i18n::role(role)),
                 )

@@ -6,7 +6,7 @@
 //! recording what the desktop submits:
 //!
 //! - `principal-bo`: accepted, verified, routable, no direct conversation;
-//! - `principal-cy`: accepted, key changed (`verification_stale`);
+//! - `principal-cy`: accepted, verification stale (`verification_stale`);
 //! - `principal-dee`: accepted, a device with a target but no verified key;
 //! - `principal-zed`: accepted, not listed by the identity directory.
 //!
@@ -121,6 +121,12 @@ pub struct State {
     /// Public profiles: names, kinds, how far they are verified, and name
     /// warnings, joined into contact, identity and request rows.
     pub profiles: Arc<ramflux_desktop_test::fake_profiles::FakeProfiles>,
+    /// Principals whose manual verification went stale
+    /// (`safety_state: verification_stale`).
+    pub stale: Vec<String>,
+    /// More accepted contacts, each with one routable device (listed by
+    /// `contact.list` and the identity directory).
+    pub extra_peers: Vec<String>,
 }
 
 /// The shared state.
@@ -290,6 +296,11 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
         Reply::Ok(match method {
             "contact.list" => {
                 let mut listed = contacts();
+                for (ix, peer) in state.extra_peers.iter().enumerate() {
+                    let row = json!({ "link_id": format!("lx{ix}"), "requester_id": "principal-me",
+                                      "target_id": peer, "state": "accepted", "blocked": false });
+                    listed["contacts"].as_array_mut().expect("rows").push(row);
+                }
                 let requests = state.requests.clone();
                 for row in listed["contacts"].as_array_mut().into_iter().flatten() {
                     let peer = row["target_id"].as_str().unwrap_or_default().to_owned();
@@ -307,10 +318,26 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
             }
             "identity.directory" => {
                 let mut frame = identities(&all);
+                for peer in &state.extra_peers {
+                    frame["identities"].as_array_mut().expect("rows").push(json!({
+                        "id": peer, "principal_id": peer, "principal_commitment": format!("cm-{peer}"),
+                        "contact_identity_commitment": format!("cm-{peer}"), "display_name": null,
+                        "kind": null, "is_self": false,
+                        "devices": [{ "id": format!("device-{peer}"), "device_id": format!("device-{peer}"),
+                                      "label": null, "last_seen": null, "verified_at": 1_790_000_000,
+                                      "target_delivery_id": format!("target-{peer}"),
+                                      "signing_public_key": format!("key-{peer}") }],
+                        "safety_state": "unverified", "safety_number": null,
+                        "safety_number_available": false,
+                    }));
+                }
                 for row in frame["identities"].as_array_mut().expect("rows") {
                     let principal = row["principal_id"].as_str().unwrap_or_default().to_owned();
                     if let Some(name) = state.names.get(&principal) {
                         row["display_name"] = json!(name);
+                    }
+                    if state.stale.contains(&principal) {
+                        row["safety_state"] = json!("verification_stale");
                     }
                     if state.profiles.get(&principal).is_some()
                         && let (Value::Object(row), Value::Object(fields)) =

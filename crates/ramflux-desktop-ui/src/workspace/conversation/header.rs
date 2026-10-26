@@ -44,6 +44,18 @@ pub fn timer_label(seconds: Option<u32>) -> SharedString {
 /// A command run with the window.
 pub type Command = std::rc::Rc<dyn Fn(&mut gpui_kit::Window, &mut App)>;
 
+/// The acknowledgement a call to a contact whose verification went stale
+/// asks for (view-local): whether it is open here, and how to open and
+/// close it.
+pub struct CallAck {
+    /// The acknowledgement is shown for this conversation.
+    pub open: bool,
+    /// Call pressed on a stale contact: show the acknowledgement.
+    pub ask: Command,
+    /// Verify again or Continue chosen: hide it.
+    pub close: Command,
+}
+
 /// What renaming adds to the header: the inline field while a rename is
 /// open, and the Rename… command.
 pub struct Renaming {
@@ -59,6 +71,7 @@ pub fn render(
     context: Option<&Context>,
     sink: Option<EventSink>,
     renaming: Renaming,
+    call_ack: CallAck,
     cx: &App,
 ) -> AnyElement {
     let Some((context, sink)) = context.zip(sink) else {
@@ -139,7 +152,7 @@ pub fn render(
         })
         .child(div().flex_1())
         .when(context.kind == ContextKind::Direct, |row| {
-            row.child(call_button(store, context, &sink))
+            row.child(call_button(store, context, &sink, &call_ack))
         })
         .child(
             Button::new("conversation-pin")
@@ -226,13 +239,65 @@ pub fn render(
         .child(row)
         .children(identity)
         .children(warnings.into_iter().map(|participant| safety_banner(&participant, &sink, cx)))
+        .children(call_ack_strip(store, context, &sink, &call_ack, cx))
         .into_any_element()
 }
 
+/// The peer of a direct conversation whose verification went stale, if so.
+fn stale_peer<'a>(store: &'a Store, context: &Context) -> Option<&'a Participant> {
+    let peer = ramflux_desktop_core::call_peer(store, &context.id)?;
+    store.participant(&peer).filter(|p| p.safety.is_stale())
+}
+
+/// The acknowledgement before a call to a contact whose verification went
+/// stale: Verify again, or Continue (places the call).
+fn call_ack_strip(
+    store: &Store,
+    context: &Context,
+    sink: &EventSink,
+    ack: &CallAck,
+    cx: &App,
+) -> Option<AnyElement> {
+    if !ack.open {
+        return None;
+    }
+    let peer = stale_peer(store, context)?;
+    let prompt = tr_args("identity.ack.call", &[("name", &peer.display)]);
+    let (verify_sink, call_sink) = (sink.scoped(Scope::Panel("header".into())), sink.clone());
+    let (close_verify, close_call) = (ack.close.clone(), ack.close.clone());
+    let participant_id = peer.id.clone();
+    Some(
+        div()
+            .px_4()
+            .pb_2()
+            .child(crate::identity::stale_ack(
+                "call-stale-ack",
+                prompt,
+                Box::new(move |_, window, cx| {
+                    close_verify(window, cx);
+                    verify_sink.emit(
+                        UiEventKind::VerifySafetyPressed { participant_id: participant_id.clone() },
+                        window,
+                        cx,
+                    );
+                }),
+                Box::new(move |_, window, cx| {
+                    close_call(window, cx);
+                    call_sink.emit(UiEventKind::CallStartRequested, window, cx);
+                }),
+                cx,
+            ))
+            .into_any_element(),
+    )
+}
+
 /// The call button of a direct conversation: disabled, with the reason as
-/// its tooltip, while a call cannot be placed.
-fn call_button(store: &Store, context: &Context, sink: &EventSink) -> AnyElement {
+/// its tooltip, while a call cannot be placed. To a contact whose
+/// verification went stale it first asks for the acknowledgement.
+fn call_button(store: &Store, context: &Context, sink: &EventSink, ack: &CallAck) -> AnyElement {
     let blocked = crate::workspace::call_blocked(store, &context.id);
+    let stale = stale_peer(store, context).is_some();
+    let ask = ack.ask.clone();
     let sink = sink.clone();
     let name = selectors::participants(store, &context.id)
         .into_iter()
@@ -246,7 +311,13 @@ fn call_button(store: &Store, context: &Context, sink: &EventSink) -> AnyElement
         .accessibility_label(tr_args("call.start_a11y", &[("name", &name)]))
         .disabled(blocked.is_some())
         .when_some(blocked, |button, reason| button.tooltip(reason))
-        .on_click(move |_, window, cx| sink.emit(UiEventKind::CallStartRequested, window, cx))
+        .on_click(move |_, window, cx| {
+            if stale {
+                ask(window, cx);
+            } else {
+                sink.emit(UiEventKind::CallStartRequested, window, cx);
+            }
+        })
         .into_any_element()
 }
 
@@ -260,18 +331,24 @@ fn safety_banner(participant: &Participant, sink: &EventSink, cx: &App) -> AnyEl
     } else {
         (cx.theme().danger, gpui_kit::assets::IconName::TriangleAlert)
     };
+    let text = if participant.safety.is_stale() {
+        tr_args("identity.safety.stale_banner", &[("name", &participant.display)])
+    } else {
+        tr_args(
+            "conversation.safety_banner",
+            &[("name", &participant.display), ("state", &i18n::safety(participant.safety))],
+        )
+    };
     h_flex()
         .id(domain_id("safety-banner", &participant.id))
+        .aria_label(text.clone())
         .gap_2()
         .px_4()
         .py_2()
         .bg(color.opacity(0.12))
         .text_sm()
         .child(Icon::new(icon).small().text_color(crate::tone::text(color, cx)))
-        .child(div().flex_1().min_w_0().child(tr_args(
-            "conversation.safety_banner",
-            &[("name", &participant.display), ("state", &i18n::safety(participant.safety))],
-        )))
+        .child(div().flex_1().min_w_0().child(text))
         .child(
             Button::new(domain_id("banner-verify", &participant.id))
                 .small()

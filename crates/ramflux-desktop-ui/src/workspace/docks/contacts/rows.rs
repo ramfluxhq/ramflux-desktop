@@ -313,18 +313,13 @@ pub fn contact_row(
                             .text_color(cx.theme().muted_foreground)
                             .child(trust),
                     )
-                })
-                // A named contact keeps its id in sight, as secondary text.
-                .when(contact.named(), |line| {
-                    line.child(div().text_color(cx.theme().muted_foreground).child("·")).child(
-                        div()
-                            .id("contact-id")
-                            .test_support()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(contact.id.short()),
-                    )
                 }),
         )
+        // A named contact keeps its full id in sight, on its own line (the
+        // name warning already carries it when there is one).
+        .when(contact.named() && !contact.name_warnings.any(), |col| {
+            col.child(identity::principal_id("contact-id", &contact.id, cx))
+        })
         // This account's own request, while they have not accepted it:
         // quiet text, not a warning (waiting or declined is not a fault).
         .when_some(request, |col, request| {

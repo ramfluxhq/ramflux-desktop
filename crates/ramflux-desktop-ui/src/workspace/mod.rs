@@ -389,7 +389,8 @@ impl Workspace {
             self.composer.update(cx, |composer, cx| composer.focus(window, cx));
             return;
         }
-        self.new_conversation.update(cx, |draft, cx| draft.open(participant, cx));
+        let root = IntentRoot::sink(&self.root);
+        self.new_conversation.update(cx, |draft, cx| draft.open(participant, &root, cx));
         if self.current.take().is_some() {
             self.store.update(cx, |store, _| store.focus(None));
         }

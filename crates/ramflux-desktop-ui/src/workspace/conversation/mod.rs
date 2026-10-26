@@ -56,6 +56,9 @@ pub struct Conversation {
     group_form: Option<Entity<crate::workspace::new_group::NewGroup>>,
     rename: Option<rename::Rename>,
     rename_subscription: Option<Subscription>,
+    /// The conversation whose call waits for the stale-verification
+    /// acknowledgement (view-local).
+    call_ack: Option<ContextId>,
     focus_handle: FocusHandle,
     highlight_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
@@ -150,6 +153,7 @@ impl Conversation {
             group_form: None,
             rename: None,
             rename_subscription: None,
+            call_ack: None,
             focus_handle: cx.focus_handle(),
             highlight_focus: cx.focus_handle().tab_stop(true),
             _subscriptions: subscriptions,
@@ -490,7 +494,26 @@ impl Render for Conversation {
                 this.update(cx, |field, cx| field.start_rename(window, cx)).ok();
             }),
         };
-        let header = header::render(store, context, context_sink.clone(), renaming, cx);
+        let (ask, close) = (cx.weak_entity(), cx.weak_entity());
+        let call_ack = header::CallAck {
+            open: self.call_ack.is_some() && self.call_ack == self.context_id,
+            ask: Rc::new(move |_, cx| {
+                ask.update(cx, |field, cx| {
+                    field.call_ack.clone_from(&field.context_id);
+                    cx.notify();
+                })
+                .ok();
+            }),
+            close: Rc::new(move |_, cx| {
+                close
+                    .update(cx, |field, cx| {
+                        field.call_ack = None;
+                        cx.notify();
+                    })
+                    .ok();
+            }),
+        };
+        let header = header::render(store, context, context_sink.clone(), renaming, call_ack, cx);
         let body = match context_sink.filter(|_| !rows.is_empty()) {
             None => {
                 let no_contexts = store.contexts().next().is_none();

@@ -1050,11 +1050,15 @@ legacy identity without a profile, a row from an older daemon) is
 its short id: unverified, its kind unknown.
 
 **Stale verification.** `safety_state: verification_stale` is
-`SafetyState::VerificationStale`: it `needs_attention` like a key change
-(sticky banner; new conversations and calls refused until verified again),
-shown in warning tone with Verify again. The product sets it when the manually verified device-set
-hash changed, and also when a verified contact's signed kind can no longer
-be confirmed (`rows.rs`); the desktop needs no second signal.
+`SafetyState::VerificationStale`: it `needs_attention` (sticky banner in
+warning tone with Verify again) but refuses nothing. A new conversation, a
+new group and a call show an inline acknowledgement (Verify again /
+Continue) and then go ahead; only a key change or a fork refuses them
+(`SafetyState::refuses_contact`). The wording never claims the keys changed:
+the product sets it when the manually verified device-set hash changed, when
+a signed authority change (such as a revoked device) alters the verified
+authority, and on a representation upgrade (`rows.rs`); the desktop needs no
+second signal.
 `safety_kind_verified` is reported only by `device.refresh`, which the
 desktop does not call for peers; the identity row's `safety_state` is the
 manual verification the desktop shows. (The section above lists it with
@@ -1062,7 +1066,8 @@ the directory rows; the product exposes it on `device.refresh` alone.)
 
 **Name warnings.** `mixed_script` and `display_name_confusable_with`
 (contact, identity and request rows) are `NameWarnings`. Either shows a
-warning badge with the principal id next to the name — on the contact,
+warning with the full principal id (never shortened; tooltip and copy)
+next to the name — on the contact,
 the request, the member, the direct conversation's header and the author
 of a message. It never blocks anything and never marks the name verified;
 the kind mark belongs to the kind claim, never to the name.
@@ -1070,7 +1075,8 @@ the kind mark belongs to the kind claim, never to the name.
 **Rename.** `contact.changed` with `reason: public_profile_renamed`
 (`principal_id`, `old_display_name`, `new_display_name`) becomes a
 `MomentKind::NameChange` in every known context the principal is in, by
-the principal, shown with the principal id; the contact and identity rows
+the principal, shown with the full principal id, keyed and timed by its
+stream entry and remembered across restarts; the contact and identity rows
 are read again (the stream already does). A replayed announcement adds
 nothing. A rename never touches the safety state.
 

@@ -190,6 +190,22 @@ mod shots {
         run.until("running", |r| r.task(&notes).is_some_and(|t| t.steps.len() == 3));
         run.shot("f13b_01_task_running");
 
+        // The assignee's profile says it is an unattended AI, signed by its
+        // root: the task card carries the kind mark (no verified-account
+        // check, and a tooltip on what it proves).
+        tasks.set_kind(BOT, "headless_ai");
+        tasks.verify_kind(BOT);
+        tasks.start_as(me, GROUP, "t-kind", BOT, "Summarise the open questions").unwrap();
+        let steps = vec![task_step("read", "Read the thread", TaskStatus::Running)];
+        tasks.update(GROUP, "t-kind", TaskStatus::Running, steps, None).unwrap();
+        let kind = task_key(GROUP, "t-kind");
+        run.until("the kind", |r| {
+            r.task(&kind).is_some_and(|t| {
+                t.actors.assignee.as_ref().is_some_and(|a| a.kind_verified && a.kind.is_some())
+            })
+        });
+        run.shot("f23_05_task_kind_marks");
+
         // An assignee that used up what it may send, then cancelled.
         tasks.start_as(me, GROUP, "t-index", BOT, "Index the release archive").unwrap();
         let steps = vec![task_step("scan", "Scan the archive", TaskStatus::Running)];

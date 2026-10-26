@@ -39,7 +39,7 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::ThemeStyled as _;
 use gpui_kit::component::diff::DiffState;
 use gpui_kit::component::input::InputState;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, FocusHandle, IntoElement, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
@@ -143,8 +143,9 @@ pub struct MomentRow {
     /// Display name of the origin participant.
     pub author: SharedString,
     /// The warning on the author's name, if its name could pass for
-    /// another principal's (shown with the author's id in the row header).
-    pub author_warning: Option<SharedString>,
+    /// another principal's (shown with the author's full id in the row
+    /// header), and whether it is only a mixed-script name.
+    pub author_warning: Option<(crate::identity::NameWarning, bool)>,
     /// Resolved references.
     pub refs: RowRefs,
     /// Day header shown above the first moment of a local day.
@@ -173,7 +174,10 @@ impl MomentRow {
             || SharedString::from(moment.origin.short()),
             |p| p.display.clone().into(),
         );
-        let author_warning = origin.and_then(crate::identity::name_warning_text);
+        let author_warning = origin.and_then(|p| {
+            let mixed_only = p.name_warnings.confusable_with.is_none();
+            crate::identity::name_warning_of(p).map(|warning| (warning, mixed_only))
+        });
         let body = match &moment.kind {
             MomentKind::Message(_) => {
                 store.bodies().get(&moment.id).map(|text| SharedString::from(text.clone()))
@@ -516,27 +520,17 @@ fn header(row: &MomentRow, cx: &App) -> impl IntoElement {
         .gap_2()
         .text_xs()
         .child(div().font_semibold().text_color(cx.theme().foreground).child(row.author.clone()))
-        // A name that could pass for another's: the warning and the id,
-        // next to the name (never a mark on the name itself).
-        .when_some(row.author_warning.clone(), |header, warning| {
-            header.child(
-                h_flex()
-                    .id("author-name-warning")
-                    .aria_label(warning)
-                    .test_support()
-                    .gap_1()
-                    .text_color(crate::tone::text(cx.theme().warning, cx))
-                    .child(
-                        gpui_kit::component::Icon::new(gpui_kit::assets::IconName::TriangleAlert)
-                            .xsmall(),
-                    )
-                    .child(
-                        div()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_color(cx.theme().muted_foreground)
-                            .child(moment.origin.short()),
-                    ),
-            )
+        // A name that could pass for another's: a visible word, the full
+        // id and an explanation, next to the name (never a mark on the
+        // name itself).
+        .when_some(row.author_warning.as_ref(), |header, (warning, mixed_only)| {
+            header.child(crate::identity::author_warning(
+                "author-name-warning",
+                &moment.origin,
+                warning,
+                *mixed_only,
+                cx,
+            ))
         })
         .child(div().text_color(cx.theme().muted_foreground).child(i18n::time_of_day(moment.at)))
         .when_some(marker, |header, (label, color)| {

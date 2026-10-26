@@ -92,6 +92,11 @@ mod shots {
             self.window(move |window, cx| window.click(id, cx));
         }
 
+        fn click_in(&mut self, scope: &str, id: &'static str) {
+            let scope = scope.to_owned();
+            self.window(move |window, cx| window.within(scope).click(id, cx));
+        }
+
         fn store<R>(&mut self, f: impl FnOnce(&Store) -> R) -> R {
             self.cx.update(|cx| f(self.shell.read(cx).store().read(cx).store()))
         }
@@ -137,6 +142,8 @@ mod shots {
         let (fake, state, socket) = sdk_fake::start(&format!("f23-shots-{locale}"));
         fake.enable_stream();
         let profiles = state.lock().expect("state").profiles.clone();
+        // Ana's verification went stale: the sticky banner shows.
+        state.lock().expect("state").stale.push("principal-ana".to_owned());
         profiles.verified("principal-ana", "Ana Reyes", "human");
         profiles.warn("principal-ana", false, Some("principal-cy"));
         profiles.verified("principal-cy", "Ana Reyes", "human");
@@ -207,6 +214,19 @@ mod shots {
         run.click("rail-members");
         run.settle();
         run.shot("f23_04_members");
+
+        // A call to Ana asks to acknowledge the stale verification first.
+        run.show("dm-ana");
+        run.click("conversation-call");
+        run.settle();
+        run.shot("f23_06_stale_call_acknowledgement");
+        run.click_in("call-stale-ack", "stale-verify");
+
+        // A new conversation with Cy (stale too) asks the same, inline.
+        run.click("rail-contacts");
+        run.click_in("contacts-principal-cy", "message");
+        run.settle();
+        run.shot("f23_07_stale_new_conversation");
         fake.shutdown();
     }
 }

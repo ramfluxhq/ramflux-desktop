@@ -8,7 +8,9 @@
 //! fresh random id from the SDK), so a retry after a failure names the same
 //! conversation. Members are chosen from the accepted contacts; a contact
 //! that cannot be added now (not reachable yet, or a changed key not
-//! verified again) is shown disabled with the reason. Create runs the
+//! verified again) is shown disabled with the reason. A chosen contact
+//! whose verification went stale is not refused: the form asks the user
+//! to acknowledge it (Verify again, or Continue) before Create. Create runs the
 //! policy's own check (`check_create_group`) first and explains a refusal
 //! in place; then it emits [`UiEventKind::CreateGroupRequested`], which the
 //! root turns into the `CreateGroup` intent. The form follows the outcome
@@ -75,6 +77,8 @@ pub struct NewGroup {
     name: Entity<InputState>,
     context_id: Option<ContextId>,
     members: Vec<ParticipantId>,
+    /// Chosen members whose stale verification the user acknowledged.
+    acknowledged: Vec<ParticipantId>,
     phase: Phase,
     _subscriptions: Vec<Subscription>,
 }
@@ -108,6 +112,7 @@ impl NewGroup {
             name,
             context_id: None,
             members: Vec::new(),
+            acknowledged: Vec::new(),
             phase: Phase::Editing,
             _subscriptions: subscriptions,
         }
@@ -118,6 +123,7 @@ impl NewGroup {
     pub fn open(&mut self, sink: &EventSink, window: &mut Window, cx: &mut Context<Self>) {
         self.sink = Some(sink.scoped(Scope::Panel(SCOPE.to_owned())));
         self.members.clear();
+        self.acknowledged.clear();
         self.name.update(cx, |name, cx| name.set_value("", window, cx));
         match ramflux_desktop_sdk::fresh_conversation_id() {
             Ok(id) => {
@@ -173,9 +179,31 @@ impl NewGroup {
         cx.notify();
     }
 
+    /// Chosen members whose verification went stale and is not
+    /// acknowledged yet, in the order chosen.
+    pub fn awaiting_acknowledgement(&self, store: &Store) -> Vec<ParticipantId> {
+        self.members
+            .iter()
+            .filter(|m| !self.acknowledged.contains(m))
+            .filter(|m| store.participant(m).is_some_and(|p| p.safety.is_stale()))
+            .cloned()
+            .collect()
+    }
+
+    /// Continue chosen for `member`: its stale verification is acknowledged.
+    pub fn acknowledge(&mut self, member: ParticipantId, cx: &mut Context<Self>) {
+        if !self.acknowledged.contains(&member) {
+            self.acknowledged.push(member);
+        }
+        cx.notify();
+    }
+
     /// Create pressed: checks, then emits the request.
     pub fn create(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(self.phase, Phase::Creating { .. }) {
+            return;
+        }
+        if !self.awaiting_acknowledgement(self.store.read(cx).store()).is_empty() {
             return;
         }
         let (Some(context_id), Some(sink)) = (self.context_id.clone(), self.sink.clone()) else {
@@ -306,6 +334,38 @@ impl Render for NewGroup {
                 })))
         });
         let creating = matches!(self.phase, Phase::Creating { .. });
+        let waiting = self.awaiting_acknowledgement(store);
+        let acks: Vec<gpui_kit::AnyElement> = waiting
+            .iter()
+            .map(|member| {
+                let prompt = tr_args("identity.ack.group", &[("name", &name(store, member))]);
+                let (sink, verify_id, ack_id) = (self.sink.clone(), member.clone(), member.clone());
+                div()
+                    .id(domain_id("new-group-stale", member))
+                    .test_support()
+                    .child(crate::identity::stale_ack(
+                        "new-group-stale-ack",
+                        prompt,
+                        Box::new(move |_, window, cx| {
+                            if let Some(sink) = &sink {
+                                sink.emit(
+                                    UiEventKind::VerifySafetyPressed {
+                                        participant_id: verify_id.clone(),
+                                    },
+                                    window,
+                                    cx,
+                                );
+                            }
+                        }),
+                        Box::new(cx.listener(move |this, _, _, cx| {
+                            this.acknowledge(ack_id.clone(), cx);
+                        })),
+                        cx,
+                    ))
+                    .into_any_element()
+            })
+            .collect();
+        let waiting = !waiting.is_empty();
         let status = match &self.phase {
             Phase::Creating { .. } => Some((tr("group.new.creating"), muted)),
             Phase::Failed(reason) => Some((reason.clone(), danger)),
@@ -370,6 +430,7 @@ impl Render for NewGroup {
                             })
                             .children(rows),
                     )
+                    .children(acks)
                     .children(status.map(|(text, color)| {
                         div()
                             .id("new-group-status")
@@ -394,7 +455,7 @@ impl Render for NewGroup {
                                 Button::new("new-group-create")
                                     .primary()
                                     .label(tr("group.new.create"))
-                                    .disabled(creating || self.context_id.is_none())
+                                    .disabled(creating || waiting || self.context_id.is_none())
                                     .on_click(
                                         cx.listener(|this, _, window, cx| this.create(window, cx)),
                                     ),

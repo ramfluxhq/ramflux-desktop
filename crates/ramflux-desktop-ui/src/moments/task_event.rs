@@ -57,13 +57,16 @@ pub fn render(payload: &TaskEventPayload, row: &MomentRow, cx: &App) -> impl Int
         TaskEventKind::Cancelled => IconName::Dash,
     };
     let text = sentence(payload, row);
-    // The signer's verified kind: the source's flag on the event, the
-    // kind from the signer's profile as the directory holds it.
+    // The source's flag on the event says the signer's kind is verified
+    // for it; the kind is named only when the directory itself holds a
+    // profile-signed claim of it (else "Kind verified", unnamed).
     let kind = row
         .refs
         .people
         .get(&row.moment.origin)
-        .and_then(|p| p.kind_claim.kind())
+        .map(|p| p.kind_claim)
+        .filter(|claim| claim.is_verified())
+        .and_then(|claim| claim.kind())
         .filter(|_| payload.actor_kind_verified);
     h_flex()
         .id("task-event")

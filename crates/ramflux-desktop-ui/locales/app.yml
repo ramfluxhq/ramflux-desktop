@@ -205,16 +205,16 @@ safety:
     en: "Identity forked"
     zh-CN: "身份分叉"
   verification_stale:
-    en: "Verification out of date"
-    zh-CN: "验证已过期"
+    en: "Verification needs renewing"
+    zh-CN: "需要重新验证"
 identity:
   kind:
     human:
       en: "Person"
       zh-CN: "个人"
     headless_ai:
-      en: "Headless AI"
-      zh-CN: "无界面 AI"
+      en: "Unattended AI"
+      zh-CN: "无人值守 AI"
     bot:
       en: "Bot"
       zh-CN: "机器人"
@@ -224,12 +224,28 @@ identity:
     claimed:
       en: "%{kind}, claimed"
       zh-CN: "%{kind}（自称）"
+    verified_help:
+      en: "Signed by their account; does not prove who they are or that a person is behind it."
+      zh-CN: "由对方账户签名；不能证明对方是谁，也不能证明背后是真人。"
+    claimed_help:
+      en: "Only their own claim; nothing verified it."
+      zh-CN: "仅为对方自称，未经任何验证。"
+    verified_unnamed:
+      en: "Kind verified"
+      zh-CN: "类型已验证"
     unverified:
       en: "Kind not verified"
       zh-CN: "类型未验证"
+  id:
+    tooltip:
+      en: "Their full ID: %{id}"
+      zh-CN: "对方的完整 ID：%{id}"
+    copy:
+      en: "Copy ID %{id}"
+      zh-CN: "复制 ID %{id}"
   name:
     confusable:
-      en: "Name looks like %{other}'s"
+      en: "Name resembles %{other}"
       zh-CN: "名称与 %{other} 相似"
     mixed_script:
       en: "Name mixes scripts"
@@ -237,13 +253,38 @@ identity:
     warning:
       en: "%{what}. Check the ID: %{id}"
       zh-CN: "%{what}。请核对 ID：%{id}"
+    author_similar:
+      en: "Similar name"
+      zh-CN: "名称相似"
+    author_mixed:
+      en: "Mixed scripts"
+      zh-CN: "混用文字"
   safety:
     stale:
-      en: "Verified before their keys changed; verify again"
-      zh-CN: "验证早于对方密钥变更，请重新验证"
+      en: "Verification needs renewing — this contact's identity authority changed since you verified"
+      zh-CN: "需要重新验证——自你验证后，该联系人的身份授权已变更"
+    stale_banner:
+      en: "%{name}: verification needs renewing — this contact's identity authority changed since you verified."
+      zh-CN: "%{name}：需要重新验证——自你验证后，该联系人的身份授权已变更。"
     verify_again:
       en: "Verify again"
       zh-CN: "重新验证"
+    continue:
+      en: "Continue"
+      zh-CN: "继续"
+  ack:
+    call:
+      en: "Call %{name}? Their verification needs renewing — this contact's identity authority changed since you verified."
+      zh-CN: "要呼叫 %{name} 吗？需要重新验证——自你验证后，该联系人的身份授权已变更。"
+    conversation:
+      en: "Start a conversation with %{name}? Their verification needs renewing — this contact's identity authority changed since you verified."
+      zh-CN: "要与 %{name} 开启会话吗？需要重新验证——自你验证后，该联系人的身份授权已变更。"
+    group:
+      en: "Add %{name}? Their verification needs renewing — this contact's identity authority changed since you verified."
+      zh-CN: "要添加 %{name} 吗？需要重新验证——自你验证后，该联系人的身份授权已变更。"
+    wait:
+      en: "Verify %{name} again, or continue, before the first message."
+      zh-CN: "发送第一条消息前，请重新验证 %{name} 或选择继续。"
 account:
   kind:
     human:

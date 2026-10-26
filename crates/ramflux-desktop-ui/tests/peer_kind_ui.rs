@@ -222,3 +222,43 @@ fn members_carry_their_kind_mark(cx: &mut TestAppContext) {
     assert!(label_in(cx, &world, "member-principal-bo", "member-name-warning").is_none());
     world.fake.shutdown();
 }
+
+#[gpui_kit::test]
+fn two_long_ids_sharing_a_prefix_stay_apart_in_full(cx: &mut TestAppContext) {
+    let (fake, state, path) = sdk_fake::start("ui-kind-long-ids");
+    fake.enable_stream();
+    let real = "principal-support-team-official-0001";
+    let other_id = "principal-support-team-official-0002";
+    {
+        let mut state = state.lock().expect("state");
+        state.extra_peers = vec![real.to_owned(), other_id.to_owned()];
+        state.profiles.verified(real, "Support Team", "human");
+        state.profiles.verified(other_id, "Support Team", "human");
+        state.profiles.warn(other_id, false, Some(real));
+    }
+    let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 1_100.);
+    wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
+    wait(cx, "the contacts", |cx| {
+        with_store(cx, &shell, |s| {
+            s.participant(&ParticipantId::new(other_id)).is_some_and(|p| p.name_warnings.any())
+        })
+    });
+    click(cx, handle, "rail-contacts");
+    let row = format!("contacts-{other_id}");
+    wait(cx, "the row", |cx| exists(cx, handle, &row));
+    let text_of = |cx: &mut TestAppContext, scope: String, id: &'static str| {
+        in_window(cx, handle, move |window, _| {
+            window.within(scope).try_find(id).and_then(|e| e.label().map(str::to_owned))
+        })
+    };
+    let warning = text_of(cx, row.clone(), "contact-name-warning").expect("the warning");
+    // Both ids in full: the one the name is mistaken for and its own.
+    assert!(warning.contains(real), "{warning}");
+    assert!(warning.contains(other_id), "{warning}");
+    // The visible id elements differ and are not shortened.
+    let shown = text_of(cx, row, "principal-id-text");
+    assert_eq!(shown.as_deref(), Some(other_id));
+    let other = text_of(cx, format!("contacts-{real}"), "principal-id-text");
+    assert_eq!(other.as_deref(), Some(real));
+    fake.shutdown();
+}
