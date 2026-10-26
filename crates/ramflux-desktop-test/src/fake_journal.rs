@@ -195,6 +195,18 @@ impl Journal {
         seq
     }
 
+    /// Appends an entry for `account` without delivering it to any open
+    /// stream: the head moves, but nobody connected hears it (the stream was
+    /// not listening). A stream opened later without a cursor starts after
+    /// it, as from the head; returns its sequence number.
+    pub fn publish_unheard(&mut self, account: &str, topic: &str, body: Value) -> u64 {
+        let journal = self.accounts.entry(account.to_owned()).or_default();
+        journal.head += 1;
+        let seq = journal.head;
+        journal.entries.push(Entry { seq, topic: topic.to_owned(), body });
+        seq
+    }
+
     /// Writes a frame with any sequence number (or none) to `account`'s
     /// streams without journaling it: a duplicate or out-of-order delivery.
     pub fn deliver_raw(&mut self, account: &str, seq: Option<u64>, topic: &str, body: &Value) {

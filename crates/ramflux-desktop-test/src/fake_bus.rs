@@ -184,6 +184,12 @@ impl FakeBus {
         self.jobs.lock().expect("jobs").publish("", crate::fake_backup::TOPIC, row)
     }
 
+    /// Appends a job row to the job stream's journal without delivering it
+    /// to an open stream (the link was not listening); returns its cursor.
+    pub fn publish_job_unheard(&self, row: Value) -> u64 {
+        self.jobs.lock().expect("jobs").publish_unheard("", crate::fake_backup::TOPIC, row)
+    }
+
     /// Ends the job streams, with a final `stream.lagged` when `lagged`
     /// (the connection closes too).
     pub fn end_job_streams(&self, lagged: bool) {

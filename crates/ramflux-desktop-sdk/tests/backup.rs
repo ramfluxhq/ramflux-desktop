@@ -18,6 +18,7 @@
 mod common;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
 use common::*;
@@ -37,6 +38,9 @@ struct World {
     fake: Arc<FakeBus>,
     backup: Arc<FakeBackup>,
     path: PathBuf,
+    /// While set, job rows reach the daemon's job journal but no open
+    /// stream (nobody is listening), as when the link is down.
+    unheard: Arc<AtomicBool>,
 }
 
 fn holdings() -> Counts {
@@ -75,13 +79,29 @@ impl World {
             fake.enable_stream();
         }
         let bus: Weak<FakeBus> = Arc::downgrade(&fake);
+        let unheard = Arc::new(AtomicBool::new(false));
+        let muted = unheard.clone();
         backup.set_publisher(Box::new(move |row| {
             product(row.clone());
             if let Some(bus) = bus.upgrade() {
-                bus.publish_job(row);
+                if muted.load(Ordering::SeqCst) {
+                    bus.publish_job_unheard(row);
+                } else {
+                    bus.publish_job(row);
+                }
             }
         }));
-        Self { fake, backup, path }
+        Self { fake, backup, path, unheard }
+    }
+
+    /// Runs `start` (a job another frontend starts) while its rows reach no
+    /// job stream: the job is then known from the daemon's listing only, no
+    /// matter how fast or slow this side's link comes back.
+    fn unheard<R>(&self, start: impl FnOnce() -> R) -> R {
+        self.unheard.store(true, Ordering::SeqCst);
+        let started = start();
+        self.unheard.store(false, Ordering::SeqCst);
+        started
     }
 
     fn requests(&self, method: &str) -> Vec<ramflux_desktop_test::fake_bus::Seen> {
@@ -491,18 +511,23 @@ fn a_job_known_only_from_the_listing_is_interrupted_when_the_daemon_restarts() {
     let world = World::start("listing-only", true);
     world.backup.archive("/b/good", archive(None, 0));
     let mut account = live(&world, true);
-    // The job link is down (its connection broke) while another frontend
-    // starts a restore: its rows go by. The link opens again from the head
-    // and reads the jobs: the restore is known from the listing only, no
-    // event of it ever arrived here.
+    // Another frontend starts a restore while this side hears no job rows
+    // (the link is down): the restore is known from the listing only, no
+    // event of it ever arrives here. The link is then ended with a
+    // `stream.lagged`, which it reopens at once (no back-off to wait out),
+    // and reads the jobs again.
     let opened = world.job_connections().len();
-    world.fake.end_job_streams(false);
     let body = serde_json::json!({ "input_path": "/b/good", "passphrase": PASSPHRASE });
-    world.backup.handle("account.restore.verify", None, &body).expect("started elsewhere");
+    world
+        .unheard(|| world.backup.handle("account.restore.verify", None, &body))
+        .expect("started elsewhere");
+    world.fake.end_job_streams(true);
+    account.until("the link opened again", |_, _| {
+        world.job_connections().len() > opened && world.fake.job_streaming()
+    });
     account.until("the job listed after the link opened again", |s, _| {
         job(s).is_some_and(|j| j.phase == BackupPhase::Verifying)
     });
-    assert!(world.job_connections().len() > opened);
     let id = job(&account.store).unwrap().id.clone();
     assert_eq!(
         handle_intent(&account.store, Intent::human(create("/b/again", false)), Timestamp(0))
