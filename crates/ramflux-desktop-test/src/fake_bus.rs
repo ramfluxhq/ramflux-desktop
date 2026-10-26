@@ -30,7 +30,7 @@ use std::io::Read;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -104,6 +104,39 @@ impl Publisher {
     }
 }
 
+/// Holds back the answer of one job-stream subscription, so a test can act
+/// while the client's link is half open.
+#[derive(Default)]
+struct Hold {
+    /// `(armed, released)`: armed, the next job subscription waits until
+    /// released.
+    state: Mutex<(bool, bool)>,
+    changed: Condvar,
+}
+
+impl Hold {
+    /// Waits here when armed (once), until released.
+    fn pass(&self) {
+        let mut state = self.state.lock().expect("hold");
+        if !state.0 {
+            return;
+        }
+        state.0 = false;
+        while !state.1 {
+            state = self.changed.wait(state).expect("hold");
+        }
+    }
+
+    fn arm(&self) {
+        *self.state.lock().expect("hold") = (true, false);
+    }
+
+    fn release(&self) {
+        self.state.lock().expect("hold").1 = true;
+        self.changed.notify_all();
+    }
+}
+
 /// The fake daemon. Dropping it does not stop it; call [`FakeBus::shutdown`].
 pub struct FakeBus {
     path: PathBuf,
@@ -114,6 +147,7 @@ pub struct FakeBus {
     applied: Arc<AtomicUsize>,
     journal: Arc<Mutex<Journal>>,
     jobs: Arc<Mutex<Journal>>,
+    hold: Arc<Hold>,
 }
 
 /// What every connection of one fake shares.
@@ -128,6 +162,7 @@ struct Shared {
     jobs: Arc<Mutex<Journal>>,
     /// Connections that opened the job stream as an attended frontend.
     attended: Mutex<BTreeSet<usize>>,
+    hold: Arc<Hold>,
 }
 
 impl FakeBus {
@@ -147,6 +182,7 @@ impl FakeBus {
         let applied = Arc::new(AtomicUsize::new(0));
         let journal = Arc::new(Mutex::new(Journal::default()));
         let jobs = Arc::new(Mutex::new(Journal::daemon()));
+        let hold = Arc::new(Hold::default());
         let shared = Arc::new(Shared {
             handler,
             seen: seen.clone(),
@@ -156,6 +192,7 @@ impl FakeBus {
             journal: journal.clone(),
             jobs: jobs.clone(),
             attended: Mutex::new(BTreeSet::new()),
+            hold: hold.clone(),
         });
         let (s, st) = (stop.clone(), streams.clone());
         thread::spawn(move || {
@@ -175,7 +212,30 @@ impl FakeBus {
                 }
             }
         });
-        Self { path: path.to_path_buf(), stop, seen, subscribers, streams, applied, journal, jobs }
+        Self {
+            path: path.to_path_buf(),
+            stop,
+            seen,
+            subscribers,
+            streams,
+            applied,
+            journal,
+            jobs,
+            hold,
+        }
+    }
+
+    /// The next job-stream subscription is received (it shows in
+    /// [`FakeBus::seen`]) but not answered until
+    /// [`FakeBus::release_job_subscribe`]: the client's link stays half
+    /// open, deterministically, whatever the machine's speed.
+    pub fn hold_next_job_subscribe(&self) {
+        self.hold.arm();
+    }
+
+    /// Answers the held job-stream subscription.
+    pub fn release_job_subscribe(&self) {
+        self.hold.release();
     }
 
     /// Publishes a job row on the daemon-level job stream; returns its
@@ -194,6 +254,12 @@ impl FakeBus {
     /// (the connection closes too).
     pub fn end_job_streams(&self, lagged: bool) {
         self.jobs.lock().expect("jobs").end_streams("", lagged);
+    }
+
+    /// How many job streams the client closed (as opposed to the daemon
+    /// ending them).
+    pub fn job_streams_closed_by_client(&self) -> usize {
+        self.jobs.lock().expect("jobs").closed_by_client()
     }
 
     /// Whether a job stream is open.
@@ -300,6 +366,7 @@ impl FakeBus {
     /// Stops accepting, closes every connection and removes the socket.
     pub fn shutdown(self) {
         self.stop.store(true, Ordering::SeqCst);
+        self.hold.release();
         for stream in self.streams.lock().expect("streams").drain(..) {
             let _ = stream.shutdown(std::net::Shutdown::Both);
         }
@@ -351,6 +418,7 @@ fn subscribe_jobs(request: &Value, connection: usize, shared: &Shared, writer: &
     if request["body"]["attended_frontend"] == true {
         shared.attended.lock().expect("attended").insert(connection);
     }
+    shared.hold.pass();
     match shared.jobs.lock().expect("jobs").subscribe(request, connection, writer) {
         Subscribed::Following => Reply::Ok(Value::Null),
         Subscribed::Refused(code, message) => Reply::Error(code, message),

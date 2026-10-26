@@ -67,6 +67,8 @@ pub struct Journal {
     daemon: bool,
     accounts: BTreeMap<String, Account>,
     followers: Vec<Follower>,
+    /// How many streams ended because their client closed the connection.
+    closed_by_client: usize,
 }
 
 pub(crate) fn write_frame(stream: &mut UnixStream, frame: &Value) -> std::io::Result<()> {
@@ -249,7 +251,14 @@ impl Journal {
 
     /// The client closed `connection`: its stream ends.
     pub fn disconnect(&mut self, connection: usize) {
+        let before = self.followers.len();
         self.followers.retain(|f| f.connection != connection);
+        self.closed_by_client += before - self.followers.len();
+    }
+
+    /// How many streams ended because their client closed the connection.
+    pub fn closed_by_client(&self) -> usize {
+        self.closed_by_client
     }
 
     /// Whether `account` has a stream open.

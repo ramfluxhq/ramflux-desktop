@@ -86,6 +86,17 @@ impl Task {
 
     pub(super) fn on_jobs(&mut self, streamed: JobStreamed) {
         match streamed {
+            JobStreamed::Opened { .. } if self.jobs_yield() => {
+                // An account scope attached while this link was opening:
+                // that one follows the jobs now. The link that just opened
+                // is closed (the attach already asked for it before the
+                // open finished), and this scope is closed, not Open, so
+                // the last account detaching opens it again.
+                self.jobs = Jobs::Closed;
+                self.jobs_open_at = None;
+                let link = self.job_link.clone();
+                tokio::spawn(async move { link.close().await });
+            }
             JobStreamed::Opened { resync } => {
                 self.jobs = Jobs::Open;
                 if resync {

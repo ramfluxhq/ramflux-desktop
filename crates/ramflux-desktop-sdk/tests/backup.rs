@@ -552,6 +552,37 @@ fn a_job_known_only_from_the_listing_is_interrupted_when_the_daemon_restarts() {
 }
 
 #[test]
+fn a_daemon_link_caught_opening_by_an_attaching_account_opens_again_when_it_detaches() {
+    let world = World::start("attach-during-open", true);
+    // The daemon scope's job link is half open: its subscription reached
+    // the daemon, which has not answered it yet.
+    world.fake.hold_next_job_subscribe();
+    let hub = ramflux_desktop_sdk::SdkHub::start(config(&world.path)).expect("bridge");
+    let mut daemon = Fed::new(hub.daemon_source());
+    daemon.until("the daemon link is opening", |_, _| world.job_connections().len() == 1);
+    // An account attaches meanwhile: the jobs are its to follow now.
+    let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
+    account.until("the account is live", |s, _| {
+        s.context(&ContextId::new("dm-ana")).is_some()
+            && s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Stream)
+            && s.unsupported_reason(methods::BACKUP_CREATE).is_none()
+    });
+    account.until("the account's own job link is open", |_, _| world.job_connections().len() == 2);
+    // The daemon's link finishes opening; it stands aside (closes) at once.
+    world.fake.release_job_subscribe();
+    account
+        .until("the daemon's link closed", |_, _| world.fake.job_streams_closed_by_client() == 1);
+    // The last account detaches: the daemon scope follows the jobs again,
+    // on a new connection.
+    let before = world.job_connections().len();
+    drop(account);
+    daemon.until("the daemon's link opened again", |_, _| {
+        world.job_connections().len() > before && world.fake.job_streaming()
+    });
+    world.stop();
+}
+
+#[test]
 fn secure_sessions_are_reestablished_after_a_restore_until_the_daemon_says_ready() {
     let world = World::start("sessions", true);
     let mut account = live(&world, true);
