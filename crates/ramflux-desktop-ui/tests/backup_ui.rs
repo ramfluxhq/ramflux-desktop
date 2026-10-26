@@ -28,6 +28,7 @@ use ramflux_desktop_core::{
 use ramflux_desktop_test::fake_backup::{Archive, Counts, FakeBackup};
 use ramflux_desktop_test::fake_bus::FakeBus;
 use ramflux_desktop_ui::Shell;
+use ramflux_desktop_ui::i18n::tr_args;
 use ramflux_desktop_ui::route::{EntryStep, Page};
 use ramflux_desktop_ui::settings::SettingsSection;
 use ramflux_desktop_ui::settings::backup::{BackupPanel, Form};
@@ -758,6 +759,20 @@ fn never_loading(cx: &mut TestAppContext, world: &Restoring) -> Arc<sdk_fake::La
     assert!(exists(cx, world.handle, "entry-session-failed"));
     assert!(exists(cx, world.handle, "entry-session-retry"));
     assert!(exists(cx, world.handle, "entry-session-lock"));
+    // Both name the account by its label.
+    let named = |cx: &mut TestAppContext, id: &'static str| {
+        in_window(cx, world.handle, move |window, _| {
+            window.try_find(id).and_then(|e| e.label().map(str::to_owned))
+        })
+    };
+    let failed = tr_args("entry.account.load_failed", &[("name", "Personal")]);
+    let lock = tr_args("entry.account.lock", &[("name", "Personal")]);
+    assert_eq!(
+        named(cx, "entry-session-failed-text"),
+        Some(failed.to_string()),
+        "the error names it"
+    );
+    assert_eq!(named(cx, "entry-session-lock"), Some(lock.to_string()), "the button names it");
     assert!(!exists(cx, world.handle, "entry-session-loading"));
     assert_eq!(world.step(cx), EntryStep::Account);
     account_reads

@@ -4,7 +4,7 @@
 //! Offscreen light and dark screenshots of Settings · Backup on a fake
 //! daemon with the BACKUP-01 job API as merged: the section, the backup form,
 //! a backup in progress and done, the restore form, a backup being checked,
-//! the review before restoring (merge, newer wins), restoring, the result
+//! the review before restoring (merge, newer wins, the files it omits), restoring, the result
 //! with its attachment check, and a wrong passphrase; then, on a fresh
 //! device, the entry page finishing an installed restore while the
 //! reopened account's first jobs listing is awaited.
@@ -12,7 +12,7 @@
 //! Not part of `cargo test`; run explicitly (`RAMFLUX_SHOTS_LOCALE` picks
 //! the interface language, `en` by default). `RAMFLUX_SHOTS_SET` is
 //! required: `restore-hold` takes the entry page's finishing state,
-//! `settings` the settings scenario (broken until DESK-CI-07):
+//! `settings` the settings scenario:
 //!
 //! ```sh
 //! RAMFLUX_SHOTS_SET=restore-hold RAMFLUX_SHOTS_DIR=/some/dir cargo test -p ramflux-desktop-ui --test backup_shots
@@ -217,7 +217,13 @@ mod shots {
 
     fn backup_fake(fake: &Arc<ramflux_desktop_test::fake_bus::FakeBus>, backup: &FakeBackup) {
         backup.account("acct-main", holdings());
-        backup.archive("/Users/me/Documents/ramflux-backup-2026-10-20.rfbackup", archive(None, 2));
+        // The daemon fails a restore whose files do not match their hashes,
+        // so the one that reaches its review is intact; it records three
+        // files its backup could not read, and this device holds five the
+        // archive lacks.
+        let recorded = Archive { unavailable_at_source: 3, ..archive(None, 0) };
+        backup.archive("/Users/me/Documents/ramflux-backup-2026-10-20.rfbackup", recorded);
+        backup.local_pending("acct-main", 5);
         let bus = Arc::downgrade(fake);
         backup.set_publisher(Box::new(move |row| {
             if let Some(bus) = bus.upgrade() {
@@ -353,14 +359,12 @@ mod shots {
                 restore_hold(&out, &locale);
                 return;
             }
-            // The settings backup scenario (f22_01 to f22_12) no longer
-            // runs against the current fake daemon (card DESK-CI-07 repairs
-            // it), so it only runs when asked for explicitly.
+            // The settings backup scenario (f22_01 to f22_12).
             "settings" => {}
             _ => {
                 println!(
                     "skipped: pick RAMFLUX_SHOTS_SET=restore-hold (the entry page finishing a \
-                     restore) or =settings (the settings scenario, broken until DESK-CI-07)"
+                     restore) or =settings (the settings scenario)"
                 );
                 return;
             }
@@ -372,7 +376,7 @@ mod shots {
         backup_fake(&fake, &backup);
         let cx = headless(&locale);
         let options = sdk_fake::options(&socket);
-        let mut run = Run::open(cx, options, out.clone(), locale.clone(), 860.);
+        let mut run = Run::open(cx, options, out.clone(), locale.clone(), 1100.);
         run.until("the workspace", |r| {
             r.cx.update(|cx| r.shell.read(cx).page()) == Page::Workspace
         });
@@ -402,8 +406,13 @@ mod shots {
         for _ in 0..4 {
             backup.step();
         }
+        // Four steps: the files are checked (none are missing), then three
+        // categories are written, so messages are next.
         run.until("writing messages", |r| {
-            r.store(|s| selectors::latest_backup_job(s).is_some_and(|j| j.progress.items_done > 0))
+            r.store(|s| {
+                selectors::latest_backup_job(s)
+                    .is_some_and(|j| j.phase == BackupPhase::Writing && j.progress.bytes_done > 0)
+            })
         });
         run.settle();
         run.shot("f22_04_backup_progress");
@@ -413,7 +422,7 @@ mod shots {
         run.click("backup-job-close");
         run.settle();
 
-        // A restore that merges, with two files that do not match.
+        // A restore that merges, with the files its backup could not read.
         run.click("restore-open");
         run.set_file("/Users/me/Documents/ramflux-backup-2026-10-20.rfbackup");
         run.settle();
@@ -449,6 +458,8 @@ mod shots {
         run.settle();
         run.set_input(2, "river stone lantern");
         run.click("restore-verify");
+        run.wait_phase(BackupPhase::Verifying);
+        backup.step();
         run.wait_phase(BackupPhase::Failed);
         run.shot("f22_11_wrong_passphrase");
         run.click("backup-job-close");

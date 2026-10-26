@@ -201,14 +201,14 @@ entry:
       en: "Loading your account…"
       zh-CN: "正在加载你的账户…"
     load_failed:
-      en: "This account did not load. The daemon is running, but the account has not answered."
-      zh-CN: "此账户未能加载。守护进程正在运行，但账户没有响应。"
+      en: "%{name} did not load. The daemon is running, but the account has not answered."
+      zh-CN: "%{name} 未能加载。守护进程正在运行，但该账户没有响应。"
     retry:
       en: "Try again"
       zh-CN: "重试"
     lock:
-      en: "Lock account"
-      zh-CN: "锁定账户"
+      en: "Lock %{name}"
+      zh-CN: "锁定 %{name}"
     locked:
       en: "Locked"
       zh-CN: "已锁定"

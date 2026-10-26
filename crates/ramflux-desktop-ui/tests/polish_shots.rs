@@ -26,7 +26,7 @@ fn main() {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod shots {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -55,7 +55,7 @@ mod shots {
     }
 
     impl Run {
-        fn open(scenario: &str, width: f32, height: f32, tag: &'static str, out: &PathBuf) -> Self {
+        fn open(scenario: &str, width: f32, height: f32, tag: &'static str, out: &Path) -> Self {
             let mut cx = HeadlessAppContext::with_platform(
                 gpui_kit::platform::current_platform(true).text_system(),
                 Arc::new(Assets),
@@ -86,7 +86,7 @@ mod shots {
                 })
                 .expect("offscreen window");
             let handle = handle.downcast::<Root>().expect("Root");
-            Self { cx, handle, shell, out: out.clone(), tag }
+            Self { cx, handle, shell, out: out.to_path_buf(), tag }
         }
 
         /// Moves the scenario clock forward by `ms`.
@@ -156,7 +156,7 @@ mod shots {
     }
 
     /// A day of messages in a group.
-    fn daily(width: f32, height: f32, tag: &'static str, out: &PathBuf) {
+    fn daily(width: f32, height: f32, tag: &'static str, out: &Path) {
         let mut run = Run::open("s02_daily", width, height, tag, out);
         run.advance(3_000);
         run.show("c-team");
@@ -166,7 +166,7 @@ mod shots {
 
     /// Orbit's task: asked, started, needs the user, approved with the
     /// hold, done.
-    fn task(width: f32, height: f32, tag: &'static str, out: &PathBuf) {
+    fn task(width: f32, height: f32, tag: &'static str, out: &Path) {
         let mut run = Run::open("s10_ai_participant", width, height, tag, out);
         run.advance(200);
         run.show("c-launch");

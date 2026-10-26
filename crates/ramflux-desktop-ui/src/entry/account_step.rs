@@ -186,11 +186,31 @@ impl EntryPage {
                 .into_any_element();
         }
         let account = self.store.read(cx).active_account().cloned();
+        // Named by the label the daemon keeps for it (its id when none is
+        // known yet): the account's own session has not answered, so the
+        // daemon's own listing is read too.
+        let name = account.as_ref().map_or_else(String::new, |id| {
+            let handle = self.store.read(cx);
+            let label = handle
+                .daemon_store()
+                .into_iter()
+                .chain(std::iter::once(handle.store()))
+                .find_map(|store| store.account(id).map(|a| a.label.trim().to_owned()))
+                .filter(|label| !label.is_empty());
+            label.unwrap_or_else(|| id.to_string())
+        });
         v_flex()
             .id("entry-session-failed")
             .test_support()
             .gap_3()
-            .child(Alert::error("entry-session-failed-alert", tr("entry.account.load_failed")))
+            .child({
+                let text = tr_args("entry.account.load_failed", &[("name", &name)]);
+                div()
+                    .id("entry-session-failed-text")
+                    .aria_label(text.clone())
+                    .test_support()
+                    .child(Alert::error("entry-session-failed-alert", text))
+            })
             .child(
                 h_flex()
                     .gap_2()
@@ -203,7 +223,7 @@ impl EntryPage {
                     .children(account.map(|account_id| {
                         Button::new("entry-session-lock")
                             .outline()
-                            .label(tr("entry.account.lock"))
+                            .label(tr_args("entry.account.lock", &[("name", &name)]))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 let account_id = account_id.clone();
                                 this.sink.emit(UiEventKind::LockPressed { account_id }, window, cx);

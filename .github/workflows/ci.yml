@@ -82,6 +82,14 @@ jobs:
           CARGO_NET_OFFLINE: "true"
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      # The screenshot programs are `test = false` targets, which
+      # `--all-targets` skips; lint them explicitly so they cannot rot.
+      - name: Clippy (screenshot programs)
+        timeout-minutes: 10
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: scripts/check-shot-programs.sh
+
   test:
     # The workspace suite is repeated three times on separate runners to catch
     # flaky tests; any failing repeat fails the workflow.
@@ -177,6 +185,14 @@ jobs:
         env:
           CARGO_NET_OFFLINE: "true"
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # The screenshot programs are `test = false` targets, which
+      # `--all-targets` skips; lint them explicitly so they cannot rot.
+      - name: Clippy (screenshot programs)
+        timeout-minutes: 10
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: scripts/check-shot-programs.sh
 
       - name: Test
         timeout-minutes: 25
