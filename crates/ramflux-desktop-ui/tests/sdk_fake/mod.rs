@@ -130,6 +130,9 @@ pub struct State {
     /// Holds the account-scoped `account.backup.jobs` answers while closed
     /// (open by default): an account session's first jobs listing, on cue.
     pub account_jobs: Arc<Latch>,
+    /// Holds every account-scoped answer while closed (open by default): a
+    /// session that has received nothing yet, on cue.
+    pub account_reads: Arc<Latch>,
 }
 
 /// A gate a test closes to hold answers back and opens to let them go.
@@ -278,7 +281,7 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
         state.requests.set_profiles(state.profiles.clone());
     }
     let fake = FakeBus::start(&path, move |method, account, body| {
-        let (surfaces, tasks, calls, requests, backup, account_jobs) = {
+        let (surfaces, tasks, calls, requests, backup, account_jobs, account_reads) = {
             let state = state.lock().expect("state");
             (
                 state.surfaces.clone(),
@@ -287,8 +290,12 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
                 state.requests.clone(),
                 state.backup.clone(),
                 state.account_jobs.clone(),
+                state.account_reads.clone(),
             )
         };
+        if account.is_some() {
+            account_reads.pass();
+        }
         if method == "account.backup.jobs" && account.is_some() {
             account_jobs.pass();
         }

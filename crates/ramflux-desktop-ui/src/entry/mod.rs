@@ -201,6 +201,18 @@ impl EntryPage {
         self.full_restore.read(cx).awaits_listing(cx)
     }
 
+    /// Whether the account session that was just opened (an unlock) has
+    /// received nothing yet while the daemon itself is reachable: its empty
+    /// store would route to the daemon step, which is not where the user
+    /// is. The account step shows a neutral loading line until the first
+    /// data arrives.
+    pub fn awaits_session(&self, cx: &App) -> bool {
+        let handle = self.store.read(cx);
+        handle.is_live()
+            && !handle.daemon_unreachable()
+            && matches!(page_for(handle.store()), Page::Entry(EntryStep::Daemon))
+    }
+
     /// Every masked secret input, for tests that check secrets are cleared.
     pub fn secret_inputs(&self) -> [&Entity<InputState>; 4] {
         [
@@ -217,7 +229,7 @@ impl EntryPage {
         // A restore waiting for the session that took over to list its
         // jobs: that session's store is empty, so its own step would be an
         // earlier one (the daemon step).
-        if self.awaits_restore_listing(cx) {
+        if self.awaits_restore_listing(cx) || self.awaits_session(cx) {
             return EntryStep::Account;
         }
         match page_for(self.store.read(cx).store()) {

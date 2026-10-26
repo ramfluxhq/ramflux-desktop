@@ -680,6 +680,40 @@ fn only_the_installed_restore_is_held_not_an_old_one_after_lock_and_unlock(
 }
 
 #[gpui_kit::test]
+fn a_freshly_unlocked_account_shows_a_loading_line_not_the_daemon_step(cx: &mut TestAppContext) {
+    let world = restoring(cx, "ui-backup-entry-fresh");
+    let account_jobs = world.install_and_hold(cx);
+    account_jobs.open();
+    wait(cx, "the jobs listed", |cx| {
+        with_store(cx, &world.shell, |s| s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
+    });
+    advance(cx, 300);
+    // The account locks and opens again, and its new session has received
+    // nothing yet.
+    world.set_account("locked");
+    wait(cx, "locked", |cx| {
+        with_store(cx, &world.shell, |s| {
+            s.accounts().next().map(|a| a.lock_state) != Some(LockState::Unlocked)
+        })
+    });
+    let account_reads = world.state.lock().expect("state").account_reads.clone();
+    account_reads.close();
+    world.set_account("unlocked");
+    wait(cx, "the new session", |cx| {
+        with_store(cx, &world.shell, |s| !s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
+    });
+    advance(cx, 300);
+    // What is rendered: the account step with a neutral line, never the
+    // daemon step (the daemon is there).
+    assert_eq!(world.step(cx), EntryStep::Account);
+    assert!(exists(cx, world.handle, "entry-session-loading"));
+    assert!(!exists(cx, world.handle, "entry-daemon-socket"), "no daemon step is rendered");
+    account_reads.open();
+    wait(cx, "the first data", |cx| !exists(cx, world.handle, "entry-session-loading"));
+    world.finish();
+}
+
+#[gpui_kit::test]
 fn a_daemon_without_the_job_api_offers_the_key_backup_first(cx: &mut TestAppContext) {
     let (fake, state, path) = sdk_fake::start("ui-backup-entry-key");
     fake.enable_stream();

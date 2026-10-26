@@ -131,6 +131,17 @@ impl EntryPage {
                         .child(tr("entry.restore.finishing")),
                 )
                 .into_any_element()
+        } else if self.awaits_session(cx) {
+            h_flex()
+                .id("entry-session-loading")
+                .test_support()
+                .gap_2()
+                .items_center()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(Spinner::new().small())
+                .child(tr("entry.account.loading"))
+                .into_any_element()
         } else if accounts.is_empty() {
             self.render_paths(&store, cx).into_any_element()
         } else {

@@ -197,6 +197,9 @@ entry:
       en: "Restore"
       zh-CN: "恢复"
   account:
+    loading:
+      en: "Loading your account…"
+      zh-CN: "正在加载你的账户…"
     locked:
       en: "Locked"
       zh-CN: "已锁定"
