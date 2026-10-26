@@ -801,10 +801,12 @@ what the desktop does with it). Each account snapshot reads
 methods are declared supported and the scope opens its job link (below);
 until then (or with `SdkConfig::backup_api` false) they are declared
 unsupported (`backend.gap.full_backup`) and Settings · Backup shows its
-buttons disabled with that reason. The older `account.backup.export` /
+buttons disabled with that reason. The daemon snapshot reads it too: with
+no account open (the entry page of a fresh device) the same job API runs a
+full restore at daemon scope. The older `account.backup.export` /
 `account.backup.import` (manifest and contacts only) stay as they are:
-Settings · Account calls it a key backup, and the entry page's restore still
-uses the import.
+Settings · Account calls it a key backup, and the entry page offers it as
+"Key backup" beside the full restore.
 
 **Store.** A `BackupJob` (`BackupJobId`, `kind` Backup | Restore, `path`,
 `phase`, the daemon's rising per-job `version`, `started_at`,
@@ -818,7 +820,9 @@ conversations, messages, groups, surfaces, tasks, attachments,
 attachment_bytes. `AttachmentCheck`: verified, mismatched, missing,
 unavailable_at_source (included in missing), local_missing_kept;
 `all_verified` = no mismatch and every missing file recorded as unavailable
-at the source. Phases:
+at the source. `Account.secure_sessions` (Ready | Reestablishing) says
+whether the account's outbound secure sessions are usable (below,
+"Outbound security after restore"). Phases:
 
 ```text
 Backup:  Preparing -> Writing -> Done            (either: -> Failed | Cancelled)
@@ -847,7 +851,9 @@ them), `VerifyRestore {path, secret}` → `restore.verify` (both
 the inspector; one job at a time: `BackupInProgress`), `InstallRestore
 {job_id}` → `restore.install` (only a `Verified` restore:
 `BackupJobPhase`), `CancelBackupJob {job_id}` → `backup.cancel` (until a
-restore installs).
+restore installs). The SDK plans `backup.create` for the account the intent
+names, which must be the scope's own; a backup of another account is
+refused.
 
 **Daemon job API.** Jobs belong to the daemon, not to an account; one runs
 at a time. Create is sent in the scope of the account backed up; verify,
@@ -860,9 +866,11 @@ connection that opened that stream as an attended frontend, so the SDK
 keeps one such connection per scope (the job link,
 `ramflux_desktop_sdk::bus::jobs`): opened once a snapshot found the job
 API, and carrying every job request. The event frame's `seq` is the
-daemon's job stream cursor; the row's `seq` is the job's version. The link
-reopens from the last cursor seen (`since_seq`); a cursor the daemon no
-longer covers answers `resync_required` and the link follows from the head;
+daemon's job stream cursor; the row's `seq` is the job's version. The subscribe answer's
+`head_seq` seeds the link's cursor, so a job whose events the link never
+saw (started elsewhere, or while the link was down) is covered too. The link
+reopens from the last cursor (`since_seq`); a cursor the daemon no longer
+covers answers `resync_required` and the link follows from the head;
 `stream.lagged` or a lost connection ends it and it is opened again (at
 once, or after the reconnect back-off). Each time it opens,
 `account.backup.jobs` is read again. `account.backup.jobs` is also read
@@ -947,12 +955,17 @@ install report them as `unavailable_at_source`. The default stays strict.
 reopens and its cursor is no longer covered (`resync_required`), the SDK
 reads the jobs again and reports every job it knew as running that the
 daemon no longer lists as `Failed`, `Interrupted`, so the next job may
-start.
+start. This covers a job known from the listing only, since the cursor is
+seeded from `head_seq`. Only a method the daemon does not know (or a
+`CapabilityDenied` for a non-human account) marks the job API missing; any
+other refusal of the `account.backup.jobs` read is a read failure.
 
 **UI (Settings · Backup).** Full backup: Create backup… opens the form:
-location (native save dialog), passphrase typed twice (at least 12
-characters and at least 16 UTF-8 bytes; a strength hint; a mismatch is
-named), Create backup. While it runs: what it is working on ("Fetching
+location (native save dialog; a file already there is refused in the form,
+since the daemon never replaces a file), passphrase typed twice (at least
+12 characters and at least 16 UTF-8 bytes, one rule in
+`settings::backup::text::Strength`; a strength hint; a mismatch is named),
+Create backup. While it runs: what it is working on ("Fetching
 files not yet on this device: n of m" while fetching, else the category),
 a progress bar (bytes, else items), bytes and items, the file, Cancel
 backup. Then: file, size and every count, Done. A backup that failed on
@@ -976,6 +989,15 @@ does not match fails the check and nothing can be restored. A refused
 request (for example `busy`) is explained in the form. Only one job runs at
 a time: while one runs it replaces both forms.
 
+**UI (entry page, fresh device).** Restore from backup offers "Full backup"
+(default) and "Key backup". The full restore is the same panel at daemon
+scope: file, passphrase, Check backup, the review, Restore, the result; it
+needs no account. The daemon-level job stream and `account.backup.jobs` are
+read in the daemon scope too, so the job is followed exactly as in
+Settings. When the restore is done the SDK reads `account.list` again: the
+restored account appears in the account list (locked) with the result
+still in view, and can be unlocked.
+
 **Outbound security after restore.** Full restore keeps all historical
 messages, attachment keys and inbound/archived ratchets. Saved outbound DM
 sessions and group sender chains are archived only; they are never
@@ -987,6 +1009,10 @@ upgrade together). Merge retains the live local outbound state and does not
 reactivate backup outbound chains. Meanwhile `account.status` and
 `sync.status.get` report `secure_sessions: "reestablishing"`, sending is
 refused by the daemon, and `account.secure_sessions.changed` announces
-`ready`; history and files stay readable. The desktop does not show this
-state yet: a send meanwhile fails with the daemon's reason. Showing
-"re-establishing secure sessions" is a follow-up to this section.
+`ready`; history and files stay readable. The desktop keeps it on
+`Account.secure_sessions`: read with every `account.status`, set by
+`account.restored` (which carries it) and by
+`account.secure_sessions.changed` on the account stream. While it is
+`Reestablishing` the conversation workspace shows a persistent banner
+("Re-establishing secure sessions…") until the daemon says `ready`; a send
+that fails meanwhile shows the daemon's reason in the status strip.
