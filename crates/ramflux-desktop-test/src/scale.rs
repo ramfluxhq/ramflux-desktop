@@ -31,7 +31,8 @@ fn participant(id: &str, display: &str) -> DomainEvent {
         safety_number: None,
         link: ramflux_desktop_core::ContactLink::None,
         reachable: None,
-        kind_asserted: false,
+        kind_claim: ramflux_desktop_core::KindClaim::None,
+        name_warnings: ramflux_desktop_core::NameWarnings::default(),
         root_source: None,
     })
 }

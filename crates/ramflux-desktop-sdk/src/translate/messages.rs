@@ -159,7 +159,7 @@ impl Translator {
 
     /// Emits a stored message the first time, when its payload changed, or
     /// when the view asked for its body again; remembers only a digest.
-    fn report_moment(&mut self, moment: Moment) -> Option<DomainEvent> {
+    pub(super) fn report_moment(&mut self, moment: Moment) -> Option<DomainEvent> {
         let is_message = matches!(moment.kind, MomentKind::Message(_));
         let digest = super::digest(&moment.kind);
         let wanted = self.resend.remove(&moment.id);

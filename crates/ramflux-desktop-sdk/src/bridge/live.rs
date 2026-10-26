@@ -267,7 +267,7 @@ impl Task {
                 }
             }
             _ => {
-                let streamed = self.translator.streamed(topic, body);
+                let streamed = self.translator.streamed(topic, body, super::now());
                 self.emit(streamed.events);
                 self.request_reads(streamed.follow);
             }

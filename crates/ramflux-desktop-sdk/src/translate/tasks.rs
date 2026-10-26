@@ -22,7 +22,7 @@
 //! | `result_ref` | the result's surface |
 //! | `result_summary` (signed by the assignee, terminal only) | the task's result text |
 //! | `stalled_by_assignee`, `compacted` | the task's flags |
-//! | `actors.assignee.actor_kind_verified` (else the view's `actor_kind_verified`) | the flag on the assignee's kind |
+//! | `actors.{requester,assignee,acceptor}` `{principal_id, device_id, actor_kind, actor_kind_verified}` | the task's actors: each one's principal, last event device, profile kind and whether a root-signed profile proves it for the role; a view without `actors` names the assignee alone, with the view's `actor_kind_verified` |
 //! | `pending_resolution.state` `awaiting_executor` / `executor_timeout` | `DecisionPending` / `DecisionUnconfirmed` on the step it names (`pending_resolution.step_id`) |
 //! | `approval_decisions[]` `delivery_state: failed` (this account's decision on a step's approval) | `DecisionUndelivered`, with Retry (the same `grant.approve` / `grant.deny` again) |
 //!
@@ -39,9 +39,9 @@
 //! read).
 
 use ramflux_desktop_core::{
-    Actor, ContextId, DomainEvent, GrantId, Lifecycle, Moment, MomentId, MomentKind, NeedsMe,
-    ParticipantId, StepId, StepState, SurfaceId, Task, TaskAnswer, TaskFlags, TaskId,
-    TaskProgressPayload, TaskState, TaskStep, Timestamp,
+    Actor, ContextId, DeviceId, DomainEvent, GrantId, Lifecycle, Moment, MomentId, MomentKind,
+    NeedsMe, ParticipantId, StepId, StepState, SurfaceId, Task, TaskActor, TaskActors, TaskAnswer,
+    TaskFlags, TaskId, TaskProgressPayload, TaskState, TaskStep, Timestamp,
 };
 use serde_json::{Value, json};
 
@@ -70,6 +70,44 @@ pub(crate) struct KnownTask {
     pub pending: Option<(String, String)>,
     /// The approval whose decision was not delivered, as last shown.
     pub undelivered: Option<String>,
+}
+
+/// One actor row of a task view (`actors.<role>`), if it names a principal.
+fn actor(row: &Value) -> Option<TaskActor> {
+    let principal = text(row, "principal_id");
+    if principal.is_empty() {
+        return None;
+    }
+    Some(TaskActor {
+        participant_id: ParticipantId::new(principal),
+        device_id: Some(text(row, "device_id")).filter(|d| !d.is_empty()).map(DeviceId::new),
+        kind: row["actor_kind"].as_str().and_then(super::contacts::peer_kind),
+        kind_verified: row["actor_kind_verified"].as_bool().unwrap_or(false),
+    })
+}
+
+/// The actors of a task view. A view without `actors` (an older daemon)
+/// names the assignee alone, with the view's own `actor_kind_verified`.
+fn actors(view: &Value) -> TaskActors {
+    let rows = &view["actors"];
+    if rows.is_object() {
+        return TaskActors {
+            requester: actor(&rows["requester"]),
+            assignee: actor(&rows["assignee"]),
+            acceptor: actor(&rows["acceptor"]),
+        };
+    }
+    let assignee = text(view, "assignee");
+    TaskActors {
+        requester: None,
+        assignee: (!assignee.is_empty()).then(|| TaskActor {
+            participant_id: ParticipantId::new(assignee),
+            device_id: None,
+            kind: None,
+            kind_verified: view["actor_kind_verified"].as_bool().unwrap_or(false),
+        }),
+        acceptor: None,
+    }
 }
 
 /// The desktop id of the task `task_id` in `conversation`.
@@ -304,11 +342,8 @@ impl Translator {
             flags: TaskFlags {
                 stalled: view["stalled_by_assignee"].as_bool().unwrap_or(false),
                 compacted: view["compacted"].as_bool().unwrap_or(false),
-                kind_verified: view["actors"]["assignee"]["actor_kind_verified"]
-                    .as_bool()
-                    .or_else(|| view["actor_kind_verified"].as_bool())
-                    .unwrap_or(false),
             },
+            actors: actors(view),
             answer: None,
         };
         Some((task, places))

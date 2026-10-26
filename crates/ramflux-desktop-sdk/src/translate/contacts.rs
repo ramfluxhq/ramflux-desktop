@@ -20,17 +20,28 @@
 //! | field | desktop |
 //! |---|---|
 //! | `principal_id` | the contact (the link's ids may be root commitments) |
-//! | `display_name` (string or null) | the name, when the identity directory has none (a card's name) |
+//! | `display_name` (string or null) | the name, when the identity directory has none (a card's or profile's name) |
 //! | `reachable` (bool) | `reachable`: it holds a verified device to send to |
 //! | `verified` (bool) | safety `Verified`, when the identity directory has no row |
-//! | `kind_asserted` (kind name or null) | the kind, when the identity directory declares none, marked as self-declared |
+//! | `kind_asserted` (`human` / `headless_ai` / `bot`, or null) with `kind_verified` (bool) | the kind claim: `Verified` when a root-signed public profile states it, else `Asserted`; null is `None` (the safe default) |
+//! | `display_name_confusable_with` (principal id or null), `mixed_script` (bool) | the name warnings |
 //! | `root_source` `lookup` / `card` / `verified` | `root_source`: provisional name lookup, pinned by a card, or compared |
 //!
 //! A record without these fields leaves them unreported (`reachable` and
-//! `root_source` none, the kind not marked as self-declared).
+//! `root_source` none, the kind claim `None`, no name warning). The
+//! identity directory's row wins where both report (its name and kind
+//! come from the same profile read); a verified claim wins over an
+//! asserted one from either list.
+//!
+//! An authenticated rename (`contact.changed` with
+//! `reason: public_profile_renamed`) becomes a [`MomentKind::NameChange`]
+//! in every known context the principal is in, with the old and the new
+//! name; the contact and identity rows are read again by the stream.
 
 use ramflux_desktop_core::{
-    ContactLink, DomainEvent, Participant, ParticipantId, ParticipantKind, RootSource, SafetyState,
+    ContactLink, DomainEvent, KindClaim, Lifecycle, Moment, MomentId, MomentKind,
+    NameChangePayload, NameWarnings, Participant, ParticipantId, ParticipantKind, PeerKind,
+    RootSource, SafetyState, Timestamp,
 };
 use serde_json::Value;
 
@@ -42,8 +53,10 @@ use crate::plan::KnownLink;
 pub(crate) struct Facts {
     /// Display name, when an authoritative local source supplied one.
     pub display: Option<String>,
-    /// Kind, when declared.
-    pub kind: Option<ParticipantKind>,
+    /// The kind claim.
+    pub claim: KindClaim,
+    /// Name warnings.
+    pub warnings: NameWarnings,
     /// Verification state.
     pub safety: SafetyState,
     /// Persisted safety number.
@@ -51,6 +64,47 @@ pub(crate) struct Facts {
     /// Where the pinned root came from.
     pub root_source: Option<RootSource>,
 }
+
+/// The product's principal kind named by a row (`kind`, `kind_asserted`,
+/// `actor_kind`); a workflow principal or anything else is no peer kind.
+pub(crate) fn peer_kind(name: &str) -> Option<PeerKind> {
+    match name {
+        "human" => Some(PeerKind::Human),
+        "headless_ai" => Some(PeerKind::HeadlessAi),
+        "bot" => Some(PeerKind::Bot),
+        _ => None,
+    }
+}
+
+/// The kind claim of a row: the kind in `field` (a name or null), proven
+/// when `kind_verified` is true. A row that names no kind claims nothing,
+/// whatever its flag says.
+pub(crate) fn kind_claim(row: &Value, field: &str) -> KindClaim {
+    match row[field].as_str().and_then(peer_kind) {
+        Some(kind) if row["kind_verified"].as_bool().unwrap_or(false) => KindClaim::Verified(kind),
+        Some(kind) => KindClaim::Asserted(kind),
+        None => KindClaim::None,
+    }
+}
+
+/// The name warnings of a row (`mixed_script`,
+/// `display_name_confusable_with`).
+pub(crate) fn name_warnings(row: &Value) -> NameWarnings {
+    NameWarnings {
+        mixed_script: row["mixed_script"].as_bool().unwrap_or(false),
+        confusable_with: row["display_name_confusable_with"]
+            .as_str()
+            .filter(|id| !id.is_empty())
+            .map(ParticipantId::new),
+    }
+}
+
+/// The topic of the daemon's contact events.
+pub(crate) const CONTACT_CHANGED: &str = "contact.changed";
+
+/// The `reason` of a `contact.changed` that announces an authenticated
+/// rename.
+const PUBLIC_PROFILE_RENAMED: &str = "public_profile_renamed";
 
 /// `root_source` of a contact or identity row.
 pub(crate) fn root_source(row: &Value) -> Option<RootSource> {
@@ -65,43 +119,30 @@ pub(crate) fn root_source(row: &Value) -> Option<RootSource> {
 /// What a friend-link record of a resolving daemon says about the contact.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Resolution {
-    /// The name the contact's card gave, when one did.
+    /// The name the contact's card or profile gave, when one did.
     pub display: Option<String>,
     /// Whether a verified device to send to is held.
     pub reachable: Option<bool>,
     /// Whether the contact's safety number was verified.
     pub verified: bool,
-    /// The kind the contact declares about itself.
-    pub kind: Option<ParticipantKind>,
-    /// Whether the kind is only the contact's own claim.
-    pub kind_asserted: bool,
+    /// The kind claim.
+    pub claim: KindClaim,
+    /// Name warnings.
+    pub warnings: NameWarnings,
     /// Where the pinned root came from.
     pub root_source: Option<RootSource>,
 }
 
 impl Resolution {
-    fn from_record(record: &Value) -> Self {
-        let (kind, kind_asserted) = match &record["kind_asserted"] {
-            Value::String(name) => (kind_of(name), true),
-            Value::Bool(asserted) => (None, *asserted),
-            _ => (None, false),
-        };
+    pub(super) fn from_record(record: &Value) -> Self {
         Self {
             display: crate::directory::field(record, "display_name"),
             reachable: record["reachable"].as_bool(),
             verified: record["verified"].as_bool().unwrap_or(false),
-            kind,
-            kind_asserted,
+            claim: kind_claim(record, "kind_asserted"),
+            warnings: name_warnings(record),
             root_source: root_source(record),
         }
-    }
-}
-
-fn kind_of(name: &str) -> Option<ParticipantKind> {
-    match name {
-        "human" => Some(ParticipantKind::Human),
-        "headless_ai" | "bot" | "agent" | "workflow" => Some(ParticipantKind::Agent),
-        _ => None,
     }
 }
 
@@ -123,10 +164,18 @@ impl Person {
         let resolution = &self.resolution;
         let safety =
             if !listed && resolution.verified { SafetyState::Verified } else { facts.safety };
-        let (kind, kind_asserted) = match (facts.kind, resolution.kind) {
-            (Some(kind), _) => (kind, resolution.kind_asserted),
-            (None, Some(kind)) => (kind, true),
-            (None, None) => (ParticipantKind::Unknown, false),
+        // A proven claim wins; else the directory's, else the link's.
+        let kind_claim = match (facts.claim, resolution.claim) {
+            (KindClaim::Verified(kind), _) | (_, KindClaim::Verified(kind)) => {
+                KindClaim::Verified(kind)
+            }
+            (KindClaim::None, claim) | (claim, _) => claim,
+        };
+        let kind = kind_claim.kind().map_or(ParticipantKind::Unknown, PeerKind::participant_kind);
+        let name_warnings = if facts.warnings.any() || listed {
+            facts.warnings
+        } else {
+            resolution.warnings.clone()
         };
         Participant {
             id: id.clone(),
@@ -140,7 +189,8 @@ impl Person {
             safety_number: facts.safety_number,
             link: self.link,
             reachable: resolution.reachable,
-            kind_asserted,
+            kind_claim,
+            name_warnings,
             root_source: facts.root_source.or(resolution.root_source),
         }
     }
@@ -237,6 +287,74 @@ impl Translator {
         }
         self.people.insert(id.clone(), Person::default());
         self.report_person(&id)
+    }
+
+    /// A row that names a principal and, like a contact row, says what the
+    /// daemon knows of its name and kind (a contact request row): the
+    /// participant, with those facts when the row carries them. A row
+    /// without them (a count-only event) only names the participant.
+    pub(super) fn peer_facts(&mut self, row: &Value) -> Vec<DomainEvent> {
+        let id = ParticipantId::new(text(row, "principal_id"));
+        if id.as_str().is_empty() {
+            return Vec::new();
+        }
+        if row.get("kind_verified").is_none() && row.get("display_name").is_none() {
+            return self.named(id.as_str());
+        }
+        let person = self.people.entry(id.clone()).or_default();
+        let link = person.resolution.reachable;
+        let (verified, root_source) = (person.resolution.verified, person.resolution.root_source);
+        let mut resolution = Resolution::from_record(row);
+        // A request row says nothing about reachability, verification or
+        // the root: what the contact row said stays.
+        resolution.reachable = link;
+        resolution.verified = verified;
+        resolution.root_source = root_source;
+        person.resolution = resolution;
+        self.report_person(&id)
+    }
+
+    /// The moments a `contact.changed` event adds by itself: an
+    /// authenticated rename, as a name change in every known context the
+    /// principal is in. Any other contact event adds nothing (the reads it
+    /// calls for show it).
+    pub(super) fn contact_changed(&mut self, body: &Value, now: Timestamp) -> Vec<DomainEvent> {
+        if text(body, "reason") != PUBLIC_PROFILE_RENAMED {
+            return Vec::new();
+        }
+        let principal = ParticipantId::new(text(body, "principal_id"));
+        let (old_name, new_name) = (text(body, "old_display_name"), text(body, "new_display_name"));
+        if principal.as_str().is_empty() || new_name.is_empty() || old_name == new_name {
+            return Vec::new();
+        }
+        let contexts: Vec<_> = self
+            .contexts
+            .values()
+            .filter(|context| context.participants.contains(&principal))
+            .map(|context| context.id.clone())
+            .collect();
+        let mut events = self.named(principal.as_str());
+        for context in contexts {
+            let digest = super::digest(&MomentKind::NameChange(NameChangePayload {
+                participant_id: principal.clone(),
+                old_name: old_name.to_owned(),
+                new_name: new_name.to_owned(),
+            }));
+            let moment = Moment {
+                id: MomentId::new(format!("name-change:{context}:{principal}:{digest:x}")),
+                context_id: context,
+                origin: principal.clone(),
+                at: now,
+                kind: MomentKind::NameChange(NameChangePayload {
+                    participant_id: principal.clone(),
+                    old_name: old_name.to_owned(),
+                    new_name: new_name.to_owned(),
+                }),
+                lifecycle: Lifecycle::Done,
+            };
+            events.extend(self.report_moment(moment));
+        }
+        events
     }
 
     /// Emits the participant when it differs from what was reported.

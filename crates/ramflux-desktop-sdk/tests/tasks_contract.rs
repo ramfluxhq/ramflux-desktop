@@ -81,12 +81,21 @@ fn a_finished_task_shows_its_signed_summary_and_the_assignees_own_kind() {
     let (world, path) = World::start("summary");
     let mut account = open(&path);
     world.tasks.verify_kind(BOT);
+    world.tasks.set_kind(BOT, "headless_ai");
     world.tasks.start_as("principal-me", GROUP, "t-1", BOT, "Inspect the logs").unwrap();
     let id = key(GROUP, "t-1");
     account.until("the task", |s, _| s.task(&id).is_some());
-    // The view's own marker stays false; the assignee's is what is shown.
+    // The view's own marker stays false; the assignee's actor row is what
+    // is shown: its profile kind, its device and the verified flag.
     assert_eq!(world.tasks.view(GROUP, "t-1")["actor_kind_verified"], false);
-    assert!(account.store.task(&id).is_some_and(|t| t.flags.kind_verified));
+    let task = account.store.task(&id).cloned().expect("the task");
+    assert!(task.assignee_kind_verified());
+    let assignee = task.actors.assignee.as_ref().expect("the assignee actor");
+    assert_eq!(assignee.participant_id, ramflux_desktop_core::ParticipantId::new(BOT));
+    assert_eq!(assignee.kind, Some(ramflux_desktop_core::PeerKind::HeadlessAi));
+    assert!(assignee.device_id.is_some(), "the device its last event came from");
+    let requester = task.actors.requester.as_ref().expect("the requester actor");
+    assert!(!requester.kind_verified, "nothing proves the requester's kind");
     assert_eq!(account.store.task(&id).and_then(|t| t.result.clone()), None);
 
     let done = vec![task_step("a", "Inspect", TaskStatus::Done)];

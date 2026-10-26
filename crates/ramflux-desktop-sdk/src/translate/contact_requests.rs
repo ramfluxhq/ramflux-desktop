@@ -144,10 +144,13 @@ impl Translator {
     /// A `contact.requests.list` answer: the pending requests (both ways)
     /// and the account's setting.
     pub(super) fn contact_request_list(&mut self, value: &Value) -> Vec<DomainEvent> {
+        let rows = list(value, "requests");
         let requests: Vec<ContactRequest> =
-            list(value, "requests").iter().filter_map(|row| request_of(row, None)).collect();
+            rows.iter().filter_map(|row| request_of(row, None)).collect();
+        // A row says what the daemon knows of the requester's name and
+        // kind, like a contact row.
         let mut events: Vec<DomainEvent> =
-            requests.iter().flat_map(|r| self.named(r.peer.as_str())).collect();
+            rows.iter().flat_map(|row| self.peer_facts(row)).collect();
         let (incoming, outgoing): (Vec<_>, Vec<_>) =
             requests.into_iter().partition(|r| r.direction == RequestDirection::Incoming);
         events.push(DomainEvent::ContactRequestsListed(incoming));

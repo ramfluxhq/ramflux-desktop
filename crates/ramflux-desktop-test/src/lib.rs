@@ -33,6 +33,8 @@ pub mod fake_contact_requests;
 #[cfg(feature = "fake-bus")]
 pub mod fake_journal;
 #[cfg(feature = "fake-bus")]
+pub mod fake_profiles;
+#[cfg(feature = "fake-bus")]
 pub mod fake_surfaces;
 #[cfg(feature = "fake-bus")]
 pub mod fake_tasks;

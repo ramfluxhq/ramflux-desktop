@@ -56,6 +56,7 @@
 //! request is accepted at once.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -63,6 +64,7 @@ use ramflux_protocol::text_safety::quote_fallback_field;
 use serde_json::{Value, json};
 
 use crate::fake_bus::Reply;
+use crate::fake_profiles::FakeProfiles;
 
 /// Delivers one event: `(account, topic, body)`.
 pub type Publisher = Box<dyn Fn(&str, &str, Value) + Send + Sync>;
@@ -86,8 +88,10 @@ struct Held {
 }
 
 impl Held {
-    fn row(&self, id: &str) -> Value {
-        json!({
+    /// The list row, with what the daemon knows of the peer's public name
+    /// and kind (as every request row carries it).
+    fn row(&self, id: &str, profiles: &FakeProfiles) -> Value {
+        let mut row = json!({
             "request_id": id,
             "principal_id": self.peer,
             "root_commitment": format!("root-{}", self.peer),
@@ -103,7 +107,9 @@ impl Held {
                 quote_fallback_field(&m.chars().take(256).collect::<String>())
             }),
             "expires_at": 1_790_604_800,
-        })
+        });
+        profiles.join(&mut row, &self.peer);
+        row
     }
 
     /// An event body: identifiers and counts only.
@@ -143,6 +149,8 @@ struct Inner {
     /// The list is refused with this code and message (a locked account,
     /// an outage, a row the daemon could not read).
     list_failure: Option<(&'static str, String)>,
+    /// The public profiles joined into rows.
+    profiles: Arc<FakeProfiles>,
 }
 
 /// Contact requests of the fake daemon (any number of accounts).
@@ -203,6 +211,17 @@ impl FakeContactRequests {
         self.available.store(available, Ordering::SeqCst);
     }
 
+    /// The public profiles the daemon joins into its rows (shared with the
+    /// contact and identity rows of the same fake daemon).
+    pub fn set_profiles(&self, profiles: Arc<FakeProfiles>) {
+        self.inner().profiles = profiles;
+    }
+
+    /// The public profiles the daemon joins into its rows.
+    pub fn profiles(&self) -> Arc<FakeProfiles> {
+        self.inner().profiles.clone()
+    }
+
     fn publish(&self, events: Vec<Event>) {
         if let Some(publish) = self.publisher.lock().expect("publisher").as_ref() {
             for (account, topic, row) in events {
@@ -213,7 +232,8 @@ impl FakeContactRequests {
 
     /// The row of request `id`.
     pub fn row(&self, id: &str) -> Option<Value> {
-        self.inner().requests.get(id).map(|held| held.row(id))
+        let inner = self.inner();
+        inner.requests.get(id).map(|held| held.row(id, &inner.profiles))
     }
 
     /// Messages delivered into conversations on accept: (account, peer,
@@ -276,7 +296,7 @@ impl FakeContactRequests {
                                 && !r.pruned
                                 && (!r.incoming || r.state == "pending")
                         })
-                        .map(|(id, r)| (r.state != "pending", r.row(id)))
+                        .map(|(id, r)| (r.state != "pending", r.row(id, &inner.profiles)))
                         .collect();
                     // Pending first (a stable sort keeps the order within).
                     rows.sort_by_key(|(closed, _)| *closed);
@@ -343,6 +363,7 @@ impl FakeContactRequests {
     fn add(&self, account: &str, body: &Value) -> Option<Reply> {
         let peer = body["principal_id"].as_str()?;
         let mut inner = self.inner();
+        let profiles = inner.profiles.clone();
         let (id, held) = inner
             .requests
             .iter_mut()
@@ -350,10 +371,10 @@ impl FakeContactRequests {
             .find(|(_, r)| r.account == account && r.peer == peer && !r.incoming)?;
         let id = id.clone();
         let reply = |id: &str, state: &str| {
-            Reply::Ok(json!({
-                "contact": { "principal_id": peer, "request_id": id, "request_state": state },
-                "request_delivery": "submitted",
-            }))
+            let mut contact =
+                json!({ "principal_id": peer, "request_id": id, "request_state": state });
+            profiles.join(&mut contact, peer);
+            Reply::Ok(json!({ "contact": contact, "request_delivery": "submitted" }))
         };
         match held.state {
             "accepted" => Some(typed("already_contact", "already a contact")),

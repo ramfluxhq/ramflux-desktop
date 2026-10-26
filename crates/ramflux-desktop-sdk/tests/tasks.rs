@@ -41,7 +41,7 @@ fn a_proposal_is_shown_once_and_accepted_with_the_version_seen() {
     assert_eq!(shown.requester, Actor::Human, "this account may accept it");
     assert_eq!(shown.assignee, ParticipantId::new(BOT));
     assert_eq!(shown.steps[0].state, StepState::Pending);
-    assert!(!shown.flags.kind_verified, "kinds are asserted until they are signed");
+    assert!(!shown.assignee_kind_verified(), "kinds are asserted until they are signed");
     let moment = ramflux_desktop_sdk::translate::tasks::task_moment_id(&shown.id);
     assert!(account.store.moment(&moment).is_some(), "the task has its moment");
 

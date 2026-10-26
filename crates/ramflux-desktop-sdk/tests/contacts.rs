@@ -17,8 +17,8 @@ use std::sync::{Arc, Mutex};
 
 use common::*;
 use ramflux_desktop_core::{
-    AccountId, ContactLink, ContextId, ContextKind, Effect, FailureCode, Listing, ParticipantId,
-    ParticipantKind, RootSource, Source as _, Store, methods,
+    AccountId, ContactLink, ContextId, ContextKind, Effect, FailureCode, KindClaim, Listing,
+    ParticipantId, ParticipantKind, PeerKind, RootSource, Source as _, Store, methods,
 };
 use ramflux_desktop_sdk::plan::contact::REMOVE_SCOPE;
 use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
@@ -314,8 +314,13 @@ fn contact_actions_reach_the_daemon_and_its_records_update_the_contacts() {
     let kai = kai.expect("kai");
     // A name lookup is provisional until a card pins it or numbers match.
     assert_eq!(
-        (kai.reachable, kai.root_source, kai.kind, kai.kind_asserted),
-        (Some(true), Some(RootSource::Lookup), ParticipantKind::Human, true)
+        (kai.reachable, kai.root_source, kai.kind, kai.kind_claim),
+        (
+            Some(true),
+            Some(RootSource::Lookup),
+            ParticipantKind::Human,
+            KindClaim::Asserted(PeerKind::Human)
+        )
     );
 
     submit(&mut account, methods::CONTACT_ACCEPT, "principal-noor");
@@ -450,6 +455,9 @@ fn a_contact_added_by_id_is_shown_by_its_short_id_and_its_kind_stays_unknown() {
     let carded = shown(&account.store, CARDED).expect("carded");
     assert_eq!(carded.display, "Ledger", "the name the card gave");
     assert!(carded.named());
-    assert_eq!((carded.kind, carded.kind_asserted), (ParticipantKind::Agent, true));
+    assert_eq!(
+        (carded.kind, carded.kind_claim),
+        (ParticipantKind::Agent, KindClaim::Asserted(PeerKind::HeadlessAi))
+    );
     fake.shutdown();
 }

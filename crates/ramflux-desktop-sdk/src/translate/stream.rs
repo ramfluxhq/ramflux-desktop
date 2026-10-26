@@ -107,14 +107,17 @@ pub fn conversation_of(topic: &str, body: &Value) -> Option<ContextId> {
 
 impl Translator {
     /// What a stream event shows by itself (a task decision the assignee
-    /// could not confirm, a task the daemon pruned), and the reads it
-    /// calls for.
-    pub fn streamed(&mut self, topic: &str, body: &Value) -> super::Translated {
+    /// could not confirm, a task the daemon pruned, an authenticated
+    /// rename), and the reads it calls for. `now` stamps what it shows.
+    pub fn streamed(&mut self, topic: &str, body: &Value, now: Timestamp) -> super::Translated {
         let follow = self.stream_reads(topic, body);
         let mut events = Vec::new();
         if topic == "task.changed" {
             events.extend(self.task_decision_rejected(body));
             events.extend(self.task_removed(body));
+        }
+        if topic == super::contacts::CONTACT_CHANGED {
+            events.extend(self.contact_changed(body, now));
         }
         super::Translated { events, follow }
     }

@@ -5,9 +5,10 @@
 //!
 //! | row | desktop |
 //! |---|---|
-//! | `display_name` | display (the id when null) |
-//! | `kind` `human` / `headless_ai` / `bot` | `Human` / `Agent` / `Agent`; null is `Unknown` |
-//! | `safety_state` `verified` / `verification_stale` | `Verified` / `KeyChanged` (the verified device set changed); else `Unverified` |
+//! | `display_name` | display (the id when null; a verified profile's name once one is held) |
+//! | `kind` `human` / `headless_ai` / `bot` with `kind_verified` | the kind claim: `Verified` by a root-signed profile, else `Asserted` (a legacy device-set kind, a card); null is `None`, the kind `Unknown` |
+//! | `display_name_confusable_with`, `mixed_script` | the name warnings |
+//! | `safety_state` `verified` / `verification_stale` | `Verified` / `VerificationStale` (the manually verified authority changed: verify again); else `Unverified` |
 //! | `safety_number` | the persisted number (a string, or the daemon's digit groups joined by spaces), or none |
 //! | `root_source` `lookup` / `card` / `verified` | where the pinned root came from |
 //! | `devices` | routes for sends, adds and invites (the directory) |
@@ -16,20 +17,12 @@
 //! Device labels and last-seen times are not reported for remote devices
 //! and are never filled in; `verified_at` is not a last-seen time.
 
-use ramflux_desktop_core::{DomainEvent, ParticipantId, ParticipantKind, SafetyState};
+use ramflux_desktop_core::{DomainEvent, ParticipantId, SafetyState};
 use serde_json::Value;
 
 use super::Translator;
-use super::contacts::Facts;
+use super::contacts::{Facts, kind_claim, name_warnings};
 use crate::directory::{Identity, field};
-
-fn kind(row: &Value) -> Option<ParticipantKind> {
-    match row["kind"].as_str() {
-        Some("human") => Some(ParticipantKind::Human),
-        Some("headless_ai" | "bot") => Some(ParticipantKind::Agent),
-        _ => None,
-    }
-}
 
 /// The persisted safety number: the daemon stores the digit groups it
 /// computed (an array of strings); a single string is taken as it is.
@@ -47,7 +40,7 @@ pub(super) fn safety_number(row: &Value) -> Option<String> {
 fn safety(row: &Value) -> SafetyState {
     match row["safety_state"].as_str() {
         Some("verified") => SafetyState::Verified,
-        Some("verification_stale") => SafetyState::KeyChanged,
+        Some("verification_stale") => SafetyState::VerificationStale,
         _ => SafetyState::Unverified,
     }
 }
@@ -72,7 +65,8 @@ impl Translator {
             }
             let facts = Facts {
                 display: field(row, "display_name"),
-                kind: kind(row),
+                claim: kind_claim(row, "kind"),
+                warnings: name_warnings(row),
                 safety: safety(row),
                 safety_number: safety_number(row),
                 root_source: super::contacts::root_source(row),

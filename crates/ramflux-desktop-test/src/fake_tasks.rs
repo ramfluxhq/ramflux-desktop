@@ -165,8 +165,11 @@ struct Inner {
     clock: i64,
     ids: u64,
     refuse_next: Option<(String, Refused)>,
-    /// Principals whose kind is verified (none until identities carry one).
+    /// Principals whose kind a root-signed profile proves.
     verified: Vec<String>,
+    /// The kind each principal's profile states (`human`, `headless_ai`,
+    /// `bot`), when the daemon holds one.
+    kinds: BTreeMap<String, &'static str>,
     /// The requester's approval decisions and their delivery, by approval
     /// id: (conversation, task, step), approved, delivery state.
     deliveries: BTreeMap<String, Delivery>,
@@ -540,10 +543,16 @@ impl FakeTasks {
         }
     }
 
-    /// The kind of `principal` is verified from now on (as once
-    /// identities carry a signed kind).
+    /// The kind of `principal` is verified from now on (a root-signed
+    /// profile states it and its current device signed the events).
     pub fn verify_kind(&self, principal: &str) {
         self.inner().verified.push(principal.to_owned());
+    }
+
+    /// The kind `principal`'s profile states (`human`, `headless_ai`,
+    /// `bot`), reported as each actor row's `actor_kind`.
+    pub fn set_kind(&self, principal: &str, kind: &'static str) {
+        self.inner().kinds.insert(principal.to_owned(), kind);
     }
 
     /// The daemon's view of a task (`task.get`), or null.
@@ -677,14 +686,20 @@ fn delivery_row(approval_id: &str, d: &Delivery) -> Value {
             "expires_at": 1_990_000_000 })
 }
 
-fn view(held: &Held, verified: &[String]) -> Value {
+fn view(held: &Held, inner: &Inner) -> Value {
     let Some(task) = held.state.task() else { return Value::Null };
     let mut view = serde_json::to_value(task).unwrap_or(Value::Null);
     view["id"] = json!(task.task_id);
     view["actor_kind_verified"] = json!(false);
+    // As the daemon's actor rows: the principal, the device of its last
+    // event (empty when none is known), its profile kind and the flag.
     let actor = |principal: Option<&str>| {
-        json!({ "principal_id": principal,
-                "actor_kind_verified": principal.is_some_and(|p| verified.iter().any(|v| v == p)) })
+        let device = principal
+            .and_then(|p| inner.members.iter().find(|m| m.principal == p))
+            .map_or("", |m| m.device.as_str());
+        json!({ "principal_id": principal, "device_id": device,
+                "actor_kind": principal.and_then(|p| inner.kinds.get(p)),
+                "actor_kind_verified": principal.is_some_and(|p| inner.verified.iter().any(|v| v == p)) })
     };
     view["actors"] = json!({
         "requester": actor(task.requester.as_deref()),
@@ -713,7 +728,7 @@ fn view(held: &Held, verified: &[String]) -> Value {
 
 impl Inner {
     fn view(&self, held: &Held) -> Value {
-        let mut view = view(held, &self.verified);
+        let mut view = view(held, self);
         if let Some(task) = held.state.task() {
             let rows: Vec<Value> = self
                 .deliveries

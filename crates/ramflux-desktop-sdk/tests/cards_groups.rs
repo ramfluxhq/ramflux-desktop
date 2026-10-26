@@ -10,7 +10,7 @@ mod common;
 
 use ramflux_desktop_core::{
     AccountId, ContactCard, ContactLink, ContextId, ContextKind, DomainEvent, Effect, FailureCode,
-    Participant, ParticipantKind, RootSource, SafetyState, Timestamp, methods,
+    KindClaim, Participant, ParticipantKind, PeerKind, RootSource, SafetyState, Timestamp, methods,
 };
 use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::directory::Directory;
@@ -155,7 +155,10 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
     ));
     assert_eq!(kai.len(), 1);
     assert_eq!(kai[0].reachable, Some(true));
-    assert_eq!((kai[0].kind, kai[0].kind_asserted), (ParticipantKind::Agent, true));
+    assert_eq!(
+        (kai[0].kind, kai[0].kind_claim),
+        (ParticipantKind::Agent, KindClaim::Asserted(PeerKind::HeadlessAi))
+    );
     assert_eq!(kai[0].safety, SafetyState::Unverified);
     assert_eq!(kai[0].root_source, Some(RootSource::Card), "the card pinned the root");
     assert_eq!(kai[0].link, ContactLink::Accepted);
@@ -186,8 +189,8 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
     );
     let old = people.iter().find(|p| p.id.as_str() == "principal-old").expect("old");
     assert_eq!(
-        (old.reachable, old.kind_asserted),
-        (None, false),
+        (old.reachable, old.kind_claim),
+        (None, KindClaim::None),
         "an older daemon reports neither"
     );
 
@@ -200,9 +203,15 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
         &t.fetched(&Fetch::first(Paged::Identities), &identities, Timestamp(3)).events,
     );
     let lu = people.iter().find(|p| p.id.as_str() == "principal-lu").expect("lu");
+    // A directory kind without a verified profile is only asserted.
     assert_eq!(
-        (lu.kind, lu.kind_asserted, lu.safety, lu.root_source),
-        (ParticipantKind::Human, false, SafetyState::Unverified, Some(RootSource::Verified))
+        (lu.kind, lu.kind_claim, lu.safety, lu.root_source),
+        (
+            ParticipantKind::Human,
+            KindClaim::Asserted(PeerKind::Human),
+            SafetyState::Unverified,
+            Some(RootSource::Verified)
+        )
     );
 }
 
