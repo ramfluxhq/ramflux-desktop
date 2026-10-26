@@ -52,8 +52,7 @@ impl Task {
             self.jobs_open_at = None;
             if self.jobs != Jobs::Closed {
                 self.jobs = Jobs::Closed;
-                let link = self.job_link.clone();
-                tokio::spawn(async move { link.close().await });
+                self.job_link.close_soon();
             }
         } else if self.found.backup && self.jobs == Jobs::Closed {
             self.jobs_open_at = Some(Instant::now());
@@ -86,6 +85,10 @@ impl Task {
 
     pub(super) fn on_jobs(&mut self, streamed: JobStreamed) {
         match streamed {
+            // A connection closed since it opened (an account attached and
+            // detached during the open): nothing is open, and the open this
+            // scope asked for after the detach follows.
+            JobStreamed::Opened { epoch, .. } if epoch != self.job_link.epoch() => {}
             JobStreamed::Opened { .. } if self.jobs_yield() => {
                 // An account scope attached while this link was opening:
                 // that one follows the jobs now. The link that just opened
@@ -94,10 +97,9 @@ impl Task {
                 // the last account detaching opens it again.
                 self.jobs = Jobs::Closed;
                 self.jobs_open_at = None;
-                let link = self.job_link.clone();
-                tokio::spawn(async move { link.close().await });
+                self.job_link.close_soon();
             }
-            JobStreamed::Opened { resync } => {
+            JobStreamed::Opened { resync, .. } => {
                 self.jobs = Jobs::Open;
                 if resync {
                     // The daemon holds nothing up to the cursor followed: it
@@ -115,8 +117,7 @@ impl Task {
             }
             JobStreamed::Ended(end) => {
                 self.jobs = Jobs::Closed;
-                let link = self.job_link.clone();
-                tokio::spawn(async move { link.close().await });
+                self.job_link.close_soon();
                 if self.link != Link::Live || !self.found.backup || self.jobs_yield() {
                     return;
                 }

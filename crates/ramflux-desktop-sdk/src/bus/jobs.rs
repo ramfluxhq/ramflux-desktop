@@ -56,6 +56,10 @@ pub enum JobStreamed {
     Opened {
         /// Subscribed from the head after `resync_required`.
         resync: bool,
+        /// The link's close count when the open started (see
+        /// [`JobLink::epoch`]): a notice from before a later close request
+        /// is about a connection that is going away.
+        epoch: u64,
     },
     /// One job row (the body), with the stream cursor.
     Row {
@@ -86,6 +90,10 @@ struct Inner {
     /// The last stream cursor seen (0: none yet).
     cursor: Arc<AtomicU64>,
     next_id: AtomicU64,
+    /// How many closes were asked for. Bumped when a close is asked for,
+    /// not when it runs, so an open still in flight is known to be out of
+    /// date.
+    epoch: AtomicU64,
 }
 
 struct Open {
@@ -117,6 +125,7 @@ impl JobLink {
                 link: Mutex::new(None),
                 cursor: Arc::new(AtomicU64::new(0)),
                 next_id: AtomicU64::new(1),
+                epoch: AtomicU64::new(0),
             }),
         }
     }
@@ -161,6 +170,7 @@ impl JobLink {
     /// ended, with the error (boxed: the pair is large).
     async fn open(&self) -> Result<Open, Box<(StreamEnd, BusError)>> {
         let inner = &self.inner;
+        let epoch = inner.epoch.load(Ordering::SeqCst);
         let connected =
             tokio::time::timeout(inner.connect_timeout, LocalBusClient::connect(&inner.socket))
                 .await;
@@ -201,7 +211,7 @@ impl JobLink {
         if let Some(head) = answer.get("head_seq").and_then(Value::as_u64) {
             inner.cursor.fetch_max(head, Ordering::Relaxed);
         }
-        let _ = inner.out.send(JobStreamed::Opened { resync });
+        let _ = inner.out.send(JobStreamed::Opened { resync, epoch });
         let requester = client.clone();
         let (out, cursor) = (inner.out.clone(), inner.cursor.clone());
         let reader = tokio::spawn(async move {
@@ -248,7 +258,28 @@ impl JobLink {
     /// Closes the connection (its stream ends); the next request or
     /// [`JobLink::ensure`] opens it again from the last cursor.
     pub async fn close(&self) {
+        self.inner.epoch.fetch_add(1, Ordering::SeqCst);
+        self.close_now().await;
+    }
+
+    /// Asks for the connection to close, at once as far as
+    /// [`JobLink::epoch`] goes (an open that started earlier is already
+    /// out of date), and closes it in the background.
+    pub fn close_soon(&self) {
+        self.inner.epoch.fetch_add(1, Ordering::SeqCst);
+        let link = self.clone();
+        tokio::spawn(async move { link.close_now().await });
+    }
+
+    async fn close_now(&self) {
         self.inner.link.lock().await.take();
+    }
+
+    /// How many closes were asked for so far. A [`JobStreamed::Opened`]
+    /// whose epoch is below this one is about a connection that is being
+    /// closed (or is closed).
+    pub fn epoch(&self) -> u64 {
+        self.inner.epoch.load(Ordering::SeqCst)
     }
 
     /// The last stream cursor seen, if any.

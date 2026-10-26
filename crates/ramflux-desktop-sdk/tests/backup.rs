@@ -600,6 +600,33 @@ fn a_daemon_link_caught_opening_by_an_attaching_account_opens_again_when_it_deta
 }
 
 #[test]
+fn an_account_attaching_and_detaching_during_the_open_leaves_the_daemon_link_open() {
+    let world = World::start("attach-detach-during-open", true);
+    world.fake.hold_next_job_subscribe();
+    let hub = ramflux_desktop_sdk::SdkHub::start(config(&world.path)).expect("bridge");
+    let mut daemon = Fed::new(hub.daemon_source());
+    daemon.until("the daemon link is opening", |_, _| world.job_connections().len() == 1);
+    // An account attaches and detaches again while the open is in flight.
+    let account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
+    drop(account);
+    // Whatever order the open's end, the close the attach asked for and the
+    // detach arrive in, the scope ends up following the jobs on a live
+    // connection, not marked open over a closed one.
+    world.fake.release_job_subscribe();
+    daemon.until("the daemon link is open", |_, _| world.fake.job_streaming());
+    daemon.settle(300);
+    assert!(world.fake.job_streaming(), "still open once everything settled");
+    // A job started elsewhere reaches the daemon scope over that link.
+    let body = serde_json::json!({ "input_path": "/b/good", "passphrase": PASSPHRASE });
+    world.backup.archive("/b/good", archive(None, 0));
+    world.backup.handle("account.restore.verify", None, &body).expect("started elsewhere");
+    daemon.until("its row on the daemon scope", |s, _| {
+        job(s).is_some_and(|j| j.phase == BackupPhase::Verifying)
+    });
+    world.stop();
+}
+
+#[test]
 fn secure_sessions_are_reestablished_after_a_restore_until_the_daemon_says_ready() {
     let world = World::start("sessions", true);
     let mut account = live(&world, true);
