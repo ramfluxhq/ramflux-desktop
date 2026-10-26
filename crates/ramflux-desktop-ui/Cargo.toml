@@ -53,6 +53,14 @@ path = "tests/live_screenshot.rs"
 test = false
 harness = false
 
+# Offscreen screenshots of adding people to an existing group (stale and
+# refused contacts); run explicitly, not part of `cargo test`.
+[[test]]
+name = "group_safety_shots"
+path = "tests/group_safety_shots.rs"
+test = false
+harness = false
+
 # Offscreen screenshots of the first-run states (optionally on a real daemon
 # started from the app); run explicitly, not part of `cargo test`.
 [[test]]
