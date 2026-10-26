@@ -723,3 +723,27 @@ text, "Waiting for X to accept your request" with Send again, "X declined your
 request" (nothing to resend; asking again in the add form during the cooldown
 is answered plainly), or "Your request to X expired" with Send again.
 Screenshots: `request_shots` (run explicitly).
+
+## Root-signed public identity profiles
+
+`identity.directory` supplies `kind: human | headless_ai | bot` and
+`kind_verified:true` when a public profile is authenticated by the same root that
+signs the device set. This proves the root's claim, not biological humanity. It
+is independent of manual contact `verified` and `safety_state`; do not show a
+verified safety number solely because kind is authenticated. Legacy/profile-less
+identities keep `kind_verified:false`. `kind_asserted` is a kind string or null,
+never a boolean.
+
+`contact.add` by `principal_id` returns the profile's `kind_asserted` and
+`display_name`; a stale card assertion cannot override authenticated profile
+fields. Public names are NFC single-line text, at most 128 scalars/256 UTF-8
+bytes. Private account labels are not published. The default public name is the
+principal ID. Profile epochs cannot roll back or equivocate across restarts.
+
+Task actors include `actor_kind: human | headless_ai | bot | null` and
+`actor_kind_verified`. Verification requires a root-signed profile and, for an
+event, a current device of that principal. A human relation role is not marked
+kind-verified for a signed bot/headless-AI profile. Task relation authorization
+itself is unchanged; do not turn this metadata flag into a permission grant.
+Device-set v2 carries the profile; old v1-only implementations reject it, so
+client/server upgrades must be coordinated. No new daemon method is introduced.
