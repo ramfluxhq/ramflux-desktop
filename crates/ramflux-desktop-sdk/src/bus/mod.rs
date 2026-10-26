@@ -6,6 +6,8 @@
 //! - [`client`]: one multiplexed request connection for one scope.
 //! - [`deadline`]: the deadline every request carries.
 //! - [`idempotency`]: the retry key every mutating request carries.
+//! - [`jobs`]: the daemon-level backup job stream, and the attended
+//!   connection the job requests travel on.
 //! - [`stream`]: the event stream of an account (`bus.subscribe`).
 //! - [`subscription`]: the push subscription of an account on a daemon
 //!   without the stream.
@@ -13,6 +15,7 @@
 pub mod client;
 pub mod deadline;
 pub mod idempotency;
+pub mod jobs;
 pub mod stream;
 pub mod subscription;
 

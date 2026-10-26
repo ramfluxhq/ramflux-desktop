@@ -169,7 +169,7 @@ impl Task {
             topics.push(crate::translate::stream::CALL_TOPIC);
         }
         if self.config.backup_api {
-            topics.push(crate::translate::backup::TOPIC);
+            topics.push(crate::translate::backup::RESTORED_TOPIC);
         }
         let subscription = Subscription { account, topics, since_seq };
         let socket = self.config.socket_path.clone();
@@ -239,10 +239,14 @@ impl Task {
                 self.request_reads(translated.follow);
                 self.emit(translated.events);
             }
-            crate::translate::backup::TOPIC => {
-                let translated = self.translator.backup_job_row(body);
-                self.request_reads(translated.follow);
-                self.emit(translated.events);
+            crate::translate::backup::RESTORED_TOPIC => {
+                // A restore installed into this account: what it holds now
+                // is read again.
+                if self.account().is_some_and(|account| {
+                    crate::translate::text(body, "local_account_id") == account
+                }) {
+                    self.reload();
+                }
             }
             "account.state" => {
                 // A `locked` entry may be replayed after the account was

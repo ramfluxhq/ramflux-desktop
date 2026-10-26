@@ -77,8 +77,10 @@ impl World {
         self.fake.seen().into_iter().skip(mark).filter(|s| s.method == method).collect()
     }
 
+    /// The account's `bus.subscribe` requests (not the daemon-level job
+    /// stream's, which carry no account).
     fn subscribes(&self) -> Vec<Seen> {
-        self.since(0, "bus.subscribe")
+        self.since(0, "bus.subscribe").into_iter().filter(|s| s.account.is_some()).collect()
     }
 
     /// Whether every read of the account snapshot reached the fake after
@@ -86,7 +88,9 @@ impl World {
     /// opens from the head.
     fn reloaded(&self) -> bool {
         let seen = self.fake.seen();
-        let Some(subscribed) = seen.iter().rposition(|s| s.method == "bus.subscribe") else {
+        let Some(subscribed) =
+            seen.iter().rposition(|s| s.method == "bus.subscribe" && s.account.is_some())
+        else {
             return false;
         };
         let after = &seen[subscribed + 1..];

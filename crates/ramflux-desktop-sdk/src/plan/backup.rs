@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Full backup and restore effects (BACKUP-01, assumed contract; see
-//! `docs/contract.md`, "Full backup and restore"):
+//! Full backup and restore effects (BACKUP-01, product
+//! `docs/account_backup.md`; see `docs/contract.md`, "Full backup and
+//! restore"):
 //!
-//! - `account.backup.create {output_path}` with the secret `passphrase`;
+//! - `account.backup.create {output_path, allow_missing_attachments}` with
+//!   the secret `passphrase`, in the scope of the account backed up;
+//!   `allow_missing_attachments` is `false` unless the user explicitly
+//!   allowed recording unavailable files;
 //! - `account.restore.verify {input_path}` with the secret `passphrase`;
 //! - `account.restore.install {job_id}`;
 //! - `account.backup.cancel {job_id}`.
 //!
-//! Each answers at once with `{job: row}`; the job then runs in the daemon
-//! and reports each change as `account.backup.job.changed`. All are sent in
-//! the scope of the account the user is in: its stream carries the job's
-//! changes, also for a restore of another account.
+//! Verify, install and cancel are daemon-level (no account): a restore may
+//! be of an account that is not on this device. Each answers at once with
+//! `{job: row}`; the job then runs in the daemon and reports each change as
+//! `account.backup.job.changed` on the daemon-level job stream. The daemon
+//! takes these requests only from an attended frontend's connection, the
+//! one that follows that stream: the bridge sends them on it
+//! ([`crate::bus::jobs`]).
 
 use ramflux_desktop_core::{SecretInput, methods};
 use serde_json::{Value, json};
@@ -40,21 +47,30 @@ pub fn backup_effect(
             if path.is_empty() {
                 return refuse_invalid("no backup file named");
             }
-            let (daemon, request) = if method == methods::BACKUP_CREATE {
-                ("account.backup.create", json!({ "output_path": path }))
+            let request = if method == methods::BACKUP_CREATE {
+                if acct.is_none() {
+                    return refuse_invalid("this action needs an unlocked account");
+                }
+                let allow = body["allow_missing_attachments"].as_bool().unwrap_or(false);
+                BusRequest::new(
+                    acct,
+                    API,
+                    "account.backup.create",
+                    json!({ "output_path": path, "allow_missing_attachments": allow }),
+                )
             } else {
-                ("account.restore.verify", json!({ "input_path": path }))
+                BusRequest::new(None, API, "account.restore.verify", json!({ "input_path": path }))
             };
-            call(BusRequest::new(acct, API, daemon, request).with_secret("passphrase", secret))
+            call(request.with_secret("passphrase", secret))
         }
         methods::RESTORE_INSTALL | methods::BACKUP_CANCEL if job.is_empty() => {
             refuse_invalid("no backup job named")
         }
         methods::RESTORE_INSTALL => {
-            call(BusRequest::new(acct, API, "account.restore.install", json!({ "job_id": job })))
+            call(BusRequest::new(None, API, "account.restore.install", json!({ "job_id": job })))
         }
         methods::BACKUP_CANCEL => {
-            call(BusRequest::new(acct, API, "account.backup.cancel", json!({ "job_id": job })))
+            call(BusRequest::new(None, API, "account.backup.cancel", json!({ "job_id": job })))
         }
         _ => refuse_invalid("no daemon counterpart"),
     }

@@ -318,10 +318,7 @@ fn map(
         methods::BACKUP_CREATE
         | methods::RESTORE_VERIFY
         | methods::RESTORE_INSTALL
-        | methods::BACKUP_CANCEL => match acct {
-            Some(_) => backup::backup_effect(acct, method, body, secrets),
-            None => refuse_invalid("this action needs an unlocked account"),
-        },
+        | methods::BACKUP_CANCEL => backup::backup_effect(acct, method, body, secrets),
         methods::DIAGNOSTICS_EXPORT => Plan::Diagnostics { path: text(body, "path").to_owned() },
         methods::CONTEXT_PIN | methods::CONTEXT_UNPIN => Plan::Local,
         _ if acct.is_none() => refuse_invalid("this action needs an unlocked account"),

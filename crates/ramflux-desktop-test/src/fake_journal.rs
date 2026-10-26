@@ -62,6 +62,9 @@ pub enum Subscribed {
 #[derive(Default)]
 pub struct Journal {
     enabled: bool,
+    /// The daemon-level job journal: one stream without an account (its
+    /// key is empty and its frames carry no account).
+    daemon: bool,
     accounts: BTreeMap<String, Account>,
     followers: Vec<Follower>,
 }
@@ -73,11 +76,16 @@ pub(crate) fn write_frame(stream: &mut UnixStream, frame: &Value) -> std::io::Re
     stream.write_all(&body)
 }
 
+/// The frame's account: none for the daemon-level journal (empty key).
+fn account_field(account: &str) -> Value {
+    if account.is_empty() { Value::Null } else { json!(account) }
+}
+
 fn event_frame(account: &str, seq: Option<u64>, topic: &str, body: &Value) -> Value {
     let mut frame = json!({
         "bus_protocol": "ramflux.local_bus.v1",
         "frame_id": seq.map_or_else(|| "event_x".to_owned(), |s| format!("event_{s}")),
-        "kind": "event", "request_id": "desk_stream", "account_id": account,
+        "kind": "event", "request_id": "desk_stream", "account_id": account_field(account),
         "sdk_api": "stream", "method": topic, "body": body, "trace_id": null,
     });
     if let Some(seq) = seq {
@@ -92,6 +100,11 @@ fn send(writer: &Writer, frame: &Value) -> bool {
 }
 
 impl Journal {
+    /// The daemon-level job journal (always on, no account).
+    pub fn daemon() -> Self {
+        Self { enabled: true, daemon: true, ..Self::default() }
+    }
+
     /// Turns the stream on or off (off: `bus.subscribe` is refused as by a
     /// daemon without it).
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -107,11 +120,16 @@ impl Journal {
                 "local bus error: unsupported local bus method: bus.subscribe".to_owned(),
             );
         }
-        let Some(account) = request["account_id"].as_str().map(str::to_owned) else {
-            return Subscribed::Refused(
-                "ValidationFailed",
-                "local bus error: bus.subscribe requires account_id".to_owned(),
-            );
+        let account = if self.daemon {
+            String::new()
+        } else {
+            let Some(account) = request["account_id"].as_str().map(str::to_owned) else {
+                return Subscribed::Refused(
+                    "ValidationFailed",
+                    "local bus error: bus.subscribe requires account_id".to_owned(),
+                );
+            };
+            account
         };
         let body = &request["body"];
         let topics: Vec<String> = body["topics"]
@@ -130,7 +148,8 @@ impl Journal {
         let response = json!({
             "bus_protocol": "ramflux.local_bus.v1", "frame_id": "frame_resp",
             "kind": "response", "ok": true, "request_id": request["request_id"],
-            "account_id": account, "sdk_api": request["sdk_api"], "method": "bus.subscribe",
+            "account_id": account_field(&account), "sdk_api": request["sdk_api"],
+            "method": request["method"],
             "body": { "subscribed": true, "head_seq": head, "floor_seq": floor },
             "trace_id": null,
         });
@@ -180,6 +199,16 @@ impl Journal {
     pub fn deliver_raw(&mut self, account: &str, seq: Option<u64>, topic: &str, body: &Value) {
         let frame = event_frame(account, seq, topic, body);
         self.followers.retain(|f| f.account != account || send(&f.writer, &frame));
+    }
+
+    /// The daemon restarted: `account`'s entries are gone, its streams end
+    /// (their connections close) and the next entry is numbered 1 again, so
+    /// a cursor from before is refused with `resync_required`.
+    pub fn restart(&mut self, account: &str) {
+        self.end_streams(account, false);
+        let journal = self.accounts.entry(account.to_owned()).or_default();
+        journal.entries.clear();
+        journal.head = 0;
     }
 
     /// Forgets `account`'s entries below `floor` (retention).

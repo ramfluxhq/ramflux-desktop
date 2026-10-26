@@ -30,13 +30,15 @@ pub enum Weight {
 }
 
 /// Methods that reach a node, or derive keys from a passphrase.
-const NETWORK: [&str; 29] = [
+const NETWORK: [&str; 30] = [
     "account.create",
     "account.unlock",
     "account.backup.import",
     "account.backup.export",
     "account.backup.create",
     "account.restore.verify",
+    // Answers once the job's worker stopped (a file fetch may be under way).
+    "account.backup.cancel",
     "account.passphrase.rotate",
     "node.add",
     "node.probe",

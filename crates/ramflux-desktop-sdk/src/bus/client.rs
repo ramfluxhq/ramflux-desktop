@@ -99,33 +99,9 @@ impl BusClient {
             .acquire()
             .await
             .map_err(|_| BusError::Transport("request connection closed".to_owned()))?;
-        let budget = self.inner.deadlines.budget(&request.method);
         let (generation, client) = self.connection().await?;
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
-        // The secret-bearing body moves into the SDK client, which encodes
-        // and drops it.
-        let mut frame = LocalBusFrame::request(
-            format!("desk_{id}"),
-            request.account.clone(),
-            request.sdk_api,
-            request.method.clone(),
-            request.wire_body(),
-        );
-        frame.deadline_ms = Some(deadline_ms(budget));
-        frame.operation_id.clone_from(&request.operation_id);
-        // The whole response frame: a refusal keeps its typed reason and
-        // details, which the convenience `request_frame` flattens to text.
-        let answer =
-            tokio::time::timeout(budget + DEADLINE_GRACE, client.request_frame_response(frame))
-                .await
-                .unwrap_or_else(|_| {
-                    Err(ramflux_sdk::SdkError::LocalBus("request deadline exceeded".to_owned()))
-                })
-                .map_err(BusError::from)
-                .and_then(|response| match response.kind {
-                    LocalBusFrameKind::Error => Err(BusError::from_error_body(response.error)),
-                    _ => Ok(response.body),
-                });
+        let answer = exchange(&client, request, self.inner.deadlines, &format!("desk_{id}")).await;
         if answer.as_ref().is_err_and(BusError::is_connection_lost) {
             self.forget(generation).await;
         }
@@ -156,6 +132,40 @@ impl BusClient {
             *link = None;
         }
     }
+}
+
+/// Sends `request` as frame `request_id` on `client` and waits for its
+/// answer, at most until its deadline.
+pub(super) async fn exchange(
+    client: &LocalBusClient,
+    request: &BusRequest,
+    deadlines: Deadlines,
+    request_id: &str,
+) -> Result<Value, BusError> {
+    let budget = deadlines.budget(&request.method);
+    // The secret-bearing body moves into the SDK client, which encodes and
+    // drops it.
+    let mut frame = LocalBusFrame::request(
+        request_id,
+        request.account.clone(),
+        request.sdk_api,
+        request.method.clone(),
+        request.wire_body(),
+    );
+    frame.deadline_ms = Some(deadline_ms(budget));
+    frame.operation_id.clone_from(&request.operation_id);
+    // The whole response frame: a refusal keeps its typed reason and
+    // details, which the convenience `request_frame` flattens to text.
+    tokio::time::timeout(budget + DEADLINE_GRACE, client.request_frame_response(frame))
+        .await
+        .unwrap_or_else(|_| {
+            Err(ramflux_sdk::SdkError::LocalBus("request deadline exceeded".to_owned()))
+        })
+        .map_err(BusError::from)
+        .and_then(|response| match response.kind {
+            LocalBusFrameKind::Error => Err(BusError::from_error_body(response.error)),
+            _ => Ok(response.body),
+        })
 }
 
 /// Whether the answer may have been lost after the daemon applied the

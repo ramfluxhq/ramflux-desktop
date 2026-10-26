@@ -40,6 +40,7 @@ use super::live::{SyncState, last_page};
 use super::{Delivery, now};
 use crate::bus::BusError;
 use crate::bus::client::BusClient;
+use crate::bus::jobs::{JobLink, JobStreamed};
 use crate::bus::stream::Streamed;
 use crate::bus::subscription::{self, Pushed};
 use crate::capabilities;
@@ -127,6 +128,12 @@ pub(super) struct Task {
     /// the backup methods are declared unsupported). Only an unknown method
     /// says an API is missing; other refusals are read failures.
     pub(super) found: capabilities::Found,
+    /// The attended connection with the daemon-level job stream; the job
+    /// requests are sent on it.
+    pub(super) job_link: JobLink,
+    /// Where the job link is, and when to open it.
+    pub(super) jobs: super::jobs::Jobs,
+    pub(super) jobs_open_at: Option<Instant>,
 }
 
 /// Sends one read; a listing's first page gets the next listing number
@@ -148,11 +155,18 @@ pub(crate) async fn run(
     let (internal, mut internal_rx) = mpsc::unbounded_channel();
     let (pushed, mut pushed_rx) = mpsc::unbounded_channel();
     let (streamed, mut streamed_rx) = mpsc::unbounded_channel();
+    let (jobs_out, mut jobs_rx) = mpsc::unbounded_channel::<JobStreamed>();
     let socket = config.socket_path.to_string_lossy().into_owned();
     let cursors = CursorStore::new(config.settings_path.clone(), socket.clone());
     let cursor = scope.account().and_then(|account| cursors.load(account));
     let client =
         BusClient::new(config.socket_path.clone(), config.connect_timeout, config.deadlines);
+    let job_link = JobLink::new(
+        config.socket_path.clone(),
+        config.connect_timeout,
+        config.deadlines,
+        jobs_out,
+    );
     let start = Instant::now();
     let pins = PinStore::new(config.settings_path.clone());
     let mut translator = Translator::new(scope.clone(), socket.clone());
@@ -188,6 +202,9 @@ pub(crate) async fn run(
         listing_applied: BTreeMap::new(),
         receipts,
         found: capabilities::Found::default(),
+        job_link,
+        jobs: super::jobs::Jobs::Closed,
+        jobs_open_at: None,
     };
     let declared = capabilities::capabilities(capabilities::Found::default());
     task.emit(vec![DomainEvent::CapabilitiesUpdated(declared)]);
@@ -202,6 +219,7 @@ pub(crate) async fn run(
             },
             Some(internal) = internal_rx.recv() => task.internal(internal),
             Some(pushed) = pushed_rx.recv() => task.on_pushed(pushed),
+            Some(jobs) = jobs_rx.recv() => task.on_jobs(jobs),
             Some(streamed) = streamed_rx.recv() => {
                 task.on_streamed(streamed);
                 // Apply what else has arrived before the reads it calls for
@@ -256,6 +274,9 @@ impl Task {
                 if let Some(open_at) = self.sync.open_at {
                     wake = wake.min(open_at);
                 }
+                if let Some(open_at) = self.jobs_open_at {
+                    wake = wake.min(open_at);
+                }
                 if let Some(due) = self.receipts.as_ref().and_then(Receipts::next_due) {
                     wake = wake.min(due);
                 }
@@ -272,6 +293,9 @@ impl Task {
             Link::Live => {
                 if self.sync.open_at.is_some_and(|at| now >= at) {
                     self.open_stream();
+                }
+                if self.jobs_open_at.is_some_and(|at| now >= at) {
+                    self.open_jobs();
                 }
                 let polls = self.polls();
                 if polls
@@ -339,6 +363,7 @@ impl Task {
     fn backup_answered(&mut self, live: bool) {
         let found = capabilities::Found { backup: live, ..self.found };
         self.found_now(found);
+        self.jobs_found(live);
     }
 
     fn snapshot(&mut self) {

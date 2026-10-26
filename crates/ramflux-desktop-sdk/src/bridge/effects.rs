@@ -86,6 +86,7 @@ impl Task {
             }
             other => {
                 let client = self.client.clone();
+                let job_link = self.job_link.clone();
                 let internal = self.internal.clone();
                 let retries: Vec<Duration> = self
                     .config
@@ -95,7 +96,15 @@ impl Task {
                     .map(|ms| Duration::from_millis(u64::from(*ms)))
                     .collect();
                 tokio::spawn(async move {
-                    let (result, refresh) = perform(&client, other, &retries).await;
+                    let (result, refresh) = match other {
+                        // Taken only from the attended job connection.
+                        Plan::Call { request, refresh }
+                            if crate::bus::jobs::REQUESTS.contains(&request.method.as_str()) =>
+                        {
+                            (job_link.call(&request).await, refresh)
+                        }
+                        other => perform(&client, other, &retries).await,
+                    };
                     let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
                 });
             }

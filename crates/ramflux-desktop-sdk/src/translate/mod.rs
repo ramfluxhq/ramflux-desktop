@@ -209,10 +209,12 @@ pub struct Translator {
     outgoing_requests: BTreeMap<ParticipantId, ramflux_desktop_core::ContactRequest>,
     /// Call rows waiting for their conversation to be listed.
     pending_calls: BTreeMap<ramflux_desktop_core::CallId, Value>,
-    /// The sequence number and phase of each backup or restore job last
-    /// reported.
-    reported_jobs:
-        BTreeMap<ramflux_desktop_core::BackupJobId, (u64, ramflux_desktop_core::BackupPhase)>,
+    /// Each backup or restore job as last reported.
+    reported_jobs: BTreeMap<ramflux_desktop_core::BackupJobId, ramflux_desktop_core::BackupJob>,
+    /// Jobs reported as running when the job stream had to start over from
+    /// the daemon's head (the daemon restarted): the next jobs listing says
+    /// which of them are gone.
+    lost_jobs: BTreeSet<ramflux_desktop_core::BackupJobId>,
 }
 
 impl Translator {
@@ -270,6 +272,7 @@ impl Translator {
             pending_calls: BTreeMap::new(),
             outgoing_requests: BTreeMap::new(),
             reported_jobs: BTreeMap::new(),
+            lost_jobs: BTreeSet::new(),
         }
     }
 
@@ -499,7 +502,6 @@ impl Translator {
             topic if contact_requests::TOPICS.contains(&topic) => {
                 self.contact_request_event(topic, body).events
             }
-            backup::TOPIC => self.backup_job_row(body).events,
             "mcp.approval.denied" => self.approval_decided(body, GrantState::Denied),
             // Tool starts and A2UI action records are not bound to a
             // conversation yet; they have no moment to land in (gap ledger).

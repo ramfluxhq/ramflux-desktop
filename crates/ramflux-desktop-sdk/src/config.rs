@@ -57,9 +57,10 @@ pub struct SdkConfig {
     /// each account snapshot reads `account.backup.jobs`: a daemon that
     /// answers it has the BACKUP-01 job API (`account.backup.create`,
     /// `account.restore.verify`, `account.restore.install`,
-    /// `account.backup.cancel` and the `account.backup.job.changed` event),
-    /// and the backup methods are declared supported; until then, with a
-    /// daemon without it, or off, they are declared unsupported
+    /// `account.backup.cancel`, and `account.backup.job.changed` on the
+    /// daemon-level job stream), the backup methods are declared supported
+    /// and the scope opens its job link ([`crate::bus::jobs`]); until then,
+    /// with a daemon without it, or off, they are declared unsupported
     /// (`backend.gap.full_backup`).
     pub backup_api: bool,
 }

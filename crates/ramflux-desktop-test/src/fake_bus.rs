@@ -15,10 +15,17 @@
 //! it on ([`FakeBus::enable_stream`]), so by default the fake answers as a
 //! daemon without the stream and the source polls.
 //!
+//! Like the daemon, a subscription without an account is the daemon-level
+//! backup job stream: its topics must be exactly
+//! `account.backup.job.changed`, and with `attended_frontend: true` it makes
+//! its connection an attended frontend's. The backup job requests are taken
+//! only on such a connection ([`crate::fake_backup::ATTENDED_METHODS`]);
+//! job rows are published on that stream ([`FakeBus::publish_job`]).
+//!
 //! Std only (a thread per connection and per request); behind the
 //! `fake-bus` feature.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -106,6 +113,7 @@ pub struct FakeBus {
     streams: Arc<Mutex<Vec<UnixStream>>>,
     applied: Arc<AtomicUsize>,
     journal: Arc<Mutex<Journal>>,
+    jobs: Arc<Mutex<Journal>>,
 }
 
 /// What every connection of one fake shares.
@@ -116,6 +124,10 @@ struct Shared {
     receipts: Arc<Receipts>,
     applied: Arc<AtomicUsize>,
     journal: Arc<Mutex<Journal>>,
+    /// The daemon-level job journal and its streams.
+    jobs: Arc<Mutex<Journal>>,
+    /// Connections that opened the job stream as an attended frontend.
+    attended: Mutex<BTreeSet<usize>>,
 }
 
 impl FakeBus {
@@ -134,6 +146,7 @@ impl FakeBus {
         let streams = Arc::new(Mutex::new(Vec::new()));
         let applied = Arc::new(AtomicUsize::new(0));
         let journal = Arc::new(Mutex::new(Journal::default()));
+        let jobs = Arc::new(Mutex::new(Journal::daemon()));
         let shared = Arc::new(Shared {
             handler,
             seen: seen.clone(),
@@ -141,6 +154,8 @@ impl FakeBus {
             receipts: Arc::new(Mutex::new(BTreeMap::new())),
             applied: applied.clone(),
             journal: journal.clone(),
+            jobs: jobs.clone(),
+            attended: Mutex::new(BTreeSet::new()),
         });
         let (s, st) = (stop.clone(), streams.clone());
         thread::spawn(move || {
@@ -160,7 +175,38 @@ impl FakeBus {
                 }
             }
         });
-        Self { path: path.to_path_buf(), stop, seen, subscribers, streams, applied, journal }
+        Self { path: path.to_path_buf(), stop, seen, subscribers, streams, applied, journal, jobs }
+    }
+
+    /// Publishes a job row on the daemon-level job stream; returns its
+    /// stream cursor.
+    pub fn publish_job(&self, row: Value) -> u64 {
+        self.jobs.lock().expect("jobs").publish("", crate::fake_backup::TOPIC, row)
+    }
+
+    /// Ends the job streams, with a final `stream.lagged` when `lagged`
+    /// (the connection closes too).
+    pub fn end_job_streams(&self, lagged: bool) {
+        self.jobs.lock().expect("jobs").end_streams("", lagged);
+    }
+
+    /// Whether a job stream is open.
+    pub fn job_streaming(&self) -> bool {
+        self.jobs.lock().expect("jobs").streaming("")
+    }
+
+    /// The daemon restarted, as far as its jobs go: the job stream ends
+    /// (its connection closes) and the stream starts over, so a cursor from
+    /// before is refused with `resync_required`. Pair it with
+    /// [`crate::fake_backup::FakeBackup::forget_jobs`].
+    pub fn restart_jobs(&self) {
+        self.jobs.lock().expect("jobs").restart("");
+    }
+
+    /// Forgets the job stream entries below `floor` (a cursor below it is
+    /// refused with `resync_required`).
+    pub fn prune_jobs_below(&self, floor: u64) {
+        self.jobs.lock().expect("jobs").prune_below("", floor);
     }
 
     fn journal(&self) -> std::sync::MutexGuard<'_, Journal> {
@@ -253,6 +299,7 @@ impl FakeBus {
         }
         self.subscribers.lock().expect("subs").clear();
         self.journal().clear();
+        self.jobs.lock().expect("jobs").clear();
         let _ = std::fs::remove_file(&self.path);
         thread::sleep(Duration::from_millis(30));
     }
@@ -280,6 +327,28 @@ fn serve(mut stream: UnixStream, connection: usize, shared: &Arc<Shared>) {
         });
     }
     shared.journal.lock().expect("journal").disconnect(connection);
+    shared.jobs.lock().expect("jobs").disconnect(connection);
+    shared.attended.lock().expect("attended").remove(&connection);
+}
+
+/// Answers a subscription without an account: the daemon-level job stream.
+fn subscribe_jobs(request: &Value, connection: usize, shared: &Shared, writer: &Writer) -> Reply {
+    let topics = &request["body"]["topics"];
+    if topics.as_array().is_none_or(|t| t.len() != 1 || t[0] != crate::fake_backup::TOPIC) {
+        return Reply::Refused {
+            code: "BackupRefused",
+            message: "daemon_scope_jobs_only".to_owned(),
+            reason_code: "daemon_scope_jobs_only",
+            details: None,
+        };
+    }
+    if request["body"]["attended_frontend"] == true {
+        shared.attended.lock().expect("attended").insert(connection);
+    }
+    match shared.jobs.lock().expect("jobs").subscribe(request, connection, writer) {
+        Subscribed::Following => Reply::Ok(Value::Null),
+        Subscribed::Refused(code, message) => Reply::Error(code, message),
+    }
 }
 
 fn text(frame: &Value, field: &str) -> Option<String> {
@@ -318,7 +387,20 @@ fn answer(
     let account = text(request, "account_id");
     let body = request["body"].clone();
     let operation_id = text(request, "operation_id");
-    let reply = if let Some(stored) = receipt {
+    let subscription = method == "bus.subscribe" || method == "subscription.open";
+    let reply = if subscription && account.is_none() {
+        match subscribe_jobs(request, connection, shared, writer) {
+            Reply::Ok(_) => return,
+            refused => refused,
+        }
+    } else if crate::fake_backup::ATTENDED_METHODS.contains(&method.as_str())
+        && !shared.attended.lock().expect("attended").contains(&connection)
+    {
+        Reply::Error(
+            "CapabilityDenied",
+            "capability denied: backup jobs require an attended human frontend".to_owned(),
+        )
+    } else if let Some(stored) = receipt {
         Reply::Ok(stored)
     } else if method == "bus.subscribe" {
         match shared.journal.lock().expect("journal").subscribe(request, connection, writer) {
