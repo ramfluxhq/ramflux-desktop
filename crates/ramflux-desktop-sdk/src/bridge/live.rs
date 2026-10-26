@@ -165,6 +165,7 @@ impl Task {
         }
         let mut topics = topics();
         topics.extend(crate::translate::contact_requests::TOPICS);
+        topics.push(crate::translate::account::SECURE_SESSIONS_TOPIC);
         if self.config.call_api {
             topics.push(crate::translate::stream::CALL_TOPIC);
         }
@@ -240,13 +241,20 @@ impl Task {
                 self.emit(translated.events);
             }
             crate::translate::backup::RESTORED_TOPIC => {
-                // A restore installed into this account: what it holds now
+                // A restore installed into this account: whether its secure
+                // sessions are being re-established, then what it holds now
                 // is read again.
+                let changed = self.translator.secure_sessions_changed(body);
+                self.emit(changed);
                 if self.account().is_some_and(|account| {
                     crate::translate::text(body, "local_account_id") == account
                 }) {
                     self.reload();
                 }
+            }
+            crate::translate::account::SECURE_SESSIONS_TOPIC => {
+                let changed = self.translator.secure_sessions_changed(body);
+                self.emit(changed);
             }
             "account.state" => {
                 // A `locked` entry may be replayed after the account was

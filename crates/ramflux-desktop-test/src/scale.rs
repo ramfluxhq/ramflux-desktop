@@ -55,6 +55,7 @@ pub fn large_context(messages: usize) -> Scenario {
                 device_id: None,
                 lock_state: LockState::Unlocked,
                 self_participant_id: Some(me.clone()),
+                secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
             }),
         ),
         (0, participant("p-me", "Alex Moreau")),

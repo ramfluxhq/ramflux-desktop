@@ -35,7 +35,7 @@
 //! - `backup`: full backup and restore job rows.
 //! - `reason`: locale keys with arguments.
 
-mod account;
+pub mod account;
 pub mod backup;
 pub mod calls;
 mod contact_failures;

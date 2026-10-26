@@ -316,7 +316,16 @@ impl Task {
 
     fn reads_for_snapshot(&self) -> Vec<Fetch> {
         match &self.scope {
-            Scope::Daemon => Fetch::daemon_snapshot(),
+            Scope::Daemon => {
+                let mut reads = Fetch::daemon_snapshot();
+                // Jobs are the daemon's: a restore runs with no account open
+                // (the entry page). The answer also says whether the daemon
+                // has the full backup job API.
+                if self.config.backup_api {
+                    reads.push(Fetch::BackupJobs);
+                }
+                reads
+            }
             Scope::Account(id) => {
                 let mut reads = Fetch::account_snapshot(id);
                 // Calls and call records come back with every snapshot;
@@ -646,9 +655,16 @@ impl Task {
             }
         }
         if matches!(fetch, Fetch::BackupJobs) {
+            // Only a method the daemon does not know says the API is
+            // missing (a daemon refusing backups to a non-human account
+            // too); any other refusal is a read failure.
             match &result {
                 Ok(_) => self.backup_answered(true),
-                Err(BusError::Daemon { .. }) => self.backup_answered(false),
+                Err(error @ BusError::Daemon { code, .. })
+                    if error.is_unknown_method() || code == "CapabilityDenied" =>
+                {
+                    self.backup_answered(false);
+                }
                 Err(_) => {}
             }
         }

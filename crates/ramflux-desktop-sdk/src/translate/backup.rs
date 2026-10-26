@@ -48,7 +48,6 @@ use ramflux_desktop_core::{
 };
 use serde_json::Value;
 
-use super::reason::keyed;
 use super::{Scope, Translated, Translator, list, seconds, text};
 use crate::plan::fetch::Fetch;
 
@@ -190,20 +189,12 @@ pub fn failure(error: &Value, checks: Option<AttachmentCheck>) -> BackupFailure 
     }
 }
 
-/// The locale key of a refused job request's typed reason (with the space
-/// figures of `insufficient_space`), if the reason is a job error code.
-pub fn refusal_message(reason_code: &str, details: Option<&Value>) -> Option<String> {
-    let (_, key) = ERROR_KEYS.iter().find(|(code, _)| *code == reason_code)?;
-    let details = details.cloned().unwrap_or(Value::Null);
-    let figure = |field: &str| details[field].as_u64().map(|n| n.to_string()).unwrap_or_default();
-    Some(if reason_code == "insufficient_space" {
-        keyed(
-            key,
-            &[("needed", &figure("needed_bytes")), ("available", &figure("available_bytes"))],
-        )
-    } else {
-        (*key).to_owned()
-    })
+/// The locale key of a refused job request's typed reason, if it is a job
+/// error code or a refusal reason (a refusal carries only its
+/// `reason_code`; figures such as the space short come on a failed job's
+/// row, never on a refusal).
+pub fn refusal_message(reason_code: &str) -> Option<String> {
+    ERROR_KEYS.iter().find(|(code, _)| *code == reason_code).map(|(_, key)| (*key).to_owned())
 }
 
 /// The job a row describes.
@@ -275,6 +266,8 @@ impl Translator {
         self.reported_jobs.insert(job.id.clone(), job.clone());
         let follow = match (&self.scope, installed) {
             (Scope::Account(id), true) => Fetch::account_snapshot(id),
+            // With no account open, the restored account joins the list.
+            (Scope::Daemon, true) => vec![Fetch::AccountList],
             _ => Vec::new(),
         };
         Translated { events: vec![DomainEvent::BackupJobUpdated(Box::new(job))], follow }
@@ -438,7 +431,7 @@ mod tests {
             let mut row = base("restore", "failed");
             row["error"] = json!({ "code": code });
             assert_eq!(job_of(&product_row(row)).unwrap().failure, Some(expected), "{code}");
-            assert!(refusal_message(code, None).is_some(), "{code}");
+            assert!(refusal_message(code).is_some(), "{code}");
         }
         let mut mismatch = base("restore", "failed");
         mismatch["error"] = json!({ "code": "attachment_mismatch" });
@@ -457,7 +450,7 @@ mod tests {
         );
         for reason in ["busy", "account_locked", "unknown_job", "invalid_job_phase"] {
             assert_eq!(
-                refusal_message(reason, None).as_deref(),
+                refusal_message(reason).as_deref(),
                 Some(format!("backend.backup.{reason}").as_str())
             );
         }

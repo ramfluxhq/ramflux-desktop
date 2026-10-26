@@ -13,10 +13,12 @@
 //! carries both: it subscribes first, then every job request is sent on it.
 //!
 //! The frame `seq` of a job event is the daemon's job stream cursor (each
-//! row has its own per-job `seq` as well). A connection opened again
-//! subscribes from the last cursor seen; a cursor the daemon no longer
-//! covers (`resync_required`, also after a daemon restart) subscribes from
-//! the head and asks its owner to read the jobs again. A stream that fell
+//! row has its own per-job `seq` as well). The subscribe answer's
+//! `head_seq` seeds the cursor, so a job whose events this connection never
+//! saw is covered too. A connection opened again subscribes from the last
+//! cursor; a cursor the daemon no longer covers (`resync_required`: it
+//! restarted) subscribes from the head and asks its owner to read the jobs
+//! again. A stream that fell
 //! behind ends with `stream.lagged`, and a broken connection ends it: the
 //! owner closes the link and opens it again.
 
@@ -134,9 +136,13 @@ impl JobLink {
     /// failure is also reported as [`JobStreamed::Ended`].
     pub async fn ensure(&self) -> Result<LocalBusClient, BusError> {
         let mut link = self.inner.link.lock().await;
-        if let Some(open) = link.as_ref() {
+        // A connection whose reader ended (lag, a broken connection) is
+        // dead even before its owner closed it: it is opened again, never
+        // handed out.
+        if let Some(open) = link.as_ref().filter(|open| !open.reader.is_finished()) {
             return Ok(open.client.clone());
         }
+        link.take();
         match self.open().await {
             Ok(open) => {
                 let client = open.client.clone();
@@ -178,12 +184,22 @@ impl JobLink {
             inner.cursor.store(0, Ordering::Relaxed);
             answer = subscribe(&client, None, inner.deadlines).await;
         }
-        if let Err(error) = answer {
-            let end = match &error {
-                BusError::Daemon { message, .. } => StreamEnd::Unsupported(message.clone()),
-                lost => StreamEnd::Lost(lost.clone()),
-            };
-            return Err(Box::new((end, error)));
+        let answer = match answer {
+            Ok(answer) => answer,
+            Err(error) => {
+                let end = match &error {
+                    BusError::Daemon { message, .. } => StreamEnd::Unsupported(message.clone()),
+                    lost => StreamEnd::Lost(lost.clone()),
+                };
+                return Err(Box::new((end, error)));
+            }
+        };
+        // The stream's head is the cursor from now on, also when no event
+        // arrives on this connection: the next open resumes from it, and a
+        // daemon that restarted (its head below it) answers
+        // `resync_required`, so the jobs it lost are settled.
+        if let Some(head) = answer.get("head_seq").and_then(Value::as_u64) {
+            inner.cursor.fetch_max(head, Ordering::Relaxed);
         }
         let _ = inner.out.send(JobStreamed::Opened { resync });
         let requester = client.clone();

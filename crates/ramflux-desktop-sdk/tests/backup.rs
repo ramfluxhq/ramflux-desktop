@@ -23,8 +23,8 @@ use std::sync::{Arc, Weak};
 use common::*;
 use ramflux_desktop_core::{
     AccountId, BackupCategory, BackupFailure, BackupJob, BackupJobKind, BackupPhase, ContextId,
-    Intent, IntentError, IntentKind, SecretInput, Source, Store, SyncMode, Timestamp,
-    handle_intent, methods, selectors,
+    Intent, IntentError, IntentKind, SecretInput, SecureSessions, Source, Store, SyncMode,
+    Timestamp, handle_intent, methods, selectors,
 };
 use ramflux_desktop_sdk::capabilities;
 use ramflux_desktop_test::fake_backup::{Archive, Counts, Defect, FakeBackup, TOPIC};
@@ -483,6 +483,72 @@ fn a_job_running_when_the_daemon_restarted_ends_interrupted_and_the_next_may_sta
     });
     world.backup.run_out();
     account.until("verified", phase_is(BackupPhase::Verified));
+    world.stop();
+}
+
+#[test]
+fn a_job_known_only_from_the_listing_is_interrupted_when_the_daemon_restarts() {
+    let world = World::start("listing-only", true);
+    world.backup.archive("/b/good", archive(None, 0));
+    let mut account = live(&world, true);
+    // The job link is down (its connection broke) while another frontend
+    // starts a restore: its rows go by. The link opens again from the head
+    // and reads the jobs: the restore is known from the listing only, no
+    // event of it ever arrived here.
+    let opened = world.job_connections().len();
+    world.fake.end_job_streams(false);
+    let body = serde_json::json!({ "input_path": "/b/good", "passphrase": PASSPHRASE });
+    world.backup.handle("account.restore.verify", None, &body).expect("started elsewhere");
+    account.until("the job listed after the link opened again", |s, _| {
+        job(s).is_some_and(|j| j.phase == BackupPhase::Verifying)
+    });
+    assert!(world.job_connections().len() > opened);
+    let id = job(&account.store).unwrap().id.clone();
+    assert_eq!(
+        handle_intent(&account.store, Intent::human(create("/b/again", false)), Timestamp(0))
+            .unwrap_err(),
+        IntentError::BackupInProgress
+    );
+    // The daemon restarts. The link resumes from the stream head it was
+    // told on subscribing, which the new daemon does not cover: the jobs
+    // are read again and the one no longer listed ended with the daemon.
+    world.backup.forget_jobs();
+    world.fake.restart_jobs();
+    account.until("interrupted", |s, _| {
+        s.backup_job(&id).is_some_and(|j| j.phase == BackupPhase::Failed)
+    });
+    assert_eq!(account.store.backup_job(&id).unwrap().failure, Some(BackupFailure::Interrupted));
+    assert!(selectors::running_backup_job(&account.store).is_none());
+    verify(&mut account, "/b/good", PASSPHRASE);
+    account.until("the next job", |s, _| {
+        job(s).is_some_and(|j| j.id != id && j.phase == BackupPhase::Verifying)
+    });
+    world.stop();
+}
+
+#[test]
+fn secure_sessions_are_reestablished_after_a_restore_until_the_daemon_says_ready() {
+    let world = World::start("sessions", true);
+    let mut account = live(&world, true);
+    let me = AccountId::new(ACCOUNT);
+    let sessions = |s: &Store| s.account(&me).map(|a| a.secure_sessions);
+    assert_eq!(sessions(&account.store), Some(SecureSessions::Ready));
+    // The daemon installed a restore into this account: the account stream
+    // says so, and that the device activates itself again before sending.
+    world.fake.publish(
+        ACCOUNT,
+        "account.restored",
+        serde_json::json!({ "local_account_id": ACCOUNT, "job_id": "j-x",
+                            "secure_sessions": "reestablishing" }),
+    );
+    account.until("re-establishing", |s, _| sessions(s) == Some(SecureSessions::Reestablishing));
+    // Activation done: the daemon announces the sessions ready.
+    world.fake.publish(
+        ACCOUNT,
+        "account.secure_sessions.changed",
+        serde_json::json!({ "local_account_id": ACCOUNT, "secure_sessions": "ready" }),
+    );
+    account.until("ready", |s, _| sessions(s) == Some(SecureSessions::Ready));
     world.stop();
 }
 

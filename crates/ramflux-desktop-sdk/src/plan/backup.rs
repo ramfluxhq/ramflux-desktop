@@ -48,12 +48,17 @@ pub fn backup_effect(
                 return refuse_invalid("no backup file named");
             }
             let request = if method == methods::BACKUP_CREATE {
-                if acct.is_none() {
+                // The intent names the account backed up; it must be the
+                // scope's (the one whose connection is attended).
+                let Some(account) = acct else {
                     return refuse_invalid("this action needs an unlocked account");
+                };
+                if text(body, "account_id") != account {
+                    return refuse_invalid("the backup is of another account");
                 }
                 let allow = body["allow_missing_attachments"].as_bool().unwrap_or(false);
                 BusRequest::new(
-                    acct,
+                    Some(account),
                     API,
                     "account.backup.create",
                     json!({ "output_path": path, "allow_missing_attachments": allow }),
@@ -73,5 +78,43 @@ pub fn backup_effect(
             call(BusRequest::new(None, API, "account.backup.cancel", json!({ "job_id": job })))
         }
         _ => refuse_invalid("no daemon counterpart"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plan::Plan;
+
+    #[test]
+    fn a_backup_is_created_for_the_account_the_intent_names_in_its_own_scope() {
+        let body = json!({ "account_id": "acct-main", "path": "/b/x" });
+        let secret = || vec![SecretInput::new("river stone lantern harbor")];
+        let Plan::Call { request, .. } =
+            backup_effect(Some("acct-main"), methods::BACKUP_CREATE, &body, secret())
+        else {
+            panic!("a call");
+        };
+        assert_eq!(request.account.as_deref(), Some("acct-main"));
+        assert_eq!(request.body["output_path"], "/b/x");
+        assert_eq!(request.body["allow_missing_attachments"], false);
+        // Another account's backup is not sent on this scope's connection.
+        assert!(matches!(
+            backup_effect(Some("acct-other"), methods::BACKUP_CREATE, &body, secret()),
+            Plan::Refuse { .. }
+        ));
+        assert!(matches!(
+            backup_effect(None, methods::BACKUP_CREATE, &body, secret()),
+            Plan::Refuse { .. }
+        ));
+        // A restore needs no account.
+        let verify = json!({ "path": "/b/x" });
+        let Plan::Call { request, .. } =
+            backup_effect(None, methods::RESTORE_VERIFY, &verify, secret())
+        else {
+            panic!("a call");
+        };
+        assert_eq!(request.account, None);
+        assert_eq!(request.body["input_path"], "/b/x");
     }
 }

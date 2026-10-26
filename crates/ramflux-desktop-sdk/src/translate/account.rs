@@ -7,18 +7,38 @@ use std::collections::BTreeMap;
 
 use ramflux_desktop_core::{
     AccountId, Device, DeviceId, DomainEvent, Integrations, LockState, McpServer, NodeId,
-    ParticipantId,
+    ParticipantId, SecureSessions,
 };
 use serde_json::Value;
 
 use super::{Scope, Translator, list, text};
 use crate::directory::field;
 
+/// The account stream's event announcing that the account's secure
+/// sessions changed (`ready` once a restored device activated again). Its
+/// body: `local_account_id`, `secure_sessions`.
+pub const SECURE_SESSIONS_TOPIC: &str = "account.secure_sessions.changed";
+
+/// Reads a `secure_sessions` field: `reestablishing`, or ready; `None`
+/// when the body has no such field (nothing is said about them).
+fn secure_sessions(value: &Value) -> Option<SecureSessions> {
+    value.get("secure_sessions").map(|_| {
+        if text(value, "secure_sessions") == "reestablishing" {
+            SecureSessions::Reestablishing
+        } else {
+            SecureSessions::Ready
+        }
+    })
+}
+
 impl Translator {
     pub(super) fn account_status(&mut self, id: &AccountId, value: &Value) -> Vec<DomainEvent> {
         let mut account = self.account_record(id);
         account.lock_state = LockState::Unlocked;
         account.node_id = value["node_id"].as_str().map(NodeId::new);
+        if let Some(sessions) = secure_sessions(value) {
+            account.secure_sessions = sessions;
+        }
         if self.scope == Scope::Account(id.clone()) {
             let principal = field(value, "principal_id");
             if principal.is_some() {
@@ -40,6 +60,20 @@ impl Translator {
             self.directory.relay_endpoint =
                 account.node_id.as_ref().and_then(|node| self.node_relays.get(node)).cloned();
         }
+        self.put_account(account)
+    }
+
+    /// Applies a body naming an account (`local_account_id`) and its
+    /// `secure_sessions` (`account.secure_sessions.changed`, or
+    /// `account.restored`, which carries it too).
+    pub fn secure_sessions_changed(&mut self, body: &Value) -> Vec<DomainEvent> {
+        let id = text(body, "local_account_id");
+        if id.is_empty() {
+            return Vec::new();
+        }
+        let Some(sessions) = secure_sessions(body) else { return Vec::new() };
+        let mut account = self.account_record(&AccountId::new(id));
+        account.secure_sessions = sessions;
         self.put_account(account)
     }
 
@@ -147,6 +181,29 @@ mod tests {
 
     use super::*;
     use crate::plan::fetch::Fetch;
+
+    #[test]
+    fn secure_sessions_come_with_the_status_and_change_with_the_announcement() {
+        let id = AccountId::new("acct-main");
+        let mut t = Translator::new(Scope::Account(id.clone()), "rfd.sock");
+        let status = json!({ "local_account_id": "acct-main", "node_id": "n-1",
+                             "secure_sessions": "reestablishing" });
+        let _ = t.fetched(&Fetch::AccountStatus(id.clone()), &status, Timestamp(1));
+        assert_eq!(t.accounts[&id].secure_sessions, SecureSessions::Reestablishing);
+        // The announcement (also carried by `account.restored`).
+        let ready = json!({ "local_account_id": "acct-main", "secure_sessions": "ready" });
+        let events = t.secure_sessions_changed(&ready);
+        assert_eq!(events.len(), 1);
+        assert_eq!(t.accounts[&id].secure_sessions, SecureSessions::Ready);
+        assert!(t.secure_sessions_changed(&ready).is_empty(), "unchanged: nothing said");
+        assert!(t.secure_sessions_changed(&json!({})).is_empty(), "no account named");
+        // A status without the field says nothing about them.
+        let _ = t.secure_sessions_changed(&json!({ "local_account_id": "acct-main",
+                                                   "secure_sessions": "reestablishing" }));
+        let plain = json!({ "local_account_id": "acct-main", "node_id": "n-1" });
+        let _ = t.fetched(&Fetch::AccountStatus(id.clone()), &plain, Timestamp(2));
+        assert_eq!(t.accounts[&id].secure_sessions, SecureSessions::Reestablishing);
+    }
 
     #[test]
     fn the_status_device_wins_over_the_listed_local_device() {

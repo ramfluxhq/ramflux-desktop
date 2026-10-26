@@ -43,8 +43,8 @@ impl Translator {
             return message;
         }
         if crate::capabilities::BACKUP_METHODS.contains(&method)
-            && let BusError::Daemon { reason_code: Some(reason), details, .. } = error
-            && let Some(message) = super::backup::refusal_message(reason, details.as_deref())
+            && let BusError::Daemon { reason_code: Some(reason), .. } = error
+            && let Some(message) = super::backup::refusal_message(reason)
         {
             return message;
         }
