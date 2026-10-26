@@ -349,6 +349,9 @@ dock:
     verify_for:
       en: "Compare safety numbers with %{name}"
       zh-CN: "与 %{name} 比对安全码"
+    verify_again_for:
+      en: "Verify %{name} again"
+      zh-CN: "重新验证 %{name}"
     verify:
       compare:
         en: "Compare this number with %{name} in person or on a call you trust. Mark it verified only if every digit matches."
@@ -371,16 +374,6 @@ dock:
     unreachable_reason:
       en: "%{name} is not reachable yet: this account has none of their devices. Add them from their contact card."
       zh-CN: "暂时无法联系 %{name}：此账户还没有对方的任何设备。请通过对方的联系人名片添加。"
-    kind:
-      human:
-        en: "Person"
-        zh-CN: "个人"
-      agent:
-        en: "AI agent"
-        zh-CN: "AI 智能体"
-      asserted:
-        en: "%{kind} (self-declared)"
-        zh-CN: "%{kind}（自称）"
     requests:
       en: "Requests"
       zh-CN: "请求"

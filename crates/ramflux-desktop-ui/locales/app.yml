@@ -204,6 +204,46 @@ safety:
   forked:
     en: "Identity forked"
     zh-CN: "身份分叉"
+  verification_stale:
+    en: "Verification out of date"
+    zh-CN: "验证已过期"
+identity:
+  kind:
+    human:
+      en: "Person"
+      zh-CN: "个人"
+    headless_ai:
+      en: "Headless AI"
+      zh-CN: "无界面 AI"
+    bot:
+      en: "Bot"
+      zh-CN: "机器人"
+    verified:
+      en: "%{kind}, profile-signed"
+      zh-CN: "%{kind}（资料已签名）"
+    claimed:
+      en: "%{kind}, claimed"
+      zh-CN: "%{kind}（自称）"
+    unverified:
+      en: "Kind not verified"
+      zh-CN: "类型未验证"
+  name:
+    confusable:
+      en: "Name looks like %{other}'s"
+      zh-CN: "名称与 %{other} 相似"
+    mixed_script:
+      en: "Name mixes scripts"
+      zh-CN: "名称混用多种文字"
+    warning:
+      en: "%{what}. Check the ID: %{id}"
+      zh-CN: "%{what}。请核对 ID：%{id}"
+  safety:
+    stale:
+      en: "Verified before their keys changed; verify again"
+      zh-CN: "验证早于对方密钥变更，请重新验证"
+    verify_again:
+      en: "Verify again"
+      zh-CN: "重新验证"
 account:
   kind:
     human:

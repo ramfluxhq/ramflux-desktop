@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The members dock: members of the current group or space with their roles
-//! and safety, and the governance actions. Role changes, kicks and bans are
+//! The members dock: members of the current group or space with their roles,
+//! their kind as far as it is proven, a warning on a name that could pass
+//! for another's (see [`crate::identity`]), their safety, and the
+//! governance actions. Role changes, kicks and bans are
 //! high risk: the root opens the hold-to-confirm strip before anything is
 //! sent. Adding a contact and creating an invitation are low risk.
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -91,41 +94,54 @@ fn member_row(
                 .item(target(GovernanceOp::Ban { participant_id: id.clone() }))
             })
     });
-    h_flex()
+    v_flex()
         .id(domain_id("member", &member.id))
-        .gap_2()
+        .test_support()
         .px_3()
         .py_1()
+        .gap_1()
         .child(
             h_flex()
-                .flex_1()
-                .min_w_0()
                 .gap_2()
                 .child(
-                    div()
+                    h_flex()
+                        .flex_1()
                         .min_w_0()
-                        .truncate()
-                        .text_sm()
-                        .font_medium()
-                        .child(member.display.clone()),
+                        .gap_2()
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .text_sm()
+                                .font_medium()
+                                .child(member.display.clone()),
+                        )
+                        .when(member.named(), |row| {
+                            row.child(
+                                div()
+                                    .flex_none()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(member.id.short()),
+                            )
+                        }),
                 )
-                .when(member.named(), |row| {
+                .children(crate::identity::kind_mark("member-kind", member.kind_claim, cx))
+                .child(
+                    div().text_xs().text_color(cx.theme().muted_foreground).child(i18n::role(role)),
+                )
+                .when(member.safety.needs_attention(), |row| {
                     row.child(
                         div()
-                            .flex_none()
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(member.id.short()),
+                            .text_color(cx.theme().danger)
+                            .child(i18n::safety(member.safety)),
                     )
-                }),
+                })
+                .children(crate::identity::stale_note("member-stale", member.safety, cx))
+                .children(actions),
         )
-        .child(div().text_xs().text_color(cx.theme().muted_foreground).child(i18n::role(role)))
-        .when(member.safety.needs_attention(), |row| {
-            row.child(
-                div().text_xs().text_color(cx.theme().danger).child(i18n::safety(member.safety)),
-            )
-        })
-        .children(actions)
+        .children(crate::identity::name_warning("member-name-warning", member, cx))
         .into_any_element()
 }
 

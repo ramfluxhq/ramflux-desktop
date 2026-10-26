@@ -39,6 +39,7 @@ pub mod entry;
 pub mod file_dialog;
 pub mod gate;
 pub mod i18n;
+pub mod identity;
 mod ids;
 pub mod launch;
 pub mod list_state;

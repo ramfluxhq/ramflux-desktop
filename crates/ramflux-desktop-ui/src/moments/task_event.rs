@@ -4,7 +4,9 @@
 //! Task event lines: what a member did to a task (accepted, declined,
 //! cancelled it, or decided a step), one compact line in the timeline by
 //! the member who signed the event. The task's card shows the task; the
-//! line only names the action, the task and the step.
+//! line only names the action, the task and the step, and whether the
+//! signer's kind is verified for the event (its kind mark, as the source
+//! authenticated it; "kind not verified" otherwise).
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex};
@@ -55,6 +57,14 @@ pub fn render(payload: &TaskEventPayload, row: &MomentRow, cx: &App) -> impl Int
         TaskEventKind::Cancelled => IconName::Dash,
     };
     let text = sentence(payload, row);
+    // The signer's verified kind: the source's flag on the event, the
+    // kind from the signer's profile as the directory holds it.
+    let kind = row
+        .refs
+        .people
+        .get(&row.moment.origin)
+        .and_then(|p| p.kind_claim.kind())
+        .filter(|_| payload.actor_kind_verified);
     h_flex()
         .id("task-event")
         .aria_label(text.clone())
@@ -63,6 +73,12 @@ pub fn render(payload: &TaskEventPayload, row: &MomentRow, cx: &App) -> impl Int
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(icon).xsmall())
         .child(div().min_w_0().child(text))
+        .child(crate::identity::actor_kind_mark(
+            "task-event-kind",
+            kind,
+            payload.actor_kind_verified,
+            cx,
+        ))
         .child(div().child(i18n::time_of_day(row.moment.at)))
         .test_support()
 }

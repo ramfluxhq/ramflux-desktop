@@ -64,7 +64,7 @@ pub fn contacts<H: Host, D: DemoDaemon>(
             })
         });
         let shown = demo.read(me, |s| {
-            s.participant(&participant).map(|p| (p.reachable, p.safety, p.kind, p.kind_asserted))
+            s.participant(&participant).map(|p| (p.reachable, p.safety, p.kind, p.kind_claim))
         })?;
         if reach.is_err() {
             return Err(format!(

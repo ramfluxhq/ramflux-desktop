@@ -6,8 +6,8 @@
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
     AccountKind, Direction, GovernanceAction, GrantState, Lifecycle, MomentKind, NodeHealth,
-    PinSource, Receipt, Risk, Role, SafetyState, SourceStatus, StepState, SystemLevel, TaskState,
-    TransferState,
+    PeerKind, PinSource, Receipt, Risk, Role, SafetyState, SourceStatus, StepState, SystemLevel,
+    TaskState, TransferState,
 };
 
 use super::tr;
@@ -133,6 +133,16 @@ pub fn safety(state: SafetyState) -> SharedString {
         SafetyState::Verified => "safety.verified",
         SafetyState::KeyChanged => "safety.key_changed",
         SafetyState::Forked => "safety.forked",
+        SafetyState::VerificationStale => "safety.verification_stale",
+    })
+}
+
+/// Label of a peer kind (what a profile or card states a principal is).
+pub fn peer_kind(kind: PeerKind) -> SharedString {
+    tr(match kind {
+        PeerKind::Human => "identity.kind.human",
+        PeerKind::HeadlessAi => "identity.kind.headless_ai",
+        PeerKind::Bot => "identity.kind.bot",
     })
 }
 
@@ -192,5 +202,6 @@ pub fn moment_kind(kind: &MomentKind) -> SharedString {
         MomentKind::Fallback(_) => "moment.kind.fallback",
         MomentKind::System(_) => "moment.kind.system",
         MomentKind::Call(_) => "moment.kind.call",
+        MomentKind::NameChange(_) => "moment.kind.name_change",
     })
 }

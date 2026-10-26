@@ -28,6 +28,9 @@ moment:
     task_event:
       en: "Task activity"
       zh-CN: "任务动态"
+    name_change:
+      en: "Name change"
+      zh-CN: "改名"
     conflict:
       en: "Version conflict"
       zh-CN: "版本冲突"
@@ -264,9 +267,6 @@ moment:
       you:
         en: "you"
         zh-CN: "你"
-    kind_unverified:
-      en: "AI participant (not verified)"
-      zh-CN: "AI 参与者（未验证）"
     asked_by:
       en: "Asked by %{name}, who decides and can cancel it"
       zh-CN: "由 %{name} 发起，由其决定或取消"
@@ -421,6 +421,13 @@ moment:
     declined:
       en: "Declined"
       zh-CN: "已拒绝"
+  name_change:
+    line:
+      en: "%{old} is now %{new}"
+      zh-CN: "%{old} 已改名为 %{new}"
+    a11y:
+      en: "%{line}, ID %{id}"
+      zh-CN: "%{line}，ID %{id}"
   task_event:
     you:
       en: "You"

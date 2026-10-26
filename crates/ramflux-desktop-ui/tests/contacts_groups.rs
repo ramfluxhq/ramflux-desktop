@@ -24,9 +24,11 @@ use common::*;
 use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::{MouseButton, TestAppContext, WindowHandle};
 use ramflux_desktop_core::{
-    ContactLink, ContextId, ContextKind, ParticipantId, RootSource, SafetyState,
+    ContactLink, ContextId, ContextKind, KindClaim, ParticipantId, PeerKind, RootSource,
+    SafetyState,
 };
-use ramflux_desktop_ui::i18n::{tr, tr_args};
+use ramflux_desktop_ui::i18n::tr;
+use ramflux_desktop_ui::identity::kind_text;
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::docks::contacts::add_form::FormNote;
 use ramflux_desktop_ui::workspace::docks::contacts::my_card::CardView;
@@ -152,11 +154,13 @@ fn a_principal_id_is_added_unverified_and_a_conversation_starts_at_once(cx: &mut
         None,
         "the safety line is text, not a labeled control"
     );
-    assert!(has_label(
-        cx,
-        handle,
-        &format!("{} · {}", tr("dock.contacts.reachable"), tr("dock.contacts.kind.human"))
-    ));
+    assert!(has_label(cx, handle, &tr("dock.contacts.reachable")));
+    // A name lookup's kind is only claimed: the mark says so.
+    let claimed_person = kind_text(KindClaim::Asserted(PeerKind::Human)).expect("a kind");
+    assert_eq!(
+        label_in(cx, handle, "contacts-principal-kai", "contact-kind").as_deref(),
+        Some(claimed_person.as_ref())
+    );
     assert!(exists(cx, handle, "contacts-principal-kai"));
 
     // The conversation starts right away: the daemon resolved the devices.
@@ -204,15 +208,21 @@ fn cards_add_the_contact_they_name_and_refusals_show_the_daemon_reason(cx: &mut 
     wait(cx, "the card's contact", |cx| contact(cx, &shell, "principal-bot").is_some());
     let bot = contact(cx, &shell, "principal-bot").expect("bot");
     assert_eq!(
-        (bot.kind, bot.kind_asserted, bot.reachable),
-        (ramflux_desktop_core::ParticipantKind::Agent, true, Some(true))
+        (bot.kind, bot.kind_claim, bot.reachable),
+        (
+            ramflux_desktop_core::ParticipantKind::Agent,
+            KindClaim::Asserted(PeerKind::HeadlessAi),
+            Some(true)
+        )
     );
     let cards: Vec<serde_json::Value> = cards_sent(&state);
     assert_eq!(cards, ["ramflux:contact/forged#sig", "ramflux:contact/principal-bot#sig-bot"]);
     wait(cx, "the field cleared", |cx| note(cx, &shell).is_none());
-    let agent =
-        tr_args("dock.contacts.kind.asserted", &[("kind", &tr("dock.contacts.kind.agent"))]);
-    assert!(has_label(cx, handle, &format!("{} · {agent}", tr("dock.contacts.reachable"))));
+    let claimed_ai = kind_text(KindClaim::Asserted(PeerKind::HeadlessAi)).expect("a kind");
+    assert_eq!(
+        label_in(cx, handle, "contacts-principal-bot", "contact-kind").as_deref(),
+        Some(claimed_ai.as_ref())
+    );
 
     // A card file is read and added as it is.
     let dir = std::env::temp_dir().join(format!("rf-f14-card-{}", std::process::id()));
@@ -247,11 +257,7 @@ fn a_contact_that_is_not_reachable_cannot_be_messaged_yet(cx: &mut TestAppContex
     wait(cx, "lu listed", |cx| {
         contact(cx, &shell, "principal-lu").is_some_and(|p| p.reachable == Some(false))
     });
-    assert!(has_label(
-        cx,
-        handle,
-        &format!("{} · {}", tr("dock.contacts.unreachable"), tr("dock.contacts.kind.human"))
-    ));
+    assert!(has_label(cx, handle, &tr("dock.contacts.unreachable")));
     click_in(cx, handle, "contacts-principal-lu", "message");
     let draft_open = {
         let workspace = workspace(cx, &shell);

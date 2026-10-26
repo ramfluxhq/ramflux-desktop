@@ -3,7 +3,9 @@
 
 //! Contact requests in the contacts dock (DESK-F21, on CONTACT-02):
 //!
-//! - a pending request from someone: who asks, their note, the safety
+//! - a pending request from someone: who asks (with their kind as far as
+//!   it is proven, and a warning on a name that could pass for another's,
+//!   see [`crate::identity`]), their note, the safety
 //!   number to compare before accepting, the messages they sent meanwhile
 //!   (held until an answer: a "message request", with a preview of the
 //!   first), and Accept, Decline and Block (Block drops anything they send
@@ -98,8 +100,12 @@ pub fn pending_row(
                         .text_sm()
                         .font_medium()
                         .child(tr_args("dock.contacts.request.asks", &[("name", &name)])),
+                )
+                .children(
+                    from.and_then(|p| crate::identity::kind_mark("request-kind", p.kind_claim, cx)),
                 ),
         )
+        .children(from.and_then(|p| crate::identity::name_warning("request-name-warning", p, cx)))
         // The daemon sends the note and the preview as delimited, sanitized
         // quoted fields ("…" with escapes); they are shown exactly as sent,
         // untrusted text, never quoted again.

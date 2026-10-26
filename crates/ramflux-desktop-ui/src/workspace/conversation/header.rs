@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The conversation header: title (a field while a group is renamed),
-//! members, local settings (pin, mute, disappearing timer behind a menu, the
-//! secondary entry besides the command palette; Rename… for a group), and a
-//! sticky safety banner while any member's key change is unresolved.
+//! The conversation header: title (a field while a group is renamed; in a
+//! direct conversation, the peer's kind mark and name warning beside it,
+//! see [`crate::identity`]), members, local settings (pin, mute,
+//! disappearing timer behind a menu, the secondary entry besides the
+//! command palette; Rename… for a group), and a sticky safety banner while
+//! any member's key change is unresolved or a verification went stale.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -72,9 +74,18 @@ pub fn render(
     let members = context.participants.len();
     let warnings: Vec<Participant> = selectors::participants(store, &context.id)
         .into_iter()
-        .filter(|p| p.safety.needs_attention())
+        .filter(|p| p.safety.needs_attention() || p.safety.is_stale())
         .cloned()
         .collect();
+    let me = selectors::self_participant(store);
+    let peer = (context.kind == ContextKind::Direct)
+        .then(|| {
+            selectors::participants(store, &context.id)
+                .into_iter()
+                .find(|p| Some(&p.id) != me.as_ref())
+                .cloned()
+        })
+        .flatten();
     let pin_sink = sink.clone();
     let pinned = context.pinned;
     let muted = context.muted;
@@ -189,12 +200,31 @@ pub fn render(
                     menu
                 }),
         );
+    // Who the peer of a direct conversation is: the kind as far as it is
+    // proven, and a warning on a name that could pass for another's. Its
+    // own line under the title, so it never fights with the controls.
+    let identity = peer.as_ref().and_then(|peer| {
+        let kind = crate::identity::kind_mark("header-kind", peer.kind_claim, cx);
+        let warning = crate::identity::name_warning("header-name-warning", peer, cx);
+        (kind.is_some() || warning.is_some()).then(|| {
+            h_flex()
+                .id("header-identity")
+                .w_full()
+                .flex_wrap()
+                .gap_3()
+                .px_4()
+                .pb_2()
+                .children(kind)
+                .children(warning)
+        })
+    });
     v_flex()
         .id("conversation-header")
         .w_full()
         .border_b_1()
         .border_color(cx.theme().border)
         .child(row)
+        .children(identity)
         .children(warnings.into_iter().map(|participant| safety_banner(&participant, &sink, cx)))
         .into_any_element()
 }
@@ -220,18 +250,24 @@ fn call_button(store: &Store, context: &Context, sink: &EventSink) -> AnyElement
         .into_any_element()
 }
 
-/// The sticky banner: stays until the participant is verified again.
+/// The sticky banner: stays until the participant is verified again. A key
+/// change or fork is a danger; a stale verification a warning.
 fn safety_banner(participant: &Participant, sink: &EventSink, cx: &App) -> AnyElement {
     let sink = sink.scoped(Scope::Panel("header".into()));
     let participant_id = participant.id.clone();
+    let (color, icon) = if participant.safety.is_stale() {
+        (cx.theme().warning, gpui_kit::assets::IconName::ShieldAlert)
+    } else {
+        (cx.theme().danger, gpui_kit::assets::IconName::TriangleAlert)
+    };
     h_flex()
         .id(domain_id("safety-banner", &participant.id))
         .gap_2()
         .px_4()
         .py_2()
-        .bg(cx.theme().danger.opacity(0.12))
+        .bg(color.opacity(0.12))
         .text_sm()
-        .child(Icon::new(IconName::TriangleAlert).small().text_color(cx.theme().danger))
+        .child(Icon::new(icon).small().text_color(crate::tone::text(color, cx)))
         .child(div().flex_1().min_w_0().child(tr_args(
             "conversation.safety_banner",
             &[("name", &participant.display), ("state", &i18n::safety(participant.safety))],
@@ -240,7 +276,7 @@ fn safety_banner(participant: &Participant, sink: &EventSink, cx: &App) -> AnyEl
             Button::new(domain_id("banner-verify", &participant.id))
                 .small()
                 .outline()
-                .label(tr("moment.safety.verify"))
+                .label(crate::identity::verify_label(participant.safety))
                 .on_click(move |_, window, cx| {
                     sink.emit(
                         UiEventKind::VerifySafetyPressed { participant_id: participant_id.clone() },

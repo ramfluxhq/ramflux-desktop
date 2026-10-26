@@ -12,11 +12,15 @@
 //! with the reason, while the contact is not reachable yet.
 //!
 //! A contact row says how far the contact is trusted: its safety state
-//! (unverified until safety numbers are compared), whether this account can
-//! reach it, and what kind of party it is, marked when that is only the
-//! contact's own claim. It also says where the identity it holds came
-//! from: looked up by id (provisional: anyone could have registered the
-//! name first), pinned by the contact's card, or compared.
+//! (unverified until safety numbers are compared; stale once the verified
+//! authority changed, with Verify again), whether this account can reach
+//! it, and what kind of party it is, with how far that is proven (a
+//! root-signed profile, or only the contact's own claim; see
+//! [`crate::identity`]). A name that looks like another principal's, or
+//! mixes scripts, carries a warning with the principal id beside it. The
+//! row also says where the identity it holds came from: looked up by id
+//! (provisional: anyone could have registered the name first), pinned by
+//! the contact's card, or compared.
 //!
 //! Verify does not mark anything at once: it opens the safety number
 //! comparison in the row, with the number and what to compare it with, and
@@ -31,12 +35,13 @@ use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, Window, div};
 use ramflux_desktop_core::{
-    ContactAction, ContactLink, Moment, MomentKind, Participant, ParticipantId, ParticipantKind,
-    RootSource, SafetyState, Scope, Store, UiEventKind, selectors,
+    ContactAction, ContactLink, Moment, MomentKind, Participant, ParticipantId, RootSource,
+    SafetyState, Scope, Store, UiEventKind, selectors,
 };
 
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
+use crate::identity;
 use crate::ids::domain_id;
 
 /// An open contact request.
@@ -230,6 +235,7 @@ pub fn contact_row(
     let color = match contact.safety {
         SafetyState::Verified => cx.theme().success,
         SafetyState::Unverified => cx.theme().muted_foreground,
+        SafetyState::VerificationStale => crate::tone::text(cx.theme().warning, cx),
         SafetyState::KeyChanged | SafetyState::Forked => cx.theme().danger,
     };
     let unverified = contact.safety != SafetyState::Verified;
@@ -238,9 +244,13 @@ pub fn contact_row(
             Button::new("verify")
                 .xsmall()
                 .outline()
-                .label(tr("moment.safety.verify"))
+                .label(identity::verify_label(contact.safety))
                 .accessibility_label(tr_args(
-                    "dock.contacts.verify_for",
+                    if contact.safety.is_stale() {
+                        "dock.contacts.verify_again_for"
+                    } else {
+                        "dock.contacts.verify_for"
+                    },
                     &[("name", &contact.display)],
                 ))
                 .on_click(start),
@@ -271,6 +281,8 @@ pub fn contact_row(
                 .children(message)
                 .child(actions_menu(contact, sink)),
         )
+        // Advisory: a name that could pass for another's, with the id.
+        .children(identity::name_warning("contact-name-warning", contact, cx))
         .child(
             h_flex()
                 .flex_wrap()
@@ -282,6 +294,15 @@ pub fn contact_row(
                         .test_support()
                         .text_color(color)
                         .child(safety_label(contact.safety)),
+                )
+                // The kind and how far it is proven, on the trust line (the
+                // name keeps its room).
+                .when_some(
+                    identity::kind_mark("contact-kind", contact.kind_claim, cx),
+                    |line, mark| {
+                        line.child(div().text_color(cx.theme().muted_foreground).child("·"))
+                            .child(mark)
+                    },
                 )
                 .when_some(trust_line(contact), |line, trust| {
                     line.child(div().text_color(cx.theme().muted_foreground).child("·")).child(
@@ -460,27 +481,12 @@ pub fn safety_label(safety: SafetyState) -> SharedString {
     }
 }
 
-/// Reachability and kind, as far as the daemon reported them: "Reachable ·
-/// Person", "Not reachable yet · AI agent (self-declared)"; `None` when
-/// neither is known.
+/// Reachability, as far as the daemon reported it: "Reachable", "Not
+/// reachable yet"; `None` when not known. The kind is the row's kind mark.
 pub fn trust_line(contact: &Participant) -> Option<SharedString> {
-    let reach = contact.reachable.map(|reachable| {
+    contact.reachable.map(|reachable| {
         tr(if reachable { "dock.contacts.reachable" } else { "dock.contacts.unreachable" })
-    });
-    let kind = match contact.kind {
-        ParticipantKind::Human => Some("dock.contacts.kind.human"),
-        ParticipantKind::Agent => Some("dock.contacts.kind.agent"),
-        _ => None,
-    }
-    .map(|key| {
-        if contact.kind_asserted {
-            tr_args("dock.contacts.kind.asserted", &[("kind", &tr(key))])
-        } else {
-            tr(key)
-        }
-    });
-    let parts: Vec<SharedString> = reach.into_iter().chain(kind).collect();
-    (!parts.is_empty()).then(|| SharedString::from(parts.join(" · ")))
+    })
 }
 
 /// A blocked participant with Unblock and Remove.

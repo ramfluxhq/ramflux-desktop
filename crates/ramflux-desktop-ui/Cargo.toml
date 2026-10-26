@@ -137,6 +137,12 @@ path = "tests/request_shots.rs"
 test = false
 harness = false
 
+[[test]]
+name = "peer_kind_shots"
+path = "tests/peer_kind_shots.rs"
+test = false
+harness = false
+
 # Offscreen screenshots of voice calls (button, card, bar, records); run
 # explicitly, not part of `cargo test`.
 [[test]]

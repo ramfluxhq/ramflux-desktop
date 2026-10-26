@@ -10,6 +10,11 @@
 //! - `principal-dee`: accepted, a device with a target but no verified key;
 //! - `principal-zed`: accepted, not listed by the identity directory.
 //!
+//! Public profiles (`profiles`, see `fake_profiles`) are joined into the
+//! contact, identity and request rows as the daemon joins them: a
+//! principal without one is the safe default (no name, no kind, nothing
+//! verified, no name warning).
+//!
 //! A successful `message.submit` adds its conversation (and attachment) to
 //! the directories, as the daemon records them; `fail_submit` makes it fail.
 //! Agent surfaces are held on the protocol's state machine (`surfaces`),
@@ -113,6 +118,9 @@ pub struct State {
     /// What the account's status says of its secure sessions
     /// (`reestablishing` after a restore), when set.
     pub secure_sessions: Option<String>,
+    /// Public profiles: names, kinds, how far they are verified, and name
+    /// warnings, joined into contact, identity and request rows.
+    pub profiles: Arc<ramflux_desktop_test::fake_profiles::FakeProfiles>,
 }
 
 /// The shared state.
@@ -228,7 +236,11 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
     let shared: Shared = Arc::default();
     let state = shared.clone();
     let all = frames();
-    shared.lock().expect("state").calls.conversation("dm-ana", "principal-ana");
+    {
+        let state = shared.lock().expect("state");
+        state.calls.conversation("dm-ana", "principal-ana");
+        state.requests.set_profiles(state.profiles.clone());
+    }
     let fake = FakeBus::start(&path, move |method, account, body| {
         let (surfaces, tasks, calls, requests, backup) = {
             let state = state.lock().expect("state");
@@ -285,15 +297,26 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
                         row["principal_id"] = json!(peer);
                         row["request_state"] = json!(own);
                     }
+                    // The contact entry the daemon joins into every row.
+                    if state.profiles.get(&peer).is_some() {
+                        row["principal_id"] = json!(peer);
+                        state.profiles.join(row, &peer);
+                    }
                 }
                 listed
             }
             "identity.directory" => {
                 let mut frame = identities(&all);
                 for row in frame["identities"].as_array_mut().expect("rows") {
-                    let principal = row["principal_id"].as_str().unwrap_or_default();
-                    if let Some(name) = state.names.get(principal) {
+                    let principal = row["principal_id"].as_str().unwrap_or_default().to_owned();
+                    if let Some(name) = state.names.get(&principal) {
                         row["display_name"] = json!(name);
+                    }
+                    if state.profiles.get(&principal).is_some()
+                        && let (Value::Object(row), Value::Object(fields)) =
+                            (&mut *row, state.profiles.identity_fields(&principal))
+                    {
+                        row.extend(fields);
                     }
                 }
                 frame

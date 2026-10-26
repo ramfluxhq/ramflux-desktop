@@ -18,9 +18,10 @@
 //! Only the requester decides a step; on someone else's task the step says
 //! who decides.
 //!
-//! Trust is stated, not implied: until participants carry a signed kind,
-//! that the assignee is an AI participant is only its own claim, and the
-//! card says so. A stalled assignee, a compacted history and the source's
+//! Trust is stated, not implied: the card shows the assignee's kind as the
+//! source authenticated it for the task (a root-signed profile and its
+//! current device, or only a claim; see [`crate::identity`]), and the
+//! requester's on "Asked by". A stalled assignee, a compacted history and the source's
 //! answer to the user's last request are shown in the card
 //! (`task_status`).
 
@@ -158,16 +159,13 @@ fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
                         .child(
                             div().text_color(cx.theme().muted_foreground).child(assignee.clone()),
                         )
-                        .when(!task.flags.kind_verified, |row| {
-                            row.child(div().text_color(cx.theme().muted_foreground).child("·"))
-                                .child(
-                                    div()
-                                        .id("task-kind")
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(tr("moment.task.kind_unverified"))
-                                        .test_support(),
-                                )
-                        })
+                        .child(div().text_color(cx.theme().muted_foreground).child("·"))
+                        .child(crate::identity::actor_kind_mark(
+                            "task-kind",
+                            task.actors.assignee.as_ref().and_then(|a| a.kind),
+                            task.assignee_kind_verified(),
+                            cx,
+                        ))
                         .child(div().text_color(cx.theme().muted_foreground).child("·"))
                         .child(
                             div()
@@ -276,6 +274,14 @@ fn footer(
                     .child(tr_args("moment.task.asked_by", &[("name", requester)]))
                     .test_support(),
             )
+            .children(task.actors.requester.as_ref().map(|actor| {
+                crate::identity::actor_kind_mark(
+                    "task-requester-kind",
+                    actor.kind,
+                    actor.kind_verified,
+                    cx,
+                )
+            }))
         })
         .into_any_element()
 }
