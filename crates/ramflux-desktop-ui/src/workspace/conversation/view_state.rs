@@ -65,7 +65,12 @@ impl ViewState {
     }
 
     /// The state handed to a row renderer.
-    pub fn row_state(&self, id: &MomentId, highlighted: bool) -> RowState {
+    pub fn row_state(
+        &self,
+        id: &MomentId,
+        highlighted: bool,
+        ask_call: crate::identity::AskCall,
+    ) -> RowState {
         RowState {
             expanded: self.expanded.contains(id),
             highlighted,
@@ -74,7 +79,7 @@ impl ViewState {
             diff: self.diffs.get(id).cloned(),
             focus: None,
             review_again: self.review_again.contains(id),
-            ask_call: None,
+            ask_call,
         }
     }
 

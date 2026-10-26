@@ -567,9 +567,8 @@ impl Render for Conversation {
                         });
                     }
                     let is_highlighted = highlighted.as_ref() == Some(id);
-                    let mut state = view.row_state(id, is_highlighted);
+                    let mut state = view.row_state(id, is_highlighted, ask_call.clone());
                     state.focus = is_highlighted.then(|| highlight_focus.clone());
-                    state.ask_call = Some(ask_call.clone());
                     let sink = Self::moment_sink(this.clone(), &context_sink, id);
                     MomentView::new(row.clone(), sink, state).into_any_element()
                 })

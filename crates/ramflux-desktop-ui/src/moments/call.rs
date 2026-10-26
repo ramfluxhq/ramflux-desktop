@@ -79,8 +79,11 @@ pub fn render(
     let color: Hsla = if missed { cx.theme().danger } else { cx.theme().muted_foreground };
     let call_back = call.state.is_ended().then(|| {
         // The same gate as the header's Call button.
-        let on_click =
-            crate::identity::call_gate(refs.call_stale, state.ask_call.clone(), sink.clone());
+        let on_click = crate::identity::call_gate(
+            refs.call_stale,
+            std::rc::Rc::clone(&state.ask_call),
+            sink.clone(),
+        );
         Button::new("call-back")
             .small()
             .ghost()

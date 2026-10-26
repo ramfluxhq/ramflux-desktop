@@ -326,7 +326,7 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
 }
 
 /// View-local state of one row, owned by the conversation field (rule R4).
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct RowState {
     /// The row's disclosure is expanded.
     pub expanded: bool,
@@ -346,7 +346,7 @@ pub struct RowState {
     pub review_again: bool,
     /// Opens the stale-verification acknowledgement of the conversation's
     /// call (Call back on a call record asks through it).
-    pub ask_call: Option<crate::identity::AskCall>,
+    pub ask_call: crate::identity::AskCall,
 }
 
 /// One rendered moment row.

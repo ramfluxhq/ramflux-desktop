@@ -292,13 +292,16 @@ pub type AskCall = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
 /// The one gate every call entry point goes through (the header Call
 /// button and Call back on a call record): a call to a contact whose
 /// verification went stale first asks for the acknowledgement (`ask`),
-/// anything else places the call through `sink`. A stale contact with no
-/// way to ask places nothing.
-pub fn call_gate(stale: bool, ask: Option<AskCall>, sink: crate::bubble::EventSink) -> Click {
-    Box::new(move |_, window, cx| match (stale, &ask) {
-        (false, _) => sink.emit(ramflux_desktop_core::UiEventKind::CallStartRequested, window, cx),
-        (true, Some(ask)) => ask(window, cx),
-        (true, None) => {}
+/// anything else places the call through `sink`. `ask` is not optional: a
+/// caller must say how the acknowledgement is asked, so a stale contact can
+/// never meet a Call button that silently does nothing.
+pub fn call_gate(stale: bool, ask: AskCall, sink: crate::bubble::EventSink) -> Click {
+    Box::new(move |_, window, cx| {
+        if stale {
+            ask(window, cx);
+        } else {
+            sink.emit(ramflux_desktop_core::UiEventKind::CallStartRequested, window, cx);
+        }
     })
 }
 
