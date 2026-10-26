@@ -311,13 +311,7 @@ fn call_button(store: &Store, context: &Context, sink: &EventSink, ack: &CallAck
         .accessibility_label(tr_args("call.start_a11y", &[("name", &name)]))
         .disabled(blocked.is_some())
         .when_some(blocked, |button, reason| button.tooltip(reason))
-        .on_click(move |_, window, cx| {
-            if stale {
-                ask(window, cx);
-            } else {
-                sink.emit(UiEventKind::CallStartRequested, window, cx);
-            }
-        })
+        .on_click(crate::identity::call_gate(stale, Some(ask), sink))
         .into_any_element()
 }
 

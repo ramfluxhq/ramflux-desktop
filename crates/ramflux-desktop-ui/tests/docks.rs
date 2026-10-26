@@ -247,3 +247,34 @@ fn the_whole_dock_layout_persists_and_restores_under_its_schema(cx: &mut TestApp
     assert_eq!(after.center.children, before.center.children, "the center tree restores");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[gpui_kit::test]
+fn a_changed_key_is_refused_without_an_acknowledgement(cx: &mut TestAppContext) {
+    // The scripted scenario holds a contact whose key changed. The daemon
+    // never reports that state for a directory identity, so the production
+    // translator cannot reach it; this guards that the acknowledgement strip
+    // is for a stale verification only, and that a key change still refuses
+    // the call.
+    let (handle, shell) = open(cx, "s04_safety");
+    advance(cx, 1_000);
+    show_context(cx, handle, &shell, "c-mira");
+    let mira = with_store(cx, &shell, |s| s.participant(&"p-mira".into()).cloned()).expect("mira");
+    assert_eq!(mira.safety, ramflux_desktop_core::SafetyState::KeyChanged);
+    assert!(exists(cx, handle, "safety-banner-p-mira"), "the sticky danger banner");
+    let reason = with_store(cx, &shell, |s| {
+        ramflux_desktop_ui::workspace::call_blocked(s, &ContextId::new("c-mira"))
+    });
+    assert_eq!(
+        reason.as_deref(),
+        Some(ramflux_desktop_ui::i18n::tr("call.blocked.safety").as_ref()),
+        "a key change refuses the call"
+    );
+    let disabled = in_window(cx, handle, |window, _| window.find("conversation-call").disabled());
+    assert_eq!(disabled, Some(true));
+    click(cx, handle, "conversation-call");
+    assert!(!exists(cx, handle, "call-stale-ack"), "no acknowledgement for a key change");
+    assert!(
+        !bodies(cx, &shell).iter().any(|(m, _)| m == methods::CALL_INVITE),
+        "nothing is placed"
+    );
+}

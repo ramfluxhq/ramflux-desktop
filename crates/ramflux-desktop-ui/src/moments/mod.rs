@@ -83,6 +83,9 @@ pub struct RowRefs {
     pub call: Option<Call>,
     /// For an ended call: whether a call back could be placed now.
     pub call_back: bool,
+    /// For a call record: the peer's verification went stale, so a call
+    /// back asks for the acknowledgement first.
+    pub call_stale: bool,
 }
 
 /// The task step an intervention belongs to.
@@ -296,6 +299,9 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
         MomentKind::Fallback(_) | MomentKind::System(_) => Vec::new(),
         MomentKind::Call(p) => {
             refs.call = store.call(&p.call_id).cloned();
+            refs.call_stale = ramflux_desktop_core::call_peer(store, &moment.context_id)
+                .and_then(|peer| store.participant(&peer))
+                .is_some_and(|p| p.safety.is_stale());
             refs.call_back = ramflux_desktop_core::check_start_call(store, &moment.context_id)
                 .is_ok()
                 && store.unsupported_reason(ramflux_desktop_core::methods::CALL_INVITE).is_none();
@@ -338,6 +344,9 @@ pub struct RowState {
     /// A pending confirmation on this surface was cancelled because the
     /// surface changed; the user reviews it again.
     pub review_again: bool,
+    /// Opens the stale-verification acknowledgement of the conversation's
+    /// call (Call back on a call record asks through it).
+    pub ask_call: Option<crate::identity::AskCall>,
 }
 
 /// One rendered moment row.
@@ -406,7 +415,7 @@ impl RenderOnce for MomentView {
             MomentKind::System(p) => notice::system(p, cx).into_any_element(),
             MomentKind::Fallback(p) => notice::fallback(p, cx).into_any_element(),
             MomentKind::TaskEvent(p) => task_event::render(p, &row, cx).into_any_element(),
-            MomentKind::Call(_) => call::render(&row.refs, &sink, cx).into_any_element(),
+            MomentKind::Call(_) => call::render(&row.refs, &sink, &state, cx).into_any_element(),
             MomentKind::NameChange(p) => name_change::render(p, &row, cx).into_any_element(),
         };
         // A task event and a name change are one compact line each: they

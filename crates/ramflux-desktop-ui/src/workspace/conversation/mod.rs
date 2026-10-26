@@ -513,6 +513,7 @@ impl Render for Conversation {
                     .ok();
             }),
         };
+        let ask_call = call_ack.ask.clone();
         let header = header::render(store, context, context_sink.clone(), renaming, call_ack, cx);
         let body = match context_sink.filter(|_| !rows.is_empty()) {
             None => {
@@ -553,6 +554,7 @@ impl Render for Conversation {
                 let highlight_focus = self.highlight_focus.clone();
                 let this = cx.weak_entity();
                 let store = self.store.downgrade();
+                let ask_call = ask_call.clone();
                 MessageScroller::new("conversation", self.scroller.clone(), move |ix, _, cx| {
                     let Some(row) = rows.get(ix) else {
                         return div().into_any_element();
@@ -567,6 +569,7 @@ impl Render for Conversation {
                     let is_highlighted = highlighted.as_ref() == Some(id);
                     let mut state = view.row_state(id, is_highlighted);
                     state.focus = is_highlighted.then(|| highlight_focus.clone());
+                    state.ask_call = Some(ask_call.clone());
                     let sink = Self::moment_sink(this.clone(), &context_sink, id);
                     MomentView::new(row.clone(), sink, state).into_any_element()
                 })

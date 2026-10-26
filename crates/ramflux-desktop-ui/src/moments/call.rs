@@ -13,7 +13,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Icon, Sizable as _, h_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Hsla, IntoElement, SharedString, div};
-use ramflux_desktop_core::{Call, CallDirection, CallOutcome, CallState, UiEventKind};
+use ramflux_desktop_core::{Call, CallDirection, CallOutcome, CallState};
 
 use super::RowRefs;
 use crate::bubble::EventSink;
@@ -66,21 +66,28 @@ pub fn summary(call: &Call) -> (SharedString, Option<SharedString>, IconName, bo
 }
 
 /// Renders a call record.
-pub fn render(refs: &RowRefs, sink: &EventSink, cx: &App) -> impl IntoElement {
+pub fn render(
+    refs: &RowRefs,
+    sink: &EventSink,
+    state: &super::RowState,
+    cx: &App,
+) -> impl IntoElement {
     let Some(call) = refs.call.as_ref() else {
         return div().id("call-record").into_any_element();
     };
     let (title, detail, icon, missed) = summary(call);
     let color: Hsla = if missed { cx.theme().danger } else { cx.theme().muted_foreground };
     let call_back = call.state.is_ended().then(|| {
-        let sink = sink.clone();
+        // The same gate as the header's Call button.
+        let on_click =
+            crate::identity::call_gate(refs.call_stale, state.ask_call.clone(), sink.clone());
         Button::new("call-back")
             .small()
             .ghost()
             .icon(IconName::Phone)
             .label(tr("moment.call.call_back"))
             .disabled(!refs.call_back)
-            .on_click(move |_, window, cx| sink.emit(UiEventKind::CallStartRequested, window, cx))
+            .on_click(on_click)
     });
     h_flex()
         .id("call-record")

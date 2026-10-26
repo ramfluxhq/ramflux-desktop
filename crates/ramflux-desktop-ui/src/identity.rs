@@ -214,6 +214,11 @@ pub fn name_warning(
                     .child(warning.what)
                     .tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx)),
             )
+            .child(div().text_color(cx.theme().muted_foreground).child("·"))
+            // Two ids sit in this line: which one is theirs.
+            .child(
+                div().text_color(cx.theme().muted_foreground).child(tr("identity.name.their_id")),
+            )
             .child(principal_id("name-warning-id", &participant.id, cx))
             .into_any_element(),
     )
@@ -280,6 +285,22 @@ pub fn verify_label(safety: SafetyState) -> SharedString {
 
 /// A button handler.
 pub type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+
+/// A command run with the window (opens the call acknowledgement).
+pub type AskCall = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// The one gate every call entry point goes through (the header Call
+/// button and Call back on a call record): a call to a contact whose
+/// verification went stale first asks for the acknowledgement (`ask`),
+/// anything else places the call through `sink`. A stale contact with no
+/// way to ask places nothing.
+pub fn call_gate(stale: bool, ask: Option<AskCall>, sink: crate::bubble::EventSink) -> Click {
+    Box::new(move |_, window, cx| match (stale, &ask) {
+        (false, _) => sink.emit(ramflux_desktop_core::UiEventKind::CallStartRequested, window, cx),
+        (true, Some(ask)) => ask(window, cx),
+        (true, None) => {}
+    })
+}
 
 /// The inline acknowledgement a stale verification asks for before a new
 /// conversation, group or call: what is out of date (without claiming the

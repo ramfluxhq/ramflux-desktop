@@ -319,3 +319,33 @@ fn a_call_to_a_stale_contact_asks_to_acknowledge_and_never_refuses(cx: &mut Test
     assert_eq!(invites(&world), 1);
     assert!(!exists(cx, world.handle, "call-stale-ack"));
 }
+
+#[gpui_kit::test]
+fn call_back_on_a_stale_contact_goes_through_the_same_acknowledgement(cx: &mut TestAppContext) {
+    let world = open_calls_with(cx, "ui-call-back-stale", true, &["principal-ana"]);
+    let invites =
+        |world: &World| world.fake.seen().into_iter().filter(|s| s.method == "call.invite").count();
+    // A first call, after the acknowledgement, then hung up: a record.
+    click(cx, world.handle, "conversation-call");
+    click_in(cx, world.handle, "call-stale-ack", "stale-continue");
+    wait(cx, "calling", |cx| with_store(cx, &world.shell, current).is_some());
+    let id = with_store(cx, &world.shell, current).unwrap();
+    assert_eq!(invites(&world), 1);
+    world.calls.peer_answers(id.as_str());
+    wait(cx, "active", |cx| call_state(cx, &world, &id) == Some(CallState::Active));
+    click(cx, world.handle, "call-hang-up");
+    wait(cx, "ended", |cx| {
+        call_state(cx, &world, &id) == Some(CallState::Ended(CallEndReason::Completed))
+    });
+    advance(cx, 100);
+    // Call back asks first; nothing is placed before Continue.
+    click(cx, world.handle, "call-back");
+    assert!(exists(cx, world.handle, "call-stale-ack"), "the same acknowledgement");
+    advance(cx, 300);
+    assert_eq!(invites(&world), 1, "no call.invite before Continue");
+    click_in(cx, world.handle, "call-stale-ack", "stale-continue");
+    wait(cx, "calling back", |cx| {
+        with_store(cx, &world.shell, current).is_some_and(|again| again != id)
+    });
+    assert_eq!(invites(&world), 2);
+}

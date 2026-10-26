@@ -74,6 +74,7 @@ impl ViewState {
             diff: self.diffs.get(id).cloned(),
             focus: None,
             review_again: self.review_again.contains(id),
+            ask_call: None,
         }
     }
 

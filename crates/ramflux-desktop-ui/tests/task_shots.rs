@@ -30,7 +30,6 @@ mod shots {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use gpui_kit::assets::Assets;
     use gpui_kit::base::Root;
     use gpui_kit::component::{Theme, ThemeMode};
     use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
@@ -41,6 +40,7 @@ mod shots {
     use ramflux_desktop_core::{ContextId, GrantId, SyncMode, Task, TaskId, TaskState};
     use ramflux_desktop_sdk::translate::tasks::{task_key, task_moment_id};
     use ramflux_desktop_test::fake_tasks::{approval_step, task_step};
+    use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
     use ramflux_desktop_ui::route::Page;
     use ramflux_protocol::TaskStatus;
