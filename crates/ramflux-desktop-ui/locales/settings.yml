@@ -349,6 +349,9 @@ settings:
     location:
       en: "Location"
       zh-CN: "位置"
+    location_exists:
+      en: "A file with this name already exists. A backup never replaces a file: choose another name."
+      zh-CN: "已存在同名文件。备份不会覆盖文件，请换一个名称。"
     no_location:
       en: "No location chosen"
       zh-CN: "未选择位置"
@@ -366,8 +369,8 @@ settings:
       zh-CN: "恢复时需要此口令。忘记后无法找回。"
     strength:
       too_short:
-        en: "Too short: use at least 12 characters."
-        zh-CN: "太短：至少需要 12 个字符。"
+        en: "Too short: use at least 12 characters (16 bytes)."
+        zh-CN: "太短：至少需要 12 个字符（16 字节）。"
       weak:
         en: "Weak: add a few more words."
         zh-CN: "较弱：再加几个词。"

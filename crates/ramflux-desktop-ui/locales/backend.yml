@@ -261,8 +261,8 @@ backend:
       en: "The backup file can't be read."
       zh-CN: "无法读取备份文件。"
     not_writable:
-      en: "Can't write to the chosen location."
-      zh-CN: "无法写入所选位置。"
+      en: "Can't write the backup there. A backup never replaces a file: if one with this name exists, choose another name."
+      zh-CN: "无法在该位置写入备份。备份不会覆盖文件：若已有同名文件，请换一个名称。"
     staging_expired:
       en: "The checked copy expired before it was restored. Check the backup again."
       zh-CN: "检查过的副本在恢复前已过期。请重新检查备份。"

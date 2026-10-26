@@ -68,6 +68,8 @@ pub struct BackupPanel {
     form: Option<Form>,
     /// Where the backup goes.
     location: Option<String>,
+    /// A file is already there: the daemon never replaces one.
+    location_exists: bool,
     /// The backup file to restore.
     file: Option<String>,
     passphrase: Entity<InputState>,
@@ -88,6 +90,9 @@ pub struct BackupPanel {
     /// how many the user agreed to (explicitly, after a backup failed on
     /// them). `None`: every file must be backed up.
     allow_missing: Option<u64>,
+    /// Rendered on its own (the entry page): restore only, its form always
+    /// open, no account needed.
+    standalone: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -125,6 +130,7 @@ impl BackupPanel {
             root,
             form: None,
             location: None,
+            location_exists: false,
             file: None,
             passphrase,
             repeat,
@@ -134,10 +140,31 @@ impl BackupPanel {
             asked: None,
             dismissed: BTreeSet::new(),
             allow_missing: None,
+            standalone: false,
             _subscriptions: subscriptions,
         };
         panel.follow_jobs(cx);
         panel
+    }
+
+    /// A restore-only panel rendered on its own (the entry page, with no
+    /// account open): the restore form is always open, and a job it
+    /// started is shown in its place until closed.
+    pub fn standalone(
+        store: Entity<StoreHandle>,
+        root: Entity<IntentRoot>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut panel = Self::new(store, root, window, cx);
+        panel.standalone = true;
+        panel.form = Some(Form::Restore);
+        panel
+    }
+
+    /// Whether a job is shown (running, or ended and not closed yet).
+    pub fn shows_job(&self, cx: &App) -> bool {
+        self.shown(self.store.read(cx).store()).is_some()
     }
 
     /// The open form.
@@ -210,9 +237,10 @@ impl BackupPanel {
         cx.notify();
     }
 
-    /// Closes the open form; nothing is submitted.
+    /// Closes the open form; nothing is submitted. A standalone panel
+    /// keeps its restore form (there is nothing else to show).
     pub fn close_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.form = None;
+        self.form = self.standalone.then_some(Form::Restore);
         self.failures_mark = None;
         self.allow_missing = None;
         for input in [&self.passphrase, &self.repeat, &self.restore_secret] {
@@ -221,10 +249,17 @@ impl BackupPanel {
         cx.notify();
     }
 
-    /// Sets where the backup goes.
+    /// Sets where the backup goes. A file already there is noted: the
+    /// daemon never replaces one, so the form asks for another name.
     pub fn set_location(&mut self, path: String, cx: &mut Context<Self>) {
+        self.location_exists = std::path::Path::new(&path).exists();
         self.location = Some(path);
         cx.notify();
+    }
+
+    /// Whether a file is already at the chosen location.
+    pub fn location_exists(&self) -> bool {
+        self.location_exists
     }
 
     /// Sets the backup file to restore.
@@ -244,6 +279,7 @@ impl BackupPanel {
     fn backup_ready(&self, cx: &App) -> bool {
         let typed = self.passphrase.read(cx).value();
         self.location.is_some()
+            && !self.location_exists
             && text::Strength::of(&typed) > text::Strength::TooShort
             && self.repeat.read(cx).value() == typed
     }
@@ -280,7 +316,7 @@ impl BackupPanel {
         cx: &mut Context<Self>,
     ) {
         self.dismissed.insert(job.id.clone());
-        self.location = Some(job.path.clone());
+        self.set_location(job.path.clone(), cx);
         self.open(Form::Backup, window, cx);
         self.allow_missing = Some(files);
     }
@@ -328,7 +364,7 @@ impl BackupPanel {
         self.dismissed.insert(job.id.clone());
         let form = match job.kind {
             BackupJobKind::Backup => {
-                self.location = Some(job.path.clone());
+                self.set_location(job.path.clone(), cx);
                 Form::Backup
             }
             BackupJobKind::Restore => {
@@ -349,6 +385,33 @@ impl BackupPanel {
             Part::Backup => self.render_backup(window, cx),
             Part::Restore => self.render_restore(window, cx),
             Part::Job => self.render_job(window, cx),
+        }
+    }
+}
+
+impl gpui_kit::Render for BackupPanel {
+    /// The standalone panel (the entry page): the job it follows, else the
+    /// restore form.
+    fn render(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl gpui_kit::IntoElement {
+        use gpui_kit::component::{StyledExt as _, v_flex};
+        use gpui_kit::prelude::*;
+        let job = self.shown(self.store.read(cx).store()).map(text::heading);
+        match job {
+            Some(heading) => v_flex()
+                .id("backup-standalone")
+                .gap_2()
+                .child(gpui_kit::div().text_sm().font_semibold().child(heading))
+                .child(self.render_job(window, cx)),
+            None => {
+                if self.standalone {
+                    self.form = Some(Form::Restore);
+                }
+                v_flex().id("backup-standalone").child(self.render_restore(window, cx))
+            }
         }
     }
 }

@@ -817,3 +817,7 @@ call:
     a11y:
       en: "Call with %{name}"
       zh-CN: "与 %{name} 通话"
+secure_sessions:
+  reestablishing:
+    en: "Re-establishing secure sessions… History and files are readable; sending resumes once this device is activated again."
+    zh-CN: "正在重新建立安全会话……历史记录和文件可以查看，待本设备重新激活后即可发送。"

@@ -12,14 +12,19 @@ use ramflux_desktop_core::{
 
 use crate::i18n::{self, backend_text, tr, tr_args};
 
-/// The shortest passphrase a backup accepts.
+/// The shortest passphrase a backup accepts, in characters.
 pub const MIN_PASSPHRASE_CHARS: usize = 12;
+
+/// The shortest passphrase a backup accepts, in UTF-8 bytes (the one rule,
+/// as the contract states it: at least 12 characters and 16 bytes).
+pub const MIN_PASSPHRASE_BYTES: usize = 16;
 
 /// How hard a backup passphrase is to guess, roughly: length first, then
 /// several words or kinds of character.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Strength {
-    /// Under [`MIN_PASSPHRASE_CHARS`]: not accepted.
+    /// Under [`MIN_PASSPHRASE_CHARS`] or [`MIN_PASSPHRASE_BYTES`]: not
+    /// accepted.
     TooShort,
     /// Accepted, but easy to guess.
     Weak,
@@ -33,7 +38,7 @@ impl Strength {
     /// The strength of `passphrase`.
     pub fn of(passphrase: &str) -> Self {
         let chars = passphrase.chars().count();
-        if chars < MIN_PASSPHRASE_CHARS {
+        if chars < MIN_PASSPHRASE_CHARS || passphrase.len() < MIN_PASSPHRASE_BYTES {
             return Self::TooShort;
         }
         // A character outside ASCII (CJK, for one) comes from a far larger
@@ -90,7 +95,9 @@ pub fn heading(job: &BackupJob) -> SharedString {
 /// works on.
 pub fn doing(job: &BackupJob) -> SharedString {
     let progress = &job.progress;
-    if progress.is_fetching(job.phase) {
+    // The fetch phase is announced even when no file is missing ("0 of 0"):
+    // that is just preparing.
+    if progress.is_fetching(job.phase) && progress.items_total.is_some_and(|total| total > 0) {
         let total = progress.items_total.unwrap_or_default();
         return tr_args(
             "settings.backup.job.fetching",
@@ -171,14 +178,9 @@ fn space(needed: Option<u64>, available: Option<u64>) -> SharedString {
     }
 }
 
-/// A refused job request's message (a `backend.backup.*` key, with the
-/// space figures in bytes), or another failure's.
+/// A refused job request's message (a `backend.backup.*` key), or another
+/// failure's.
 pub fn refusal(message: &str) -> SharedString {
-    if let Some(args) = message.strip_prefix("backend.backup.insufficient_space ") {
-        let figures: serde_json::Value = serde_json::from_str(args).unwrap_or_default();
-        let figure = |field: &str| figures[field].as_str().and_then(|n| n.parse::<u64>().ok());
-        return space(figure("needed"), figure("available"));
-    }
     backend_text(message)
 }
 
@@ -212,8 +214,10 @@ mod tests {
     #[test]
     fn strength_reads_length_then_words_and_kinds() {
         assert_eq!(Strength::of("short"), Strength::TooShort);
-        assert_eq!(Strength::of("abcdefghijkl"), Strength::Weak);
-        assert_eq!(Strength::of("Abcdefgh1jk!"), Strength::Fair);
+        // Twelve ASCII characters are twelve bytes: under the 16-byte rule.
+        assert_eq!(Strength::of("abcdefghijkl"), Strength::TooShort);
+        assert_eq!(Strength::of("Abcdefgh1jk!"), Strength::TooShort);
+        assert_eq!(Strength::of("abcdefghijklmnop"), Strength::Fair);
         assert_eq!(Strength::of("river stone lantern"), Strength::Fair);
         assert_eq!(Strength::of("river stone lantern harbor"), Strength::Strong);
         // Twelve CJK characters (U+5907) count twice each.

@@ -22,13 +22,15 @@ use std::sync::Arc;
 use common::*;
 use gpui_kit::TestAppContext;
 use gpui_kit::test::TestWindowExt as _;
-use ramflux_desktop_core::{BackupFailure, BackupJob, BackupPhase, SyncMode, selectors};
+use ramflux_desktop_core::{
+    BackupFailure, BackupJob, BackupPhase, LockState, SecureSessions, SyncMode, selectors,
+};
 use ramflux_desktop_test::fake_backup::{Archive, Counts, FakeBackup};
 use ramflux_desktop_test::fake_bus::FakeBus;
 use ramflux_desktop_ui::Shell;
-use ramflux_desktop_ui::route::Page;
+use ramflux_desktop_ui::route::{EntryStep, Page};
 use ramflux_desktop_ui::settings::SettingsSection;
-use ramflux_desktop_ui::settings::backup::Form;
+use ramflux_desktop_ui::settings::backup::{BackupPanel, Form};
 use sdk_fake::wait;
 
 const ACCOUNT: &str = "acct-main";
@@ -349,4 +351,141 @@ fn without_the_job_api_backup_and_restore_are_disabled_with_the_reason(cx: &mut 
     assert_eq!(disabled(cx, &world, "backup-open"), Some(true));
     assert_eq!(disabled(cx, &world, "restore-open"), Some(true));
     assert!(!requests(&world, "account.backup.jobs").is_empty(), "it asked");
+}
+
+/// The entry page's full-restore panel.
+fn entry_panel(
+    cx: &mut TestAppContext,
+    shell: &gpui_kit::Entity<Shell>,
+) -> gpui_kit::Entity<BackupPanel> {
+    cx.update(|cx| shell.read(cx).entry().read(cx).full_restore().clone())
+}
+
+#[gpui_kit::test]
+fn a_file_already_at_the_chosen_location_is_refused_in_the_form(cx: &mut TestAppContext) {
+    let world = open_backup(cx, "ui-backup-exists", true);
+    click(cx, world.handle, "backup-open");
+    click(cx, world.handle, "backup-choose-location");
+    cx.simulate_new_path_selection(|dir| {
+        let taken = dir.join("taken.rfbackup");
+        std::fs::write(&taken, b"an older backup").expect("a file there already");
+        Some(taken)
+    });
+    cx.run_until_parked();
+    set_input(cx, &world, 0, PASSPHRASE);
+    set_input(cx, &world, 1, PASSPHRASE);
+    assert!(exists(cx, world.handle, "backup-location-exists"), "the daemon never replaces a file");
+    assert_eq!(disabled(cx, &world, "backup-start"), Some(true));
+    click(cx, world.handle, "backup-choose-location");
+    cx.simulate_new_path_selection(|dir| Some(dir.join("fresh.rfbackup")));
+    cx.run_until_parked();
+    assert!(!exists(cx, world.handle, "backup-location-exists"));
+    assert_ne!(disabled(cx, &world, "backup-start"), Some(true));
+}
+
+#[gpui_kit::test]
+fn secure_sessions_being_reestablished_show_a_banner_until_the_daemon_says_ready(
+    cx: &mut TestAppContext,
+) {
+    let (fake, state, path) = sdk_fake::start("ui-backup-sessions");
+    fake.enable_stream();
+    state.lock().expect("state").secure_sessions = Some("reestablishing".to_owned());
+    let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 900.);
+    wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
+    wait(cx, "the stream", |cx| {
+        with_store(cx, &shell, |s| s.sync_status().is_some_and(|x| x.mode == SyncMode::Stream))
+    });
+    let sessions = |cx: &mut TestAppContext| {
+        with_store(cx, &shell, |s| s.accounts().next().map(|a| a.secure_sessions))
+    };
+    assert_eq!(sessions(cx), Some(SecureSessions::Reestablishing));
+    advance(cx, 50);
+    assert!(exists(cx, handle, "secure-sessions-banner"), "the workspace says so, persistently");
+    fake.publish(
+        ACCOUNT,
+        "account.secure_sessions.changed",
+        serde_json::json!({ "local_account_id": ACCOUNT, "secure_sessions": "ready" }),
+    );
+    wait(cx, "ready", |cx| sessions(cx) == Some(SecureSessions::Ready));
+    advance(cx, 50);
+    assert!(!exists(cx, handle, "secure-sessions-banner"));
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn a_fresh_device_restores_a_full_backup_from_the_entry_page(cx: &mut TestAppContext) {
+    let (fake, state, path) = sdk_fake::start("ui-backup-entry");
+    fake.enable_stream();
+    let fake = Arc::new(fake);
+    let backup = state.lock().expect("state").backup.clone();
+    backup.archive("/b/personal.rfbackup", archive(0));
+    let bus = Arc::downgrade(&fake);
+    backup.set_publisher(Box::new(move |row| {
+        if let Some(bus) = bus.upgrade() {
+            bus.publish_job(row);
+        }
+    }));
+    // No account on this device yet.
+    state.lock().expect("state").accounts =
+        Some(serde_json::json!({ "accounts": [], "account_details": [] }));
+    let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 900.);
+    wait(cx, "the entry page", |cx| matches!(page(cx, &shell), Page::Entry(_)));
+    if page(cx, &shell) == Page::Entry(EntryStep::Node) {
+        click_in(cx, handle, "node-n-harbor", "node-confirm");
+    }
+    wait(cx, "the account step", |cx| page(cx, &shell) == Page::Entry(EntryStep::Account));
+    wait(cx, "the job API at daemon scope", |cx| {
+        with_store(cx, &shell, |s| {
+            s.unsupported_reason(ramflux_desktop_core::methods::RESTORE_VERIFY).is_none()
+        })
+    });
+    click(cx, handle, "entry-path-2");
+    assert!(exists(cx, handle, "entry-full-restore"), "a full backup is the default");
+    let panel = entry_panel(cx, &shell);
+    click(cx, handle, "restore-choose-file");
+    cx.simulate_path_prompt_response(|_| Some(vec!["/b/personal.rfbackup".into()]));
+    cx.run_until_parked();
+    in_window(cx, handle, move |window, cx| {
+        let input = panel.read(cx).inputs()[2].clone();
+        input.update(cx, |input, cx| input.set_value(PASSPHRASE, window, cx));
+    });
+    click(cx, handle, "restore-verify");
+    wait(cx, "checking", |cx| {
+        with_store(cx, &shell, |s| selectors::latest_backup_job(s).map(|j| j.phase))
+            == Some(BackupPhase::Verifying)
+    });
+    let sent = fake.seen().into_iter().rfind(|s| s.method == "account.restore.verify");
+    let sent = sent.expect("sent");
+    assert_eq!(sent.account, None, "a daemon-level job");
+    assert_eq!(sent.body["input_path"], "/b/personal.rfbackup");
+    backup.run_out();
+    wait(cx, "verified", |cx| {
+        with_store(cx, &shell, |s| selectors::latest_backup_job(s).map(|j| j.phase))
+            == Some(BackupPhase::Verified)
+    });
+    advance(cx, 50);
+    assert!(exists(cx, handle, "backup-review"));
+    // The daemon will list the account once it is installed.
+    state.lock().expect("state").accounts = Some(serde_json::json!({
+        "accounts": [],
+        "account_details": [{ "id": ACCOUNT, "label": "Personal", "kind": "human",
+                              "state": "locked" }],
+    }));
+    click(cx, handle, "restore-install");
+    backup.run_out();
+    wait(cx, "restored", |cx| {
+        with_store(cx, &shell, |s| selectors::latest_backup_job(s).map(|j| j.phase))
+            == Some(BackupPhase::Done)
+    });
+    wait(cx, "the account listed", |cx| {
+        with_store(cx, &shell, |s| s.accounts().next().map(|a| a.lock_state))
+            == Some(LockState::Locked)
+    });
+    advance(cx, 50);
+    assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account));
+    assert!(exists(cx, handle, "backup-result"), "the result stays in view");
+    assert!(exists(cx, handle, "passphrase"), "and the account can be unlocked");
+    if let Ok(fake) = Arc::try_unwrap(fake) {
+        fake.shutdown();
+    }
 }

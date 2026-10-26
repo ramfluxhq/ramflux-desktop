@@ -105,8 +105,14 @@ pub struct State {
     /// Contact requests (CONTACT-02, contract-first); a contact's row in
     /// `contact.list` carries this account's own request to it.
     pub requests: Arc<ramflux_desktop_test::fake_contact_requests::FakeContactRequests>,
-    /// Full backup and restore jobs (the assumed BACKUP-01 API).
+    /// Full backup and restore jobs (the BACKUP-01 job API as merged).
     pub backup: Arc<ramflux_desktop_test::fake_backup::FakeBackup>,
+    /// What `account.list` answers instead of the fixture's one unlocked
+    /// account (a fresh device has none).
+    pub accounts: Option<Value>,
+    /// What the account's status says of its secure sessions
+    /// (`reestablishing` after a restore), when set.
+    pub secure_sessions: Option<String>,
 }
 
 /// The shared state.
@@ -296,6 +302,14 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
                 let mut frame = fixture();
                 let rows = frame["conversations"].as_array_mut().expect("rows");
                 rows.extend(state.conversations.iter().cloned());
+                frame
+            }
+            "account.list" => state.accounts.clone().unwrap_or_else(fixture),
+            "account.status" => {
+                let mut frame = fixture();
+                if let Some(sessions) = &state.secure_sessions {
+                    frame["secure_sessions"] = json!(sessions);
+                }
                 frame
             }
             "object.directory" => {

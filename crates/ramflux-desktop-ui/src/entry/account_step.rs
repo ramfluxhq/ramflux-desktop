@@ -20,7 +20,7 @@ use ramflux_desktop_core::{
     Account, AccountKind, IntentKind, LockState, NodeId, SecretInput, Store,
 };
 
-use super::{AccountPath, EntryPage};
+use super::{AccountPath, EntryPage, RestoreKind};
 use crate::file_dialog;
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
@@ -111,7 +111,14 @@ impl EntryPage {
         let body = if accounts.is_empty() {
             self.render_paths(&store, cx).into_any_element()
         } else {
-            self.render_unlock(&accounts, cx).into_any_element()
+            // A full restore that just finished (the account it installed
+            // is listed now) stays in view above the unlock, until closed.
+            let restored = self.full_restore.read(cx).shows_job(cx);
+            v_flex()
+                .gap_4()
+                .children(restored.then(|| self.full_restore.clone()))
+                .child(self.render_unlock(&accounts, cx))
+                .into_any_element()
         };
         v_flex().id("entry-account").gap_3().child(body)
     }
@@ -368,8 +375,32 @@ impl EntryPage {
     }
 
     fn render_restore(&self, cx: &mut Context<Self>) -> AnyElement {
+        let kinds = [
+            (RestoreKind::Full, tr("entry.restore.full")),
+            (RestoreKind::Key, tr("entry.restore.key")),
+        ];
+        let choice = self.segment(
+            "entry-restore-kind",
+            &kinds,
+            self.restore_kind,
+            |this, kind| this.restore_kind = kind,
+            cx,
+        );
+        let muted = cx.theme().muted_foreground;
+        if self.restore_kind == RestoreKind::Full {
+            return v_flex()
+                .gap_3()
+                .child(choice)
+                .child(div().text_sm().text_color(muted).child(tr("entry.restore.full_help")))
+                .child(
+                    div().id("entry-full-restore").test_support().child(self.full_restore.clone()),
+                )
+                .into_any_element();
+        }
         v_flex()
             .gap_3()
+            .child(choice)
+            .child(div().text_sm().text_color(muted).child(tr("entry.restore.key_help")))
             .child(
                 h_flex()
                     .gap_2()

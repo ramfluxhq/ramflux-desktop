@@ -25,11 +25,13 @@ mod status_strip;
 
 use std::sync::Arc;
 
+use gpui_kit::TestSupportExt as _;
+use gpui_kit::component::alert::Alert;
 use gpui_kit::component::dock::{
     BasePanelView, DockArea, DockEvent, DockLayout, DockPlacement, DockSkin, DockToggleEvent,
     panel_handle,
 };
-use gpui_kit::component::{ActiveTheme as _, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, px,
@@ -681,6 +683,40 @@ pub fn next_attention<'a>(
     }
 }
 
+impl Workspace {
+    /// The banner shown while the rendered account's secure sessions are
+    /// being re-established after a full restore (sending is refused by
+    /// the daemon meanwhile; history and files stay readable). It stays
+    /// until the daemon announces them ready.
+    fn secure_sessions_banner(&self, cx: &App) -> Option<gpui_kit::AnyElement> {
+        let handle = self.store.read(cx);
+        let store = handle.store();
+        let account = handle.active_account().cloned().or_else(|| {
+            store
+                .accounts()
+                .find(|a| a.lock_state == ramflux_desktop_core::LockState::Unlocked)
+                .map(|a| a.id.clone())
+        })?;
+        let reestablishing = store.account(&account)?.secure_sessions
+            == ramflux_desktop_core::SecureSessions::Reestablishing;
+        reestablishing.then(|| {
+            gpui_kit::div()
+                .id("secure-sessions-banner")
+                .test_support()
+                .px_3()
+                .pt_3()
+                .child(
+                    Alert::warning(
+                        "secure-sessions-alert",
+                        crate::i18n::tr("secure_sessions.reestablishing"),
+                    )
+                    .small(),
+                )
+                .into_any_element()
+        })
+    }
+}
+
 impl Render for Workspace {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.weak_entity();
@@ -698,6 +734,7 @@ impl Render for Workspace {
                     .flex_1()
                     .min_w_0()
                     .h_full()
+                    .children(self.secure_sessions_banner(cx))
                     .child(self.call_bar.clone())
                     .child(gpui_kit::div().flex_1().min_h_0().child(self.dock_area.clone()))
                     .child(

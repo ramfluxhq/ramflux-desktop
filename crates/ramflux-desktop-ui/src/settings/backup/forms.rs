@@ -141,6 +141,16 @@ impl BackupPanel {
                     ),
                 cx,
             ))
+            .children(self.location_exists.then(|| {
+                div()
+                    .id("backup-location-exists")
+                    .role(Role::Alert)
+                    .aria_label(tr("settings.backup.location_exists"))
+                    .test_support()
+                    .text_sm()
+                    .text_color(cx.theme().danger)
+                    .child(tr("settings.backup.location_exists"))
+            }))
             .child(field(
                 tr("settings.backup.passphrase"),
                 masked(&self.passphrase, "backup-new-passphrase", tr("settings.backup.passphrase")),
@@ -272,15 +282,15 @@ impl BackupPanel {
             .child(
                 h_flex()
                     .gap_2()
-                    .child(
+                    .children((!self.standalone).then(|| {
                         Button::new("restore-form-cancel")
                             .small()
                             .outline()
                             .label(tr("common.cancel"))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.close_form(window, cx)),
-                            ),
-                    )
+                            )
+                    }))
                     .child(crate::gate::gated(
                         Button::new("restore-verify")
                             .small()

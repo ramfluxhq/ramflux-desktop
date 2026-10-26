@@ -129,6 +129,10 @@ fn entry_joins_as_a_new_device(cx: &mut TestAppContext) {
 fn entry_restores_a_backup_then_locks_and_unlocks(cx: &mut TestAppContext) {
     let (handle, shell) = harbor_confirmed(cx);
     click(cx, handle, "entry-path-2");
+    // The full restore is offered first; this is the key backup (legacy
+    // import).
+    assert!(exists(cx, handle, "entry-full-restore"));
+    click(cx, handle, "entry-restore-kind-1");
     click(cx, handle, "backup-browse");
     cx.simulate_path_prompt_response(|options| {
         assert!(options.files && !options.multiple);

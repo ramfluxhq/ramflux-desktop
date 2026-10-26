@@ -39,6 +39,7 @@ use crate::i18n::{self, tr};
 use crate::launch::DaemonLauncher;
 use crate::root::{ConfirmHost, IntentRoot};
 use crate::route::{EntryStep, Page, page_for};
+use crate::settings::backup::BackupPanel;
 
 pub use daemon_step::failure_text as daemon_failure_text;
 pub use node_card::NodeCard;
@@ -52,6 +53,16 @@ pub enum AccountPath {
     Join,
     /// Restore from an encrypted backup.
     Restore,
+}
+
+/// Which backup the restore path restores from (view-local).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestoreKind {
+    /// A full backup (everything, every file): the daemon's restore jobs,
+    /// checked and reviewed before anything is installed.
+    Full,
+    /// A key backup (identity keys and contacts only): the legacy import.
+    Key,
 }
 
 /// The text inputs of the entry page.
@@ -95,6 +106,10 @@ pub struct EntryPage {
     sink: EventSink,
     inputs: Inputs,
     path: AccountPath,
+    restore_kind: RestoreKind,
+    /// The full restore flow (verify, review, install, result), shared with
+    /// Settings · Backup; it needs no account.
+    full_restore: Entity<BackupPanel>,
     kind: AccountKind,
     node: Option<NodeId>,
     review_nodes: bool,
@@ -116,7 +131,10 @@ impl EntryPage {
         cx: &mut Context<Self>,
     ) -> Self {
         let inputs = Inputs::new(window, cx);
+        let full_restore =
+            cx.new(|cx| BackupPanel::standalone(store.clone(), root.clone(), window, cx));
         let subscriptions = vec![
+            cx.observe(&full_restore, |_, _, cx| cx.notify()),
             cx.subscribe(&store, |this, _, event: &StoreEvent, cx| {
                 if let StoreEvent::Changed(changes) = event
                     && changes.touches_status()
@@ -145,6 +163,8 @@ impl EntryPage {
             launcher,
             inputs,
             path: AccountPath::Create,
+            restore_kind: RestoreKind::Full,
+            full_restore,
             kind: AccountKind::HumanInteractive,
             node: None,
             review_nodes: false,
@@ -157,6 +177,11 @@ impl EntryPage {
     /// The unlock passphrase input.
     pub fn passphrase(&self) -> &Entity<InputState> {
         &self.inputs.passphrase
+    }
+
+    /// The full restore flow's panel.
+    pub fn full_restore(&self) -> &Entity<BackupPanel> {
+        &self.full_restore
     }
 
     /// Every masked secret input, for tests that check secrets are cleared.

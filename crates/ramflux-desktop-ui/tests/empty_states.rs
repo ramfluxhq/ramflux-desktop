@@ -30,6 +30,7 @@ fn empty_account() -> Scenario {
         device_id: None,
         lock_state: LockState::Unlocked,
         self_participant_id: None,
+        secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
     };
     Scenario {
         name: "empty_account".to_owned(),

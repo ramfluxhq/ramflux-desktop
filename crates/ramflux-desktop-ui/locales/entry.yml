@@ -163,6 +163,18 @@ entry:
       en: "Join account"
       zh-CN: "加入账户"
   restore:
+    full:
+      en: "Full backup"
+      zh-CN: "完整备份"
+    key:
+      en: "Key backup"
+      zh-CN: "密钥备份"
+    full_help:
+      en: "A full backup holds everything: messages, groups, contacts and every file. It is checked completely before anything is installed; the account then appears here and can be unlocked."
+      zh-CN: "完整备份包含全部内容：消息、群组、联系人和所有文件。安装前会完整检查；之后账户会出现在此处，可以解锁。"
+    key_help:
+      en: "A key backup holds the identity keys and contacts only."
+      zh-CN: "密钥备份只包含身份密钥和联系人。"
     path:
       en: "Backup file"
       zh-CN: "备份文件"

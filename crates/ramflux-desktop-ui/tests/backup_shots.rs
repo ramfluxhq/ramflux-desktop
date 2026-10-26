@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! Offscreen light and dark screenshots of Settings · Backup on a fake
-//! daemon with the assumed BACKUP-01 job API: the section, the backup form,
+//! daemon with the BACKUP-01 job API as merged: the section, the backup form,
 //! a backup in progress and done, the restore form, a backup being checked,
 //! the review before restoring (merge, newer wins), restoring, the result
 //! with its attachment check, and a wrong passphrase.
