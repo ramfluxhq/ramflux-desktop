@@ -2,13 +2,17 @@
 // Copyright (c) 2026 Span Brain
 
 //! Settings · Backup in the production window, on a fake daemon with the
-//! assumed BACKUP-01 job API: a full backup needs a location and a
+//! BACKUP-01 job API as merged: a full backup needs a location and a
 //! passphrase typed twice (with a strength hint), hands the passphrase to
 //! the daemon as a secret, shows its progress with Cancel, then its counts
-//! and size; a restore checks the whole file first, shows what it holds and
-//! that it merges (newer wins), installs only after Restore, then shows
-//! what it installed and the attachment check; a wrong passphrase, a
-//! refused file and a daemon without the job API are each explained.
+//! and size; a backup that fails on files it could not fetch offers, only
+//! explicitly, to record them as missing; a restore checks the whole file
+//! first, shows what it holds, its file check and that it merges (newer
+//! wins), installs only after Restore, then shows what it installed, the
+//! file check and what was kept because it was newer here, per category; a
+//! file that does not match fails the restore before anything installs; a
+//! wrong passphrase, a refused request and a daemon without the job API are
+//! each explained.
 
 mod common;
 mod sdk_fake;
@@ -53,15 +57,7 @@ fn holdings() -> Counts {
 }
 
 fn archive(mismatched: u64) -> Archive {
-    Archive {
-        passphrase: PASSPHRASE.to_owned(),
-        account_id: ACCOUNT.to_owned(),
-        label: "Personal".to_owned(),
-        created_at: 1_789_000_000,
-        counts: holdings(),
-        defect: None,
-        mismatched,
-    }
+    Archive { mismatched, ..Archive::new(PASSPHRASE, ACCOUNT, "Personal", holdings()) }
 }
 
 fn open_backup(cx: &mut TestAppContext, name: &str, available: bool) -> World {
@@ -72,9 +68,9 @@ fn open_backup(cx: &mut TestAppContext, name: &str, available: bool) -> World {
     backup.set_available(available);
     backup.account(ACCOUNT, holdings());
     let bus = Arc::downgrade(&fake);
-    backup.set_publisher(Box::new(move |account, topic, body| {
+    backup.set_publisher(Box::new(move |row| {
         if let Some(bus) = bus.upgrade() {
-            bus.publish(account, topic, body);
+            bus.publish_job(row);
         }
     }));
     let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 900.);
@@ -177,6 +173,7 @@ fn a_full_backup_asks_where_and_a_passphrase_twice_then_shows_progress_and_count
     wait(cx, "the job", |cx| phase(cx, &world).is_some());
     let sent = requests(&world, "account.backup.create");
     assert_eq!(sent[0]["passphrase"], PASSPHRASE);
+    assert_eq!(sent[0]["allow_missing_attachments"], false, "every file, unless allowed");
     assert!(sent[0]["output_path"].as_str().is_some_and(|p| p.ends_with("/personal.rfbackup")));
     assert!(exists(cx, world.handle, "backup-job"));
     assert!(exists(cx, world.handle, "backup-progress"));
@@ -186,7 +183,10 @@ fn a_full_backup_asks_where_and_a_passphrase_twice_then_shows_progress_and_count
     for _ in 0..4 {
         world.backup.step();
     }
-    wait(cx, "writing", |cx| job(cx, &world).is_some_and(|j| j.progress.items_done > 0));
+    wait(cx, "writing", |cx| {
+        job(cx, &world)
+            .is_some_and(|j| j.phase == BackupPhase::Writing && j.progress.bytes_done > 0)
+    });
     world.backup.run_out();
     wait(cx, "done", |cx| phase(cx, &world) == Some(BackupPhase::Done));
     advance(cx, 50);
@@ -197,9 +197,87 @@ fn a_full_backup_asks_where_and_a_passphrase_twice_then_shows_progress_and_count
 }
 
 #[gpui_kit::test]
+fn files_that_cannot_be_fetched_are_recorded_as_missing_only_when_asked(cx: &mut TestAppContext) {
+    let world = open_backup(cx, "ui-backup-missing", true);
+    world.backup.missing_files(ACCOUNT, 4, 7);
+    click(cx, world.handle, "backup-open");
+    click(cx, world.handle, "backup-choose-location");
+    cx.simulate_new_path_selection(|dir| Some(dir.join("personal.rfbackup")));
+    cx.run_until_parked();
+    set_input(cx, &world, 0, PASSPHRASE);
+    set_input(cx, &world, 1, PASSPHRASE);
+    assert!(!exists(cx, world.handle, "backup-allow-missing-note"), "strict by default");
+    click(cx, world.handle, "backup-start");
+    wait(cx, "the job", |cx| phase(cx, &world).is_some());
+    world.backup.step();
+    wait(cx, "fetching", |cx| {
+        job(cx, &world)
+            .is_some_and(|j| j.progress.is_fetching(j.phase) && j.progress.items_done > 0)
+    });
+    world.backup.run_out();
+    wait(cx, "failed", |cx| phase(cx, &world) == Some(BackupPhase::Failed));
+    advance(cx, 50);
+    assert!(matches!(
+        job(cx, &world).unwrap().failure,
+        Some(BackupFailure::AttachmentsUnavailable { count: 7, .. })
+    ));
+    assert!(exists(cx, world.handle, "backup-failure"));
+    assert_eq!(requests(&world, "account.backup.create").len(), 1, "nothing sent on its own");
+
+    click(cx, world.handle, "backup-allow-missing");
+    assert_eq!(form(cx, &world), Some(Form::Backup));
+    let panel = panel(cx, &world);
+    assert_eq!(cx.update(|cx| panel.read(cx).allowed_missing()), Some(7));
+    assert!(exists(cx, world.handle, "backup-allow-missing-note"), "it says what it records");
+    assert_eq!(disabled(cx, &world, "backup-start"), Some(true), "the passphrase again");
+    set_input(cx, &world, 0, PASSPHRASE);
+    set_input(cx, &world, 1, PASSPHRASE);
+    click(cx, world.handle, "backup-start");
+    wait(cx, "the second job", |_| requests(&world, "account.backup.create").len() == 2);
+    let sent = requests(&world, "account.backup.create");
+    assert_eq!(sent[1]["allow_missing_attachments"], true);
+    assert_eq!(sent[1]["output_path"], sent[0]["output_path"], "the same file");
+    world.backup.run_out();
+    wait(cx, "done", |cx| phase(cx, &world) == Some(BackupPhase::Done));
+    let path = sent[1]["output_path"].as_str().unwrap().to_owned();
+    assert_eq!(world.backup.archive_at(&path).unwrap().unavailable_at_source, 7);
+    // The next backup is strict again.
+    advance(cx, 50);
+    click(cx, world.handle, "backup-job-close");
+    click(cx, world.handle, "backup-open");
+    assert!(!exists(cx, world.handle, "backup-allow-missing-note"));
+}
+
+#[gpui_kit::test]
+fn a_file_that_does_not_match_fails_the_check_and_nothing_can_be_restored(cx: &mut TestAppContext) {
+    let world = open_backup(cx, "ui-backup-mismatch", true);
+    world.backup.archive("/b/personal.rfbackup", archive(2));
+    click(cx, world.handle, "restore-open");
+    choose_file(cx, &world, "/b/personal.rfbackup");
+    set_input(cx, &world, 2, PASSPHRASE);
+    click(cx, world.handle, "restore-verify");
+    wait(cx, "checking", |cx| phase(cx, &world) == Some(BackupPhase::Verifying));
+    world.backup.run_out();
+    wait(cx, "failed", |cx| phase(cx, &world) == Some(BackupPhase::Failed));
+    advance(cx, 50);
+    assert!(exists(cx, world.handle, "backup-failure"));
+    assert!(!exists(cx, world.handle, "backup-review"), "nothing to review");
+    assert!(!exists(cx, world.handle, "restore-install"));
+    let Some(BackupFailure::AttachmentMismatch { checks: Some(checks) }) =
+        job(cx, &world).unwrap().failure
+    else {
+        panic!("expected a file mismatch");
+    };
+    assert_eq!(checks.mismatched, 2);
+    assert!(requests(&world, "account.restore.install").is_empty());
+}
+
+#[gpui_kit::test]
 fn a_restore_is_checked_reviewed_then_merged_with_its_attachment_check(cx: &mut TestAppContext) {
     let world = open_backup(cx, "ui-backup-restore", true);
-    world.backup.archive("/b/personal.rfbackup", archive(2));
+    let recorded = Archive { unavailable_at_source: 3, ..archive(0) };
+    world.backup.archive("/b/personal.rfbackup", recorded);
+    world.backup.local_pending(ACCOUNT, 5);
     click(cx, world.handle, "restore-open");
     assert_eq!(disabled(cx, &world, "restore-verify"), Some(true));
     choose_file(cx, &world, "/b/personal.rfbackup");
@@ -213,6 +291,7 @@ fn a_restore_is_checked_reviewed_then_merged_with_its_attachment_check(cx: &mut 
     advance(cx, 50);
     assert!(exists(cx, world.handle, "backup-review"));
     assert!(exists(cx, world.handle, "backup-review-effect"), "it says it merges, newer wins");
+    assert!(exists(cx, world.handle, "backup-review-unavailable"), "recorded omissions named");
     assert!(requests(&world, "account.restore.install").is_empty(), "nothing before Restore");
 
     click(cx, world.handle, "restore-install");
@@ -224,8 +303,13 @@ fn a_restore_is_checked_reviewed_then_merged_with_its_attachment_check(cx: &mut 
     advance(cx, 50);
     assert!(exists(cx, world.handle, "backup-result"));
     assert!(exists(cx, world.handle, "restore-files"));
+    assert!(exists(cx, world.handle, "restore-unavailable"));
+    assert!(exists(cx, world.handle, "restore-kept-newer"), "what was newer here, per kind");
     let report = job(cx, &world).unwrap().report.unwrap();
-    assert_eq!((report.attachments.verified, report.attachments.mismatched), (318, 2));
+    assert_eq!((report.attachments.verified, report.attachments.mismatched), (320, 0));
+    assert!(report.attachments.all_verified());
+    assert_eq!(report.attachments.local_missing_kept, 5);
+    assert_eq!((report.kept_newer.messages, report.kept_newer.contacts), (2, 1));
 }
 
 #[gpui_kit::test]
@@ -236,6 +320,8 @@ fn a_wrong_passphrase_is_explained_and_the_file_is_kept_to_try_again(cx: &mut Te
     choose_file(cx, &world, "/b/personal.rfbackup");
     set_input(cx, &world, 2, "wrong words entirely");
     click(cx, world.handle, "restore-verify");
+    wait(cx, "checking", |cx| phase(cx, &world) == Some(BackupPhase::Verifying));
+    world.backup.step();
     wait(cx, "failed", |cx| phase(cx, &world) == Some(BackupPhase::Failed));
     advance(cx, 50);
     assert_eq!(job(cx, &world).unwrap().failure, Some(BackupFailure::WrongPassphrase));
@@ -246,9 +332,12 @@ fn a_wrong_passphrase_is_explained_and_the_file_is_kept_to_try_again(cx: &mut Te
     set_input(cx, &world, 2, PASSPHRASE);
     assert_ne!(disabled(cx, &world, "restore-verify"), Some(true), "the file is kept");
 
-    // A file the daemon cannot read is refused in the form.
-    choose_file(cx, &world, "/b/missing.rfbackup");
-    set_input(cx, &world, 2, PASSPHRASE);
+    // A request the daemon refuses is explained in the form: another
+    // frontend's job runs (one at a time), not yet seen here.
+    world.backup.set_publisher(Box::new(|_| {}));
+    world.backup.archive("/b/other.rfbackup", archive(0));
+    let other = serde_json::json!({ "input_path": "/b/other.rfbackup", "passphrase": PASSPHRASE });
+    world.backup.handle("account.restore.verify", None, &other).expect("started");
     click(cx, world.handle, "restore-verify");
     wait(cx, "refused", |cx| exists(cx, world.handle, "backup-refused"));
 }

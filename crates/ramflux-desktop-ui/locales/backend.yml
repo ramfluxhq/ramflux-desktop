@@ -269,3 +269,33 @@ backend:
     interrupted:
       en: "The daemon stopped while this was running. Nothing was changed."
       zh-CN: "运行期间守护进程已停止，未作任何更改。"
+    attachment_mismatch:
+      en: "Some files in the backup are missing or don't match their checksums, so nothing was restored."
+      zh-CN: "备份中有文件缺失或与校验值不一致，因此未恢复任何内容。"
+    attachment_mismatch_counts:
+      en: "%{bad} of %{count} files in the backup are missing or don't match their checksums, so nothing was restored."
+      zh-CN: "备份的 %{count} 个文件中有 %{bad} 个缺失或与校验值不一致，因此未恢复任何内容。"
+    attachments_unavailable:
+      en: "Some files in this account could not be fetched, so no backup was written."
+      zh-CN: "此账户中有文件无法获取，因此未写入备份。"
+    attachments_unavailable_count:
+      en: "%{count} files in this account could not be fetched, so no backup was written."
+      zh-CN: "此账户中有 %{count} 个文件无法获取，因此未写入备份。"
+    identity_rollback:
+      en: "This backup holds an older identity than this device trusts, so it can't be restored as a new account."
+      zh-CN: "此备份中的身份比本设备信任的更旧，无法作为新账户恢复。"
+    root_conflict:
+      en: "This backup belongs to a different identity than the account here. It can't replace it."
+      zh-CN: "此备份属于与本账户不同的身份，无法替换。"
+    busy:
+      en: "Another backup or restore is running. Wait until it ends."
+      zh-CN: "另一个备份或恢复正在进行，请等待其结束。"
+    account_locked:
+      en: "The account is locked. Unlock it to back it up."
+      zh-CN: "账户已锁定。请先解锁再备份。"
+    unknown_job:
+      en: "The daemon no longer knows this backup or restore (it may have restarted)."
+      zh-CN: "守护进程已不再记录此备份或恢复（可能已重启）。"
+    invalid_job_phase:
+      en: "The backup or restore can't do this now."
+      zh-CN: "该备份或恢复当前无法执行此操作。"

@@ -84,6 +84,10 @@ pub struct BackupPanel {
     asked: Option<BTreeSet<BackupJobId>>,
     /// Finished jobs the user closed.
     dismissed: BTreeSet<BackupJobId>,
+    /// The backup form records files that could not be fetched as missing:
+    /// how many the user agreed to (explicitly, after a backup failed on
+    /// them). `None`: every file must be backed up.
+    allow_missing: Option<u64>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -129,6 +133,7 @@ impl BackupPanel {
             followed: BTreeSet::new(),
             asked: None,
             dismissed: BTreeSet::new(),
+            allow_missing: None,
             _subscriptions: subscriptions,
         };
         panel.follow_jobs(cx);
@@ -198,6 +203,7 @@ impl BackupPanel {
     pub fn open(&mut self, form: Form, window: &mut Window, cx: &mut Context<Self>) {
         self.form = Some(form);
         self.failures_mark = None;
+        self.allow_missing = None;
         for input in [&self.passphrase, &self.repeat, &self.restore_secret] {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
@@ -208,6 +214,7 @@ impl BackupPanel {
     pub fn close_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.form = None;
         self.failures_mark = None;
+        self.allow_missing = None;
         for input in [&self.passphrase, &self.repeat, &self.restore_secret] {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
@@ -251,7 +258,31 @@ impl BackupPanel {
         }
         let secret = Self::take(&self.passphrase, window, cx);
         self.repeat.update(cx, |input, cx| input.set_value("", window, cx));
-        self.submit(IntentKind::CreateBackup { account_id, path, secret }, window, cx);
+        let allow_missing_attachments = self.allow_missing.take().is_some();
+        let kind = IntentKind::CreateBackup { account_id, path, secret, allow_missing_attachments };
+        self.submit(kind, window, cx);
+    }
+
+    /// How many unavailable files the open backup form records as missing,
+    /// when the user allowed it.
+    pub fn allowed_missing(&self) -> Option<u64> {
+        self.allow_missing
+    }
+
+    /// Closes a backup that failed on files that could not be fetched and
+    /// opens the backup form again, to the same file, recording those
+    /// `files` as missing (the user asked for it explicitly).
+    pub fn allow_missing(
+        &mut self,
+        job: &BackupJob,
+        files: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.dismissed.insert(job.id.clone());
+        self.location = Some(job.path.clone());
+        self.open(Form::Backup, window, cx);
+        self.allow_missing = Some(files);
     }
 
     /// Starts checking the backup file (the passphrase leaves the input now).

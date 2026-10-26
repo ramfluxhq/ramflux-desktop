@@ -460,6 +460,9 @@ settings:
       preparing:
         en: "Preparing"
         zh-CN: "准备中"
+      fetching:
+        en: "Fetching files not yet on this device: %{done} of %{total}"
+        zh-CN: "正在获取本设备尚未下载的文件：%{done} / %{total}"
       working:
         en: "Working"
         zh-CN: "处理中"
@@ -489,8 +492,17 @@ settings:
         en: "Made"
         zh-CN: "备份时间"
       merge:
-        en: "This account is already on this device. The backup merges with it: where both have the same item, the newer one is kept. Nothing here is deleted."
-        zh-CN: "此账户已在本设备上。备份将与之合并：同一项目以较新的为准，本设备上的内容不会被删除。"
+        en: "This account is already on this device. The backup merges with it: where both have the same item, the newer one is kept, including newer removals and blocks. Nothing newer here is replaced."
+        zh-CN: "此账户已在本设备上。备份将与之合并：同一项目以较新的为准，包括较新的删除和屏蔽。本设备上较新的内容不会被替换。"
+      files:
+        en: "Files checked"
+        zh-CN: "已检查文件"
+      files_value:
+        en: "All %{count} match their checksums"
+        zh-CN: "全部 %{count} 个均与校验值一致"
+      unavailable:
+        en: "%{count} files were unavailable when this backup was made. It records them as missing, so they are restored as missing."
+        zh-CN: "创建此备份时有 %{count} 个文件无法获取。备份将其记录为缺失，恢复后它们仍为缺失。"
       add:
         en: "This account will be added to this device."
         zh-CN: "此账户将被添加到本设备。"
@@ -511,8 +523,17 @@ settings:
         en: "All %{count} files match their checksums."
         zh-CN: "全部 %{count} 个文件均与校验值一致。"
       files_problem:
-        en: "%{bad} of %{count} files didn't match their checksums and were not restored."
-        zh-CN: "%{count} 个文件中有 %{bad} 个与校验值不一致，未恢复。"
+        en: "%{bad} of %{count} files are missing or didn't match their checksums."
+        zh-CN: "%{count} 个文件中有 %{bad} 个缺失或与校验值不一致。"
+      unavailable:
+        en: "%{count} files were recorded as unavailable when the backup was made."
+        zh-CN: "有 %{count} 个文件在创建备份时被记录为无法获取。"
+      local_pending:
+        en: "%{count} files this device had not downloaded yet were kept as they were; they download when opened."
+        zh-CN: "本设备尚未下载的 %{count} 个文件保持原样，打开时会下载。"
+      nothing_newer:
+        en: "Nothing on this device was newer than the backup."
+        zh-CN: "本设备上没有比备份更新的内容。"
     failed:
       backup:
         en: "Backup failed"
@@ -526,6 +547,16 @@ settings:
       retry:
         en: "Try again…"
         zh-CN: "重试…"
+    missing:
+      allow:
+        en: "Back up without them…"
+        zh-CN: "不含这些文件继续备份…"
+      help:
+        en: "Every file is backed up by default. Opening those files in their conversations fetches them; or back up without them, recording them as missing."
+        zh-CN: "默认会备份所有文件。可在会话中打开这些文件以获取它们；或者不含这些文件继续备份，并将其记录为缺失。"
+      note:
+        en: "%{count} files could not be fetched. This backup records them as missing (with their checksums); everything else is backed up in full."
+        zh-CN: "有 %{count} 个文件无法获取。此备份会将其记录为缺失（含校验值）；其余内容完整备份。"
     cancelled:
       backup:
         en: "Backup cancelled"

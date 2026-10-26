@@ -86,6 +86,23 @@ pub fn heading(job: &BackupJob) -> SharedString {
     })
 }
 
+/// What a running job is doing: fetching files, preparing, or the part it
+/// works on.
+pub fn doing(job: &BackupJob) -> SharedString {
+    let progress = &job.progress;
+    if progress.is_fetching(job.phase) {
+        let total = progress.items_total.unwrap_or_default();
+        return tr_args(
+            "settings.backup.job.fetching",
+            &[("done", &count(progress.items_done)), ("total", &count(total))],
+        );
+    }
+    match job.phase {
+        BackupPhase::Preparing => tr("settings.backup.job.preparing"),
+        _ => category(progress.category),
+    }
+}
+
 /// A category's name.
 pub fn category(category: BackupCategory) -> SharedString {
     tr(match category {
@@ -127,6 +144,19 @@ pub fn failure(failure: &BackupFailure) -> SharedString {
         BackupFailure::NotWritable => tr(&key("not_writable")),
         BackupFailure::StagingExpired => tr(&key("staging_expired")),
         BackupFailure::Interrupted => tr(&key("interrupted")),
+        BackupFailure::AttachmentMismatch { checks: Some(checks) } => tr_args(
+            &key("attachment_mismatch_counts"),
+            &[
+                ("bad", &count(checks.mismatched + checks.unapproved_missing())),
+                ("count", &count(checks.verified + checks.mismatched + checks.missing)),
+            ],
+        ),
+        BackupFailure::AttachmentMismatch { checks: None } => tr(&key("attachment_mismatch")),
+        BackupFailure::AttachmentsUnavailable { count: n, .. } => {
+            tr_args(&key("attachments_unavailable_count"), &[("count", &count(*n))])
+        }
+        BackupFailure::IdentityRollback => tr(&key("identity_rollback")),
+        BackupFailure::RootConflict => tr(&key("root_conflict")),
         BackupFailure::Other(code) => tr_args("settings.backup.error_other", &[("code", code)]),
     }
 }

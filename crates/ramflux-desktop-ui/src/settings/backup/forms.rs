@@ -15,7 +15,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{BackupJobKind, BackupPhase, methods};
 
-use super::text::{self, Strength};
+use super::text::{self, Strength, count};
 use super::{BackupPanel, Form};
 use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
@@ -73,7 +73,7 @@ impl BackupPanel {
                 .store()
                 .backup_jobs()
                 .filter(|j| j.kind == BackupJobKind::Backup && j.phase == BackupPhase::Done)
-                .max_by_key(|j| (j.started_at, j.id.clone()))
+                .max_by_key(|j| (j.started_at, self.store.read(cx).store().backup_job_order(&j.id)))
                 .map(|j| {
                     let size = j.summary.as_ref().map_or(0, |s| s.file_bytes);
                     tr_args(
@@ -175,6 +175,13 @@ impl BackupPanel {
                     }))
                     .child(muted("settings.backup.passphrase_help", cx)),
             )
+            .children(self.allow_missing.map(|files| {
+                let note = tr_args("settings.backup.missing.note", &[("count", &count(files))]);
+                div()
+                    .id("backup-allow-missing-note")
+                    .test_support()
+                    .child(Alert::warning("backup-allow-missing-alert", note).small())
+            }))
             .children(self.refusal(cx))
             .child(
                 h_flex()
