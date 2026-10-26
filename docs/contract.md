@@ -867,7 +867,7 @@ restore); `archive {local_account_id, account_label, created_at, merge}` (a
 verified restore; `merge` = the account is already on this device);
 `restored` and `kept_newer` (both per-category count objects with the same
 fields as `counts`, never scalar totals), `attachments {verified, mismatched,
-missing, unavailable_at_source}` (a finished restore); `error {code, needed_bytes,
+missing, unavailable_at_source, local_missing_kept}` (a finished restore); `error {code, needed_bytes,
 available_bytes}` (a failed job). Error codes: `wrong_passphrase`,
 `tampered`, `truncated`, `unsupported_version`, `insufficient_space`,
 `unreadable`, `not_writable`, `staging_expired`, `interrupted`, `attachment_mismatch`, `identity_rollback`,
@@ -933,13 +933,17 @@ runs at a time: while one runs it replaces both forms.
 
 Offer an explicit confirmation before retrying create with `allow_missing_attachments:true`. It still tries fetching first, and records the remaining selectors and expected hashes in the authenticated source-omission manifest. Verify/install report `attachments.unavailable_at_source` (included in `missing`). Every stored file must authenticate, and any mismatch prevents installation; omissions are never silently inferred from a missing file. Merge accepts older-epoch backups while retaining the live manifest. New groups without a live outbound checkpoint receive a fresh unique sender chain.
 
+**Merge-local pending files.** Verify and install use the same strict rule for files and references supplied by the archive. A pre-existing local attachment not yet downloaded does not prevent merge; its reference stays fetchable later and `attachments.local_missing_kept` reports it separately from source omissions. Any archive-supplied mismatch still prevents installation.
+
+Preparing-phase progress includes attempted fetch items and an estimated total. Fetching finishes before the one backup snapshot opens; no reader snapshot stays open across network waits. On NFS/FUSE without hard links or exclusive rename, publication uses exclusive create plus streamed copy and fsync. The final path may be visible before completion: consume it only after Done; cancellation/failure removes the partial final. Periodic cleanup never scans generations. Startup/post-commit generation cleanup skips accounts whose install lease is held.
+
 Daemon scope follows the same-user local-bus trust model: the peer UID is checked, while frontend attendance is self-asserted. Account-scoped headless restrictions are not a credential boundary against another process of the same user.
 
 **Outbound security after restore.** Full restore keeps all historical messages,
 attachment keys and inbound/archived ratchets. Saved outbound DM sessions and
 group sender chains are archived only; they are never resumed. A newly restored
 account performs fresh root-authorized device activation, starts fresh outbound
-DM sessions and rotates every group's sender key to a new chain ID before sending.
+DM sessions on the first post-restore message and rotates every group's sender key to a new chain ID before its first group send.
 The desktop shows **re-establishing secure sessions** while `account.status` or
 `sync.status.get` reports `secure_sessions:"reestablishing"`; sending stays refused
 until activation succeeds. `account.secure_sessions.changed` announces `ready`.
@@ -952,3 +956,5 @@ restart discard running rows from the previous daemon and reload `account.backup
 The desktop adapter/store must represent `kept_newer` per category and route the
 entry-page job subscription at daemon scope. These are required integration changes;
 fake-daemon UI coverage alone does not prove compatibility with the product.
+
+Inactive restored receive chains retire after 24 hours from restore/migration, not last use. The first outgoing message after restore re-establishes fresh sessions; a later old-chain inbound packet may trigger ordinary authenticated recovery after that receive window. Every group participant must upgrade together for v3 sender distributions; old clients cannot import newly rotated v3 chains.
