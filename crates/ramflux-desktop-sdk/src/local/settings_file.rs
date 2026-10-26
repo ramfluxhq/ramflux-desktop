@@ -49,6 +49,10 @@ pub struct DesktopSettings {
     /// and message ids only (see [`crate::receipts`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub delivery_receipts: BTreeMap<String, BTreeMap<AccountId, Vec<String>>>,
+    /// Authenticated public renames shown in conversations, per daemon
+    /// socket and account (public names only, see [`crate::renames`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub name_changes: BTreeMap<String, BTreeMap<AccountId, Vec<crate::renames::RenameRecord>>>,
 }
 
 /// Why the settings file was not written.

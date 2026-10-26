@@ -215,6 +215,10 @@ pub struct Translator {
     /// the daemon's head (the daemon restarted): the next jobs listing says
     /// which of them are gone.
     lost_jobs: BTreeSet<ramflux_desktop_core::BackupJobId>,
+    /// Authenticated renames, remembered (shown in their contexts).
+    name_changes: Vec<crate::renames::RenameRecord>,
+    /// Renames announced since the bridge last took them.
+    new_name_changes: Vec<crate::renames::RenameRecord>,
 }
 
 impl Translator {
@@ -270,6 +274,8 @@ impl Translator {
             delivered: Vec::new(),
             reported_calls: BTreeMap::new(),
             pending_calls: BTreeMap::new(),
+            name_changes: Vec::new(),
+            new_name_changes: Vec::new(),
             outgoing_requests: BTreeMap::new(),
             reported_jobs: BTreeMap::new(),
             lost_jobs: BTreeSet::new(),
@@ -441,10 +447,15 @@ impl Translator {
     fn listing(&mut self, paged: Paged, rows: &[Value], now: Timestamp) -> Translated {
         match paged {
             Paged::Identities => Translated::events(self.identities(rows)),
-            Paged::Groups => Translated::events(self.groups(rows)),
+            Paged::Groups => {
+                let mut events = self.groups(rows);
+                events.extend(self.all_rename_moments());
+                Translated::events(events)
+            }
             Paged::Conversations => {
                 let mut translated = self.conversations(rows);
                 translated.events.extend(self.listed_calls());
+                translated.events.extend(self.all_rename_moments());
                 translated
             }
             Paged::Objects => Translated::events(self.object_listing(rows)),

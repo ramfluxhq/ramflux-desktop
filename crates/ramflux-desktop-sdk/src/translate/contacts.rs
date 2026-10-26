@@ -36,7 +36,10 @@
 //! An authenticated rename (`contact.changed` with
 //! `reason: public_profile_renamed`) becomes a [`MomentKind::NameChange`]
 //! in every known context the principal is in, with the old and the new
-//! name; the contact and identity rows are read again by the stream.
+//! name, keyed and timed by its stream entry; the contact and identity
+//! rows are read again by the stream. Renames are remembered (see
+//! [`crate::renames`]) and shown again once the conversations are listed,
+//! also after a restart.
 
 use ramflux_desktop_core::{
     ContactLink, DomainEvent, KindClaim, Lifecycle, Moment, MomentId, MomentKind,
@@ -47,6 +50,7 @@ use serde_json::Value;
 
 use super::{Translator, list, text};
 use crate::plan::KnownLink;
+use crate::renames::RenameRecord;
 
 /// What the identity directory said about a principal.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -302,12 +306,12 @@ impl Translator {
             return self.named(id.as_str());
         }
         let person = self.people.entry(id.clone()).or_default();
-        let link = person.resolution.reachable;
+        let reachable = person.resolution.reachable;
         let (verified, root_source) = (person.resolution.verified, person.resolution.root_source);
         let mut resolution = Resolution::from_record(row);
         // A request row says nothing about reachability, verification or
         // the root: what the contact row said stays.
-        resolution.reachable = link;
+        resolution.reachable = reachable;
         resolution.verified = verified;
         resolution.root_source = root_source;
         person.resolution = resolution;
@@ -315,40 +319,80 @@ impl Translator {
     }
 
     /// The moments a `contact.changed` event adds by itself: an
-    /// authenticated rename, as a name change in every known context the
-    /// principal is in. Any other contact event adds nothing (the reads it
-    /// calls for show it).
-    pub(super) fn contact_changed(&mut self, body: &Value, now: Timestamp) -> Vec<DomainEvent> {
+    /// authenticated rename, remembered and shown as a name change in every
+    /// known context the principal is in. Any other contact event adds
+    /// nothing (the reads it calls for show it).
+    pub(super) fn contact_changed(
+        &mut self,
+        body: &Value,
+        frame: super::stream::Frame,
+        now: Timestamp,
+    ) -> Vec<DomainEvent> {
         if text(body, "reason") != PUBLIC_PROFILE_RENAMED {
             return Vec::new();
         }
-        let principal = ParticipantId::new(text(body, "principal_id"));
+        let principal = text(body, "principal_id");
         let (old_name, new_name) = (text(body, "old_display_name"), text(body, "new_display_name"));
-        if principal.as_str().is_empty() || new_name.is_empty() || old_name == new_name {
+        if principal.is_empty() || new_name.is_empty() || old_name == new_name {
             return Vec::new();
         }
+        let record = RenameRecord {
+            principal_id: principal.to_owned(),
+            old_name: old_name.to_owned(),
+            new_name: new_name.to_owned(),
+            seq: frame.seq,
+            at: frame.at.unwrap_or(now.0 / 1000),
+        };
+        let mut events = self.named(principal);
+        if !self.name_changes.iter().any(|r| r.key() == record.key()) {
+            self.name_changes.push(record.clone());
+            if self.name_changes.len() > crate::renames::REMEMBERED {
+                self.name_changes.remove(0);
+            }
+            self.new_name_changes.push(record.clone());
+        }
+        events.extend(self.rename_moments(&record));
+        events
+    }
+
+    /// Renames remembered from earlier sessions: shown once their
+    /// conversations are listed.
+    pub fn restore_renames(&mut self, records: Vec<RenameRecord>) {
+        self.name_changes = records;
+    }
+
+    /// The renames announced since the bridge last took them, to remember.
+    pub fn take_new_renames(&mut self) -> Vec<RenameRecord> {
+        std::mem::take(&mut self.new_name_changes)
+    }
+
+    /// The name change moments of every remembered rename, in the contexts
+    /// known now (each moment is reported once).
+    pub(super) fn all_rename_moments(&mut self) -> Vec<DomainEvent> {
+        let records = self.name_changes.clone();
+        records.iter().flat_map(|record| self.rename_moments(record)).collect()
+    }
+
+    /// The name change of `record` in every known context of its principal.
+    fn rename_moments(&mut self, record: &RenameRecord) -> Vec<DomainEvent> {
+        let principal = ParticipantId::new(record.principal_id.as_str());
         let contexts: Vec<_> = self
             .contexts
             .values()
             .filter(|context| context.participants.contains(&principal))
             .map(|context| context.id.clone())
             .collect();
-        let mut events = self.named(principal.as_str());
+        let mut events = Vec::new();
         for context in contexts {
-            let digest = super::digest(&MomentKind::NameChange(NameChangePayload {
-                participant_id: principal.clone(),
-                old_name: old_name.to_owned(),
-                new_name: new_name.to_owned(),
-            }));
             let moment = Moment {
-                id: MomentId::new(format!("name-change:{context}:{principal}:{digest:x}")),
+                id: MomentId::new(format!("name-change:{context}:{}", record.key())),
                 context_id: context,
                 origin: principal.clone(),
-                at: now,
+                at: Timestamp(record.at.saturating_mul(1000)),
                 kind: MomentKind::NameChange(NameChangePayload {
                     participant_id: principal.clone(),
-                    old_name: old_name.to_owned(),
-                    new_name: new_name.to_owned(),
+                    old_name: record.old_name.clone(),
+                    new_name: record.new_name.clone(),
                 }),
                 lifecycle: Lifecycle::Done,
             };

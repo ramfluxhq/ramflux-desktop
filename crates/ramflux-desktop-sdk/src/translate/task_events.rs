@@ -16,10 +16,8 @@
 //! verified and the rendering does not already say so. The row also
 //! carries `actor_kind_verified`: whether a root-signed profile and a
 //! current device of the signer prove its kind for the event's role. The
-//! line shows that flag; a row without it (a sibling copy) is read from
-//! its text, which names an unverified actor on an accept, a decline and a
-//! decision and says nothing on a cancel (then unverified, the safe
-//! default).
+//! line shows that flag; a row without it (a sibling copy) is unverified:
+//! a trust mark is never inferred from a missing string.
 //!
 //! The task card shows the task itself; what a member did to it besides
 //! the assignee's updates becomes a [`MomentKind::TaskEvent`] line by the
@@ -59,9 +57,6 @@ pub(crate) struct Rendered {
     pub kind: String,
     /// The event's lines.
     pub content: String,
-    /// Whether the rendering names an unverified actor kind (after the
-    /// content, or inside a decision line).
-    pub unverified: bool,
 }
 
 /// What the daemon appends to a rendering that does not say the actor's
@@ -84,12 +79,8 @@ pub(crate) fn parse(text: &str) -> Option<Rendered> {
     let (content, rest) = quoted(rest)?;
     // The daemon names an unverified actor kind after a rendering that does
     // not name it itself.
-    let (rest, appended) = match rest.strip_prefix(UNVERIFIED) {
-        Some(rest) => (rest, true),
-        None => (rest, false),
-    };
-    let unverified = appended || content.contains(UNVERIFIED.trim_end());
-    rest.is_empty().then_some(Rendered { signer, kind, content, unverified })
+    let rest = rest.strip_prefix(UNVERIFIED).unwrap_or(rest);
+    rest.is_empty().then_some(Rendered { signer, kind, content })
 }
 
 /// One quoted field at the start of `text`, and what follows it.
@@ -128,13 +119,6 @@ impl Rendered {
     /// Whether it renders a task event.
     fn is_task(&self) -> bool {
         TASK_KINDS.contains(&self.kind.as_str())
-    }
-
-    /// Whether the actor's kind is verified, as far as the text says: an
-    /// accept, a decline and a decision name an unverified actor; a cancel
-    /// never says.
-    fn kind_verified(&self) -> Option<bool> {
-        matches!(self.kind.as_str(), "accept" | "decline" | "resolve").then_some(!self.unverified)
     }
 
     /// The task id its content names (`Task <id> …` / `Task <id>: …`).
@@ -196,12 +180,9 @@ impl Translator {
         if message.is_empty() || task_id.is_empty() {
             return None;
         }
-        let rendered = parse(&row_text(record)?)?;
-        let event = rendered.event()?;
-        let actor_kind_verified = record["actor_kind_verified"]
-            .as_bool()
-            .or_else(|| rendered.kind_verified())
-            .unwrap_or(false);
+        let event = parse(&row_text(record)?)?.event()?;
+        // Absent (a sibling copy): unverified, never inferred from text.
+        let actor_kind_verified = record["actor_kind_verified"].as_bool().unwrap_or(false);
         Some(Moment {
             id: message_moment_id(context, message),
             context_id: context.clone(),

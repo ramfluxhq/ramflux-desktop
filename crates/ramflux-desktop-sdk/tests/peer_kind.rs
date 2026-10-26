@@ -14,6 +14,7 @@ use ramflux_desktop_core::{
 use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
 use ramflux_desktop_sdk::translate::Translator;
+use ramflux_desktop_sdk::translate::stream::Frame;
 use serde_json::{Value, json};
 
 fn translator() -> Translator {
@@ -160,7 +161,8 @@ fn an_authenticated_rename_is_a_name_change_in_every_context_of_the_principal() 
     let mut t = translator();
     let body = json!({ "principal_id": "principal-ana", "reason": "public_profile_renamed",
                        "old_display_name": "Ana", "new_display_name": "Ana Reyes" });
-    let translated = t.streamed("contact.changed", &body, Timestamp(5));
+    let frame = Frame { seq: Some(41), at: Some(1_790_000_500) };
+    let translated = t.streamed("contact.changed", &body, frame, Timestamp(5));
     let changes: Vec<_> = translated
         .events
         .iter()
@@ -179,7 +181,7 @@ fn an_authenticated_rename_is_a_name_change_in_every_context_of_the_principal() 
     assert_eq!(context, &ContextId::new("dm-ana"));
     assert_eq!(origin.as_str(), "principal-ana");
     assert_eq!((payload.old_name.as_str(), payload.new_name.as_str()), ("Ana", "Ana Reyes"));
-    assert_eq!(*at, Timestamp(5));
+    assert_eq!(*at, Timestamp(1_790_000_500_000), "the stream entry's time, not arrival");
     assert!(
         translated.follow.contains(&Fetch::ContactList)
             && translated.follow.contains(&Fetch::first(Paged::Identities)),
@@ -187,11 +189,30 @@ fn an_authenticated_rename_is_a_name_change_in_every_context_of_the_principal() 
         translated.follow
     );
     // The same announcement again (a replay) adds nothing.
-    let again = t.streamed("contact.changed", &body, Timestamp(6));
+    let again = t.streamed("contact.changed", &body, frame, Timestamp(6));
     assert!(again.events.iter().all(|e| !matches!(e, DomainEvent::MomentAdded(_))), "{again:?}");
+    let remembered = t.take_new_renames();
+    assert_eq!(remembered.len(), 1, "remembered once: {remembered:?}");
+    // Renamed back and forth: every rename is its own line (keyed by its
+    // stream entry, not by the names).
+    let back = json!({ "principal_id": "principal-ana", "reason": "public_profile_renamed",
+                       "old_display_name": "Ana Reyes", "new_display_name": "Ana" });
+    let added = |translated: &ramflux_desktop_sdk::translate::Translated| {
+        translated.events.iter().filter(|e| matches!(e, DomainEvent::MomentAdded(_))).count()
+    };
+    let at = |seq: u64| Frame {
+        seq: Some(seq),
+        at: Some(1_790_000_000 + i64::try_from(seq).unwrap_or(0)),
+    };
+    assert_eq!(added(&t.streamed("contact.changed", &back, at(42), Timestamp(7))), 1);
+    assert_eq!(
+        added(&t.streamed("contact.changed", &body, at(43), Timestamp(8))),
+        1,
+        "A to B again"
+    );
     // Another contact change is not a rename.
     let other = json!({ "link_id": "l", "requester_id": "a", "target_id": "b" });
-    let other = t.streamed("contact.changed", &other, Timestamp(7));
+    let other = t.streamed("contact.changed", &other, Frame::default(), Timestamp(9));
     assert!(other.events.is_empty(), "{other:?}");
 }
 
@@ -264,4 +285,31 @@ fn task_actors_and_event_lines_carry_the_verified_kind() {
     assert!(lines.iter().any(|(id, event, verified)| id.contains("m-acc-2")
         && *event == TaskEventKind::Accepted
         && !*verified));
+}
+
+#[test]
+fn remembered_renames_are_shown_again_after_a_restart_once_listed() {
+    let record = ramflux_desktop_sdk::renames::RenameRecord {
+        principal_id: "principal-ana".into(),
+        old_name: "Ana".into(),
+        new_name: "Ana Reyes".into(),
+        seq: Some(41),
+        at: 1_790_000_500,
+    };
+    let mut t = Translator::new(Scope::Account(AccountId::new("acct-main")), "/tmp/rfd.sock");
+    t.restore_renames(vec![record]);
+    let frames = common::frames();
+    let fetch = Fetch::first(Paged::Conversations);
+    let events = t.fetched(&fetch, &frames["conversation.directory"], Timestamp(1)).events;
+    let shown: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            DomainEvent::MomentAdded(m) if matches!(m.kind, MomentKind::NameChange(_)) => {
+                Some((m.context_id.clone(), m.at))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(shown, [(ContextId::new("dm-ana"), Timestamp(1_790_000_500_000))]);
+    assert!(t.take_new_renames().is_empty(), "already remembered");
 }

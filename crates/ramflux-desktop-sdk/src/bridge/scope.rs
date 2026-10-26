@@ -123,6 +123,8 @@ pub(super) struct Task {
     pub(super) listing_applied: BTreeMap<Paged, u64>,
     /// Delivery receipts of received direct messages (account scope).
     pub(super) receipts: Option<Receipts>,
+    /// Authenticated renames shown in conversations (account scope).
+    pub(super) renames: Option<crate::renames::RenameStore>,
     /// The daemon answered `call.list` (it has the call API, and calls are
     /// not turned off in the settings; until then the call methods are
     /// declared unsupported), whether it refused `contact.requests.list`
@@ -182,6 +184,16 @@ pub(crate) async fn run(
     let receipts = scope.account().map(|account| {
         Receipts::new(config.settings_path.clone(), socket.clone(), account.clone())
     });
+    let renames = scope.account().map(|account| {
+        crate::renames::RenameStore::new(
+            config.settings_path.clone(),
+            socket.clone(),
+            account.clone(),
+        )
+    });
+    if let Some(renames) = &renames {
+        translator.restore_renames(renames.records());
+    }
     let mut task = Task {
         interval: config.poll_fast,
         translator,
@@ -207,6 +219,7 @@ pub(crate) async fn run(
         listings_sent: Arc::new(AtomicU64::new(0)),
         listing_applied: BTreeMap::new(),
         receipts,
+        renames,
         found: capabilities::Found::default(),
         job_link,
         jobs: super::jobs::Jobs::Closed,

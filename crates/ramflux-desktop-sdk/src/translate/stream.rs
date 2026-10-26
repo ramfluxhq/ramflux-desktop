@@ -105,11 +105,28 @@ pub fn conversation_of(topic: &str, body: &Value) -> Option<ContextId> {
         .map(ContextId::new)
 }
 
+/// The stream entry an event came in: its sequence number and time (Unix
+/// seconds), when the daemon gives them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Frame {
+    /// Sequence number.
+    pub seq: Option<u64>,
+    /// Time, in Unix seconds.
+    pub at: Option<i64>,
+}
+
 impl Translator {
     /// What a stream event shows by itself (a task decision the assignee
     /// could not confirm, a task the daemon pruned, an authenticated
-    /// rename), and the reads it calls for. `now` stamps what it shows.
-    pub fn streamed(&mut self, topic: &str, body: &Value, now: Timestamp) -> super::Translated {
+    /// rename), and the reads it calls for. A rename takes its id and time
+    /// from the stream entry (`frame`); `now` when the frame has no time.
+    pub fn streamed(
+        &mut self,
+        topic: &str,
+        body: &Value,
+        frame: Frame,
+        now: Timestamp,
+    ) -> super::Translated {
         let follow = self.stream_reads(topic, body);
         let mut events = Vec::new();
         if topic == "task.changed" {
@@ -117,7 +134,7 @@ impl Translator {
             events.extend(self.task_removed(body));
         }
         if topic == super::contacts::CONTACT_CHANGED {
-            events.extend(self.contact_changed(body, now));
+            events.extend(self.contact_changed(body, frame, now));
         }
         super::Translated { events, follow }
     }

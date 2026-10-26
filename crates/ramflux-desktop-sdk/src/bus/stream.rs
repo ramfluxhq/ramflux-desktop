@@ -44,6 +44,9 @@ pub enum Streamed {
     Event {
         /// Its sequence number (`None` from a daemon without a journal).
         seq: Option<u64>,
+        /// When the daemon recorded it, in Unix seconds, when the frame
+        /// says.
+        at: Option<i64>,
         /// Topic (the frame's method).
         topic: String,
         /// Metadata body (ids, states; never content).
@@ -159,7 +162,12 @@ async fn follow(
                         return StreamEnd::Lagged { last_delivered_seq: last };
                     }
                     let event =
-                        Streamed::Event { seq: frame.seq, topic: frame.method, body: frame.body };
+                        Streamed::Event {
+                            seq: frame.seq,
+                            at: frame.at,
+                            topic: frame.method,
+                            body: frame.body,
+                        };
                     if out.send(event).is_err() {
                         return gone();
                     }

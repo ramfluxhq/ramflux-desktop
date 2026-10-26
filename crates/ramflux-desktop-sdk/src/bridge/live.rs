@@ -186,7 +186,7 @@ impl Task {
     pub(super) fn on_streamed(&mut self, streamed: Streamed) {
         match streamed {
             Streamed::Opened { head_seq, .. } => self.stream_opened(head_seq),
-            Streamed::Event { seq, topic, body } => self.stream_event(seq, &topic, &body),
+            Streamed::Event { seq, at, topic, body } => self.stream_event(seq, at, &topic, &body),
             Streamed::Ended(end) => self.stream_ended(end),
         }
     }
@@ -217,7 +217,7 @@ impl Task {
         self.request_reads(reads);
     }
 
-    fn stream_event(&mut self, seq: Option<u64>, topic: &str, body: &Value) {
+    fn stream_event(&mut self, seq: Option<u64>, at: Option<i64>, topic: &str, body: &Value) {
         if let Some(seq) = seq {
             if self.sync.cursor.is_some_and(|cursor| seq <= cursor) {
                 self.sync.duplicates += 1;
@@ -267,7 +267,13 @@ impl Task {
                 }
             }
             _ => {
-                let streamed = self.translator.streamed(topic, body, super::now());
+                let frame = crate::translate::stream::Frame { seq, at };
+                let streamed = self.translator.streamed(topic, body, frame, super::now());
+                if let Some(renames) = &mut self.renames {
+                    for record in self.translator.take_new_renames() {
+                        renames.remember(record);
+                    }
+                }
                 self.emit(streamed.events);
                 self.request_reads(streamed.follow);
             }
