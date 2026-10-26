@@ -19,7 +19,7 @@ jobs:
   lint:
     name: fmt, clippy (linux)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@b9e0990d219a03df7633c93f6f005a8fecbcab22
@@ -40,19 +40,43 @@ jobs:
           echo "OK: no tracked .rs/.toml/.yml file over 5000 lines"
 
       - name: System libraries
+        timeout-minutes: 12
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc g++ clang libfontconfig-dev libwayland-dev \
+          sudo timeout --signal=TERM --kill-after=30s 2m apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            -o DPkg::Lock::Timeout=60 \
+            update
+          sudo timeout --signal=TERM --kill-after=30s 7m apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            -o DPkg::Lock::Timeout=60 \
+            install -y gcc g++ clang libfontconfig-dev libwayland-dev \
             libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
             libssl-dev libzstd-dev libvulkan1 libasound2-dev cmake fonts-noto-cjk
 
       - name: Cache
         uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb
+        timeout-minutes: 5
+        continue-on-error: true
+
+      - name: Fetch dependencies
+        timeout-minutes: 5
+        env:
+          CARGO_NET_RETRY: "3"
+          CARGO_HTTP_TIMEOUT: "30"
+        run: cargo fetch --locked
 
       - name: Format
         run: cargo fmt --check
 
       - name: Clippy
+        env:
+          CARGO_NET_OFFLINE: "true"
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
@@ -60,7 +84,7 @@ jobs:
     # flaky tests; any failing repeat fails the workflow.
     name: test linux (repeat ${{ matrix.repeat }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -73,19 +97,44 @@ jobs:
           persist-credentials: false
 
       - name: System libraries
+        timeout-minutes: 12
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc g++ clang libfontconfig-dev libwayland-dev \
+          sudo timeout --signal=TERM --kill-after=30s 2m apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            -o DPkg::Lock::Timeout=60 \
+            update
+          sudo timeout --signal=TERM --kill-after=30s 7m apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            -o DPkg::Lock::Timeout=60 \
+            install -y gcc g++ clang libfontconfig-dev libwayland-dev \
             libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
             libssl-dev libzstd-dev libvulkan1 libasound2-dev cmake fonts-noto-cjk
 
       - name: Cache
         uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb
+        timeout-minutes: 5
+        continue-on-error: true
         with:
           # One cache for all repeats; only the first finisher saves it.
           shared-key: linux-test
+          save-if: ${{ matrix.repeat == 1 }}
+
+      - name: Fetch dependencies
+        timeout-minutes: 5
+        env:
+          CARGO_NET_RETRY: "3"
+          CARGO_HTTP_TIMEOUT: "30"
+        run: cargo fetch --locked
 
       - name: Test
+        env:
+          CARGO_NET_OFFLINE: "true"
         run: cargo test --workspace --no-fail-fast
 
   macos:
@@ -95,7 +144,7 @@ jobs:
     name: fmt, clippy, test (macos)
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/ci/')
     runs-on: macos-14
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@b9e0990d219a03df7633c93f6f005a8fecbcab22
@@ -104,11 +153,22 @@ jobs:
 
       - name: Cache
         uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb
+        timeout-minutes: 5
+        continue-on-error: true
+
+      - name: Fetch dependencies
+        timeout-minutes: 5
+        env:
+          CARGO_NET_RETRY: "3"
+          CARGO_HTTP_TIMEOUT: "30"
+        run: cargo fetch --locked
 
       - name: Format
         run: cargo fmt --check
 
       - name: Clippy
+        env:
+          CARGO_NET_OFFLINE: "true"
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Test
@@ -119,6 +179,8 @@ jobs:
         # other macOS test stays blocking. The skip is unconditional because
         # this job only ever runs on a hosted macOS runner. The skip is scoped to the media crate: custom-harness test targets in
         # other crates do not understand libtest's --skip/--exact.
+        env:
+          CARGO_NET_OFFLINE: "true"
         run: |
           rc=0
           cargo test --workspace --exclude ramflux-desktop-media --no-fail-fast || rc=1
