@@ -116,6 +116,39 @@ fn an_older_listing_applied_after_an_answer_keeps_the_request_answered() {
 }
 
 #[test]
+fn a_new_request_from_a_peer_with_an_ended_one_is_pending() {
+    for end in [RequestState::Declined, RequestState::Blocked, RequestState::Expired] {
+        let mut feed = feed();
+        feed.ok(
+            2,
+            DomainEvent::ContactRequestUpserted(request(
+                "r-cy",
+                "p-cy",
+                RequestDirection::Incoming,
+                end,
+            )),
+        );
+        // The peer asks again: another request id, listed pending.
+        feed.ok(
+            3,
+            DomainEvent::ContactRequestsListed(vec![request(
+                "r-cy-2",
+                "p-cy",
+                RequestDirection::Incoming,
+                RequestState::Pending,
+            )]),
+        );
+        let shown =
+            feed.store.contact_request(&ParticipantId::new("p-cy"), RequestDirection::Incoming);
+        assert_eq!(
+            shown.map(|r| (r.id.as_str(), r.state)),
+            Some(("r-cy-2", RequestState::Pending))
+        );
+        assert_eq!(pending(&feed.store), ["r-cy-2"]);
+    }
+}
+
+#[test]
 fn answers_go_to_pending_incoming_requests_and_block_needs_the_hold() {
     let mut feed = feed();
     let effects = handle_intent(
