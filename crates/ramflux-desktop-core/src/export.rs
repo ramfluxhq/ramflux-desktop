@@ -99,6 +99,9 @@ fn body(store: &Store, moment: &Moment) -> String {
             Some(call) => call_text(call),
             None => format!("[call] {}", p.call_id),
         },
+        MomentKind::NameChange(p) => {
+            format!("[name] {} is now {} ({})", p.old_name, p.new_name, p.participant_id)
+        }
     }
 }
 
@@ -143,7 +146,7 @@ pub fn task_text(store: &Store, task: &Task) -> String {
     if task.flags.compacted {
         out.push_str("\n  history compacted: the outcome is kept");
     }
-    if !task.flags.kind_verified {
+    if !task.assignee_kind_verified() {
         out.push_str("\n  (actor kind unverified)");
     }
     if let Some(result) = &task.result {

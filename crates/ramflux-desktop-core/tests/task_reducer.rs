@@ -79,6 +79,7 @@ fn task(state: TaskState, version: u64, steps: Vec<TaskStep>) -> Task {
         result: None,
         result_ref: None,
         flags: TaskFlags::default(),
+        actors: Default::default(),
         answer: None,
     }
 }

@@ -13,8 +13,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::actor::Actor;
+use super::conversation::PeerKind;
 use super::moment::Lifecycle;
-use crate::ids::{ContextId, GrantId, ParticipantId, StepId, SurfaceId, TaskId};
+use crate::ids::{ContextId, DeviceId, GrantId, ParticipantId, StepId, SurfaceId, TaskId};
 
 /// State of a task.
 #[derive(
@@ -206,6 +207,9 @@ pub struct Task {
     /// What the source reports about the task beyond its state.
     #[serde(default)]
     pub flags: TaskFlags,
+    /// Who acts on the task, with how far each one's kind is proven.
+    #[serde(default)]
+    pub actors: TaskActors,
     /// The source's answer to this desktop's last request about the task
     /// (a decision on its way, or a refusal), until the task changes.
     #[serde(default)]
@@ -224,11 +228,65 @@ pub struct TaskFlags {
     /// the events that led there are not.
     #[serde(default)]
     pub compacted: bool,
-    /// Whether the assignee's kind (a person or an AI participant) was
-    /// verified. Until participants carry a signed kind, a kind is only
-    /// what each side asserts.
+}
+
+/// A role on a task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TaskRole {
+    /// Who asked for the task.
+    Requester,
+    /// Who does the work.
+    Assignee,
+    /// Who accepted it (the assignee a started task, the requester a
+    /// proposal).
+    Acceptor,
+}
+
+/// One actor of a task, as the source authenticated it: its principal,
+/// the device its last event came from, and its kind with whether a
+/// root-signed profile proves it for the role (a signed bot or headless-AI
+/// profile never authenticates a human role). Metadata only, never a
+/// permission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskActor {
+    /// The principal.
+    pub participant_id: ParticipantId,
+    /// The device its last event came from; `None` when no event device is
+    /// known.
+    #[serde(default)]
+    pub device_id: Option<DeviceId>,
+    /// The kind its public profile states, when the source holds one.
+    #[serde(default)]
+    pub kind: Option<PeerKind>,
+    /// Whether a root-signed profile and a current device of the principal
+    /// prove the kind for this role.
     #[serde(default)]
     pub kind_verified: bool,
+}
+
+/// The actors of a task by role; a role nobody holds yet is `None`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskActors {
+    /// Who asked.
+    #[serde(default)]
+    pub requester: Option<TaskActor>,
+    /// Who does the work.
+    #[serde(default)]
+    pub assignee: Option<TaskActor>,
+    /// Who accepted.
+    #[serde(default)]
+    pub acceptor: Option<TaskActor>,
+}
+
+impl TaskActors {
+    /// The actor in `role`.
+    pub const fn get(&self, role: TaskRole) -> Option<&TaskActor> {
+        match role {
+            TaskRole::Requester => self.requester.as_ref(),
+            TaskRole::Assignee => self.assignee.as_ref(),
+            TaskRole::Acceptor => self.acceptor.as_ref(),
+        }
+    }
 }
 
 /// Why the source refused a request about a task.
@@ -304,6 +362,12 @@ const fn first_version() -> u64 {
 }
 
 impl Task {
+    /// Whether the assignee's kind is proven by a root-signed profile
+    /// (false until the source reports the actors).
+    pub fn assignee_kind_verified(&self) -> bool {
+        self.actors.assignee.as_ref().is_some_and(|actor| actor.kind_verified)
+    }
+
     /// The first step that needs the requester, with its index.
     pub fn needs_me_step(&self) -> Option<(usize, &TaskStep)> {
         self.steps.iter().enumerate().find(|(_, step)| step.state == StepState::NeedsMe)
@@ -384,6 +448,40 @@ mod tests {
         assert_eq!(TaskState::Running.moment_lifecycle(), Lifecycle::InProgress);
         assert_eq!(TaskState::NeedsMe.moment_lifecycle(), Lifecycle::NeedsMe);
         assert_eq!(TaskState::Cancelled.moment_lifecycle(), Lifecycle::Dismissed);
+    }
+
+    #[test]
+    fn the_assignee_kind_is_verified_only_when_its_actor_says_so() {
+        let mut actors = TaskActors::default();
+        assert!(actors.get(TaskRole::Assignee).is_none());
+        let actor = TaskActor {
+            participant_id: ParticipantId::new("p-orbit"),
+            device_id: None,
+            kind: Some(PeerKind::HeadlessAi),
+            kind_verified: true,
+        };
+        actors.assignee = Some(actor.clone());
+        assert_eq!(actors.get(TaskRole::Assignee), Some(&actor));
+        assert!(actors.get(TaskRole::Requester).is_none());
+        let task = Task {
+            id: TaskId::new("t"),
+            intent_id: None,
+            context_id: ContextId::new("c"),
+            requester: Actor::Human,
+            assignee: ParticipantId::new("p-orbit"),
+            title: String::new(),
+            steps: Vec::new(),
+            state: TaskState::Running,
+            version: 1,
+            result: None,
+            result_ref: None,
+            flags: TaskFlags::default(),
+            actors,
+            answer: None,
+        };
+        assert!(task.assignee_kind_verified());
+        let unreported = Task { actors: TaskActors::default(), ..task };
+        assert!(!unreported.assignee_kind_verified(), "unverified until reported");
     }
 
     #[test]

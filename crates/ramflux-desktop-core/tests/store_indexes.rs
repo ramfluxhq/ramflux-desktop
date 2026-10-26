@@ -43,6 +43,7 @@ fn task(id: &str, ctx: &str, grants: &[&str], version: u64) -> Task {
         result: None,
         result_ref: None,
         flags: TaskFlags::default(),
+        actors: Default::default(),
         answer: None,
     }
 }

@@ -59,6 +59,7 @@ impl AttentionReason {
             | MomentKind::PrivacyReveal(_)
             | MomentKind::Fallback(_)
             | MomentKind::TaskEvent(_)
+            | MomentKind::NameChange(_)
             | MomentKind::System(_) => Self::Other,
         }
     }

@@ -123,6 +123,7 @@ fn in_flight_covers_in_progress_moments_and_open_tasks() {
         result: None,
         result_ref: None,
         flags: TaskFlags::default(),
+        actors: Default::default(),
         answer: None,
     };
     feed.ok(2, DomainEvent::TaskUpserted(task("t-open", TaskState::Proposed)));

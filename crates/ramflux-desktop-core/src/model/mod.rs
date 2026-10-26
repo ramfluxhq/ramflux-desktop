@@ -60,8 +60,8 @@ pub use contact_request::{
     ContactRequest, RequestAnswer, RequestDirection, RequestPolicy, RequestState,
 };
 pub use conversation::{
-    ContactCard, ContactLink, Context, ContextKind, Disappearing, Participant, ParticipantKind,
-    Role, RootSource, SafetyState,
+    ContactCard, ContactLink, Context, ContextKind, Disappearing, KindClaim, NameWarnings,
+    Participant, ParticipantKind, PeerKind, Role, RootSource, SafetyState,
 };
 pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingApproval};
 pub use integrations::{A2iItem, Integrations, McpServer};
@@ -69,11 +69,15 @@ pub use listing::{ListState, Listing};
 pub use moment::{
     AgentSurfacePayload, CallPayload, ConflictPayload, ConflictResolution, ConflictSide,
     ContactRequestPayload, FallbackPayload, GovernanceAction, GovernancePayload, HandoffPayload,
-    InterventionPayload, Lifecycle, MessagePayload, Moment, MomentKind, ObjectTransferPayload,
-    PrivacyRevealPayload, Receipt, RevealRecord, SafetyChangeKind, SafetyChangePayload,
-    SystemLevel, SystemPayload, TaskEventKind, TaskEventPayload, TaskProgressPayload,
+    InterventionPayload, Lifecycle, MessagePayload, Moment, MomentKind, NameChangePayload,
+    ObjectTransferPayload, PrivacyRevealPayload, Receipt, RevealRecord, SafetyChangeKind,
+    SafetyChangePayload, SystemLevel, SystemPayload, TaskEventKind, TaskEventPayload,
+    TaskProgressPayload,
 };
 pub use object::{Direction, Object, TransferState};
 pub use protected::Protected;
 pub use surface::{Block, BlockKind, DEFAULT_BLOCK_VERSION, SurfaceAction};
-pub use task::{NeedsMe, StepState, Task, TaskAnswer, TaskFlags, TaskRefusal, TaskState, TaskStep};
+pub use task::{
+    NeedsMe, StepState, Task, TaskActor, TaskActors, TaskAnswer, TaskFlags, TaskRefusal, TaskRole,
+    TaskState, TaskStep,
+};

@@ -221,6 +221,25 @@ pub struct TaskEventPayload {
     pub task_id: TaskId,
     /// What happened.
     pub event: TaskEventKind,
+    /// Whether a root-signed profile and a current device of the signer
+    /// prove its kind for the event's role (the source's
+    /// `actor_kind_verified`); false until reported.
+    #[serde(default)]
+    pub actor_kind_verified: bool,
+}
+
+/// Payload of a [`MomentKind::NameChange`]: a participant's public name
+/// changed through its root-signed profile (an authenticated rename, as the
+/// source announced it). The moment's origin is the participant. Shown
+/// with the principal id, so a new name cannot pass for someone else.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NameChangePayload {
+    /// The renamed participant.
+    pub participant_id: ParticipantId,
+    /// The name before.
+    pub old_name: String,
+    /// The name now.
+    pub new_name: String,
 }
 
 /// Payload of a [`MomentKind::Call`]: a voice call's record in its
@@ -354,6 +373,8 @@ pub enum MomentKind {
     TaskProgress(TaskProgressPayload),
     /// One event of a task, as a compact line.
     TaskEvent(TaskEventPayload),
+    /// An authenticated public rename of a participant.
+    NameChange(NameChangePayload),
     /// CAS conflict.
     Conflict(ConflictPayload),
     /// Masked content with audited reveal.

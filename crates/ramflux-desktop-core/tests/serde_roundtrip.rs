@@ -80,9 +80,10 @@ fn moment_kind_name(kind: &MomentKind) -> &'static str {
         MomentKind::System(_) => "System",
         MomentKind::TaskEvent(_) => "TaskEvent",
         MomentKind::Call(_) => "Call",
+        MomentKind::NameChange(_) => "NameChange",
     }
 }
-const MOMENT_KIND_VARIANTS: usize = 15;
+const MOMENT_KIND_VARIANTS: usize = 16;
 
 fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
@@ -257,8 +258,14 @@ fn all_moment_kinds() -> Vec<MomentKind> {
         MomentKind::TaskEvent(TaskEventPayload {
             task_id: TaskId::new("t-1"),
             event: TaskEventKind::Denied { step_id: Some(StepId::new("deploy")) },
+            actor_kind_verified: true,
         }),
         MomentKind::Call(CallPayload { call_id: CallId::new("k-1") }),
+        MomentKind::NameChange(NameChangePayload {
+            participant_id: ParticipantId::new("p-kai"),
+            old_name: "Kai".to_owned(),
+            new_name: "Kai Ortiz".to_owned(),
+        }),
     ]
 }
 
@@ -362,6 +369,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             result: Some("Booked".to_owned()),
             result_ref: Some(SurfaceId::new("s-result")),
             flags: TaskFlags::default(),
+            actors: TaskActors::default(),
             answer: None,
         }),
         DomainEvent::TaskStepChanged {
@@ -389,7 +397,17 @@ fn all_domain_events() -> Vec<DomainEvent> {
             version: 9,
             result: None,
             result_ref: None,
-            flags: TaskFlags { stalled: true, compacted: true, kind_verified: false },
+            flags: TaskFlags { stalled: true, compacted: true },
+            actors: TaskActors {
+                requester: None,
+                assignee: Some(TaskActor {
+                    participant_id: ParticipantId::new("p-orbit"),
+                    device_id: Some(DeviceId::new("device-orbit")),
+                    kind: Some(PeerKind::HeadlessAi),
+                    kind_verified: true,
+                }),
+                acceptor: None,
+            },
             answer: Some(TaskAnswer::Refused(TaskRefusal::Other("x".into()))),
         }),
         DomainEvent::TaskAnswered {
