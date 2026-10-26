@@ -627,6 +627,40 @@ fn an_account_attaching_and_detaching_during_the_open_leaves_the_daemon_link_ope
 }
 
 #[test]
+fn a_job_request_losing_its_connection_while_the_link_reopens_does_not_strand_the_link() {
+    let world = World::start("request-lost-while-reopening", true);
+    let hub = ramflux_desktop_sdk::SdkHub::start(config(&world.path)).expect("bridge");
+    let mut daemon = Fed::new(hub.daemon_source());
+    daemon.until("the daemon link is open", |s, _| {
+        s.unsupported_reason(methods::BACKUP_CREATE).is_none() && world.fake.job_streaming()
+    });
+    // A restore request is on the link's connection and not answered yet.
+    world.backup.archive("/b/good", archive(None, 0));
+    world.fake.hold_next_job_request();
+    verify(&mut daemon, "/b/good", PASSPHRASE);
+    daemon.until("the request reached the daemon", |_, _| {
+        !world.requests("account.restore.verify").is_empty()
+    });
+    // The stream falls behind and the scope opens its link again, on a new
+    // connection whose subscription is half open. The old connection stays
+    // up: the request still waits on it.
+    world.fake.hold_next_job_subscribe();
+    world.fake.lag_job_streams();
+    daemon.until("the link is opening again", |_, _| world.job_connections().len() == 2);
+    // The request loses its connection: the link is closed from under the
+    // open in flight, whose notice is then out of date.
+    world.fake.drop_held_job_request();
+    daemon.settle(300);
+    world.fake.release_job_subscribe();
+    // The scope takes the discarded notice as a closed link and opens it
+    // again instead of waiting for it forever.
+    daemon.until("the link opened again", |_, _| {
+        world.job_connections().len() > 2 && world.fake.job_streaming()
+    });
+    world.stop();
+}
+
+#[test]
 fn secure_sessions_are_reestablished_after_a_restore_until_the_daemon_says_ready() {
     let world = World::start("sessions", true);
     let mut account = live(&world, true);

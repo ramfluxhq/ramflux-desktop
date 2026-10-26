@@ -115,16 +115,17 @@ struct Hold {
 }
 
 impl Hold {
-    /// Waits here when armed (once), until released.
-    fn pass(&self) {
+    /// Waits here when armed (once), until released; says whether it waited.
+    fn pass(&self) -> bool {
         let mut state = self.state.lock().expect("hold");
         if !state.0 {
-            return;
+            return false;
         }
         state.0 = false;
         while !state.1 {
             state = self.changed.wait(state).expect("hold");
         }
+        true
     }
 
     fn arm(&self) {
@@ -148,6 +149,8 @@ pub struct FakeBus {
     journal: Arc<Mutex<Journal>>,
     jobs: Arc<Mutex<Journal>>,
     hold: Arc<Hold>,
+    /// Holds back the answer of one job request.
+    request_hold: Arc<Hold>,
 }
 
 /// What every connection of one fake shares.
@@ -163,6 +166,8 @@ struct Shared {
     /// Connections that opened the job stream as an attended frontend.
     attended: Mutex<BTreeSet<usize>>,
     hold: Arc<Hold>,
+    /// Holds back the answer of one job request.
+    request_hold: Arc<Hold>,
 }
 
 impl FakeBus {
@@ -183,6 +188,7 @@ impl FakeBus {
         let journal = Arc::new(Mutex::new(Journal::default()));
         let jobs = Arc::new(Mutex::new(Journal::daemon()));
         let hold = Arc::new(Hold::default());
+        let request_hold = Arc::new(Hold::default());
         let shared = Arc::new(Shared {
             handler,
             seen: seen.clone(),
@@ -193,6 +199,7 @@ impl FakeBus {
             jobs: jobs.clone(),
             attended: Mutex::new(BTreeSet::new()),
             hold: hold.clone(),
+            request_hold: request_hold.clone(),
         });
         let (s, st) = (stop.clone(), streams.clone());
         thread::spawn(move || {
@@ -222,6 +229,7 @@ impl FakeBus {
             journal,
             jobs,
             hold,
+            request_hold,
         }
     }
 
@@ -236,6 +244,24 @@ impl FakeBus {
     /// Answers the held job-stream subscription.
     pub fn release_job_subscribe(&self) {
         self.hold.release();
+    }
+
+    /// The next job request is received but not answered; once
+    /// [`FakeBus::drop_held_job_request`] runs, its connection is lost
+    /// instead of answered.
+    pub fn hold_next_job_request(&self) {
+        self.request_hold.arm();
+    }
+
+    /// Loses the connection the held job request was sent on.
+    pub fn drop_held_job_request(&self) {
+        self.request_hold.release();
+    }
+
+    /// The daemon ends the job streams with `stream.lagged` but leaves
+    /// their connections open (a request in flight on one still waits).
+    pub fn lag_job_streams(&self) {
+        self.jobs.lock().expect("jobs").lag_streams("");
     }
 
     /// Publishes a job row on the daemon-level job stream; returns its
@@ -367,6 +393,7 @@ impl FakeBus {
     pub fn shutdown(self) {
         self.stop.store(true, Ordering::SeqCst);
         self.hold.release();
+        self.request_hold.release();
         for stream in self.streams.lock().expect("streams").drain(..) {
             let _ = stream.shutdown(std::net::Shutdown::Both);
         }
@@ -462,6 +489,11 @@ fn answer(
     let body = request["body"].clone();
     let operation_id = text(request, "operation_id");
     let subscription = method == "bus.subscribe" || method == "subscription.open";
+    if crate::fake_backup::ATTENDED_METHODS.contains(&method.as_str()) && shared.request_hold.pass()
+    {
+        let _ = writer.lock().expect("writer").shutdown(std::net::Shutdown::Both);
+        return;
+    }
     let reply = if subscription && account.is_none() {
         match subscribe_jobs(request, connection, shared, writer) {
             Reply::Ok(_) => return,

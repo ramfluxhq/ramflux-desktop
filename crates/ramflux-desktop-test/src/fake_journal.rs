@@ -249,6 +249,19 @@ impl Journal {
         });
     }
 
+    /// Ends `account`'s streams with a final `stream.lagged` frame, leaving
+    /// the connections open.
+    pub fn lag_streams(&mut self, account: &str) {
+        self.followers.retain(|f| {
+            if f.account != account {
+                return true;
+            }
+            let body = json!({ "last_delivered_seq": f.delivered });
+            send(&f.writer, &event_frame(account, None, "stream.lagged", &body));
+            false
+        });
+    }
+
     /// The client closed `connection`: its stream ends.
     pub fn disconnect(&mut self, connection: usize) {
         let before = self.followers.len();

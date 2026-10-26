@@ -26,8 +26,9 @@ use crate::plan::fetch::Fetch;
 pub(super) enum Jobs {
     /// Not open (and not being opened).
     Closed,
-    /// Being opened.
-    Opening,
+    /// Being opened; `epoch` is the link's close count when the open was
+    /// asked for (see [`crate::bus::jobs::JobLink::epoch`]).
+    Opening { epoch: u64 },
     /// The stream is open.
     Open,
 }
@@ -75,7 +76,7 @@ impl Task {
         if self.jobs != Jobs::Closed || !self.found.backup || self.jobs_yield() {
             return;
         }
-        self.jobs = Jobs::Opening;
+        self.jobs = Jobs::Opening { epoch: self.job_link.epoch() };
         let link = self.job_link.clone();
         tokio::spawn(async move {
             // Its outcome arrives as `Opened` or `Ended`.
@@ -85,10 +86,21 @@ impl Task {
 
     pub(super) fn on_jobs(&mut self, streamed: JobStreamed) {
         match streamed {
-            // A connection closed since it opened (an account attached and
-            // detached during the open): nothing is open, and the open this
-            // scope asked for after the detach follows.
-            JobStreamed::Opened { epoch, .. } if epoch != self.job_link.epoch() => {}
+            // A connection closed since it opened. When the open this scope
+            // is waiting for was the one (a job request lost its connection
+            // meanwhile): nothing is open, and no other notice follows, so
+            // the link is open again. A notice of an earlier open (an
+            // account attached and detached during it) is left alone: the
+            // open this scope asked for after the detach follows.
+            JobStreamed::Opened { epoch, .. } if epoch != self.job_link.epoch() => {
+                if matches!(self.jobs, Jobs::Opening { epoch: asked } if epoch >= asked) {
+                    self.jobs = Jobs::Closed;
+                    self.job_link.close_soon();
+                    if self.found.backup && !self.jobs_yield() {
+                        self.jobs_open_at = Some(Instant::now());
+                    }
+                }
+            }
             JobStreamed::Opened { .. } if self.jobs_yield() => {
                 // An account scope attached while this link was opening:
                 // that one follows the jobs now. The link that just opened
