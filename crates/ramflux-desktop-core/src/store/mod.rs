@@ -81,6 +81,9 @@ pub struct Store {
     tasks: BTreeMap<TaskId, Task>,
     calls: BTreeMap<CallId, Call>,
     backup_jobs: BTreeMap<BackupJobId, BackupJob>,
+    /// The order in which each job was first seen (the daemon's times are
+    /// whole seconds, so two jobs can start in the same one).
+    backup_order: BTreeMap<BackupJobId, u64>,
     audit: Vec<AuditEntry>,
     integrations: Integrations,
     capabilities: Capabilities,
@@ -473,5 +476,11 @@ impl Store {
     /// All backup and restore jobs ordered by id.
     pub fn backup_jobs(&self) -> impl Iterator<Item = &BackupJob> {
         self.backup_jobs.values()
+    }
+
+    /// When a job was first seen, relative to the others (0 if unknown):
+    /// orders jobs started within the same second.
+    pub fn backup_job_order(&self, id: &BackupJobId) -> u64 {
+        self.backup_order.get(id).copied().unwrap_or(0)
     }
 }

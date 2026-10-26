@@ -390,6 +390,10 @@ pub enum IntentKind {
         path: String,
         /// Passphrase the backup is encrypted with.
         secret: SecretInput,
+        /// Record files that cannot be fetched as unavailable instead of
+        /// failing. `false` unless the user explicitly confirmed it after a
+        /// backup failed on them.
+        allow_missing_attachments: bool,
     },
     /// Read and verify a whole backup file into staging, without
     /// installing anything yet. Not serializable.

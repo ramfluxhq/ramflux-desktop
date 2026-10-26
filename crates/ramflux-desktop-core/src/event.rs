@@ -10,11 +10,11 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, BackupJob, Block, Call, Capabilities, ContactCard, ContactRequest, Context,
-    DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure, GrantState, Integrations,
-    Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node, NodeHealth, NodeProbe,
-    Object, Participant, RequestPolicy, StandingApproval, StepState, SurfaceAction, SyncStatus,
-    Task, TaskAnswer, TaskState,
+    Account, AuditEntry, BackupJob, Block, Call, Capabilities, ContactCard, ContactRequest,
+    Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure, GrantState,
+    Integrations, Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node, NodeHealth,
+    NodeProbe, Object, Participant, RequestPolicy, StandingApproval, StepState, SurfaceAction,
+    SyncStatus, Task, TaskAnswer, TaskState,
 };
 
 pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
@@ -301,6 +301,7 @@ pub enum DomainEvent {
     ContactRequestsReadFailed(String),
     /// A full backup or restore job as the daemon reports it (the whole
     /// job). The version must rise, the kind and file stay, and the phase
-    /// follow [`crate::BackupPhase::can_transition`].
-    BackupJobUpdated(BackupJob),
+    /// follow [`crate::BackupPhase::can_transition`]. Boxed: the job's
+    /// review and report are large.
+    BackupJobUpdated(Box<BackupJob>),
 }

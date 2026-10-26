@@ -17,7 +17,7 @@ use crate::selectors;
 /// Decides backup-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
     Some(match kind {
-        IntentKind::CreateBackup { account_id, path, secret } => {
+        IntentKind::CreateBackup { account_id, path, secret, allow_missing_attachments } => {
             p.human_only("back up an account").and_then(|()| {
                 if p.store.account(account_id).is_none() {
                     return Err(IntentError::UnknownAccount(account_id.clone()));
@@ -25,7 +25,11 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 start(p, path, secret.is_empty(), "backup passphrase")?;
                 Ok(Decision::SecretCall(
                     methods::BACKUP_CREATE,
-                    json!({ "account_id": account_id, "path": path }),
+                    json!({
+                        "account_id": account_id,
+                        "path": path,
+                        "allow_missing_attachments": allow_missing_attachments,
+                    }),
                 ))
             })
         }

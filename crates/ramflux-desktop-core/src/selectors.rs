@@ -391,15 +391,16 @@ pub fn call_under_way(store: &Store) -> bool {
 }
 
 /// The backup or restore job running (not ended), if any; a daemon runs
-/// one at a time per account.
+/// one at a time.
 pub fn running_backup_job(store: &Store) -> Option<&crate::model::BackupJob> {
     store
         .backup_jobs()
         .filter(|j| !j.phase.is_terminal())
-        .max_by(|a, b| (a.started_at, &a.id).cmp(&(b.started_at, &b.id)))
+        .max_by_key(|j| (j.started_at, store.backup_job_order(&j.id)))
 }
 
-/// The most recently started backup or restore job, ended or not.
+/// The most recently started backup or restore job, ended or not (of two
+/// started in the same second, the one seen last).
 pub fn latest_backup_job(store: &Store) -> Option<&crate::model::BackupJob> {
-    store.backup_jobs().max_by(|a, b| (a.started_at, &a.id).cmp(&(b.started_at, &b.id)))
+    store.backup_jobs().max_by_key(|j| (j.started_at, store.backup_job_order(&j.id)))
 }

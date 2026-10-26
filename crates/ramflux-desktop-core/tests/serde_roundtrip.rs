@@ -582,7 +582,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
         }),
         DomainEvent::ContactRequestPolicyUpdated(RequestPolicy::AutoAccept),
         DomainEvent::ContactRequestsReadFailed("Unavailable".to_owned()),
-        DomainEvent::BackupJobUpdated(BackupJob {
+        DomainEvent::BackupJobUpdated(Box::new(BackupJob {
             id: BackupJobId::new("j-1"),
             kind: BackupJobKind::Restore,
             path: "/tmp/b".to_owned(),
@@ -591,7 +591,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             started_at: Timestamp(10),
             finished_at: Some(Timestamp(90)),
             progress: BackupProgress {
-                category: Some(BackupCategory::Attachments),
+                category: BackupCategory::Attachments,
                 items_done: 3,
                 items_total: Some(3),
                 bytes_done: 30,
@@ -605,14 +605,26 @@ fn all_domain_events() -> Vec<DomainEvent> {
                 counts: BackupCounts { messages: 2, attachments: 1, ..BackupCounts::default() },
                 file_bytes: 30,
                 merge: true,
+                attachments: AttachmentCheck {
+                    verified: 1,
+                    missing: 1,
+                    unavailable_at_source: 1,
+                    ..AttachmentCheck::default()
+                },
             }),
             report: Some(RestoreReport {
                 restored: BackupCounts { messages: 1, ..BackupCounts::default() },
-                kept_newer: 1,
-                attachments: AttachmentCheck { verified: 1, mismatched: 0, missing: 0 },
+                kept_newer: BackupCounts { messages: 1, ..BackupCounts::default() },
+                attachments: AttachmentCheck {
+                    verified: 1,
+                    mismatched: 0,
+                    missing: 1,
+                    unavailable_at_source: 1,
+                    local_missing_kept: 2,
+                },
             }),
             failure: Some(BackupFailure::InsufficientSpace { needed: Some(9), available: None }),
-        }),
+        })),
     ];
     for (i, kind) in all_moment_kinds().into_iter().enumerate() {
         let id = format!("m-{i}");
@@ -894,6 +906,7 @@ fn secret_intents_refuse_to_serialize() {
             account_id: AccountId::new("a-1"),
             path: "/tmp/b".into(),
             secret: secret(),
+            allow_missing_attachments: false,
         },
         IntentKind::VerifyRestore { path: "/tmp/b".into(), secret: secret() },
     ];

@@ -35,7 +35,7 @@ fn job(id: &str, kind: BackupJobKind, phase: BackupPhase, version: u64) -> Backu
 }
 
 fn restore(phase: BackupPhase, version: u64) -> DomainEvent {
-    DomainEvent::BackupJobUpdated(job("j-1", BackupJobKind::Restore, phase, version))
+    DomainEvent::BackupJobUpdated(Box::new(job("j-1", BackupJobKind::Restore, phase, version)))
 }
 
 fn feed() -> Feed {
@@ -53,7 +53,12 @@ fn create(path: &str, secret: &str) -> IntentKind {
         account_id: AccountId::new("acct-main"),
         path: path.into(),
         secret: SecretInput::new(secret),
+        allow_missing_attachments: false,
     }
+}
+
+fn backup(phase: BackupPhase, version: u64) -> DomainEvent {
+    DomainEvent::BackupJobUpdated(Box::new(job("b-1", BackupJobKind::Backup, phase, version)))
 }
 
 #[test]
@@ -85,7 +90,7 @@ fn job_updates_are_validated_in_full() {
     let mut moved = job("j-1", BackupJobKind::Restore, BackupPhase::Verified, 5);
     moved.path = "/elsewhere".to_owned();
     assert_eq!(
-        feed.push(5, DomainEvent::BackupJobUpdated(moved)),
+        feed.push(5, DomainEvent::BackupJobUpdated(Box::new(moved))),
         Err(ApplyError::BackupJobChanged(BackupJobId::new("j-1")))
     );
     feed.ok(6, restore(BackupPhase::Verified, 6));
@@ -94,10 +99,79 @@ fn job_updates_are_validated_in_full() {
     assert!(feed.push(8, restore(BackupPhase::Cancelled, 8)).is_err());
     // A backup never verifies; a restore never writes.
     let odd = job("j-2", BackupJobKind::Backup, BackupPhase::Verifying, 1);
-    assert!(feed.push(9, DomainEvent::BackupJobUpdated(odd)).is_err());
+    assert!(feed.push(9, DomainEvent::BackupJobUpdated(Box::new(odd))).is_err());
     let odd = job("j-3", BackupJobKind::Restore, BackupPhase::Writing, 1);
-    assert!(feed.push(10, DomainEvent::BackupJobUpdated(odd)).is_err());
+    assert!(feed.push(10, DomainEvent::BackupJobUpdated(Box::new(odd))).is_err());
     assert_eq!(feed.store.backup_job(&BackupJobId::new("j-1")).unwrap().version, 7);
+}
+
+#[test]
+fn a_backup_writes_only_after_preparing_as_the_daemon_moves_it() {
+    let mut feed = feed();
+    feed.ok(2, backup(BackupPhase::Preparing, 1));
+    // The daemon never skips writing (its machine: preparing -> writing).
+    assert!(matches!(
+        feed.push(3, backup(BackupPhase::Done, 2)),
+        Err(ApplyError::IllegalBackupTransition { .. })
+    ));
+    feed.ok(4, backup(BackupPhase::Writing, 3));
+    feed.ok(5, backup(BackupPhase::Done, 4));
+    assert_eq!(feed.store.backup_job(&BackupJobId::new("b-1")).unwrap().phase, BackupPhase::Done);
+}
+
+#[test]
+fn of_two_jobs_started_in_the_same_second_the_one_seen_last_is_the_latest() {
+    let mut feed = feed();
+    // A backup failed and was made again within the same second; the
+    // retry's id sorts first.
+    let mut failed = job("zz-first", BackupJobKind::Backup, BackupPhase::Failed, 3);
+    failed.failure = Some(BackupFailure::AttachmentsUnavailable {
+        count: 2,
+        selectors: vec!["obj-1".to_owned(), "obj-2".to_owned()],
+        next_cursor: None,
+    });
+    feed.ok(2, DomainEvent::BackupJobUpdated(Box::new(failed)));
+    let retry = job("aa-retry", BackupJobKind::Backup, BackupPhase::Preparing, 1);
+    feed.ok(3, DomainEvent::BackupJobUpdated(Box::new(retry)));
+    let latest = selectors::latest_backup_job(&feed.store).unwrap();
+    assert_eq!(latest.id, BackupJobId::new("aa-retry"));
+    assert_eq!(
+        selectors::running_backup_job(&feed.store).unwrap().id,
+        BackupJobId::new("aa-retry")
+    );
+}
+
+#[test]
+fn a_file_check_passes_only_with_every_file_matched_or_recorded_missing() {
+    let recorded = AttachmentCheck {
+        verified: 10,
+        missing: 2,
+        unavailable_at_source: 2,
+        local_missing_kept: 7,
+        ..AttachmentCheck::default()
+    };
+    assert!(recorded.all_verified(), "recorded omissions and local pending files pass");
+    assert_eq!(recorded.unapproved_missing(), 0);
+    let unrecorded = AttachmentCheck { missing: 3, ..recorded };
+    assert!(!unrecorded.all_verified());
+    assert_eq!(unrecorded.unapproved_missing(), 1);
+    let mismatched = AttachmentCheck { mismatched: 1, ..recorded };
+    assert!(!mismatched.all_verified());
+}
+
+#[test]
+fn fetching_is_a_preparing_backup_counting_files() {
+    let fetching = BackupProgress {
+        category: BackupCategory::Attachments,
+        items_done: 2,
+        items_total: Some(8),
+        ..BackupProgress::default()
+    };
+    assert!(fetching.is_fetching(BackupPhase::Preparing));
+    assert!(!fetching.is_fetching(BackupPhase::Writing));
+    let snapshot = BackupProgress { category: BackupCategory::Identity, ..fetching };
+    assert!(!snapshot.is_fetching(BackupPhase::Preparing));
+    assert_eq!(fetching.fraction(), Some(0.25));
 }
 
 #[test]
@@ -127,6 +201,7 @@ fn starting_a_job_carries_the_passphrase_as_a_secret_one_job_at_a_time() {
     assert_eq!(method, methods::BACKUP_CREATE);
     assert_eq!(body["path"], "/b/new.rfbackup");
     assert_eq!(body["account_id"], "acct-main");
+    assert_eq!(body["allow_missing_attachments"], false, "strict by default");
     assert!(!body.to_string().contains("quiet harbor"));
     assert_eq!(secrets[0].expose(), "quiet harbor lights");
     let verify = IntentKind::VerifyRestore { path: "/b/x".into(), secret: SecretInput::new("pw") };
@@ -151,6 +226,15 @@ fn starting_a_job_carries_the_passphrase_as_a_secret_one_job_at_a_time() {
     assert_eq!(decide(&feed.store, verify).unwrap_err(), IntentError::BackupInProgress);
     feed.ok(3, restore(BackupPhase::Failed, 2));
     assert!(decide(&feed.store, create("/b/y", "pw")).is_ok());
+    // Recording unavailable files is asked for explicitly.
+    let allowed = IntentKind::CreateBackup {
+        account_id: AccountId::new("acct-main"),
+        path: "/b/y".into(),
+        secret: SecretInput::new("pw"),
+        allow_missing_attachments: true,
+    };
+    let effects = decide(&feed.store, allowed).unwrap();
+    assert_eq!(effects[0].body().unwrap()["allow_missing_attachments"], true);
 }
 
 #[test]
@@ -179,7 +263,12 @@ fn only_a_verified_restore_installs_and_cancelling_ends_before_installing() {
     // A backup is never installed.
     feed.ok(
         5,
-        DomainEvent::BackupJobUpdated(job("j-2", BackupJobKind::Backup, BackupPhase::Done, 1)),
+        DomainEvent::BackupJobUpdated(Box::new(job(
+            "j-2",
+            BackupJobKind::Backup,
+            BackupPhase::Done,
+            1,
+        ))),
     );
     let install_backup = IntentKind::InstallRestore { job_id: BackupJobId::new("j-2") };
     assert!(matches!(decide(&feed.store, install_backup), Err(IntentError::BackupJobPhase(_))));

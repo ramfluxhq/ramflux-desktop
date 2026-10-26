@@ -51,6 +51,10 @@ impl Store {
             None => {}
         }
         changes.backup_jobs.insert(job.id.clone());
+        if !self.backup_order.contains_key(&job.id) {
+            let next = self.backup_order.values().max().map_or(1, |last| last + 1);
+            self.backup_order.insert(job.id.clone(), next);
+        }
         self.backup_jobs.insert(job.id.clone(), job.clone());
         Ok(())
     }
