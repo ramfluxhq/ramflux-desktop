@@ -153,17 +153,24 @@ async fn read(client: &BusClient, fetch: Fetch, account: Option<&str>, sent: &At
     (fetch, number, result)
 }
 
-/// Runs one scope until its command channel closes or its source is gone.
-pub(crate) async fn run(
+/// What a scope's task listens to besides its commands.
+pub(super) struct Inbox {
+    pub(super) internal: mpsc::UnboundedReceiver<Internal>,
+    pub(super) pushed: mpsc::UnboundedReceiver<Pushed>,
+    pub(super) streamed: mpsc::UnboundedReceiver<Streamed>,
+    pub(super) jobs: mpsc::UnboundedReceiver<JobStreamed>,
+}
+
+/// A scope's task, not started, with what it listens to.
+pub(super) fn build(
     config: SdkConfig,
     scope: Scope,
     outbox: std_mpsc::Sender<Delivery>,
-    mut commands: mpsc::UnboundedReceiver<ScopeCommand>,
-) {
-    let (internal, mut internal_rx) = mpsc::unbounded_channel();
-    let (pushed, mut pushed_rx) = mpsc::unbounded_channel();
-    let (streamed, mut streamed_rx) = mpsc::unbounded_channel();
-    let (jobs_out, mut jobs_rx) = mpsc::unbounded_channel::<JobStreamed>();
+) -> (Task, Inbox) {
+    let (internal, internal_rx) = mpsc::unbounded_channel();
+    let (pushed, pushed_rx) = mpsc::unbounded_channel();
+    let (streamed, streamed_rx) = mpsc::unbounded_channel();
+    let (jobs_out, jobs_rx) = mpsc::unbounded_channel::<JobStreamed>();
     let socket = config.socket_path.to_string_lossy().into_owned();
     let cursors = CursorStore::new(config.settings_path.clone(), socket.clone());
     let cursor = scope.account().and_then(|account| cursors.load(account));
@@ -194,7 +201,7 @@ pub(crate) async fn run(
     if let Some(renames) = &renames {
         translator.restore_renames(renames.records());
     }
-    let mut task = Task {
+    let task = Task {
         interval: config.poll_fast,
         translator,
         pins,
@@ -226,6 +233,23 @@ pub(crate) async fn run(
         jobs_open_at: None,
         accounts_live: false,
     };
+    (task, Inbox { internal: internal_rx, pushed: pushed_rx, streamed: streamed_rx, jobs: jobs_rx })
+}
+
+/// Runs one scope until its command channel closes or its source is gone.
+pub(crate) async fn run(
+    config: SdkConfig,
+    scope: Scope,
+    outbox: std_mpsc::Sender<Delivery>,
+    mut commands: mpsc::UnboundedReceiver<ScopeCommand>,
+) {
+    let (mut task, inbox) = build(config, scope, outbox);
+    let Inbox {
+        internal: mut internal_rx,
+        pushed: mut pushed_rx,
+        streamed: mut streamed_rx,
+        jobs: mut jobs_rx,
+    } = inbox;
     let declared = capabilities::capabilities(capabilities::Found::default());
     task.emit(vec![DomainEvent::CapabilitiesUpdated(declared)]);
     task.show_sync(true);

@@ -145,3 +145,62 @@ impl Task {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc as std_mpsc;
+
+    use super::*;
+    use crate::bridge::scope::build;
+    use crate::config::SdkConfig;
+    use crate::translate::Scope;
+
+    /// A daemon scope that found the job API and is live, its link being
+    /// opened (asked for at the link's current close count). Nothing
+    /// connects: the notices are fed by hand, in the order under test.
+    fn opening_daemon_scope() -> (Task, std_mpsc::Receiver<crate::bridge::Delivery>) {
+        let (outbox, deliveries) = std_mpsc::channel();
+        let (mut task, _inbox) =
+            build(SdkConfig::new("/nonexistent/rfd.sock"), Scope::Daemon, outbox);
+        task.link = Link::Live;
+        task.found.backup = true;
+        task.jobs = Jobs::Opening { epoch: task.job_link.epoch() };
+        (task, deliveries)
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime")
+    }
+
+    #[test]
+    fn a_notice_from_before_an_attach_and_detach_never_marks_the_link_open() {
+        runtime().block_on(async {
+            let (mut task, _deliveries) = opening_daemon_scope();
+            // An account attaches and detaches while the open is in flight;
+            // the scope handled both before the open's notice arrives.
+            task.accounts_live(true);
+            task.accounts_live(false);
+            assert!(task.jobs_open_at.is_some(), "the last detach asks for a new open");
+            task.on_jobs(JobStreamed::Opened { resync: false, epoch: 0 });
+            assert_eq!(task.jobs, Jobs::Closed, "the notice is about a connection that closed");
+            assert!(
+                task.jobs_open_at.is_some(),
+                "and the open asked for after the detach stays due"
+            );
+        });
+    }
+
+    #[test]
+    fn a_discarded_notice_of_the_open_being_waited_for_schedules_a_reopen() {
+        runtime().block_on(async {
+            let (mut task, _deliveries) = opening_daemon_scope();
+            // A job request lost its connection: the link was closed from
+            // under the open in flight.
+            task.job_link.close_soon();
+            assert_eq!(task.jobs_open_at, None);
+            task.on_jobs(JobStreamed::Opened { resync: false, epoch: 0 });
+            assert_eq!(task.jobs, Jobs::Closed);
+            assert!(task.jobs_open_at.is_some(), "nothing else reports that open: reopen");
+        });
+    }
+}
