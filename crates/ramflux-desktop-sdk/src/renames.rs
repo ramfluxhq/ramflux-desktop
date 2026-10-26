@@ -42,11 +42,13 @@ pub struct RenameRecord {
 }
 
 impl RenameRecord {
-    /// What tells two renames apart: the stream entry when known, else
-    /// the rename itself.
+    /// What tells two renames apart: the principal, the stream entry and
+    /// its time when the entry is known (a journal that restarts its
+    /// numbering reuses sequence numbers, never the time too), else the
+    /// rename itself.
     pub fn key(&self) -> String {
         match self.seq {
-            Some(seq) => format!("s{seq}"),
+            Some(seq) => format!("s{seq}:{}:{}", self.principal_id, self.at),
             None => format!("n{}:{}:{}", self.principal_id, self.old_name, self.new_name),
         }
     }
@@ -130,6 +132,11 @@ mod tests {
         store.remember(record(Some(9), "Ana R."));
         let again = RenameStore::new(Some(path.clone()), "/tmp/rfd.sock", account.clone());
         assert_eq!(again.records(), [record(Some(7), "Ana R."), record(Some(9), "Ana R.")]);
+        // A journal that restarted its numbering reuses a sequence number
+        // at another time: a new rename, not a replay.
+        let mut reset = record(Some(7), "Ana R.");
+        reset.at += 3_600;
+        assert_ne!(reset.key(), record(Some(7), "Ana R.").key());
         let other = RenameStore::new(Some(path.clone()), "/tmp/other.sock", account);
         assert!(other.records().is_empty(), "per daemon socket");
         let mut bounded = RenameStore::new(None, "s", AccountId::new("a"));

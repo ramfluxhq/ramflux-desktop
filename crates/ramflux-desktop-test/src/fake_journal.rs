@@ -90,7 +90,8 @@ fn event_frame(account: &str, seq: Option<u64>, topic: &str, body: &Value) -> Va
     });
     if let Some(seq) = seq {
         frame["seq"] = json!(seq);
-        frame["at"] = json!(1_000 + seq);
+        // Unix seconds, as the daemon journal stamps them.
+        frame["at"] = json!(1_790_000_000 + seq);
     }
     frame
 }
