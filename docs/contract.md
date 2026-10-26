@@ -744,7 +744,9 @@ or equivocate across restarts.
 
 Task actors include `actor_kind: human | headless_ai | bot | null` and
 `actor_kind_verified`. Verification requires a root-signed profile and, for an
-event, a current device of that principal. A human relation role is not marked
+event, a current device of that principal. Actor rows also include `device_id`
+when an event supplies it (empty when no event device is known). A human
+relation role is not marked
 kind-verified for a signed bot/headless-AI profile. Task relation authorization
 itself is unchanged; do not turn this metadata flag into a permission grant.
 Device-set v2 carries the profile; old v1-only implementations reject it, so
