@@ -178,6 +178,9 @@ entry:
     open_account:
       en: "Open account"
       zh-CN: "打开账户"
+    finishing:
+      en: "Finishing the restore…"
+      zh-CN: "正在完成恢复…"
     path:
       en: "Backup file"
       zh-CN: "备份文件"

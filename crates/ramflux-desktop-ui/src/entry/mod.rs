@@ -214,6 +214,12 @@ impl EntryPage {
     /// The step shown: the store's step, or the node step while the user
     /// reviews nodes from the account step.
     pub fn step(&self, cx: &App) -> EntryStep {
+        // A restore waiting for the session that took over to list its
+        // jobs: that session's store is empty, so its own step would be an
+        // earlier one (the daemon step).
+        if self.awaits_restore_listing(cx) {
+            return EntryStep::Account;
+        }
         match page_for(self.store.read(cx).store()) {
             Page::Entry(EntryStep::Account) if self.review_nodes && !self.has_account(cx) => {
                 EntryStep::Node

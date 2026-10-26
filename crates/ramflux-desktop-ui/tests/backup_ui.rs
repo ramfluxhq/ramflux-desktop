@@ -490,9 +490,20 @@ fn a_fresh_device_restores_a_full_backup_from_the_entry_page(cx: &mut TestAppCon
     }
 }
 
-#[gpui_kit::test]
-fn the_restore_result_stays_in_view_when_the_daemon_reopens_the_account(cx: &mut TestAppContext) {
-    let (fake, state, path) = sdk_fake::start("ui-backup-entry-open");
+/// A fresh device whose full restore is checked and awaits Restore on the
+/// entry page, the daemon reopening the account once it installs. The
+/// reopened account's first jobs listing is held back (`account_jobs`), so
+/// the interval before it is observed, not raced.
+struct Restoring {
+    fake: Arc<FakeBus>,
+    state: sdk_fake::Shared,
+    backup: Arc<FakeBackup>,
+    handle: Handle,
+    shell: gpui_kit::Entity<Shell>,
+}
+
+fn restoring(cx: &mut TestAppContext, name: &str) -> Restoring {
+    let (fake, state, path) = sdk_fake::start(name);
     fake.enable_stream();
     let fake = Arc::new(fake);
     let backup = state.lock().expect("state").backup.clone();
@@ -539,49 +550,132 @@ fn the_restore_result_stays_in_view_when_the_daemon_reopens_the_account(cx: &mut
             == Some(BackupPhase::Verified)
     });
     advance(cx, 50);
-    // As the real daemon does: once installed, the account is reopened,
-    // unlocked.
-    state.lock().expect("state").accounts = Some(serde_json::json!({
-        "accounts": [ACCOUNT],
-        "account_details": [{ "id": ACCOUNT, "label": "Personal", "kind": "human",
-                              "state": "unlocked" }],
-    }));
-    // The reopened account's session starts empty: its first jobs listing is
-    // held back, so the interval before it is observed, not raced.
-    let account_jobs = state.lock().expect("state").account_jobs.clone();
-    account_jobs.close();
-    click(cx, handle, "restore-install");
-    backup.run_out();
-    wait(cx, "the account's own session", |cx| {
-        let store = store_handle(cx, &shell);
-        cx.update(|cx| store.read(cx).active_account().is_some())
-    });
-    advance(cx, 300);
+    Restoring { fake, state, backup, handle, shell }
+}
+
+impl Restoring {
+    fn set_account(&self, state: &str) {
+        let open = state == "unlocked";
+        self.state.lock().expect("state").accounts = Some(serde_json::json!({
+            "accounts": if open { vec![ACCOUNT] } else { vec![] },
+            "account_details": [{ "id": ACCOUNT, "label": "Personal", "kind": "human",
+                                  "state": state }],
+        }));
+    }
+
+    /// Installs; as the real daemon does, the account is reopened,
+    /// unlocked, and its session's first jobs listing is held back.
+    fn install_and_hold(&self, cx: &mut TestAppContext) -> Arc<sdk_fake::Latch> {
+        self.set_account("unlocked");
+        let account_jobs = self.state.lock().expect("state").account_jobs.clone();
+        account_jobs.close();
+        click(cx, self.handle, "restore-install");
+        self.backup.run_out();
+        wait(cx, "the account's own session", |cx| {
+            let store = store_handle(cx, &self.shell);
+            cx.update(|cx| store.read(cx).active_account().is_some())
+        });
+        advance(cx, 300);
+        account_jobs
+    }
+
+    fn step(&self, cx: &mut TestAppContext) -> EntryStep {
+        cx.update(|cx| self.shell.read(cx).entry().read(cx).step(cx))
+    }
+
+    fn finish(self) {
+        if let Ok(fake) = Arc::try_unwrap(self.fake) {
+            fake.shutdown();
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn the_restore_result_stays_in_view_when_the_daemon_reopens_the_account(cx: &mut TestAppContext) {
+    let world = restoring(cx, "ui-backup-entry-open");
+    let account_jobs = world.install_and_hold(cx);
     assert!(
-        with_store(cx, &shell, |s| !s.is_listed(ramflux_desktop_core::Listing::BackupJobs)),
+        with_store(cx, &world.shell, |s| !s.is_listed(ramflux_desktop_core::Listing::BackupJobs)),
         "the account session has listed nothing yet"
     );
-    assert_eq!(
-        page(cx, &shell),
-        Page::Entry(EntryStep::Account),
-        "the entry page is held until the account's first jobs listing: no flash of another page"
-    );
+    // What is rendered, not only what is routed: the account step with the
+    // restore result as last seen, never the daemon step.
+    assert_eq!(page(cx, &world.shell), Page::Entry(EntryStep::Account));
+    assert_eq!(world.step(cx), EntryStep::Account, "the rendered step follows the hold");
+    assert!(exists(cx, world.handle, "entry-restore-finishing"));
+    assert!(exists(cx, world.handle, "backup-result"), "the last seen result stays in view");
+    assert!(!exists(cx, world.handle, "passphrase"), "no unlock form for an open account");
     account_jobs.open();
     wait(cx, "the jobs listed", |cx| {
-        with_store(cx, &shell, |s| {
+        with_store(cx, &world.shell, |s| {
             s.is_listed(ramflux_desktop_core::Listing::BackupJobs)
                 && s.accounts().next().map(|a| a.lock_state) == Some(LockState::Unlocked)
         })
     });
     advance(cx, 300);
-    assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account), "the result is held in view");
-    assert!(exists(cx, handle, "backup-result"), "counts, kept-newer and the file check");
-    assert!(exists(cx, handle, "entry-open-account"));
-    click(cx, handle, "entry-open-account");
-    wait(cx, "the workspace", |cx| page(cx, &shell) == Page::Workspace);
-    if let Ok(fake) = Arc::try_unwrap(fake) {
-        fake.shutdown();
-    }
+    assert_eq!(page(cx, &world.shell), Page::Entry(EntryStep::Account), "the result is held");
+    assert!(!exists(cx, world.handle, "entry-restore-finishing"));
+    assert!(exists(cx, world.handle, "backup-result"), "counts, kept-newer and the file check");
+    assert!(exists(cx, world.handle, "entry-open-account"));
+    click(cx, world.handle, "entry-open-account");
+    wait(cx, "the workspace", |cx| page(cx, &world.shell) == Page::Workspace);
+    world.finish();
+}
+
+#[gpui_kit::test]
+fn a_daemon_that_goes_away_during_the_hold_releases_it(cx: &mut TestAppContext) {
+    let world = restoring(cx, "ui-backup-entry-gone");
+    let account_jobs = world.install_and_hold(cx);
+    assert_eq!(world.step(cx), EntryStep::Account, "held while the daemon is there");
+    // The daemon stops: the page falls back to the daemon step, which has
+    // the daemon controls and says it is not reachable.
+    let Restoring { fake, handle, shell, .. } = world;
+    account_jobs.open();
+    let fake = Arc::try_unwrap(fake).ok().expect("only the test holds the daemon");
+    fake.shutdown();
+    wait(cx, "the daemon is seen gone", |cx| {
+        let store = store_handle(cx, &shell);
+        cx.update(|cx| store.read(cx).daemon_unreachable())
+    });
+    wait(cx, "the daemon step", |cx| {
+        cx.update(|cx| shell.read(cx).entry().read(cx).step(cx)) == EntryStep::Daemon
+    });
+    assert!(!cx.update(|cx| shell.read(cx).entry().read(cx).awaits_restore_listing(cx)));
+    assert!(exists(cx, handle, "entry-daemon-socket"), "the daemon step is rendered");
+}
+
+#[gpui_kit::test]
+fn only_the_installed_restore_is_held_not_an_old_one_after_lock_and_unlock(
+    cx: &mut TestAppContext,
+) {
+    let world = restoring(cx, "ui-backup-entry-relock");
+    let account_jobs = world.install_and_hold(cx);
+    account_jobs.open();
+    wait(cx, "the jobs listed", |cx| {
+        with_store(cx, &world.shell, |s| s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
+    });
+    advance(cx, 300);
+    let awaits = |cx: &mut TestAppContext| {
+        cx.update(|cx| world.shell.read(cx).entry().read(cx).awaits_restore_listing(cx))
+    };
+    assert!(!awaits(cx), "the first listing ended the hold");
+    // The account locks and opens again: a fresh session starts empty, and
+    // the old, unclosed result must not take the page over again.
+    world.set_account("locked");
+    wait(cx, "locked", |cx| {
+        with_store(cx, &world.shell, |s| {
+            s.accounts().next().map(|a| a.lock_state) != Some(LockState::Unlocked)
+        })
+    });
+    account_jobs.close();
+    world.set_account("unlocked");
+    wait(cx, "the new session", |cx| {
+        with_store(cx, &world.shell, |s| !s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
+    });
+    advance(cx, 300);
+    assert!(!awaits(cx), "no hold: the installed restore is not awaited any more");
+    account_jobs.open();
+    world.finish();
 }
 
 #[gpui_kit::test]

@@ -108,7 +108,25 @@ impl EntryPage {
         let _ = window;
         let store = self.store.read(cx).store().clone();
         let accounts: Vec<Account> = store.accounts().cloned().collect();
-        let body = if accounts.is_empty() {
+        let awaiting = self.awaits_restore_listing(cx);
+        let body = if awaiting {
+            // The session that took over is empty until its first jobs
+            // listing: the restore result as last seen (or a plain line)
+            // stays, never an earlier step or an unlock form.
+            let held = self.full_restore.read(cx).held_job(cx).is_some();
+            v_flex()
+                .id("entry-restore-finishing")
+                .test_support()
+                .gap_3()
+                .children(held.then(|| self.full_restore.clone()))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(tr("entry.restore.finishing")),
+                )
+                .into_any_element()
+        } else if accounts.is_empty() {
             self.render_paths(&store, cx).into_any_element()
         } else {
             // A full restore that just finished (the account it installed

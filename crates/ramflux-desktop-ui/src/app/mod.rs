@@ -87,6 +87,9 @@ pub struct StoreHandle {
     last_tick: Option<Instant>,
     wall_clock: bool,
     live: Option<live::LiveLink>,
+    /// The daemon session's connection as last announced (a status change
+    /// of the daemon is announced even while an account session is shown).
+    daemon_status: Option<ramflux_desktop_core::SourceStatus>,
     call_audio: Option<Rc<dyn CallAudio>>,
     call: Option<call_audio::CallLink>,
     ringer: Option<Box<dyn std::any::Any>>,
@@ -112,6 +115,7 @@ impl StoreHandle {
             last_tick: None,
             wall_clock: false,
             live: None,
+            daemon_status: None,
             call_audio: None,
             call: None,
             ringer: None,
@@ -193,6 +197,21 @@ impl StoreHandle {
             .as_ref()
             .and_then(|id| self.sessions.get(id))
             .or_else(|| self.live.as_ref().map(live::LiveLink::daemon))
+    }
+
+    /// The live daemon's own store (what the daemon scope knows, also while
+    /// an account session is shown).
+    pub fn daemon_store(&self) -> Option<&Store> {
+        self.live.as_ref().map(|link| link.daemon().store())
+    }
+
+    /// Whether the live daemon's own session reports the daemon as not
+    /// reachable (`false` without a live daemon).
+    pub fn daemon_unreachable(&self) -> bool {
+        self.live.as_ref().is_some_and(|link| {
+            link.daemon().store().source_status()
+                == ramflux_desktop_core::SourceStatus::Disconnected
+        })
     }
 
     /// Whether a live daemon feeds the handle.

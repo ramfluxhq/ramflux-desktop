@@ -29,7 +29,7 @@ use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::{AnyElement, App, Context, Entity, Subscription, Window};
 use ramflux_desktop_core::{
     AccountId, BackupJob, BackupJobId, BackupJobKind, BackupPhase, EffectFailure, Intent,
-    IntentKind, LockState, SecretInput, Store, methods, selectors,
+    IntentKind, Listing, LockState, SecretInput, Store, methods, selectors,
 };
 
 use crate::app::{StoreEvent, StoreHandle};
@@ -61,6 +61,14 @@ enum Part {
     Job,
 }
 
+/// A restore the panel installed.
+struct Installed {
+    id: BackupJobId,
+    /// A store that had not listed the jobs was active since: the session
+    /// switch happened, so the first listing ends the hold.
+    seen_unlisted: bool,
+}
+
 /// The backup section's view state.
 pub struct BackupPanel {
     store: Entity<StoreHandle>,
@@ -86,6 +94,13 @@ pub struct BackupPanel {
     asked: Option<BTreeSet<BackupJobId>>,
     /// Finished jobs the user closed.
     dismissed: BTreeSet<BackupJobId>,
+    /// The restore this panel installed, until the account session that
+    /// takes over has listed the jobs: the entry page holds its result in
+    /// view meanwhile (see [`Self::awaits_listing`]).
+    installed: Option<Installed>,
+    /// The followed job as last seen, kept to show while its row is not in
+    /// the (still empty) store of the session that took over.
+    last_followed: Option<BackupJob>,
     /// The backup form records files that could not be fetched as missing:
     /// how many the user agreed to (explicitly, after a backup failed on
     /// them). `None`: every file must be backed up.
@@ -112,7 +127,7 @@ impl BackupPanel {
         let restore_secret = masked("settings.backup.passphrase", window, cx);
         let mut subscriptions = vec![cx.subscribe(&store, |this, _, event: &StoreEvent, cx| {
             if let StoreEvent::Changed(changes) = event
-                && changes.touches_settings()
+                && (changes.touches_settings() || changes.touches_listings())
             {
                 this.follow_jobs(cx);
                 cx.notify();
@@ -139,6 +154,8 @@ impl BackupPanel {
             followed: BTreeSet::new(),
             asked: None,
             dismissed: BTreeSet::new(),
+            installed: None,
+            last_followed: None,
             allow_missing: None,
             standalone: false,
             _subscriptions: subscriptions,
@@ -192,6 +209,18 @@ impl BackupPanel {
             .or_else(seen_running)
             .filter(|job| !self.followed.contains(&job.id))
             .map(|job| job.id.clone());
+        if let Some(inst) = &mut self.installed {
+            if !store.is_listed(Listing::BackupJobs) {
+                inst.seen_unlisted = true;
+            } else if inst.seen_unlisted {
+                // The first listing of the session that took over: the hold
+                // is over, whatever it says about the job.
+                self.installed = None;
+            }
+        }
+        if let Some(job) = self.shown(store).filter(|job| self.followed.contains(&job.id)) {
+            self.last_followed = Some(job.clone());
+        }
         if let Some(id) = new {
             self.followed.insert(id);
             self.asked = None;
@@ -349,6 +378,7 @@ impl BackupPanel {
 
     /// Installs a checked backup the user reviewed.
     pub fn install(&mut self, job_id: BackupJobId, window: &mut Window, cx: &mut Context<Self>) {
+        self.installed = Some(Installed { id: job_id.clone(), seen_unlisted: false });
         self.submit(IntentKind::InstallRestore { job_id }, window, cx);
     }
 
@@ -359,11 +389,20 @@ impl BackupPanel {
 
     /// Closes a finished job's result.
     pub fn dismiss(&mut self, job_id: BackupJobId, cx: &mut Context<Self>) {
+        if self.installed.as_ref().is_some_and(|i| i.id == job_id) {
+            self.installed = None;
+        }
         self.dismissed.insert(job_id);
         if self.standalone {
             self.form = Some(Form::Restore);
         }
         cx.notify();
+    }
+
+    /// The job to render: the one shown, else the installed restore's last
+    /// seen result while the page waits for the jobs listing.
+    pub(super) fn displayed(&self, cx: &App) -> Option<BackupJob> {
+        self.shown_job(cx).or_else(|| self.held_job(cx))
     }
 
     /// The job shown (running, or ended and not closed yet), if any.
@@ -377,20 +416,40 @@ impl BackupPanel {
         self.shown_job(cx).filter(|job| self.followed.contains(&job.id))
     }
 
-    /// Whether a result this panel follows is still to be shown: the job is
-    /// in the store, or the store has not listed the jobs yet (the account
-    /// session that took over from the daemon's starts empty, and the job
-    /// row only arrives with its first jobs listing). A job the user closed
-    /// does not count.
+    /// Whether a restore result is to stay in view: the followed job is in
+    /// the store, or the installed one is awaited (see
+    /// [`Self::awaits_listing`]). A job the user closed does not count.
     pub fn holds_result(&self, cx: &App) -> bool {
         self.followed_job(cx).is_some() || self.awaits_listing(cx)
     }
 
-    /// Whether the result this panel follows is out of view only because
-    /// the store has not listed the jobs yet.
+    /// Whether the restore this panel installed is held in view only
+    /// until the session that took over from the daemon's lists the jobs:
+    /// that session starts empty, so its store neither has the job row nor
+    /// a daemon connection to show. Only the one installed job is held, and
+    /// the hold ends with the first listing, when the user closes the
+    /// result, or when the daemon is gone (then the page falls back to the
+    /// daemon step, which says so).
     pub fn awaits_listing(&self, cx: &App) -> bool {
-        !self.store.read(cx).store().is_listed(ramflux_desktop_core::Listing::BackupJobs)
-            && self.followed.iter().any(|id| !self.dismissed.contains(id))
+        let handle = self.store.read(cx);
+        self.installed.as_ref().is_some_and(|inst| !self.dismissed.contains(&inst.id))
+            && handle.is_live()
+            && !handle.store().is_listed(Listing::BackupJobs)
+            && !handle.daemon_unreachable()
+    }
+
+    /// The installed restore's result as last seen, for the interval in
+    /// which [`Self::awaits_listing`] holds the page.
+    pub fn held_job(&self, cx: &App) -> Option<BackupJob> {
+        let inst = self.installed.as_ref()?;
+        if !self.awaits_listing(cx) {
+            return None;
+        }
+        // The daemon's own session keeps following the job while the
+        // account session is shown; the last job this panel saw is the
+        // fallback.
+        let known = self.store.read(cx).daemon_store().and_then(|s| s.backup_job(&inst.id));
+        known.cloned().or_else(|| self.last_followed.clone()).filter(|job| job.id == inst.id)
     }
 
     /// Closes a failed job's result and opens its form again, with the
@@ -434,7 +493,8 @@ impl gpui_kit::Render for BackupPanel {
     ) -> impl gpui_kit::IntoElement {
         use gpui_kit::component::{StyledExt as _, v_flex};
         use gpui_kit::prelude::*;
-        let job = self.shown(self.store.read(cx).store()).map(text::heading);
+        let job = self.displayed(cx);
+        let job = job.as_ref().map(text::heading);
         match job {
             Some(heading) => v_flex()
                 .id("backup-standalone")

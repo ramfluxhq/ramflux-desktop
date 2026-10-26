@@ -100,7 +100,7 @@ fn file_notes(files: &AttachmentCheck, cx: &App) -> Vec<AnyElement> {
 
 impl BackupPanel {
     pub(super) fn render_job(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let Some(job) = self.shown(self.store.read(cx).store()).cloned() else {
+        let Some(job) = self.displayed(cx) else {
             return div().into_any_element();
         };
         match job.phase {

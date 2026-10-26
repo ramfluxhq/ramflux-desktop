@@ -62,9 +62,22 @@ impl StoreHandle {
     pub(super) fn advance_live(&mut self, ms: u64, cx: &mut Context<Self>) {
         let Some(link) = self.live.as_mut() else { return };
         let applied = link.daemon.advance(ms);
+        let status = link.daemon.store().source_status();
         if self.active.is_none() {
             self.publish(applied, cx);
+        } else if self.daemon_status.is_some_and(|seen| seen != status) {
+            // The daemon's connection changed while an account session is
+            // shown: routing follows it (an entry page held for a restore
+            // lets go when the daemon is gone).
+            let changes = ramflux_desktop_core::Changes {
+                source_status: true,
+                ..ramflux_desktop_core::Changes::default()
+            };
+            let mut set = super::ChangeSet::default();
+            set.merge(changes);
+            cx.emit(super::StoreEvent::Changed(std::rc::Rc::new(set)));
         }
+        self.daemon_status = Some(status);
         self.reconcile_live(cx);
     }
 
