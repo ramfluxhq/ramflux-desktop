@@ -739,7 +739,8 @@ never a boolean.
 fields. Public names are NFC single-line text, at most 128 scalars/256 UTF-8
 bytes. Private account labels are not published. The default public name is the
 principal ID when it fits this policy; otherwise the fixed safe name `Account`
-keeps legacy long/unsafe identifiers publishable. Profile epochs cannot roll back or equivocate across restarts.
+keeps legacy long/unsafe identifiers publishable. Profile epochs cannot roll back
+or equivocate across restarts.
 
 Task actors include `actor_kind: human | headless_ai | bot | null` and
 `actor_kind_verified`. Verification requires a root-signed profile and, for an
@@ -748,3 +749,33 @@ kind-verified for a signed bot/headless-AI profile. Task relation authorization
 itself is unchanged; do not turn this metadata flag into a permission grant.
 Device-set v2 carries the profile; old v1-only implementations reject it, so
 client/server upgrades must be coordinated. No new daemon method is introduced.
+
+Public names are untrusted labels. The protocol rejects default-ignorables,
+blank-rendering fillers, leading combining marks, names without a visible letter
+or number, and verification-like checkmarks. Non-Latin and mixed-script names
+remain supported. Directory/contact/request rows include `mixed_script: boolean`
+and `display_name_confusable_with: string | null` (another known principal ID).
+The latter compares warning-only UTS #39 skeletons against known cached names,
+including the account's own name; it is not identity equality or an authorization
+check. Clients must show a warning badge when either fact is present and put the
+principal ID or root fingerprint next to a confusing name. A kind-authentication
+chip belongs to the kind claim, never to the name; a malicious root can choose a
+misleading name. Local private labels may take precedence in the UI.
+
+`contact.add`, `contact.list`, and `contact.requests.list` expose `kind_verified`
+alongside `kind_asserted` and `display_name`. A card-only label has
+`kind_verified:false`. An authenticated rename emits `contact.changed` with
+`reason:"public_profile_renamed"`, `principal_id`, `old_display_name`, and
+`new_display_name`; refresh contact and identity rows and show the former name
+when appropriate. A rename never refreshes manual safety verification.
+
+`device.refresh.kind_asserted` is now a kind string or null and `kind_verified`
+means a verified public profile, matching directory/contact rows.
+`safety_kind_verified` retains the separate manual safety-and-authority check.
+`identity.directory.safety_state:"verification_stale"` remains mandatory when the
+manually verified full authority changes, even if the active-device hash and
+profile are unchanged. All task outcome, pending, rejection, transport and
+history metadata use the event's relation role when reporting
+`actor_kind_verified`; a headless-AI profile cannot authenticate a human role.
+A corrupt cached profile makes that actor unverified without failing unrelated
+rows. These pre-1.0 field semantics require coordinated client/server releases.
