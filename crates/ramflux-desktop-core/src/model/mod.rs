@@ -43,6 +43,7 @@ mod task;
 
 pub use account::{
     Account, AccountKind, Device, LockState, Node, NodeHealth, NodeProbe, PinSource, ProbeOutcome,
+    SecureSessions,
 };
 pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MIN_HOLD_MS};
 pub use backend::{

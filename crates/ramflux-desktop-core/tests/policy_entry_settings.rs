@@ -74,6 +74,7 @@ fn store() -> Store {
             device_id: None,
             lock_state: LockState::Unlocked,
             self_participant_id: None,
+            secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
         }),
     );
     feed.ok(5, DomainEvent::GrantRequested(grant("g-ok", Risk::Low)));

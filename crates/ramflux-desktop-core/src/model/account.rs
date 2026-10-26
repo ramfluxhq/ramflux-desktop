@@ -27,6 +27,21 @@ pub enum AccountKind {
     HeadlessAi,
 }
 
+/// Whether the account's outbound secure sessions are usable.
+///
+/// After a full restore the device activates itself again under the
+/// account's root before its first send: until then sending is refused
+/// (history and files stay readable). The daemon reports it in the
+/// account's status and announces the change.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SecureSessions {
+    /// Sending works.
+    #[default]
+    Ready,
+    /// Being re-established after a restore; sending is refused meanwhile.
+    Reestablishing,
+}
+
 /// A local account.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Account {
@@ -50,6 +65,10 @@ pub struct Account {
     /// moments (and so receipts) are the ones whose origin is this id.
     #[serde(default)]
     pub self_participant_id: Option<ParticipantId>,
+    /// Whether sending works, or secure sessions are being re-established
+    /// after a restore.
+    #[serde(default)]
+    pub secure_sessions: SecureSessions,
 }
 
 /// How a node endpoint was pinned.

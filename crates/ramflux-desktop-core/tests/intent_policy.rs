@@ -67,6 +67,7 @@ fn store_with_grants() -> Store {
             device_id: None,
             lock_state: LockState::Locked,
             self_participant_id: None,
+            secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
         }),
     );
     feed.store
