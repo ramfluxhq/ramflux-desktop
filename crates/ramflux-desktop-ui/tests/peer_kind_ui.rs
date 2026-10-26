@@ -20,7 +20,7 @@ use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{
     ContextId, KindClaim, MomentKind, ParticipantId, PeerKind, SafetyState, SyncMode,
 };
-use ramflux_desktop_ui::i18n::{tr, tr_args};
+use ramflux_desktop_ui::i18n::tr_args;
 use ramflux_desktop_ui::identity::kind_text;
 use ramflux_desktop_ui::route::Page;
 use sdk_fake::wait;
@@ -126,7 +126,7 @@ fn contacts_say_how_far_a_kind_is_proven_and_warn_on_a_confusable_name(cx: &mut 
     });
     let cy = cy.expect("cy");
     assert_eq!(cy.safety, SafetyState::VerificationStale);
-    assert!(!cy.safety.needs_attention(), "stale is advisory, not a key change");
+    assert!(cy.safety.needs_attention(), "sticky until verified again");
     assert_eq!(
         label_in(cx, &world, "contacts-principal-cy", "verify").as_deref(),
         Some(tr_args("dock.contacts.verify_again_for", &[("name", "Cy")]).as_ref())

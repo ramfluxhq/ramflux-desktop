@@ -1050,8 +1050,9 @@ legacy identity without a profile, a row from an older daemon) is
 its short id: unverified, its kind unknown.
 
 **Stale verification.** `safety_state: verification_stale` is
-`SafetyState::VerificationStale`: advisory (not `needs_attention`), with
-Verify again. The product sets it when the manually verified device-set
+`SafetyState::VerificationStale`: it `needs_attention` like a key change
+(sticky banner; new conversations and calls refused until verified again),
+shown in warning tone with Verify again. The product sets it when the manually verified device-set
 hash changed, and also when a verified contact's signed kind can no longer
 be confirmed (`rows.rs`); the desktop needs no second signal.
 `safety_kind_verified` is reported only by `device.refresh`, which the

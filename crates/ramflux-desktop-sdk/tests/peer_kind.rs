@@ -102,8 +102,8 @@ fn name_warnings_and_a_stale_verification_come_from_the_identity_directory() {
     let events = t.fetched(&Fetch::first(Paged::Identities), &identities, Timestamp(2)).events;
     let kai = one(&events, "principal-kai");
     assert_eq!(kai.kind_claim, KindClaim::Verified(PeerKind::Human));
-    assert_eq!(kai.safety, SafetyState::VerificationStale, "verify again, not a key change");
-    assert!(!kai.safety.needs_attention());
+    assert_eq!(kai.safety, SafetyState::VerificationStale, "verify again");
+    assert!(kai.safety.needs_attention(), "sticky like a key change");
     assert!(kai.name_warnings.mixed_script);
     assert_eq!(
         kai.name_warnings.confusable_with.as_ref().map(ParticipantId::as_str),

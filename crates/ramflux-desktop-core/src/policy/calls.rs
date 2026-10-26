@@ -16,7 +16,7 @@ use serde_json::json;
 use super::{Decision, IntentError, Policy};
 use crate::ids::{CallId, ContextId, ParticipantId};
 use crate::intent::{IntentKind, methods};
-use crate::model::{Call, CallDirection, CallState, ContextKind, SafetyState};
+use crate::model::{Call, CallDirection, CallState, ContextKind};
 use crate::selectors;
 use crate::store::Store;
 
@@ -100,7 +100,7 @@ pub fn check_start_call(
     let peer = call_peer(store, context_id)
         .ok_or_else(|| IntentError::CallNeedsDirect(context_id.clone()))?;
     if let Some(participant) = store.participant(&peer) {
-        if matches!(participant.safety, SafetyState::KeyChanged | SafetyState::Forked) {
+        if participant.safety.needs_attention() {
             return Err(IntentError::SafetyUnresolved(peer));
         }
         if participant.reachable == Some(false) {

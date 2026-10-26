@@ -146,7 +146,7 @@ fn the_account_scope_maps_the_directories_messages_and_grants() {
     assert_eq!((bo.kind, bo.safety), (ParticipantKind::Agent, SafetyState::Verified));
     assert_eq!(bo.safety_number.as_deref(), Some("12345 67890"));
     let cy = store.participant(&ParticipantId::new("principal-cy")).cloned().expect("cy");
-    assert_eq!(cy.safety, SafetyState::KeyChanged, "a verified device set that changed");
+    assert_eq!(cy.safety, SafetyState::VerificationStale, "a verified device set that changed");
     let own = store.participant(&ParticipantId::new("principal-me")).cloned().expect("me");
     assert_eq!((own.display.as_str(), own.kind), ("Me", ParticipantKind::Human));
     assert!(

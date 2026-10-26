@@ -74,7 +74,7 @@ pub fn render(
     let members = context.participants.len();
     let warnings: Vec<Participant> = selectors::participants(store, &context.id)
         .into_iter()
-        .filter(|p| p.safety.needs_attention() || p.safety.is_stale())
+        .filter(|p| p.safety.needs_attention())
         .cloned()
         .collect();
     let me = selectors::self_participant(store);

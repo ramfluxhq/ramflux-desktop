@@ -17,7 +17,8 @@
 //!   principal's, or mixes scripts, gets a warning badge with the
 //!   principal id beside it. Advisory only: nothing is blocked.
 //! - the **stale note**: a safety number that was verified against an
-//!   authority that changed since asks to be verified again.
+//!   authority that changed since asks to be verified again (sticky like
+//!   a key change, said in warning tone).
 //!
 //! Nothing here is communicated by color alone: every mark has text.
 
@@ -88,15 +89,20 @@ pub fn actor_kind_mark(
         (Some(kind), false) => KindClaim::Asserted(kind),
         (None, _) => KindClaim::None,
     };
-    kind_mark(id, claim, cx).unwrap_or_else(|| unverified_mark(cx))
+    let id = id.into();
+    kind_mark(id.clone(), claim, cx).unwrap_or_else(|| unverified_mark(id, cx))
 }
 
 /// "Kind not verified", for an actor whose kind nothing states.
-fn unverified_mark(cx: &App) -> AnyElement {
+fn unverified_mark(id: ElementId, cx: &App) -> AnyElement {
+    let text = tr("identity.kind.unverified");
     div()
+        .id(id)
+        .aria_label(text.clone())
+        .test_support()
         .text_xs()
         .text_color(cx.theme().muted_foreground)
-        .child(tr("identity.kind.unverified"))
+        .child(text)
         .into_any_element()
 }
 

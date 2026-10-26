@@ -130,7 +130,7 @@ fn member_row(
                 .child(
                     div().text_xs().text_color(cx.theme().muted_foreground).child(i18n::role(role)),
                 )
-                .when(member.safety.needs_attention(), |row| {
+                .when(member.safety.needs_attention() && !member.safety.is_stale(), |row| {
                     row.child(
                         div()
                             .text_xs()

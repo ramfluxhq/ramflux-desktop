@@ -140,18 +140,20 @@ pub enum SafetyState {
     /// Identity fork detected.
     Forked,
     /// The safety number was verified, but the authority it was verified
-    /// against changed since (the daemon's `verification_stale`): verify
-    /// again. Advisory, not a key change.
+    /// against changed since (the daemon's `verification_stale`): the keys
+    /// may have changed, so verify again. Sticky like a key change (it
+    /// needs attention), said in warning tone as what it is: an earlier
+    /// verification that no longer holds.
     VerificationStale,
 }
 
 impl SafetyState {
     /// Whether the state is a sticky warning that needs verification.
     pub const fn needs_attention(self) -> bool {
-        matches!(self, Self::KeyChanged | Self::Forked)
+        matches!(self, Self::KeyChanged | Self::Forked | Self::VerificationStale)
     }
 
-    /// Whether an earlier verification no longer holds.
+    /// Whether an earlier verification no longer holds (verify again).
     pub const fn is_stale(self) -> bool {
         matches!(self, Self::VerificationStale)
     }
@@ -341,9 +343,9 @@ mod tests {
     }
 
     #[test]
-    fn a_stale_verification_asks_again_without_being_a_key_change() {
+    fn a_stale_verification_asks_again_and_needs_attention_like_a_key_change() {
         assert!(SafetyState::VerificationStale.is_stale());
-        assert!(!SafetyState::VerificationStale.needs_attention());
+        assert!(SafetyState::VerificationStale.needs_attention());
         assert!(SafetyState::KeyChanged.needs_attention());
         assert!(!SafetyState::Verified.is_stale());
     }

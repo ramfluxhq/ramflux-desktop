@@ -14,7 +14,7 @@ use serde_json::json;
 use super::{Decision, IntentError, Policy};
 use crate::ids::ParticipantId;
 use crate::intent::{IntentKind, methods};
-use crate::model::{ContactLink, SafetyState};
+use crate::model::ContactLink;
 use crate::store::Store;
 
 /// Decides the start kind; `None` for other kinds.
@@ -70,7 +70,7 @@ pub fn check_start_conversation(
     if link != ContactLink::Accepted {
         return Err(IntentError::ContactLinkState { participant: participant.clone(), link });
     }
-    if matches!(contact.safety, SafetyState::KeyChanged | SafetyState::Forked) {
+    if contact.safety.needs_attention() {
         return Err(IntentError::SafetyUnresolved(participant.clone()));
     }
     if contact.reachable == Some(false) {
