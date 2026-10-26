@@ -337,9 +337,10 @@ The kinds, by area:
 - Settings: `LockAccount`, `RotatePassphrase { current, next }`,
   `ExportBackup { account_id, path, secret }`, `RevokeDevice`, `SyncDevices`, `ProbeNode`, `RemoveNode`,
   `SetDefaultNode`, `SetNodeEnabled`, `ExportDiagnostics`.
-- Backup: `CreateBackup { account_id, path, secret }`, `VerifyRestore {
-  path, secret }`, `InstallRestore { job_id }`, `CancelBackupJob { job_id }`
-  (see "Full backup and restore").
+- Backup: `CreateBackup { account_id, path, secret,
+  allow_missing_attachments }`, `VerifyRestore { path, secret }`,
+  `InstallRestore { job_id }`, `CancelBackupJob { job_id }` (see "Full
+  backup and restore").
 
 Kinds that carry a `SecretInput` (unlock, create, activate, restore, backup
 export, full backup, restore verification, rotate) are excluded from serde. A `SecretInput` is not `Clone`, not `Serialize`, its
@@ -786,33 +787,38 @@ history metadata use the event's relation role when reporting
 A corrupt cached profile makes that actor unverified without failing unrelated
 rows. These pre-1.0 field semantics require coordinated client/server releases.
 
-## Full backup and restore (DESK-F22, contract-first on BACKUP-01)
+## Full backup and restore (DESK-F22, on BACKUP-01)
 
 Owner requirement: a full backup has no count limits and holds everything
 (all messages, groups, contacts and every attachment); a restore verifies
 the whole archive first and only then installs it in one step; restoring
 onto an account already on this device **merges**, the newer item winning;
 both show progress, and a restore ends with per-category counts and the
-attachment hash check. The product implements the daemon job contract below.
-The desktop fake daemon (`ramflux-desktop-test` `fake_backup`) is a UI fixture;
-the desktop adapter must be reconciled with this wire contract when re-pinned. Each account snapshot reads
-`account.backup.jobs`: a daemon that answers it has the job API and the
-backup methods are declared supported; until then (or with
-`SdkConfig::backup_api` false) they are declared unsupported
-(`backend.gap.full_backup`) and Settings · Backup shows its buttons disabled
-with that reason. The older `account.backup.export` / `account.backup.import`
-(manifest and contacts only) stay as they are: Settings · Account calls it a
-key backup, and the entry page's restore still uses the import.
+attachment hash check. The product implements the daemon job API below
+(the product's `docs/account_backup.md` is normative; this section states
+what the desktop does with it). Each account snapshot reads
+`account.backup.jobs`: a daemon that answers it has the job API, the backup
+methods are declared supported and the scope opens its job link (below);
+until then (or with `SdkConfig::backup_api` false) they are declared
+unsupported (`backend.gap.full_backup`) and Settings · Backup shows its
+buttons disabled with that reason. The older `account.backup.export` /
+`account.backup.import` (manifest and contacts only) stay as they are:
+Settings · Account calls it a key backup, and the entry page's restore still
+uses the import.
 
 **Store.** A `BackupJob` (`BackupJobId`, `kind` Backup | Restore, `path`,
 `phase`, the daemon's rising per-job `version`, `started_at`,
 `finished_at`, `progress {category, items_done, items_total, bytes_done,
 bytes_total}`, and once known: a backup's `summary {counts, file_bytes}`, a
 verified restore's `preview {account_id, account_label, created_at, counts,
-file_bytes, merge}`, a finished restore's `report {restored, kept_newer,
-attachments {verified, mismatched, missing}}`, a failure) arrives whole as
-`DomainEvent::BackupJobUpdated`. `BackupCounts`: contacts, conversations,
-messages, groups, surfaces, tasks, attachments, attachment_bytes. Phases:
+file_bytes, merge, attachments}`, a finished restore's `report {restored,
+kept_newer, attachments}` (both counts per category), a failure) arrives
+whole as `DomainEvent::BackupJobUpdated`. `BackupCounts`: contacts,
+conversations, messages, groups, surfaces, tasks, attachments,
+attachment_bytes. `AttachmentCheck`: verified, mismatched, missing,
+unavailable_at_source (included in missing), local_missing_kept;
+`all_verified` = no mismatch and every missing file recorded as unavailable
+at the source. Phases:
 
 ```text
 Backup:  Preparing -> Writing -> Done            (either: -> Failed | Cancelled)
@@ -820,141 +826,167 @@ Restore: Verifying -> Verified -> Installing -> Done
          Verifying | Verified -> Failed | Cancelled;  Installing -> Failed
 ```
 
-The reducer refuses a version that does not rise, a changed kind or path,
-an illegal transition, and a first report in a phase the kind does not
-have. `BackupFailure`: `WrongPassphrase`, `Tampered`, `Truncated`,
+A backup `Preparing` on `attachments` with an item total is fetching the
+files not yet on this device (`BackupProgress::is_fetching`). The reducer
+refuses a version that does not rise, a changed kind or path, an illegal
+transition, and a first report in a phase the kind does not have.
+`BackupFailure`: `WrongPassphrase`, `Tampered`, `Truncated`,
 `UnsupportedVersion`, `InsufficientSpace {needed, available}`,
 `Unreadable`, `NotWritable`, `StagingExpired`, `Interrupted`,
-`Other(code)`. Selectors: `running_backup_job`, `latest_backup_job`.
+`AttachmentMismatch {checks}`, `AttachmentsUnavailable {count, selectors,
+next_cursor}`, `IdentityRollback`, `RootConflict`, `Other(code)`.
+Selectors: `running_backup_job`, `latest_backup_job` (of two jobs started
+in the same second, the one seen last).
 
 **Intents** (all human only; agents never back up or restore).
-`CreateBackup {account_id, path, secret}` → `backup.create`,
-`VerifyRestore {path, secret}` → `restore.verify` (both `SecretCall`; the
-passphrase never enters a body, an event, the store or the inspector; one
-job at a time: `BackupInProgress`), `InstallRestore {job_id}` →
-`restore.install` (only a `Verified` restore: `BackupJobPhase`),
-`CancelBackupJob {job_id}` → `backup.cancel` (until a restore installs).
+`CreateBackup {account_id, path, secret, allow_missing_attachments}` →
+`backup.create` (`allow_missing_attachments` is false unless the user
+explicitly asked to record unavailable files after a backup failed on
+them), `VerifyRestore {path, secret}` → `restore.verify` (both
+`SecretCall`; the passphrase never enters a body, an event, the store or
+the inspector; one job at a time: `BackupInProgress`), `InstallRestore
+{job_id}` → `restore.install` (only a `Verified` restore:
+`BackupJobPhase`), `CancelBackupJob {job_id}` → `backup.cancel` (until a
+restore installs).
 
-**Daemon job API.** Create uses the account being backed up. Verify, install,
-cancel and jobs also work with no bound account, including on the entry page.
-Job events use the daemon-level subscription with no `account_id`, topics exactly
-`["account.backup.job.changed"]`, and `attended_frontend:true`. Other topics are
-refused in that scope. This is separate from the account journal subscription.
-The event frame `seq` is the daemon stream cursor (`since_seq` on reconnect);
-the body `seq` is the job's version. On `resync_required` or `lagged`, reload jobs
-and reopen the subscription. Polling jobs works in either scope.
+**Daemon job API.** Jobs belong to the daemon, not to an account; one runs
+at a time. Create is sent in the scope of the account backed up; verify,
+install and cancel carry no account (a restore may be of an account not on
+this device). Job changes arrive only on the daemon-level job stream: a
+`bus.subscribe` with no `account_id`, topics exactly
+`["account.backup.job.changed"]` and `attended_frontend: true` (any other
+topic there is refused). The daemon takes the four job requests only from a
+connection that opened that stream as an attended frontend, so the SDK
+keeps one such connection per scope (the job link,
+`ramflux_desktop_sdk::bus::jobs`): opened once a snapshot found the job
+API, and carrying every job request. The event frame's `seq` is the
+daemon's job stream cursor; the row's `seq` is the job's version. The link
+reopens from the last cursor seen (`since_seq`); a cursor the daemon no
+longer covers answers `resync_required` and the link follows from the head;
+`stream.lagged` or a lost connection ends it and it is opened again (at
+once, or after the reconnect back-off). Each time it opens,
+`account.backup.jobs` is read again. `account.backup.jobs` is also read
+with every account snapshot and with every poll while a job runs (it works
+in the account's scope and with none).
 
 | Request | Body | Answer |
 |---|---|---|
-| `account.backup.create` | `output_path`, secret `passphrase`, optional `allow_missing_attachments:false` | `{job}` (`preparing`) |
+| `account.backup.create` | account scope; `output_path`, secret `passphrase`, `allow_missing_attachments` (default false) | `{job}` (`preparing`) |
 | `account.restore.verify` | `input_path`, secret `passphrase` | `{job}` (`verifying`) |
 | `account.restore.install` | `job_id` | `{job}` (`installing`) |
-| `account.backup.cancel` | `job_id` | `{job}` (`cancelled`) |
+| `account.backup.cancel` | `job_id` | `{job}` (`cancelled`, once its worker stopped) |
 | `account.backup.jobs` | `{}` | `{jobs: [job]}` running and recent, newest first |
+| `account.backup.jobs` | `job_id`, `missing_after` | `{job, unavailable_attachments, unavailable_count, unavailable_next_cursor}`: a page (64) of a failed backup's unavailable files |
 
-Event `account.backup.job.changed`, body the job row (stream topic; also
-accepted on the push subscription; while polling, `account.backup.jobs` is
-read with every poll while a job runs). Job row: `job_id`, `kind`
-(`backup`/`restore`), `state` (`preparing`, `writing`, `verifying`,
-`verified`, `installing`, `done`, `failed`, `cancelled`), `seq` (per job,
-rising), `path`, `created_at`, `finished_at` (Unix seconds), `progress
-{category, items_done, items_total, bytes_done, bytes_total}` with
+Event `account.backup.job.changed`, body the job row. Job row: `job_id`,
+`kind` (`backup`/`restore`), `state` (`preparing`, `writing`, `verifying`,
+`verified`, `installing`, `done`, `failed`, `cancelled`), `seq`, `path`,
+`created_at`, `finished_at` (Unix seconds), `progress {category,
+items_done, items_total, bytes_done, bytes_total}` (always present;
 `category` one of `identity`, `contacts`, `conversations`, `messages`,
-`groups`, `surfaces`, `tasks`, `settings`, `attachments`; `counts {contacts,
-conversations, messages, groups, surfaces, tasks, attachments,
-attachment_bytes}` and `archive_bytes` (a finished backup, a verified
-restore); `archive {local_account_id, account_label, created_at, merge}` (a
-verified restore; `merge` = the account is already on this device);
-`restored` and `kept_newer` (both per-category count objects with the same
-fields as `counts`, never scalar totals), `attachments {verified, mismatched,
-missing, unavailable_at_source, local_missing_kept}` (a finished restore); `error {code, needed_bytes,
-available_bytes}` (a failed job). Error codes: `wrong_passphrase`,
-`tampered`, `truncated`, `unsupported_version`, `insufficient_space`,
-`unreadable`, `not_writable`, `staging_expired`, `interrupted`, `attachment_mismatch`, `identity_rollback`,
-`root_conflict`, `attachments_unavailable`; a refused
-start request carries the same code as `reason_code` (and the space figures
-in `details`). A restore that reaches `done` makes the source read the
-account again (what it installed shows as after a reload).
+`groups`, `surfaces`, `tasks`, `settings`, `attachments`; a row with another
+category is dropped); `counts {contacts, conversations, messages, groups,
+surfaces, tasks, attachments, attachment_bytes}` (a backup's snapshot once
+it writes, a restore's authenticated archive) and `archive_bytes` (a
+finished backup, a verified restore); `archive {local_account_id,
+account_label, created_at, merge}` (a verified restore; `merge` = the
+account is already on this device); `restored` and `kept_newer`
+(per-category count objects with the fields of `counts`, a finished
+restore); `attachments {verified, mismatched, missing,
+unavailable_at_source, local_missing_kept}` (a verified, failed or finished
+restore); `error {code, needed_bytes, available_bytes, unavailable_count,
+unavailable_attachments, unavailable_next_cursor}` (a failed job). Error
+codes: `wrong_passphrase` (the job's first failure, right after header
+authentication), `tampered`, `truncated`, `unsupported_version`,
+`insufficient_space` (checked before and while writing; with the figures),
+`unreadable`, `not_writable`, `staging_expired`, `interrupted`,
+`attachment_mismatch`, `attachments_unavailable`, `identity_rollback`,
+`root_conflict`. A refused job request is `BackupRefused` with the reason as
+`reason_code`: a job error code, or `busy` (a job runs), `account_locked`,
+`unknown_job`, `invalid_job_phase`; each has its locale key under
+`backend.backup`. A restore that reaches `done` makes the source read the
+account again, and the account stream's `account.restored` (after the usual
+change events) reloads the account it names.
+
+**Verification and staging.** Verify authenticates the header, reads the
+whole archive into encrypted staging, checks every file against its hashes
+and only then reports `verified` with the preview. Every file the archive
+holds must match and every missing file must be one the backup recorded as
+unavailable at its source; anything else fails the job
+(`attachment_mismatch`, with the check counts) and nothing is installed. An
+archive whose identity root differs from the account here is refused
+(`root_conflict`); one that would roll a *new* install's identity back to
+an older epoch is refused (`identity_rollback`; a merge keeps the live
+identity and accepts older backups). Verified staging is kept, encrypted
+under a RAM-only key, until install or 30 minutes, whichever comes first;
+cancel, failure, expiry (`staging_expired`) and a daemon restart discard
+it; the passphrase is never kept. Install stops only the account restored,
+merges or adds it, and reopens it; cancel is refused once installing.
+
+**Merge.** Installing onto an account already on this device merges: where
+both have an item the newer one is kept, including newer removals, blocks
+and other restrictions (a deletion wins a tie); `kept_newer` counts, per
+category, what this device had in a newer version. Files this device
+referenced but had not downloaded yet stay as they were
+(`local_missing_kept`), still fetchable; they are not archive omissions.
+
+**Unavailable source files.** A backup first fetches every file the account
+references but does not hold (the `preparing` phase reports the files tried
+of the estimated total), then takes its snapshot. Files that stay
+unavailable fail it, typed `attachments_unavailable` with
+`unavailable_count`, the first page (64) of their opaque selectors and
+`unavailable_next_cursor`; the remaining pages are read with
+`account.backup.jobs {job_id, missing_after}` until the cursor is null (the
+diagnostics live 30 minutes). Nothing is written. The user may make the
+backup again with `allow_missing_attachments: true`, explicitly: it still
+tries to fetch first, then records the remaining files (with their expected
+hashes) in the archive's authenticated omission manifest; verify and
+install report them as `unavailable_at_source`. The default stays strict.
+
+**Daemon restart.** Jobs live in the daemon's memory. When the job link
+reopens and its cursor is no longer covered (`resync_required`), the SDK
+reads the jobs again and reports every job it knew as running that the
+daemon no longer lists as `Failed`, `Interrupted`, so the next job may
+start.
 
 **UI (Settings · Backup).** Full backup: Create backup… opens the form:
 location (native save dialog), passphrase typed twice (at least 12
-characters and at least 16 UTF-8 bytes; a strength hint; a mismatch is named), Create backup. While it
-runs: what it is working on, a progress bar (bytes, else items), bytes and
-items, the file, Cancel backup. Then: file, size and every count, Done.
-Restore: Restore from backup… opens the form: backup file (native open
-dialog), passphrase, Check backup. While checking: progress and Cancel
-restore. Checked: "Restore this backup?" with the account, when it was
-made, its size and counts, and what installing does (merge, newer wins,
-including tombstones and newer removals; or the account is added), Cancel (discards the staged
-copy) and Restore. Verified staging is encrypted under a RAM-only key and expires
-after 30 minutes; cancel, failure or daemon restart discards it. Any unapproved missing attachment or mismatch prevents installation and must be shown with its check counts. Explicit source omissions are shown separately as `unavailable_at_source`; any mismatch prevents installation. Installing: progress, no cancel ("the data on this
-device stays as it is until the restore finishes"). Done: the attachment
-check (every stored file matched, plus the count explicitly unavailable at source), the
-restored counts and the items kept because this device's were newer.
-Failures are shown typed, with Try again… (the file is kept). Only one job
-runs at a time: while one runs it replaces both forms.
+characters and at least 16 UTF-8 bytes; a strength hint; a mismatch is
+named), Create backup. While it runs: what it is working on ("Fetching
+files not yet on this device: n of m" while fetching, else the category),
+a progress bar (bytes, else items), bytes and items, the file, Cancel
+backup. Then: file, size and every count, Done. A backup that failed on
+files it could not fetch says how many and offers, explicitly, Back up
+without them…: it reopens the backup form to the same file with a note
+naming how many files it records as missing; the passphrase is typed again;
+the next backup is strict again. Restore: Restore from backup… opens the
+form: backup file (native open dialog), passphrase, Check backup. While
+checking: progress and Cancel restore. Checked: "Restore this backup?" with
+the account, when it was made, its size, counts and file check (every file
+matched; files recorded as unavailable when it was made are named), and
+what installing does (merge, newer wins, including newer removals and
+blocks; or the account is added), Cancel (discards the staged copy) and
+Restore. Installing: progress, no cancel ("the data on this device stays as
+it is until the restore finishes"). Done: the file check, the files
+recorded as unavailable at the source and the files this device had not
+downloaded yet, the restored counts, and what was kept because this
+device's was newer, per category (or that nothing here was newer).
+Failures are shown typed, with Try again… (the file is kept); a file that
+does not match fails the check and nothing can be restored. A refused
+request (for example `busy`) is explained in the form. Only one job runs at
+a time: while one runs it replaces both forms.
 
-**Questions for the backend (BACKUP-01).**
-
-1. Method and event names: are `account.backup.create`,
-   `account.restore.verify`, `account.restore.install`,
-   `account.backup.cancel`, `account.backup.jobs` and
-   `account.backup.job.changed` acceptable, or will the existing
-   `account.backup.export` / `account.backup.import` become job-based
-   (and how does the desktop tell the two apart)?
-2. Which scope runs a restore of an account that is *not* on this device
-   (or from the entry page, with no account open), and on which stream do
-   its job events arrive? The desktop sends it in the current account's
-   scope; with no account open it has no stream to follow.
-3. Is the staged, verified copy kept until `restore.install` without the
-   passphrase (assumed), how long (`staging_expired`), and is it discarded
-   by `account.backup.cancel`?
-4. Is a wrong passphrase detected when the request is made (a refused
-   request) or as the job's first failure (assumed; both are handled)?
-5. Does a cancelled or failed backup remove its partial file (assumed: no
-   partial file is left)? Is `insufficient_space` checked before writing,
-   with `needed_bytes` / `available_bytes`?
-6. Progress: is `bytes_total` known up front for a backup (from the
-   snapshot) and for a restore (the file size)? Are `items_total` counts
-   per archive or per category (the desktop shows one total)?
-7. Merge report: is `kept_newer` one number, or per category? Are
-   tombstones and restrictions counted in `restored`?
-8. Attachment check: is `missing` (listed without bytes) possible in a full
-   backup, or only `mismatched`? Are mismatched files skipped (assumed) or
-   is the restore failed?
-9. After a merge restore, does the daemon emit the usual
-   `conversation.changed` / `contact.changed` events, or must the client
-   reload (the desktop reloads the account on `done`)?
-10. Is a restore that would roll back an epoch or replace a pinned root
-    refused before installing (a typed `error.code`?), so the review can
-    say so?
-
-**Unavailable source files.** Create first attempts to fetch every missing referenced file. The default remains strict: if files remain unavailable, the failed job has `error.code:"attachments_unavailable"`, `unavailable_count`, a first page of up to 64 `unavailable_attachments` selectors, and `unavailable_next_cursor`. Read every remaining page using `account.backup.jobs {job_id, missing_after}`; the answer has `{job, unavailable_attachments, unavailable_count, unavailable_next_cursor}`. Continue until the cursor is null (an exact page multiple can end with an empty page). Diagnostics are encrypted under a RAM-only key for at most 30 minutes; expiration or restart requires retrying create. Paths, references and grants are not placed in error details.
-
-Offer an explicit confirmation before retrying create with `allow_missing_attachments:true`. It still tries fetching first, and records the remaining selectors and expected hashes in the authenticated source-omission manifest. Verify/install report `attachments.unavailable_at_source` (included in `missing`). Every stored file must authenticate, and any mismatch prevents installation; omissions are never silently inferred from a missing file. Merge accepts older-epoch backups while retaining the live manifest. New groups without a live outbound checkpoint receive a fresh unique sender chain.
-
-**Merge-local pending files.** Verify and install use the same strict rule for files and references supplied by the archive. A pre-existing local attachment not yet downloaded does not prevent merge; its reference stays fetchable later and `attachments.local_missing_kept` reports it separately from source omissions. Any archive-supplied mismatch still prevents installation.
-
-Preparing-phase progress includes attempted fetch items and an estimated total. Fetching finishes before the one backup snapshot opens; no reader snapshot stays open across network waits. On NFS/FUSE without hard links or exclusive rename, publication uses exclusive create plus streamed copy and fsync. The final path may be visible before completion: consume it only after Done; cancellation/failure removes the partial final. Periodic cleanup never scans generations. Startup/post-commit generation cleanup skips accounts whose install lease is held.
-
-Daemon scope follows the same-user local-bus trust model: the peer UID is checked, while frontend attendance is self-asserted. Account-scoped headless restrictions are not a credential boundary against another process of the same user.
-
-**Outbound security after restore.** Full restore keeps all historical messages,
-attachment keys and inbound/archived ratchets. Saved outbound DM sessions and
-group sender chains are archived only; they are never resumed. A newly restored
-account performs fresh root-authorized device activation, starts fresh outbound
-DM sessions on the first post-restore message and rotates every group's sender key to a new chain ID before its first group send.
-The desktop shows **re-establishing secure sessions** while `account.status` or
-`sync.status.get` reports `secure_sessions:"reestablishing"`; sending stays refused
-until activation succeeds. `account.secure_sessions.changed` announces `ready`.
-History and files remain readable meanwhile. Merge retains the live local outbound
-state and does not reactivate backup outbound chains. Successful installation
-emits the normal contact/conversation/message events, followed by `account.restored`;
-reload the account after completion. Job rows are daemon-local; after daemon
-restart discard running rows from the previous daemon and reload `account.backup.jobs`.
-
-The desktop adapter/store must represent `kept_newer` per category and route the
-entry-page job subscription at daemon scope. These are required integration changes;
-fake-daemon UI coverage alone does not prove compatibility with the product.
-
-Inactive restored receive chains retire after 24 hours from restore/migration, not last use. The first outgoing message after restore re-establishes fresh sessions; a later old-chain inbound packet may trigger ordinary authenticated recovery after that receive window. Every group participant must upgrade together for v3 sender distributions; old clients cannot import newly rotated v3 chains.
+**Outbound security after restore.** Full restore keeps all historical
+messages, attachment keys and inbound/archived ratchets. Saved outbound DM
+sessions and group sender chains are archived only; they are never
+resumed. A newly restored account performs fresh root-authorized device
+activation, starts fresh outbound DM sessions on the first post-restore
+message and rotates every group's sender key to a new chain ID before its
+first group send (v3 sender distributions: every group participant must
+upgrade together). Merge retains the live local outbound state and does not
+reactivate backup outbound chains. Meanwhile `account.status` and
+`sync.status.get` report `secure_sessions: "reestablishing"`, sending is
+refused by the daemon, and `account.secure_sessions.changed` announces
+`ready`; history and files stay readable. The desktop does not show this
+state yet: a send meanwhile fails with the daemon's reason. Showing
+"re-establishing secure sessions" is a follow-up to this section.
