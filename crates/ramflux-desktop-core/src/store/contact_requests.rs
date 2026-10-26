@@ -6,7 +6,8 @@
 //! A listing replaces the pending incoming requests (the daemon lists the
 //! pending ones; one it no longer lists was answered or expired); an update
 //! replaces the one request it names. A request that is no longer pending
-//! stays, so its end can be told.
+//! stays, so its end can be told, and an older listing that still names it
+//! pending (read before the answer, applied after it) does not reopen it.
 //!
 //! Request events carry counts and identifiers only (CONTACT-02 r2): an
 //! update of the same request without the private fields (note, preview,
@@ -35,8 +36,18 @@ impl Store {
             *direction != RequestDirection::Incoming || !request.state.is_pending()
         });
         for request in requests.iter().filter(|r| r.direction == RequestDirection::Incoming) {
-            self.contact_requests
-                .insert((request.peer.clone(), request.direction), request.clone());
+            // A listing read before an answer can be applied after it: it
+            // names the request pending, but an answered or expired request
+            // does not become pending again.
+            let key = (request.peer.clone(), request.direction);
+            if request.state.is_pending()
+                && self.contact_requests.get(&key).is_some_and(|k| k.id == request.id)
+            {
+                // Only an answered one is still held here: the pending ones
+                // were dropped above.
+                continue;
+            }
+            self.contact_requests.insert(key, request.clone());
         }
         if self.contact_requests != before {
             changes.contact_requests = true;

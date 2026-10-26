@@ -88,6 +88,34 @@ fn a_listing_replaces_the_pending_incoming_requests_and_keeps_answered_ones() {
 }
 
 #[test]
+fn an_older_listing_applied_after_an_answer_keeps_the_request_answered() {
+    for end in [RequestState::Declined, RequestState::Blocked] {
+        let mut feed = feed();
+        let answered = request("r-cy", "p-cy", RequestDirection::Incoming, end);
+        feed.ok(2, DomainEvent::ContactRequestUpserted(answered));
+        // Read before the answer: r-cy still pending in it.
+        feed.ok(
+            3,
+            DomainEvent::ContactRequestsListed(vec![request(
+                "r-cy",
+                "p-cy",
+                RequestDirection::Incoming,
+                RequestState::Pending,
+            )]),
+        );
+        let shown =
+            feed.store.contact_request(&ParticipantId::new("p-cy"), RequestDirection::Incoming);
+        assert_eq!(shown.map(|r| r.state), Some(end), "not pending again");
+        assert!(pending(&feed.store).is_empty());
+        // The listing the answer called for does not name it: it stays.
+        feed.ok(4, DomainEvent::ContactRequestsListed(Vec::new()));
+        let shown =
+            feed.store.contact_request(&ParticipantId::new("p-cy"), RequestDirection::Incoming);
+        assert_eq!(shown.map(|r| r.state), Some(end), "still shown as answered");
+    }
+}
+
+#[test]
 fn answers_go_to_pending_incoming_requests_and_block_needs_the_hold() {
     let mut feed = feed();
     let effects = handle_intent(
