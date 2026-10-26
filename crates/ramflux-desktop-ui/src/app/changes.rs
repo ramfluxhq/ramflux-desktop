@@ -3,7 +3,7 @@
 
 //! Merged store changes and the per-area predicates views subscribe with.
 
-use ramflux_desktop_core::{Changes, ContextId, Store};
+use ramflux_desktop_core::{Changes, ContextId, MomentKind, Store};
 
 /// Everything that changed in one batch of applied envelopes.
 ///
@@ -54,9 +54,12 @@ impl ChangeSet {
     }
 
     /// Whether what rows of `context_id` reference (participants, grants,
-    /// objects, tasks, the context itself) or their bodies changed, so its
-    /// rows must be rebuilt rather than patched.
-    pub fn touches_row_refs(&self, context_id: &ContextId) -> bool {
+    /// objects, tasks, the context itself, the task event lines of its
+    /// timeline) or their bodies changed, so its rows must be rebuilt rather
+    /// than patched. A task card names who ended the task from the task
+    /// event lines that follow it, so a new line changes a row that is not
+    /// itself among the changed moments.
+    pub fn touches_row_refs(&self, store: &Store, context_id: &ContextId) -> bool {
         self.reset
             || self.changes.bodies_cleared
             || self.changes.contexts.contains(context_id)
@@ -65,6 +68,11 @@ impl ChangeSet {
             || !self.changes.objects.is_empty()
             || !self.changes.tasks.is_empty()
             || !self.changes.calls.is_empty()
+            || self.changes.moments.iter().any(|id| {
+                store.moment(id).is_some_and(|m| {
+                    &m.context_id == context_id && matches!(m.kind, MomentKind::TaskEvent(_))
+                })
+            })
     }
 
     /// Calls: the incoming-call card, the in-call bar and the call button
@@ -230,5 +238,41 @@ mod tests {
         assert!(!set.touches_settings());
         assert!(ChangeSet::reset().touches_context(&store, &ContextId::new("c-b")));
         assert!(ChangeSet::default().is_empty());
+    }
+
+    #[test]
+    fn a_task_event_line_changes_the_task_card_before_it_but_a_message_does_not() {
+        let mut store = Store::new();
+        store
+            .apply(&EventEnvelope::new(
+                1,
+                Timestamp(1),
+                DomainEvent::ContextUpserted(context("c-a")),
+            ))
+            .expect("apply");
+        let event = DomainEvent::MomentAdded(Box::new(Moment {
+            id: MomentId::new("m-event"),
+            context_id: ContextId::new("c-a"),
+            origin: ParticipantId::new("p-1"),
+            at: Timestamp(2),
+            kind: MomentKind::TaskEvent(ramflux_desktop_core::TaskEventPayload {
+                task_id: ramflux_desktop_core::TaskId::new("t-1"),
+                event: ramflux_desktop_core::TaskEventKind::Declined,
+                actor_kind_verified: false,
+            }),
+            lifecycle: Lifecycle::Done,
+        }));
+        let mut line = ChangeSet::default();
+        line.merge(store.apply(&EventEnvelope::new(2, Timestamp(2), event)).expect("apply"));
+        let mut text = ChangeSet::default();
+        text.merge(
+            store
+                .apply(&EventEnvelope::new(3, Timestamp(3), message("m-text", "c-a")))
+                .expect("apply"),
+        );
+        let here = ContextId::new("c-a");
+        assert!(line.touches_row_refs(&store, &here), "who ended a task is read from its lines");
+        assert!(!line.touches_row_refs(&store, &ContextId::new("c-b")));
+        assert!(!text.touches_row_refs(&store, &here), "a message is patched in place");
     }
 }

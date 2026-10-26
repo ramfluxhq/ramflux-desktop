@@ -162,6 +162,8 @@ struct Inner {
     quiet: bool,
     /// Also announce each task message as `message.received`.
     message_events: bool,
+    /// Task messages are not listed or announced until released.
+    messages_held: bool,
     clock: i64,
     ids: u64,
     refuse_next: Option<(String, Refused)>,
@@ -251,6 +253,29 @@ impl FakeTasks {
     /// keep the reads they count.
     pub fn announce_messages(&self, on: bool) {
         self.inner().message_events = on;
+    }
+
+    /// Holds back the task messages (they are neither listed nor
+    /// announced) or releases them: the daemon projects a message some time
+    /// after the task changed, so a desktop may read the changed task first.
+    /// Releasing announces each held message when announcing is on.
+    pub fn hold_messages(&self, hold: bool) {
+        let mut inner = self.inner();
+        inner.messages_held = hold;
+        if hold || !inner.message_events {
+            return;
+        }
+        let Some((publisher, account)) = inner.announce.clone() else { return };
+        for (conversation, rows) in &inner.messages {
+            for row in rows.iter().filter(|r| r["content_type"] == "task") {
+                publisher.publish(
+                    &account,
+                    "message.received",
+                    json!({ "message": { "id": row["message_id"], "conversation_id": conversation },
+                            "conversation": { "id": conversation } }),
+                );
+            }
+        }
     }
 
     /// Stops (or resumes) announcing changes: a change the desktop has not
@@ -613,7 +638,11 @@ impl FakeTasks {
 
     /// The task messages of a conversation, as `message.list` rows.
     pub fn messages(&self, conversation: &str) -> Vec<Value> {
-        self.inner().messages.get(conversation).cloned().unwrap_or_default()
+        let inner = self.inner();
+        if inner.messages_held {
+            return Vec::new();
+        }
+        inner.messages.get(conversation).cloned().unwrap_or_default()
     }
 
     /// Answers a `task.*` request of the local account; `None` for other
@@ -827,6 +856,7 @@ impl Inner {
         self.announce(meta);
         if self.message_events
             && !self.quiet
+            && !self.messages_held
             && let Some((publisher, account)) = &self.announce
         {
             let message = format!("task-msg-{}", self.ids);

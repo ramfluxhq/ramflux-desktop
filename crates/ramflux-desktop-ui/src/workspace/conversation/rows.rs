@@ -88,7 +88,7 @@ impl Rows {
         context: &ContextId,
         changes: Option<&ChangeSet>,
     ) -> RowUpdate {
-        if let Some(changes) = changes.filter(|c| !c.touches_row_refs(context))
+        if let Some(changes) = changes.filter(|c| !c.touches_row_refs(handle.store(), context))
             && let Some(update) = self.patch(handle, context, changes)
         {
             return update;

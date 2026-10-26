@@ -312,6 +312,46 @@ fn a_denied_task_says_who_declined_it_instead_of_an_empty_summary(cx: &mut TestA
     opened.fake.shutdown();
 }
 
+/// The daemon projects a task's message some time after the task changed,
+/// so the desktop may read the failed task before the line that says who
+/// declined it: the card must still say who once the line arrives.
+#[gpui_kit::test]
+fn a_denial_whose_line_arrives_after_the_failed_task_still_names_who_declined(
+    cx: &mut TestAppContext,
+) {
+    let opened = open_group(cx, "ui-task-denied-late");
+    opened.tasks.announce_messages(true);
+    opened.tasks.hold_messages(true);
+    opened.tasks.start_as("principal-me", GROUP, "t-late", BOT, "Deploy to production").unwrap();
+    opened.state.lock().unwrap().approvals.push(sdk_fake::approval("appr-5", "low"));
+    opened.fake.publish(
+        "acct-main",
+        "mcp.approval.request",
+        serde_json::json!({ "approval_id": "appr-5" }),
+    );
+    wait(cx, "the approval", |cx| {
+        with_store(cx, &opened.shell, |s| s.grant(&GrantId::new("appr-5")).is_some())
+    });
+    let steps = vec![approval_step("deploy", "Deploy to staging", "grant_appr-5")];
+    opened.tasks.update(GROUP, "t-late", TaskStatus::NeedsMe, steps, None).unwrap();
+    let id = task_key(GROUP, "t-late");
+    wait(cx, "needs me", |cx| {
+        task(cx, &opened, &id).is_some_and(|t| t.state == TaskState::NeedsMe)
+    });
+    advance(cx, 50);
+    click_on(cx, &opened, &id, "step-deny");
+    wait(cx, "on its way", |cx| task(cx, &opened, &id).is_some_and(|t| t.answer.is_some()));
+    assert_eq!(opened.tasks.confirm_decisions(), 1);
+    wait(cx, "failed", |cx| task(cx, &opened, &id).is_some_and(|t| t.state == TaskState::Failed));
+    advance(cx, 500);
+    let declined =
+        tr_args("moment.task.ending.declined_by", &[("name", &tr("moment.task.ending.you"))]);
+    assert!(!has_label(cx, opened.handle, &declined), "nothing says who yet");
+    opened.tasks.hold_messages(false);
+    wait(cx, "who declined it", |cx| has_label(cx, opened.handle, &declined));
+    opened.fake.shutdown();
+}
+
 #[gpui_kit::test]
 fn a_peer_whose_kind_nothing_reported_is_not_asked_and_the_composer_says_why(
     cx: &mut TestAppContext,
