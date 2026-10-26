@@ -611,8 +611,9 @@ fn an_account_attaching_and_detaching_during_the_open_leaves_the_daemon_link_ope
     drop(account);
     // End to end, whichever order the open's end, the close the attach asked
     // for and the detach arrive in (the scheduler picks it; the unit tests
-    // of the job link in `bridge::jobs` pin the order that once failed), the scope ends up following the jobs on a live
-    // connection, not marked open over a closed one.
+    // of the job link in `bridge::jobs` pin the order that once failed), the
+    // scope ends up following the jobs on a live connection, not marked open
+    // over a closed one.
     world.fake.release_job_subscribe();
     daemon.until("the daemon link is open", |_, _| world.fake.job_streaming());
     daemon.settle(300);

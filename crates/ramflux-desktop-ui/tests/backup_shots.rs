@@ -10,11 +10,12 @@
 //! reopened account's first jobs listing is awaited.
 //!
 //! Not part of `cargo test`; run explicitly (`RAMFLUX_SHOTS_LOCALE` picks
-//! the interface language, `en` by default; `RAMFLUX_SHOTS_SET=restore-hold`
-//! takes only the entry page's finishing state):
+//! the interface language, `en` by default). `RAMFLUX_SHOTS_SET` is
+//! required: `restore-hold` takes the entry page's finishing state,
+//! `settings` the settings scenario (broken until DESK-CI-07):
 //!
 //! ```sh
-//! RAMFLUX_SHOTS_DIR=/some/dir cargo test -p ramflux-desktop-ui --test backup_shots
+//! RAMFLUX_SHOTS_SET=restore-hold RAMFLUX_SHOTS_DIR=/some/dir cargo test -p ramflux-desktop-ui --test backup_shots
 //! ```
 
 mod common;
@@ -40,7 +41,7 @@ mod shots {
         AppContext as _, Bounds, Entity, HeadlessAppContext, Point, Window, WindowBounds,
         WindowHandle, WindowOptions, px, size,
     };
-    use ramflux_desktop_core::{BackupPhase, Store, methods, selectors};
+    use ramflux_desktop_core::{BackupPhase, LockState, Store, methods, selectors};
     use ramflux_desktop_test::fake_backup::{Archive, Counts, Defect, FakeBackup};
     use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
@@ -239,6 +240,16 @@ mod shots {
         cx
     }
 
+    /// What the daemon lists for the restored account.
+    fn set_account(state: &sdk_fake::Shared, lock_state: &str) {
+        let open = lock_state == "unlocked";
+        state.lock().expect("state").accounts = Some(serde_json::json!({
+            "accounts": if open { vec!["acct-main"] } else { vec![] },
+            "account_details": [{ "id": "acct-main", "label": "Personal", "kind": "human",
+                                  "state": lock_state }],
+        }));
+    }
+
     /// A fresh device whose full restore was checked on the entry page and
     /// installed: the daemon reopens the account, and the account session's
     /// first jobs listing is held back, so the page shows "Finishing the
@@ -297,11 +308,7 @@ mod shots {
             let state = state.lock().expect("state");
             state.account_jobs.close();
         }
-        state.lock().expect("state").accounts = Some(serde_json::json!({
-            "accounts": ["acct-main"],
-            "account_details": [{ "id": "acct-main", "label": "Personal", "kind": "human",
-                                  "state": "unlocked" }],
-        }));
+        set_account(&state, "unlocked");
         run.click("restore-install");
         backup.run_out();
         run.until("the account's own session", |r| {
@@ -310,6 +317,24 @@ mod shots {
         run.settle();
         run.shot("f22_13_restore_finishing");
         state.lock().expect("state").account_jobs.open();
+        run.until("the jobs listed", |r| {
+            r.store(|s| s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
+        });
+        // The account locks and opens again, and its new session never
+        // answers: past the bound the page says so and offers a way out.
+        set_account(&state, "locked");
+        run.until("locked", |r| {
+            r.store(|s| s.accounts().next().map(|a| a.lock_state) != Some(LockState::Unlocked))
+        });
+        let reads = state.lock().expect("state").account_reads.clone();
+        reads.close();
+        set_account(&state, "unlocked");
+        run.until("the session never loads", |r| {
+            r.cx.update(|cx| r.shell.read(cx).entry().read(cx).session_failed(cx))
+        });
+        run.settle();
+        run.shot("f22_14_session_failed");
+        reads.open();
         if let Ok(fake) = Arc::try_unwrap(fake) {
             fake.shutdown();
         }
@@ -322,9 +347,23 @@ mod shots {
         );
         let locale = std::env::var("RAMFLUX_SHOTS_LOCALE").unwrap_or_else(|_| "en".to_owned());
         std::fs::create_dir_all(&out).expect("output directory");
-        if std::env::var("RAMFLUX_SHOTS_SET").is_ok_and(|set| set == "restore-hold") {
-            restore_hold(&out, &locale);
-            return;
+        let set = std::env::var("RAMFLUX_SHOTS_SET").unwrap_or_default();
+        match set.as_str() {
+            "restore-hold" => {
+                restore_hold(&out, &locale);
+                return;
+            }
+            // The settings backup scenario (f22_01 to f22_12) no longer
+            // runs against the current fake daemon (card DESK-CI-07 repairs
+            // it), so it only runs when asked for explicitly.
+            "settings" => {}
+            _ => {
+                println!(
+                    "skipped: pick RAMFLUX_SHOTS_SET=restore-hold (the entry page finishing a \
+                     restore) or =settings (the settings scenario, broken until DESK-CI-07)"
+                );
+                return;
+            }
         }
         let (fake, state, socket) = sdk_fake::start(&format!("f22-shots-{locale}"));
         fake.enable_stream();
