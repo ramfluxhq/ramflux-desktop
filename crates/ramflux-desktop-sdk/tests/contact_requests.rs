@@ -20,7 +20,7 @@ use std::sync::{Arc, Weak};
 
 use common::*;
 use ramflux_desktop_core::{
-    AccountId, ContextId, FailureCode, Intent, IntentError, IntentKind, ParticipantId,
+    AccountId, ContextId, DomainEvent, FailureCode, Intent, IntentError, IntentKind, ParticipantId,
     RequestAnswer, RequestDirection, RequestPolicy, RequestState, Source, Store, SyncMode,
     Timestamp, handle_intent, methods, selectors,
 };
@@ -88,6 +88,29 @@ fn live(world: &World) -> Fed {
             && s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Stream)
     });
     account
+}
+
+/// Waits until every request listing the source has asked for so far was
+/// answered and applied. A listing read before an answer and applied after
+/// it would show the request pending again, so a test that answers a
+/// request first waits here (the daemon's reads and answers come back on one
+/// connection in the order they were asked). A probe event the source cannot
+/// read a request from makes it ask for a listing of its own, which comes
+/// after every earlier one.
+fn listings_applied(world: &World, account: &mut Fed) {
+    let listings =
+        |fake: &FakeBus| fake.seen().iter().filter(|s| s.method == "contact.requests.list").count();
+    let asked = listings(&world.fake);
+    world.fake.publish(ACCOUNT, "contact.requested", json!({}));
+    account.until("the probe's listing", |_, _| listings(&world.fake) > asked);
+    let through = listings(&world.fake);
+    account.until("every listing applied", |_, envelopes| {
+        let applied = envelopes
+            .iter()
+            .filter(|e| matches!(e.event, DomainEvent::ContactRequestsListed(_)))
+            .count();
+        applied >= through
+    });
 }
 
 fn dispatch(account: &mut Fed, kind: IntentKind) -> Result<(), IntentError> {
@@ -180,6 +203,7 @@ fn decline_and_block_reach_the_daemon_and_block_needs_the_hold() {
     let declined = world.requests.incoming(ACCOUNT, "principal-cy", None);
     let blocked = world.requests.incoming(ACCOUNT, "principal-bo", None);
     account.until("both requests", |s, _| pending(s).len() == 2);
+    listings_applied(&world, &mut account);
     dispatch(
         &mut account,
         IntentKind::AnswerContactRequest {
@@ -192,6 +216,7 @@ fn decline_and_block_reach_the_daemon_and_block_needs_the_hold() {
         state_of(s, "principal-cy", RequestDirection::Incoming) == Some(RequestState::Declined)
     });
     assert_eq!(world.requests("contact.decline"), [json!({ "request_id": declined })]);
+    listings_applied(&world, &mut account);
 
     let block = Intent::human(IntentKind::AnswerContactRequest {
         request_id: blocked.clone(),
