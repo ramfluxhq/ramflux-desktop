@@ -17,7 +17,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{
-    Account, AccountKind, IntentKind, LockState, NodeId, SecretInput, Store,
+    Account, AccountKind, BackupPhase, IntentKind, LockState, NodeId, SecretInput, Store, methods,
 };
 
 use super::{AccountPath, EntryPage, RestoreKind};
@@ -112,11 +112,30 @@ impl EntryPage {
             self.render_paths(&store, cx).into_any_element()
         } else {
             // A full restore that just finished (the account it installed
-            // is listed now) stays in view above the unlock, until closed.
-            let restored = self.full_restore.read(cx).shows_job(cx);
+            // is listed now) stays in view until closed: above the unlock
+            // when the account is locked; with "Open account" when the
+            // daemon reopened it already (the shell holds this page).
+            let shown = self.full_restore.read(cx).followed_job(cx);
+            let open = shown.as_ref().filter(|job| {
+                job.phase == BackupPhase::Done
+                    && accounts.iter().any(|a| a.lock_state == LockState::Unlocked)
+            });
+            let open_account = open.map(|job| {
+                let id = job.id.clone();
+                h_flex().child(
+                    Button::new("entry-open-account")
+                        .primary()
+                        .label(tr("entry.restore.open_account"))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let id = id.clone();
+                            this.full_restore.update(cx, |panel, cx| panel.dismiss(id, cx));
+                        })),
+                )
+            });
             v_flex()
                 .gap_4()
-                .children(restored.then(|| self.full_restore.clone()))
+                .children(shown.is_some().then(|| self.full_restore.clone()))
+                .children(open_account)
                 .child(self.render_unlock(&accounts, cx))
                 .into_any_element()
         };
@@ -379,15 +398,23 @@ impl EntryPage {
             (RestoreKind::Full, tr("entry.restore.full")),
             (RestoreKind::Key, tr("entry.restore.key")),
         ];
+        let kind = self.restore_kind.unwrap_or_else(|| {
+            let store = self.store.read(cx).store();
+            if store.unsupported_reason(methods::RESTORE_VERIFY).is_some() {
+                RestoreKind::Key
+            } else {
+                RestoreKind::Full
+            }
+        });
         let choice = self.segment(
             "entry-restore-kind",
             &kinds,
-            self.restore_kind,
-            |this, kind| this.restore_kind = kind,
+            kind,
+            |this, kind| this.restore_kind = Some(kind),
             cx,
         );
         let muted = cx.theme().muted_foreground;
-        if self.restore_kind == RestoreKind::Full {
+        if kind == RestoreKind::Full {
             return v_flex()
                 .gap_3()
                 .child(choice)

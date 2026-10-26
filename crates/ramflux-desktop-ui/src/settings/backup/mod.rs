@@ -184,14 +184,19 @@ impl BackupPanel {
         let asked = self.asked.as_ref().and_then(|known| {
             selectors::latest_backup_job(store).filter(|job| !known.contains(&job.id))
         });
+        // A standalone panel (the entry page, alive for the whole session)
+        // follows only the jobs it asked for, never one started elsewhere.
+        let seen_running =
+            || (!self.standalone).then(|| selectors::running_backup_job(store)).flatten();
         let new = asked
-            .or_else(|| selectors::running_backup_job(store))
+            .or_else(seen_running)
             .filter(|job| !self.followed.contains(&job.id))
             .map(|job| job.id.clone());
         if let Some(id) = new {
             self.followed.insert(id);
             self.asked = None;
-            self.form = None;
+            // A standalone panel has only the restore form to show again.
+            self.form = self.standalone.then_some(Form::Restore);
             self.failures_mark = None;
         }
     }
@@ -355,7 +360,21 @@ impl BackupPanel {
     /// Closes a finished job's result.
     pub fn dismiss(&mut self, job_id: BackupJobId, cx: &mut Context<Self>) {
         self.dismissed.insert(job_id);
+        if self.standalone {
+            self.form = Some(Form::Restore);
+        }
         cx.notify();
+    }
+
+    /// The job shown (running, or ended and not closed yet), if any.
+    pub fn shown_job(&self, cx: &App) -> Option<BackupJob> {
+        self.shown(self.store.read(cx).store()).cloned()
+    }
+
+    /// The job shown that this panel follows (it started it, or saw it
+    /// running here), if any: not a job another frontend runs.
+    pub fn followed_job(&self, cx: &App) -> Option<BackupJob> {
+        self.shown_job(cx).filter(|job| self.followed.contains(&job.id))
     }
 
     /// Closes a failed job's result and opens its form again, with the
@@ -406,12 +425,7 @@ impl gpui_kit::Render for BackupPanel {
                 .gap_2()
                 .child(gpui_kit::div().text_sm().font_semibold().child(heading))
                 .child(self.render_job(window, cx)),
-            None => {
-                if self.standalone {
-                    self.form = Some(Form::Restore);
-                }
-                v_flex().id("backup-standalone").child(self.render_restore(window, cx))
-            }
+            None => v_flex().id("backup-standalone").child(self.render_restore(window, cx)),
         }
     }
 }

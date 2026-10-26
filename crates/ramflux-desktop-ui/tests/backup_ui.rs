@@ -489,3 +489,97 @@ fn a_fresh_device_restores_a_full_backup_from_the_entry_page(cx: &mut TestAppCon
         fake.shutdown();
     }
 }
+
+#[gpui_kit::test]
+fn the_restore_result_stays_in_view_when_the_daemon_reopens_the_account(cx: &mut TestAppContext) {
+    let (fake, state, path) = sdk_fake::start("ui-backup-entry-open");
+    fake.enable_stream();
+    let fake = Arc::new(fake);
+    let backup = state.lock().expect("state").backup.clone();
+    backup.archive("/b/personal.rfbackup", archive(0));
+    let bus = Arc::downgrade(&fake);
+    backup.set_publisher(Box::new(move |row| {
+        if let Some(bus) = bus.upgrade() {
+            bus.publish_job(row);
+        }
+    }));
+    state.lock().expect("state").accounts =
+        Some(serde_json::json!({ "accounts": [], "account_details": [] }));
+    let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 900.);
+    wait(cx, "the entry page", |cx| matches!(page(cx, &shell), Page::Entry(_)));
+    if page(cx, &shell) == Page::Entry(EntryStep::Node) {
+        click_in(cx, handle, "node-n-harbor", "node-confirm");
+    }
+    wait(cx, "the account step", |cx| page(cx, &shell) == Page::Entry(EntryStep::Account));
+    wait(cx, "the job API at daemon scope", |cx| {
+        with_store(cx, &shell, |s| {
+            s.unsupported_reason(ramflux_desktop_core::methods::RESTORE_VERIFY).is_none()
+        })
+    });
+    click(cx, handle, "entry-path-2");
+    let panel = entry_panel(cx, &shell);
+    click(cx, handle, "restore-choose-file");
+    cx.simulate_path_prompt_response(|_| Some(vec!["/b/personal.rfbackup".into()]));
+    cx.run_until_parked();
+    in_window(cx, handle, move |window, cx| {
+        let input = panel.read(cx).inputs()[2].clone();
+        input.update(cx, |input, cx| input.set_value(PASSPHRASE, window, cx));
+    });
+    click(cx, handle, "restore-verify");
+    backup.run_out();
+    wait(cx, "verified", |cx| {
+        with_store(cx, &shell, |s| selectors::latest_backup_job(s).map(|j| j.phase))
+            == Some(BackupPhase::Verified)
+    });
+    advance(cx, 50);
+    // As the real daemon does: once installed, the account is reopened,
+    // unlocked.
+    state.lock().expect("state").accounts = Some(serde_json::json!({
+        "accounts": [ACCOUNT],
+        "account_details": [{ "id": ACCOUNT, "label": "Personal", "kind": "human",
+                              "state": "unlocked" }],
+    }));
+    click(cx, handle, "restore-install");
+    backup.run_out();
+    wait(cx, "the account open", |cx| {
+        with_store(cx, &shell, |s| s.accounts().next().map(|a| a.lock_state))
+            == Some(LockState::Unlocked)
+    });
+    advance(cx, 300);
+    assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account), "the result is held in view");
+    assert!(exists(cx, handle, "backup-result"), "counts, kept-newer and the file check");
+    assert!(exists(cx, handle, "entry-open-account"));
+    click(cx, handle, "entry-open-account");
+    wait(cx, "the workspace", |cx| page(cx, &shell) == Page::Workspace);
+    if let Ok(fake) = Arc::try_unwrap(fake) {
+        fake.shutdown();
+    }
+}
+
+#[gpui_kit::test]
+fn a_daemon_without_the_job_api_offers_the_key_backup_first(cx: &mut TestAppContext) {
+    let (fake, state, path) = sdk_fake::start("ui-backup-entry-key");
+    fake.enable_stream();
+    {
+        let state = state.lock().expect("state");
+        state.backup.set_available(false);
+    }
+    state.lock().expect("state").accounts =
+        Some(serde_json::json!({ "accounts": [], "account_details": [] }));
+    let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 900.);
+    wait(cx, "the entry page", |cx| matches!(page(cx, &shell), Page::Entry(_)));
+    if page(cx, &shell) == Page::Entry(EntryStep::Node) {
+        click_in(cx, handle, "node-n-harbor", "node-confirm");
+    }
+    wait(cx, "the account step", |cx| page(cx, &shell) == Page::Entry(EntryStep::Account));
+    advance(cx, 300);
+    click(cx, handle, "entry-path-2");
+    assert!(!exists(cx, handle, "entry-full-restore"), "the key backup is the default");
+    assert!(exists(cx, handle, "backup-browse"));
+    // The full restore can still be chosen; its Check is gated.
+    click(cx, handle, "entry-restore-kind-0");
+    assert!(exists(cx, handle, "entry-full-restore"));
+    let gated = in_window(cx, handle, |window, _| window.find("restore-verify").disabled());
+    assert_eq!(gated, Some(true));
+    fake.shutdown();
+}

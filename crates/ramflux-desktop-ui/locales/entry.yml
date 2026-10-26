@@ -175,6 +175,9 @@ entry:
     key_help:
       en: "A key backup holds the identity keys and contacts only."
       zh-CN: "密钥备份只包含身份密钥和联系人。"
+    open_account:
+      en: "Open account"
+      zh-CN: "打开账户"
     path:
       en: "Backup file"
       zh-CN: "备份文件"

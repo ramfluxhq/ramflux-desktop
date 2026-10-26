@@ -218,6 +218,9 @@ impl Shell {
         let dev = cfg!(debug_assertions)
             .then(|| cx.new(|cx| DevPanel::new(store.clone(), workspace.downgrade(), cx)));
         let subscriptions = vec![
+            // The entry page holds a full restore's result in view: the
+            // page it asks for changes when that result is closed.
+            cx.observe(&entry, |this, _, cx| this.sync_page(cx)),
             cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, _, cx| {
                 if let StoreEvent::Changed(changes) = event
                     && changes.touches_status()
@@ -324,7 +327,12 @@ impl Shell {
     }
 
     fn sync_page(&mut self, cx: &mut Context<Self>) {
-        let page = page_for(self.store.read(cx).store());
+        let mut page = page_for(self.store.read(cx).store());
+        // A full restore's result stays on the entry page until the user
+        // closes it, even once the daemon reopened the restored account.
+        if page == Page::Workspace && self.entry.read(cx).holds_restore(cx) {
+            page = Page::Entry(EntryStep::Account);
+        }
         if page != self.page {
             self.page = page;
             let show = page == Page::Workspace;

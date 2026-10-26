@@ -106,7 +106,9 @@ pub struct EntryPage {
     sink: EventSink,
     inputs: Inputs,
     path: AccountPath,
-    restore_kind: RestoreKind,
+    /// The restore kind the user chose; until then the full restore when
+    /// the daemon has the job API, else the key backup.
+    restore_kind: Option<RestoreKind>,
     /// The full restore flow (verify, review, install, result), shared with
     /// Settings · Backup; it needs no account.
     full_restore: Entity<BackupPanel>,
@@ -163,7 +165,7 @@ impl EntryPage {
             launcher,
             inputs,
             path: AccountPath::Create,
-            restore_kind: RestoreKind::Full,
+            restore_kind: None,
             full_restore,
             kind: AccountKind::HumanInteractive,
             node: None,
@@ -182,6 +184,14 @@ impl EntryPage {
     /// The full restore flow's panel.
     pub fn full_restore(&self) -> &Entity<BackupPanel> {
         &self.full_restore
+    }
+
+    /// Whether the page holds a full restore's result (or its progress) in
+    /// view: the shell keeps showing the entry page then, even when the
+    /// daemon already reopened the restored account, until the user
+    /// closes it.
+    pub fn holds_restore(&self, cx: &App) -> bool {
+        self.full_restore.read(cx).followed_job(cx).is_some()
     }
 
     /// Every masked secret input, for tests that check secrets are cleared.
