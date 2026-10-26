@@ -630,7 +630,6 @@ fn a_daemon_that_goes_away_during_the_hold_releases_it(cx: &mut TestAppContext) 
     // The daemon stops: the page falls back to the daemon step, which has
     // the daemon controls and says it is not reachable.
     let Restoring { fake, handle, shell, .. } = world;
-    account_jobs.open();
     let fake = Arc::try_unwrap(fake).ok().expect("only the test holds the daemon");
     fake.shutdown();
     wait(cx, "the daemon is seen gone", |cx| {
@@ -642,6 +641,8 @@ fn a_daemon_that_goes_away_during_the_hold_releases_it(cx: &mut TestAppContext) 
     });
     assert!(!cx.update(|cx| shell.read(cx).entry().read(cx).awaits_restore_listing(cx)));
     assert!(exists(cx, handle, "entry-daemon-socket"), "the daemon step is rendered");
+    // Only now let the held listing go (its answer has nowhere to arrive).
+    account_jobs.open();
 }
 
 #[gpui_kit::test]
