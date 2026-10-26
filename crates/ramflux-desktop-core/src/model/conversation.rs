@@ -139,18 +139,26 @@ pub enum SafetyState {
     KeyChanged,
     /// Identity fork detected.
     Forked,
-    /// The safety number was verified, but the authority it was verified
-    /// against changed since (the daemon's `verification_stale`): the keys
-    /// may have changed, so verify again. Sticky like a key change (it
-    /// needs attention), said in warning tone as what it is: an earlier
-    /// verification that no longer holds.
+    /// The safety number was verified, but this contact's identity
+    /// authority changed since (the daemon's `verification_stale`: a new
+    /// device set, a signed authority change such as a revoked device, or
+    /// a representation upgrade). It does not say the keys or the safety
+    /// number changed. Sticky until verified again, but it refuses nothing:
+    /// a new conversation, group or call asks the user to acknowledge it.
     VerificationStale,
 }
 
 impl SafetyState {
-    /// Whether the state is a sticky warning that needs verification.
+    /// Whether the state is a sticky warning that asks to verify (a key
+    /// change, a fork, or a stale verification).
     pub const fn needs_attention(self) -> bool {
         matches!(self, Self::KeyChanged | Self::Forked | Self::VerificationStale)
+    }
+
+    /// Whether the state refuses a new conversation, group or call until
+    /// verified again: a key change or a fork, never a stale verification.
+    pub const fn refuses_contact(self) -> bool {
+        matches!(self, Self::KeyChanged | Self::Forked)
     }
 
     /// Whether an earlier verification no longer holds (verify again).
@@ -343,9 +351,13 @@ mod tests {
     }
 
     #[test]
-    fn a_stale_verification_asks_again_and_needs_attention_like_a_key_change() {
+    fn a_stale_verification_needs_attention_but_refuses_nothing() {
         assert!(SafetyState::VerificationStale.is_stale());
         assert!(SafetyState::VerificationStale.needs_attention());
+        assert!(!SafetyState::VerificationStale.refuses_contact());
+        assert!(SafetyState::KeyChanged.refuses_contact());
+        assert!(SafetyState::Forked.refuses_contact());
+        assert!(!SafetyState::Unverified.refuses_contact());
         assert!(SafetyState::KeyChanged.needs_attention());
         assert!(!SafetyState::Verified.is_stale());
     }

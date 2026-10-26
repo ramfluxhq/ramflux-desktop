@@ -223,7 +223,8 @@ pub enum IntentError {
     #[error("context {0} already exists")]
     ContextExists(ContextId),
     /// The participant's key changed or forked and is not verified again;
-    /// a new conversation waits until the user checks the safety number.
+    /// a new conversation, group or call waits until the user checks the
+    /// safety number. A stale verification is never this refusal.
     #[error("the safety number of {0} must be verified again first")]
     SafetyUnresolved(ParticipantId),
     /// A conversation with this account's own identity.

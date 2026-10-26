@@ -6,7 +6,9 @@
 //! Only the attended human places, answers, declines or hangs up a call;
 //! an agent never does. A call is one-to-one, so it is placed only in a
 //! direct conversation, to its other participant, never while that
-//! participant's key changed or forked without being verified again, never
+//! participant's key changed or forked without being verified again (a
+//! stale verification refuses nothing; the call strip asks the user to
+//! acknowledge it), never
 //! to a participant reported unreachable, and never while another call is
 //! under way (one call at a time). Answering and declining apply to a call
 //! that still rings here; hanging up to one that has not ended.
@@ -100,7 +102,7 @@ pub fn check_start_call(
     let peer = call_peer(store, context_id)
         .ok_or_else(|| IntentError::CallNeedsDirect(context_id.clone()))?;
     if let Some(participant) = store.participant(&peer) {
-        if participant.safety.needs_attention() {
+        if participant.safety.refuses_contact() {
             return Err(IntentError::SafetyUnresolved(peer));
         }
         if participant.reachable == Some(false) {
