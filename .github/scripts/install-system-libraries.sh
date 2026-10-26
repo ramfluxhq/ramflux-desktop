@@ -20,11 +20,46 @@ run_apt() {
     apt-get "${apt_options[@]}" "$@"
 }
 
+is_timeout_status() {
+  local status="$1"
+  [[ "$status" -eq 124 || "$status" -eq 137 ]]
+}
+
+recover_dpkg() {
+  set +e
+  sudo DEBIAN_FRONTEND=noninteractive timeout \
+    --signal=TERM --kill-after=30s 2m \
+    dpkg --configure -a
+  local status=$?
+  set -e
+  if [[ "$status" -ne 0 ]]; then
+    echo "::error::dpkg --configure -a failed before APT retry with exit ${status}"
+    return "$status"
+  fi
+}
+
 switch_to_fallback() {
   local sources
-  for sources in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+  if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+    sudo sed -i "/${primary_mirror//./\\.}/d" /etc/apt/apt-mirrors.txt
+  fi
+  for sources in /etc/apt/sources.list /etc/apt/sources.list.d; do
     if [[ -f "$sources" ]]; then
       sudo sed -i "s|${primary_mirror}|${fallback_mirror}|g" "$sources"
+    elif [[ -d "$sources" ]]; then
+      while IFS= read -r source_file; do
+        sudo sed -i "s|${primary_mirror}|${fallback_mirror}|g" "$source_file"
+      done < <(sudo grep -RIl -- "$primary_mirror" "$sources" || true)
+    fi
+  done
+
+  for sources in \
+    /etc/apt/sources.list \
+    /etc/apt/sources.list.d \
+    /etc/apt/apt-mirrors.txt; do
+    if [[ -e "$sources" ]] && sudo grep -Rqs -- "$primary_mirror" "$sources"; then
+      echo "::error::fallback could not remove ${primary_mirror} from APT sources"
+      return 1
     fi
   done
   current_mirror="$fallback_mirror"
@@ -42,16 +77,17 @@ run_once_with_fallback() {
   if [[ "$status" -eq 0 ]]; then
     return 0
   fi
-  if [[ "$status" -ne 124 ]]; then
+  if ! is_timeout_status "$status"; then
     return "$status"
   fi
   if [[ "$current_mirror" != "$primary_mirror" ]]; then
-    echo "::error::${label} timed out using fallback mirror ${fallback_mirror}"
-    return 124
+    echo "::error::${label} timed out using fallback mirror ${fallback_mirror} (exit ${status})"
+    return "$status"
   fi
 
-  echo "::error::${label} timed out using slow mirror ${primary_mirror}; retrying once with ${fallback_mirror}"
-  switch_to_fallback
+  echo "::error::${label} timed out using slow mirror ${primary_mirror} (exit ${status}); retrying once with ${fallback_mirror}"
+  switch_to_fallback || return $?
+  recover_dpkg || return $?
 
   if [[ "$label" == "apt-get install" ]]; then
     set +e
@@ -59,8 +95,8 @@ run_once_with_fallback() {
     status=$?
     set -e
     if [[ "$status" -ne 0 ]]; then
-      if [[ "$status" -eq 124 ]]; then
-        echo "::error::apt-get update timed out using fallback mirror ${fallback_mirror}"
+      if is_timeout_status "$status"; then
+        echo "::error::apt-get update timed out using fallback mirror ${fallback_mirror} (exit ${status})"
       fi
       return "$status"
     fi
@@ -70,8 +106,8 @@ run_once_with_fallback() {
   run_apt "$limit" "$@"
   status=$?
   set -e
-  if [[ "$status" -eq 124 ]]; then
-    echo "::error::${label} timed out using fallback mirror ${fallback_mirror}"
+  if is_timeout_status "$status"; then
+    echo "::error::${label} timed out using fallback mirror ${fallback_mirror} (exit ${status})"
   fi
   return "$status"
 }

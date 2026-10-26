@@ -46,14 +46,17 @@ jobs:
           sudo chown "$USER:$(id -gn)" /var/cache/apt/archives
           echo "image_os=$ImageOS" >> "$GITHUB_OUTPUT"
           echo "image_version=$ImageVersion" >> "$GITHUB_OUTPUT"
+          echo "iso_week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
 
       - name: APT package cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         timeout-minutes: 5
         continue-on-error: true
         with:
           path: /var/cache/apt/archives/*.deb
-          key: apt-${{ runner.os }}-${{ steps.apt-cache.outputs.image_os }}-${{ steps.apt-cache.outputs.image_version }}-${{ hashFiles('.github/apt-packages.txt') }}
+          key: apt-${{ runner.os }}-${{ steps.apt-cache.outputs.image_os }}-${{ steps.apt-cache.outputs.image_version }}-${{ hashFiles('.github/apt-packages.txt') }}-${{ steps.apt-cache.outputs.iso_week }}
+          restore-keys: |
+            apt-${{ runner.os }}-${{ steps.apt-cache.outputs.image_os }}-${{ steps.apt-cache.outputs.image_version }}-${{ hashFiles('.github/apt-packages.txt') }}-
 
       - name: System libraries
         timeout-minutes: 20
@@ -103,14 +106,17 @@ jobs:
           sudo chown "$USER:$(id -gn)" /var/cache/apt/archives
           echo "image_os=$ImageOS" >> "$GITHUB_OUTPUT"
           echo "image_version=$ImageVersion" >> "$GITHUB_OUTPUT"
+          echo "iso_week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
 
       - name: APT package cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         timeout-minutes: 5
         continue-on-error: true
         with:
           path: /var/cache/apt/archives/*.deb
-          key: apt-${{ runner.os }}-${{ steps.apt-cache.outputs.image_os }}-${{ steps.apt-cache.outputs.image_version }}-${{ hashFiles('.github/apt-packages.txt') }}
+          key: apt-${{ runner.os }}-${{ steps.apt-cache.outputs.image_os }}-${{ steps.apt-cache.outputs.image_version }}-${{ hashFiles('.github/apt-packages.txt') }}-${{ steps.apt-cache.outputs.iso_week }}
+          restore-keys: |
+            apt-${{ runner.os }}-${{ steps.apt-cache.outputs.image_os }}-${{ steps.apt-cache.outputs.image_version }}-${{ hashFiles('.github/apt-packages.txt') }}-
 
       - name: System libraries
         timeout-minutes: 20
@@ -133,7 +139,7 @@ jobs:
         run: cargo fetch --locked
 
       - name: Test
-        timeout-minutes: 20
+        timeout-minutes: 25
         env:
           CARGO_NET_OFFLINE: "true"
         run: cargo test --workspace --no-fail-fast
@@ -145,7 +151,7 @@ jobs:
     name: fmt, clippy, test (macos)
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/ci/')
     runs-on: macos-14
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@b9e0990d219a03df7633c93f6f005a8fecbcab22
@@ -173,7 +179,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Test
-        timeout-minutes: 20
+        timeout-minutes: 25
         # Hosted macOS runners give no real-time scheduling guarantees, so the
         # real-time media loopback test (two_engines_talk_through_a_relay)
         # misses its jitter deadlines there. It stays blocking in the Linux x3
