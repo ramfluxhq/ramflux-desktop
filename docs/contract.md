@@ -865,7 +865,10 @@ topic there is refused). The daemon takes the four job requests only from a
 connection that opened that stream as an attended frontend, so the SDK
 keeps one such connection per scope (the job link,
 `ramflux_desktop_sdk::bus::jobs`): opened once a snapshot found the job
-API, and carrying every job request. The event frame's `seq` is the
+API, and carrying every job request. The daemon scope keeps its link (and
+its job polls) only while no account scope is attached; an account's own
+link follows the jobs then, so there is one attended connection and one
+set of job reads at a time. The event frame's `seq` is the
 daemon's job stream cursor; the row's `seq` is the job's version. The subscribe answer's
 `head_seq` seeds the link's cursor, so a job whose events the link never
 saw (started elsewhere, or while the link was down) is covered too. The link
@@ -990,13 +993,18 @@ request (for example `busy`) is explained in the form. Only one job runs at
 a time: while one runs it replaces both forms.
 
 **UI (entry page, fresh device).** Restore from backup offers "Full backup"
-(default) and "Key backup". The full restore is the same panel at daemon
+and "Key backup"; the full backup is the default when the daemon has the
+job API, else the key backup. The full restore is the same panel at daemon
 scope: file, passphrase, Check backup, the review, Restore, the result; it
 needs no account. The daemon-level job stream and `account.backup.jobs` are
 read in the daemon scope too, so the job is followed exactly as in
-Settings. When the restore is done the SDK reads `account.list` again: the
-restored account appears in the account list (locked) with the result
-still in view, and can be unlocked.
+Settings; the entry page's panel follows only the jobs it started. When
+the restore is done the SDK reads `account.list` again. The result
+(per-category counts, what was kept as newer, the file check) stays on the
+entry page until the user closes it: with the unlock form when the daemon
+lists the restored account locked, and with "Open account" when the daemon
+reopened it unlocked already (the shell holds the entry page, instead of
+switching to the workspace, while that result is in view).
 
 **Outbound security after restore.** Full restore keeps all historical
 messages, attachment keys and inbound/archived ratchets. Saved outbound DM
