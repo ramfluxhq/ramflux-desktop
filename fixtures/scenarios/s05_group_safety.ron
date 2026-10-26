@@ -16,8 +16,19 @@
         (0, ParticipantUpserted(id: "p-sam", kind: Human, display: "Sam Ortiz", safety: VerificationStale, link: Accepted, contact: true)),
         (0, ParticipantUpserted(id: "p-kay", kind: Human, display: "Kay Novak", safety: KeyChanged, link: Accepted, contact: true)),
         (0, ParticipantUpserted(id: "p-fox", kind: Human, display: "Fox Lund", safety: Forked, link: Accepted, contact: true)),
+        (0, ParticipantUpserted(id: "p-zed", kind: Human, display: "Zed Park", safety: Verified, link: Accepted, contact: true)),
         (10, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena"], pinned: true,
             roles: {"p-me": Owner}, epoch: 3)),
     ],
-    responses: [],
+    // Adding Zed brings Sam into the group too (another route than Sam's
+    // own question).
+    responses: [
+        (
+            on: Call(method: "group.add_member", fields: {"context_id": "c-garden", "participant_id": "p-zed"}),
+            emit: [
+                (100, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena", "p-zed", "p-sam"], pinned: true,
+                    roles: {"p-me": Owner}, epoch: 4)),
+            ],
+        ),
+    ],
 )

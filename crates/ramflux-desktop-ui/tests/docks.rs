@@ -348,3 +348,32 @@ fn a_changed_or_forked_contact_cannot_be_added_to_a_group(cx: &mut TestAppContex
     assert!(!exists(cx, handle, "member-add-stale-ack"), "no acknowledgement for a refusal");
     assert_eq!(adds(cx, &shell), 0, "no request at all");
 }
+
+#[gpui_kit::test]
+fn a_pending_question_goes_when_the_contact_joins_by_another_route(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s05_group_safety");
+    advance(cx, 500);
+    click(cx, handle, "rail-members");
+    in_window(cx, handle, |window, cx| window.within("member-add-p-sam").click("add", cx));
+    assert!(exists(cx, handle, "member-add-stale-ack"), "Sam is asked about");
+    // Another contact is added, and the daemon brings Sam in with them.
+    in_window(cx, handle, |window, cx| window.within("member-add-p-zed").click("add", cx));
+    advance(cx, 500);
+    let sam_in = with_store(cx, &shell, |s| {
+        s.context(&ContextId::new("c-garden"))
+            .is_some_and(|c| c.participants.contains(&"p-sam".into()))
+    });
+    assert!(sam_in, "Sam is a member now");
+    assert!(!exists(cx, handle, "member-add-stale-ack"), "the question is gone with the candidate");
+}
+
+#[gpui_kit::test]
+fn a_refusal_carries_an_icon_not_only_a_colour(cx: &mut TestAppContext) {
+    let (handle, _shell) = open(cx, "s05_group_safety");
+    advance(cx, 500);
+    click(cx, handle, "rail-members");
+    for who in ["p-kay", "p-fox"] {
+        assert!(exists(cx, handle, &format!("member-refused-{who}")), "{who}");
+    }
+    assert!(!exists(cx, handle, "member-refused-p-sam"));
+}

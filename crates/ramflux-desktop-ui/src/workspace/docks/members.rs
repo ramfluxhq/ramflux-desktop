@@ -54,17 +54,24 @@ impl MembersDock {
         Self { store, sink, context_id: None, asking: None, _subscription: subscription }
     }
 
-    /// Drops the pending question once its contact is no longer stale
-    /// (verified again, or the key changed and the contact is refused).
+    /// Drops the pending question once it is moot: its contact is no longer
+    /// stale (verified again, or the key changed and the contact is
+    /// refused), joined the group by another route, or is no longer a
+    /// contact.
     fn forget_settled_question(&mut self, cx: &Context<Self>) {
         let store = self.store.read(cx).store();
-        let stale = self
+        let context = self.context_id.as_ref().and_then(|id| store.context(id));
+        let open = self
             .asking
             .as_ref()
             .and_then(GovernanceOp::target)
             .and_then(|id| store.participant(id))
-            .is_some_and(|p| p.safety.is_stale());
-        if !stale {
+            .is_some_and(|p| {
+                p.safety.is_stale()
+                    && p.contact
+                    && context.is_some_and(|c| !c.participants.contains(&p.id))
+            });
+        if !open {
             self.asking = None;
         }
     }
@@ -302,11 +309,23 @@ fn candidate_row(
             h_flex()
                 .gap_2()
                 .child(div().flex_1().text_sm().child(candidate.display.clone()))
-                .children(
-                    refused
-                        .clone()
-                        .map(|text| div().text_xs().text_color(cx.theme().danger).child(text)),
-                )
+                .children(refused.clone().map(|text| {
+                    // The same safety icon as the stale note: colour alone
+                    // never carries a refusal.
+                    h_flex()
+                        .id(domain_id("member-refused", &candidate.id))
+                        .aria_label(text.clone())
+                        .test_support()
+                        .flex_none()
+                        .gap_1()
+                        .text_xs()
+                        .text_color(crate::tone::text(cx.theme().danger, cx))
+                        .child(
+                            gpui_kit::component::Icon::new(gpui_kit::assets::IconName::ShieldAlert)
+                                .xsmall(),
+                        )
+                        .child(text)
+                }))
                 .children(crate::identity::stale_note("member-add-stale", safety, cx))
                 .child(crate::gate::gated(
                     Button::new("add")
