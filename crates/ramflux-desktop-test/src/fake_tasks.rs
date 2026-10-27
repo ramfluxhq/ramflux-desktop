@@ -404,6 +404,28 @@ impl FakeTasks {
         self.assignee_update((conversation, task_id), state, steps, (None, Some(summary)))
     }
 
+    /// Like [`Self::finish`], and the result also points at the surface
+    /// `result_ref` that presents it.
+    ///
+    /// # Errors
+    ///
+    /// The protocol's (or the quota's) refusal.
+    pub fn finish_with_surface(
+        &self,
+        conversation: &str,
+        task_id: &str,
+        state: TaskStatus,
+        steps: Vec<TaskStep>,
+        (result_ref, summary): (&str, &str),
+    ) -> Result<u64, String> {
+        self.assignee_update(
+            (conversation, task_id),
+            state,
+            steps,
+            (Some(result_ref), Some(summary)),
+        )
+    }
+
     fn assignee_update(
         &self,
         (conversation, task_id): (&str, &str),

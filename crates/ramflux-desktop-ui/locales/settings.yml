@@ -503,6 +503,9 @@ settings:
       files_value:
         en: "All %{count} match their checksums"
         zh-CN: "全部 %{count} 个均与校验值一致"
+      files_value_available:
+        en: "All %{count} available files match their checksums"
+        zh-CN: "全部 %{count} 个可用文件均与校验值一致"
       unavailable:
         en: "%{count} files were unavailable when this backup was made. It records them as missing, so they are restored as missing."
         zh-CN: "创建此备份时有 %{count} 个文件无法获取。备份将其记录为缺失，恢复后它们仍为缺失。"
@@ -525,6 +528,9 @@ settings:
       files_verified:
         en: "All %{count} files match their checksums."
         zh-CN: "全部 %{count} 个文件均与校验值一致。"
+      files_verified_available:
+        en: "All %{count} available files match their checksums."
+        zh-CN: "全部 %{count} 个可用文件均与校验值一致。"
       files_problem:
         en: "%{bad} of %{count} files are missing or didn't match their checksums."
         zh-CN: "%{count} 个文件中有 %{bad} 个缺失或与校验值不一致。"

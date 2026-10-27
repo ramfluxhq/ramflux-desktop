@@ -136,6 +136,7 @@ impl Rows {
                 },
             }
         }
+        self.add_surface_dependents(store, context, changes, &mut changed);
         added.sort_by(|a, b| key(a).cmp(&key(b)));
         let last = self.rows.last().map(|r| (r.moment.at, r.moment.id.clone()));
         if let (Some(first), Some((at, id))) = (added.first(), &last)
@@ -172,6 +173,51 @@ impl Rows {
         }
         touched.sort_unstable();
         Some(RowUpdate::Patched { changed: touched, appended })
+    }
+}
+
+impl Rows {
+    /// Adds the task cards that point at a surface moment changed in this
+    /// batch to `changed`. A card carries "Show result" and the decision
+    /// pointer only once the surface moment exists, and the surface can be
+    /// projected after the task change, so the card is rebuilt then. Surfaces
+    /// update often, so only the dependent task rows are rebuilt, not the
+    /// whole list.
+    fn add_surface_dependents<'a>(
+        &self,
+        store: &'a Store,
+        context: &ContextId,
+        changes: &ChangeSet,
+        changed: &mut Vec<(usize, &'a Moment)>,
+    ) {
+        let surfaces: Vec<&MomentId> = changes
+            .moments()
+            .filter(|id| {
+                store.moment(id).is_some_and(|m| {
+                    &m.context_id == context && matches!(m.kind, MomentKind::AgentSurface(_))
+                })
+            })
+            .collect();
+        if surfaces.is_empty() {
+            return;
+        }
+        for (ix, row) in self.rows.iter().enumerate() {
+            if !matches!(row.moment.kind, MomentKind::TaskProgress(_))
+                || changed.iter().any(|(at, _)| *at == ix)
+            {
+                continue;
+            }
+            let Some(moment) = store.moment(&row.moment.id) else { continue };
+            let MomentKind::TaskProgress(p) = &moment.kind else { continue };
+            let result = store
+                .task(&p.task_id)
+                .and_then(|t| t.result_ref.as_ref())
+                .and_then(|s| store.surface_moment(s));
+            let decision = selectors::task_decision_surface(store, moment);
+            if [result, decision].into_iter().flatten().any(|id| surfaces.contains(&id)) {
+                changed.push((ix, moment));
+            }
+        }
     }
 }
 

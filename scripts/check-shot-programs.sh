@@ -17,11 +17,11 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 manifest="$root/crates/ramflux-desktop-ui/Cargo.toml"
 
 names=$(awk '
-  /^\[\[test\]\]/ { if (name != "" && off) print name; name = ""; off = 0; next }
-  /^\[/ { if (name != "" && off) print name; name = ""; off = 0 }
-  /^name *= *"/ { split($0, p, "\""); name = p[2] }
-  /^test *= *false/ { off = 1 }
-  END { if (name != "" && off) print name }
+  function flush() { if (intest && name != "" && off) print name; name = ""; off = 0 }
+  /^[ \t]*\[/ { flush(); intest = ($0 ~ /^[ \t]*\[\[test\]\][ \t]*(#.*)?$/) ; next }
+  intest && /^[ \t]*name[ \t]*=[ \t]*"/ { split($0, p, "\""); name = p[2] }
+  intest && /^[ \t]*test[ \t]*=[ \t]*false/ { off = 1 }
+  END { flush() }
 ' "$manifest")
 
 if [ -z "$names" ]; then

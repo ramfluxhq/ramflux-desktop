@@ -184,6 +184,11 @@ impl FakeSurfaces {
         }
     }
 
+    /// Sets the author's clock (seconds): the next event is dated `seconds`.
+    pub fn set_author_clock(&self, seconds: i64) {
+        self.inner().clock = Some(seconds);
+    }
+
     /// Carriers from now on carry no author time (old carriers).
     pub fn undated(&self) {
         self.inner().clock = None;

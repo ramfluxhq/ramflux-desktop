@@ -48,25 +48,34 @@ fn amounts(progress: &BackupProgress) -> SharedString {
     SharedString::from(parts.join(" · "))
 }
 
+/// What a finished restore's file check says.
+fn file_check_text(files: &AttachmentCheck) -> SharedString {
+    if files.all_verified() {
+        // Files recorded as unavailable at the source are noted below this
+        // line, so the matched files are counted among the available ones.
+        let key = if files.unavailable_at_source > 0 {
+            "settings.backup.done.files_verified_available"
+        } else {
+            "settings.backup.done.files_verified"
+        };
+        tr_args(key, &[("count", &count(files.verified))])
+    } else {
+        let total = files.verified + files.mismatched + files.missing;
+        let bad = files.mismatched + files.unapproved_missing();
+        tr_args(
+            "settings.backup.done.files_problem",
+            &[("bad", &count(bad)), ("count", &count(total))],
+        )
+    }
+}
+
 /// A finished restore's file check.
 fn file_check(files: &AttachmentCheck) -> Alert {
-    let total = files.verified + files.mismatched + files.missing;
+    let text = file_check_text(files);
     if files.all_verified() {
-        Alert::success(
-            "restore-files-alert",
-            tr_args("settings.backup.done.files_verified", &[("count", &count(files.verified))]),
-        )
-        .small()
+        Alert::success("restore-files-alert", text).small()
     } else {
-        let bad = files.mismatched + files.unapproved_missing();
-        Alert::warning(
-            "restore-files-alert",
-            tr_args(
-                "settings.backup.done.files_problem",
-                &[("bad", &count(bad)), ("count", &count(total))],
-            ),
-        )
-        .small()
+        Alert::warning("restore-files-alert", text).small()
     }
 }
 
@@ -178,7 +187,11 @@ impl BackupPanel {
         let list = text::counts(list, &preview.counts).item(
             tr("settings.backup.verified.files"),
             tr_args(
-                "settings.backup.verified.files_value",
+                if preview.attachments.unavailable_at_source > 0 {
+                    "settings.backup.verified.files_value_available"
+                } else {
+                    "settings.backup.verified.files_value"
+                },
                 &[("count", &count(preview.attachments.verified))],
             ),
             1,
@@ -254,7 +267,13 @@ impl BackupPanel {
                 let report = job.report.clone().unwrap_or_default();
                 let files = report.attachments;
                 body = body
-                    .child(div().id("restore-files").test_support().child(file_check(&files)))
+                    .child(
+                        div()
+                            .id("restore-files")
+                            .aria_label(file_check_text(&files))
+                            .test_support()
+                            .child(file_check(&files)),
+                    )
                     .children(file_notes(&files, cx))
                     .child(text::counts(DescriptionList::new().columns(1), &report.restored));
                 let merged = job.preview.as_ref().is_some_and(|p| p.merge);

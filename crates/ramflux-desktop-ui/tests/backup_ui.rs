@@ -307,6 +307,10 @@ fn a_restore_is_checked_reviewed_then_merged_with_its_attachment_check(cx: &mut 
     assert!(exists(cx, world.handle, "backup-result"));
     assert!(exists(cx, world.handle, "restore-files"));
     assert!(exists(cx, world.handle, "restore-unavailable"));
+    // The matched files are counted among the available ones, so the line
+    // does not contradict the unavailable files named under it.
+    let matched = tr_args("settings.backup.done.files_verified_available", &[("count", "320")]);
+    assert!(has_label(cx, world.handle, &matched), "the check line says available: {matched}");
     assert!(exists(cx, world.handle, "restore-kept-newer"), "what was newer here, per kind");
     let report = job(cx, &world).unwrap().report.unwrap();
     assert_eq!((report.attachments.verified, report.attachments.mismatched), (320, 0));
@@ -556,10 +560,14 @@ fn restoring(cx: &mut TestAppContext, name: &str) -> Restoring {
 
 impl Restoring {
     fn set_account(&self, state: &str) {
+        self.set_labeled_account(state, "Personal");
+    }
+
+    fn set_labeled_account(&self, state: &str, label: &str) {
         let open = state == "unlocked";
         self.state.lock().expect("state").accounts = Some(serde_json::json!({
             "accounts": if open { vec![ACCOUNT] } else { vec![] },
-            "account_details": [{ "id": ACCOUNT, "label": "Personal", "kind": "human",
+            "account_details": [{ "id": ACCOUNT, "label": label, "kind": "human",
                                   "state": state }],
         }));
     }
@@ -736,29 +744,7 @@ fn a_freshly_unlocked_account_shows_a_loading_line_not_the_daemon_step(cx: &mut 
 /// session's answers are held back for good: the loading line first, then
 /// (past the bound) the error. Returns the latch holding the answers.
 fn never_loading(cx: &mut TestAppContext, world: &Restoring) -> Arc<sdk_fake::Latch> {
-    let account_jobs = world.install_and_hold(cx);
-    account_jobs.open();
-    wait(cx, "the jobs listed", |cx| {
-        with_store(cx, &world.shell, |s| s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
-    });
-    advance(cx, 300);
-    world.set_account("locked");
-    wait(cx, "locked", |cx| {
-        with_store(cx, &world.shell, |s| {
-            s.accounts().next().map(|a| a.lock_state) != Some(LockState::Unlocked)
-        })
-    });
-    let account_reads = world.state.lock().expect("state").account_reads.clone();
-    account_reads.close();
-    world.set_account("unlocked");
-    wait(cx, "the loading line", |cx| exists(cx, world.handle, "entry-session-loading"));
-    assert!(!exists(cx, world.handle, "entry-session-retry"), "nothing to retry yet");
-    // Past the bound with no answer: the error and the ways out replace
-    // the spinner.
-    advance(cx, 10_500);
-    assert!(exists(cx, world.handle, "entry-session-failed"));
-    assert!(exists(cx, world.handle, "entry-session-retry"));
-    assert!(exists(cx, world.handle, "entry-session-lock"));
+    let account_reads = never_loading_as(cx, world, "Personal");
     // Both name the account by its label.
     let named = |cx: &mut TestAppContext, id: &'static str| {
         in_window(cx, world.handle, move |window, _| {
@@ -773,6 +759,38 @@ fn never_loading(cx: &mut TestAppContext, world: &Restoring) -> Arc<sdk_fake::La
         "the error names it"
     );
     assert_eq!(named(cx, "entry-session-lock"), Some(lock.to_string()), "the button names it");
+    account_reads
+}
+
+/// [`never_loading`] for an account the daemon lists with `label`.
+fn never_loading_as(
+    cx: &mut TestAppContext,
+    world: &Restoring,
+    label: &str,
+) -> Arc<sdk_fake::Latch> {
+    let account_jobs = world.install_and_hold(cx);
+    account_jobs.open();
+    wait(cx, "the jobs listed", |cx| {
+        with_store(cx, &world.shell, |s| s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
+    });
+    advance(cx, 300);
+    world.set_labeled_account("locked", label);
+    wait(cx, "locked", |cx| {
+        with_store(cx, &world.shell, |s| {
+            s.accounts().next().map(|a| a.lock_state) != Some(LockState::Unlocked)
+        })
+    });
+    let account_reads = world.state.lock().expect("state").account_reads.clone();
+    account_reads.close();
+    world.set_labeled_account("unlocked", label);
+    wait(cx, "the loading line", |cx| exists(cx, world.handle, "entry-session-loading"));
+    assert!(!exists(cx, world.handle, "entry-session-retry"), "nothing to retry yet");
+    // Past the bound with no answer: the error and the ways out replace
+    // the spinner.
+    advance(cx, 10_500);
+    assert!(exists(cx, world.handle, "entry-session-failed"));
+    assert!(exists(cx, world.handle, "entry-session-retry"));
+    assert!(exists(cx, world.handle, "entry-session-lock"));
     assert!(!exists(cx, world.handle, "entry-session-loading"));
     assert_eq!(world.step(cx), EntryStep::Account);
     account_reads
@@ -798,6 +816,46 @@ fn an_account_that_never_loads_says_so_and_try_again_opens_it_anew(cx: &mut Test
         !exists(cx, world.handle, "entry-session-loading")
             && !exists(cx, world.handle, "entry-session-failed")
     });
+    world.finish();
+}
+
+#[gpui_kit::test]
+fn an_account_without_a_label_is_named_by_its_id_in_the_error(cx: &mut TestAppContext) {
+    let world = restoring(cx, "ui-backup-entry-never-id");
+    // The daemon lists the account with a blank label: its id names it.
+    let account_reads = never_loading_as(cx, &world, "  ");
+    let named = |cx: &mut TestAppContext, id: &'static str| {
+        in_window(cx, world.handle, move |window, _| {
+            window.try_find(id).and_then(|e| e.label().map(str::to_owned))
+        })
+    };
+    let failed = tr_args("entry.account.load_failed", &[("name", ACCOUNT)]);
+    assert_eq!(named(cx, "entry-session-failed-text"), Some(failed.to_string()));
+    account_reads.open();
+    world.finish();
+}
+
+#[gpui_kit::test]
+fn a_long_account_label_is_clipped_on_the_lock_button_only(cx: &mut TestAppContext) {
+    let world = restoring(cx, "ui-backup-entry-never-long");
+    let label = "Quarterly planning and archive account of the operations team";
+    let account_reads = never_loading_as(cx, &world, label);
+    let named = |cx: &mut TestAppContext, id: &'static str| {
+        in_window(cx, world.handle, move |window, _| {
+            window.try_find(id).and_then(|e| e.label().map(str::to_owned))
+        })
+    };
+    let lock = named(cx, "entry-session-lock").expect("the lock button");
+    assert!(lock.contains('…'), "the button clips the label: {lock}");
+    assert!(!lock.contains(label));
+    assert!(lock.chars().count() < label.chars().count());
+    let failed = tr_args("entry.account.load_failed", &[("name", label)]);
+    assert_eq!(
+        named(cx, "entry-session-failed-text"),
+        Some(failed.to_string()),
+        "the error is whole"
+    );
+    account_reads.open();
     world.finish();
 }
 

@@ -24,6 +24,7 @@ use ramflux_desktop_ui::i18n::{tr, tr_args};
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::ComposerMode;
 use ramflux_protocol::TaskStatus;
+use sdk_fake::author::{Bot, scenario_surfaces};
 use sdk_fake::{BOT, GROUP, wait};
 
 type Handle = gpui_kit::WindowHandle<gpui_kit::base::Root>;
@@ -349,6 +350,54 @@ fn a_denial_whose_line_arrives_after_the_failed_task_still_names_who_declined(
     assert!(!has_label(cx, opened.handle, &declined), "nothing says who yet");
     opened.tasks.hold_messages(false);
     wait(cx, "who declined it", |cx| has_label(cx, opened.handle, &declined));
+    opened.fake.shutdown();
+}
+
+/// The daemon projects the surface that presents a task's result some time
+/// after the task changed (here it is held back, then announced), so the
+/// card is built without it first. Once the surface arrives, the card must
+/// offer "Show result", read off the rendered card, not the model.
+#[gpui_kit::test]
+fn a_result_surface_that_arrives_after_its_task_card_adds_show_result(cx: &mut TestAppContext) {
+    let opened = open_group(cx, "ui-task-result-late");
+    opened
+        .tasks
+        .start_as("principal-me", GROUP, "t-res", BOT, "Prepare the release notes")
+        .unwrap();
+    let id = task_key(GROUP, "t-res");
+    wait(cx, "the card", |cx| task(cx, &opened, &id).is_some());
+    // The surface exists at the daemon but is not announced yet.
+    // It is dated after the card and the lines of the task, so it lands at
+    // the end of the timeline: appended, never a reason to rebuild the rows.
+    opened.state.lock().unwrap().surfaces.set_author_clock(1_790_009_000);
+    let mut bot = Bot::new();
+    let event = scenario_surfaces("s10_ai_participant").remove(0);
+    let (reference, accepted) = bot.send(&opened.fake, &opened.state, &event, false);
+    assert!(accepted);
+    opened
+        .tasks
+        .finish_with_surface(
+            GROUP,
+            "t-res",
+            TaskStatus::Done,
+            Vec::new(),
+            (&reference, "Release notes drafted"),
+        )
+        .unwrap();
+    wait(cx, "done", |cx| task(cx, &opened, &id).is_some_and(|t| t.state == TaskState::Done));
+    advance(cx, 500);
+    let surface = ramflux_desktop_core::SurfaceId::new(&reference);
+    assert!(
+        with_store(cx, &opened.shell, |s| s.surface_moment(&surface).is_none()),
+        "the surface is still held back"
+    );
+    assert!(shown(cx, &opened, &id, "task-result"), "the summary is on the card");
+    assert!(!shown(cx, &opened, &id, "task-show-result"), "nothing to point at yet");
+    Bot::announce(&opened.fake, &opened.state, &reference);
+    wait(cx, "the surface", |cx| {
+        with_store(cx, &opened.shell, |s| s.surface_moment(&surface).is_some())
+    });
+    wait(cx, "the pointer on the card", |cx| shown(cx, &opened, &id, "task-show-result"));
     opened.fake.shutdown();
 }
 

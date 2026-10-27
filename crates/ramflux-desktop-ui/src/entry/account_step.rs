@@ -221,9 +221,12 @@ impl EntryPage {
                             .on_click(cx.listener(|this, _, _, cx| this.retry_session(cx))),
                     )
                     .children(account.map(|account_id| {
+                        let (short, clipped) = clip_label(&name, LOCK_LABEL_CHARS);
                         Button::new("entry-session-lock")
                             .outline()
-                            .label(tr_args("entry.account.lock", &[("name", &name)]))
+                            .label(tr_args("entry.account.lock", &[("name", &short)]))
+                            // A clipped label keeps its way back to the full one.
+                            .when(clipped, |button| button.tooltip(name.clone()))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 let account_id = account_id.clone();
                                 this.sink.emit(UiEventKind::LockPressed { account_id }, window, cx);
@@ -555,5 +558,33 @@ impl EntryPage {
                 ),
             )
             .into_any_element()
+    }
+}
+
+/// How many characters of an account label the Lock button shows.
+const LOCK_LABEL_CHARS: usize = 24;
+
+/// `label` cut to at most `max` characters with a trailing ellipsis, and
+/// whether it was cut. The error text above the button keeps the full label.
+fn clip_label(label: &str, max: usize) -> (String, bool) {
+    if label.chars().count() <= max {
+        return (label.to_owned(), false);
+    }
+    let head: String = label.chars().take(max.saturating_sub(1)).collect();
+    (format!("{}…", head.trim_end()), true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clip_label;
+
+    #[test]
+    fn a_short_label_is_kept_and_a_long_one_is_cut_at_a_character_boundary() {
+        assert_eq!(clip_label("Personal", 24), ("Personal".to_owned(), false));
+        let long = "Ünïcödé ".repeat(10);
+        let (short, clipped) = clip_label(&long, 24);
+        assert!(clipped);
+        assert_eq!(short.chars().count(), 24);
+        assert!(short.ends_with('…'));
     }
 }
