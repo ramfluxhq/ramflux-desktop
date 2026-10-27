@@ -295,9 +295,11 @@ fn a_restore_is_checked_reviewed_then_merged_with_its_attachment_check(cx: &mut 
     assert!(exists(cx, world.handle, "backup-review"));
     assert!(exists(cx, world.handle, "backup-review-effect"), "it says it merges, newer wins");
     assert!(exists(cx, world.handle, "backup-review-unavailable"), "recorded omissions named");
-    // The preview counts the matched files among the available ones too.
-    assert!(exists(cx, world.handle, "backup-review-files-available"), "the row says available");
-    assert!(!exists(cx, world.handle, "backup-review-files-all"));
+    // The preview counts the matched files among the available ones too, so
+    // the row does not contradict the note under it. Read through the
+    // accessibility snapshot, as a screen reader gets it.
+    let preview = tr_args("settings.backup.verified.files_value_available", &[("count", "320")]);
+    assert!(has_label(cx, world.handle, &preview), "the preview row says available: {preview}");
     assert!(requests(&world, "account.restore.install").is_empty(), "nothing before Restore");
 
     click(cx, world.handle, "restore-install");
@@ -308,9 +310,11 @@ fn a_restore_is_checked_reviewed_then_merged_with_its_attachment_check(cx: &mut 
     wait(cx, "restored", |cx| phase(cx, &world) == Some(BackupPhase::Done));
     advance(cx, 50);
     assert!(exists(cx, world.handle, "backup-result"));
-    assert!(exists(cx, world.handle, "restore-files-available"), "the check says available");
-    assert!(!exists(cx, world.handle, "restore-files-all"));
-    assert!(!exists(cx, world.handle, "restore-files-problem"));
+    assert!(exists(cx, world.handle, "restore-files"));
+    // The matched files are counted among the available ones, so the line
+    // does not contradict the unavailable files named under it.
+    let matched = tr_args("settings.backup.done.files_verified_available", &[("count", "320")]);
+    assert!(has_label(cx, world.handle, &matched), "the check line says available: {matched}");
     assert!(exists(cx, world.handle, "restore-unavailable"));
     assert!(exists(cx, world.handle, "restore-kept-newer"), "what was newer here, per kind");
     let report = job(cx, &world).unwrap().report.unwrap();

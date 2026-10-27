@@ -17,7 +17,7 @@ use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, App, Context, SharedString, Window, div};
+use gpui_kit::{AnyElement, App, Context, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
     AttachmentCheck, BackupFailure, BackupJob, BackupJobKind, BackupPhase, BackupProgress,
 };
@@ -69,25 +69,23 @@ fn file_check_text(files: &AttachmentCheck) -> SharedString {
     }
 }
 
-/// Which wording a finished restore's file check uses, as an element id: it
-/// names the copy on screen, without a second accessible label that would
-/// make a screen reader read the alert twice.
-fn file_check_id(files: &AttachmentCheck) -> &'static str {
-    match (files.all_verified(), files.unavailable_at_source > 0) {
-        (true, true) => "restore-files-available",
-        (true, false) => "restore-files-all",
-        (false, _) => "restore-files-problem",
-    }
+/// A finished restore's file check: the alert, inside a status node that
+/// names it. The alert's own text is not exposed to assistive technology in
+/// GPUI Kit 0.8.0, so the node's name and the alert's text come from the one
+/// value and cannot drift apart.
+fn file_check(files: &AttachmentCheck) -> AnyElement {
+    let text = file_check_text(files);
+    let alert = if files.all_verified() {
+        Alert::success("restore-files-alert", text.clone()).small()
+    } else {
+        Alert::warning("restore-files-alert", text.clone()).small()
+    };
+    status_text("restore-files", text, alert)
 }
 
-/// A finished restore's file check.
-fn file_check(files: &AttachmentCheck) -> Alert {
-    let text = file_check_text(files);
-    if files.all_verified() {
-        Alert::success("restore-files-alert", text).small()
-    } else {
-        Alert::warning("restore-files-alert", text).small()
-    }
+/// A node that announces `text`, which `child` shows.
+fn status_text(id: &'static str, text: SharedString, child: impl IntoElement) -> AnyElement {
+    div().id(id).role(Role::Status).aria_label(text).test_support().child(child).into_any_element()
 }
 
 /// What a finished restore says about files apart from its check: those
@@ -195,18 +193,15 @@ impl BackupPanel {
                 SharedString::from(i18n::bytes(preview.file_bytes)),
                 1,
             );
-        // The wording follows the note under the list; its id names the copy
-        // on screen (the value is plain text, with no label of its own).
-        let (files_key, files_id) = if preview.attachments.unavailable_at_source > 0 {
-            ("settings.backup.verified.files_value_available", "backup-review-files-available")
+        // The wording follows the note under the list.
+        let files_key = if preview.attachments.unavailable_at_source > 0 {
+            "settings.backup.verified.files_value_available"
         } else {
-            ("settings.backup.verified.files_value", "backup-review-files-all")
+            "settings.backup.verified.files_value"
         };
-        let files_value = div()
-            .id(files_id)
-            .test_support()
-            .child(tr_args(files_key, &[("count", &count(preview.attachments.verified))]))
-            .into_any_element();
+        let files_text = tr_args(files_key, &[("count", &count(preview.attachments.verified))]);
+        let files_value =
+            status_text("backup-review-files", files_text.clone(), div().child(files_text));
         let list = text::counts(list, &preview.counts).item(
             tr("settings.backup.verified.files"),
             files_value,
@@ -283,7 +278,7 @@ impl BackupPanel {
                 let report = job.report.clone().unwrap_or_default();
                 let files = report.attachments;
                 body = body
-                    .child(div().id(file_check_id(&files)).test_support().child(file_check(&files)))
+                    .child(file_check(&files))
                     .children(file_notes(&files, cx))
                     .child(text::counts(DescriptionList::new().columns(1), &report.restored));
                 let merged = job.preview.as_ref().is_some_and(|p| p.merge);

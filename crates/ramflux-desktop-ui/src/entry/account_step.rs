@@ -209,6 +209,9 @@ impl EntryPage {
                 let text = tr_args("entry.account.load_failed", &[("name", &name)]);
                 div()
                     .id("entry-session-failed-text")
+                    // A div with no role is not in the accessibility tree, and the
+                    // alert's own text is not exposed: this node carries the message.
+                    .role(gpui_kit::Role::Status)
                     .aria_label(text.clone())
                     .test_support()
                     .child(Alert::error("entry-session-failed-alert", text))
@@ -226,6 +229,8 @@ impl EntryPage {
                         let lock = LockLabel::new(&name);
                         Button::new("entry-session-lock")
                             .outline()
+                            // The visible text is the clipped one; swapping it
+                            // for `lock.full` would let the button grow unbounded.
                             .label(lock.visible)
                             // Only the visible text is clipped: the control is
                             // still named, and the tooltip shows, the whole label.
@@ -631,7 +636,9 @@ mod tests {
         let lock = LockLabel::new(name);
         assert!(lock.visible.ends_with('…'), "the visible text is clipped: {}", lock.visible);
         assert!(!lock.visible.contains(name));
-        assert!(cells(&lock.visible) <= cells("Lock ") + LOCK_LABEL_CELLS + 4, "{}", lock.visible);
+        let (short, _) = clip_label(name, LOCK_LABEL_CELLS);
+        assert!(cells(&short) <= LOCK_LABEL_CELLS, "{short}");
+        assert!(lock.visible.contains(&short), "the button shows the clipped label");
         assert_eq!(lock.tooltip.as_deref(), Some(name), "the tooltip is the whole name");
         assert!(lock.full.ends_with(name), "the accessible name is whole: {}", lock.full);
         assert_ne!(lock.visible, lock.full);
