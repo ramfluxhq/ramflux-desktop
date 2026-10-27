@@ -69,6 +69,17 @@ fn file_check_text(files: &AttachmentCheck) -> SharedString {
     }
 }
 
+/// Which wording a finished restore's file check uses, as an element id: it
+/// names the copy on screen, without a second accessible label that would
+/// make a screen reader read the alert twice.
+fn file_check_id(files: &AttachmentCheck) -> &'static str {
+    match (files.all_verified(), files.unavailable_at_source > 0) {
+        (true, true) => "restore-files-available",
+        (true, false) => "restore-files-all",
+        (false, _) => "restore-files-problem",
+    }
+}
+
 /// A finished restore's file check.
 fn file_check(files: &AttachmentCheck) -> Alert {
     let text = file_check_text(files);
@@ -184,16 +195,21 @@ impl BackupPanel {
                 SharedString::from(i18n::bytes(preview.file_bytes)),
                 1,
             );
+        // The wording follows the note under the list; its id names the copy
+        // on screen (the value is plain text, with no label of its own).
+        let (files_key, files_id) = if preview.attachments.unavailable_at_source > 0 {
+            ("settings.backup.verified.files_value_available", "backup-review-files-available")
+        } else {
+            ("settings.backup.verified.files_value", "backup-review-files-all")
+        };
+        let files_value = div()
+            .id(files_id)
+            .test_support()
+            .child(tr_args(files_key, &[("count", &count(preview.attachments.verified))]))
+            .into_any_element();
         let list = text::counts(list, &preview.counts).item(
             tr("settings.backup.verified.files"),
-            tr_args(
-                if preview.attachments.unavailable_at_source > 0 {
-                    "settings.backup.verified.files_value_available"
-                } else {
-                    "settings.backup.verified.files_value"
-                },
-                &[("count", &count(preview.attachments.verified))],
-            ),
+            files_value,
             1,
         );
         let unavailable = preview.attachments.unavailable_at_source;
@@ -267,13 +283,7 @@ impl BackupPanel {
                 let report = job.report.clone().unwrap_or_default();
                 let files = report.attachments;
                 body = body
-                    .child(
-                        div()
-                            .id("restore-files")
-                            .aria_label(file_check_text(&files))
-                            .test_support()
-                            .child(file_check(&files)),
-                    )
+                    .child(div().id(file_check_id(&files)).test_support().child(file_check(&files)))
                     .children(file_notes(&files, cx))
                     .child(text::counts(DescriptionList::new().columns(1), &report.restored));
                 let merged = job.preview.as_ref().is_some_and(|p| p.merge);

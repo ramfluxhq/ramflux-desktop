@@ -6381,6 +6381,8 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]

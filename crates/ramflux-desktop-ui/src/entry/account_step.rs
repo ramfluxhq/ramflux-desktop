@@ -22,6 +22,8 @@ use ramflux_desktop_core::{
     Account, AccountKind, BackupPhase, IntentKind, LockState, NodeId, SecretInput, Store,
     UiEventKind, methods,
 };
+use unicode_segmentation::UnicodeSegmentation as _;
+use unicode_width::UnicodeWidthStr;
 
 use super::{AccountPath, EntryPage, RestoreKind};
 use crate::file_dialog;
@@ -221,12 +223,14 @@ impl EntryPage {
                             .on_click(cx.listener(|this, _, _, cx| this.retry_session(cx))),
                     )
                     .children(account.map(|account_id| {
-                        let (short, clipped) = clip_label(&name, LOCK_LABEL_CHARS);
+                        let lock = LockLabel::new(&name);
                         Button::new("entry-session-lock")
                             .outline()
-                            .label(tr_args("entry.account.lock", &[("name", &short)]))
-                            // A clipped label keeps its way back to the full one.
-                            .when(clipped, |button| button.tooltip(name.clone()))
+                            .label(lock.visible)
+                            // Only the visible text is clipped: the control is
+                            // still named, and the tooltip shows, the whole label.
+                            .accessibility_label(lock.full)
+                            .when_some(lock.tooltip, |button, full| button.tooltip(full))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 let account_id = account_id.clone();
                                 this.sink.emit(UiEventKind::LockPressed { account_id }, window, cx);
@@ -561,30 +565,132 @@ impl EntryPage {
     }
 }
 
-/// How many characters of an account label the Lock button shows.
-const LOCK_LABEL_CHARS: usize = 24;
+/// How many terminal cells of an account label the Lock button shows
+/// (a CJK character or an emoji takes two).
+const LOCK_LABEL_CELLS: usize = 24;
 
-/// `label` cut to at most `max` characters with a trailing ellipsis, and
-/// whether it was cut. The error text above the button keeps the full label.
+/// The Lock button's text for an account named `name`.
+#[derive(Debug, PartialEq, Eq)]
+struct LockLabel {
+    /// What the button shows: the label clipped to its width budget.
+    visible: SharedString,
+    /// The whole label: the control's accessible name.
+    full: SharedString,
+    /// The whole account name, when the visible text was clipped, so the
+    /// way back to it stays one hover away.
+    tooltip: Option<SharedString>,
+}
+
+impl LockLabel {
+    fn new(name: &str) -> Self {
+        let (short, clipped) = clip_label(name, LOCK_LABEL_CELLS);
+        Self {
+            visible: tr_args("entry.account.lock", &[("name", &short)]),
+            full: tr_args("entry.account.lock", &[("name", name)]),
+            tooltip: clipped.then(|| SharedString::from(name.to_owned())),
+        }
+    }
+}
+
+/// `label` cut to at most `max` terminal cells with a trailing ellipsis, and
+/// whether it was cut. The cut falls between grapheme clusters (a combining
+/// mark or a joined emoji is never split) and wide characters count double,
+/// so a CJK label is not twice as wide as a Latin one. The error text above
+/// the button keeps the full label.
 fn clip_label(label: &str, max: usize) -> (String, bool) {
-    if label.chars().count() <= max {
+    if UnicodeWidthStr::width(label) <= max {
         return (label.to_owned(), false);
     }
-    let head: String = label.chars().take(max.saturating_sub(1)).collect();
+    // One cell is kept for the ellipsis.
+    let budget = max.saturating_sub(1);
+    let mut head = String::new();
+    let mut used = 0;
+    for cluster in label.graphemes(true) {
+        let width = UnicodeWidthStr::width(cluster);
+        if used + width > budget {
+            break;
+        }
+        used += width;
+        head.push_str(cluster);
+    }
     (format!("{}…", head.trim_end()), true)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::clip_label;
+    use super::{LOCK_LABEL_CELLS, LockLabel, clip_label};
+    use unicode_segmentation::UnicodeSegmentation as _;
+    use unicode_width::UnicodeWidthStr;
+
+    fn cells(text: &str) -> usize {
+        UnicodeWidthStr::width(text)
+    }
+
+    /// The label, clipped, with everything the button needs from it.
+    fn assert_clipped(name: &str) -> LockLabel {
+        let lock = LockLabel::new(name);
+        assert!(lock.visible.ends_with('…'), "the visible text is clipped: {}", lock.visible);
+        assert!(!lock.visible.contains(name));
+        assert!(cells(&lock.visible) <= cells("Lock ") + LOCK_LABEL_CELLS + 4, "{}", lock.visible);
+        assert_eq!(lock.tooltip.as_deref(), Some(name), "the tooltip is the whole name");
+        assert!(lock.full.ends_with(name), "the accessible name is whole: {}", lock.full);
+        assert_ne!(lock.visible, lock.full);
+        lock
+    }
 
     #[test]
-    fn a_short_label_is_kept_and_a_long_one_is_cut_at_a_character_boundary() {
+    fn a_short_label_is_kept_whole_with_no_tooltip() {
         assert_eq!(clip_label("Personal", 24), ("Personal".to_owned(), false));
-        let long = "Ünïcödé ".repeat(10);
-        let (short, clipped) = clip_label(&long, 24);
+        let lock = LockLabel::new("Personal");
+        assert_eq!(lock.visible, lock.full);
+        assert_eq!(lock.tooltip, None);
+    }
+
+    #[test]
+    fn a_long_latin_label_is_clipped_with_a_whole_tooltip_and_accessible_name() {
+        let name = "Quarterly planning and archive account of the operations team";
+        let (short, clipped) = clip_label(name, 24);
         assert!(clipped);
-        assert_eq!(short.chars().count(), 24);
-        assert!(short.ends_with('…'));
+        assert!((22..=24).contains(&cells(&short)), "{short}");
+        assert_clipped(name);
+        let accented = "Ünïcödé ".repeat(10);
+        assert_clipped(&accented);
+    }
+
+    #[test]
+    fn a_long_cjk_label_is_clipped_by_width_not_by_character_count() {
+        let name = "\u{7b2c}\u{56db}\u{5b63}\u{5ea6}\u{8fd0}\u{8425}\u{56e2}\u{961f}\u{7684}\u{89c4}\u{5212}\u{4e0e}\u{5f52}\u{6863}\u{8d26}\u{6237}\u{7b2c}\u{56db}\u{5b63}\u{5ea6}\u{8fd0}\u{8425}\u{56e2}\u{961f}";
+        let (short, clipped) = clip_label(name, 24);
+        assert!(clipped);
+        assert!(cells(&short) <= 24, "{short} is {} cells", cells(&short));
+        // Eleven wide characters and the ellipsis: not 23 characters.
+        assert_eq!(short.chars().count(), 12);
+        assert_clipped(name);
+        // Twelve wide characters fit exactly; one more does not.
+        assert!(!clip_label(&"\u{8d26}".repeat(12), 24).1);
+        assert!(clip_label(&"\u{8d26}".repeat(13), 24).1);
+    }
+
+    #[test]
+    fn a_cut_never_splits_a_combining_mark_or_a_joined_emoji() {
+        let marks = "e\u{301}".repeat(30);
+        let (short, clipped) = clip_label(&marks, 24);
+        assert!(clipped);
+        let body = short.trim_end_matches('…');
+        assert!(body.graphemes(true).all(|g| g == "e\u{301}"), "{short:?}");
+        assert_eq!(body.graphemes(true).count(), 23);
+        assert_clipped(&marks);
+
+        let family = "👨\u{200d}👩\u{200d}👧\u{200d}👦";
+        let name = format!("Team {}", family.repeat(12));
+        let (short, clipped) = clip_label(&name, 24);
+        assert!(clipped);
+        let body = short.trim_end_matches('…').trim_start_matches("Team ");
+        assert!(
+            body.graphemes(true).all(|g| g == family),
+            "only whole emoji sequences remain: {short:?}"
+        );
+        assert!(cells(&short) <= 24);
+        assert_clipped(&name);
     }
 }

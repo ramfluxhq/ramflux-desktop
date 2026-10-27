@@ -19,7 +19,7 @@ use gpui_kit::TestAppContext;
 use ramflux_desktop_core::{ContextId, GrantId, Task, TaskId, TaskState};
 use ramflux_desktop_sdk::translate::tasks::{task_key, task_moment_id};
 use ramflux_desktop_test::fake_bus::FakeBus;
-use ramflux_desktop_test::fake_tasks::{FakeTasks, approval_step};
+use ramflux_desktop_test::fake_tasks::{FakeTasks, approval_step, choice_step};
 use ramflux_desktop_ui::i18n::{tr, tr_args};
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::ComposerMode;
@@ -398,6 +398,45 @@ fn a_result_surface_that_arrives_after_its_task_card_adds_show_result(cx: &mut T
         with_store(cx, &opened.shell, |s| s.surface_moment(&surface).is_some())
     });
     wait(cx, "the pointer on the card", |cx| shown(cx, &opened, &id, "task-show-result"));
+    opened.fake.shutdown();
+}
+
+/// The same ordering for the surface a step asks its question in: the
+/// assignee marks the step as needing a choice, and the surface that holds
+/// the choice reaches the desktop afterwards. The card first says only that
+/// the answer is wanted in the view; once the surface arrives it must offer
+/// the way there ("Show view"), read off the rendered card.
+#[gpui_kit::test]
+fn a_decision_surface_that_arrives_after_its_task_card_adds_the_pointer(cx: &mut TestAppContext) {
+    let opened = open_group(cx, "ui-task-decision-late");
+    opened.tasks.start_as("principal-me", GROUP, "t-pick", BOT, "Pick the release day").unwrap();
+    let id = task_key(GROUP, "t-pick");
+    wait(cx, "the card", |cx| task(cx, &opened, &id).is_some());
+    // Held back at the daemon and dated after the card, so it lands at the
+    // end of the timeline: appended, never a reason to rebuild the rows.
+    opened.state.lock().unwrap().surfaces.set_author_clock(1_790_009_000);
+    let create = scenario_surfaces("s11_surface_versions").remove(0);
+    let mut bot = Bot::new();
+    let (reference, accepted) = bot.send(&opened.fake, &opened.state, &create, false);
+    assert!(accepted);
+    let steps = vec![choice_step("pick", "Pick the day", "s-pick")];
+    opened.tasks.update(GROUP, "t-pick", TaskStatus::NeedsMe, steps, None).unwrap();
+    wait(cx, "needs me", |cx| {
+        task(cx, &opened, &id).is_some_and(|t| t.state == TaskState::NeedsMe)
+    });
+    advance(cx, 500);
+    let surface = ramflux_desktop_core::SurfaceId::new(&reference);
+    assert!(
+        with_store(cx, &opened.shell, |s| s.surface_moment(&surface).is_none()),
+        "the surface is still held back"
+    );
+    assert!(shown(cx, &opened, &id, "step-pointer"), "the step says the answer is in the view");
+    assert!(!shown(cx, &opened, &id, "step-show-view"), "nothing to point at yet");
+    Bot::announce(&opened.fake, &opened.state, &reference);
+    wait(cx, "the surface", |cx| {
+        with_store(cx, &opened.shell, |s| s.surface_moment(&surface).is_some())
+    });
+    wait(cx, "the pointer on the card", |cx| shown(cx, &opened, &id, "step-show-view"));
     opened.fake.shutdown();
 }
 

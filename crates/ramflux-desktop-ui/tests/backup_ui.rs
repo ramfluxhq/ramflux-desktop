@@ -295,6 +295,9 @@ fn a_restore_is_checked_reviewed_then_merged_with_its_attachment_check(cx: &mut 
     assert!(exists(cx, world.handle, "backup-review"));
     assert!(exists(cx, world.handle, "backup-review-effect"), "it says it merges, newer wins");
     assert!(exists(cx, world.handle, "backup-review-unavailable"), "recorded omissions named");
+    // The preview counts the matched files among the available ones too.
+    assert!(exists(cx, world.handle, "backup-review-files-available"), "the row says available");
+    assert!(!exists(cx, world.handle, "backup-review-files-all"));
     assert!(requests(&world, "account.restore.install").is_empty(), "nothing before Restore");
 
     click(cx, world.handle, "restore-install");
@@ -305,12 +308,10 @@ fn a_restore_is_checked_reviewed_then_merged_with_its_attachment_check(cx: &mut 
     wait(cx, "restored", |cx| phase(cx, &world) == Some(BackupPhase::Done));
     advance(cx, 50);
     assert!(exists(cx, world.handle, "backup-result"));
-    assert!(exists(cx, world.handle, "restore-files"));
+    assert!(exists(cx, world.handle, "restore-files-available"), "the check says available");
+    assert!(!exists(cx, world.handle, "restore-files-all"));
+    assert!(!exists(cx, world.handle, "restore-files-problem"));
     assert!(exists(cx, world.handle, "restore-unavailable"));
-    // The matched files are counted among the available ones, so the line
-    // does not contradict the unavailable files named under it.
-    let matched = tr_args("settings.backup.done.files_verified_available", &[("count", "320")]);
-    assert!(has_label(cx, world.handle, &matched), "the check line says available: {matched}");
     assert!(exists(cx, world.handle, "restore-kept-newer"), "what was newer here, per kind");
     let report = job(cx, &world).unwrap().report.unwrap();
     assert_eq!((report.attachments.verified, report.attachments.mismatched), (320, 0));
@@ -835,20 +836,24 @@ fn an_account_without_a_label_is_named_by_its_id_in_the_error(cx: &mut TestAppCo
     world.finish();
 }
 
-#[gpui_kit::test]
-fn a_long_account_label_is_clipped_on_the_lock_button_only(cx: &mut TestAppContext) {
-    let world = restoring(cx, "ui-backup-entry-never-long");
-    let label = "Quarterly planning and archive account of the operations team";
+/// The Lock button is named by the whole account label whatever it shows;
+/// the error above it names the account whole too. (What the button shows and
+/// its tooltip are pinned on `LockLabel` in the unit tests: the rendered text
+/// is not part of the accessibility tree.)
+fn lock_names_the_whole_account(cx: &mut TestAppContext, name: &str, label: &str) {
+    let world = restoring(cx, name);
     let account_reads = never_loading_as(cx, &world, label);
     let named = |cx: &mut TestAppContext, id: &'static str| {
         in_window(cx, world.handle, move |window, _| {
             window.try_find(id).and_then(|e| e.label().map(str::to_owned))
         })
     };
-    let lock = named(cx, "entry-session-lock").expect("the lock button");
-    assert!(lock.contains('…'), "the button clips the label: {lock}");
-    assert!(!lock.contains(label));
-    assert!(lock.chars().count() < label.chars().count());
+    let lock = tr_args("entry.account.lock", &[("name", label)]);
+    assert_eq!(
+        named(cx, "entry-session-lock"),
+        Some(lock.to_string()),
+        "the button is named whole"
+    );
     let failed = tr_args("entry.account.load_failed", &[("name", label)]);
     assert_eq!(
         named(cx, "entry-session-failed-text"),
@@ -857,6 +862,24 @@ fn a_long_account_label_is_clipped_on_the_lock_button_only(cx: &mut TestAppConte
     );
     account_reads.open();
     world.finish();
+}
+
+#[gpui_kit::test]
+fn a_long_latin_account_label_is_clipped_on_the_lock_button_only(cx: &mut TestAppContext) {
+    let label = "Quarterly planning and archive account of the operations team";
+    lock_names_the_whole_account(cx, "ui-backup-entry-never-long", label);
+}
+
+#[gpui_kit::test]
+fn a_long_cjk_account_label_is_clipped_on_the_lock_button_only(cx: &mut TestAppContext) {
+    let label = "\u{7b2c}\u{56db}\u{5b63}\u{5ea6}\u{8fd0}\u{8425}\u{56e2}\u{961f}\u{7684}\u{89c4}\u{5212}\u{4e0e}\u{5f52}\u{6863}\u{8d26}\u{6237}\u{7b2c}\u{56db}\u{5b63}\u{5ea6}\u{8fd0}\u{8425}\u{56e2}\u{961f}";
+    lock_names_the_whole_account(cx, "ui-backup-entry-never-cjk", label);
+}
+
+#[gpui_kit::test]
+fn an_account_label_of_marks_and_emoji_is_clipped_on_the_lock_button_only(cx: &mut TestAppContext) {
+    let label = "Cafe\u{301} team 👨\u{200d}👩\u{200d}👧\u{200d}👦 archive 🚀 account 🚀 of ops";
+    lock_names_the_whole_account(cx, "ui-backup-entry-never-emoji", label);
 }
 
 #[gpui_kit::test]

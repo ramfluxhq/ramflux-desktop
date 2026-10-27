@@ -19,6 +19,8 @@ ramflux-desktop-test.workspace = true
 rust-i18n.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+unicode-segmentation.workspace = true
+unicode-width.workspace = true
 # Local wall-clock time for moment headers (already in the dependency graph).
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # QR code of the user's own contact card (MIT, no dependencies).
