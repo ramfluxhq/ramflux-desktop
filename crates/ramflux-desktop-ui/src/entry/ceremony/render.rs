@@ -149,7 +149,8 @@ impl CeremonyPanel {
                                 })),
                             Pending::Begin,
                         )
-                        .disabled(self.pending.is_some() || !typed),
+                        .loading(self.pending == Some(Pending::Begin) || self.abandoned)
+                        .disabled(self.pending.is_some() || self.abandoned || !typed),
                     )
                     .child(self.cancel_button("ceremony.back", cx)),
             )
@@ -234,6 +235,7 @@ impl CeremonyPanel {
             .collect();
         h_flex()
             .id("ceremony-grid")
+            .track_focus(&self.grid_focus)
             .role(Role::List)
             .aria_label(tr("ceremony.show.grid"))
             .test_support()
@@ -318,18 +320,23 @@ impl CeremonyPanel {
             .test_support()
             .gap_3()
             .child(heading("ceremony.show.title"))
-            .child(announced(
-                "ceremony-hiding-text",
-                Role::Status,
-                tr("ceremony.hiding"),
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(Spinner::new().small())
-                    .child(tr("ceremony.hiding")),
-            ))
+            .child(
+                div()
+                    .id("ceremony-hiding-text")
+                    .role(Role::Status)
+                    .aria_label(tr("ceremony.hiding"))
+                    .track_focus(&self.status_focus)
+                    .test_support()
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(Spinner::new().small())
+                            .child(tr("ceremony.hiding")),
+                    ),
+            )
             .child(h_flex().child(self.cancel_button("ceremony.cancel", cx)))
             .into_any_element()
     }
@@ -418,10 +425,14 @@ impl CeremonyPanel {
     /// The passphrase that unlocks the account on this device, typed twice
     /// under the rules of the backup passphrase. Sent with the words, once.
     fn passphrase_screen(&self, ceremony: &Ceremony, cx: &mut Context<Self>) -> AnyElement {
-        let typed = self.passphrase.read(cx).value().to_string();
-        let repeated = self.repeat.read(cx).value().to_string();
+        // One materialized copy of each input per frame (the input hands
+        // out nothing borrowed), compared and rated once: nothing below
+        // copies them again.
+        let typed = self.passphrase.read(cx).value();
+        let repeated = self.repeat.read(cx).value();
         let strength = Strength::of(&typed);
         let mismatch = !repeated.is_empty() && repeated != typed;
+        let ready = strength != Strength::TooShort && repeated == typed;
         let hint_color = match strength {
             Strength::TooShort | Strength::Weak => cx.theme().warning,
             Strength::Fair | Strength::Strong => cx.theme().muted_foreground,
@@ -483,7 +494,7 @@ impl CeremonyPanel {
                                 })),
                             Pending::Confirm,
                         )
-                        .disabled(self.pending.is_some() || !self.can_confirm(cx)),
+                        .disabled(self.pending.is_some() || !ready),
                     )
                     .child(self.cancel_button("ceremony.cancel", cx)),
             )
@@ -562,6 +573,7 @@ impl CeremonyPanel {
     fn cancel_question(&self, cx: &mut Context<Self>) -> AnyElement {
         v_flex()
             .id("ceremony-cancel-question")
+            .track_focus(&self.question_focus)
             .role(Role::Status)
             .aria_label(tr("ceremony.cancel_question"))
             .test_support()
@@ -584,15 +596,20 @@ impl CeremonyPanel {
                         Button::new("ceremony-cancel-no")
                             .outline()
                             .label(tr("ceremony.cancel_no"))
-                            .on_click(cx.listener(|this, _, _, cx| this.keep_going(cx))),
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.keep_going(window, cx)),
+                            ),
                     ),
             )
             .into_any_element()
     }
 
-    /// Moves keyboard focus to the first control of a screen the first time
-    /// it is drawn: the input to type in, else the primary button (the root
-    /// takes focus, then the first control after it).
+    /// Moves keyboard focus when a screen is first drawn: to the input to
+    /// type in; to the word list when the words appear and to the pending
+    /// line while three words are chosen (reading comes first); otherwise
+    /// to the panel itself. Never to a button: the first press after a
+    /// screen appears must not be able to do something that cannot be
+    /// undone (hide the words, cancel). Tab reaches the buttons.
     fn focus_screen(&mut self, screen: Screen, window: &mut Window, cx: &mut Context<Self>) {
         if self.focused_screen == Some(screen) {
             return;
@@ -608,12 +625,11 @@ impl CeremonyPanel {
                         Screen::Passphrase => Some(panel.passphrase.clone()),
                         _ => None,
                     };
-                    match input {
-                        Some(input) => input.update(cx, |input, cx| input.focus(window, cx)),
-                        None => {
-                            window.focus(&panel.focus, cx);
-                            window.focus_next(cx);
-                        }
+                    match (input, screen) {
+                        (Some(input), _) => input.update(cx, |input, cx| input.focus(window, cx)),
+                        (None, Screen::Phrase) => window.focus(&panel.grid_focus, cx),
+                        (None, Screen::Hiding) => window.focus(&panel.status_focus, cx),
+                        (None, _) => window.focus(&panel.focus, cx),
                     }
                 })
                 .ok();

@@ -59,6 +59,15 @@ fn held_words(cx: &mut TestAppContext, shell: &Entity<Shell>) -> usize {
     cx.update(|cx| panel.read(cx).held().words())
 }
 
+/// Moves the store's clock (and so the ceremony's) forward at once, then
+/// lets the panel notice. The 50 ms tick path is covered by the countdown
+/// test's first step.
+fn jump(cx: &mut TestAppContext, shell: &Entity<Shell>, ms: u64) {
+    let handle = store_handle(cx, shell);
+    cx.update(|cx| handle.update(cx, |handle, cx| handle.advance(ms, cx)));
+    advance(cx, 100);
+}
+
 fn label_of(cx: &mut TestAppContext, handle: Handle, id: &'static str) -> Option<String> {
     in_window(cx, handle, move |window, _| {
         window.try_find(id).and_then(|e| e.label().map(str::to_owned))
@@ -404,13 +413,13 @@ fn the_five_minutes_are_visible_and_an_expired_setup_holds_nothing(cx: &mut Test
     show(cx, handle);
     let first = label_of(cx, handle, "ceremony-countdown").expect("countdown");
     assert!(first.contains("5:00") || first.contains("4:5"), "{first}");
-    advance(cx, 61_000);
+    jump(cx, &shell, 61_000);
     let later = label_of(cx, handle, "ceremony-countdown").expect("countdown");
     assert_ne!(first, later, "the countdown moves");
     assert!(later.contains("3:5") || later.contains("3:4"), "{later}");
     assert_eq!(held_words(cx, &shell), PHRASE_WORDS);
 
-    advance(cx, u64::try_from(CEREMONY_TTL_MS).unwrap_or(0));
+    jump(cx, &shell, u64::try_from(CEREMONY_TTL_MS).unwrap_or(0));
     assert!(!exists(cx, handle, "ceremony-countdown"));
     assert!(exists(cx, handle, "ceremony-ended"));
     assert!(has_label(cx, handle, &tr("ceremony.ended.expired")), "the expiry is announced");
@@ -641,41 +650,110 @@ fn the_account_carries_its_networking_state_from_the_list(cx: &mut TestAppContex
 }
 
 #[gpui_kit::test]
-fn focus_moves_to_the_first_control_of_each_step(cx: &mut TestAppContext) {
+fn focus_goes_to_where_typing_or_reading_starts_never_to_an_irreversible_button(
+    cx: &mut TestAppContext,
+) {
     let (handle, shell) = offered(cx);
     let panel = panel(cx, &shell);
-    let focused = |cx: &mut TestAppContext, pick: fn(&CeremonyPanel) -> usize| {
-        advance(cx, 100);
+    // What has focus, by name, after the screen settled.
+    let focused_after = |cx: &mut TestAppContext, wait: u64| -> &'static str {
+        if wait > 0 {
+            advance(cx, wait);
+        }
         in_window(cx, handle, |_, _| {});
         let panel = panel.clone();
         cx.update_window(handle.into(), move |_, window, cx| {
             let panel = panel.read(cx);
-            let inputs = [
-                panel.name_input().clone(),
-                panel.word_inputs()[0].clone(),
-                panel.passphrase_inputs()[0].clone(),
-            ];
-            let which = pick(panel);
-            (
-                inputs[which].read(cx).focus_handle(cx).is_focused(window),
-                panel.has_focus(window, cx),
-            )
+            let on = |input: &gpui_kit::Entity<gpui_kit::component::input::InputState>| {
+                input.read(cx).focus_handle(cx).is_focused(window)
+            };
+            if on(panel.name_input()) {
+                "name"
+            } else if on(&panel.word_inputs()[0]) {
+                "word"
+            } else if on(panel.passphrase_inputs()[0]) {
+                "passphrase"
+            } else if panel.grid_has_focus(window) {
+                "grid"
+            } else if panel.status_has_focus(window) {
+                "status"
+            } else if panel.has_focus(window, cx) {
+                "panel"
+            } else {
+                "elsewhere"
+            }
         })
         .expect("window")
     };
+    let focused = |cx: &mut TestAppContext| focused_after(cx, 100);
     click(cx, handle, "account-create-phrase");
-    assert!(focused(cx, |_| 0).0, "the name input");
+    assert_eq!(focused(cx), "name");
     type_into(cx, handle, "ceremony-name-input", "Alex");
     click(cx, handle, "ceremony-continue");
-    assert!(focused(cx, |_| 0).1, "the ready step: focus is in the panel, on its first control");
+    assert_eq!(focused(cx), "panel", "the ready step: the panel, not its Show button");
     show(cx, handle);
-    assert!(focused(cx, |_| 0).1);
+    assert_eq!(focused(cx), "grid", "the words appear with the word list focused");
     click(cx, handle, "ceremony-hide");
+    // Before the daemon answers (no time passes).
+    assert_eq!(focused_after(cx, 0), "status", "while three words are chosen: the status line");
     advance(cx, 200);
-    assert!(focused(cx, |_| 1).0, "the first asked word");
+    assert_eq!(focused(cx), "word", "the first asked word");
     type_words(cx, handle, right_words());
     click(cx, handle, "ceremony-next");
-    assert!(focused(cx, |_| 2).0, "the passphrase");
+    assert_eq!(focused(cx), "passphrase");
+}
+
+#[gpui_kit::test]
+fn one_enter_right_after_the_words_appear_hides_nothing(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    begin(cx, handle);
+    show(cx, handle);
+    advance(cx, 100);
+    // A stray or repeated Enter, as soon as the words are on screen.
+    in_window(cx, handle, |window, cx| window.press("enter", cx));
+    in_window(cx, handle, |window, cx| window.press("space", cx));
+    advance(cx, 200);
+    assert_eq!(held_words(cx, &shell), PHRASE_WORDS, "the phrase is still there");
+    assert_eq!(count(cx, &shell, "account.create.hidden_challenge"), 0, "no hide was sent");
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::PhraseReady));
+    // On the pending screen too: Enter does not cancel a working ceremony.
+    click(cx, handle, "ceremony-hide");
+    in_window(cx, handle, |window, cx| window.press("enter", cx));
+    advance(cx, 200);
+    assert_eq!(count(cx, &shell, "account.create.cancel"), 0);
+    assert!(matches!(phase(cx, &shell), Some(CeremonyPhase::Challenged { .. })));
+}
+
+#[gpui_kit::test]
+fn back_while_the_begin_is_pending_cancels_it_when_it_answers(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    click(cx, handle, "account-create-phrase");
+    type_into(cx, handle, "ceremony-name-input", "Alex");
+    click(cx, handle, "ceremony-continue");
+    assert_eq!(panel_pending(cx, &shell), Some(Pending::Begin));
+    click(cx, handle, "ceremony-cancel");
+    assert!(exists(cx, handle, "account-create-phrase"), "Back leaves at once");
+    let panel = panel(cx, &shell);
+    assert!(cx.update(|cx| panel.read(cx).is_abandoned()));
+    // Starting again straight away waits for the old one to be let go.
+    click(cx, handle, "account-create-phrase");
+    type_into(cx, handle, "ceremony-name-input", "Alex");
+    assert_eq!(disabled(cx, handle, "ceremony-continue"), Some(true), "not before it is let go");
+    advance(cx, 400);
+    assert_eq!(
+        count(cx, &shell, "account.create.cancel"),
+        1,
+        "the abandoned ceremony is cancelled"
+    );
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Cancelled));
+    assert!(!cx.update(|cx| panel.read(cx).is_abandoned()));
+    // And a new setup starts and runs.
+    assert_ne!(disabled(cx, handle, "ceremony-continue"), Some(true));
+    click(cx, handle, "ceremony-continue");
+    advance(cx, 200);
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Prepared));
+    assert_eq!(count(cx, &shell, "account.create.cancel"), 1);
+    assert!(exists(cx, handle, "ceremony-ready"));
 }
 
 #[gpui_kit::test]
@@ -686,11 +764,20 @@ fn escape_asks_before_it_cancels(cx: &mut TestAppContext) {
     advance(cx, 100);
     in_window(cx, handle, |window, cx| window.press("escape", cx));
     assert!(exists(cx, handle, "ceremony-cancel-question"), "it asks");
+    advance(cx, 100);
+    let question = panel(cx, &shell);
+    let has = |cx: &mut TestAppContext, pick: fn(&CeremonyPanel, &gpui_kit::Window) -> bool| {
+        let question = question.clone();
+        cx.update_window(handle.into(), move |_, window, cx| pick(question.read(cx), window))
+            .expect("window")
+    };
+    assert!(has(cx, CeremonyPanel::question_has_focus), "the question takes focus");
     assert_eq!(phase(cx, &shell), Some(CeremonyPhase::PhraseReady), "nothing cancelled yet");
     assert_eq!(held_words(cx, &shell), PHRASE_WORDS);
     // Escape again, or "Keep going", goes on.
     click(cx, handle, "ceremony-cancel-no");
     assert!(!exists(cx, handle, "ceremony-cancel-question"));
+    assert!(has(cx, CeremonyPanel::grid_has_focus), "focus went back to the words");
     in_window(cx, handle, |window, cx| window.press("escape", cx));
     assert!(exists(cx, handle, "ceremony-cancel-question"));
     click(cx, handle, "ceremony-cancel-yes");
@@ -712,8 +799,8 @@ fn closing_the_window_tells_the_daemon_to_let_go(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_word_cells_keep_their_width_in_a_narrow_window(cx: &mut TestAppContext) {
-    let (handle, shell) = open_width(cx, "s13_born_v3", 520.);
+fn the_word_cells_keep_their_width_at_the_minimum_window_width(cx: &mut TestAppContext) {
+    let (handle, shell) = open_width(cx, "s13_born_v3", ramflux_desktop_ui::MIN_WINDOW_SIZE.0);
     activate(cx, handle);
     advance(cx, 2_500);
     begin(cx, handle);
@@ -755,7 +842,7 @@ fn an_expired_setup_drops_the_typed_words_and_the_passphrase(cx: &mut TestAppCon
     type_passphrase(cx, handle, &shell, PASSPHRASE, PASSPHRASE);
     let panel = panel(cx, &shell);
     assert!(cx.update(|cx| panel.read(cx).holds_typed_words()));
-    advance(cx, u64::try_from(CEREMONY_TTL_MS).unwrap_or(0));
+    jump(cx, &shell, u64::try_from(CEREMONY_TTL_MS).unwrap_or(0));
     assert!(has_label(cx, handle, &tr("ceremony.ended.expired")));
     cx.update(|cx| {
         let panel = panel.read(cx);

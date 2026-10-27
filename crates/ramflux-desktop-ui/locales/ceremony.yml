@@ -96,8 +96,8 @@ ceremony:
       en: "Set the passphrase for this device"
       zh-CN: "设置这台设备的口令"
     help:
-      en: "You type this passphrase to unlock the account on this device. It is not the recovery phrase and cannot recover it. It can't be recovered if you forget it."
-      zh-CN: "你需要用这个口令在这台设备上解锁账户。它不是恢复短语，也无法用来找回恢复短语。忘记后无法找回。"
+      en: "You type this passphrase to unlock the account on this device. It is not the recovery phrase and cannot recover it. If you forget it, you'll need your 24 words to restore this account."
+      zh-CN: "你需要用这个口令在这台设备上解锁账户。它不是恢复短语，也无法用来找回恢复短语。如果忘记了它，你需要用这 24 个单词来恢复此账户。"
     label:
       en: "Account passphrase"
       zh-CN: "账户口令"

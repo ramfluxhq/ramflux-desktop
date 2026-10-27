@@ -57,6 +57,11 @@ pub use assets::AppAssets;
 pub use shell::Shell;
 pub use workspace::Workspace;
 
+/// The smallest window the application opens at, in pixels (width, height).
+/// Below it the entry page's content (and the recovery phrase grid of four
+/// 8.5rem cells) would no longer fit.
+pub const MIN_WINDOW_SIZE: (f32, f32) = (640., 480.);
+
 /// Initializes application-level state: locale and key bindings.
 ///
 /// Call after `gpui_kit::init` and before opening windows.

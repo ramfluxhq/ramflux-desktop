@@ -685,10 +685,6 @@ pub fn next_attention<'a>(
 }
 
 impl Workspace {
-    /// The banner shown while the rendered account's secure sessions are
-    /// being re-established after a full restore (sending is refused by
-    /// the daemon meanwhile; history and files stay readable). It stays
-    /// until the daemon announces them ready.
     /// The banner of an account that is not registered with its node yet
     /// (it was made with a recovery phrase): it cannot send or receive, and
     /// says so for as long as the account list says `Pending`.
@@ -723,6 +719,10 @@ impl Workspace {
         })
     }
 
+    /// The banner shown while the rendered account's secure sessions are
+    /// being re-established after a full restore (sending is refused by
+    /// the daemon meanwhile; history and files stay readable). It stays
+    /// until the daemon announces them ready.
     fn secure_sessions_banner(&self, cx: &App) -> Option<gpui_kit::AnyElement> {
         let handle = self.store.read(cx);
         let store = handle.store();

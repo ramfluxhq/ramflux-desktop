@@ -1218,12 +1218,22 @@ stays in view until closed even though the account is listed, then the
 workspace shows a persistent "networking pending" banner and the account
 rows of the entry page a tag, for as long as the list says `Pending`.
 
-**Keyboard and window (r2).** Focus moves to the first control of each step
-(the input to type in, else the first button). Escape asks "Cancel this
-setup?" (Escape again or "Keep going" dismisses; the buttons cancel at once).
+**Keyboard and window (r2, r3).** Focus moves when a screen first appears,
+and never to a button that cannot be undone: to the input to type in; to the
+word list when the 24 words appear (a labelled list read in order; "I wrote
+them down" is reached by Tab only, so a stray Enter or Space hides
+nothing); to the pending line while three words are chosen; otherwise to the
+panel itself. Escape asks "Cancel this setup?", moves focus to the question
+and gives it back to where it was on "Keep going" (Escape again dismisses;
+the Cancel buttons cancel at once). Back or Escape while the begin request is
+in flight remembers the abandoned request: the ceremony it opens is cancelled
+when the answer arrives, and a new setup waits for that (its Continue is busy).
 Closing the window sends `account.create.cancel` (best effort; the daemon
 also lets go when the connection drops). Word cells are at least 8.5rem wide
-and wrap to fewer columns instead of clipping.
+and wrap to fewer columns instead of clipping; the application window has a
+minimum size (`MIN_WINDOW_SIZE`, 640 x 480) and the narrow-width test opens at
+it. A pending request ends on its own answer or the failure of its own
+method, not on another effect failing.
 
 **More limits (r2).** The grid's per-frame copies of each word (the cell
 text and its accessibility label, about two per word per frame while drawn;
@@ -1232,3 +1242,13 @@ are not zeroized. The cell label "Word N: <word>" is published to the platform
 accessibility tree, which any process with accessibility permission can read,
 not only a screen reader. Both match what is on screen; they are accepted and
 documented, not removed.
+
+**Passphrase copies (r3).** The typed passphrase and its repeat live in GPUI
+Kit input buffers. The panel reads each once per frame of the passphrase
+step (`InputState::value()` materializes a new string; the panel borrows it
+for the strength rating, the mismatch and the button state, no further
+copies) and once more into the `SecretInput` it sends. Those frame copies, the
+input's own rope and undo-free buffer and the masked text layout are plain
+strings outside the panel's control and are not zeroized; the inputs are
+cleared with `set_value("")` as soon as the secret is sent, cancelled or
+expired.

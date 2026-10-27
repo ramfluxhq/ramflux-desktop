@@ -64,6 +64,10 @@ fn main() {
         let bounds = Bounds::centered(None, size(px(WINDOW_SIZE.0), px(WINDOW_SIZE.1)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
+            window_min_size: Some(size(
+                px(ramflux_desktop_ui::MIN_WINDOW_SIZE.0),
+                px(ramflux_desktop_ui::MIN_WINDOW_SIZE.1),
+            )),
             ..TitleBar::window_options()
         };
         let opened = open_window(options, cx, move |window, cx| {
