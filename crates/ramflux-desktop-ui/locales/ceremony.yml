@@ -5,8 +5,8 @@ ceremony:
     zh-CN: "使用恢复短语创建账户"
   entry:
     button:
-      en: "Create account with recovery phrase"
-      zh-CN: "使用恢复短语创建账户"
+      en: "Create account with recovery phrase…"
+      zh-CN: "使用恢复短语创建账户…"
     help:
       en: "Accounts are protected by 24 words that only you hold. No one can reset them for you."
       zh-CN: "账户由 24 个只有你持有的单词保护。任何人都无法替你重置。"
@@ -42,15 +42,9 @@ ceremony:
     title:
       en: "Get ready to write down 24 words"
       zh-CN: "准备好抄写 24 个单词"
-    offline:
-      en: "Have pen and paper ready. Write the words down offline, in order, with their numbers."
-      zh-CN: "准备好纸和笔。离线按顺序抄下这些单词和它们的序号。"
-    capture:
-      en: "Stop screen sharing and recording first, and make sure nobody can see your screen. This app cannot block screenshots."
-      zh-CN: "请先停止屏幕共享和录屏，并确认没有人能看到你的屏幕。本应用无法阻止截屏。"
-    once:
-      en: "The words appear once. They cannot be shown again."
-      zh-CN: "这些单词只会显示一次，之后无法再次显示。"
+    warning:
+      en: "Have pen and paper ready and write the words down offline, in order, with their numbers. Stop screen sharing and recording first and make sure nobody can see your screen: this app cannot block screenshots. The words appear once and cannot be shown again."
+      zh-CN: "请准备好纸和笔，离线按顺序抄下这些单词和它们的序号。请先停止屏幕共享和录屏，并确认没有人能看到你的屏幕：本应用无法阻止截屏。这些单词只会显示一次，之后无法再次显示。"
     show:
       en: "Show recovery phrase"
       zh-CN: "显示恢复短语"
@@ -85,6 +79,34 @@ ceremony:
     missing:
       en: "The words are no longer available. Cancel and start over to get a new phrase."
       zh-CN: "这些单词已不可用。请取消并重新开始以获得新的短语。"
+  hiding:
+    en: "Choosing three words to ask…"
+    zh-CN: "正在选择要询问的三个单词……"
+  cancel_question:
+    en: "Cancel this setup? The recovery phrase is erased and no account is created."
+    zh-CN: "要取消这次设置吗？恢复短语会被清除，也不会创建账户。"
+  cancel_yes:
+    en: "Cancel setup"
+    zh-CN: "取消设置"
+  cancel_no:
+    en: "Keep going"
+    zh-CN: "继续设置"
+  passphrase:
+    title:
+      en: "Set the passphrase for this device"
+      zh-CN: "设置这台设备的口令"
+    help:
+      en: "You type this passphrase to unlock the account on this device. It is not the recovery phrase and cannot recover it. It can't be recovered if you forget it."
+      zh-CN: "你需要用这个口令在这台设备上解锁账户。它不是恢复短语，也无法用来找回恢复短语。忘记后无法找回。"
+    label:
+      en: "Account passphrase"
+      zh-CN: "账户口令"
+    repeat:
+      en: "Repeat passphrase"
+      zh-CN: "再次输入口令"
+    submit:
+      en: "Confirm and create account"
+      zh-CN: "确认并创建账户"
   confirm:
     title:
       en: "Type three words back"
@@ -107,9 +129,9 @@ ceremony:
     one_word:
       en: "Type one word only."
       zh-CN: "只输入一个单词。"
-    submit:
-      en: "Confirm and create account"
-      zh-CN: "确认并创建账户"
+    next:
+      en: "Continue"
+      zh-CN: "继续"
   done:
     title:
       en: "Account created on this device"
@@ -121,8 +143,8 @@ ceremony:
       en: "State: networking pending"
       zh-CN: "状态：等待联网"
     text:
-      en: "%{name} exists on this device but is not registered with any node yet. You cannot send or receive messages until that step is available. Keep your 24 words safe: they are the only way to recover this account."
-      zh-CN: "%{name} 已在这台设备上创建，但尚未在任何节点注册。在该步骤可用之前，你还不能收发消息。请妥善保管这 24 个单词：它们是恢复此账户的唯一方式。"
+      en: "%{name} exists on this device but is not registered with any node yet. You cannot send or receive messages until that step is available. Keep your 24 words safe: without another device, they are the only way to restore this account."
+      zh-CN: "%{name} 已在这台设备上创建，但尚未在任何节点注册。在该步骤可用之前，你还不能收发消息。请妥善保管这 24 个单词：没有其他设备时，它们是恢复此账户的唯一方式。"
     live_state:
       en: "Connected"
       zh-CN: "已联网"
@@ -130,8 +152,8 @@ ceremony:
       en: "State: connected"
       zh-CN: "状态：已联网"
     live_text:
-      en: "%{name} was created on this device and is unlocked. Keep your 24 words safe: they are the only way to recover this account."
-      zh-CN: "%{name} 已在这台设备上创建并已解锁。请妥善保管这 24 个单词：它们是恢复此账户的唯一方式。"
+      en: "%{name} was created on this device and is unlocked. Keep your 24 words safe: without another device, they are the only way to restore this account."
+      zh-CN: "%{name} 已在这台设备上创建并已解锁。请妥善保管这 24 个单词：没有其他设备时，它们是恢复此账户的唯一方式。"
     close:
       en: "Done"
       zh-CN: "完成"

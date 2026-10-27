@@ -13,14 +13,15 @@ use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::spinner::Spinner;
+use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{
-    Account, AccountKind, BackupPhase, IntentKind, LockState, NodeId, SecretInput, Store,
-    UiEventKind, methods,
+    Account, AccountKind, BackupPhase, IntentKind, LockState, Networking, NodeId, SecretInput,
+    Store, UiEventKind, methods,
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 use unicode_width::UnicodeWidthStr;
@@ -137,7 +138,7 @@ impl EntryPage {
                 .into_any_element()
         } else if self.awaits_session(cx) {
             self.render_session_wait(cx).into_any_element()
-        } else if self.ceremony_open && accounts.is_empty() {
+        } else if self.ceremony_open && (accounts.is_empty() || self.holds_ceremony(cx)) {
             // The ceremony takes the place of the forms; every way out
             // (cancel, done, close) comes back to them.
             self.ceremony.clone().into_any_element()
@@ -276,10 +277,25 @@ impl EntryPage {
                         .child(div().text_sm().font_semibold().child(account.label.clone()))
                         .child(div().text_xs().text_color(muted).child(detail)),
                 )
-                .child(div().text_xs().text_color(muted).child(tr(match account.lock_state {
-                    LockState::Locked => "entry.account.locked",
-                    LockState::Unlocked => "entry.account.unlocked",
-                })))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .children((account.networking == Networking::Pending).then(|| {
+                            div()
+                                .id(domain_id("account-networking", &account.id))
+                                .role(gpui_kit::Role::Status)
+                                .aria_label(tr("networking.pending_text"))
+                                .test_support()
+                                .child(Tag::warning().small().child(tr("networking.pending")))
+                        }))
+                        .child(div().text_xs().text_color(muted).child(tr(
+                            match account.lock_state {
+                                LockState::Locked => "entry.account.locked",
+                                LockState::Unlocked => "entry.account.unlocked",
+                            },
+                        ))),
+                )
         });
         v_flex()
             .gap_3()
@@ -418,13 +434,14 @@ impl EntryPage {
             (AccountKind::HumanInteractive, i18n::account_kind(AccountKind::HumanInteractive)),
             (AccountKind::HeadlessAi, i18n::account_kind(AccountKind::HeadlessAi)),
         ];
-        let kind = self.segment("entry-kind", &kinds, self.kind, |this, kind| this.kind = kind, cx);
         // A daemon that offers the recovery phrase has no other way to
-        // create an account: the phrase is the primary path. An older
-        // daemon keeps the passphrase form.
+        // create an account: the phrase is the primary path, and it makes
+        // a person's account only (no kind to choose). An older daemon
+        // keeps the passphrase form.
         if self.store.read(cx).store().offers_born_v3_creation() {
-            return self.render_phrase_entry(kind, cx);
+            return self.render_phrase_entry(cx);
         }
+        let kind = self.segment("entry-kind", &kinds, self.kind, |this, kind| this.kind = kind, cx);
         v_flex()
             .gap_3()
             .child(kind)
@@ -455,12 +472,11 @@ impl EntryPage {
 
     /// "Create account with recovery phrase": the creation path of a daemon
     /// that offers it (it replaces the passphrase form).
-    fn render_phrase_entry(&self, kind: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+    fn render_phrase_entry(&self, cx: &mut Context<Self>) -> AnyElement {
         v_flex()
             .id("account-create-phrase-entry")
             .test_support()
             .gap_3()
-            .child(kind)
             .child(
                 div()
                     .text_sm()
@@ -473,8 +489,7 @@ impl EntryPage {
                         .primary()
                         .label(tr("ceremony.entry.button"))
                         .on_click(cx.listener(|this, _, window, cx| {
-                            let kind = this.kind;
-                            this.ceremony.update(cx, |panel, cx| panel.open(kind, window, cx));
+                            this.ceremony.update(cx, |panel, cx| panel.open(window, cx));
                             this.ceremony_open = true;
                             cx.notify();
                         })),

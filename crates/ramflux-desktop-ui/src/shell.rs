@@ -338,6 +338,11 @@ impl Shell {
         {
             page = Page::Entry(EntryStep::Account);
         }
+        // The result of a ceremony stays in view until it is closed, though
+        // the account it made is listed (and unlocked) by now.
+        if page == Page::Workspace && entry.holds_ceremony(cx) {
+            page = Page::Entry(EntryStep::Account);
+        }
         // A freshly opened account session is waited for on the account
         // step too, so the page value is the step that is rendered.
         if page == Page::Entry(EntryStep::Daemon) && entry.awaits_session(cx) {

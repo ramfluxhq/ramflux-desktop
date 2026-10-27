@@ -8,11 +8,13 @@
 //! with no account opened.
 
 use ramflux_desktop_core::{
-    AccountKind, CEREMONY_TTL_MS, CeremonyFailure, CeremonyPhase, Intent, IntentKind, SecretInput,
-    Source, Store,
+    AccountId, CEREMONY_TTL_MS, CeremonyFailure, CeremonyPhase, Intent, IntentKind, LockState,
+    Networking, SecretInput, Source, Store,
 };
 use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
 use ramflux_desktop_test::{ScenarioPlayer, load_fixture};
+
+const PASSPHRASE: &str = "river stone lantern";
 
 fn player() -> ScenarioPlayer {
     let mut p = ScenarioPlayer::new(&load_fixture("s13_born_v3").expect("s13"));
@@ -29,11 +31,12 @@ fn phase(store: &Store) -> CeremonyPhase {
     store.ceremony().expect("ceremony").phase.clone()
 }
 
+fn pass() -> SecretInput {
+    SecretInput::new(PASSPHRASE)
+}
+
 fn begin(p: &mut ScenarioPlayer) {
-    step(
-        p,
-        IntentKind::BeginCeremony { kind: AccountKind::HumanInteractive, label: "Alex".into() },
-    );
+    step(p, IntentKind::BeginCeremony { label: "Alex".into() });
 }
 
 fn words(positions: [u8; 3]) -> Vec<SecretInput> {
@@ -45,10 +48,7 @@ fn the_capability_arrives_late_and_the_entry_is_refused_before_it() {
     let mut p = ScenarioPlayer::new(&load_fixture("s13_born_v3").expect("s13"));
     p.advance(1_000);
     assert!(!p.store().offers_born_v3_creation());
-    let begin = Intent::human(IntentKind::BeginCeremony {
-        kind: AccountKind::HumanInteractive,
-        label: "Alex".into(),
-    });
+    let begin = Intent::human(IntentKind::BeginCeremony { label: "Alex".into() });
     assert!(p.dispatch(begin).is_err());
     p.advance(1_200);
     assert!(p.store().offers_born_v3_creation());
@@ -71,14 +71,40 @@ fn a_ceremony_creates_an_account_that_is_networking_pending() {
     step(&mut p, IntentKind::HideRecoveryPhrase);
     assert_eq!(phase(p.store()), CeremonyPhase::Challenged { positions: DEMO_POSITIONS });
 
-    step(&mut p, IntentKind::ConfirmCeremony { words: words(DEMO_POSITIONS) });
+    step(&mut p, IntentKind::ConfirmCeremony { words: words(DEMO_POSITIONS), passphrase: pass() });
     let CeremonyPhase::Created(account) = phase(p.store()) else {
         panic!("{:?}", phase(p.store()))
     };
     assert_eq!(account.display_name, "Alex");
     assert_eq!(account.networking, ramflux_desktop_core::Networking::Pending);
-    assert!(p.store().accounts().next().is_none(), "no account is opened before networking");
+    // The ordinary account-create answer: listed, unlocked, networking pending.
+    let listed = p.store().account(&AccountId::new(&account.local_account_id)).expect("listed");
+    assert_eq!(listed.lock_state, LockState::Unlocked);
+    assert_eq!(listed.networking, Networking::Pending);
     assert!(p.errors().is_empty(), "{:?}", p.errors());
+}
+
+#[test]
+fn the_passphrase_set_at_confirm_unlocks_the_account_after_a_lock() {
+    let mut p = player();
+    begin(&mut p);
+    step(&mut p, IntentKind::ShowRecoveryPhrase);
+    drop(p.source_mut().take_recovery_phrase());
+    step(&mut p, IntentKind::HideRecoveryPhrase);
+    step(&mut p, IntentKind::ConfirmCeremony { words: words(DEMO_POSITIONS), passphrase: pass() });
+    let id = AccountId::new("acct-v3-1");
+    step(&mut p, IntentKind::LockAccount { account_id: id.clone() });
+    assert_eq!(p.store().account(&id).expect("account").lock_state, LockState::Locked);
+    // Not the words, not another passphrase.
+    let unlock = |secret: &str| IntentKind::Unlock {
+        account_id: id.clone(),
+        secret: SecretInput::new(secret),
+    };
+    step(&mut p, unlock("abandon ability able"));
+    assert_eq!(p.store().account(&id).expect("account").lock_state, LockState::Locked);
+    assert!(!p.store().failures().is_empty(), "the refusal is reported");
+    step(&mut p, unlock(PASSPHRASE));
+    assert_eq!(p.store().account(&id).expect("account").lock_state, LockState::Unlocked);
 }
 
 #[test]
@@ -88,7 +114,7 @@ fn the_secrets_are_in_no_effect_body_and_no_event() {
     step(&mut p, IntentKind::ShowRecoveryPhrase);
     drop(p.source_mut().take_recovery_phrase());
     step(&mut p, IntentKind::HideRecoveryPhrase);
-    step(&mut p, IntentKind::ConfirmCeremony { words: words(DEMO_POSITIONS) });
+    step(&mut p, IntentKind::ConfirmCeremony { words: words(DEMO_POSITIONS), passphrase: pass() });
     // Whole words only: a short word is a piece of an unrelated one.
     let leaks = |text: &str| {
         text.split(|c: char| !c.is_ascii_alphanumeric())
@@ -111,9 +137,12 @@ fn a_wrong_word_is_the_end_of_the_only_attempt() {
     step(&mut p, IntentKind::HideRecoveryPhrase);
     let mut typed = words(DEMO_POSITIONS);
     typed[2] = SecretInput::new(demo_word(5));
-    step(&mut p, IntentKind::ConfirmCeremony { words: typed });
+    step(&mut p, IntentKind::ConfirmCeremony { words: typed, passphrase: pass() });
     assert_eq!(phase(p.store()), CeremonyPhase::Failed(CeremonyFailure::ConfirmationFailed));
-    let again = Intent::human(IntentKind::ConfirmCeremony { words: words(DEMO_POSITIONS) });
+    let again = Intent::human(IntentKind::ConfirmCeremony {
+        words: words(DEMO_POSITIONS),
+        passphrase: pass(),
+    });
     assert!(p.dispatch(again).is_err(), "nothing is left to confirm");
 }
 
@@ -148,7 +177,7 @@ fn a_connected_account_is_reported_as_live() {
     step(&mut p, IntentKind::ShowRecoveryPhrase);
     drop(p.source_mut().take_recovery_phrase());
     step(&mut p, IntentKind::HideRecoveryPhrase);
-    step(&mut p, IntentKind::ConfirmCeremony { words: words(DEMO_POSITIONS) });
+    step(&mut p, IntentKind::ConfirmCeremony { words: words(DEMO_POSITIONS), passphrase: pass() });
     let CeremonyPhase::Created(account) = phase(p.store()) else { panic!("account") };
     assert_eq!(account.networking, ramflux_desktop_core::Networking::Live);
 }

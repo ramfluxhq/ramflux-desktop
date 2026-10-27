@@ -44,7 +44,7 @@ use crate::root::{ConfirmHost, IntentRoot};
 use crate::route::{EntryStep, Page, page_for};
 use crate::settings::backup::BackupPanel;
 
-pub use ceremony::{CeremonyEvent, CeremonyPanel, Held};
+pub use ceremony::{CeremonyEvent, CeremonyPanel, Held, Pending};
 pub use daemon_step::failure_text as daemon_failure_text;
 pub use node_card::NodeCard;
 
@@ -230,6 +230,14 @@ impl EntryPage {
     /// Whether the ceremony screens are shown instead of the account forms.
     pub fn ceremony_open(&self) -> bool {
         self.ceremony_open
+    }
+
+    /// Whether the account the ceremony just made is in view: the shell
+    /// keeps the entry page (instead of opening the account's workspace)
+    /// until the user closes the result, which says whether the account
+    /// is connected.
+    pub fn holds_ceremony(&self, cx: &App) -> bool {
+        self.ceremony_open && self.ceremony.read(cx).shows_result(cx)
     }
 
     /// Whether the page holds a full restore's result (or its progress) in

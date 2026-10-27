@@ -239,6 +239,7 @@ fn self_participant_comes_only_from_the_account() {
             lock_state: LockState::Unlocked,
             self_participant_id: Some(ParticipantId::new("p-me")),
             secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
+            networking: ramflux_desktop_core::Networking::Live,
         }),
     );
     assert_eq!(selectors::self_participant(&feed.store), Some(ParticipantId::new("p-me")));

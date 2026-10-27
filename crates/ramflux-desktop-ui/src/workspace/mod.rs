@@ -689,6 +689,40 @@ impl Workspace {
     /// being re-established after a full restore (sending is refused by
     /// the daemon meanwhile; history and files stay readable). It stays
     /// until the daemon announces them ready.
+    /// The banner of an account that is not registered with its node yet
+    /// (it was made with a recovery phrase): it cannot send or receive, and
+    /// says so for as long as the account list says `Pending`.
+    fn networking_banner(&self, cx: &App) -> Option<gpui_kit::AnyElement> {
+        let handle = self.store.read(cx);
+        let store = handle.store();
+        // The rendered account when the store lists it, else the first
+        // unlocked one (an account made on this device is listed before the
+        // session slot it will use exists).
+        let account =
+            handle.active_account().filter(|id| store.account(id).is_some()).cloned().or_else(
+                || {
+                    store
+                        .accounts()
+                        .find(|a| a.lock_state == ramflux_desktop_core::LockState::Unlocked)
+                        .map(|a| a.id.clone())
+                },
+            )?;
+        let pending =
+            store.account(&account)?.networking == ramflux_desktop_core::Networking::Pending;
+        pending.then(|| {
+            let text = crate::i18n::tr("networking.pending_text");
+            gpui_kit::div()
+                .id("networking-banner")
+                .role(gpui_kit::Role::Status)
+                .aria_label(text.clone())
+                .test_support()
+                .px_3()
+                .pt_3()
+                .child(Alert::warning("networking-alert", text).small())
+                .into_any_element()
+        })
+    }
+
     fn secure_sessions_banner(&self, cx: &App) -> Option<gpui_kit::AnyElement> {
         let handle = self.store.read(cx);
         let store = handle.store();
@@ -735,6 +769,7 @@ impl Render for Workspace {
                     .flex_1()
                     .min_w_0()
                     .h_full()
+                    .children(self.networking_banner(cx))
                     .children(self.secure_sessions_banner(cx))
                     .child(self.call_bar.clone())
                     .child(gpui_kit::div().flex_1().min_h_0().child(self.dock_area.clone()))

@@ -25,6 +25,8 @@ gpui_kit::actions!(
         ToggleTheme,
         /// Cancel the pending hold-to-confirm request.
         CancelConfirmation,
+        /// Escape in the account creation ceremony: ask whether to cancel it.
+        CeremonyEscape,
         /// Open the command palette.
         OpenPalette,
         /// Close the command palette.
@@ -72,6 +74,9 @@ pub const CONFIRM_CONTEXT: &str = "ConfirmStrip";
 pub const SETTINGS_CONTEXT: &str = "Settings";
 /// Key context of the command palette overlay.
 pub const PALETTE_CONTEXT: &str = "Palette";
+/// Key context of the account creation ceremony.
+pub const CEREMONY_CONTEXT: &str = "Ceremony";
+
 /// Key context of a dock tool panel.
 pub const DOCK_CONTEXT: &str = "DockTool";
 
@@ -98,6 +103,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-alt-4", ToggleApprovalsDock, None),
         KeyBinding::new("secondary-alt-5", ToggleEvidenceDock, None),
         KeyBinding::new("escape", CloseDock, Some(DOCK_CONTEXT)),
+        KeyBinding::new("escape", CeremonyEscape, Some(CEREMONY_CONTEXT)),
         KeyBinding::new("ctrl-tab", NextSettingsSection, Some(SETTINGS_CONTEXT)),
         KeyBinding::new("ctrl-shift-tab", PreviousSettingsSection, Some(SETTINGS_CONTEXT)),
     ]);

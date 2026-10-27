@@ -419,9 +419,8 @@ pub enum IntentKind {
     /// Begin creating an account with a recovery phrase (born-v3). Only
     /// when the daemon offers it ([`crate::Capabilities::born_v3_creation`]).
     BeginCeremony {
-        /// What the account is for.
-        kind: AccountKind,
-        /// The name of the new account.
+        /// The name of the new account. A person's account only: an AI
+        /// identity needs a custodian the desktop does not offer yet.
         label: String,
     },
     /// Ask for the recovery phrase, once. The source hands it to the
@@ -430,12 +429,14 @@ pub enum IntentKind {
     /// The screen erased the phrase: ask which words to type back. Sent
     /// only after the erasure.
     HideRecoveryPhrase,
-    /// Type three words back; the one attempt. Exactly three secrets, in
-    /// the order of the positions asked. Not serializable.
+    /// Type three words back and set the account passphrase; the one
+    /// attempt, sent once as `{words, passphrase}`. Not serializable.
     #[serde(skip)]
     ConfirmCeremony {
-        /// The three words, resolved to list words.
+        /// The three words, resolved to list words, in the order asked.
         words: Vec<SecretInput>,
+        /// The passphrase that unlocks the account on this device.
+        passphrase: SecretInput,
     },
     /// Cancel the running ceremony; the daemon erases the phrase.
     CancelCeremony,

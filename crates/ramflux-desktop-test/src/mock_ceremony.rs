@@ -17,9 +17,9 @@
 //! may script a daemon that refuses to begin).
 
 use ramflux_desktop_core::{
-    CEREMONY_TTL_MS, Ceremony, CeremonyAccount, CeremonyFailure, CeremonyPhase, DomainEvent,
-    Effect, Networking, RecoveryPhrase, Timestamp, WordInput, methods, recovery::words,
-    resolve_word,
+    Account, AccountId, AccountKind, CEREMONY_TTL_MS, Ceremony, CeremonyAccount, CeremonyFailure,
+    CeremonyPhase, DomainEvent, Effect, EffectFailure, FailureCode, LockState, Networking,
+    RecoveryPhrase, SecureSessions, Timestamp, WordInput, methods, recovery::words, resolve_word,
 };
 use zeroize::Zeroizing;
 
@@ -59,6 +59,8 @@ pub struct MockCeremony {
     parked: Option<RecoveryPhrase>,
     /// What the created account reports for its networking.
     networking: Networking,
+    /// The passphrase each created account was given, by account id.
+    passphrases: std::collections::BTreeMap<String, Zeroizing<String>>,
 }
 
 impl Default for MockCeremony {
@@ -80,6 +82,7 @@ impl MockCeremony {
             began: 0,
             parked: None,
             networking: Networking::Pending,
+            passphrases: std::collections::BTreeMap::new(),
         }
     }
 
@@ -113,6 +116,9 @@ impl MockCeremony {
         epoch: Timestamp,
     ) -> Option<Vec<DomainEvent>> {
         let method = effect.method()?;
+        if let Some(events) = self.unlock(effect) {
+            return Some(events);
+        }
         let ours = [
             methods::CUSTODY_SHOW_ONCE,
             methods::CUSTODY_HIDDEN_CHALLENGE,
@@ -183,23 +189,71 @@ impl MockCeremony {
             return self.end(CeremonyPhase::Failed(CeremonyFailure::Invalid));
         };
         // One attempt, whatever the outcome: the ceremony is consumed.
-        let matches = secrets.len() == 3
-            && self.positions.iter().zip(secrets).all(|(position, typed)| {
-                matches!(
-                    resolve_word(typed.expose()),
-                    WordInput::Word(word) | WordInput::Prefix(word)
-                        if word == demo_word(usize::from(*position))
-                )
-            });
+        // The passphrase travels with the words (`{words, passphrase}`): a
+        // confirm without one is refused as not valid.
+        let [first, second, third, passphrase] = secrets.as_slice() else {
+            return self.end(CeremonyPhase::Failed(CeremonyFailure::Invalid));
+        };
+        if passphrase.is_empty() {
+            return self.end(CeremonyPhase::Failed(CeremonyFailure::Invalid));
+        }
+        let matches = self.positions.iter().zip([first, second, third]).all(|(position, typed)| {
+            matches!(
+                resolve_word(typed.expose()),
+                WordInput::Word(word) | WordInput::Prefix(word)
+                    if word == demo_word(usize::from(*position))
+            )
+        });
         if !matches {
             return self.end(CeremonyPhase::Failed(CeremonyFailure::ConfirmationFailed));
         }
+        let id = format!("acct-v3-{}", self.began);
+        self.passphrases.insert(id.clone(), Zeroizing::new(passphrase.expose().to_owned()));
         let account = CeremonyAccount {
-            local_account_id: format!("acct-v3-{}", self.began),
+            local_account_id: id.clone(),
             display_name: self.label.clone(),
             networking: self.networking,
         };
-        self.end(CeremonyPhase::Created(account))
+        // The ordinary account-create answer: the account is listed,
+        // unlocked, with its networking state.
+        let listed = DomainEvent::AccountUpdated(Account {
+            id: AccountId::new(id),
+            label: self.label.clone(),
+            kind: AccountKind::HumanInteractive,
+            node_id: None,
+            device_id: Some("dev-mock".to_owned()),
+            lock_state: LockState::Unlocked,
+            self_participant_id: None,
+            secure_sessions: SecureSessions::Ready,
+            networking: self.networking,
+        });
+        let mut events = vec![listed];
+        events.extend(self.end(CeremonyPhase::Created(account)));
+        events
+    }
+
+    /// Unlocking an account this ceremony made: the passphrase set at
+    /// confirm opens it; any other is refused.
+    fn unlock(&self, effect: &Effect) -> Option<Vec<DomainEvent>> {
+        let Effect::SecretCall { method, body, secrets } = effect else { return None };
+        if method != methods::ACCOUNT_UNLOCK {
+            return None;
+        }
+        let id = body.get("account_id").and_then(ramflux_desktop_core::JsonValue::as_str)?;
+        let expected = self.passphrases.get(id)?;
+        let right = secrets.first().is_some_and(|typed| typed.expose() == expected.as_str());
+        Some(vec![if right {
+            DomainEvent::AccountLockChanged {
+                account_id: AccountId::new(id),
+                lock_state: LockState::Unlocked,
+            }
+        } else {
+            DomainEvent::EffectFailed(EffectFailure {
+                method: method.clone(),
+                code: FailureCode::Daemon("wrong_passphrase".to_owned()),
+                message: "local bus error: wrong passphrase".to_owned(),
+            })
+        }])
     }
 
     /// Ends the ceremony with `phase`, erasing the phrase.
@@ -242,13 +296,20 @@ mod tests {
         Effect::SecretCall {
             method: methods::CUSTODY_CONFIRM.to_owned(),
             body: json!({}),
-            secrets: words.iter().map(|w| SecretInput::new(*w)).collect(),
+            secrets: words
+                .iter()
+                .map(|w| SecretInput::new(*w))
+                .chain([SecretInput::new("river stone lantern")])
+                .collect(),
         }
     }
 
     fn phase(events: &[DomainEvent]) -> CeremonyPhase {
-        let [DomainEvent::CeremonyUpdated(ceremony)] = events else { panic!("one update") };
-        ceremony.phase.clone()
+        let ceremony = events.iter().find_map(|event| match event {
+            DomainEvent::CeremonyUpdated(ceremony) => Some(ceremony),
+            _ => None,
+        });
+        ceremony.expect("a ceremony update").phase.clone()
     }
 
     fn begun(mock: &mut MockCeremony) {
@@ -311,6 +372,20 @@ mod tests {
         let events = mock.answer(&confirm([a, &b[..b.len().min(4)], c]), 3, EPOCH).expect("ours");
         let CeremonyPhase::Created(account) = phase(&events) else { panic!("account") };
         assert_eq!(account.display_name, "Alex");
+    }
+
+    #[test]
+    fn a_confirm_without_a_passphrase_is_refused_and_consumes_the_ceremony() {
+        let mut mock = MockCeremony::default();
+        asked(&mut mock);
+        let [a, b, c] = DEMO_POSITIONS.map(|p| demo_word(usize::from(p)));
+        let bare = Effect::SecretCall {
+            method: methods::CUSTODY_CONFIRM.to_owned(),
+            body: json!({}),
+            secrets: [a, b, c].iter().map(|w| SecretInput::new(*w)).collect(),
+        };
+        let events = mock.answer(&bare, 3, EPOCH).expect("ours");
+        assert_eq!(phase(&events), CeremonyPhase::Failed(CeremonyFailure::Invalid));
     }
 
     #[test]

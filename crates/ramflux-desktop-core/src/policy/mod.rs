@@ -186,7 +186,11 @@ fn take_secrets(kind: IntentKind) -> Vec<SecretInput> {
         | IntentKind::ExportBackup { secret, .. }
         | IntentKind::CreateBackup { secret, .. }
         | IntentKind::VerifyRestore { secret, .. } => vec![secret],
-        IntentKind::ConfirmCeremony { words } => words,
+        IntentKind::ConfirmCeremony { words, passphrase } => {
+            let mut secrets = words;
+            secrets.push(passphrase);
+            secrets
+        }
         IntentKind::ActivateDevice { code, .. } => vec![code],
         IntentKind::RotatePassphrase { current, next, .. } => vec![current, next],
         _ => Vec::new(),

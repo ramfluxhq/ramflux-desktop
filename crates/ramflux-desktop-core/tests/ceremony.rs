@@ -65,8 +65,7 @@ fn the_daemon_offers_the_ceremony_only_when_it_says_so() {
     // Declaring other methods unsupported does not switch it on.
     feed.ok(1, DomainEvent::CapabilitiesUpdated(Capabilities::default()));
     assert!(!feed.store.offers_born_v3_creation());
-    let begin =
-        IntentKind::BeginCeremony { kind: AccountKind::HumanInteractive, label: "Alex".into() };
+    let begin = IntentKind::BeginCeremony { label: "Alex".into() };
     assert_eq!(decide(&feed.store, begin).err(), Some(IntentError::CeremonyNotOffered));
     feed.ok(
         2,
@@ -172,10 +171,7 @@ fn the_ceremony_and_its_events_hold_no_phrase() {
 #[test]
 fn begin_needs_an_offer_a_name_and_no_ceremony_running() {
     let mut feed = offered();
-    let begin = |label: &str| IntentKind::BeginCeremony {
-        kind: AccountKind::HumanInteractive,
-        label: label.to_owned(),
-    };
+    let begin = |label: &str| IntentKind::BeginCeremony { label: label.to_owned() };
     assert_eq!(decide(&feed.store, begin("  ")).err(), Some(IntentError::Empty("account name")));
     let effects = decide(&feed.store, begin(" Alex ")).expect("begin");
     let [Effect::Call { method, body }] = effects.as_slice() else { panic!("one call") };
@@ -193,7 +189,10 @@ fn each_step_is_allowed_only_in_its_phase() {
     let mut feed = offered();
     let show = || IntentKind::ShowRecoveryPhrase;
     let hide = || IntentKind::HideRecoveryPhrase;
-    let confirm = || IntentKind::ConfirmCeremony { words: words(3) };
+    let confirm = || IntentKind::ConfirmCeremony {
+        words: words(3),
+        passphrase: SecretInput::new("river stone lantern"),
+    };
     for kind in [show(), hide(), confirm(), IntentKind::CancelCeremony] {
         assert_eq!(decide(&feed.store, kind).err(), Some(IntentError::CeremonyPhase));
     }
@@ -212,7 +211,7 @@ fn each_step_is_allowed_only_in_its_phase() {
         panic!("one secret call")
     };
     assert_eq!(method, methods::CUSTODY_CONFIRM);
-    assert_eq!(secrets.len(), 3);
+    assert_eq!(secrets.len(), 4, "three words, then the passphrase");
     assert!(!body.to_string().contains("abandon"), "the words travel beside the body");
     let cancel = decide(&feed.store, IntentKind::CancelCeremony).expect("cancel");
     assert_eq!(cancel[0].method(), Some(methods::CUSTODY_CANCEL));
@@ -227,11 +226,17 @@ fn the_one_attempt_is_not_spent_on_the_wrong_number_of_words() {
     feed.ok(3, update(CeremonyPhase::PhraseReady));
     feed.ok(4, update(challenged()));
     for count in [0, 2, 4] {
-        let kind = IntentKind::ConfirmCeremony { words: words(count) };
+        let kind = IntentKind::ConfirmCeremony {
+            words: words(count),
+            passphrase: SecretInput::new("river stone lantern"),
+        };
         assert_eq!(decide(&feed.store, kind).err(), Some(IntentError::CeremonyWords));
     }
     let blank = vec![SecretInput::new("abandon"), SecretInput::new(""), SecretInput::new("zoo")];
-    let kind = IntentKind::ConfirmCeremony { words: blank };
+    let kind = IntentKind::ConfirmCeremony {
+        words: blank,
+        passphrase: SecretInput::new("river stone lantern"),
+    };
     assert_eq!(decide(&feed.store, kind).err(), Some(IntentError::CeremonyWords));
 }
 
@@ -252,10 +257,20 @@ fn an_agent_never_creates_an_account_with_a_phrase() {
     );
     let intent = Intent::agent(
         ParticipantId::new("p-orbit"),
-        IntentKind::BeginCeremony { kind: AccountKind::HumanInteractive, label: "Alex".into() },
+        IntentKind::BeginCeremony { label: "Alex".into() },
     );
     assert!(matches!(
         handle_intent(&feed.store, intent, Timestamp(10)),
         Err(IntentError::AgentForbidden(_))
     ));
+}
+
+#[test]
+fn confirming_needs_a_passphrase() {
+    let mut feed = offered();
+    feed.ok(2, update(CeremonyPhase::Prepared));
+    feed.ok(3, update(CeremonyPhase::PhraseReady));
+    feed.ok(4, update(challenged()));
+    let kind = IntentKind::ConfirmCeremony { words: words(3), passphrase: SecretInput::new("") };
+    assert_eq!(decide(&feed.store, kind).err(), Some(IntentError::Empty("account passphrase")));
 }

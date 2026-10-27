@@ -15,12 +15,12 @@ use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
 use crate::intent::{IntentKind, methods};
-use crate::model::{AccountKind, CHALLENGE_WORDS, CeremonyPhase};
+use crate::model::{CHALLENGE_WORDS, CeremonyPhase};
 
 /// Decides ceremony kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
     Some(match kind {
-        IntentKind::BeginCeremony { kind, label } => {
+        IntentKind::BeginCeremony { label } => {
             p.human_only("create an account with a recovery phrase").and_then(|()| {
                 if !p.store.offers_born_v3_creation() {
                     return Err(IntentError::CeremonyNotOffered);
@@ -33,7 +33,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 }
                 Ok(Decision::Call(
                     methods::CUSTODY_BEGIN,
-                    json!({ "display_name": label.trim(), "principal_kind": principal_kind(*kind) }),
+                    json!({ "display_name": label.trim(), "principal_kind": "human" }),
                 ))
             })
         }
@@ -45,7 +45,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             &CeremonyPhase::PhraseReady,
             Decision::Call(methods::CUSTODY_HIDDEN_CHALLENGE, json!({})),
         ),
-        IntentKind::ConfirmCeremony { words } => {
+        IntentKind::ConfirmCeremony { words, passphrase } => {
             p.human_only("create an account with a recovery phrase").and_then(|()| {
                 let asked = matches!(
                     p.store.ceremony().map(|c| &c.phase),
@@ -56,6 +56,9 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 }
                 if words.len() != CHALLENGE_WORDS || words.iter().any(|word| word.is_empty()) {
                     return Err(IntentError::CeremonyWords);
+                }
+                if passphrase.is_empty() {
+                    return Err(IntentError::Empty("account passphrase"));
                 }
                 Ok(Decision::SecretCall(methods::CUSTODY_CONFIRM, json!({})))
             })
@@ -78,13 +81,5 @@ fn at(p: &Policy<'_>, phase: &CeremonyPhase, decision: Decision) -> Result<Decis
     match p.store.ceremony() {
         Some(ceremony) if &ceremony.phase == phase => Ok(decision),
         _ => Err(IntentError::CeremonyPhase),
-    }
-}
-
-/// The principal kind the daemon is told.
-fn principal_kind(kind: AccountKind) -> &'static str {
-    match kind {
-        AccountKind::HumanInteractive => "human",
-        AccountKind::HeadlessAi => "headless_ai",
     }
 }

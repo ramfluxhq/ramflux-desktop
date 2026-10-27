@@ -814,3 +814,10 @@ secure_sessions:
   reestablishing:
     en: "Re-establishing secure sessions… History and files are readable; sending resumes once this device is activated again."
     zh-CN: "正在重新建立安全会话……历史记录和文件可以查看，待本设备重新激活后即可发送。"
+networking:
+  pending:
+    en: "Networking pending"
+    zh-CN: "等待联网"
+  pending_text:
+    en: "Networking pending: this account is not registered with a node yet, so it cannot send or receive messages."
+    zh-CN: "等待联网：此账户尚未在节点上注册，因此暂时无法收发消息。"

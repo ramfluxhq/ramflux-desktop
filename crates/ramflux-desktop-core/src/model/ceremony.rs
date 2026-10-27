@@ -50,11 +50,13 @@ pub enum CeremonyFailure {
 }
 
 /// Whether the new account is connected to its node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Networking {
     /// Registered and connected.
+    #[default]
     Live,
-    /// Exists on this device only: registration comes later.
+    /// Exists on this device only: registration comes later. Sending and
+    /// receiving are not possible until then.
     Pending,
 }
 

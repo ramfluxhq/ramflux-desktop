@@ -69,6 +69,11 @@ pub struct Account {
     /// after a restore.
     #[serde(default)]
     pub secure_sessions: SecureSessions,
+    /// Whether the account is registered with its node (`account.list`
+    /// state): `Pending` for an account made by the recovery phrase flow
+    /// until registration exists.
+    #[serde(default)]
+    pub networking: super::Networking,
 }
 
 /// How a node endpoint was pinned.

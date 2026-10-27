@@ -286,6 +286,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             lock_state: LockState::Unlocked,
             self_participant_id: Some(ParticipantId::new("p-me")),
             secure_sessions: ramflux_desktop_core::SecureSessions::Reestablishing,
+            networking: ramflux_desktop_core::Networking::Pending,
         }),
         DomainEvent::NodeUpserted(Node {
             id: NodeId::new("n-1"),
@@ -789,7 +790,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::HangUpCall { call_id: "k-1".into() },
         IntentKind::InstallRestore { job_id: "j-1".into() },
         IntentKind::CancelBackupJob { job_id: "j-1".into() },
-        IntentKind::BeginCeremony { kind: AccountKind::HumanInteractive, label: "Alex".into() },
+        IntentKind::BeginCeremony { label: "Alex".into() },
         IntentKind::ShowRecoveryPhrase,
         IntentKind::HideRecoveryPhrase,
         IntentKind::CancelCeremony,

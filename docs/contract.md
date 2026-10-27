@@ -1143,12 +1143,12 @@ buffer is zeroized on drop. No event, scenario, store row, effect body or
 inspector entry carries a word; the words the user types back are
 `SecretInput`s beside an empty body, as the backup passphrase is.
 
-**Intents** (all human only). `BeginCeremony {kind, label}` → `account.create`
-`{display_name, principal_kind}` (no seeds, no secret; answers
+**Intents** (all human only). `BeginCeremony {label}` → `account.create`
+`{display_name, principal_kind: "human"}` (a person's account only: an AI identity needs a custodian the desktop does not offer) (no seeds, no secret; answers
 `{ceremony: pending, ceremony_id}`); `ShowRecoveryPhrase` →
 `account.create.show_once`; `HideRecoveryPhrase` →
-`account.create.hidden_challenge`; `ConfirmCeremony {words}` (exactly three
-non-empty secrets, in the order asked) → `account.create.confirm` (answers the
+`account.create.hidden_challenge`; `ConfirmCeremony {words, passphrase}` (exactly three
+non-empty words in the order asked, then the account passphrase: four secrets) → `account.create.confirm {words, passphrase}` (answers the
 ordinary account-create response: account id, unlocked, networking `live` or
 `networking_pending`); `CancelCeremony` → `account.create.cancel`. Each is allowed only in its
 phase (begin when none runs; show in `Prepared`; hide in `PhraseReady`;
@@ -1166,7 +1166,8 @@ confirm in `Challenged`; cancel while it runs).
    erases the phrase from the UI state *first* and only then sends
    `HideRecoveryPhrase`, so the daemon chooses the positions after the
    screen is empty.
-4. Type three words back, at the positions the store reports. Each input
+4. Type three words back (Continue keeps them as secrets in the panel and sends nothing), then set the account passphrase: typed twice under the rules of the backup passphrase (`settings::backup::text::Strength`: at least 12 characters and 16 bytes, strength hint, a mismatch named) with the same copy; one submit sends `confirm {words, passphrase}`. The passphrase unlocks the account on this device like any other. Words and passphrase are held only as `SecretInput`s and dropped on cancel, expiry, failure and close.
+   The words are asked at the positions the store reports. Each input
    completes from the English BIP39 list (`recovery::words`): the word or its
    first four letters (unique in the list), read as the backend reads it
    (NFKD, ASCII lowercase, one token, at most 128 bytes) and sent as the full
@@ -1201,3 +1202,33 @@ non-production sequence of 24 different list words, the positions asked are
 deadline ends the ceremony (`Invalid`, `Expired`) and erases the phrase,
 confirm consumes the ceremony whatever the outcome. Fixture `s13_born_v3`
 reports the capability after two seconds.
+
+**Pending requests (r2).** Every control that sends a request (continue,
+show, "I wrote them down", confirm, cancel) is off and busy from its press
+until the daemon answers (a newer ceremony revision, or a newer failed
+effect, or a refused intent); the methods refuse a second send as well. While
+the hide is awaited the screen shows a neutral "choosing three words" line
+(status, not alert); "no longer available" is for a phrase that was never
+received after the daemon answered.
+
+**Networking state on the account (r2).** `Account.networking` (`Live`,
+`Pending`; default `Live`) is the account list's state. The mock adds the
+account (unlocked, `Pending`) with the ceremony's result. The done screen
+stays in view until closed even though the account is listed, then the
+workspace shows a persistent "networking pending" banner and the account
+rows of the entry page a tag, for as long as the list says `Pending`.
+
+**Keyboard and window (r2).** Focus moves to the first control of each step
+(the input to type in, else the first button). Escape asks "Cancel this
+setup?" (Escape again or "Keep going" dismisses; the buttons cancel at once).
+Closing the window sends `account.create.cancel` (best effort; the daemon
+also lets go when the connection drops). Word cells are at least 8.5rem wide
+and wrap to fewer columns instead of clipping.
+
+**More limits (r2).** The grid's per-frame copies of each word (the cell
+text and its accessibility label, about two per word per frame while drawn;
+the countdown redraws every second) are plain strings in the freed heap and
+are not zeroized. The cell label "Word N: <word>" is published to the platform
+accessibility tree, which any process with accessibility permission can read,
+not only a screen reader. Both match what is on screen; they are accepted and
+documented, not removed.
