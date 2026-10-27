@@ -19,6 +19,11 @@ pub struct Capabilities {
     /// Contract method name to reason.
     #[serde(default)]
     pub unsupported: BTreeMap<String, String>,
+    /// The daemon offers account creation with a recovery phrase (born-v3):
+    /// its `enable_born_v3_creation` option is on. Off unless the daemon
+    /// says so, whatever `unsupported` lists.
+    #[serde(default)]
+    pub born_v3_creation: bool,
 }
 
 impl Capabilities {

@@ -1,0 +1,439 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Span Brain
+
+//! Account creation with a recovery phrase (born-v3), in the production
+//! window on the mock source, read through the accessibility tree: the
+//! entry is there only when the daemon says it offers the ceremony; the 24
+//! words are shown once, numbered, and covered while the window is not
+//! active; "I wrote them down" drops the phrase from the UI state before
+//! the daemon is asked for the words; three words are typed back (with
+//! prefix completion) for the one attempt; the five minutes are visible
+//! when they pass; cancel is always there; and the result says the account
+//! is networking pending and no more.
+
+mod common;
+
+use common::*;
+use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
+use gpui_kit::{AppContext as _, Entity, Role, TestAppContext, WindowHandle};
+use ramflux_desktop_core::{CEREMONY_TTL_MS, CeremonyFailure, CeremonyPhase, PHRASE_WORDS};
+use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
+use ramflux_desktop_ui::Shell;
+use ramflux_desktop_ui::entry::CeremonyPanel;
+use ramflux_desktop_ui::i18n::{tr, tr_args};
+use ramflux_desktop_ui::route::{EntryStep, Page};
+
+type Handle = WindowHandle<gpui_kit::base::Root>;
+
+/// The window on the account step, before the daemon offers the ceremony.
+fn account_step(cx: &mut TestAppContext) -> (Handle, Entity<Shell>) {
+    let (handle, shell) = open(cx, "s13_born_v3");
+    // A test window starts inactive; a person looks at an active one.
+    activate(cx, handle);
+    advance(cx, 500);
+    assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account));
+    (handle, shell)
+}
+
+/// The window with the entry offered.
+fn offered(cx: &mut TestAppContext) -> (Handle, Entity<Shell>) {
+    let (handle, shell) = account_step(cx);
+    advance(cx, 2_000);
+    (handle, shell)
+}
+
+fn panel(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Entity<CeremonyPanel> {
+    cx.update(|cx| shell.read(cx).entry().read(cx).ceremony().clone())
+}
+
+fn phase(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Option<CeremonyPhase> {
+    with_store(cx, shell, |s| s.ceremony().map(|c| c.phase.clone()))
+}
+
+/// Words the panel holds, as the state struct counts them.
+fn held_words(cx: &mut TestAppContext, shell: &Entity<Shell>) -> usize {
+    let panel = panel(cx, shell);
+    cx.update(|cx| panel.read(cx).held().words())
+}
+
+fn label_of(cx: &mut TestAppContext, handle: Handle, id: &'static str) -> Option<String> {
+    in_window(cx, handle, move |window, _| {
+        window.try_find(id).and_then(|e| e.label().map(str::to_owned))
+    })
+}
+
+fn cell(number: usize) -> String {
+    tr_args("ceremony.show.cell", &[("number", &number.to_string()), ("word", demo_word(number))])
+        .to_string()
+}
+
+/// Whether any painted node is named with one of the phrase's words.
+fn any_word_named(cx: &mut TestAppContext, handle: Handle) -> bool {
+    (1..=PHRASE_WORDS).any(|n| has_label(cx, handle, &cell(n)))
+}
+
+/// Through the name step to the ready screen.
+fn begin(cx: &mut TestAppContext, handle: Handle) {
+    if exists(cx, handle, "account-create-phrase") {
+        click(cx, handle, "account-create-phrase");
+    }
+    type_into(cx, handle, "ceremony-name-input", "Alex");
+    click(cx, handle, "ceremony-continue");
+    advance(cx, 200);
+}
+
+/// Through the ready screen to the 24 words.
+fn show(cx: &mut TestAppContext, handle: Handle) {
+    click(cx, handle, "ceremony-show");
+    advance(cx, 200);
+}
+
+/// To the confirmation screen.
+fn challenged(cx: &mut TestAppContext, handle: Handle) {
+    begin(cx, handle);
+    show(cx, handle);
+    click(cx, handle, "ceremony-hide");
+    advance(cx, 200);
+}
+
+fn type_words(cx: &mut TestAppContext, handle: Handle, words: [&str; 3]) {
+    for (id, word) in
+        ["ceremony-word-1", "ceremony-word-2", "ceremony-word-3"].into_iter().zip(words)
+    {
+        type_into(cx, handle, id, word);
+    }
+}
+
+fn right_words() -> [&'static str; 3] {
+    DEMO_POSITIONS.map(|p| demo_word(usize::from(p)))
+}
+
+fn deactivate(cx: &mut TestAppContext, handle: Handle) {
+    gpui_kit::VisualTestContext::from_window(handle.into(), cx).deactivate_window();
+    cx.run_until_parked();
+}
+
+fn activate(cx: &mut TestAppContext, handle: Handle) {
+    cx.update_window(handle.into(), |_, window, _| window.activate_window()).expect("window");
+    cx.run_until_parked();
+}
+
+fn disabled(cx: &mut TestAppContext, handle: Handle, id: &'static str) -> Option<bool> {
+    in_window(cx, handle, move |window, _| window.find(id).disabled())
+}
+
+#[gpui_kit::test]
+fn the_entry_is_there_only_when_the_daemon_offers_the_ceremony(cx: &mut TestAppContext) {
+    let (handle, shell) = account_step(cx);
+    assert!(exists(cx, handle, "account-create"), "an older daemon keeps the passphrase form");
+    assert!(!exists(cx, handle, "account-create-phrase"), "not offered yet: no entry");
+    assert!(!has_label(cx, handle, &tr("ceremony.entry.button")));
+    assert!(!with_store(cx, &shell, |s| s.offers_born_v3_creation()));
+
+    advance(cx, 2_000);
+    assert!(with_store(cx, &shell, |s| s.offers_born_v3_creation()));
+    // The phrase is the creation path of such a daemon, not an extra: the
+    // passphrase form is gone.
+    assert!(!exists(cx, handle, "account-create"), "no one-shot creation beside it");
+    assert!(!exists(cx, handle, "account-secret"));
+    assert!(exists(cx, handle, "account-create-phrase"), "the phrase creation is the path");
+    assert!(has_label(cx, handle, &tr("ceremony.entry.button")));
+}
+
+#[gpui_kit::test]
+fn the_first_screens_ask_for_a_name_and_warn_before_any_word_is_shown(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    click(cx, handle, "account-create-phrase");
+    assert!(exists(cx, handle, "ceremony-name"));
+    assert!(!exists(cx, handle, "account-create-phrase"), "the ceremony takes the forms' place");
+    assert_eq!(disabled(cx, handle, "ceremony-continue"), Some(true), "a name is needed");
+
+    type_into(cx, handle, "ceremony-name-input", "Alex");
+    click(cx, handle, "ceremony-continue");
+    advance(cx, 200);
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Prepared));
+    assert!(exists(cx, handle, "ceremony-ready"));
+    for key in ["ceremony.ready.offline", "ceremony.ready.capture", "ceremony.ready.once"] {
+        assert!(has_label(cx, handle, &tr(key)), "{key} is announced");
+    }
+    assert!(!exists(cx, handle, "ceremony-grid"), "nothing is shown before the user asks");
+    assert_eq!(held_words(cx, &shell), 0);
+    assert!(exists(cx, handle, "ceremony-cancel"), "cancel is there");
+}
+
+#[gpui_kit::test]
+fn the_24_words_are_shown_numbered_with_the_warning_and_no_copy_button(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    begin(cx, handle);
+    show(cx, handle);
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::PhraseReady));
+    assert_eq!(held_words(cx, &shell), PHRASE_WORDS);
+
+    assert!(has_label(cx, handle, &tr("ceremony.show.warning")), "the warning is announced");
+    for number in 1..=PHRASE_WORDS {
+        assert!(
+            has_label(cx, handle, &cell(number)),
+            "word {number} is numbered: {}",
+            cell(number)
+        );
+    }
+    let items = in_window(cx, handle, |window, _| window.find_all_by_role(Role::ListItem).len());
+    assert!(items >= PHRASE_WORDS, "the grid lists the words: {items}");
+    // Nothing offers to copy them.
+    let copy = in_window(cx, handle, |window, _| {
+        window
+            .find_all_by_role(Role::Button)
+            .iter()
+            .filter_map(|b| b.label().map(str::to_lowercase))
+            .any(|label| label.contains("copy") || label.contains("clipboard"))
+    });
+    assert!(!copy, "no copy button");
+    assert!(
+        has_label(cx, handle, &tr("ceremony.show.no_copy"))
+            || exists(cx, handle, "ceremony-phrase")
+    );
+    assert!(exists(cx, handle, "ceremony-cancel"), "cancel is there");
+    assert!(exists(cx, handle, "ceremony-countdown"), "the time left is shown");
+}
+
+#[gpui_kit::test]
+fn the_words_are_covered_while_the_window_is_not_active(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    begin(cx, handle);
+    show(cx, handle);
+    assert!(has_label(cx, handle, &cell(1)));
+
+    deactivate(cx, handle);
+    let panel = panel(cx, &shell);
+    assert!(cx.update(|cx| panel.read(cx).held().is_covered()), "covered on blur");
+    assert!(!any_word_named(cx, handle), "no word is drawn while covered");
+    let hidden = tr_args("ceremony.show.cell_hidden", &[("number", "1")]).to_string();
+    assert!(has_label(cx, handle, &hidden), "the cells say they are hidden");
+    assert!(has_label(cx, handle, &tr("ceremony.show.covered")), "and why");
+    assert_eq!(held_words(cx, &shell), PHRASE_WORDS, "covered, not lost: the phrase is shown once");
+
+    // Not revealed while the window is still not active.
+    click(cx, handle, "ceremony-reveal");
+    assert!(!any_word_named(cx, handle));
+
+    activate(cx, handle);
+    assert!(!any_word_named(cx, handle), "refocusing does not reveal by itself");
+    click(cx, handle, "ceremony-reveal");
+    assert!(has_label(cx, handle, &cell(1)), "revealed on request");
+}
+
+#[gpui_kit::test]
+fn hide_drops_the_phrase_from_the_ui_state_before_the_words_are_asked(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    begin(cx, handle);
+    show(cx, handle);
+    assert_eq!(held_words(cx, &shell), PHRASE_WORDS);
+
+    click(cx, handle, "ceremony-hide");
+    // The panel's state struct holds no words: checked before the daemon
+    // answered, and after.
+    assert_eq!(held_words(cx, &shell), 0, "erased at once");
+    advance(cx, 200);
+    let panel = panel(cx, &shell);
+    cx.update(|cx| {
+        let held = panel.read(cx).held();
+        assert!(!held.holds_phrase());
+        assert_eq!(held.words(), 0);
+        assert!(!format!("{held:?}").contains(demo_word(3)), "nothing to print");
+    });
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Challenged { positions: DEMO_POSITIONS }));
+    assert!(!exists(cx, handle, "ceremony-grid"), "the grid is gone");
+    assert!(!any_word_named(cx, handle), "no painted node carries a word");
+    // The effect that asked for the words came after the erasure, and no
+    // body of any effect carries a word.
+    let labels = effects(cx, &shell);
+    assert!(labels.iter().any(|l| l == "account.create.hidden_challenge"), "{labels:?}");
+    for (label, body) in bodies(cx, &shell) {
+        let text = body.to_string();
+        assert!(
+            (1..=PHRASE_WORDS).all(|n| !text.contains(&format!("\"{}\"", demo_word(n)))),
+            "{label}"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn the_asked_words_complete_from_a_prefix_and_confirming_creates_the_account(
+    cx: &mut TestAppContext,
+) {
+    let (handle, shell) = offered(cx);
+    challenged(cx, handle);
+    assert!(exists(cx, handle, "ceremony-confirm"));
+    for position in DEMO_POSITIONS {
+        let label = tr_args("ceremony.confirm.word", &[("number", &position.to_string())]);
+        assert!(has_label(cx, handle, &label), "word {position} is asked");
+    }
+    assert!(has_label(cx, handle, &tr("ceremony.confirm.once")), "the one attempt is said");
+    assert_eq!(disabled(cx, handle, "ceremony-confirm-submit"), Some(true));
+
+    let [a, b, c] = right_words();
+    // The first word as its first four letters.
+    let prefix: String = a.chars().take(4).collect();
+    type_words(cx, handle, [&prefix, b, c]);
+    let reads = tr_args("ceremony.confirm.reads", &[("word", a)]).to_string();
+    assert!(has_label(cx, handle, &reads), "the prefix is completed: {reads}");
+    assert_ne!(disabled(cx, handle, "ceremony-confirm-submit"), Some(true));
+
+    click(cx, handle, "ceremony-confirm-submit");
+    advance(cx, 200);
+    assert!(matches!(phase(cx, &shell), Some(CeremonyPhase::Created(_))));
+    // The typed words are gone from the inputs.
+    let panel = panel(cx, &shell);
+    cx.update(|cx| {
+        assert!(panel.read(cx).word_inputs().iter().all(|i| i.read(cx).value().is_empty()));
+    });
+    // The result says what is true and no more.
+    assert!(exists(cx, handle, "ceremony-done"));
+    assert!(has_label(cx, handle, &tr("ceremony.done.state_text")));
+    let text = tr_args("ceremony.done.text", &[("name", "Alex")]).to_string();
+    assert!(has_label(cx, handle, &text), "{text}");
+    assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account), "no account is opened yet");
+
+    click(cx, handle, "ceremony-done-close");
+    assert!(exists(cx, handle, "account-create-phrase"), "back to the forms");
+    assert!(!exists(cx, handle, "ceremony-done"));
+}
+
+#[gpui_kit::test]
+fn a_word_that_is_not_a_recovery_word_does_not_spend_the_attempt(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    challenged(cx, handle);
+    let [_, b, c] = right_words();
+    type_words(cx, handle, ["zzzzz", b, c]);
+    assert!(has_label(cx, handle, &tr("ceremony.confirm.unknown")));
+    assert_eq!(disabled(cx, handle, "ceremony-confirm-submit"), Some(true));
+    click(cx, handle, "ceremony-confirm-submit");
+    advance(cx, 200);
+    assert_eq!(
+        phase(cx, &shell),
+        Some(CeremonyPhase::Challenged { positions: DEMO_POSITIONS }),
+        "nothing was sent"
+    );
+    assert!(!effects(cx, &shell).iter().any(|l| l.starts_with("account.create.confirm")));
+}
+
+#[gpui_kit::test]
+fn a_wrong_word_ends_the_setup_with_the_backends_error(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    challenged(cx, handle);
+    let [a, b, _] = right_words();
+    // A real recovery word, but not the one asked for.
+    type_words(cx, handle, [a, b, demo_word(5)]);
+    click(cx, handle, "ceremony-confirm-submit");
+    advance(cx, 200);
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Failed(CeremonyFailure::ConfirmationFailed)));
+    assert!(exists(cx, handle, "ceremony-ended"));
+    assert!(has_label(cx, handle, &tr("ceremony.ended.mismatch")), "the error is announced");
+    assert!(!exists(cx, handle, "ceremony-confirm"), "no second attempt");
+    assert!(!exists(cx, handle, "ceremony-done"), "no account");
+    assert_eq!(held_words(cx, &shell), 0);
+
+    // Starting over begins with the name again and a fresh ceremony.
+    click(cx, handle, "ceremony-restart");
+    assert!(exists(cx, handle, "ceremony-name"));
+    assert!(!exists(cx, handle, "ceremony-ended"));
+}
+
+#[gpui_kit::test]
+fn the_five_minutes_are_visible_and_an_expired_setup_holds_nothing(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    begin(cx, handle);
+    show(cx, handle);
+    let first = label_of(cx, handle, "ceremony-countdown").expect("countdown");
+    assert!(first.contains("5:00") || first.contains("4:5"), "{first}");
+    advance(cx, 61_000);
+    let later = label_of(cx, handle, "ceremony-countdown").expect("countdown");
+    assert_ne!(first, later, "the countdown moves");
+    assert!(later.contains("3:5") || later.contains("3:4"), "{later}");
+    assert_eq!(held_words(cx, &shell), PHRASE_WORDS);
+
+    advance(cx, u64::try_from(CEREMONY_TTL_MS).unwrap_or(0));
+    assert!(!exists(cx, handle, "ceremony-countdown"));
+    assert!(exists(cx, handle, "ceremony-ended"));
+    assert!(has_label(cx, handle, &tr("ceremony.ended.expired")), "the expiry is announced");
+    let role = in_window(cx, handle, |window, _| window.find("ceremony-ended-text").role());
+    assert_eq!(role, Some(Role::Alert));
+    assert_eq!(held_words(cx, &shell), 0, "the phrase went with it");
+    assert!(!any_word_named(cx, handle));
+    let panel = panel(cx, &shell);
+    assert!(cx.update(|cx| panel.read(cx).expired_seen()));
+    // The daemon was told to let go, and the expiry stays in view after it did.
+    assert!(effects(cx, &shell).iter().any(|l| l == "account.create.cancel"));
+    advance(cx, 1_000);
+    assert!(has_label(cx, handle, &tr("ceremony.ended.expired")));
+    assert!(!has_label(cx, handle, &tr("ceremony.ended.cancelled")));
+}
+
+#[gpui_kit::test]
+fn cancel_is_on_every_screen_and_erases_the_phrase(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    begin(cx, handle);
+    assert!(exists(cx, handle, "ceremony-cancel"), "ready screen");
+    show(cx, handle);
+    assert!(exists(cx, handle, "ceremony-cancel"), "phrase screen");
+    click(cx, handle, "ceremony-cancel");
+    advance(cx, 200);
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Cancelled));
+    assert_eq!(held_words(cx, &shell), 0, "cancelled: nothing held");
+    assert!(!any_word_named(cx, handle));
+    assert!(has_label(cx, handle, &tr("ceremony.ended.cancelled")));
+
+    // From the confirmation too.
+    click(cx, handle, "ceremony-restart");
+    challenged(cx, handle);
+    assert!(exists(cx, handle, "ceremony-cancel"), "confirm screen");
+    type_words(cx, handle, [demo_word(3), "", ""]);
+    click(cx, handle, "ceremony-cancel");
+    advance(cx, 200);
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Cancelled));
+    let panel = panel(cx, &shell);
+    cx.update(|cx| {
+        assert!(panel.read(cx).word_inputs().iter().all(|i| i.read(cx).value().is_empty()));
+    });
+    // Closing returns to the forms.
+    click(cx, handle, "ceremony-close");
+    assert!(exists(cx, handle, "account-create-phrase"));
+}
+
+#[gpui_kit::test]
+fn backing_out_of_the_name_step_returns_to_the_forms(cx: &mut TestAppContext) {
+    let (handle, _shell) = offered(cx);
+    click(cx, handle, "account-create-phrase");
+    assert!(exists(cx, handle, "ceremony-name"));
+    click(cx, handle, "ceremony-cancel");
+    assert!(exists(cx, handle, "account-create-phrase"));
+    assert!(!exists(cx, handle, "ceremony-name"));
+}
+
+#[gpui_kit::test]
+fn every_control_of_the_ceremony_has_a_role_and_a_name(cx: &mut TestAppContext) {
+    const INTERACTIVE: [Role; 4] = [Role::Button, Role::TextInput, Role::PasswordInput, Role::Link];
+    let unnamed = |cx: &mut TestAppContext, handle: Handle| -> Vec<String> {
+        in_window(cx, handle, |window, _| {
+            INTERACTIVE
+                .iter()
+                .flat_map(|role| window.find_all_by_role(*role))
+                .filter(|e| e.visible() && e.label().is_none_or(|l| l.trim().is_empty()))
+                .map(|e| format!("{:?} {:?}", e.role(), e.path().last()))
+                .collect()
+        })
+    };
+    let (handle, _shell) = offered(cx);
+    click(cx, handle, "account-create-phrase");
+    assert_eq!(unnamed(cx, handle), Vec::<String>::new(), "name screen");
+    type_into(cx, handle, "ceremony-name-input", "Alex");
+    click(cx, handle, "ceremony-continue");
+    advance(cx, 200);
+    assert_eq!(unnamed(cx, handle), Vec::<String>::new(), "ready screen");
+    show(cx, handle);
+    assert_eq!(unnamed(cx, handle), Vec::<String>::new(), "phrase screen");
+    click(cx, handle, "ceremony-hide");
+    advance(cx, 200);
+    type_into(cx, handle, "ceremony-word-1", "ab");
+    assert_eq!(unnamed(cx, handle), Vec::<String>::new(), "confirm screen with suggestions");
+}

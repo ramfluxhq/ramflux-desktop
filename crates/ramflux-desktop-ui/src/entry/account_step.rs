@@ -137,6 +137,10 @@ impl EntryPage {
                 .into_any_element()
         } else if self.awaits_session(cx) {
             self.render_session_wait(cx).into_any_element()
+        } else if self.ceremony_open && accounts.is_empty() {
+            // The ceremony takes the place of the forms; every way out
+            // (cancel, done, close) comes back to them.
+            self.ceremony.clone().into_any_element()
         } else if accounts.is_empty() {
             self.render_paths(&store, cx).into_any_element()
         } else {
@@ -414,9 +418,16 @@ impl EntryPage {
             (AccountKind::HumanInteractive, i18n::account_kind(AccountKind::HumanInteractive)),
             (AccountKind::HeadlessAi, i18n::account_kind(AccountKind::HeadlessAi)),
         ];
+        let kind = self.segment("entry-kind", &kinds, self.kind, |this, kind| this.kind = kind, cx);
+        // A daemon that offers the recovery phrase has no other way to
+        // create an account: the phrase is the primary path. An older
+        // daemon keeps the passphrase form.
+        if self.store.read(cx).store().offers_born_v3_creation() {
+            return self.render_phrase_entry(kind, cx);
+        }
         v_flex()
             .gap_3()
-            .child(self.segment("entry-kind", &kinds, self.kind, |this, kind| this.kind = kind, cx))
+            .child(kind)
             .child(Self::field(
                 "entry.create.label",
                 &self.inputs.label,
@@ -437,6 +448,36 @@ impl EntryPage {
                         .primary()
                         .label(tr("entry.create.submit"))
                         .on_click(cx.listener(|this, _, window, cx| this.create(window, cx))),
+                ),
+            )
+            .into_any_element()
+    }
+
+    /// "Create account with recovery phrase": the creation path of a daemon
+    /// that offers it (it replaces the passphrase form).
+    fn render_phrase_entry(&self, kind: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+        v_flex()
+            .id("account-create-phrase-entry")
+            .test_support()
+            .gap_3()
+            .child(kind)
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(tr("ceremony.entry.help")),
+            )
+            .child(
+                h_flex().child(
+                    Button::new("account-create-phrase")
+                        .primary()
+                        .label(tr("ceremony.entry.button"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            let kind = this.kind;
+                            this.ceremony.update(cx, |panel, cx| panel.open(kind, window, cx));
+                            this.ceremony_open = true;
+                            cx.notify();
+                        })),
                 ),
             )
             .into_any_element()

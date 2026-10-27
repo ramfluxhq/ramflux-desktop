@@ -128,6 +128,18 @@ pub const RESTORE_VERIFY: &str = "restore.verify";
 pub const RESTORE_INSTALL: &str = "restore.install";
 /// Cancel a running backup, or a restore before it installs.
 pub const BACKUP_CANCEL: &str = "backup.cancel";
+/// Start creating an account: takes no seeds, answers `{ceremony: pending,
+/// ceremony_id}`. The same string as [`ACCOUNT_CREATE`], told apart by
+/// carrying no secret (the one-shot create is gone once a daemon offers this).
+pub const CUSTODY_BEGIN: &str = "account.create";
+/// Hand the recovery phrase out, once.
+pub const CUSTODY_SHOW_ONCE: &str = "account.create.show_once";
+/// The phrase was erased from the screen: choose the three words to ask.
+pub const CUSTODY_HIDDEN_CHALLENGE: &str = "account.create.hidden_challenge";
+/// Check the three words and create the account (carries secrets).
+pub const CUSTODY_CONFIRM: &str = "account.create.confirm";
+/// Cancel the ceremony and erase the phrase.
+pub const CUSTODY_CANCEL: &str = "account.create.cancel";
 /// Join an existing identity as a new device (carries a secret).
 pub const DEVICE_ACTIVATE: &str = "device.activate";
 /// Revoke a device.

@@ -1,0 +1,156 @@
+_version: 2
+ceremony:
+  title:
+    en: "Create account with a recovery phrase"
+    zh-CN: "使用恢复短语创建账户"
+  entry:
+    button:
+      en: "Create account with recovery phrase"
+      zh-CN: "使用恢复短语创建账户"
+    help:
+      en: "Accounts are protected by 24 words that only you hold. No one can reset them for you."
+      zh-CN: "账户由 24 个只有你持有的单词保护。任何人都无法替你重置。"
+  name:
+    label:
+      en: "Account name"
+      zh-CN: "账户名称"
+    placeholder:
+      en: "Account name"
+      zh-CN: "账户名称"
+    help:
+      en: "Creating the account happens on this device. Connecting it to a node comes later."
+      zh-CN: "账户在这台设备上创建。连接节点是之后的步骤。"
+  continue:
+    en: "Continue"
+    zh-CN: "继续"
+  back:
+    en: "Back"
+    zh-CN: "返回"
+  cancel:
+    en: "Cancel"
+    zh-CN: "取消"
+  close:
+    en: "Close"
+    zh-CN: "关闭"
+  restart:
+    en: "Start over"
+    zh-CN: "重新开始"
+  expires_in:
+    en: "This setup expires in %{time}"
+    zh-CN: "此次设置将在 %{time} 后过期"
+  ready:
+    title:
+      en: "Get ready to write down 24 words"
+      zh-CN: "准备好抄写 24 个单词"
+    offline:
+      en: "Have pen and paper ready. Write the words down offline, in order, with their numbers."
+      zh-CN: "准备好纸和笔。离线按顺序抄下这些单词和它们的序号。"
+    capture:
+      en: "Stop screen sharing and recording first, and make sure nobody can see your screen. This app cannot block screenshots."
+      zh-CN: "请先停止屏幕共享和录屏，并确认没有人能看到你的屏幕。本应用无法阻止截屏。"
+    once:
+      en: "The words appear once. They cannot be shown again."
+      zh-CN: "这些单词只会显示一次，之后无法再次显示。"
+    show:
+      en: "Show recovery phrase"
+      zh-CN: "显示恢复短语"
+  show:
+    title:
+      en: "Your recovery phrase"
+      zh-CN: "你的恢复短语"
+    warning:
+      en: "Write these 24 words down offline, in order. Never share them. Anyone who has these words owns your account."
+      zh-CN: "请离线按顺序抄下这 24 个单词。绝不要分享。任何拥有这些单词的人都拥有你的账户。"
+    grid:
+      en: "Recovery phrase, 24 words"
+      zh-CN: "恢复短语，共 24 个单词"
+    cell:
+      en: "Word %{number}: %{word}"
+      zh-CN: "第 %{number} 个单词：%{word}"
+    cell_hidden:
+      en: "Word %{number}: hidden"
+      zh-CN: "第 %{number} 个单词：已隐藏"
+    covered:
+      en: "The words are hidden because the window lost focus."
+      zh-CN: "窗口失去焦点，单词已隐藏。"
+    reveal:
+      en: "Show words"
+      zh-CN: "显示单词"
+    no_copy:
+      en: "There is no copy button on purpose. The words stay on this screen only until you continue."
+      zh-CN: "这里特意没有复制按钮。单词只在你继续之前留在这个界面上。"
+    done:
+      en: "I wrote them down"
+      zh-CN: "我已抄好"
+    missing:
+      en: "The words are no longer available. Cancel and start over to get a new phrase."
+      zh-CN: "这些单词已不可用。请取消并重新开始以获得新的短语。"
+  confirm:
+    title:
+      en: "Type three words back"
+      zh-CN: "输入其中三个单词"
+    once:
+      en: "You have one attempt. If a word is wrong, the setup ends and no account is created."
+      zh-CN: "只有一次机会。如果有单词不对，设置会结束，不会创建账户。"
+    word:
+      en: "Word %{number}"
+      zh-CN: "第 %{number} 个单词"
+    placeholder:
+      en: "The word, or its first four letters"
+      zh-CN: "输入单词，或它的前四个字母"
+    reads:
+      en: "Reads as: %{word}"
+      zh-CN: "识别为：%{word}"
+    unknown:
+      en: "This is not one of the recovery words."
+      zh-CN: "这不是恢复短语中的单词。"
+    one_word:
+      en: "Type one word only."
+      zh-CN: "只输入一个单词。"
+    submit:
+      en: "Confirm and create account"
+      zh-CN: "确认并创建账户"
+  done:
+    title:
+      en: "Account created on this device"
+      zh-CN: "账户已在这台设备上创建"
+    state:
+      en: "Networking pending"
+      zh-CN: "等待联网"
+    state_text:
+      en: "State: networking pending"
+      zh-CN: "状态：等待联网"
+    text:
+      en: "%{name} exists on this device but is not registered with any node yet. You cannot send or receive messages until that step is available. Keep your 24 words safe: they are the only way to recover this account."
+      zh-CN: "%{name} 已在这台设备上创建，但尚未在任何节点注册。在该步骤可用之前，你还不能收发消息。请妥善保管这 24 个单词：它们是恢复此账户的唯一方式。"
+    live_state:
+      en: "Connected"
+      zh-CN: "已联网"
+    live_state_text:
+      en: "State: connected"
+      zh-CN: "状态：已联网"
+    live_text:
+      en: "%{name} was created on this device and is unlocked. Keep your 24 words safe: they are the only way to recover this account."
+      zh-CN: "%{name} 已在这台设备上创建并已解锁。请妥善保管这 24 个单词：它们是恢复此账户的唯一方式。"
+    close:
+      en: "Done"
+      zh-CN: "完成"
+  ended:
+    cancelled:
+      en: "Setup cancelled. The recovery phrase was erased and no account was created."
+      zh-CN: "设置已取消。恢复短语已被清除，没有创建账户。"
+    expired:
+      en: "This setup expired after 5 minutes. The recovery phrase was erased and no account was created."
+      zh-CN: "此次设置已在 5 分钟后过期。恢复短语已被清除，没有创建账户。"
+    mismatch:
+      en: "The words did not match. The setup ended and no account was created. Start over to get a new recovery phrase."
+      zh-CN: "单词不匹配。设置已结束，没有创建账户。请重新开始以获得新的恢复短语。"
+    disabled:
+      en: "This daemon does not offer account creation with a recovery phrase."
+      zh-CN: "此守护进程不提供使用恢复短语创建账户。"
+    vault:
+      en: "This device has no secure place to keep the account keys, so no account was created."
+      zh-CN: "这台设备没有可安全保存账户密钥的位置，因此没有创建账户。"
+    invalid:
+      en: "The setup could not continue because a step was refused. No account was created."
+      zh-CN: "设置因某一步被拒绝而无法继续，没有创建账户。"

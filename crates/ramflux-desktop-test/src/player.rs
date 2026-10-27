@@ -44,6 +44,11 @@ impl ScenarioPlayer {
         &self.source
     }
 
+    /// The underlying source, for what only it hands out (a recovery phrase).
+    pub fn source_mut(&mut self) -> &mut MockSource {
+        &mut self.source
+    }
+
     /// Current offset in ms.
     pub fn now_ms(&self) -> u64 {
         self.now_ms

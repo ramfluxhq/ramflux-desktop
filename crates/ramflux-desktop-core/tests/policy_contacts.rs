@@ -183,7 +183,10 @@ fn unsupported_contact_methods_are_refused_before_any_hold() {
         .apply(&EventEnvelope::new(
             at,
             Timestamp(2),
-            DomainEvent::CapabilitiesUpdated(Capabilities { unsupported }),
+            DomainEvent::CapabilitiesUpdated(Capabilities {
+                unsupported,
+                ..Capabilities::default()
+            }),
         ))
         .expect("capabilities");
     assert!(matches!(

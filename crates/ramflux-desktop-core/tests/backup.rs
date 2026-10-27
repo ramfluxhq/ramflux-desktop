@@ -312,7 +312,10 @@ fn a_backend_without_the_job_api_refuses_every_backup_intent() {
     .into_iter()
     .map(|m| (m.to_owned(), "backend.gap.full_backup".to_owned()))
     .collect();
-    feed.ok(1, DomainEvent::CapabilitiesUpdated(Capabilities { unsupported }));
+    feed.ok(
+        1,
+        DomainEvent::CapabilitiesUpdated(Capabilities { unsupported, ..Capabilities::default() }),
+    );
     assert!(matches!(
         decide(&feed.store, create("/b/x", "pw")),
         Err(IntentError::UnsupportedByBackend { method: "backup.create", .. })

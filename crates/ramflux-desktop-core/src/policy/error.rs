@@ -257,4 +257,13 @@ pub enum IntentError {
     /// has ended, installing a backup).
     #[error("backup job {0} cannot do this in its current phase")]
     BackupJobPhase(BackupJobId),
+    /// The daemon does not offer account creation with a recovery phrase.
+    #[error("account creation with a recovery phrase is not offered")]
+    CeremonyNotOffered,
+    /// The ceremony is not in a phase this intent applies to (or none runs).
+    #[error("the recovery phrase ceremony cannot do this now")]
+    CeremonyPhase,
+    /// The confirmation needs exactly three words, none empty.
+    #[error("confirming needs exactly three words")]
+    CeremonyWords,
 }

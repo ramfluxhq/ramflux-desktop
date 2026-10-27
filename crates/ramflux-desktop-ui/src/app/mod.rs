@@ -469,6 +469,19 @@ impl StoreHandle {
         outcome
     }
 
+    /// The recovery phrase the source handed out for the running creation
+    /// ceremony, once. The entry page's ceremony runs in the daemon scope
+    /// (no account is open); the caller owns the phrase and must drop it
+    /// when the user hides it.
+    pub fn take_recovery_phrase(&mut self) -> Option<ramflux_desktop_core::RecoveryPhrase> {
+        if self.active.is_none()
+            && let Some(link) = self.live.as_mut()
+        {
+            return link.take_daemon_recovery_phrase();
+        }
+        self.active_session_mut()?.take_recovery_phrase()
+    }
+
     fn active_session_mut(&mut self) -> Option<&mut AccountSession> {
         let id = self.active.clone()?;
         self.sessions.get_mut(&id)

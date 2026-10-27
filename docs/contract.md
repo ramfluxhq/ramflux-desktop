@@ -460,6 +460,7 @@ controls:
 | `s10_ai_participant` | Demo 3: ask the AI participant in a group, streamed reply, task proposal, needs-me approval with a hold, result patch, done (deny and cancel branches) |
 | `s11_surface_versions` | A choice answered in a surface, a change during review, a conflicting patch and its resend, close |
 | `s12_surface_limits` | A surface over the action limit, a stream over the delta limit |
+| `s13_born_v3` | A fresh device whose daemon offers account creation with a recovery phrase (after two seconds); the mock source answers the ceremony |
 
 ## Voice calls (DESK-F16, on CALL-01)
 
@@ -1093,3 +1094,110 @@ actor; a cancel never says, so it is unverified). None of this is a
 permission.
 
 Screenshots: `peer_kind_shots` (run explicitly).
+
+## Account creation with a recovery phrase (DESK-V3-01, on ID-02-IMPL-1)
+
+Contract-first: the desktop is built and tested on the mock source against
+the five ceremony methods of the product's custody bus client (begin,
+show-once, hidden-challenge, confirm, cancel; the product's
+`docs/root_key_custody.md` is normative for the ceremony rules). The SDK
+source does not speak them yet: the pinned product revision has none of it,
+and the daemon option `enable_born_v3_creation` is off by default. Until a
+backend offers it, nothing of this is visible.
+
+**Capability.** `Capabilities.born_v3_creation` is false unless the daemon
+reports `CapabilitiesUpdated` with it true. `unsupported` has no say in it:
+a daemon that lists nothing unsupported still does not offer the ceremony.
+The entry page's account step shows "Create account with recovery phrase"
+in place of the passphrase form while it is true: a daemon that offers the
+phrase has no other way to create an account (final contract, ID-02-IMPL-3
+decision r1: `account.create` takes no seeds and starts the ceremony; the
+steps run on the same local-bus connection; cancel or a lost connection
+erases it; unlock still uses the account passphrase). An older daemon keeps
+the passphrase form. Policy refuses `BeginCeremony` without it
+(`CeremonyNotOffered`).
+
+**Store.** A `Ceremony` (`phase`, `ceremony_id`, `label`, `expires_at`) arrives
+whole as `DomainEvent::CeremonyUpdated`. Phases:
+
+```text
+(none | ended) -> Prepared -> PhraseReady -> Challenged{positions} -> Created(account)
+Prepared | PhraseReady | Challenged -> Failed(code) | Cancelled
+(none | ended) -> Failed(code)             a refused begin: empty ceremony_id
+```
+
+The reducer refuses a phase the ceremony may not move to
+(`CeremonyPhase::can_follow`), a changed ceremony_id or expiry on a running
+ceremony, and a late failure of an ended one (it would overwrite the
+record). `CeremonyFailure`: `Disabled`, `ConfirmationFailed` (the only
+attempt is spent), `VaultUnavailable`, `Expired`, `Invalid`. The
+`expires_at` is five minutes (`CEREMONY_TTL_MS`) after begin.
+`Store::ceremony_revision` counts the updates, so a view that opens over an
+ended record can tell the next ceremony's news from the old one.
+
+**The phrase is not in the store.** It is a secret on its way to the
+screen, like a call's media session: `Source::take_recovery_phrase` hands
+out the `RecoveryPhrase` once, after the ceremony reports `PhraseReady`. It
+is neither `Clone` nor `Serialize`, its `Debug` is `<redacted>`, and its
+buffer is zeroized on drop. No event, scenario, store row, effect body or
+inspector entry carries a word; the words the user types back are
+`SecretInput`s beside an empty body, as the backup passphrase is.
+
+**Intents** (all human only). `BeginCeremony {kind, label}` → `account.create`
+`{display_name, principal_kind}` (no seeds, no secret; answers
+`{ceremony: pending, ceremony_id}`); `ShowRecoveryPhrase` →
+`account.create.show_once`; `HideRecoveryPhrase` →
+`account.create.hidden_challenge`; `ConfirmCeremony {words}` (exactly three
+non-empty secrets, in the order asked) → `account.create.confirm` (answers the
+ordinary account-create response: account id, unlocked, networking `live` or
+`networking_pending`); `CancelCeremony` → `account.create.cancel`. Each is allowed only in its
+phase (begin when none runs; show in `Prepared`; hide in `PhraseReady`;
+confirm in `Challenged`; cancel while it runs).
+
+**Screens** (`entry/ceremony`):
+
+1. Name. Continue begins; Back leaves.
+2. Get ready: write down offline, no screen sharing or recording (the app
+   cannot block it), the words appear once; Show recovery phrase.
+3. The 24 words, numbered, in a grid; the warning (write down offline,
+   never share, anyone with them owns the account); no copy button. The
+   words are **covered** (not drawn) from the moment the window loses focus
+   and come back only on request while it is active. "I wrote them down"
+   erases the phrase from the UI state *first* and only then sends
+   `HideRecoveryPhrase`, so the daemon chooses the positions after the
+   screen is empty.
+4. Type three words back, at the positions the store reports. Each input
+   completes from the English BIP39 list (`recovery::words`): the word or its
+   first four letters (unique in the list), read as the backend reads it
+   (NFKD, ASCII lowercase, one token, at most 128 bytes) and sent as the full
+   list word. A word that is not in the list is shown as such and the
+   button stays off, so the single attempt is not spent on a typo. The
+   typed text is cleared at once. A wrong word ends the setup
+   (`Failed(ConfirmationFailed)`): no second attempt, the error is shown.
+5. Done: the account exists and is unlocked. When its networking is
+   `pending` the screen says so ("Networking pending": not registered with
+   any node, cannot send or receive until that step exists); when `live` it
+   says connected. The ceremony adds no account to the store itself (the
+   account arrives through the ordinary account events), so the shell stays
+   on the entry page until it does.
+
+The time left is on every step from 2 to 4. When the five minutes pass the
+panel drops the phrase and the typed text, sends `CancelCeremony` so the
+daemon lets go, and keeps "expired" in view (not "cancelled"). Cancel is on
+every step.
+
+**Limits.** GPUI Kit 0.8.0 offers no way to exclude a window from
+screenshots or screen sharing, so the screen asks and cannot enforce. The
+words drawn for a frame are copied into GPUI text elements, and GPUI's text
+layout caches may keep shaped glyphs for a few frames: those copies are
+outside the panel's control and are not zeroized; they stop being refreshed
+the frame the words stop being drawn. The typed words live in GPUI Kit
+input buffers until cleared (`set_value` also clears the undo history).
+
+**Mock** (`ramflux-desktop-test::mock_ceremony`, the built-in answer to the
+five methods; a scenario rule for one of them wins). The phrase is a fixed
+non-production sequence of 24 different list words, the positions asked are
+`DEMO_POSITIONS` unless a test sets them, a step out of order or after the
+deadline ends the ceremony (`Invalid`, `Expired`) and erases the phrase,
+confirm consumes the ceremony whatever the outcome. Fixture `s13_born_v3`
+reports the capability after two seconds.

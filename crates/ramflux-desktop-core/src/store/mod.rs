@@ -18,6 +18,7 @@
 //! - `calls`: voice calls and their timeline records.
 //! - `contact_requests`: contact requests both ways.
 //! - `backup`: full backup and restore jobs.
+//! - `ceremony`: the creation ceremony of a born-v3 account.
 //! - [`bodies`]: the bounded message-body cache.
 //! - `index`: secondary indexes the reducer maintains (timelines, needs-me,
 //!   in progress, members, grant and task presenters).
@@ -25,6 +26,7 @@
 mod backup;
 pub mod bodies;
 mod calls;
+mod ceremony;
 mod changes;
 mod contact_requests;
 mod index;
@@ -42,8 +44,8 @@ use crate::ids::{
     ParticipantId, StandingApprovalId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, BackupJob, Call, Capabilities, ContactCard, ContactRequest, Context,
-    DaemonInfo, Device, EffectFailure, Grant, Integrations, Listing, Moment, Node, Object,
+    Account, AuditEntry, BackupJob, Call, Capabilities, Ceremony, ContactCard, ContactRequest,
+    Context, DaemonInfo, Device, EffectFailure, Grant, Integrations, Listing, Moment, Node, Object,
     Participant, RequestDirection, RequestPolicy, StandingApproval, SyncStatus, Task,
 };
 
@@ -84,6 +86,8 @@ pub struct Store {
     /// The order in which each job was first seen (the daemon's times are
     /// whole seconds, so two jobs can start in the same one).
     backup_order: BTreeMap<BackupJobId, u64>,
+    ceremony: Option<Ceremony>,
+    ceremony_revision: u64,
     audit: Vec<AuditEntry>,
     integrations: Integrations,
     capabilities: Capabilities,
@@ -476,6 +480,24 @@ impl Store {
     /// All backup and restore jobs ordered by id.
     pub fn backup_jobs(&self) -> impl Iterator<Item = &BackupJob> {
         self.backup_jobs.values()
+    }
+
+    /// The creation ceremony of a born-v3 account: the running one, or
+    /// the last one that ended. Never holds the recovery phrase.
+    pub fn ceremony(&self) -> Option<&Ceremony> {
+        self.ceremony.as_ref()
+    }
+
+    /// How many ceremony updates were applied. A view that opens while an
+    /// ended ceremony is on record compares revisions to tell the next
+    /// ceremony's news from the old record.
+    pub fn ceremony_revision(&self) -> u64 {
+        self.ceremony_revision
+    }
+
+    /// Whether the daemon offers account creation with a recovery phrase.
+    pub fn offers_born_v3_creation(&self) -> bool {
+        self.capabilities.born_v3_creation
     }
 
     /// When a job was first seen, relative to the others (0 if unknown):

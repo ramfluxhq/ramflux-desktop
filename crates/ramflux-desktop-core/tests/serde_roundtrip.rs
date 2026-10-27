@@ -59,9 +59,10 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContactRequestPolicyUpdated(_) => "ContactRequestPolicyUpdated",
         DomainEvent::ContactRequestsReadFailed(_) => "ContactRequestsReadFailed",
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
+        DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 43;
+const DOMAIN_EVENT_VARIANTS: usize = 44;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -139,6 +140,10 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::HangUpCall { .. } => "HangUpCall",
         IntentKind::InstallRestore { .. } => "InstallRestore",
         IntentKind::CancelBackupJob { .. } => "CancelBackupJob",
+        IntentKind::BeginCeremony { .. } => "BeginCeremony",
+        IntentKind::ShowRecoveryPhrase => "ShowRecoveryPhrase",
+        IntentKind::HideRecoveryPhrase => "HideRecoveryPhrase",
+        IntentKind::CancelCeremony => "CancelCeremony",
         IntentKind::Unlock { .. }
         | IntentKind::CreateAccount { .. }
         | IntentKind::ActivateDevice { .. }
@@ -146,11 +151,12 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         | IntentKind::ExportBackup { .. }
         | IntentKind::CreateBackup { .. }
         | IntentKind::VerifyRestore { .. }
+        | IntentKind::ConfirmCeremony { .. }
         | IntentKind::RotatePassphrase { .. } => "secret",
     }
 }
-/// Serializable intent variants (all but the eight secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 52;
+/// Serializable intent variants (all but the nine secret-carrying kinds).
+const SERIALIZABLE_INTENT_VARIANTS: usize = 56;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -558,6 +564,29 @@ fn all_domain_events() -> Vec<DomainEvent> {
         }),
         DomainEvent::CapabilitiesUpdated(Capabilities {
             unsupported: [("task.start".to_owned(), "K3".to_owned())].into_iter().collect(),
+            born_v3_creation: true,
+        }),
+        DomainEvent::CeremonyUpdated(Ceremony {
+            phase: CeremonyPhase::Challenged { positions: [3, 11, 20] },
+            ceremony_id: "ceremony-1".to_owned(),
+            label: "Alex".to_owned(),
+            expires_at: Timestamp(300_000),
+        }),
+        DomainEvent::CeremonyUpdated(Ceremony {
+            phase: CeremonyPhase::Created(CeremonyAccount {
+                local_account_id: "a-1".to_owned(),
+                display_name: "Alex".to_owned(),
+                networking: Networking::Live,
+            }),
+            ceremony_id: "ceremony-1".to_owned(),
+            label: "Alex".to_owned(),
+            expires_at: Timestamp(300_000),
+        }),
+        DomainEvent::CeremonyUpdated(Ceremony {
+            phase: CeremonyPhase::Failed(CeremonyFailure::ConfirmationFailed),
+            ceremony_id: String::new(),
+            label: "Alex".to_owned(),
+            expires_at: Timestamp(0),
         }),
         DomainEvent::DaemonInfoUpdated(DaemonInfo {
             socket_path: "/tmp/rfd.sock".to_owned(),
@@ -760,6 +789,10 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::HangUpCall { call_id: "k-1".into() },
         IntentKind::InstallRestore { job_id: "j-1".into() },
         IntentKind::CancelBackupJob { job_id: "j-1".into() },
+        IntentKind::BeginCeremony { kind: AccountKind::HumanInteractive, label: "Alex".into() },
+        IntentKind::ShowRecoveryPhrase,
+        IntentKind::HideRecoveryPhrase,
+        IntentKind::CancelCeremony,
     ]
 }
 

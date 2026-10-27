@@ -18,8 +18,11 @@
 //! - `daemon_step`: no daemon yet; the user may start a local one.
 //! - `node_step`: node cards and the add-node form.
 //! - `account_step`: unlock, create, join and restore forms.
+//! - `ceremony`: account creation with a recovery phrase, when the daemon
+//!   offers it.
 
 mod account_step;
+mod ceremony;
 mod daemon_step;
 mod node_card;
 mod node_step;
@@ -41,6 +44,7 @@ use crate::root::{ConfirmHost, IntentRoot};
 use crate::route::{EntryStep, Page, page_for};
 use crate::settings::backup::BackupPanel;
 
+pub use ceremony::{CeremonyEvent, CeremonyPanel, Held};
 pub use daemon_step::failure_text as daemon_failure_text;
 pub use node_card::NodeCard;
 
@@ -126,6 +130,10 @@ pub struct EntryPage {
     /// The full restore flow (verify, review, install, result), shared with
     /// Settings · Backup; it needs no account.
     full_restore: Entity<BackupPanel>,
+    /// Account creation with a recovery phrase, shown in place of the
+    /// account forms while `ceremony_open`.
+    ceremony: Entity<CeremonyPanel>,
+    ceremony_open: bool,
     kind: AccountKind,
     node: Option<NodeId>,
     review_nodes: bool,
@@ -152,8 +160,15 @@ impl EntryPage {
         let inputs = Inputs::new(window, cx);
         let full_restore =
             cx.new(|cx| BackupPanel::standalone(store.clone(), root.clone(), window, cx));
+        let ceremony = cx.new(|cx| CeremonyPanel::new(store.clone(), root.clone(), window, cx));
         let subscriptions = vec![
             cx.observe(&full_restore, |_, _, cx| cx.notify()),
+            cx.observe(&ceremony, |_, _, cx| cx.notify()),
+            cx.subscribe(&ceremony, |this, _, event: &CeremonyEvent, cx| {
+                let CeremonyEvent::Closed = event;
+                this.ceremony_open = false;
+                cx.notify();
+            }),
             cx.subscribe(&store, |this, _, event: &StoreEvent, cx| {
                 if let StoreEvent::Changed(changes) = event
                     && changes.touches_status()
@@ -185,6 +200,8 @@ impl EntryPage {
             path: AccountPath::Create,
             restore_kind: None,
             full_restore,
+            ceremony,
+            ceremony_open: false,
             kind: AccountKind::HumanInteractive,
             node: None,
             review_nodes: false,
@@ -203,6 +220,16 @@ impl EntryPage {
     /// The full restore flow's panel.
     pub fn full_restore(&self) -> &Entity<BackupPanel> {
         &self.full_restore
+    }
+
+    /// The account creation with a recovery phrase.
+    pub fn ceremony(&self) -> &Entity<CeremonyPanel> {
+        &self.ceremony
+    }
+
+    /// Whether the ceremony screens are shown instead of the account forms.
+    pub fn ceremony_open(&self) -> bool {
+        self.ceremony_open
     }
 
     /// Whether the page holds a full restore's result (or its progress) in

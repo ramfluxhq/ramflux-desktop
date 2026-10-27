@@ -12,6 +12,7 @@ use crate::event::EventEnvelope;
 use crate::ids::{CallId, ContextId, MomentId, Timestamp};
 use crate::intent::Effect;
 use crate::model::CallMedia;
+use crate::recovery::RecoveryPhrase;
 
 /// Executes effects and yields sequenced domain events.
 pub trait Source {
@@ -46,6 +47,15 @@ pub trait Source {
     /// has arrived, or why it could not be had (a locale key, as effect
     /// failures carry). `None` while nothing arrived.
     fn take_call_media(&mut self) -> Option<(CallId, Result<CallMedia, String>)> {
+        None
+    }
+
+    /// The recovery phrase the daemon handed out once for the running
+    /// creation ceremony (after the ceremony reported `PhraseReady`). It is
+    /// secret, so it never travels as an event: the screen takes it here
+    /// and drops it when the user hides it. `None` while nothing is
+    /// waiting, and after it was taken: a source gives it out once.
+    fn take_recovery_phrase(&mut self) -> Option<RecoveryPhrase> {
         None
     }
 }

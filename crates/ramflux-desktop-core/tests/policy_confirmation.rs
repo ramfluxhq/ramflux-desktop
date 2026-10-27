@@ -275,6 +275,7 @@ fn methods_the_backend_cannot_perform_are_refused_before_any_hold() {
         unsupported: [(methods::TASK_START.to_owned(), "needs K3".to_owned())]
             .into_iter()
             .collect(),
+        ..Capabilities::default()
     };
     feed.ok(2, DomainEvent::CapabilitiesUpdated(unsupported));
     assert_eq!(feed.store.unsupported_reason(methods::TASK_START), Some("needs K3"));

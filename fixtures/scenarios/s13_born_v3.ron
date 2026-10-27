@@ -1,0 +1,28 @@
+// s13 Born-v3 creation: a fresh device with a confirmed node and no account.
+// The daemon reports that it offers account creation with a recovery phrase
+// after two seconds (before that the entry is not shown). The ceremony itself
+// is not scripted here: the mock source answers the account.create* ceremony
+// methods (see ramflux_desktop_test::mock_ceremony), including the recovery
+// phrase, which never travels as an event.
+// Demonstrates: CapabilitiesUpdated(born_v3_creation), CeremonyUpdated
+// through the built-in ceremony engine.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s13_born_v3",
+    description: "Create an account with a recovery phrase: capability, show once, confirm three words, networking pending",
+    timeline: [
+        (0, SourceStatusChanged(Locked)),
+        (100, NodeUpserted(
+            id: "n-ramflux",
+            endpoints: ["quic://bootstrap.ramflux.example:443"],
+            fingerprint: "SHA256:9a1c 0e44 7b2d 51f0 c3a8 66e1 2d90 b7f4",
+            pin_source: Bootstrap,
+            health: Healthy,
+            capabilities: ["gateway", "relay", "prekey"],
+            builtin: true,
+            is_default: true,
+        )),
+        (100, ListingsLoaded([Nodes, Accounts])),
+        (2000, CapabilitiesUpdated(born_v3_creation: true)),
+    ],
+)

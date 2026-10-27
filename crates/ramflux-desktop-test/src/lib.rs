@@ -7,6 +7,8 @@
 //!   response rules that react to submitted effects.
 //! - [`MockSource`]: a [`ramflux_desktop_core::Source`] that plays a scenario.
 //! - [`local_echo`]: built-in local-echo and audit responses for every scenario.
+//! - [`mock_ceremony`]: the daemon side of the born-v3 creation ceremony
+//!   (contract-first), for a mock source that answers its methods.
 //! - [`ScenarioPlayer`]: owns a store and a mock source and offers pause,
 //!   step, advance, and seek for tests and the developer panel.
 //! - [`scale`]: generated large scenarios for scale tests.
@@ -41,11 +43,13 @@ pub mod fake_tasks;
 #[cfg(feature = "live-daemon")]
 pub mod live_daemon;
 pub mod local_echo;
+pub mod mock_ceremony;
 pub mod mock_source;
 pub mod player;
 pub mod scale;
 pub mod scenario;
 
+pub use mock_ceremony::MockCeremony;
 pub use mock_source::{EffectRecord, MockSource};
 pub use player::ScenarioPlayer;
 pub use scenario::{

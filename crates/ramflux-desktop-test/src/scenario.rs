@@ -15,7 +15,7 @@ pub const DEFAULT_EPOCH: Timestamp = Timestamp(1_790_812_800_000);
 
 /// Names of the bundled scenarios, in order. Companion fixtures (background
 /// accounts of a multi-account scenario) are not listed.
-pub const SCENARIO_NAMES: [&str; 12] = [
+pub const SCENARIO_NAMES: [&str; 13] = [
     "s01_first_launch",
     "s02_daily",
     "s03_intervention",
@@ -28,6 +28,7 @@ pub const SCENARIO_NAMES: [&str; 12] = [
     "s10_ai_participant",
     "s11_surface_versions",
     "s12_surface_limits",
+    "s13_born_v3",
 ];
 
 /// A scripted sequence of domain events plus reactions to effects.

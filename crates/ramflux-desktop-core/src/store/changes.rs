@@ -11,7 +11,9 @@ use crate::ids::{
     AccountId, BackupJobId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId,
     ObjectId, ParticipantId, StepId, SurfaceId, TaskId,
 };
-use crate::model::{BackupJobKind, BackupPhase, CallState, Lifecycle, StepState, TaskState};
+use crate::model::{
+    BackupJobKind, BackupPhase, CallState, CeremonyPhase, Lifecycle, StepState, TaskState,
+};
 
 /// Why an envelope was not applied.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -199,6 +201,17 @@ pub enum ApplyError {
         /// Version of the update.
         found: u64,
     },
+    /// A ceremony update the ceremony may not make from where it is.
+    #[error("illegal ceremony transition: {from:?} -> {to:?}")]
+    IllegalCeremonyTransition {
+        /// Current phase (none when no ceremony runs).
+        from: Option<CeremonyPhase>,
+        /// Requested phase.
+        to: CeremonyPhase,
+    },
+    /// A ceremony update changed its ceremony_id or expiry.
+    #[error("a running ceremony cannot change its ceremony_id or expiry")]
+    CeremonyChanged,
     /// A backup job update changed its kind or file.
     #[error("backup job {0} cannot change its kind or file")]
     BackupJobChanged(BackupJobId),
@@ -265,6 +278,8 @@ pub struct Changes {
     pub contact_requests: bool,
     /// Changed backup and restore jobs.
     pub backup_jobs: BTreeSet<BackupJobId>,
+    /// The creation ceremony changed.
+    pub ceremony: bool,
     /// Standing approvals changed.
     pub standing_approvals: bool,
     /// The audit trail grew.
@@ -299,6 +314,7 @@ impl Changes {
             && self.calls.is_empty()
             && !self.contact_requests
             && self.backup_jobs.is_empty()
+            && !self.ceremony
             && !self.standing_approvals
             && !self.audit
             && !self.integrations
@@ -324,6 +340,7 @@ impl Changes {
             calls,
             contact_requests,
             backup_jobs,
+            ceremony,
             standing_approvals,
             audit,
             integrations,
@@ -345,6 +362,7 @@ impl Changes {
         self.calls.extend(calls);
         self.contact_requests |= contact_requests;
         self.backup_jobs.extend(backup_jobs);
+        self.ceremony |= ceremony;
         self.standing_approvals |= standing_approvals;
         self.audit |= audit;
         self.integrations |= integrations;

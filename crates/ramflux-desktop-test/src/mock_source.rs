@@ -8,10 +8,11 @@ use std::ops::Bound;
 
 use ramflux_desktop_core::{
     DomainEvent, Effect, EventEnvelope, JsonValue, MomentId, MomentKind, PrivacyRevealPayload,
-    RendererProfile, Source, Timestamp,
+    RecoveryPhrase, RendererProfile, Source, Timestamp,
 };
 
 use crate::local_echo::{ECHO_DELAY_MS, audit_echo, local_echo};
+use crate::mock_ceremony::MockCeremony;
 use crate::scenario::{ResponseRule, Scenario};
 
 /// Ordering key of a scheduled event: (offset ms, insertion order).
@@ -56,6 +57,7 @@ pub struct MockSource {
     now_ms: u64,
     effects: Vec<EffectRecord>,
     profile: Option<RendererProfile>,
+    ceremony: MockCeremony,
 }
 
 impl MockSource {
@@ -77,11 +79,18 @@ impl MockSource {
             now_ms: 0,
             effects: Vec::new(),
             profile: None,
+            ceremony: MockCeremony::default(),
         };
         for (offset, event) in &scenario.timeline {
             source.schedule_at(*offset, event.clone());
         }
         source
+    }
+
+    /// The mock daemon's creation ceremony, for tests that choose the
+    /// positions it asks.
+    pub fn ceremony_mut(&mut self) -> &mut MockCeremony {
+        &mut self.ceremony
     }
 
     /// The renderer profile the app declared (capability negotiation).
@@ -173,7 +182,13 @@ impl Source for MockSource {
     fn submit(&mut self, effect: Effect) {
         let label = effect.method().unwrap_or("RequireConfirmation").to_owned();
         let rule = self.rules.iter().position(|r| r.on.matches(&effect));
-        let echo = if rule.is_none() { local_echo(&effect) } else { Vec::new() };
+        let ceremony = if rule.is_none() {
+            self.ceremony.answer(&effect, self.now_ms, self.epoch)
+        } else {
+            None
+        };
+        let echo =
+            if rule.is_none() && ceremony.is_none() { local_echo(&effect) } else { Vec::new() };
         let echoed = !echo.is_empty();
         let body = effect.body().cloned().unwrap_or_default();
         self.effects.push(EffectRecord { at_ms: self.now_ms, label, rule, echoed, body });
@@ -183,7 +198,7 @@ impl Source for MockSource {
                 self.inject(delay, event);
             }
         }
-        for event in echo {
+        for event in echo.into_iter().chain(ceremony.into_iter().flatten()) {
             self.inject(ECHO_DELAY_MS, event);
         }
         let at = self.epoch.saturating_add_ms(self.now_ms.saturating_add(ECHO_DELAY_MS));
@@ -220,6 +235,10 @@ impl Source for MockSource {
         for event in found {
             self.inject(0, event);
         }
+    }
+
+    fn take_recovery_phrase(&mut self) -> Option<RecoveryPhrase> {
+        self.ceremony.take_phrase()
     }
 
     fn drain(&mut self, now: Timestamp) -> Vec<EventEnvelope> {

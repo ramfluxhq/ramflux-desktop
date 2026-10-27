@@ -10,11 +10,11 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, BackupJob, Block, Call, Capabilities, ContactCard, ContactRequest,
-    Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure, GrantState,
-    Integrations, Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node, NodeHealth,
-    NodeProbe, Object, Participant, RequestPolicy, StandingApproval, StepState, SurfaceAction,
-    SyncStatus, Task, TaskAnswer, TaskState,
+    Account, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony, ContactCard,
+    ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure,
+    GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node,
+    NodeHealth, NodeProbe, Object, Participant, RequestPolicy, StandingApproval, StepState,
+    SurfaceAction, SyncStatus, Task, TaskAnswer, TaskState,
 };
 
 pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
@@ -304,4 +304,9 @@ pub enum DomainEvent {
     /// follow [`crate::BackupPhase::can_transition`]. Boxed: the job's
     /// review and report are large.
     BackupJobUpdated(Box<BackupJob>),
+    /// The creation ceremony of a born-v3 account as the daemon reports it
+    /// (the whole record, never the recovery phrase). It starts in
+    /// `Prepared` (or `Failed` when the daemon refuses), then follows
+    /// [`crate::CeremonyPhase::can_follow`]; the ceremony_id and expiry stay.
+    CeremonyUpdated(Ceremony),
 }

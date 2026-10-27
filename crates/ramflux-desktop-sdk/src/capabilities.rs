@@ -126,7 +126,10 @@ pub fn capabilities(found: Found) -> Capabilities {
             unsupported.insert(method.to_owned(), reason::FULL_BACKUP.to_owned());
         }
     }
-    Capabilities { unsupported }
+    // Account creation with a recovery phrase is the daemon's option
+    // (`enable_born_v3_creation`, off by default). The pinned product
+    // revision has no way to report it, so the SDK source never offers it.
+    Capabilities { unsupported, born_v3_creation: false }
 }
 
 /// Why `method` is unsupported, if it is.

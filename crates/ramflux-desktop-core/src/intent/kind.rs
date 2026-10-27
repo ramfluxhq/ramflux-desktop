@@ -416,6 +416,29 @@ pub enum IntentKind {
         /// Job.
         job_id: BackupJobId,
     },
+    /// Begin creating an account with a recovery phrase (born-v3). Only
+    /// when the daemon offers it ([`crate::Capabilities::born_v3_creation`]).
+    BeginCeremony {
+        /// What the account is for.
+        kind: AccountKind,
+        /// The name of the new account.
+        label: String,
+    },
+    /// Ask for the recovery phrase, once. The source hands it to the
+    /// screen through [`crate::Source::take_recovery_phrase`].
+    ShowRecoveryPhrase,
+    /// The screen erased the phrase: ask which words to type back. Sent
+    /// only after the erasure.
+    HideRecoveryPhrase,
+    /// Type three words back; the one attempt. Exactly three secrets, in
+    /// the order of the positions asked. Not serializable.
+    #[serde(skip)]
+    ConfirmCeremony {
+        /// The three words, resolved to list words.
+        words: Vec<SecretInput>,
+    },
+    /// Cancel the running ceremony; the daemon erases the phrase.
+    CancelCeremony,
     /// Revoke one of the account's devices (needs a hold).
     RevokeDevice {
         /// Device.

@@ -300,7 +300,10 @@ fn an_unsupported_backend_refuses_calls_before_anything_else() {
     let mut feed = feed();
     let mut unsupported = std::collections::BTreeMap::new();
     unsupported.insert(methods::CALL_INVITE.to_owned(), "backend.gap.calls".to_owned());
-    feed.ok(2, DomainEvent::CapabilitiesUpdated(Capabilities { unsupported }));
+    feed.ok(
+        2,
+        DomainEvent::CapabilitiesUpdated(Capabilities { unsupported, ..Capabilities::default() }),
+    );
     assert!(matches!(
         human(&feed.store, start("c-ana")),
         Err(IntentError::UnsupportedByBackend { method: "call.invite", .. })

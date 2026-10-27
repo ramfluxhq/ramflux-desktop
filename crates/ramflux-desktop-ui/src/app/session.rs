@@ -185,6 +185,12 @@ impl AccountSession {
         self.source_mut().take_call_media()
     }
 
+    /// The recovery phrase the source handed out for the running creation
+    /// ceremony, once (a secret: it is not part of the store).
+    pub fn take_recovery_phrase(&mut self) -> Option<ramflux_desktop_core::RecoveryPhrase> {
+        self.source_mut().take_recovery_phrase()
+    }
+
     /// The account's store, read-only.
     pub fn store(&self) -> &Store {
         &self.store

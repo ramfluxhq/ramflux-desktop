@@ -190,6 +190,7 @@ impl Store {
                 }
             }
             DomainEvent::BackupJobUpdated(job) => self.upsert_backup_job(job, changes)?,
+            DomainEvent::CeremonyUpdated(ceremony) => self.update_ceremony(ceremony, changes)?,
             DomainEvent::TaskStepChanged { task_id, version, step_id, state, needs_me } => {
                 let step = StepChange {
                     task_id,

@@ -22,6 +22,8 @@
 //! - [`contact_request`]: contact requests and the held messages they
 //!   carry, and the account's request setting.
 //! - [`backup`]: full backup and restore jobs.
+//! - [`ceremony`]: the creation ceremony of a born-v3 account (never the
+//!   recovery phrase).
 //! - [`call`]: voice calls, their states and outcomes, and the secret
 //!   media session that never enters the store.
 
@@ -30,6 +32,7 @@ mod actor;
 mod backend;
 mod backup;
 mod call;
+mod ceremony;
 mod contact_request;
 mod conversation;
 mod grant;
@@ -55,6 +58,10 @@ pub use backup::{
 };
 pub use call::{
     Call, CallDirection, CallEndReason, CallKey, CallMedia, CallOutcome, CallRebind, CallState,
+};
+pub use ceremony::{
+    CEREMONY_TTL_MS, CHALLENGE_WORDS, Ceremony, CeremonyAccount, CeremonyFailure, CeremonyPhase,
+    Networking,
 };
 pub use contact_request::{
     ContactRequest, RequestAnswer, RequestDirection, RequestPolicy, RequestState,

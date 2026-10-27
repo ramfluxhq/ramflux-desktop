@@ -15,6 +15,8 @@
 //! - [`handle_intent`] validates intents and applies policy without mutating the store.
 //! - [`Source`] executes effects and yields events.
 //! - [`conformance`] checks agent surfaces against a renderer profile.
+//! - [`recovery`] holds the recovery phrase of a born-v3 account on its way to
+//!   the screen, and the word list typed words are checked against.
 //! - [`export`] renders a conversation as plain text (the terminal degradation).
 //!
 //! See `docs/contract.md` for the full description.
@@ -28,6 +30,7 @@ pub mod ids;
 pub mod intent;
 pub mod model;
 pub mod policy;
+pub mod recovery;
 pub mod selectors;
 pub mod source;
 pub mod store;
@@ -55,6 +58,9 @@ pub use policy::{
     GroupProblem, IntentError, MAX_GROUP_MEMBERS, MAX_GROUP_TITLE_LEN, call_peer,
     check_add_contact, check_add_contact_card, check_create_group, check_group_title,
     check_start_call, check_start_conversation, contact_action_current, handle_intent,
+};
+pub use recovery::{
+    PHRASE_WORDS, PhraseError, RecoveryPhrase, WordInput, resolve_word, suggestions,
 };
 pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter, TaskStepRef};
 pub use serde_json::Value as JsonValue;

@@ -28,6 +28,8 @@ serde_json = "1"
 thiserror = "2"
 # Grapheme clusters and terminal-cell widths, to clip a label by what it shows.
 unicode-segmentation = "1.13"
+# NFKD, to read a typed recovery word the way the backend does.
+unicode-normalization = "0.1.25"
 unicode-width = "0.2"
 zeroize = "1.8"
 # The product SDK (local-bus client, request types), pinned by full commit.
