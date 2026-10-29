@@ -66,6 +66,17 @@ struct Recovery {
     deadline: Instant,
 }
 
+impl State {
+    /// What a new account reports: forced, else live only with a default node.
+    fn networking_for_new(&self) -> &'static str {
+        self.networking_override.unwrap_or(if self.default_node.is_some() {
+            "live"
+        } else {
+            "networking_pending"
+        })
+    }
+}
+
 #[derive(Debug)]
 enum Ceremony {
     Creation(Creation),
@@ -76,7 +87,12 @@ enum Ceremony {
 struct State {
     ttl: Duration,
     vault_available: bool,
-    networking: &'static str,
+    /// Forces the networking state of accounts made from now on.
+    networking_override: Option<&'static str>,
+    /// The daemon's default node (`node.set_default`): as in the product, an
+    /// account made while there is one goes live inside confirm, else it
+    /// stays `networking_pending`.
+    default_node: Option<String>,
     positions: [u8; 3],
     began: u32,
     ceremonies: BTreeMap<usize, Ceremony>,
@@ -124,7 +140,8 @@ impl FakeCustody {
             state: Mutex::new(State {
                 ttl: Duration::from_secs(300),
                 vault_available: true,
-                networking: "networking_pending",
+                networking_override: None,
+                default_node: None,
                 positions: DEMO_POSITIONS,
                 began: 0,
                 ceremonies: BTreeMap::new(),
@@ -151,7 +168,19 @@ impl FakeCustody {
 
     /// The networking state of accounts made from now on.
     pub fn set_live(&self, live: bool) {
-        self.state().networking = if live { "live" } else { "networking_pending" };
+        self.state().networking_override = Some(if live { "live" } else { "networking_pending" });
+    }
+
+    /// The default node the daemon holds (what `node.set_default` set).
+    pub fn default_node(&self) -> Option<String> {
+        self.state().default_node.clone()
+    }
+
+    /// The account's networking comes up (registration succeeded later).
+    pub fn go_live(&self, id: &str) {
+        if let Some(account) = self.state().accounts.get_mut(id) {
+            account.networking = "live";
+        }
     }
 
     /// Ceremonies running now (one per connection at most).
@@ -189,7 +218,7 @@ impl FakeCustody {
     pub fn add_locked_account(&self, id: &str, label: &str, passphrase: &str) {
         let mut state = self.state();
         let anchor = format!("anchor-{id}");
-        let networking = state.networking;
+        let networking = state.networking_for_new();
         state.accounts.insert(
             id.to_owned(),
             Account {
@@ -213,14 +242,16 @@ impl FakeCustody {
     }
 
     /// Whether `method` is one this fake answers.
-    pub fn handles(&self, method: &str, body: &Value) -> bool {
+    pub fn handles(&self, method: &str, account: Option<&str>, body: &Value) -> bool {
         if !self.enabled {
             return false;
         }
         match method {
             // Begin is `account.create` without the one-shot create's fields.
             "account.create" => body.get("display_name").is_some() && body.get("node_id").is_none(),
+            "node.set_default" => true,
             "account.list" | "account.lock" | "account.unlock" => self.serves_accounts(),
+            "account.status" => account.is_some_and(|id| self.state().accounts.contains_key(id)),
             _ => method.starts_with("account.create.") || method.starts_with("account.recover."),
         }
     }
@@ -236,6 +267,11 @@ impl FakeCustody {
         let mut state = self.state();
         state.log.push((connection, method.to_owned()));
         match method {
+            "node.set_default" => {
+                state.default_node = body["node_id"].as_str().map(str::to_owned);
+                Reply::Ok(json!({ "node_id": body["node_id"], "default": true }))
+            }
+            "account.status" => Self::status(&state, account),
             "account.list" => Self::list(&state),
             "account.lock" => Self::lock(&mut state, account),
             "account.unlock" => Self::unlock(&mut state, account, body),
@@ -247,6 +283,20 @@ impl FakeCustody {
             }
             _ => Self::step(&mut state, connection, method, body),
         }
+    }
+
+    fn status(state: &State, account: Option<&str>) -> Reply {
+        let Some((id, found)) = account.and_then(|id| state.accounts.get(id).map(|a| (id, a)))
+        else {
+            return refuse("AccountNotOpen");
+        };
+        if found.locked {
+            return Reply::Error("AccountNotOpen", format!("account not open: {id}"));
+        }
+        Reply::Ok(json!({ "account_id": id, "local_account_id": id, "state": "unlocked",
+                          "networking": found.networking, "display_name": found.label,
+                          "principal_id": format!("principal-{id}"), "device_id": format!("device-{id}"),
+                          "node_id": state.default_node, "principal_commitment": found.anchor }))
     }
 
     fn list(state: &State) -> Reply {
@@ -400,7 +450,7 @@ impl FakeCustody {
             return refuse("CustodyConfirmationFailed");
         }
         let id = format!("acct-native-{}", state.began);
-        let networking = state.networking;
+        let networking = state.networking_for_new();
         state.accounts.insert(
             id.clone(),
             Account {

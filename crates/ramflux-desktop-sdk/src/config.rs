@@ -63,6 +63,12 @@ pub struct SdkConfig {
     /// with a daemon without it, or off, they are declared unsupported
     /// (`backend.gap.full_backup`).
     pub backup_api: bool,
+    /// While an account is `networking_pending`, `account.status` is read
+    /// again after the first wait, then after twice that, up to the second
+    /// (the daemon sends no event when networking comes up), until it is
+    /// live or the account locks. Milliseconds, as for the node lookup
+    /// retries, to keep the settings small.
+    pub networking_poll_ms: [u32; 2],
 }
 
 impl SdkConfig {
@@ -81,6 +87,7 @@ impl SdkConfig {
             local_network_retry_ms: LOCAL_NETWORK_RETRY_MS,
             call_api: true,
             backup_api: true,
+            networking_poll_ms: [2_000, 30_000],
         }
     }
 }

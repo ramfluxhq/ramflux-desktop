@@ -521,7 +521,11 @@ impl EntryPage {
                         .primary()
                         .label(tr("ceremony.entry.button"))
                         .on_click(cx.listener(|this, _, window, cx| {
-                            this.ceremony.update(cx, |panel, cx| panel.open(window, cx));
+                            let node = this.target_node(this.store.read(cx).store());
+                            this.ceremony.update(cx, |panel, cx| {
+                                panel.set_node(node, cx);
+                                panel.open(window, cx);
+                            });
                             this.ceremony_open = true;
                             cx.notify();
                         })),

@@ -26,6 +26,12 @@ impl SecretInput {
         &self.0
     }
 
+    /// Moves the secret out into a zeroizing buffer, without a copy (the
+    /// handle is left empty, so its own drop has nothing to erase).
+    pub fn into_zeroizing(mut self) -> zeroize::Zeroizing<String> {
+        zeroize::Zeroizing::new(std::mem::take(&mut self.0))
+    }
+
     /// Whether the secret is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()

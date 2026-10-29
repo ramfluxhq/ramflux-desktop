@@ -18,11 +18,12 @@
 //!   ([`Handoff`], taken by [`crate::SdkSource`]). The ceremony event that
 //!   says the phrase is ready is sent after the move.
 //! - **The words, the passphrase and a typed recovery phrase** arrive in
-//!   [`ramflux_desktop_core::SecretInput`]s, are copied once into zeroizing
-//!   buffers for the request, and both are erased when the request ends.
+//!   [`ramflux_desktop_core::SecretInput`]s, are moved (not copied) into
+//!   zeroizing buffers for the request, and are erased when the request ends.
 //!
 //! Every such buffer is counted by [`PhraseAudit`], the test hook that lets
-//! a test assert that each one was erased.
+//! a test assert that each one was erased: the erase looks at every byte it
+//! zeroized and the buffer is counted only if all were zero.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -103,13 +104,31 @@ impl PhraseAudit {
         self.taken.fetch_add(1, Ordering::SeqCst);
     }
 
-    /// Erases `phrase` and counts it, if it is empty afterwards.
+    /// Erases `phrase` and counts it only if its bytes were all zero after
+    /// the erase (see [`erase_and_check`]).
     pub(crate) fn wipe(&self, mut phrase: Zeroizing<String>) {
-        phrase.zeroize();
-        if phrase.is_empty() {
+        if erase_and_check(&mut phrase) {
             self.wiped.fetch_add(1, Ordering::SeqCst);
         }
     }
+}
+
+/// Zeroizes the buffer in place, looks at every byte of what it held (the
+/// length it had, not just its emptiness), and only then empties it.
+/// Returns whether every byte was zero: a broken erase makes this false
+/// and the audit does not count the buffer.
+fn erase_and_check(buffer: &mut Zeroizing<String>) -> bool {
+    let mut bytes = std::mem::take(&mut **buffer).into_bytes();
+    bytes[..].zeroize();
+    let clean = all_zero(&bytes);
+    bytes.clear();
+    **buffer = String::from_utf8(bytes).unwrap_or_default();
+    clean
+}
+
+/// Whether every byte is zero.
+fn all_zero(bytes: &[u8]) -> bool {
+    bytes.iter().all(|byte| *byte == 0)
 }
 
 /// A phrase on its way from the bridge to the screen.
@@ -127,20 +146,17 @@ struct Secrets<const N: usize> {
 }
 
 impl<const N: usize> Secrets<N> {
-    fn new(typed: [&SecretInput; N], audit: &Arc<PhraseAudit>) -> Self {
+    /// Takes the typed secrets over by move: no second copy is made.
+    fn new(typed: [SecretInput; N], audit: &Arc<PhraseAudit>) -> Self {
         audit.secrets.fetch_add(N, Ordering::SeqCst);
-        Self {
-            buffers: typed.map(|secret| Zeroizing::new(secret.expose().to_owned())),
-            audit: audit.clone(),
-        }
+        Self { buffers: typed.map(SecretInput::into_zeroizing), audit: audit.clone() }
     }
 }
 
 impl<const N: usize> Drop for Secrets<N> {
     fn drop(&mut self) {
         for buffer in &mut self.buffers {
-            buffer.zeroize();
-            if buffer.is_empty() {
+            if erase_and_check(buffer) {
                 self.audit.secrets_wiped.fetch_add(1, Ordering::SeqCst);
             }
         }
@@ -424,11 +440,11 @@ async fn run(step: Step, session: &mut Session, context: &Context) -> Outcome {
         Step::Begin { label } => begin(&label, session, context).await,
         Step::Show => show(session, context).await,
         Step::Hide => hide(session).await,
-        Step::Confirm { secrets } => confirm(&secrets, session, context).await,
+        Step::Confirm { secrets } => confirm(secrets, session, context).await,
         Step::Cancel => cancel_creation(session).await,
         Step::RecoverBegin { account_id } => begin_recovery(&account_id, session, context).await,
         Step::RecoverConfirm { anchor, secrets } => {
-            confirm_recovery(&anchor, &secrets, session, context).await
+            confirm_recovery(&anchor, secrets, session, context).await
         }
         Step::RecoverCancel => cancel_recovery(session).await,
     };
@@ -504,12 +520,12 @@ async fn hide(session: &mut Session) -> Option<Outcome> {
 }
 
 async fn confirm(
-    secrets: &[SecretInput],
+    secrets: Vec<SecretInput>,
     session: &mut Session,
     context: &Context,
 ) -> Option<Outcome> {
     let Session::Creation { client, meta } = session else { return None };
-    let [first, second, third, passphrase] = secrets else {
+    let Ok([first, second, third, passphrase]) = <[SecretInput; 4]>::try_from(secrets) else {
         return Some(broke(methods::CUSTODY_CONFIRM, &SdkError::CustodySetupInvalid, session));
     };
     let words = Secrets::new([first, second, third], &context.audit);
@@ -590,12 +606,12 @@ async fn begin_recovery(
 
 async fn confirm_recovery(
     anchor: &str,
-    secrets: &[SecretInput],
+    secrets: Vec<SecretInput>,
     session: &mut Session,
     context: &Context,
 ) -> Option<Outcome> {
     let Session::Recovery { client, meta } = session else { return None };
-    let [phrase, passphrase] = secrets else {
+    let Ok([phrase, passphrase]) = <[SecretInput; 2]>::try_from(secrets) else {
         return Some(broke(methods::RECOVER_CONFIRM, &SdkError::CustodySetupInvalid, session));
     };
     let phrase = Secrets::new([phrase], &context.audit);
@@ -632,4 +648,28 @@ async fn cancel_recovery(session: &mut Session) -> Option<Outcome> {
     let event = recovery(meta, RecoveryPhase::Cancelled);
     *session = Session::Idle;
     Some(Outcome::events(vec![event]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_erased_buffer_is_checked_byte_by_byte_and_a_dirty_one_fails_the_check() {
+        let mut buffer = Zeroizing::new("river stone lantern".to_owned());
+        assert!(erase_and_check(&mut buffer));
+        assert!(buffer.is_empty(), "emptied after the look");
+        // The check itself can fail: it reads the bytes, not the length.
+        assert!(all_zero(&[0, 0, 0]));
+        assert!(!all_zero(&[0, 7, 0]));
+    }
+
+    #[test]
+    fn typed_secrets_move_into_their_buffers_and_are_counted_when_erased() {
+        let audit = Arc::new(PhraseAudit::default());
+        let secrets = Secrets::new([SecretInput::new("one"), SecretInput::new("two")], &audit);
+        assert_eq!((secrets.buffers[0].as_str(), secrets.buffers[1].as_str()), ("one", "two"));
+        drop(secrets);
+        assert_eq!((audit.secrets(), audit.secrets_wiped()), (2, 2));
+    }
 }

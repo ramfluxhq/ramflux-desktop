@@ -17,9 +17,15 @@ ceremony:
     placeholder:
       en: "Account name"
       zh-CN: "账户名称"
+    node:
+      en: "This account will connect to the node %{node}."
+      zh-CN: "此账户将连接到节点 %{node}。"
+    no_node:
+      en: "Add and confirm a node first: an account needs a node to connect to."
+      zh-CN: "请先添加并确认一个节点：账户需要一个可连接的节点。"
     help:
-      en: "Creating the account happens on this device. Connecting it to a node comes later."
-      zh-CN: "账户在这台设备上创建。连接节点是之后的步骤。"
+      en: "The account is created on this device, then it connects to the node."
+      zh-CN: "账户先在这台设备上创建，然后连接到节点。"
   continue:
     en: "Continue"
     zh-CN: "继续"
@@ -137,14 +143,17 @@ ceremony:
       en: "Account created on this device"
       zh-CN: "账户已在这台设备上创建"
     state:
-      en: "Networking pending"
-      zh-CN: "等待联网"
+      en: "Connecting"
+      zh-CN: "正在连接"
     state_text:
-      en: "State: networking pending"
-      zh-CN: "状态：等待联网"
+      en: "State: connecting to the node"
+      zh-CN: "状态：正在连接节点"
     text:
-      en: "%{name} exists on this device but is not registered with any node yet. You cannot send or receive messages until that step is available. Keep your 24 words safe: without another device, they are the only way to restore this account."
-      zh-CN: "%{name} 已在这台设备上创建，但尚未在任何节点注册。在该步骤可用之前，你还不能收发消息。请妥善保管这 24 个单词：没有其他设备时，它们是恢复此账户的唯一方式。"
+      en: "%{name} was created on this device and is unlocked. It is connecting to %{node}: you can send and receive messages as soon as it is connected, and this screen updates by itself. If it does not connect, check that the node is reachable. Keep your 24 words safe: without another device, they are the only way to restore this account."
+      zh-CN: "%{name} 已在这台设备上创建并已解锁。它正在连接 %{node}：连接成功后即可收发消息，本界面会自动更新。如果一直连不上，请检查节点是否可达。请妥善保管这 24 个单词：没有其他设备时，它们是恢复此账户的唯一方式。"
+    node_unknown:
+      en: "its node"
+      zh-CN: "它的节点"
     live_state:
       en: "Connected"
       zh-CN: "已联网"

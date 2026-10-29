@@ -41,7 +41,7 @@ use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable as _, Subscription, Window,
 };
 use ramflux_desktop_core::{
-    Ceremony, CeremonyPhase, IntentKind, RecoveryPhrase, SecretInput, Timestamp, WordInput,
+    Ceremony, CeremonyPhase, IntentKind, NodeId, RecoveryPhrase, SecretInput, Timestamp, WordInput,
     methods, resolve_word,
 };
 
@@ -115,6 +115,10 @@ impl std::fmt::Debug for Held {
 /// phrase" would end the ceremony).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pending {
+    /// `node.set_default`: the node the account will connect to becomes the
+    /// daemon's default before the ceremony begins (the daemon registers a
+    /// new account with its default node, once it is made).
+    Node,
     /// `account.create`.
     Begin,
     /// `show_once`.
@@ -132,6 +136,7 @@ impl Pending {
     /// the wait (another effect failing meanwhile says nothing about it).
     pub fn method(self) -> &'static str {
         match self {
+            Self::Node => methods::NODE_SET_DEFAULT,
             Self::Begin => methods::CUSTODY_BEGIN,
             Self::Show => methods::CUSTODY_SHOW_ONCE,
             Self::Hide => methods::CUSTODY_HIDDEN_CHALLENGE,
@@ -169,6 +174,12 @@ pub struct CeremonyPanel {
     /// the one confirm. Secrets: zeroized on drop, dropped on cancel,
     /// expiry, failure and close.
     typed: Option<Vec<SecretInput>>,
+    /// The node the new account connects to (the entry page's choice): made
+    /// the daemon's default first. `None`: there is none to choose, and
+    /// nothing begins.
+    node: Option<NodeId>,
+    /// The default node was asked for, and the begin follows its answer.
+    begin_after_node: bool,
     /// The store's ceremony revision when the panel was opened: older
     /// records are an earlier ceremony's, not this one's.
     baseline: u64,
@@ -282,6 +293,8 @@ impl CeremonyPanel {
             repeat,
             held: Held::new(),
             typed: None,
+            node: None,
+            begin_after_node: false,
             baseline: revision,
             seen_revision: revision,
             pending: None,
@@ -312,6 +325,18 @@ impl CeremonyPanel {
     /// Whether the three words are held, waiting for the passphrase.
     pub fn holds_typed_words(&self) -> bool {
         self.typed.is_some()
+    }
+
+    /// Chooses the node the next account connects to (`None`: there is no
+    /// confirmed node, and the name step says a node must be added first).
+    pub fn set_node(&mut self, node: Option<NodeId>, cx: &mut Context<Self>) {
+        self.node = node;
+        cx.notify();
+    }
+
+    /// The node the next account connects to.
+    pub fn node(&self) -> Option<&NodeId> {
+        self.node.as_ref()
     }
 
     /// The request whose answer is awaited.
@@ -484,10 +509,23 @@ impl CeremonyPanel {
         let answered = revision != self.seen_revision;
         // Only the failure of the awaited request ends the wait.
         let own_failed = failed(self.pending, store.failures_since(self.failures_mark));
-        if answered || own_failed {
+        let node_set = self.pending == Some(Pending::Node)
+            && self
+                .node
+                .as_ref()
+                .and_then(|node| store.node(node))
+                .is_some_and(|known| known.is_default);
+        if answered || own_failed || node_set {
             self.pending = None;
         }
         self.seen_revision = revision;
+        // The default node is set: the ceremony begins. Its refusal leaves
+        // the name step as it was (the failure is shown by the status strip).
+        if self.pending.is_none() && std::mem::take(&mut self.begin_after_node) && node_set {
+            self.begin(window, cx);
+            cx.notify();
+            return;
+        }
         if self.abandon.is_some() {
             self.settle_abandoned(answered, window, cx);
             cx.notify();
@@ -601,10 +639,24 @@ impl CeremonyPanel {
         if label.is_empty() || self.pending.is_some() || self.abandon.is_some() {
             return;
         }
+        // Without a node the account could never connect: nothing begins.
+        let Some(node) = self.node.clone() else { return };
         self.held = Held::new();
         self.expired = false;
         self.seen_second = None;
-        self.submit(IntentKind::BeginCeremony { label }, Pending::Begin, window, cx);
+        let is_default =
+            self.store.read(cx).entry_store().node(&node).is_some_and(|known| known.is_default);
+        if is_default {
+            self.submit(IntentKind::BeginCeremony { label }, Pending::Begin, window, cx);
+        } else {
+            // The daemon registers a new account with its default node, so
+            // the chosen one is made the default first.
+            self.begin_after_node = true;
+            self.submit(IntentKind::SetDefaultNode { node_id: node }, Pending::Node, window, cx);
+            if self.pending.is_none() {
+                self.begin_after_node = false;
+            }
+        }
     }
 
     /// Asks for the recovery phrase, once.
@@ -707,7 +759,12 @@ impl CeremonyPanel {
         self.confirming_cancel = false;
         self.restore_focus = None;
         self.wipe(window, cx);
-        if self.pending == Some(Pending::Begin) {
+        if self.pending == Some(Pending::Node) {
+            // Nothing has begun: leave, and let the default node be.
+            self.begin_after_node = false;
+            self.pending = None;
+            self.close(window, cx);
+        } else if self.pending == Some(Pending::Begin) {
             // The daemon has not said whether a ceremony exists yet: let go
             // of it when it does.
             self.abandon = Some(Abandon { begin_mark: self.failures_mark, cancel_mark: None });

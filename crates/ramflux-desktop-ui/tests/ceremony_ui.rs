@@ -343,7 +343,8 @@ fn the_asked_words_complete_from_a_prefix_and_confirming_creates_the_account(
     // The result says what is true and no more.
     assert!(exists(cx, handle, "ceremony-done"));
     assert!(has_label(cx, handle, &tr("ceremony.done.state_text")));
-    let text = tr_args("ceremony.done.text", &[("name", "Alex")]).to_string();
+    let text =
+        tr_args("ceremony.done.text", &[("name", "Alex"), ("node", "n-ramflux")]).to_string();
     assert!(has_label(cx, handle, &text), "{text}");
     // The account is listed and unlocked by now, yet the result stays in
     // view until it is closed.
@@ -1095,4 +1096,80 @@ fn every_screen_focuses_a_named_container_that_draws_the_ring(cx: &mut TestAppCo
     let (role, label) = named(cx, handle, "ceremony-phrase-missing");
     assert_eq!(role, Some(Role::Alert));
     assert_eq!(label, tr("ceremony.show.missing").to_string());
+}
+
+/// Runs `f` on the mock source itself (the daemon's nodes, accounts).
+fn mock_source<R>(
+    cx: &mut TestAppContext,
+    shell: &Entity<Shell>,
+    f: impl FnOnce(&mut ramflux_desktop_test::MockSource) -> R,
+) -> R {
+    let handle = store_handle(cx, shell);
+    cx.update(|cx| handle.update(cx, |handle, _| f(handle.mock_mut().expect("a mock"))))
+}
+
+#[gpui_kit::test]
+fn the_chosen_node_becomes_the_default_before_the_ceremony_begins(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    // A confirmed node that is not the daemon's default (yet).
+    mock_source(cx, &shell, |m| {
+        m.inject(
+            0,
+            ramflux_desktop_core::DomainEvent::NodeSettingsChanged {
+                node_id: ramflux_desktop_core::NodeId::new("n-ramflux"),
+                enabled: None,
+                is_default: Some(false),
+            },
+        );
+    });
+    advance(cx, 200);
+    click(cx, handle, "account-create-phrase");
+    assert!(has_label(cx, handle, &tr_args("ceremony.name.node", &[("node", "n-ramflux")])));
+    type_into(cx, handle, "ceremony-name-input", "Alex");
+    click(cx, handle, "ceremony-continue");
+    assert_eq!(panel_pending(cx, &shell), Some(Pending::Node), "the default first");
+    advance(cx, 400);
+    let labels = effects(cx, &shell);
+    let position = |method: &str| labels.iter().position(|l| l == method);
+    assert!(position("node.set_default").is_some(), "{labels:?}");
+    assert!(position("node.set_default") < position("account.create"), "{labels:?}");
+    assert_eq!(last_body(cx, &shell, "node.set_default")["node_id"], "n-ramflux");
+    assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Prepared), "then the ceremony began");
+    // A node that already is the default is not set again.
+    click(cx, handle, "ceremony-cancel");
+    advance(cx, 300);
+    click(cx, handle, "ceremony-close");
+    click(cx, handle, "account-create-phrase");
+    type_into(cx, handle, "ceremony-name-input", "Bea");
+    click(cx, handle, "ceremony-continue");
+    advance(cx, 300);
+    assert_eq!(count(cx, &shell, "node.set_default"), 1, "already the default");
+}
+
+#[gpui_kit::test]
+fn without_a_confirmed_node_the_account_cannot_begin_and_says_why(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    mock_source(cx, &shell, |m| {
+        m.inject(
+            0,
+            ramflux_desktop_core::DomainEvent::NodeRemoved {
+                node_id: ramflux_desktop_core::NodeId::new("n-ramflux"),
+            },
+        );
+    });
+    advance(cx, 200);
+    // With no node the entry page goes back to its node step; the ceremony
+    // cannot be reached, and when its panel is opened without one it says so.
+    let panel = panel(cx, &shell);
+    in_window(cx, handle, |window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_node(None, cx);
+            panel.open(window, cx);
+            panel.begin(window, cx);
+        });
+    });
+    advance(cx, 200);
+    assert_eq!(count(cx, &shell, "account.create"), 0);
+    assert_eq!(count(cx, &shell, "node.set_default"), 0);
+    let _ = handle;
 }

@@ -54,6 +54,7 @@ pub fn options(path: &std::path::Path) -> ShellOptions {
         poll_fast: Duration::from_millis(80),
         poll_slow: Duration::from_millis(300),
         reconnect_backoff: Duration::from_millis(150),
+        networking_poll_ms: [100, 300],
         ..SdkConfig::new(path)
     };
     ShellOptions {
@@ -143,6 +144,8 @@ pub struct State {
     pub account_reads: Arc<Latch>,
     /// The daemon reports `born_v3_creation: true` in `daemon.status`.
     pub born_v3: bool,
+    /// The daemon has no default node until `node.set_default` sets one.
+    pub no_default: bool,
 }
 
 /// A gate a test closes to hold answers back and opens to let them go.
@@ -295,6 +298,7 @@ pub fn start_with_custody(
     let shared: Shared = Arc::default();
     let state = shared.clone();
     let all = frames();
+    let custody_view = custody.clone();
     {
         let state = shared.lock().expect("state");
         state.calls.conversation("dm-ana", "principal-ana");
@@ -430,6 +434,11 @@ pub fn start_with_custody(
                     let mut frame = fixture();
                     let rows = frame["conversations"].as_array_mut().expect("rows");
                     rows.extend(state.conversations.iter().cloned());
+                    frame
+                }
+                "node.list" if state.no_default && custody_view.default_node().is_none() => {
+                    let mut frame = fixture();
+                    frame["default_node_id"] = json!(null);
                     frame
                 }
                 "account.list" => state.accounts.clone().unwrap_or_else(fixture),

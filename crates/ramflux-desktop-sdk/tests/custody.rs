@@ -476,3 +476,68 @@ fn an_event_the_network_sends_never_starts_a_recovery() {
     );
     fake.shutdown();
 }
+
+#[test]
+fn a_pending_account_is_read_again_until_it_is_live_and_the_banner_state_follows() {
+    let custody = Arc::new(FakeCustody::new());
+    let offered = Arc::new(AtomicBool::new(true));
+    let (fake, path) = daemon("net-poll", &custody, &offered);
+    let config = ramflux_desktop_sdk::SdkConfig {
+        networking_poll_ms: [100, 400],
+        // The ordinary poll is out of the way: only the backoff reads.
+        poll_fast: Duration::from_secs(60),
+        poll_slow: Duration::from_secs(60),
+        ..common::config(&path)
+    };
+    let hub = SdkHub::start(config).expect("bridge");
+    let mut daemon = Fed::new(hub.daemon_source());
+    daemon.until("creation offered", |s, _| s.offers_born_v3_creation());
+    // No default node was set: the account is made, but not connected.
+    challenged(&mut daemon, true);
+    daemon.source.submit(confirm(right_words()));
+    daemon.until("created", |s, _| {
+        s.ceremony().is_some_and(|c| matches!(c.phase, CeremonyPhase::Created(_)))
+    });
+    let Some(CeremonyPhase::Created(made)) = phase(&daemon) else { panic!("created") };
+    let id = AccountId::new(&made.local_account_id);
+    assert_eq!(made.networking, Networking::Pending);
+
+    // The account's own scope reads its status, and reads it again.
+    let mut account = Fed::new(hub.account_source(id.clone()));
+    account.until("status says pending", |s, _| {
+        s.account(&id).is_some_and(|a| a.networking == Networking::Pending)
+    });
+    let reads =
+        |fake: &FakeBus| fake.seen().iter().filter(|s| s.method == "account.status").count();
+    let before = reads(&fake);
+    account.settle(700);
+    assert!(reads(&fake) >= before + 2, "re-read with a backoff while pending");
+    // The daemon connects to its node later: the very next read clears it.
+    custody.go_live(id.as_str());
+    account.until("live", |s, _| s.account(&id).is_some_and(|a| a.networking == Networking::Live));
+    // Once live nothing keeps polling the status.
+    account.settle(300);
+    let settled = reads(&fake);
+    account.settle(900);
+    assert_eq!(reads(&fake), settled, "no reads once live");
+    fake.shutdown();
+}
+
+#[test]
+fn an_account_made_with_a_default_node_goes_live_inside_confirm() {
+    let (fake, _hub, mut fed, custody) = offering("with-default");
+    fed.source.submit(call(methods::NODE_SET_DEFAULT, json!({ "node_id": "n-harbor" })));
+    let limit = std::time::Instant::now() + Duration::from_secs(10);
+    while custody.default_node().is_none() {
+        assert!(std::time::Instant::now() < limit, "the default was not set");
+        fed.settle(20);
+    }
+    challenged(&mut fed, true);
+    fed.source.submit(confirm(right_words()));
+    fed.until("created", |s, _| {
+        s.ceremony().is_some_and(|c| matches!(c.phase, CeremonyPhase::Created(_)))
+    });
+    let Some(CeremonyPhase::Created(made)) = phase(&fed) else { panic!("created") };
+    assert_eq!(made.networking, Networking::Live);
+    fake.shutdown();
+}

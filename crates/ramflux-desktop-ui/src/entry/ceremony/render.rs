@@ -128,6 +128,23 @@ impl CeremonyPanel {
             .gap_3()
             .child(self.heading("ceremony.title", window, cx))
             .child(muted(tr("ceremony.name.help"), cx))
+            .child(match &self.node {
+                Some(node) => announced(
+                    "ceremony-node",
+                    Role::Status,
+                    tr_args("ceremony.name.node", &[("node", node.as_str())]),
+                    muted(tr_args("ceremony.name.node", &[("node", node.as_str())]), cx),
+                ),
+                None => announced(
+                    "ceremony-no-node",
+                    Role::Alert,
+                    tr("ceremony.name.no_node"),
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().danger)
+                        .child(tr("ceremony.name.no_node")),
+                ),
+            })
             .child(
                 v_flex().gap_1().child(muted(tr("ceremony.name.label"), cx)).child(
                     Input::new(&self.name)
@@ -148,8 +165,16 @@ impl CeremonyPanel {
                                 })),
                             Pending::Begin,
                         )
-                        .loading(self.pending == Some(Pending::Begin) || self.is_abandoned())
-                        .disabled(self.pending.is_some() || self.is_abandoned() || !typed),
+                        .loading(
+                            matches!(self.pending, Some(Pending::Begin | Pending::Node))
+                                || self.is_abandoned(),
+                        )
+                        .disabled(
+                            self.pending.is_some()
+                                || self.is_abandoned()
+                                || !typed
+                                || self.node.is_none(),
+                        ),
                     )
                     .child(self.cancel_button("ceremony.back", cx)),
             )
@@ -540,13 +565,25 @@ impl CeremonyPanel {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let live = account.networking == Networking::Live;
+        // The account list says whether it connected since (the daemon
+        // registers it after it is made, and the page reads that again).
+        let networking = self
+            .store
+            .read(cx)
+            .entry_store()
+            .account(&ramflux_desktop_core::AccountId::new(&account.local_account_id))
+            .map_or(account.networking, |listed| listed.networking);
+        let live = networking == Networking::Live;
         let (state, state_text, text_key) = if live {
             ("ceremony.done.live_state", "ceremony.done.live_state_text", "ceremony.done.live_text")
         } else {
             ("ceremony.done.state", "ceremony.done.state_text", "ceremony.done.text")
         };
-        let text = tr_args(text_key, &[("name", &account.display_name)]);
+        let node = self
+            .node
+            .as_ref()
+            .map_or_else(|| tr("ceremony.done.node_unknown"), |n| n.as_str().to_owned().into());
+        let text = tr_args(text_key, &[("name", &account.display_name), ("node", &node)]);
         v_flex()
             .id("ceremony-done")
             .test_support()

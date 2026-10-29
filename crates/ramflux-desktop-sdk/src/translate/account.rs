@@ -32,10 +32,21 @@ fn secure_sessions(value: &Value) -> Option<SecureSessions> {
 }
 
 impl Translator {
+    /// Whether this scope's own account is waiting for its networking.
+    pub fn own_networking_pending(&self) -> bool {
+        self.scope.account().and_then(|id| self.accounts.get(id)).is_some_and(|account| {
+            account.networking == ramflux_desktop_core::Networking::Pending
+                && account.lock_state == LockState::Unlocked
+        })
+    }
+
     pub(super) fn account_status(&mut self, id: &AccountId, value: &Value) -> Vec<DomainEvent> {
         let mut account = self.account_record(id);
         account.lock_state = LockState::Unlocked;
         account.node_id = value["node_id"].as_str().map(NodeId::new);
+        if let Some(networking) = super::daemon::networking(value) {
+            account.networking = networking;
+        }
         if let Some(sessions) = secure_sessions(value) {
             account.secure_sessions = sessions;
         }

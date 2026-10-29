@@ -1390,3 +1390,43 @@ arrives: a ceremony (cancelled once, then the cancel's answer), a refusal that
 is a ceremony update, a failure of the begin itself with no update at all, or a
 failure of the cancel (the ceremony that still runs is then shown with its own
 Cancel). A reopen of the panel in between changes none of that.
+
+## DESK-V3-02 r2: the account connects to a node
+
+Verified against the product at the pinned revision (`bus/creation_confirm.rs`
+-> `Supervisor::activate_native` -> `native_account::unlock` ->
+`ensure_gateway_live` -> `configure_pending`): a new account goes live inside
+`account.create.confirm` only when a node can be selected for it, which is the
+account's saved `account/node-id` (unset for a new account) or the daemon's
+default node. The default is set only by `node.set_default`; `node.confirm`
+does not set it. The ceremony therefore starts like this:
+
+- The entry page passes the node the user chose (else the daemon's default,
+  else the first confirmed and enabled one) to the panel. The name step says
+  "This account will connect to the node <node>". With no node the button is
+  off and the step says a node must be added first; nothing begins.
+- If that node is not the daemon's default, the panel sends `SetDefaultNode`
+  (`node.set_default`) first, waits for the node list to show it as the default
+  (a failure of that method ends the wait; the name step stays), and only then
+  sends `BeginCeremony`. A node that already is the default is not set again.
+- The daemon's own conditions still apply: the node must have native custody
+  configured. If registration fails, the account stays `networking_pending`
+  (the product logs why and reports no typed reason on the bus), so the copy
+  says what is happening and what to check, never that a feature is missing:
+  "connecting to <node> ... if it does not connect, check that the node is
+  reachable". The done screen follows the account list, so it turns to
+  "Connected" by itself.
+
+**Networking read.** `account.status` and `account.list` both carry
+`networking`; `account_status` now reads it. While an account's own scope sees
+it pending, it reads `account.status` again after the first wait (2 s),
+doubling up to 30 s (`SdkConfig::networking_poll_ms`), until it is live or the account locks
+(the daemon sends no event when networking comes up). The workspace banner
+(text: connecting, updates by itself) and the entry tag follow the store. The
+composer is not gated locally by networking: the daemon refuses a send, and the
+banner says why.
+
+**Audit.** The erase check zeroizes the bytes in place, reads every one, and
+counts the buffer only if all were zero (`bridge::custody::erase_and_check`,
+with a test that the check can fail). Typed secrets move into their buffers
+(`SecretInput::into_zeroizing`), so there is no second copy.

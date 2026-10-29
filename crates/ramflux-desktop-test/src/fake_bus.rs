@@ -528,7 +528,7 @@ fn answer(
             "CapabilityDenied",
             "capability denied: backup jobs require an attended human frontend".to_owned(),
         )
-    } else if shared.custody.handles(&method, &body) {
+    } else if shared.custody.handles(&method, account.as_deref(), &body) {
         shared.applied.fetch_add(1, Ordering::SeqCst);
         shared.custody.answer(connection, &method, account.as_deref(), &body)
     } else if let Some(stored) = receipt {

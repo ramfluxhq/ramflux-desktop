@@ -41,6 +41,8 @@ fn fresh_device(
     {
         let mut state = state.lock().expect("state");
         state.born_v3 = true;
+        // The user confirmed a node, but the daemon has no default yet.
+        state.no_default = true;
         // The account list is the custody state's once it has accounts.
         state.accounts = Some(serde_json::json!({ "accounts": [], "account_details": [] }));
     }
@@ -108,8 +110,20 @@ fn a_created_account_is_locked_restarted_and_unlocked_with_its_passphrase(cx: &m
     wait(cx, "created", |cx| matches!(ceremony_phase(cx, &shell), Some(CeremonyPhase::Created(_))));
     let Some(CeremonyPhase::Created(made)) = ceremony_phase(cx, &shell) else { panic!("created") };
     let id = AccountId::new(&made.local_account_id);
-    assert_eq!(made.networking, Networking::Pending);
-    assert!(has_label(cx, handle, &tr("ceremony.done.state_text")));
+    // The chosen node became the daemon's default before the ceremony
+    // began, so the account connected inside confirm.
+    assert_eq!(made.networking, Networking::Live);
+    assert!(has_label(cx, handle, &tr("ceremony.done.live_state_text")));
+    let seen = fake.seen();
+    let order = |method: &str| seen.iter().position(|s| s.method == method);
+    assert!(order("node.set_default").is_some(), "the node was made the default");
+    assert!(order("node.set_default") < order("account.create"), "and before the begin");
+    assert_eq!(custody.default_node().as_deref(), Some("n-harbor"));
+    // The strip does not say the daemon is locked (L3: that was the mock scenario).
+    assert_eq!(
+        daemon(cx, &shell, |s| s.source_status()),
+        ramflux_desktop_core::SourceStatus::Connected
+    );
     // One connection for the whole ceremony, none shared with the rest.
     let connection = custody.connections_of("account.create");
     assert_eq!(connection.len(), 1);
@@ -142,10 +156,10 @@ fn a_created_account_is_locked_restarted_and_unlocked_with_its_passphrase(cx: &m
     });
     assert_eq!(
         daemon(cx, &shell, |s| s.account(&id).map(|a| a.networking)),
-        Some(Networking::Pending)
+        Some(Networking::Live)
     );
     assert!(exists(cx, handle, "unlock"));
-    assert!(exists(cx, handle, "account-networking-acct-native-1"), "it says it is not connected");
+    assert!(!exists(cx, handle, "account-networking-acct-native-1"), "connected: no tag");
 
     // The wrong passphrase opens nothing; the one set at confirm does.
     type_into(cx, handle, "passphrase", "not the passphrase");
@@ -201,5 +215,48 @@ fn a_locked_account_is_recovered_from_its_phrase_through_the_real_source(cx: &mu
     );
     click(cx, handle, "recovery-done-close");
     wait(cx, "the workspace", |cx| page(cx, &shell) == Page::Workspace);
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn the_banner_of_a_pending_account_clears_the_moment_the_daemon_connects_it(
+    cx: &mut TestAppContext,
+) {
+    let custody = Arc::new(FakeCustody::new());
+    // The node cannot be reached when the account is made.
+    custody.set_live(false);
+    let (fake, handle, shell) = fresh_device(cx, "ui-sdk-banner", &custody);
+    click(cx, handle, "account-create-phrase");
+    type_into(cx, handle, "ceremony-name-input", "Alex");
+    click(cx, handle, "ceremony-continue");
+    wait(cx, "prepared", |cx| ceremony_phase(cx, &shell) == Some(CeremonyPhase::Prepared));
+    click(cx, handle, "ceremony-show");
+    wait(cx, "taken", |cx| held_words(cx, &shell) == 24);
+    click(cx, handle, "ceremony-hide");
+    wait(cx, "asked", |cx| {
+        matches!(ceremony_phase(cx, &shell), Some(CeremonyPhase::Challenged { .. }))
+    });
+    for (id, position) in
+        ["ceremony-word-1", "ceremony-word-2", "ceremony-word-3"].into_iter().zip(DEMO_POSITIONS)
+    {
+        type_into(cx, handle, id, demo_word(usize::from(position)));
+    }
+    click(cx, handle, "ceremony-next");
+    type_into(cx, handle, "ceremony-passphrase-input", PASSPHRASE);
+    type_into(cx, handle, "ceremony-passphrase-repeat", PASSPHRASE);
+    click(cx, handle, "ceremony-confirm-submit");
+    wait(cx, "created", |cx| matches!(ceremony_phase(cx, &shell), Some(CeremonyPhase::Created(_))));
+    // The done screen says it is connecting, to the node the user chose.
+    let text = tr_args("ceremony.done.text", &[("name", "Alex"), ("node", "n-harbor")]);
+    assert!(has_label(cx, handle, &text), "{text}");
+    click(cx, handle, "ceremony-done-close");
+    wait(cx, "the workspace", |cx| page(cx, &shell) == Page::Workspace);
+    wait(cx, "the banner", |cx| exists(cx, handle, "networking-banner"));
+    // The daemon connects the account later: no unlock, no restart.
+    custody.go_live("acct-native-1");
+    wait(cx, "the banner clears", |cx| {
+        crate::common::advance(cx, 20);
+        !exists(cx, handle, "networking-banner")
+    });
     fake.shutdown();
 }

@@ -44,6 +44,8 @@ pub const DESKTOP_SETTINGS_FILE: &str = ramflux_desktop_sdk::local::paths::SETTI
 
 /// Where the data comes from.
 #[derive(Debug, Clone)]
+// One value is built at start-up; boxing the settings would only add noise.
+#[allow(clippy::large_enum_variant)]
 pub enum SourceChoice {
     /// The bundled scenario named in [`ShellOptions::scenario`].
     Mock,
