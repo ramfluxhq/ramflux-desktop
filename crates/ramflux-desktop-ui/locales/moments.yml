@@ -31,6 +31,9 @@ moment:
     name_change:
       en: "Name change"
       zh-CN: "改名"
+    group_rename:
+      en: "Group name change"
+      zh-CN: "群名变更"
     conflict:
       en: "Version conflict"
       zh-CN: "版本冲突"
@@ -421,6 +424,10 @@ moment:
     declined:
       en: "Declined"
       zh-CN: "已拒绝"
+  group_rename:
+    line:
+      en: "The group is now called “%{new}” (was “%{old}”)"
+      zh-CN: "群组已改名为“%{new}”（原名“%{old}”）"
   name_change:
     line:
       en: "%{old} is now %{new}"

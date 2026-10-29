@@ -98,6 +98,10 @@
             emit: [(100, ParticipantUpserted(id: "p-ivo", kind: Human, display: "Ivo Brandt", contact: true, link: Accepted))],
         ),
         (
+            on: Call(method: "contact.block", fields: {"participant_id": "p-ivo"}),
+            emit: [(100, ParticipantUpserted(id: "p-ivo", kind: Human, display: "Ivo Brandt", link: Blocked))],
+        ),
+        (
             on: Call(method: "contact.remove", fields: {"participant_id": "p-ivo"}),
             emit: [(100, ParticipantUpserted(id: "p-ivo", kind: Human, display: "Ivo Brandt", link: Removed))],
         ),

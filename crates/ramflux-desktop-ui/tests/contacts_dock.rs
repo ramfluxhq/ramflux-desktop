@@ -235,3 +235,37 @@ fn the_palette_opens_the_add_contact_field(cx: &mut TestAppContext) {
     assert_eq!(last_body(cx, &shell, methods::CONTACT_ADD)["participant_id"], "principal-kai");
     assert!(effects(cx, &shell).iter().all(|m| m != methods::CONTEXT_PIN), "only the add");
 }
+
+#[gpui_kit::test]
+fn a_contact_can_be_unblocked_and_blocked_again(cx: &mut TestAppContext) {
+    // CONTACT-BLOCK-01: unblock, block again and unblock again are three
+    // decisions the daemon takes in turn. The second block needs the hold
+    // like the first, and each row reads as what it is.
+    let (handle, shell) = open_contacts(cx);
+    let blocked_row = "contacts-blocked-p-ivo";
+    for round in 1..=2 {
+        let label = in_window(cx, handle, |window, _| {
+            window.within(blocked_row).find("unblock").label().map(str::to_owned)
+        });
+        assert_eq!(label.as_deref(), Some(tr("dock.contacts.unblock").as_ref()), "round {round}");
+        click_in(cx, handle, blocked_row, "unblock");
+        advance(cx, 200);
+        assert_eq!(link(cx, &shell, "p-ivo"), Some(ContactLink::Accepted), "unblock {round}");
+        assert!(exists(cx, handle, "contacts-p-ivo"), "back among the contacts");
+        assert!(!exists(cx, handle, blocked_row));
+
+        if round == 1 {
+            click_in(cx, handle, "contacts-p-ivo", "contact-actions");
+            click_label(cx, handle, &tr("dock.contacts.block"));
+            assert!(strip_open(cx, &shell), "blocking again needs the hold");
+            hold_confirm(cx, handle);
+            advance(cx, 200);
+            assert_eq!(link(cx, &shell, "p-ivo"), Some(ContactLink::Blocked), "blocked again");
+            assert!(exists(cx, handle, blocked_row), "listed under Blocked again");
+        }
+    }
+    let blocks = with_store(cx, &shell, |s| {
+        s.audit().iter().filter(|a| a.action == methods::CONTACT_BLOCK).count()
+    });
+    assert_eq!(blocks, 1, "the second block is audited");
+}

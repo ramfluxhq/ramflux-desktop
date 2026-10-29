@@ -80,6 +80,11 @@ pub struct Group {
     pub roles: BTreeMap<String, String>,
     /// Every current member, resolved or not.
     pub members: Vec<MemberRoute>,
+    /// The signed name of a shared group (`name`), when the daemon lists
+    /// one; legacy groups have none.
+    pub name: Option<String>,
+    /// The signed name's epoch (`name_epoch`).
+    pub name_epoch: Option<u64>,
 }
 
 /// A group member's route.
@@ -187,6 +192,8 @@ impl Group {
                 })
                 .unwrap_or_default(),
             members: MemberRoute::list(row),
+            name: field(row, "name"),
+            name_epoch: row["name_epoch"].as_u64(),
         }
     }
 }

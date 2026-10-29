@@ -336,6 +336,20 @@ fn contact_actions_reach_the_daemon_and_its_records_update_the_contacts() {
     submit(&mut account, methods::CONTACT_UNBLOCK, "principal-ana");
     account
         .until("ana unblocked", |s, _| link_of(s, "principal-ana") == Some(ContactLink::Accepted));
+    // CONTACT-BLOCK-01: a contact can be blocked again after an unblock.
+    submit(&mut account, methods::CONTACT_BLOCK, "principal-ana");
+    account.until("ana blocked again", |s, _| {
+        link_of(s, "principal-ana") == Some(ContactLink::Blocked)
+    });
+    assert_eq!(
+        fake.seen().iter().filter(|s| s.method == "contact.block").count(),
+        2,
+        "both blocks reached the daemon"
+    );
+    submit(&mut account, methods::CONTACT_UNBLOCK, "principal-ana");
+    account.until("ana unblocked again", |s, _| {
+        link_of(s, "principal-ana") == Some(ContactLink::Accepted)
+    });
     submit(&mut account, methods::CONTACT_REMOVE, "principal-ana");
     account.until("ana removed", |s, _| link_of(s, "principal-ana") == Some(ContactLink::Removed));
     let remove: LocalBusContactRemoveRequest = sdk_shaped(&frame("contact.remove"));

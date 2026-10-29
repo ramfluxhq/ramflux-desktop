@@ -208,7 +208,7 @@ impl BusError {
     /// unauthenticated session and a failed trust check are not retried.
     pub fn is_retryable(&self) -> bool {
         match self {
-            Self::Daemon { code, .. } => code == "Unavailable",
+            Self::Daemon { code, .. } => RETRYABLE_CODES.contains(&code.as_str()),
             Self::Transport(_) | Self::Timeout => true,
         }
     }
@@ -259,7 +259,7 @@ const DEADLINE_EXCEEDED: &str = "request deadline exceeded";
 /// `docs/local_bus_errors.md`: `Unavailable` is a transient outage (a
 /// retry may work), `Unauthenticated` and `TransportSecurity` are not
 /// retried (sign in again, or repair the trusted binding, first).
-const DAEMON_CODES: [&str; 8] = [
+const DAEMON_CODES: [&str; 10] = [
     "ValidationFailed",
     "Unavailable",
     "Unauthenticated",
@@ -268,7 +268,23 @@ const DAEMON_CODES: [&str; 8] = [
     "GrantInvalidated",
     "SignatureVerificationFailed",
     "RemoteAppApprovalRequired",
+    CALL_CONTROL_CAPACITY,
+    GROUP_STATE_CAPACITY,
 ];
+
+/// The typed refusal of an inbound call control past the per-call receipt
+/// cap (`SdkError::CallControlReceiptCapacity`, CALL-FU-01 N3). Receipts are
+/// released when the call ends, so asking again later can work.
+pub const CALL_CONTROL_CAPACITY: &str = "CallControlReceiptCapacity";
+
+/// The typed refusal of a group state change past a signed-state budget
+/// (members, devices, bytes, requests or removal fences, GRP-SYNC-01). The
+/// state is unchanged and nothing was discarded; a smaller change can work.
+pub const GROUP_STATE_CAPACITY: &str = "GroupStateCapacity";
+
+/// The daemon codes a retry may fix: a transient outage, and the per-call
+/// control receipt cap, which frees up as calls end.
+const RETRYABLE_CODES: [&str; 2] = ["Unavailable", CALL_CONTROL_CAPACITY];
 
 /// The typed task refusal codes (`docs/conversation_tasks.md` of the
 /// product) and the over-cap task delivery code.
@@ -394,6 +410,15 @@ mod tests {
             assert!(!refused.is_connection_lost() && !refused.is_retryable(), "{code}");
             assert!(refused.message().starts_with("backend.failure."), "{code}: a clear text");
         }
+        // The new typed capacity refusals are answers, not a lost link; only
+        // the per-call receipt cap is worth asking again.
+        let capped = BusError::from(SdkError::LocalBus(
+            "CallControlReceiptCapacity: voice call control receipt capacity exhausted at 128 receipts"
+                .to_owned(),
+        ));
+        assert!(!capped.is_connection_lost() && capped.is_retryable());
+        let full = BusError::from(SdkError::LocalBus("GroupStateCapacity: full".to_owned()));
+        assert!(!full.is_connection_lost() && !full.is_retryable());
         // So is a typed task refusal, and an over-cap task delivery.
         for code in ["stale_revision", "quota_exhausted", "TaskDeliveryTooLarge"] {
             let refused = BusError::from(SdkError::LocalBus(format!("{code}: no")));

@@ -121,6 +121,9 @@ pub struct State {
     /// Public profiles: names, kinds, how far they are verified, and name
     /// warnings, joined into contact, identity and request rows.
     pub profiles: Arc<ramflux_desktop_test::fake_profiles::FakeProfiles>,
+    /// What `group.list` answers instead of the fixture's one group, when
+    /// set (a roster or signed name changed by sync).
+    pub groups: Option<Vec<Value>>,
     /// Principals whose manual verification went stale
     /// (`safety_state: verification_stale`).
     pub stale: Vec<String>,
@@ -389,6 +392,10 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
                 }
                 frame
             }
+            "group.list" => match &state.groups {
+                Some(groups) => json!({ "groups": groups, "next_cursor": null }),
+                None => fixture(),
+            },
             "conversation.directory" => {
                 let mut frame = fixture();
                 let rows = frame["conversations"].as_array_mut().expect("rows");

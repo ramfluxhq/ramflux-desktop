@@ -18,6 +18,7 @@ mod conflict;
 mod contact;
 mod governance;
 pub mod grant_failure;
+mod group_rename;
 mod handoff;
 mod intervention;
 mod message;
@@ -291,6 +292,7 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
             vec![&moment.origin]
         }
         MomentKind::NameChange(p) => vec![&p.participant_id],
+        MomentKind::GroupRename(_) => Vec::new(),
         MomentKind::SafetyChange(p) => vec![&p.participant_id],
         MomentKind::Governance(p) => vec![&p.target],
         MomentKind::ContactRequest(p) => vec![&p.from],
@@ -417,10 +419,14 @@ impl RenderOnce for MomentView {
             MomentKind::TaskEvent(p) => task_event::render(p, &row, cx).into_any_element(),
             MomentKind::Call(_) => call::render(&row.refs, &sink, &state, cx).into_any_element(),
             MomentKind::NameChange(p) => name_change::render(p, &row, cx).into_any_element(),
+            MomentKind::GroupRename(p) => group_rename::render(p, &row, cx).into_any_element(),
         };
-        // A task event and a name change are one compact line each: they
-        // carry their own time.
-        let compact = matches!(moment.kind, MomentKind::TaskEvent(_) | MomentKind::NameChange(_));
+        // A task event, a name change and a group rename are one compact line
+        // each: they carry their own time.
+        let compact = matches!(
+            moment.kind,
+            MomentKind::TaskEvent(_) | MomentKind::NameChange(_) | MomentKind::GroupRename(_)
+        );
         let focused = state.focus.as_ref().is_some_and(|f| f.is_focused(window));
         v_flex()
             .id(domain_id("moment", &moment.id))

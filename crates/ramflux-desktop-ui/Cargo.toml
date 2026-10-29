@@ -93,6 +93,14 @@ path = "tests/contacts_shots.rs"
 test = false
 harness = false
 
+# Offscreen screenshots of the DESK-PIN-01 states (group sync, kind mismatch,
+# call capacity, contact requests, blocked contacts); run explicitly.
+[[test]]
+name = "desk_pin_shots"
+path = "tests/desk_pin_shots.rs"
+test = false
+harness = false
+
 [[test]]
 name = "sync_shots"
 path = "tests/sync_shots.rs"

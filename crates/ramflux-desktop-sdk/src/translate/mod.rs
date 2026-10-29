@@ -46,6 +46,7 @@ mod daemon;
 mod effects;
 mod grant_failures;
 mod grants;
+mod group_sync;
 mod identity;
 mod interventions;
 mod messages;
@@ -219,6 +220,9 @@ pub struct Translator {
     name_changes: Vec<crate::renames::RenameRecord>,
     /// Renames announced since the bridge last took them.
     new_name_changes: Vec<crate::renames::RenameRecord>,
+    /// Whether a complete `group.list` was translated (the baseline of the
+    /// group sync records).
+    groups_listed: bool,
 }
 
 impl Translator {
@@ -276,6 +280,7 @@ impl Translator {
             pending_calls: BTreeMap::new(),
             name_changes: Vec::new(),
             new_name_changes: Vec::new(),
+            groups_listed: false,
             outgoing_requests: BTreeMap::new(),
             reported_jobs: BTreeMap::new(),
             lost_jobs: BTreeSet::new(),
@@ -449,7 +454,7 @@ impl Translator {
         match paged {
             Paged::Identities => Translated::events(self.identities(rows)),
             Paged::Groups => {
-                let mut events = self.groups(rows);
+                let mut events = self.groups(rows, now);
                 events.extend(self.all_rename_moments());
                 Translated::events(events)
             }

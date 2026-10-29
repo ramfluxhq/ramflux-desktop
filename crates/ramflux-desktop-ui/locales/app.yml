@@ -230,6 +230,12 @@ identity:
     claimed_help:
       en: "Only their own claim; nothing verified it."
       zh-CN: "仅为对方自称，未经任何验证。"
+    role_mismatch:
+      en: "%{kind}, not valid for this action"
+      zh-CN: "%{kind}，不适用于此操作"
+    role_mismatch_help:
+      en: "Their signed profile gives this kind, which does not fit what they did here."
+      zh-CN: "对方已签名的资料给出此类型，与其在此所做的操作不相符。"
     verified_unnamed:
       en: "Kind verified"
       zh-CN: "类型已验证"

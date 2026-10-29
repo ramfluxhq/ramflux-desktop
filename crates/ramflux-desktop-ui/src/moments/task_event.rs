@@ -60,14 +60,18 @@ pub fn render(payload: &TaskEventPayload, row: &MomentRow, cx: &App) -> impl Int
     // The source's flag on the event says the signer's kind is verified
     // for it; the kind is named only when the directory itself holds a
     // profile-signed claim of it (else "Kind verified", unnamed).
-    let kind = row
-        .refs
-        .people
-        .get(&row.moment.origin)
-        .map(|p| p.kind_claim)
-        .filter(|claim| claim.is_verified())
-        .and_then(|claim| claim.kind())
-        .filter(|_| payload.actor_kind_verified);
+    // An authenticated kind the source did not verify for the action's role
+    // is a mismatch and is named as such (KIND-01-FU-02).
+    let kind = if payload.actor_kind_verified {
+        row.refs
+            .people
+            .get(&row.moment.origin)
+            .map(|p| p.kind_claim)
+            .filter(|claim| claim.is_verified())
+            .and_then(|claim| claim.kind())
+    } else {
+        payload.actor_kind
+    };
     h_flex()
         .id("task-event")
         .aria_label(text.clone())

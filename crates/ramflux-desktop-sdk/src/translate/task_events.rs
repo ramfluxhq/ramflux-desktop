@@ -183,6 +183,9 @@ impl Translator {
         let event = parse(&row_text(record)?)?.event()?;
         // Absent (a sibling copy): unverified, never inferred from text.
         let actor_kind_verified = record["actor_kind_verified"].as_bool().unwrap_or(false);
+        // The authenticated kind (null for unknown or legacy metadata): never
+        // inferred from the role or the flag.
+        let actor_kind = record["actor_kind"].as_str().and_then(super::contacts::peer_kind);
         Some(Moment {
             id: message_moment_id(context, message),
             context_id: context.clone(),
@@ -192,6 +195,7 @@ impl Translator {
                 task_id: task_key(context.as_str(), task_id),
                 event,
                 actor_kind_verified,
+                actor_kind,
             }),
             lifecycle: Lifecycle::Done,
         })

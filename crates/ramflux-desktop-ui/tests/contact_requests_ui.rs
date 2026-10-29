@@ -292,3 +292,39 @@ fn without_requests_on_the_daemon_nothing_is_offered(cx: &mut TestAppContext) {
     assert!(!exists(cx, world.handle, "contacts-auto-accept"));
     assert!(with_store(cx, &world.shell, |s| s.request_policy().is_none()));
 }
+
+#[gpui_kit::test]
+fn declining_a_crossed_request_leaves_this_accounts_own_request_waiting(cx: &mut TestAppContext) {
+    // CONTACT-FU-03: when both sides asked each other, declining the
+    // inbound request neither cancels nor fences this account's own
+    // pending request. The two are different requests of one peer.
+    let world = open_requests(cx, "ui-request-crossed", true);
+    let own = world.requests.outgoing(ACCOUNT, "principal-ana");
+    let inbound = world.requests.incoming(ACCOUNT, "principal-ana", Some("saw your request too"));
+    world.fake.publish(ACCOUNT, "contact.changed", json!({}));
+    wait(cx, "both requests", |cx| {
+        exists(cx, world.handle, &row("principal-ana"))
+            && label_in(cx, &world, "contacts-principal-ana", "contact-request").is_some()
+    });
+    let ana = ramflux_desktop_core::ParticipantId::new("principal-ana");
+    let name = with_store(cx, &world.shell, move |s| s.participant(&ana).unwrap().display.clone());
+    let waiting = tr_args("dock.contacts.request.waiting", &[("name", &name)]).to_string();
+    assert_eq!(
+        label_in(&mut *cx, &world, "contacts-principal-ana", "contact-request").as_deref(),
+        Some(waiting.as_str())
+    );
+
+    click_in(cx, world.handle, &row("principal-ana"), "request-decline");
+    wait(cx, "declined", |_| {
+        world.requests.row(&inbound).is_some_and(|r| r["state"] == "declined")
+    });
+    wait(cx, "the inbound row gone", |cx| !exists(cx, world.handle, &row("principal-ana")));
+    advance(cx, 300);
+    // Their request is declined; ours still waits, and says so, not "declined".
+    assert!(world.requests.row(&own).is_some_and(|r| r["state"] == "pending"));
+    let shown = label_in(&mut *cx, &world, "contacts-principal-ana", "contact-request");
+    assert_eq!(shown.as_deref(), Some(waiting.as_str()), "{shown:?}");
+    let declined = tr_args("dock.contacts.request.declined", &[("name", &name)]);
+    assert_ne!(shown.as_deref(), Some(declined.as_ref()));
+    assert_eq!(sent(&world, "contact.decline"), [json!({ "request_id": inbound })]);
+}

@@ -203,5 +203,6 @@ pub fn moment_kind(kind: &MomentKind) -> SharedString {
         MomentKind::System(_) => "moment.kind.system",
         MomentKind::Call(_) => "moment.kind.call",
         MomentKind::NameChange(_) => "moment.kind.name_change",
+        MomentKind::GroupRename(_) => "moment.kind.group_rename",
     })
 }

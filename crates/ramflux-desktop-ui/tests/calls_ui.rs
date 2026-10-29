@@ -349,3 +349,50 @@ fn call_back_on_a_stale_contact_goes_through_the_same_acknowledgement(cx: &mut T
     });
     assert_eq!(invites(&world), 2);
 }
+
+#[gpui_kit::test]
+fn a_call_past_its_control_receipt_cap_says_to_try_again_and_stays_answerable(
+    cx: &mut TestAppContext,
+) {
+    // CALL-FU-01 N3: the daemon's typed `CallControlReceiptCapacity`. The
+    // copy comes from the code, is announced as a status, and the ringing
+    // call stays on screen so the same Answer works once the daemon has room.
+    let world = open_calls(cx, "ui-call-capacity", true);
+    let id = CallId::new(world.calls.incoming(ACCOUNT, DM));
+    wait(cx, "ringing", |cx| call_state(cx, &world, &id) == Some(CallState::IncomingRinging));
+    advance(cx, 100);
+    world.calls.set_refusal(Some((
+        "CallControlReceiptCapacity",
+        "voice call control receipt capacity exhausted at 128 receipts",
+    )));
+
+    click(cx, world.handle, "incoming-answer");
+    wait(cx, "the refusal", |cx| with_store(cx, &world.shell, |s| !s.failures().is_empty()));
+    advance(cx, 100);
+    let copy = tr("backend.call.control_capacity");
+    assert_ne!(copy.as_ref(), "backend.call.control_capacity", "a translation exists");
+    // What the status region says is the same text the screen shows.
+    let (shown, role) = in_window(cx, world.handle, |window, _| {
+        (
+            window.within("status-failure").find("status-failure-value").label().map(str::to_owned),
+            window.find("status-failure").role(),
+        )
+    });
+    assert!(shown.as_deref().is_some_and(|text| text.contains(copy.as_ref())), "{shown:?}");
+    assert!(
+        shown.as_deref().is_some_and(|text| !text.contains("128 receipts")),
+        "the daemon's English text is not shown: {shown:?}"
+    );
+    assert_eq!(role, Some(gpui_kit::Role::Status));
+    assert_eq!(call_state(cx, &world, &id), Some(CallState::IncomingRinging), "nothing changed");
+    assert!(exists(cx, world.handle, "incoming-answer"), "Answer is still offered");
+
+    // Asking again once the daemon has room works; nothing was retried alone.
+    world.calls.set_refusal(None);
+    let answers =
+        |world: &World| world.fake.seen().into_iter().filter(|s| s.method == "call.answer").count();
+    assert_eq!(answers(&world), 1, "no retry on its own");
+    click(cx, world.handle, "incoming-answer");
+    wait(cx, "answered", |cx| call_state(cx, &world, &id) == Some(CallState::Active));
+    assert_eq!(answers(&world), 2);
+}

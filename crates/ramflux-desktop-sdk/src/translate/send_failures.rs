@@ -35,11 +35,26 @@ pub fn unreachable_members(message: &str) -> Option<Vec<String>> {
     )
 }
 
+/// The message of a typed capacity refusal: the per-call control receipt cap
+/// (retryable) and the group state budget. Keyed on the typed code, never on
+/// the daemon's English text.
+fn typed_capacity(error: &BusError) -> Option<String> {
+    let BusError::Daemon { code, .. } = error else { return None };
+    match code.as_str() {
+        crate::bus::CALL_CONTROL_CAPACITY => Some(key::CALL_CONTROL_CAPACITY.to_owned()),
+        crate::bus::GROUP_STATE_CAPACITY => Some(key::GROUP_STATE_CAPACITY.to_owned()),
+        _ => None,
+    }
+}
+
 impl Translator {
     /// The message of a failed effect: the daemon's, or a translated one
     /// for failures the desktop can explain.
     pub fn failure_message(&self, method: &str, error: &BusError) -> String {
         if let Some(message) = self.contact_failure(method, error) {
+            return message;
+        }
+        if let Some(message) = typed_capacity(error) {
             return message;
         }
         if crate::capabilities::BACKUP_METHODS.contains(&method)
@@ -101,6 +116,25 @@ mod tests {
         let message = r#"local bus error: group routes unresolved: {"group_id":"g","unreachable_members":["d-1","d-2"]}"#;
         assert_eq!(unreachable_members(message), Some(vec!["d-1".to_owned(), "d-2".to_owned()]));
         assert_eq!(unreachable_members("account not open"), None);
+    }
+
+    #[test]
+    fn typed_capacity_refusals_are_explained_by_their_code() {
+        use crate::translate::Scope;
+        let translator = Translator::new(Scope::Daemon, "rfd.sock");
+        let capped = BusError::daemon(
+            "CallControlReceiptCapacity",
+            "voice call control receipt capacity exhausted at 128 receipts",
+        );
+        assert_eq!(
+            translator.failure_message(methods::CALL_ANSWER, &capped),
+            key::CALL_CONTROL_CAPACITY
+        );
+        let group = BusError::daemon("GroupStateCapacity", "RemovalFences");
+        assert_eq!(
+            translator.failure_message(methods::GROUP_ADD_MEMBER, &group),
+            key::GROUP_STATE_CAPACITY
+        );
     }
 
     #[test]

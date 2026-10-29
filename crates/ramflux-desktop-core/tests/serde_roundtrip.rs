@@ -82,9 +82,10 @@ fn moment_kind_name(kind: &MomentKind) -> &'static str {
         MomentKind::TaskEvent(_) => "TaskEvent",
         MomentKind::Call(_) => "Call",
         MomentKind::NameChange(_) => "NameChange",
+        MomentKind::GroupRename(_) => "GroupRename",
     }
 }
-const MOMENT_KIND_VARIANTS: usize = 16;
+const MOMENT_KIND_VARIANTS: usize = 17;
 
 fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
@@ -265,6 +266,11 @@ fn all_moment_kinds() -> Vec<MomentKind> {
             task_id: TaskId::new("t-1"),
             event: TaskEventKind::Denied { step_id: Some(StepId::new("deploy")) },
             actor_kind_verified: true,
+            actor_kind: Some(PeerKind::HeadlessAi),
+        }),
+        MomentKind::GroupRename(GroupRenamePayload {
+            old_name: "Checklist".to_owned(),
+            new_name: "Reviewed checklist".to_owned(),
         }),
         MomentKind::Call(CallPayload { call_id: CallId::new("k-1") }),
         MomentKind::NameChange(NameChangePayload {

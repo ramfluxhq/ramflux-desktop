@@ -99,6 +99,9 @@ fn body(store: &Store, moment: &Moment) -> String {
             Some(call) => call_text(call),
             None => format!("[call] {}", p.call_id),
         },
+        MomentKind::GroupRename(p) => {
+            format!("[group name] {} is now {}", p.old_name, p.new_name)
+        }
         MomentKind::NameChange(p) => {
             format!("[name] {} is now {} ({})", p.old_name, p.new_name, p.participant_id)
         }

@@ -259,6 +259,7 @@ mod tests {
                 task_id: ramflux_desktop_core::TaskId::new("t-1"),
                 event: ramflux_desktop_core::TaskEventKind::Declined,
                 actor_kind_verified: false,
+                actor_kind: None,
             }),
             lifecycle: Lifecycle::Done,
         }));

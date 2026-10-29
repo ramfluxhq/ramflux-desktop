@@ -60,6 +60,7 @@ impl AttentionReason {
             | MomentKind::Fallback(_)
             | MomentKind::TaskEvent(_)
             | MomentKind::NameChange(_)
+            | MomentKind::GroupRename(_)
             | MomentKind::System(_) => Self::Other,
         }
     }

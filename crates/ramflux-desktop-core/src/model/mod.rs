@@ -75,11 +75,11 @@ pub use integrations::{A2iItem, Integrations, McpServer};
 pub use listing::{ListState, Listing};
 pub use moment::{
     AgentSurfacePayload, CallPayload, ConflictPayload, ConflictResolution, ConflictSide,
-    ContactRequestPayload, FallbackPayload, GovernanceAction, GovernancePayload, HandoffPayload,
-    InterventionPayload, Lifecycle, MessagePayload, Moment, MomentKind, NameChangePayload,
-    ObjectTransferPayload, PrivacyRevealPayload, Receipt, RevealRecord, SafetyChangeKind,
-    SafetyChangePayload, SystemLevel, SystemPayload, TaskEventKind, TaskEventPayload,
-    TaskProgressPayload,
+    ContactRequestPayload, FallbackPayload, GovernanceAction, GovernancePayload,
+    GroupRenamePayload, HandoffPayload, InterventionPayload, Lifecycle, MessagePayload, Moment,
+    MomentKind, NameChangePayload, ObjectTransferPayload, PrivacyRevealPayload, Receipt,
+    RevealRecord, SafetyChangeKind, SafetyChangePayload, SystemLevel, SystemPayload, TaskEventKind,
+    TaskEventPayload, TaskProgressPayload,
 };
 pub use object::{Direction, Object, TransferState};
 pub use protected::Protected;

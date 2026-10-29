@@ -715,6 +715,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "bip39"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4559bb9225f8401dcea601cf8dc9ed81ea0dadd9cf7755fdefdd93ef7961e19e"
+dependencies = [
+ "bitcoin_hashes",
+ "serde",
+ "unicode-normalization",
+ "zeroize",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -762,6 +774,15 @@ name = "bit_field"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e4b40c7323adcfc0a41c4b88143ed58346ff65a288fc144329c5c45e05d70c6"
+
+[[package]]
+name = "bitcoin_hashes"
+version = "0.14.101"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bca4c7abb40c8817d77403c880988cfd484f23ab2365726afb2f798363e2c4a2"
+dependencies = [
+ "hex-conservative",
+]
 
 [[package]]
 name = "bitflags"
@@ -3765,6 +3786,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hex-conservative"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db3fef046dca3ca91ee1408a8c1b80ab777e80a4d308d1bf4e7adb3fcb047e08"
+dependencies = [
+ "arrayvec",
+]
+
+[[package]]
 name = "hexf-parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6265,20 +6295,22 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 [[package]]
 name = "ramflux-core"
 version = "0.1.0"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=eae12fbb197f8bbea21b682686c8548fc1a27958#eae12fbb197f8bbea21b682686c8548fc1a27958"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=c18ce82964abf051d2aa517a0bc055de2c1cc973#c18ce82964abf051d2aa517a0bc055de2c1cc973"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
 name = "ramflux-crypto"
 version = "0.1.0"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=eae12fbb197f8bbea21b682686c8548fc1a27958#eae12fbb197f8bbea21b682686c8548fc1a27958"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=c18ce82964abf051d2aa517a0bc055de2c1cc973#c18ce82964abf051d2aa517a0bc055de2c1cc973"
 dependencies = [
  "aes-gcm",
  "argon2",
  "base64 0.22.1",
+ "bip39",
  "blake3",
  "chacha20 0.9.1",
  "chacha20poly1305",
@@ -6295,6 +6327,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.21",
+ "unicode-normalization",
  "x25519-dalek",
  "zeroize",
 ]
@@ -6390,7 +6423,7 @@ dependencies = [
 [[package]]
 name = "ramflux-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=eae12fbb197f8bbea21b682686c8548fc1a27958#eae12fbb197f8bbea21b682686c8548fc1a27958"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=c18ce82964abf051d2aa517a0bc055de2c1cc973#c18ce82964abf051d2aa517a0bc055de2c1cc973"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -6400,6 +6433,7 @@ dependencies = [
  "serde_json",
  "serde_json_canonicalizer",
  "thiserror 2.0.21",
+ "unicode-case-mapping",
  "unicode-general-category",
  "unicode-normalization",
  "unicode-security",
@@ -6409,12 +6443,13 @@ dependencies = [
 [[package]]
 name = "ramflux-sdk"
 version = "0.1.0"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=eae12fbb197f8bbea21b682686c8548fc1a27958#eae12fbb197f8bbea21b682686c8548fc1a27958"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=c18ce82964abf051d2aa517a0bc055de2c1cc973#c18ce82964abf051d2aa517a0bc055de2c1cc973"
 dependencies = [
  "aes-gcm",
  "blake3",
  "cbindgen 0.29.4",
  "fs2",
+ "getrandom 0.3.4",
  "mime",
  "ramflux-crypto",
  "ramflux-protocol",
@@ -6425,6 +6460,7 @@ dependencies = [
  "rustix",
  "rustls",
  "rustls-pemfile",
+ "security-framework",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -6437,7 +6473,7 @@ dependencies = [
 [[package]]
 name = "ramflux-storage"
 version = "0.1.0"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=eae12fbb197f8bbea21b682686c8548fc1a27958#eae12fbb197f8bbea21b682686c8548fc1a27958"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=c18ce82964abf051d2aa517a0bc055de2c1cc973#c18ce82964abf051d2aa517a0bc055de2c1cc973"
 dependencies = [
  "blake3",
  "chacha20poly1305",
@@ -6456,7 +6492,7 @@ dependencies = [
 [[package]]
 name = "ramflux-sync"
 version = "0.1.0"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=eae12fbb197f8bbea21b682686c8548fc1a27958#eae12fbb197f8bbea21b682686c8548fc1a27958"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=c18ce82964abf051d2aa517a0bc055de2c1cc973#c18ce82964abf051d2aa517a0bc055de2c1cc973"
 dependencies = [
  "chacha20poly1305",
  "ramflux-core",
@@ -6471,7 +6507,7 @@ dependencies = [
 [[package]]
 name = "ramflux-transport"
 version = "0.1.0"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=eae12fbb197f8bbea21b682686c8548fc1a27958#eae12fbb197f8bbea21b682686c8548fc1a27958"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=c18ce82964abf051d2aa517a0bc055de2c1cc973#c18ce82964abf051d2aa517a0bc055de2c1cc973"
 dependencies = [
  "arc-swap",
  "blake3",
@@ -8485,6 +8521,12 @@ name = "unicode-bidi-mirroring"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5dfa6e8c60bb66d49db113e0125ee8711b7647b5579dc7f5f19c42357ed039fe"
+
+[[package]]
+name = "unicode-case-mapping"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e9026503b74f3207a4c04e6bf4ea735daa8edf6c0bbfa044cae597bb947a9db"
 
 [[package]]
 name = "unicode-ccc"

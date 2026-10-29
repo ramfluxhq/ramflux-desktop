@@ -222,8 +222,12 @@ impl Render for StatusStrip {
         let muted = cx.theme().muted_foreground;
         let foreground = cx.theme().foreground;
         let chips = fields.into_iter().map(|field| {
+            // A failure appears while the user is elsewhere: a status region
+            // lets a screen reader announce it without moving focus.
             h_flex()
                 .id(field.id)
+                .when(field.id == "status-failure", |chip| chip.role(gpui_kit::Role::Status))
+                .test_support()
                 .gap_1()
                 .text_xs()
                 .child(div().text_color(muted).child(field.label))

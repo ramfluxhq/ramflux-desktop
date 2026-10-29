@@ -164,6 +164,10 @@ struct Inner {
     message_events: bool,
     /// Task messages are not listed or announced until released.
     messages_held: bool,
+    /// Whether task message rows carry the signer's authenticated kind
+    /// (`actor_kind`) and the role-aware `actor_kind_verified`, as the
+    /// daemon does (KIND-01-FU-02); off, rows carry `false` alone.
+    event_kinds: bool,
     clock: i64,
     ids: u64,
     refuse_next: Option<(String, Refused)>,
@@ -253,6 +257,13 @@ impl FakeTasks {
     /// keep the reads they count.
     pub fn announce_messages(&self, on: bool) {
         self.inner().message_events = on;
+    }
+
+    /// Makes task message rows carry the signer's authenticated kind
+    /// (`actor_kind`, from [`FakeTasks::set_kind`]) and the role-aware
+    /// `actor_kind_verified` (from [`FakeTasks::verify_kind`]).
+    pub fn report_event_kinds(&self, report: bool) {
+        self.inner().event_kinds = report;
     }
 
     /// Holds back the task messages (they are neither listed nor
@@ -868,13 +879,25 @@ impl Inner {
         if !fallback.contains("(actor kind unverified)") {
             fallback.push_str(" (actor kind unverified)");
         }
-        self.messages.entry(conversation.to_owned()).or_default().push(json!({
+        let (kind, verified) = if self.event_kinds {
+            (
+                self.kinds.get(member.principal.as_str()).copied(),
+                self.verified.contains(&member.principal),
+            )
+        } else {
+            (None, false)
+        };
+        let mut row = json!({
             "conversation_id": conversation, "message_id": format!("task-msg-{}", self.ids),
             "sender_id": member.device, "content_type": "task", "task_id": task_id,
             "body_utf8": fallback,
-            "encrypted_body": fallback.as_bytes(), "actor_kind_verified": false,
+            "encrypted_body": fallback.as_bytes(), "actor_kind_verified": verified,
             "deleted": false, "created_at": at, "receipts": [],
-        }));
+        });
+        if self.event_kinds {
+            row["actor_kind"] = json!(kind);
+        }
+        self.messages.entry(conversation.to_owned()).or_default().push(row);
         self.announce(meta);
         if self.message_events
             && !self.quiet

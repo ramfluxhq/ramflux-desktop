@@ -30,6 +30,7 @@ pub fn render(payload: &GovernancePayload, refs: &RowRefs, cx: &App) -> impl Int
     );
     h_flex()
         .id("governance-record")
+        .aria_label(text.clone())
         .gap_2()
         .text_sm()
         .text_color(cx.theme().muted_foreground)

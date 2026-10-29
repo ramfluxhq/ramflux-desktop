@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::conversation::Role;
+use super::conversation::{PeerKind, Role};
 use super::grant::Risk;
 use super::protected::Protected;
 use super::surface::{Block, SurfaceAction};
@@ -226,6 +226,13 @@ pub struct TaskEventPayload {
     /// `actor_kind_verified`); false until reported.
     #[serde(default)]
     pub actor_kind_verified: bool,
+    /// The signer's authenticated kind (the source's `actor_kind`), when the
+    /// source gave one. A kind with `actor_kind_verified` false means the
+    /// authenticated kind does not fit the role of the action (for example a
+    /// headless AI as the requester of a human-only action); `None` is
+    /// unknown (a legacy event), never inferred from the role.
+    #[serde(default)]
+    pub actor_kind: Option<PeerKind>,
 }
 
 /// Payload of a [`MomentKind::NameChange`]: a participant's public name
@@ -236,6 +243,18 @@ pub struct TaskEventPayload {
 pub struct NameChangePayload {
     /// The renamed participant.
     pub participant_id: ParticipantId,
+    /// The name before.
+    pub old_name: String,
+    /// The name now.
+    pub new_name: String,
+}
+
+/// Payload of a [`MomentKind::GroupRename`]: the group's signed name changed
+/// (the creator's, or an admin's request the creator applied), as the daemon
+/// lists it after a sync. The moment has no author: the signed state names
+/// the group's writer, not who asked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupRenamePayload {
     /// The name before.
     pub old_name: String,
     /// The name now.
@@ -387,6 +406,8 @@ pub enum MomentKind {
     System(SystemPayload),
     /// A voice call's record (derived by the store from the call).
     Call(CallPayload),
+    /// The group's signed name changed.
+    GroupRename(GroupRenamePayload),
 }
 
 /// A moment in a context timeline.

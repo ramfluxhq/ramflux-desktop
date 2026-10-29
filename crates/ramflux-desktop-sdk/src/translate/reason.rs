@@ -132,6 +132,13 @@ pub mod key {
     pub const PRINCIPAL_ID_TAKEN: &str = "backend.contact.principal_id_taken";
     /// Contact refusal `device_id_taken`: The device id is registered to another identity.
     pub const DEVICE_ID_TAKEN: &str = "backend.contact.device_id_taken";
+    /// A call received more control messages than the daemon keeps receipts
+    /// for (`limit`); they free up as calls end (typed
+    /// `CallControlReceiptCapacity`, retryable).
+    pub const CALL_CONTROL_CAPACITY: &str = "backend.call.control_capacity";
+    /// A group change would pass a signed-state budget (typed
+    /// `GroupStateCapacity`); nothing changed.
+    pub const GROUP_STATE_CAPACITY: &str = "backend.group.state_capacity";
     /// The daemon's media session of a call could not be read.
     pub const CALL_MEDIA: &str = "backend.call.media";
     /// Contact refusal `unavailable`: the home node is unreachable or busy
@@ -152,7 +159,7 @@ pub mod key {
     pub const CONTACT_EXPORT_FAILED: &str = "backend.contact.export_failed";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 57] = [
+    pub const ALL: [&str; 59] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -210,6 +217,8 @@ pub mod key {
         CONTACT_HOME_INSECURE,
         CONTACT_HOME_STALE,
         CONTACT_EXPORT_FAILED,
+        CALL_CONTROL_CAPACITY,
+        GROUP_STATE_CAPACITY,
     ];
 }
 

@@ -18,7 +18,7 @@
 use std::collections::BTreeMap;
 
 use ramflux_desktop_core::{
-    Context, ContextId, ContextKind, DomainEvent, MomentId, ParticipantId, Role, methods,
+    Context, ContextId, ContextKind, DomainEvent, MomentId, ParticipantId, Role, Timestamp, methods,
 };
 use serde_json::Value;
 
@@ -61,13 +61,17 @@ impl Translator {
     }
 
     /// A complete `group.list`.
-    pub(super) fn groups(&mut self, rows: &[Value]) -> Vec<DomainEvent> {
+    pub(super) fn groups(&mut self, rows: &[Value], now: Timestamp) -> Vec<DomainEvent> {
+        let before = std::mem::take(&mut self.directory.groups);
         self.directory.groups = rows
             .iter()
             .filter_map(|row| Some((field(row, "group_id").or_else(|| field(row, "id"))?, row)))
             .map(|(id, row)| (id, Group::from_row(row)))
             .collect();
-        self.rebuild_contexts().events
+        let mut events = self.rebuild_contexts().events;
+        let baseline = std::mem::replace(&mut self.groups_listed, true);
+        events.extend(self.group_sync_moments(baseline.then_some(&before), now));
+        events
     }
 
     /// A complete `conversation.directory`.
