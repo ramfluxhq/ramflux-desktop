@@ -23,6 +23,17 @@ fn account_kind(detail: &Value) -> Option<ramflux_desktop_core::AccountKind> {
     }
 }
 
+/// The networking state an account row or an unlock answer reports
+/// (`networking`: `live` or `networking_pending`); `None` when it says
+/// nothing, so a row of an older daemon keeps what is known.
+pub(crate) fn networking(row: &Value) -> Option<ramflux_desktop_core::Networking> {
+    match row["networking"].as_str() {
+        Some("networking_pending") => Some(ramflux_desktop_core::Networking::Pending),
+        Some("live") => Some(ramflux_desktop_core::Networking::Live),
+        _ => None,
+    }
+}
+
 /// A daemon node profile as a desktop node.
 ///
 /// `confirmed` is false for a discovery answer (`node.add`) and true for a
@@ -160,6 +171,9 @@ impl Translator {
             }
             if let Some(kind) = account_kind(detail) {
                 account.kind = kind;
+            }
+            if let Some(networking) = networking(detail) {
+                account.networking = networking;
             }
             out.events.extend(self.put_account(account));
         }

@@ -36,6 +36,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::fake_custody::FakeCustody;
 use crate::fake_journal::{Journal, Subscribed, Writer, write_frame};
 
 /// How the fake answers one request.
@@ -151,6 +152,8 @@ pub struct FakeBus {
     hold: Arc<Hold>,
     /// Holds back the answer of one job request.
     request_hold: Arc<Hold>,
+    /// The daemon's creation and recovery ceremonies.
+    custody: Arc<FakeCustody>,
 }
 
 /// What every connection of one fake shares.
@@ -168,6 +171,7 @@ struct Shared {
     hold: Arc<Hold>,
     /// Holds back the answer of one job request.
     request_hold: Arc<Hold>,
+    custody: Arc<FakeCustody>,
 }
 
 impl FakeBus {
@@ -175,6 +179,16 @@ impl FakeBus {
     pub fn start(
         path: &Path,
         handler: impl Fn(&str, Option<&str>, &Value) -> Reply + Send + Sync + 'static,
+    ) -> Self {
+        Self::start_with(path, handler, Arc::new(FakeCustody::disabled()))
+    }
+
+    /// Serves `handler` at `path` with the daemon's custody state `custody`
+    /// (a restarted daemon is a new bus over the same state).
+    pub fn start_with(
+        path: &Path,
+        handler: impl Fn(&str, Option<&str>, &Value) -> Reply + Send + Sync + 'static,
+        custody: Arc<FakeCustody>,
     ) -> Self {
         let _ = std::fs::remove_file(path);
         let listener = UnixListener::bind(path).expect("bind fake bus");
@@ -200,6 +214,7 @@ impl FakeBus {
             attended: Mutex::new(BTreeSet::new()),
             hold: hold.clone(),
             request_hold: request_hold.clone(),
+            custody: custody.clone(),
         });
         let (s, st) = (stop.clone(), streams.clone());
         thread::spawn(move || {
@@ -230,7 +245,13 @@ impl FakeBus {
             jobs,
             hold,
             request_hold,
+            custody,
         }
+    }
+
+    /// The daemon's creation and recovery ceremonies.
+    pub fn custody(&self) -> &Arc<FakeCustody> {
+        &self.custody
     }
 
     /// The next job-stream subscription is received (it shows in
@@ -429,6 +450,7 @@ fn serve(mut stream: UnixStream, connection: usize, shared: &Arc<Shared>) {
     shared.journal.lock().expect("journal").disconnect(connection);
     shared.jobs.lock().expect("jobs").disconnect(connection);
     shared.attended.lock().expect("attended").remove(&connection);
+    shared.custody.disconnect(connection);
 }
 
 /// Answers a subscription without an account: the daemon-level job stream.
@@ -506,6 +528,9 @@ fn answer(
             "CapabilityDenied",
             "capability denied: backup jobs require an attended human frontend".to_owned(),
         )
+    } else if shared.custody.handles(&method, &body) {
+        shared.applied.fetch_add(1, Ordering::SeqCst);
+        shared.custody.answer(connection, &method, account.as_deref(), &body)
     } else if let Some(stored) = receipt {
         Reply::Ok(stored)
     } else if method == "bus.subscribe" {

@@ -20,12 +20,17 @@
 //! - `account_step`: unlock, create, join and restore forms.
 //! - `ceremony`: account creation with a recovery phrase, when the daemon
 //!   offers it.
+//! - `recovery`: recovering an account from its recovery phrase, when the
+//!   user asks for it on the account.
 
+mod abandon;
 mod account_step;
 mod ceremony;
 mod daemon_step;
 mod node_card;
 mod node_step;
+mod parts;
+mod recovery;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
@@ -47,6 +52,7 @@ use crate::settings::backup::BackupPanel;
 pub use ceremony::{CeremonyEvent, CeremonyPanel, Held, Pending};
 pub use daemon_step::failure_text as daemon_failure_text;
 pub use node_card::NodeCard;
+pub use recovery::{RecoveryEvent, RecoveryPanel, RecoveryPending};
 
 /// Which account path the account step shows (view-local).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +140,11 @@ pub struct EntryPage {
     /// account forms while `ceremony_open`.
     ceremony: Entity<CeremonyPanel>,
     ceremony_open: bool,
+    /// Recovering an account from its recovery phrase, shown in place of
+    /// the account forms while `recovery_open`. Opened only by the user's
+    /// own action on an account.
+    recovery: Entity<RecoveryPanel>,
+    recovery_open: bool,
     kind: AccountKind,
     node: Option<NodeId>,
     review_nodes: bool,
@@ -161,9 +172,16 @@ impl EntryPage {
         let full_restore =
             cx.new(|cx| BackupPanel::standalone(store.clone(), root.clone(), window, cx));
         let ceremony = cx.new(|cx| CeremonyPanel::new(store.clone(), root.clone(), window, cx));
+        let recovery = cx.new(|cx| RecoveryPanel::new(store.clone(), root.clone(), window, cx));
         let subscriptions = vec![
             cx.observe(&full_restore, |_, _, cx| cx.notify()),
             cx.observe(&ceremony, |_, _, cx| cx.notify()),
+            cx.observe(&recovery, |_, _, cx| cx.notify()),
+            cx.subscribe(&recovery, |this, _, event: &RecoveryEvent, cx| {
+                let RecoveryEvent::Closed = event;
+                this.recovery_open = false;
+                cx.notify();
+            }),
             cx.subscribe(&ceremony, |this, _, event: &CeremonyEvent, cx| {
                 let CeremonyEvent::Closed = event;
                 this.ceremony_open = false;
@@ -191,6 +209,15 @@ impl EntryPage {
                 }
             }),
         ];
+        // Closing the window lets the daemon go of a running ceremony or
+        // recovery at once (it also does when the connection drops). A
+        // window has one such handler, so one here serves both panels.
+        let (closing_ceremony, closing_recovery) = (ceremony.downgrade(), recovery.downgrade());
+        window.on_window_should_close(cx, move |window, cx| {
+            closing_ceremony.update(cx, |panel, cx| panel.cancel_for_close(window, cx)).ok();
+            closing_recovery.update(cx, |panel, cx| panel.cancel_for_close(window, cx)).ok();
+            true
+        });
         Self {
             sink: IntentRoot::sink(&root).scoped(Scope::Panel("entry".into())),
             store,
@@ -202,6 +229,8 @@ impl EntryPage {
             full_restore,
             ceremony,
             ceremony_open: false,
+            recovery,
+            recovery_open: false,
             kind: AccountKind::HumanInteractive,
             node: None,
             review_nodes: false,
@@ -230,6 +259,22 @@ impl EntryPage {
     /// Whether the ceremony screens are shown instead of the account forms.
     pub fn ceremony_open(&self) -> bool {
         self.ceremony_open
+    }
+
+    /// The recovery of an account from its recovery phrase.
+    pub fn recovery(&self) -> &Entity<RecoveryPanel> {
+        &self.recovery
+    }
+
+    /// Whether the recovery screens are shown instead of the account forms.
+    pub fn recovery_open(&self) -> bool {
+        self.recovery_open
+    }
+
+    /// Whether the account a recovery just restored is in view (see
+    /// [`EntryPage::holds_ceremony`]).
+    pub fn holds_recovery(&self, cx: &App) -> bool {
+        self.recovery_open && self.recovery.read(cx).shows_result(cx)
     }
 
     /// Whether the account the ceremony just made is in view: the shell

@@ -15,11 +15,11 @@ mod common;
 
 use common::*;
 use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
-use gpui_kit::{AppContext as _, Entity, Focusable as _, Role, TestAppContext, WindowHandle};
+use gpui_kit::{AppContext as _, Entity, Role, TestAppContext, WindowHandle};
 use ramflux_desktop_core::{
-    CEREMONY_TTL_MS, CeremonyFailure, CeremonyPhase, Networking, PHRASE_WORDS,
+    CEREMONY_TTL_MS, CeremonyFailure, CeremonyPhase, Networking, PHRASE_WORDS, methods,
 };
-use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
+use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, MockCeremony, demo_word};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::entry::{CeremonyPanel, Pending};
 use ramflux_desktop_ui::i18n::{tr, tr_args};
@@ -655,52 +655,46 @@ fn focus_goes_to_where_typing_or_reading_starts_never_to_an_irreversible_button(
 ) {
     let (handle, shell) = offered(cx);
     let panel = panel(cx, &shell);
-    // What has focus, by name, after the screen settled.
-    let focused_after = |cx: &mut TestAppContext, wait: u64| -> &'static str {
+    // The panel's focus target after the screen settled.
+    let focused_after = |cx: &mut TestAppContext, wait: u64| -> Option<&'static str> {
         if wait > 0 {
             advance(cx, wait);
         }
         in_window(cx, handle, |_, _| {});
         let panel = panel.clone();
         cx.update_window(handle.into(), move |_, window, cx| {
-            let panel = panel.read(cx);
-            let on = |input: &gpui_kit::Entity<gpui_kit::component::input::InputState>| {
-                input.read(cx).focus_handle(cx).is_focused(window)
-            };
-            if on(panel.name_input()) {
-                "name"
-            } else if on(&panel.word_inputs()[0]) {
-                "word"
-            } else if on(panel.passphrase_inputs()[0]) {
-                "passphrase"
-            } else if panel.grid_has_focus(window) {
-                "grid"
-            } else if panel.status_has_focus(window) {
-                "status"
-            } else if panel.has_focus(window, cx) {
-                "panel"
-            } else {
-                "elsewhere"
-            }
+            panel.read(cx).focus_target(window, cx)
         })
         .expect("window")
     };
     let focused = |cx: &mut TestAppContext| focused_after(cx, 100);
     click(cx, handle, "account-create-phrase");
-    assert_eq!(focused(cx), "name");
+    assert_eq!(focused(cx), Some("ceremony-name-input"));
     type_into(cx, handle, "ceremony-name-input", "Alex");
     click(cx, handle, "ceremony-continue");
-    assert_eq!(focused(cx), "panel", "the ready step: the panel, not its Show button");
+    assert_eq!(
+        focused(cx),
+        Some("ceremony-heading"),
+        "the ready step: the heading says where you are, not the Show button"
+    );
     show(cx, handle);
-    assert_eq!(focused(cx), "grid", "the words appear with the word list focused");
+    assert_eq!(focused(cx), Some("ceremony-grid"), "the words appear with the word list focused");
     click(cx, handle, "ceremony-hide");
     // Before the daemon answers (no time passes).
-    assert_eq!(focused_after(cx, 0), "status", "while three words are chosen: the status line");
+    assert_eq!(
+        focused_after(cx, 0),
+        Some("ceremony-hiding-text"),
+        "while three words are chosen: the status line"
+    );
     advance(cx, 200);
-    assert_eq!(focused(cx), "word", "the first asked word");
+    assert_eq!(focused(cx), Some("ceremony-word-1"), "the first asked word");
     type_words(cx, handle, right_words());
     click(cx, handle, "ceremony-next");
-    assert_eq!(focused(cx), "passphrase");
+    assert_eq!(focused(cx), Some("ceremony-passphrase-input"));
+    type_passphrase(cx, handle, &shell, PASSPHRASE, PASSPHRASE);
+    click(cx, handle, "ceremony-confirm-submit");
+    advance(cx, 200);
+    assert_eq!(focused(cx), Some("ceremony-heading"), "the result: its heading, not Done");
 }
 
 #[gpui_kit::test]
@@ -850,4 +844,255 @@ fn an_expired_setup_drops_the_typed_words_and_the_passphrase(cx: &mut TestAppCon
         assert!(panel.passphrase_inputs().iter().all(|i| i.read(cx).value().is_empty()));
     });
     assert_eq!(count(cx, &shell, "account.create.confirm"), 0, "nothing was sent");
+}
+
+/// What the mock daemon does next.
+fn mock<R>(
+    cx: &mut TestAppContext,
+    shell: &Entity<Shell>,
+    f: impl FnOnce(&mut MockCeremony) -> R,
+) -> R {
+    let handle = store_handle(cx, shell);
+    cx.update(|cx| {
+        handle.update(cx, |handle, _| f(handle.mock_mut().expect("a mock").ceremony_mut()))
+    })
+}
+
+/// Backs out of a begin that is in flight (and, when `reopen`, opens the
+/// panel again at once, as a person who changed their mind would), then lets
+/// the daemon's answer arrive.
+fn abandon_begin(
+    cx: &mut TestAppContext,
+    reopen: bool,
+    arrange: impl FnOnce(&mut MockCeremony),
+) -> (Handle, Entity<Shell>) {
+    let (handle, shell) = offered(cx);
+    mock(cx, &shell, arrange);
+    click(cx, handle, "account-create-phrase");
+    type_into(cx, handle, "ceremony-name-input", "Alex");
+    click(cx, handle, "ceremony-continue");
+    assert_eq!(panel_pending(cx, &shell), Some(Pending::Begin));
+    click(cx, handle, "ceremony-cancel");
+    assert!(exists(cx, handle, "account-create-phrase"), "Back leaves at once");
+    if reopen {
+        click(cx, handle, "account-create-phrase");
+        type_into(cx, handle, "ceremony-name-input", "Alex");
+    }
+    advance(cx, 600);
+    (handle, shell)
+}
+
+fn abandoned(cx: &mut TestAppContext, shell: &Entity<Shell>) -> bool {
+    let panel = panel(cx, shell);
+    cx.update(|cx| panel.read(cx).is_abandoned())
+}
+
+/// A new setup starts and runs (from the forms or the name step).
+fn setup_runs_again(cx: &mut TestAppContext, handle: Handle, shell: &Entity<Shell>) {
+    if exists(cx, handle, "account-create-phrase") {
+        click(cx, handle, "account-create-phrase");
+    }
+    if with_store(cx, shell, |s| s.ceremony().is_some_and(|c| c.is_active())) {
+        return;
+    }
+    type_into(cx, handle, "ceremony-name-input", "Bea");
+    assert_ne!(disabled(cx, handle, "ceremony-continue"), Some(true), "not stuck busy");
+    click(cx, handle, "ceremony-continue");
+    advance(cx, 200);
+    assert_eq!(phase(cx, shell), Some(CeremonyPhase::Prepared), "the new setup runs");
+}
+
+#[gpui_kit::test]
+fn an_abandoned_begin_the_daemon_refuses_is_let_go_whether_or_not_the_panel_reopened(
+    cx: &mut TestAppContext,
+) {
+    for reopen in [false, true] {
+        let (handle, shell) = abandon_begin(cx, reopen, |m| {
+            m.refuse_next_begin(CeremonyFailure::VaultUnavailable);
+        });
+        assert!(!abandoned(cx, &shell), "reopen={reopen}: the refusal ended the wait");
+        assert_eq!(count(cx, &shell, "account.create.cancel"), 0, "nothing to let go of");
+        // The refusal is not this panel's: it opens at the name step.
+        if !reopen {
+            click(cx, handle, "account-create-phrase");
+        }
+        assert!(exists(cx, handle, "ceremony-name"), "reopen={reopen}");
+        assert!(!exists(cx, handle, "ceremony-ended"), "reopen={reopen}");
+        type_into(cx, handle, "ceremony-name-input", "Bea");
+        assert_ne!(disabled(cx, handle, "ceremony-continue"), Some(true), "reopen={reopen}");
+    }
+}
+
+#[gpui_kit::test]
+fn an_abandoned_begin_that_fails_with_no_ceremony_update_is_let_go_even_after_a_reopen(
+    cx: &mut TestAppContext,
+) {
+    for reopen in [false, true] {
+        let (handle, shell) = abandon_begin(cx, reopen, |m| m.fail_next(methods::CUSTODY_BEGIN));
+        assert!(with_store(cx, &shell, |s| s
+            .failures()
+            .iter()
+            .any(|f| f.method == methods::CUSTODY_BEGIN)));
+        assert!(with_store(cx, &shell, |s| s.ceremony().is_none()), "no ceremony update came");
+        assert!(!abandoned(cx, &shell), "reopen={reopen}: its own failure ended the wait");
+        assert_eq!(count(cx, &shell, "account.create.cancel"), 0);
+        if !reopen {
+            click(cx, handle, "account-create-phrase");
+        }
+        type_into(cx, handle, "ceremony-name-input", "Bea");
+        assert_ne!(disabled(cx, handle, "ceremony-continue"), Some(true), "reopen={reopen}");
+        click(cx, handle, "ceremony-continue");
+        advance(cx, 200);
+        assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Prepared), "reopen={reopen}");
+    }
+}
+
+#[gpui_kit::test]
+fn an_abandoned_begin_that_shows_a_ceremony_is_cancelled_once_whether_or_not_reopened(
+    cx: &mut TestAppContext,
+) {
+    for reopen in [false, true] {
+        let (handle, shell) = abandon_begin(cx, reopen, |_| {});
+        assert_eq!(count(cx, &shell, "account.create.cancel"), 1, "reopen={reopen}");
+        assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Cancelled), "reopen={reopen}");
+        assert!(!abandoned(cx, &shell), "reopen={reopen}");
+        if !reopen {
+            click(cx, handle, "account-create-phrase");
+        }
+        assert!(exists(cx, handle, "ceremony-name"), "the cancelled one is not shown");
+        setup_runs_again(cx, handle, &shell);
+        assert_eq!(count(cx, &shell, "account.create.cancel"), 1, "reopen={reopen}");
+    }
+}
+
+#[gpui_kit::test]
+fn an_abandoned_ceremony_whose_cancel_fails_is_shown_with_its_own_cancel(cx: &mut TestAppContext) {
+    for reopen in [false, true] {
+        let (handle, shell) = abandon_begin(cx, reopen, |m| m.fail_next(methods::CUSTODY_CANCEL));
+        assert!(!abandoned(cx, &shell), "reopen={reopen}: the cancel's failure ended the wait");
+        assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Prepared), "it still runs");
+        if !reopen {
+            click(cx, handle, "account-create-phrase");
+        }
+        // Not stuck busy and not hidden: the running setup is on screen
+        // and can be cancelled again.
+        assert!(exists(cx, handle, "ceremony-ready"), "reopen={reopen}");
+        click(cx, handle, "ceremony-cancel");
+        advance(cx, 300);
+        assert_eq!(phase(cx, &shell), Some(CeremonyPhase::Cancelled), "reopen={reopen}");
+        click(cx, handle, "ceremony-close");
+        setup_runs_again(cx, handle, &shell);
+    }
+}
+
+#[gpui_kit::test]
+fn the_countdown_moves_on_the_clock_tick_alone(cx: &mut TestAppContext) {
+    let (handle, _shell) = offered(cx);
+    begin(cx, handle);
+    let first = label_of(cx, handle, "ceremony-countdown").expect("countdown");
+    // No jump of the store's clock: only the 50 ms tick runs.
+    advance(cx, 2_500);
+    let later = label_of(cx, handle, "ceremony-countdown").expect("countdown");
+    assert_ne!(first, later, "the tick moved it: {first} -> {later}");
+    assert!(later.contains("4:5"), "about two seconds fewer: {later}");
+}
+
+/// The element `id` and its role and name, as the accessibility tree has it.
+fn named(cx: &mut TestAppContext, handle: Handle, id: &'static str) -> (Option<Role>, String) {
+    in_window(cx, handle, move |window, _| {
+        let element = window.find(id);
+        (element.role(), element.label().unwrap_or_default().to_owned())
+    })
+}
+
+#[gpui_kit::test]
+fn every_screen_focuses_a_named_container_that_draws_the_ring(cx: &mut TestAppContext) {
+    let (handle, shell) = offered(cx);
+    let panel = panel(cx, &shell);
+    // Where focus is, then what the accessibility tree calls it.
+    let target = |cx: &mut TestAppContext, wait: u64| -> &'static str {
+        if wait > 0 {
+            advance(cx, wait);
+        }
+        in_window(cx, handle, |_, _| {});
+        let panel = panel.clone();
+        cx.update_window(handle.into(), move |_, window, cx| {
+            panel.read(cx).focus_target(window, cx)
+        })
+        .expect("window")
+        .expect("a focus target")
+    };
+    let check_after =
+        |cx: &mut TestAppContext, wait: u64, id: &'static str, role: Role, name: String| {
+            assert_eq!(target(cx, wait), id);
+            let (found, label) = named(cx, handle, id);
+            assert_eq!(found, Some(role), "{id}");
+            assert_eq!(label, name, "{id} is named");
+        };
+    let check = |cx: &mut TestAppContext, id: &'static str, role: Role, name: String| {
+        check_after(cx, 100, id, role, name);
+    };
+    // The ready screen: the heading, named by its text.
+    begin(cx, handle);
+    check(cx, "ceremony-heading", Role::Heading, tr("ceremony.ready.title").to_string());
+    // The words: the list, named, in order.
+    show(cx, handle);
+    check(cx, "ceremony-grid", Role::List, tr("ceremony.show.grid").to_string());
+    // The Escape question takes focus and is named.
+    in_window(cx, handle, |window, cx| window.press("escape", cx));
+    check(cx, "ceremony-cancel-question", Role::Status, tr("ceremony.cancel_question").to_string());
+    click(cx, handle, "ceremony-cancel-no");
+    // Three words being chosen.
+    click(cx, handle, "ceremony-hide");
+    check_after(cx, 0, "ceremony-hiding-text", Role::Status, tr("ceremony.hiding").to_string());
+    advance(cx, 200);
+    to_passphrase(cx, handle);
+    type_passphrase(cx, handle, &shell, PASSPHRASE, PASSPHRASE);
+    click(cx, handle, "ceremony-confirm-submit");
+    advance(cx, 200);
+    // The result: its heading, not the Done button.
+    check(cx, "ceremony-heading", Role::Heading, tr("ceremony.done.title").to_string());
+    click(cx, handle, "ceremony-done-close");
+
+    // A ceremony that ended: the error itself.
+    let (handle, shell) = offered(cx);
+    let panel = self::panel(cx, &shell);
+    begin(cx, handle);
+    click(cx, handle, "ceremony-cancel");
+    advance(cx, 300);
+    let ended = |cx: &mut TestAppContext| -> Option<&'static str> {
+        advance(cx, 100);
+        let panel = panel.clone();
+        cx.update_window(handle.into(), move |_, window, cx| {
+            panel.read(cx).focus_target(window, cx)
+        })
+        .expect("window")
+    };
+    assert_eq!(ended(cx), Some("ceremony-ended-text"));
+    let (role, label) = named(cx, handle, "ceremony-ended-text");
+    assert_eq!(role, Some(Role::Alert));
+    assert_eq!(label, tr("ceremony.ended.cancelled").to_string());
+    click(cx, handle, "ceremony-close");
+
+    // The phrase that was handed out once and is not here.
+    let (handle, shell) = offered(cx);
+    let panel = self::panel(cx, &shell);
+    begin(cx, handle);
+    click(cx, handle, "ceremony-show");
+    // The daemon's answer arrives, but the phrase is gone before the screen takes it.
+    mock(cx, &shell, |m| {
+        let _ = m.take_phrase();
+    });
+    advance(cx, 200);
+    let missing = {
+        let panel = panel.clone();
+        cx.update_window(handle.into(), move |_, window, cx| {
+            panel.read(cx).focus_target(window, cx)
+        })
+        .expect("window")
+    };
+    assert_eq!(missing, Some("ceremony-phrase-missing"));
+    let (role, label) = named(cx, handle, "ceremony-phrase-missing");
+    assert_eq!(role, Some(Role::Alert));
+    assert_eq!(label, tr("ceremony.show.missing").to_string());
 }

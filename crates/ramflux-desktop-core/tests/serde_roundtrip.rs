@@ -61,9 +61,10 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContactRequestsReadFailed(_) => "ContactRequestsReadFailed",
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
         DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",
+        DomainEvent::RecoveryUpdated(_) => "RecoveryUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 45;
+const DOMAIN_EVENT_VARIANTS: usize = 46;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -147,6 +148,8 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::ShowRecoveryPhrase => "ShowRecoveryPhrase",
         IntentKind::HideRecoveryPhrase => "HideRecoveryPhrase",
         IntentKind::CancelCeremony => "CancelCeremony",
+        IntentKind::BeginRecovery { .. } => "BeginRecovery",
+        IntentKind::CancelRecovery => "CancelRecovery",
         IntentKind::Unlock { .. }
         | IntentKind::CreateAccount { .. }
         | IntentKind::ActivateDevice { .. }
@@ -155,11 +158,12 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         | IntentKind::CreateBackup { .. }
         | IntentKind::VerifyRestore { .. }
         | IntentKind::ConfirmCeremony { .. }
+        | IntentKind::ConfirmRecovery { .. }
         | IntentKind::RotatePassphrase { .. } => "secret",
     }
 }
-/// Serializable intent variants (all but the nine secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 57;
+/// Serializable intent variants (all but the ten secret-carrying kinds).
+const SERIALIZABLE_INTENT_VARIANTS: usize = 59;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -599,6 +603,31 @@ fn all_domain_events() -> Vec<DomainEvent> {
             label: "Alex".to_owned(),
             expires_at: Timestamp(0),
         }),
+        DomainEvent::RecoveryUpdated(RecoveryCeremony {
+            phase: RecoveryPhase::Prepared,
+            account_id: AccountId::new("a-1"),
+            anchor: "anchor-1".to_owned(),
+            ceremony_id: "recovery-1".to_owned(),
+            expires_at: Timestamp(300_000),
+        }),
+        DomainEvent::RecoveryUpdated(RecoveryCeremony {
+            phase: RecoveryPhase::Recovered(CeremonyAccount {
+                local_account_id: "a-1".to_owned(),
+                display_name: "Alex".to_owned(),
+                networking: Networking::Pending,
+            }),
+            account_id: AccountId::new("a-1"),
+            anchor: "anchor-1".to_owned(),
+            ceremony_id: "recovery-1".to_owned(),
+            expires_at: Timestamp(300_000),
+        }),
+        DomainEvent::RecoveryUpdated(RecoveryCeremony {
+            phase: RecoveryPhase::Failed(CeremonyFailure::ConfirmationFailed),
+            account_id: AccountId::new("a-1"),
+            anchor: String::new(),
+            ceremony_id: String::new(),
+            expires_at: Timestamp(0),
+        }),
         DomainEvent::DaemonInfoUpdated(DaemonInfo {
             socket_path: "/tmp/rfd.sock".to_owned(),
             open_accounts: 1,
@@ -811,6 +840,8 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::ShowRecoveryPhrase,
         IntentKind::HideRecoveryPhrase,
         IntentKind::CancelCeremony,
+        IntentKind::BeginRecovery { account_id: AccountId::new("a-1") },
+        IntentKind::CancelRecovery,
     ]
 }
 

@@ -140,6 +140,13 @@ pub const CUSTODY_HIDDEN_CHALLENGE: &str = "account.create.hidden_challenge";
 pub const CUSTODY_CONFIRM: &str = "account.create.confirm";
 /// Cancel the ceremony and erase the phrase.
 pub const CUSTODY_CANCEL: &str = "account.create.cancel";
+/// Begin recovering an account from its phrase (user-started only).
+pub const RECOVER_BEGIN: &str = "account.recover.begin";
+/// Check the fingerprint, the phrase and the passphrase and recover (carries
+/// secrets).
+pub const RECOVER_CONFIRM: &str = "account.recover.confirm";
+/// Cancel the recovery.
+pub const RECOVER_CANCEL: &str = "account.recover.cancel";
 /// Join an existing identity as a new device (carries a secret).
 pub const DEVICE_ACTIVATE: &str = "device.activate";
 /// Revoke a device.

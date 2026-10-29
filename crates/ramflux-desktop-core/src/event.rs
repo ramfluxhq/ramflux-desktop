@@ -13,8 +13,8 @@ use crate::model::{
     Account, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony, ContactCard,
     ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure,
     GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node,
-    NodeHealth, NodeProbe, Object, Participant, RequestFloors, RequestPolicy, StandingApproval,
-    StepState, SurfaceAction, SyncStatus, Task, TaskAnswer, TaskState,
+    NodeHealth, NodeProbe, Object, Participant, RecoveryCeremony, RequestFloors, RequestPolicy,
+    StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskAnswer, TaskState,
 };
 
 pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
@@ -312,4 +312,9 @@ pub enum DomainEvent {
     /// `Prepared` (or `Failed` when the daemon refuses), then follows
     /// [`crate::CeremonyPhase::can_follow`]; the ceremony_id and expiry stay.
     CeremonyUpdated(Ceremony),
+    /// The recovery ceremony of a born-v3 account as the daemon reports it
+    /// (the whole record, never the phrase or the passphrase). It starts in
+    /// `Prepared` (or `Failed` when the daemon refuses), then follows
+    /// [`crate::RecoveryPhase::can_follow`]; the id and expiry stay.
+    RecoveryUpdated(RecoveryCeremony),
 }

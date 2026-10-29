@@ -77,9 +77,21 @@ impl Desk {
         });
     }
 
+    /// Makes this window the active one (the 24 words are drawn only in an
+    /// active window).
+    pub fn activate(&self, host: &mut impl Host) -> Result<(), String> {
+        host.window(self.handle.into(), |window, _| window.activate_window())
+    }
+
     /// Reads this desktop's active store.
     pub fn store<R>(&self, host: &mut impl Host, f: impl FnOnce(&Store) -> R) -> R {
         host.app(|cx| f(self.shell.read(cx).store().read(cx).store()))
+    }
+
+    /// Reads the store the entry page's ceremonies live in: the daemon's own
+    /// (the active store is the opened account's once there is one).
+    pub fn entry_store<R>(&self, host: &mut impl Host, f: impl FnOnce(&Store) -> R) -> R {
+        host.app(|cx| f(self.shell.read(cx).store().read(cx).entry_store()))
     }
 
     /// The page shown.

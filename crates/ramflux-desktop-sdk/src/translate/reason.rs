@@ -178,8 +178,13 @@ pub mod key {
     /// A refused card export (`invalid_card` or a code not known yet).
     pub const CONTACT_EXPORT_FAILED: &str = "backend.contact.export_failed";
 
+    /// A creation or recovery step with no ceremony to act on (it ended, or
+    /// was never begun): nothing was changed.
+    pub const CEREMONY_REFUSED: &str = "backend.failure.ceremony";
+
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 64] = [
+    pub const ALL: [&str; 65] = [
+        CEREMONY_REFUSED,
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,

@@ -152,6 +152,9 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::HideRecoveryPhrase => "HideRecoveryPhrase",
         IntentKind::ConfirmCeremony { .. } => "ConfirmCeremony",
         IntentKind::CancelCeremony => "CancelCeremony",
+        IntentKind::BeginRecovery { .. } => "BeginRecovery",
+        IntentKind::ConfirmRecovery { .. } => "ConfirmRecovery",
+        IntentKind::CancelRecovery => "CancelRecovery",
     }
 }
 
@@ -224,6 +227,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContactRequestsReadFailed(_) => "ContactRequestsReadFailed",
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
         DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",
+        DomainEvent::RecoveryUpdated(_) => "RecoveryUpdated",
     }
 }
 

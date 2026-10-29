@@ -25,7 +25,8 @@ gpui_kit::actions!(
         ToggleTheme,
         /// Cancel the pending hold-to-confirm request.
         CancelConfirmation,
-        /// Escape in the account creation ceremony: ask whether to cancel it.
+        /// Escape in the account creation ceremony: ask whether to cancel it. In
+        /// the recovery screens it cancels them.
         CeremonyEscape,
         /// Open the command palette.
         OpenPalette,
@@ -76,6 +77,8 @@ pub const SETTINGS_CONTEXT: &str = "Settings";
 pub const PALETTE_CONTEXT: &str = "Palette";
 /// Key context of the account creation ceremony.
 pub const CEREMONY_CONTEXT: &str = "Ceremony";
+/// Key context of the account recovery screens.
+pub const RECOVERY_CONTEXT: &str = "Recovery";
 
 /// Key context of a dock tool panel.
 pub const DOCK_CONTEXT: &str = "DockTool";
@@ -104,6 +107,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-alt-5", ToggleEvidenceDock, None),
         KeyBinding::new("escape", CloseDock, Some(DOCK_CONTEXT)),
         KeyBinding::new("escape", CeremonyEscape, Some(CEREMONY_CONTEXT)),
+        KeyBinding::new("escape", CeremonyEscape, Some(RECOVERY_CONTEXT)),
         KeyBinding::new("ctrl-tab", NextSettingsSection, Some(SETTINGS_CONTEXT)),
         KeyBinding::new("ctrl-shift-tab", PreviousSettingsSection, Some(SETTINGS_CONTEXT)),
     ]);

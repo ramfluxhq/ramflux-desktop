@@ -184,3 +184,11 @@ name = "backup_shots"
 path = "tests/backup_shots.rs"
 test = false
 harness = false
+
+# Screenshots of every state of the born-v3 creation and recovery ceremonies
+# (mock source, light and dark, en and zh-CN); run explicitly.
+[[test]]
+name = "ceremony_shots"
+path = "tests/ceremony_shots.rs"
+test = false
+harness = false

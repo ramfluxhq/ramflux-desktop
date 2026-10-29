@@ -19,6 +19,7 @@
 //! - `contact_requests`: contact requests both ways.
 //! - `backup`: full backup and restore jobs.
 //! - `ceremony`: the creation ceremony of a born-v3 account.
+//! - `recovery`: the recovery ceremony of a born-v3 account.
 //! - [`bodies`]: the bounded message-body cache.
 //! - `index`: secondary indexes the reducer maintains (timelines, needs-me,
 //!   in progress, members, grant and task presenters).
@@ -30,6 +31,7 @@ mod ceremony;
 mod changes;
 mod contact_requests;
 mod index;
+mod recovery;
 mod reducer;
 mod surface_events;
 mod surface_ops;
@@ -46,8 +48,8 @@ use crate::ids::{
 use crate::model::{
     Account, AuditEntry, BackupJob, Call, Capabilities, Ceremony, ContactCard, ContactRequest,
     Context, DaemonInfo, Device, EffectFailure, Grant, Integrations, Listing, Moment, Node, Object,
-    Participant, RequestDirection, RequestFloors, RequestPolicy, StandingApproval, SyncStatus,
-    Task,
+    Participant, RecoveryCeremony, RequestDirection, RequestFloors, RequestPolicy,
+    StandingApproval, SyncStatus, Task,
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
@@ -89,6 +91,8 @@ pub struct Store {
     backup_order: BTreeMap<BackupJobId, u64>,
     ceremony: Option<Ceremony>,
     ceremony_revision: u64,
+    recovery: Option<RecoveryCeremony>,
+    recovery_revision: u64,
     audit: Vec<AuditEntry>,
     integrations: Integrations,
     capabilities: Capabilities,
@@ -501,6 +505,17 @@ impl Store {
     /// ceremony's news from the old record.
     pub fn ceremony_revision(&self) -> u64 {
         self.ceremony_revision
+    }
+
+    /// The recovery ceremony of a born-v3 account: the running one, or
+    /// the last that ended.
+    pub fn recovery(&self) -> Option<&RecoveryCeremony> {
+        self.recovery.as_ref()
+    }
+
+    /// How many recovery updates were applied (see [`Store::ceremony_revision`]).
+    pub fn recovery_revision(&self) -> u64 {
+        self.recovery_revision
     }
 
     /// Whether the daemon offers account creation with a recovery phrase.

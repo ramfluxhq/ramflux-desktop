@@ -37,7 +37,9 @@
 mod render;
 
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::{App, Context, Entity, EventEmitter, FocusHandle, Subscription, Window};
+use gpui_kit::{
+    App, Context, Entity, EventEmitter, FocusHandle, Focusable as _, Subscription, Window,
+};
 use ramflux_desktop_core::{
     Ceremony, CeremonyPhase, IntentKind, RecoveryPhrase, SecretInput, Timestamp, WordInput,
     methods, resolve_word,
@@ -45,6 +47,7 @@ use ramflux_desktop_core::{
 
 use crate::actions::CeremonyEscape;
 use crate::app::{StoreEvent, StoreHandle};
+use crate::entry::abandon::{Abandon, Arrival, Next};
 use crate::i18n;
 use crate::root::IntentRoot;
 use crate::settings::backup::text::Strength;
@@ -144,6 +147,8 @@ pub(crate) enum Screen {
     Name,
     Ready,
     Phrase,
+    /// The phrase was handed out once and is not here: an error.
+    PhraseMissing,
     Hiding,
     Words,
     Passphrase,
@@ -182,9 +187,15 @@ pub struct CeremonyPanel {
     /// Back or Escape came while the begin request was in flight: the
     /// ceremony that answer opens is cancelled as soon as it arrives, and no
     /// new one starts before.
-    abandoned: bool,
-    /// The cancel for an abandoned ceremony was sent.
-    abandon_cancelled: bool,
+    ///
+    /// Kept apart from `pending`: it outlives a reopen of the panel and the
+    /// failure of its own request, and ends only when the request it waits
+    /// on has been answered or has failed (see [`Abandon`]).
+    abandon: Option<Abandon>,
+    /// The id of a ceremony this panel started, tried to let go of, and
+    /// could not (its cancel failed): it is the panel's own to show and
+    /// cancel again when the panel opens next. No other running ceremony is.
+    left_running: Option<String>,
     /// Where focus was before the cancel question took it.
     restore_focus: Option<FocusHandle>,
     /// The whole second last drawn in the countdown.
@@ -194,6 +205,14 @@ pub struct CeremonyPanel {
     grid_focus: FocusHandle,
     /// The pending line of the "choosing three words" screen.
     status_focus: FocusHandle,
+    /// The heading of the screens that have nothing to type or read in
+    /// order (focused when they appear: the reader hears where they are).
+    heading_focus: FocusHandle,
+    /// The error of a screen that is only an error (a ceremony that ended,
+    /// the phrase that is gone).
+    alert_focus: FocusHandle,
+    /// The id of the error that `alert_focus` tracks in this frame.
+    alert_id: std::cell::Cell<&'static str>,
     /// The cancel question (focused when it opens).
     question_focus: FocusHandle,
     focused_screen: Option<Screen>,
@@ -220,7 +239,6 @@ impl CeremonyPanel {
         };
         let passphrase = secret("ceremony.passphrase.label", window, cx);
         let repeat = secret("ceremony.passphrase.repeat", window, cx);
-        let panel = cx.entity().downgrade();
         let mut subscriptions = vec![
             cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, window, cx| {
                 if matches!(event, StoreEvent::Changed(_)) {
@@ -254,13 +272,7 @@ impl CeremonyPanel {
         for input in words.iter().chain([&passphrase, &repeat]) {
             subscriptions.push(cx.subscribe(input, |_, _, event, cx| redraw_on_change(event, cx)));
         }
-        // Closing the window lets the daemon go of the ceremony at once
-        // (it also does when the connection drops).
-        window.on_window_should_close(cx, move |window, cx| {
-            panel.update(cx, |panel, cx| panel.cancel_for_close(window, cx)).ok();
-            true
-        });
-        let revision = store.read(cx).store().ceremony_revision();
+        let revision = store.read(cx).entry_store().ceremony_revision();
         Self {
             store,
             root,
@@ -276,13 +288,16 @@ impl CeremonyPanel {
             failures_mark: 0,
             expired: false,
             confirming_cancel: false,
-            abandoned: false,
-            abandon_cancelled: false,
+            abandon: None,
+            left_running: None,
             restore_focus: None,
             seen_second: None,
             focus: cx.focus_handle(),
             grid_focus: cx.focus_handle(),
             status_focus: cx.focus_handle(),
+            heading_focus: cx.focus_handle(),
+            alert_focus: cx.focus_handle(),
+            alert_id: std::cell::Cell::new("ceremony-ended-text"),
             question_focus: cx.focus_handle(),
             focused_screen: None,
             _subscriptions: subscriptions,
@@ -340,9 +355,38 @@ impl CeremonyPanel {
         self.question_focus.is_focused(window)
     }
 
+    /// The id of the element that has keyboard focus among the panel's own
+    /// focus targets (inputs and the containers a reader lands on), if any.
+    /// A target draws the theme's focus ring while it has focus.
+    pub fn focus_target(&self, window: &Window, cx: &App) -> Option<&'static str> {
+        let inputs = [
+            (&self.name, "ceremony-name-input"),
+            (&self.words[0], "ceremony-word-1"),
+            (&self.words[1], "ceremony-word-2"),
+            (&self.words[2], "ceremony-word-3"),
+            (&self.passphrase, "ceremony-passphrase-input"),
+            (&self.repeat, "ceremony-passphrase-repeat"),
+        ];
+        if let Some((_, id)) =
+            inputs.into_iter().find(|(input, _)| input.read(cx).focus_handle(cx).is_focused(window))
+        {
+            return Some(id);
+        }
+        [
+            (&self.grid_focus, "ceremony-grid"),
+            (&self.status_focus, "ceremony-hiding-text"),
+            (&self.heading_focus, "ceremony-heading"),
+            (&self.alert_focus, self.alert_id.get()),
+            (&self.question_focus, "ceremony-cancel-question"),
+        ]
+        .into_iter()
+        .find(|(handle, _)| handle.is_focused(window))
+        .map(|(_, id)| id)
+    }
+
     /// Whether an abandoned begin is still being let go of.
     pub fn is_abandoned(&self) -> bool {
-        self.abandoned
+        self.abandon.is_some()
     }
 
     /// Whether keyboard focus is inside the panel.
@@ -360,18 +404,26 @@ impl CeremonyPanel {
         self.confirming_cancel = false;
         self.seen_second = None;
         self.focused_screen = None;
-        self.baseline = self.store.read(cx).store().ceremony_revision();
-        self.seen_revision = self.baseline;
+        let store = self.store.read(cx).entry_store();
+        // A ceremony still running (a cancel that failed left it) is this
+        // panel's to show and cancel again; any other record is an earlier
+        // ceremony's.
+        let running = store.ceremony().is_some_and(|c| {
+            c.is_active() && self.left_running.as_deref() == Some(c.ceremony_id.as_str())
+        });
+        self.left_running = None;
+        self.baseline = store.ceremony_revision().saturating_sub(u64::from(running));
+        self.seen_revision = store.ceremony_revision();
         self.clear_inputs(window, cx);
         cx.notify();
     }
 
     /// The ceremony of this panel, if one was reported since it opened.
     fn ceremony(&self, cx: &App) -> Option<Ceremony> {
-        if self.abandoned {
+        if self.abandon.is_some() {
             return None;
         }
-        let store = self.store.read(cx).store();
+        let store = self.store.read(cx).entry_store();
         store.ceremony().filter(|_| store.ceremony_revision() > self.baseline).cloned()
     }
 
@@ -413,7 +465,7 @@ impl CeremonyPanel {
             return;
         }
         self.pending = Some(pending);
-        self.failures_mark = self.store.read(cx).store().failures_total();
+        self.failures_mark = self.store.read(cx).entry_store().failures_total();
         let root = self.root.clone();
         let result = root.update(cx, |root, cx| root.submit_secret(kind, window, cx));
         // Policy refused it: no answer is coming.
@@ -427,7 +479,7 @@ impl CeremonyPanel {
     /// drops it as soon as the ceremony is not showing it, ends a ceremony
     /// whose five minutes are over, and notes the daemon's answers.
     fn sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let store = self.store.read(cx).store();
+        let store = self.store.read(cx).entry_store();
         let revision = store.ceremony_revision();
         let answered = revision != self.seen_revision;
         // Only the failure of the awaited request ends the wait.
@@ -436,8 +488,8 @@ impl CeremonyPanel {
             self.pending = None;
         }
         self.seen_revision = revision;
-        if self.abandoned {
-            self.settle_abandoned(answered, own_failed, window, cx);
+        if self.abandon.is_some() {
+            self.settle_abandoned(answered, window, cx);
             cx.notify();
             return;
         }
@@ -488,28 +540,49 @@ impl CeremonyPanel {
     }
 
     /// The ceremony a Back or Escape left behind while its begin was in
-    /// flight: cancelled as soon as the answer shows it, and the panel may
-    /// start a new one once it ended.
-    fn settle_abandoned(
-        &mut self,
-        answered: bool,
-        own_failed: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let store = self.store.read(cx).store();
+    /// flight (see [`Abandon`] for how the begin's answer may arrive and
+    /// what the panel does about each).
+    fn settle_abandoned(&mut self, answered: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(abandon) = self.abandon else { return };
+        let store = self.store.read(cx).entry_store();
         let revision = store.ceremony_revision();
-        let running = store.ceremony().is_some_and(Ceremony::is_active);
-        if own_failed && !running {
-            // The begin failed: there is nothing to let go of.
-            self.abandoned = false;
-        } else if running && !self.abandon_cancelled && (answered || self.pending.is_none()) {
-            self.abandon_cancelled = true;
-            self.submit(IntentKind::CancelCeremony, Pending::Cancel, window, cx);
-        } else if answered && !running {
-            self.abandoned = false;
-            self.abandon_cancelled = false;
-            self.baseline = revision;
+        let failed_since = |mark: u64, method: &str| {
+            store.failures_since(mark).iter().any(|failure| failure.method == method)
+        };
+        let arrival = Arrival {
+            running: store.ceremony().is_some_and(Ceremony::is_active),
+            answered,
+            idle: self.pending.is_none(),
+            begin_failed: failed_since(abandon.begin_mark, methods::CUSTODY_BEGIN),
+            cancel_failed: abandon
+                .cancel_mark
+                .is_some_and(|mark| failed_since(mark, methods::CUSTODY_CANCEL)),
+        };
+        match abandon.next(arrival) {
+            Next::Wait => {}
+            Next::Cancel => {
+                self.submit(IntentKind::CancelCeremony, Pending::Cancel, window, cx);
+                let mark = self.failures_mark;
+                if let Some(abandon) = &mut self.abandon {
+                    abandon.cancel_mark = Some(mark);
+                }
+            }
+            Next::Release => {
+                self.abandon = None;
+                self.baseline = revision;
+                self.pending = None;
+            }
+            Next::ReleaseShowing => {
+                self.left_running = self
+                    .store
+                    .read(cx)
+                    .store()
+                    .ceremony()
+                    .filter(|c| c.is_active())
+                    .map(|c| c.ceremony_id.clone());
+                self.abandon = None;
+                self.pending = None;
+            }
         }
     }
 
@@ -525,7 +598,7 @@ impl CeremonyPanel {
     /// Asks the daemon to prepare an account called what the user typed.
     pub fn begin(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let label = self.name.read(cx).value().trim().to_owned();
-        if label.is_empty() || self.pending.is_some() || self.abandoned {
+        if label.is_empty() || self.pending.is_some() || self.abandon.is_some() {
             return;
         }
         self.held = Held::new();
@@ -537,6 +610,16 @@ impl CeremonyPanel {
     /// Asks for the recovery phrase, once.
     pub fn show(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.submit(IntentKind::ShowRecoveryPhrase, Pending::Show, window, cx);
+    }
+
+    /// Covers the words now: not drawn until the user asks for them again.
+    /// What the window losing focus does; also for a host that knows better
+    /// (a screen capture started) and for the screenshots.
+    pub fn cover_words(&mut self, cx: &mut Context<Self>) {
+        if self.held.phrase.is_some() && !self.held.covered {
+            self.held.covered = true;
+            cx.notify();
+        }
     }
 
     /// Shows the words again after they were covered. Only while the
@@ -596,11 +679,19 @@ impl CeremonyPanel {
     /// Sends the words and the passphrase (the one attempt) and clears
     /// everything typed.
     pub fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.can_confirm(cx) || self.pending.is_some() {
+        if self.pending.is_some() || self.typed.is_none() {
             return;
         }
+        // Each input is materialized once (the rating, the comparison and the
+        // secret all use these two), then the one `String` that becomes the
+        // `SecretInput`: three transient copies, the last zeroized with it.
+        let typed = self.passphrase.read(cx).value();
+        if Strength::of(&typed) == Strength::TooShort || typed != self.repeat.read(cx).value() {
+            return;
+        }
+        let passphrase = SecretInput::new(typed.to_string());
+        drop(typed);
         let Some(words) = self.typed.take() else { return };
-        let passphrase = SecretInput::new(self.passphrase.read(cx).value().to_string());
         self.clear_inputs(window, cx);
         self.submit(
             IntentKind::ConfirmCeremony { words, passphrase },
@@ -619,8 +710,7 @@ impl CeremonyPanel {
         if self.pending == Some(Pending::Begin) {
             // The daemon has not said whether a ceremony exists yet: let go
             // of it when it does.
-            self.abandoned = true;
-            self.abandon_cancelled = false;
+            self.abandon = Some(Abandon { begin_mark: self.failures_mark, cancel_mark: None });
             self.close(window, cx);
         } else if self.ceremony(cx).is_some_and(|c| c.is_active()) {
             self.submit(IntentKind::CancelCeremony, Pending::Cancel, window, cx);
@@ -629,8 +719,9 @@ impl CeremonyPanel {
         }
     }
 
-    /// The window is closing: the daemon is told to let go, best effort.
-    fn cancel_for_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// The window is closing: the daemon is told to let go, best effort
+    /// (it also lets go when the connection drops).
+    pub fn cancel_for_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.wipe(window, cx);
         if self.ceremony(cx).is_some_and(|c| c.is_active()) {
             self.pending = None;

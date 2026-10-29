@@ -125,6 +125,77 @@ pub fn suggestions(input: &str) -> Vec<&'static str> {
         .collect()
 }
 
+/// The longest typed phrase read at all (24 words of at most eight letters
+/// with generous spacing); longer input is refused unread.
+pub const MAX_PHRASE_BYTES: usize = 1_024;
+
+/// What a typed phrase has so far.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PhraseCheck {
+    /// How many tokens are typed.
+    pub tokens: usize,
+    /// How many of them name a list word (a four-letter prefix does).
+    pub resolved: usize,
+    /// The one-based position of the first token that names no word and
+    /// cannot become one by typing on. A token still being typed (the last
+    /// one, with no space after it) is never reported.
+    pub first_unknown: Option<usize>,
+}
+
+impl PhraseCheck {
+    /// Whether the phrase has exactly [`crate::PHRASE_WORDS`] tokens and
+    /// every one names a list word.
+    pub fn complete(&self) -> bool {
+        self.tokens == super::PHRASE_WORDS && self.resolved == self.tokens
+    }
+}
+
+/// Reads what is typed as a phrase, without keeping any of it.
+pub fn check_phrase(typed: &str) -> PhraseCheck {
+    let mut check = PhraseCheck::default();
+    if typed.len() > MAX_PHRASE_BYTES {
+        check.tokens = super::PHRASE_WORDS + 1;
+        return check;
+    }
+    let still_typing = !typed.is_empty() && !typed.ends_with(char::is_whitespace);
+    let total = typed.split_whitespace().count();
+    for (index, token) in typed.split_whitespace().enumerate() {
+        check.tokens += 1;
+        match resolve_word(token) {
+            WordInput::Word(_) | WordInput::Prefix(_) => check.resolved += 1,
+            WordInput::Incomplete if still_typing && index + 1 == total => {}
+            WordInput::Unknown if still_typing && index + 1 == total => {}
+            _ => {
+                check.first_unknown.get_or_insert(index + 1);
+            }
+        }
+    }
+    check
+}
+
+/// Reads a typed phrase into the canonical form the daemon takes: the
+/// list words, in order, joined by single spaces. A four-letter prefix is
+/// completed. The result is a zeroizing buffer; nothing else copies it.
+///
+/// # Errors
+///
+/// [`super::PhraseError::WordCount`] unless there are exactly 24 tokens,
+/// [`super::PhraseError::UnknownWord`] when a token names no list word.
+pub fn normalize_phrase(typed: &str) -> Result<Zeroizing<String>, super::PhraseError> {
+    if typed.len() > MAX_PHRASE_BYTES || typed.split_whitespace().count() != super::PHRASE_WORDS {
+        return Err(super::PhraseError::WordCount);
+    }
+    let mut phrase = Zeroizing::new(String::with_capacity(super::PHRASE_WORDS * 9));
+    for token in typed.split_whitespace() {
+        let word = resolve_word(token).resolved().ok_or(super::PhraseError::UnknownWord)?;
+        if !phrase.is_empty() {
+            phrase.push(' ');
+        }
+        phrase.push_str(word);
+    }
+    Ok(phrase)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,5 +262,34 @@ mod tests {
         assert_eq!(suggestions("zoo"), ["zoo"]);
         assert_eq!(suggestions("zzzz"), Vec::<&str>::new());
         assert!(suggestions("two words").is_empty());
+    }
+
+    #[test]
+    fn a_typed_phrase_is_checked_while_it_is_typed_and_read_in_canonical_form() {
+        let words = wordlist();
+        let typed = |n: usize| words.iter().take(n).copied().collect::<Vec<_>>().join(" ");
+        let none = check_phrase("");
+        assert_eq!((none.tokens, none.resolved, none.first_unknown), (0, 0, None));
+        let part = check_phrase(&typed(10));
+        assert_eq!((part.tokens, part.resolved), (10, 10));
+        assert!(!part.complete());
+        assert!(check_phrase(&typed(24)).complete());
+        assert!(!check_phrase(&typed(25)).complete(), "one too many");
+        // The word still being typed is not an error yet; a finished wrong one is.
+        assert_eq!(check_phrase("abandon zz").first_unknown, None);
+        assert_eq!(check_phrase("abandon zzzz ").first_unknown, Some(2));
+        assert_eq!(check_phrase("abandon notaword extra").first_unknown, Some(2));
+        // Prefixes complete, case and spacing do not matter.
+        let canonical = normalize_phrase(&typed(24)).expect("phrase");
+        let sloppy = typed(24)
+            .split(' ')
+            .map(|w| format!("  {}", w.chars().take(4).collect::<String>().to_uppercase()))
+            .collect::<String>();
+        assert_eq!(&*normalize_phrase(&sloppy).expect("prefixes"), &*canonical);
+        assert_eq!(normalize_phrase(&typed(23)).err(), Some(super::super::PhraseError::WordCount));
+        let wrong = format!("{} xyzzy", typed(23));
+        assert_eq!(normalize_phrase(&wrong).err(), Some(super::super::PhraseError::UnknownWord));
+        let long = "abandon ".repeat(200);
+        assert_eq!(normalize_phrase(&long).err(), Some(super::super::PhraseError::WordCount));
     }
 }

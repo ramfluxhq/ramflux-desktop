@@ -12,7 +12,8 @@ use crate::ids::{
     ObjectId, ParticipantId, StepId, SurfaceId, TaskId,
 };
 use crate::model::{
-    BackupJobKind, BackupPhase, CallState, CeremonyPhase, Lifecycle, StepState, TaskState,
+    BackupJobKind, BackupPhase, CallState, CeremonyPhase, Lifecycle, RecoveryPhase, StepState,
+    TaskState,
 };
 
 /// Why an envelope was not applied.
@@ -212,6 +213,17 @@ pub enum ApplyError {
     /// A ceremony update changed its ceremony_id or expiry.
     #[error("a running ceremony cannot change its ceremony_id or expiry")]
     CeremonyChanged,
+    /// A recovery update the recovery may not make from where it is.
+    #[error("illegal recovery transition: {from:?} -> {to:?}")]
+    IllegalRecoveryTransition {
+        /// Current phase (none when no recovery runs).
+        from: Option<RecoveryPhase>,
+        /// Requested phase.
+        to: RecoveryPhase,
+    },
+    /// A recovery update changed its account, id or expiry.
+    #[error("a running recovery cannot change its account, id or expiry")]
+    RecoveryChanged,
     /// A backup job update changed its kind or file.
     #[error("backup job {0} cannot change its kind or file")]
     BackupJobChanged(BackupJobId),

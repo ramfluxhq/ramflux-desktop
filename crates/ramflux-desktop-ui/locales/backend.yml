@@ -135,6 +135,9 @@ backend:
       en: "This message is stored encrypted; its text is shown only when it is received or sent here."
       zh-CN: "此消息以密文存储，仅在本机收发时显示正文。"
   failure:
+    ceremony:
+      en: "There is no setup or recovery under way to do this. Nothing was changed."
+      zh-CN: "当前没有正在进行的设置或恢复，无法执行此操作。未做任何更改。"
     surface_action_rejected:
       en: "The daemon did not send the action: %{reason}"
       zh-CN: "守护进程未发送此操作：%{reason}"

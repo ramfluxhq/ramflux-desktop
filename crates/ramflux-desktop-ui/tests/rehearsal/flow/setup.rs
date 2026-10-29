@@ -144,10 +144,7 @@ pub fn accounts<H: Host, D: DemoDaemon>(
     for ix in 0..2 {
         let name = demo.sides[ix].label.clone();
         let secret = demo.sides[ix].passphrase.clone();
-        let desk = demo.sides[ix].desk()?;
-        desk.type_into(demo.host, "account-label", &name)?;
-        desk.type_into(demo.host, "account-secret", &secret)?;
-        desk.click(demo.host, None, "account-create")?;
+        create_with_phrase(demo, ix, &name, &secret)?;
         let limit = demo.config.limits.answer;
         demo.wait(ix, limit, "the new account's workspace", |desk, host| {
             desk.page(host) == Page::Workspace
@@ -187,4 +184,75 @@ pub fn accounts<H: Host, D: DemoDaemon>(
 pub fn short(id: &str) -> String {
     let cut: String = id.chars().take(18).collect();
     if cut.len() < id.len() { format!("{cut}...") } else { cut }
+}
+
+/// Creates the account of desktop `ix` through the ceremony screens, as a
+/// person does: the name, the 24 words read from the screen and written
+/// down, three of them typed back, the passphrase twice, then the result
+/// closed. The words come from the painted list (they exist nowhere else).
+fn create_with_phrase<H: Host, D: DemoDaemon>(
+    demo: &mut Demo<'_, H, D>,
+    ix: usize,
+    name: &str,
+    passphrase: &str,
+) -> Result<(), String> {
+    use ramflux_desktop_core::CeremonyPhase;
+    use ramflux_desktop_ui::i18n::tr_args;
+
+    let limit = demo.config.limits.answer;
+    let phase = |desk: &Desk, host: &mut H| {
+        desk.entry_store(host, |s| s.ceremony().map(|c| c.phase.clone()))
+    };
+    let desk = demo.sides[ix].desk()?;
+    desk.activate(demo.host)?;
+    demo.wait(ix, limit, "creation with a recovery phrase offered", |desk, host| {
+        desk.exists(host, "account-create-phrase")
+    })?;
+    let desk = demo.sides[ix].desk()?;
+    desk.click(demo.host, None, "account-create-phrase")?;
+    desk.type_into(demo.host, "ceremony-name-input", name)?;
+    desk.click(demo.host, None, "ceremony-continue")?;
+    demo.wait(ix, limit, "the ceremony", |desk, host| {
+        phase(desk, host) == Some(CeremonyPhase::Prepared)
+    })?;
+    demo.sides[ix].desk()?.click(demo.host, None, "ceremony-show")?;
+    demo.wait(ix, limit, "the 24 words", |desk, host| {
+        desk.exists(host, "ceremony-word-cell-24")
+            && phase(desk, host) == Some(CeremonyPhase::PhraseReady)
+    })?;
+    // Written down from the screen: the label of each cell is "Word N: word".
+    let desk = demo.sides[ix].desk()?;
+    let mut words = Vec::new();
+    for number in 1..=24 {
+        let id = format!("ceremony-word-cell-{number}");
+        let label = desk.label(demo.host, &id).ok_or("a word cell has no label")?;
+        let prefix =
+            tr_args("ceremony.show.cell", &[("number", &number.to_string()), ("word", "")]);
+        let word = label.strip_prefix(prefix.as_ref()).ok_or("a word cell is covered")?;
+        words.push(word.to_owned());
+    }
+    desk.click(demo.host, None, "ceremony-hide")?;
+    demo.wait(ix, limit, "the words asked", |desk, host| {
+        matches!(phase(desk, host), Some(CeremonyPhase::Challenged { .. }))
+    })?;
+    let Some(CeremonyPhase::Challenged { positions }) = phase(demo.sides[ix].desk()?, demo.host)
+    else {
+        return Err("no words were asked".to_owned());
+    };
+    let desk = demo.sides[ix].desk()?;
+    for (id, position) in
+        ["ceremony-word-1", "ceremony-word-2", "ceremony-word-3"].into_iter().zip(positions)
+    {
+        let word = words.get(usize::from(position) - 1).ok_or("a position is out of range")?;
+        desk.type_into(demo.host, id, word)?;
+    }
+    desk.click(demo.host, None, "ceremony-next")?;
+    desk.type_into(demo.host, "ceremony-passphrase-input", passphrase)?;
+    desk.type_into(demo.host, "ceremony-passphrase-repeat", passphrase)?;
+    desk.click(demo.host, None, "ceremony-confirm-submit")?;
+    demo.wait(ix, limit, "the result", |desk, host| {
+        matches!(phase(desk, host), Some(CeremonyPhase::Created(_)))
+            && desk.exists(host, "ceremony-done-close")
+    })?;
+    demo.sides[ix].desk()?.click(demo.host, None, "ceremony-done-close")
 }

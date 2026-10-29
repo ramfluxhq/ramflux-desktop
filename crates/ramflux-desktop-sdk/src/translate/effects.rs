@@ -188,6 +188,22 @@ impl Translator {
         self.local_pin(&context, method == methods::CONTEXT_PIN)
     }
 
+    /// An account a creation or recovery ceremony opened (unlocked): a
+    /// person's account, named as the ceremony named it.
+    pub(crate) fn native_account_opened(
+        &mut self,
+        opened: &crate::bridge::NativeAccount,
+    ) -> Vec<DomainEvent> {
+        let mut account = self.account_record(&opened.id);
+        account.lock_state = LockState::Unlocked;
+        account.kind = AccountKind::HumanInteractive;
+        if !opened.display_name.is_empty() {
+            account.label.clone_from(&opened.display_name);
+        }
+        account.networking = opened.networking;
+        self.put_account(account)
+    }
+
     fn opened_account(
         &mut self,
         id: &AccountId,
@@ -204,6 +220,9 @@ impl Translator {
         }
         if let Some(principal) = answer["principal_id"].as_str() {
             account.self_participant_id = Some(ParticipantId::new(principal));
+        }
+        if let Some(networking) = super::daemon::networking(answer) {
+            account.networking = networking;
         }
         self.put_account(account)
     }

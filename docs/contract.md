@@ -1097,13 +1097,12 @@ Screenshots: `peer_kind_shots` (run explicitly).
 
 ## Account creation with a recovery phrase (DESK-V3-01, on ID-02-IMPL-1)
 
-Contract-first: the desktop is built and tested on the mock source against
-the five ceremony methods of the product's custody bus client (begin,
-show-once, hidden-challenge, confirm, cancel; the product's
-`docs/root_key_custody.md` is normative for the ceremony rules). The SDK
-source does not speak them yet: the pinned product revision has none of it,
-and the daemon option `enable_born_v3_creation` is off by default. Until a
-backend offers it, nothing of this is visible.
+Built contract-first on the mock source against the five ceremony methods
+(begin, show-once, hidden-challenge, confirm, cancel; the product's
+`docs/root_key_custody.md` is normative for the ceremony rules), and wired to
+the real SDK source in DESK-V3-02 (see "Wiring to the SDK source" below, from
+the product's `docs/local_bus_account_creation.md`). The sections up to there
+describe the screens and the store, which both sources share.
 
 **Capability.** `Capabilities.born_v3_creation` is false unless the daemon
 reports `CapabilitiesUpdated` with it true. `unsupported` has no say in it:
@@ -1222,8 +1221,8 @@ rows of the entry page a tag, for as long as the list says `Pending`.
 and never to a button that cannot be undone: to the input to type in; to the
 word list when the 24 words appear (a labelled list read in order; "I wrote
 them down" is reached by Tab only, so a stray Enter or Space hides
-nothing); to the pending line while three words are chosen; otherwise to the
-panel itself. Escape asks "Cancel this setup?", moves focus to the question
+nothing); to the pending line while three words are chosen; otherwise (DESK-V3-02)
+to the screen's heading, or to its error when the screen is only an error. Escape asks "Cancel this setup?", moves focus to the question
 and gives it back to where it was on "Keep going" (Escape again dismisses;
 the Cancel buttons cancel at once). Back or Escape while the begin request is
 in flight remembers the abandoned request: the ceremony it opens is cancelled
@@ -1247,8 +1246,147 @@ documented, not removed.
 Kit input buffers. The panel reads each once per frame of the passphrase
 step (`InputState::value()` materializes a new string; the panel borrows it
 for the strength rating, the mismatch and the button state, no further
-copies) and once more into the `SecretInput` it sends. Those frame copies, the
+copies). The one send reads each input once more (two `SharedString`s, used
+for the rating, the comparison and the secret) and moves one `String` into the
+`SecretInput`: three transient copies, of which only the last is zeroized with
+the secret. Those frame copies, the
 input's own rope and undo-free buffer and the masked text layout are plain
 strings outside the panel's control and are not zeroized; the inputs are
 cleared with `set_value("")` as soon as the secret is sent, cancelled or
 expired.
+
+## Wiring to the SDK source (DESK-V3-02 r1, on ID-02-IMPL-3)
+
+Product source of truth: `docs/local_bus_account_creation.md` of the product
+revision the workspace is pinned to (`Cargo.toml`; on this branch the
+ID-02-IMPL-3 r5 checkpoint, to be replaced by the merged revision before
+this merges). The nine additions the DESK-V3-01 contract asked for, and what
+the desktop does with each:
+
+1. **Capability read.** `daemon.status.born_v3_creation`; absent means false.
+   `ramflux_desktop_sdk::capabilities::Found::born_v3` carries it into
+   `Capabilities.born_v3_creation` on every status poll (it can be withdrawn
+   too). `unsupported` still has no say in it.
+2. **Expiry on the begin answer.** `expires_in_ms` (remaining time, at most
+   five minutes) becomes `Ceremony.expires_at` (the bridge's clock when the
+   answer arrived plus the remaining time).
+3. **Begin input.** Exactly `{display_name, principal_kind: "human"}`. The
+   daemon allocates every identifier. Desktop v1 offers `human` only.
+4. **Typed confirm answer.** `{account_id, display_name, state: unlocked,
+   networking: live | networking_pending}` becomes the ceremony's
+   `CeremonyAccount` and, before it, an `AccountUpdated` through the
+   translator (so the account list the translator keeps agrees).
+5. **Expiry code.** `CustodyExpired` is `CeremonyFailure::Expired` (the screen
+   states expiry when its own clock and the daemon disagree);
+   `CustodyConfirmationFailed` is `ConfirmationFailed`,
+   `CustodyVaultUnavailable` is `VaultUnavailable`, `CustodySetupInvalid` is
+   `Invalid`. A connection that broke mid-ceremony is `Invalid` plus a failed
+   effect (`Transport`); a begin that could not even connect is a failed
+   effect only.
+6. **Pending account visibility.** `account.list.account_details[].networking`
+   and the unlock answer's `networking` fill `Account.networking`, so an
+   account left `networking_pending` is listed, tagged and unlockable after a
+   restart.
+7. **Dedicated connection.** `bridge::custody` keeps one actor per scope that
+   owns the only `LocalBusCreationClient` (or `LocalBusRecoveryClient`) of a
+   ceremony, apart from the multiplexed request connection; a new begin, the
+   end of the scope, a timeout or a broken connection drops it, which cancels
+   the ceremony. The phrase travels as a moved `Zeroizing<String>` from the
+   bridge thread to the GPUI thread through a plain channel (`Handoff`), is
+   parsed in place by `RecoveryPhrase::parse` (no copy) and is erased by the
+   source if it is not taken, belongs to an earlier ceremony, or the ceremony
+   moves past `PhraseReady`. The event that says it is ready is sent after the
+   move. No JSON value, event, log or request body ever holds it.
+8. **Cancel after consumed.** The desktop does not send it then (the
+   connection is dropped when confirm answered); a lost reply cannot wedge a
+   retry because a new begin opens a new connection.
+9. **AI identities.** Not offered: no kind choice, `human` only; a
+   `headless_ai` begin would be refused as `CustodySetupInvalid` anyway.
+
+**Test hook.** `SdkHub::phrase_audit()` counts the phrases the daemon handed
+out (`issued`) and how each ended (`taken` by the screen, or `wiped` by the
+bridge and checked empty afterwards), and the zeroizing copies made of typed
+words and passphrases (`secrets` against `secrets_wiped`). The tests assert
+that nothing is left outstanding after a taken phrase, an untaken one, a
+cancel, a dropped source and a failed confirm.
+
+**Where the ceremonies live in a live window.** A ceremony belongs to the
+daemon's session. Once it opens the account (an unlocked account gets a
+session of its own and is rendered), that session's store knows nothing of
+the ceremony that opened it. So the entry panels read
+`StoreHandle::entry_store()` (the daemon's store on a live daemon, else the
+rendered one), the ceremony and recovery intents are decided against and
+submitted to the daemon session whichever account is rendered, the phrase is
+taken from the daemon session, and the entry page shows the held result (the
+done screen) before its "waiting for the account's session" line.
+
+### Recovery from the phrase
+
+`account.recover.begin {account_id}` returns `{ceremony_id, account_anchor,
+expires_in_ms, warning}`; `account.recover.confirm {phrase, passphrase,
+confirmed_anchor}` returns the created-account answer; `account.recover.cancel`.
+The passphrase is the account's own passphrase on this device (recovery does
+not change it); the phrase is checked against the account's master key; the
+daemon says recovery revokes the account's other devices.
+
+**Store.** A `RecoveryCeremony` (`phase`, `account_id`, `anchor`,
+`ceremony_id`, `expires_at`) arrives whole as `DomainEvent::RecoveryUpdated`:
+
+```text
+(none | ended) -> Prepared -> Recovered(account)
+Prepared -> Failed(code) | Cancelled
+(none | ended) -> Failed(code)             a refused begin: empty ceremony_id
+```
+
+Same rules as the creation record (a phase it may move to, a fixed id, account
+and expiry, no late answer to an ended one); `CeremonyFailure` is reused
+(`ConfirmationFailed` for words or a fingerprint that do not match,
+`Invalid` for a refused passphrase or a step out of order).
+`Store::recovery_revision` counts the updates.
+
+**Intents** (human only). `BeginRecovery {account_id}` (the daemon offers the
+phrase, the account is a person's, no recovery runs) sends
+`account.recover.begin`; `ConfirmRecovery {anchor, phrase, passphrase}` (the
+anchor must be the one the daemon named, the phrase 24 recovery words, the
+passphrase not empty) sends `account.recover.confirm` with the phrase and the
+passphrase as secrets beside `{account_id, confirmed_anchor}`;
+`CancelRecovery` sends `account.recover.cancel`.
+
+**Screens** (`entry/recovery`), opened only from the user's own action,
+"Recover with recovery phrase…" on a locked person's account of a daemon that
+offers it:
+
+1. Intro: one warning (recover only if you started this, every other device
+   is removed, never type the words because something asked); Continue sends
+   the begin (no secret).
+2. Check: the account fingerprint in groups of four; the user types it (the
+   comparison ignores the spaces) before the button can be pressed; the 24
+   words in one masked input, counted and with the first word that cannot be
+   one named; the account passphrase in a masked input; the time left.
+3. Checking, then Done (the account is unlocked; networking state as for a
+   created account) or Ended (mismatch, invalid, vault, expired, cancelled).
+
+Nothing a network event carries can open it: the panel starts no request by
+itself, the record it shows must be newer than the panel's opening and name
+its account, and a record nobody asked for is ignored (the one exception is a
+recovery the panel itself started and could not cancel). The phrase and the
+passphrase leave their inputs as `SecretInput`s at the one send and the inputs
+are cleared at once; cancel, expiry, failure, close and the window closing
+clear them too. Escape cancels (nothing is ever displayed that needs
+protecting). One window-close handler serves both panels.
+
+**Focus and names (DESK-V3-02).** Initial focus never lands on a button: the
+intro and the done screens focus their heading, the check screen the
+fingerprint input, the checking screen its status line, an ended recovery its
+error. The same holds for the creation ceremony: the ready and done screens
+focus the heading, an ended ceremony and the "phrase is gone" error their
+alert. Every focus target is a named node (heading, list, status or alert)
+and draws the theme's focus ring while focused (`focus_ring_style`).
+
+**Abandoned begin (DESK-V3-02, from review r3 L-1).** A begin the user backed
+out of while it was in flight is tracked apart from the panel's pending
+request (`entry::abandon::Abandon`). It ends whichever way the answer
+arrives: a ceremony (cancelled once, then the cancel's answer), a refusal that
+is a ceremony update, a failure of the begin itself with no update at all, or a
+failure of the cancel (the ceremony that still runs is then shown with its own
+Cancel). A reopen of the panel in between changes none of that.

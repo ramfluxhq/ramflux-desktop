@@ -41,6 +41,7 @@ mod listing;
 mod moment;
 mod object;
 mod protected;
+mod recovery_ceremony;
 mod surface;
 mod task;
 
@@ -83,6 +84,7 @@ pub use moment::{
 };
 pub use object::{Direction, Object, TransferState};
 pub use protected::Protected;
+pub use recovery_ceremony::{RecoveryCeremony, RecoveryPhase};
 pub use surface::{Block, BlockKind, DEFAULT_BLOCK_VERSION, SurfaceAction};
 pub use task::{
     NeedsMe, StepState, Task, TaskActor, TaskActors, TaskAnswer, TaskFlags, TaskRefusal, TaskRole,

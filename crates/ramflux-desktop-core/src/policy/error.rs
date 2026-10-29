@@ -272,4 +272,16 @@ pub enum IntentError {
     /// The confirmation needs exactly three words, none empty.
     #[error("confirming needs exactly three words")]
     CeremonyWords,
+    /// The recovery is not in a phase this intent applies to (or none runs).
+    #[error("the recovery cannot do this now")]
+    RecoveryPhase,
+    /// The fingerprint sent is not the one the daemon named.
+    #[error("the fingerprint is not the one of the account being recovered")]
+    RecoveryAnchor,
+    /// The recovery phrase must be 24 recovery words.
+    #[error("a recovery phrase has 24 recovery words")]
+    RecoveryWords,
+    /// Only a person's account has a recovery phrase.
+    #[error("only a person's account can be recovered with a phrase")]
+    RecoveryNotForKind,
 }

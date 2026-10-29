@@ -139,7 +139,13 @@ impl StoreHandle {
         intent: Intent,
         cx: &mut Context<Self>,
     ) -> DispatchOutcome {
+        // The entry page's ceremonies belong to the daemon's session, also
+        // once the account one of them opened is rendered.
+        let ceremony = is_ceremony(&intent.kind);
         let Some(mut session) = self.session() else { return DispatchOutcome::NoAccount };
+        if ceremony && let Some(link) = self.live.as_ref() {
+            session = link.daemon();
+        }
         // An account whose own session has not loaded yet is known to the
         // daemon's: locking it is decided there (and goes there anyway).
         if let IntentKind::LockAccount { account_id } = &intent.kind
@@ -164,7 +170,8 @@ impl StoreHandle {
             let label = effect_label(&effect);
             self.inspector.push(InspectorEntry::Effect { label: label.clone() });
             labels.push(label);
-            let to_daemon = self.active.is_none() || effect.method() == Some(methods::ACCOUNT_LOCK);
+            let to_daemon =
+                ceremony || self.active.is_none() || effect.method() == Some(methods::ACCOUNT_LOCK);
             if to_daemon {
                 if let Some(link) = self.live.as_mut() {
                     link.daemon.submit(effect);
@@ -176,4 +183,20 @@ impl StoreHandle {
         cx.emit(StoreEvent::Inspected);
         DispatchOutcome::Submitted(labels)
     }
+}
+
+/// Whether `kind` belongs to the creation or recovery ceremony of the entry
+/// page.
+fn is_ceremony(kind: &IntentKind) -> bool {
+    matches!(
+        kind,
+        IntentKind::BeginCeremony { .. }
+            | IntentKind::ShowRecoveryPhrase
+            | IntentKind::HideRecoveryPhrase
+            | IntentKind::ConfirmCeremony { .. }
+            | IntentKind::CancelCeremony
+            | IntentKind::BeginRecovery { .. }
+            | IntentKind::ConfirmRecovery { .. }
+            | IntentKind::CancelRecovery
+    )
 }

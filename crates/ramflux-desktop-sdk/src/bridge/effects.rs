@@ -30,6 +30,23 @@ use crate::translate::reason::{key, keyed};
 
 impl Task {
     pub(super) fn effect(&mut self, effect: Effect) {
+        // Creation and recovery ceremonies run on a connection of their own
+        // (the daemon ties a ceremony to its connection), never through the
+        // multiplexed request connection.
+        let effect = match super::custody::Step::of(effect) {
+            Ok(step) => {
+                let context = super::custody::Context {
+                    socket: self.config.socket_path.clone(),
+                    budget: self.config.deadlines.network,
+                    internal: self.internal.clone(),
+                    phrases: self.ceremonies.phrases.clone(),
+                    audit: self.ceremonies.audit.clone(),
+                };
+                self.custody.send(step, &context);
+                return;
+            }
+            Err(effect) => effect,
+        };
         if !self.found.calls
             && let Some(method) = effect.method().filter(|m| capabilities::CALL_METHODS.contains(m))
         {
@@ -323,4 +340,20 @@ async fn write_diagnostics(client: &BusClient, path: &str) -> Result<Value, BusE
     let text = crate::diagnostics::bundle(&status, &nodes);
     std::fs::write(path, text).map_err(|error| BusError::daemon("io", error.to_string()))?;
     Ok(json!({ "path": path }))
+}
+
+impl Task {
+    /// What a creation or recovery step came to: the account it opened is
+    /// recorded first (so the account list the translator keeps agrees with
+    /// the ceremony's end), then the ceremony's events.
+    pub(super) fn on_custody(&mut self, outcome: super::custody::Outcome) {
+        let super::custody::Outcome { events, account, refresh } = outcome;
+        let mut all = account
+            .map(|opened| self.translator.native_account_opened(&opened))
+            .unwrap_or_default();
+        all.extend(events);
+        self.emit(all);
+        self.spawn_fetches(refresh);
+        self.interval = self.config.poll_fast;
+    }
 }

@@ -443,6 +443,28 @@ pub enum IntentKind {
     },
     /// Cancel the running ceremony; the daemon erases the phrase.
     CancelCeremony,
+    /// Begin recovering an account that lives on this device, from its 24
+    /// words. Only the user starts it, from the account itself; nothing a
+    /// network event carries may. The daemon answers with the account's
+    /// public fingerprint.
+    BeginRecovery {
+        /// The account to recover.
+        account_id: AccountId,
+    },
+    /// Send the words and the account passphrase, once, after the user
+    /// confirmed the fingerprint. Not serializable.
+    #[serde(skip)]
+    ConfirmRecovery {
+        /// The fingerprint the user confirmed (the policy checks it is the
+        /// one the daemon named).
+        anchor: String,
+        /// The 24 words, as list words joined by single spaces.
+        phrase: SecretInput,
+        /// The passphrase of the account on this device.
+        passphrase: SecretInput,
+    },
+    /// Cancel the running recovery.
+    CancelRecovery,
     /// Revoke one of the account's devices (needs a hold).
     RevokeDevice {
         /// Device.

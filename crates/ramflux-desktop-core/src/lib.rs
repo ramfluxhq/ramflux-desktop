@@ -60,7 +60,8 @@ pub use policy::{
     check_start_call, check_start_conversation, contact_action_current, handle_intent,
 };
 pub use recovery::{
-    PHRASE_WORDS, PhraseError, RecoveryPhrase, WordInput, resolve_word, suggestions,
+    PHRASE_WORDS, PhraseCheck, PhraseError, RecoveryPhrase, WordInput, check_phrase,
+    normalize_phrase, resolve_word, suggestions,
 };
 pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilter, TaskStepRef};
 pub use serde_json::Value as JsonValue;

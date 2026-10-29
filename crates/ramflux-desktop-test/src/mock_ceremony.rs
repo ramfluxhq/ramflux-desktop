@@ -61,6 +61,15 @@ pub struct MockCeremony {
     networking: Networking,
     /// The passphrase each created account was given, by account id.
     passphrases: std::collections::BTreeMap<String, Zeroizing<String>>,
+    /// Methods whose next call fails as a failed effect (a broken
+    /// connection, a timeout): no ceremony update comes, the ceremony is
+    /// left as it was.
+    failing: Vec<&'static str>,
+    /// How the next begin is refused, as a ceremony update that ended
+    /// nothing (the vault is missing, the daemon is not offering).
+    refusal: Option<CeremonyFailure>,
+    /// The recovery of an account that lives on this device.
+    recovery: crate::mock_recovery::MockRecovery,
 }
 
 impl Default for MockCeremony {
@@ -83,7 +92,27 @@ impl MockCeremony {
             parked: None,
             networking: Networking::Pending,
             passphrases: std::collections::BTreeMap::new(),
+            failing: Vec::new(),
+            refusal: None,
+            recovery: crate::mock_recovery::MockRecovery::default(),
         }
+    }
+
+    /// The mock daemon's recovery of accounts that live on this device.
+    pub fn recovery_mut(&mut self) -> &mut crate::mock_recovery::MockRecovery {
+        &mut self.recovery
+    }
+
+    /// The next call of `method` fails as a failed effect, with no ceremony
+    /// update (the ceremony, if any, stays as it was).
+    pub fn fail_next(&mut self, method: &'static str) {
+        self.failing.push(method);
+    }
+
+    /// The next begin is refused with `failure`, as a ceremony update that
+    /// ended nothing.
+    pub fn refuse_next_begin(&mut self, failure: CeremonyFailure) {
+        self.refusal = Some(failure);
     }
 
     /// Chooses the positions asked from now on.
@@ -119,6 +148,17 @@ impl MockCeremony {
         if let Some(events) = self.unlock(effect) {
             return Some(events);
         }
+        if let Some(index) = self.failing.iter().position(|failing| *failing == method) {
+            self.failing.remove(index);
+            return Some(vec![DomainEvent::EffectFailed(EffectFailure {
+                method: method.to_owned(),
+                code: FailureCode::Transport,
+                message: "local bus connection lost".to_owned(),
+            })]);
+        }
+        if let Some(events) = self.recovery.answer(effect, now_ms, epoch) {
+            return Some(events);
+        }
         let ours = [
             methods::CUSTODY_SHOW_ONCE,
             methods::CUSTODY_HIDDEN_CHALLENGE,
@@ -132,6 +172,10 @@ impl MockCeremony {
             return None;
         }
         if method == methods::CUSTODY_BEGIN {
+            if let Some(failure) = self.refusal.take() {
+                self.label = String::new();
+                return Some(self.end(CeremonyPhase::Failed(failure)));
+            }
             return Some(self.begin(effect, now_ms, epoch));
         }
         if method == methods::CUSTODY_CANCEL {

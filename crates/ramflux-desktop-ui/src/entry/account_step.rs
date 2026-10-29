@@ -20,8 +20,8 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{
-    Account, AccountKind, BackupPhase, IntentKind, LockState, Networking, NodeId, SecretInput,
-    Store, UiEventKind, methods,
+    Account, AccountId, AccountKind, BackupPhase, IntentKind, LockState, Networking, NodeId,
+    SecretInput, Store, UiEventKind, methods,
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 use unicode_width::UnicodeWidthStr;
@@ -106,6 +106,14 @@ impl EntryPage {
         self.submit_secret(IntentKind::RestoreBackup { path, secret }, window, cx);
     }
 
+    /// The user asked to recover `account` with its recovery phrase: the
+    /// recovery screens open (nothing is sent yet).
+    fn open_recovery(&mut self, account: AccountId, window: &mut Window, cx: &mut Context<Self>) {
+        self.recovery.update(cx, |panel, cx| panel.open(account, window, cx));
+        self.recovery_open = true;
+        cx.notify();
+    }
+
     pub(super) fn render_account_step(
         &self,
         window: &mut Window,
@@ -136,12 +144,16 @@ impl EntryPage {
                         .child(tr("entry.restore.finishing")),
                 )
                 .into_any_element()
-        } else if self.awaits_session(cx) {
-            self.render_session_wait(cx).into_any_element()
+        } else if self.recovery_open {
+            // The recovery takes the place of the forms; every way out
+            // (cancel, done, close) comes back to them.
+            self.recovery.clone().into_any_element()
         } else if self.ceremony_open && (accounts.is_empty() || self.holds_ceremony(cx)) {
             // The ceremony takes the place of the forms; every way out
             // (cancel, done, close) comes back to them.
             self.ceremony.clone().into_any_element()
+        } else if self.awaits_session(cx) {
+            self.render_session_wait(cx).into_any_element()
         } else if accounts.is_empty() {
             self.render_paths(&store, cx).into_any_element()
         } else {
@@ -253,7 +265,13 @@ impl EntryPage {
     fn render_unlock(&self, accounts: &[Account], cx: &mut Context<Self>) -> impl IntoElement {
         let unlocking = self.submitted.is_some();
         let muted = cx.theme().muted_foreground;
+        // A person's locked account of a daemon that offers the phrase:
+        // "Recover with recovery phrase…" is the user's own request.
+        let offers = self.store.read(cx).store().offers_born_v3_creation();
         let rows = accounts.iter().map(|account| {
+            let recoverable = offers
+                && account.lock_state == LockState::Locked
+                && account.kind == AccountKind::HumanInteractive;
             let detail = tr_args(
                 "entry.account.detail",
                 &[
@@ -281,6 +299,20 @@ impl EntryPage {
                     h_flex()
                         .gap_2()
                         .items_center()
+                        .children(recoverable.then(|| {
+                            let id = account.id.clone();
+                            Button::new(domain_id("account-recover", &account.id))
+                                .ghost()
+                                .small()
+                                .label(tr("recovery.entry.button"))
+                                .accessibility_label(tr_args(
+                                    "recovery.entry.label",
+                                    &[("name", &account.label)],
+                                ))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.open_recovery(id.clone(), window, cx);
+                                }))
+                        }))
                         .children((account.networking == Networking::Pending).then(|| {
                             div()
                                 .id(domain_id("account-networking", &account.id))

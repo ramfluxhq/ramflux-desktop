@@ -20,4 +20,6 @@ mod phrase;
 pub mod words;
 
 pub use phrase::{PHRASE_WORDS, PhraseError, RecoveryPhrase};
-pub use words::{WordInput, resolve_word, suggestions};
+pub use words::{
+    PhraseCheck, WordInput, check_phrase, normalize_phrase, resolve_word, suggestions,
+};

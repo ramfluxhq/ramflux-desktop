@@ -141,6 +141,8 @@ pub struct State {
     /// Holds every account-scoped answer while closed (open by default): a
     /// session that has received nothing yet, on cue.
     pub account_reads: Arc<Latch>,
+    /// The daemon reports `born_v3_creation: true` in `daemon.status`.
+    pub born_v3: bool,
 }
 
 /// A gate a test closes to hold answers back and opens to let them go.
@@ -279,6 +281,16 @@ fn approvals(
 
 /// Starts the fake daemon at a socket named after `name`.
 pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
+    start_with_custody(name, Arc::new(ramflux_desktop_test::fake_custody::FakeCustody::new()))
+}
+
+/// Starts the fake daemon over `custody`, the state of its creation and
+/// recovery ceremonies (a restarted daemon is a new fake over the same
+/// state).
+pub fn start_with_custody(
+    name: &str,
+    custody: Arc<ramflux_desktop_test::fake_custody::FakeCustody>,
+) -> (FakeBus, Shared, std::path::PathBuf) {
     let path = socket_path(name);
     let shared: Shared = Arc::default();
     let state = shared.clone();
@@ -288,98 +300,100 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
         state.calls.conversation("dm-ana", "principal-ana");
         state.requests.set_profiles(state.profiles.clone());
     }
-    let fake = FakeBus::start(&path, move |method, account, body| {
-        let (surfaces, tasks, calls, requests, backup, account_jobs, account_reads) = {
-            let state = state.lock().expect("state");
-            (
-                state.surfaces.clone(),
-                state.tasks.clone(),
-                state.calls.clone(),
-                state.requests.clone(),
-                state.backup.clone(),
-                state.account_jobs.clone(),
-                state.account_reads.clone(),
-            )
-        };
-        if account.is_some() {
-            account_reads.pass();
-        }
-        if method == "account.backup.jobs" && account.is_some() {
-            account_jobs.pass();
-        }
-        if (method.starts_with("group.member.")
-            || matches!(method, "group.role.set" | "group.name.set"))
-            && let Some(reason_code) = state.lock().expect("state").group_refusal
-        {
-            return Reply::Refused {
-                code: "transfer_requires_sync",
-                message: "Ownership transfer requires synchronization".to_owned(),
-                reason_code,
-                details: None,
-            };
-        }
-        if let Some(reply) = requests.handle(method, account, body) {
-            return reply;
-        }
-        if let Some(reply) = backup.handle(method, account, body) {
-            return reply;
-        }
-        if let Some(reply) = surfaces.handle(method, body) {
-            return reply;
-        }
-        if let Some(reply) = calls.handle(method, account, body) {
-            return reply;
-        }
-        if let Some(reply) = tasks.as_ref().and_then(|t| t.handle(method, body)) {
-            return reply;
-        }
-        if let Some(reply) = approvals(&state, tasks.as_ref(), method, body) {
-            return reply;
-        }
-        if method == "message.submit" {
-            let (delay, held) = {
+    let fake = FakeBus::start_with(
+        &path,
+        move |method, account, body| {
+            let (surfaces, tasks, calls, requests, backup, account_jobs, account_reads) = {
                 let state = state.lock().expect("state");
-                (state.submit_delay, state.submit_held.clone())
+                (
+                    state.surfaces.clone(),
+                    state.tasks.clone(),
+                    state.calls.clone(),
+                    state.requests.clone(),
+                    state.backup.clone(),
+                    state.account_jobs.clone(),
+                    state.account_reads.clone(),
+                )
             };
-            std::thread::sleep(delay);
-            while held.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(5));
+            if account.is_some() {
+                account_reads.pass();
             }
-            let mut state = state.lock().expect("state");
-            if let Some(message) = state.fail_submit.clone() {
-                return Reply::Error("ValidationFailed", message);
+            if method == "account.backup.jobs" && account.is_some() {
+                account_jobs.pass();
             }
-            return submitted(&mut state, body);
-        }
-        let state = state.lock().expect("state");
-        let fixture = || all.get(method).cloned().unwrap_or(json!({}));
-        Reply::Ok(match method {
-            "contact.list" => {
-                let mut listed = contacts();
-                for (ix, peer) in state.extra_peers.iter().enumerate() {
-                    let row = json!({ "link_id": format!("lx{ix}"), "requester_id": "principal-me",
+            if (method.starts_with("group.member.")
+                || matches!(method, "group.role.set" | "group.name.set"))
+                && let Some(reason_code) = state.lock().expect("state").group_refusal
+            {
+                return Reply::Refused {
+                    code: "transfer_requires_sync",
+                    message: "Ownership transfer requires synchronization".to_owned(),
+                    reason_code,
+                    details: None,
+                };
+            }
+            if let Some(reply) = requests.handle(method, account, body) {
+                return reply;
+            }
+            if let Some(reply) = backup.handle(method, account, body) {
+                return reply;
+            }
+            if let Some(reply) = surfaces.handle(method, body) {
+                return reply;
+            }
+            if let Some(reply) = calls.handle(method, account, body) {
+                return reply;
+            }
+            if let Some(reply) = tasks.as_ref().and_then(|t| t.handle(method, body)) {
+                return reply;
+            }
+            if let Some(reply) = approvals(&state, tasks.as_ref(), method, body) {
+                return reply;
+            }
+            if method == "message.submit" {
+                let (delay, held) = {
+                    let state = state.lock().expect("state");
+                    (state.submit_delay, state.submit_held.clone())
+                };
+                std::thread::sleep(delay);
+                while held.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                let mut state = state.lock().expect("state");
+                if let Some(message) = state.fail_submit.clone() {
+                    return Reply::Error("ValidationFailed", message);
+                }
+                return submitted(&mut state, body);
+            }
+            let state = state.lock().expect("state");
+            let fixture = || all.get(method).cloned().unwrap_or(json!({}));
+            Reply::Ok(match method {
+                "contact.list" => {
+                    let mut listed = contacts();
+                    for (ix, peer) in state.extra_peers.iter().enumerate() {
+                        let row = json!({ "link_id": format!("lx{ix}"), "requester_id": "principal-me",
                                       "target_id": peer, "state": "accepted", "blocked": false });
-                    listed["contacts"].as_array_mut().expect("rows").push(row);
-                }
-                let requests = state.requests.clone();
-                for row in listed["contacts"].as_array_mut().into_iter().flatten() {
-                    let peer = row["target_id"].as_str().unwrap_or_default().to_owned();
-                    if let Some(own) = requests.own_state("acct-main", &peer) {
-                        row["principal_id"] = json!(peer);
-                        row["request_state"] = json!(own);
+                        listed["contacts"].as_array_mut().expect("rows").push(row);
                     }
-                    // The contact entry the daemon joins into every row.
-                    if state.profiles.get(&peer).is_some() {
-                        row["principal_id"] = json!(peer);
-                        state.profiles.join(row, &peer);
+                    let requests = state.requests.clone();
+                    for row in listed["contacts"].as_array_mut().into_iter().flatten() {
+                        let peer = row["target_id"].as_str().unwrap_or_default().to_owned();
+                        if let Some(own) = requests.own_state("acct-main", &peer) {
+                            row["principal_id"] = json!(peer);
+                            row["request_state"] = json!(own);
+                        }
+                        // The contact entry the daemon joins into every row.
+                        if state.profiles.get(&peer).is_some() {
+                            row["principal_id"] = json!(peer);
+                            state.profiles.join(row, &peer);
+                        }
                     }
+                    listed
                 }
-                listed
-            }
-            "identity.directory" => {
-                let mut frame = identities(&all);
-                for peer in &state.extra_peers {
-                    frame["identities"].as_array_mut().expect("rows").push(json!({
+                "identity.directory" => {
+                    let mut frame = identities(&all);
+                    for peer in &state.extra_peers {
+                        frame["identities"].as_array_mut().expect("rows").push(json!({
                         "id": peer, "principal_id": peer, "principal_commitment": format!("cm-{peer}"),
                         "contact_identity_commitment": format!("cm-{peer}"), "display_name": null,
                         "kind": null, "is_self": false,
@@ -390,79 +404,86 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
                         "safety_state": "unverified", "safety_number": null,
                         "safety_number_available": false,
                     }));
-                }
-                for row in frame["identities"].as_array_mut().expect("rows") {
-                    let principal = row["principal_id"].as_str().unwrap_or_default().to_owned();
-                    if let Some(name) = state.names.get(&principal) {
-                        row["display_name"] = json!(name);
                     }
-                    if state.stale.contains(&principal) {
-                        row["safety_state"] = json!("verification_stale");
+                    for row in frame["identities"].as_array_mut().expect("rows") {
+                        let principal = row["principal_id"].as_str().unwrap_or_default().to_owned();
+                        if let Some(name) = state.names.get(&principal) {
+                            row["display_name"] = json!(name);
+                        }
+                        if state.stale.contains(&principal) {
+                            row["safety_state"] = json!("verification_stale");
+                        }
+                        if state.profiles.get(&principal).is_some()
+                            && let (Value::Object(row), Value::Object(fields)) =
+                                (&mut *row, state.profiles.identity_fields(&principal))
+                        {
+                            row.extend(fields);
+                        }
                     }
-                    if state.profiles.get(&principal).is_some()
-                        && let (Value::Object(row), Value::Object(fields)) =
-                            (&mut *row, state.profiles.identity_fields(&principal))
-                    {
-                        row.extend(fields);
+                    frame
+                }
+                "group.list" => match &state.groups {
+                    Some(groups) => json!({ "groups": groups, "next_cursor": null }),
+                    None => fixture(),
+                },
+                "conversation.directory" => {
+                    let mut frame = fixture();
+                    let rows = frame["conversations"].as_array_mut().expect("rows");
+                    rows.extend(state.conversations.iter().cloned());
+                    frame
+                }
+                "account.list" => state.accounts.clone().unwrap_or_else(fixture),
+                "daemon.status" if state.born_v3 => {
+                    let mut frame = fixture();
+                    frame["born_v3_creation"] = json!(true);
+                    frame
+                }
+                "account.status" => {
+                    let mut frame = fixture();
+                    if let Some(sessions) = &state.secure_sessions {
+                        frame["secure_sessions"] = json!(sessions);
                     }
+                    frame
                 }
-                frame
-            }
-            "group.list" => match &state.groups {
-                Some(groups) => json!({ "groups": groups, "next_cursor": null }),
-                None => fixture(),
-            },
-            "conversation.directory" => {
-                let mut frame = fixture();
-                let rows = frame["conversations"].as_array_mut().expect("rows");
-                rows.extend(state.conversations.iter().cloned());
-                frame
-            }
-            "account.list" => state.accounts.clone().unwrap_or_else(fixture),
-            "account.status" => {
-                let mut frame = fixture();
-                if let Some(sessions) = &state.secure_sessions {
-                    frame["secure_sessions"] = json!(sessions);
-                }
-                frame
-            }
-            "object.directory" => {
-                let mut frame = fixture();
-                frame["objects"]
-                    .as_array_mut()
-                    .expect("rows")
-                    .extend(state.objects.iter().cloned());
-                frame
-            }
-            "message.list" => {
-                let conversation = body["conversation_id"].as_str().unwrap_or_default();
-                let mut frame = fixture();
-                if conversation != "dm-ana" {
-                    frame["messages"] = json!([]);
-                }
-                let extra = state.messages.get(conversation).cloned().unwrap_or_default();
-                frame["messages"].as_array_mut().expect("rows").extend(extra);
-                if let Some(tasks) = &tasks {
-                    frame["messages"]
+                "object.directory" => {
+                    let mut frame = fixture();
+                    frame["objects"]
                         .as_array_mut()
                         .expect("rows")
-                        .extend(tasks.messages(conversation));
+                        .extend(state.objects.iter().cloned());
+                    frame
                 }
-                frame
-            }
-            // A group's task messages come with its receive, as the
-            // daemon lists them.
-            "group.receive" => {
-                let conversation = body["conversation_id"].as_str().unwrap_or_default();
-                let mut frame = fixture();
-                if let Some(tasks) = &tasks {
-                    frame["messages"] = json!(tasks.messages(conversation));
+                "message.list" => {
+                    let conversation = body["conversation_id"].as_str().unwrap_or_default();
+                    let mut frame = fixture();
+                    if conversation != "dm-ana" {
+                        frame["messages"] = json!([]);
+                    }
+                    let extra = state.messages.get(conversation).cloned().unwrap_or_default();
+                    frame["messages"].as_array_mut().expect("rows").extend(extra);
+                    if let Some(tasks) = &tasks {
+                        frame["messages"]
+                            .as_array_mut()
+                            .expect("rows")
+                            .extend(tasks.messages(conversation));
+                    }
+                    frame
                 }
-                frame
-            }
-            _ => fixture(),
-        })
-    });
+                // A group's task messages come with its receive, as the
+                // daemon lists them.
+                "group.receive" => {
+                    let conversation = body["conversation_id"].as_str().unwrap_or_default();
+                    let mut frame = fixture();
+                    if let Some(tasks) = &tasks {
+                        frame["messages"] = json!(tasks.messages(conversation));
+                    }
+                    frame
+                }
+                _ => fixture(),
+            })
+        },
+        custody,
+    );
     (fake, shared, path)
 }
 

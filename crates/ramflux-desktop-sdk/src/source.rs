@@ -13,11 +13,11 @@
 use std::sync::mpsc as std_mpsc;
 
 use ramflux_desktop_core::{
-    AccountId, CallId, CallMedia, ContextId, Effect, EventEnvelope, MomentId, RendererProfile,
-    Source, Timestamp,
+    AccountId, CallId, CallMedia, CeremonyPhase, ContextId, DomainEvent, Effect, EventEnvelope,
+    MomentId, RecoveryPhrase, RendererProfile, Source, Timestamp,
 };
 
-use crate::bridge::{Bridge, Command, Delivery, MediaAnswer};
+use crate::bridge::{Bridge, Command, Delivery, Handoff, MediaAnswer, PhraseAudit};
 use crate::bus::BusError;
 use crate::config::SdkConfig;
 use crate::translate::Scope;
@@ -43,6 +43,12 @@ impl SdkHub {
     /// The daemon socket the hub attaches to.
     pub fn socket(&self) -> &str {
         &self.socket
+    }
+
+    /// How the recovery phrase and typed secrets were handled by the bridge
+    /// (a test hook: every buffer it made must end erased).
+    pub fn phrase_audit(&self) -> std::sync::Arc<PhraseAudit> {
+        self.bridge.audit().clone()
     }
 
     /// A source for the daemon scope (status, nodes, accounts; the entry page).
@@ -107,6 +113,15 @@ pub struct SdkSource {
     media: (std_mpsc::Sender<MediaAnswer>, std_mpsc::Receiver<MediaAnswer>),
     last_seq: u64,
     profile: Option<RendererProfile>,
+    /// Phrases the bridge moved here, not yet taken.
+    phrases: std_mpsc::Receiver<Handoff>,
+    /// The phrase of the running creation ceremony, once handed over.
+    parked: Option<Handoff>,
+    /// The creation ceremony last reported, while its phrase may be out.
+    running: Option<String>,
+    /// The ceremony whose phrase was given to the screen (once each).
+    given: Option<String>,
+    audit: std::sync::Arc<PhraseAudit>,
 }
 
 impl std::fmt::Debug for SdkSource {
@@ -121,8 +136,46 @@ impl std::fmt::Debug for SdkSource {
 impl SdkSource {
     fn attach(bridge: Bridge, scope: Scope) -> Self {
         let (outbox, inbox) = std_mpsc::channel();
-        bridge.send(Command::Attach { scope: scope.clone(), outbox });
-        Self { bridge, scope, inbox, media: std_mpsc::channel(), last_seq: 0, profile: None }
+        let (handoff, phrases) = std_mpsc::channel();
+        bridge.send(Command::Attach { scope: scope.clone(), outbox, phrases: handoff });
+        let audit = bridge.audit().clone();
+        Self {
+            bridge,
+            scope,
+            inbox,
+            media: std_mpsc::channel(),
+            last_seq: 0,
+            profile: None,
+            phrases,
+            parked: None,
+            running: None,
+            given: None,
+            audit,
+        }
+    }
+
+    /// Moves what the bridge handed over into the one parked slot, erasing
+    /// every phrase that is not the running ceremony's (an earlier
+    /// ceremony's, a second of the same, or one that ended unseen).
+    fn settle_phrases(&mut self) {
+        while let Ok(handoff) = self.phrases.try_recv() {
+            let wanted = self.running.as_deref() == Some(handoff.ceremony_id.as_str())
+                && self.given.as_deref() != Some(handoff.ceremony_id.as_str());
+            if wanted {
+                if let Some(older) = self.parked.replace(handoff) {
+                    self.audit.wipe(older.phrase);
+                }
+            } else {
+                self.audit.wipe(handoff.phrase);
+            }
+        }
+        let stale = self
+            .parked
+            .as_ref()
+            .is_some_and(|parked| self.running.as_deref() != Some(parked.ceremony_id.as_str()));
+        if stale && let Some(parked) = self.parked.take() {
+            self.audit.wipe(parked.phrase);
+        }
     }
 
     /// The scope served.
@@ -150,8 +203,21 @@ impl Source for SdkSource {
         let mut envelopes = Vec::new();
         while let Ok(delivery) = self.inbox.try_recv() {
             self.last_seq += 1;
+            if let DomainEvent::CeremonyUpdated(ceremony) = &delivery.event {
+                // The words are the screen's only while the phrase is out:
+                // from the hide on (or once the ceremony ends) they are not.
+                let showing =
+                    matches!(ceremony.phase, CeremonyPhase::Prepared | CeremonyPhase::PhraseReady);
+                self.running = showing.then(|| ceremony.ceremony_id.clone());
+                if matches!(ceremony.phase, CeremonyPhase::Prepared) {
+                    self.given = None;
+                }
+            }
             envelopes.push(EventEnvelope::new(self.last_seq, delivery.at, delivery.event));
         }
+        // After the events, so a phrase that arrived with its ceremony is
+        // kept and one whose ceremony ended meanwhile is erased now.
+        self.settle_phrases();
         envelopes
     }
 
@@ -183,10 +249,32 @@ impl Source for SdkSource {
     fn take_call_media(&mut self) -> Option<(CallId, Result<CallMedia, String>)> {
         self.media.1.try_recv().ok()
     }
+
+    /// The phrase the bridge moved here for the running creation ceremony,
+    /// once. It is parsed in place (no copy); a phrase that is not 24 list
+    /// words is erased and never shown.
+    fn take_recovery_phrase(&mut self) -> Option<RecoveryPhrase> {
+        self.settle_phrases();
+        let handoff = self.parked.take()?;
+        self.given = Some(handoff.ceremony_id);
+        match RecoveryPhrase::parse(handoff.phrase) {
+            Ok(phrase) => {
+                self.audit.take();
+                Some(phrase)
+            }
+            Err(_) => {
+                // Dropped inside `parse`, which erases it.
+                self.audit.reject();
+                None
+            }
+        }
+    }
 }
 
 impl Drop for SdkSource {
     fn drop(&mut self) {
+        self.running = None;
+        self.settle_phrases();
         self.bridge.send(Command::Detach { scope: self.scope.clone() });
     }
 }

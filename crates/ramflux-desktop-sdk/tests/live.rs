@@ -84,43 +84,25 @@ fn effects_reach_the_daemon_and_their_answers_become_events() {
 }
 
 #[test]
-fn the_daemon_scope_creates_accounts_and_probes_nodes() {
+fn the_daemon_scope_lists_accounts_and_probes_nodes() {
+    // Creating an account is the ceremony's (tests/custody.rs): the product's
+    // client no longer sends the one-shot create with seeds.
     let path = socket_path("entry");
-    let created = Arc::new(AtomicUsize::new(0));
-    let seen = created.clone();
-    let fake = FakeBus::start(&path, move |method, _, _| match method {
-        // The daemon lists the new account, with the label it kept.
-        "account.list" if seen.load(Ordering::SeqCst) > 0 => Reply::Ok(json!({
+    let fake = FakeBus::start(&path, |method, _, _| match method {
+        "account.list" => Reply::Ok(json!({
             "accounts": ["acct-new"], "active_account_id": "acct-new",
             "account_details": [{ "id": "acct-new", "label": "Personal", "kind": "human",
                 "principal_id": "principal-new", "state": "unlocked" }],
         })),
-        "account.list" => Reply::Ok(json!({ "accounts": [], "account_details": [] })),
-        "account.create" => {
-            seen.fetch_add(1, Ordering::SeqCst);
-            fixture(method)
-        }
         _ => fixture(method),
     });
     let hub = hub(&path);
     let mut daemon = Fed::new(hub.daemon_source());
     daemon.until("node", |s, _| s.node(&NodeId::new("n-harbor")).is_some());
-    daemon.source.submit(Effect::SecretCall {
-        method: methods::ACCOUNT_CREATE.to_owned(),
-        body: json!({ "kind": "HumanInteractive", "label": "Personal", "node_id": "n-harbor" }),
-        secrets: vec![ramflux_desktop_core::SecretInput::new("river stone lantern")],
-    });
     daemon.until("account", |s, _| s.account(&AccountId::new("acct-new")).is_some());
     let account = daemon.store.account(&AccountId::new("acct-new")).cloned().expect("account");
-    assert_eq!(account.label, "Personal", "the label the user typed");
+    assert_eq!(account.label, "Personal", "the label the daemon kept");
     assert_eq!(account.lock_state, ramflux_desktop_core::LockState::Unlocked);
-    let create = fake.seen().into_iter().find(|s| s.method == "account.create").expect("create");
-    assert_eq!(create.body["account_secret"], "river stone lantern");
-    assert_eq!(
-        (create.body["label"].as_str(), create.body["kind"].as_str()),
-        (Some("Personal"), Some("human"))
-    );
-    assert!(daemon.envelopes.iter().all(|e| !format!("{:?}", e.event).contains("river")));
     daemon.source.submit(call(methods::NODE_PROBE, json!({ "node_id": "n-harbor" })));
     daemon
         .until("probe", |s, _| s.node(&NodeId::new("n-harbor")).is_some_and(|n| n.probe.is_some()));

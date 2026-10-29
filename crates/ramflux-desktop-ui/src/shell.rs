@@ -340,7 +340,7 @@ impl Shell {
         }
         // The result of a ceremony stays in view until it is closed, though
         // the account it made is listed (and unlocked) by now.
-        if page == Page::Workspace && entry.holds_ceremony(cx) {
+        if page == Page::Workspace && (entry.holds_ceremony(cx) || entry.holds_recovery(cx)) {
             page = Page::Entry(EntryStep::Account);
         }
         // A freshly opened account session is waited for on the account

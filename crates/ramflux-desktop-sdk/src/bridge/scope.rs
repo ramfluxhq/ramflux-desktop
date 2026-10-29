@@ -66,6 +66,12 @@ pub(crate) enum ScopeCommand {
     AccountsLive(bool),
 }
 
+/// Where a scope's ceremonies hand the recovery phrase and count it.
+pub(crate) struct Ceremonies {
+    pub(crate) phrases: std_mpsc::Sender<super::Handoff>,
+    pub(crate) audit: Arc<super::PhraseAudit>,
+}
+
 /// A read's answer, with the listing number of a first page.
 pub(super) type Read = (Fetch, Option<u64>, Result<Value, BusError>);
 
@@ -84,6 +90,8 @@ pub(super) enum Internal {
         key: String,
         sent: bool,
     },
+    /// What a creation or recovery step came to.
+    Custody(super::custody::Outcome),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +150,10 @@ pub(super) struct Task {
     /// Daemon scope: an account scope is attached, which follows the jobs
     /// itself; this scope's link stays closed meanwhile.
     pub(super) accounts_live: bool,
+    /// The creation and recovery ceremonies of this scope, each on a
+    /// connection of its own.
+    pub(super) custody: super::custody::Custody,
+    pub(super) ceremonies: Ceremonies,
 }
 
 /// Sends one read; a listing's first page gets the next listing number
@@ -166,6 +178,7 @@ pub(super) fn build(
     config: SdkConfig,
     scope: Scope,
     outbox: std_mpsc::Sender<Delivery>,
+    ceremonies: Ceremonies,
 ) -> (Task, Inbox) {
     let (internal, internal_rx) = mpsc::unbounded_channel();
     let (pushed, pushed_rx) = mpsc::unbounded_channel();
@@ -232,6 +245,8 @@ pub(super) fn build(
         jobs: super::jobs::Jobs::Closed,
         jobs_open_at: None,
         accounts_live: false,
+        custody: super::custody::Custody::new(),
+        ceremonies,
     };
     (task, Inbox { internal: internal_rx, pushed: pushed_rx, streamed: streamed_rx, jobs: jobs_rx })
 }
@@ -241,9 +256,10 @@ pub(crate) async fn run(
     config: SdkConfig,
     scope: Scope,
     outbox: std_mpsc::Sender<Delivery>,
+    ceremonies: Ceremonies,
     mut commands: mpsc::UnboundedReceiver<ScopeCommand>,
 ) {
-    let (mut task, inbox) = build(config, scope, outbox);
+    let (mut task, inbox) = build(config, scope, outbox, ceremonies);
     let Inbox {
         internal: mut internal_rx,
         pushed: mut pushed_rx,
@@ -599,6 +615,7 @@ impl Task {
                     receipts.answered(&key, sent, Instant::now());
                 }
             }
+            Internal::Custody(outcome) => self.on_custody(outcome),
         }
         self.send_receipts();
     }
@@ -698,6 +715,13 @@ impl Task {
                 (Some(live), false) => self.requests_answered(live),
                 (None, _) => {}
             }
+        }
+        if matches!(fetch, Fetch::DaemonStatus)
+            && let Ok(status) = &result
+        {
+            // Only the daemon's own word offers creation with a phrase.
+            let offered = status["born_v3_creation"].as_bool() == Some(true);
+            self.found_now(capabilities::Found { born_v3: offered, ..self.found });
         }
         if matches!(fetch, Fetch::BackupJobs) {
             // Only a method the daemon does not know says the API is

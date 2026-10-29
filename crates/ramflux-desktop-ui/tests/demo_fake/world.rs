@@ -96,6 +96,9 @@ struct Held {
 struct Daemon {
     confirmed: bool,
     accounts: Vec<Account>,
+    /// A creation ceremony under way: the name asked for and how far it is
+    /// (0 prepared, 1 phrase shown, 2 words asked).
+    ceremony: Option<(String, u8)>,
 }
 
 /// A group on the node.
@@ -223,7 +226,19 @@ impl World {
         let daemon = &mut self.daemons[side];
         let open = daemon.accounts.iter().filter(|a| a.open).count();
         Some(Reply::Ok(match method {
-            "daemon.status" => json!({ "accounts": open, "socket_path": "fake" }),
+            "daemon.status" => {
+                json!({ "accounts": open, "socket_path": "fake", "born_v3_creation": true })
+            }
+            "account.create" if body.get("node_id").is_none() => {
+                daemon.ceremony = Some((text(body, "display_name"), 0));
+                json!({ "ceremony": "pending", "ceremony_id": "ceremony-demo", "expires_in_ms": 300_000 })
+            }
+            "account.create.show_once"
+            | "account.create.hidden_challenge"
+            | "account.create.confirm"
+            | "account.create.cancel" => {
+                return Some(self.ceremony_step(side, method, body));
+            }
             "node.list" => {
                 let nodes: Vec<Value> =
                     daemon.confirmed.then(|| rows::node_profile(&self.node)).into_iter().collect();
@@ -250,6 +265,7 @@ impl World {
                             "id": a.id, "label": a.label, "kind": "human",
                             "principal_id": a.principal,
                             "state": if a.open { "unlocked" } else { "locked" },
+                            "networking": "live",
                         })
                     })
                     .collect();
@@ -276,6 +292,59 @@ impl World {
             }
             _ => return None,
         }))
+    }
+
+    /// The steps of the creation ceremony after its begin: the daemon's
+    /// fixed non-production phrase, the demo positions, and one attempt.
+    fn ceremony_step(&mut self, side: usize, method: &str, body: &Value) -> Reply {
+        use ramflux_desktop_test::fake_custody::phrase;
+        use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
+        let refuse = || Reply::Error("CustodySetupInvalid", "invalid custody setup".to_owned());
+        let daemon = &mut self.daemons[side];
+        let Some((label, step)) = daemon.ceremony.take() else { return refuse() };
+        match (method, step) {
+            ("account.create.cancel", _) => Reply::Ok(json!({ "cancelled": true })),
+            ("account.create.show_once", 0) => {
+                daemon.ceremony = Some((label, 1));
+                Reply::Ok(json!({ "phrase": phrase() }))
+            }
+            ("account.create.hidden_challenge", 1) => {
+                daemon.ceremony = Some((label, 2));
+                Reply::Ok(json!({ "positions": DEMO_POSITIONS }))
+            }
+            ("account.create.confirm", 2) => {
+                let right =
+                    DEMO_POSITIONS.iter().zip(body["words"].as_array().into_iter().flatten()).all(
+                        |(position, word)| word.as_str() == Some(demo_word(usize::from(*position))),
+                    );
+                if !right || body["words"].as_array().map(Vec::len) != Some(3) {
+                    return Reply::Error(
+                        "CustodyConfirmationFailed",
+                        "recovery confirmation failed".to_owned(),
+                    );
+                }
+                let n = daemon.accounts.len() + 1 + 10 * side;
+                let account = Account {
+                    id: format!("acct-demo-{side}-{n}"),
+                    label: label.clone(),
+                    principal: format!("principal-demo-{side}-{n}"),
+                    commitment: format!("commitment-demo-{side}-{n}"),
+                    device: format!("device-demo-{side}-{n}"),
+                    target: format!("target-demo-{side}-{n}"),
+                    secret: text(body, "passphrase"),
+                    open: true,
+                    links: Vec::new(),
+                    conversations: BTreeMap::new(),
+                    objects: Vec::new(),
+                    verified: BTreeSet::new(),
+                };
+                let id = account.id.clone();
+                daemon.accounts.push(account);
+                Reply::Ok(json!({ "account_id": id, "display_name": label,
+                                  "state": "unlocked", "networking": "live" }))
+            }
+            _ => refuse(),
+        }
     }
 
     fn unlock(&mut self, side: usize, id: &str, body: &Value) -> Reply {

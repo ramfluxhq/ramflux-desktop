@@ -19,6 +19,7 @@
 //! - `accounts`: entry (accounts, devices, nodes) and settings.
 //! - `backup`: full backup and restore.
 //! - `ceremony`: account creation with a recovery phrase.
+//! - `recovery`: recovering an account from its recovery phrase.
 
 mod accounts;
 mod backup;
@@ -30,6 +31,7 @@ mod error;
 mod governance;
 mod groups;
 mod moments;
+mod recovery;
 mod start;
 mod tasks;
 
@@ -148,6 +150,7 @@ pub fn handle_intent(
         .or_else(|| accounts::decide(&policy, &intent.kind))
         .or_else(|| backup::decide(&policy, &intent.kind))
         .or_else(|| ceremony::decide(&policy, &intent.kind))
+        .or_else(|| recovery::decide(&policy, &intent.kind))
         .unwrap_or_else(|| unreachable!("every intent kind belongs to one area"))?;
     let method = match &decision {
         Decision::Call(method, _) | Decision::SecretCall(method, _) | Decision::Confirm(method) => {
@@ -191,6 +194,7 @@ fn take_secrets(kind: IntentKind) -> Vec<SecretInput> {
             secrets.push(passphrase);
             secrets
         }
+        IntentKind::ConfirmRecovery { phrase, passphrase, .. } => vec![phrase, passphrase],
         IntentKind::ActivateDevice { code, .. } => vec![code],
         IntentKind::RotatePassphrase { current, next, .. } => vec![current, next],
         _ => Vec::new(),

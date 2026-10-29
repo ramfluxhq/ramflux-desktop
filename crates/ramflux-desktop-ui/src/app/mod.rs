@@ -199,6 +199,16 @@ impl StoreHandle {
             .or_else(|| self.live.as_ref().map(live::LiveLink::daemon))
     }
 
+    /// The rendered session's scenario-playing source, if it has one (see
+    /// [`AccountSession::mock_mut`]).
+    pub fn mock_mut(&mut self) -> Option<&mut ramflux_desktop_test::MockSource> {
+        let id = self.active.clone();
+        match id {
+            Some(id) => self.sessions.get_mut(&id)?.mock_mut(),
+            None => None,
+        }
+    }
+
     /// The live daemon's own store (what the daemon scope knows, also while
     /// an account session is shown).
     pub fn daemon_store(&self) -> Option<&Store> {
@@ -255,6 +265,15 @@ impl StoreHandle {
     /// The rendered account's store; an empty store before any account exists.
     pub fn store(&self) -> &Store {
         self.session().map_or(&EMPTY_STORE, AccountSession::store)
+    }
+
+    /// The store the entry page's ceremonies (creating an account with a
+    /// recovery phrase, recovering one) read and are decided against: the
+    /// daemon's own on a live daemon, also once the account a ceremony
+    /// opened has a session of its own and is rendered (its store knows
+    /// nothing of the ceremony that opened it); else the rendered store.
+    pub fn entry_store(&self) -> &Store {
+        self.daemon_store().unwrap_or_else(|| self.store())
     }
 
     /// Number of "needs me" moments in an account's store.
@@ -474,9 +493,9 @@ impl StoreHandle {
     /// (no account is open); the caller owns the phrase and must drop it
     /// when the user hides it.
     pub fn take_recovery_phrase(&mut self) -> Option<ramflux_desktop_core::RecoveryPhrase> {
-        if self.active.is_none()
-            && let Some(link) = self.live.as_mut()
-        {
+        // A live daemon's ceremonies run in the daemon's own session, also
+        // once the account they open has a session of its own.
+        if let Some(link) = self.live.as_mut() {
             return link.take_daemon_recovery_phrase();
         }
         self.active_session_mut()?.take_recovery_phrase()

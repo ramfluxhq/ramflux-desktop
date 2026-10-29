@@ -137,6 +137,16 @@ impl AccountSession {
         }
     }
 
+    /// The scenario-playing source, when this session has one: tests and the
+    /// developer panel choose what the mock daemon does next (a refusal, a
+    /// lost connection, an account that can be recovered).
+    pub fn mock_mut(&mut self) -> Option<&mut MockSource> {
+        match &mut self.backing {
+            Backing::Mock { source, .. } => Some(source),
+            Backing::Live { .. } => None,
+        }
+    }
+
     fn mock(&self) -> Option<&MockSource> {
         match &self.backing {
             Backing::Mock { source, .. } => Some(source),

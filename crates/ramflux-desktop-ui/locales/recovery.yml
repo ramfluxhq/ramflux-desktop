@@ -1,0 +1,124 @@
+_version: 2
+recovery:
+  entry:
+    button:
+      en: "Recover with recovery phrase…"
+      zh-CN: "使用恢复短语恢复…"
+    label:
+      en: "Recover %{name} with its recovery phrase"
+      zh-CN: "使用恢复短语恢复“%{name}”"
+  cancel:
+    en: "Cancel"
+    zh-CN: "取消"
+  close:
+    en: "Close"
+    zh-CN: "关闭"
+  restart:
+    en: "Start over"
+    zh-CN: "重新开始"
+  continue:
+    en: "Continue"
+    zh-CN: "继续"
+  expires_in:
+    en: "This recovery expires in %{time}"
+    zh-CN: "此次恢复将在 %{time} 后过期"
+  intro:
+    title:
+      en: "Recover %{name} with its recovery phrase"
+      zh-CN: "使用恢复短语恢复“%{name}”"
+    warning:
+      en: "Recover only if you started this yourself. Recovery removes every other device from this account. Never type your 24 words because a message, a website or another app asked you to."
+      zh-CN: "只有在你自己发起时才进行恢复。恢复会将此账户的其他所有设备移除。绝不要因为消息、网站或其他应用的要求而输入你的 24 个单词。"
+    help:
+      en: "You will need your 24 recovery words and this account's passphrase on this device. Nothing is sent until you confirm the account fingerprint."
+      zh-CN: "你需要准备好 24 个恢复单词，以及此设备上该账户的口令。在你确认账户指纹之前，不会发送任何内容。"
+    pending:
+      en: "Checking the account's latest records…"
+      zh-CN: "正在核对账户的最新记录……"
+  check:
+    title:
+      en: "Check the account fingerprint"
+      zh-CN: "核对账户指纹"
+  fingerprint:
+    help:
+      en: "Compare this fingerprint with the one you saved when you created the account. If it differs, stop and cancel."
+      zh-CN: "请将此指纹与你创建账户时保存的指纹比对。如果不一致，请停止并取消。"
+    shown:
+      en: "Account fingerprint: %{value}"
+      zh-CN: "账户指纹：%{value}"
+    label:
+      en: "Type the fingerprint to confirm it"
+      zh-CN: "输入指纹以确认"
+    placeholder:
+      en: "The fingerprint shown above"
+      zh-CN: "上方显示的指纹"
+    mismatch:
+      en: "This is not the fingerprint of this account."
+      zh-CN: "这不是此账户的指纹。"
+    match:
+      en: "Fingerprint confirmed."
+      zh-CN: "指纹已确认。"
+  phrase:
+    label:
+      en: "Recovery phrase (24 words)"
+      zh-CN: "恢复短语（24 个单词）"
+    placeholder:
+      en: "The 24 words, separated by spaces"
+      zh-CN: "24 个单词，以空格分隔"
+    count:
+      en: "%{count} of 24 words"
+      zh-CN: "已输入 %{count} / 24 个单词"
+    unknown:
+      en: "Word %{number} is not a recovery word."
+      zh-CN: "第 %{number} 个单词不是恢复单词。"
+    too_many:
+      en: "A recovery phrase has exactly 24 words."
+      zh-CN: "恢复短语恰好有 24 个单词。"
+    ready:
+      en: "24 recovery words read."
+      zh-CN: "已识别 24 个恢复单词。"
+  passphrase:
+    label:
+      en: "Account passphrase on this device"
+      zh-CN: "此设备上的账户口令"
+    placeholder:
+      en: "The passphrase you unlock this account with"
+      zh-CN: "你用来解锁此账户的口令"
+    help:
+      en: "Recovery does not change this passphrase."
+      zh-CN: "恢复不会更改这个口令。"
+  submit:
+    en: "Recover account"
+    zh-CN: "恢复账户"
+  confirming:
+    en: "Checking your recovery phrase…"
+    zh-CN: "正在核对你的恢复短语……"
+  done:
+    title:
+      en: "Account recovered"
+      zh-CN: "账户已恢复"
+    text:
+      en: "%{name} is recovered and unlocked on this device."
+      zh-CN: "“%{name}”已恢复，并已在这台设备上解锁。"
+    close:
+      en: "Done"
+      zh-CN: "完成"
+  ended:
+    cancelled:
+      en: "Recovery cancelled. Nothing was changed."
+      zh-CN: "恢复已取消。未做任何更改。"
+    expired:
+      en: "This recovery expired after 5 minutes. Nothing was changed."
+      zh-CN: "此次恢复已在 5 分钟后过期。未做任何更改。"
+    mismatch:
+      en: "The words or the fingerprint did not match this account. Nothing was changed."
+      zh-CN: "单词或指纹与此账户不匹配。未做任何更改。"
+    disabled:
+      en: "This daemon does not offer recovery with a recovery phrase."
+      zh-CN: "此守护进程不提供使用恢复短语恢复。"
+    vault:
+      en: "This device has no secure place to keep the account keys. Nothing was changed."
+      zh-CN: "这台设备没有可安全保存账户密钥的位置。未做任何更改。"
+    invalid:
+      en: "The recovery could not be completed. Check the account passphrase and start over. Nothing was changed."
+      zh-CN: "无法完成恢复。请检查账户口令后重新开始。未做任何更改。"

@@ -16,7 +16,7 @@ use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, Context, IntoElement, Render, Role, SharedString, Window, div, rems,
+    AnyElement, App, Context, IntoElement, Render, Role, SharedString, Styled, Window, div, rems,
 };
 use ramflux_desktop_core::{
     CHALLENGE_WORDS, Ceremony, CeremonyAccount, CeremonyFailure, CeremonyPhase, Networking,
@@ -25,6 +25,7 @@ use ramflux_desktop_core::{
 
 use super::{CeremonyPanel, Hint, Pending, Screen};
 use crate::actions::CEREMONY_CONTEXT;
+use crate::entry::parts::{announced, clock, muted, ringed, warning};
 use crate::i18n::{tr, tr_args};
 use crate::settings::backup::text::Strength;
 
@@ -36,61 +37,59 @@ const WORD_IDS: [&str; CHALLENGE_WORDS] = ["ceremony-word-1", "ceremony-word-2",
 /// wraps to three, so a word is never clipped.
 const CELL_MIN_REMS: f32 = 8.5;
 
-/// A node that announces `text` with `role`, which `child` shows. A `div`
-/// with no role is not in the accessibility tree and the alert's own text
-/// is not exposed, so this node carries the message.
-fn announced(
-    id: &'static str,
-    role: Role,
-    text: SharedString,
-    child: impl IntoElement,
-) -> AnyElement {
-    div().id(id).role(role).aria_label(text).test_support().child(child).into_any_element()
-}
-
-fn warning(id: &'static str, key: &str) -> AnyElement {
-    let text = tr(key);
-    announced(
-        id,
-        Role::Status,
-        text.clone(),
-        Alert::warning(SharedString::from(format!("{id}-alert")), text).small(),
-    )
-}
-
-fn failure(id: &'static str, key: &str) -> AnyElement {
-    let text = tr(key);
-    announced(
-        id,
-        Role::Alert,
-        text.clone(),
-        Alert::error(SharedString::from(format!("{id}-alert")), text).small(),
-    )
-}
-
-fn muted(text: SharedString, cx: &App) -> AnyElement {
-    div().text_sm().text_color(cx.theme().muted_foreground).child(text).into_any_element()
-}
-
-fn heading(key: &str) -> AnyElement {
-    let text = tr(key);
-    div()
-        .id("ceremony-heading")
-        .role(Role::Heading)
-        .aria_label(text.clone())
-        .test_support()
-        .text_lg()
-        .font_semibold()
-        .child(text)
-        .into_any_element()
-}
-
-fn clock(remaining_ms: u64) -> String {
-    let seconds = remaining_ms.div_ceil(1_000);
-    format!("{}:{:02}", seconds / 60, seconds % 60)
-}
-
 impl CeremonyPanel {
+    /// The screen's heading. On the screens where focus lands on it (the
+    /// reader hears what the screen is), it takes focus and draws the ring.
+    fn heading(&self, key: &str, window: &Window, cx: &App) -> AnyElement {
+        let text = tr(key);
+        let focused = self.heading_focus.is_focused(window);
+        ringed(
+            div()
+                .id("ceremony-heading")
+                .role(Role::Heading)
+                .aria_label(text.clone())
+                .track_focus(&self.heading_focus)
+                .test_support()
+                .px_1()
+                .rounded(cx.theme().radius)
+                .text_lg()
+                .font_semibold()
+                .child(text),
+            focused,
+            window,
+            cx,
+        )
+        .into_any_element()
+    }
+
+    /// An error that takes focus when its screen appears (the screen has
+    /// nothing to type into): the reader hears the failure itself.
+    fn focusable_failure(
+        &self,
+        id: &'static str,
+        key: &str,
+        window: &Window,
+        cx: &App,
+    ) -> AnyElement {
+        let text = tr(key);
+        self.alert_id.set(id);
+        ringed(
+            div()
+                .id(id)
+                .role(Role::Alert)
+                .aria_label(text.clone())
+                .track_focus(&self.alert_focus)
+                .test_support()
+                .p_1()
+                .rounded(cx.theme().radius)
+                .child(Alert::error(SharedString::from(format!("{id}-alert")), text).small()),
+            self.alert_focus.is_focused(window),
+            window,
+            cx,
+        )
+        .into_any_element()
+    }
+
     fn cancel_button(&self, key: &str, cx: &mut Context<Self>) -> Button {
         let waiting = self.pending == Some(Pending::Cancel);
         Button::new("ceremony-cancel")
@@ -121,13 +120,13 @@ impl CeremonyPanel {
         button.loading(self.pending == Some(own)).disabled(self.pending.is_some())
     }
 
-    fn name_screen(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn name_screen(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let typed = !self.name.read(cx).value().trim().is_empty();
         v_flex()
             .id("ceremony-name")
             .test_support()
             .gap_3()
-            .child(heading("ceremony.title"))
+            .child(self.heading("ceremony.title", window, cx))
             .child(muted(tr("ceremony.name.help"), cx))
             .child(
                 v_flex().gap_1().child(muted(tr("ceremony.name.label"), cx)).child(
@@ -149,20 +148,25 @@ impl CeremonyPanel {
                                 })),
                             Pending::Begin,
                         )
-                        .loading(self.pending == Some(Pending::Begin) || self.abandoned)
-                        .disabled(self.pending.is_some() || self.abandoned || !typed),
+                        .loading(self.pending == Some(Pending::Begin) || self.is_abandoned())
+                        .disabled(self.pending.is_some() || self.is_abandoned() || !typed),
                     )
                     .child(self.cancel_button("ceremony.back", cx)),
             )
             .into_any_element()
     }
 
-    fn ready_screen(&self, ceremony: &Ceremony, cx: &mut Context<Self>) -> AnyElement {
+    fn ready_screen(
+        &self,
+        ceremony: &Ceremony,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         v_flex()
             .id("ceremony-ready")
             .test_support()
             .gap_3()
-            .child(heading("ceremony.ready.title"))
+            .child(self.heading("ceremony.ready.title", window, cx))
             // One block: what to do and what not to do, before any word.
             .child(warning("ceremony-ready-warning", "ceremony.ready.warning"))
             .child(self.countdown(ceremony, cx))
@@ -185,7 +189,7 @@ impl CeremonyPanel {
 
     /// The 24 words, numbered. Covered words are not drawn. The cells wrap
     /// instead of shrinking below the width a word needs.
-    fn grid(&self, cx: &App) -> AnyElement {
+    fn grid(&self, window: &Window, cx: &App) -> AnyElement {
         let covered = self.held.covered;
         let phrase = self.held.phrase.as_ref();
         let muted_color = cx.theme().muted_foreground;
@@ -233,41 +237,59 @@ impl CeremonyPanel {
                     .into_any_element()
             })
             .collect();
-        h_flex()
-            .id("ceremony-grid")
-            .track_focus(&self.grid_focus)
-            .role(Role::List)
-            .aria_label(tr("ceremony.show.grid"))
-            .test_support()
-            .flex_wrap()
-            .gap_2()
-            .children(cells)
-            .into_any_element()
+        ringed(
+            h_flex()
+                .id("ceremony-grid")
+                .track_focus(&self.grid_focus)
+                .role(Role::List)
+                .aria_label(tr("ceremony.show.grid"))
+                .test_support()
+                // Room for the ring: it sits outside the edge.
+                .p_1()
+                .rounded(cx.theme().radius)
+                .flex_wrap()
+                .gap_2()
+                .children(cells),
+            self.grid_focus.is_focused(window),
+            window,
+            cx,
+        )
+        .into_any_element()
     }
 
-    fn phrase_screen(&self, ceremony: &Ceremony, cx: &mut Context<Self>) -> AnyElement {
-        let screen = v_flex()
-            .id("ceremony-phrase")
-            .test_support()
-            .gap_3()
-            .child(heading("ceremony.show.title"));
+    fn phrase_screen(
+        &self,
+        ceremony: &Ceremony,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let screen = v_flex().id("ceremony-phrase").test_support().gap_3().child(self.heading(
+            "ceremony.show.title",
+            window,
+            cx,
+        ));
         if !self.held.holds_phrase() {
             // The hide was sent: the daemon is choosing the words. Nothing
             // is wrong, so nothing alerts.
             if self.pending == Some(Pending::Hide) {
-                return self.hiding_screen(cx);
+                return self.hiding_screen(window, cx);
             }
             // The daemon handed the phrase out once; if it is not here, it
             // cannot be asked for again.
             return screen
-                .child(failure("ceremony-phrase-missing", "ceremony.show.missing"))
+                .child(self.focusable_failure(
+                    "ceremony-phrase-missing",
+                    "ceremony.show.missing",
+                    window,
+                    cx,
+                ))
                 .child(h_flex().child(self.cancel_button("ceremony.cancel", cx)))
                 .into_any_element();
         }
         let covered = self.held.covered;
         screen
             .child(warning("ceremony-phrase-warning", "ceremony.show.warning"))
-            .child(self.grid(cx))
+            .child(self.grid(window, cx))
             .when(covered, |screen| {
                 screen.child(
                     h_flex()
@@ -314,19 +336,21 @@ impl CeremonyPanel {
     }
 
     /// Waiting for the daemon to choose the words to ask.
-    fn hiding_screen(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn hiding_screen(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         v_flex()
             .id("ceremony-hiding")
             .test_support()
             .gap_3()
-            .child(heading("ceremony.show.title"))
-            .child(
+            .child(self.heading("ceremony.show.title", window, cx))
+            .child(ringed(
                 div()
                     .id("ceremony-hiding-text")
                     .role(Role::Status)
                     .aria_label(tr("ceremony.hiding"))
                     .track_focus(&self.status_focus)
                     .test_support()
+                    .p_1()
+                    .rounded(cx.theme().radius)
                     .child(
                         h_flex()
                             .gap_2()
@@ -336,7 +360,10 @@ impl CeremonyPanel {
                             .child(Spinner::new().small())
                             .child(tr("ceremony.hiding")),
                     ),
-            )
+                self.status_focus.is_focused(window),
+                window,
+                cx,
+            ))
             .child(h_flex().child(self.cancel_button("ceremony.cancel", cx)))
             .into_any_element()
     }
@@ -382,6 +409,7 @@ impl CeremonyPanel {
         &self,
         ceremony: &Ceremony,
         positions: [u8; 3],
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let ready = self.can_continue(cx);
@@ -403,7 +431,7 @@ impl CeremonyPanel {
             .id("ceremony-confirm")
             .test_support()
             .gap_3()
-            .child(heading("ceremony.confirm.title"))
+            .child(self.heading("ceremony.confirm.title", window, cx))
             .child(warning("ceremony-confirm-once", "ceremony.confirm.once"))
             .children(fields)
             .child(self.countdown(ceremony, cx))
@@ -424,7 +452,12 @@ impl CeremonyPanel {
 
     /// The passphrase that unlocks the account on this device, typed twice
     /// under the rules of the backup passphrase. Sent with the words, once.
-    fn passphrase_screen(&self, ceremony: &Ceremony, cx: &mut Context<Self>) -> AnyElement {
+    fn passphrase_screen(
+        &self,
+        ceremony: &Ceremony,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         // One materialized copy of each input per frame (the input hands
         // out nothing borrowed), compared and rated once: nothing below
         // copies them again.
@@ -449,7 +482,7 @@ impl CeremonyPanel {
             .id("ceremony-passphrase")
             .test_support()
             .gap_3()
-            .child(heading("ceremony.passphrase.title"))
+            .child(self.heading("ceremony.passphrase.title", window, cx))
             .child(muted(tr("ceremony.passphrase.help"), cx))
             .child(field(
                 "ceremony.passphrase.label",
@@ -501,7 +534,12 @@ impl CeremonyPanel {
             .into_any_element()
     }
 
-    fn done_screen(&self, account: &CeremonyAccount, cx: &mut Context<Self>) -> AnyElement {
+    fn done_screen(
+        &self,
+        account: &CeremonyAccount,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let live = account.networking == Networking::Live;
         let (state, state_text, text_key) = if live {
             ("ceremony.done.live_state", "ceremony.done.live_state_text", "ceremony.done.live_text")
@@ -513,7 +551,7 @@ impl CeremonyPanel {
             .id("ceremony-done")
             .test_support()
             .gap_3()
-            .child(heading("ceremony.done.title"))
+            .child(self.heading("ceremony.done.title", window, cx))
             .child(announced(
                 "ceremony-state",
                 Role::Status,
@@ -542,12 +580,17 @@ impl CeremonyPanel {
     }
 
     /// The ceremony ended without an account.
-    fn ended_screen(&self, key: &'static str, cx: &mut Context<Self>) -> AnyElement {
+    fn ended_screen(
+        &self,
+        key: &'static str,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         v_flex()
             .id("ceremony-ended")
             .test_support()
             .gap_3()
-            .child(failure("ceremony-ended-text", key))
+            .child(self.focusable_failure("ceremony-ended-text", key, window, cx))
             .child(
                 h_flex()
                     .gap_2()
@@ -570,38 +613,41 @@ impl CeremonyPanel {
     }
 
     /// Escape asked: cancelling erases the phrase and creates nothing.
-    fn cancel_question(&self, cx: &mut Context<Self>) -> AnyElement {
-        v_flex()
-            .id("ceremony-cancel-question")
-            .track_focus(&self.question_focus)
-            .role(Role::Status)
-            .aria_label(tr("ceremony.cancel_question"))
-            .test_support()
-            .gap_2()
-            .p_3()
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded(cx.theme().radius)
-            .child(div().text_sm().child(tr("ceremony.cancel_question")))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        Button::new("ceremony-cancel-yes")
-                            .danger()
-                            .label(tr("ceremony.cancel_yes"))
-                            .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx))),
-                    )
-                    .child(
-                        Button::new("ceremony-cancel-no")
-                            .outline()
-                            .label(tr("ceremony.cancel_no"))
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.keep_going(window, cx)),
-                            ),
-                    ),
-            )
-            .into_any_element()
+    fn cancel_question(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        ringed(
+            v_flex()
+                .id("ceremony-cancel-question")
+                .track_focus(&self.question_focus)
+                .role(Role::Status)
+                .aria_label(tr("ceremony.cancel_question"))
+                .test_support()
+                .gap_2()
+                .p_3()
+                .border_1()
+                .border_color(cx.theme().border)
+                .rounded(cx.theme().radius),
+            self.question_focus.is_focused(window),
+            window,
+            cx,
+        )
+        .child(div().text_sm().child(tr("ceremony.cancel_question")))
+        .child(
+            h_flex()
+                .gap_2()
+                .child(
+                    Button::new("ceremony-cancel-yes")
+                        .danger()
+                        .label(tr("ceremony.cancel_yes"))
+                        .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx))),
+                )
+                .child(
+                    Button::new("ceremony-cancel-no")
+                        .outline()
+                        .label(tr("ceremony.cancel_no"))
+                        .on_click(cx.listener(|this, _, window, cx| this.keep_going(window, cx))),
+                ),
+        )
+        .into_any_element()
     }
 
     /// Moves keyboard focus when a screen is first drawn: to the input to
@@ -629,6 +675,15 @@ impl CeremonyPanel {
                         (Some(input), _) => input.update(cx, |input, cx| input.focus(window, cx)),
                         (None, Screen::Phrase) => window.focus(&panel.grid_focus, cx),
                         (None, Screen::Hiding) => window.focus(&panel.status_focus, cx),
+                        // The screens with nothing to type into or read in
+                        // order: the heading says where the reader is; a
+                        // failure says itself.
+                        (None, Screen::Ready | Screen::Done) => {
+                            window.focus(&panel.heading_focus, cx);
+                        }
+                        (None, Screen::PhraseMissing | Screen::Ended) => {
+                            window.focus(&panel.alert_focus, cx);
+                        }
                         (None, _) => window.focus(&panel.focus, cx),
                     }
                 })
@@ -666,34 +721,43 @@ impl Render for CeremonyPanel {
             // The five minutes passed: the expiry stays, whatever the
             // ceremony became since it was let go.
             Some(_) if self.expired => {
-                (Screen::Ended, self.ended_screen("ceremony.ended.expired", cx))
+                (Screen::Ended, self.ended_screen("ceremony.ended.expired", window, cx))
             }
-            None => (Screen::Name, self.name_screen(cx)),
+            None => (Screen::Name, self.name_screen(window, cx)),
             Some(ceremony) => match ceremony.phase.clone() {
-                CeremonyPhase::Prepared => (Screen::Ready, self.ready_screen(&ceremony, cx)),
+                CeremonyPhase::Prepared => {
+                    (Screen::Ready, self.ready_screen(&ceremony, window, cx))
+                }
                 CeremonyPhase::PhraseReady => {
-                    let hiding = !self.held.holds_phrase() && self.pending == Some(Pending::Hide);
-                    let screen = if hiding { Screen::Hiding } else { Screen::Phrase };
-                    (screen, self.phrase_screen(&ceremony, cx))
+                    let screen = if self.held.holds_phrase() {
+                        Screen::Phrase
+                    } else if self.pending == Some(Pending::Hide) {
+                        Screen::Hiding
+                    } else {
+                        Screen::PhraseMissing
+                    };
+                    (screen, self.phrase_screen(&ceremony, window, cx))
                 }
                 CeremonyPhase::Challenged { positions } if self.typed.is_none() => {
-                    (Screen::Words, self.words_screen(&ceremony, positions, cx))
+                    (Screen::Words, self.words_screen(&ceremony, positions, window, cx))
                 }
                 CeremonyPhase::Challenged { .. } => {
-                    (Screen::Passphrase, self.passphrase_screen(&ceremony, cx))
+                    (Screen::Passphrase, self.passphrase_screen(&ceremony, window, cx))
                 }
-                CeremonyPhase::Created(account) => (Screen::Done, self.done_screen(&account, cx)),
+                CeremonyPhase::Created(account) => {
+                    (Screen::Done, self.done_screen(&account, window, cx))
+                }
                 CeremonyPhase::Failed(failure) => {
-                    (Screen::Ended, self.ended_screen(failure_key(failure), cx))
+                    (Screen::Ended, self.ended_screen(failure_key(failure), window, cx))
                 }
                 CeremonyPhase::Cancelled => {
-                    (Screen::Ended, self.ended_screen("ceremony.ended.cancelled", cx))
+                    (Screen::Ended, self.ended_screen("ceremony.ended.cancelled", window, cx))
                 }
             },
         };
         self.focus_screen(screen, window, cx);
         // Above the screen: it must be in view when Escape is pressed.
-        let question = self.confirming_cancel.then(|| self.cancel_question(cx));
+        let question = self.confirming_cancel.then(|| self.cancel_question(window, cx));
         v_flex()
             .id("ceremony")
             .key_context(CEREMONY_CONTEXT)

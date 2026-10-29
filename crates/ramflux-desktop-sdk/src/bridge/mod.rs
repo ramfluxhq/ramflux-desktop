@@ -15,12 +15,14 @@
 //! - `live`: how an account scope stays up to date (stream or polling).
 //! - `effects`: performing a scope's effects.
 
+mod custody;
 mod effects;
 mod jobs;
 mod live;
 mod scope;
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::sync::mpsc as std_mpsc;
 
 use ramflux_desktop_core::{
@@ -33,6 +35,9 @@ use crate::bus::client::BusClient;
 use crate::bus::{BusError, BusRequest};
 use crate::config::SdkConfig;
 use crate::translate::Scope;
+
+pub use custody::PhraseAudit;
+pub(crate) use custody::{Handoff, NativeAccount};
 
 /// One fact for a source, stamped when the bridge observed it.
 #[derive(Debug)]
@@ -49,7 +54,7 @@ pub type MediaAnswer = (CallId, Result<CallMedia, String>);
 /// A request from a source to the bridge.
 pub(crate) enum Command {
     /// Start serving `scope`, delivering into `outbox`.
-    Attach { scope: Scope, outbox: std_mpsc::Sender<Delivery> },
+    Attach { scope: Scope, outbox: std_mpsc::Sender<Delivery>, phrases: std_mpsc::Sender<Handoff> },
     /// Perform an effect in `scope`.
     Effect { scope: Scope, effect: Effect },
     /// The user looks at `context` in `scope`.
@@ -68,6 +73,7 @@ pub(crate) enum Command {
 #[derive(Clone)]
 pub struct Bridge {
     commands: mpsc::UnboundedSender<Command>,
+    audit: Arc<PhraseAudit>,
 }
 
 impl Bridge {
@@ -79,10 +85,17 @@ impl Bridge {
     pub fn start(config: SdkConfig) -> std::io::Result<Self> {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
         let (commands, inbox) = mpsc::unbounded_channel();
+        let audit = Arc::new(PhraseAudit::default());
+        let shared = audit.clone();
         std::thread::Builder::new()
             .name("ramflux-sdk-bridge".to_owned())
-            .spawn(move || runtime.block_on(serve(config, inbox)))?;
-        Ok(Self { commands })
+            .spawn(move || runtime.block_on(serve(config, shared, inbox)))?;
+        Ok(Self { commands, audit })
+    }
+
+    /// How the recovery phrase and typed secrets were handled (a test hook).
+    pub fn audit(&self) -> &Arc<PhraseAudit> {
+        &self.audit
     }
 
     /// Queues a command; a stopped bridge drops it.
@@ -91,7 +104,11 @@ impl Bridge {
     }
 }
 
-async fn serve(config: SdkConfig, mut inbox: mpsc::UnboundedReceiver<Command>) {
+async fn serve(
+    config: SdkConfig,
+    audit: Arc<PhraseAudit>,
+    mut inbox: mpsc::UnboundedReceiver<Command>,
+) {
     let mut scopes: BTreeMap<Scope, mpsc::UnboundedSender<scope::ScopeCommand>> = BTreeMap::new();
     // The daemon scope follows the backup jobs only while no account scope
     // is attached (an account's own link follows them then): it is told
@@ -105,9 +122,10 @@ async fn serve(config: SdkConfig, mut inbox: mpsc::UnboundedReceiver<Command>) {
     };
     while let Some(command) = inbox.recv().await {
         match command {
-            Command::Attach { scope, outbox } => {
+            Command::Attach { scope, outbox, phrases } => {
                 let (tx, rx) = mpsc::unbounded_channel();
-                tokio::spawn(scope::run(config.clone(), scope.clone(), outbox, rx));
+                let ceremonies = scope::Ceremonies { phrases, audit: audit.clone() };
+                tokio::spawn(scope::run(config.clone(), scope.clone(), outbox, ceremonies, rx));
                 let daemon = scope == Scope::Daemon;
                 scopes.insert(scope, tx);
                 if daemon {

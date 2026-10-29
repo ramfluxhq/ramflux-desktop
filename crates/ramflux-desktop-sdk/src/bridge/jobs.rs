@@ -161,11 +161,16 @@ mod tests {
     fn opening_daemon_scope() -> (Task, std_mpsc::Receiver<crate::bridge::Delivery>) {
         let (outbox, deliveries) = std_mpsc::channel();
         let (mut task, _inbox) =
-            build(SdkConfig::new("/nonexistent/rfd.sock"), Scope::Daemon, outbox);
+            build(SdkConfig::new("/nonexistent/rfd.sock"), Scope::Daemon, outbox, ceremonies());
         task.link = Link::Live;
         task.found.backup = true;
         task.jobs = Jobs::Opening { epoch: task.job_link.epoch() };
         (task, deliveries)
+    }
+
+    fn ceremonies() -> crate::bridge::scope::Ceremonies {
+        let (phrases, _) = std_mpsc::channel();
+        crate::bridge::scope::Ceremonies { phrases, audit: std::sync::Arc::default() }
     }
 
     fn runtime() -> tokio::runtime::Runtime {

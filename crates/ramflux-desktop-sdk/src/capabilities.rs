@@ -65,6 +65,10 @@ pub struct Found {
     pub requests_missing: bool,
     /// The full backup job API (BACKUP-01): `account.backup.jobs` answered.
     pub backup: bool,
+    /// The daemon reports `born_v3_creation: true` in `daemon.status`: it
+    /// creates accounts with a recovery phrase and recovers them from it.
+    /// An older daemon has no such field; absent means false.
+    pub born_v3: bool,
 }
 
 /// The voice call methods, which need the daemon's call API (CALL-01).
@@ -107,7 +111,8 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
 
 /// The capabilities event payload; what the daemon was not `found` to
 /// have (the call API, contact requests, the full backup job API) is
-/// unsupported too.
+/// unsupported too, and creation with a recovery phrase is offered only
+/// when the daemon reported it.
 pub fn capabilities(found: Found) -> Capabilities {
     let mut unsupported: BTreeMap<String, String> =
         unsupported().into_iter().map(|(m, r)| (m, r.to_owned())).collect();
@@ -126,10 +131,9 @@ pub fn capabilities(found: Found) -> Capabilities {
             unsupported.insert(method.to_owned(), reason::FULL_BACKUP.to_owned());
         }
     }
-    // Account creation with a recovery phrase is the daemon's option
-    // (`enable_born_v3_creation`, off by default). The pinned product
-    // revision has no way to report it, so the SDK source never offers it.
-    Capabilities { unsupported, born_v3_creation: false }
+    // Account creation with a recovery phrase is offered when the daemon
+    // says so in `daemon.status` (`born_v3_creation`; absent means false).
+    Capabilities { unsupported, born_v3_creation: found.born_v3 }
 }
 
 /// Why `method` is unsupported, if it is.
