@@ -146,6 +146,9 @@ struct Inner {
     /// Request capacity exhausted: decisions and the setting are refused
     /// `Unavailable`.
     busy: bool,
+    /// Decisions and the setting are refused with this code and message
+    /// (any daemon error frame, e.g. `TransportSecurity`).
+    decision_failure: Option<(&'static str, String)>,
     /// The list is refused with this code and message (a locked account,
     /// an outage, a row the daemon could not read).
     list_failure: Option<(&'static str, String)>,
@@ -282,6 +285,9 @@ impl FakeContactRequests {
                 return Some(refused(code, &message));
             }
             let read = matches!(method, "contact.requests.list" | "contact.requests.policy.get");
+            if let (false, Some((code, message))) = (read, inner.decision_failure.clone()) {
+                return Some(refused(code, &message));
+            }
             if inner.busy && !read {
                 let busy = refused("Unavailable", "contact request rate limit exceeded");
                 return Some(busy);
@@ -413,6 +419,12 @@ impl FakeContactRequests {
     /// free again.
     pub fn set_busy(&self, busy: bool) {
         self.inner().busy = busy;
+    }
+
+    /// Refuses decisions and the setting with `code` and `message` (any
+    /// daemon error frame), or answers them again (`None`).
+    pub fn fail_decisions(&self, failure: Option<(&'static str, &str)>) {
+        self.inner().decision_failure = failure.map(|(code, message)| (code, message.to_owned()));
     }
 
     /// Refuses `contact.requests.list` with `code` and `message` (as the

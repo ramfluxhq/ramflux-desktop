@@ -91,12 +91,23 @@ pub fn open_sized(
     options: ramflux_desktop_ui::shell::ShellOptions,
     height: f32,
 ) -> Opened {
+    open_at(cx, options, 1280., height)
+}
+
+/// Opens the production window `width` by `height` pixels (the minimum
+/// window size, for what a narrow window must still show).
+pub fn open_at(
+    cx: &mut TestAppContext,
+    options: ramflux_desktop_ui::shell::ShellOptions,
+    width: f32,
+    height: f32,
+) -> Opened {
     cx.update(|cx| {
         gpui_kit::init(cx);
         ramflux_desktop_ui::init(cx);
     });
     let (handle, shell) = cx.update(|cx| {
-        let bounds = Bounds { origin: Point::default(), size: size(px(1280.), px(height)) };
+        let bounds = Bounds { origin: Point::default(), size: size(px(width), px(height)) };
         let (window, shell) = gpui_kit::open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),

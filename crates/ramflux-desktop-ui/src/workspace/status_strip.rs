@@ -13,7 +13,7 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Sizable as _, TitleBar, h_flex,
+    ActiveTheme as _, Disableable as _, IconName, Sizable as _, TitleBar, h_flex, tooltip::Tooltip,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -24,6 +24,10 @@ use ramflux_desktop_core::{AccountId, LockState, NodeHealth, SourceStatus, Store
 use crate::actions::{GoToNeedsMe, OpenPalette, OpenSettings, ToggleDevPanel, ToggleTheme};
 use crate::app::{LOCAL_ACCOUNT, StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
+
+/// Below this window width (logical px) the strip shows only the chips that
+/// need attention.
+const COMPACT_BELOW: f32 = 900.;
 
 /// The status strip view.
 pub struct StatusStrip {
@@ -163,6 +167,7 @@ fn account_switcher(
     let warning = crate::tone::text(cx.theme().warning, cx);
     h_flex()
         .id("status-account")
+        .flex_none()
         .gap_1()
         .text_xs()
         .child(div().text_color(cx.theme().muted_foreground).child(tr("status.label.account")))
@@ -214,46 +219,75 @@ fn account_switcher(
 }
 
 impl Render for StatusStrip {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let handle = self.store.read(cx);
         let fields = fields(handle, cx);
         let switcher = account_switcher(handle, self.store.downgrade(), cx);
         let needs_me = handle.attention_across_accounts().len();
         let muted = cx.theme().muted_foreground;
         let foreground = cx.theme().foreground;
-        let chips = fields.into_iter().map(|field| {
-            // A failure appears while the user is elsewhere: a status region
-            // lets a screen reader announce it without moving focus.
-            h_flex()
-                .id(field.id)
-                .when(field.id == "status-failure", |chip| chip.role(gpui_kit::Role::Status))
-                .test_support()
-                .gap_1()
-                .text_xs()
-                .child(div().text_color(muted).child(field.label))
-                .child(
-                    div()
-                        .id(SharedString::from(format!("{}-value", field.id)))
-                        .aria_label(field.value.clone())
-                        .test_support()
-                        .max_w(gpui_kit::rems(24.))
-                        .truncate()
-                        .text_color(field.color.unwrap_or(foreground))
-                        .child(field.value),
-                )
-        });
+        // A narrow window has no room for every chip: only what needs
+        // attention stays (the last error, a node or source that is not
+        // fine, rejected projection), so the error is never the part that
+        // is cut. The title bar's controls always stay.
+        let compact = window.viewport_size().width < gpui_kit::px(COMPACT_BELOW);
+        // With an error, the error alone: it is what the user must read.
+        let has_failure = fields.iter().any(|f| f.id == "status-failure");
+        let chips = fields
+            .into_iter()
+            .filter(|f| {
+                !compact || if has_failure { f.id == "status-failure" } else { f.color.is_some() }
+            })
+            .map(|field| {
+                // A failure appears while the user is elsewhere: a status region
+                // lets a screen reader announce it without moving focus.
+                h_flex()
+                    .id(field.id)
+                    .when(field.id == "status-failure", |chip| chip.role(gpui_kit::Role::Status))
+                    .test_support()
+                    .gap_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_xs()
+                    .child(
+                        div().flex_none().whitespace_nowrap().text_color(muted).child(field.label),
+                    )
+                    .child({
+                        // The value gives way first when the window is narrow;
+                        // the full text stays in the tooltip and the label.
+                        let full = field.value.clone();
+                        div()
+                            .id(SharedString::from(format!("{}-value", field.id)))
+                            .aria_label(field.value.clone())
+                            .test_support()
+                            .min_w_0()
+                            .max_w(gpui_kit::rems(24.))
+                            .truncate()
+                            .text_color(field.color.unwrap_or(foreground))
+                            .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
+                            .child(field.value)
+                    })
+            });
         TitleBar::new()
             .child(
                 h_flex()
                     .id("status-strip")
                     .gap_4()
+                    .flex_1()
+                    // A definite zero width keeps the strip's text out of the
+                    // title bar's minimum width: the strip takes what the
+                    // controls leave and clips the rest.
+                    .w_0()
                     .min_w_0()
-                    .child(div().text_sm().font_semibold().child(tr("app.name")))
+                    .overflow_hidden()
+                    .child(div().flex_none().text_sm().font_semibold().child(tr("app.name")))
                     .child(switcher)
                     .children(chips),
             )
             .child(
+                // The controls never give way: the strip beside them clips.
                 h_flex()
+                    .flex_none()
                     .gap_1()
                     .pr_2()
                     .when(self.show_commands, |row| {
@@ -274,10 +308,21 @@ impl Render for StatusStrip {
                                 .when(needs_me > 0, |b| b.warning())
                                 .when(needs_me == 0, |b| b.ghost())
                                 .icon(IconName::Bell)
-                                .label(tr_args(
-                                    "status.needs_me",
-                                    &[("count", &needs_me.to_string())],
-                                ))
+                                // Icon only in a narrow window; the label
+                                // (with the count) stays for assistive
+                                // technology and the tooltip.
+                                .when(!compact, |b| {
+                                    b.label(tr_args(
+                                        "status.needs_me",
+                                        &[("count", &needs_me.to_string())],
+                                    ))
+                                })
+                                .when(compact, |b| {
+                                    b.accessibility_label(tr_args(
+                                        "status.needs_me",
+                                        &[("count", &needs_me.to_string())],
+                                    ))
+                                })
                                 .tooltip_with_action(tr("status.needs_me_hint"), &GoToNeedsMe, None)
                                 .disabled(needs_me == 0)
                                 .on_click(|_, window, cx| {

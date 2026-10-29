@@ -101,6 +101,14 @@ path = "tests/desk_pin_shots.rs"
 test = false
 harness = false
 
+# Screenshots of the DESK-PIN-03 states (title bar at the minimum window size,
+# contact-request floors, group sync refusal); run explicitly.
+[[test]]
+name = "desk_pin3_shots"
+path = "tests/desk_pin3_shots.rs"
+test = false
+harness = false
+
 [[test]]
 name = "sync_shots"
 path = "tests/sync_shots.rs"
