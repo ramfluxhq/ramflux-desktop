@@ -299,6 +299,8 @@ mod shots {
             ("head_check_pending", "pin3_06_group_sync_pending"),
             ("transfer_outcome_pending", "pin3_07_group_transfer_pending"),
             ("clock_skew_or_expired_control", "pin3_08_group_clock_skew"),
+            ("head_or_removal_floor_mismatch", "pin3_10_group_handover_stale"),
+            ("directory_unavailable", "pin3_11_group_not_ready"),
         ] {
             state.lock().expect("state").group_refusal = Some(reason);
             let before = run.store(|s| s.failures().len());
@@ -391,8 +393,11 @@ mod shots {
                     !ramflux_desktop_core::selectors::pending_contact_requests(s).is_empty()
                 })
             });
-            // The longest refusal text the strip can show: a failed trust check.
-            requests.fail_decisions(Some(("TransportSecurity", "node certificate pin mismatch")));
+            // The longest refusal text the strip can show (local_network_maybe).
+            requests.fail_decisions(Some((
+                "ValidationFailed",
+                r#"backend.failure.local_network_maybe {"host":"ramflux-node-01.local"}"#,
+            )));
             run.accept(&id);
             run.until("the refusal", |r| r.store(|s| !s.failures().is_empty()));
             run.settle();

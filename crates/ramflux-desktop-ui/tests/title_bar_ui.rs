@@ -5,7 +5,9 @@
 //! in the status strip is cut with an ellipsis (its full text stays in the
 //! accessibility label), and the palette, Needs-me, theme and settings
 //! controls stay inside the window, down to the application's minimum size,
-//! in English and in Chinese.
+//! in English and in Chinese. The error is what the strip gives way to: at
+//! desktop widths too, the neutral chips make room for it and only its
+//! value is cut, with an ellipsis (full text in the label).
 
 mod common;
 mod sdk_fake;
@@ -16,15 +18,20 @@ use common::*;
 use gpui_kit::TestAppContext;
 use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{Intent, IntentKind, RequestAnswer, selectors};
-use ramflux_desktop_ui::i18n::{self, tr};
+use ramflux_desktop_ui::i18n;
 use ramflux_desktop_ui::route::Page;
 use sdk_fake::wait;
 use serde_json::json;
 
 const CONTROLS: [&str; 4] = ["open-palette", "needs-me", "toggle-theme", "open-settings"];
 
+/// The longest refusal text the strip can show: the node lookup refused
+/// without a reason (`backend.failure.local_network_maybe`, 208 characters
+/// in English and 92 in Chinese, against 146 and 42 for a failed trust check).
+const LONGEST: &str = r#"backend.failure.local_network_maybe {"host":"ramflux-node-01.local"}"#;
+
 /// Opens a `width` px wide window whose status strip shows the longest
-/// refusal text (a failed trust check) and returns the strip's failure text.
+/// refusal text and returns the strip's failure text.
 fn open_with_long_failure(
     cx: &mut TestAppContext,
     locale: &str,
@@ -52,7 +59,7 @@ fn open_with_long_failure(
     wait(cx, "the request", |cx| {
         with_store(cx, &shell, |s| !selectors::pending_contact_requests(s).is_empty())
     });
-    requests.fail_decisions(Some(("TransportSecurity", "node certificate pin mismatch")));
+    requests.fail_decisions(Some(("ValidationFailed", LONGEST)));
     let store = store_handle(cx, &shell);
     cx.update(|cx| {
         store.update(cx, |handle, cx| {
@@ -76,8 +83,7 @@ fn open_with_long_failure(
 
 fn check(cx: &mut TestAppContext, locale: &str, width: f32) {
     let (handle, full) = open_with_long_failure(cx, locale, width);
-    let long = tr("backend.failure.transport_security").to_string();
-    assert!(full.contains(&long), "the longest refusal text: {full}");
+    assert!(full.contains("ramflux-node-01.local"), "the longest refusal text: {full}");
     let (shown, bar, controls) = in_window(cx, handle, |window, _| {
         let shown =
             window.within("status-failure").find("status-failure-value").label().map(str::to_owned);
@@ -86,6 +92,24 @@ fn check(cx: &mut TestAppContext, locale: &str, width: f32) {
             CONTROLS.iter().map(|id| (*id, window.try_find(*id).map(|e| e.bounds()))).collect();
         (shown, bar, controls)
     });
+    // The error's value is cut with an ellipsis inside the strip, never by
+    // the strip's edge; the neutral chips gave way to it.
+    let (value, strip, neutral) = in_window(cx, handle, |window, _| {
+        (
+            window.find("status-failure-value").bounds(),
+            window.find("status-strip").bounds(),
+            ["status-device", "status-projection"]
+                .iter()
+                .filter(|id| window.try_find(**id).is_some())
+                .count(),
+        )
+    });
+    assert!(
+        value.right() <= strip.right() && value.left() >= strip.left(),
+        "the error value ends inside the strip at {width} px ({locale}): {value:?} in {strip:?}"
+    );
+    assert!(value.size.width > gpui_kit::px(200.), "the error has room: {value:?}");
+    assert_eq!(neutral, 0, "neutral chips make room for the error at {width} px ({locale})");
     // The whole failure stays in the label even where the chip is cut.
     assert_eq!(shown.as_deref(), Some(full.as_str()), "{locale} {width}");
     for (id, bounds) in controls {
@@ -102,6 +126,16 @@ fn a_long_failure_leaves_the_controls_at_1100_px_in_both_languages(cx: &mut Test
     let _guard = locale_guard();
     check(cx, "en", 1_100.);
     check(cx, "zh-CN", 1_100.);
+    cx.update(|cx| i18n::select_locale("en", cx));
+}
+
+#[gpui_kit::test]
+fn the_error_keeps_its_room_at_desktop_widths_in_both_languages(cx: &mut TestAppContext) {
+    let _guard = locale_guard();
+    for width in [900., 1_280.] {
+        check(cx, "en", width);
+        check(cx, "zh-CN", width);
+    }
     cx.update(|cx| i18n::select_locale("en", cx));
 }
 

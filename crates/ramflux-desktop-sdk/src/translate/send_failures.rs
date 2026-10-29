@@ -41,13 +41,17 @@ pub fn unreachable_members(message: &str) -> Option<Vec<String>> {
 fn typed_capacity(error: &BusError) -> Option<String> {
     let BusError::Daemon { code, reason_code, .. } = error else { return None };
     match code.as_str() {
-        // The group head is held; `reason_code` says why. An unknown reason
-        // gets the general words (the devices have not confirmed the state).
+        // The group head is held; `reason_code` says why. A known wait gets
+        // its words; a stale handover says it needs a fresh one; an unknown
+        // reason gets neutral words.
         crate::bus::TRANSFER_REQUIRES_SYNC => Some(
             match reason_code.as_deref() {
                 Some("transfer_outcome_pending") => key::GROUP_TRANSFER_PENDING,
                 Some("clock_skew_or_expired_control") => key::GROUP_CLOCK_SKEW,
-                _ => key::GROUP_SYNC_PENDING,
+                Some("head_or_removal_floor_mismatch") => key::GROUP_HANDOVER_STALE,
+                Some("head_check_pending") => key::GROUP_SYNC_PENDING,
+                // Any other reason (or none): neutral and final, no wait promised.
+                _ => key::GROUP_NOT_READY,
             }
             .to_owned(),
         ),
@@ -148,8 +152,9 @@ mod tests {
         };
         let sync = |reason| translator.failure_message(methods::GROUP_KICK, &held(reason));
         assert_eq!(sync(Some("head_check_pending")), key::GROUP_SYNC_PENDING);
-        assert_eq!(sync(Some("head_or_removal_floor_mismatch")), key::GROUP_SYNC_PENDING);
-        assert_eq!(sync(None), key::GROUP_SYNC_PENDING);
+        assert_eq!(sync(Some("head_or_removal_floor_mismatch")), key::GROUP_HANDOVER_STALE);
+        assert_eq!(sync(Some("directory_unavailable")), key::GROUP_NOT_READY);
+        assert_eq!(sync(None), key::GROUP_NOT_READY);
         assert_eq!(sync(Some("transfer_outcome_pending")), key::GROUP_TRANSFER_PENDING);
         assert_eq!(sync(Some("clock_skew_or_expired_control")), key::GROUP_CLOCK_SKEW);
         assert!(!held(None).is_retryable() && !held(None).is_connection_lost());

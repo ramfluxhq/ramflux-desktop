@@ -61,6 +61,8 @@ struct Field {
     label: SharedString,
     value: SharedString,
     color: Option<Hsla>,
+    /// Needs the user's attention (a problem), not just a fact.
+    attention: bool,
 }
 
 fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
@@ -95,6 +97,8 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
         }
         None => (tr("status.none"), None),
     };
+    let node_attention =
+        node.is_some_and(|n| matches!(n.health, NodeHealth::Degraded | NodeHealth::Unreachable));
     let source = handle.shown_source_status();
     let source_color = match source {
         SourceStatus::Connected => None,
@@ -115,26 +119,36 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
         label: tr("backend.failure.label"),
         value: i18n::failure(f),
         color: Some(theme.danger),
+        attention: true,
     });
     let mut fields = vec![
-        Field { id: "status-device", label: tr("status.label.device"), value: device, color: None },
+        Field {
+            id: "status-device",
+            label: tr("status.label.device"),
+            value: device,
+            color: None,
+            attention: false,
+        },
         Field {
             id: "status-node",
             label: tr("status.label.node"),
             value: node_value,
             color: node_color,
+            attention: node_attention,
         },
         Field {
             id: "status-projection",
             label: tr("status.label.projection"),
             value: projection,
             color: (rejected > 0).then_some(theme.warning),
+            attention: rejected > 0,
         },
         Field {
             id: "status-source",
             label: tr("status.label.source"),
             value: i18n::source_status(source),
             color: source_color,
+            attention: source != SourceStatus::Connected,
         },
     ];
     fields.extend(failure);
@@ -226,19 +240,17 @@ impl Render for StatusStrip {
         let needs_me = handle.attention_across_accounts().len();
         let muted = cx.theme().muted_foreground;
         let foreground = cx.theme().foreground;
-        // A narrow window has no room for every chip: only what needs
-        // attention stays (the last error, a node or source that is not
-        // fine, rejected projection), so the error is never the part that
-        // is cut. The title bar's controls always stay.
+        // The error comes first at every width. While one is shown, only
+        // what needs attention stays beside it (a node or source that is not
+        // fine, rejected projection) and the error's value is the one thing
+        // that gives way, with an ellipsis; neutral facts (device, a healthy
+        // node, the projection position) wait until it is gone. A narrow
+        // window drops the same facts when there is no error. The title
+        // bar's controls always stay.
         let compact = window.viewport_size().width < gpui_kit::px(COMPACT_BELOW);
-        // With an error, the error alone: it is what the user must read.
         let has_failure = fields.iter().any(|f| f.id == "status-failure");
-        let chips = fields
-            .into_iter()
-            .filter(|f| {
-                !compact || if has_failure { f.id == "status-failure" } else { f.color.is_some() }
-            })
-            .map(|field| {
+        let chips =
+            fields.into_iter().filter(|f| !(compact || has_failure) || f.attention).map(|field| {
                 // A failure appears while the user is elsewhere: a status region
                 // lets a screen reader announce it without moving focus.
                 h_flex()
@@ -249,6 +261,10 @@ impl Render for StatusStrip {
                     .min_w_0()
                     .overflow_hidden()
                     .text_xs()
+                    // The error takes the room; the other chips keep theirs.
+                    .when(has_failure, |chip| {
+                        if field.id == "status-failure" { chip.flex_1() } else { chip.flex_none() }
+                    })
                     .child(
                         div().flex_none().whitespace_nowrap().text_color(muted).child(field.label),
                     )
@@ -261,7 +277,10 @@ impl Render for StatusStrip {
                             .aria_label(field.value.clone())
                             .test_support()
                             .min_w_0()
-                            .max_w(gpui_kit::rems(24.))
+                            .when(field.id == "status-failure", |value| value.flex_1())
+                            .when(field.id != "status-failure", |value| {
+                                value.max_w(gpui_kit::rems(24.))
+                            })
                             .truncate()
                             .text_color(field.color.unwrap_or(foreground))
                             .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
@@ -272,6 +291,7 @@ impl Render for StatusStrip {
             .child(
                 h_flex()
                     .id("status-strip")
+                    .test_support()
                     .gap_4()
                     .flex_1()
                     // A definite zero width keeps the strip's text out of the
@@ -308,17 +328,17 @@ impl Render for StatusStrip {
                                 .when(needs_me > 0, |b| b.warning())
                                 .when(needs_me == 0, |b| b.ghost())
                                 .icon(IconName::Bell)
-                                // Icon only in a narrow window; the label
-                                // (with the count) stays for assistive
-                                // technology and the tooltip.
+                                // Icon and count in a narrow window; the full
+                                // label stays for assistive technology.
                                 .when(!compact, |b| {
                                     b.label(tr_args(
                                         "status.needs_me",
                                         &[("count", &needs_me.to_string())],
                                     ))
                                 })
+                                // The number stays visible in a narrow window.
                                 .when(compact, |b| {
-                                    b.accessibility_label(tr_args(
+                                    b.label(needs_me.to_string()).accessibility_label(tr_args(
                                         "status.needs_me",
                                         &[("count", &needs_me.to_string())],
                                     ))

@@ -139,9 +139,15 @@ fn check_floors(cx: &mut TestAppContext, name: &str, locale: &str) {
     assert_eq!(label(cx, &world, "contacts-floors-clear").as_deref(), Some(clear.as_str()));
     assert_ne!(clear, "dock.contacts.floors.clear", "a translation exists in {locale}");
 
-    // Pressing it asks first; nothing is sent, and the hold is not the
-    // control that has the focus.
+    // The notice does not take the focus; pressing the button asks first,
+    // nothing is sent, and the hold strip then takes the focus (a single
+    // key press never fires it: keyboard.rs).
+    let focus = |cx: &mut TestAppContext, id: &'static str| {
+        in_window(cx, world.handle, |window, _| window.try_find(id).and_then(|e| e.focused()))
+    };
+    assert_ne!(focus(cx, "contacts-floors-clear"), Some(true), "the button is not focused");
     click(cx, world.handle, "contacts-floors-clear");
+    assert_eq!(focus(cx, "hold-confirm"), Some(true), "the hold strip takes the focus");
     assert!(strip_open(cx, &world.shell), "forgetting needs the hold");
     assert!(sent(&world, methods::CONTACT_REQUESTS_POLICY).is_empty());
     assert!(sent(&world, "contact.requests.policy.set").is_empty());
@@ -198,7 +204,8 @@ fn check_group_refusal(cx: &mut TestAppContext, name: &str, locale: &str) {
     assert!(exists(cx, world.handle, "dock-content-members"));
     let expected = [
         ("head_check_pending", "backend.group.sync_pending"),
-        ("head_or_removal_floor_mismatch", "backend.group.sync_pending"),
+        ("head_or_removal_floor_mismatch", "backend.group.handover_stale"),
+        ("directory_unavailable", "backend.group.not_ready"),
         ("transfer_outcome_pending", "backend.group.transfer_pending"),
         ("clock_skew_or_expired_control", "backend.group.clock_skew"),
     ];

@@ -116,14 +116,20 @@ backend:
       en: "This change would exceed one of the group's limits, so nothing was changed."
       zh-CN: "此更改将超出群组的某项限制，未做任何更改。"
     sync_pending:
-      en: "The group's devices have not all confirmed its latest state yet, so nothing was changed. Try again in a minute."
-      zh-CN: "群组的各设备尚未全部确认其最新状态，未做任何更改。请一分钟后再试。"
+      en: "The group's devices have not all confirmed its latest state yet. Nothing was changed; try again in a minute."
+      zh-CN: "群组的各设备尚未全部确认其最新状态。未做任何更改，请一分钟后再试。"
     transfer_pending:
-      en: "A change of the group's owner is still pending, and changes to the group wait until it finishes or expires, which can take a few minutes. Nothing was changed; try again later."
-      zh-CN: "群组所有权的变更仍在进行，在其完成或过期（可能需要几分钟）之前，对群组的更改需要等待。未做任何更改，请稍后再试。"
+      en: "An owner change for this group is still pending. Nothing was changed; try again in a few minutes."
+      zh-CN: "此群组的所有权变更仍在进行。未做任何更改，请几分钟后再试。"
     clock_skew:
-      en: "This request expired, or the clocks of the group's devices differ by more than five minutes. Nothing was changed; check this device's clock and try again."
-      zh-CN: "此请求已过期，或群组各设备的时钟相差超过五分钟。未做任何更改，请检查本设备的时钟后重试。"
+      en: "This request expired, or the devices' clocks differ by over five minutes. Nothing was changed; check this device's clock and retry."
+      zh-CN: "此请求已过期，或各设备时钟相差超过五分钟。未做任何更改，请检查本设备时钟后重试。"
+    handover_stale:
+      en: "The group changed after this was prepared, so it needs a fresh handover. Nothing was changed; start it again from the group's current state."
+      zh-CN: "此操作准备后群组已发生变化，需要重新发起交接。未做任何更改，请基于群组当前状态重新开始。"
+    not_ready:
+      en: "The group could not take this change, and nothing was changed."
+      zh-CN: "群组无法接受此更改，未做任何更改。"
   message:
     encrypted_at_rest:
       en: "This message is stored encrypted; its text is shown only when it is received or sent here."

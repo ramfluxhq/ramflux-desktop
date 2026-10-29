@@ -151,6 +151,14 @@ pub mod key {
     /// `clock_skew_or_expired_control`): it expired or the devices' clocks
     /// differ by more than five minutes.
     pub const GROUP_CLOCK_SKEW: &str = "backend.group.clock_skew";
+    /// A group control was refused (`transfer_requires_sync`,
+    /// `head_or_removal_floor_mismatch`): it was prepared on a state the
+    /// group has moved past, so it needs a fresh handover; waiting does not
+    /// help.
+    pub const GROUP_HANDOVER_STALE: &str = "backend.group.handover_stale";
+    /// A group change was refused (`transfer_requires_sync`) for a reason this
+    /// desktop does not know: nothing changed, and no wait is promised.
+    pub const GROUP_NOT_READY: &str = "backend.group.not_ready";
     /// The daemon's media session of a call could not be read.
     pub const CALL_MEDIA: &str = "backend.call.media";
     /// Contact refusal `unavailable`: the home node is unreachable or busy
@@ -171,7 +179,7 @@ pub mod key {
     pub const CONTACT_EXPORT_FAILED: &str = "backend.contact.export_failed";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 62] = [
+    pub const ALL: [&str; 64] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -234,6 +242,8 @@ pub mod key {
         GROUP_SYNC_PENDING,
         GROUP_TRANSFER_PENDING,
         GROUP_CLOCK_SKEW,
+        GROUP_HANDOVER_STALE,
+        GROUP_NOT_READY,
     ];
 }
 
