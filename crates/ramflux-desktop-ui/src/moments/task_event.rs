@@ -60,8 +60,10 @@ pub fn render(payload: &TaskEventPayload, row: &MomentRow, cx: &App) -> impl Int
     // The source's flag on the event says the signer's kind is verified
     // for it; the kind is named only when the directory itself holds a
     // profile-signed claim of it (else "Kind verified", unnamed).
-    // An authenticated kind the source did not verify for the action's role
-    // is a mismatch and is named as such (KIND-01-FU-02).
+    // On an event line the source checked the device, so an authenticated kind
+    // that is not verified for the action is a role mismatch and is named as
+    // such (KIND-01-FU-02).
+    let mismatch = payload.actor_kind.filter(|_| !payload.actor_kind_verified);
     let kind = if payload.actor_kind_verified {
         row.refs
             .people
@@ -70,7 +72,7 @@ pub fn render(payload: &TaskEventPayload, row: &MomentRow, cx: &App) -> impl Int
             .filter(|claim| claim.is_verified())
             .and_then(|claim| claim.kind())
     } else {
-        payload.actor_kind
+        None
     };
     h_flex()
         .id("task-event")
@@ -80,12 +82,17 @@ pub fn render(payload: &TaskEventPayload, row: &MomentRow, cx: &App) -> impl Int
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(icon).xsmall())
         .child(div().min_w_0().child(text))
-        .child(crate::identity::actor_kind_mark(
-            "task-event-kind",
-            kind,
-            payload.actor_kind_verified,
-            cx,
-        ))
+        .child(match mismatch {
+            Some(actor_kind) => {
+                crate::identity::kind_mismatch_mark("task-event-kind".into(), actor_kind, cx)
+            }
+            None => crate::identity::actor_kind_mark(
+                "task-event-kind",
+                kind,
+                payload.actor_kind_verified,
+                cx,
+            ),
+        })
         .child(div().child(i18n::time_of_day(row.moment.at)))
         .test_support()
 }

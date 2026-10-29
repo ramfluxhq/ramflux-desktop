@@ -3,8 +3,8 @@
 
 //! Offscreen light and dark screenshots of the states DESK-PIN-01 adds, on
 //! a fake daemon: a group's roster and signed name changed by sync, an
-//! authenticated kind that does not fit what a member did, a call past its
-//! control receipt cap, contact requests (a decline, a crossed request, the
+//! authenticated kind that does not fit what a member did, a failed request named in
+//! words, contact requests (a decline, a crossed request, the
 //! cooldown explained in the add form), and a blocked contact that can be
 //! blocked again after an unblock.
 //!
@@ -39,7 +39,7 @@ mod shots {
         AppContext as _, Bounds, Entity, HeadlessAppContext, Point, Window, WindowBounds,
         WindowHandle, WindowOptions, px, size,
     };
-    use ramflux_desktop_core::{CallId, CallState, ContextId, ParticipantId};
+    use ramflux_desktop_core::{ContextId, ParticipantId};
     use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
     use ramflux_desktop_ui::route::Page;
@@ -274,21 +274,7 @@ mod shots {
         run.settle();
         run.shot("pin_02_kind_mismatch");
 
-        // A call past its control receipt cap.
         run.show("dm-ana");
-        let id = CallId::new(calls.incoming("acct-main", "dm-ana"));
-        run.until("ringing", |r| {
-            r.store(|s| s.call(&id).map(|c| c.state)) == Some(CallState::IncomingRinging)
-        });
-        calls.set_refusal(Some((
-            "CallControlReceiptCapacity",
-            "voice call control receipt capacity exhausted at 128 receipts",
-        )));
-        run.click("incoming-answer");
-        run.until("the refusal", |r| r.store(|s| !s.failures().is_empty()));
-        run.settle();
-        run.shot("pin_03_call_capacity");
-        calls.set_refusal(None);
 
         // Contact requests: a crossed request, a decline and the cooldown.
         let own = requests.outgoing("acct-main", "principal-ana");
@@ -318,6 +304,15 @@ mod shots {
         run.until("the cooldown", |r| r.exists("contact-add-note"));
         run.settle();
         run.shot("pin_06_declined_cooldown");
+        // A refused request, named in words in the status strip.
+        let _ = requests.incoming("acct-main", "principal-mira", None);
+        publish("acct-main", "contact.changed", json!({}));
+        run.until("the request", |r| r.exists("contacts-request-principal-mira"));
+        requests.set_busy(true);
+        run.click_in("contacts-request-principal-mira", "request-accept");
+        run.until("the refusal", |r| r.store(|s| !s.failures().is_empty()));
+        run.settle();
+        run.shot("pin_03_failure_in_words");
         if let Ok(bus) = Arc::try_unwrap(bus) {
             bus.shutdown();
         }

@@ -99,7 +99,7 @@ pub fn kind_mark(id: impl Into<ElementId>, claim: KindClaim, cx: &App) -> Option
 /// `actor_kind_verified` false, for example a headless AI as the requester
 /// of a human-only action). It names the kind and says it is not valid
 /// here; it never reads as a verification.
-fn kind_mismatch_mark(id: ElementId, kind: PeerKind, cx: &App) -> AnyElement {
+pub fn kind_mismatch_mark(id: ElementId, kind: PeerKind, cx: &App) -> AnyElement {
     let text = tr_args("identity.kind.role_mismatch", &[("kind", &i18n::peer_kind(kind))]);
     let help = tr("identity.kind.role_mismatch_help");
     h_flex()
@@ -116,11 +116,35 @@ fn kind_mismatch_mark(id: ElementId, kind: PeerKind, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
+/// The mark of a kind the source reports for an actor without verifying it
+/// for the action: the kind is named, and the text says only that it is not
+/// verified for this action. The reason may be the device (not in the signed
+/// device set) or the role, so no cause is claimed.
+fn kind_unverified_mark(id: ElementId, kind: PeerKind, cx: &App) -> AnyElement {
+    let text = tr_args("identity.kind.unverified_for_action", &[("kind", &i18n::peer_kind(kind))]);
+    let help = tr("identity.kind.unverified_for_action_help");
+    h_flex()
+        .id(id)
+        .aria_label(text.clone())
+        .test_support()
+        .flex_none()
+        .gap_1()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(Icon::new(kind_icon(kind)).xsmall())
+        .child(text)
+        .tooltip(move |window, cx| Tooltip::new(help.clone()).build(window, cx))
+        .into_any_element()
+}
+
 /// The kind mark of a task actor. `kind` is shown only when the directory
 /// itself holds a profile-signed claim of it; an actor whose kind the
 /// source verified for the event without such a claim reads "Kind
-/// verified"; an authenticated kind the source did not verify for the
-/// action's role reads as a mismatch; anything else "Kind not verified".
+/// verified"; a kind the source did not verify for the action reads as not
+/// verified for it (the cause is not claimed: the product reports the kind
+/// of an actor row without checking its device); anything else "Kind not
+/// verified". The role-mismatch wording is only for an event line, where the
+/// product has checked the device ([`kind_mismatch_mark`]).
 pub fn actor_kind_mark(
     id: impl Into<ElementId>,
     kind: Option<PeerKind>,
@@ -130,7 +154,7 @@ pub fn actor_kind_mark(
     let id = id.into();
     match (kind, verified) {
         (Some(kind), true) => kind_mark(id.clone(), KindClaim::Verified(kind), cx),
-        (Some(kind), false) => Some(kind_mismatch_mark(id.clone(), kind, cx)),
+        (Some(kind), false) => Some(kind_unverified_mark(id.clone(), kind, cx)),
         (None, _) => None,
     }
     .unwrap_or_else(|| {

@@ -125,10 +125,24 @@ pub fn backend_text(text: &str) -> SharedString {
     tr_args(key, &borrowed)
 }
 
+/// What a failed request was about, in words (never the method name): the
+/// family of the method (`call.answer` is a call), or a generic word.
+pub fn action_name(method: &str) -> SharedString {
+    let family = match method.split_once('.').map_or(method, |(family, _)| family) {
+        "restore" => "backup",
+        "context" | "conversation" => "conversation",
+        "send_message" | "message" => "message",
+        f @ ("account" | "backup" | "call" | "contact" | "device" | "grant" | "group"
+        | "handoff" | "node" | "object" | "surface" | "task") => f,
+        _ => "other",
+    };
+    tr(&format!("backend.failure.action.{family}"))
+}
+
 /// One failed effect for the status strip.
 pub fn failure(failure: &EffectFailure) -> SharedString {
     tr_args(
         "backend.failure.value",
-        &[("action", &failure.method), ("reason", &backend_text(&failure.message))],
+        &[("action", &action_name(&failure.method)), ("reason", &backend_text(&failure.message))],
     )
 }

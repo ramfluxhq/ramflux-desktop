@@ -110,10 +110,6 @@ struct Inner {
     media_sessions: Vec<String>,
     /// Calls whose media session was handed out (once per call).
     media_taken: std::collections::BTreeSet<String>,
-    /// A typed refusal for the local call decisions (answer, reject,
-    /// hangup), as the daemon gives when a call is past its control receipt
-    /// cap.
-    refusal: Option<(&'static str, String)>,
 }
 
 impl Inner {
@@ -264,13 +260,6 @@ impl FakeCalls {
         self.inner().media_sessions.clone()
     }
 
-    /// Makes the daemon refuse answer, reject and hangup with the typed
-    /// `code` (for example `CallControlReceiptCapacity`), or accept them
-    /// again (`None`).
-    pub fn set_refusal(&self, refusal: Option<(&'static str, &str)>) {
-        self.inner().refusal = refusal.map(|(code, message)| (code, message.to_owned()));
-    }
-
     /// Makes the daemon one without the call API (`false`), or with it.
     pub fn set_available(&self, available: bool) {
         self.available.store(available, std::sync::atomic::Ordering::SeqCst);
@@ -294,11 +283,7 @@ impl FakeCalls {
                 "call.media.session" => Self::media(&mut inner, account, call_id),
                 "call.list" => (Self::list(&inner, account), Vec::new()),
                 "call.answer" | "call.reject" | "call.hangup" => {
-                    if let Some((code, message)) = inner.refusal.clone() {
-                        (Reply::Error(code, message), Vec::new())
-                    } else {
-                        Self::local(&mut inner, account, method, call_id)
-                    }
+                    Self::local(&mut inner, account, method, call_id)
                 }
                 _ => (refused("Unsupported", &format!("unsupported method {method}")), Vec::new()),
             }

@@ -12,7 +12,7 @@ use gpui_kit::{AssetSource, Result, SharedString};
 gpui_kit::assets::icon_assets!(pub ExtraIcons, [
     Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Mic, MicOff,
     SignalHigh, SignalMedium, SignalLow, SignalZero,
-    Cpu, ShieldAlert, Signature, UserPen,
+    Cpu, ShieldAlert, Signature, UserPen, Users,
 ]);
 
 /// GPUI Kit's default icons and [`ExtraIcons`].
@@ -40,8 +40,12 @@ mod tests {
 
     #[test]
     fn call_icons_and_default_icons_load() {
-        for icon in [gpui_kit::assets::IconName::PhoneIncoming, gpui_kit::assets::IconName::Search]
-        {
+        for icon in [
+            gpui_kit::assets::IconName::PhoneIncoming,
+            gpui_kit::assets::IconName::Search,
+            // The group rename line.
+            gpui_kit::assets::IconName::Users,
+        ] {
             let path = icon.path();
             assert!(AppAssets.load(&path).ok().flatten().is_some(), "{path}");
         }

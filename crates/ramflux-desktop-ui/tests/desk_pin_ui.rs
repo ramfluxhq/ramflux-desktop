@@ -138,6 +138,9 @@ fn an_authenticated_kind_that_does_not_fit_the_action_is_named_as_such(cx: &mut 
     // Ana's signed profile says she is an unattended AI; that does not fit
     // accepting a task, which is a human-class action.
     tasks.set_kind("principal-ana", "headless_ai");
+    // The assignee's actor row on the card carries a kind the source did not
+    // verify (it does not check the device for that row).
+    tasks.set_kind(sdk_fake::BOT, "human");
     let (handle, shell) = open_with(cx, sdk_fake::options(&path));
     wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
     wait(cx, "the group", |cx| {
@@ -158,6 +161,15 @@ fn an_authenticated_kind_that_does_not_fit_the_action_is_named_as_such(cx: &mut 
             .collect()
     });
     assert_eq!(marks, [expected], "the kind is named as not valid for the action");
+    // The card's actor row says only that the kind is not verified for this
+    // action, never that the role does not fit.
+    let human = i18n::peer_kind(ramflux_desktop_core::PeerKind::Human);
+    let neutral = tr_args("identity.kind.unverified_for_action", &[("kind", &human)]).to_string();
+    wait(cx, "the card's actor row", |cx| exists(cx, handle, "task-kind"));
+    let card: Vec<String> = in_window(cx, handle, |window, _| {
+        window.find_all("task-kind").iter().filter_map(|e| e.label().map(str::to_owned)).collect()
+    });
+    assert_eq!(card, [neutral]);
     let claimed = tr_args("identity.kind.claimed", &[("kind", &kind)]).to_string();
     assert!(!marks.contains(&claimed), "never shown as a claim");
     let _ = state;

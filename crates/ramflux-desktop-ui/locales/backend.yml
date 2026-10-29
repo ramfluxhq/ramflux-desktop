@@ -106,15 +106,15 @@ backend:
       zh-CN: "守护进程无法接受此请求。"
   call:
     control_capacity:
-      en: "Too many call updates are waiting. Try again soon."
-      zh-CN: "待处理的通话更新过多，请稍后再试。"
+      en: "This call has reached the limit of call updates it can track, so further updates from the other side are refused."
+      zh-CN: "此通话已达可跟踪的通话更新上限，对方后续的更新将被拒绝。"
     media:
       en: "Couldn't set up the call's audio connection."
       zh-CN: "无法建立通话的音频连接。"
   group:
     state_capacity:
-      en: "This group has reached its size limit, so the change was not made. Remove a member or device first."
-      zh-CN: "此群组已达规模上限，未做更改。请先移除一名成员或设备。"
+      en: "This change would exceed one of the group's limits, so nothing was changed."
+      zh-CN: "此更改将超出群组的某项限制，未做任何更改。"
   message:
     encrypted_at_rest:
       en: "This message is stored encrypted; its text is shown only when it is received or sent here."
@@ -138,6 +138,52 @@ backend:
     reconcile:
       en: "The daemon cannot tell whether this was applied after an interrupted attempt. Check the result before trying again."
       zh-CN: "上次尝试中断，守护进程无法确定此操作是否已生效。请先核对结果再重试。"
+    action:
+      account:
+        en: "Account"
+        zh-CN: "账户"
+      backup:
+        en: "Backup"
+        zh-CN: "备份"
+      call:
+        en: "Call"
+        zh-CN: "通话"
+      contact:
+        en: "Contact"
+        zh-CN: "联系人"
+      conversation:
+        en: "Conversation"
+        zh-CN: "对话"
+      device:
+        en: "Device"
+        zh-CN: "设备"
+      grant:
+        en: "Approval"
+        zh-CN: "审批"
+      group:
+        en: "Group"
+        zh-CN: "群组"
+      handoff:
+        en: "Handoff"
+        zh-CN: "接力"
+      message:
+        en: "Message"
+        zh-CN: "消息"
+      node:
+        en: "Node"
+        zh-CN: "节点"
+      object:
+        en: "File"
+        zh-CN: "文件"
+      surface:
+        en: "Card"
+        zh-CN: "卡片"
+      task:
+        en: "Task"
+        zh-CN: "任务"
+      other:
+        en: "Action"
+        zh-CN: "操作"
     value:
       en: "%{action}: %{reason}"
       zh-CN: "%{action}：%{reason}"

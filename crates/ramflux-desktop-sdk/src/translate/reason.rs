@@ -133,8 +133,8 @@ pub mod key {
     /// Contact refusal `device_id_taken`: The device id is registered to another identity.
     pub const DEVICE_ID_TAKEN: &str = "backend.contact.device_id_taken";
     /// A call received more control messages than the daemon keeps receipts
-    /// for (`limit`); they free up as calls end (typed
-    /// `CallControlReceiptCapacity`, retryable).
+    /// for; they free up only when the call ends (typed
+    /// `CallControlReceiptCapacity`, final).
     pub const CALL_CONTROL_CAPACITY: &str = "backend.call.control_capacity";
     /// A group change would pass a signed-state budget (typed
     /// `GroupStateCapacity`); nothing changed.

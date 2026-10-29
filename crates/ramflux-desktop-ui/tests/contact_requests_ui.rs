@@ -157,6 +157,18 @@ fn a_busy_daemon_asks_to_try_again_later(cx: &mut TestAppContext) {
     let later = tr("backend.contact.request_unavailable");
     assert_ne!(later.as_ref(), "backend.contact.request_unavailable", "a translation exists");
     assert!(shown.as_ref().is_some_and(|text| text.contains(later.as_ref())), "{shown:?}");
+    // The status strip names the action in words, never the method.
+    let strip = in_window(cx, world.handle, |window, _| {
+        window.within("status-failure").find("status-failure-value").label().map(str::to_owned)
+    })
+    .unwrap_or_default();
+    assert!(!strip.contains("contact.accept"), "{strip}");
+    let expected = tr_args(
+        "backend.failure.value",
+        &[("action", i18n::action_name("contact.accept").as_ref()), ("reason", later.as_ref())],
+    );
+    assert_eq!(strip, expected.as_ref());
+    assert_ne!(i18n::action_name("contact.accept").as_ref(), "contact.accept");
     advance(cx, 300);
     assert_eq!(sent(&world, "contact.accept"), [json!({ "request_id": id })], "no retry");
     assert!(exists(cx, world.handle, &row("principal-busy")), "the request stays");

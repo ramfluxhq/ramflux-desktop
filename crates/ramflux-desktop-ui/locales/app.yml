@@ -236,6 +236,12 @@ identity:
     role_mismatch_help:
       en: "Their signed profile gives this kind, which does not fit what they did here."
       zh-CN: "对方已签名的资料给出此类型，与其在此所做的操作不相符。"
+    unverified_for_action:
+      en: "%{kind}, not verified for this action"
+      zh-CN: "%{kind}，未验证适用于此操作"
+    unverified_for_action_help:
+      en: "Their signed profile does not confirm this kind for this device and action."
+      zh-CN: "对方已签名的资料未能确认此设备在此操作中的这一类型。"
     verified_unnamed:
       en: "Kind verified"
       zh-CN: "类型已验证"
