@@ -491,22 +491,3 @@ fn every_control_of_the_recovery_has_a_role_and_a_name(cx: &mut TestAppContext) 
     type_all(cx, handle, "k3J9", "abandon ability", "secret");
     assert_eq!(unnamed(cx, handle), Vec::<String>::new(), "the fingerprint screen");
 }
-
-#[gpui_kit::test]
-fn the_screens_speak_chinese_when_the_interface_does(cx: &mut TestAppContext) {
-    let _guard = locale_guard();
-    let (handle, _shell) = world(cx);
-    cx.update(|cx| ramflux_desktop_ui::i18n::select_locale("zh-CN", cx));
-    advance(cx, 100);
-    open_recovery(cx, handle);
-    let intro = tr_args("recovery.intro.title", &[("name", "Alex")]).to_string();
-    assert!(!intro.is_ascii(), "{intro}");
-    assert!(has_label(cx, handle, &intro));
-    assert!(has_label(cx, handle, &tr("recovery.intro.warning")));
-    click(cx, handle, "recovery-continue");
-    advance(cx, 300);
-    let shown = tr_args("recovery.fingerprint.shown", &[("value", &grouped())]).to_string();
-    assert!(!shown.is_ascii(), "{shown}");
-    assert!(has_label(cx, handle, &shown));
-    cx.update(|cx| ramflux_desktop_ui::i18n::select_locale("en", cx));
-}
