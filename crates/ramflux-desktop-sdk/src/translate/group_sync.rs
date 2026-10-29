@@ -21,8 +21,15 @@
 //! the daemon cannot name (no `principal_id`) is not reported, because the
 //! record would name a device id nobody chose; the roster still changes.
 //! Another device of a principal already in the group changes nothing. A
-//! record is reported once: its id carries the group's epoch (or the name
-//! epoch), so replays and repeated listings do not repeat it.
+//! device that was listed before without a principal and is named now is
+//! the same member being identified, not a join; likewise a device that
+//! loses its name while still listed is not a removal. A record is reported
+//! once: its id carries the group's epoch (or the name epoch), so replays
+//! and repeated listings do not repeat it.
+//!
+//! The signed state names the group's writer, not who asked for a change,
+//! so the roster records are unattributed: they say who joined or was
+//! removed, never who did it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,6 +45,19 @@ impl Group {
     /// The principals in the roster (devices of one principal count once).
     fn principals(&self) -> BTreeSet<&str> {
         self.members.iter().filter_map(|m| m.principal_id.as_deref()).collect()
+    }
+
+    /// The devices in the roster, named or not.
+    fn devices(&self) -> BTreeSet<&str> {
+        self.members.iter().map(|m| m.member_id.as_str()).collect()
+    }
+
+    /// The devices of `principal` in the roster.
+    fn devices_of<'a>(&'a self, principal: &'a str) -> impl Iterator<Item = &'a str> {
+        self.members
+            .iter()
+            .filter(move |m| m.principal_id.as_deref() == Some(principal))
+            .map(|m| m.member_id.as_str())
     }
 }
 
@@ -58,22 +78,36 @@ impl Translator {
             let stamp = group.epoch.map_or_else(|| now.0.to_string(), |e| e.to_string());
             let was = previous.principals();
             let is = group.principals();
+            let (was_devices, is_devices) = (previous.devices(), group.devices());
+            // A principal that appears with a device already listed before
+            // (then unnamed) was identified, not added; one that disappears
+            // while its device is still listed (now unnamed) was not removed.
+            let joined = is
+                .difference(&was)
+                .filter(|p| !group.devices_of(p).any(|device| was_devices.contains(device)));
+            let removed = was
+                .difference(&is)
+                .filter(|p| !previous.devices_of(p).any(|device| is_devices.contains(device)));
             for (action, who) in [
-                (GovernanceAction::Joined, is.difference(&was)),
-                (GovernanceAction::Removed, was.difference(&is)),
+                (GovernanceAction::Joined, joined.collect::<Vec<_>>()),
+                (GovernanceAction::Removed, removed.collect()),
             ] {
                 for principal in who {
                     let target = ParticipantId::new(*principal);
                     let id = format!("group-sync:{context}:{action:?}:{principal}:{stamp}");
+                    // The record names no author; the origin is this
+                    // account, as for the rename line.
+                    let origin = self.directory.self_principal.clone().unwrap_or_default();
                     events.extend(self.report_moment(Moment {
                         id: MomentId::new(id),
                         context_id: context.clone(),
-                        origin: target.clone(),
+                        origin: ParticipantId::new(origin),
                         at: now,
                         kind: MomentKind::Governance(GovernancePayload {
                             action,
                             target,
                             role: None,
+                            unattributed: true,
                         }),
                         lifecycle: Lifecycle::Done,
                     }));
@@ -194,5 +228,79 @@ mod tests {
             Timestamp(5_000),
         );
         assert!(records(&events).is_empty(), "no new principal, no new name");
+    }
+}
+
+#[cfg(test)]
+mod identification_tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::translate::Scope;
+
+    fn group(epoch: u64, members: &[(&str, Option<&str>)]) -> serde_json::Value {
+        let routes: Vec<_> = members
+            .iter()
+            .map(|(device, principal)| {
+                json!({ "member_id": device, "principal_id": principal,
+                        "delivery_target_known": true })
+            })
+            .collect();
+        json!({ "group_id": "g-1", "group_epoch": epoch, "name": "G",
+                "name_epoch": 1, "member_routes": routes })
+    }
+
+    fn translator(members: &[(&str, Option<&str>)]) -> Translator {
+        let mut t = Translator::new(Scope::Daemon, "rfd.sock");
+        let rows = [json!({ "id": "thread", "kind": "group", "group_id": "g-1", "title": "T" })];
+        t.groups(&[group(1, members)], Timestamp(0));
+        t.conversations(&rows);
+        t
+    }
+
+    fn governance(events: &[DomainEvent]) -> Vec<GovernancePayload> {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                DomainEvent::MomentAdded(m) => match &m.kind {
+                    MomentKind::Governance(p) => Some(p.clone()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_device_named_later_is_identified_not_joined() {
+        let mut t = translator(&[("d-me", Some("me")), ("d-x", None)]);
+        let events =
+            t.groups(&[group(2, &[("d-me", Some("me")), ("d-x", Some("xia"))])], Timestamp(5));
+        assert!(governance(&events).is_empty(), "{events:?}");
+        // A device that is new, and named, is a real join.
+        let events = t.groups(
+            &[group(3, &[("d-me", Some("me")), ("d-x", Some("xia")), ("d-y", Some("yan"))])],
+            Timestamp(6),
+        );
+        let joined = governance(&events);
+        assert_eq!(joined.len(), 1, "{joined:?}");
+        assert_eq!(joined[0].target.as_str(), "yan");
+        assert_eq!(joined[0].action, GovernanceAction::Joined);
+    }
+
+    #[test]
+    fn a_device_that_loses_its_name_is_not_removed_and_a_removal_is_unattributed() {
+        let mut t = translator(&[("d-me", Some("me")), ("d-x", Some("xia")), ("d-y", Some("yan"))]);
+        let events = t.groups(
+            &[group(2, &[("d-me", Some("me")), ("d-x", None), ("d-y", Some("yan"))])],
+            Timestamp(5),
+        );
+        assert!(governance(&events).is_empty(), "{events:?}");
+        let events = t.groups(&[group(3, &[("d-me", Some("me")), ("d-x", None)])], Timestamp(6));
+        let removed = governance(&events);
+        assert_eq!(removed.len(), 1, "{removed:?}");
+        assert_eq!(removed[0].target.as_str(), "yan");
+        assert_eq!(removed[0].action, GovernanceAction::Removed);
+        assert!(removed[0].unattributed, "the signed state does not say who removed them");
     }
 }

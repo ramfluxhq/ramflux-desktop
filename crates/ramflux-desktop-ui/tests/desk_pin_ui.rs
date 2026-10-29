@@ -122,6 +122,25 @@ fn a_roster_and_name_change_by_sync_are_records_in_the_group(cx: &mut TestAppCon
     wanted.sort();
     assert_eq!(shown, wanted);
 
+    // DESK-PIN-03 L2: the signed state says who is gone, not who removed
+    // them, so the removal row is announced without an author and shows no
+    // header naming the removed person as if they had posted it.
+    let row_id = format!("moment-group-sync:{GROUP}:Removed:principal-bo:4");
+    let announced =
+        in_window(cx, world.handle, |window, _| window.find(row_id).label().map(str::to_owned));
+    let kind =
+        i18n::moment_kind(&MomentKind::Governance(ramflux_desktop_core::GovernancePayload {
+            action: GovernanceAction::Removed,
+            target: ParticipantId::new("principal-bo"),
+            role: None,
+            unattributed: true,
+        }));
+    let at = labels_of(cx, &world, "governance-record");
+    assert_eq!(at.len(), 2);
+    let announced = announced.unwrap_or_default();
+    assert!(announced.contains(kind.as_ref()), "{announced}");
+    assert!(!announced.contains(&bo), "no author is announced: {announced}");
+
     // The same listing again (a replayed event) adds nothing.
     world.fake.publish(ACCOUNT, "group.changed", json!({ "group_id": "g-team" }));
     advance(cx, 300);
@@ -174,4 +193,51 @@ fn an_authenticated_kind_that_does_not_fit_the_action_is_named_as_such(cx: &mut 
     assert!(!marks.contains(&claimed), "never shown as a claim");
     let _ = state;
     fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn a_kind_the_source_verified_is_named_from_the_source_not_the_directory(cx: &mut TestAppContext) {
+    // DESK-PIN-03 L5. Ana's device-matched profile kind arrives with the event
+    // (`actor_kind`) and the source verified it for the action; the directory
+    // holds no profile-signed claim of her. The line names the kind the
+    // source reports instead of the unnamed "Kind verified".
+    let (fake, _state, path, tasks) = sdk_fake::start_with_tasks("ui-kind-verified");
+    tasks.announce_messages(true);
+    tasks.report_event_kinds(true);
+    tasks.set_kind("principal-ana", "human");
+    tasks.verify_kind("principal-ana");
+    let (handle, shell) = open_with(cx, sdk_fake::options(&path));
+    wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
+    wait(cx, "the group", |cx| {
+        with_store(cx, &shell, |s| s.context(&ContextId::new(GROUP)).is_some())
+    });
+    show_context(cx, handle, &shell, GROUP);
+    tasks.propose(GROUP, "t-plan", "Draft the release notes", &[("a", "Draft")]).unwrap();
+    tasks.accept_as("principal-ana", GROUP, "t-plan").unwrap();
+    wait(cx, "the line", |cx| exists(cx, handle, "task-event-kind"));
+    let human = i18n::peer_kind(ramflux_desktop_core::PeerKind::Human);
+    let named = tr_args("identity.kind.verified", &[("kind", &human)]).to_string();
+    let unnamed = i18n::tr("identity.kind.verified_unnamed").to_string();
+    let marks: Vec<String> = in_window(cx, handle, |window, _| {
+        window
+            .find_all("task-event-kind")
+            .iter()
+            .filter_map(|e| e.label().map(str::to_owned))
+            .collect()
+    });
+    assert_eq!(marks, [named], "the verified kind is named; not {unnamed:?}");
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn the_chinese_unverified_kind_reads_as_not_verified_for_this_action(cx: &mut TestAppContext) {
+    // DESK-PIN-03 L8.
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        ramflux_desktop_ui::init(cx);
+        i18n::select_locale("zh-CN", cx);
+    });
+    let kind = i18n::peer_kind(ramflux_desktop_core::PeerKind::Human);
+    let text = tr_args("identity.kind.unverified_for_action", &[("kind", &kind)]).to_string();
+    assert_eq!(text, format!("{kind}，未针对此操作验证"));
 }

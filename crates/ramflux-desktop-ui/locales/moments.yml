@@ -56,6 +56,9 @@ moment:
     row:
       en: "%{kind} from %{author} at %{time}, %{state}"
       zh-CN: "%{author} 于 %{time} 的%{kind}，%{state}"
+    row_unattributed:
+      en: "%{kind} at %{time}, %{state}"
+      zh-CN: "%{time} 的%{kind}，%{state}"
     with_risk:
       en: "%{row}. Risk: %{risk}"
       zh-CN: "%{row}。风险：%{risk}"

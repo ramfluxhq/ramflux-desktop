@@ -227,6 +227,7 @@ fn all_moment_kinds() -> Vec<MomentKind> {
             action: GovernanceAction::RoleChanged,
             target: ParticipantId::new("p-2"),
             role: Some(Role::Admin),
+            unattributed: false,
         }),
         MomentKind::ContactRequest(ContactRequestPayload {
             from: ParticipantId::new("p-3"),

@@ -58,19 +58,24 @@ pub fn render(payload: &TaskEventPayload, row: &MomentRow, cx: &App) -> impl Int
     };
     let text = sentence(payload, row);
     // The source's flag on the event says the signer's kind is verified
-    // for it; the kind is named only when the directory itself holds a
-    // profile-signed claim of it (else "Kind verified", unnamed).
+    // for the event's role, and `actor_kind` is the kind its device's signed
+    // profile authenticates (product `carrier_actor_kind`, independent of
+    // the role). A verified event therefore names the source's kind
+    // directly; the directory's profile-signed claim is only the fallback
+    // for a source that sent no kind (else "Kind verified", unnamed).
     // On an event line the source checked the device, so an authenticated kind
     // that is not verified for the action is a role mismatch and is named as
     // such (KIND-01-FU-02).
     let mismatch = payload.actor_kind.filter(|_| !payload.actor_kind_verified);
     let kind = if payload.actor_kind_verified {
-        row.refs
-            .people
-            .get(&row.moment.origin)
-            .map(|p| p.kind_claim)
-            .filter(|claim| claim.is_verified())
-            .and_then(|claim| claim.kind())
+        payload.actor_kind.or_else(|| {
+            row.refs
+                .people
+                .get(&row.moment.origin)
+                .map(|p| p.kind_claim)
+                .filter(|claim| claim.is_verified())
+                .and_then(|claim| claim.kind())
+        })
     } else {
         None
     };

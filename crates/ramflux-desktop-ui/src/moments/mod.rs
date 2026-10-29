@@ -398,7 +398,7 @@ impl RenderOnce for MomentView {
             MomentKind::SafetyChange(p) => {
                 safety::render(p, &row.refs, lifecycle, &sink, cx).into_any_element()
             }
-            MomentKind::Governance(p) => governance::render(p, &row.refs, cx).into_any_element(),
+            MomentKind::Governance(p) => governance::render(p, &row, cx).into_any_element(),
             MomentKind::ContactRequest(p) => {
                 contact::render(p, &row.refs, lifecycle, &sink, cx).into_any_element()
             }
@@ -421,12 +421,10 @@ impl RenderOnce for MomentView {
             MomentKind::NameChange(p) => name_change::render(p, &row, cx).into_any_element(),
             MomentKind::GroupRename(p) => group_rename::render(p, &row, cx).into_any_element(),
         };
-        // A task event, a name change and a group rename are one compact line
-        // each: they carry their own time.
-        let compact = matches!(
-            moment.kind,
-            MomentKind::TaskEvent(_) | MomentKind::NameChange(_) | MomentKind::GroupRename(_)
-        );
+        // A task event, a name change, a group rename and a membership record
+        // from a signed group state are one compact line each: they carry
+        // their own time.
+        let compact = is_compact(&moment.kind);
         let focused = state.focus.as_ref().is_some_and(|f| f.is_focused(window));
         v_flex()
             .id(domain_id("moment", &moment.id))
@@ -455,10 +453,31 @@ impl RenderOnce for MomentView {
     }
 }
 
+/// Whether a row is one compact line with no header of its own.
+fn is_compact(kind: &MomentKind) -> bool {
+    match kind {
+        MomentKind::TaskEvent(_) | MomentKind::NameChange(_) | MomentKind::GroupRename(_) => true,
+        MomentKind::Governance(p) => p.unattributed,
+        _ => false,
+    }
+}
+
 /// What assistive technology announces for a row: its kind, author, time
-/// and lifecycle state, plus the risk of a decision.
+/// and lifecycle state, plus the risk of a decision. A row that shows no
+/// author (a membership record from a signed group state) is announced
+/// without one: the account it is filed under did not make the change.
 pub fn accessible_label(row: &MomentRow) -> SharedString {
     let moment = &row.moment;
+    if matches!(&moment.kind, MomentKind::Governance(p) if p.unattributed) {
+        return i18n::tr_args(
+            "moment.a11y.row_unattributed",
+            &[
+                ("kind", &i18n::moment_kind(&moment.kind)),
+                ("time", &i18n::time_of_day(moment.at)),
+                ("state", &state_label(row).0),
+            ],
+        );
+    }
     let base = i18n::tr_args(
         "moment.a11y.row",
         &[

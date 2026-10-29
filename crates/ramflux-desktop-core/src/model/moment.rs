@@ -171,6 +171,10 @@ pub struct GovernancePayload {
     /// New role, for invitations and role changes.
     #[serde(default)]
     pub role: Option<Role>,
+    /// The record comes from a signed group state, which names the group's
+    /// writer and not who asked for the change: the line names no author.
+    #[serde(default)]
+    pub unattributed: bool,
 }
 
 /// Payload of a [`MomentKind::ContactRequest`].

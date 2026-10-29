@@ -11,12 +11,15 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
 use ramflux_desktop_core::{GovernanceAction, GovernancePayload};
 
-use super::RowRefs;
+use super::MomentRow;
 use crate::i18n::{self, tr_args};
 
 /// Renders a governance record.
-pub fn render(payload: &GovernancePayload, refs: &RowRefs, cx: &App) -> impl IntoElement {
-    let name = refs.name(&payload.target);
+///
+/// A record from a signed group state names no author, so it is one compact
+/// line that carries its own time (the row has no header).
+pub fn render(payload: &GovernancePayload, row: &MomentRow, cx: &App) -> impl IntoElement {
+    let name = row.refs.name(&payload.target);
     let icon = match payload.action {
         GovernanceAction::Removed | GovernanceAction::Banned | GovernanceAction::Left => {
             IconName::CircleX
@@ -45,6 +48,14 @@ pub fn render(payload: &GovernancePayload, refs: &RowRefs, cx: &App) -> impl Int
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .child(i18n::role(role)),
+            )
+        })
+        .when(payload.unattributed, |line| {
+            line.child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(i18n::time_of_day(row.moment.at)),
             )
         })
         .test_support()
