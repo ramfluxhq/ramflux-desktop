@@ -152,11 +152,6 @@ mod shots {
             self.window(move |window, cx| window.click(id, cx));
         }
 
-        fn click_in(&mut self, scope: &str, id: &str) {
-            let (scope, id) = (scope.to_owned(), id.to_owned());
-            self.window(move |window, cx| window.within(scope).click(id, cx));
-        }
-
         fn exists(&mut self, id: &str) -> bool {
             let id = id.to_owned();
             self.window(move |window, _| !window.find_all(id).is_empty())

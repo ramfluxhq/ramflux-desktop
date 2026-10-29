@@ -244,6 +244,10 @@ fn the_chinese_unverified_kind_reads_as_not_verified_for_this_action(cx: &mut Te
     });
     let kind = i18n::peer_kind(ramflux_desktop_core::PeerKind::Human);
     let text = tr_args("identity.kind.unverified_for_action", &[("kind", &kind)]).to_string();
-    assert_eq!(text, format!("{kind}，未针对此操作验证"));
+    // The kind, a full-width comma and "not verified for this action"
+    // (Rust sources carry no CJK text).
+    let expected =
+        format!("{kind}\u{ff0c}\u{672a}\u{9488}\u{5bf9}\u{6b64}\u{64cd}\u{4f5c}\u{9a8c}\u{8bc1}");
+    assert_eq!(text, expected);
     cx.update(|cx| i18n::select_locale("en", cx));
 }
