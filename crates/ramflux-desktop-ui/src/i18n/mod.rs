@@ -128,21 +128,48 @@ pub fn backend_text(text: &str) -> SharedString {
 /// What a failed request was about, in words (never the method name): the
 /// family of the method (`call.answer` is a call), or a generic word.
 pub fn action_name(method: &str) -> SharedString {
-    let family = match method.split_once('.').map_or(method, |(family, _)| family) {
-        "restore" => "backup",
-        "context" | "conversation" => "conversation",
-        "send_message" | "message" => "message",
-        f @ ("account" | "backup" | "call" | "contact" | "device" | "grant" | "group"
-        | "handoff" | "node" | "object" | "surface" | "task") => f,
-        _ => "other",
-    };
-    tr(&format!("backend.failure.action.{family}"))
+    tr(&format!("backend.failure.action.{}", action_family(method)))
 }
 
-/// One failed effect for the status strip.
+/// The locale family of `method`'s action word (`other` for an unknown one).
+fn action_family(method: &str) -> &'static str {
+    match method.split_once('.').map_or(method, |(family, _)| family) {
+        "restore" | "backup" => "backup",
+        "context" | "conversation" => "conversation",
+        "send_message" | "message" => "message",
+        "account" => "account",
+        "call" => "call",
+        "contact" => "contact",
+        "device" => "device",
+        "grant" => "grant",
+        "group" => "group",
+        "handoff" => "handoff",
+        "node" => "node",
+        "object" => "object",
+        "surface" => "surface",
+        "task" => "task",
+        _ => "other",
+    }
+}
+
+/// One failed effect for the status strip: the action in words, then the
+/// reason. When the reason is itself about that kind of object (the key
+/// `backend.contact.…` for a contact action), the action word would only
+/// repeat it ("Contact: Contact requests can't be handled…"), so the reason
+/// stands alone.
 pub fn failure(failure: &EffectFailure) -> SharedString {
+    let reason = backend_text(&failure.message);
+    let family = action_family(&failure.method);
+    let names_the_object = failure
+        .message
+        .strip_prefix("backend.")
+        .and_then(|rest| rest.strip_prefix(family))
+        .is_some_and(|rest| rest.starts_with('.'));
+    if names_the_object {
+        return reason;
+    }
     tr_args(
         "backend.failure.value",
-        &[("action", &action_name(&failure.method)), ("reason", &backend_text(&failure.message))],
+        &[("action", &action_name(&failure.method)), ("reason", &reason)],
     )
 }

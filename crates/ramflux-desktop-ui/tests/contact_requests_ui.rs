@@ -163,11 +163,10 @@ fn a_busy_daemon_asks_to_try_again_later(cx: &mut TestAppContext) {
     })
     .unwrap_or_default();
     assert!(!strip.contains("contact.accept"), "{strip}");
-    let expected = tr_args(
-        "backend.failure.value",
-        &[("action", i18n::action_name("contact.accept").as_ref()), ("reason", later.as_ref())],
-    );
-    assert_eq!(strip, expected.as_ref());
+    // The reason already names contact requests, so the action word does not
+    // repeat it (DESK-PIN-03 L9).
+    assert_eq!(strip, later.as_ref());
+    assert!(!strip.starts_with(i18n::action_name("contact.accept").as_ref()), "{strip}");
     assert_ne!(i18n::action_name("contact.accept").as_ref(), "contact.accept");
     advance(cx, 300);
     assert_eq!(sent(&world, "contact.accept"), [json!({ "request_id": id })], "no retry");
