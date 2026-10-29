@@ -98,21 +98,19 @@ fn check(cx: &mut TestAppContext, locale: &str, width: f32) {
 }
 
 #[gpui_kit::test]
-fn a_long_failure_leaves_the_controls_at_1100_px_in_english(cx: &mut TestAppContext) {
+fn a_long_failure_leaves_the_controls_at_1100_px_in_both_languages(cx: &mut TestAppContext) {
+    let _guard = locale_guard();
     check(cx, "en", 1_100.);
-}
-
-#[gpui_kit::test]
-fn a_long_failure_leaves_the_controls_at_1100_px_in_chinese(cx: &mut TestAppContext) {
     check(cx, "zh-CN", 1_100.);
+    cx.update(|cx| i18n::select_locale("en", cx));
 }
 
 #[gpui_kit::test]
-fn a_long_failure_leaves_the_controls_at_the_minimum_size_in_english(cx: &mut TestAppContext) {
+fn a_long_failure_leaves_the_controls_at_the_minimum_size_in_both_languages(
+    cx: &mut TestAppContext,
+) {
+    let _guard = locale_guard();
     check(cx, "en", ramflux_desktop_ui::MIN_WINDOW_SIZE.0);
-}
-
-#[gpui_kit::test]
-fn a_long_failure_leaves_the_controls_at_the_minimum_size_in_chinese(cx: &mut TestAppContext) {
     check(cx, "zh-CN", ramflux_desktop_ui::MIN_WINDOW_SIZE.0);
+    cx.update(|cx| i18n::select_locale("en", cx));
 }

@@ -228,16 +228,3 @@ fn a_kind_the_source_verified_is_named_from_the_source_not_the_directory(cx: &mu
     assert_eq!(marks, [named], "the verified kind is named; not {unnamed:?}");
     fake.shutdown();
 }
-
-#[gpui_kit::test]
-fn the_chinese_unverified_kind_reads_as_not_verified_for_this_action(cx: &mut TestAppContext) {
-    // DESK-PIN-03 L8.
-    cx.update(|cx| {
-        gpui_kit::init(cx);
-        ramflux_desktop_ui::init(cx);
-        i18n::select_locale("zh-CN", cx);
-    });
-    let kind = i18n::peer_kind(ramflux_desktop_core::PeerKind::Human);
-    let text = tr_args("identity.kind.unverified_for_action", &[("kind", &kind)]).to_string();
-    assert_eq!(text, format!("{kind}，未针对此操作验证"));
-}

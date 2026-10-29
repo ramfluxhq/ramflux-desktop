@@ -336,3 +336,59 @@ fn a_contact_who_has_not_accepted_this_accounts_request_can_be_asked_again() {
         Err(IntentError::ContactLinkState { .. })
     ));
 }
+
+fn floors(retained: u32, clearable: u32) -> RequestFloors {
+    RequestFloors { retained, clearable, limit: 4096, saturated: retained >= 4096 }
+}
+
+#[test]
+fn forgetting_old_entries_needs_the_hold_keeps_the_setting_and_is_human_only() {
+    let mut feed = feed();
+    let forget = || IntentKind::ClearRequestFloors;
+    // Nothing is known of the bound, or nothing can be forgotten.
+    feed.ok(2, DomainEvent::ContactRequestPolicyUpdated(RequestPolicy::AutoAccept));
+    assert!(matches!(
+        handle_intent(&feed.store, Intent::human(forget()), Timestamp(0)),
+        Err(IntentError::NothingToForget)
+    ));
+    feed.ok(3, DomainEvent::ContactRequestFloorsUpdated(floors(4096, 0)));
+    assert!(matches!(
+        handle_intent(&feed.store, Intent::human(forget()), Timestamp(0)),
+        Err(IntentError::NothingToForget)
+    ));
+    feed.ok(4, DomainEvent::ContactRequestFloorsUpdated(floors(4096, 12)));
+    assert_eq!(feed.store.request_floors(), Some(floors(4096, 12)));
+    // It gives up rollback protection: it needs the hold.
+    let effects =
+        handle_intent(&feed.store, Intent::human(forget()), Timestamp(0)).expect("forget");
+    assert!(matches!(&effects[..], [Effect::RequireConfirmation { .. }]), "{effects:?}");
+    // Held, the daemon is sent the current setting with the clear action.
+    let confirmed = Intent::human(forget())
+        .confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"));
+    let effects = handle_intent(&feed.store, confirmed, Timestamp(0)).expect("confirmed");
+    assert!(
+        matches!(&effects[..], [Effect::Call { method, body }]
+        if method == methods::CONTACT_REQUESTS_POLICY
+            && body["contact_requests"] == "auto_accept"
+            && body["clear_retired_authority_floors"] == true),
+        "{effects:?}"
+    );
+    assert!(
+        handle_intent(
+            &feed.store,
+            Intent::agent(ParticipantId::new("p-bo"), forget()),
+            Timestamp(0)
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn clearing_needs_the_setting_to_be_known() {
+    let mut feed = feed();
+    feed.ok(2, DomainEvent::ContactRequestFloorsUpdated(floors(4096, 5)));
+    assert!(matches!(
+        handle_intent(&feed.store, Intent::human(IntentKind::ClearRequestFloors), Timestamp(0)),
+        Err(IntentError::ContactRequestSettingUnknown)
+    ));
+}

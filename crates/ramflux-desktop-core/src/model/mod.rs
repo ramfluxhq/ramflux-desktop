@@ -64,7 +64,7 @@ pub use ceremony::{
     Networking,
 };
 pub use contact_request::{
-    ContactRequest, RequestAnswer, RequestDirection, RequestPolicy, RequestState,
+    ContactRequest, RequestAnswer, RequestDirection, RequestFloors, RequestPolicy, RequestState,
 };
 pub use conversation::{
     ContactCard, ContactLink, Context, ContextKind, Disappearing, KindClaim, NameWarnings,

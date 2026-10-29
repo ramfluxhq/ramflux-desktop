@@ -259,7 +259,7 @@ const DEADLINE_EXCEEDED: &str = "request deadline exceeded";
 /// `docs/local_bus_errors.md`: `Unavailable` is a transient outage (a
 /// retry may work), `Unauthenticated` and `TransportSecurity` are not
 /// retried (sign in again, or repair the trusted binding, first).
-const DAEMON_CODES: [&str; 10] = [
+const DAEMON_CODES: [&str; 11] = [
     "ValidationFailed",
     "Unavailable",
     "Unauthenticated",
@@ -270,6 +270,7 @@ const DAEMON_CODES: [&str; 10] = [
     "RemoteAppApprovalRequired",
     CALL_CONTROL_CAPACITY,
     GROUP_STATE_CAPACITY,
+    TRANSFER_REQUIRES_SYNC,
 ];
 
 /// The typed refusal of an inbound call control past the per-call receipt
@@ -284,6 +285,14 @@ pub const CALL_CONTROL_CAPACITY: &str = "CallControlReceiptCapacity";
 /// (members, devices, bytes, requests or removal fences, GRP-SYNC-01). The
 /// state is unchanged and nothing was discarded; a smaller change can work.
 pub const GROUP_STATE_CAPACITY: &str = "GroupStateCapacity";
+
+/// The typed refusal of a group change while the group's head is held for a
+/// pending ownership transfer, or while the devices have not yet confirmed
+/// the head (`transfer_requires_sync`, product `check_group_transfer_lease`).
+/// Nothing was changed. It is not retried by the desktop: the hold ends when
+/// the transfer completes or expires (up to about five minutes) and the user
+/// asks again. Its `reason_code` says which hold it is.
+pub const TRANSFER_REQUIRES_SYNC: &str = "transfer_requires_sync";
 
 /// The daemon codes a retry may fix: a transient outage.
 const RETRYABLE_CODES: [&str; 1] = ["Unavailable"];

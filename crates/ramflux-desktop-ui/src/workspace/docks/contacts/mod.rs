@@ -326,6 +326,7 @@ impl Render for ContactsDock {
                 |col| col.child(section("dock.contacts.requests", cx)),
             )
             .children(requests::read_error(store, cx))
+            .children(requests::floors_notice(store, &self.sink, cx))
             .when(!requests.is_empty() || !pending.is_empty(), |col| {
                 col.children(pending.iter().map(|r| {
                     requests::pending_row(

@@ -66,6 +66,24 @@ pub enum RequestPolicy {
     AutoAccept,
 }
 
+/// What the daemon says of its bound on remembered requester identities
+/// (`authority_floors` of `contact.requests.list`): each unanswered or
+/// recently closed request holds one entry so that an older version of the
+/// requester's identity cannot be replayed. At the limit the daemon holds
+/// new requests from people it has no entry for until entries expire or are
+/// cleared; nothing is dropped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RequestFloors {
+    /// Entries held now.
+    pub retained: u32,
+    /// Entries of requests that are closed, which the user may forget.
+    pub clearable: u32,
+    /// The most entries the daemon holds.
+    pub limit: u32,
+    /// Whether the limit is reached.
+    pub saturated: bool,
+}
+
 /// One contact request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContactRequest {

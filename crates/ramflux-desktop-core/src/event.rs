@@ -13,8 +13,8 @@ use crate::model::{
     Account, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony, ContactCard,
     ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure,
     GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node,
-    NodeHealth, NodeProbe, Object, Participant, RequestPolicy, StandingApproval, StepState,
-    SurfaceAction, SyncStatus, Task, TaskAnswer, TaskState,
+    NodeHealth, NodeProbe, Object, Participant, RequestFloors, RequestPolicy, StandingApproval,
+    StepState, SurfaceAction, SyncStatus, Task, TaskAnswer, TaskState,
 };
 
 pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
@@ -294,6 +294,9 @@ pub enum DomainEvent {
     ContactRequestUpserted(ContactRequest),
     /// The account's contact request setting.
     ContactRequestPolicyUpdated(RequestPolicy),
+    /// The daemon's bound on remembered requester identities, as it is now
+    /// (only a daemon that reports it sends this).
+    ContactRequestFloorsUpdated(RequestFloors),
     /// The daemon has contact requests but could not list them now (a
     /// locked account, a transient outage, a row it could not read): the
     /// message for the user. The requests already known stay; the next

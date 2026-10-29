@@ -186,6 +186,63 @@ pub fn read_error(store: &Store, cx: &App) -> Option<AnyElement> {
     )
 }
 
+/// The notice that the daemon holds new contact requests back because its
+/// bound on remembered requester identities is full (CONTACT-FU-03,
+/// `authority_floors`). It is a state, not an error: nothing is dropped, the
+/// daemon takes the requests again as entries expire, and the user may forget
+/// the entries of closed requests now (with the hold: it gives up rollback
+/// protection for those people). Only a saturated daemon shows it.
+pub fn floors_notice(store: &Store, sink: &EventSink, cx: &App) -> Option<AnyElement> {
+    let floors = store.request_floors().filter(|f| f.saturated)?;
+    let reason = crate::gate::reason(store, methods::CONTACT_REQUESTS_POLICY);
+    let (retained, limit, clearable) =
+        (floors.retained.to_string(), floors.limit.to_string(), floors.clearable.to_string());
+    let args = [
+        ("retained", retained.as_str()),
+        ("limit", limit.as_str()),
+        ("clearable", clearable.as_str()),
+    ];
+    let text = tr_args(
+        if floors.clearable > 0 {
+            "dock.contacts.floors.full_clearable"
+        } else {
+            "dock.contacts.floors.full"
+        },
+        &args,
+    );
+    let sink = sink.clone();
+    Some(
+        v_flex()
+            .id("contacts-floors")
+            .test_support()
+            .px_3()
+            .pb_1()
+            .gap_1()
+            // A status region: it appears while the user is elsewhere.
+            .child(
+                div()
+                    .id("contacts-floors-text")
+                    .role(gpui_kit::Role::Status)
+                    .aria_label(text.clone())
+                    .test_support()
+                    .text_xs()
+                    .text_color(cx.theme().warning)
+                    .child(text),
+            )
+            .when(floors.clearable > 0, |col| {
+                let button = Button::new("contacts-floors-clear")
+                    .xsmall()
+                    .outline()
+                    .label(tr_args("dock.contacts.floors.clear", &args))
+                    .on_click(move |_, window, cx| {
+                        sink.emit(UiEventKind::ClearRequestFloorsPressed, window, cx);
+                    });
+                col.child(h_flex().justify_end().child(crate::gate::gated(button, reason)))
+            })
+            .into_any_element(),
+    )
+}
+
 /// The setting: accept every contact request automatically.
 pub fn policy_switch(store: &Store, sink: &EventSink, cx: &App) -> AnyElement {
     let reason = crate::gate::reason(store, methods::CONTACT_REQUESTS_POLICY);

@@ -138,13 +138,14 @@ pub(super) fn request_call(acct: Option<&str>, method: &str, body: &Value) -> Pl
         if crate::translate::contact_requests::policy(policy).is_none() {
             return refuse_invalid("unknown contact request setting");
         }
+        let mut daemon_body = serde_json::json!({ "contact_requests": policy });
+        // With the setting, the daemon forgets the entries of closed requests
+        // (`cleared_authority_floors` says how many); the setting stays.
+        if body.get("clear_retired_authority_floors").and_then(Value::as_bool) == Some(true) {
+            daemon_body["clear_retired_authority_floors"] = serde_json::json!(true);
+        }
         return Plan::Call {
-            request: BusRequest::new(
-                acct,
-                "contact",
-                "contact.requests.policy.set",
-                serde_json::json!({ "contact_requests": policy }),
-            ),
+            request: BusRequest::new(acct, "contact", "contact.requests.policy.set", daemon_body),
             refresh: vec![Fetch::ContactRequests],
         };
     }
@@ -188,5 +189,35 @@ pub(super) fn verify(acct: Option<&str>, body: &Value, known: &impl Known) -> Pl
             refresh: vec![Fetch::first(Paged::Identities)],
         },
         Err(error) => refuse_invalid(&error.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn clearing_old_entries_sends_the_setting_with_the_clear_action() {
+        let plan = request_call(
+            Some("a"),
+            methods::CONTACT_REQUESTS_POLICY,
+            &json!({ "contact_requests": "manual", "clear_retired_authority_floors": true }),
+        );
+        let Plan::Call { request, .. } = plan else { panic!("a call") };
+        assert_eq!(request.method, "contact.requests.policy.set");
+        assert_eq!(
+            request.body,
+            json!({ "contact_requests": "manual", "clear_retired_authority_floors": true })
+        );
+        // The plain setting never carries it.
+        let plain = request_call(
+            Some("a"),
+            methods::CONTACT_REQUESTS_POLICY,
+            &json!({ "contact_requests": "manual" }),
+        );
+        let Plan::Call { request, .. } = plain else { panic!("a call") };
+        assert_eq!(request.body, json!({ "contact_requests": "manual" }));
     }
 }

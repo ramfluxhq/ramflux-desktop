@@ -195,6 +195,7 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                 },
             }
         }
+        UiEventKind::ClearRequestFloorsPressed => IntentKind::ClearRequestFloors,
         UiEventKind::ObjectActionPressed { object_id, action } => {
             let object_id = object_id.clone();
             match action {

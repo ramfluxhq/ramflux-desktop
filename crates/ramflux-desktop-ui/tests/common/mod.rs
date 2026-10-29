@@ -20,6 +20,13 @@ use ramflux_desktop_ui::confirm::HOLD_DURATION;
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::Workspace;
 
+/// Serializes the tests of one binary that select the process-wide locale:
+/// hold the guard for the whole test, and end it in English.
+pub fn locale_guard() -> std::sync::MutexGuard<'static, ()> {
+    static LOCALE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCALE.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// The window handle and the production root view.
 pub type Opened = (WindowHandle<Root>, Entity<Shell>);
 

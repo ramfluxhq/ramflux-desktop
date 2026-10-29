@@ -139,6 +139,18 @@ pub mod key {
     /// A group change would pass a signed-state budget (typed
     /// `GroupStateCapacity`); nothing changed.
     pub const GROUP_STATE_CAPACITY: &str = "backend.group.state_capacity";
+    /// A group change was refused (`transfer_requires_sync`) because the
+    /// group's devices have not all confirmed its latest state; nothing
+    /// changed, and asking again in a minute may work.
+    pub const GROUP_SYNC_PENDING: &str = "backend.group.sync_pending";
+    /// A group change was refused (`transfer_requires_sync`,
+    /// `transfer_outcome_pending`) while an ownership transfer is pending;
+    /// nothing changed, and the hold ends within minutes.
+    pub const GROUP_TRANSFER_PENDING: &str = "backend.group.transfer_pending";
+    /// A group control was refused (`transfer_requires_sync`,
+    /// `clock_skew_or_expired_control`): it expired or the devices' clocks
+    /// differ by more than five minutes.
+    pub const GROUP_CLOCK_SKEW: &str = "backend.group.clock_skew";
     /// The daemon's media session of a call could not be read.
     pub const CALL_MEDIA: &str = "backend.call.media";
     /// Contact refusal `unavailable`: the home node is unreachable or busy
@@ -159,7 +171,7 @@ pub mod key {
     pub const CONTACT_EXPORT_FAILED: &str = "backend.contact.export_failed";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 59] = [
+    pub const ALL: [&str; 62] = [
         NO_ROUTE,
         NO_GROUP_LINK,
         NO_MEMBER_ROUTE,
@@ -219,6 +231,9 @@ pub mod key {
         CONTACT_EXPORT_FAILED,
         CALL_CONTROL_CAPACITY,
         GROUP_STATE_CAPACITY,
+        GROUP_SYNC_PENDING,
+        GROUP_TRANSFER_PENDING,
+        GROUP_CLOCK_SKEW,
     ];
 }
 

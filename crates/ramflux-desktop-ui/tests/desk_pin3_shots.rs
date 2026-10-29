@@ -32,7 +32,7 @@ mod shots {
 
     use gpui_kit::base::Root;
     use gpui_kit::component::{Theme, ThemeMode};
-    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::test::{TestEventExt as _, TestQueryExt as _, TestWindowExt as _};
     use gpui_kit::{
         AppContext as _, Bounds, Entity, HeadlessAppContext, Point, Window, WindowBounds,
         WindowHandle, WindowOptions, px, size,
@@ -125,6 +125,28 @@ mod shots {
             result
         }
 
+        fn click_label(&mut self, label: &str) {
+            let label = label.to_owned();
+            self.window(move |window, cx| {
+                let at = window.find_by_label(&label).bounds().center();
+                window.pointer_down(at, gpui_kit::MouseButton::Left, cx);
+                window.pointer_up(at, gpui_kit::MouseButton::Left, cx);
+            });
+        }
+
+        /// Holds the hold-to-confirm control until it is done.
+        fn hold_confirm(&mut self) {
+            let at = self.window(|window, cx| {
+                let at = window.find("hold-confirm").bounds().center();
+                window.pointer_down(at, gpui_kit::MouseButton::Left, cx);
+                at
+            });
+            for _ in 0..30 {
+                self.tick();
+            }
+            self.window(move |window, cx| window.pointer_up(at, gpui_kit::MouseButton::Left, cx));
+        }
+
         fn click(&mut self, id: &str) {
             let id = id.to_owned();
             self.window(move |window, cx| window.click(id, cx));
@@ -133,16 +155,6 @@ mod shots {
         fn click_in(&mut self, scope: &str, id: &str) {
             let (scope, id) = (scope.to_owned(), id.to_owned());
             self.window(move |window, cx| window.within(scope).click(id, cx));
-        }
-
-        fn type_into(&mut self, id: &str, text: &str) {
-            let (id, text) = (id.to_owned(), text.to_owned());
-            self.window(move |window, cx| {
-                window.click(id.clone(), cx);
-                window.press("secondary-a", cx);
-                window.press("backspace", cx);
-                window.input(&text, cx);
-            });
         }
 
         fn exists(&mut self, id: &str) -> bool {
@@ -215,6 +227,146 @@ mod shots {
     pub fn run() {
         let (out, locale) = out_dir();
         title_bar_states(&out, &locale);
+        floors_states(&out, &locale);
+        group_states(&out, &locale);
+        verified_kind_state(&out, &locale);
+    }
+
+    /// The bound on remembered requester identities: full with entries to
+    /// forget (and the hold that asks before forgetting them), then full with
+    /// nothing to forget yet.
+    fn floors_states(out: &std::path::Path, locale: &str) {
+        let (fake, state, socket, _tasks) =
+            sdk_fake::start_with_tasks(&format!("desk-pin3-floors-{locale}"));
+        let requests = state.lock().expect("state").requests.clone();
+        let bus = Arc::new(fake);
+        let weak = Arc::downgrade(&bus);
+        requests.set_publisher(Box::new(move |a, t, b| {
+            if let Some(bus) = weak.upgrade() {
+                bus.publish(a, t, b);
+            }
+        }));
+        let _ = requests.incoming("acct-main", "principal-mira", Some("Saw you at the meetup"));
+        requests.set_floors(Some((4096, 37, 4096)));
+        let mut run = Run::open(
+            sdk_fake::options(&socket),
+            out.to_path_buf(),
+            locale.to_owned(),
+            1280.,
+            1100.,
+        );
+        run.until("the workspace", |r| {
+            r.cx.update(|cx| r.shell.read(cx).page()) == Page::Workspace
+        });
+        run.click("rail-contacts");
+        run.until("the notice", |r| r.exists("contacts-floors"));
+        run.settle();
+        run.shot("pin3_03_floors_full_clearable");
+        run.click("contacts-floors-clear");
+        run.until("the hold", |r| r.exists("hold-confirm"));
+        run.settle();
+        run.shot("pin3_04_floors_forget_hold");
+        run.hold_confirm();
+        run.until("the notice is gone", |r| !r.exists("contacts-floors"));
+        requests.set_floors(Some((4096, 0, 4096)));
+        bus.publish("acct-main", "contact.requested", serde_json::json!({}));
+        run.until("the notice", |r| r.exists("contacts-floors"));
+        run.settle();
+        run.shot("pin3_05_floors_full_nothing_to_forget");
+        if let Ok(bus) = Arc::try_unwrap(bus) {
+            bus.shutdown();
+        }
+    }
+
+    /// A group change refused while the group's head is held for an
+    /// ownership transfer, for each reason the daemon gives.
+    fn group_states(out: &std::path::Path, locale: &str) {
+        let (fake, state, socket, _tasks) =
+            sdk_fake::start_with_tasks(&format!("desk-pin3-group-{locale}"));
+        state.lock().expect("state").groups = Some(vec![group_row()]);
+        let mut run = Run::open(
+            sdk_fake::options(&socket),
+            out.to_path_buf(),
+            locale.to_owned(),
+            1280.,
+            860.,
+        );
+        run.until("the workspace", |r| {
+            r.cx.update(|cx| r.shell.read(cx).page()) == Page::Workspace
+        });
+        run.until("the group", |r| {
+            r.store(|s| s.context(&ContextId::new(sdk_fake::GROUP)).is_some())
+        });
+        run.show(sdk_fake::GROUP);
+        run.click("rail-members");
+        run.until("the members", |r| r.exists("dock-content-members"));
+        for (reason, name) in [
+            ("head_check_pending", "pin3_06_group_sync_pending"),
+            ("transfer_outcome_pending", "pin3_07_group_transfer_pending"),
+            ("clock_skew_or_expired_control", "pin3_08_group_clock_skew"),
+        ] {
+            state.lock().expect("state").group_refusal = Some(reason);
+            let before = run.store(|s| s.failures().len());
+            run.window(|window, cx| {
+                window.within("member-principal-bo").click("member-actions", cx)
+            });
+            run.click_label(&ramflux_desktop_ui::i18n::tr("dock.members.kick"));
+            run.until("the hold", |r| r.exists("hold-confirm"));
+            run.hold_confirm();
+            run.until("the refusal", |r| r.store(|s| s.failures().len() > before));
+            run.settle();
+            run.shot(name);
+        }
+        fake.shutdown();
+    }
+
+    /// An event line whose kind the source verified names the kind.
+    fn verified_kind_state(out: &std::path::Path, locale: &str) {
+        let (fake, _state, socket, tasks) =
+            sdk_fake::start_with_tasks(&format!("desk-pin3-kind-{locale}"));
+        tasks.announce_messages(true);
+        tasks.report_event_kinds(true);
+        tasks.set_kind("principal-ana", "human");
+        tasks.verify_kind("principal-ana");
+        let mut run = Run::open(
+            sdk_fake::options(&socket),
+            out.to_path_buf(),
+            locale.to_owned(),
+            1280.,
+            860.,
+        );
+        run.until("the workspace", |r| {
+            r.cx.update(|cx| r.shell.read(cx).page()) == Page::Workspace
+        });
+        run.until("the group", |r| {
+            r.store(|s| s.context(&ContextId::new(sdk_fake::GROUP)).is_some())
+        });
+        run.show(sdk_fake::GROUP);
+        tasks
+            .propose(sdk_fake::GROUP, "t-plan", "Draft the release notes", &[("a", "Draft")])
+            .expect("proposal");
+        tasks.accept_as("principal-ana", sdk_fake::GROUP, "t-plan").expect("accept");
+        run.until("the kind mark", |r| r.exists("task-event-kind"));
+        run.settle();
+        run.shot("pin3_09_event_kind_verified_named");
+        fake.shutdown();
+    }
+
+    fn group_row() -> serde_json::Value {
+        let routes: Vec<serde_json::Value> =
+            [("device-me", "principal-me"), ("device-bo", "principal-bo")]
+                .iter()
+                .map(|(device, principal)| {
+                    serde_json::json!({ "member_id": device, "principal_id": principal,
+                        "member_principal_commitment": format!("cm-{principal}"),
+                        "device_signing_public_key": format!("key-{principal}"),
+                        "target_delivery_id": format!("target-{principal}"),
+                        "federation": null, "delivery_target_known": true })
+                })
+                .collect();
+        serde_json::json!({ "group_id": "g-team", "id": "g-team", "group_epoch": 3, "name": "Team",
+            "name_epoch": 3, "member_routes": routes,
+            "conversation_id": sdk_fake::GROUP, "conversation_ids": [sdk_fake::GROUP] })
     }
 
     /// The longest failure the strip can show, at the minimum window size and

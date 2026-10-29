@@ -46,7 +46,8 @@ use crate::ids::{
 use crate::model::{
     Account, AuditEntry, BackupJob, Call, Capabilities, Ceremony, ContactCard, ContactRequest,
     Context, DaemonInfo, Device, EffectFailure, Grant, Integrations, Listing, Moment, Node, Object,
-    Participant, RequestDirection, RequestPolicy, StandingApproval, SyncStatus, Task,
+    Participant, RequestDirection, RequestFloors, RequestPolicy, StandingApproval, SyncStatus,
+    Task,
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
@@ -96,6 +97,7 @@ pub struct Store {
     own_card: Option<ContactCard>,
     contact_requests: BTreeMap<(ParticipantId, RequestDirection), ContactRequest>,
     request_policy: Option<RequestPolicy>,
+    request_floors: Option<RequestFloors>,
     request_read_error: Option<String>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
@@ -346,6 +348,12 @@ impl Store {
     /// The account's contact request setting, once the source reported it.
     pub fn request_policy(&self) -> Option<RequestPolicy> {
         self.request_policy
+    }
+
+    /// The daemon's bound on remembered requester identities, when it
+    /// reports one.
+    pub fn request_floors(&self) -> Option<RequestFloors> {
+        self.request_floors
     }
 
     /// Effects that failed, oldest first, at most [`MAX_FAILURES`].

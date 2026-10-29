@@ -70,6 +70,27 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 )
             })
         }
+        IntentKind::ClearRequestFloors => {
+            p.human_only("forget old contact request entries").and_then(|()| {
+                // The daemon takes the account's current setting with the
+                // clear action, so that the setting stays as it is.
+                let value = match p.store.request_policy() {
+                    Some(RequestPolicy::Manual) => "manual",
+                    Some(RequestPolicy::AutoAccept) => "auto_accept",
+                    None => return Err(IntentError::ContactRequestSettingUnknown),
+                };
+                if p.store.request_floors().is_none_or(|floors| floors.clearable == 0) {
+                    return Err(IntentError::NothingToForget);
+                }
+                // It forgets the rollback protection of people whose request
+                // is closed: it needs the hold.
+                Ok(p.gated(
+                    Risk::High,
+                    methods::CONTACT_REQUESTS_POLICY,
+                    json!({ "contact_requests": value, "clear_retired_authority_floors": true }),
+                ))
+            })
+        }
         IntentKind::Contact { participant_id, action } => p
             .store
             .participant(participant_id)

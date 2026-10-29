@@ -165,6 +165,12 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
                 Risk::High,
             )
         }
+        // Forgetting the entries of closed requests gives up rollback
+        // protection for those people: it needs the hold, and says so.
+        IntentKind::ClearRequestFloors => {
+            let count = store.request_floors().map_or(0, |f| f.clearable).to_string();
+            (tr_args("confirm.contact.clear_floors", &[("count", &count)]), None, Risk::High)
+        }
         _ => (tr("confirm.generic"), None, Risk::High),
     }
 }

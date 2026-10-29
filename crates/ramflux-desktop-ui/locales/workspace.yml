@@ -380,6 +380,16 @@ dock:
     requests_local:
       en: "Accepting adds them on this account; they are not told yet."
       zh-CN: "接受后对方会加入此账户的联系人，但暂不会通知对方。"
+    floors:
+      full:
+        en: "New contact requests are on hold: this device already remembers as many earlier requesters as it can (%{retained} of %{limit}). Nothing is lost; requests resume as old entries expire."
+        zh-CN: "新的联系人请求暂被搁置：本设备记住的过往请求者已达上限（%{retained}/%{limit}）。不会丢失任何请求，旧记录到期后会自动恢复接收。"
+      full_clearable:
+        en: "New contact requests are on hold: this device already remembers as many earlier requesters as it can (%{retained} of %{limit}). Nothing is lost; requests resume as old entries expire, or when you forget the %{clearable} left by closed requests."
+        zh-CN: "新的联系人请求暂被搁置：本设备记住的过往请求者已达上限（%{retained}/%{limit}）。不会丢失任何请求，旧记录到期后会自动恢复接收；也可以清除已结束请求留下的 %{clearable} 条记录。"
+      clear:
+        en: "Forget %{clearable} old entries"
+        zh-CN: "清除 %{clearable} 条旧记录"
     request:
       asks:
         en: "%{name} wants to be your contact"

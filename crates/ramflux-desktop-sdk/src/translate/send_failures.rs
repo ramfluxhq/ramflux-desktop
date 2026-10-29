@@ -39,8 +39,18 @@ pub fn unreachable_members(message: &str) -> Option<Vec<String>> {
 /// (retryable) and the group state budget. Keyed on the typed code, never on
 /// the daemon's English text.
 fn typed_capacity(error: &BusError) -> Option<String> {
-    let BusError::Daemon { code, .. } = error else { return None };
+    let BusError::Daemon { code, reason_code, .. } = error else { return None };
     match code.as_str() {
+        // The group head is held; `reason_code` says why. An unknown reason
+        // gets the general words (the devices have not confirmed the state).
+        crate::bus::TRANSFER_REQUIRES_SYNC => Some(
+            match reason_code.as_deref() {
+                Some("transfer_outcome_pending") => key::GROUP_TRANSFER_PENDING,
+                Some("clock_skew_or_expired_control") => key::GROUP_CLOCK_SKEW,
+                _ => key::GROUP_SYNC_PENDING,
+            }
+            .to_owned(),
+        ),
         crate::bus::CALL_CONTROL_CAPACITY => Some(key::CALL_CONTROL_CAPACITY.to_owned()),
         crate::bus::GROUP_STATE_CAPACITY => Some(key::GROUP_STATE_CAPACITY.to_owned()),
         _ => None,
@@ -130,6 +140,19 @@ mod tests {
             translator.failure_message(methods::CALL_ANSWER, &capped),
             key::CALL_CONTROL_CAPACITY
         );
+        let held = |reason: Option<&str>| BusError::Daemon {
+            code: "transfer_requires_sync".to_owned(),
+            message: "Ownership transfer requires synchronization".to_owned(),
+            reason_code: reason.map(str::to_owned),
+            details: None,
+        };
+        let sync = |reason| translator.failure_message(methods::GROUP_KICK, &held(reason));
+        assert_eq!(sync(Some("head_check_pending")), key::GROUP_SYNC_PENDING);
+        assert_eq!(sync(Some("head_or_removal_floor_mismatch")), key::GROUP_SYNC_PENDING);
+        assert_eq!(sync(None), key::GROUP_SYNC_PENDING);
+        assert_eq!(sync(Some("transfer_outcome_pending")), key::GROUP_TRANSFER_PENDING);
+        assert_eq!(sync(Some("clock_skew_or_expired_control")), key::GROUP_CLOCK_SKEW);
+        assert!(!held(None).is_retryable() && !held(None).is_connection_lost());
         let group = BusError::daemon("GroupStateCapacity", "RemovalFences");
         assert_eq!(
             translator.failure_message(methods::GROUP_ADD_MEMBER, &group),

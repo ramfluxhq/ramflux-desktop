@@ -149,6 +149,10 @@ struct Inner {
     /// Decisions and the setting are refused with this code and message
     /// (any daemon error frame, e.g. `TransportSecurity`).
     decision_failure: Option<(&'static str, String)>,
+    /// The daemon's bound on remembered requester identities
+    /// (`retained`, `clearable`, `limit`), reported as `authority_floors`.
+    /// `None`: a daemon that does not report it.
+    floors: Option<(u32, u32, u32)>,
     /// The list is refused with this code and message (a locked account,
     /// an outage, a row the daemon could not read).
     list_failure: Option<(&'static str, String)>,
@@ -177,6 +181,14 @@ impl std::fmt::Debug for FakeContactRequests {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FakeContactRequests").finish_non_exhaustive()
     }
+}
+
+/// `authority_floors` of the daemon's answers.
+fn floors_json(floors: Option<(u32, u32, u32)>) -> Option<Value> {
+    floors.map(|(retained, clearable, limit)| {
+        json!({ "retained": retained, "clearable": clearable, "limit": limit,
+                "saturated": retained >= limit })
+    })
 }
 
 fn refused(code: &'static str, message: &str) -> Reply {
@@ -308,23 +320,43 @@ impl FakeContactRequests {
                     rows.sort_by_key(|(closed, _)| *closed);
                     let rows: Vec<Value> = rows.into_iter().map(|(_, row)| row).collect();
                     let policy = inner.policy.get(&account).copied().unwrap_or("manual");
-                    (Reply::Ok(json!({ "requests": rows, "contact_requests": policy })), Vec::new())
+                    let mut answer = json!({ "requests": rows, "contact_requests": policy });
+                    if let Some(floors) = floors_json(inner.floors) {
+                        answer["authority_floors"] = floors;
+                    }
+                    (Reply::Ok(answer), Vec::new())
                 }
                 "contact.requests.policy.get" => {
                     let policy = inner.policy.get(&account).copied().unwrap_or("manual");
-                    (Reply::Ok(json!({ "contact_requests": policy })), Vec::new())
+                    let mut answer = json!({ "contact_requests": policy });
+                    if let Some(floors) = floors_json(inner.floors) {
+                        answer["authority_floors"] = floors;
+                    }
+                    (Reply::Ok(answer), Vec::new())
                 }
-                "contact.requests.policy.set" => match body["contact_requests"].as_str() {
-                    Some("manual") => {
-                        inner.policy.insert(account.clone(), "manual");
-                        (Reply::Ok(json!({ "contact_requests": "manual" })), Vec::new())
+                "contact.requests.policy.set" => {
+                    let policy = match body["contact_requests"].as_str() {
+                        Some("manual") => "manual",
+                        Some("auto_accept") => "auto_accept",
+                        _ => {
+                            return Some(refused("ValidationFailed", "unknown contact_requests"));
+                        }
+                    };
+                    inner.policy.insert(account.clone(), policy);
+                    let mut answer = json!({ "contact_requests": policy });
+                    // As the daemon: `clear_retired_authority_floors` forgets the
+                    // entries of closed requests and says how many.
+                    if body["clear_retired_authority_floors"].as_bool() == Some(true)
+                        && let Some((retained, clearable, limit)) = inner.floors
+                    {
+                        inner.floors = Some((retained.saturating_sub(clearable), 0, limit));
+                        answer["cleared_authority_floors"] = json!(clearable);
                     }
-                    Some("auto_accept") => {
-                        inner.policy.insert(account.clone(), "auto_accept");
-                        (Reply::Ok(json!({ "contact_requests": "auto_accept" })), Vec::new())
+                    if let Some(floors) = floors_json(inner.floors) {
+                        answer["authority_floors"] = floors;
                     }
-                    _ => (refused("ValidationFailed", "unknown contact_requests"), Vec::new()),
-                },
+                    (Reply::Ok(answer), Vec::new())
+                }
                 _ => Self::decide(&mut inner, &account, method, body),
             }
         };
@@ -419,6 +451,19 @@ impl FakeContactRequests {
     /// free again.
     pub fn set_busy(&self, busy: bool) {
         self.inner().busy = busy;
+    }
+
+    /// Makes the daemon report its bound on remembered requester identities:
+    /// `retained` entries held, `clearable` of them from closed requests, at
+    /// most `limit` (saturated when `retained` reaches it). `None` is a
+    /// daemon that does not report it.
+    pub fn set_floors(&self, floors: Option<(u32, u32, u32)>) {
+        self.inner().floors = floors;
+    }
+
+    /// The bound as the daemon reports it: `(retained, clearable, limit)`.
+    pub fn floors(&self) -> Option<(u32, u32, u32)> {
+        self.inner().floors
     }
 
     /// Refuses decisions and the setting with `code` and `message` (any

@@ -142,6 +142,12 @@ pub enum IntentError {
     /// The contact request was answered (or expired) already.
     #[error("contact request {0} is not waiting for an answer")]
     ContactRequestNotPending(String),
+    /// No closed contact request entry can be forgotten now.
+    #[error("there are no old contact request entries to forget")]
+    NothingToForget,
+    /// The contact request setting is not known yet; clearing keeps it.
+    #[error("the contact request setting is not known yet")]
+    ContactRequestSettingUnknown,
     /// Safety number already verified.
     #[error("participant {0} is already verified")]
     AlreadyVerified(ParticipantId),

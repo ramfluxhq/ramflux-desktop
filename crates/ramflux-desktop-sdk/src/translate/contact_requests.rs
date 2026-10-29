@@ -33,8 +33,8 @@
 //! says so plainly.
 
 use ramflux_desktop_core::{
-    ContactRequest, DomainEvent, ParticipantId, RequestDirection, RequestPolicy, RequestState,
-    methods,
+    ContactRequest, DomainEvent, ParticipantId, RequestDirection, RequestFloors, RequestPolicy,
+    RequestState, methods,
 };
 use serde_json::Value;
 
@@ -119,6 +119,22 @@ pub fn request_of(row: &Value, default_state: Option<RequestState>) -> Option<Co
     })
 }
 
+/// The daemon's bound on remembered requester identities
+/// (`authority_floors.{retained,clearable,limit,saturated}`), when the
+/// answer carries all four. A daemon that does not report it sends none,
+/// and nothing is guessed.
+pub fn floors(value: &Value) -> Option<RequestFloors> {
+    let floors = value.get("authority_floors")?;
+    let count =
+        |name: &str| floors.get(name)?.as_u64().map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+    Some(RequestFloors {
+        retained: count("retained")?,
+        clearable: count("clearable")?,
+        limit: count("limit")?,
+        saturated: floors.get("saturated")?.as_bool()?,
+    })
+}
+
 /// The request calls whose `Unavailable` refusal is explained as "try
 /// again later" (`contact.add` has its own, [`key::CONTACT_UNAVAILABLE`]).
 const REQUEST_CALLS: [&str; 4] = [
@@ -161,6 +177,7 @@ impl Translator {
         if let Some(policy) = policy(text(value, "contact_requests")) {
             events.push(DomainEvent::ContactRequestPolicyUpdated(policy));
         }
+        events.extend(floors(value).map(DomainEvent::ContactRequestFloorsUpdated));
         events
     }
 
@@ -387,5 +404,27 @@ mod tests {
         let add = json!({ "participant_id": "p-ana" });
         assert_eq!(t.request_failure(methods::CONTACT_ADD, &add, &busy), None);
         assert_eq!(t.failure_message(methods::CONTACT_ADD, &busy), key::CONTACT_UNAVAILABLE);
+    }
+
+    #[test]
+    fn the_bound_on_remembered_requesters_is_read_only_when_the_daemon_reports_all_of_it() {
+        let reported = json!({ "authority_floors":
+            { "retained": 4096, "clearable": 12, "limit": 4096, "saturated": true } });
+        assert_eq!(
+            floors(&reported),
+            Some(RequestFloors { retained: 4096, clearable: 12, limit: 4096, saturated: true })
+        );
+        // A daemon that does not report it, or only part of it: nothing is guessed.
+        assert_eq!(floors(&json!({ "requests": [] })), None);
+        assert_eq!(floors(&json!({ "authority_floors": { "retained": 1, "limit": 2 } })), None);
+        let mut t = Translator::new(Scope::Daemon, "rfd.sock");
+        let mut listed = reported.clone();
+        listed["requests"] = json!([]);
+        let events = t.contact_request_list(&listed);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, DomainEvent::ContactRequestFloorsUpdated(f) if f.saturated))
+        );
     }
 }

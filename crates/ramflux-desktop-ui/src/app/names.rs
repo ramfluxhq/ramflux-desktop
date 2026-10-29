@@ -72,6 +72,7 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::CallStartRequested => "CallStartRequested",
         UiEventKind::ContactRequestAnswered { .. } => "ContactRequestAnswered",
         UiEventKind::ContactRequestPolicySwitched { .. } => "ContactRequestPolicySwitched",
+        UiEventKind::ClearRequestFloorsPressed => "ClearRequestFloorsPressed",
         UiEventKind::CallAnswered { .. } => "CallAnswered",
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
@@ -138,6 +139,7 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::StartCall { .. } => "StartCall",
         IntentKind::AnswerContactRequest { .. } => "AnswerContactRequest",
         IntentKind::SetContactRequestPolicy { .. } => "SetContactRequestPolicy",
+        IntentKind::ClearRequestFloors => "ClearRequestFloors",
         IntentKind::AnswerCall { .. } => "AnswerCall",
         IntentKind::RejectCall { .. } => "RejectCall",
         IntentKind::HangUpCall { .. } => "HangUpCall",
@@ -218,6 +220,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContactRequestsListed(_) => "ContactRequestsListed",
         DomainEvent::ContactRequestUpserted(_) => "ContactRequestUpserted",
         DomainEvent::ContactRequestPolicyUpdated(_) => "ContactRequestPolicyUpdated",
+        DomainEvent::ContactRequestFloorsUpdated(_) => "ContactRequestFloorsUpdated",
         DomainEvent::ContactRequestsReadFailed(_) => "ContactRequestsReadFailed",
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
         DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",

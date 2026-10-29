@@ -189,6 +189,12 @@ impl Store {
                     changes.contact_requests = true;
                 }
             }
+            DomainEvent::ContactRequestFloorsUpdated(floors) => {
+                if self.request_floors != Some(*floors) {
+                    self.request_floors = Some(*floors);
+                    changes.contact_requests = true;
+                }
+            }
             DomainEvent::BackupJobUpdated(job) => self.upsert_backup_job(job, changes)?,
             DomainEvent::CeremonyUpdated(ceremony) => self.update_ceremony(ceremony, changes)?,
             DomainEvent::TaskStepChanged { task_id, version, step_id, state, needs_me } => {

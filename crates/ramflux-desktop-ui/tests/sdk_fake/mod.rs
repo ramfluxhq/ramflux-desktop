@@ -124,6 +124,11 @@ pub struct State {
     /// What `group.list` answers instead of the fixture's one group, when
     /// set (a roster or signed name changed by sync).
     pub groups: Option<Vec<Value>>,
+    /// While set, group changes (`group.member.*`, `group.role.set`,
+    /// `group.name.set`) are refused `transfer_requires_sync` with this
+    /// `reason_code`, as the daemon does while an ownership transfer holds
+    /// the group's head (product `check_group_transfer_lease`).
+    pub group_refusal: Option<&'static str>,
     /// Principals whose manual verification went stale
     /// (`safety_state: verification_stale`).
     pub stale: Vec<String>,
@@ -301,6 +306,17 @@ pub fn start(name: &str) -> (FakeBus, Shared, std::path::PathBuf) {
         }
         if method == "account.backup.jobs" && account.is_some() {
             account_jobs.pass();
+        }
+        if (method.starts_with("group.member.")
+            || matches!(method, "group.role.set" | "group.name.set"))
+            && let Some(reason_code) = state.lock().expect("state").group_refusal
+        {
+            return Reply::Refused {
+                code: "transfer_requires_sync",
+                message: "Ownership transfer requires synchronization".to_owned(),
+                reason_code,
+                details: None,
+            };
         }
         if let Some(reply) = requests.handle(method, account, body) {
             return reply;

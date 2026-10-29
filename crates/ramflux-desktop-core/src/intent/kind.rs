@@ -237,6 +237,9 @@ pub enum IntentKind {
         /// The setting.
         policy: RequestPolicy,
     },
+    /// Forget the daemon's entries of closed contact requests, so that it
+    /// can take new ones again. Human only; needs the hold.
+    ClearRequestFloors,
     /// Act on the contact link with a participant.
     Contact {
         /// Participant.

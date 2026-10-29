@@ -223,6 +223,10 @@ pub enum UiEventKind {
         /// On: accept every request automatically.
         auto_accept: bool,
     },
+    /// "Forget old entries" was pressed on the notice that the daemon holds
+    /// new contact requests back because its list of remembered requesters
+    /// is full.
+    ClearRequestFloorsPressed,
     /// A transfer action on an object.
     ObjectActionPressed {
         /// Object.
