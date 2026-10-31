@@ -292,6 +292,8 @@ pub struct Changes {
     pub backup_jobs: BTreeSet<BackupJobId>,
     /// The creation ceremony changed.
     pub ceremony: bool,
+    /// AI participants whose last credentials export changed.
+    pub agent_exports: BTreeSet<AccountId>,
     /// Standing approvals changed.
     pub standing_approvals: bool,
     /// The audit trail grew.
@@ -327,6 +329,7 @@ impl Changes {
             && !self.contact_requests
             && self.backup_jobs.is_empty()
             && !self.ceremony
+            && self.agent_exports.is_empty()
             && !self.standing_approvals
             && !self.audit
             && !self.integrations
@@ -353,6 +356,7 @@ impl Changes {
             contact_requests,
             backup_jobs,
             ceremony,
+            agent_exports,
             standing_approvals,
             audit,
             integrations,
@@ -375,6 +379,7 @@ impl Changes {
         self.contact_requests |= contact_requests;
         self.backup_jobs.extend(backup_jobs);
         self.ceremony |= ceremony;
+        self.agent_exports.extend(agent_exports);
         self.standing_approvals |= standing_approvals;
         self.audit |= audit;
         self.integrations |= integrations;

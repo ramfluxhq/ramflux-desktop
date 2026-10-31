@@ -24,11 +24,14 @@
 //! - [`backup`]: full backup and restore jobs.
 //! - [`ceremony`]: the creation ceremony of a born-v3 account (never the
 //!   recovery phrase).
+//! - [`agent`]: AI participants an owner custodies, and the typed outcome of
+//!   exporting their credentials.
 //! - [`call`]: voice calls, their states and outcomes, and the secret
 //!   media session that never enters the store.
 
 mod account;
 mod actor;
+mod agent;
 mod backend;
 mod backup;
 mod call;
@@ -50,6 +53,7 @@ pub use account::{
     SecureSessions,
 };
 pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MIN_HOLD_MS};
+pub use agent::{AgentCustodyProblem, AgentExport, AgentExportPhase, AgentExportRefusal};
 pub use backend::{
     Capabilities, DaemonInfo, DaemonSyncState, EffectFailure, FailureCode, SyncMode, SyncStatus,
 };

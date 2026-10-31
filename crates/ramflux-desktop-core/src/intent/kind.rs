@@ -443,6 +443,37 @@ pub enum IntentKind {
     },
     /// Cancel the running ceremony; the daemon erases the phrase.
     CancelCeremony,
+    /// Begin creating an AI participant (a headless AI account) that the
+    /// owner's account `custodian_id` custodies. The same ceremony follows
+    /// (the phrase is shown once to the owner), but the daemon makes the
+    /// account's data passphrase itself and the confirmation takes the three
+    /// words only. Only when the daemon offers born-v3 creation and
+    /// `custodian_id` is an unlocked, connected person's account.
+    BeginAgentCeremony {
+        /// The name of the AI participant.
+        label: String,
+        /// The owner's account, which becomes its custodian.
+        custodian_id: AccountId,
+    },
+    /// Type three words back to create the AI participant: the one attempt,
+    /// sent once as `{words}`; no passphrase is taken. Not serializable.
+    #[serde(skip)]
+    ConfirmAgentCeremony {
+        /// The three words, resolved to list words, in the order asked.
+        words: Vec<SecretInput>,
+    },
+    /// Write the one-shot credentials bundle of an AI participant the
+    /// owner custodies to a location the owner chose. The daemon creates
+    /// the file readable by its owner only, refuses to replace one, and
+    /// the bundle holds neither a recovery phrase nor a master key.
+    ExportAgentCredentials {
+        /// The owner's account (unlocked, attended, the custodian).
+        owner_id: AccountId,
+        /// The AI participant.
+        account_id: AccountId,
+        /// The location the owner chose.
+        path: String,
+    },
     /// Begin recovering an account that lives on this device, from its 24
     /// words. Only the user starts it, from the account itself; nothing a
     /// network event carries may. The daemon answers with the account's

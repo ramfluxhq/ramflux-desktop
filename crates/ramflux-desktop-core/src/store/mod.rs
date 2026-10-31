@@ -46,10 +46,10 @@ use crate::ids::{
     ParticipantId, StandingApprovalId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, BackupJob, Call, Capabilities, Ceremony, ContactCard, ContactRequest,
-    Context, DaemonInfo, Device, EffectFailure, Grant, Integrations, Listing, Moment, Node, Object,
-    Participant, RecoveryCeremony, RequestDirection, RequestFloors, RequestPolicy,
-    StandingApproval, SyncStatus, Task,
+    Account, AgentExport, AuditEntry, BackupJob, Call, Capabilities, Ceremony, ContactCard,
+    ContactRequest, Context, DaemonInfo, Device, EffectFailure, Grant, Integrations, Listing,
+    Moment, Node, Object, Participant, RecoveryCeremony, RequestDirection, RequestFloors,
+    RequestPolicy, StandingApproval, SyncStatus, Task,
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
@@ -93,6 +93,8 @@ pub struct Store {
     ceremony_revision: u64,
     recovery: Option<RecoveryCeremony>,
     recovery_revision: u64,
+    custodians: BTreeMap<AccountId, AccountId>,
+    agent_exports: BTreeMap<AccountId, AgentExport>,
     audit: Vec<AuditEntry>,
     integrations: Integrations,
     capabilities: Capabilities,
@@ -505,6 +507,18 @@ impl Store {
     /// ceremony's news from the old record.
     pub fn ceremony_revision(&self) -> u64 {
         self.ceremony_revision
+    }
+
+    /// The person's account that custodies the AI participant `agent`,
+    /// when it is known (the ceremony that made it named it, or the daemon
+    /// reported it).
+    pub fn custodian_of(&self, agent: &AccountId) -> Option<&AccountId> {
+        self.custodians.get(agent)
+    }
+
+    /// The last credentials export attempt for the AI participant `agent`.
+    pub fn agent_export(&self, agent: &AccountId) -> Option<&AgentExport> {
+        self.agent_exports.get(agent)
     }
 
     /// The recovery ceremony of a born-v3 account: the running one, or

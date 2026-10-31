@@ -140,6 +140,9 @@ pub const CUSTODY_HIDDEN_CHALLENGE: &str = "account.create.hidden_challenge";
 pub const CUSTODY_CONFIRM: &str = "account.create.confirm";
 /// Cancel the ceremony and erase the phrase.
 pub const CUSTODY_CANCEL: &str = "account.create.cancel";
+/// Write the one-shot provisioning bundle of an AI participant the sending
+/// account custodies (owner session only); the bundle holds no phrase.
+pub const AGENT_EXPORT_CREDENTIALS: &str = "account.export_agent_credentials";
 /// Begin recovering an account from its phrase (user-started only).
 pub const RECOVER_BEGIN: &str = "account.recover.begin";
 /// Check the fingerprint, the phrase and the passphrase and recover (carries

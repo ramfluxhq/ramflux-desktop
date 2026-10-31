@@ -62,9 +62,11 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
         DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",
         DomainEvent::RecoveryUpdated(_) => "RecoveryUpdated",
+        DomainEvent::CustodianKnown { .. } => "CustodianKnown",
+        DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 46;
+const DOMAIN_EVENT_VARIANTS: usize = 48;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -148,6 +150,8 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::ShowRecoveryPhrase => "ShowRecoveryPhrase",
         IntentKind::HideRecoveryPhrase => "HideRecoveryPhrase",
         IntentKind::CancelCeremony => "CancelCeremony",
+        IntentKind::BeginAgentCeremony { .. } => "BeginAgentCeremony",
+        IntentKind::ExportAgentCredentials { .. } => "ExportAgentCredentials",
         IntentKind::BeginRecovery { .. } => "BeginRecovery",
         IntentKind::CancelRecovery => "CancelRecovery",
         IntentKind::Unlock { .. }
@@ -158,12 +162,13 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         | IntentKind::CreateBackup { .. }
         | IntentKind::VerifyRestore { .. }
         | IntentKind::ConfirmCeremony { .. }
+        | IntentKind::ConfirmAgentCeremony { .. }
         | IntentKind::ConfirmRecovery { .. }
         | IntentKind::RotatePassphrase { .. } => "secret",
     }
 }
-/// Serializable intent variants (all but the ten secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 59;
+/// Serializable intent variants (all but the eleven secret-carrying kinds).
+const SERIALIZABLE_INTENT_VARIANTS: usize = 61;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -628,6 +633,15 @@ fn all_domain_events() -> Vec<DomainEvent> {
             ceremony_id: String::new(),
             expires_at: Timestamp(0),
         }),
+        DomainEvent::CustodianKnown {
+            agent: AccountId::new("a-bot"),
+            custodian: AccountId::new("a-1"),
+        },
+        DomainEvent::AgentExportUpdated(AgentExport {
+            account_id: AccountId::new("a-bot"),
+            path: "/Users/a/bot.bundle".to_owned(),
+            phase: AgentExportPhase::Refused(AgentExportRefusal::FileExists),
+        }),
         DomainEvent::DaemonInfoUpdated(DaemonInfo {
             socket_path: "/tmp/rfd.sock".to_owned(),
             open_accounts: 1,
@@ -840,6 +854,15 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::ShowRecoveryPhrase,
         IntentKind::HideRecoveryPhrase,
         IntentKind::CancelCeremony,
+        IntentKind::BeginAgentCeremony {
+            label: "Ledger".into(),
+            custodian_id: AccountId::new("a-1"),
+        },
+        IntentKind::ExportAgentCredentials {
+            owner_id: AccountId::new("a-1"),
+            account_id: AccountId::new("a-bot"),
+            path: "/Users/a/bot.bundle".into(),
+        },
         IntentKind::BeginRecovery { account_id: AccountId::new("a-1") },
         IntentKind::CancelRecovery,
     ]

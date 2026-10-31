@@ -56,8 +56,9 @@ pub use intent::{
 pub use model::*;
 pub use policy::{
     GroupProblem, IntentError, MAX_GROUP_MEMBERS, MAX_GROUP_TITLE_LEN, call_peer,
-    check_add_contact, check_add_contact_card, check_create_group, check_group_title,
-    check_start_call, check_start_conversation, contact_action_current, handle_intent,
+    check_add_contact, check_add_contact_card, check_agent_custodian, check_agent_export,
+    check_create_group, check_group_title, check_start_call, check_start_conversation,
+    contact_action_current, handle_intent,
 };
 pub use recovery::{
     PHRASE_WORDS, PhraseCheck, PhraseError, RecoveryPhrase, WordInput, check_phrase,

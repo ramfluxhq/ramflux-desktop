@@ -272,6 +272,12 @@ pub enum IntentError {
     /// The confirmation needs exactly three words, none empty.
     #[error("confirming needs exactly three words")]
     CeremonyWords,
+    /// The account cannot custody an AI participant.
+    #[error("this account cannot be the custodian of an AI participant: {0:?}")]
+    AgentCustody(crate::model::AgentCustodyProblem),
+    /// The credentials of the AI participant cannot be exported now.
+    #[error("the AI participant's credentials cannot be exported: {0:?}")]
+    AgentExport(crate::model::AgentExportRefusal),
     /// The recovery is not in a phase this intent applies to (or none runs).
     #[error("the recovery cannot do this now")]
     RecoveryPhase,
