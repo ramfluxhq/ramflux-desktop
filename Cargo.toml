@@ -20,7 +20,7 @@ repository = "https://github.com/ramfluxhq/ramflux-desktop"
 
 [workspace.dependencies]
 # Pinned exactly: GPUI Kit ships breaking minor releases every few weeks.
-gpui-kit = "=0.8.0"
+gpui-kit = "=0.8.1"
 ron = "0.12"
 rust-i18n = "4.2"
 serde = { version = "1", features = ["derive"] }
