@@ -16,6 +16,8 @@ use gpui_kit::{App, PathPromptOptions, SharedString, Window};
 /// Where a save dialog starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartDir {
+    /// The user's home folder.
+    Home,
     /// The user's documents folder.
     Documents,
     /// The user's downloads folder.
@@ -26,10 +28,11 @@ impl StartDir {
     /// The folder, falling back to the home folder and then the current one.
     pub fn path(self) -> PathBuf {
         let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-        let dir = home.join(match self {
-            Self::Documents => "Documents",
-            Self::Downloads => "Downloads",
-        });
+        let dir = match self {
+            Self::Home => home.clone(),
+            Self::Documents => home.join("Documents"),
+            Self::Downloads => home.join("Downloads"),
+        };
         if dir.is_dir() { dir } else { home }
     }
 }

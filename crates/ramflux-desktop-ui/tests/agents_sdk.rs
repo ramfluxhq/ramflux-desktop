@@ -17,7 +17,7 @@ use std::sync::Arc;
 use common::*;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Entity, TestAppContext, WindowHandle};
-use ramflux_desktop_core::{AccountId, AccountKind, AgentExportPhase, CeremonyPhase};
+use ramflux_desktop_core::{AccountId, AccountKind, AgentExportPhase, CeremonyPhase, methods};
 use ramflux_desktop_test::fake_custody::FakeCustody;
 use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
 use ramflux_desktop_ui::Shell;
@@ -313,5 +313,127 @@ fn the_entry_page_never_offers_to_unlock_an_ai_participant(cx: &mut TestAppConte
         Some(true),
         "there is no person's account to unlock"
     );
+    fake.shutdown();
+}
+
+/// The account slots the window holds (what the switcher lists) and the
+/// rendered account.
+fn slots(cx: &mut TestAppContext, shell: &Entity<Shell>) -> (Vec<String>, Option<String>) {
+    let handle = store_handle(cx, shell);
+    cx.update(|cx| {
+        let handle = handle.read(cx);
+        (
+            handle.accounts().map(ToString::to_string).collect(),
+            handle.active_account().map(ToString::to_string),
+        )
+    })
+}
+
+#[gpui_kit::test]
+fn an_ai_participant_the_daemon_lists_unlocked_is_never_operated_by_the_window(
+    cx: &mut TestAppContext,
+) {
+    let custody = Arc::new(FakeCustody::new());
+    let (fake, handle, shell) = open_agents(cx, "ui-agent-not-operated", &custody);
+    through_ceremony(cx, handle, &shell, "Ledger");
+    click(cx, handle, "ceremony-next");
+    wait(cx, "created", |cx| matches!(phase(cx, &shell), Some(CeremonyPhase::Created(_))));
+    let Some(CeremonyPhase::Created(made)) = phase(cx, &shell) else { panic!("created") };
+    let id = made.local_account_id;
+    // The daemon opened it unlocked, and lists it so.
+    wait(cx, "listed unlocked", |cx| {
+        daemon(cx, &shell, |s| {
+            s.account(&AccountId::new(&id))
+                .is_some_and(|a| a.lock_state == ramflux_desktop_core::LockState::Unlocked)
+        })
+    });
+    click(cx, handle, "ceremony-done-close");
+    advance(cx, 500);
+    // The switcher lists the owner alone, the owner stays rendered, and the
+    // AI participant's row says it is not operated here.
+    let (accounts, active) = slots(cx, &shell);
+    assert_eq!(accounts, vec![OWNER.to_owned()]);
+    assert_eq!(active.as_deref(), Some(OWNER));
+    assert!(exists(cx, handle, &format!("agent-not-unlocked-{id}")));
+    assert!(has_label(cx, handle, &tr("agent.row.not_unlocked")));
+    // No subscription or stream was ever opened for it.
+    assert!(
+        fake.seen().iter().all(|s| s.account.as_deref() != Some(id.as_str())
+            || !matches!(s.method.as_str(), "subscription.open" | "bus.subscribe")),
+        "no attended session for the AI participant"
+    );
+    // Locking the owner never makes the AI participant the rendered account.
+    custody.set_locked(OWNER, true);
+    wait(cx, "owner session gone", |cx| slots(cx, &shell).0.is_empty());
+    advance(cx, 500);
+    let (accounts, active) = slots(cx, &shell);
+    assert!(accounts.is_empty() && active.is_none(), "{accounts:?} {active:?}");
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn an_unrelated_failure_does_not_reenable_the_export_while_it_is_in_flight(
+    cx: &mut TestAppContext,
+) {
+    let custody = Arc::new(FakeCustody::new());
+    let (fake, handle, shell) = open_agents(cx, "ui-agent-double", &custody);
+    custody.set_export_delay(std::time::Duration::from_millis(1_500));
+    let dir = std::env::temp_dir().join(format!("rf-ui-agent-double-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let path = dir.join("bot.bundle");
+    in_window(cx, handle, |window, cx| window.click("agent-export-acct-bot", cx));
+    set_location(cx, handle, &shell, &path.to_string_lossy());
+    click(cx, handle, "agent-export-submit");
+    let sending = |cx: &mut TestAppContext| {
+        in_window(cx, handle, |window, _| window.find("agent-export-submit").disabled())
+    };
+    wait(cx, "sending", |cx| sending(cx) == Some(true));
+    // Another effect fails meanwhile (a diagnostics file that cannot be written).
+    let before = daemon(cx, &shell, |s| s.failures_total());
+    let root = cx.update(|cx| shell.read(cx).root().clone());
+    in_window(cx, handle, |window, cx| {
+        root.update(cx, |root, cx| {
+            root.submit_secret(
+                ramflux_desktop_core::IntentKind::ExportDiagnostics {
+                    path: "/nonexistent-folder/diagnostics.txt".into(),
+                },
+                window,
+                cx,
+            )
+        });
+    });
+    wait(cx, "the other failure", |cx| {
+        daemon(cx, &shell, |s| s.failures_total()) > before
+            || with_store(cx, &shell, |s| {
+                s.failures().iter().any(|f| f.method == methods::DIAGNOSTICS_EXPORT)
+            })
+    });
+    assert_eq!(sending(cx), Some(true), "still waiting for its own answer");
+    click(cx, handle, "agent-export-submit");
+    assert_eq!(
+        fake.seen().iter().filter(|s| s.method == "account.export_agent_credentials").count(),
+        1,
+        "the second press sent nothing"
+    );
+    wait(cx, "its own answer", |cx| export_of(cx, &shell, "acct-bot").is_some());
+    assert_eq!(export_of(cx, &shell, "acct-bot"), Some(AgentExportPhase::Exported));
+    fake.shutdown();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[gpui_kit::test]
+fn the_typed_default_and_the_save_dialog_name_the_same_file_in_the_home_folder(
+    cx: &mut TestAppContext,
+) {
+    let custody = Arc::new(FakeCustody::new());
+    let (fake, handle, shell) = open_agents(cx, "ui-agent-default", &custody);
+    in_window(cx, handle, |window, cx| window.click("agent-export-acct-bot", cx));
+    let panel = cx.update(|cx| shell.read(cx).settings().read(cx).agents_panel().clone());
+    let typed = cx.update(|cx| panel.read(cx).location_input().read(cx).value().to_string());
+    let home = std::env::var("HOME").expect("home");
+    assert_eq!(typed, format!("{home}/ramflux-agent-Bot.bundle"));
+    let (name, start) = cx.update(|cx| panel.read(cx).save_dialog_default(cx));
+    assert_eq!(name, "ramflux-agent-Bot.bundle");
+    assert_eq!(start, std::path::PathBuf::from(&home));
     fake.shutdown();
 }

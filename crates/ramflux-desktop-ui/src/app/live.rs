@@ -12,7 +12,7 @@
 //! performed by the daemon session, everything else by the account's.
 
 use gpui_kit::Context;
-use ramflux_desktop_core::{AccountId, Intent, IntentKind, LockState, methods};
+use ramflux_desktop_core::{AccountId, AccountKind, Intent, IntentKind, LockState, methods};
 use ramflux_desktop_sdk::{DaemonStop, SdkHub};
 
 use super::{
@@ -116,7 +116,11 @@ impl StoreHandle {
             .daemon
             .store()
             .accounts()
-            .filter(|a| a.lock_state == LockState::Unlocked)
+            // An AI participant is started by the agent host: the daemon may
+            // list it unlocked (it opens the account it just created), but
+            // this app never attaches an attended session to it, so it is
+            // never in the account switcher and never the rendered account.
+            .filter(|a| a.lock_state == LockState::Unlocked && a.kind != AccountKind::HeadlessAi)
             .map(|a| a.id.clone())
             .collect();
         let stale: Vec<AccountId> =

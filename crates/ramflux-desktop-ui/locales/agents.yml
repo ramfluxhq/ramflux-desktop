@@ -51,9 +51,6 @@ agent:
       en: "The daemon did not accept your account as the custodian. It must be your unlocked, connected personal account on this daemon, used from this window. No AI participant was created."
       zh-CN: "守护进程不接受你的账户作为托管人。托管人必须是此守护进程上你已解锁并已连接的个人账户，并从此窗口使用。没有创建 AI 参与者。"
   settings:
-    title:
-      en: "AI participants"
-      zh-CN: "AI 参与者"
     intro:
       en: "AI participants are accounts you custody. Each one runs under the agent host from a one-time credentials bundle you export here. This app never unlocks them."
       zh-CN: "AI 参与者是由你托管的账户。每一个都使用你在这里导出的一次性凭据包，在智能体宿主下运行。本应用不会解锁它们。"

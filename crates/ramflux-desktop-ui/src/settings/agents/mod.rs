@@ -51,8 +51,21 @@ struct Awaiting {
     agent: AccountId,
     /// The record before the request: a different one is the answer.
     before: Option<AgentExport>,
-    /// The failed effects counted then: a newer failure is the answer too.
+    /// The failed effects counted then: a newer failure of this export is
+    /// the answer too (another effect failing says nothing about it).
     failures: u64,
+}
+
+impl Awaiting {
+    /// Whether `store` holds the answer to this export: a new record for
+    /// this AI participant, or a failure of this request. Another effect
+    /// failing says nothing about it.
+    fn answered(&self, store: &ramflux_desktop_core::Store) -> bool {
+        store.agent_export(&self.agent) != self.before.as_ref()
+            || store.failures_since(self.failures).iter().any(|failure| {
+                failure.method == ramflux_desktop_core::methods::AGENT_EXPORT_CREDENTIALS
+            })
+    }
 }
 
 /// The AI participants section's view state.
@@ -175,11 +188,7 @@ impl AgentsPanel {
     /// Ends the wait once the export has an answer.
     fn follow(&mut self, cx: &App) {
         let store = self.store.read(cx).entry_store();
-        let answered = self.awaiting.as_ref().is_some_and(|awaiting| {
-            store.agent_export(&awaiting.agent) != awaiting.before.as_ref()
-                || store.failures_total() > awaiting.failures
-        });
-        if answered {
+        if self.awaiting.as_ref().is_some_and(|awaiting| awaiting.answered(store)) {
             self.awaiting = None;
         }
     }
@@ -198,17 +207,20 @@ impl AgentsPanel {
     /// Opens the export form of `agent`, with a location to start from in
     /// the owner's home folder.
     pub fn open_export(&mut self, agent: AccountId, window: &mut Window, cx: &mut Context<Self>) {
-        let name = self
-            .store
-            .read(cx)
-            .entry_store()
-            .account(&agent)
-            .map_or_else(|| agent.to_string(), |account| account.label.clone());
-        let suggestion = suggested_location(&name, &agent);
+        let suggestion = home_location(&self.default_name(&agent, cx));
         self.location.update(cx, |input, cx| input.set_value(suggestion, window, cx));
         self.exporting = Some(agent);
         self.unsent = None;
         cx.notify();
+    }
+
+    /// The default file name for `agent`'s credentials, named after the AI
+    /// participant (its id when it has no name), the same for the typed
+    /// location and the save dialog.
+    fn default_name(&self, agent: &AccountId, cx: &App) -> String {
+        let store = self.store.read(cx).entry_store();
+        let label = store.account(agent).map(|account| account.label.trim().to_owned());
+        file_name(&label.filter(|label| !label.is_empty()).unwrap_or_else(|| agent.to_string()))
     }
 
     /// Closes the export form.
@@ -247,13 +259,19 @@ impl AgentsPanel {
         cx.notify();
     }
 
+    /// What the save dialog starts from: the file name and the folder (the
+    /// owner's home), the same file as the typed default.
+    pub fn save_dialog_default(&self, cx: &App) -> (String, std::path::PathBuf) {
+        let name = self.exporting.as_ref().map_or_else(String::new, |a| self.default_name(a, cx));
+        (name, crate::file_dialog::StartDir::Home.path())
+    }
+
     /// Chooses the location in the platform's save dialog.
     pub fn choose_location(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(agent) = self.exporting.clone() else { return };
-        let suggested = file_name(&agent.to_string());
+        let (suggested, _) = self.save_dialog_default(cx);
         let input = self.location.clone();
         crate::file_dialog::save_as(
-            crate::file_dialog::StartDir::Documents,
+            crate::file_dialog::StartDir::Home,
             &suggested,
             window,
             cx,
@@ -299,12 +317,11 @@ fn file_name(name: &str) -> String {
     format!("ramflux-agent-{}.bundle", safe.trim_matches('-'))
 }
 
-/// A location to start from: the owner's home folder.
-fn suggested_location(name: &str, agent: &AccountId) -> String {
-    let file = file_name(if name.trim().is_empty() { agent.as_str() } else { name });
+/// The default location: the file name in the owner's home folder.
+fn home_location(file: &str) -> String {
     match std::env::var_os("HOME") {
         Some(home) => std::path::Path::new(&home).join(file).to_string_lossy().into_owned(),
-        None => file,
+        None => file.to_owned(),
     }
 }
 
@@ -318,12 +335,69 @@ fn item(panel: &Entity<AgentsPanel>, part: Part) -> SettingItem {
 /// The AI participants section.
 pub fn page(panel: &Entity<AgentsPanel>) -> SettingPage {
     SettingPage::new(tr("settings.section.agents"))
-        .group(
-            SettingGroup::new().title(tr("agent.settings.title")).item(item(panel, Part::Create)),
-        )
+        .group(SettingGroup::new().item(item(panel, Part::Create)))
         .group(
             SettingGroup::new()
                 .title(tr("agent.settings.list_title"))
                 .item(item(panel, Part::List)),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use ramflux_desktop_core::{
+        DomainEvent, EffectFailure, EventEnvelope, FailureCode, Store, Timestamp, methods,
+    };
+
+    use super::*;
+
+    fn failure(method: &str) -> DomainEvent {
+        DomainEvent::EffectFailed(EffectFailure {
+            method: method.to_owned(),
+            code: FailureCode::Transport,
+            message: String::new(),
+        })
+    }
+
+    fn apply(store: &mut Store, seq: u64, event: DomainEvent) {
+        store.apply(&EventEnvelope::new(seq, Timestamp(1), event)).expect("applies");
+    }
+
+    #[test]
+    fn only_this_exports_own_result_ends_the_wait() {
+        let mut store = Store::new();
+        let bot = AccountId::new("bot");
+        let awaiting =
+            Awaiting { agent: bot.clone(), before: None, failures: store.failures_total() };
+        assert!(!awaiting.answered(&store));
+        // Another effect failing, and another AI participant's export.
+        apply(&mut store, 1, failure(methods::SEND_MESSAGE));
+        apply(&mut store, 2, failure(methods::NODE_PROBE));
+        apply(
+            &mut store,
+            3,
+            DomainEvent::AgentExportUpdated(AgentExport {
+                account_id: AccountId::new("other"),
+                path: "/x".into(),
+                phase: AgentExportPhase::Exported,
+            }),
+        );
+        assert!(!awaiting.answered(&store), "none of those is its answer");
+        // Its own failure ends it, with or without a record that differs.
+        apply(&mut store, 4, failure(methods::AGENT_EXPORT_CREDENTIALS));
+        assert!(awaiting.answered(&store));
+        // So does its own record.
+        let mut store = Store::new();
+        let awaiting = Awaiting { agent: bot.clone(), before: None, failures: 0 };
+        apply(
+            &mut store,
+            1,
+            DomainEvent::AgentExportUpdated(AgentExport {
+                account_id: bot,
+                path: "/x".into(),
+                phase: AgentExportPhase::Exported,
+            }),
+        );
+        assert!(awaiting.answered(&store));
+    }
 }
