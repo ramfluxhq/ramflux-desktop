@@ -1465,7 +1465,9 @@ account that results is listed `kind: headless_ai` and the custody link
 desktop settings file (two account ids, nothing else), because the account
 list of this product revision does not name a custodian; a daemon that does
 (`custodian_account_id`) is believed. The daemon opens the new account
-unlocked; the desktop still never operates it.
+unlocked; the desktop still never operates it: `reconcile_live` attaches no
+session to a `headless_ai` account, so it is never in the account switcher,
+never the rendered account and never gets an attended subscription.
 
 **Export** (`IntentKind::ExportAgentCredentials { owner_id, account_id, path }`).
 Policy ([`check_agent_export`]) needs an absolute path, the owner an unlocked,
@@ -1482,7 +1484,10 @@ afterwards; the bundle holds the data passphrase and the account id, no
 phrase and no master key, and never passes through the desktop. The store
 keeps only the outcome (`AgentExport`: account, the location the owner
 chose, `Exported` or `Refused(AgentExportRefusal)`), and the failed
-effect's message is the refusal's locale key, never the daemon's English:
+effect's message is the refusal's locale key, never the daemon's English.
+File-system refusals are told by the daemon's structured `cause {kind,
+raw_os_error}` (carried in `BusError::Daemon`), not by its words; without a
+cause they are `Other`:
 
 | Refusal | Cause |
 | --- | --- |
