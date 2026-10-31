@@ -66,8 +66,6 @@ pub fn options(path: &std::path::Path) -> ShellOptions {
     }
 }
 
-pub use crate::common::wait;
-
 /// What the fake account holds beyond the fixture.
 #[derive(Default)]
 pub struct State {

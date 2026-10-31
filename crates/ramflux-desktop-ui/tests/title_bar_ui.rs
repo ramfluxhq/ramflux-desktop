@@ -20,7 +20,6 @@ use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{Intent, IntentKind, RequestAnswer, selectors};
 use ramflux_desktop_ui::i18n;
 use ramflux_desktop_ui::route::Page;
-use sdk_fake::wait;
 use serde_json::json;
 
 const CONTROLS: [&str; 4] = ["open-palette", "needs-me", "toggle-theme", "open-settings"];

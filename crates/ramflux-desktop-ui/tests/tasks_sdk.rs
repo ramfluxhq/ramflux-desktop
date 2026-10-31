@@ -25,7 +25,7 @@ use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::ComposerMode;
 use ramflux_protocol::TaskStatus;
 use sdk_fake::author::{Bot, scenario_surfaces};
-use sdk_fake::{BOT, GROUP, wait};
+use sdk_fake::{BOT, GROUP};
 
 type Handle = gpui_kit::WindowHandle<gpui_kit::base::Root>;
 type ShellEntity = gpui_kit::Entity<ramflux_desktop_ui::Shell>;

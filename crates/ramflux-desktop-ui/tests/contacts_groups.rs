@@ -33,7 +33,6 @@ use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::docks::contacts::add_form::FormNote;
 use ramflux_desktop_ui::workspace::docks::contacts::my_card::CardView;
 use ramflux_desktop_ui::workspace::new_group::Phase;
-use sdk_fake::wait;
 use serde_json::json;
 
 type Handle = WindowHandle<gpui_kit::base::Root>;

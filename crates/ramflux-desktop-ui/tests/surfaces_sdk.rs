@@ -24,7 +24,6 @@ use ramflux_desktop_core::{
 };
 use ramflux_desktop_ui::route::Page;
 use sdk_fake::author::{BOT, Bot, GROUP, scenario_surfaces};
-use sdk_fake::wait;
 use serde_json::json;
 
 fn version(

@@ -23,7 +23,6 @@ use ramflux_desktop_core::{RequestPolicy, SyncMode};
 use ramflux_desktop_test::fake_contact_requests::FakeContactRequests;
 use ramflux_desktop_ui::i18n::{self, tr, tr_args};
 use ramflux_desktop_ui::workspace::docks::contacts::add_form::FormNote;
-use sdk_fake::wait;
 use serde_json::json;
 
 const ACCOUNT: &str = "acct-main";

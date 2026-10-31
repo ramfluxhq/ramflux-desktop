@@ -19,7 +19,6 @@ use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{ContextId, Direction, Lifecycle, MomentKind, Receipt, TransferState};
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::Staged;
-use sdk_fake::wait;
 
 type Handle = gpui_kit::WindowHandle<gpui_kit::base::Root>;
 type ShellEntity = gpui_kit::Entity<ramflux_desktop_ui::Shell>;

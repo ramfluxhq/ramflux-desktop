@@ -25,7 +25,6 @@ use ramflux_desktop_core::{ContextId, SyncMode, methods};
 use ramflux_desktop_test::fake_contact_requests::FakeContactRequests;
 use ramflux_desktop_ui::i18n::{self, tr, tr_args};
 use ramflux_desktop_ui::route::Page;
-use sdk_fake::wait;
 use serde_json::{Value, json};
 
 struct World {

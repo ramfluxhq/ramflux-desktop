@@ -24,7 +24,6 @@ use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::i18n::{agent_custody_problem, agent_export_refusal, tr, tr_args};
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::settings::SettingsSection;
-use sdk_fake::wait;
 
 type Handle = WindowHandle<gpui_kit::base::Root>;
 

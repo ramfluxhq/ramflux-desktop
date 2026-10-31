@@ -23,7 +23,6 @@ use ramflux_desktop_core::{
 use ramflux_desktop_ui::i18n::tr_args;
 use ramflux_desktop_ui::identity::kind_text;
 use ramflux_desktop_ui::route::Page;
-use sdk_fake::wait;
 
 const ACCOUNT: &str = "acct-main";
 

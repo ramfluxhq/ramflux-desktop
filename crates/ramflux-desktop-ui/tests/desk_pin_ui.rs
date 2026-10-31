@@ -17,7 +17,7 @@ use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{ContextId, GovernanceAction, MomentKind, ParticipantId, selectors};
 use ramflux_desktop_ui::i18n::{self, tr_args};
 use ramflux_desktop_ui::route::Page;
-use sdk_fake::{GROUP, wait};
+use sdk_fake::GROUP;
 use serde_json::{Value, json};
 
 const ACCOUNT: &str = "acct-main";

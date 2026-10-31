@@ -28,7 +28,6 @@ use ramflux_desktop_ui::app::{CallAudio, CallQuality, LiveCall, LiveStatus};
 use ramflux_desktop_ui::i18n::{tr, tr_args};
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::shell::SourceChoice;
-use sdk_fake::wait;
 
 const ACCOUNT: &str = "acct-main";
 const DM: &str = "dm-ana";

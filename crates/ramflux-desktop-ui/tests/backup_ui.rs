@@ -32,7 +32,6 @@ use ramflux_desktop_ui::i18n::tr_args;
 use ramflux_desktop_ui::route::{EntryStep, Page};
 use ramflux_desktop_ui::settings::SettingsSection;
 use ramflux_desktop_ui::settings::backup::{BackupPanel, Form};
-use sdk_fake::wait;
 
 const ACCOUNT: &str = "acct-main";
 const PASSPHRASE: &str = "river stone lantern harbor";

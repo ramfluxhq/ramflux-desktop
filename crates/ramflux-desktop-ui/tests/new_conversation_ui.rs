@@ -19,7 +19,6 @@ use gpui_kit::{MouseButton, TestAppContext, WindowHandle};
 use ramflux_desktop_core::{ContextId, ContextKind, ParticipantId};
 use ramflux_desktop_ui::i18n::{tr, tr_args};
 use ramflux_desktop_ui::route::Page;
-use sdk_fake::wait;
 use serde_json::json;
 
 type Handle = WindowHandle<gpui_kit::base::Root>;

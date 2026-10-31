@@ -15,7 +15,6 @@ use gpui_kit::TestAppContext;
 use ramflux_desktop_core::{ContextId, ParticipantId, SyncMode};
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::settings::SettingsSection;
-use sdk_fake::wait;
 use serde_json::json;
 
 const ACCOUNT: &str = "acct-main";

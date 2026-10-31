@@ -25,7 +25,6 @@ use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::i18n::{tr, tr_args};
 use ramflux_desktop_ui::route::{EntryStep, Page};
-use sdk_fake::wait;
 
 type Handle = WindowHandle<gpui_kit::base::Root>;
 
