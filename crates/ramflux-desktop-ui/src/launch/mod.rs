@@ -47,6 +47,10 @@ pub const POLL: Duration = Duration::from_millis(250);
 /// How long quitting waits for the daemon to accept a graceful stop.
 const QUIT_ANSWER_WAIT: Duration = Duration::from_secs(2);
 
+fn supervision_level(settings: &LaunchStore) -> &'static str {
+    if settings.path().is_some() { "WARN" } else { "INFO" }
+}
+
 /// What the launcher has done.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaunchState {
@@ -379,7 +383,10 @@ impl DaemonLauncher {
                 }
                 None => {
                     let status = code.map_or_else(|| "signal".to_owned(), |c| c.to_string());
-                    app_log::warn(&format!("local daemon exited pid={pid} status {status}"));
+                    app_log::write(
+                        supervision_level(&self.settings_store),
+                        &format!("local daemon exited pid={pid} status {status}"),
+                    );
                     LaunchState::Failed(LaunchFailure::Exited(code))
                 }
             };
@@ -390,11 +397,15 @@ impl DaemonLauncher {
                 StopStep::Wait => {}
                 StopStep::Terminate => {
                     let why = sequence.refused().unwrap_or("no exit in time").to_owned();
-                    app_log::warn(&format!("local daemon terminated pid={pid}: {why}"));
+                    // In-memory launchers exercise fallback with stand-in
+                    // processes; retain the diagnostic without a warning.
+                    let level = supervision_level(&self.settings_store);
+                    app_log::write(level, &format!("local daemon terminated pid={pid}: {why}"));
                     process.terminate();
                 }
                 StopStep::Kill => {
-                    app_log::warn(&format!("local daemon killed after no exit pid={pid}"));
+                    let level = supervision_level(&self.settings_store);
+                    app_log::write(level, &format!("local daemon killed after no exit pid={pid}"));
                     process.kill();
                     self.process = None;
                     self.stopping = None;
@@ -477,5 +488,17 @@ impl DaemonLauncher {
     pub fn set_source(&mut self, source: SourceKind, cx: &mut Context<Self>) {
         let settings = LaunchSettings { source: Some(source), ..self.settings.clone() };
         self.save(settings, cx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn in_memory_supervision_keeps_diagnostics_below_warning_level() {
+        assert_eq!(supervision_level(&LaunchOptions::in_memory().store), "INFO");
+        let persistent = LaunchStore::at(PathBuf::from(crate::shell::DESKTOP_SETTINGS_FILE));
+        assert_eq!(supervision_level(&persistent), "WARN");
     }
 }

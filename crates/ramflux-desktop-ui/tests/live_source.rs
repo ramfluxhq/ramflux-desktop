@@ -100,7 +100,7 @@ fn an_unlocked_account_opens_the_workspace_and_lock_returns_to_entry(cx: &mut Te
         Reply::Ok(all.get(method).cloned().unwrap_or(json!({})))
     });
     let (handle, shell) = open_with(cx, options(&path));
-    wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
+    wait_for_workspace(cx, &shell);
     let active = cx.update(|cx| shell.read(cx).store().read(cx).active_account().cloned());
     assert_eq!(active, Some(AccountId::new("acct-main")), "the account has its own session");
     wait(cx, "the direct conversation", |cx| {
@@ -170,7 +170,7 @@ fn the_contacts_dock_adds_and_answers_through_the_daemon(cx: &mut TestAppContext
         }
     });
     let (handle, shell) = open_with(cx, options(&path));
-    wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
+    wait_for_workspace(cx, &shell);
     click(cx, handle, "rail-contacts");
     wait(cx, "the incoming request", |cx| exists(cx, handle, "contacts-incoming-principal-sam"));
     assert!(
@@ -192,4 +192,47 @@ fn the_contacts_dock_adds_and_answers_through_the_daemon(cx: &mut TestAppContext
     let add = fake.seen().into_iter().find(|s| s.method == "contact.add").expect("frame");
     assert_eq!(add.body, json!({ "principal_id": "principal-kai" }), "exactly the selector");
     fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn workspace_readiness_waits_for_context_selection_before_opening_a_dock(cx: &mut TestAppContext) {
+    use ramflux_desktop_core::{DomainEvent, Timestamp};
+    use ramflux_desktop_sdk::plan::fetch::Fetch;
+    use ramflux_desktop_sdk::translate::{Scope, Translator};
+
+    // Deliver the account before the rest of its snapshot, as two GPUI
+    // drains can observe the bridge's outbox. No thread timing is needed.
+    let account = AccountId::new("acct-main");
+    let mut translator = Translator::new(Scope::Account(account.clone()), "staged.sock");
+    let recorded = frames();
+    let mut timeline = Vec::new();
+    for fetch in Fetch::account_snapshot(&account) {
+        let method = fetch.request(Some(account.as_str())).method;
+        let body = recorded.get(&method).cloned().unwrap_or(json!({}));
+        for event in translator.fetched(&fetch, &body, Timestamp(0)).events {
+            let at = if matches!(event, DomainEvent::AccountUpdated(_)) { 0 } else { 500 };
+            timeline.push((at, event));
+        }
+    }
+    timeline.sort_by_key(|(at, _)| *at);
+    let scenario = ramflux_desktop_test::Scenario {
+        name: "staged-snapshot".into(),
+        description: "Account arrives before its context listings".into(),
+        epoch: Timestamp(0),
+        timeline,
+        responses: Vec::new(),
+        companions: Vec::new(),
+    };
+    let (handle, shell) = open(cx, "");
+    let store = store_handle(cx, &shell);
+    cx.update(|cx| store.update(cx, |store, cx| store.load_scenario(&scenario, cx)));
+    advance(cx, 50);
+    assert_eq!(page(cx, &shell), Page::Workspace);
+    assert!(!with_store(cx, &shell, |s| s.is_listed(Listing::Contexts)));
+
+    wait_for_workspace(cx, &shell);
+    assert!(with_store(cx, &shell, |s| s.is_listed(Listing::Contexts)));
+    click(cx, handle, "rail-contacts");
+    advance(cx, 1_000);
+    assert!(exists(cx, handle, "dock-content-contacts"), "initial selection cannot close it");
 }

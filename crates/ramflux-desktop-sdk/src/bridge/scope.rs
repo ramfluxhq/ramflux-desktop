@@ -123,6 +123,9 @@ pub(super) struct Task {
     pub(super) poll_changed: bool,
     pub(super) interval: Duration,
     pub(super) next_poll: Instant,
+    /// A failed request-list read must recover even with a live stream:
+    /// recovery itself need not publish another invalidation.
+    requests_retry_at: Option<Instant>,
     pub(super) reconnect_at: Instant,
     pub(super) alive: bool,
     /// Numbers listings' first pages in the order they are sent.
@@ -243,6 +246,7 @@ pub(super) fn build(
         polls_in_flight: 0,
         poll_changed: false,
         next_poll: start,
+        requests_retry_at: None,
         reconnect_at: start,
         alive: true,
         listings_sent: Arc::new(AtomicU64::new(0)),
@@ -352,6 +356,9 @@ impl Task {
                 if let Some(due) = self.net_due {
                     wake = wake.min(due);
                 }
+                if let Some(due) = self.requests_retry_at {
+                    wake = wake.min(due);
+                }
                 if let Some(due) = self.receipts.as_ref().and_then(Receipts::next_due) {
                     wake = wake.min(due);
                 }
@@ -377,6 +384,10 @@ impl Task {
                     if let Some(account) = self.scope.account().cloned() {
                         self.spawn_fetches(vec![Fetch::AccountStatus(account)]);
                     }
+                }
+                if self.requests_retry_at.is_some_and(|at| now >= at) {
+                    self.requests_retry_at = None;
+                    self.request_reads(vec![Fetch::ContactRequests]);
                 }
                 let polls = self.polls();
                 if polls
@@ -503,6 +514,7 @@ impl Task {
     }
 
     pub(super) fn lost(&mut self) {
+        self.requests_retry_at = None;
         if self.link != Link::Lost {
             self.emit(vec![DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)]);
         }
@@ -517,6 +529,7 @@ impl Task {
     }
 
     pub(super) fn locked(&mut self) {
+        self.requests_retry_at = None;
         self.link = Link::Locked;
         self.net_due = None;
         self.net_wait = Duration::ZERO;
@@ -758,6 +771,11 @@ impl Task {
             {
                 let failed = self.translator.requests_read_failed(error);
                 self.emit(failed);
+                if self.scope.account().is_some() && !self.polls() {
+                    self.requests_retry_at = Some(Instant::now() + self.config.poll_fast);
+                }
+            } else if !calls {
+                self.requests_retry_at = None;
             }
             match (live, calls) {
                 (Some(live), true) => self.calls_answered(live),

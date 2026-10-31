@@ -212,7 +212,8 @@ impl Translator {
 
     /// A `contact.requests.list` read the daemon refused for another reason
     /// than not having requests (a locked account, an outage, a row it
-    /// could not read): said so, and the next poll tries again.
+    /// could not read): said so, and the bridge retries the read even when
+    /// a live event stream has disabled regular polling.
     pub fn requests_read_failed(&self, error: &BusError) -> Vec<DomainEvent> {
         let reason = error.message();
         vec![DomainEvent::ContactRequestsReadFailed(keyed(

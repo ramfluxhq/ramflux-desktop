@@ -22,7 +22,6 @@ use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{RequestPolicy, SyncMode};
 use ramflux_desktop_test::fake_contact_requests::FakeContactRequests;
 use ramflux_desktop_ui::i18n::{self, tr, tr_args};
-use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::docks::contacts::add_form::FormNote;
 use sdk_fake::wait;
 use serde_json::json;
@@ -49,7 +48,7 @@ fn open_requests(cx: &mut TestAppContext, name: &str, available: bool) -> World 
         }
     }));
     let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 1_100.);
-    wait(cx, "workspace", |cx| page(cx, &shell) == Page::Workspace);
+    wait_for_workspace(cx, &shell);
     wait(cx, "the stream", |cx| {
         with_store(cx, &shell, |s| s.sync_status().is_some_and(|x| x.mode == SyncMode::Stream))
     });

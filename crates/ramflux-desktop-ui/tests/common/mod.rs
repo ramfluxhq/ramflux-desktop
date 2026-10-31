@@ -217,6 +217,29 @@ pub fn page(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Page {
     cx.update(|cx| shell.read(cx).page())
 }
 
+/// Waits for the workspace's initial context selection before a test opens
+/// an unpinned dock. The account can open the workspace before its context
+/// listings arrive; selecting the first context closes a summoned dock.
+pub fn wait_for_workspace(cx: &mut TestAppContext, shell: &Entity<Shell>) {
+    let limit = std::time::Instant::now() + WAIT_LIMIT;
+    while !workspace_ready(cx, shell) {
+        assert!(std::time::Instant::now() < limit, "timed out waiting for: workspace ready");
+        std::thread::sleep(Duration::from_millis(10));
+        advance(cx, 50);
+    }
+}
+
+fn workspace_ready(cx: &mut TestAppContext, shell: &Entity<Shell>) -> bool {
+    cx.update(|cx| {
+        let shell = shell.read(cx);
+        let store = shell.store().read(cx).store();
+        shell.page() == Page::Workspace
+            && store.is_listed(ramflux_desktop_core::Listing::Contexts)
+            && (store.contexts().next().is_none()
+                || shell.workspace().read(cx).current_context().is_some())
+    })
+}
+
 /// Reads the active store.
 pub fn with_store<R>(
     cx: &mut TestAppContext,

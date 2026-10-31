@@ -393,6 +393,41 @@ fn a_transient_list_failure_is_not_a_missing_feature() {
 }
 
 #[test]
+fn a_request_read_that_races_recovery_is_retried_without_another_event() {
+    let world = World::start("recovery-race", true);
+    world.requests.fail_list(Some(("Unavailable", "list temporarily unavailable")));
+    let mut account = live(&world);
+    account.until("the initial failed read", |s, _| s.contact_requests_read_error().is_some());
+    // Force the event's read to finish before recovery. Previously this
+    // ordering consumed the only invalidation, leaving the read failed
+    // forever: a live event stream disables the regular polling fallback.
+    let failures = |events: &[ramflux_desktop_core::EventEnvelope]| {
+        events
+            .iter()
+            .filter(|e| {
+                matches!(e.event, ramflux_desktop_core::DomainEvent::ContactRequestsReadFailed(_))
+            })
+            .count()
+    };
+    let before = failures(&account.envelopes);
+    let id = world.requests.incoming(ACCOUNT, "principal-race", Some("recover this list"));
+    account.until("the event's read also failed", |_, events| failures(events) > before);
+    world.requests.fail_list(None);
+    let head = world.fake.head(ACCOUNT);
+    account.until("the list recovered without a second event", |s, _| {
+        pending(s) == ["principal-race"] && s.contact_requests_read_error().is_none()
+    });
+    assert_eq!(world.fake.head(ACCOUNT), head, "recovery published no invalidation");
+    assert_eq!(account.store.sync_status().map(|s| s.mode), Some(SyncMode::Stream));
+    assert_eq!(world.requests.row(&id).expect("request")["state"], "pending");
+    account.settle(200);
+    let reads = world.requests("contact.requests.list").len();
+    account.settle(400);
+    assert_eq!(world.requests("contact.requests.list").len(), reads, "retry stops on success");
+    world.stop();
+}
+
+#[test]
 fn the_request_setting_is_read_and_set() {
     let world = World::start("policy", true);
     let mut account = live(&world);
