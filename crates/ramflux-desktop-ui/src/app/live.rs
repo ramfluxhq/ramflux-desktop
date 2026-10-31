@@ -70,6 +70,13 @@ impl StoreHandle {
         let Some(link) = self.live.as_mut() else { return };
         let applied = link.daemon.advance(ms);
         let status = link.daemon.store().source_status();
+        // The ceremony of an AI participant, the accounts the daemon lists
+        // and the credential exports are the daemon session's, also while
+        // an account is open (its settings show them).
+        let daemon_part = applied.changes.daemon_part();
+        if let (Some(part), Some(_)) = (daemon_part, self.active.as_ref()) {
+            cx.emit(StoreEvent::Changed(std::rc::Rc::new(part)));
+        }
         if self.active.is_none() {
             self.publish(applied, cx);
         } else if self.daemon_status.is_some_and(|seen| seen != status) {
@@ -186,11 +193,16 @@ impl StoreHandle {
 }
 
 /// Whether `kind` belongs to the creation or recovery ceremony of the entry
-/// page.
+/// page, or to an AI participant's creation and credential export (which
+/// are decided against the daemon's accounts and run on the daemon scope,
+/// on connections of their own).
 fn is_ceremony(kind: &IntentKind) -> bool {
     matches!(
         kind,
-        IntentKind::BeginCeremony { .. }
+        IntentKind::BeginAgentCeremony { .. }
+            | IntentKind::ConfirmAgentCeremony { .. }
+            | IntentKind::ExportAgentCredentials { .. }
+            | IntentKind::BeginCeremony { .. }
             | IntentKind::ShowRecoveryPhrase
             | IntentKind::HideRecoveryPhrase
             | IntentKind::ConfirmCeremony { .. }

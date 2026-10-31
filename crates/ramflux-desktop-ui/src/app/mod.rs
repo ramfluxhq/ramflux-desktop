@@ -90,6 +90,7 @@ pub struct StoreHandle {
     /// The daemon session's connection as last announced (a status change
     /// of the daemon is announced even while an account session is shown).
     daemon_status: Option<ramflux_desktop_core::SourceStatus>,
+    agent_ceremony: bool,
     call_audio: Option<Rc<dyn CallAudio>>,
     call: Option<call_audio::CallLink>,
     ringer: Option<Box<dyn std::any::Any>>,
@@ -116,6 +117,7 @@ impl StoreHandle {
             wall_clock: false,
             live: None,
             daemon_status: None,
+            agent_ceremony: false,
             call_audio: None,
             call: None,
             ringer: None,
@@ -474,6 +476,26 @@ impl StoreHandle {
     /// Runs policy for `intent` against the active store and submits the
     /// resulting effects to the active source.
     pub fn dispatch(&mut self, intent: Intent, cx: &mut Context<Self>) -> DispatchOutcome {
+        let begins = match &intent.kind {
+            ramflux_desktop_core::IntentKind::BeginAgentCeremony { .. } => Some(true),
+            ramflux_desktop_core::IntentKind::BeginCeremony { .. } => Some(false),
+            _ => None,
+        };
+        let outcome = self.dispatch_decided(intent, cx);
+        if let (Some(agent), DispatchOutcome::Submitted(_)) = (begins, &outcome) {
+            self.agent_ceremony = agent;
+        }
+        outcome
+    }
+
+    /// Whether the creation ceremony last begun is an AI participant's
+    /// (else a person's account's): the entry page's panel and the AI
+    /// participants section each take the recovery phrase of their own.
+    pub fn agent_ceremony(&self) -> bool {
+        self.agent_ceremony
+    }
+
+    fn dispatch_decided(&mut self, intent: Intent, cx: &mut Context<Self>) -> DispatchOutcome {
         if self.live.is_some() {
             return self.dispatch_live(intent, cx);
         }

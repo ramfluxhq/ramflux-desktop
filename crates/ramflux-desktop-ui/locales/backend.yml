@@ -134,6 +134,44 @@ backend:
     encrypted_at_rest:
       en: "This message is stored encrypted; its text is shown only when it is received or sent here."
       zh-CN: "此消息以密文存储，仅在本机收发时显示正文。"
+  agent:
+    export:
+      no_location:
+        en: "The credentials were not exported: choose a full path for the file."
+        zh-CN: "凭据未导出：请为文件指定完整路径。"
+      not_owner_session:
+        en: "The credentials were not exported: the daemon does not accept this from this session."
+        zh-CN: "凭据未导出：守护进程不接受来自此会话的请求。"
+      owner_locked:
+        en: "The credentials were not exported: your account is locked."
+        zh-CN: "凭据未导出：你的账户已锁定。"
+      not_custodian:
+        en: "The credentials were not exported: your account is not the custodian of this AI participant."
+        zh-CN: "凭据未导出：你的账户不是此 AI 参与者的托管人。"
+      not_connected:
+        en: "The credentials were not exported: an account is not connected to its node yet."
+        zh-CN: "凭据未导出：有账户尚未连接到它的节点。"
+      file_exists:
+        en: "The credentials were not exported: a file already exists at that location."
+        zh-CN: "凭据未导出：该位置已有文件。"
+      location_denied:
+        en: "The credentials were not exported: the location cannot be written."
+        zh-CN: "凭据未导出：无法写入该位置。"
+      location_missing:
+        en: "The credentials were not exported: the folder does not exist."
+        zh-CN: "凭据未导出：该文件夹不存在。"
+      credentials_gone:
+        en: "The credentials were not exported: they were exported already, or the vault no longer holds them."
+        zh-CN: "凭据未导出：它们已经导出过，或保管库中已没有它们。"
+      timeout:
+        en: "The daemon did not answer in time. Check the location before you export again."
+        zh-CN: "守护进程未在规定时间内响应。再次导出前请先检查该位置。"
+      transport:
+        en: "The connection to the daemon broke. Check the location before you export again."
+        zh-CN: "与守护进程的连接中断。再次导出前请先检查该位置。"
+      other:
+        en: "The daemon refused to export the credentials."
+        zh-CN: "守护进程拒绝导出凭据。"
   failure:
     ceremony:
       en: "There is no setup or recovery under way to do this. Nothing was changed."

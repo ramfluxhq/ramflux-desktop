@@ -1430,3 +1430,79 @@ banner says why.
 counts the buffer only if all were zero (`bridge::custody::erase_and_check`,
 with a test that the check can fail). Typed secrets move into their buffers
 (`SecretInput::into_zeroizing`), so there is no second copy.
+
+## AI participants an owner custodies (DESK-AGENT-01, on AGENT-V3-01)
+
+An AI participant is a headless AI account created and custodied by a
+person's account of the same daemon. The desktop offers its creation and the
+export of its one-shot credentials in Settings, "AI participants"; it never
+unlocks such an account (the agent host does, from the exported bundle) and
+says so in the section, on the entry page and in each row. No new bus method
+or protocol is involved: both flows use the methods the product pinned at
+`18a97d1e` already has.
+
+**Creation** (`IntentKind::BeginAgentCeremony { label, custodian_id }`,
+`ConfirmAgentCeremony { words }`). Human only, and only when the daemon
+offers born-v3 creation. Policy ([`check_agent_custodian`]) refuses a
+custodian that is not listed, locked, not a person's account, or not
+connected, each with its own `AgentCustodyProblem`, so the screen says why
+before anything is sent. The begin is
+`account.create.begin {display_name, principal_kind: "headless_ai",
+custodian_account}` on a connection of its own, sent as the custodian's
+session (`account_id` = custodian). The steps after it are the account
+ceremony's own (`show_once`, `hidden_challenge`, `cancel`), with the same
+screens and safeguards: the phrase is shown once to the owner, covered when
+the window loses focus, erased on hide, and never stored. Two things differ:
+no node is asked for, and the confirmation is
+`account.create.confirm {words}` with the three words only: the daemon makes
+the AI's data passphrase and the owner never types or sees one. The product
+client reports every refusal of a custodian's begin (not the owner's session,
+locked, pending or non-person custodian, another daemon) as
+`CustodySetupInvalid`; the bridge ends such a ceremony with
+`CeremonyFailure::CustodianRefused` and the screen gives its own text. The
+account that results is listed `kind: headless_ai` and the custody link
+(`DomainEvent::CustodianKnown`) is remembered per daemon socket in the
+desktop settings file (two account ids, nothing else), because the account
+list of this product revision does not name a custodian; a daemon that does
+(`custodian_account_id`) is believed. The daemon opens the new account
+unlocked; the desktop still never operates it.
+
+**Export** (`IntentKind::ExportAgentCredentials { owner_id, account_id, path }`).
+Policy ([`check_agent_export`]) needs an absolute path, the owner an unlocked,
+connected person's account, and the account an AI participant that is
+connected and, where the link is known, custodied by the owner. The request
+is `account.export_agent_credentials {account, path}` (exactly those two
+fields) for the owner's account on a short-lived connection that first
+opens `subscription.open {topics: [], attended_frontend: true}` for it, as
+the reference CLI does (the daemon takes the request from the owner's
+attended session only). It carries no retry key: the export is one-shot and
+a second attempt must reach the daemon. The daemon writes the bundle with
+mode 0600, never replaces a file, and no longer holds the credentials
+afterwards; the bundle holds the data passphrase and the account id, no
+phrase and no master key, and never passes through the desktop. The store
+keeps only the outcome (`AgentExport`: account, the location the owner
+chose, `Exported` or `Refused(AgentExportRefusal)`), and the failed
+effect's message is the refusal's locale key, never the daemon's English:
+
+| Refusal | Cause |
+| --- | --- |
+| `NoLocation` | no absolute path chosen (checked before sending) |
+| `NotOwnerSession` | the daemon does not take it from this session (not attended, owner locked at the daemon, another daemon) |
+| `OwnerLocked` | the owner's account is locked (checked before sending) |
+| `NotCustodian` | not an AI participant, or custodied by another account (`CustodySetupInvalid`) |
+| `NotConnected` | the owner or the AI participant is not connected (`NetworkingPending`) |
+| `FileExists` | a file is at the location (`File exists`) |
+| `LocationDenied` / `LocationMissing` | the location cannot be written / its folder does not exist |
+| `CredentialsGone` | already exported once, or not in the vault (`CustodyVaultUnavailable`) |
+| `Timeout` / `Transport` | no answer: the file may have been written, check before retrying |
+| `Other` | a refusal without its own wording |
+
+The deadline of both methods is the network budget
+(`bus/deadline.rs`): the first waits for the custodian's check and the node,
+the second for a vault that may ask the person.
+
+**Routing.** Both intents run on the daemon scope (decided against the
+daemon's own accounts), also while an account is open, so the daemon
+session publishes its ceremony, account and export changes to the open
+window. The creation panel takes the recovery phrase only for the kind of
+ceremony it belongs to (`StoreHandle::agent_ceremony`).

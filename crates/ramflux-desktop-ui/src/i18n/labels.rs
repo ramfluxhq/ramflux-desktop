@@ -5,9 +5,9 @@
 
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
-    AccountKind, Direction, GovernanceAction, GrantState, Lifecycle, MomentKind, NodeHealth,
-    PeerKind, PinSource, Receipt, Risk, Role, SafetyState, SourceStatus, StepState, SystemLevel,
-    TaskState, TransferState,
+    AccountKind, AgentCustodyProblem, AgentExportRefusal, Direction, GovernanceAction, GrantState,
+    Lifecycle, MomentKind, NodeHealth, PeerKind, PinSource, Receipt, Risk, Role, SafetyState,
+    SourceStatus, StepState, SystemLevel, TaskState, TransferState,
 };
 
 use super::tr;
@@ -151,6 +151,35 @@ pub fn account_kind(kind: AccountKind) -> SharedString {
     tr(match kind {
         AccountKind::HumanInteractive => "account.kind.human",
         AccountKind::HeadlessAi => "account.kind.headless",
+    })
+}
+
+/// Why an account cannot custody an AI participant (`None`: the daemon lists
+/// no account to ask for).
+pub fn agent_custody_problem(problem: Option<AgentCustodyProblem>) -> SharedString {
+    tr(match problem {
+        None | Some(AgentCustodyProblem::Unknown) => "agent.custody.unknown",
+        Some(AgentCustodyProblem::Locked) => "agent.custody.locked",
+        Some(AgentCustodyProblem::NotPerson) => "agent.custody.not_person",
+        Some(AgentCustodyProblem::NotConnected) => "agent.custody.not_connected",
+    })
+}
+
+/// Why the credentials of an AI participant were not exported.
+pub fn agent_export_refusal(refusal: AgentExportRefusal) -> SharedString {
+    tr(match refusal {
+        AgentExportRefusal::NoLocation => "agent.export.refused.no_location",
+        AgentExportRefusal::NotOwnerSession => "agent.export.refused.not_owner_session",
+        AgentExportRefusal::OwnerLocked => "agent.export.refused.owner_locked",
+        AgentExportRefusal::NotCustodian => "agent.export.refused.not_custodian",
+        AgentExportRefusal::NotConnected => "agent.export.refused.not_connected",
+        AgentExportRefusal::FileExists => "agent.export.refused.file_exists",
+        AgentExportRefusal::LocationDenied => "agent.export.refused.location_denied",
+        AgentExportRefusal::LocationMissing => "agent.export.refused.location_missing",
+        AgentExportRefusal::CredentialsGone => "agent.export.refused.credentials_gone",
+        AgentExportRefusal::Timeout => "agent.export.refused.timeout",
+        AgentExportRefusal::Transport => "agent.export.refused.transport",
+        AgentExportRefusal::Other => "agent.export.refused.other",
     })
 }
 

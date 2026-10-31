@@ -43,8 +43,12 @@ fn text(input: &Entity<InputState>, cx: &App) -> String {
 }
 
 impl EntryPage {
+    /// The locked account the passphrase unlocks: a person's. An AI
+    /// participant is started by the agent host, never unlocked here.
     fn locked_account(store: &Store) -> Option<&Account> {
-        store.accounts().find(|a| a.lock_state == LockState::Locked)
+        store
+            .accounts()
+            .find(|a| a.lock_state == LockState::Locked && a.kind != AccountKind::HeadlessAi)
     }
 
     /// The node new accounts bind to: the chosen one, else the default,
@@ -264,6 +268,7 @@ impl EntryPage {
 
     fn render_unlock(&self, accounts: &[Account], cx: &mut Context<Self>) -> impl IntoElement {
         let unlocking = self.submitted.is_some();
+        let nothing_to_unlock = Self::locked_account(self.store.read(cx).store()).is_none();
         let muted = cx.theme().muted_foreground;
         // A person's locked account of a daemon that offers the phrase:
         // "Recover with recovery phrase…" is the user's own request.
@@ -293,7 +298,17 @@ impl EntryPage {
                         .flex_1()
                         .min_w_0()
                         .child(div().text_sm().font_semibold().child(account.label.clone()))
-                        .child(div().text_xs().text_color(muted).child(detail)),
+                        .child(div().text_xs().text_color(muted).child(detail))
+                        .children((account.kind == AccountKind::HeadlessAi).then(|| {
+                            div()
+                                .id(domain_id("account-agent", &account.id))
+                                .role(gpui_kit::Role::Status)
+                                .aria_label(tr("agent.entry.not_unlocked"))
+                                .test_support()
+                                .text_xs()
+                                .text_color(muted)
+                                .child(tr("agent.entry.not_unlocked"))
+                        })),
                 )
                 .child(
                     h_flex()
@@ -350,7 +365,7 @@ impl EntryPage {
                             "entry.account.unlock"
                         }))
                         .loading(unlocking)
-                        .disabled(unlocking)
+                        .disabled(unlocking || nothing_to_unlock)
                         .on_click(cx.listener(|this, _, window, cx| this.unlock(window, cx))),
                 ),
             )

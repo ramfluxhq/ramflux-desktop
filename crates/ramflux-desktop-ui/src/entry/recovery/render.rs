@@ -41,7 +41,8 @@ fn failure_key(failure: CeremonyFailure) -> &'static str {
         CeremonyFailure::ConfirmationFailed => "recovery.ended.mismatch",
         CeremonyFailure::VaultUnavailable => "recovery.ended.vault",
         CeremonyFailure::Expired => "recovery.ended.expired",
-        CeremonyFailure::Invalid => "recovery.ended.invalid",
+        // A recovery never has a custodian: a ceremony of another kind.
+        CeremonyFailure::Invalid | CeremonyFailure::CustodianRefused => "recovery.ended.invalid",
     }
 }
 
