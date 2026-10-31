@@ -217,16 +217,23 @@ pub fn page(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Page {
     cx.update(|cx| shell.read(cx).page())
 }
 
-/// Waits for the workspace's initial context selection before a test opens
-/// an unpinned dock. The account can open the workspace before its context
-/// listings arrive; selecting the first context closes a summoned dock.
-pub fn wait_for_workspace(cx: &mut TestAppContext, shell: &Entity<Shell>) {
+/// Lets real worker threads answer while the GPUI test clock advances.
+pub fn wait(
+    cx: &mut TestAppContext,
+    what: &str,
+    mut done: impl FnMut(&mut TestAppContext) -> bool,
+) {
     let limit = std::time::Instant::now() + WAIT_LIMIT;
-    while !workspace_ready(cx, shell) {
-        assert!(std::time::Instant::now() < limit, "timed out waiting for: workspace ready");
+    while !done(cx) {
+        assert!(std::time::Instant::now() < limit, "timed out waiting for: {what}");
         std::thread::sleep(Duration::from_millis(10));
         advance(cx, 50);
     }
+}
+
+/// Waits for completed context listings and the workspace's initial selection.
+pub fn wait_for_workspace(cx: &mut TestAppContext, shell: &Entity<Shell>) {
+    wait(cx, "workspace ready", |cx| workspace_ready(cx, shell));
 }
 
 fn workspace_ready(cx: &mut TestAppContext, shell: &Entity<Shell>) -> bool {

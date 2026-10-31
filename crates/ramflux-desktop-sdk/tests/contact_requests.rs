@@ -420,10 +420,12 @@ fn a_request_read_that_races_recovery_is_retried_without_another_event() {
     assert_eq!(world.fake.head(ACCOUNT), head, "recovery published no invalidation");
     assert_eq!(account.store.sync_status().map(|s| s.mode), Some(SyncMode::Stream));
     assert_eq!(world.requests.row(&id).expect("request")["state"], "pending");
-    account.settle(200);
-    let reads = world.requests("contact.requests.list").len();
+    let recovered_failures = failures(&account.envelopes);
     account.settle(400);
-    assert_eq!(world.requests("contact.requests.list").len(), reads, "retry stops on success");
+    assert_eq!(failures(&account.envelopes), recovered_failures, "recovery stays successful");
+    assert!(account.store.contact_requests_read_error().is_none());
+    // A stream resync may legitimately reload this list. Cancellation of
+    // retry-originated reads is checked directly by requests_retry_tests.
     world.stop();
 }
 

@@ -47,8 +47,8 @@ pub const POLL: Duration = Duration::from_millis(250);
 /// How long quitting waits for the daemon to accept a graceful stop.
 const QUIT_ANSWER_WAIT: Duration = Duration::from_secs(2);
 
-fn supervision_level(settings: &LaunchStore) -> &'static str {
-    if settings.path().is_some() { "WARN" } else { "INFO" }
+fn supervision_level(scenario_process: bool) -> &'static str {
+    if scenario_process { "INFO" } else { "WARN" }
 }
 
 /// What the launcher has done.
@@ -102,6 +102,7 @@ pub struct DaemonLauncher {
     store: Entity<StoreHandle>,
     settings_store: LaunchStore,
     settings: LaunchSettings,
+    scenario_process: bool,
     bundled: Option<PathBuf>,
     log_dir: Option<PathBuf>,
     process: Option<DaemonProcess>,
@@ -127,12 +128,14 @@ pub struct LaunchOptions {
     pub log_dir: Option<PathBuf>,
     /// The record of a started daemon (to find one left behind by a crash).
     pub owned: OwnedDaemonFile,
+    /// Supervision uses informational diagnostics for a scenario's stand-in process.
+    pub scenario_process: bool,
 }
 
 impl LaunchOptions {
     /// Nothing persisted, nothing bundled, no log (tests, screenshots).
     pub fn in_memory() -> Self {
-        Self::default()
+        Self { scenario_process: true, ..Self::default() }
     }
 
     /// The application's: the platform settings file, a daemon bundled next
@@ -143,6 +146,7 @@ impl LaunchOptions {
             bundled: paths::bundled_daemon(),
             log_dir: paths::log_dir(),
             owned: OwnedDaemonFile::default_location(),
+            scenario_process: false,
         }
     }
 }
@@ -159,6 +163,7 @@ impl DaemonLauncher {
         Self {
             store,
             settings: options.store.load(),
+            scenario_process: options.scenario_process,
             settings_store: options.store,
             bundled: options.bundled,
             log_dir: options.log_dir,
@@ -384,7 +389,7 @@ impl DaemonLauncher {
                 None => {
                     let status = code.map_or_else(|| "signal".to_owned(), |c| c.to_string());
                     app_log::write(
-                        supervision_level(&self.settings_store),
+                        supervision_level(self.scenario_process),
                         &format!("local daemon exited pid={pid} status {status}"),
                     );
                     LaunchState::Failed(LaunchFailure::Exited(code))
@@ -397,14 +402,14 @@ impl DaemonLauncher {
                 StopStep::Wait => {}
                 StopStep::Terminate => {
                     let why = sequence.refused().unwrap_or("no exit in time").to_owned();
-                    // In-memory launchers exercise fallback with stand-in
+                    // Scenario launchers exercise fallback with stand-in
                     // processes; retain the diagnostic without a warning.
-                    let level = supervision_level(&self.settings_store);
+                    let level = supervision_level(self.scenario_process);
                     app_log::write(level, &format!("local daemon terminated pid={pid}: {why}"));
                     process.terminate();
                 }
                 StopStep::Kill => {
-                    let level = supervision_level(&self.settings_store);
+                    let level = supervision_level(self.scenario_process);
                     app_log::write(level, &format!("local daemon killed after no exit pid={pid}"));
                     process.kill();
                     self.process = None;
@@ -496,9 +501,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn in_memory_supervision_keeps_diagnostics_below_warning_level() {
-        assert_eq!(supervision_level(&LaunchOptions::in_memory().store), "INFO");
-        let persistent = LaunchStore::at(PathBuf::from(crate::shell::DESKTOP_SETTINGS_FILE));
-        assert_eq!(supervision_level(&persistent), "WARN");
+    fn scenario_supervision_is_explicit_and_independent_of_the_settings_path() {
+        let scenario = LaunchOptions {
+            store: LaunchStore::at(PathBuf::from(crate::shell::DESKTOP_SETTINGS_FILE)),
+            ..LaunchOptions::in_memory()
+        };
+        assert_eq!(supervision_level(scenario.scenario_process), "INFO");
+        let production =
+            LaunchOptions { store: LaunchStore::default(), ..LaunchOptions::application() };
+        assert!(production.store.path().is_none());
+        assert_eq!(supervision_level(production.scenario_process), "WARN");
+        assert_eq!(supervision_level(LaunchOptions::default().scenario_process), "WARN");
     }
 }

@@ -34,7 +34,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use gpui_kit::TestAppContext;
 use ramflux_desktop_sdk::SdkConfig;
 use ramflux_desktop_test::fake_bus::{FakeBus, Reply, socket_path};
 use ramflux_desktop_ui::shell::{ShellOptions, SourceChoice};
@@ -67,20 +66,7 @@ pub fn options(path: &std::path::Path) -> ShellOptions {
     }
 }
 
-/// Lets the bridge answer while the GPUI clock ticks, until `done` holds.
-/// The wall-clock limit only bounds a failure.
-pub fn wait(
-    cx: &mut TestAppContext,
-    what: &str,
-    mut done: impl FnMut(&mut TestAppContext) -> bool,
-) {
-    let limit = std::time::Instant::now() + Duration::from_secs(30);
-    while !done(cx) {
-        assert!(std::time::Instant::now() < limit, "timed out waiting for: {what}");
-        std::thread::sleep(Duration::from_millis(10));
-        crate::common::advance(cx, 50);
-    }
-}
+pub use crate::common::wait;
 
 /// What the fake account holds beyond the fixture.
 #[derive(Default)]

@@ -453,7 +453,8 @@ impl Workspace {
         self.dock_area.read(cx).dump(cx)
     }
 
-    /// Shows a context, or nothing. A summoned (unpinned) tool closes.
+    /// Shows a context, or nothing. Switching away from a selected context
+    /// closes a summoned (unpinned) tool; initial selection keeps it open.
     pub fn select_context(
         &mut self,
         id: Option<ContextId>,
@@ -461,6 +462,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         let changed = self.current != id;
+        let switching = changed && self.current.is_some();
         self.current = id.clone();
         self.new_conversation.update(cx, NewConversation::close);
         self.new_group.update(cx, NewGroup::close);
@@ -479,7 +481,7 @@ impl Workspace {
         self.stack.update(cx, |stack, cx| stack.set_current(id.clone(), cx));
         self.members.update(cx, |dock, cx| dock.set_context(id.clone(), cx));
         self.evidence.update(cx, |dock, cx| dock.set_context(id, cx));
-        if changed
+        if switching
             && let Some(open) = self.open_tool
             && self.prefs.pinned != Some(open)
         {

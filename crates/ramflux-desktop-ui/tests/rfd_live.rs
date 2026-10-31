@@ -136,6 +136,7 @@ fn a_daemon_started_from_the_app_is_stopped_gracefully(cx: &mut TestAppContext) 
         bundled: None,
         log_dir: Some(dir.0.join("logs")),
         owned: owned.clone(),
+        ..LaunchOptions::default()
     };
     let (handle, shell) = open_with(cx, options);
     let launcher = cx.update(|cx| shell.read(cx).launcher().clone());

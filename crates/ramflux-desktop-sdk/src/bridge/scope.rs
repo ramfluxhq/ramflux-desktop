@@ -124,8 +124,11 @@ pub(super) struct Task {
     pub(super) interval: Duration,
     pub(super) next_poll: Instant,
     /// A failed request-list read must recover even with a live stream:
-    /// recovery itself need not publish another invalidation.
+    /// recovery itself need not publish another invalidation. Kept while
+    /// polling, but only wakes the task when polling is off.
     requests_retry_at: Option<Instant>,
+    /// Doubled after failures up to poll_slow; reset when recovery ends.
+    requests_retry_wait: Duration,
     pub(super) reconnect_at: Instant,
     pub(super) alive: bool,
     /// Numbers listings' first pages in the order they are sent.
@@ -247,6 +250,7 @@ pub(super) fn build(
         poll_changed: false,
         next_poll: start,
         requests_retry_at: None,
+        requests_retry_wait: Duration::ZERO,
         reconnect_at: start,
         alive: true,
         listings_sent: Arc::new(AtomicU64::new(0)),
@@ -356,7 +360,7 @@ impl Task {
                 if let Some(due) = self.net_due {
                     wake = wake.min(due);
                 }
-                if let Some(due) = self.requests_retry_at {
+                if let Some(due) = self.requests_retry_at.filter(|_| !polls) {
                     wake = wake.min(due);
                 }
                 if let Some(due) = self.receipts.as_ref().and_then(Receipts::next_due) {
@@ -385,7 +389,7 @@ impl Task {
                         self.spawn_fetches(vec![Fetch::AccountStatus(account)]);
                     }
                 }
-                if self.requests_retry_at.is_some_and(|at| now >= at) {
+                if !self.polls() && self.requests_retry_at.is_some_and(|at| now >= at) {
                     self.requests_retry_at = None;
                     self.request_reads(vec![Fetch::ContactRequests]);
                 }
@@ -514,7 +518,7 @@ impl Task {
     }
 
     pub(super) fn lost(&mut self) {
-        self.requests_retry_at = None;
+        self.clear_requests_retry();
         if self.link != Link::Lost {
             self.emit(vec![DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)]);
         }
@@ -529,7 +533,7 @@ impl Task {
     }
 
     pub(super) fn locked(&mut self) {
-        self.requests_retry_at = None;
+        self.clear_requests_retry();
         self.link = Link::Locked;
         self.net_due = None;
         self.net_wait = Duration::ZERO;
@@ -771,11 +775,16 @@ impl Task {
             {
                 let failed = self.translator.requests_read_failed(error);
                 self.emit(failed);
-                if self.scope.account().is_some() && !self.polls() {
-                    self.requests_retry_at = Some(Instant::now() + self.config.poll_fast);
+                if self.scope.account().is_some() {
+                    self.requests_retry_wait = if self.requests_retry_wait.is_zero() {
+                        self.config.poll_fast
+                    } else {
+                        (self.requests_retry_wait * 2).min(self.config.poll_slow)
+                    };
+                    self.requests_retry_at = Some(Instant::now() + self.requests_retry_wait);
                 }
             } else if !calls {
-                self.requests_retry_at = None;
+                self.clear_requests_retry();
             }
             match (live, calls) {
                 (Some(live), true) => self.calls_answered(live),
@@ -869,6 +878,11 @@ impl Task {
         }
     }
 
+    fn clear_requests_retry(&mut self) {
+        self.requests_retry_at = None;
+        self.requests_retry_wait = Duration::ZERO;
+    }
+
     /// Reads a call's media session for the engine. Its secrets go
     /// straight to the source that asked: never to the translator, an
     /// event or a log.
@@ -918,3 +932,7 @@ impl Task {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "requests_retry_tests.rs"]
+mod requests_retry_tests;

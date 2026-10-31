@@ -48,17 +48,6 @@ fn options(path: &std::path::Path) -> ShellOptions {
     }
 }
 
-/// Lets the bridge thread answer while the GPUI test clock ticks, until
-/// `done` holds. The wall-clock limit only bounds a failure.
-fn wait(cx: &mut TestAppContext, what: &str, mut done: impl FnMut(&mut TestAppContext) -> bool) {
-    let limit = std::time::Instant::now() + common::WAIT_LIMIT;
-    while !done(cx) {
-        assert!(std::time::Instant::now() < limit, "timed out waiting for: {what}");
-        std::thread::sleep(Duration::from_millis(10));
-        advance(cx, 50);
-    }
-}
-
 #[gpui_kit::test]
 fn an_empty_daemon_shows_the_node_step_with_its_status(cx: &mut TestAppContext) {
     let path = socket_path("ui-empty");
@@ -194,8 +183,7 @@ fn the_contacts_dock_adds_and_answers_through_the_daemon(cx: &mut TestAppContext
     fake.shutdown();
 }
 
-#[gpui_kit::test]
-fn workspace_readiness_waits_for_context_selection_before_opening_a_dock(cx: &mut TestAppContext) {
+fn staged_workspace(cx: &mut TestAppContext) -> Opened {
     use ramflux_desktop_core::{DomainEvent, Timestamp};
     use ramflux_desktop_sdk::plan::fetch::Fetch;
     use ramflux_desktop_sdk::translate::{Scope, Translator};
@@ -229,10 +217,41 @@ fn workspace_readiness_waits_for_context_selection_before_opening_a_dock(cx: &mu
     advance(cx, 50);
     assert_eq!(page(cx, &shell), Page::Workspace);
     assert!(!with_store(cx, &shell, |s| s.is_listed(Listing::Contexts)));
+    (handle, shell)
+}
 
+#[gpui_kit::test]
+fn workspace_readiness_waits_for_context_selection_before_opening_a_dock(cx: &mut TestAppContext) {
+    let (handle, shell) = staged_workspace(cx);
     wait_for_workspace(cx, &shell);
     assert!(with_store(cx, &shell, |s| s.is_listed(Listing::Contexts)));
     click(cx, handle, "rail-contacts");
     advance(cx, 1_000);
     assert!(exists(cx, handle, "dock-content-contacts"), "initial selection cannot close it");
+}
+
+#[gpui_kit::test]
+fn initial_context_selection_keeps_a_summoned_contacts_dock_open(cx: &mut TestAppContext) {
+    let (handle, shell) = staged_workspace(cx);
+    // Deliberately use the old page-only readiness condition: a user can
+    // open Contacts before the delayed context listings arrive.
+    wait(cx, "workspace page", |cx| page(cx, &shell) == Page::Workspace);
+    let workspace = workspace(cx, &shell);
+    assert!(cx.update(|cx| workspace.read(cx).current_context().is_none()));
+    click(cx, handle, "rail-contacts");
+    assert!(exists(cx, handle, "dock-content-contacts"));
+    assert!(cx.update(|cx| workspace.read(cx).pinned_tool().is_none()));
+
+    advance(cx, 1_000);
+    assert!(with_store(cx, &shell, |s| s.is_listed(Listing::Contexts)));
+    let selected = cx.update(|cx| workspace.read(cx).current_context().cloned());
+    assert!(selected.is_some(), "the delayed listing selected the initial context");
+    assert!(exists(cx, handle, "dock-content-contacts"), "initial selection keeps the dock open");
+
+    let next = with_store(cx, &shell, |s| {
+        s.contexts().find(|c| Some(&c.id) != selected.as_ref()).map(|c| c.id.clone())
+    })
+    .expect("another context");
+    show_context(cx, handle, &shell, next.as_str());
+    assert!(!exists(cx, handle, "dock-content-contacts"), "a later context switch closes it");
 }

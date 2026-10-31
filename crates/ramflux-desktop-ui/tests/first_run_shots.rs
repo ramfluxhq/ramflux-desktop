@@ -82,6 +82,7 @@ mod shots {
                     owned: ramflux_desktop_sdk::local::OwnedDaemonFile::at(
                         dir.join("owned-daemon.json"),
                     ),
+                    ..LaunchOptions::in_memory()
                 },
                 ..ShellOptions::for_scenario("", true)
             };

@@ -78,6 +78,7 @@ impl Fixture {
                 bundled,
                 log_dir: Some(self.dir.join("logs")),
                 owned: self.owned(),
+                ..LaunchOptions::in_memory()
             },
             ..ShellOptions::for_scenario("", true)
         }
