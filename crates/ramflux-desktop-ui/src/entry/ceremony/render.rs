@@ -40,7 +40,7 @@ const CELL_MIN_REMS: f32 = 8.5;
 impl CeremonyPanel {
     /// The screen's heading. On the screens where focus lands on it (the
     /// reader hears what the screen is), it takes focus and draws the ring.
-    fn heading(&self, key: &str, window: &Window, cx: &App) -> AnyElement {
+    pub(super) fn heading(&self, key: &str, window: &Window, cx: &App) -> AnyElement {
         let text = tr(key);
         let focused = self.heading_focus.is_focused(window);
         ringed(
@@ -90,7 +90,7 @@ impl CeremonyPanel {
         .into_any_element()
     }
 
-    fn cancel_button(&self, key: &str, cx: &mut Context<Self>) -> Button {
+    pub(super) fn cancel_button(&self, key: &str, cx: &mut Context<Self>) -> Button {
         let waiting = self.pending == Some(Pending::Cancel);
         Button::new("ceremony-cancel")
             .outline()
@@ -116,7 +116,7 @@ impl CeremonyPanel {
 
     /// A request-sending button: busy while its own answer is awaited and
     /// off while any answer is.
-    fn sending(&self, button: Button, own: Pending) -> Button {
+    pub(super) fn sending(&self, button: Button, own: Pending) -> Button {
         button.loading(self.pending == Some(own)).disabled(self.pending.is_some())
     }
 
@@ -466,7 +466,11 @@ impl CeremonyPanel {
                     .child(
                         Button::new("ceremony-next")
                             .primary()
-                            .label(tr("ceremony.confirm.next"))
+                            .label(tr(if self.agent {
+                                "agent.create.submit"
+                            } else {
+                                "ceremony.confirm.next"
+                            }))
                             .disabled(!ready)
                             .on_click(cx.listener(|this, _, window, cx| this.next(window, cx))),
                     )
@@ -715,7 +719,7 @@ impl CeremonyPanel {
                         // The screens with nothing to type into or read in
                         // order: the heading says where the reader is; a
                         // failure says itself.
-                        (None, Screen::Ready | Screen::Done) => {
+                        (None, Screen::Ready | Screen::Creating | Screen::Done) => {
                             window.focus(&panel.heading_focus, cx);
                         }
                         (None, Screen::PhraseMissing | Screen::Ended) => {
@@ -743,6 +747,7 @@ fn failure_line(index: usize, key: &str, cx: &App) -> AnyElement {
 /// The message of a ceremony that ended without an account.
 fn failure_key(failure: CeremonyFailure) -> &'static str {
     match failure {
+        CeremonyFailure::CustodianRefused => "agent.ended.custodian_refused",
         CeremonyFailure::Disabled => "ceremony.ended.disabled",
         CeremonyFailure::ConfirmationFailed => "ceremony.ended.mismatch",
         CeremonyFailure::VaultUnavailable => "ceremony.ended.vault",
@@ -760,6 +765,7 @@ impl Render for CeremonyPanel {
             Some(_) if self.expired => {
                 (Screen::Ended, self.ended_screen("ceremony.ended.expired", window, cx))
             }
+            None if self.agent => (Screen::Name, self.agent_name_screen(window, cx)),
             None => (Screen::Name, self.name_screen(window, cx)),
             Some(ceremony) => match ceremony.phase.clone() {
                 CeremonyPhase::Prepared => {
@@ -775,11 +781,19 @@ impl Render for CeremonyPanel {
                     };
                     (screen, self.phrase_screen(&ceremony, window, cx))
                 }
+                CeremonyPhase::Challenged { .. }
+                    if self.agent && self.pending == Some(Pending::Confirm) =>
+                {
+                    (Screen::Creating, self.creating_screen(window, cx))
+                }
                 CeremonyPhase::Challenged { positions } if self.typed.is_none() => {
                     (Screen::Words, self.words_screen(&ceremony, positions, window, cx))
                 }
                 CeremonyPhase::Challenged { .. } => {
                     (Screen::Passphrase, self.passphrase_screen(&ceremony, window, cx))
+                }
+                CeremonyPhase::Created(account) if self.agent => {
+                    (Screen::Done, self.agent_done_screen(&account, window, cx))
                 }
                 CeremonyPhase::Created(account) => {
                     (Screen::Done, self.done_screen(&account, window, cx))

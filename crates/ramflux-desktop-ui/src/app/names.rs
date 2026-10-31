@@ -151,6 +151,9 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::ShowRecoveryPhrase => "ShowRecoveryPhrase",
         IntentKind::HideRecoveryPhrase => "HideRecoveryPhrase",
         IntentKind::ConfirmCeremony { .. } => "ConfirmCeremony",
+        IntentKind::BeginAgentCeremony { .. } => "BeginAgentCeremony",
+        IntentKind::ConfirmAgentCeremony { .. } => "ConfirmAgentCeremony",
+        IntentKind::ExportAgentCredentials { .. } => "ExportAgentCredentials",
         IntentKind::CancelCeremony => "CancelCeremony",
         IntentKind::BeginRecovery { .. } => "BeginRecovery",
         IntentKind::ConfirmRecovery { .. } => "ConfirmRecovery",
@@ -228,6 +231,8 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
         DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",
         DomainEvent::RecoveryUpdated(_) => "RecoveryUpdated",
+        DomainEvent::CustodianKnown { .. } => "CustodianKnown",
+        DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
     }
 }
 

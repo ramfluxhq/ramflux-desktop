@@ -10,6 +10,9 @@ settings:
     backup:
       en: "Backup"
       zh-CN: "备份"
+    agents:
+      en: "AI participants"
+      zh-CN: "AI 参与者"
     devices:
       en: "Devices"
       zh-CN: "设备"

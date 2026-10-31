@@ -12,6 +12,8 @@
 //!   passphrase).
 //! - [`backup`]: full backup and full restore, with progress, the review
 //!   of a checked backup, and the final counts.
+//! - [`agents`]: AI participants the open account custodies: creating one,
+//!   listing them, and exporting their one-shot credentials.
 //! - [`devices`]: devices, revocation (hold), own-device sync.
 //! - [`nodes`]: node profiles, probe results, default, enable, remove.
 //! - [`integrations`]: MCP servers and pending A2I events (read-only).
@@ -23,6 +25,7 @@
 //! - [`appearance`]: theme and language (local preference).
 
 pub mod account;
+pub mod agents;
 pub mod appearance;
 pub mod backup;
 pub mod devices;
@@ -60,6 +63,8 @@ pub enum SettingsSection {
     Account,
     /// Full backup and restore.
     Backup,
+    /// AI participants the open account custodies.
+    Agents,
     /// Devices.
     Devices,
     /// Nodes.
@@ -74,9 +79,10 @@ pub enum SettingsSection {
 
 impl SettingsSection {
     /// Every section in sidebar order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Account,
         Self::Backup,
+        Self::Agents,
         Self::Devices,
         Self::Nodes,
         Self::Integrations,
@@ -89,6 +95,7 @@ impl SettingsSection {
         match self {
             Self::Account => "account",
             Self::Backup => "backup",
+            Self::Agents => "agents",
             Self::Devices => "devices",
             Self::Nodes => "nodes",
             Self::Integrations => "integrations",
@@ -127,6 +134,7 @@ pub struct SettingsPage {
     context: SectionContext,
     inputs: account::AccountInputs,
     backup: Entity<backup::BackupPanel>,
+    agents: Entity<agents::AgentsPanel>,
     launch_inputs: local_setup::LaunchInputs,
     section: SettingsSection,
     opened: usize,
@@ -177,11 +185,14 @@ impl SettingsPage {
         }));
         let backup = cx.new(|cx| backup::BackupPanel::new(store.clone(), root.clone(), window, cx));
         subscriptions.push(cx.observe(&backup, |_, _, cx| cx.notify()));
+        let agents = cx.new(|cx| agents::AgentsPanel::new(store.clone(), root.clone(), window, cx));
+        subscriptions.push(cx.observe(&agents, |_, _, cx| cx.notify()));
         let sink = IntentRoot::sink(&root).scoped(Scope::Panel("settings".into()));
         Self {
             context: SectionContext { store, sink, root, launcher },
             inputs,
             backup,
+            agents,
             launch_inputs,
             section: SettingsSection::Account,
             opened: 0,
@@ -222,6 +233,11 @@ impl SettingsPage {
         &self.backup
     }
 
+    /// The AI participants section's panel.
+    pub fn agents_panel(&self) -> &Entity<agents::AgentsPanel> {
+        &self.agents
+    }
+
     /// The masked backup passphrase input.
     pub fn backup_input(&self) -> &Entity<InputState> {
         &self.inputs.backup
@@ -234,6 +250,7 @@ impl Render for SettingsPage {
         let pages = [
             account::page(context, &self.inputs, cx),
             backup::page(&self.backup, cx),
+            agents::page(&self.agents),
             devices::page(context, cx),
             nodes::page(context, cx),
             integrations::page(context, cx),

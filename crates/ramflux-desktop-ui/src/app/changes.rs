@@ -32,6 +32,25 @@ impl ChangeSet {
         self.clock_moved = true;
     }
 
+    /// What an account session's window needs of the daemon session's
+    /// changes: the creation ceremony, the accounts it lists (an AI
+    /// participant appears there) and the credential exports. `None` when
+    /// none of them changed.
+    pub fn daemon_part(&self) -> Option<Self> {
+        let changes = Changes {
+            ceremony: self.changes.ceremony,
+            accounts: self.changes.accounts.clone(),
+            agent_exports: self.changes.agent_exports.clone(),
+            ..Changes::default()
+        };
+        if changes.is_empty() {
+            return None;
+        }
+        let mut part = Self::default();
+        part.merge(changes);
+        Some(part)
+    }
+
     /// Whether every area must refresh.
     pub fn is_reset(&self) -> bool {
         self.reset
@@ -123,6 +142,7 @@ impl ChangeSet {
         self.reset
             || !self.changes.accounts.is_empty()
             || !self.changes.backup_jobs.is_empty()
+            || !self.changes.agent_exports.is_empty()
             || !self.changes.nodes.is_empty()
             || !self.changes.devices.is_empty()
             || self.changes.integrations
