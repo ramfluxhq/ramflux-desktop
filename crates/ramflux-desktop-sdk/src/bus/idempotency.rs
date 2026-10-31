@@ -23,7 +23,12 @@
 /// Methods that are planned as effects but do not change daemon state.
 /// `object.get` answers with the object's bytes, which must never be kept
 /// in a receipt; `contact.card.export` only reads this account's card.
-const NOT_MUTATIONS: [&str; 3] = ["node.probe", "object.get", "contact.card.export"];
+/// `account.export_agent_credentials` is one-shot and never resent: the
+/// daemon takes it on an attended connection only, and a second attempt
+/// must reach the daemon to be refused (the file exists, the credentials
+/// are gone), not be answered from a receipt.
+const NOT_MUTATIONS: [&str; 4] =
+    ["node.probe", "object.get", "contact.card.export", "account.export_agent_credentials"];
 
 /// Prefix of desktop keys (readable in daemon traces).
 const KEY_PREFIX: &str = "desk-op-";
@@ -60,5 +65,6 @@ mod tests {
         assert!(is_mutation("contact.block"));
         assert!(!is_mutation("node.probe"));
         assert!(!is_mutation("object.get"));
+        assert!(!is_mutation("account.export_agent_credentials"));
     }
 }

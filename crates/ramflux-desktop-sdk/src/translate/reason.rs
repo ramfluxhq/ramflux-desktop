@@ -182,8 +182,46 @@ pub mod key {
     /// was never begun): nothing was changed.
     pub const CEREMONY_REFUSED: &str = "backend.failure.ceremony";
 
+    /// Why exporting an AI participant's credentials did not happen, one
+    /// key per typed refusal (`AgentExportRefusal`).
+    pub const AGENT_EXPORT_NO_LOCATION: &str = "backend.agent.export.no_location";
+    /// The daemon does not take the export from this session.
+    pub const AGENT_EXPORT_NOT_OWNER_SESSION: &str = "backend.agent.export.not_owner_session";
+    /// The owner's account is locked.
+    pub const AGENT_EXPORT_OWNER_LOCKED: &str = "backend.agent.export.owner_locked";
+    /// The owner is not the custodian, or the account is not an AI participant.
+    pub const AGENT_EXPORT_NOT_CUSTODIAN: &str = "backend.agent.export.not_custodian";
+    /// An account is not connected to its node.
+    pub const AGENT_EXPORT_NOT_CONNECTED: &str = "backend.agent.export.not_connected";
+    /// A file is already at the location.
+    pub const AGENT_EXPORT_FILE_EXISTS: &str = "backend.agent.export.file_exists";
+    /// The location cannot be written.
+    pub const AGENT_EXPORT_LOCATION_DENIED: &str = "backend.agent.export.location_denied";
+    /// The location's folder does not exist.
+    pub const AGENT_EXPORT_LOCATION_MISSING: &str = "backend.agent.export.location_missing";
+    /// The credentials were exported already, or are not held.
+    pub const AGENT_EXPORT_CREDENTIALS_GONE: &str = "backend.agent.export.credentials_gone";
+    /// The daemon did not answer in time.
+    pub const AGENT_EXPORT_TIMEOUT: &str = "backend.agent.export.timeout";
+    /// The connection to the daemon broke.
+    pub const AGENT_EXPORT_TRANSPORT: &str = "backend.agent.export.transport";
+    /// A refusal without its own wording.
+    pub const AGENT_EXPORT_OTHER: &str = "backend.agent.export.other";
+
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 65] = [
+    pub const ALL: [&str; 77] = [
+        AGENT_EXPORT_NO_LOCATION,
+        AGENT_EXPORT_NOT_OWNER_SESSION,
+        AGENT_EXPORT_OWNER_LOCKED,
+        AGENT_EXPORT_NOT_CUSTODIAN,
+        AGENT_EXPORT_NOT_CONNECTED,
+        AGENT_EXPORT_FILE_EXISTS,
+        AGENT_EXPORT_LOCATION_DENIED,
+        AGENT_EXPORT_LOCATION_MISSING,
+        AGENT_EXPORT_CREDENTIALS_GONE,
+        AGENT_EXPORT_TIMEOUT,
+        AGENT_EXPORT_TRANSPORT,
+        AGENT_EXPORT_OTHER,
         CEREMONY_REFUSED,
         NO_ROUTE,
         NO_GROUP_LINK,

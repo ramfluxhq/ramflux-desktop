@@ -105,6 +105,11 @@ impl Task {
                 let client = self.client.clone();
                 let job_link = self.job_link.clone();
                 let internal = self.internal.clone();
+                let (socket, connect_timeout, deadlines) = (
+                    self.config.socket_path.clone(),
+                    self.config.connect_timeout,
+                    self.config.deadlines,
+                );
                 let retries: Vec<Duration> = self
                     .config
                     .local_network_retry_ms
@@ -119,6 +124,21 @@ impl Task {
                             if crate::bus::jobs::REQUESTS.contains(&request.method.as_str()) =>
                         {
                             (job_link.call(&request).await, refresh)
+                        }
+                        // Taken only from the owner's attended session, on a
+                        // connection of its own.
+                        Plan::Call { request, refresh }
+                            if crate::bus::attended::is_attended(&request.method) =>
+                        {
+                            let result = crate::bus::attended::call(
+                                &socket,
+                                connect_timeout,
+                                deadlines,
+                                &request,
+                            )
+                            .await;
+                            wipe(request.body);
+                            (result, refresh)
                         }
                         other => perform(&client, other, &retries).await,
                     };
@@ -348,6 +368,11 @@ impl Task {
     /// the ceremony's end), then the ceremony's events.
     pub(super) fn on_custody(&mut self, outcome: super::custody::Outcome) {
         let super::custody::Outcome { events, account, refresh } = outcome;
+        if let Some(opened) = &account
+            && let Some(custodian) = &opened.custodian
+        {
+            self.custodians.remember(opened.id.clone(), custodian.clone());
+        }
         let mut all = account
             .map(|opened| self.translator.native_account_opened(&opened))
             .unwrap_or_default();

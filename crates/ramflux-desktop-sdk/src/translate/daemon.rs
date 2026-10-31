@@ -175,7 +175,11 @@ impl Translator {
             if let Some(networking) = networking(detail) {
                 account.networking = networking;
             }
+            let agent = account.kind == ramflux_desktop_core::AccountKind::HeadlessAi;
             out.events.extend(self.put_account(account));
+            if agent {
+                out.events.extend(self.custodian_listed(&id, detail));
+            }
         }
         for id in open {
             let unknown = self.accounts.get(&id).is_none_or(|a| a.node_id.is_none());
