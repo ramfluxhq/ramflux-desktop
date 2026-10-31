@@ -27,7 +27,7 @@ use serde_json::Value;
 
 use super::reason::key;
 use super::{Translator, text};
-use crate::bus::BusError;
+use crate::bus::{BusError, IoCause};
 
 /// What the translator keeps about AI participants.
 #[derive(Debug, Default)]
@@ -43,34 +43,37 @@ pub fn export_refusal(error: &BusError) -> AgentExportRefusal {
     match error {
         BusError::Timeout => AgentExportRefusal::Timeout,
         BusError::Transport(_) => AgentExportRefusal::Transport,
-        BusError::Daemon { code, message, .. } => classify(code, message),
+        BusError::Daemon { code, message, cause, .. } => classify(code, message, cause.as_ref()),
     }
 }
 
-/// The refusal a failed effect's code and message mean.
-fn classify(code: &str, message: &str) -> AgentExportRefusal {
-    let said = message.to_ascii_lowercase();
+/// The refusal of a failed export. A file-system refusal is told by the
+/// operating-system cause the daemon reports (`cause {kind, raw_os_error}`),
+/// never by its English message; a refusal that names none is `Other`. The
+/// one refusal with no structured form, the peer-credential check (the
+/// daemon sends it as a plain `ValidationFailed`), is told by that check's
+/// own message.
+fn classify(code: &str, message: &str, cause: Option<&IoCause>) -> AgentExportRefusal {
     match code {
-        "NetworkingPending" => AgentExportRefusal::NotConnected,
-        "CustodySetupInvalid" => AgentExportRefusal::NotCustodian,
-        "CustodyVaultUnavailable" => AgentExportRefusal::CredentialsGone,
-        "AccountNotOpen" => AgentExportRefusal::OwnerLocked,
-        _ if said.contains("peer credential") => AgentExportRefusal::NotOwnerSession,
-        _ if said.contains("file exists") || said.contains("os error 17") => {
-            AgentExportRefusal::FileExists
-        }
-        _ if said.contains("no such file") || said.contains("os error 2)") => {
-            AgentExportRefusal::LocationMissing
-        }
-        _ if said.contains("permission denied")
-            || said.contains("read-only")
-            || said.contains("is a directory")
-            || said.contains("not a directory") =>
-        {
-            AgentExportRefusal::LocationDenied
-        }
-        _ => AgentExportRefusal::Other,
+        "NetworkingPending" => return AgentExportRefusal::NotConnected,
+        "CustodySetupInvalid" => return AgentExportRefusal::NotCustodian,
+        "CustodyVaultUnavailable" => return AgentExportRefusal::CredentialsGone,
+        "AccountNotOpen" => return AgentExportRefusal::OwnerLocked,
+        _ => {}
     }
+    if let Some(cause) = cause {
+        return match (cause.kind.as_str(), cause.raw_os_error) {
+            ("AlreadyExists", _) | (_, Some(17)) => AgentExportRefusal::FileExists,
+            ("NotFound", _) | (_, Some(2)) => AgentExportRefusal::LocationMissing,
+            ("PermissionDenied" | "ReadOnlyFilesystem" | "IsADirectory" | "NotADirectory", _)
+            | (_, Some(13 | 30 | 21 | 20)) => AgentExportRefusal::LocationDenied,
+            _ => AgentExportRefusal::Other,
+        };
+    }
+    if message.to_ascii_lowercase().contains("peer credential") {
+        return AgentExportRefusal::NotOwnerSession;
+    }
+    AgentExportRefusal::Other
 }
 
 /// The locale key that says `refusal`.
@@ -194,6 +197,16 @@ mod tests {
         BusError::daemon(code, message)
     }
 
+    fn io(kind: &str, errno: Option<i32>) -> BusError {
+        BusError::Daemon {
+            code: "ValidationFailed".to_owned(),
+            message: "words that may change".to_owned(),
+            reason_code: None,
+            details: None,
+            cause: Some(IoCause { kind: kind.to_owned(), raw_os_error: errno }),
+        }
+    }
+
     #[test]
     fn each_refusal_the_daemon_makes_is_told_apart() {
         let cases = [
@@ -206,21 +219,6 @@ mod tests {
                 "local bus peer credential check failed",
                 AgentExportRefusal::NotOwnerSession,
             ),
-            (
-                "ValidationFailed",
-                "io error: File exists (os error 17)",
-                AgentExportRefusal::FileExists,
-            ),
-            (
-                "ValidationFailed",
-                "io error: No such file or directory (os error 2)",
-                AgentExportRefusal::LocationMissing,
-            ),
-            (
-                "ValidationFailed",
-                "io error: Permission denied (os error 13)",
-                AgentExportRefusal::LocationDenied,
-            ),
             ("ValidationFailed", "something new", AgentExportRefusal::Other),
         ];
         for (code, message, expected) in cases {
@@ -231,6 +229,40 @@ mod tests {
             export_refusal(&BusError::Transport("gone".to_owned())),
             AgentExportRefusal::Transport
         );
+    }
+
+    #[test]
+    fn a_file_system_refusal_is_told_by_its_cause_whatever_the_words() {
+        let cases = [
+            (io("AlreadyExists", Some(17)), AgentExportRefusal::FileExists),
+            (io("AlreadyExists", None), AgentExportRefusal::FileExists),
+            (io("Other", Some(17)), AgentExportRefusal::FileExists),
+            (io("NotFound", Some(2)), AgentExportRefusal::LocationMissing),
+            (io("PermissionDenied", Some(13)), AgentExportRefusal::LocationDenied),
+            (io("IsADirectory", None), AgentExportRefusal::LocationDenied),
+            (io("Other", Some(30)), AgentExportRefusal::LocationDenied),
+            (io("TimedOut", Some(60)), AgentExportRefusal::Other),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(export_refusal(&error), expected, "{error:?}");
+        }
+    }
+
+    #[test]
+    fn without_a_cause_the_words_of_a_file_system_refusal_are_not_read() {
+        // The same words the daemon uses today, but no structured cause:
+        // not guessed from the text.
+        for message in [
+            "io error: File exists (os error 17)",
+            "io error: No such file or directory (os error 2)",
+            "io error: Permission denied (os error 13)",
+        ] {
+            assert_eq!(
+                export_refusal(&daemon("ValidationFailed", message)),
+                AgentExportRefusal::Other,
+                "{message}"
+            );
+        }
     }
 
     #[test]

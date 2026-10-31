@@ -341,6 +341,7 @@ mod tests {
             message: message.to_owned(),
             reason_code: reason.map(str::to_owned),
             details: None,
+            cause: None,
         };
         assert!(is_resync(&daemon("resync_required", "resync_required", None)));
         assert!(is_resync(&daemon("BackupRefused", "x", Some("resync_required"))));

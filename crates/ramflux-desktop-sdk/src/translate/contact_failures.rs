@@ -141,6 +141,7 @@ mod tests {
             message: "refused".to_owned(),
             reason_code: reason.map(str::to_owned),
             details: details.map(Box::new),
+            cause: None,
         }
     }
 

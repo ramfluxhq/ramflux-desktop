@@ -296,6 +296,7 @@ mod tests {
             message: "inbound rejected: contact request is closed or cooling down".to_owned(),
             reason_code: reason.map(str::to_owned),
             details: None,
+            cause: None,
         }
     }
 
@@ -333,6 +334,7 @@ mod tests {
             message: "down".to_owned(),
             reason_code: None,
             details: None,
+            cause: None,
         };
         assert_eq!(t.request_failure(methods::CONTACT_ADD, &add, &other), None);
     }

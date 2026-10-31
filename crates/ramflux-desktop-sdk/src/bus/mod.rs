@@ -135,6 +135,15 @@ pub fn wipe(mut body: Value) {
     walk(&mut body);
 }
 
+/// The operating-system cause the daemon reports for an I/O refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IoCause {
+    /// Rust `io::ErrorKind` debug name, for example `AlreadyExists`.
+    pub kind: String,
+    /// The errno, when the source gave one.
+    pub raw_os_error: Option<i32>,
+}
+
 /// Why a request failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BusError {
@@ -150,6 +159,9 @@ pub enum BusError {
         /// Structured details of the refusal (`details` on the error
         /// frame), e.g. both roots of a root replacement to confirm.
         details: Option<Box<Value>>,
+        /// The operating-system cause of an I/O refusal (`cause` on the
+        /// error frame): the kind and errno, never text.
+        cause: Option<IoCause>,
     },
     /// No connection, or it broke.
     Transport(String),
@@ -165,6 +177,7 @@ impl BusError {
             message: message.into(),
             reason_code: None,
             details: None,
+            cause: None,
         }
     }
 
@@ -182,6 +195,9 @@ impl BusError {
             message: error.message,
             reason_code: error.reason_code,
             details: error.details,
+            cause: error
+                .cause
+                .map(|cause| IoCause { kind: cause.kind, raw_os_error: cause.raw_os_error }),
         }
     }
 

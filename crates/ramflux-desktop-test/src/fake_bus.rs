@@ -46,6 +46,18 @@ pub enum Reply {
     Ok(Value),
     /// An error frame.
     Error(&'static str, String),
+    /// An error frame for an I/O failure, with the daemon's structured
+    /// `cause` (`kind` and errno).
+    Io {
+        /// Error code.
+        code: &'static str,
+        /// Message.
+        message: String,
+        /// `io::ErrorKind` debug name.
+        kind: String,
+        /// The errno.
+        raw_os_error: Option<i32>,
+    },
     /// An error frame with a typed reason (`reason_code`) and optional
     /// `details`, as the daemon writes a contact refusal.
     Refused {
@@ -591,6 +603,16 @@ fn answer(
             map.insert(
                 "error".into(),
                 json!({ "code": code, "message": message, "retry_after_ms": null }),
+            );
+        }
+        Reply::Io { code, message, kind, raw_os_error } => {
+            map.insert("kind".into(), json!("error"));
+            map.insert("ok".into(), json!(false));
+            map.insert("body".into(), Value::Null);
+            map.insert(
+                "error".into(),
+                json!({ "code": code, "message": message, "retry_after_ms": null,
+                        "cause": { "kind": kind, "raw_os_error": raw_os_error } }),
             );
         }
         Reply::Refused { code, message, reason_code, details } => {

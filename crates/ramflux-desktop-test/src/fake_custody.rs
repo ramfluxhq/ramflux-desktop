@@ -135,6 +135,9 @@ struct State {
     /// The daemon refuses every AI participant's begin, whatever the
     /// custodian (it checks something the desktop cannot see).
     refuse_headless: bool,
+    /// How long an export takes to answer (a vault that waits for the
+    /// person).
+    export_delay: Duration,
 }
 
 /// The fake daemon's custody state, shared across restarts of the fake bus.
@@ -196,6 +199,7 @@ impl FakeCustody {
                 report_custodian: false,
                 exports: Vec::new(),
                 refuse_headless: false,
+                export_delay: Duration::ZERO,
             }),
         }
     }
@@ -250,6 +254,11 @@ impl FakeCustody {
     /// The fields the last creation confirm's body carried.
     pub fn last_confirm_fields(&self) -> Vec<String> {
         self.state().last_confirm_fields.clone()
+    }
+
+    /// Exports answer after `delay` from now on.
+    pub fn set_export_delay(&self, delay: Duration) {
+        self.state().export_delay = delay;
     }
 
     /// The daemon refuses every AI participant's begin from now on.
@@ -414,7 +423,11 @@ impl FakeCustody {
                 Self::begin(&mut state, connection, account, body)
             }
             "account.export_agent_credentials" => {
-                Self::export(&mut state, connection, account, body)
+                let delay = state.export_delay;
+                match Self::export(&mut state, connection, account, body) {
+                    Reply::Ok(answer) if !delay.is_zero() => Reply::Slow(delay, answer),
+                    other => other,
+                }
             }
             "account.recover.begin" => Self::recover_begin(&mut state, connection, body),
             "account.create.cancel" | "account.recover.cancel" => {
@@ -691,7 +704,14 @@ impl FakeCustody {
         }
         match write_bundle(path, agent) {
             Ok(()) => {}
-            Err(error) => return Reply::Error("ValidationFailed", format!("io error: {error}")),
+            Err(error) => {
+                return Reply::Io {
+                    code: "ValidationFailed",
+                    message: format!("io error: {error}"),
+                    kind: format!("{:?}", error.kind()),
+                    raw_os_error: error.raw_os_error(),
+                };
+            }
         }
         if let Some(found) = state.accounts.get_mut(agent) {
             found.provisioning = false;

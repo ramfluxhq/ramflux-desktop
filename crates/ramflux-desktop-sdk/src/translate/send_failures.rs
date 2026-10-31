@@ -152,6 +152,7 @@ mod tests {
             message: "Ownership transfer requires synchronization".to_owned(),
             reason_code: reason.map(str::to_owned),
             details: None,
+            cause: None,
         };
         let sync = |reason| translator.failure_message(methods::GROUP_KICK, &held(reason));
         assert_eq!(sync(Some("head_check_pending")), key::GROUP_SYNC_PENDING);

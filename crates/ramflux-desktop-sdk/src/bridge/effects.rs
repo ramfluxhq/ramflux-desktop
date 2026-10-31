@@ -309,13 +309,13 @@ async fn in_order(client: &BusClient, requests: Vec<BusRequest>) -> Result<Value
         wipe(request.body);
         match result {
             Ok(answer) => last = answer,
-            Err(BusError::Daemon { code, message, reason_code, details }) if done > 0 => {
+            Err(BusError::Daemon { code, message, reason_code, details, cause }) if done > 0 => {
                 let (done, total) = (done.to_string(), total.to_string());
                 let message = keyed(
                     key::PARTIAL,
                     &[("done", &done), ("total", &total), ("reason", &message)],
                 );
-                return Err(BusError::Daemon { code, message, reason_code, details });
+                return Err(BusError::Daemon { code, message, reason_code, details, cause });
             }
             Err(error) => return Err(error),
         }
