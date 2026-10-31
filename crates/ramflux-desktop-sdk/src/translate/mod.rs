@@ -13,6 +13,8 @@
 //! - `pages`: collecting the pages of a paged list.
 //! - `daemon`: daemon status, nodes, accounts.
 //! - `account`: account status, devices, integrations.
+//! - `agents`: AI participants an owner custodies, and exporting their
+//!   credentials.
 //! - `identity`: identities (participants, devices, safety).
 //! - `contacts`: participants and contact links.
 //! - `conversation`: conversations and groups as contexts, pins, settings.
@@ -36,6 +38,7 @@
 //! - `reason`: locale keys with arguments.
 
 pub mod account;
+pub mod agents;
 pub mod backup;
 pub mod calls;
 mod contact_failures;
@@ -223,6 +226,8 @@ pub struct Translator {
     /// Whether a complete `group.list` was translated (the baseline of the
     /// group sync records).
     groups_listed: bool,
+    /// AI participants: custodians known, and the links told to the store.
+    agents: agents::Agents,
 }
 
 impl Translator {
@@ -281,6 +286,7 @@ impl Translator {
             name_changes: Vec::new(),
             new_name_changes: Vec::new(),
             groups_listed: false,
+            agents: agents::Agents::default(),
             outgoing_requests: BTreeMap::new(),
             reported_jobs: BTreeMap::new(),
             lost_jobs: BTreeSet::new(),

@@ -181,3 +181,95 @@ fn a_connected_account_is_reported_as_live() {
     let CeremonyPhase::Created(account) = phase(p.store()) else { panic!("account") };
     assert_eq!(account.networking, ramflux_desktop_core::Networking::Live);
 }
+
+fn owner_player() -> ScenarioPlayer {
+    let mut p = player();
+    let owner = ramflux_desktop_core::Account {
+        id: AccountId::new("acct-owner"),
+        label: "Me".into(),
+        kind: ramflux_desktop_core::AccountKind::HumanInteractive,
+        node_id: None,
+        device_id: None,
+        lock_state: LockState::Unlocked,
+        self_participant_id: None,
+        secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
+        networking: Networking::Live,
+    };
+    p.source_mut().inject(0, ramflux_desktop_core::DomainEvent::AccountUpdated(owner));
+    p.advance(100);
+    p
+}
+
+fn agent_begin(
+    p: &mut ScenarioPlayer,
+    custodian: &str,
+) -> Result<(), ramflux_desktop_core::IntentError> {
+    let kind = IntentKind::BeginAgentCeremony {
+        label: "Ledger".into(),
+        custodian_id: AccountId::new(custodian),
+    };
+    p.dispatch(Intent::human(kind))?;
+    p.advance(100);
+    Ok(())
+}
+
+#[test]
+fn an_ai_participant_is_created_by_its_custodian_with_three_words_and_exported_once() {
+    let mut p = owner_player();
+    p.source_mut().ceremony_mut().set_networking(Networking::Live);
+    agent_begin(&mut p, "acct-owner").expect("allowed");
+    step(&mut p, IntentKind::ShowRecoveryPhrase);
+    assert!(p.source_mut().take_recovery_phrase().is_some());
+    step(&mut p, IntentKind::HideRecoveryPhrase);
+    // The account's confirmation (with a passphrase) is not an AI's.
+    step(&mut p, IntentKind::ConfirmAgentCeremony { words: words(DEMO_POSITIONS) });
+    let CeremonyPhase::Created(made) = phase(p.store()) else { panic!("{:?}", phase(p.store())) };
+    let id = AccountId::new(&made.local_account_id);
+    let agent = p.store().account(&id).expect("listed");
+    assert_eq!(agent.kind, ramflux_desktop_core::AccountKind::HeadlessAi);
+    assert_eq!(p.store().custodian_of(&id), Some(&AccountId::new("acct-owner")));
+
+    let export = IntentKind::ExportAgentCredentials {
+        owner_id: AccountId::new("acct-owner"),
+        account_id: id.clone(),
+        path: "/Users/a/ledger.bundle".into(),
+    };
+    step(&mut p, export.clone_kind());
+    let done = p.store().agent_export(&id).expect("export");
+    assert_eq!(done.phase, ramflux_desktop_core::AgentExportPhase::Exported);
+    // One-shot: the second is refused as gone, and the record says so.
+    step(&mut p, export.clone_kind());
+    assert_eq!(
+        p.store().agent_export(&id).map(|e| e.phase.clone()),
+        Some(ramflux_desktop_core::AgentExportPhase::Refused(
+            ramflux_desktop_core::AgentExportRefusal::CredentialsGone
+        ))
+    );
+    assert!(p.errors().is_empty(), "{:?}", p.errors());
+}
+
+#[test]
+fn a_custodian_that_is_not_an_unlocked_person_is_refused_before_anything_is_sent() {
+    let mut p = owner_player();
+    assert!(agent_begin(&mut p, "acct-nobody").is_err());
+    assert!(p.store().ceremony().is_none(), "nothing began");
+}
+
+trait CloneKind {
+    fn clone_kind(&self) -> IntentKind;
+}
+
+impl CloneKind for IntentKind {
+    fn clone_kind(&self) -> IntentKind {
+        match self {
+            IntentKind::ExportAgentCredentials { owner_id, account_id, path } => {
+                IntentKind::ExportAgentCredentials {
+                    owner_id: owner_id.clone(),
+                    account_id: account_id.clone(),
+                    path: path.clone(),
+                }
+            }
+            _ => unreachable!("only exports are repeated"),
+        }
+    }
+}

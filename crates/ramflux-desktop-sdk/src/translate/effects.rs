@@ -39,6 +39,7 @@ impl Translator {
         let node_id = || NodeId::new(text(body, "node_id"));
         let context = || ContextId::new(text(body, "context_id"));
         match method {
+            methods::AGENT_EXPORT_CREDENTIALS => self.export_done(body, answer),
             methods::NODE_ADD => {
                 let default = self.default_node().map(str::to_owned);
                 let mut node = node_from_profile(&answer["node"], default.as_deref(), false);
@@ -188,20 +189,25 @@ impl Translator {
         self.local_pin(&context, method == methods::CONTEXT_PIN)
     }
 
-    /// An account a creation or recovery ceremony opened (unlocked): a
-    /// person's account, named as the ceremony named it.
+    /// An account a creation or recovery ceremony opened (unlocked), named
+    /// as the ceremony named it: a person's account, or an AI participant
+    /// with the custodian that made it.
     pub(crate) fn native_account_opened(
         &mut self,
         opened: &crate::bridge::NativeAccount,
     ) -> Vec<DomainEvent> {
         let mut account = self.account_record(&opened.id);
         account.lock_state = LockState::Unlocked;
-        account.kind = AccountKind::HumanInteractive;
+        account.kind = opened.kind;
         if !opened.display_name.is_empty() {
             account.label.clone_from(&opened.display_name);
         }
         account.networking = opened.networking;
-        self.put_account(account)
+        let mut events = self.put_account(account);
+        if let Some(custodian) = &opened.custodian {
+            events.extend(self.custodian_made(&opened.id, custodian));
+        }
+        events
     }
 
     fn opened_account(

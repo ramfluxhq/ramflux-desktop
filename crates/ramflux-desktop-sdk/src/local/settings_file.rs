@@ -53,6 +53,10 @@ pub struct DesktopSettings {
     /// socket and account (public names only, see [`crate::renames`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub name_changes: BTreeMap<String, BTreeMap<AccountId, Vec<crate::renames::RenameRecord>>>,
+    /// Which person's account custodies each AI participant this desktop
+    /// made, per daemon socket (two account ids, see [`crate::custodians`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub agent_custodians: BTreeMap<String, BTreeMap<AccountId, AccountId>>,
 }
 
 /// Why the settings file was not written.

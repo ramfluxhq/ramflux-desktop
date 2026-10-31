@@ -24,8 +24,10 @@
 //! - [`task`]: starting, accepting, declining, cancelling and resolving
 //!   conversation tasks.
 //! - [`backup`]: full backup and restore jobs.
+//! - [`agents`]: exporting the credentials of an AI participant.
 //! - [`call`]: placing, answering, declining and hanging up voice calls.
 
+pub mod agents;
 pub mod backup;
 pub mod call;
 pub mod contact;
@@ -319,6 +321,7 @@ fn map(
         | methods::RESTORE_VERIFY
         | methods::RESTORE_INSTALL
         | methods::BACKUP_CANCEL => backup::backup_effect(acct, method, body, secrets),
+        methods::AGENT_EXPORT_CREDENTIALS => agents::agent_effect(method, body),
         methods::DIAGNOSTICS_EXPORT => Plan::Diagnostics { path: text(body, "path").to_owned() },
         methods::CONTEXT_PIN | methods::CONTEXT_UNPIN => Plan::Local,
         _ if acct.is_none() => refuse_invalid("this action needs an unlocked account"),

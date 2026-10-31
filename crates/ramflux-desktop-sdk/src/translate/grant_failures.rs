@@ -85,6 +85,9 @@ impl Translator {
         if method == methods::ATTACH_OBJECT {
             return self.attachment_failed(body, message);
         }
+        if method == methods::AGENT_EXPORT_CREDENTIALS {
+            return self.export_failed(body, code, message);
+        }
         if method == methods::SURFACE_REQUEST_RESYNC {
             return self.surface_effect_failed(method, body, code, message);
         }

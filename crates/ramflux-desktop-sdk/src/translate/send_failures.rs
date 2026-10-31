@@ -65,6 +65,9 @@ impl Translator {
     /// The message of a failed effect: the daemon's, or a translated one
     /// for failures the desktop can explain.
     pub fn failure_message(&self, method: &str, error: &BusError) -> String {
+        if let Some(message) = self.agent_failure(method, error) {
+            return message;
+        }
         if let Some(message) = self.contact_failure(method, error) {
             return message;
         }

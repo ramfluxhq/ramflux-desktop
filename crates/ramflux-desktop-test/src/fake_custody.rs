@@ -13,6 +13,18 @@
 //! - `account.recover.begin {account_id}` answers the account fingerprint;
 //!   `.confirm {phrase, passphrase, confirmed_anchor}` checks all three;
 //!   `.cancel`.
+//! - `account.create.begin {display_name, principal_kind: "headless_ai",
+//!   custodian_account}` begins an AI participant's ceremony as the
+//!   custodian's session (the frame names the custodian): the custodian must
+//!   be an unlocked, connected person's account, else the begin is refused
+//!   `CustodySetupInvalid`, whatever the cause. Its `.confirm` takes the
+//!   three words only (a passphrase is refused: the daemon makes the data
+//!   passphrase) and the account is listed `kind: headless_ai`, unlocked.
+//! - `account.export_agent_credentials {account, path}` writes a one-shot
+//!   bundle (a file readable by its owner only, never replacing one) for the
+//!   custodian, on a connection that attended the custodian's account
+//!   (`subscription.open` with `attended_frontend`), and refuses as the
+//!   daemon does otherwise; the bundle here holds no real credential.
 //! - A ceremony belongs to the connection it began on: another connection
 //!   cannot continue it, and the end of the connection erases it.
 //! - Accounts it made survive a restart of the fake bus (give the same
@@ -43,6 +55,12 @@ struct Account {
     anchor: String,
     locked: bool,
     networking: &'static str,
+    /// `human` or `headless_ai`.
+    kind: &'static str,
+    /// The account that custodies an AI participant.
+    custodian: Option<String>,
+    /// The credentials an export would write are still in the vault.
+    provisioning: bool,
 }
 
 #[derive(Debug)]
@@ -57,6 +75,8 @@ struct Creation {
     label: String,
     step: Step,
     deadline: Instant,
+    /// The custodian of an AI participant's ceremony.
+    custodian: Option<String>,
 }
 
 #[derive(Debug)]
@@ -102,6 +122,19 @@ struct State {
     /// The passphrases and words received by the last confirm (tests read
     /// them to prove what was sent).
     last_confirm: Option<(Vec<String>, String)>,
+    /// The fields of the last confirm's body.
+    last_confirm_fields: Vec<String>,
+    /// The account each connection attended (`subscription.open` with
+    /// `attended_frontend`).
+    attended: BTreeMap<usize, String>,
+    /// The listing names an AI participant's custodian
+    /// (`custodian_account_id`), as a later daemon may.
+    report_custodian: bool,
+    /// Exports written: owner, AI participant, path.
+    exports: Vec<(String, String, String)>,
+    /// The daemon refuses every AI participant's begin, whatever the
+    /// custodian (it checks something the desktop cannot see).
+    refuse_headless: bool,
 }
 
 /// The fake daemon's custody state, shared across restarts of the fake bus.
@@ -121,6 +154,16 @@ impl Default for FakeCustody {
 
 fn refuse(code: &'static str) -> Reply {
     Reply::Error(code, code.to_owned())
+}
+
+/// Writes the fake bundle: owner-only, never over a file that exists. It
+/// holds the account id and a marker, no credential.
+fn write_bundle(path: &str, agent: &str) -> std::io::Result<()> {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let mut file =
+        std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(path)?;
+    file.write_all(format!("{{\"account_id\":\"{agent}\",\"fake_bundle\":true}}").as_bytes())
 }
 
 impl FakeCustody {
@@ -148,6 +191,11 @@ impl FakeCustody {
                 accounts: BTreeMap::new(),
                 log: Vec::new(),
                 last_confirm: None,
+                last_confirm_fields: Vec::new(),
+                attended: BTreeMap::new(),
+                report_custodian: false,
+                exports: Vec::new(),
+                refuse_headless: false,
             }),
         }
     }
@@ -199,6 +247,87 @@ impl FakeCustody {
         self.state().last_confirm.clone()
     }
 
+    /// The fields the last creation confirm's body carried.
+    pub fn last_confirm_fields(&self) -> Vec<String> {
+        self.state().last_confirm_fields.clone()
+    }
+
+    /// The daemon refuses every AI participant's begin from now on.
+    pub fn refuse_headless(&self, refuse: bool) {
+        self.state().refuse_headless = refuse;
+    }
+
+    /// Whether the listing names an AI participant's custodian.
+    pub fn report_custodian(&self, report: bool) {
+        self.state().report_custodian = report;
+    }
+
+    /// The exports written, as `(owner, AI participant, path)`.
+    pub fn exports(&self) -> Vec<(String, String, String)> {
+        self.state().exports.clone()
+    }
+
+    /// Whether the credentials of `id` are still held (not exported yet).
+    pub fn holds_credentials(&self, id: &str) -> bool {
+        self.state().accounts.get(id).is_some_and(|account| account.provisioning)
+    }
+
+    /// The account `id` as listed: its kind and custodian.
+    pub fn account_kind(&self, id: &str) -> Option<(&'static str, Option<String>)> {
+        self.state().accounts.get(id).map(|account| (account.kind, account.custodian.clone()))
+    }
+
+    /// The connection attended `account` (a subscription as an attended
+    /// frontend).
+    pub fn attend(&self, connection: usize, account: &str) {
+        self.state().attended.insert(connection, account.to_owned());
+    }
+
+    /// Adds an account the daemon lists: a person's (`headless_ai` false) or
+    /// an AI participant custodied by `custodian`.
+    pub fn add_account(&self, id: &str, label: &str, passphrase: &str, locked: bool) {
+        let mut state = self.state();
+        let networking = state.networking_for_new();
+        state.accounts.insert(
+            id.to_owned(),
+            Account {
+                label: label.to_owned(),
+                passphrase: passphrase.to_owned(),
+                anchor: format!("anchor-{id}"),
+                locked,
+                networking,
+                kind: "human",
+                custodian: None,
+                provisioning: false,
+            },
+        );
+    }
+
+    /// Adds an AI participant `custodian` custodies, with its credentials
+    /// still in the vault.
+    pub fn add_agent(&self, id: &str, label: &str, custodian: &str) {
+        self.add_account(id, label, "daemon-made", true);
+        if let Some(account) = self.state().accounts.get_mut(id) {
+            account.kind = "headless_ai";
+            account.custodian = Some(custodian.to_owned());
+            account.provisioning = true;
+        }
+    }
+
+    /// The networking state of `id` (`live` or `networking_pending`).
+    pub fn set_networking_of(&self, id: &str, live: bool) {
+        if let Some(account) = self.state().accounts.get_mut(id) {
+            account.networking = if live { "live" } else { "networking_pending" };
+        }
+    }
+
+    /// Locks (or unlocks) `id`, as the daemon would.
+    pub fn set_locked(&self, id: &str, locked: bool) {
+        if let Some(account) = self.state().accounts.get_mut(id) {
+            account.locked = locked;
+        }
+    }
+
     /// The account fingerprint the daemon names for `id`.
     pub fn anchor_of(&self, id: &str) -> Option<String> {
         self.state().accounts.get(id).map(|account| account.anchor.clone())
@@ -227,6 +356,9 @@ impl FakeCustody {
                 anchor,
                 locked: true,
                 networking,
+                kind: "human",
+                custodian: None,
+                provisioning: false,
             },
         );
     }
@@ -238,7 +370,9 @@ impl FakeCustody {
 
     /// The connection ended: its ceremony is erased with it.
     pub fn disconnect(&self, connection: usize) {
-        self.state().ceremonies.remove(&connection);
+        let mut state = self.state();
+        state.ceremonies.remove(&connection);
+        state.attended.remove(&connection);
     }
 
     /// Whether `method` is one this fake answers.
@@ -252,6 +386,7 @@ impl FakeCustody {
             "node.set_default" => true,
             "account.list" | "account.lock" | "account.unlock" => self.serves_accounts(),
             "account.status" => account.is_some_and(|id| self.state().accounts.contains_key(id)),
+            "account.export_agent_credentials" => self.serves_accounts(),
             _ => method.starts_with("account.create.") || method.starts_with("account.recover."),
         }
     }
@@ -275,7 +410,12 @@ impl FakeCustody {
             "account.list" => Self::list(&state),
             "account.lock" => Self::lock(&mut state, account),
             "account.unlock" => Self::unlock(&mut state, account, body),
-            "account.create" => Self::begin(&mut state, connection, body),
+            "account.create" | "account.create.begin" => {
+                Self::begin(&mut state, connection, account, body)
+            }
+            "account.export_agent_credentials" => {
+                Self::export(&mut state, connection, account, body)
+            }
             "account.recover.begin" => Self::recover_begin(&mut state, connection, body),
             "account.create.cancel" | "account.recover.cancel" => {
                 state.ceremonies.remove(&connection);
@@ -306,9 +446,15 @@ impl FakeCustody {
             .accounts
             .iter()
             .map(|(id, a)| {
-                json!({ "id": id, "label": a.label, "kind": "human",
-                        "state": if a.locked { "locked" } else { "unlocked" },
-                        "networking": a.networking })
+                let mut row = json!({ "id": id, "label": a.label, "kind": a.kind,
+                                      "state": if a.locked { "locked" } else { "unlocked" },
+                                      "networking": a.networking });
+                if state.report_custodian
+                    && let Some(custodian) = &a.custodian
+                {
+                    row["custodian_account_id"] = json!(custodian);
+                }
+                row
             })
             .collect();
         Reply::Ok(
@@ -345,13 +491,35 @@ impl FakeCustody {
         Instant::now() >= deadline
     }
 
-    fn begin(state: &mut State, connection: usize, body: &Value) -> Reply {
+    /// The custodian an AI participant's begin names, when the daemon
+    /// accepts it: the frame is the custodian's own session, and the
+    /// custodian is an unlocked, connected person's account.
+    fn custodian_of_begin(state: &State, account: Option<&str>, body: &Value) -> Option<String> {
+        let custodian = body["custodian_account"].as_str()?;
+        let found = state.accounts.get(custodian)?;
+        let accepted = account == Some(custodian)
+            && found.kind == "human"
+            && !found.locked
+            && found.networking == "live";
+        accepted.then(|| custodian.to_owned())
+    }
+
+    fn begin(state: &mut State, connection: usize, account: Option<&str>, body: &Value) -> Reply {
         state.ceremonies.remove(&connection);
         if !state.vault_available {
             return refuse("CustodyVaultUnavailable");
         }
         let label = body["display_name"].as_str().unwrap_or_default();
-        if label.is_empty() || body["principal_kind"] != "human" {
+        let custodian = match body["principal_kind"].as_str() {
+            Some("human") if body.get("custodian_account").is_none() => None,
+            Some("headless_ai") if state.refuse_headless => return refuse("CustodySetupInvalid"),
+            Some("headless_ai") => match Self::custodian_of_begin(state, account, body) {
+                Some(custodian) => Some(custodian),
+                None => return refuse("CustodySetupInvalid"),
+            },
+            _ => return refuse("CustodySetupInvalid"),
+        };
+        if label.is_empty() {
             return refuse("CustodySetupInvalid");
         }
         state.began += 1;
@@ -362,6 +530,7 @@ impl FakeCustody {
                 label: label.to_owned(),
                 step: Step::Prepared,
                 deadline,
+                custodian,
             }),
         );
         Reply::Ok(
@@ -432,12 +601,25 @@ impl FakeCustody {
     }
 
     fn confirm_creation(state: &mut State, c: &Creation, body: &Value) -> Reply {
+        state.last_confirm_fields =
+            body.as_object().map(|map| map.keys().cloned().collect()).unwrap_or_default();
+        let agent = c.custodian.is_some();
+        // An AI participant's data passphrase is the daemon's to make: a
+        // confirm that brings one is refused.
+        if agent && body.get("passphrase").is_some() {
+            return refuse("CustodySetupInvalid");
+        }
         let words: Vec<String> = body["words"]
             .as_array()
             .map(|w| w.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
             .unwrap_or_default();
-        let passphrase = body["passphrase"].as_str().unwrap_or_default().to_owned();
-        state.last_confirm = Some((words.clone(), passphrase.clone()));
+        let passphrase = if agent {
+            "daemon-made".to_owned()
+        } else {
+            body["passphrase"].as_str().unwrap_or_default().to_owned()
+        };
+        state.last_confirm =
+            Some((words.clone(), body["passphrase"].as_str().unwrap_or_default().to_owned()));
         if passphrase.is_empty() || words.len() != 3 {
             return refuse("CustodySetupInvalid");
         }
@@ -449,7 +631,7 @@ impl FakeCustody {
         if !right {
             return refuse("CustodyConfirmationFailed");
         }
-        let id = format!("acct-native-{}", state.began);
+        let id = format!("acct-{}-{}", if agent { "agent" } else { "native" }, state.began);
         let networking = state.networking_for_new();
         state.accounts.insert(
             id.clone(),
@@ -459,10 +641,63 @@ impl FakeCustody {
                 anchor: format!("anchor-{id}"),
                 locked: false,
                 networking,
+                kind: if agent { "headless_ai" } else { "human" },
+                custodian: c.custodian.clone(),
+                provisioning: agent,
             },
         );
         Reply::Ok(json!({ "account_id": id, "display_name": c.label, "state": "unlocked",
                           "networking": networking }))
+    }
+
+    /// `account.export_agent_credentials`, as the daemon takes it: from the
+    /// custodian's attended session only, never replacing a file, and once.
+    fn export(state: &mut State, connection: usize, account: Option<&str>, body: &Value) -> Reply {
+        let permission = || {
+            Reply::Error("ValidationFailed", "local bus peer credential check failed".to_owned())
+        };
+        let Some(owner) = account else { return permission() };
+        let open = state.accounts.get(owner).is_some_and(|found| !found.locked);
+        if state.attended.get(&connection).map(String::as_str) != Some(owner) || !open {
+            return permission();
+        }
+        let fields: Vec<&str> = body
+            .as_object()
+            .map(|map| map.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        let (Some(agent), Some(path), 2) =
+            (body["account"].as_str(), body["path"].as_str(), fields.len())
+        else {
+            return Reply::Error("ValidationFailed", "unknown field".to_owned());
+        };
+        let connected = |id: &str, state: &State| {
+            state.accounts.get(id).is_some_and(|found| found.networking == "live")
+        };
+        if state.accounts.get(owner).is_none_or(|found| found.kind != "human") {
+            return refuse("CustodySetupInvalid");
+        }
+        if !connected(owner, state) {
+            return refuse("NetworkingPending");
+        }
+        let Some(found) = state.accounts.get(agent) else { return refuse("CustodySetupInvalid") };
+        if found.kind != "headless_ai" || found.custodian.as_deref() != Some(owner) {
+            return refuse("CustodySetupInvalid");
+        }
+        if !connected(agent, state) {
+            return refuse("NetworkingPending");
+        }
+        if !found.provisioning {
+            return refuse("CustodyVaultUnavailable");
+        }
+        match write_bundle(path, agent) {
+            Ok(()) => {}
+            Err(error) => return Reply::Error("ValidationFailed", format!("io error: {error}")),
+        }
+        if let Some(found) = state.accounts.get_mut(agent) {
+            found.provisioning = false;
+        }
+        state.exports.push((owner.to_owned(), agent.to_owned(), path.to_owned()));
+        Reply::Ok(json!({ "account": agent, "path": path, "exported": true }))
     }
 
     fn confirm_recovery(state: &mut State, r: &Recovery, body: &Value) -> Reply {

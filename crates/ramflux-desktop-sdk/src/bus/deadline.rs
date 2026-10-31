@@ -30,8 +30,11 @@ pub enum Weight {
 }
 
 /// Methods that reach a node, or derive keys from a passphrase.
-const NETWORK: [&str; 30] = [
+const NETWORK: [&str; 32] = [
     "account.create",
+    // The owner-attended creation of an AI participant: the daemon
+    // verifies the custodian and registers the new account with its node.
+    "account.create.begin",
     "account.unlock",
     "account.backup.import",
     "account.backup.export",
@@ -39,6 +42,9 @@ const NETWORK: [&str; 30] = [
     "account.restore.verify",
     // Answers once the job's worker stopped (a file fetch may be under way).
     "account.backup.cancel",
+    // Loads the credential from the primary vault (the system keychain may
+    // wait for the person) and writes the bundle.
+    "account.export_agent_credentials",
     "account.passphrase.rotate",
     "node.add",
     "node.probe",
@@ -164,6 +170,10 @@ mod tests {
         assert_eq!(deadlines.budget("contact.block"), deadlines.local);
         assert_eq!(deadlines.budget("group.send"), deadlines.network);
         assert_eq!(deadlines.budget("daemon.stop"), deadlines.stop);
+        // The AI participant's creation and credential export wait like the
+        // account ceremonies they belong to (a vault may ask the person).
+        assert_eq!(deadlines.budget("account.create.begin"), deadlines.network);
+        assert_eq!(deadlines.budget("account.export_agent_credentials"), deadlines.network);
         assert!(deadlines.read < deadlines.network);
     }
 

@@ -511,6 +511,14 @@ fn answer(
     let body = request["body"].clone();
     let operation_id = text(request, "operation_id");
     let subscription = method == "bus.subscribe" || method == "subscription.open";
+    // A connection that opens a subscription as an attended frontend for an
+    // account is that account's attended session.
+    if method == "subscription.open"
+        && body["attended_frontend"] == true
+        && let Some(account) = &account
+    {
+        shared.custody.attend(connection, account);
+    }
     if crate::fake_backup::ATTENDED_METHODS.contains(&method.as_str()) && shared.request_hold.pass()
     {
         let _ = writer.lock().expect("writer").shutdown(std::net::Shutdown::Both);

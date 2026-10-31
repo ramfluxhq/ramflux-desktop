@@ -32,6 +32,7 @@ pub mod bus;
 pub mod capabilities;
 pub mod config;
 pub mod cursor;
+pub mod custodians;
 pub mod diagnostics;
 pub mod directory;
 pub mod local;
