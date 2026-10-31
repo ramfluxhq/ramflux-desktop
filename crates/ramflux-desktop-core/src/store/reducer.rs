@@ -198,6 +198,18 @@ impl Store {
             DomainEvent::BackupJobUpdated(job) => self.upsert_backup_job(job, changes)?,
             DomainEvent::CeremonyUpdated(ceremony) => self.update_ceremony(ceremony, changes)?,
             DomainEvent::RecoveryUpdated(recovery) => self.update_recovery(recovery, changes)?,
+            DomainEvent::CustodianKnown { agent, custodian } => {
+                if self.custodians.get(agent) != Some(custodian) {
+                    self.custodians.insert(agent.clone(), custodian.clone());
+                    changes.accounts.insert(agent.clone());
+                }
+            }
+            DomainEvent::AgentExportUpdated(export) => {
+                if self.agent_exports.get(&export.account_id) != Some(export) {
+                    self.agent_exports.insert(export.account_id.clone(), export.clone());
+                    changes.agent_exports.insert(export.account_id.clone());
+                }
+            }
             DomainEvent::TaskStepChanged { task_id, version, step_id, state, needs_me } => {
                 let step = StepChange {
                     task_id,

@@ -47,6 +47,10 @@ pub enum CeremonyFailure {
     /// The daemon refused a step as out of order, replayed or not valid
     /// (`CustodySetupInvalid`), or could not be reached.
     Invalid,
+    /// The daemon did not accept the owner's account as the custodian of an
+    /// AI participant (not the unlocked, connected person's account of this
+    /// daemon). Only an AI participant's ceremony ends so.
+    CustodianRefused,
 }
 
 /// Whether the new account is connected to its node.

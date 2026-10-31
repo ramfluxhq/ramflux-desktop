@@ -10,7 +10,7 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony, ContactCard,
+    Account, AgentExport, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony, ContactCard,
     ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure,
     GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node,
     NodeHealth, NodeProbe, Object, Participant, RecoveryCeremony, RequestFloors, RequestPolicy,
@@ -317,4 +317,16 @@ pub enum DomainEvent {
     /// `Prepared` (or `Failed` when the daemon refuses), then follows
     /// [`crate::RecoveryPhase::can_follow`]; the id and expiry stay.
     RecoveryUpdated(RecoveryCeremony),
+    /// The owner of an AI participant: the person's account that custodies
+    /// it (the creation ceremony names it; a daemon that lists it reports
+    /// it too).
+    CustodianKnown {
+        /// The AI participant.
+        agent: AccountId,
+        /// Its custodian.
+        custodian: AccountId,
+    },
+    /// The outcome of exporting an AI participant's credentials: where the
+    /// bundle was written, or why it was not. Never the credentials.
+    AgentExportUpdated(AgentExport),
 }

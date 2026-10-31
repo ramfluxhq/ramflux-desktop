@@ -19,9 +19,12 @@
 //! - `accounts`: entry (accounts, devices, nodes) and settings.
 //! - `backup`: full backup and restore.
 //! - `ceremony`: account creation with a recovery phrase.
+//! - `agents`: AI participants an owner custodies: creation and the export
+//!   of their credentials.
 //! - `recovery`: recovering an account from its recovery phrase.
 
 mod accounts;
+mod agents;
 mod backup;
 mod calls;
 mod ceremony;
@@ -42,6 +45,7 @@ use crate::intent::{Effect, Intent, IntentKind, SecretInput};
 use crate::model::{Actor, Context, Moment, ParticipantKind, Risk};
 use crate::store::Store;
 
+pub use agents::{check_agent_custodian, check_agent_export};
 pub use calls::{call_peer, check_start_call};
 pub use contacts::{check_add_contact, check_add_contact_card, contact_action_current};
 pub use error::IntentError;
@@ -150,6 +154,7 @@ pub fn handle_intent(
         .or_else(|| accounts::decide(&policy, &intent.kind))
         .or_else(|| backup::decide(&policy, &intent.kind))
         .or_else(|| ceremony::decide(&policy, &intent.kind))
+        .or_else(|| agents::decide(&policy, &intent.kind))
         .or_else(|| recovery::decide(&policy, &intent.kind))
         .unwrap_or_else(|| unreachable!("every intent kind belongs to one area"))?;
     let method = match &decision {
@@ -194,6 +199,7 @@ fn take_secrets(kind: IntentKind) -> Vec<SecretInput> {
             secrets.push(passphrase);
             secrets
         }
+        IntentKind::ConfirmAgentCeremony { words } => words,
         IntentKind::ConfirmRecovery { phrase, passphrase, .. } => vec![phrase, passphrase],
         IntentKind::ActivateDevice { code, .. } => vec![code],
         IntentKind::RotatePassphrase { current, next, .. } => vec![current, next],
