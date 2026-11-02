@@ -32,7 +32,7 @@
 //! nothing else: the SFrame sender keeps its counter and the receiver its
 //! replay window (the keys are never set up again).
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use zeroize::Zeroizing;
 

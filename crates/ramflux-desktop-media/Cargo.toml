@@ -12,10 +12,10 @@ repository.workspace = true
 # (already in the graph through ramflux-crypto).
 aes-gcm = { version = "0.10", features = ["zeroize"] }
 aes = { version = "0.8", features = ["zeroize"] }
-hkdf = "0.12"
+hkdf = "0.13"
 # Relay rebinding answers (HMAC-SHA256, CALL-01 r2).
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 getrandom = "0.3"
 thiserror.workspace = true
 zeroize.workspace = true
