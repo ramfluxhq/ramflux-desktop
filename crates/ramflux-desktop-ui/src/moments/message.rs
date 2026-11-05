@@ -120,9 +120,8 @@ pub fn render(
                         .text_color(receipt_color)
                         .child(
                             Icon::new(match payload.receipt {
-                                Receipt::WaitingForNode { .. } | Receipt::Failed { .. } => {
-                                    IconName::Loader
-                                }
+                                Receipt::WaitingForNode { .. } => IconName::Loader,
+                                Receipt::Failed { .. } => IconName::TriangleAlert,
                                 Receipt::Sending => IconName::Loader,
                                 Receipt::Sent => IconName::Check,
                                 Receipt::Delivered | Receipt::Read => IconName::CircleCheck,

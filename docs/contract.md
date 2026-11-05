@@ -671,14 +671,14 @@ emits `AddContactRequested`.
   "N messages"), `safety_number` (exactly twelve digit groups, joined by
   spaces for display; anything else is shown as no number to compare,
   "you can't verify who this is yet", never a shorter one). Locked accounts
-  cannot list. Read with every account snapshot and polled until the daemon
+  cannot list. Read on account snapshots, request events and actions; if the daemon
   refuses it as a method it does not know (`ValidationFailed`, "local bus
   error: unsupported local bus method: …"): only then are the request
   methods declared unsupported (`backend.gap.contact_requests`). Any other
   refusal (a locked account, an outage, a row the daemon could not read,
   a timeout) is a failed read: the requests already known stay answerable,
   the Requests section says so (`backend.contact.requests_unreadable`), and
-  the next poll or request event reads the list again and clears it.
+  the next action or request event reads the list again and clears it.
 - `contact.accept | contact.decline | contact.block {request_id}` →
   `{request_id, principal_id, direction, root_commitment, state}` (accept
   also `contact`); `contact.request.*` are aliases. Each selector (`request_id`,
@@ -867,7 +867,7 @@ connection that opened that stream as an attended frontend, so the SDK
 keeps one such connection per scope (the job link,
 `ramflux_desktop_sdk::bus::jobs`): opened once a snapshot found the job
 API, and carrying every job request. The daemon scope keeps its link (and
-its job polls) only while no account scope is attached; an account's own
+its job stream) only while no account scope is attached; an account's own
 link follows the jobs then, so there is one attended connection and one
 set of job reads at a time. The event frame's `seq` is the
 daemon's job stream cursor; the row's `seq` is the job's version. The subscribe answer's
@@ -878,7 +878,7 @@ covers answers `resync_required` and the link follows from the head;
 `stream.lagged` or a lost connection ends it and it is opened again (at
 once, or after the reconnect back-off). Each time it opens,
 `account.backup.jobs` is read again. `account.backup.jobs` is also read
-with every account snapshot and with every poll while a job runs (it works
+on account snapshots, job events and actions (it works
 in the account's scope and with none).
 
 | Request | Body | Answer |
@@ -1265,7 +1265,7 @@ the desktop does with each:
 
 1. **Capability read.** `daemon.status.born_v3_creation`; absent means false.
    `ramflux_desktop_sdk::capabilities::Found::born_v3` carries it into
-   `Capabilities.born_v3_creation` on every status poll (it can be withdrawn
+   `Capabilities.born_v3_creation` on each status refresh (it can be withdrawn
    too). `unsupported` still has no say in it.
 2. **Expiry on the begin answer.** `expires_in_ms` (remaining time, at most
    five minutes) becomes `Ceremony.expires_at` (the bridge's clock when the
@@ -1417,14 +1417,30 @@ does not set it. The ceremony therefore starts like this:
   reachable". The done screen follows the account list, so it turns to
   "Connected" by itself.
 
-**Networking read.** `account.status` and `account.list` both carry
-`networking`; `account_status` now reads it. While an account's own scope sees
-it pending, it reads `account.status` again after the first wait (2 s),
-doubling up to 30 s (`SdkConfig::networking_poll_ms`), until it is live or the account locks
-(the daemon sends no event when networking comes up). The workspace banner
-(text: connecting, updates by itself) and the entry tag follow the store. The
-composer is not gated locally by networking: the daemon refuses a send, and the
-banner says why.
+**Networking and text sends (S5).** Attach and stream-gap recovery read local
+snapshots; `account.networking.changed` then drives session state and the header.
+Recovery reads watched conversations plus known tasks and surfaces, with at most
+eight follow-up reads running. Returning to an unwatched conversation refreshes
+its history. There is no periodic data polling or stream-failure polling fallback;
+external changes become visible at the next attach, event or user action.
+Transient pending state shows “Connecting…” and a typed secondary reason; terminal
+custody/refusal reasons take precedence. `Live` restores the conversation title.
+
+A text submission immediately shows `Receipt::Sending` under its final message
+identity. Only a `NetworkingPending` error with structured `details.networking`
+is a known pre-acceptance refusal: it changes the receipt to
+`WaitingForNode { retry_at }` and arms a monotonic one-shot at `retry_after_ms`, or
+2/5/15/30/60 seconds when no hint is supplied (60 repeats). Each refusal rearms,
+including when the account is already Live. A Live event retries immediately.
+Automatic attempts retain the message payload and identity and choose a fresh
+operation key only after that refusal. The countdown displays the scheduled
+deadline, and the visible rendering clock updates it; hidden/background one-shots
+continue without rendering ticks. After ten minutes from the first submission,
+the receipt is `Failed { retryable: true }`. Retry is a new validated user action,
+with a new message/operation key; the earlier failure remains in the timeline.
+`Timeout`, `Transport` and lost answers use only the bus client's existing
+same-key resend. An unresolved outcome shows `Failed { retryable: false }` and
+never offers a fresh-key Retry action. Delivery-receipt retry policy is unchanged.
 
 **Audit.** The erase check zeroizes the bytes in place, reads every one, and
 counts the buffer only if all were zero (`bridge::custody::erase_and_check`,

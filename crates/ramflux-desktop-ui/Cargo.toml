@@ -203,3 +203,9 @@ name = "s5_bus_align"
 path = "tests/s5_bus_align.rs"
 test = true
 harness = true
+
+[[test]]
+name = "s5_bus_align_shots"
+path = "tests/s5_bus_align_shots.rs"
+harness = false
+test = false

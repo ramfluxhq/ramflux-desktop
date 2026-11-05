@@ -211,6 +211,22 @@ jobs:
         timeout-minutes: 15
         run: python3 scripts/check-bus-align-tests.py
 
+      - name: Bus alignment screenshots (both locales)
+        timeout-minutes: 5
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: |
+          RAMFLUX_SHOTS_DIR="$RUNNER_TEMP/s5-shots/en" RAMFLUX_SHOTS_LOCALE=en cargo test -p ramflux-desktop-ui --test s5_bus_align_shots
+          RAMFLUX_SHOTS_DIR="$RUNNER_TEMP/s5-shots/zh-CN" RAMFLUX_SHOTS_LOCALE=zh-CN cargo test -p ramflux-desktop-ui --test s5_bus_align_shots
+
+      - name: Upload bus alignment screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s5-bus-align-shots
+          path: ${{ runner.temp }}/s5-shots
+          if-no-files-found: error
+
       - name: Test
         timeout-minutes: 25
         # Hosted macOS runners give no real-time scheduling guarantees, so the
