@@ -172,7 +172,10 @@ mod tests {
 
     fn ceremonies() -> crate::bridge::scope::Ceremonies {
         let (phrases, _) = std_mpsc::channel();
-        crate::bridge::scope::Ceremonies { phrases, audit: std::sync::Arc::default() }
+        crate::bridge::scope::Ceremonies {
+            phrases: phrases.into(),
+            audit: std::sync::Arc::default(),
+        }
     }
 
     fn runtime() -> tokio::runtime::Runtime {

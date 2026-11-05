@@ -50,6 +50,11 @@ pub trait Source {
         None
     }
 
+    /// Whether a phrase is waiting, without moving or copying its words.
+    fn recovery_phrase_ready(&self) -> bool {
+        false
+    }
+
     /// The recovery phrase the daemon handed out once for the running
     /// creation ceremony (after the ceremony reported `PhraseReady`). It is
     /// secret, so it never travels as an event: the screen takes it here
@@ -57,5 +62,45 @@ pub trait Source {
     /// waiting, and after it was taken: a source gives it out once.
     fn take_recovery_phrase(&mut self) -> Option<RecoveryPhrase> {
         None
+    }
+}
+
+/// Coalesced completion notification, independent of any executor or clock.
+/// The readiness bit and waiter are protected by the same lock so a send
+/// between draining and registering cannot be lost.
+#[derive(Clone, Default)]
+pub struct SourceWake(std::sync::Arc<std::sync::Mutex<WakeState>>);
+
+#[derive(Default)]
+struct WakeState {
+    ready: bool,
+    waiter: Option<std::task::Waker>,
+}
+
+impl SourceWake {
+    /// Announces a completion after publishing it to its channel.
+    pub fn notify(&self) {
+        let waiter = {
+            let mut state = self.0.lock().expect("source wake lock");
+            state.ready = true;
+            state.waiter.take()
+        };
+        if let Some(waiter) = waiter {
+            waiter.wake();
+        }
+    }
+
+    /// Waits for a completion, including one sent before registration.
+    pub async fn notified(&self) {
+        std::future::poll_fn(|cx| {
+            let mut state = self.0.lock().expect("source wake lock");
+            if std::mem::take(&mut state.ready) {
+                std::task::Poll::Ready(())
+            } else {
+                state.waiter = Some(cx.waker().clone());
+                std::task::Poll::Pending
+            }
+        })
+        .await
     }
 }

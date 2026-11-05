@@ -46,6 +46,15 @@ impl StoreHandle {
     /// Switches to live mode on `hub`: every scenario session is dropped and
     /// the daemon session starts; account sessions follow the daemon.
     pub fn attach_live(&mut self, hub: SdkHub, cx: &mut Context<Self>) {
+        let wake = hub.wake();
+        self.completion_task = Some(cx.spawn(async move |this, cx| {
+            loop {
+                wake.notified().await;
+                if this.update(cx, |handle, cx| handle.advance(0, cx)).is_err() {
+                    break;
+                }
+            }
+        }));
         self.sessions.clear();
         self.active = None;
         self.inspector.clear();

@@ -63,7 +63,11 @@ pub type MediaAnswer = (CallId, Result<CallMedia, String>);
 /// A request from a source to the bridge.
 pub(crate) enum Command {
     /// Start serving `scope`, delivering into `outbox`.
-    Attach { scope: Scope, outbox: std_mpsc::Sender<Delivery>, phrases: std_mpsc::Sender<Handoff> },
+    Attach {
+        scope: Scope,
+        outbox: crate::completion::CompletionSender<Delivery>,
+        phrases: crate::completion::CompletionSender<Handoff>,
+    },
     /// Perform an effect in `scope`.
     Effect { scope: Scope, effect: Effect },
     /// The user looks at `context` in `scope`.
@@ -71,7 +75,11 @@ pub(crate) enum Command {
     /// A view needs these messages' bodies again in `scope`.
     Bodies { scope: Scope, moments: Vec<MomentId> },
     /// The media engine needs a call's media session in `scope`.
-    CallMedia { scope: Scope, call_id: CallId, reply: std_mpsc::Sender<MediaAnswer> },
+    CallMedia {
+        scope: Scope,
+        call_id: CallId,
+        reply: crate::completion::CompletionSender<MediaAnswer>,
+    },
     /// Stop serving `scope`.
     Detach { scope: Scope },
     /// Ask the daemon to stop (`daemon.stop`) and report its answer.

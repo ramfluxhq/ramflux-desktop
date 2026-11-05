@@ -84,6 +84,7 @@ pub struct StoreHandle {
     active: Option<AccountId>,
     inspector: Inspector,
     clock: Option<Task<()>>,
+    completion_task: Option<Task<()>>,
     last_tick: Option<Instant>,
     wall_clock: bool,
     live: Option<live::LiveLink>,
@@ -113,6 +114,7 @@ impl StoreHandle {
             active: None,
             inspector: Inspector::default(),
             clock: None,
+            completion_task: None,
             last_tick: None,
             wall_clock: false,
             live: None,
@@ -146,6 +148,7 @@ impl StoreHandle {
     pub fn load_scenario(&mut self, scenario: &Scenario, cx: &mut Context<Self>) {
         let account = scenario_account(scenario);
         self.live = None;
+        self.completion_task = None;
         self.sessions.clear();
         self.sessions.insert(account.clone(), self.new_session(scenario));
         for companion in &scenario.companions {
@@ -384,6 +387,18 @@ impl StoreHandle {
     fn drive_calls(&mut self, cx: &mut Context<Self>) {
         let mut changed = false;
         let audio = self.call_audio.clone();
+        // Media completions may belong to the account whose call continues
+        // while another account is rendered. Drain stale answers too.
+        for (account, session) in &mut self.sessions {
+            while let Some((id, answer)) = session.take_call_media() {
+                if let Some(link) =
+                    self.call.as_mut().filter(|l| l.call_id == id && &l.account == account)
+                {
+                    link.media(answer, audio.as_ref());
+                    changed = true;
+                }
+            }
+        }
         let account =
             self.call.as_ref().map(|link| link.account.clone()).or_else(|| self.active.clone());
         let session = account.as_ref().and_then(|id| self.sessions.get_mut(id));
@@ -396,14 +411,6 @@ impl StoreHandle {
             }
             return;
         };
-        while let Some((id, answer)) = session.take_call_media() {
-            if let Some(link) =
-                self.call.as_mut().filter(|l| l.call_id == id && l.account == account)
-            {
-                link.media(answer, audio.as_ref());
-                changed = true;
-            }
-        }
         let (answered, active) = selectors::current_call(session.store())
             .filter(|c| matches!(c.state, CallState::Connecting | CallState::Active))
             .map_or((None, false), |c| (Some(c.id.clone()), c.state == CallState::Active));

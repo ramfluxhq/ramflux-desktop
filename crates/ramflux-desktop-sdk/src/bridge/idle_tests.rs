@@ -14,7 +14,8 @@ fn task(path: &std::path::Path, scope: Scope) -> (Task, Inbox, std_mpsc::Receive
     config.backup_api = true;
     let (out, delivered) = std_mpsc::channel();
     let (phrases, _) = std_mpsc::channel();
-    let (task, inbox) = build(config, scope, out, Ceremonies { phrases, audit: Arc::default() });
+    let (task, inbox) =
+        build(config, scope, out, Ceremonies { phrases: phrases.into(), audit: Arc::default() });
     (task, inbox, delivered)
 }
 

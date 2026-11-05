@@ -9,6 +9,7 @@ import subprocess
 SDK_TESTS = [
     "bridge::scope::review_retry_tests::recovery_reads_have_bounded_concurrency_and_drain_the_queue",
     "translate::stream::tests::recovery_reads_only_two_watched_of_fifty_listed_conversations",
+    "source::tests::every_completion_channel_notifies_and_phrase_ownership_survives_late_handoff",
     "bridge::scope::idle_tests::daemon_eof_with_only_locked_account_reconnects_and_refreshes_nodes_without_jobs",
     "bridge::scope::idle_tests::stream_timeout_keeps_healthy_ordinary_connection_connected",
     "bridge::scope::idle_tests::ordinary_disconnect_is_observed_without_data_requests",
@@ -44,6 +45,7 @@ SDK_TESTS = [
     "local::daemon_process::tests::daemon_spawn_sets_default_rust_log_unless_inherited",
 ]
 UI_TESTS = [
+    "ui_wakes_on_bridge_event_within_one_frame",
     "authority_restored_event_returns_blocked_header_to_live",
     "unlock_opens_account_on_networking_pending",
     "header_shows_connecting_until_live_or_typed_reason",

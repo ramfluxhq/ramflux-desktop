@@ -18,7 +18,10 @@ fn task() -> (Task, Inbox, std_mpsc::Receiver<Delivery>) {
         config,
         Scope::Account(AccountId::new("acct-main")),
         outbox,
-        Ceremonies { phrases, audit: Arc::new(super::super::PhraseAudit::default()) },
+        Ceremonies {
+            phrases: phrases.into(),
+            audit: Arc::new(super::super::PhraseAudit::default()),
+        },
     );
     task.link = Link::Live;
     task.sync.mode = SyncMode::Stream;

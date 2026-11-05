@@ -30,6 +30,7 @@
 pub mod bridge;
 pub mod bus;
 pub mod capabilities;
+mod completion;
 pub mod config;
 pub mod cursor;
 pub mod custodians;

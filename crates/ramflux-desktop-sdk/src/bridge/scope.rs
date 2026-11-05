@@ -26,10 +26,12 @@
 //! `Disconnected`; ordinary EOF on the daemon scope enters lost-state backoff
 //! and independently re-snapshots, including nodes, after reconnect.
 
+#[cfg(test)]
+use std::sync::mpsc as std_mpsc;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
 use ramflux_desktop_core::{ContextId, DomainEvent, Effect, MomentId, SourceStatus};
@@ -62,7 +64,10 @@ pub(crate) enum ScopeCommand {
     /// A view needs these messages' bodies again.
     Bodies(Vec<MomentId>),
     /// The media engine needs a call's media session.
-    CallMedia(ramflux_desktop_core::CallId, std_mpsc::Sender<super::MediaAnswer>),
+    CallMedia(
+        ramflux_desktop_core::CallId,
+        crate::completion::CompletionSender<super::MediaAnswer>,
+    ),
     /// Daemon scope only: whether an account scope is attached (its own
     /// link follows the backup jobs then, so the daemon scope's closes).
     AccountsLive(bool),
@@ -72,7 +77,7 @@ pub(crate) enum ScopeCommand {
 
 /// Where a scope's ceremonies hand the recovery phrase and count it.
 pub(crate) struct Ceremonies {
-    pub(crate) phrases: std_mpsc::Sender<super::Handoff>,
+    pub(crate) phrases: crate::completion::CompletionSender<super::Handoff>,
     pub(crate) audit: Arc<super::PhraseAudit>,
 }
 
@@ -111,7 +116,7 @@ pub(super) struct Task {
     pub(super) client: BusClient,
     pub(super) translator: Translator,
     pub(super) pins: PinStore,
-    pub(super) outbox: std_mpsc::Sender<Delivery>,
+    pub(super) outbox: crate::completion::CompletionSender<Delivery>,
     pub(super) internal: mpsc::UnboundedSender<Internal>,
     pub(super) streamed: mpsc::UnboundedSender<Streamed>,
     pub(super) cursors: CursorStore,
@@ -195,9 +200,10 @@ pub(super) struct Inbox {
 pub(super) fn build(
     config: SdkConfig,
     scope: Scope,
-    outbox: std_mpsc::Sender<Delivery>,
+    outbox: impl Into<crate::completion::CompletionSender<Delivery>>,
     ceremonies: Ceremonies,
 ) -> (Task, Inbox) {
+    let outbox = outbox.into();
     let (internal, internal_rx) = mpsc::unbounded_channel();
     let (connection_states, connection_rx) = mpsc::unbounded_channel();
     // Legacy push is intentionally dormant: no sender/task is retained.
@@ -290,7 +296,7 @@ pub(super) fn build(
 pub(crate) async fn run(
     config: SdkConfig,
     scope: Scope,
-    outbox: std_mpsc::Sender<Delivery>,
+    outbox: crate::completion::CompletionSender<Delivery>,
     ceremonies: Ceremonies,
     mut commands: mpsc::UnboundedReceiver<ScopeCommand>,
     daemon_refresh: mpsc::UnboundedSender<super::DaemonNotice>,
@@ -1003,7 +1009,7 @@ impl Task {
     fn call_media(
         &self,
         call_id: ramflux_desktop_core::CallId,
-        reply: std_mpsc::Sender<super::MediaAnswer>,
+        reply: crate::completion::CompletionSender<super::MediaAnswer>,
     ) {
         let account = match self.account() {
             Some(account) if self.found.calls => account,

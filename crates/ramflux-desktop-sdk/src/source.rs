@@ -27,6 +27,7 @@ use crate::translate::Scope;
 pub struct SdkHub {
     bridge: Bridge,
     socket: String,
+    wake: ramflux_desktop_core::source::SourceWake,
 }
 
 impl SdkHub {
@@ -37,7 +38,12 @@ impl SdkHub {
     /// Returns the I/O error when the bridge thread cannot start.
     pub fn start(config: SdkConfig) -> std::io::Result<Self> {
         let socket = config.socket_path.to_string_lossy().into_owned();
-        Ok(Self { bridge: Bridge::start(config)?, socket })
+        Ok(Self { bridge: Bridge::start(config)?, socket, wake: Default::default() })
+    }
+
+    /// Completion notification shared by every scope and completion channel.
+    pub fn wake(&self) -> ramflux_desktop_core::source::SourceWake {
+        self.wake.clone()
     }
 
     /// The daemon socket the hub attaches to.
@@ -53,12 +59,12 @@ impl SdkHub {
 
     /// A source for the daemon scope (status, nodes, accounts; the entry page).
     pub fn daemon_source(&self) -> SdkSource {
-        SdkSource::attach(self.bridge.clone(), Scope::Daemon)
+        SdkSource::attach(self.bridge.clone(), Scope::Daemon, self.wake.clone())
     }
 
     /// A source for one unlocked account.
     pub fn account_source(&self, account: AccountId) -> SdkSource {
-        SdkSource::attach(self.bridge.clone(), Scope::Account(account))
+        SdkSource::attach(self.bridge.clone(), Scope::Account(account), self.wake.clone())
     }
 
     /// Asks the daemon on the hub's socket to stop (`daemon.stop`: it
@@ -110,7 +116,7 @@ pub struct SdkSource {
     bridge: Bridge,
     scope: Scope,
     inbox: std_mpsc::Receiver<Delivery>,
-    media: (std_mpsc::Sender<MediaAnswer>, std_mpsc::Receiver<MediaAnswer>),
+    media: (crate::completion::CompletionSender<MediaAnswer>, std_mpsc::Receiver<MediaAnswer>),
     last_seq: u64,
     profile: Option<RendererProfile>,
     /// Phrases the bridge moved here, not yet taken.
@@ -134,16 +140,25 @@ impl std::fmt::Debug for SdkSource {
 }
 
 impl SdkSource {
-    fn attach(bridge: Bridge, scope: Scope) -> Self {
+    fn attach(
+        bridge: Bridge,
+        scope: Scope,
+        wake: ramflux_desktop_core::source::SourceWake,
+    ) -> Self {
         let (outbox, inbox) = std_mpsc::channel();
         let (handoff, phrases) = std_mpsc::channel();
-        bridge.send(Command::Attach { scope: scope.clone(), outbox, phrases: handoff });
+        bridge.send(Command::Attach {
+            scope: scope.clone(),
+            outbox: crate::completion::CompletionSender::new(outbox, wake.clone()),
+            phrases: crate::completion::CompletionSender::new(handoff, wake.clone()),
+        });
         let audit = bridge.audit().clone();
+        let (media_tx, media_rx) = std_mpsc::channel();
         Self {
             bridge,
             scope,
             inbox,
-            media: std_mpsc::channel(),
+            media: (crate::completion::CompletionSender::new(media_tx, wake), media_rx),
             last_seq: 0,
             profile: None,
             phrases,
@@ -253,6 +268,10 @@ impl Source for SdkSource {
     /// The phrase the bridge moved here for the running creation ceremony,
     /// once. It is parsed in place (no copy); a phrase that is not 24 list
     /// words is erased and never shown.
+    fn recovery_phrase_ready(&self) -> bool {
+        self.parked.is_some()
+    }
+
     fn take_recovery_phrase(&mut self) -> Option<RecoveryPhrase> {
         self.settle_phrases();
         let handoff = self.parked.take()?;
@@ -276,5 +295,81 @@ impl Drop for SdkSource {
         self.running = None;
         self.settle_phrases();
         self.bridge.send(Command::Detach { scope: self.scope.clone() });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::completion::CompletionSender;
+    use ramflux_desktop_core::SourceStatus;
+    use ramflux_desktop_core::source::SourceWake;
+    use std::{
+        future::Future,
+        pin::pin,
+        sync::Arc,
+        task::{Context, Waker},
+    };
+
+    #[test]
+    fn every_completion_channel_notifies_and_phrase_ownership_survives_late_handoff() {
+        let wake = SourceWake::default();
+        let (out, inbox) = std_mpsc::channel();
+        let (phrase_tx, phrases) = std_mpsc::channel();
+        let (media_tx, media_rx) = std_mpsc::channel();
+        let mut source = SdkSource {
+            bridge: Bridge::start(SdkConfig::new("/nonexistent/wake.sock")).expect("bridge"),
+            scope: Scope::Daemon,
+            inbox,
+            media: (CompletionSender::new(media_tx, wake.clone()), media_rx),
+            last_seq: 0,
+            profile: None,
+            phrases,
+            parked: None,
+            running: None,
+            given: None,
+            audit: Arc::default(),
+        };
+        let delivery = CompletionSender::new(out, wake.clone());
+        let handoff = CompletionSender::new(phrase_tx, wake.clone());
+        let waker = Waker::noop();
+        let mut cx = Context::from_waker(waker);
+        let mut waiter = pin!(wake.notified());
+        assert!(waiter.as_mut().poll(&mut cx).is_pending());
+        delivery
+            .send(Delivery {
+                at: Timestamp(0),
+                event: DomainEvent::SourceStatusChanged(SourceStatus::Connected),
+            })
+            .expect("delivery");
+        assert!(waiter.as_mut().poll(&mut cx).is_ready());
+        assert_eq!(source.drain(Timestamp(0)).len(), 1);
+        // A phrase whose ceremony was superseded is wiped, never parked.
+        source.running = Some("running".into());
+        handoff
+            .send(Handoff {
+                ceremony_id: "stale".into(),
+                phrase: ramflux_desktop_test::fake_custody::phrase().into(),
+            })
+            .expect("stale");
+        assert!(pin!(wake.notified()).as_mut().poll(&mut cx).is_ready());
+        assert!(source.drain(Timestamp(0)).is_empty());
+        assert!(!source.recovery_phrase_ready());
+        handoff
+            .send(Handoff {
+                ceremony_id: "running".into(),
+                phrase: ramflux_desktop_test::fake_custody::phrase().into(),
+            })
+            .expect("phrase");
+        assert!(pin!(wake.notified()).as_mut().poll(&mut cx).is_ready());
+        assert!(source.drain(Timestamp(0)).is_empty(), "phrase-only completion");
+        assert!(source.recovery_phrase_ready());
+        assert!(source.take_recovery_phrase().is_some());
+        assert!(source.take_recovery_phrase().is_none());
+        assert_eq!(source.audit.taken(), 1);
+        source.media.0.send((CallId::new("call"), Err("unavailable".into()))).expect("media");
+        assert!(pin!(wake.notified()).as_mut().poll(&mut cx).is_ready());
+        assert!(source.drain(Timestamp(0)).is_empty());
+        assert!(source.take_call_media().is_some());
     }
 }

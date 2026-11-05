@@ -328,3 +328,129 @@ fn authority_restored_event_returns_blocked_header_to_live(cx: &mut TestAppConte
     });
     fake.shutdown();
 }
+
+/// Runs bridge threads without advancing GPUI's clock. A delivery must be
+/// applied by the completion waiter, rather than by the 50 ms render ticker.
+fn without_time(cx: &mut TestAppContext, mut done: impl FnMut(&mut TestAppContext) -> bool) {
+    let limit = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !done(cx) {
+        assert!(std::time::Instant::now() < limit, "completion did not wake UI");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        cx.run_until_parked();
+    }
+}
+
+#[gpui_kit::test]
+fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
+    use ramflux_desktop_core::{CallId, Source, Timestamp, methods};
+    use ramflux_desktop_sdk::SdkHub;
+    use std::{
+        future::Future,
+        pin::pin,
+        task::{Context, Poll, Wake, Waker},
+    };
+    struct Count(std::sync::atomic::AtomicUsize);
+    impl Wake for Count {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    let _locale = locale_guard();
+    let (fake, (handle, shell)) = fixture(cx, false);
+    wait_for_workspace(cx, &shell);
+    wait(cx, "stream", |_| fake.streaming("acct-main"));
+    let store = store_handle(cx, &shell);
+    cx.update(|cx| store.update(cx, |store, _| store.stop_clock()));
+    let before = cx.executor().now();
+    let mut live = event(Value::Null, "live");
+    live["session"]["cause"] = Value::Null;
+    fake.publish("acct-main", "account.networking.changed", live);
+    without_time(cx, |cx| title(cx, handle) == tr("app.name").as_ref());
+    assert_eq!(before, cx.executor().now(), "zero-time delivery renders in one drain");
+
+    // A separate background scope shares the hub notification even if its
+    // completion carries no domain event. Register both before and after send.
+    let hub = SdkHub::start(SdkConfig::new(
+        cx.update(|cx| store.read(cx).live_socket().expect("socket").to_owned()),
+    ))
+    .expect("hub");
+    let mut background = hub.account_source(AccountId::new("background"));
+    let wake = hub.wake();
+    let counter = Arc::new(Count(std::sync::atomic::AtomicUsize::new(0)));
+    let waker = Waker::from(counter.clone());
+    let mut context = Context::from_waker(&waker);
+    // Settle attach before isolating the media-only completion.
+    without_time(cx, |_| {
+        background
+            .drain(Timestamp(0))
+            .iter()
+            .any(|e| matches!(e.event, DomainEvent::CapabilitiesUpdated(_)))
+    });
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    background.drain(Timestamp(0));
+    let mut pending = pin!(wake.notified());
+    if pending.as_mut().poll(&mut context).is_ready() {
+        pending.set(wake.notified());
+    }
+    assert!(pending.as_mut().poll(&mut context).is_pending());
+    background.request_call_media(&CallId::new("background-call"));
+    without_time(cx, |_| counter.0.load(Ordering::SeqCst) > 0);
+    assert!(matches!(pending.as_mut().poll(&mut context), Poll::Ready(())));
+    assert_eq!(
+        background.take_call_media().expect("media-only answer").0,
+        CallId::new("background-call")
+    );
+    assert!(background.take_call_media().is_none());
+
+    // A send before waiter registration must remain ready too.
+    wake.notify();
+    assert!(pin!(wake.notified()).as_mut().poll(&mut context).is_ready());
+
+    // The daemon's phrase channel uses the same signal and keeps one-shot
+    // ownership/wiping: a phrase never becomes a replayable domain event.
+    let path = socket_path("s5-wake-phrase");
+    let custody = Arc::new(ramflux_desktop_test::fake_custody::FakeCustody::new());
+    let phrase_fake = FakeBus::start_with(
+        &path,
+        |method, _, _| match method {
+            "daemon.status" => Reply::Ok(json!({"born_v3_creation":true})),
+            "account.list" => Reply::Ok(json!({"accounts":[],"account_details":[]})),
+            _ => Reply::Ok(json!({})),
+        },
+        custody,
+    );
+    let phrase_hub = SdkHub::start(SdkConfig::new(path)).expect("phrase hub");
+    let mut daemon = ramflux_desktop_ui::app::AccountSession::live(
+        "daemon",
+        Box::new(phrase_hub.daemon_source()),
+    );
+    daemon.submit(ramflux_desktop_core::Effect::Call {
+        method: methods::CUSTODY_BEGIN.into(),
+        body: json!({"display_name":"Alex","principal_kind":"human"}),
+    });
+    without_time(cx, |_| {
+        daemon.advance(0);
+        daemon
+            .store()
+            .ceremony()
+            .is_some_and(|c| c.phase == ramflux_desktop_core::CeremonyPhase::Prepared)
+    });
+    daemon.submit(ramflux_desktop_core::Effect::Call {
+        method: methods::CUSTODY_SHOW_ONCE.into(),
+        body: json!({}),
+    });
+    let mut phrase = None;
+    without_time(cx, |_| {
+        daemon.advance(0);
+        phrase = daemon.take_recovery_phrase();
+        phrase.is_some()
+    });
+    assert!(daemon.take_recovery_phrase().is_none(), "phrase moves once");
+    assert_eq!(phrase_hub.phrase_audit().taken(), 1);
+    drop(phrase);
+    phrase_fake.shutdown();
+    fake.shutdown();
+}

@@ -254,12 +254,14 @@ impl AccountSession {
     /// Moves the clock forward by `ms` and applies due envelopes. Does
     /// nothing while paused.
     pub fn advance(&mut self, ms: u64) -> Applied {
-        if (self.paused && !self.is_live()) || ms == 0 {
+        if self.paused && !self.is_live() {
             return Applied::default();
         }
         self.clock_ms = self.clock_ms.saturating_add(ms);
         let mut applied = self.pump();
-        applied.changes.mark_clock();
+        if ms > 0 {
+            applied.changes.mark_clock();
+        }
         applied
     }
 
@@ -356,6 +358,11 @@ impl AccountSession {
         let now = self.now();
         for env in self.source_mut().drain(now) {
             self.apply(&env, &mut applied);
+        }
+        if self.source_mut().recovery_phrase_ready() {
+            applied
+                .changes
+                .merge(ramflux_desktop_core::Changes { ceremony: true, ..Default::default() });
         }
         if !self.requested.is_empty() {
             let store = &self.store;

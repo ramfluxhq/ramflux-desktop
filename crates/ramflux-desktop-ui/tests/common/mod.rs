@@ -109,6 +109,11 @@ pub fn open_at(
     width: f32,
     height: f32,
 ) -> Opened {
+    if matches!(&options.source, ramflux_desktop_ui::shell::SourceChoice::Rfd(_)) {
+        // The SDK bridge performs real I/O and wakes this executor from its
+        // own thread. GPUI's mixed-I/O mode explicitly permits those wakes.
+        cx.executor().allow_parking();
+    }
     cx.update(|cx| {
         gpui_kit::init(cx);
         ramflux_desktop_ui::init(cx);

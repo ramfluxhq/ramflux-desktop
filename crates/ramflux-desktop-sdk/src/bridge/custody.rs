@@ -292,7 +292,7 @@ pub(super) struct Context {
     pub(super) socket: std::path::PathBuf,
     pub(super) budget: Duration,
     pub(super) internal: mpsc::UnboundedSender<Internal>,
-    pub(super) phrases: std_mpsc::Sender<Handoff>,
+    pub(super) phrases: crate::completion::CompletionSender<Handoff>,
     pub(super) audit: Arc<PhraseAudit>,
 }
 

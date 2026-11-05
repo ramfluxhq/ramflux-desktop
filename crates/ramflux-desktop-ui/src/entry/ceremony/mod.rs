@@ -596,9 +596,9 @@ impl CeremonyPanel {
                 // ceremony that made it.
                 let mine = self.store.read(cx).agent_ceremony() == self.agent;
                 if !self.held.taken && mine {
-                    self.held.taken = true;
                     self.held.phrase =
                         self.store.update(cx, |handle, _| handle.take_recovery_phrase());
+                    self.held.taken = self.held.phrase.is_some();
                     self.held.covered = !window.is_window_active();
                 }
             }
