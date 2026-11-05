@@ -109,10 +109,8 @@ async fn delayed_status_cannot_overwrite_newer_networking_event() {
     let (mut task, mut inbox, delivered) = task();
     task.client = BusClient::new(path, Duration::from_secs(2), task.config.deadlines);
     task.spawn_fetches(vec![Fetch::AccountStatus(AccountId::new("acct-main"))]);
-    task.networking_revision += 1;
     let event = json!({"account_id":"acct-main", "state":"live", "session":pending_status()["networking_snapshot"]});
-    let events = task.translator.networking_changed(&event);
-    task.emit(events);
+    task.networking_event(&event);
     assert_eq!(latest(&delivered).networking, Networking::Pending);
     answer(&mut task, &mut inbox).await;
     assert!(!delivered.try_iter().any(|d| matches!(d.event, DomainEvent::AccountUpdated(a) if a.networking == Networking::Live)), "late snapshot restored false Live");
@@ -138,4 +136,87 @@ async fn delayed_status_cannot_overwrite_newer_networking_event() {
     assert!(!delivered.try_iter().any(
         |d| matches!(d.event, DomainEvent::AccountUpdated(a) if a.networking == Networking::Live)
     ));
+}
+
+// P0's additive event body: custody stays live while the resident session changes.
+fn event(state: &str) -> Value {
+    json!({"account_id":"acct-main", "state":"live", "node_binding":null,
+        "networking_reason":null, "session":{"state":state,"phase":if state == "live" {"live"} else {"backoff"},
+        "generation":2,"cause":if state == "live" {Value::Null} else {json!({"kind":"node_unreachable","retry_after_ms":5000})},"retry_after_ms":5000}})
+}
+
+#[tokio::test]
+async fn networking_changed_event_updates_header_without_status_read() {
+    let path = socket_path("network-event");
+    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({})));
+    let (mut task, _, delivered) = task();
+    task.client = BusClient::new(path, Duration::from_secs(2), task.config.deadlines);
+    task.on_streamed(Streamed::Event {
+        seq: Some(1),
+        at: None,
+        topic: "account.networking.changed".into(),
+        body: event("networking_pending"),
+    });
+    let account = latest(&delivered);
+    assert_eq!(account.networking, Networking::Pending);
+    assert_eq!(
+        account.networking_reason.expect("session cause").kind,
+        ramflux_desktop_core::NetworkingReasonKind::NodeUnreachable
+    );
+    task.on_streamed(Streamed::Event {
+        seq: Some(2),
+        at: None,
+        topic: "account.networking.changed".into(),
+        body: event("live"),
+    });
+    assert_eq!(latest(&delivered).networking, Networking::Live);
+    assert!(fake.seen().is_empty(), "events never trigger status reads");
+    task.on_pushed(Pushed::Event {
+        topic: "account.networking.changed".into(),
+        body: event("networking_pending"),
+    });
+    assert_eq!(latest(&delivered).networking, Networking::Pending);
+    assert!(fake.seen().is_empty());
+}
+
+#[tokio::test]
+async fn missed_networking_event_is_replayed_from_cursor() {
+    let path = socket_path("network-replay");
+    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({})));
+    fake.enable_stream();
+    fake.publish("acct-main", "account.networking.changed", event("live"));
+    fake.publish("acct-main", "account.networking.changed", event("networking_pending"));
+    let (mut task, mut inbox, delivered) = task();
+    task.config.socket_path = path;
+    task.sync.cursor = Some(1);
+    task.open_stream();
+    for _ in 0..2 {
+        let frame = tokio::time::timeout(Duration::from_secs(3), inbox.streamed.recv())
+            .await
+            .expect("deadline")
+            .expect("stream frame");
+        task.on_streamed(frame);
+    }
+    assert_eq!(latest(&delivered).networking, Networking::Pending);
+    assert_eq!(task.sync.cursor, Some(2));
+    let seen = fake.seen();
+    let subscription = seen.iter().find(|r| r.method == "bus.subscribe").expect("subscription");
+    assert_eq!(subscription.body["since_seq"], 1);
+    assert!(
+        subscription.body["topics"]
+            .as_array()
+            .expect("topics")
+            .contains(&json!("account.networking.changed"))
+    );
+    assert!(!seen.iter().any(|r| r.method == "account.status"));
+    task.on_streamed(Streamed::Event {
+        seq: Some(2),
+        at: None,
+        topic: "account.networking.changed".into(),
+        body: event("live"),
+    });
+    assert!(
+        !delivered.try_iter().any(|d| matches!(d.event, DomainEvent::AccountUpdated(_))),
+        "duplicate is ignored"
+    );
 }

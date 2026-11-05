@@ -172,6 +172,7 @@ impl Task {
         let mut topics = topics();
         topics.extend(crate::translate::contact_requests::TOPICS);
         topics.push(crate::translate::account::SECURE_SESSIONS_TOPIC);
+        topics.push("account.networking.changed");
         if self.config.call_api {
             topics.push(crate::translate::stream::CALL_TOPIC);
         }
@@ -223,6 +224,15 @@ impl Task {
         self.request_reads(reads);
     }
 
+    pub(super) fn networking_event(&mut self, body: &Value) {
+        if body["account_id"].as_str() != self.account().as_deref() {
+            return;
+        }
+        self.networking_revision = self.networking_revision.saturating_add(1);
+        let events = self.translator.networking_changed(body);
+        self.emit(events);
+    }
+
     fn stream_event(&mut self, seq: Option<u64>, at: Option<i64>, topic: &str, body: &Value) {
         if let Some(seq) = seq {
             if self.sync.cursor.is_some_and(|cursor| seq <= cursor) {
@@ -232,6 +242,7 @@ impl Task {
             self.sync.cursor = Some(seq);
         }
         match topic {
+            "account.networking.changed" => self.networking_event(body),
             "sync.status" => {
                 self.sync.daemon = Some(DaemonSync::from_body(body));
                 self.show_sync(false);

@@ -160,10 +160,7 @@ pub(super) struct Task {
     /// The creation and recovery ceremonies of this scope, each on a
     /// connection of its own.
     pub(super) custody: super::custody::Custody,
-    /// When `account.status` is read again while the account's networking
-    /// is pending, and the wait after that (account scope).
-    pub(super) net_due: Option<Instant>,
-    pub(super) net_wait: Duration,
+    /// Revision of the newest applied networking event.
     pub(super) networking_revision: u64,
     pub(super) ceremonies: Ceremonies,
 }
@@ -273,8 +270,6 @@ pub(super) fn build(
         jobs_open_at: None,
         accounts_live: false,
         custody: super::custody::Custody::new(),
-        net_due: None,
-        net_wait: Duration::ZERO,
         networking_revision: 0,
         ceremonies,
     };
@@ -368,9 +363,6 @@ impl Task {
                 if let Some(open_at) = self.jobs_open_at {
                     wake = wake.min(open_at);
                 }
-                if let Some(due) = self.net_due {
-                    wake = wake.min(due);
-                }
                 if let Some(due) = self.read_recovery.next_due() {
                     wake = wake.min(due);
                 }
@@ -393,12 +385,6 @@ impl Task {
                 }
                 if self.jobs_open_at.is_some_and(|at| now >= at) {
                     self.open_jobs();
-                }
-                if self.net_due.is_some_and(|at| now >= at) {
-                    self.net_due = None;
-                    if let Some(account) = self.scope.account().cloned() {
-                        self.spawn_reads(vec![Fetch::AccountStatus(account)], false);
-                    }
                 }
                 let retries = self.read_recovery.due(now);
                 self.spawn_reads(retries, false);
@@ -557,8 +543,6 @@ impl Task {
     pub(super) fn locked(&mut self) {
         self.cancel_reads();
         self.link = Link::Locked;
-        self.net_due = None;
-        self.net_wait = Duration::ZERO;
         self.stop_push_subscription();
         self.sync.stop();
         self.save_cursor(true);
@@ -867,29 +851,7 @@ impl Task {
             return self.emit(vec![DomainEvent::EffectFailed(failure)]);
         }
         self.read_recovery.succeeded(fetch);
-        let status = matches!(fetch, Fetch::AccountStatus(_));
-        let changed = self.on_read_inner(fetch, result);
-        if status {
-            self.arm_networking();
-        }
-        changed
-    }
-
-    /// Reads the account's status again, with a growing wait, while its
-    /// networking is pending; stops once it is live (or the account locks).
-    fn arm_networking(&mut self) {
-        if self.link == Link::Live && self.translator.own_networking_pending() {
-            if self.net_due.is_none() {
-                let [first, max] = self.config.networking_poll_ms.map(u64::from);
-                let (first, max) = (Duration::from_millis(first), Duration::from_millis(max));
-                self.net_wait =
-                    if self.net_wait.is_zero() { first } else { (self.net_wait * 2).min(max) };
-                self.net_due = Some(Instant::now() + self.net_wait);
-            }
-        } else {
-            self.net_due = None;
-            self.net_wait = Duration::ZERO;
-        }
+        self.on_read_inner(fetch, result)
     }
 
     fn on_read_inner(&mut self, fetch: &Fetch, result: Result<Value, BusError>) -> bool {
@@ -971,6 +933,9 @@ impl Task {
     fn on_pushed(&mut self, pushed: Pushed) {
         match pushed {
             Pushed::Opened => {}
+            Pushed::Event { topic, body } if topic == "account.networking.changed" => {
+                self.networking_event(&body);
+            }
             Pushed::Event { topic, body }
                 if crate::translate::contact_requests::TOPICS.contains(&topic.as_str()) =>
             {

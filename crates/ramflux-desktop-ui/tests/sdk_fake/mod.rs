@@ -53,7 +53,6 @@ pub fn options(path: &std::path::Path) -> ShellOptions {
         poll_fast: Duration::from_millis(80),
         poll_slow: Duration::from_millis(300),
         reconnect_backoff: Duration::from_millis(150),
-        networking_poll_ms: [100, 300],
         ..SdkConfig::new(path)
     };
     ShellOptions {

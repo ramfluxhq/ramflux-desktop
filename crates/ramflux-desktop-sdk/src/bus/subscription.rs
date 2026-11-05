@@ -37,6 +37,7 @@ pub fn topics() -> Vec<&'static str> {
     let mut topics = PUSHED_TOPICS.to_vec();
     topics.push(crate::translate::stream::CALL_TOPIC);
     topics.extend(crate::translate::contact_requests::TOPICS);
+    topics.push("account.networking.changed");
     topics
 }
 

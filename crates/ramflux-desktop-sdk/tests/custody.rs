@@ -478,13 +478,12 @@ fn an_event_the_network_sends_never_starts_a_recovery() {
 }
 
 #[test]
-fn a_pending_account_is_read_again_until_it_is_live_and_the_banner_state_follows() {
+fn a_pending_account_follows_networking_events_without_status_polling() {
     let custody = Arc::new(FakeCustody::new());
     let offered = Arc::new(AtomicBool::new(true));
     let (fake, path) = daemon("net-poll", &custody, &offered);
     let config = ramflux_desktop_sdk::SdkConfig {
-        networking_poll_ms: [100, 400],
-        // The ordinary poll is out of the way: only the backoff reads.
+        // Keep generic polling outside this observation window.
         poll_fast: Duration::from_secs(60),
         poll_slow: Duration::from_secs(60),
         ..common::config(&path)
@@ -502,7 +501,7 @@ fn a_pending_account_is_read_again_until_it_is_live_and_the_banner_state_follows
     let id = AccountId::new(&made.local_account_id);
     assert_eq!(made.networking, Networking::Pending);
 
-    // The account's own scope reads its status, and reads it again.
+    // The account scope reads status once and follows networking events.
     let mut account = Fed::new(hub.account_source(id.clone()));
     account.until("status says pending", |s, _| {
         s.account(&id).is_some_and(|a| a.networking == Networking::Pending)
@@ -511,9 +510,10 @@ fn a_pending_account_is_read_again_until_it_is_live_and_the_banner_state_follows
         |fake: &FakeBus| fake.seen().iter().filter(|s| s.method == "account.status").count();
     let before = reads(&fake);
     account.settle(700);
-    assert!(reads(&fake) >= before + 2, "re-read with a backoff while pending");
-    // The daemon connects to its node later: the very next read clears it.
+    assert_eq!(reads(&fake), before, "no networking status poll while pending");
+    // The daemon publishes the later session transition.
     custody.go_live(id.as_str());
+    fake.push(id.as_str(), "account.networking.changed", json!({"account_id":id.as_str(), "state":"live", "session":{"state":"live", "phase":"live", "generation":1,"cause":null,"retry_after_ms":null}}));
     account.until("live", |s, _| s.account(&id).is_some_and(|a| a.networking == Networking::Live));
     // Once live nothing keeps polling the status.
     account.settle(300);
