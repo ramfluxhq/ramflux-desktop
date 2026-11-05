@@ -7,6 +7,7 @@ import subprocess
 # Extend these lists in the PR that introduces each case. Future cases must
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
+    "bridge::sends::tests::unresolved_group_members_are_terminal_even_with_networking_details",
     "bridge::sends::tests::waiting_send_survives_lost_and_attaching_links_until_live_or_expiry",
     "bridge::sends::tests::waiting_send_fails_after_ten_minutes_and_manual_retry_uses_new_key",
     "bridge::sends::tests::timeout_send_is_never_retried_with_fresh_key",
@@ -82,6 +83,8 @@ def required(target, name):
 
 
 def main():
+    required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "directories"],
+        "a_group_send_with_unresolved_members_fails_and_names_them")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "tasks"],
         "a_proposal_is_shown_once_and_accepted_with_the_version_seen")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--lib"],

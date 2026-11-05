@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use common::*;
 use ramflux_desktop_core::{
     AccountId, ContextId, DomainEvent, Effect, FailureCode, GrantId, Lifecycle, Listing, MomentId,
-    ObjectId, Source as _, methods,
+    ObjectId, Receipt, Source as _, methods,
 };
 use serde_json::{Value, json};
 
@@ -149,13 +149,41 @@ fn a_group_send_with_unresolved_members_fails_and_names_them() {
         (Some("g-team"), Some("thread-team"))
     );
     assert!(send.body["target_delivery_id"].is_null(), "the daemon resolves every route");
-    account.settle(200);
-    assert!(
-        !account.envelopes[before..]
-            .iter()
-            .any(|e| matches!(&e.event, DomainEvent::MomentAdded(m) if m.context_id.as_str() == "thread-team")),
-        "nothing is shown as sent"
-    );
+    // The optimistic row is Sending before the refusal, then terminal Failed.
+    // It must never look accepted or be scheduled as a networking wait.
+    let failed: Vec<_> = account
+        .store
+        .moments()
+        .filter(|m| {
+            m.context_id.as_str() == "thread-team" && account.store.body(&m.id) == Some("hello all")
+        })
+        .collect();
+    assert_eq!(failed.len(), 1, "one optimistic message retains its identity");
+    let failed = failed[0];
+    assert_eq!(failed.lifecycle, Lifecycle::Failed);
+    assert!(account.envelopes[before..].iter().any(|e| matches!(&e.event,
+        DomainEvent::MomentAdded(m) if m.id == failed.id
+            && matches!(&m.kind, ramflux_desktop_core::MomentKind::Message(p) if p.receipt == Receipt::Sending))),
+        "the initial row is Sending, not an accepted message");
+    assert!(matches!(&failed.kind, ramflux_desktop_core::MomentKind::Message(p)
+        if p.receipt == Receipt::Failed { retryable: false }));
+    for event in &account.envelopes[before..] {
+        let payload = match &event.event {
+            DomainEvent::MomentAdded(m) if m.id == failed.id => Some(&m.kind),
+            DomainEvent::MomentUpdated { moment_id, kind, .. } if *moment_id == failed.id => {
+                kind.as_ref()
+            }
+            _ => None,
+        };
+        if let Some(ramflux_desktop_core::MomentKind::Message(p)) = payload {
+            assert!(
+                matches!(p.receipt, Receipt::Sending | Receipt::Failed { retryable: false }),
+                "an unresolved route is never sent or waiting: {:?}",
+                p.receipt
+            );
+        }
+    }
+    assert_eq!(fake.seen().iter().filter(|s| s.method == "group.send").count(), 1);
     fake.shutdown();
 }
 

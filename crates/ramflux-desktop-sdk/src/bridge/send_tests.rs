@@ -287,3 +287,28 @@ async fn waiting_send_survives_lost_and_attaching_links_until_live_or_expiry() {
         }
     }
 }
+
+#[tokio::test]
+async fn unresolved_group_members_are_terminal_even_with_networking_details() {
+    let (mut task, mut inbox, rx, fake) = fixture("unresolved-group-send");
+    start(&mut task);
+    let _ = inbox.internal.recv().await.expect("first request");
+    let error = BusError::from_error_body(Some(ramflux_sdk::LocalBusErrorBody {
+        code: "ValidationFailed".into(),
+        message: r#"local bus error: group routes unresolved: {"group_id":"g-team","unreachable_members":["device-bo","device-zz"]}"#.into(),
+        retry_after_ms: Some(1),
+        reason_code: None,
+        cause: None,
+        details: Some(Box::new(json!({"networking":{"state":"networking_pending"}}))),
+    }));
+    task.send_done("m", Err(error));
+    assert_eq!(receipt(&rx), Receipt::Failed { retryable: false });
+    assert!(task.sends.is_empty(), "terminal refusals retain no retry entry");
+    assert!(task.next_send_due().is_none(), "no retry or expiry timer");
+    task.networking_event(&json!({"account_id":"a","state":"live","session":{"state":"live"}}));
+    task.retry_sends(true);
+    assert!(task.sends.is_empty());
+    assert!(task.next_send_due().is_none());
+    assert_eq!(fake.seen().len(), 1, "Live does not retry the refused request");
+    fake.shutdown();
+}
