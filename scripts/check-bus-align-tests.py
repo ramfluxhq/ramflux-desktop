@@ -51,6 +51,11 @@ def main():
         ["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "attach_flow"],
         "node_profiles_resolve_the_relay_after_early_account_status",
     )
+    for name in (
+        "the_restore_result_stays_in_view_when_the_daemon_reopens_the_account",
+        "a_daemon_that_goes_away_during_the_hold_releases_it",
+    ):
+        required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "backup_ui"], name)
     target = ["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "s5_bus_align"]
     # Compile the normal libtest target even before its first owned case lands.
     run([*target, "--", "--list"])

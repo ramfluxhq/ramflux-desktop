@@ -300,6 +300,11 @@ impl EntryPage {
         self.full_restore.read(cx).awaits_listing(cx)
     }
 
+    /// Whether the installed restore lost its daemon before the session loaded.
+    pub(crate) fn restore_session_lost(&self, cx: &App) -> bool {
+        self.full_restore.read(cx).installed_session_lost(cx)
+    }
+
     /// Whether the account session that was just opened (an unlock) has
     /// received nothing yet while the daemon itself is reachable: its empty
     /// store would route to the daemon step, which is not where the user
@@ -362,6 +367,11 @@ impl EntryPage {
     /// The step shown: the store's step, or the node step while the user
     /// reviews nodes from the account step.
     pub fn step(&self, cx: &App) -> EntryStep {
+        // Early account readiness leaves cached account rows while a restore
+        // listing is held. The daemon's loss still routes entry to its controls.
+        if self.restore_session_lost(cx) {
+            return EntryStep::Daemon;
+        }
         // A restore waiting for the session that took over to list its
         // jobs: that session's store is empty, so its own step would be an
         // earlier one (the daemon step).

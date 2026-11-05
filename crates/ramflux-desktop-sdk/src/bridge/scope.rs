@@ -685,6 +685,11 @@ impl Task {
                 }
                 if self.link == Link::Attaching && matches!(fetch, Fetch::AccountStatus(_)) {
                     self.link = Link::Live;
+                    if result.is_ok() {
+                        // This local reply proves the daemon is reachable before
+                        // unrelated snapshot lists (including backup jobs) finish.
+                        self.emit(vec![DomainEvent::SourceStatusChanged(SourceStatus::Connected)]);
+                    }
                 }
                 let finished = last_page(&fetch, &result);
                 if !self.outdated(&fetch, number, &result) {

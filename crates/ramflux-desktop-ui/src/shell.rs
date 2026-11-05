@@ -340,6 +340,9 @@ impl Shell {
         {
             page = Page::Entry(EntryStep::Account);
         }
+        if entry.restore_session_lost(cx) {
+            page = Page::Entry(EntryStep::Daemon);
+        }
         // The result of a ceremony stays in view until it is closed, though
         // the account it made is listed (and unlocked) by now.
         if page == Page::Workspace && (entry.holds_ceremony(cx) || entry.holds_recovery(cx)) {

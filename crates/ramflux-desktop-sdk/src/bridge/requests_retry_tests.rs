@@ -78,6 +78,7 @@ async fn read_timeout_keeps_rows_and_retries_once() {
         let method = fetch.request(Some("acct-main")).method;
         task.spawn_fetches(vec![fetch.clone(), fetch.clone()]);
         observed_request(&mut observed, &method).await;
+        assert!(observed.try_recv().is_err(), "no extra request frame");
         answer(&mut task, &mut inbox).await;
         apply(&delivered, &mut store, &mut seq);
         assert!(store.failures().is_empty(), "first failure stays silent");
@@ -93,6 +94,7 @@ async fn read_timeout_keeps_rows_and_retries_once() {
         tokio::time::sleep_until(due).await;
         task.tick();
         observed_request(&mut observed, &method).await;
+        assert!(observed.try_recv().is_err(), "no extra request frame");
         answer(&mut task, &mut inbox).await;
         apply(&delivered, &mut store, &mut seq);
         assert!(task.read_recovery.next_due().is_none(), "second timeout exhausts retry");
@@ -118,6 +120,7 @@ async fn read_timeout_keeps_rows_and_retries_once() {
         // Only a new event/action can rearm an exhausted cycle.
         task.spawn_fetches(vec![fetch]);
         observed_request(&mut observed, &method).await;
+        assert!(observed.try_recv().is_err(), "no extra request frame");
         answer(&mut task, &mut inbox).await;
         assert!(task.read_recovery.next_due().is_some(), "new action rearms recovery");
         task.read_recovery.cancel();
@@ -211,8 +214,15 @@ async fn unlocked_status_is_delivered_before_slow_snapshot_lists() {
     answer(&mut task, &mut inbox).await;
     assert_eq!(task.link, Link::Live);
     assert!(task.snapshot_task.is_some(), "other snapshot reads still pending");
-    assert!(delivered.try_iter().any(|delivery| matches!(delivery.event,
+    let events: Vec<_> = delivered.try_iter().map(|delivery| delivery.event).collect();
+    assert!(events.iter().any(|event| matches!(event,
         DomainEvent::AccountUpdated(account) if account.lock_state == LockState::Unlocked)));
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            DomainEvent::SourceStatusChanged(SourceStatus::Connected)
+        ))
+    );
     task.locked();
     fake.shutdown();
 }

@@ -438,6 +438,14 @@ impl BackupPanel {
             && !handle.daemon_unreachable()
     }
 
+    /// The daemon vanished before the installed restore's first session listing.
+    pub(crate) fn installed_session_lost(&self, cx: &App) -> bool {
+        let handle = self.store.read(cx);
+        self.installed.as_ref().is_some_and(|inst| !self.dismissed.contains(&inst.id))
+            && !handle.store().is_listed(Listing::BackupJobs)
+            && handle.daemon_unreachable()
+    }
+
     /// The installed restore's result as last seen, for the interval in
     /// which [`Self::awaits_listing`] holds the page.
     pub fn held_job(&self, cx: &App) -> Option<BackupJob> {
