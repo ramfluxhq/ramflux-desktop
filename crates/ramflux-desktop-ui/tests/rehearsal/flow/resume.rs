@@ -27,6 +27,11 @@ pub fn lock_and_restart<H: Host, D: DemoDaemon>(
             && desk.store(host, |s| {
                 probe::account(s).is_some_and(|a| a.lock_state == LockState::Locked)
             })
+            // Account status can lock before the daemon listing removes its
+            // session. Do not unlock into a session still being torn down.
+            && desk.entry_store(host, |s| {
+                probe::account(s).is_some_and(|a| a.lock_state == LockState::Locked)
+            })
     })?;
     demo.sides[0].desk()?.close_settings(demo.host);
     notes.add("Alice locked: back on the entry page");
@@ -43,6 +48,8 @@ pub fn lock_and_restart<H: Host, D: DemoDaemon>(
         desk.store(host, |s| {
             s.source_status() == SourceStatus::Connected
                 && probe::account(s).is_some_and(|a| a.lock_state == LockState::Locked)
+        }) && desk.entry_store(host, |s| {
+            probe::account(s).is_some_and(|a| a.lock_state == LockState::Locked)
         })
     });
     if locked.is_ok() {

@@ -17,7 +17,7 @@ mod common;
 use common::task_world::*;
 use ramflux_desktop_core::Source as _;
 use ramflux_desktop_core::{
-    ConfirmationIssuer, DomainEvent, Effect, GrantId, IntentKind, SourceStatus, StepId,
+    ConfirmationIssuer, ContextId, DomainEvent, Effect, GrantId, IntentKind, SourceStatus, StepId,
     SurfaceEvent, SurfaceId, TaskAnswer, TaskRefusal, TaskState, methods,
 };
 use ramflux_desktop_sdk::surface::author::Author;
@@ -139,7 +139,49 @@ fn a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_
     // A new desktop session reads the daemon's durable pending resolution.
     let mut account = open(&path);
     account.until("still pending", |s, _| s.task(&id).is_some_and(|t| t.answer == pending));
+    let before_timeout = world.tasks.view(GROUP, "t-1");
     world.tasks.time_out_decisions();
+    // A task.list already in flight can return the same revision's pending
+    // view after task.get has shown the timeout. Force that reply order.
+    let mut translator = ramflux_desktop_sdk::translate::Translator::new(
+        ramflux_desktop_sdk::Scope::Account(ramflux_desktop_core::AccountId::new(ACCOUNT)),
+        "late-task-list",
+    );
+    use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
+    for fetch in [Fetch::first(Paged::Groups), Fetch::first(Paged::Conversations)] {
+        let method = fetch.request(Some(ACCOUNT)).method;
+        translator.fetched(&fetch, &common::frames()[&method], ramflux_desktop_core::Timestamp(0));
+    }
+    let fetch = Fetch::Tasks(ContextId::new(GROUP), None);
+    let pending_list = json!({"tasks": [before_timeout], "next_cursor": null});
+    translator.fetched(&fetch, &pending_list, ramflux_desktop_core::Timestamp(0));
+    let timed_out = translator.fetched(
+        &Fetch::Task(ContextId::new(GROUP), "t-1".into()),
+        &world.tasks.view(GROUP, "t-1"),
+        ramflux_desktop_core::Timestamp(0),
+    );
+    assert!(timed_out.events.iter().any(|e| matches!(
+        e,
+        DomainEvent::TaskAnswered { answer: TaskAnswer::DecisionUnconfirmed { .. }, .. }
+    )));
+    let late = translator.fetched(&fetch, &pending_list, ramflux_desktop_core::Timestamp(0));
+    assert!(
+        !late.events.iter().any(|e| matches!(
+            e,
+            DomainEvent::TaskAnswered { answer: TaskAnswer::DecisionPending { .. }, .. }
+        )),
+        "late task.list cannot undo executor timeout"
+    );
+    let mut next_resolution = pending_list.clone();
+    next_resolution["tasks"][0]["pending_resolution"]["message_id"] = json!("new-decision");
+    let next = translator.fetched(&fetch, &next_resolution, ramflux_desktop_core::Timestamp(0));
+    assert!(
+        next.events.iter().any(|e| matches!(
+            e,
+            DomainEvent::TaskAnswered { answer: TaskAnswer::DecisionPending { .. }, .. }
+        )),
+        "a distinct resolution starts a new wait at the same task revision"
+    );
     let unconfirmed = Some(TaskAnswer::DecisionUnconfirmed { step_id: step });
     account.until("unconfirmed", |s, _| s.task(&id).is_some_and(|t| t.answer == unconfirmed));
 

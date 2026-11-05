@@ -68,6 +68,8 @@ pub(crate) struct KnownTask {
     /// (`pending_resolution`: its state and the step it decides), as last
     /// shown.
     pub pending: Option<(String, String)>,
+    /// Identity of the pending resolution; a new decision can start a new wait.
+    pub pending_message: Option<String>,
     /// The approval whose decision was not delivered, as last shown.
     pub undelivered: Option<String>,
 }
@@ -213,14 +215,30 @@ impl Translator {
         let Some((task, places)) = self.desktop_task(&id, &context, view) else {
             return Vec::new();
         };
-        let pending = pending_of(view);
+        let mut pending = pending_of(view);
+        let pending_message = view["pending_resolution"]["message_id"].as_str().map(str::to_owned);
         let failed = undelivered(&task, list(view, "approval_decisions"));
         let undelivered = failed.as_ref().map(|(approval, _)| approval.clone());
         let known = self.tasks.get(&id);
+        // List and single-task reads can overlap at the same task revision.
+        // Timeout is monotonic for one resolution: a late awaiting snapshot
+        // must not erase it. A different resolution or a new revision may.
+        if let Some(known) = known
+            && task.version == known.shown.version
+            && pending_message.is_some()
+            && pending_message == known.pending_message
+            && let (Some((old_state, old_step)), Some((state, step))) = (&known.pending, &pending)
+            && old_state == "executor_timeout"
+            && state == "awaiting_executor"
+            && old_step == step
+        {
+            pending = known.pending.clone();
+        }
         if let Some(known) = known
             && (task.version < known.shown.version
                 || (task == known.shown
                     && pending == known.pending
+                    && pending_message == known.pending_message
                     && undelivered == known.undelivered))
         {
             return Vec::new();
@@ -232,7 +250,10 @@ impl Translator {
             failed.map(|(_, answer)| answer).or_else(|| pending_answer(&task, pending.as_ref()));
         let target = TaskTarget { conversation: context.clone(), task_id: task_id.to_owned() };
         let shown = task.clone();
-        self.tasks.insert(id.clone(), KnownTask { target, shown, places, pending, undelivered });
+        self.tasks.insert(
+            id.clone(),
+            KnownTask { target, shown, places, pending, pending_message, undelivered },
+        );
         let origin = task.assignee.clone();
         let step = task.needs_me_step().map(|(_, s)| s.id.clone());
         // A step of this account's task answered in a surface: an action
