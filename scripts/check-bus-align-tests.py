@@ -9,6 +9,7 @@ import subprocess
 SDK_TESTS = [
     "bridge::sends::tests::unresolved_group_members_are_terminal_even_with_networking_details",
     "bridge::sends::tests::waiting_send_survives_lost_and_attaching_links_until_live_or_expiry",
+    "bridge::scope::review_retry_tests::focus_read_runs_next_ahead_of_fifo_recovery_queue",
     "bridge::sends::tests::waiting_send_fails_after_ten_minutes_and_manual_retry_uses_new_key",
     "bridge::sends::tests::timeout_send_is_never_retried_with_fresh_key",
     "bridge::sends::tests::send_while_offline_shows_waiting_with_retry_countdown_then_sends_on_live",

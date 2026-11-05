@@ -41,6 +41,7 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 
 use super::live::{SyncState, last_page};
+use super::read_recovery::MAX_READS;
 use super::{Delivery, now};
 use crate::bus::BusError;
 use crate::bus::client::BusClient;
@@ -684,11 +685,11 @@ impl Task {
             }
             // Bound spawned reads as well as requests on the bus. Recovery of
             // many loaded tasks/surfaces queues ids, rather than futures.
-            if self.read_recovery.running.len() >= 8 {
-                self.read_recovery.queued.insert(fetch);
+            if self.read_recovery.running.len() >= MAX_READS {
+                self.read_recovery.enqueue(fetch);
                 continue;
             }
-            self.read_recovery.queued.remove(&fetch);
+            self.read_recovery.unqueue(&fetch);
             let (client, account) = (self.client.clone(), self.account());
             let (internal, sent) = (self.internal.clone(), self.listings_sent.clone());
             let key = fetch.clone();
@@ -750,9 +751,9 @@ impl Task {
             Internal::Custody(outcome) => self.on_custody(outcome),
         }
         if !matches!(self.link, Link::Locked | Link::Lost) {
-            let slots = 8_usize.saturating_sub(self.read_recovery.running.len());
+            let slots = MAX_READS.saturating_sub(self.read_recovery.running.len());
             let queued: Vec<_> =
-                (0..slots).filter_map(|_| self.read_recovery.queued.pop_first()).collect();
+                (0..slots).filter_map(|_| self.read_recovery.pop_queued()).collect();
             self.spawn_reads(queued, false);
         }
         self.send_receipts();
@@ -1046,6 +1047,9 @@ impl Task {
                     && self.link == Link::Live
                 {
                     let reads = self.translator.context_reads(context);
+                    for fetch in &reads {
+                        self.read_recovery.prioritize(fetch);
+                    }
                     self.request_reads(reads);
                 }
                 self.translator.set_focus(context);

@@ -195,6 +195,15 @@ fn a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_
     let unconfirmed = Some(TaskAnswer::DecisionUnconfirmed { step_id: step });
     account.until("unconfirmed", |s, _| s.task(&id).is_some_and(|t| t.answer == unconfirmed));
 
+    // Returning after the gap must refresh even an already loaded context.
+    let mark = world.mark();
+    account.source.focus(Some(&ContextId::new(GROUP)));
+    account.until("refocused group refreshed", |_, _| {
+        !world.since(mark, "group.receive").is_empty() && !world.since(mark, "task.list").is_empty()
+    });
+    assert_eq!(world.since(mark, "group.receive").len(), 1);
+    assert_eq!(world.since(mark, "task.list").len(), 1);
+
     // The assignee can still commit it: the next version clears the notice.
     assert_eq!(world.tasks.confirm_decisions(), 1);
     account.until("running", |s, _| {

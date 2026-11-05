@@ -205,3 +205,51 @@ async fn recovery_reads_have_bounded_concurrency_and_drain_the_queue() {
     assert!(task.read_recovery.queued.is_empty(), "lock cancels queued reads too");
     assert!(task.read_recovery.running.is_empty());
 }
+
+#[tokio::test]
+async fn focus_read_runs_next_ahead_of_fifo_recovery_queue() {
+    let path = socket_path("focus-recovery-priority");
+    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({"messages":[]})));
+    let (mut task, mut inbox, _delivered) = task();
+    task.client = BusClient::new(path, Duration::from_secs(2), task.config.deadlines);
+    let focus = ContextId::new("focus");
+    task.translator.fetched(
+        &Fetch::first(Paged::Conversations),
+        &json!({"conversations":[{"id":"focus", "kind":"direct", "participants":[]}]}),
+        now(),
+    );
+    let mut reads: Vec<_> =
+        (0..MAX_READS).map(|n| Fetch::Messages(ContextId::new(format!("running-{n}")))).collect();
+    // Deliberately reverse lexical order; focus is already in the recovery queue.
+    reads.extend([
+        Fetch::Messages(ContextId::new("z-background")),
+        Fetch::Messages(focus.clone()),
+        Fetch::Messages(ContextId::new("a-background")),
+    ]);
+    task.request_reads(reads);
+    assert_eq!(task.read_recovery.running.len(), MAX_READS);
+    task.command(ScopeCommand::Focus(Some(focus.clone())));
+    answer(&mut task, &mut inbox).await;
+    assert!(
+        task.read_recovery.running.contains_key(&Fetch::Messages(focus)),
+        "the first free slot belongs to the focused context"
+    );
+    assert!(task.read_recovery.queued.contains(&Fetch::Messages(ContextId::new("z-background"))));
+    let background = Fetch::Messages(ContextId::new("z-background"));
+    let later = Fetch::Messages(ContextId::new("a-background"));
+    let mut saw_background = false;
+    for _ in 1..MAX_READS + 5 {
+        answer(&mut task, &mut inbox).await;
+        assert!(task.read_recovery.running.len() <= MAX_READS);
+        if !saw_background && task.read_recovery.running.contains_key(&background) {
+            assert!(task.read_recovery.queued.contains(&later), "recovery starts in FIFO order");
+            saw_background = true;
+        }
+    }
+    assert!(saw_background);
+    assert!(task.read_recovery.running.is_empty());
+    assert!(task.read_recovery.queued.is_empty());
+    let seen = fake.seen();
+    assert_eq!(seen.len(), MAX_READS + 5, "focus coalesces the existing queued read");
+    task.locked();
+}

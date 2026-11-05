@@ -374,6 +374,11 @@ impl Task {
     pub(super) fn request_reads(&mut self, reads: Vec<Fetch>) {
         let mut fresh = Vec::new();
         for fetch in reads {
+            // A queued read has not captured a snapshot yet, so an action
+            // needs neither another queue entry nor a stale follow-up.
+            if self.read_recovery.queued.contains(&fetch) {
+                continue;
+            }
             let key = read_key(&fetch);
             if self.sync.reading.contains(&key) {
                 self.sync.stale.insert(key);
