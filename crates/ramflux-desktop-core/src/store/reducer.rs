@@ -31,7 +31,27 @@ impl Store {
         match event {
             DomainEvent::AccountUpdated(account) => {
                 changes.accounts.insert(account.id.clone());
-                let was = self.accounts.insert(account.id.clone(), account.clone());
+                let mut merged = account.clone();
+                if let Some(previous) = self.accounts.get(&account.id) {
+                    if merged.networking_session.is_none() {
+                        merged.networking_session = previous.networking_session;
+                        if !merged
+                            .networking_reason
+                            .as_ref()
+                            .is_some_and(crate::NetworkingReason::requires_action)
+                        {
+                            merged.networking_reason.clone_from(&previous.networking_reason);
+                        }
+                        merged.refresh_networking();
+                    }
+                    merged.networking_failure.clone_from(&previous.networking_failure);
+                    if merged.networking == crate::Networking::Live
+                        && account.networking_session == Some(crate::Networking::Live)
+                    {
+                        merged.networking_failure = None;
+                    }
+                }
+                let was = self.accounts.insert(account.id.clone(), merged);
                 let was_unlocked = was.is_some_and(|a| a.lock_state == LockState::Unlocked);
                 if was_unlocked && account.lock_state == LockState::Locked {
                     self.drop_bodies(changes);
@@ -144,6 +164,12 @@ impl Store {
                 if self.sync.as_ref() != Some(status) {
                     self.sync = Some(status.clone());
                     changes.source_status = true;
+                }
+            }
+            DomainEvent::AccountNetworkingFailed { account_id, code } => {
+                if let Some(account) = self.accounts.get_mut(account_id) {
+                    account.networking_failure = Some(code.clone());
+                    changes.accounts.insert(account_id.clone());
                 }
             }
             DomainEvent::EffectFailed(failure) => {

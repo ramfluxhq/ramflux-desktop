@@ -5,24 +5,25 @@
 use crate::i18n::{tr, tr_args};
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
-    Account, EffectFailure, FailureCode, Networking, NetworkingReason,
-    NetworkingReasonKind as Kind, RegistrationRefusal as Code,
+    Account, FailureCode, Networking, NetworkingReason, NetworkingReasonKind as Kind,
+    RegistrationRefusal as Code,
 };
 
 pub(super) fn header(
     account: Option<&Account>,
-    failure: Option<&EffectFailure>,
+    failure: Option<&FailureCode>,
 ) -> (SharedString, Option<SharedString>) {
     let Some(account) = account else { return (tr("app.name"), None) };
+    if account.authority_blocked {
+        return (tr("network_header.authority"), None);
+    }
     if let Some(failure) = failure {
-        let key = match &failure.code {
+        let key = match failure {
             FailureCode::Daemon(code) if code == "CustodyForkFenced" => Some("network_header.fork"),
             FailureCode::Daemon(code) if code == "OperationReconciliationRequired" => {
                 Some("backend.failure.reconcile")
             }
-            FailureCode::Daemon(code)
-                if code == "AuthorityUnavailable" || code == "CustodyAuthorityBlocked" =>
-            {
+            FailureCode::Daemon(code) if code == "AuthorityUnavailable" => {
                 Some("network_header.authority")
             }
             _ => None,
@@ -67,18 +68,7 @@ fn reason_text(reason: &NetworkingReason) -> SharedString {
                 "network_header.restart"
             }
             Some(Code::InvalidInput | Code::BindingRefused) | None => "network_header.refused",
-            Some(Code::HomeMigration { reason, nack }) => {
-                return tr_args(
-                    "network_header.migration",
-                    &[
-                        ("reason", &reason.to_string()),
-                        (
-                            "nack",
-                            &nack.as_ref().map_or_else(|| "—".to_owned(), ToString::to_string),
-                        ),
-                    ],
-                );
-            }
+            Some(Code::HomeMigration { reason, .. }) => migration_key(reason),
         },
     };
     let mut text = tr(key).to_string();
@@ -94,11 +84,58 @@ fn reason_text(reason: &NetworkingReason) -> SharedString {
             "network_header.capacity_detail",
             &[
                 ("reason", &text),
-                ("scope", &capacity.scope),
-                ("deadline", &capacity.resets_at_unix.to_string()),
+                (
+                    "scope",
+                    tr(match capacity.scope.as_str() {
+                        "prefix_daily" => "network_header.prefix_daily",
+                        "global_daily" => "network_header.global_daily",
+                        _ => "network_header.capacity",
+                    })
+                    .as_ref(),
+                ),
+                (
+                    "seconds",
+                    &capacity
+                        .resets_at_unix
+                        .saturating_sub(
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        )
+                        .to_string(),
+                ),
             ],
         )
         .to_string();
     }
     text.into()
+}
+
+fn migration_key(reason: &serde_json::Value) -> &'static str {
+    match reason.as_str() {
+        Some("v3_required" | "authority_update_required") => "network_header.update",
+        Some("home_fork") => "network_header.fork",
+        Some("capacity_refused" | "rate_limited") => "network_header.capacity",
+        Some("storage_unavailable") => "network_header.persistence",
+        Some("peering_unavailable") => "network_header.unreachable",
+        Some("admission_expired" | "commit_expired") => "network_header.restart",
+        Some("commit_outcome_unknown" | "idempotency_conflict") => "backend.failure.reconcile",
+        Some("actor_revoked" | "pin_mismatch" | "base_mismatch") => "network_header.identity",
+        Some("custody_approval_required" | "custody_user_presence_unavailable") => {
+            "network_header.migration_approval"
+        }
+        Some("migration_in_progress" | "previous_window_active") => {
+            "network_header.migration_active"
+        }
+        Some("channel_binding_required") => "network_header.session_required",
+        Some(
+            "home_genesis_required"
+            | "home_checkpoint_required"
+            | "backlog_incomplete"
+            | "backlog_evidence_required"
+            | "evidence_required",
+        ) => "network_header.migration_evidence",
+        _ => "network_header.migration",
+    }
 }

@@ -310,6 +310,9 @@ impl MockCeremony {
             self_participant_id: None,
             secure_sessions: SecureSessions::Ready,
             networking_session: None,
+            networking_custody: None,
+            authority_blocked: false,
+            networking_failure: None,
             networking_reason: None,
             networking: self.networking,
         });

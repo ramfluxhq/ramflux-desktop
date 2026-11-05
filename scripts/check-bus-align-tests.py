@@ -7,6 +7,11 @@ import subprocess
 # Extend these lists in the PR that introduces each case. Future cases must
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
+    "bridge::scope::networking_tests::custody_pending_and_authority_blocked_override_live_session",
+    "bridge::scope::networking_tests::daemon_list_and_lifecycle_merge_preserves_account_session",
+    "bridge::scope::networking_tests::push_gap_reopen_recovers_networking_snapshot",
+    "bridge::scope::networking_tests::sessionless_terminal_reason_survives_delayed_status",
+
     "bus::tests::a_retry_the_daemon_cannot_replay_asks_the_user_to_check",
     "bridge::scope::review_retry_tests::recovered_reads_resume_timer_refresh_and_reset_failure_episode",
     "bridge::scope::review_retry_tests::backup_permanent_refusal_sets_capability_and_finishes_listing",

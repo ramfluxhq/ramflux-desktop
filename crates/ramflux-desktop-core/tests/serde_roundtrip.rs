@@ -51,6 +51,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::DaemonInfoUpdated(_) => "DaemonInfoUpdated",
         DomainEvent::SyncStatusChanged(_) => "SyncStatusChanged",
         DomainEvent::EffectFailed(_) => "EffectFailed",
+        DomainEvent::AccountNetworkingFailed { .. } => "AccountNetworkingFailed",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
         DomainEvent::CallUpserted(_) => "CallUpserted",
@@ -66,7 +67,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 48;
+const DOMAIN_EVENT_VARIANTS: usize = 49;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -306,6 +307,9 @@ fn all_domain_events() -> Vec<DomainEvent> {
             self_participant_id: Some(ParticipantId::new("p-me")),
             secure_sessions: ramflux_desktop_core::SecureSessions::Reestablishing,
             networking_session: None,
+            networking_custody: None,
+            authority_blocked: false,
+            networking_failure: None,
             networking_reason: None,
             networking: ramflux_desktop_core::Networking::Pending,
         }),
@@ -661,6 +665,10 @@ fn all_domain_events() -> Vec<DomainEvent> {
             text: "card-text".to_owned(),
             link: Some("ramflux:contact/card".to_owned()),
         }),
+        DomainEvent::AccountNetworkingFailed {
+            account_id: AccountId::new("a"),
+            code: FailureCode::Daemon("CustodyForkFenced".into()),
+        },
         DomainEvent::EffectFailed(EffectFailure {
             method: "grant.approve".to_owned(),
             code: FailureCode::Daemon("ValidationFailed".to_owned()),

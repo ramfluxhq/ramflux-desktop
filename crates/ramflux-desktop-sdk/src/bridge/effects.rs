@@ -193,6 +193,14 @@ impl Task {
                 } else {
                     on_task
                 };
+                if self.scope.account().is_none()
+                    && let Some(id) = body["local_account_id"].as_str()
+                {
+                    events.extend(Self::networking_failures(
+                        &events,
+                        &ramflux_desktop_core::AccountId::new(id),
+                    ));
+                }
                 events.extend(closed);
                 self.emit(events);
                 // What applied before a failure is read back.

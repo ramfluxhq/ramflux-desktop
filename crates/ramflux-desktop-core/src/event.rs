@@ -276,6 +276,13 @@ pub enum DomainEvent {
     SyncStatusChanged(SyncStatus),
     /// An effect could not be performed. Changes no domain entity.
     EffectFailed(EffectFailure),
+    /// An actionable networking failure associated with its originating account.
+    AccountNetworkingFailed {
+        /// Account that issued the operation.
+        account_id: AccountId,
+        /// Typed terminal failure.
+        code: crate::FailureCode,
+    },
     /// The source answered these collections in full (each may be empty).
     ListingsLoaded(Vec<Listing>),
     /// This account's contact card, as the backend exported it.

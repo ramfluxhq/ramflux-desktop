@@ -74,6 +74,15 @@ pub struct Account {
     /// until registration exists.
     #[serde(default)]
     pub networking: super::Networking,
+    /// Latest custody admission state, independent of the resident session.
+    #[serde(default)]
+    pub networking_custody: Option<super::Networking>,
+    /// Whether custody authority requires user action.
+    #[serde(default)]
+    pub authority_blocked: bool,
+    /// Last actionable failure for this account; unrelated failures do not replace it.
+    #[serde(default)]
+    pub networking_failure: Option<super::FailureCode>,
     /// Last resident session state; custody-only answers cannot replace it.
     #[serde(default)]
     pub networking_session: Option<super::Networking>,
@@ -308,5 +317,21 @@ impl NetworkingReason {
                 )
             ),
         }
+    }
+}
+
+impl Account {
+    /// Recompute availability without discarding either authority half.
+    pub fn refresh_networking(&mut self) {
+        use super::Networking;
+        self.networking = if self.authority_blocked
+            || self.networking_custody == Some(Networking::Pending)
+            || self.networking_session == Some(Networking::Pending)
+            || self.networking_reason.as_ref().is_some_and(NetworkingReason::requires_action)
+        {
+            Networking::Pending
+        } else {
+            Networking::Live
+        };
     }
 }

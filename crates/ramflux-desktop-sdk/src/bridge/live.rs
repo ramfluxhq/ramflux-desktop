@@ -341,6 +341,9 @@ impl Task {
         if self.config.poll_fallback {
             if self.sync.mode != SyncMode::Polling {
                 self.sync.mode = SyncMode::Polling;
+                if let Some(id) = self.scope.account().cloned() {
+                    self.spawn_fetches(vec![Fetch::AccountStatus(id)]);
+                }
                 self.interval = self.config.poll_fast;
                 self.next_poll = Instant::now();
                 self.subscribe_at = Instant::now();

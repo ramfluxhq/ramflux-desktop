@@ -42,6 +42,9 @@ fn account(id: &str, kind: AccountKind, lock_state: LockState) -> DomainEvent {
         self_participant_id: None,
         secure_sessions: SecureSessions::Ready,
         networking_session: None,
+        networking_custody: None,
+        authority_blocked: false,
+        networking_failure: None,
         networking_reason: None,
         networking: Networking::Live,
     })

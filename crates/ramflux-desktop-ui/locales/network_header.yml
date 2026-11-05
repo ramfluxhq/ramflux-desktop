@@ -49,11 +49,26 @@ network_header:
     en: "Identity fork fenced"
     zh-CN: "身份分叉已隔离"
   migration:
-    en: "Migration refused: %{reason} (%{nack})"
-    zh-CN: "迁移被拒绝：%{reason}（%{nack}）"
+    en: "Migration refused; review migration approval"
+    zh-CN: "迁移被拒绝，请检查迁移批准"
   retry:
     en: "%{reason} · retry in %{seconds} s"
     zh-CN: "%{reason} · %{seconds} 秒后重试"
   capacity_detail:
-    en: "%{reason} · %{scope}, resets at %{deadline}"
-    zh-CN: "%{reason} · %{scope}，重置时间 %{deadline}"
+    en: "%{reason} · %{scope}, resets in %{seconds} s"
+    zh-CN: "%{reason} · %{scope}，%{seconds} 秒后重置"
+  prefix_daily:
+    en: "Daily network range capacity"
+    zh-CN: "每日网段容量"
+  global_daily:
+    en: "Daily node capacity"
+    zh-CN: "每日节点容量"
+  migration_approval:
+    en: "Confirm migration approval"
+    zh-CN: "请确认迁移批准"
+  migration_active:
+    en: "Previous migration still active"
+    zh-CN: "上次迁移仍在进行"
+  migration_evidence:
+    en: "Migration history evidence required"
+    zh-CN: "迁移需要历史证据"

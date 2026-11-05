@@ -36,6 +36,17 @@ pub(crate) fn networking(row: &Value) -> Option<ramflux_desktop_core::Networking
 
 /// Apply custody and resident state from either a status or an event.
 pub(super) fn apply_networking(account: &mut Account, row: &Value) {
+    let custody_state = networking(row).or_else(|| match row["state"].as_str() {
+        Some("live") => Some(ramflux_desktop_core::Networking::Live),
+        Some("networking_pending") => Some(ramflux_desktop_core::Networking::Pending),
+        _ => None,
+    });
+    if let Some(state) = custody_state {
+        account.networking_custody = Some(state);
+    }
+    if let Some(blocked) = row["authority_blocked"].as_bool() {
+        account.authority_blocked = blocked;
+    }
     let session = row.get("session").or_else(|| row.get("networking_snapshot"));
     if let Some(session) = session {
         account.networking_session = match session["state"].as_str() {
@@ -50,7 +61,9 @@ pub(super) fn apply_networking(account: &mut Account, row: &Value) {
     let resident = session.and_then(|v| {
         serde_json::from_value::<ramflux_desktop_core::NetworkingReason>(v["cause"].clone()).ok()
     });
-    if session.is_some() || account.networking_session.is_none() {
+    if session.is_some()
+        || (row.get("networking_reason").is_some() && account.networking_session.is_none())
+    {
         let mut reason = custody
             .filter(ramflux_desktop_core::NetworkingReason::requires_action)
             .or(resident)
@@ -68,21 +81,7 @@ pub(super) fn apply_networking(account: &mut Account, row: &Value) {
     {
         account.networking_reason = custody;
     }
-    if account
-        .networking_reason
-        .as_ref()
-        .is_some_and(ramflux_desktop_core::NetworkingReason::requires_action)
-    {
-        account.networking = ramflux_desktop_core::Networking::Pending;
-    } else if let Some(session) = account.networking_session {
-        account.networking = session;
-    } else if let Some(state) = networking(row).or_else(|| match row["state"].as_str() {
-        Some("live") => Some(ramflux_desktop_core::Networking::Live),
-        Some("networking_pending") => Some(ramflux_desktop_core::Networking::Pending),
-        _ => None,
-    }) {
-        account.networking = state;
-    }
+    account.refresh_networking();
 }
 
 /// A daemon node profile as a desktop node.
@@ -263,6 +262,9 @@ impl Translator {
             self_participant_id: None,
             secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
             networking_session: None,
+            networking_custody: None,
+            authority_blocked: false,
+            networking_failure: None,
             networking_reason: None,
             networking: ramflux_desktop_core::Networking::Live,
         })

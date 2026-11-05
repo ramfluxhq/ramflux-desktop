@@ -187,34 +187,42 @@ fn header_shows_connecting_until_live_or_typed_reason(cx: &mut TestAppContext) {
                 });
                 assert!(detail.contains(tr(key).as_ref()), "{locale}: {reason}: {detail}");
                 assert!(detail.contains('5'), "retry hint retained");
+                assert!(!detail.contains(['{', '"']) && !detail.contains("_daily"));
+                if reason.get("capacity").is_some() {
+                    assert!(detail.contains(tr("network_header.global_daily").as_ref()));
+                    assert!(!detail.contains("9000"));
+                }
             }
             assert!(!exists(cx, handle, "networking-banner"));
         }
-        let migration = json!({"kind":"registration_refused", "code":{"home_migration":{"reason":"lease_conflict","nack":{"code":"busy","detail":"lease"}}}});
-        fake.publish(
-            "acct-main",
-            "account.networking.changed",
-            event(migration, "networking_pending"),
-        );
-        wait(cx, "migration applied", |cx| {
-            with_store(cx, &shell, |s| {
-                s.account(&AccountId::new("acct-main"))
-                    .and_then(|a| a.networking_reason.as_ref())
-                    .is_some_and(|r| {
-                        matches!(
-                            r.code,
-                            Some(ramflux_desktop_core::RegistrationRefusal::HomeMigration { .. })
-                        )
-                    })
-            })
-        });
-        wait(cx, "migration detail rendered", |cx| {
-            let t = title(cx, handle);
-            t.contains("lease_conflict") && t.contains("busy")
+        for (refusal, key) in [
+            ("home_fork", "network_header.fork"),
+            ("capacity_refused", "network_header.capacity"),
+            ("commit_outcome_unknown", "backend.failure.reconcile"),
+            ("lease_conflict", "network_header.migration"),
+        ] {
+            let migration = json!({"kind":"registration_refused", "code":{"home_migration":{"reason":refusal,"nack":{"code":"busy","detail":"lease"}}}});
+            fake.publish(
+                "acct-main",
+                "account.networking.changed",
+                event(migration, "networking_pending"),
+            );
+            wait(cx, "migration detail rendered", |cx| {
+                let t = title(cx, handle);
+                t == tr(key).as_ref() && !t.contains(['{', '"']) && !t.contains(refusal)
+            });
+        }
+        let mut blocked = event(Value::Null, "live");
+        blocked["state"] = json!("networking_pending");
+        blocked["authority_blocked"] = json!(true);
+        fake.publish("acct-main", "account.networking.changed", blocked);
+        wait(cx, "authority beats live session", |cx| {
+            title(cx, handle) == tr("network_header.authority").as_ref()
         });
         // No cause and a Live event restore the normal workspace title.
         let mut live = event(Value::Null, "live");
         live["session"]["cause"] = Value::Null;
+        live["authority_blocked"] = json!(false);
         fake.publish("acct-main", "account.networking.changed", live);
         wait(cx, "live title", |cx| title(cx, handle) == tr("app.name").as_ref());
     }
@@ -229,7 +237,7 @@ fn header_shows_connecting_until_live_or_typed_reason(cx: &mut TestAppContext) {
     ] {
         let mut pending = account.clone();
         pending.networking = Networking::Pending;
-        let scenario = ramflux_desktop_test::Scenario {
+        let mut scenario = ramflux_desktop_test::Scenario {
             name: "typed-title".into(),
             description: String::new(),
             epoch: ramflux_desktop_core::Timestamp(0),
@@ -241,16 +249,45 @@ fn header_shows_connecting_until_live_or_typed_reason(cx: &mut TestAppContext) {
                 (0, DomainEvent::AccountUpdated(pending)),
                 (
                     0,
-                    DomainEvent::EffectFailed(EffectFailure {
-                        method: "account.unlock".into(),
+                    DomainEvent::AccountNetworkingFailed {
+                        account_id: AccountId::new("acct-main"),
                         code: FailureCode::Daemon(code.into()),
-                        message: "typed refusal".into(),
+                    },
+                ),
+            ],
+            responses: vec![],
+            companions: vec![],
+        };
+        // An unrelated failure on another account cannot replace this title.
+        let mut other = account.clone();
+        other.id = AccountId::new("acct-other");
+        other.lock_state = ramflux_desktop_core::LockState::Locked;
+        let more = ramflux_desktop_test::Scenario {
+            name: "other-account-failure".into(),
+            description: String::new(),
+            epoch: ramflux_desktop_core::Timestamp(0),
+            timeline: vec![
+                (0, DomainEvent::AccountUpdated(other)),
+                (
+                    0,
+                    DomainEvent::AccountNetworkingFailed {
+                        account_id: AccountId::new("acct-other"),
+                        code: FailureCode::Daemon("CustodyForkFenced".into()),
+                    },
+                ),
+                (
+                    0,
+                    DomainEvent::EffectFailed(EffectFailure {
+                        method: "context.list".into(),
+                        code: FailureCode::Timeout,
+                        message: "unrelated timeout".into(),
                     }),
                 ),
             ],
             responses: vec![],
             companions: vec![],
         };
+        scenario.timeline.extend(more.timeline);
         let store = store_handle(cx, &shell);
         cx.update(|cx| store.update(cx, |store, cx| store.load_scenario(&scenario, cx)));
         cx.run_until_parked();

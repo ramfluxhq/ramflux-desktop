@@ -334,7 +334,10 @@ impl Task {
     }
 
     /// Delivers events; returns whether there were any.
-    pub(super) fn emit(&mut self, events: Vec<DomainEvent>) -> bool {
+    pub(super) fn emit(&mut self, mut events: Vec<DomainEvent>) -> bool {
+        if let Some(id) = self.scope.account() {
+            events.extend(Self::networking_failures(&events, id));
+        }
         let any = !events.is_empty();
         let at = now();
         for event in events {
@@ -344,6 +347,33 @@ impl Task {
             }
         }
         any
+    }
+
+    pub(super) fn networking_failures(
+        events: &[DomainEvent],
+        id: &ramflux_desktop_core::AccountId,
+    ) -> Vec<DomainEvent> {
+        events
+            .iter()
+            .filter_map(|event| {
+                let DomainEvent::EffectFailed(failure) = event else {
+                    return None;
+                };
+                let ramflux_desktop_core::FailureCode::Daemon(code) = &failure.code else {
+                    return None;
+                };
+                matches!(
+                    code.as_str(),
+                    "CustodyForkFenced"
+                        | "AuthorityUnavailable"
+                        | "OperationReconciliationRequired"
+                )
+                .then(|| DomainEvent::AccountNetworkingFailed {
+                    account_id: id.clone(),
+                    code: failure.code.clone(),
+                })
+            })
+            .collect()
     }
 
     fn next_wake(&self) -> Instant {
@@ -831,6 +861,7 @@ impl Task {
                     "session",
                     "networking_reason",
                     "node_binding",
+                    "authority_blocked",
                 ] {
                     body.remove(field);
                 }
@@ -956,7 +987,11 @@ impl Task {
 
     fn on_pushed(&mut self, pushed: Pushed) {
         match pushed {
-            Pushed::Opened => {}
+            Pushed::Opened => {
+                if let Some(id) = self.scope.account().cloned() {
+                    self.spawn_fetches(vec![Fetch::AccountStatus(id)]);
+                }
+            }
             Pushed::Event { topic, body } if topic == "account.networking.changed" => {
                 self.networking_event(&body);
             }

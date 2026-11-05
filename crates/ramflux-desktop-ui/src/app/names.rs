@@ -220,6 +220,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::DaemonInfoUpdated(_) => "DaemonInfoUpdated",
         DomainEvent::SyncStatusChanged(_) => "SyncStatusChanged",
         DomainEvent::EffectFailed(_) => "EffectFailed",
+        DomainEvent::AccountNetworkingFailed { .. } => "AccountNetworkingFailed",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
         DomainEvent::CallUpserted(_) => "CallUpserted",

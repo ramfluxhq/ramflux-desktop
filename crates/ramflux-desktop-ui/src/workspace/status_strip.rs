@@ -245,7 +245,7 @@ impl Render for StatusStrip {
         } else {
             super::networking_header::header(
                 account.filter(|_| self.show_commands),
-                handle.store().failures().last(),
+                account.and_then(|a| a.networking_failure.as_ref()),
             )
         };
         let switcher = account_switcher(handle, self.store.downgrade(), cx);

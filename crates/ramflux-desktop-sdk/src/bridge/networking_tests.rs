@@ -227,3 +227,93 @@ async fn missed_networking_event_is_replayed_from_cursor() {
         "duplicate is ignored"
     );
 }
+
+#[tokio::test]
+async fn custody_pending_and_authority_blocked_override_live_session() {
+    let (mut task, _, delivered) = task();
+    for blocked in [false, true] {
+        task.networking_event(&json!({"account_id":"acct-main", "state":"networking_pending",
+            "authority_blocked":blocked, "networking_reason":null, "session":{"state":"live"}}));
+        let account = latest(&delivered);
+        assert_eq!(account.networking_session, Some(Networking::Live));
+        assert_eq!(account.networking_custody, Some(Networking::Pending));
+        assert_eq!(account.networking, Networking::Pending);
+        assert_eq!(account.authority_blocked, blocked);
+    }
+}
+
+fn drain_store(
+    delivered: &std_mpsc::Receiver<Delivery>,
+    store: &mut ramflux_desktop_core::Store,
+    seq: &mut u64,
+) {
+    for d in delivered.try_iter() {
+        *seq += 1;
+        store.apply(&ramflux_desktop_core::EventEnvelope::new(*seq, d.at, d.event)).expect("apply");
+    }
+}
+
+#[tokio::test]
+async fn daemon_list_and_lifecycle_merge_preserves_account_session() {
+    for state in ["live", "networking_pending"] {
+        let (mut task, _, delivered) = task();
+        task.networking_event(&event(state));
+        let mut store = ramflux_desktop_core::Store::new();
+        let mut seq = 0;
+        drain_store(&delivered, &mut store, &mut seq);
+        let mut daemon = crate::translate::Translator::new(Scope::Daemon, "test.sock");
+        let updates = daemon.fetched(&Fetch::AccountList,
+            &json!({"accounts":["acct-main"], "account_details":[{"id":"acct-main", "state":"unlocked", "networking":"live"}]}), now());
+        task.emit(updates.events);
+        drain_store(&delivered, &mut store, &mut seq);
+        let expected = if state == "live" { Networking::Live } else { Networking::Pending };
+        let id = AccountId::new("acct-main");
+        assert_eq!(store.account(&id).expect("account").networking_session, Some(expected));
+        assert_eq!(store.account(&id).expect("account").networking, expected);
+        task.emit(daemon.effect_done(
+            "account.unlock",
+            &json!({"local_account_id":"acct-main"}),
+            &json!({"local_account_id":"acct-main", "state":"unlocked", "networking":"live"}),
+            now(),
+        ));
+        drain_store(&delivered, &mut store, &mut seq);
+        assert_eq!(store.account(&id).expect("account").networking_session, Some(expected));
+        assert_eq!(store.account(&id).expect("account").networking, expected);
+    }
+}
+
+#[tokio::test]
+async fn push_gap_reopen_recovers_networking_snapshot() {
+    let path = socket_path("network-push-gap");
+    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(pending_status()));
+    let (mut task, mut inbox, delivered) = task();
+    task.client = BusClient::new(path, Duration::from_secs(2), task.config.deadlines);
+    task.networking_event(&event("live"));
+    assert_eq!(latest(&delivered).networking, Networking::Live);
+    task.on_pushed(Pushed::Lost(BusError::Timeout));
+    assert!(fake.seen().is_empty());
+    task.on_pushed(Pushed::Opened);
+    answer(&mut task, &mut inbox).await;
+    assert_eq!(latest(&delivered).networking, Networking::Pending);
+    assert_eq!(fake.seen().iter().filter(|r| r.method == "account.status").count(), 1);
+}
+
+#[tokio::test]
+async fn sessionless_terminal_reason_survives_delayed_status() {
+    let path = socket_path("network-sessionless-fence");
+    let _fake = FakeBus::start(&path, |_, _, _| {
+        Reply::Slow(Duration::from_millis(50), json!({"networking":"live"}))
+    });
+    let (mut task, mut inbox, delivered) = task();
+    task.client = BusClient::new(path, Duration::from_secs(2), task.config.deadlines);
+    task.spawn_fetches(vec![Fetch::AccountStatus(AccountId::new("acct-main"))]);
+    task.networking_event(&json!({"account_id":"acct-main", "state":"networking_pending", "networking_reason":{"kind":"custody_expired"}}));
+    latest(&delivered);
+    answer(&mut task, &mut inbox).await;
+    let account = latest(&delivered);
+    assert_eq!(account.networking_session, None);
+    assert_eq!(
+        account.networking_reason.expect("terminal reason").kind,
+        ramflux_desktop_core::NetworkingReasonKind::CustodyExpired
+    );
+}
