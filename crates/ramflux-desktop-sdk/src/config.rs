@@ -21,6 +21,9 @@ pub const LOCAL_NETWORK_RETRY_MS: [u16; 2] = [2_000, 4_000];
 /// Settings of the SDK source.
 #[derive(Debug, Clone)]
 pub struct SdkConfig {
+    /// Test-only ordering of a late phrase handoff after its ready event.
+    #[cfg(feature = "test-support")]
+    pub phrase_handoff_gate: Option<std::sync::Arc<crate::test_support::PhraseHandoffGate>>,
     /// The daemon's local-bus socket.
     pub socket_path: PathBuf,
     /// Longest wait for the daemon socket to accept a connection.
@@ -59,6 +62,8 @@ impl SdkConfig {
     /// Defaults for `socket_path`.
     pub fn new(socket_path: impl Into<PathBuf>) -> Self {
         Self {
+            #[cfg(feature = "test-support")]
+            phrase_handoff_gate: None,
             socket_path: socket_path.into(),
             connect_timeout: Duration::from_secs(2),
             deadlines: Deadlines::standard(),

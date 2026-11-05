@@ -67,6 +67,7 @@ pub struct AccountSession {
     clock_ms: u64,
     live_epoch: Timestamp,
     live_started: std::time::Instant,
+    monotonic_now: std::rc::Rc<dyn Fn() -> std::time::Instant>,
     time_floor: Timestamp,
     paused: bool,
     /// Message bodies asked of the source and not delivered yet (asked once).
@@ -107,6 +108,18 @@ impl AccountSession {
         Self::start(Backing::Live { label: label.into(), source })
     }
 
+    /// A live session whose monotonic time follows its owning executor.
+    pub fn live_with_clock(
+        label: impl Into<String>,
+        source: Box<dyn Source>,
+        now: impl Fn() -> std::time::Instant + 'static,
+    ) -> Self {
+        let mut session = Self::live(label, source);
+        session.live_started = now();
+        session.monotonic_now = std::rc::Rc::new(now);
+        session
+    }
+
     fn start(backing: Backing) -> Self {
         let mut session = Self {
             backing,
@@ -114,6 +127,7 @@ impl AccountSession {
             clock_ms: 0,
             live_epoch: super::wall_clock_now(),
             live_started: std::time::Instant::now(),
+            monotonic_now: std::rc::Rc::new(std::time::Instant::now),
             time_floor: Timestamp(0),
             paused: false,
             requested: BTreeSet::new(),
@@ -229,9 +243,13 @@ impl AccountSession {
             None => self
                 .live_epoch
                 .saturating_add_ms(
-                    u64::try_from(self.live_started.elapsed().as_millis())
-                        .unwrap_or(u64::MAX)
-                        .max(self.clock_ms),
+                    u64::try_from(
+                        (self.monotonic_now)()
+                            .saturating_duration_since(self.live_started)
+                            .as_millis(),
+                    )
+                    .unwrap_or(u64::MAX)
+                    .max(self.clock_ms),
                 )
                 .max(self.time_floor),
         }
@@ -487,6 +505,29 @@ pub fn audit_label(intent: &Intent) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn live_now_follows_injected_monotonic_time() {
+        use std::{
+            cell::Cell,
+            rc::Rc,
+            time::{Duration, Instant},
+        };
+        let scenario = ramflux_desktop_test::load_fixture("s02_daily").expect("scenario");
+        let base = Instant::now();
+        let now = Rc::new(Cell::new(base));
+        let clock = now.clone();
+        let session = super::AccountSession::live_with_clock(
+            "clock",
+            Box::new(ramflux_desktop_test::MockSource::new(&scenario)),
+            move || clock.get(),
+        );
+        let epoch = session.now();
+        now.set(base + Duration::from_secs(60));
+        assert_eq!(session.now(), epoch.saturating_add_ms(60_000));
+        now.set(base + Duration::from_secs(61));
+        assert_eq!(session.now(), epoch.saturating_add_ms(61_000));
+    }
+
     use ramflux_desktop_core::{
         Actor, ConfirmationIssuer, GrantId, GrantState, IntentKind, ParticipantId, methods,
     };

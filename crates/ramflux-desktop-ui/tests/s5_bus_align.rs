@@ -32,11 +32,42 @@ fn fixture_with_authority(
     fixture_with_calls(cx, locked, authority_blocked, false)
 }
 
+#[derive(Default)]
+struct MediaLatch {
+    entered: AtomicBool,
+    released: std::sync::Mutex<bool>,
+    changed: std::sync::Condvar,
+}
+impl MediaLatch {
+    fn wait(&self) {
+        self.entered.store(true, Ordering::SeqCst);
+        let mut released = self.released.lock().expect("media latch");
+        while !*released {
+            released = self.changed.wait(released).expect("media latch");
+        }
+    }
+    fn release(&self) {
+        *self.released.lock().expect("media latch") = true;
+        self.changed.notify_all();
+    }
+}
+
 fn fixture_with_calls(
     cx: &mut TestAppContext,
     locked: bool,
     authority_blocked: bool,
     call_api: bool,
+) -> (FakeBus, common::Opened) {
+    fixture_with_media(cx, locked, authority_blocked, call_api, None, false)
+}
+
+fn fixture_with_media(
+    cx: &mut TestAppContext,
+    locked: bool,
+    authority_blocked: bool,
+    call_api: bool,
+    media: Option<Arc<MediaLatch>>,
+    background: bool,
 ) -> (FakeBus, common::Opened) {
     let path = socket_path("s5-ui");
     let frames: std::collections::BTreeMap<String, Value> = serde_json::from_str(include_str!(
@@ -47,6 +78,13 @@ fn fixture_with_calls(
     let fake = FakeBus::start(&path, move |method, _, _| {
         let unlocked = opened.load(Ordering::SeqCst);
         match method {
+            "call.media.session" if media.is_some() => {
+                media.as_ref().expect("media latch").wait();
+                Reply::Error("ValidationFailed", "media-latch".into())
+            }
+            "account.list" if background => Reply::Ok(
+                json!({"accounts":["acct-main","background"],"account_details":[{"id":"acct-main","state":"unlocked","networking":"live"},{"id":"background","state":"unlocked","networking":"live"}]}),
+            ),
             "account.list" => {
                 Reply::Ok(json!({"accounts":if unlocked {vec!["acct-main"]} else {vec![]},
                 "account_details":[{"id":"acct-main","label":"Work","state":if unlocked {"unlocked"} else {"locked"},"networking":"networking_pending","authority_blocked":authority_blocked}]}))
@@ -340,10 +378,18 @@ fn authority_restored_event_returns_blocked_header_to_live(cx: &mut TestAppConte
 
 /// Runs bridge threads without advancing GPUI's clock. A delivery must be
 /// applied by the completion waiter, rather than by the 50 ms render ticker.
-fn without_time(cx: &mut TestAppContext, mut done: impl FnMut(&mut TestAppContext) -> bool) {
+fn without_time(cx: &mut TestAppContext, done: impl FnMut(&mut TestAppContext) -> bool) {
+    without_time_named(cx, "completion", done);
+}
+
+fn without_time_named(
+    cx: &mut TestAppContext,
+    name: &str,
+    mut done: impl FnMut(&mut TestAppContext) -> bool,
+) {
     let limit = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while !done(cx) {
-        assert!(std::time::Instant::now() < limit, "completion did not wake UI");
+        assert!(std::time::Instant::now() < limit, "{name} did not wake UI");
         std::thread::sleep(std::time::Duration::from_millis(2));
         cx.run_until_parked();
     }
@@ -351,7 +397,7 @@ fn without_time(cx: &mut TestAppContext, mut done: impl FnMut(&mut TestAppContex
 
 #[gpui_kit::test]
 fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
-    use ramflux_desktop_core::{CallId, Source, Timestamp, methods};
+    use ramflux_desktop_core::{CallId, Source, Timestamp};
     use ramflux_desktop_sdk::SdkHub;
     use std::{
         future::Future,
@@ -368,7 +414,9 @@ fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
         }
     }
     let _locale = locale_guard();
-    let (fake, (handle, shell)) = fixture(cx, false);
+    let media_latch = Arc::new(MediaLatch::default());
+    let (fake, (handle, shell)) =
+        fixture_with_media(cx, false, false, false, Some(media_latch.clone()), false);
     wait_for_workspace(cx, &shell);
     wait(cx, "stream", |_| fake.streaming("acct-main"));
     let store = store_handle(cx, &shell);
@@ -396,9 +444,8 @@ fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
         background
             .drain(Timestamp(0))
             .iter()
-            .any(|e| matches!(e.event, DomainEvent::CapabilitiesUpdated(_)))
+            .any(|e| matches!(&e.event, DomainEvent::CapabilitiesUpdated(c) if c.unsupported_reason("call.invite").is_none()))
     });
-    std::thread::sleep(std::time::Duration::from_millis(50));
     background.drain(Timestamp(0));
     let mut pending = pin!(wake.notified());
     if pending.as_mut().poll(&mut context).is_ready() {
@@ -406,61 +453,31 @@ fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
     }
     assert!(pending.as_mut().poll(&mut context).is_pending());
     background.request_call_media(&CallId::new("background-call"));
-    without_time(cx, |_| counter.0.load(Ordering::SeqCst) > 0);
+    without_time(cx, |_| media_latch.entered.load(Ordering::SeqCst));
+    // Attach may have consumed the earlier waiter. Re-register under the
+    // reply latch; never clear the counter after registering this waiter.
+    counter.0.store(0, Ordering::SeqCst);
+    pending.set(wake.notified());
+    while pending.as_mut().poll(&mut context).is_ready() {
+        pending.set(wake.notified());
+    }
+    media_latch.release();
+    let mut media_answer = None;
+    without_time_named(cx, "latched media completion", |_| {
+        if media_answer.is_none() {
+            media_answer = background.take_call_media();
+        }
+        media_answer.is_some() && counter.0.load(Ordering::SeqCst) > 0
+    });
     assert!(matches!(pending.as_mut().poll(&mut context), Poll::Ready(())));
-    assert_eq!(
-        background.take_call_media().expect("media-only answer").0,
-        CallId::new("background-call")
-    );
+    assert_eq!(media_answer.expect("media-only answer").0, CallId::new("background-call"));
     assert!(background.take_call_media().is_none());
 
     // A send before waiter registration must remain ready too.
     wake.notify();
     assert!(pin!(wake.notified()).as_mut().poll(&mut context).is_ready());
 
-    // The daemon's phrase channel uses the same signal and keeps one-shot
-    // ownership/wiping: a phrase never becomes a replayable domain event.
-    let path = socket_path("s5-wake-phrase");
-    let custody = Arc::new(ramflux_desktop_test::fake_custody::FakeCustody::new());
-    let phrase_fake = FakeBus::start_with(
-        &path,
-        |method, _, _| match method {
-            "daemon.status" => Reply::Ok(json!({"born_v3_creation":true})),
-            "account.list" => Reply::Ok(json!({"accounts":[],"account_details":[]})),
-            _ => Reply::Ok(json!({})),
-        },
-        custody,
-    );
-    let phrase_hub = SdkHub::start(SdkConfig::new(path)).expect("phrase hub");
-    let mut daemon = ramflux_desktop_ui::app::AccountSession::live(
-        "daemon",
-        Box::new(phrase_hub.daemon_source()),
-    );
-    daemon.submit(ramflux_desktop_core::Effect::Call {
-        method: methods::CUSTODY_BEGIN.into(),
-        body: json!({"display_name":"Alex","principal_kind":"human"}),
-    });
-    without_time(cx, |_| {
-        daemon.advance(0);
-        daemon
-            .store()
-            .ceremony()
-            .is_some_and(|c| c.phase == ramflux_desktop_core::CeremonyPhase::Prepared)
-    });
-    daemon.submit(ramflux_desktop_core::Effect::Call {
-        method: methods::CUSTODY_SHOW_ONCE.into(),
-        body: json!({}),
-    });
-    let mut phrase = None;
-    without_time(cx, |_| {
-        daemon.advance(0);
-        phrase = daemon.take_recovery_phrase();
-        phrase.is_some()
-    });
-    assert!(daemon.take_recovery_phrase().is_none(), "phrase moves once");
-    assert_eq!(phrase_hub.phrase_audit().taken(), 1);
-    drop(phrase);
-    phrase_fake.shutdown();
+    late_phrase_handoff(cx);
     fake.shutdown();
 }
 
@@ -560,7 +577,11 @@ fn visible_render_clock_stops_and_restarts(cx: &mut TestAppContext) {
     cx.simulate_window_visibility_change(expiry_window.into(), WindowVisibility::Hidden);
     cx.run_until_parked();
     assert!(!cx.update(|cx| expiry_store.read(cx).render_clock_running()));
-    advance(cx, 300_001);
+    let remaining = cx.update(|cx| {
+        let session = expiry_store.read(cx).session().expect("daemon");
+        session.store().ceremony().expect("ceremony").expires_at.saturating_since(session.now())
+    });
+    advance(cx, remaining + 1);
     assert!(!cx.update(|cx| expiry_store.read(cx).render_clock_running()));
     assert!(
         cx.update(|cx| expiry_store.read(cx).session().expect("daemon").now())
@@ -590,4 +611,126 @@ fn visible_render_clock_stops_and_restarts(cx: &mut TestAppContext) {
     cx.run_until_parked();
     hold_confirm(cx, hold_window);
     assert_eq!(effects(cx, &hold_shell), [methods::GRANT_APPROVE]);
+}
+
+fn late_phrase_handoff(cx: &mut TestAppContext) {
+    use ramflux_desktop_core::{CeremonyPhase, Intent, IntentKind};
+    let path = socket_path("s5-late-phrase");
+    let custody = Arc::new(ramflux_desktop_test::fake_custody::FakeCustody::new());
+    let fake = FakeBus::start_with(
+        &path,
+        |method, _, _| {
+            Reply::Ok(match method {
+                "daemon.status" => json!({"born_v3_creation":true}),
+                "account.list" => json!({"accounts":[],"account_details":[]}),
+                _ => json!({}),
+            })
+        },
+        custody,
+    );
+    let gate = Arc::new(ramflux_desktop_sdk::test_support::PhraseHandoffGate::default());
+    let mut config = SdkConfig::new(path);
+    config.phrase_handoff_gate = Some(gate.clone());
+    let hub = ramflux_desktop_sdk::SdkHub::start(config.clone()).expect("phrase hub");
+    let mut options = ShellOptions::for_scenario("", false);
+    options.source = SourceChoice::Rfd(config);
+    let (_window, shell) = open_with(cx, options);
+    let store = store_handle(cx, &shell);
+    cx.update(|cx| store.update(cx, |s, cx| s.attach_live(hub.clone(), cx)));
+    without_time(cx, |cx| with_store(cx, &shell, |s| s.capabilities().born_v3_creation));
+    cx.update(|cx| {
+        store.update(cx, |s, cx| {
+            s.stop_clock();
+            s.dispatch(Intent::human(IntentKind::BeginCeremony { label: "Alex".into() }), cx);
+        })
+    });
+    without_time(cx, |cx| {
+        with_store(cx, &shell, |s| s.ceremony().is_some_and(|c| c.phase == CeremonyPhase::Prepared))
+    });
+    cx.update(|cx| {
+        store.update(cx, |s, cx| {
+            s.dispatch(Intent::human(IntentKind::ShowRecoveryPhrase), cx);
+        })
+    });
+    without_time(cx, |cx| {
+        gate.waiting()
+            && with_store(cx, &shell, |s| {
+                s.ceremony().is_some_and(|c| c.phase == CeremonyPhase::PhraseReady)
+            })
+    });
+    let panel = cx.update(|cx| shell.read(cx).entry().read(cx).ceremony().clone());
+    assert_eq!(cx.update(|cx| panel.read(cx).held().words()), 0);
+    let before = cx.executor().now();
+    gate.release();
+    without_time(cx, |cx| {
+        cx.update(|cx| panel.read(cx).held().words()) == ramflux_desktop_core::PHRASE_WORDS
+    });
+    assert_eq!(hub.phrase_audit().taken(), 1);
+    // An unrelated repaint may revisit PhraseReady but never takes again.
+    cx.update(|cx| cx.refresh_windows());
+    cx.run_until_parked();
+    assert_eq!(hub.phrase_audit().taken(), 1);
+    assert_eq!(before, cx.executor().now());
+    assert!(!cx.update(|cx| store.read(cx).render_clock_running()));
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn background_account_media_drains_without_render_ticks(cx: &mut TestAppContext) {
+    use ramflux_desktop_core::CallId;
+    let _locale = locale_guard();
+    let latch = Arc::new(MediaLatch::default());
+    let (fake, (_window, shell)) =
+        fixture_with_media(cx, false, false, true, Some(latch.clone()), true);
+    wait_for_workspace(cx, &shell);
+    let store = store_handle(cx, &shell);
+    without_time(cx, |cx| {
+        cx.update(|cx| store.read(cx).accounts().count()) == 2 && fake.streaming("acct-main")
+    });
+    cx.update(|cx| store.update(cx, |s, _| s.stop_clock()));
+    let calls = ramflux_desktop_test::fake_calls::FakeCalls::new("127.0.0.1:1");
+    calls.conversation("dm-ana", "principal-ana");
+    let Reply::Ok(row) = calls
+        .handle("call.invite", Some("acct-main"), &json!({"conversation_id":"dm-ana"}))
+        .expect("invite")
+    else {
+        panic!("invite")
+    };
+    let id = row["call_id"].as_str().expect("id").to_owned();
+    calls.peer_answers(&id);
+    fake.publish("acct-main", "call.changed", calls.row(&id).expect("row"));
+    without_time(cx, |_| latch.entered.load(Ordering::SeqCst));
+    cx.update(|cx| {
+        store.update(cx, |s, cx| s.set_active_account(&AccountId::new("background"), cx))
+    });
+    let before = cx.executor().now();
+    latch.release();
+    without_time(cx, |cx| {
+        cx.update(|cx| {
+            store.read(cx).call_audio().is_some_and(|a| {
+                a.call_id == CallId::new(&id) && a.error.as_deref() == Some("media-latch")
+            })
+        })
+    });
+    assert_eq!(
+        cx.update(|cx| store.read(cx).active_account().cloned()),
+        Some(AccountId::new("background"))
+    );
+    assert_eq!(before, cx.executor().now());
+    assert!(!cx.update(|cx| store.read(cx).render_clock_running()));
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn hidden_scenario_playback_stops_render_ticks(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
+    let (window, shell) = open(cx, "s02_daily");
+    let store = store_handle(cx, &shell);
+    advance(cx, 100);
+    cx.simulate_window_visibility_change(window.into(), gpui_kit::WindowVisibility::Hidden);
+    cx.run_until_parked();
+    assert!(!cx.update(|cx| store.read(cx).render_clock_running()));
+    let before = cx.update(|cx| store.read(cx).session().expect("session").clock_ms());
+    advance(cx, 500);
+    assert_eq!(before, cx.update(|cx| store.read(cx).session().expect("session").clock_ms()));
 }

@@ -62,7 +62,12 @@ impl StoreHandle {
         self.sessions.clear();
         self.active = None;
         self.inspector.clear();
-        let daemon = AccountSession::live(DAEMON_SESSION, Box::new(hub.daemon_source()));
+        let executor = cx.background_executor().clone();
+        let daemon = AccountSession::live_with_clock(
+            DAEMON_SESSION,
+            Box::new(hub.daemon_source()),
+            move || executor.now(),
+        );
         self.live = Some(LiveLink { hub, daemon });
         self.emit_reset(cx);
     }
@@ -118,8 +123,13 @@ impl StoreHandle {
         self.sessions.remove(&id);
         if let Some(link) = self.live.as_ref() {
             let source = link.hub.account_source(id.clone());
-            self.sessions
-                .insert(id.clone(), AccountSession::live(id.to_string(), Box::new(source)));
+            let executor = cx.background_executor().clone();
+            self.sessions.insert(
+                id.clone(),
+                AccountSession::live_with_clock(id.to_string(), Box::new(source), move || {
+                    executor.now()
+                }),
+            );
         }
         self.emit_reset(cx);
     }
@@ -149,8 +159,13 @@ impl StoreHandle {
         }
         for id in fresh {
             let source = link.hub.account_source(id.clone());
-            self.sessions
-                .insert(id.clone(), AccountSession::live(id.to_string(), Box::new(source)));
+            let executor = cx.background_executor().clone();
+            self.sessions.insert(
+                id.clone(),
+                AccountSession::live_with_clock(id.to_string(), Box::new(source), move || {
+                    executor.now()
+                }),
+            );
         }
         let active_gone = self.active.as_ref().is_some_and(|id| !self.sessions.contains_key(id));
         if self.active.is_none() || active_gone {

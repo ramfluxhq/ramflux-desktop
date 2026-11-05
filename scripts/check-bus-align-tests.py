@@ -45,6 +45,8 @@ SDK_TESTS = [
     "local::daemon_process::tests::daemon_spawn_sets_default_rust_log_unless_inherited",
 ]
 UI_TESTS = [
+    "background_account_media_drains_without_render_ticks",
+    "hidden_scenario_playback_stops_render_ticks",
     "visible_render_clock_stops_and_restarts",
     "ui_wakes_on_bridge_event_within_one_frame",
     "authority_restored_event_returns_blocked_header_to_live",
@@ -72,6 +74,8 @@ def required(target, name):
 
 
 def main():
+    required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--lib"],
+        "app::session::tests::live_now_follows_injected_monotonic_time")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "tasks_contract"],
         "a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_long")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--lib", "--features", "bus-trace"],

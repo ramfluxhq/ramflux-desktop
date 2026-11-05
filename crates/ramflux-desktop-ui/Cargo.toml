@@ -30,6 +30,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 qrcodegen = "1.8"
 
 [dev-dependencies]
+ramflux-desktop-sdk = { workspace = true, features = ["test-support"] }
 gpui-kit = { workspace = true, features = ["test-support"] }
 ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon"] }
 # The node key fingerprint and base64 of the demo rehearsal (already in the graph).

@@ -55,3 +55,6 @@ pub use plan::message::ATTACHMENT_LIMIT;
 pub const PRODUCT_REV: &str = env!("RAMFLUX_PRODUCT_REV");
 pub use source::{DaemonStop, SdkHub, SdkSource};
 pub use translate::Scope;
+
+#[cfg(feature = "test-support")]
+pub mod test_support;

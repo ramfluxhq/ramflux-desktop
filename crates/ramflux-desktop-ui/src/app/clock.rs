@@ -54,7 +54,7 @@ impl StoreHandle {
             .and_then(|id| self.sessions.get(id))
             .is_some_and(super::AccountSession::needs_render_time)
             || self.live.as_ref().is_some_and(|l| l.daemon().needs_render_time());
-        let needed = self.clock_enabled && (scenario || (self.render_visible && timed));
+        let needed = self.clock_enabled && self.render_visible && (scenario || timed);
         if !needed && self.clock.is_some() {
             self.cancel_render_clock();
         }

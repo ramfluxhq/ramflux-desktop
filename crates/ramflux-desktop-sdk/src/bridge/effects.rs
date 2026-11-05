@@ -36,6 +36,8 @@ impl Task {
         let effect = match super::custody::Step::of(effect) {
             Ok(step) => {
                 let context = super::custody::Context {
+                    #[cfg(feature = "test-support")]
+                    phrase_handoff_gate: self.config.phrase_handoff_gate.clone(),
                     socket: self.config.socket_path.clone(),
                     budget: self.config.deadlines.network,
                     internal: self.internal.clone(),

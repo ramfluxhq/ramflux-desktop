@@ -289,6 +289,8 @@ impl Custody {
 /// What the actor needs from its scope.
 #[derive(Clone)]
 pub(super) struct Context {
+    #[cfg(feature = "test-support")]
+    pub(super) phrase_handoff_gate: Option<Arc<crate::test_support::PhraseHandoffGate>>,
     pub(super) socket: std::path::PathBuf,
     pub(super) budget: Duration,
     pub(super) internal: mpsc::UnboundedSender<Internal>,
@@ -539,9 +541,19 @@ async fn show(session: &mut Session, context: &Context) -> Option<Outcome> {
             // Moved to the screen's side before the event says it is ready.
             context.audit.issue();
             let handoff = Handoff { ceremony_id: meta.ceremony_id.clone(), phrase };
-            if let Err(std_mpsc::SendError(lost)) = context.phrases.send(handoff) {
-                context.audit.wipe(lost.phrase);
+            let phrases = context.phrases.clone();
+            let audit = context.audit.clone();
+            let publish = move || {
+                if let Err(std_mpsc::SendError(lost)) = phrases.send(handoff) {
+                    audit.wipe(lost.phrase);
+                }
+            };
+            #[cfg(feature = "test-support")]
+            if let Some(gate) = &context.phrase_handoff_gate {
+                gate.hold(publish);
+                return Some(Outcome::events(vec![creation(meta, CeremonyPhase::PhraseReady)]));
             }
+            publish();
             Some(Outcome::events(vec![creation(meta, CeremonyPhase::PhraseReady)]))
         }
         Err(error) => Some(broke(methods::CUSTODY_SHOW_ONCE, &error, session)),
