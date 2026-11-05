@@ -698,6 +698,8 @@ impl Task {
                     if matches!(fetch, Fetch::Page(Paged::Conversations | Paged::Groups, _)) {
                         self.restore_pins();
                     }
+                } else if matches!(fetch, Fetch::AccountStatus(_)) {
+                    self.on_stale_status(&fetch, result);
                 }
                 self.read_ended(&fetch, finished);
                 self.rerun_fetch(&fetch);
@@ -780,6 +782,8 @@ impl Task {
             let finished = last_page(&fetch, &result);
             if !self.outdated(&fetch, number, &result) {
                 self.on_read(&fetch, result);
+            } else if matches!(fetch, Fetch::AccountStatus(_)) {
+                self.on_stale_status(&fetch, result);
             }
             self.read_ended(&fetch, finished);
             self.rerun_fetch(&fetch);
@@ -814,6 +818,26 @@ impl Task {
         }
         self.listing_applied.insert(*paged, number);
         false
+    }
+
+    /// A late status still establishes local readiness and identity. Only its
+    /// networking half is superseded by the event applied after dispatch.
+    fn on_stale_status(&mut self, fetch: &Fetch, result: Result<Value, BusError>) {
+        let local = result.map(|mut value| {
+            if let Some(body) = value.as_object_mut() {
+                for field in [
+                    "networking",
+                    "networking_snapshot",
+                    "session",
+                    "networking_reason",
+                    "node_binding",
+                ] {
+                    body.remove(field);
+                }
+            }
+            value
+        });
+        self.on_read(fetch, local);
     }
 
     /// Translates one read; returns whether it produced events.

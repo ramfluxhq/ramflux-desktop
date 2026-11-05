@@ -646,8 +646,9 @@ fn the_account_carries_its_networking_state_from_the_list(cx: &mut TestAppContex
     advance(cx, 100);
     // ...and the account's own page keeps saying it.
     assert_eq!(page(cx, &shell), Page::Workspace);
-    assert!(exists(cx, handle, "networking-banner"));
-    assert!(has_label(cx, handle, &tr("networking.pending_text")));
+    assert!(!exists(cx, handle, "networking-banner"));
+    assert!(has_label(cx, handle, &tr("network_header.connecting")));
+    assert!(has_label(cx, handle, &tr("network_header.connecting")));
 }
 
 #[gpui_kit::test]

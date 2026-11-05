@@ -110,7 +110,7 @@ impl Inputs {
 
 /// How long a freshly opened account session is waited for before the page
 /// says it did not load and offers a way out.
-const SESSION_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+const SESSION_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// The wait for a freshly opened account session.
 enum SessionWait {

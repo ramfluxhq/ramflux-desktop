@@ -236,6 +236,18 @@ impl Render for StatusStrip {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let handle = self.store.read(cx);
         let fields = fields(handle, cx);
+        let account = handle
+            .active_account()
+            .and_then(|id| handle.store().account(id))
+            .or_else(|| handle.store().accounts().find(|a| a.lock_state == LockState::Unlocked));
+        let (network_title, network_detail) = if self.show_commands && account.is_none() {
+            (tr("network_header.connecting"), None)
+        } else {
+            super::networking_header::header(
+                account.filter(|_| self.show_commands),
+                handle.store().failures().last(),
+            )
+        };
         let switcher = account_switcher(handle, self.store.downgrade(), cx);
         let needs_me = handle.attention_across_accounts().len();
         let muted = cx.theme().muted_foreground;
@@ -300,7 +312,28 @@ impl Render for StatusStrip {
                     .w_0()
                     .min_w_0()
                     .overflow_hidden()
-                    .child(div().flex_none().text_sm().font_semibold().child(tr("app.name")))
+                    .child(
+                        div()
+                            .id("workspace-networking-title")
+                            .role(gpui_kit::Role::Status)
+                            .aria_label(network_title.clone())
+                            .test_support()
+                            .flex_none()
+                            .text_sm()
+                            .font_semibold()
+                            .child(network_title),
+                    )
+                    .children(network_detail.map(|detail| {
+                        div()
+                            .id("workspace-networking-detail")
+                            .aria_label(detail.clone())
+                            .test_support()
+                            .min_w_0()
+                            .truncate()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(detail)
+                    }))
                     .child(switcher)
                     .children(chips),
             )

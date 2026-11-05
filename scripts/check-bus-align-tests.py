@@ -27,7 +27,7 @@ SDK_TESTS = [
     "bridge::s5_lifecycle_tests::lifecycle_answer_lost_resends_once_with_same_key",
     "local::daemon_process::tests::daemon_spawn_sets_default_rust_log_unless_inherited",
 ]
-UI_TESTS = []  # First cases belong to the networking/header PR.
+UI_TESTS = ["unlock_opens_account_on_networking_pending", "header_shows_connecting_until_live_or_typed_reason"]
 GUARD = "a_lost_answer_is_resent_under_the_same_key_and_applied_once"
 
 

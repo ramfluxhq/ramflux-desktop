@@ -250,12 +250,13 @@ fn the_banner_of_a_pending_account_clears_the_moment_the_daemon_connects_it(
     assert!(has_label(cx, handle, &text), "{text}");
     click(cx, handle, "ceremony-done-close");
     wait(cx, "the workspace", |cx| page(cx, &shell) == Page::Workspace);
-    wait(cx, "the banner", |cx| exists(cx, handle, "networking-banner"));
+    wait(cx, "the connecting header", |cx| has_label(cx, handle, &tr("network_header.connecting")));
     // The daemon connects the account later: no unlock, no restart.
     custody.go_live("acct-native-1");
+    fake.push("acct-native-1", "account.networking.changed", serde_json::json!({"account_id":"acct-native-1", "state":"live", "session":{"state":"live"}}));
     wait(cx, "the banner clears", |cx| {
         crate::common::advance(cx, 20);
-        !exists(cx, handle, "networking-banner")
+        !has_label(cx, handle, &tr("network_header.connecting"))
     });
     fake.shutdown();
 }

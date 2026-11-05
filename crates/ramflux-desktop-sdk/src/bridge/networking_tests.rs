@@ -103,7 +103,7 @@ async fn delayed_status_cannot_overwrite_newer_networking_event() {
     let _fake = FakeBus::start(&path, |_, _, _| {
         Reply::Slow(
             Duration::from_millis(50),
-            json!({"networking":"live", "networking_snapshot":{"state":"live"}}),
+            json!({"node_id":"node-local", "networking":"live", "networking_snapshot":{"state":"live"}}),
         )
     });
     let (mut task, mut inbox, delivered) = task();
@@ -113,7 +113,14 @@ async fn delayed_status_cannot_overwrite_newer_networking_event() {
     task.networking_event(&event);
     assert_eq!(latest(&delivered).networking, Networking::Pending);
     answer(&mut task, &mut inbox).await;
-    assert!(!delivered.try_iter().any(|d| matches!(d.event, DomainEvent::AccountUpdated(a) if a.networking == Networking::Live)), "late snapshot restored false Live");
+    let local = latest(&delivered);
+    assert_eq!(local.networking, Networking::Pending, "late snapshot must not restore false Live");
+    assert_eq!(
+        local.lock_state,
+        ramflux_desktop_core::LockState::Unlocked,
+        "local readiness survives the networking fence"
+    );
+    assert_eq!(local.node_id.as_ref().map(|id| id.as_str()), Some("node-local"));
     // Both account-list custody and lifecycle answers preserve the resident half.
     let translated = task.translator.fetched(
         &Fetch::AccountList,

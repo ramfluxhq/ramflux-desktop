@@ -1,0 +1,59 @@
+_version: 2
+network_header:
+  connecting:
+    en: "Connecting…"
+    zh-CN: "正在连接…"
+  choose_node:
+    en: "Choose a node"
+    zh-CN: "请选择节点"
+  choose_custody:
+    en: "Choose a node that supports custody"
+    zh-CN: "请选择支持托管的节点"
+  renew:
+    en: "Renew custody"
+    zh-CN: "请续期托管"
+  busy:
+    en: "Node busy"
+    zh-CN: "节点繁忙"
+  unreachable:
+    en: "Node unreachable"
+    zh-CN: "无法连接节点"
+  capacity:
+    en: "Node capacity reached"
+    zh-CN: "节点容量已满"
+  persistence:
+    en: "Node storage temporarily unavailable"
+    zh-CN: "节点存储暂不可用"
+  session_required:
+    en: "Registration session required"
+    zh-CN: "需要注册会话"
+  session_expired:
+    en: "Registration session expired"
+    zh-CN: "注册会话已过期"
+  update:
+    en: "Update the client or node"
+    zh-CN: "请更新客户端或节点"
+  authority:
+    en: "Identity authority blocked"
+    zh-CN: "身份授权受阻"
+  identity:
+    en: "Identity conflict"
+    zh-CN: "身份冲突"
+  restart:
+    en: "Restart registration"
+    zh-CN: "请重新注册"
+  refused:
+    en: "Registration refused"
+    zh-CN: "注册被拒绝"
+  fork:
+    en: "Identity fork fenced"
+    zh-CN: "身份分叉已隔离"
+  migration:
+    en: "Migration refused: %{reason} (%{nack})"
+    zh-CN: "迁移被拒绝：%{reason}（%{nack}）"
+  retry:
+    en: "%{reason} · retry in %{seconds} s"
+    zh-CN: "%{reason} · %{seconds} 秒后重试"
+  capacity_detail:
+    en: "%{reason} · %{scope}, resets at %{deadline}"
+    zh-CN: "%{reason} · %{scope}，重置时间 %{deadline}"
