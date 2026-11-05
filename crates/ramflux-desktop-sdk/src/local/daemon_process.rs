@@ -106,7 +106,13 @@ fn output_file(path: Option<&Path>) -> Option<(File, File)> {
 fn child_command(command: &DaemonCommand) -> Command {
     let mut child = Command::new(&command.binary);
     child.args(command.args()).stdin(Stdio::null());
+    set_child_log(&mut child, std::env::var_os("RUST_LOG"));
     child
+}
+
+/// Keep the parent filter, including an explicitly empty filter.
+fn set_child_log(child: &mut Command, inherited: Option<std::ffi::OsString>) {
+    child.env("RUST_LOG", inherited.unwrap_or_else(|| "warn,ramflux_sdk=info".into()));
 }
 
 /// A running daemon child process.
@@ -222,6 +228,36 @@ mod tests {
 
     // A started daemon's arguments, output and stop are tested in
     // `tests/daemon_process.rs`, whose binary stands in for the daemon.
+
+    #[test]
+    fn daemon_spawn_sets_default_rust_log_unless_inherited() {
+        // Exercise the same child configuration as spawn without mutating the
+        // process environment (other tests start bridge threads concurrently).
+        for inherited in [None, Some("trace"), Some("")] {
+            let mut child = Command::new("sh");
+            child.args(["-c", "printf '%s' \"$RUST_LOG\""]);
+            set_child_log(&mut child, inherited.map(Into::into));
+            let output = child.output().expect("child");
+            assert!(output.status.success());
+            assert_eq!(output.stdout, inherited.unwrap_or("warn,ramflux_sdk=info").as_bytes());
+        }
+        let command = DaemonCommand {
+            binary: "rf".into(),
+            socket: "s".into(),
+            data_dir: "d".into(),
+            log_file: None,
+        };
+        let child = child_command(&command);
+        let filter = child.get_envs().find(|(key, _)| *key == "RUST_LOG").expect("child filter").1;
+        assert_eq!(
+            filter,
+            Some(
+                std::env::var_os("RUST_LOG")
+                    .unwrap_or_else(|| "warn,ramflux_sdk=info".into())
+                    .as_os_str()
+            )
+        );
+    }
 
     #[test]
     fn missing_and_non_executable_binaries_are_refused() {

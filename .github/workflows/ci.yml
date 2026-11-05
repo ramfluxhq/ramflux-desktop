@@ -146,6 +146,9 @@ jobs:
           CARGO_HTTP_TIMEOUT: "30"
         run: cargo fetch --locked
 
+      - name: Required bus alignment tests (positive counts)
+        run: python3 scripts/check-bus-align-tests.py
+
       - name: Test
         timeout-minutes: 25
         env:
@@ -155,9 +158,9 @@ jobs:
   macos:
     # GPUI tests use the headless test platform and the media tests use
     # synthetic audio, so no display or audio device is needed. Runs on main,
-    # ci/* branches and on demand only, to keep macOS minutes low.
+    # ci/* branches, pull requests and on demand.
     name: fmt, clippy, test (macos)
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/ci/')
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/ci/')
     runs-on: macos-15
     timeout-minutes: 40
     steps:
@@ -193,6 +196,9 @@ jobs:
         env:
           CARGO_NET_OFFLINE: "true"
         run: scripts/check-shot-programs.sh
+
+      - name: Required bus alignment tests (positive counts)
+        run: python3 scripts/check-bus-align-tests.py
 
       - name: Test
         timeout-minutes: 25

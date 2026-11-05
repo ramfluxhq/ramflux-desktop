@@ -21,6 +21,9 @@ mod jobs;
 mod live;
 mod scope;
 
+#[cfg(test)]
+mod s5_lifecycle_tests;
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::mpsc as std_mpsc;

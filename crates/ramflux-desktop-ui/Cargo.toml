@@ -192,3 +192,10 @@ name = "ceremony_shots"
 path = "tests/ceremony_shots.rs"
 test = false
 harness = false
+
+# Event-driven bus alignment tests use the ordinary libtest harness.
+[[test]]
+name = "s5_bus_align"
+path = "tests/s5_bus_align.rs"
+test = true
+harness = true

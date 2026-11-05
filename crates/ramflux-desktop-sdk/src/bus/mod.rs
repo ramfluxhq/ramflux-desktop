@@ -235,7 +235,7 @@ impl BusError {
     /// Short text for the user.
     pub fn message(&self) -> String {
         match self {
-            Self::Daemon { message, .. } if message.contains(RECONCILE) => RECONCILE_KEY.to_owned(),
+            Self::Daemon { code, .. } if code == RECONCILE_CODE => RECONCILE_KEY.to_owned(),
             Self::Daemon { code, .. } if code == "Unauthenticated" => {
                 UNAUTHENTICATED_KEY.to_owned()
             }
@@ -262,9 +262,8 @@ pub const TRANSPORT_SECURITY_KEY: &str = "backend.failure.transport_security";
 /// Locale key of the message for an operation the daemon cannot replay.
 pub const RECONCILE_KEY: &str = "backend.failure.reconcile";
 
-/// How the daemon refuses a retry of an operation that was interrupted (or
-/// failed) after it was reserved: it never guesses whether it applied.
-const RECONCILE: &str = "operation requires reconciliation";
+/// Typed refusal when the daemon cannot safely replay an operation.
+const RECONCILE_CODE: &str = "OperationReconciliationRequired";
 
 /// How the daemon describes a method it does not know (product
 /// `bus/daemon.rs`, `SdkError::LocalBus`).
@@ -278,8 +277,9 @@ const DEADLINE_EXCEEDED: &str = "request deadline exceeded";
 /// `docs/local_bus_errors.md`: `Unavailable` is a transient outage (a
 /// retry may work), `Unauthenticated` and `TransportSecurity` are not
 /// retried (sign in again, or repair the trusted binding, first).
-const DAEMON_CODES: [&str; 11] = [
+const DAEMON_CODES: [&str; 12] = [
     "ValidationFailed",
+    RECONCILE_CODE,
     "Unavailable",
     "Unauthenticated",
     "TransportSecurity",
@@ -501,12 +501,31 @@ mod tests {
     #[test]
     fn a_retry_the_daemon_cannot_replay_asks_the_user_to_check() {
         let refused = BusError::from(SdkError::LocalBus(
-            "ValidationFailed: storage error: event id conflict: operation requires \
+            "OperationReconciliationRequired: storage error: event id conflict: operation requires \
              reconciliation: desk-op-1"
                 .to_owned(),
         ));
-        assert!(matches!(&refused, BusError::Daemon { code, .. } if code == "ValidationFailed"));
+        assert!(matches!(&refused, BusError::Daemon { code, .. } if code == RECONCILE_CODE));
         assert_eq!(refused.message(), RECONCILE_KEY);
+    }
+
+    #[test]
+    fn reconciliation_refusal_is_matched_by_code() {
+        let error = BusError::from_error_body(Some(ramflux_sdk::LocalBusErrorBody {
+            code: RECONCILE_CODE.to_owned(),
+            message: "inspect the saved operation before retrying".to_owned(),
+            reason_code: None,
+            details: None,
+            retry_after_ms: None,
+            cause: None,
+        }));
+        assert_eq!(error.message(), RECONCILE_KEY);
+        assert!(!error.is_retryable());
+        assert!(!error.is_connection_lost());
+        let flattened = BusError::from(SdkError::LocalBus(format!("{RECONCILE_CODE}: inspect")));
+        assert_eq!(flattened.message(), RECONCILE_KEY);
+        let unrelated = BusError::daemon("ValidationFailed", "operation requires reconciliation");
+        assert_eq!(unrelated.message(), "operation requires reconciliation");
     }
 
     #[test]

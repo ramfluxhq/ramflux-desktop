@@ -6,9 +6,10 @@
 //! The daemon binds a frame's `operation_id` (1 to 256 bytes) to the
 //! request's method and body in a durable receipt: a retry with the same key
 //! and the same intent returns the stored answer without applying it again,
-//! a different intent under the same key is refused, and a retry of an
-//! operation that was interrupted half-way is refused with a reconciliation
-//! error rather than guessed at.
+//! a different intent under the same key is refused. Lifecycle retries join
+//! the live execution; unlock, lock and switch can also recover an abandoned
+//! reservation. Other indeterminate outcomes return the typed
+//! `OperationReconciliationRequired` refusal.
 //!
 //! Each effect the desktop performs gets one fresh key when it is planned.
 //! The key is reused only when the bridge resends that same request after

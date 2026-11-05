@@ -7,6 +7,10 @@ license.workspace = true
 publish.workspace = true
 repository.workspace = true
 
+[features]
+# Request-trace instrumentation is introduced by the subsequent bus alignment part.
+bus-trace = []
+
 [dependencies]
 ramflux-crypto.workspace = true
 ramflux-protocol.workspace = true
