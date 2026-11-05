@@ -102,6 +102,13 @@ fn output_file(path: Option<&Path>) -> Option<(File, File)> {
     Some((out, err))
 }
 
+/// Builds the child command separately from opening its output files.
+fn child_command(command: &DaemonCommand) -> Command {
+    let mut child = Command::new(&command.binary);
+    child.args(command.args()).stdin(Stdio::null());
+    child
+}
+
 /// A running daemon child process.
 #[derive(Debug)]
 pub struct DaemonProcess {
@@ -121,9 +128,7 @@ impl DaemonProcess {
             Some((out, err)) => (Stdio::from(out), Stdio::from(err)),
             None => (Stdio::null(), Stdio::null()),
         };
-        let child = Command::new(&command.binary)
-            .args(command.args())
-            .stdin(Stdio::null())
+        let child = child_command(command)
             .stdout(stdout)
             .stderr(stderr)
             .spawn()
