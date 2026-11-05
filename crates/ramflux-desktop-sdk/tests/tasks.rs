@@ -27,10 +27,25 @@ use serde_json::json;
 #[test]
 fn a_proposal_is_shown_once_and_accepted_with_the_version_seen() {
     let (world, path) = World::start("accept");
+    // Isolate listing from the independently projected task message. A
+    // message arriving before task.list can also legitimately request it.
+    world.tasks.hold_messages(true);
     // Proposed before the account opens, so it is listed (proposals
     // arriving live are shown by the next test).
     world.tasks.propose(GROUP, "t-1", "Check the release", &[("a", "Read the notes")]).unwrap();
-    let mut account = open(&path);
+    // Open the stream before focusing the conversation. Otherwise the
+    // head recovery legitimately queues a task.get for the already listed
+    // proposal, and a stream probe may overtake that bounded recovery read.
+    // With no task loaded at the head, only the focus reads can discover it.
+    let hub = ramflux_desktop_sdk::SdkHub::start(common::config(&path)).expect("bridge");
+    let mut account =
+        common::Fed::new(hub.account_source(ramflux_desktop_core::AccountId::new(ACCOUNT)));
+    account.until("the unfocused open stream", |s, _| {
+        s.context(&ContextId::new(GROUP)).is_some()
+            && s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Stream)
+    });
+    assert!(task(&account.store, GROUP, "t-1").is_none());
+    account.source.focus(Some(&ContextId::new(GROUP)));
     account.until("the proposal on the open stream", |s, _| {
         task(s, GROUP, "t-1").is_some()
             && s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Stream)
@@ -45,11 +60,8 @@ fn a_proposal_is_shown_once_and_accepted_with_the_version_seen() {
     let moment = ramflux_desktop_sdk::translate::tasks::task_moment_id(&shown.id);
     assert!(account.store.moment(&moment).is_some(), "the task has its moment");
 
-    // The same metadata again changes nothing and reads nothing. Reads
-    // the opening still had on their way come before the first barrier
-    // (its group messages can name the proposal before its listing shows
-    // it, which reads it); a read for the replay would come before the
-    // second.
+    // No recovery or message read can race the metadata-only replay.
+    assert!(world.since(0, "task.get").is_empty(), "the proposal came from task.list");
     let mark = world.barrier(&mut account);
     let meta = json!({ "task_id": "t-1", "conversation_id": GROUP, "version": 1,
                        "state": "proposed", "actor_kind_verified": false });
@@ -57,6 +69,7 @@ fn a_proposal_is_shown_once_and_accepted_with_the_version_seen() {
     let handled = world.barrier(&mut account);
     let reads = world.between(mark, handled, "task.get");
     assert!(reads.is_empty(), "a replayed change reads nothing: {reads:?}");
+    world.tasks.hold_messages(false);
 
     act(&mut account, human(IntentKind::AcceptTaskProposal { task_id: shown.id.clone() }));
     account.until("running", |s, _| {

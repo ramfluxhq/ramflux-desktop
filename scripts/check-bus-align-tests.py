@@ -74,6 +74,8 @@ def required(target, name):
 
 
 def main():
+    required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "tasks"],
+        "a_proposal_is_shown_once_and_accepted_with_the_version_seen")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--lib"],
         "app::session::tests::live_now_follows_injected_monotonic_time")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "tasks_contract"],

@@ -199,6 +199,14 @@ jobs:
           CARGO_NET_OFFLINE: "true"
         run: scripts/check-shot-programs.sh
 
+      # Clippy checks metadata but does not link the UI test executable.
+      # Keep cold compilation outside the checker's per-command test budget.
+      - name: Build UI library tests
+        timeout-minutes: 10
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: cargo test --locked -p ramflux-desktop-ui --lib --no-run
+
       - name: Required bus alignment tests (positive counts)
         timeout-minutes: 15
         run: python3 scripts/check-bus-align-tests.py
