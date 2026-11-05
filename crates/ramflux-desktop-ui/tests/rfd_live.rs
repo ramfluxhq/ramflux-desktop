@@ -35,12 +35,8 @@ fn options(daemon: &LiveDaemon) -> ShellOptions {
 }
 
 fn options_at(socket: &std::path::Path) -> ShellOptions {
-    let config = SdkConfig {
-        poll_fast: Duration::from_millis(100),
-        poll_slow: Duration::from_millis(400),
-        reconnect_backoff: Duration::from_millis(200),
-        ..SdkConfig::new(socket)
-    };
+    let config =
+        SdkConfig { reconnect_backoff: Duration::from_millis(200), ..SdkConfig::new(socket) };
     ShellOptions {
         source: SourceChoice::Rfd(config),
         scenario: String::new(),

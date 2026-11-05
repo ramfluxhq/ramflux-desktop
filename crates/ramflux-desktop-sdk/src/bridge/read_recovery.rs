@@ -52,10 +52,6 @@ impl ReadRecovery {
         matches!(self.retries.get(fetch), Some(Retry::Waiting(_) | Retry::Exhausted))
     }
 
-    pub(super) fn blocks_poll(&self, fetch: &Fetch) -> bool {
-        self.retries.contains_key(fetch) || self.running.contains_key(fetch)
-    }
-
     pub(super) fn next_due(&self) -> Option<Instant> {
         self.retries
             .values()

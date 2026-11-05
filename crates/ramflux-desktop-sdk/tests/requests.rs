@@ -160,10 +160,14 @@ fn a_request_past_its_deadline_fails_as_a_timeout_and_never_hangs() {
     assert_eq!(failure.message, "backend.failure.timeout", "a translated timeout state");
     let probes = fake.seen().iter().filter(|s| s.method == "node.probe").count();
     assert_eq!(probes, 1, "a probe has no key and is not resent");
-    // The connection stays usable: polls keep being answered.
-    let polled = fake.seen().len();
-    daemon.settle(400);
-    assert!(fake.seen().len() > polled);
+    // An explicit action reuses the connection after the timed-out request.
+    let mark = fake.seen().len();
+    daemon.source.submit(Effect::Call {
+        method: methods::NODE_PROBE.to_owned(),
+        body: json!({"node_id":"n-harbor"}),
+    });
+    daemon.until("second timeout", |s, _| s.failures().len() >= 2);
+    assert!(fake.seen().len() > mark);
     assert_eq!(daemon.store.source_status(), SourceStatus::Connected);
     fake.shutdown();
 }

@@ -9,7 +9,7 @@
 //! trait and talk to the bridge over runtime-agnostic channels; the GPUI side
 //! never awaits a tokio future.
 //!
-//! - [`config`]: socket, deadlines, the polling fallback and its intervals.
+//! - [`config`]: socket, deadlines and reconnect backoff.
 //! - [`bus`]: requests, failures, deadlines, retry keys, the multiplexed
 //!   request connection, the event stream and the push subscription.
 //! - [`bridge`]: the bridge thread and one task per scope.

@@ -11,7 +11,6 @@ use serde_json::json;
 fn task() -> (Task, Inbox, std_mpsc::Receiver<Delivery>) {
     let mut config = SdkConfig::new("network-test.sock");
     config.settings_path = None;
-    config.poll_fallback = false;
     config.call_api = false;
     config.backup_api = false;
     let (outbox, delivered) = std_mpsc::channel();

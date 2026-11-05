@@ -76,10 +76,7 @@ pub fn resolve(overrides: &Overrides, settings: &LaunchSettings) -> Result<Sourc
                 .socket
                 .as_ref()
                 .map_or_else(|| settings.socket_or_default(), std::path::PathBuf::from);
-            SourceChoice::Rfd(SdkConfig {
-                poll_fallback: settings.poll_fallback_or_default(),
-                ..SdkConfig::new(socket)
-            })
+            SourceChoice::Rfd(SdkConfig { ..SdkConfig::new(socket) })
         }
     })
 }
@@ -143,19 +140,6 @@ mod tests {
         }
         let rfd = resolve(&args(&["--source", "rfd"]), &LaunchSettings::default()).expect("rfd");
         assert_eq!(socket(&rfd), Some(Path::new(DEFAULT_SOCKET)));
-    }
-
-    #[test]
-    fn the_polling_fallback_comes_from_the_saved_settings() {
-        let fallback = |saved: Option<bool>| {
-            let settings = LaunchSettings { poll_fallback: saved, ..LaunchSettings::default() };
-            match resolve(&args(&["--source", "rfd"]), &settings).expect("rfd") {
-                SourceChoice::Rfd(config) => config.poll_fallback,
-                SourceChoice::Mock => panic!("the daemon was asked for"),
-            }
-        };
-        assert!(fallback(None), "on unless turned off");
-        assert!(!fallback(Some(false)));
     }
 
     #[test]

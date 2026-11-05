@@ -70,9 +70,7 @@ fn exercise(name: &str, refuse_first: bool) {
         let body = frames.get(method).cloned().unwrap_or_else(|| json!({}));
         Reply::Ok(body)
     });
-    let mut config = SdkConfig::new(&path);
-    config.poll_fast = Duration::from_secs(3600);
-    config.poll_slow = Duration::from_secs(3600);
+    let config = SdkConfig::new(&path);
     let hub = SdkHub::start(config).expect("bridge");
     let mut source = hub.daemon_source();
     let mut store = Store::new();

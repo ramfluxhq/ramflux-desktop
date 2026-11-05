@@ -155,13 +155,15 @@ impl Task {
         result: Result<Value, BusError>,
         refresh: Vec<Fetch>,
     ) {
+        if method.starts_with("account.") {
+            self.refresh_daemon();
+        }
         match result {
             Ok(answer) => {
                 let events = self.translator.effect_done(method, body, &answer, now());
                 self.emit(events);
                 self.spawn_fetches(refresh);
                 self.resolve_task_step(method, body, &answer);
-                self.interval = self.config.poll_fast;
                 if method == ramflux_desktop_core::methods::ACCOUNT_LOCK
                     && self.scope.account().is_some()
                 {
@@ -387,6 +389,5 @@ impl Task {
         all.extend(events);
         self.emit(all);
         self.spawn_fetches(refresh);
-        self.interval = self.config.poll_fast;
     }
 }

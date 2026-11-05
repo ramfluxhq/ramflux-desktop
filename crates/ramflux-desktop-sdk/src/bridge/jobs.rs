@@ -113,6 +113,7 @@ impl Task {
             }
             JobStreamed::Opened { resync, .. } => {
                 self.jobs = Jobs::Open;
+                self.refresh_daemon();
                 if resync {
                     // The daemon holds nothing up to the cursor followed: it
                     // restarted, and the jobs it ran are gone with it. The

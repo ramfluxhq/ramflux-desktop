@@ -23,8 +23,6 @@ use serde_json::json;
 fn options(path: &std::path::Path) -> ShellOptions {
     let config = SdkConfig {
         deadlines: ramflux_desktop_sdk::Deadlines::uniform(Duration::from_secs(3)),
-        poll_fast: Duration::from_millis(80),
-        poll_slow: Duration::from_millis(300),
         reconnect_backoff: Duration::from_millis(150),
         local_network_retry_ms: [40, 40],
         ..SdkConfig::new(path)

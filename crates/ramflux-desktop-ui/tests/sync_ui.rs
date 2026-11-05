@@ -61,21 +61,17 @@ fn the_window_follows_the_stream_and_diagnostics_says_so(cx: &mut TestAppContext
         &ramflux_desktop_ui::i18n::tr("settings.diagnostics.sync_mode.stream")
     ));
 
-    // The switch saves the fallback choice.
-    let launcher = cx.update(|cx| shell.read(cx).launcher().clone());
-    click(cx, handle, "diagnostics-poll-fallback");
-    let saved = cx.update(|cx| launcher.read(cx).settings().poll_fallback);
-    assert_eq!(saved, Some(false), "turned off and saved");
+    assert!(!exists(cx, handle, "diagnostics-poll-fallback"));
 
-    // The daemon stops offering the stream: the account polls and says so.
+    // A refused stream reports its state while subscription retries back off.
     fake.disable_stream();
     fake.end_streams(ACCOUNT, false);
-    wait(cx, "polling", |cx| mode(cx, &shell) == Some(SyncMode::Polling));
+    wait(cx, "polling", |cx| mode(cx, &shell) == Some(SyncMode::Off));
     in_window(cx, handle, |_, _| {});
     assert!(has_label(
         cx,
         handle,
-        &ramflux_desktop_ui::i18n::tr("settings.diagnostics.sync_mode.polling")
+        &ramflux_desktop_ui::i18n::tr("settings.diagnostics.sync_mode.off")
     ));
     fake.shutdown();
 }

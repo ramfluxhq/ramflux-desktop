@@ -10,7 +10,6 @@ use std::sync::atomic::AtomicBool;
 
 fn task() -> (Task, Inbox, std_mpsc::Receiver<Delivery>) {
     let mut config = SdkConfig::new("review-retry.sock");
-    config.poll_fallback = false;
     config.call_api = false;
     config.backup_api = false;
     let (outbox, delivered) = std_mpsc::channel();
@@ -56,7 +55,6 @@ async fn recovered_reads_resume_timer_refresh_and_reset_failure_episode() {
         task.spawn_reads(retry, false);
         answer(&mut task, &mut inbox).await;
         assert!(!task.read_recovery.blocks_timer(&fetch), "success ends the failed episode");
-        assert!(!task.read_recovery.blocks_poll(&fetch));
         let before = fake.seen().len();
         // This is also the networking re-read's spawn path in D2.
         task.spawn_reads(vec![fetch.clone()], false);
@@ -72,8 +70,8 @@ async fn recovered_reads_resume_timer_refresh_and_reset_failure_episode() {
     task.on_read(&Fetch::AccountList, Err(BusError::Timeout));
     task.on_read(&Fetch::AccountList, Ok(json!({"accounts":[]})));
     let before = fake.seen().iter().filter(|r| r.method == "account.list").count();
-    task.poll();
-    while task.polls_in_flight > 0 {
+    task.refresh_daemon();
+    while !task.read_recovery.running.is_empty() {
         answer(&mut task, &mut inbox).await;
     }
     assert_eq!(fake.seen().iter().filter(|r| r.method == "account.list").count(), before + 1);
@@ -102,7 +100,7 @@ async fn backup_permanent_refusal_sets_capability_and_finishes_listing() {
 
 #[tokio::test]
 async fn in_flight_refresh_reads_committed_state_once_after_all_completion_paths() {
-    for completion in 0..3 {
+    for completion in 0..2 {
         for trigger in 0..3 {
             let path = socket_path("read-lost-update");
             let committed = Arc::new(AtomicBool::new(false));
@@ -123,21 +121,15 @@ async fn in_flight_refresh_reads_committed_state_once_after_all_completion_paths
             let (mut task, mut inbox, delivered) = task();
             task.client = BusClient::new(path, Duration::from_secs(2), task.config.deadlines);
             let fetch = Fetch::ContactRequests;
-            if completion == 2 {
-                // A poll sequence reserved this fetch but stopped before sending it.
-                let reservation = tokio::spawn(std::future::pending::<()>());
-                task.read_recovery.running.insert(fetch.clone(), reservation.abort_handle());
-                reservation.abort();
-            } else {
-                task.spawn_fetches(vec![fetch.clone()]);
-                tokio::time::timeout(Duration::from_secs(3), async {
-                    while !captured.load(Ordering::SeqCst) {
-                        tokio::task::yield_now().await;
-                    }
-                })
-                .await
-                .expect("first request captured its old view");
-            }
+
+            task.spawn_fetches(vec![fetch.clone()]);
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while !captured.load(Ordering::SeqCst) {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("first request captured its old view");
             committed.store(true, Ordering::SeqCst);
             // Direct action/push refreshes and stream refreshes converge on one rerun.
             if trigger != 1 {
@@ -150,9 +142,7 @@ async fn in_flight_refresh_reads_committed_state_once_after_all_completion_paths
                     task.request_reads(vec![fetch.clone()]);
                 }
             }
-            if completion == 2 {
-                task.internal(Internal::PollDone(vec![fetch.clone()]));
-            } else {
+            {
                 let first = tokio::time::timeout(Duration::from_secs(3), inbox.internal.recv())
                     .await
                     .expect("deadline")
@@ -167,9 +157,7 @@ async fn in_flight_refresh_reads_committed_state_once_after_all_completion_paths
             let mut store = Store::new();
             let mut seq = 0;
             apply(&delivered, &mut store, &mut seq);
-            if completion != 2 {
-                assert_eq!(store.contact_requests().count(), 1, "old view applied first");
-            }
+            assert_eq!(store.contact_requests().count(), 1, "old view applied first");
             assert!(
                 task.read_recovery.running.contains_key(&fetch),
                 "new trigger must survive the old answer"
@@ -183,11 +171,7 @@ async fn in_flight_refresh_reads_committed_state_once_after_all_completion_paths
             );
             assert!(!task.read_recovery.running.contains_key(&fetch));
             assert!(task.read_recovery.rerun.is_empty());
-            assert_eq!(
-                fake.seen().len(),
-                if completion == 2 { 1 } else { 2 },
-                "exactly one follow-up"
-            );
+            assert_eq!(fake.seen().len(), 2, "exactly one follow-up");
             assert!(inbox.internal.try_recv().is_err(), "no third read or stuck completion");
         }
     }

@@ -22,8 +22,6 @@ pub fn config(path: &std::path::Path) -> SdkConfig {
     SdkConfig {
         connect_timeout: Duration::from_secs(2),
         deadlines: Deadlines::uniform(Duration::from_secs(3)),
-        poll_fast: Duration::from_millis(80),
-        poll_slow: Duration::from_millis(300),
         reconnect_backoff: Duration::from_millis(150),
         ..SdkConfig::new(path)
     }

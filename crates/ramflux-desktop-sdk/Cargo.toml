@@ -23,6 +23,7 @@ tokio.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon"] }
 
 # Its own binary is the stand-in daemon it starts (see the file), so it has

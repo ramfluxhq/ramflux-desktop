@@ -15,12 +15,9 @@ use ramflux_desktop_ui::{
     workspace::PrefsStore,
 };
 use serde_json::{Value, json};
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 fn fixture(cx: &mut TestAppContext, locked: bool) -> (FakeBus, common::Opened) {
@@ -66,9 +63,6 @@ fn fixture_with_authority(
     let mut config = SdkConfig::new(&path);
     config.call_api = false;
     config.backup_api = false;
-    config.poll_fallback = false;
-    config.poll_fast = Duration::from_secs(60);
-    config.poll_slow = Duration::from_secs(60);
     let options = ShellOptions {
         source: SourceChoice::Rfd(config),
         scenario: String::new(),

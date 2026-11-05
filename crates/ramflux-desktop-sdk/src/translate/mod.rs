@@ -348,7 +348,7 @@ impl Translator {
         reads
     }
 
-    fn message_reads(&self, context: &ContextId, kind: ContextKind, pull: bool) -> Vec<Fetch> {
+    fn message_reads(&self, context: &ContextId, kind: ContextKind, _pull: bool) -> Vec<Fetch> {
         match kind {
             ContextKind::Group => self
                 .directory
@@ -360,18 +360,8 @@ impl Translator {
                 })
                 .into_iter()
                 .collect(),
-            _ if pull => vec![Fetch::Receive(context.clone()), Fetch::Messages(context.clone())],
             _ => vec![Fetch::Messages(context.clone())],
         }
-    }
-
-    /// The reads that keep the watched contexts fresh.
-    pub fn poll_reads(&self) -> Vec<Vec<Fetch>> {
-        self.watched()
-            .into_iter()
-            .map(|(id, kind)| self.messages_read(&id, kind, true))
-            .filter(|reads| !reads.is_empty())
-            .collect()
     }
 
     /// Translates one read.
@@ -447,10 +437,6 @@ impl Translator {
             }
             Fetch::Task(..) => {
                 Translated { events: self.task_view(value), follow: self.take_surface_rereads() }
-            }
-            Fetch::Receive(_) => {
-                self.remember_plaintext(value);
-                Translated::default()
             }
         }
     }

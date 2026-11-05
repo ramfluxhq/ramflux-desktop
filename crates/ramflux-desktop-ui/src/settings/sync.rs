@@ -1,19 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Settings · Diagnostics, message sync: how the shown account is kept up
-//! to date (the daemon's event stream, polling as the fallback, or not at
-//! all), why the stream is not used when it is not, the daemon's own
-//! background sync, and the one setting that allows the polling fallback.
-//!
-//! Everything shown comes from the store's sync status, which holds states,
-//! times, counts and a stream position, never content.
+//! Diagnostics for the event stream and the daemon's background sync.
+//! All displayed state comes from the store, without message content.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::setting::{SettingGroup, SettingItem};
-use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{ActiveTheme as _, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Role, SharedString, div};
 use ramflux_desktop_core::{DaemonSyncState, SyncMode, SyncStatus};
@@ -68,16 +62,12 @@ pub fn rows(status: &SyncStatus) -> Vec<(&'static str, SharedString)> {
 /// how it is kept up to date).
 pub fn group(context: &SectionContext, cx: &App) -> Option<SettingGroup> {
     let status = context.store.read(cx).store().sync_status().cloned()?;
-    let fallback = context.launcher.read(cx).settings().poll_fallback_or_default();
-    let launcher = context.launcher.clone();
     let mode = tr(mode_key(status.mode));
     let rows = rows(&status);
-    let item = SettingItem::render(move |_, _, cx: &mut App| {
-        let muted = cx.theme().muted_foreground;
+    let item = SettingItem::render(move |_, _, _cx: &mut App| {
         let list = rows.iter().fold(DescriptionList::new().columns(1), |list, (key, value)| {
             list.item(tr(key), value.clone(), 1)
         });
-        let launcher = launcher.clone();
         v_flex()
             .gap_3()
             .child(
@@ -87,27 +77,6 @@ pub fn group(context: &SectionContext, cx: &App) -> Option<SettingGroup> {
                     .aria_label(mode.clone())
                     .test_support()
                     .child(list),
-            )
-            .child(
-                v_flex()
-                    .gap_1()
-                    .child(
-                        Switch::new("diagnostics-poll-fallback")
-                            .label(tr("settings.diagnostics.poll_fallback"))
-                            .checked(fallback)
-                            .on_change(move |checked, _, cx| {
-                                let on = *checked;
-                                launcher.update(cx, |l, cx| l.set_poll_fallback(on, cx));
-                            }),
-                    )
-                    .child(
-                        div()
-                            .id("diagnostics-poll-fallback-help")
-                            .text_xs()
-                            .text_color(muted)
-                            .child(tr("settings.diagnostics.poll_fallback_help"))
-                            .test_support(),
-                    ),
             )
             .into_any_element()
     });

@@ -116,19 +116,29 @@ fn the_daemon_scope_lists_accounts_and_probes_nodes() {
 #[test]
 fn pushed_approvals_and_decisions_become_grant_events() {
     let path = socket_path("push");
-    let fake = FakeBus::start(&path, |method, _, _| match method {
-        "mcp.approval.list" => Reply::Ok(json!({ "approvals": [] })),
+    let approval = Arc::new(std::sync::Mutex::new(json!([])));
+    let listed = approval.clone();
+    let fake = FakeBus::start(&path, move |method, _, _| match method {
+        "mcp.approval.list" => {
+            Reply::Ok(json!({ "approvals": *listed.lock().expect("approvals") }))
+        }
         _ => fixture(method),
     });
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
-    account.until("subscribed", |_, _| fake.subscribed("acct-main"));
-    let open = fake.seen().into_iter().find(|s| s.method == "subscription.open").expect("open");
+    fake.enable_stream();
+    account.until("subscribed", |_, _| fake.streaming("acct-main"));
+    let open = fake.seen().into_iter().find(|s| s.method == "bus.subscribe").expect("open");
     assert_eq!(open.body["attended_frontend"], true);
     assert!(
         open.body["topics"].as_array().is_some_and(|t| t.contains(&json!("mcp.approval.request")))
     );
-    fake.push("acct-main", "mcp.approval.request", json!({
+    *approval.lock().expect("approvals") = json!([{
+        "approval_id":"appr-7", "server_id":"mail", "tool_name":"send",
+        "risk_level":"critical", "expires_at":1890000000_i64, "status":"pending",
+        "details":{"arguments_hash":"h-7"}
+    }]);
+    fake.publish("acct-main", "mcp.approval.request", json!({
         "event_type": "mcp.approval.request", "approval_id": "appr-7", "server_id": "mail",
         "tool_name": "send", "risk_level": "critical", "expires_at": 1890000000, "status": "pending",
         "details": { "arguments_hash": "h-7" },
@@ -138,7 +148,8 @@ fn pushed_approvals_and_decisions_become_grant_events() {
         account.store.grant(&GrantId::new("appr-7")).map(|g| g.risk),
         Some(ramflux_desktop_core::Risk::Critical)
     );
-    fake.push(
+    approval.lock().expect("approvals")[0]["status"] = json!("denied");
+    fake.publish(
         "acct-main",
         "mcp.approval.denied",
         json!({ "approval_id": "appr-7", "status": "denied" }),
@@ -150,7 +161,7 @@ fn pushed_approvals_and_decisions_become_grant_events() {
 }
 
 #[test]
-fn polling_adds_each_message_once_and_updates_receipts() {
+fn events_add_each_message_once_and_update_receipts() {
     let path = socket_path("poll");
     let polls = Arc::new(AtomicUsize::new(0));
     let counter = polls.clone();
@@ -168,7 +179,13 @@ fn polling_adds_each_message_once_and_updates_receipts() {
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     account.source.focus(Some(&ContextId::new("dm-ana")));
-    account.until("several polls", |_, _| polls.load(Ordering::SeqCst) >= 5);
+    fake.enable_stream();
+    account.until("stream", |_, _| fake.streaming("acct-main"));
+    for n in 1..=5 {
+        fake.publish("acct-main", "message.updated", json!({"conversation_id":"dm-ana"}));
+        account.until("event refresh", |_, _| polls.load(Ordering::SeqCst) >= n);
+        account.settle(30);
+    }
     account.settle(100);
     let added = account
         .envelopes
@@ -183,12 +200,7 @@ fn polling_adds_each_message_once_and_updates_receipts() {
         });
     assert_eq!(receipt, Some(Receipt::Read), "a changed receipt updates the moment");
     let receives = fake.seen().iter().filter(|s| s.method == "message.receive").count();
-    assert!(receives >= 2, "the focused conversation is pulled from the node");
-    let pull = fake.seen().into_iter().find(|s| s.method == "message.receive").expect("pull");
-    assert_eq!(
-        pull.body["auto_fetch_attachments"], false,
-        "receiving never waits on an attachment download"
-    );
+    assert_eq!(receives, 0, "events refresh local messages without node pulls");
     fake.shutdown();
 }
 

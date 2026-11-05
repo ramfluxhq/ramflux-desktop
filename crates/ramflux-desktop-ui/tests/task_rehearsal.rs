@@ -50,7 +50,6 @@ mod live {
     /// off.
     fn options(socket: &Path) -> ShellOptions {
         let config = SdkConfig {
-            poll_fallback: false,
             reconnect_backoff: Duration::from_millis(300),
             ..SdkConfig::new(socket.to_path_buf())
         };

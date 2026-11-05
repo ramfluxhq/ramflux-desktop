@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! One scope's task: snapshot, live events, polling, effects, reconnects.
+//! One scope's task: snapshot, live events, effects and reconnects.
 //!
 //! The task is the single owner of its translator. Requests run as spawned
 //! futures on the scope's multiplexed connection and report back through an
@@ -21,7 +21,7 @@
 //! Lifecycle: attach, then snapshot. Local account status establishes
 //! readiness before unrelated snapshot reads finish. After the snapshot,
 //! an account follows the daemon's event stream from its cursor (see
-//! [`super::live`]), and polls only as a fallback; the daemon scope polls
+//! [`super::live`]). Actions, account state events and stream opens refresh
 //! the daemon status and account list. A lost connection reports
 //! `Disconnected` and re-snapshots after a back-off.
 
@@ -43,7 +43,7 @@ use crate::bus::BusError;
 use crate::bus::client::BusClient;
 use crate::bus::jobs::{JobLink, JobStreamed};
 use crate::bus::stream::Streamed;
-use crate::bus::subscription::{self, Pushed};
+use crate::bus::subscription::Pushed;
 use crate::capabilities;
 use crate::config::SdkConfig;
 use crate::cursor::CursorStore;
@@ -65,6 +65,7 @@ pub(crate) enum ScopeCommand {
     /// Daemon scope only: whether an account scope is attached (its own
     /// link follows the backup jobs then, so the daemon scope's closes).
     AccountsLive(bool),
+    RefreshDaemon,
 }
 
 /// Where a scope's ceremonies hand the recovery phrase and count it.
@@ -79,7 +80,6 @@ pub(super) type Read = (Fetch, Option<u64>, Result<Value, BusError>);
 pub(super) enum Internal {
     Snapshot(Vec<Read>),
     Fetched(Read),
-    PollDone(Vec<Fetch>),
     EffectDone {
         method: String,
         body: Value,
@@ -111,19 +111,13 @@ pub(super) struct Task {
     pub(super) pins: PinStore,
     pub(super) outbox: std_mpsc::Sender<Delivery>,
     pub(super) internal: mpsc::UnboundedSender<Internal>,
-    pub(super) pushed: mpsc::UnboundedSender<Pushed>,
     pub(super) streamed: mpsc::UnboundedSender<Streamed>,
     pub(super) cursors: CursorStore,
     pub(super) sync: SyncState,
-    /// The push subscription (polling fallback only).
+    /// A legacy push connection, if present.
     pub(super) push_task: Option<tokio::task::AbortHandle>,
     pub(super) link: Link,
-    pub(super) subscribed: bool,
-    pub(super) subscribe_at: Instant,
-    pub(super) polls_in_flight: usize,
-    pub(super) poll_changed: bool,
-    pub(super) interval: Duration,
-    pub(super) next_poll: Instant,
+    pub(super) daemon_refresh: Option<mpsc::UnboundedSender<()>>,
     /// Per-fetch bounded recovery and cancellable reads.
     pub(super) read_recovery: super::read_recovery::ReadRecovery,
     snapshot_task: Option<tokio::task::AbortHandle>,
@@ -200,7 +194,7 @@ pub(super) fn build(
     ceremonies: Ceremonies,
 ) -> (Task, Inbox) {
     let (internal, internal_rx) = mpsc::unbounded_channel();
-    let (pushed, pushed_rx) = mpsc::unbounded_channel();
+    let (_pushed, pushed_rx) = mpsc::unbounded_channel();
     let (streamed, streamed_rx) = mpsc::unbounded_channel();
     let (jobs_out, jobs_rx) = mpsc::unbounded_channel::<JobStreamed>();
     let socket = config.socket_path.to_string_lossy().into_owned();
@@ -236,7 +230,6 @@ pub(super) fn build(
     let custodians = crate::custodians::CustodianStore::new(config.settings_path.clone(), socket);
     translator.restore_custodians(custodians.links());
     let task = Task {
-        interval: config.poll_fast,
         translator,
         pins,
         config,
@@ -244,17 +237,12 @@ pub(super) fn build(
         client,
         outbox,
         internal,
-        pushed,
         streamed,
         cursors,
         sync: SyncState::new(cursor),
         push_task: None,
         link: Link::Attaching,
-        subscribed: false,
-        subscribe_at: start,
-        polls_in_flight: 0,
-        poll_changed: false,
-        next_poll: start,
+        daemon_refresh: None,
         read_recovery: super::read_recovery::ReadRecovery::default(),
         snapshot_task: None,
         reconnect_at: start,
@@ -283,8 +271,10 @@ pub(crate) async fn run(
     outbox: std_mpsc::Sender<Delivery>,
     ceremonies: Ceremonies,
     mut commands: mpsc::UnboundedReceiver<ScopeCommand>,
+    daemon_refresh: mpsc::UnboundedSender<()>,
 ) {
     let (mut task, inbox) = build(config, scope, outbox, ceremonies);
+    task.daemon_refresh = Some(daemon_refresh);
     let Inbox {
         internal: mut internal_rx,
         pushed: mut pushed_rx,
@@ -376,17 +366,20 @@ impl Task {
             .collect()
     }
 
+    pub(super) fn refresh_daemon(&mut self) {
+        if self.scope == Scope::Daemon {
+            self.spawn_fetches(vec![Fetch::DaemonStatus, Fetch::AccountList]);
+        } else if let Some(tx) = &self.daemon_refresh {
+            let _ = tx.send(());
+        }
+    }
+
     fn next_wake(&self) -> Instant {
         let far = Instant::now() + Duration::from_secs(3_600);
         match self.link {
             Link::Lost => self.reconnect_at,
             Link::Live => {
-                let polls = self.polls();
-                let mut wake =
-                    if polls && self.polls_in_flight == 0 { self.next_poll } else { far };
-                if polls && self.scope.account().is_some() && !self.subscribed {
-                    wake = wake.min(self.subscribe_at);
-                }
+                let mut wake = far;
                 if let Some(open_at) = self.sync.open_at {
                     wake = wake.min(open_at);
                 }
@@ -418,17 +411,6 @@ impl Task {
                 }
                 let retries = self.read_recovery.due(now);
                 self.spawn_reads(retries, false);
-                let polls = self.polls();
-                if polls
-                    && self.scope.account().is_some()
-                    && !self.subscribed
-                    && now >= self.subscribe_at
-                {
-                    self.subscribe();
-                }
-                if polls && self.polls_in_flight == 0 && now >= self.next_poll {
-                    self.poll();
-                }
                 self.send_receipts();
             }
             _ => {}
@@ -534,25 +516,12 @@ impl Task {
         self.snapshot_task = Some(handle);
     }
 
-    fn subscribe(&mut self) {
-        let Some(account) = self.account() else { return };
-        self.subscribed = true;
-        let socket = self.config.socket_path.clone();
-        let (connect, deadlines) = (self.config.connect_timeout, self.config.deadlines);
-        let out = self.pushed.clone();
-        let task = tokio::spawn(async move {
-            subscription::run(&socket, account, connect, deadlines, out).await;
-        });
-        self.push_task = Some(task.abort_handle());
-    }
-
     /// Stops the push subscription (the stream took over, or the scope
     /// ends).
     pub(super) fn stop_push_subscription(&mut self) {
         if let Some(task) = self.push_task.take() {
             task.abort();
         }
-        self.subscribed = false;
     }
 
     pub(super) fn lost(&mut self) {
@@ -647,63 +616,6 @@ impl Task {
         }
     }
 
-    fn poll(&mut self) {
-        let mut sequences: Vec<Vec<Fetch>> = match &self.scope {
-            Scope::Daemon => vec![vec![Fetch::DaemonStatus, Fetch::AccountList]],
-            // Directories, approvals and contacts (incoming contact requests
-            // are recorded by the daemon when it receives them; they are not
-            // pushed). Further pages follow on their own.
-            Scope::Account(_) => Fetch::account_poll().into_iter().map(|f| vec![f]).collect(),
-        };
-        // Listed until the daemon says it has no requests: a failed read
-        // (locked, an outage) is tried again.
-        if !self.found.requests_missing {
-            sequences.push(vec![Fetch::ContactRequests]);
-        }
-        sequences.extend(self.translator.poll_reads());
-        // A running job is followed by its reads while there is no stream
-        // (not by the daemon scope while an account scope follows it).
-        if self.found.backup && self.translator.backup_running() && !self.jobs_yield() {
-            sequences.push(vec![Fetch::BackupJobs]);
-        }
-        for sequence in &mut sequences {
-            sequence.retain(|fetch| !self.read_recovery.blocks_poll(fetch));
-        }
-        sequences.retain(|sequence| !sequence.is_empty());
-        self.polls_in_flight = sequences.len();
-        self.poll_changed = false;
-        for sequence in sequences {
-            let reserved = sequence.clone();
-            let client = self.client.clone();
-            let account = self.account();
-            let internal = self.internal.clone();
-            let sent = self.listings_sent.clone();
-            let revision = self.networking_revision;
-            let task = tokio::spawn(async move {
-                let mut sequence = sequence.into_iter();
-                for fetch in sequence.by_ref() {
-                    let (fetch, number, result) =
-                        read(&client, fetch, account.as_deref(), &sent, revision).await;
-                    // A failed pull from the node (`message.receive`) never
-                    // stops the read of what is already stored: the
-                    // conversation keeps showing its messages.
-                    let stop = match &result {
-                        Err(error) => error.is_connection_lost() || !fetch.is_pull(),
-                        Ok(_) => false,
-                    };
-                    let _ = internal.send(Internal::Fetched((fetch, number, result)));
-                    if stop {
-                        break;
-                    }
-                }
-                let _ = internal.send(Internal::PollDone(sequence.collect()));
-            });
-            for fetch in reserved {
-                self.read_recovery.running.insert(fetch, task.abort_handle());
-            }
-        }
-    }
-
     fn internal(&mut self, internal: Internal) {
         match internal {
             Internal::Snapshot(results) => self.on_snapshot(results),
@@ -722,9 +634,7 @@ impl Task {
                 }
                 let finished = last_page(&fetch, &result);
                 if !self.outdated(&fetch, number, &result) {
-                    if self.on_read(&fetch, result) && self.polls_in_flight > 0 {
-                        self.poll_changed = true;
-                    }
+                    self.on_read(&fetch, result);
                     if matches!(fetch, Fetch::Page(Paged::Conversations | Paged::Groups, _)) {
                         self.restore_pins();
                     }
@@ -733,22 +643,6 @@ impl Task {
                 }
                 self.read_ended(&fetch, finished);
                 self.rerun_fetch(&fetch);
-            }
-            Internal::PollDone(skipped) => {
-                for fetch in skipped {
-                    self.read_recovery.running.remove(&fetch);
-                    self.read_ended(&fetch, true);
-                    self.rerun_fetch(&fetch);
-                }
-                self.polls_in_flight = self.polls_in_flight.saturating_sub(1);
-                if self.polls_in_flight == 0 {
-                    self.interval = if self.poll_changed {
-                        self.config.poll_fast
-                    } else {
-                        (self.interval * 2).min(self.config.poll_slow)
-                    };
-                    self.next_poll = Instant::now() + self.interval;
-                }
             }
             Internal::EffectDone { method, body, result, refresh } => {
                 self.on_effect_done(&method, &body, result, refresh);
@@ -821,9 +715,6 @@ impl Task {
         // Every list is known now, so pins come back in their saved order.
         self.restore_pins();
         if self.link == Link::Live {
-            self.interval = self.config.poll_fast;
-            self.next_poll = Instant::now() + self.interval;
-            self.subscribe_at = Instant::now();
             self.live_after_snapshot();
         }
     }
@@ -876,7 +767,7 @@ impl Task {
         if let Err(error) = &result
             // Network pulls retain their poll/error handling; bounded local-read
             // recovery must not turn a refused pull into a failed user effect.
-            && !matches!(fetch, Fetch::Receive(_) | Fetch::GroupReceive { .. })
+            && !matches!(fetch, Fetch::GroupReceive { .. })
             && !error.is_connection_lost()
             && !error.is_unknown_method()
             && !(matches!(fetch, Fetch::BackupJobs)
@@ -988,6 +879,7 @@ impl Task {
     fn on_pushed(&mut self, pushed: Pushed) {
         match pushed {
             Pushed::Opened => {
+                self.refresh_daemon();
                 if let Some(id) = self.scope.account().cloned() {
                     self.spawn_fetches(vec![Fetch::AccountStatus(id)]);
                 }
@@ -1000,20 +892,14 @@ impl Task {
             {
                 let translated = self.translator.contact_request_event(&topic, &body);
                 self.spawn_fetches(translated.follow);
-                if self.emit(translated.events) {
-                    self.interval = self.config.poll_fast;
-                }
+                self.emit(translated.events);
             }
             Pushed::Event { topic, body } => {
                 let events = self.translator.pushed(&topic, &body, now());
-                if self.emit(events) {
-                    self.interval = self.config.poll_fast;
-                }
+                self.emit(events);
             }
             Pushed::Lost(_) => {
                 self.push_task = None;
-                self.subscribed = false;
-                self.subscribe_at = Instant::now() + self.config.reconnect_backoff;
             }
         }
     }
@@ -1021,7 +907,6 @@ impl Task {
     fn cancel_reads(&mut self) {
         self.read_recovery.cancel();
         self.sync.clear_reads();
-        self.polls_in_flight = 0;
         if let Some(task) = self.snapshot_task.take() {
             task.abort();
         }
@@ -1056,9 +941,7 @@ impl Task {
     fn command(&mut self, command: ScopeCommand) {
         match command {
             ScopeCommand::Focus(context) => {
-                if self.polls() {
-                    self.next_poll = Instant::now();
-                } else if let Some(context) = &context
+                if let Some(context) = &context
                     && self.link == Link::Live
                 {
                     let reads = self.translator.context_reads(context);
@@ -1073,6 +956,7 @@ impl Task {
             }
             ScopeCommand::CallMedia(call_id, reply) => self.call_media(call_id, reply),
             ScopeCommand::AccountsLive(live) => self.accounts_live(live),
+            ScopeCommand::RefreshDaemon => self.refresh_daemon(),
         }
     }
 }
@@ -1088,3 +972,7 @@ mod review_retry_tests;
 #[cfg(test)]
 #[path = "networking_tests.rs"]
 mod networking_tests;
+
+#[cfg(test)]
+#[path = "idle_tests.rs"]
+mod idle_tests;

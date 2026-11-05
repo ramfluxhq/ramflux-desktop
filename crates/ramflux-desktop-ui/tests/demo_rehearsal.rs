@@ -58,7 +58,6 @@ mod live {
     fn options(socket: &Path) -> ShellOptions {
         let dir = socket.parent().unwrap_or(Path::new("/tmp"));
         let config = SdkConfig {
-            poll_fallback: false,
             reconnect_backoff: Duration::from_millis(300),
             settings_path: Some(dir.join(SETTINGS_FILE)),
             ..SdkConfig::new(dir.join(TAP_SOCKET))

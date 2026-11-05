@@ -44,12 +44,16 @@ fn a_failing_pull_never_holds_back_the_conversation() {
                 "local bus error: relay object download failed".to_owned(),
             )
         }
-        "message.list" => Reply::Ok(messages(counter.load(Ordering::SeqCst) >= 2)),
+        "message.list" => Reply::Ok(messages(counter.fetch_add(1, Ordering::SeqCst) >= 2)),
         _ => fixture(method),
     });
+    fake.enable_stream();
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     account.source.focus(Some(&ContextId::new("dm-ana")));
+    account.until("stream", |_, _| fake.streaming("acct-main"));
+    account.settle(50);
+    fake.publish("acct-main", "message.received", json!({"conversation_id":"dm-ana"}));
     account.until("a later message after failed pulls", |s, _| {
         s.moment(&MomentId::new("msg:dm-ana:m3")).is_some()
     });
@@ -68,20 +72,10 @@ fn a_failing_pull_never_holds_back_the_conversation() {
     );
     let seen = fake.seen();
     assert!(
-        seen.iter()
-            .filter(|s| s.method == "message.receive")
-            .all(|s| s.body["auto_fetch_attachments"] == false),
-        "the pull never downloads attachments"
+        !seen.iter().any(|s| s.method == "message.receive"),
+        "desktop never pulls from the node"
     );
-    // Every failed pull is followed by the read of the stored messages.
-    let order: Vec<&str> = seen
-        .iter()
-        .filter(|s| matches!(s.method.as_str(), "message.receive" | "message.list"))
-        .map(|s| s.method.as_str())
-        .collect();
-    let pulls_followed =
-        order.windows(2).filter(|w| w == &["message.receive", "message.list"]).count();
-    assert!(pulls_followed >= 2, "{order:?}");
+    assert!(seen.iter().filter(|s| s.method == "message.list").count() >= 2);
     fake.shutdown();
 }
 
@@ -103,11 +97,15 @@ fn an_object_appears_when_the_directory_lists_it_without_touching_the_conversati
         }
         _ => fixture(method),
     });
+    fake.enable_stream();
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     account.source.focus(Some(&ContextId::new("dm-ana")));
     account.until("messages", |s, _| s.moment(&MomentId::new("msg:dm-ana:m1")).is_some());
     let object = ObjectId::new("attachment:m1:0");
+    account.until("stream", |_, _| fake.streaming("acct-main"));
+    account.settle(50);
+    fake.publish("acct-main", "object.changed", json!({"id":"attachment:m1:0"}));
     account.until("the object, listed later", |s, _| {
         s.object(&object).is_some_and(|o| o.transfer == TransferState::Complete)
     });

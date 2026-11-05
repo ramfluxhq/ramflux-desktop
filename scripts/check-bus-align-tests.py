@@ -7,6 +7,11 @@ import subprocess
 # Extend these lists in the PR that introduces each case. Future cases must
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
+    "local::launch::tests::old_settings_file_loads",
+    "bridge::scope::idle_tests::no_periodic_requests_when_idle",
+    "bridge::scope::idle_tests::failed_stream_only_reopens_subscription_without_data_polls",
+    "bridge::scope::idle_tests::daemon_scope_refreshes_on_actions_not_timers",
+
     "bridge::scope::networking_tests::authority_restored_event_clears_blocked_and_fences_delayed_status",
     "bridge::scope::networking_tests::custody_pending_and_authority_blocked_override_live_session",
     "bridge::scope::networking_tests::daemon_list_and_lifecycle_merge_preserves_account_session",

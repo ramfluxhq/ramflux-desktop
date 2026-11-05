@@ -385,27 +385,9 @@ fn a_replayed_lock_of_an_account_unlocked_since_does_not_lock_it() {
 }
 
 #[test]
-fn without_the_stream_the_source_polls_and_says_so() {
-    let (world, path) = World::start("fallback", false);
-    let hub = ramflux_desktop_sdk::SdkHub::start(config(&path)).expect("bridge");
-    let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
-    account.until("polling", |s, _| {
-        s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Polling)
-    });
-    let reason = account.store.sync_status().and_then(|s| s.reason.clone()).expect("reason");
-    assert!(reason.contains("bus.subscribe"), "{reason}");
-    account.until("the push subscription", |_, _| world.fake.subscribed(ACCOUNT));
-    let mark = world.mark();
-    account.until("a poll", |_, _| world.since(mark, "conversation.directory").len() >= 2);
-    drop(account);
-    world.fake.shutdown();
-}
-
-#[test]
 fn with_the_fallback_off_nothing_is_polled() {
     let (world, path) = World::start("off", false);
-    let config = SdkConfig { poll_fallback: false, ..config(&path) };
-    let hub = ramflux_desktop_sdk::SdkHub::start(config).expect("bridge");
+    let hub = ramflux_desktop_sdk::SdkHub::start(config(&path)).expect("bridge");
     let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
     account.until("off", |s, _| s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Off));
     let mark = world.mark();

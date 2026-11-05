@@ -1,31 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! How an account scope stays up to date: the daemon's event stream, or
-//! polling when the stream is unavailable and the fallback is on.
+//! Account event streams with cursor replay, gap recovery and bounded reopen.
 //!
-//! - **Stream.** After the snapshot the scope subscribes from its cursor
-//!   (the last entry it applied, kept across restarts). Each entry is
-//!   applied once: an entry at or below the cursor is a duplicate and is
-//!   dropped, so a replay after a reconnect changes nothing it already
-//!   showed. An entry calls for the reads that refresh what it names; reads
-//!   of one list are coalesced, and a list that changes while it is being
-//!   read is read once more afterwards.
-//! - **Gap.** A cursor the daemon no longer covers (`resync_required`), or
-//!   no cursor at all: the scope subscribes from the head first, then
-//!   reloads everything through the usual reads, so nothing that happens
-//!   in between is missed.
-//! - **Lag, lost stream.** The scope resubscribes from its cursor; the
-//!   daemon replays what it missed.
-//! - **Fallback.** A daemon that refuses the stream (an older daemon), or a
-//!   stream that keeps failing: with the fallback on, the scope polls and
-//!   opens the older push subscription; with it off, it shows that it is
-//!   not kept up to date. A failing stream is tried again later; a refused
-//!   one only after a reconnect.
-//! - **Lock.** The stream stops; a new source resumes from the cursor.
-//!
-//! What the scope does is reported as `SyncStatusChanged`, together with
-//! the daemon's own background sync (`sync.status`).
+//! Attach subscribes before reloading at the head. Events coalesce local reads;
+//! replayed sequences are ignored. Lost or refused subscriptions reopen after
+//! reconnect backoff without data polling. Logical read retries remain bounded.
+//! SyncStatusChanged reports subscription health and the daemon's sync status.
 
 use std::collections::BTreeSet;
 use std::time::Duration;
@@ -40,7 +21,7 @@ use crate::bus::stream::{self, StreamEnd, Streamed, Subscription};
 use crate::plan::fetch::Fetch;
 use crate::translate::stream::{DaemonSync, locks, topics};
 
-/// Failed stream attempts in a row before the scope falls back.
+/// Failed stream attempts before reporting the stream as unavailable.
 pub(super) const STREAM_ATTEMPTS: u32 = 3;
 
 /// Least time between two writes of the cursor to the settings file.
@@ -49,7 +30,7 @@ const CURSOR_SAVE_EVERY: Duration = Duration::from_secs(2);
 /// Least time between two reports that differ only in cursor or last run.
 const STATUS_EVERY: Duration = Duration::from_secs(5);
 
-/// The stream and polling state of an account scope.
+/// The event stream state of an account scope.
 pub(super) struct SyncState {
     pub(super) mode: SyncMode,
     pub(super) reason: Option<String>,
@@ -138,14 +119,7 @@ fn read_key(fetch: &Fetch) -> Fetch {
 }
 
 impl Task {
-    /// Whether this scope polls: the daemon scope always, an account scope
-    /// only as the fallback.
-    pub(super) fn polls(&self) -> bool {
-        self.scope.account().is_none() || self.sync.mode == SyncMode::Polling
-    }
-
-    /// The scope is live after a snapshot: follow the stream (or keep
-    /// polling) and show the watched contexts' messages.
+    /// Follow the stream and read watched contexts after a snapshot.
     pub(super) fn live_after_snapshot(&mut self) {
         if self.scope.account().is_none() {
             return;
@@ -153,10 +127,8 @@ impl Task {
         if self.sync.task.is_none() {
             self.sync.open_at = Some(Instant::now());
         }
-        if !self.polls() {
-            let reads = self.translator.watched_reads();
-            self.request_reads(reads);
-        }
+        let reads = self.translator.watched_reads();
+        self.request_reads(reads);
     }
 
     /// Opens the stream from the cursor (or from the head before a reload).
@@ -199,13 +171,11 @@ impl Task {
     }
 
     fn stream_opened(&mut self, head_seq: u64) {
-        let was_polling = self.sync.mode == SyncMode::Polling;
+        self.refresh_daemon();
         self.sync.mode = SyncMode::Stream;
         self.sync.reason = None;
         self.sync.failures = 0;
-        if was_polling {
-            self.stop_push_subscription();
-        }
+
         if std::mem::take(&mut self.sync.reload_on_open) {
             self.sync.cursor = Some(head_seq);
             self.save_cursor(true);
@@ -274,6 +244,7 @@ impl Task {
                 self.emit(changed);
             }
             "account.state" => {
+                self.refresh_daemon();
                 // A `locked` entry may be replayed after the account was
                 // unlocked again (a source resuming from a cursor saved
                 // before the lock): the daemon's account status decides; it
@@ -317,11 +288,11 @@ impl Task {
                     Some(if moved { now } else { now + self.config.reconnect_backoff });
             }
             StreamEnd::NotOpen => self.locked(),
-            StreamEnd::Unsupported(reason) => self.fall_back(reason, false),
+            StreamEnd::Unsupported(reason) => self.fall_back(reason),
             StreamEnd::Lost(error) => {
                 self.sync.failures += 1;
                 if self.sync.failures >= STREAM_ATTEMPTS {
-                    self.fall_back(lost_reason(&error), true);
+                    self.fall_back(lost_reason(&error));
                 } else {
                     self.sync.mode = SyncMode::Connecting;
                     self.sync.open_at = Some(now + self.config.reconnect_backoff);
@@ -331,26 +302,13 @@ impl Task {
         }
     }
 
-    /// The stream is unavailable: poll (when allowed) and say why. A
-    /// failing stream is tried again after `stream_retry`.
-    fn fall_back(&mut self, reason: String, retry: bool) {
+    /// Retry subscription failures with bounded backoff, without data polls.
+    fn fall_back(&mut self, reason: String) {
         self.sync.stop();
         self.sync.failures = 0;
         self.sync.reason = Some(reason);
-        self.sync.open_at = retry.then(|| Instant::now() + self.config.stream_retry);
-        if self.config.poll_fallback {
-            if self.sync.mode != SyncMode::Polling {
-                self.sync.mode = SyncMode::Polling;
-                if let Some(id) = self.scope.account().cloned() {
-                    self.spawn_fetches(vec![Fetch::AccountStatus(id)]);
-                }
-                self.interval = self.config.poll_fast;
-                self.next_poll = Instant::now();
-                self.subscribe_at = Instant::now();
-            }
-        } else {
-            self.sync.mode = SyncMode::Off;
-        }
+        self.sync.open_at = Some(Instant::now() + self.config.reconnect_backoff);
+        self.sync.mode = SyncMode::Off;
         self.show_sync(true);
     }
 

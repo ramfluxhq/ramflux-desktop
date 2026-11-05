@@ -485,8 +485,6 @@ fn a_pending_account_follows_networking_events_without_status_polling() {
     fake.enable_stream();
     let config = ramflux_desktop_sdk::SdkConfig {
         // Keep generic polling outside this observation window.
-        poll_fast: Duration::from_secs(60),
-        poll_slow: Duration::from_secs(60),
         ..common::config(&path)
     };
     let hub = SdkHub::start(config).expect("bridge");

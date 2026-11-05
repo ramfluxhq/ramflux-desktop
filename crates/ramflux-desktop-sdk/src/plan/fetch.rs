@@ -73,9 +73,6 @@ pub enum Fetch {
     McpTools,
     /// `message.list` of one direct context.
     Messages(ContextId),
-    /// `message.receive` for one direct context (pull from the node), read
-    /// back through [`Fetch::Messages`].
-    Receive(ContextId),
     /// `surface.list` of one conversation; `None` asks for the first page.
     Surfaces(ContextId, Option<String>),
     /// `surface.get` of one surface, by the daemon's scoped `surface_ref`.
@@ -111,12 +108,6 @@ pub enum Fetch {
 }
 
 impl Fetch {
-    /// Whether this read pulls from the node (`message.receive`); its
-    /// failure does not stop the reads of stored state after it.
-    pub const fn is_pull(&self) -> bool {
-        matches!(self, Self::Receive(_))
-    }
-
     /// The first page of `paged`.
     pub const fn first(paged: Paged) -> Self {
         Self::Page(paged, None)
@@ -158,20 +149,6 @@ impl Fetch {
                 "message",
                 "message.list",
                 json!({ "conversation_id": context }),
-            ),
-            // Receiving never downloads attachments: a relay failure must
-            // not fail the receive or hold back later messages. (The daemon
-            // offers no fetch of an attachment after its message was
-            // received; see the gap ledger.)
-            Self::Receive(context) => BusRequest::new(
-                account,
-                "message",
-                "message.receive",
-                json!({
-                    "limit": 100,
-                    "conversation_id": context,
-                    "auto_fetch_attachments": false,
-                }),
             ),
             Self::Surfaces(context, cursor) => BusRequest::new(
                 account,
@@ -236,14 +213,5 @@ impl Fetch {
             Self::first(Paged::McpServers),
             Self::first(Paged::Objects),
         ]
-    }
-
-    /// The lists an account poll refreshes, each a first page.
-    pub fn account_poll() -> Vec<Self> {
-        [Paged::Identities, Paged::Groups, Paged::Conversations, Paged::Approvals, Paged::Objects]
-            .into_iter()
-            .map(Self::first)
-            .chain([Self::ContactList])
-            .collect()
     }
 }

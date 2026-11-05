@@ -70,7 +70,6 @@ mod shots {
             std::fs::create_dir_all(&dir).expect("dir");
             let config = SdkConfig {
                 reconnect_backoff: Duration::from_millis(200),
-                poll_fast: Duration::from_millis(200),
                 ..SdkConfig::new(dir.join("rfd.sock"))
             };
             let options = ShellOptions {

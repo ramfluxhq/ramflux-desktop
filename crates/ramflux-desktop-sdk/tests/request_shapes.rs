@@ -24,8 +24,7 @@ use ramflux_sdk::{
     LocalBusGrantRevokeRequest, LocalBusGrantStandingApprovalRevokeRequest,
     LocalBusGroupMemberBanRequest, LocalBusGroupMemberKickRequest,
     LocalBusGroupMemberRemoveRequest, LocalBusGroupReceiveRequest, LocalBusGroupRoleSetRequest,
-    LocalBusGroupSendRequest, LocalBusMcpApprovalDecisionRequest, LocalBusMessageReceiveRequest,
-    NodePinSource,
+    LocalBusGroupSendRequest, LocalBusMcpApprovalDecisionRequest, NodePinSource,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -237,9 +236,6 @@ fn grant_conversation_device_and_group_frames_are_the_sdk_requests() {
 #[test]
 fn reads_and_pulls_are_the_sdk_requests_without_retry_keys() {
     let context = ContextId::new("dm-ana");
-    let receive = Fetch::Receive(context.clone()).request(Some("acct-main"));
-    let pulled: LocalBusMessageReceiveRequest = parses(&receive);
-    assert_eq!(pulled.conversation_id.as_deref(), Some("dm-ana"));
     let group = group_receive().request(Some("acct-main"));
     let received: LocalBusGroupReceiveRequest = parses_with(&group, &["title"]);
     assert_eq!(group.wire_body()["title"], "Team");
@@ -281,7 +277,7 @@ fn group_receive() -> Fetch {
 }
 
 fn receive_of(context: &str) -> Fetch {
-    Fetch::Receive(ContextId::new(context))
+    Fetch::Messages(ContextId::new(context))
 }
 
 #[test]

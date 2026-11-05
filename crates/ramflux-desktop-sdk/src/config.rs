@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! How the SDK source reaches the daemon, follows its event stream, and how
-//! often it polls when the stream is unavailable.
+//! it reconnects when the stream is unavailable.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -27,16 +27,6 @@ pub struct SdkConfig {
     pub connect_timeout: Duration,
     /// Deadlines of requests, by what the method does.
     pub deadlines: Deadlines,
-    /// Whether to poll when the daemon offers no event stream (or the
-    /// stream keeps failing). Off, the source shows that it is not kept up
-    /// to date instead.
-    pub poll_fallback: bool,
-    /// Wait before trying the event stream again after it kept failing.
-    pub stream_retry: Duration,
-    /// Poll interval right after something changed (polling only).
-    pub poll_fast: Duration,
-    /// Poll interval after a quiet period (the interval doubles up to it).
-    pub poll_slow: Duration,
     /// Wait before re-attaching after the daemon went away.
     pub reconnect_backoff: Duration,
     /// The desktop settings file holding pinned contexts; `None` keeps pins
@@ -72,10 +62,6 @@ impl SdkConfig {
             socket_path: socket_path.into(),
             connect_timeout: Duration::from_secs(2),
             deadlines: Deadlines::standard(),
-            poll_fallback: true,
-            stream_retry: Duration::from_secs(30),
-            poll_fast: Duration::from_millis(1_500),
-            poll_slow: Duration::from_secs(12),
             reconnect_backoff: Duration::from_secs(2),
             settings_path: None,
             local_network_retry_ms: LOCAL_NETWORK_RETRY_MS,

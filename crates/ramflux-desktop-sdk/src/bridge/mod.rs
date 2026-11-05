@@ -123,12 +123,29 @@ async fn serve(
             let _ = tx.send(scope::ScopeCommand::AccountsLive(live));
         }
     };
-    while let Some(command) = inbox.recv().await {
+    let (refresh, mut refresh_rx) = mpsc::unbounded_channel();
+    loop {
+        let command = tokio::select! {
+            command = inbox.recv() => match command { Some(command) => command, None => break },
+            Some(()) = refresh_rx.recv() => {
+                if let Some(tx) = scopes.get(&Scope::Daemon) {
+                    let _ = tx.send(scope::ScopeCommand::RefreshDaemon);
+                }
+                continue;
+            }
+        };
         match command {
             Command::Attach { scope, outbox, phrases } => {
                 let (tx, rx) = mpsc::unbounded_channel();
                 let ceremonies = scope::Ceremonies { phrases, audit: audit.clone() };
-                tokio::spawn(scope::run(config.clone(), scope.clone(), outbox, ceremonies, rx));
+                tokio::spawn(scope::run(
+                    config.clone(),
+                    scope.clone(),
+                    outbox,
+                    ceremonies,
+                    rx,
+                    refresh.clone(),
+                ));
                 let daemon = scope == Scope::Daemon;
                 scopes.insert(scope, tx);
                 if daemon {
