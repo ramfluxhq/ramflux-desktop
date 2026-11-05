@@ -46,7 +46,7 @@ pub fn frames() -> BTreeMap<String, Value> {
     serde_json::from_str(text).expect("fixture json")
 }
 
-/// Shell options on the SDK source at `path`, polling fast.
+/// Shell options on the SDK source at `path`, following events.
 pub fn options(path: &std::path::Path) -> ShellOptions {
     let config = SdkConfig {
         deadlines: ramflux_desktop_sdk::Deadlines::uniform(Duration::from_secs(3)),
@@ -474,6 +474,7 @@ pub fn start_with_custody(
         },
         custody,
     );
+    fake.enable_stream();
     (fake, shared, path)
 }
 

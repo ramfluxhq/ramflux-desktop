@@ -253,7 +253,7 @@ fn the_banner_of_a_pending_account_clears_the_moment_the_daemon_connects_it(
     wait(cx, "the connecting header", |cx| has_label(cx, handle, &tr("network_header.connecting")));
     // The daemon connects the account later: no unlock, no restart.
     custody.go_live("acct-native-1");
-    fake.push("acct-native-1", "account.networking.changed", serde_json::json!({"account_id":"acct-native-1", "state":"live", "session":{"state":"live"}}));
+    fake.publish("acct-native-1", "account.networking.changed", serde_json::json!({"account_id":"acct-native-1", "state":"live", "session":{"state":"live"}}));
     wait(cx, "the banner clears", |cx| {
         crate::common::advance(cx, 20);
         !has_label(cx, handle, &tr("network_header.connecting"))

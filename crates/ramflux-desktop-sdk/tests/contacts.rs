@@ -398,18 +398,22 @@ fn contact_actions_reach_the_daemon_and_its_records_update_the_contacts() {
 }
 
 #[test]
-fn an_incoming_request_recorded_later_appears_on_the_next_poll() {
+fn an_incoming_request_recorded_later_appears_from_the_event() {
     let path = socket_path("incoming");
     let links = Arc::new(Mutex::new(vec![record("l1", ME, "principal-ana", "accepted", false)]));
     let fake = FakeBus::start(&path, friend_daemon(links.clone()));
+    fake.enable_stream();
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     account.until("listed", |s, _| link_of(s, "principal-ana").is_some());
     // The daemon records a request it received (a `friend.requested` event
     // applied by a receive), without pushing anything.
+    account.until("stream", |_, _| fake.streaming("acct-main"));
     links.lock().expect("links").push(record("l9", "principal-sam", ME, "pending", false));
-    account
-        .until("request polled", |s, _| link_of(s, "principal-sam") == Some(ContactLink::Incoming));
+    fake.publish("acct-main", "contact.changed", json!({"principal_id":"principal-sam"}));
+    account.until("request refreshed", |s, _| {
+        link_of(s, "principal-sam") == Some(ContactLink::Incoming)
+    });
     fake.shutdown();
 }
 

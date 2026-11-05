@@ -144,7 +144,7 @@ impl World {
 fn live(world: &World, stream: bool) -> Fed {
     let hub = ramflux_desktop_sdk::SdkHub::start(config(&world.path)).expect("bridge");
     let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
-    let mode = if stream { SyncMode::Stream } else { SyncMode::Polling };
+    let mode = if stream { SyncMode::Stream } else { SyncMode::Off };
     account.until("the account is live", |s, _| {
         s.context(&ContextId::new("dm-ana")).is_some()
             && s.sync_status().is_some_and(|sync| sync.mode == mode)
@@ -697,7 +697,7 @@ fn a_restore_is_cancelled_before_it_installs_and_jobs_come_back_after_a_reload()
     account.until("verifying", phase_is(BackupPhase::Verifying));
     // Without the account stream, the job stream still follows the job.
     world.backup.step();
-    account.until("progress by polling", |s, _| {
+    account.until("progress through the job stream", |s, _| {
         job(s).is_some_and(|j| j.progress.items_done > 0 || j.progress.bytes_done > 0)
     });
     let id = job(&account.store).unwrap().id.clone();

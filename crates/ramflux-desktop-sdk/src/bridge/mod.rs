@@ -42,6 +42,12 @@ use crate::translate::Scope;
 pub use custody::PhraseAudit;
 pub(crate) use custody::{Handoff, NativeAccount};
 
+/// Account connection notices shared with the daemon scope without data polling.
+pub(super) enum DaemonNotice {
+    Refresh,
+    Status(ramflux_desktop_core::SourceStatus),
+}
+
 /// One fact for a source, stamped when the bridge observed it.
 #[derive(Debug)]
 pub struct Delivery {
@@ -127,9 +133,13 @@ async fn serve(
     loop {
         let command = tokio::select! {
             command = inbox.recv() => match command { Some(command) => command, None => break },
-            Some(()) = refresh_rx.recv() => {
+            Some(notice) = refresh_rx.recv() => {
                 if let Some(tx) = scopes.get(&Scope::Daemon) {
-                    let _ = tx.send(scope::ScopeCommand::RefreshDaemon);
+                    let command = match notice {
+                        DaemonNotice::Refresh => scope::ScopeCommand::RefreshDaemon,
+                        DaemonNotice::Status(status) => scope::ScopeCommand::ConnectionStatus(status),
+                    };
+                    let _ = tx.send(command);
                 }
                 continue;
             }

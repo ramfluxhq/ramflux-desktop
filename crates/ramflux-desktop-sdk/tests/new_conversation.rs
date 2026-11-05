@@ -240,14 +240,18 @@ fn a_listing_read_before_the_start_and_answered_last_removes_nothing() {
         "message.list" if body["conversation_id"] == NEW => Reply::Ok(new_messages()),
         _ => fixture(method),
     });
+    fake.enable_stream();
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     account.until("the identities", |s, _| {
         s.context(&ContextId::new("dm-ana")).is_some()
             && s.participant(&"principal-ana".into()).is_some()
     });
+    account.until("stream", |_, _| fake.streaming("acct-main"));
+    account.settle(50);
     hold.store(true, Ordering::SeqCst);
     let mark = fake.seen().len();
+    fake.publish("acct-main", "conversation.changed", json!({"conversation_id":"dm-ana"}));
     account.until("a listing read before the start", |_, _| {
         fake.seen().iter().skip(mark).any(|s| s.method == "conversation.directory")
     });

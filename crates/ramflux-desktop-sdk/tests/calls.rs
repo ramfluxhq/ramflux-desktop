@@ -78,15 +78,16 @@ impl World {
 fn live(world: &World, call_api: bool, stream: bool) -> Fed {
     let hub = ramflux_desktop_sdk::SdkHub::start(world.config(call_api)).expect("bridge");
     let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
-    let mode = if stream { SyncMode::Stream } else { SyncMode::Polling };
+    let mode = if stream { SyncMode::Stream } else { SyncMode::Off };
     account.until("the account is live", |s, _| {
         s.context(&ContextId::new(DM)).is_some()
             && s.sync_status().is_some_and(|sync| sync.mode == mode)
     });
     if stream {
+        if call_api {
+            account.until("head recovery calls", |_, _| world.requests("call.list").len() == 2);
+        }
         assert!(world.fake.streaming(ACCOUNT));
-    } else {
-        account.until("the push subscription", |_, _| world.fake.subscribed(ACCOUNT));
     }
     account
 }
@@ -287,10 +288,14 @@ fn timeout_busy_and_answered_elsewhere_end_calls_with_their_reason() {
 }
 
 #[test]
-fn without_the_stream_calls_change_through_the_push_subscription() {
+fn calls_resume_after_a_refused_stream_recovers() {
     let world = World::start("push", false);
     let mut account = live(&world, true, false);
     let id = CallId::new(world.calls.incoming(ACCOUNT, DM));
+    world.fake.enable_stream();
+    account.until("stream recovered", |s, _| {
+        s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Stream)
+    });
     account.until("ringing", state_is(CallState::IncomingRinging));
     world.calls.peer_hangs_up(id.as_str());
     account.until("cancelled by the caller", state_is(CallState::Ended(CallEndReason::Missed)));
@@ -305,7 +310,7 @@ fn calls_come_back_with_a_reload() {
     let account = live(&world, true, true);
     let call = account.store.call(&CallId::new(ringing.clone())).expect("listed");
     assert_eq!(call.state, CallState::IncomingRinging);
-    assert_eq!(world.requests("call.list").len(), 1);
+    assert_eq!(world.requests("call.list").len(), 2, "attach and head-recovery snapshots");
     // A call record in the conversation's messages is the same call.
     let mut feed = account;
     world.calls.peer_hangs_up(&ringing);
@@ -324,7 +329,7 @@ fn a_daemon_without_the_call_api_has_calls_unsupported() {
     let world = World::start("old-daemon", true);
     world.calls.set_available(false);
     let account = live(&world, true, true);
-    assert_eq!(world.requests("call.list").len(), 1);
+    assert_eq!(world.requests("call.list").len(), 2, "attach and head-recovery snapshots");
     assert_eq!(
         account.store.unsupported_reason(methods::CALL_INVITE),
         Some(ramflux_desktop_sdk::capabilities::reason::CALLS)

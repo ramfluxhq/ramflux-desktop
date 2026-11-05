@@ -167,9 +167,9 @@ mod shots {
 
         fake.disable_stream();
         fake.end_streams(ACCOUNT, false);
-        run.until("polling", |r| r.mode() == Some(SyncMode::Polling));
+        run.until("stream unavailable", |r| r.mode() == Some(SyncMode::Off));
         run.tick();
-        run.shot("f11_02_diagnostics_polling");
+        run.shot("f11_02_diagnostics_stream_unavailable");
         fake.shutdown();
     }
 }

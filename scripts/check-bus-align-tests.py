@@ -71,6 +71,8 @@ def main():
     for features in ([], ["--features", "bus-trace"]):
         for name in SDK_TESTS:
             required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--lib", *features], name)
+    required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--lib", "--features", "bus-trace"],
+        "bus::trace::tests::trace_accounts_for_ordinary_stream_and_job_sends")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "requests"], GUARD)
     required(
         ["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "attach_flow"],

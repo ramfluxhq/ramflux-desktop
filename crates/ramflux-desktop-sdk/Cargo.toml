@@ -8,7 +8,7 @@ publish.workspace = true
 repository.workspace = true
 
 [features]
-# Request-trace instrumentation is introduced by the subsequent bus alignment part.
+# Bounded send metadata; disabled in ordinary builds.
 bus-trace = []
 
 [dependencies]

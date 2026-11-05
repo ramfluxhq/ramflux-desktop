@@ -112,6 +112,7 @@ impl Task {
                 self.job_link.close_soon();
             }
             JobStreamed::Opened { resync, .. } => {
+                self.connection_status(ramflux_desktop_core::SourceStatus::Connected);
                 self.jobs = Jobs::Open;
                 self.refresh_daemon();
                 if resync {
@@ -139,7 +140,10 @@ impl Task {
                     StreamEnd::Lagged { .. } | StreamEnd::ResyncRequired | StreamEnd::NotOpen => {
                         Some(now)
                     }
-                    StreamEnd::Lost(_) => Some(now + self.config.reconnect_backoff),
+                    StreamEnd::Lost(_) => {
+                        self.connection_status(ramflux_desktop_core::SourceStatus::Disconnected);
+                        Some(now + self.config.reconnect_backoff)
+                    }
                     StreamEnd::Unsupported(_) => None,
                 };
             }

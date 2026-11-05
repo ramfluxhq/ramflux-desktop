@@ -7,6 +7,9 @@ license.workspace = true
 publish.workspace = true
 repository.workspace = true
 
+[features]
+bus-trace = ["ramflux-desktop-sdk/bus-trace"]
+
 [dependencies]
 gpui-kit.workspace = true
 ramflux-desktop-core.workspace = true

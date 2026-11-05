@@ -66,6 +66,7 @@ pub(crate) enum ScopeCommand {
     /// link follows the backup jobs then, so the daemon scope's closes).
     AccountsLive(bool),
     RefreshDaemon,
+    ConnectionStatus(SourceStatus),
 }
 
 /// Where a scope's ceremonies hand the recovery phrase and count it.
@@ -117,7 +118,7 @@ pub(super) struct Task {
     /// A legacy push connection, if present.
     pub(super) push_task: Option<tokio::task::AbortHandle>,
     pub(super) link: Link,
-    pub(super) daemon_refresh: Option<mpsc::UnboundedSender<()>>,
+    pub(super) daemon_refresh: Option<mpsc::UnboundedSender<super::DaemonNotice>>,
     /// Per-fetch bounded recovery and cancellable reads.
     pub(super) read_recovery: super::read_recovery::ReadRecovery,
     snapshot_task: Option<tokio::task::AbortHandle>,
@@ -271,7 +272,7 @@ pub(crate) async fn run(
     outbox: std_mpsc::Sender<Delivery>,
     ceremonies: Ceremonies,
     mut commands: mpsc::UnboundedReceiver<ScopeCommand>,
-    daemon_refresh: mpsc::UnboundedSender<()>,
+    daemon_refresh: mpsc::UnboundedSender<super::DaemonNotice>,
 ) {
     let (mut task, inbox) = build(config, scope, outbox, ceremonies);
     task.daemon_refresh = Some(daemon_refresh);
@@ -370,7 +371,16 @@ impl Task {
         if self.scope == Scope::Daemon {
             self.spawn_fetches(vec![Fetch::DaemonStatus, Fetch::AccountList]);
         } else if let Some(tx) = &self.daemon_refresh {
-            let _ = tx.send(());
+            let _ = tx.send(super::DaemonNotice::Refresh);
+        }
+    }
+
+    pub(super) fn connection_status(&mut self, status: SourceStatus) {
+        self.emit(vec![DomainEvent::SourceStatusChanged(status)]);
+        if self.scope.account().is_some()
+            && let Some(tx) = &self.daemon_refresh
+        {
+            let _ = tx.send(super::DaemonNotice::Status(status));
         }
     }
 
@@ -417,7 +427,7 @@ impl Task {
         }
     }
 
-    fn reads_for_snapshot(&self) -> Vec<Fetch> {
+    pub(super) fn reads_for_snapshot(&self) -> Vec<Fetch> {
         match &self.scope {
             Scope::Daemon => {
                 let mut reads = Fetch::daemon_snapshot();
@@ -957,6 +967,9 @@ impl Task {
             ScopeCommand::CallMedia(call_id, reply) => self.call_media(call_id, reply),
             ScopeCommand::AccountsLive(live) => self.accounts_live(live),
             ScopeCommand::RefreshDaemon => self.refresh_daemon(),
+            ScopeCommand::ConnectionStatus(status) => {
+                self.emit(vec![DomainEvent::SourceStatusChanged(status)]);
+            }
         }
     }
 }

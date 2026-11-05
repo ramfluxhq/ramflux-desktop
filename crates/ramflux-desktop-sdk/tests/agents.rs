@@ -239,7 +239,7 @@ fn the_credentials_are_exported_once_on_an_attended_connection_to_a_private_file
 #[test]
 fn each_refusal_of_an_export_is_a_typed_reason_and_writes_nothing() {
     let custody = Arc::new(FakeCustody::new());
-    let (fake, _hub, mut fed) = world("agent-export-refusals", &custody);
+    let (fake, _hub, fed) = world("agent-export-refusals", &custody);
     custody.add_agent("acct-bot", "Bot", OWNER);
     custody.set_locked("acct-bot", false);
     custody.add_account("acct-other", "Other", "x", false);
@@ -248,6 +248,8 @@ fn each_refusal_of_an_export_is_a_typed_reason_and_writes_nothing() {
     custody.add_agent("acct-wait", "Wait", OWNER);
     custody.set_locked("acct-wait", false);
     custody.set_networking_of("acct-wait", false);
+    drop(fed);
+    let mut fed = Fed::new(_hub.daemon_source());
     fed.until("listed", |s, _| s.account(&AccountId::new("acct-wait")).is_some());
     let dir = bundle_dir("refusals");
     let taken = dir.join("taken.bundle");
@@ -292,9 +294,11 @@ fn an_export_from_a_session_the_daemon_does_not_attend_is_refused() {
     // attended subscription; a request sent on the ordinary connection is
     // the daemon's `not owner session` refusal.
     let custody = Arc::new(FakeCustody::new());
-    let (fake, _hub, mut fed) = world("agent-export-session", &custody);
+    let (fake, _hub, fed) = world("agent-export-session", &custody);
     custody.add_agent("acct-bot", "Bot", OWNER);
     custody.set_locked("acct-bot", false);
+    drop(fed);
+    let mut fed = Fed::new(_hub.daemon_source());
     fed.until("listed", |s, _| s.account(&AccountId::new("acct-bot")).is_some());
     let client = ramflux_desktop_sdk::bus::client::BusClient::new(
         socket_path("agent-export-session"),
@@ -320,14 +324,18 @@ fn an_export_from_a_session_the_daemon_does_not_attend_is_refused() {
 #[test]
 fn a_daemon_that_reports_the_custodian_is_believed_and_the_listing_shows_kind_and_custodian() {
     let custody = Arc::new(FakeCustody::new());
-    let (fake, _hub, mut fed) = world("agent-listing", &custody);
+    let (fake, _hub, fed) = world("agent-listing", &custody);
     custody.add_agent("acct-bot", "Bot", OWNER);
+    drop(fed);
+    let mut fed = Fed::new(_hub.daemon_source());
     fed.until("listed as an AI participant", |s, _| {
         s.account(&AccountId::new("acct-bot")).is_some_and(|a| a.kind == AccountKind::HeadlessAi)
     });
     // The daemon of this product revision does not name the custodian.
     assert_eq!(fed.store.custodian_of(&AccountId::new("acct-bot")), None);
     custody.report_custodian(true);
+    drop(fed);
+    let mut fed = Fed::new(_hub.daemon_source());
     fed.until("custodian reported", |s, _| s.custodian_of(&AccountId::new("acct-bot")).is_some());
     assert_eq!(fed.store.custodian_of(&AccountId::new("acct-bot")), Some(&AccountId::new(OWNER)));
     fake.shutdown();

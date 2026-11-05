@@ -93,6 +93,9 @@ impl StoreHandle {
         }
         self.daemon_status = Some(status);
         self.reconcile_live(cx);
+        if let Some(socket) = self.live_socket().map(std::path::PathBuf::from) {
+            self.inspector.collect_bus_trace(&socket);
+        }
     }
 
     /// Opens the rendered account's session again (a live daemon only): a

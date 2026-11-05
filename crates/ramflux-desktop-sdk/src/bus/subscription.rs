@@ -91,6 +91,7 @@ async fn follow(
         json!({ "topics": topics(), "attended_frontend": true }),
     );
     open.deadline_ms = Some(deadline_ms(deadlines.budget("subscription.open")));
+    super::trace::record(socket, "push", &open);
     if let Err(error) = client.request_frame(open).await {
         return BusError::from(error);
     }

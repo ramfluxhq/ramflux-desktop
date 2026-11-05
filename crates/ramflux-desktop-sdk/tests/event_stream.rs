@@ -95,7 +95,8 @@ impl World {
         };
         let after = &seen[subscribed + 1..];
         Fetch::account_snapshot(&AccountId::new(ACCOUNT))
-            .iter()
+            .into_iter()
+            .chain([Fetch::Calls, Fetch::ContactRequests])
             .map(|fetch| fetch.request(Some(ACCOUNT)).method)
             .all(|method| after.iter().any(|s| s.method == method))
     }
@@ -112,7 +113,8 @@ fn config_with(path: &std::path::Path, settings: Option<PathBuf>) -> SdkConfig {
 }
 
 /// An account source fed into a store, waited on until its stream is open.
-fn streaming(world: &World, config: SdkConfig) -> Fed {
+fn streaming(world: &World, mut config: SdkConfig) -> Fed {
+    config.backup_api = false;
     let hub = ramflux_desktop_sdk::SdkHub::start(config).expect("bridge");
     let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
     account.until("the stream is open", |s, _| {
@@ -385,7 +387,7 @@ fn a_replayed_lock_of_an_account_unlocked_since_does_not_lock_it() {
 }
 
 #[test]
-fn with_the_fallback_off_nothing_is_polled() {
+fn refused_stream_retries_without_polling_data() {
     let (world, path) = World::start("off", false);
     let hub = ramflux_desktop_sdk::SdkHub::start(config(&path)).expect("bridge");
     let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
@@ -393,7 +395,11 @@ fn with_the_fallback_off_nothing_is_polled() {
     let mark = world.mark();
     account.settle(500);
     let polled: Vec<String> = world.fake.seen().into_iter().skip(mark).map(|s| s.method).collect();
-    assert!(polled.is_empty(), "nothing is polled with the fallback off: {polled:?}");
+    assert!(
+        polled.iter().all(|method| method == "bus.subscribe"),
+        "only subscription attempts: {polled:?}"
+    );
+    assert!(polled.len() <= 4, "150 ms test backoff bounds subscription attempts");
     assert!(!world.fake.subscribed(ACCOUNT));
     drop(account);
     world.fake.shutdown();

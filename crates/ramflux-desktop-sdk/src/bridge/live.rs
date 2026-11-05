@@ -145,6 +145,11 @@ impl Task {
         topics.extend(crate::translate::contact_requests::TOPICS);
         topics.push(crate::translate::account::SECURE_SESSIONS_TOPIC);
         topics.push("account.networking.changed");
+        for topic in crate::bus::subscription::PUSHED_TOPICS {
+            if !topics.contains(&topic) {
+                topics.push(topic);
+            }
+        }
         if self.config.call_api {
             topics.push(crate::translate::stream::CALL_TOPIC);
         }
@@ -171,6 +176,7 @@ impl Task {
     }
 
     fn stream_opened(&mut self, head_seq: u64) {
+        self.connection_status(ramflux_desktop_core::SourceStatus::Connected);
         self.refresh_daemon();
         self.sync.mode = SyncMode::Stream;
         self.sync.reason = None;
@@ -186,10 +192,7 @@ impl Task {
 
     /// Reads everything again (after a gap in the stream).
     fn reload(&mut self) {
-        let mut reads = match &self.scope {
-            crate::translate::Scope::Account(id) => Fetch::account_snapshot(id),
-            crate::translate::Scope::Daemon => Vec::new(),
-        };
+        let mut reads = self.reads_for_snapshot();
         reads.extend(self.translator.watched_reads());
         self.request_reads(reads);
     }
@@ -243,6 +246,16 @@ impl Task {
                 let changed = self.translator.secure_sessions_changed(body);
                 self.emit(changed);
             }
+            topic if crate::bus::subscription::PUSHED_TOPICS.contains(&topic) => {
+                // Decisions must resolve an existing approval directly: a later
+                // pending-only listing cannot recover a granted/denied decision.
+                if topic != "mcp.approval.request" || body.get("server_id").is_some() {
+                    let events = self.translator.pushed(topic, body, super::now());
+                    self.emit(events);
+                }
+                let reads = self.translator.stream_reads(topic, body);
+                self.request_reads(reads);
+            }
             "account.state" => {
                 self.refresh_daemon();
                 // A `locked` entry may be replayed after the account was
@@ -290,6 +303,7 @@ impl Task {
             StreamEnd::NotOpen => self.locked(),
             StreamEnd::Unsupported(reason) => self.fall_back(reason),
             StreamEnd::Lost(error) => {
+                self.connection_status(ramflux_desktop_core::SourceStatus::Disconnected);
                 self.sync.failures += 1;
                 if self.sync.failures >= STREAM_ATTEMPTS {
                     self.fall_back(lost_reason(&error));

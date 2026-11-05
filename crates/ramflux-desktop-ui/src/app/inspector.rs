@@ -35,6 +35,8 @@ pub enum UiOutcome {
 /// One inspector entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InspectorEntry {
+    /// Metadata of an actual bus send (only populated with bus-trace).
+    BusTrace(ramflux_desktop_sdk::bus::trace::Entry),
     /// An envelope was applied (or rejected) by the store.
     Envelope {
         /// Sequence number.
@@ -77,9 +79,19 @@ pub enum InspectorEntry {
 #[derive(Debug, Default)]
 pub struct Inspector {
     entries: VecDeque<InspectorEntry>,
+    trace_sequence: u64,
 }
 
 impl Inspector {
+    /// Copies new send metadata from the shared bounded bus trace.
+    pub fn collect_bus_trace(&mut self, socket: &std::path::Path) {
+        for (sequence, entry) in ramflux_desktop_sdk::bus::trace::after(socket, self.trace_sequence)
+        {
+            self.trace_sequence = sequence;
+            self.push(InspectorEntry::BusTrace(entry));
+        }
+    }
+
     /// Appends an entry, dropping the oldest beyond [`INSPECTOR_CAP`].
     pub fn push(&mut self, entry: InspectorEntry) {
         if self.entries.len() == INSPECTOR_CAP {

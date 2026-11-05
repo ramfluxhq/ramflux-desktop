@@ -11,7 +11,7 @@ use serde_json::json;
 fn task(path: &std::path::Path, scope: Scope) -> (Task, Inbox, std_mpsc::Receiver<Delivery>) {
     let mut config = SdkConfig::new(path);
     config.call_api = false;
-    config.backup_api = false;
+    config.backup_api = true;
     let (out, delivered) = std_mpsc::channel();
     let (phrases, _) = std_mpsc::channel();
     let (task, inbox) = build(config, scope, out, Ceremonies { phrases, audit: Arc::default() });
@@ -27,6 +27,9 @@ async fn pump(task: &mut Task, inbox: &mut Inbox, done: impl Fn(&Task) -> bool) 
         while let Ok(event) = inbox.streamed.try_recv() {
             task.on_streamed(event);
         }
+        while let Ok(event) = inbox.jobs.try_recv() {
+            task.on_jobs(event);
+        }
         task.tick();
         if done(task) {
             return;
@@ -38,7 +41,12 @@ async fn pump(task: &mut Task, inbox: &mut Inbox, done: impl Fn(&Task) -> bool) 
 }
 
 async fn settle(task: &mut Task, inbox: &mut Inbox) {
-    pump(task, inbox, |t| t.read_recovery.running.is_empty() && t.snapshot_task.is_none()).await;
+    pump(task, inbox, |t| {
+        t.read_recovery.running.is_empty()
+            && t.snapshot_task.is_none()
+            && t.jobs == super::super::jobs::Jobs::Open
+    })
+    .await;
 }
 
 fn data_count(fake: &FakeBus, mark: usize) -> usize {
@@ -62,7 +70,8 @@ async fn no_periodic_requests_when_idle() {
             && t.snapshot_task.is_none()
     })
     .await;
-    // Both the attach and stream-head recovery reads finished before this window.
+    settle(&mut task, &mut inbox).await;
+    // Attach, stream-head and job-open reads finished before this window.
     let mark = fake.seen().len();
     for _ in 0..600 {
         tokio::time::advance(Duration::from_secs(1)).await;
@@ -134,12 +143,22 @@ async fn daemon_scope_refreshes_on_actions_not_timers() {
     let (mut account, _, _delivered) = task(&path, Scope::Account(AccountId::new("acct-main")));
     account.daemon_refresh = Some(tx);
     account.on_streamed(Streamed::Opened { head_seq: 0, floor_seq: 0 });
-    assert_eq!(rx.try_recv(), Ok(()), "every stream reopen refreshes daemon");
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(super::super::DaemonNotice::Status(SourceStatus::Connected))
+    ));
+    assert!(
+        matches!(rx.try_recv(), Ok(super::super::DaemonNotice::Refresh)),
+        "every stream reopen refreshes daemon"
+    );
     account.on_streamed(Streamed::Event {
         seq: Some(1),
         at: None,
         topic: "account.state".into(),
         body: json!({}),
     });
-    assert_eq!(rx.try_recv(), Ok(()), "account.state refreshes daemon");
+    assert!(
+        matches!(rx.try_recv(), Ok(super::super::DaemonNotice::Refresh)),
+        "account.state refreshes daemon"
+    );
 }

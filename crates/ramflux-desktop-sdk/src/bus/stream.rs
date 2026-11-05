@@ -133,6 +133,7 @@ async fn follow(
     };
     let requester = client.clone();
     let frame = request(&subscription, deadlines);
+    super::trace::record(socket, "stream", &frame);
     let answer = requester.request_frame(frame);
     tokio::pin!(answer);
     let mut opened = false;

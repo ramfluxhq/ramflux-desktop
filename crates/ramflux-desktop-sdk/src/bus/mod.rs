@@ -21,6 +21,7 @@ pub mod idempotency;
 pub mod jobs;
 pub mod stream;
 pub mod subscription;
+pub mod trace;
 
 use ramflux_desktop_core::SecretInput;
 use ramflux_sdk::SdkError;

@@ -162,10 +162,14 @@ fn a_group_send_with_unresolved_members_fails_and_names_them() {
 #[test]
 fn an_intervention_closes_with_the_decision_on_its_grant() {
     let path = socket_path("intervene");
-    let fake = FakeBus::start(&path, |method, _, _| match method {
+    let approvals = Arc::new(std::sync::Mutex::new(frames()["mcp.approval.list"].clone()));
+    let listed = approvals.clone();
+    let fake = FakeBus::start(&path, move |method, _, _| match method {
+        "mcp.approval.list" => Reply::Ok(listed.lock().expect("approvals").clone()),
         "grant.approve" => Reply::Ok(json!({ "approval_id": "appr-1", "grant_id": "grant-1" })),
         _ => fixture(method),
     });
+    fake.enable_stream();
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     let moment = MomentId::new("approval:appr-1");
@@ -184,17 +188,27 @@ fn an_intervention_closes_with_the_decision_on_its_grant() {
     );
     // A pushed request of another conversation lands there. The fake
     // pushes only to open subscriptions: wait for the hub's to reach it.
-    account.until("subscribed", |_, _| fake.subscribed("acct-main"));
-    fake.push("acct-main", "mcp.approval.request", json!({
+    account.until("subscribed", |_, _| fake.streaming("acct-main"));
+    let request = json!({
         "approval_id": "appr-9", "server_id": "files", "tool_name": "delete", "risk_level": "high",
         "expires_at": 1890000000, "status": "pending", "details": { "arguments_hash": "h-9" },
         "conversation_id": "thread-team", "context_id": "ctx-9",
-    }));
+    });
+    approvals.lock().expect("approvals")["approvals"]
+        .as_array_mut()
+        .expect("rows")
+        .push(request.clone());
+    fake.publish("acct-main", "mcp.approval.request", request);
     account.until("placed", |s, _| {
         s.moment(&MomentId::new("approval:appr-9"))
             .is_some_and(|m| m.context_id.as_str() == "thread-team")
     });
-    fake.push("acct-main", "mcp.approval.denied", json!({ "approval_id": "appr-9" }));
+    for row in approvals.lock().expect("approvals")["approvals"].as_array_mut().expect("rows") {
+        if row["approval_id"] == "appr-9" {
+            row["status"] = json!("denied");
+        }
+    }
+    fake.publish("acct-main", "mcp.approval.denied", json!({ "approval_id": "appr-9" }));
     account.until("dismissed", |s, _| {
         s.moment(&MomentId::new("approval:appr-9"))
             .is_some_and(|m| m.lifecycle == Lifecycle::Dismissed)

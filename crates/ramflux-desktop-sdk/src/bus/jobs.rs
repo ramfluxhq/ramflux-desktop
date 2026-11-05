@@ -186,13 +186,13 @@ impl JobLink {
         };
         let since = Some(inner.cursor.load(Ordering::Relaxed)).filter(|seq| *seq > 0);
         let mut resync = false;
-        let mut answer = subscribe(&client, since, inner.deadlines).await;
+        let mut answer = subscribe(&client, since, inner.deadlines, &inner.socket).await;
         if answer.as_ref().is_err_and(is_resync) {
             // Not covered (pruned, or another daemon): follow from the head
             // and have the owner read the jobs again.
             resync = true;
             inner.cursor.store(0, Ordering::Relaxed);
-            answer = subscribe(&client, None, inner.deadlines).await;
+            answer = subscribe(&client, None, inner.deadlines, &inner.socket).await;
         }
         let answer = match answer {
             Ok(answer) => answer,
@@ -247,8 +247,15 @@ impl JobLink {
     pub async fn call(&self, request: &BusRequest) -> Result<Value, BusError> {
         let client = self.ensure().await?;
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
-        let answer =
-            exchange(&client, request, self.inner.deadlines, &format!("desk_job_{id}")).await;
+        let answer = exchange(
+            &client,
+            request,
+            self.inner.deadlines,
+            &format!("desk_job_{id}"),
+            &self.inner.socket,
+            "job",
+        )
+        .await;
         if answer.as_ref().is_err_and(BusError::is_connection_lost) {
             self.close().await;
         }
@@ -292,9 +299,11 @@ async fn subscribe(
     client: &LocalBusClient,
     since: Option<u64>,
     deadlines: Deadlines,
+    socket: &std::path::Path,
 ) -> Result<Value, BusError> {
     let frame = JobLink::subscription(since, deadlines);
     let budget = deadlines.budget("bus.subscribe");
+    super::trace::record(socket, "job", &frame);
     tokio::time::timeout(budget, client.request_frame_response(frame))
         .await
         .map_err(|_| BusError::Timeout)?

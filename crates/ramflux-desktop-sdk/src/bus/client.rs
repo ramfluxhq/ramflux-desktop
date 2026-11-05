@@ -17,7 +17,7 @@
 //! from its saved body or joins the live lifecycle execution. Requests without a key are
 //! not resent here; reads are simply repeated by the next poll.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -101,7 +101,15 @@ impl BusClient {
             .map_err(|_| BusError::Transport("request connection closed".to_owned()))?;
         let (generation, client) = self.connection().await?;
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
-        let answer = exchange(&client, request, self.inner.deadlines, &format!("desk_{id}")).await;
+        let answer = exchange(
+            &client,
+            request,
+            self.inner.deadlines,
+            &format!("desk_{id}"),
+            &self.inner.socket,
+            "ordinary",
+        )
+        .await;
         if answer.as_ref().is_err_and(BusError::is_connection_lost) {
             self.forget(generation).await;
         }
@@ -141,6 +149,8 @@ pub(super) async fn exchange(
     request: &BusRequest,
     deadlines: Deadlines,
     request_id: &str,
+    socket: &Path,
+    connection_class: &str,
 ) -> Result<Value, BusError> {
     let budget = deadlines.budget(&request.method);
     // The secret-bearing body moves into the SDK client, which encodes and
@@ -156,6 +166,7 @@ pub(super) async fn exchange(
     frame.operation_id.clone_from(&request.operation_id);
     // The whole response frame: a refusal keeps its typed reason and
     // details, which the convenience `request_frame` flattens to text.
+    super::trace::record(socket, connection_class, &frame);
     tokio::time::timeout(budget + DEADLINE_GRACE, client.request_frame_response(frame))
         .await
         .unwrap_or_else(|_| {

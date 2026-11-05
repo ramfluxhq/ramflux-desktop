@@ -112,9 +112,13 @@ fn creation_is_offered_only_when_the_daemon_status_says_so() {
     fed.until("status read", |s, _| s.daemon().is_some());
     assert!(!fed.store.offers_born_v3_creation(), "no field: an older daemon");
     offered.store(true, Ordering::SeqCst);
+    drop(fed);
+    let mut fed = Fed::new(hub.daemon_source());
     fed.until("offered", |s, _| s.offers_born_v3_creation());
     offered.store(false, Ordering::SeqCst);
-    fed.until("withdrawn", |s, _| !s.offers_born_v3_creation());
+    drop(fed);
+    let mut fed = Fed::new(hub.daemon_source());
+    fed.until("withdrawn", |s, _| s.daemon().is_some() && !s.offers_born_v3_creation());
     fake.shutdown();
 }
 

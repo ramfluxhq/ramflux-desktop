@@ -55,6 +55,7 @@ fn open_agents(
     cx.update(|cx| {
         shell.update(cx, |shell, cx| shell.open_settings_at(SettingsSection::Agents, cx))
     });
+    wait(cx, "owner event stream", |_| fake.streaming(OWNER));
     cx.run_until_parked();
     in_window(cx, handle, |_, _| {});
     (fake, handle, shell)
@@ -238,6 +239,11 @@ fn the_exports_refusals_are_read_as_typed_reasons(cx: &mut TestAppContext) {
     // Another person's AI participant: the daemon says it is not custodied.
     custody.add_account("acct-other", "Other", "x", false);
     custody.add_agent("acct-theirs", "Theirs", "acct-other");
+    fake.publish(
+        OWNER,
+        "account.state",
+        serde_json::json!({"local_account_id":OWNER, "state":"unlocked"}),
+    );
     wait(cx, "theirs listed", |cx| {
         daemon(cx, &shell, |s| s.account(&AccountId::new("acct-theirs")).is_some())
     });
@@ -278,6 +284,12 @@ fn an_account_that_cannot_custody_is_told_why_before_anything_is_sent(cx: &mut T
     // The owner's account loses its connection: the control is off with the
     // reason, and no request goes out.
     custody.set_networking_of(OWNER, false);
+    fake.publish(OWNER, "account.networking.changed", serde_json::json!({"account_id":OWNER, "state":"networking_pending", "session":{"state":"networking_pending"}}));
+    fake.publish(
+        OWNER,
+        "account.state",
+        serde_json::json!({"local_account_id":OWNER, "state":"unlocked"}),
+    );
     let reason =
         agent_custody_problem(Some(ramflux_desktop_core::AgentCustodyProblem::NotConnected));
     wait(cx, "the reason", |cx| has_label(cx, handle, &reason));
@@ -363,6 +375,11 @@ fn an_ai_participant_the_daemon_lists_unlocked_is_never_operated_by_the_window(
     );
     // Locking the owner never makes the AI participant the rendered account.
     custody.set_locked(OWNER, true);
+    fake.publish(
+        OWNER,
+        "account.state",
+        serde_json::json!({"local_account_id":OWNER, "state":"locked"}),
+    );
     wait(cx, "owner session gone", |cx| slots(cx, &shell).0.is_empty());
     advance(cx, 500);
     let (accounts, active) = slots(cx, &shell);

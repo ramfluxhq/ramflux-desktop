@@ -11,6 +11,9 @@ repository.workspace = true
 name = "ramflux-desktop"
 path = "src/main.rs"
 
+[features]
+bus-trace = ["ramflux-desktop-sdk/bus-trace"]
+
 [dependencies]
 gpui-kit.workspace = true
 ramflux-desktop-sdk.workspace = true

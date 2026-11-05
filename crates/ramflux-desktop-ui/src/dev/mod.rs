@@ -233,6 +233,18 @@ fn describe(entry: &InspectorEntry) -> (String, bool) {
             };
             (format!("ui {kind} [{path}] -> {result} ({}us)", elapsed.as_micros()), false)
         }
+        InspectorEntry::BusTrace(entry) => (
+            format!(
+                "bus {} {} {} {} keyed={} at={}ms",
+                entry.connection_class,
+                entry.frame_class,
+                entry.kind,
+                entry.method,
+                entry.keyed,
+                entry.monotonic_ms
+            ),
+            false,
+        ),
         InspectorEntry::Effect { label } => (format!("effect {label}"), false),
         InspectorEntry::Intent { intent, actor, result } => {
             (format!("intent {intent} by {actor}: {result}"), result.starts_with("refused"))

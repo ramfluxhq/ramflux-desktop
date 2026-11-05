@@ -63,6 +63,6 @@ pub async fn call(
         .await
         .map_err(|_| BusError::Transport("the daemon socket did not accept in time".to_owned()))?
         .map_err(BusError::from)?;
-    exchange(&client, &attend(account), deadlines, "desk_attended").await?;
-    exchange(&client, request, deadlines, "desk_attended_request").await
+    exchange(&client, &attend(account), deadlines, "desk_attended", socket, "attended").await?;
+    exchange(&client, request, deadlines, "desk_attended_request", socket, "attended").await
 }
