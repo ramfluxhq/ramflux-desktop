@@ -812,6 +812,9 @@ impl Task {
     /// Translates one read; returns whether it produced events.
     fn on_read(&mut self, fetch: &Fetch, result: Result<Value, BusError>) -> bool {
         if let Err(error) = &result
+            // Network pulls retain their poll/error handling; bounded local-read
+            // recovery must not turn a refused pull into a failed user effect.
+            && !matches!(fetch, Fetch::Receive(_) | Fetch::GroupReceive { .. })
             && !error.is_connection_lost()
             && !error.is_unknown_method()
             && !(matches!(fetch, Fetch::BackupJobs)

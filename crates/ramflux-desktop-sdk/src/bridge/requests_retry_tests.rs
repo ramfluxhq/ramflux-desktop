@@ -41,10 +41,24 @@ async fn answer(task: &mut Task, inbox: &mut Inbox) {
     task.internal(answer);
 }
 
+// Observe the server recording each request before counting it. A client timeout
+// can otherwise precede the fake daemon's thread being scheduled.
+async fn observed_request(observed: &mut mpsc::UnboundedReceiver<String>, method: &str) {
+    let recorded = tokio::time::timeout(Duration::from_secs(3), observed.recv())
+        .await
+        .expect("request observation deadline")
+        .expect("recorded request");
+    assert_eq!(recorded, method);
+}
+
 #[tokio::test]
 async fn read_timeout_keeps_rows_and_retries_once() {
     let path = socket_path("bounded-read-timeout");
-    let fake = FakeBus::start(&path, |_, _, _| Reply::Slow(Duration::from_secs(2), json!({})));
+    let (recorded, mut observed) = mpsc::unbounded_channel();
+    let fake = FakeBus::start(&path, move |method, _, _| {
+        recorded.send(method.to_owned()).expect("request observer");
+        Reply::Slow(Duration::from_secs(2), json!({}))
+    });
     let (mut task, mut inbox, delivered) = task();
     task.client = BusClient::new(
         path,
@@ -60,7 +74,10 @@ async fn read_timeout_keeps_rows_and_retries_once() {
         apply(&delivered, &mut store, &mut seq);
         assert_eq!(store.contact_requests().count(), 1);
         let before = Instant::now();
+        let baseline = fake.seen().len();
+        let method = fetch.request(Some("acct-main")).method;
         task.spawn_fetches(vec![fetch.clone(), fetch.clone()]);
+        observed_request(&mut observed, &method).await;
         answer(&mut task, &mut inbox).await;
         apply(&delivered, &mut store, &mut seq);
         assert!(store.failures().is_empty(), "first failure stays silent");
@@ -70,10 +87,12 @@ async fn read_timeout_keeps_rows_and_retries_once() {
         assert!(due >= before + Duration::from_secs(1));
         assert!(due <= Instant::now() + Duration::from_secs(1));
         let sent = fake.seen().len();
+        assert_eq!(sent, baseline + 1, "duplicate fetches send one initial request");
         task.tick();
         assert_eq!(fake.seen().len(), sent, "no immediate retry");
         tokio::time::sleep_until(due).await;
         task.tick();
+        observed_request(&mut observed, &method).await;
         answer(&mut task, &mut inbox).await;
         apply(&delivered, &mut store, &mut seq);
         assert!(task.read_recovery.next_due().is_none(), "second timeout exhausts retry");
@@ -90,13 +109,15 @@ async fn read_timeout_keeps_rows_and_retries_once() {
         for _ in 0..3 {
             task.tick();
         }
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert!(task.read_recovery.running.is_empty(), "no retry spawned after exhaustion");
+        assert!(task.read_recovery.rerun.is_empty(), "no follow-up queued");
         assert_eq!(fake.seen().len(), sent + 1, "only one retry request");
         assert!(inbox.internal.try_recv().is_err());
         task.spawn_reads(vec![fetch.clone()], false);
         assert!(task.read_recovery.running.is_empty(), "timer cannot rearm exhausted reads");
         // Only a new event/action can rearm an exhausted cycle.
         task.spawn_fetches(vec![fetch]);
+        observed_request(&mut observed, &method).await;
         answer(&mut task, &mut inbox).await;
         assert!(task.read_recovery.next_due().is_some(), "new action rearms recovery");
         task.read_recovery.cancel();

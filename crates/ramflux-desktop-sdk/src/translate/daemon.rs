@@ -103,6 +103,16 @@ impl Translator {
                 Some((NodeId::new(text(p, "node_id")), format!("quic://{addr}")))
             })
             .collect();
+        // Account status may arrive before this list during local readiness.
+        // Resolve its relay again whenever node profiles change, including removal.
+        if let Some(id) = self.scope.account() {
+            self.directory.relay_endpoint = self
+                .accounts
+                .get(id)
+                .and_then(|account| account.node_id.as_ref())
+                .and_then(|node| self.node_relays.get(node))
+                .cloned();
+        }
         let listed: Vec<Node> =
             list(value, "nodes").iter().map(|p| node_from_profile(p, default, true)).collect();
         let mut events = Vec::new();

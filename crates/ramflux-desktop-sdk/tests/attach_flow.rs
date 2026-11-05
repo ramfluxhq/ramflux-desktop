@@ -199,3 +199,34 @@ fn a_file_over_the_frame_budget_is_refused_before_sending() {
     fake.shutdown();
     let _ = std::fs::remove_dir_all(big.parent().expect("dir"));
 }
+
+#[test]
+fn node_profiles_resolve_the_relay_after_early_account_status() {
+    use ramflux_desktop_core::{NodeId, Timestamp};
+    use ramflux_desktop_sdk::{Scope, plan::fetch::Fetch, translate::Translator};
+
+    let id = AccountId::new("acct-main");
+    let status = frames()["account.status"].clone();
+    let mut nodes = frames()["node.list"].clone();
+    let node = NodeId::new(status["node_id"].as_str().expect("bound node"));
+    let profile = nodes["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|p| p["node_id"].as_str() == Some(node.as_str()))
+        .expect("bound node profile");
+    profile["relay"]["quic_addr"] = json!("relay.example:4443");
+    let mut translator = Translator::new(Scope::Account(id.clone()), "/tmp/rfd.sock");
+    translator.fetched(&Fetch::AccountStatus(id), &status, Timestamp(0));
+    assert!(translator.directory().relay_endpoint.is_none());
+    translator.fetched(&Fetch::NodeList, &nodes, Timestamp(0));
+    assert_eq!(translator.directory().relay_endpoint.as_deref(), Some("quic://relay.example:4443"));
+    // Later profile changes and removal also invalidate the selected endpoint.
+    for profile in nodes["nodes"].as_array_mut().expect("nodes") {
+        profile["relay"]["quic_addr"] = json!("relay.example:5553");
+    }
+    translator.fetched(&Fetch::NodeList, &nodes, Timestamp(0));
+    assert_eq!(translator.directory().relay_endpoint.as_deref(), Some("quic://relay.example:5553"));
+    translator.fetched(&Fetch::NodeList, &json!({"nodes": []}), Timestamp(0));
+    assert!(translator.directory().relay_endpoint.is_none(), "removed relay must not be reused");
+}

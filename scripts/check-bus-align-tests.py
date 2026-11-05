@@ -47,6 +47,10 @@ def main():
         for name in SDK_TESTS:
             required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--lib", *features], name)
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "requests"], GUARD)
+    required(
+        ["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "attach_flow"],
+        "node_profiles_resolve_the_relay_after_early_account_status",
+    )
     target = ["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "s5_bus_align"]
     # Compile the normal libtest target even before its first owned case lands.
     run([*target, "--", "--list"])
