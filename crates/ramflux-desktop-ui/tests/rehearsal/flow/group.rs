@@ -109,7 +109,18 @@ fn send<H: Host, D: DemoDaemon>(
     }
     desk.type_into(demo.host, "composer-input", text)?;
     desk.click(demo.host, None, "composer-send")?;
-    see(demo, ix, context, text)
+    see(demo, ix, context, text)?;
+    // An optimistic local echo is visible before group.send is accepted.
+    // Do not start the other desktop's receive assertion before that answer.
+    let principal = demo.sides[ix].facts()?.principal.clone();
+    let context = context.clone();
+    demo.wait(ix, demo.config.limits.answer, "the group submission accepted", |desk, host| {
+        desk.store(host, |s| {
+            probe::receipt(s, &context, text, &principal)
+                .is_some_and(|receipt| receipt != ramflux_desktop_core::Receipt::Sending)
+        })
+    })
+    .map(drop)
 }
 
 fn see<H: Host, D: DemoDaemon>(

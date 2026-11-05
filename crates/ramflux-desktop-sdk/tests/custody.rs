@@ -482,6 +482,7 @@ fn a_pending_account_follows_networking_events_without_status_polling() {
     let custody = Arc::new(FakeCustody::new());
     let offered = Arc::new(AtomicBool::new(true));
     let (fake, path) = daemon("net-poll", &custody, &offered);
+    fake.enable_stream();
     let config = ramflux_desktop_sdk::SdkConfig {
         // Keep generic polling outside this observation window.
         poll_fast: Duration::from_secs(60),
@@ -506,14 +507,32 @@ fn a_pending_account_follows_networking_events_without_status_polling() {
     account.until("status says pending", |s, _| {
         s.account(&id).is_some_and(|a| a.networking == Networking::Pending)
     });
-    let reads =
-        |fake: &FakeBus| fake.seen().iter().filter(|s| s.method == "account.status").count();
+    let daemon_connection = fake
+        .seen()
+        .into_iter()
+        .find(|r| r.method == "account.list")
+        .expect("daemon attach")
+        .connection;
+    let reads = |fake: &FakeBus| {
+        fake.seen()
+            .iter()
+            .filter(|s| s.method == "account.status" && s.connection != daemon_connection)
+            .count()
+    };
+    // The head subscription schedules one recovery status after the initial
+    // snapshot. Both sends must reach the fake before idle accounting starts.
+    account.until("head subscription and its recovery status", |s, _| {
+        fake.streaming(id.as_str())
+            && s.sync_status()
+                .is_some_and(|status| status.mode == ramflux_desktop_core::SyncMode::Stream)
+            && reads(&fake) == 2
+    });
     let before = reads(&fake);
     account.settle(700);
     assert_eq!(reads(&fake), before, "no networking status poll while pending");
     // The daemon publishes the later session transition.
     custody.go_live(id.as_str());
-    fake.push(id.as_str(), "account.networking.changed", json!({"account_id":id.as_str(), "state":"live", "session":{"state":"live", "phase":"live", "generation":1,"cause":null,"retry_after_ms":null}}));
+    fake.publish(id.as_str(), "account.networking.changed", json!({"account_id":id.as_str(), "state":"live", "session":{"state":"live", "phase":"live", "generation":1,"cause":null,"retry_after_ms":null}}));
     account.until("live", |s, _| s.account(&id).is_some_and(|a| a.networking == Networking::Live));
     // Once live nothing keeps polling the status.
     account.settle(300);

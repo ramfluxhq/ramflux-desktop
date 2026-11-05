@@ -59,6 +59,10 @@ def required(target, name):
 
 
 def main():
+    required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "custody"],
+        "a_pending_account_follows_networking_events_without_status_polling")
+    required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "demo_rehearsal_fake"],
+        "every_step_passes_on_a_node_that_behaves")
     for features in ([], ["--features", "bus-trace"]):
         for name in SDK_TESTS:
             required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--lib", *features], name)

@@ -102,6 +102,16 @@ fn rehearse(
 fn every_step_passes_on_a_node_that_behaves(cx: &mut TestAppContext) {
     let steps = rehearse(cx, "f9-ok", KEY, |steps, demo, world| {
         assert!(steps.all_passed(), "{}", steps.markdown());
+        for side in 0..2 {
+            demo.wait(side, Limits::FAKE.answer, "the fake daemon event stream", |desk, host| {
+                desk.store(host, |store| {
+                    store
+                        .sync_status()
+                        .is_some_and(|status| status.mode == ramflux_desktop_core::SyncMode::Stream)
+                })
+            })
+            .expect("rehearsal uses daemon events, without polling fallback");
+        }
         // Each received direct message was acknowledged once, by its
         // recipient's desktop (the daemon sends no receipt by itself), even
         // across the lock and daemon restart of step 8.

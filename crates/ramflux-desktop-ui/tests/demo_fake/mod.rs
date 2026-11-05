@@ -45,8 +45,26 @@ impl FakeDaemon {
     fn serve(&mut self) {
         let (world, side) = (self.world.clone(), self.side);
         self.bus = Some(FakeBus::start(&self.path, move |method, account, body| {
-            world.lock().expect("world").handle(side, method, account, body)
+            let mut world = world.lock().expect("world");
+            let reply = world.handle(side, method, account, body);
+            if matches!(
+                method,
+                "message.submit"
+                    | "message.receipt.delivered"
+                    | "group.send"
+                    | "group.create"
+                    | "group.member.add"
+                    | "contact.add"
+                    | "contact.request"
+                    | "contact.accept"
+            ) {
+                world.announce_changes();
+            }
+            reply
         }));
+        let bus = self.bus.as_ref().expect("fake bus");
+        bus.enable_stream();
+        self.world.lock().expect("world").set_publisher(side, bus.publisher());
     }
 }
 
@@ -89,7 +107,9 @@ impl DemoDaemon for FakeDaemon {
     }
 
     fn dm_read(&self, account: &str, conversation: &str) -> Result<(), String> {
-        self.world.lock().expect("world").receive(self.side, account, conversation);
+        let mut world = self.world.lock().expect("world");
+        world.receive(self.side, account, conversation);
+        world.announce_changes();
         Ok(())
     }
 }

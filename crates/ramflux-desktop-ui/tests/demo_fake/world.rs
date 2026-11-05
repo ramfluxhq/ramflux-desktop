@@ -114,6 +114,15 @@ pub struct Group {
     pub messages: Vec<(String, String, String, u64)>,
 }
 
+#[derive(Default)]
+struct Publishers([Option<ramflux_desktop_test::fake_bus::Publisher>; 2]);
+
+impl std::fmt::Debug for Publishers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Publishers")
+    }
+}
+
 /// The node and both daemons.
 #[derive(Debug)]
 pub struct World {
@@ -122,6 +131,7 @@ pub struct World {
     held: Vec<Held>,
     groups: BTreeMap<String, Group>,
     clock: u64,
+    publishers: Publishers,
     /// Every delivery receipt asked for: conversation and message.
     pub receipts_asked: Vec<(String, String)>,
 }
@@ -151,9 +161,73 @@ impl World {
             node,
             daemons: Default::default(),
             held: Vec::new(),
+            publishers: Publishers::default(),
             groups: BTreeMap::new(),
             clock: 1_790_000_100,
             receipts_asked: Vec::new(),
+        }
+    }
+
+    pub fn set_publisher(
+        &mut self,
+        side: usize,
+        publisher: ramflux_desktop_test::fake_bus::Publisher,
+    ) {
+        self.publishers.0[side] = Some(publisher);
+    }
+
+    /// The resident daemon receives known conversations and announces local changes.
+    /// Unknown conversations keep the rehearsal's explicit CLI bootstrap step.
+    pub fn announce_changes(&mut self) {
+        let mut ready = Vec::new();
+        for held in &self.held {
+            for (side, daemon) in self.daemons.iter().enumerate() {
+                for account in &daemon.accounts {
+                    if account.open
+                        && account.target == held.to_target
+                        && account.conversations.contains_key(&held.conversation)
+                    {
+                        ready.push((side, account.id.clone(), held.conversation.clone()));
+                    }
+                }
+            }
+        }
+        for (side, id, conversation) in ready {
+            self.receive(side, &id, &conversation);
+        }
+        for (side, daemon) in self.daemons.iter().enumerate() {
+            let Some(publisher) = &self.publishers.0[side] else { continue };
+            for account in daemon.accounts.iter().filter(|a| a.open) {
+                publisher.publish(&account.id, "contact.changed", json!({}));
+                for conversation in account.conversations.keys() {
+                    publisher.publish(
+                        &account.id,
+                        "conversation.changed",
+                        json!({"conversation_id":conversation}),
+                    );
+                    publisher.publish(
+                        &account.id,
+                        "message.updated",
+                        json!({"conversation_id":conversation}),
+                    );
+                }
+                for (group_id, group) in &self.groups {
+                    if group.members.iter().any(|(_, principal)| principal == &account.principal) {
+                        publisher.publish(
+                            &account.id,
+                            "group.changed",
+                            json!({"group_id":group_id, "conversation_id":group.conversation}),
+                        );
+                        if !group.messages.is_empty() {
+                            publisher.publish(
+                                &account.id,
+                                "group.message.received",
+                                json!({"group_id":group_id, "conversation_id":group.conversation}),
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 

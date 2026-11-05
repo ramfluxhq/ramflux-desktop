@@ -174,7 +174,7 @@ impl<'h, H: Host, D: DemoDaemon> Demo<'h, H, D> {
 
     /// Ticks until `done` holds on side `ix`; a timeout names the store's
     /// last failures.
-    fn wait(
+    pub fn wait(
         &mut self,
         ix: usize,
         limit: std::time::Duration,
