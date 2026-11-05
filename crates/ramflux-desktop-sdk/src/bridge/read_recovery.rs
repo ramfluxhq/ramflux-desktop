@@ -4,7 +4,7 @@
 //! One delayed retry per failed fetch, independent of the rendering clock.
 
 use crate::plan::fetch::Fetch;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 use tokio::task::AbortHandle;
 use tokio::time::Instant;
@@ -20,6 +20,8 @@ enum Retry {
 pub(super) struct ReadRecovery {
     retries: BTreeMap<Fetch, Retry>,
     pub(super) running: BTreeMap<Fetch, AbortHandle>,
+    /// A newer action/event needs a read after the in-flight answer.
+    pub(super) rerun: BTreeSet<Fetch>,
 }
 
 impl ReadRecovery {
@@ -39,9 +41,7 @@ impl ReadRecovery {
     }
 
     pub(super) fn succeeded(&mut self, fetch: &Fetch) {
-        if self.retries.contains_key(fetch) {
-            self.retries.insert(fetch.clone(), Retry::Exhausted);
-        }
+        self.retries.remove(fetch);
     }
 
     pub(super) fn rearm(&mut self, fetch: &Fetch) {
@@ -79,6 +79,7 @@ impl ReadRecovery {
 
     pub(super) fn cancel(&mut self) {
         self.retries.clear();
+        self.rerun.clear();
         for (_, task) in std::mem::take(&mut self.running) {
             task.abort();
         }

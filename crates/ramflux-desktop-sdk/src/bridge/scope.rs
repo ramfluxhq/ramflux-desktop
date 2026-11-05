@@ -25,7 +25,7 @@
 //! the daemon status and account list. A lost connection reports
 //! `Disconnected` and re-snapshots after a back-off.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc as std_mpsc;
@@ -580,10 +580,20 @@ impl Task {
         if matches!(self.link, Link::Locked | Link::Lost) {
             return;
         }
+        // Duplicates within one trigger are one request. A later trigger is
+        // different: its committed change may not be in the running answer.
+        let mut seen = BTreeSet::new();
         for fetch in fetches {
-            if self.read_recovery.running.contains_key(&fetch)
-                || (!rearm && self.read_recovery.blocks_timer(&fetch))
-            {
+            if !seen.insert(fetch.clone()) {
+                continue;
+            }
+            if self.read_recovery.running.contains_key(&fetch) {
+                if rearm {
+                    self.read_recovery.rerun.insert(fetch);
+                }
+                continue;
+            }
+            if !rearm && self.read_recovery.blocks_timer(&fetch) {
                 continue;
             }
             if rearm {
@@ -597,6 +607,15 @@ impl Task {
                 let _ = internal.send(Internal::Fetched(read));
             });
             self.read_recovery.running.insert(key, task.abort_handle());
+        }
+    }
+
+    /// Merge direct refreshes with a stream-requested follow-up that may
+    /// already have started in read_ended. Never queue a third read for it.
+    fn rerun_fetch(&mut self, fetch: &Fetch) {
+        if self.read_recovery.rerun.remove(fetch) && !self.read_recovery.running.contains_key(fetch)
+        {
+            self.spawn_fetches(vec![fetch.clone()]);
         }
     }
 
@@ -677,10 +696,13 @@ impl Task {
                     }
                 }
                 self.read_ended(&fetch, finished);
+                self.rerun_fetch(&fetch);
             }
             Internal::PollDone(skipped) => {
                 for fetch in skipped {
                     self.read_recovery.running.remove(&fetch);
+                    self.read_ended(&fetch, true);
+                    self.rerun_fetch(&fetch);
                 }
                 self.polls_in_flight = self.polls_in_flight.saturating_sub(1);
                 if self.polls_in_flight == 0 {
@@ -751,9 +773,12 @@ impl Task {
         }
         self.link = Link::Live;
         for (fetch, number, result) in results {
+            let finished = last_page(&fetch, &result);
             if !self.outdated(&fetch, number, &result) {
                 self.on_read(&fetch, result);
             }
+            self.read_ended(&fetch, finished);
+            self.rerun_fetch(&fetch);
         }
         // Every list is known now, so pins come back in their saved order.
         self.restore_pins();
@@ -789,6 +814,9 @@ impl Task {
         if let Err(error) = &result
             && !error.is_connection_lost()
             && !error.is_unknown_method()
+            && !(matches!(fetch, Fetch::BackupJobs)
+                && (!error.is_retryable()
+                    || matches!(error, BusError::Daemon { code, .. } if code == "CapabilityDenied")))
             && !(matches!(fetch, Fetch::AccountStatus(_))
                 && matches!(error, BusError::Daemon { message, .. } if message.contains("account not open")))
         {
@@ -1002,3 +1030,7 @@ impl Task {
 #[cfg(test)]
 #[path = "requests_retry_tests.rs"]
 mod requests_retry_tests;
+
+#[cfg(test)]
+#[path = "review_retry_tests.rs"]
+mod review_retry_tests;

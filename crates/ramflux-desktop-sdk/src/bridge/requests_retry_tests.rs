@@ -136,10 +136,14 @@ async fn read_retry_cancels_on_lock_or_detach_and_coalesces() {
         assert_eq!(task.read_recovery.running.len(), 1);
         answer(&mut task, &mut inbox).await;
         assert_eq!(fake.seen().len(), baseline + 3);
+        answer(&mut task, &mut inbox).await;
+        assert_eq!(fake.seen().len(), baseline + 4, "one follow-up for the later event");
         task.on_read(&Fetch::ContactRequests, Err(BusError::Timeout));
         let cancel_due = task.read_recovery.next_due().expect("new episode");
         // Also cancel an active fetch, including a late completion already queued.
         task.spawn_fetches(vec![Fetch::ContactList]);
+        task.spawn_fetches(vec![Fetch::ContactList]);
+        assert!(task.read_recovery.rerun.contains(&Fetch::ContactList));
         let handle = task.read_recovery.running[&Fetch::ContactList].clone();
         match cancel {
             0 => task.locked(),
@@ -151,12 +155,13 @@ async fn read_retry_cancels_on_lock_or_detach_and_coalesces() {
                 tokio::time::sleep_until(cancel_due).await;
                 assert_eq!(
                     fake.seen().iter().filter(|s| s.method == "contact.requests.list").count(),
-                    (cancel as usize + 1) * 3
+                    (cancel as usize + 1) * 4
                 );
                 continue;
             }
         }
         assert!(task.read_recovery.next_due().is_none());
+        assert!(task.read_recovery.rerun.is_empty(), "cancel also clears pending follow-ups");
         tokio::time::sleep_until(cancel_due).await;
         // Keep the disconnected task before its reconnect deadline.
         task.reconnect_at = Instant::now() + Duration::from_secs(60);
