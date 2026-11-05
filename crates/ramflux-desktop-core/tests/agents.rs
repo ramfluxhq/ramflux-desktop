@@ -23,6 +23,8 @@ fn account(id: &str, kind: AccountKind, lock: LockState, networking: Networking)
         lock_state: lock,
         self_participant_id: None,
         secure_sessions: SecureSessions::Ready,
+        networking_session: None,
+        networking_reason: None,
         networking,
     }
 }

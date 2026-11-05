@@ -305,6 +305,8 @@ fn all_domain_events() -> Vec<DomainEvent> {
             lock_state: LockState::Unlocked,
             self_participant_id: Some(ParticipantId::new("p-me")),
             secure_sessions: ramflux_desktop_core::SecureSessions::Reestablishing,
+            networking_session: None,
+            networking_reason: None,
             networking: ramflux_desktop_core::Networking::Pending,
         }),
         DomainEvent::NodeUpserted(Node {

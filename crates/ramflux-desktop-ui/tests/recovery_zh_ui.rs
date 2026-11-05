@@ -41,6 +41,8 @@ fn the_screens_speak_chinese_when_the_interface_does(cx: &mut TestAppContext) {
                     lock_state: LockState::Locked,
                     self_participant_id: None,
                     secure_sessions: SecureSessions::Ready,
+                    networking_session: None,
+                    networking_reason: None,
                     networking: Networking::Live,
                 }),
             );

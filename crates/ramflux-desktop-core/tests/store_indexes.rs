@@ -165,6 +165,8 @@ fn message_bodies_live_in_the_bounded_cache_and_a_lock_drops_them() {
             lock_state: LockState::Unlocked,
             self_participant_id: None,
             secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
+            networking_session: None,
+            networking_reason: None,
             networking: ramflux_desktop_core::Networking::Live,
         }),
     );

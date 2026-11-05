@@ -11,6 +11,9 @@ SDK_TESTS = [
     "bridge::scope::review_retry_tests::recovered_reads_resume_timer_refresh_and_reset_failure_episode",
     "bridge::scope::review_retry_tests::backup_permanent_refusal_sets_capability_and_finishes_listing",
     "bridge::scope::review_retry_tests::in_flight_refresh_reads_committed_state_once_after_all_completion_paths",
+    "bridge::scope::networking_tests::admitted_disconnected_account_attaches_as_pending",
+    "bridge::scope::networking_tests::expired_cursor_recovers_networking_snapshot",
+    "bridge::scope::networking_tests::delayed_status_cannot_overwrite_newer_networking_event",
 
     "bridge::scope::requests_retry_tests::unlocked_status_is_delivered_before_slow_snapshot_lists",
     "bridge::scope::requests_retry_tests::read_timeout_keeps_rows_and_retries_once",

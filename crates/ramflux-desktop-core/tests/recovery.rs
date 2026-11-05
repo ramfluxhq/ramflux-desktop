@@ -37,6 +37,8 @@ fn listed(kind: AccountKind) -> DomainEvent {
         lock_state: LockState::Locked,
         self_participant_id: None,
         secure_sessions: SecureSessions::Ready,
+        networking_session: None,
+        networking_reason: None,
         networking: Networking::Live,
     })
 }

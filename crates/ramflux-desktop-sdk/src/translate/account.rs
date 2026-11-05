@@ -32,6 +32,19 @@ fn secure_sessions(value: &Value) -> Option<SecureSessions> {
 }
 
 impl Translator {
+    /// Apply the additive custody/session networking event without reading status.
+    pub fn networking_changed(&mut self, body: &Value) -> Vec<DomainEvent> {
+        let Some(id) = body["account_id"].as_str().filter(|id| !id.is_empty()) else {
+            return Vec::new();
+        };
+        if self.scope.account().is_some_and(|own| own.as_str() != id) {
+            return Vec::new();
+        }
+        let mut account = self.account_record(&AccountId::new(id));
+        super::daemon::apply_networking(&mut account, body);
+        self.put_account(account)
+    }
+
     /// Whether this scope's own account is waiting for its networking.
     pub fn own_networking_pending(&self) -> bool {
         self.scope.account().and_then(|id| self.accounts.get(id)).is_some_and(|account| {
@@ -44,9 +57,7 @@ impl Translator {
         let mut account = self.account_record(id);
         account.lock_state = LockState::Unlocked;
         account.node_id = value["node_id"].as_str().map(NodeId::new);
-        if let Some(networking) = super::daemon::networking(value) {
-            account.networking = networking;
-        }
+        super::daemon::apply_networking(&mut account, value);
         if let Some(sessions) = secure_sessions(value) {
             account.secure_sessions = sessions;
         }

@@ -309,6 +309,8 @@ impl MockCeremony {
             lock_state: LockState::Unlocked,
             self_participant_id: None,
             secure_sessions: SecureSessions::Ready,
+            networking_session: None,
+            networking_reason: None,
             networking: self.networking,
         });
         let mut events = vec![listed];

@@ -74,6 +74,12 @@ pub struct Account {
     /// until registration exists.
     #[serde(default)]
     pub networking: super::Networking,
+    /// Last resident session state; custody-only answers cannot replace it.
+    #[serde(default)]
+    pub networking_session: Option<super::Networking>,
+    /// Typed reason and retry details from the daemon.
+    #[serde(default)]
+    pub networking_reason: Option<NetworkingReason>,
 }
 
 /// How a node endpoint was pinned.
@@ -193,4 +199,114 @@ pub struct Device {
     /// Last time the device was seen by the node.
     #[serde(default)]
     pub last_seen: Option<Timestamp>,
+}
+
+/// The six daemon networking reason kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkingReasonKind {
+    /// Choose a node.
+    NoNodeSelected,
+    /// The node cannot be reached yet.
+    NodeUnreachable,
+    /// The node does not offer custody.
+    NodeCustodyUnavailable,
+    /// The node has exhausted admission capacity.
+    NodeBusy,
+    /// Registration was refused with a typed code.
+    RegistrationRefused,
+    /// Custody must be renewed.
+    CustodyExpired,
+}
+
+/// Complete refusal code, including migration details.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistrationRefusal {
+    /// Unsupported protocol.
+    Unsupported,
+    /// Invalid registration input.
+    InvalidInput,
+    /// Authority unavailable.
+    AuthorityUnavailable,
+    /// Identity conflict.
+    PrincipalIdTaken,
+    /// Unknown challenge.
+    ChallengeUnknown,
+    /// Expired challenge.
+    ChallengeExpired,
+    /// Replayed challenge.
+    Replay,
+    /// Binding refused.
+    BindingRefused,
+    /// Session required.
+    SessionRequired,
+    /// Session expired.
+    SessionExpired,
+    /// Client or node update required.
+    UpdateRequired,
+    /// Admission capacity exhausted.
+    Capacity,
+    /// Temporary listener saturation.
+    Busy,
+    /// Storage temporarily unavailable.
+    PersistenceUnavailable,
+    /// Migration refusal with the complete protocol detail.
+    HomeMigration {
+        /// Typed protocol reason serialized without discarding nested fields.
+        reason: serde_json::Value,
+        /// Complete negative acknowledgement, if present.
+        nack: Option<serde_json::Value>,
+    },
+}
+
+/// Admission capacity identity and absolute reset deadline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkingCapacity {
+    /// Server capacity scope.
+    pub scope: String,
+    /// Absolute server deadline.
+    pub resets_at_unix: u64,
+}
+
+/// Networking explanation shared by status snapshots and events.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkingReason {
+    /// Reason kind.
+    pub kind: NetworkingReasonKind,
+    /// Registration refusal code and nested details.
+    #[serde(default)]
+    pub code: Option<RegistrationRefusal>,
+    /// Suggested retry delay.
+    #[serde(default)]
+    pub retry_after_ms: Option<u64>,
+    /// Capacity scope and absolute deadline.
+    #[serde(default)]
+    pub capacity: Option<NetworkingCapacity>,
+    /// Node binding identity associated with this explanation.
+    #[serde(default)]
+    pub node_binding: Option<serde_json::Value>,
+}
+
+impl NetworkingReason {
+    /// Whether this reason requires user action rather than reconnecting.
+    #[must_use]
+    pub fn requires_action(&self) -> bool {
+        use NetworkingReasonKind as Kind;
+        use RegistrationRefusal as Code;
+        match self.kind {
+            Kind::NodeBusy | Kind::NodeUnreachable => false,
+            Kind::NoNodeSelected | Kind::NodeCustodyUnavailable | Kind::CustodyExpired => true,
+            Kind::RegistrationRefused => !matches!(
+                self.code,
+                Some(
+                    Code::Busy
+                        | Code::Capacity
+                        | Code::PersistenceUnavailable
+                        | Code::SessionRequired
+                        | Code::SessionExpired
+                )
+            ),
+        }
+    }
 }

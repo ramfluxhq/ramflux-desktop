@@ -173,6 +173,8 @@ impl MockRecovery {
                 lock_state: LockState::Unlocked,
                 self_participant_id: None,
                 secure_sessions: SecureSessions::Ready,
+                networking_session: None,
+                networking_reason: None,
                 networking,
             }),
             Self::record(&running, DEMO_ANCHOR, RecoveryPhase::Recovered(account)),

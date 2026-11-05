@@ -34,6 +34,57 @@ pub(crate) fn networking(row: &Value) -> Option<ramflux_desktop_core::Networking
     }
 }
 
+/// Apply custody and resident state from either a status or an event.
+pub(super) fn apply_networking(account: &mut Account, row: &Value) {
+    let session = row.get("session").or_else(|| row.get("networking_snapshot"));
+    if let Some(session) = session {
+        account.networking_session = match session["state"].as_str() {
+            Some("live") => Some(ramflux_desktop_core::Networking::Live),
+            Some("networking_pending") => Some(ramflux_desktop_core::Networking::Pending),
+            _ => account.networking_session,
+        };
+    }
+    let custody = row.get("networking_reason").and_then(|v| {
+        serde_json::from_value::<ramflux_desktop_core::NetworkingReason>(v.clone()).ok()
+    });
+    let resident = session.and_then(|v| {
+        serde_json::from_value::<ramflux_desktop_core::NetworkingReason>(v["cause"].clone()).ok()
+    });
+    if session.is_some() || account.networking_session.is_none() {
+        let mut reason = custody
+            .filter(ramflux_desktop_core::NetworkingReason::requires_action)
+            .or(resident)
+            .or_else(|| {
+                row.get("networking_reason").and_then(|v| serde_json::from_value(v.clone()).ok())
+            });
+        if let Some(reason) = &mut reason {
+            reason.node_binding = row.get("node_binding").filter(|v| !v.is_null()).cloned();
+            if reason.retry_after_ms.is_none() {
+                reason.retry_after_ms = session.and_then(|s| s["retry_after_ms"].as_u64());
+            }
+        }
+        account.networking_reason = reason;
+    } else if custody.as_ref().is_some_and(ramflux_desktop_core::NetworkingReason::requires_action)
+    {
+        account.networking_reason = custody;
+    }
+    if account
+        .networking_reason
+        .as_ref()
+        .is_some_and(ramflux_desktop_core::NetworkingReason::requires_action)
+    {
+        account.networking = ramflux_desktop_core::Networking::Pending;
+    } else if let Some(session) = account.networking_session {
+        account.networking = session;
+    } else if let Some(state) = networking(row).or_else(|| match row["state"].as_str() {
+        Some("live") => Some(ramflux_desktop_core::Networking::Live),
+        Some("networking_pending") => Some(ramflux_desktop_core::Networking::Pending),
+        _ => None,
+    }) {
+        account.networking = state;
+    }
+}
+
 /// A daemon node profile as a desktop node.
 ///
 /// `confirmed` is false for a discovery answer (`node.add`) and true for a
@@ -182,9 +233,7 @@ impl Translator {
             if let Some(kind) = account_kind(detail) {
                 account.kind = kind;
             }
-            if let Some(networking) = networking(detail) {
-                account.networking = networking;
-            }
+            apply_networking(&mut account, detail);
             let agent = account.kind == ramflux_desktop_core::AccountKind::HeadlessAi;
             out.events.extend(self.put_account(account));
             if agent {
@@ -213,6 +262,8 @@ impl Translator {
             lock_state: LockState::Locked,
             self_participant_id: None,
             secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
+            networking_session: None,
+            networking_reason: None,
             networking: ramflux_desktop_core::Networking::Live,
         })
     }

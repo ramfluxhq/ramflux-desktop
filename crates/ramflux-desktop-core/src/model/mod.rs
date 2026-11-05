@@ -49,8 +49,9 @@ mod surface;
 mod task;
 
 pub use account::{
-    Account, AccountKind, Device, LockState, Node, NodeHealth, NodeProbe, PinSource, ProbeOutcome,
-    SecureSessions,
+    Account, AccountKind, Device, LockState, NetworkingCapacity, NetworkingReason,
+    NetworkingReasonKind, Node, NodeHealth, NodeProbe, PinSource, ProbeOutcome,
+    RegistrationRefusal, SecureSessions,
 };
 pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MIN_HOLD_MS};
 pub use agent::{AgentCustodyProblem, AgentExport, AgentExportPhase, AgentExportRefusal};

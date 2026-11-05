@@ -31,6 +31,8 @@ fn empty_account() -> Scenario {
         lock_state: LockState::Unlocked,
         self_participant_id: None,
         secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
+        networking_session: None,
+        networking_reason: None,
         networking: ramflux_desktop_core::Networking::Live,
     };
     Scenario {

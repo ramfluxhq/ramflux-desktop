@@ -193,6 +193,8 @@ fn owner_player() -> ScenarioPlayer {
         lock_state: LockState::Unlocked,
         self_participant_id: None,
         secure_sessions: ramflux_desktop_core::SecureSessions::Ready,
+        networking_session: None,
+        networking_reason: None,
         networking: Networking::Live,
     };
     p.source_mut().inject(0, ramflux_desktop_core::DomainEvent::AccountUpdated(owner));

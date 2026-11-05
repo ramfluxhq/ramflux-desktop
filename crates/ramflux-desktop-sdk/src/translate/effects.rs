@@ -202,7 +202,9 @@ impl Translator {
         if !opened.display_name.is_empty() {
             account.label.clone_from(&opened.display_name);
         }
-        account.networking = opened.networking;
+        if account.networking_session.is_none() {
+            account.networking = opened.networking;
+        }
         let mut events = self.put_account(account);
         if let Some(custodian) = &opened.custodian {
             events.extend(self.custodian_made(&opened.id, custodian));
@@ -227,9 +229,7 @@ impl Translator {
         if let Some(principal) = answer["principal_id"].as_str() {
             account.self_participant_id = Some(ParticipantId::new(principal));
         }
-        if let Some(networking) = super::daemon::networking(answer) {
-            account.networking = networking;
-        }
+        super::daemon::apply_networking(&mut account, answer);
         self.put_account(account)
     }
 }

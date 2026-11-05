@@ -164,14 +164,25 @@ pub(super) struct Task {
     /// is pending, and the wait after that (account scope).
     pub(super) net_due: Option<Instant>,
     pub(super) net_wait: Duration,
+    pub(super) networking_revision: u64,
     pub(super) ceremonies: Ceremonies,
 }
 
 /// Sends one read; a listing's first page gets the next listing number
 /// just before it is sent.
-async fn read(client: &BusClient, fetch: Fetch, account: Option<&str>, sent: &AtomicU64) -> Read {
+async fn read(
+    client: &BusClient,
+    fetch: Fetch,
+    account: Option<&str>,
+    sent: &AtomicU64,
+    revision: u64,
+) -> Read {
     let request = fetch.request(account);
-    let number = matches!(fetch, Fetch::Page(_, None)).then(|| sent.fetch_add(1, Ordering::SeqCst));
+    let number = if matches!(fetch, Fetch::AccountStatus(_)) {
+        Some(revision)
+    } else {
+        matches!(fetch, Fetch::Page(_, None)).then(|| sent.fetch_add(1, Ordering::SeqCst))
+    };
     let result = client.call(&request).await;
     (fetch, number, result)
 }
@@ -264,6 +275,7 @@ pub(super) fn build(
         custody: super::custody::Custody::new(),
         net_due: None,
         net_wait: Duration::ZERO,
+        networking_revision: 0,
         ceremonies,
     };
     (task, Inbox { internal: internal_rx, pushed: pushed_rx, streamed: streamed_rx, jobs: jobs_rx })
@@ -482,13 +494,14 @@ impl Task {
         let account = self.account();
         let internal = self.internal.clone();
         let sent = self.listings_sent.clone();
+        let revision = self.networking_revision;
         let task = tokio::spawn(async move {
             let mut set = JoinSet::new();
             for (index, fetch) in reads.into_iter().enumerate() {
                 let (client, account, sent) = (client.clone(), account.clone(), sent.clone());
-                set.spawn(
-                    async move { (index, read(&client, fetch, account.as_deref(), &sent).await) },
-                );
+                set.spawn(async move {
+                    (index, read(&client, fetch, account.as_deref(), &sent, revision).await)
+                });
             }
             let mut results = Vec::new();
             while let Some(Ok(answer)) = set.join_next().await {
@@ -602,8 +615,9 @@ impl Task {
             let (client, account) = (self.client.clone(), self.account());
             let (internal, sent) = (self.internal.clone(), self.listings_sent.clone());
             let key = fetch.clone();
+            let revision = self.networking_revision;
             let task = tokio::spawn(async move {
-                let read = read(&client, fetch, account.as_deref(), &sent).await;
+                let read = read(&client, fetch, account.as_deref(), &sent, revision).await;
                 let _ = internal.send(Internal::Fetched(read));
             });
             self.read_recovery.running.insert(key, task.abort_handle());
@@ -650,11 +664,12 @@ impl Task {
             let account = self.account();
             let internal = self.internal.clone();
             let sent = self.listings_sent.clone();
+            let revision = self.networking_revision;
             let task = tokio::spawn(async move {
                 let mut sequence = sequence.into_iter();
                 for fetch in sequence.by_ref() {
                     let (fetch, number, result) =
-                        read(&client, fetch, account.as_deref(), &sent).await;
+                        read(&client, fetch, account.as_deref(), &sent, revision).await;
                     // A failed pull from the node (`message.receive`) never
                     // stops the read of what is already stored: the
                     // conversation keeps showing its messages.
@@ -804,6 +819,9 @@ impl Task {
         number: Option<u64>,
         result: &Result<Value, BusError>,
     ) -> bool {
+        if matches!(fetch, Fetch::AccountStatus(_)) && result.is_ok() {
+            return number.is_some_and(|revision| revision < self.networking_revision);
+        }
         let (Fetch::Page(paged, None), Some(number), Ok(_)) = (fetch, number, result) else {
             return false;
         };
@@ -1042,3 +1060,7 @@ mod requests_retry_tests;
 #[cfg(test)]
 #[path = "review_retry_tests.rs"]
 mod review_retry_tests;
+
+#[cfg(test)]
+#[path = "networking_tests.rs"]
+mod networking_tests;
