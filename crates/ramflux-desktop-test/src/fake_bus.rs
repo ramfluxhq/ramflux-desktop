@@ -125,6 +125,7 @@ struct Hold {
     /// released.
     state: Mutex<(bool, bool)>,
     changed: Condvar,
+    waiting: AtomicBool,
 }
 
 impl Hold {
@@ -135,9 +136,11 @@ impl Hold {
             return false;
         }
         state.0 = false;
+        self.waiting.store(true, Ordering::SeqCst);
         while !state.1 {
             state = self.changed.wait(state).expect("hold");
         }
+        self.waiting.store(false, Ordering::SeqCst);
         true
     }
 
@@ -161,6 +164,7 @@ pub struct FakeBus {
     applied: Arc<AtomicUsize>,
     journal: Arc<Mutex<Journal>>,
     jobs: Arc<Mutex<Journal>>,
+    account_hold: Arc<Hold>,
     hold: Arc<Hold>,
     /// Holds back the answer of one job request.
     request_hold: Arc<Hold>,
@@ -180,6 +184,7 @@ struct Shared {
     jobs: Arc<Mutex<Journal>>,
     /// Connections that opened the job stream as an attended frontend.
     attended: Mutex<BTreeSet<usize>>,
+    account_hold: Arc<Hold>,
     hold: Arc<Hold>,
     /// Holds back the answer of one job request.
     request_hold: Arc<Hold>,
@@ -213,6 +218,7 @@ impl FakeBus {
         let applied = Arc::new(AtomicUsize::new(0));
         let journal = Arc::new(Mutex::new(Journal::default()));
         let jobs = Arc::new(Mutex::new(Journal::daemon()));
+        let account_hold = Arc::new(Hold::default());
         let hold = Arc::new(Hold::default());
         let request_hold = Arc::new(Hold::default());
         let shared = Arc::new(Shared {
@@ -224,6 +230,7 @@ impl FakeBus {
             journal: journal.clone(),
             jobs: jobs.clone(),
             attended: Mutex::new(BTreeSet::new()),
+            account_hold: account_hold.clone(),
             hold: hold.clone(),
             request_hold: request_hold.clone(),
             custody: custody.clone(),
@@ -255,6 +262,7 @@ impl FakeBus {
             applied,
             journal,
             jobs,
+            account_hold,
             hold,
             request_hold,
             custody,
@@ -264,6 +272,21 @@ impl FakeBus {
     /// The daemon's creation and recovery ceremonies.
     pub fn custody(&self) -> &Arc<FakeCustody> {
         &self.custody
+    }
+
+    /// Holds the next account subscription before its head is captured.
+    pub fn hold_next_account_subscribe(&self) {
+        self.account_hold.arm();
+    }
+
+    /// Whether an account subscription is waiting at the hold.
+    pub fn account_subscribe_held(&self) -> bool {
+        self.account_hold.waiting.load(Ordering::SeqCst)
+    }
+
+    /// Releases the held account subscription.
+    pub fn release_account_subscribe(&self) {
+        self.account_hold.release();
     }
 
     /// The next job-stream subscription is received (it shows in
@@ -425,6 +448,7 @@ impl FakeBus {
     /// Stops accepting, closes every connection and removes the socket.
     pub fn shutdown(self) {
         self.stop.store(true, Ordering::SeqCst);
+        self.account_hold.release();
         self.hold.release();
         self.request_hold.release();
         for stream in self.streams.lock().expect("streams").drain(..) {
@@ -554,6 +578,7 @@ fn answer(
     } else if let Some(stored) = receipt {
         Reply::Ok(stored)
     } else if method == "bus.subscribe" {
+        shared.account_hold.pass();
         match shared.journal.lock().expect("journal").subscribe(request, connection, writer) {
             Subscribed::Following => return,
             Subscribed::Refused(code, message) => Reply::Error(code, message),

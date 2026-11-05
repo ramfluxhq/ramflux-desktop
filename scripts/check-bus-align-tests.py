@@ -67,6 +67,10 @@ def required(target, name):
 
 
 def main():
+    required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "tasks_contract"],
+        "a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_long")
+    required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--lib", "--features", "bus-trace"],
+        "bus::trace::retention_tests::ring_export_is_bounded_and_contains_only_send_metadata")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "custody"],
         "a_pending_account_follows_networking_events_without_status_polling")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "demo_rehearsal_fake"],

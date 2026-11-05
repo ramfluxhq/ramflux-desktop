@@ -28,6 +28,17 @@ pub trait DemoDaemon {
     /// Why it did not come back.
     fn restart(&mut self) -> Result<(), String>;
 
+    /// Holds the next subscription after the old locked session is gone.
+    fn arm_restart_snapshot(&self) {}
+
+    /// Fake-only restart window: whether history was read while subscribe is held.
+    fn restart_snapshot_ready(&self) -> Option<bool> {
+        None
+    }
+
+    /// Publishes history inside the fake restart window, then opens the stream.
+    fn release_restart_snapshot(&self) {}
+
     /// `account status` of `account`.
     ///
     /// # Errors

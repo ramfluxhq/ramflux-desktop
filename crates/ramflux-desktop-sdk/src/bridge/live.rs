@@ -193,7 +193,7 @@ impl Task {
     /// Reads everything again (after a gap in the stream).
     fn reload(&mut self) {
         let mut reads = self.reads_for_snapshot();
-        reads.extend(self.translator.watched_reads());
+        reads.extend(self.translator.recovery_reads());
         self.request_reads(reads);
     }
 

@@ -136,11 +136,21 @@ fn a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_
     account.until("pending", |s, _| s.task(&id).is_some_and(|t| t.answer == pending));
     drop(account);
 
+    // Hold subscription before head capture: the durable snapshot is shown,
+    // then a change happens in the snapshot-to-subscribe window.
+    world.fake.hold_next_account_subscribe();
     // A new desktop session reads the daemon's durable pending resolution.
     let mut account = open(&path);
     account.until("still pending", |s, _| s.task(&id).is_some_and(|t| t.answer == pending));
+    account.until("subscription held", |_, _| world.fake.account_subscribe_held());
+    let mark = world.mark();
+    account.source.focus(Some(&ContextId::new("dm-ana")));
+    account.until("focus moved away from task", |_, _| {
+        world.since(mark, "message.list").iter().any(|s| s.body["conversation_id"] == "dm-ana")
+    });
     let before_timeout = world.tasks.view(GROUP, "t-1");
     world.tasks.time_out_decisions();
+    world.fake.release_account_subscribe();
     // A task.list already in flight can return the same revision's pending
     // view after task.get has shown the timeout. Force that reply order.
     let mut translator = ramflux_desktop_sdk::translate::Translator::new(

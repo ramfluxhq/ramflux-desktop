@@ -55,6 +55,7 @@ pub fn lock_and_restart<H: Host, D: DemoDaemon>(
     if locked.is_ok() {
         notes.add("daemon restarted: the account is locked again");
         demo.shots(0, "07_restarted_locked", notes)?;
+        demo.sides[0].daemon.arm_restart_snapshot();
         unlock(demo)?;
     } else {
         demo.wait(0, limit, "the restarted daemon", |desk, host| {
@@ -63,6 +64,25 @@ pub fn lock_and_restart<H: Host, D: DemoDaemon>(
         })?;
         notes.add("daemon restarted: the account stayed open");
     }
+    if demo.sides[0].daemon.restart_snapshot_ready().is_some() {
+        let desk = demo.sides[0].desk()?;
+        let context = demo.conversation.clone();
+        desk.until(demo.host, limit, "the restarted conversation", |desk, host| {
+            desk.store(host, |s| s.context(&context).is_some())
+        })?;
+        desk.show_context(demo.host, &context)?;
+        let daemon = &demo.sides[0].daemon;
+        desk.until(demo.host, limit, "history snapshot before subscribe", |_, _| {
+            daemon.restart_snapshot_ready() == Some(true)
+        })?;
+        daemon.release_restart_snapshot();
+    }
+    demo.wait(0, limit, "the reopened account stream", |desk, host| {
+        desk.store(host, |s| {
+            s.sync_status()
+                .is_some_and(|status| status.mode == ramflux_desktop_core::SyncMode::Stream)
+        })
+    })?;
     history(demo)?;
     notes.add("history kept after the restart");
     demo.shots(0, "07_restarted", notes)

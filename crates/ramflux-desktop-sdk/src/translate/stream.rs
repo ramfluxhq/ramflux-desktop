@@ -204,6 +204,22 @@ impl Translator {
         self.watched().into_iter().flat_map(|(id, kind)| self.messages_read(&id, kind)).collect()
     }
 
+    /// Recover every displayed context, task and surface after opening at the
+    /// head. Focus can change while the subscription is opening; those rows
+    /// still live in the store and must not miss changes in that window.
+    pub fn recovery_reads(&self) -> Vec<Fetch> {
+        let mut reads: Vec<_> = self
+            .contexts
+            .iter()
+            .flat_map(|(id, context)| self.messages_read(id, context.kind))
+            .collect();
+        reads.extend(self.tasks.values().map(|task| {
+            Fetch::Task(task.target.conversation.clone(), task.target.task_id.clone())
+        }));
+        reads.extend(self.surfaces.keys().cloned().map(Fetch::Surface));
+        reads
+    }
+
     /// The read that shows one context's stored messages, if it is known.
     pub fn context_reads(&self, context: &ContextId) -> Vec<Fetch> {
         self.contexts.get(context).map(|c| self.messages_read(context, c.kind)).unwrap_or_default()

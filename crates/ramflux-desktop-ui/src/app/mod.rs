@@ -309,9 +309,12 @@ impl StoreHandle {
     }
 
     /// Collects newly sent bus metadata when the inspector opens or refreshes.
-    pub fn refresh_bus_trace(&mut self) {
-        if let Some(socket) = self.live_socket().map(std::path::PathBuf::from) {
-            self.inspector.collect_bus_trace(&socket);
+    pub fn refresh_bus_trace(&mut self, cx: &mut Context<Self>) {
+        if let Some(socket) = self.live_socket().map(std::path::PathBuf::from)
+            && self.inspector.collect_bus_trace(&socket)
+        {
+            cx.emit(StoreEvent::Inspected);
+            cx.notify();
         }
     }
 

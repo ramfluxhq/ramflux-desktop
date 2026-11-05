@@ -52,7 +52,7 @@ pub fn after(socket: &Path, sequence: u64) -> Vec<(u64, Entry)> {
 #[cfg(feature = "bus-trace")]
 mod enabled {
     use super::*;
-    use std::collections::VecDeque;
+    use std::collections::{BTreeMap, VecDeque};
     use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
     use std::time::Instant;
@@ -70,14 +70,6 @@ mod enabled {
             }
             self.sequence += 1;
             self.entries.push_back((self.sequence, socket.to_owned(), entry));
-        }
-
-        #[cfg(test)]
-        fn export(&self, path: &Path) {
-            let entries: Vec<_> = self.entries.iter().map(|(_, _, e)| e).collect();
-            if let Ok(bytes) = serde_json::to_vec(&entries) {
-                let _ = std::fs::write(path, bytes);
-            }
         }
     }
 
@@ -116,11 +108,24 @@ mod enabled {
         if let Some(path) = std::env::var_os("RAMFLUX_BUS_TRACE_FILE") {
             // The file is a bounded snapshot, with exactly the public metadata.
             let entries: Vec<_> = ring.entries.iter().map(|(_, _, e)| e.clone()).collect();
+            let sequence = ring.sequence;
             drop(ring);
-            // Serialization and file I/O never hold the global send ring lock.
-            if let Ok(bytes) = serde_json::to_vec(&entries) {
-                let _ = std::fs::write(path, bytes);
-            }
+            export_snapshot(Path::new(&path), sequence, &entries);
+        }
+    }
+
+    fn export_snapshot(path: &Path, sequence: u64, entries: &[Entry]) {
+        static WRITTEN: OnceLock<Mutex<BTreeMap<PathBuf, u64>>> = OnceLock::new();
+        let Ok(mut written) = WRITTEN.get_or_init(Mutex::default).lock() else { return };
+        if written.get(path).is_some_and(|previous| *previous >= sequence) {
+            return;
+        }
+        // Serializes publication, never request-ring access. A sender delayed
+        // after cloning an old ring cannot overwrite a newer export.
+        if let Ok(bytes) = serde_json::to_vec(entries)
+            && std::fs::write(path, bytes).is_ok()
+        {
+            written.insert(path.to_owned(), sequence);
         }
     }
 
@@ -143,7 +148,9 @@ mod enabled {
         assert_eq!(ring.entries.len(), CAPACITY);
         assert_eq!(ring.entries.front().expect("oldest").2.monotonic_ms, 44);
         let path = std::env::temp_dir().join(format!("desktop-trace-{}.json", std::process::id()));
-        ring.export(&path);
+        let entries: Vec<_> = ring.entries.iter().map(|(_, _, e)| e.clone()).collect();
+        export_snapshot(&path, 300, &entries);
+        export_snapshot(&path, 299, &[]);
         let bytes = std::fs::read(&path).expect("export file");
         let json: serde_json::Value = serde_json::from_slice(&bytes).expect("export JSON");
         assert_eq!(json.as_array().expect("ring").len(), CAPACITY);

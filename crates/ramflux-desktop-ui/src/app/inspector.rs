@@ -84,12 +84,14 @@ pub struct Inspector {
 
 impl Inspector {
     /// Copies new send metadata from the shared bounded bus trace.
-    pub fn collect_bus_trace(&mut self, socket: &std::path::Path) {
+    pub fn collect_bus_trace(&mut self, socket: &std::path::Path) -> bool {
+        let before = self.trace_sequence;
         for (sequence, entry) in ramflux_desktop_sdk::bus::trace::after(socket, self.trace_sequence)
         {
             self.trace_sequence = sequence;
             self.push(InspectorEntry::BusTrace(entry));
         }
+        self.trace_sequence != before
     }
 
     /// Appends an entry, dropping the oldest beyond [`INSPECTOR_CAP`].

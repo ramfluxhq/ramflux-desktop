@@ -15,6 +15,7 @@ mod rows;
 pub mod world;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ramflux_desktop_test::fake_bus::{FakeBus, socket_path};
@@ -32,19 +33,35 @@ pub struct FakeDaemon {
     side: usize,
     path: PathBuf,
     bus: Option<FakeBus>,
+    restart_window: Arc<AtomicBool>,
+    history_read: Arc<AtomicBool>,
 }
 
 impl FakeDaemon {
     /// Daemon `side` (0 or 1) of `world`, serving at a socket named after `name`.
     pub fn start(world: &Shared, side: usize, name: &str) -> Self {
-        let mut daemon = Self { world: world.clone(), side, path: socket_path(name), bus: None };
+        let mut daemon = Self {
+            world: world.clone(),
+            side,
+            path: socket_path(name),
+            bus: None,
+            restart_window: Arc::default(),
+            history_read: Arc::default(),
+        };
         daemon.serve();
         daemon
     }
 
     fn serve(&mut self) {
         let (world, side) = (self.world.clone(), self.side);
+        let (window, read) = (self.restart_window.clone(), self.history_read.clone());
         self.bus = Some(FakeBus::start(&self.path, move |method, account, body| {
+            if window.load(Ordering::SeqCst) && matches!(method, "message.list" | "group.receive") {
+                read.store(true, Ordering::SeqCst);
+                return ramflux_desktop_test::fake_bus::Reply::Ok(
+                    json!({"messages":[],"next_cursor":null}),
+                );
+            }
             let mut world = world.lock().expect("world");
             let reply = world.handle(side, method, account, body);
             if matches!(
@@ -86,8 +103,29 @@ impl DemoDaemon for FakeDaemon {
             bus.shutdown();
         }
         self.world.lock().expect("world").restart(self.side);
+        self.restart_window.store(true, Ordering::SeqCst);
+        self.history_read.store(false, Ordering::SeqCst);
         self.serve();
         Ok(())
+    }
+
+    fn arm_restart_snapshot(&self) {
+        self.bus.as_ref().expect("bus").hold_next_account_subscribe();
+    }
+
+    fn restart_snapshot_ready(&self) -> Option<bool> {
+        self.restart_window.load(Ordering::SeqCst).then(|| {
+            self.history_read.load(Ordering::SeqCst)
+                && self.bus.as_ref().is_some_and(FakeBus::account_subscribe_held)
+        })
+    }
+
+    fn release_restart_snapshot(&self) {
+        self.restart_window.store(false, Ordering::SeqCst);
+        // The durable history becomes visible and its events are published
+        // before the held subscription captures its head.
+        self.world.lock().expect("world").announce_changes();
+        self.bus.as_ref().expect("bus").release_account_subscribe();
     }
 
     fn account_status(&self, account: &str) -> Result<Value, String> {
