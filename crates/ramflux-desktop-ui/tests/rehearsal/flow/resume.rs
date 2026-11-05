@@ -75,6 +75,8 @@ pub fn lock_and_restart<H: Host, D: DemoDaemon>(
         desk.until(demo.host, limit, "history snapshot before subscribe", |_, _| {
             daemon.restart_snapshot_ready() == Some(true)
         })?;
+        // Unlock/entry-listing race guard. The SDK tasks_contract test owns
+        // recovery of loaded entities after focus moves away.
         daemon.release_restart_snapshot();
     }
     demo.wait(0, limit, "the reopened account stream", |desk, host| {

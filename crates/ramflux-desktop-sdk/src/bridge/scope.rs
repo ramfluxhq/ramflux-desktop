@@ -667,6 +667,13 @@ impl Task {
             if rearm {
                 self.read_recovery.rearm(&fetch);
             }
+            // Bound spawned reads as well as requests on the bus. Recovery of
+            // many loaded tasks/surfaces queues ids, rather than futures.
+            if self.read_recovery.running.len() >= 8 {
+                self.read_recovery.queued.insert(fetch);
+                continue;
+            }
+            self.read_recovery.queued.remove(&fetch);
             let (client, account) = (self.client.clone(), self.account());
             let (internal, sent) = (self.internal.clone(), self.listings_sent.clone());
             let key = fetch.clone();
@@ -725,6 +732,12 @@ impl Task {
                 }
             }
             Internal::Custody(outcome) => self.on_custody(outcome),
+        }
+        if !matches!(self.link, Link::Locked | Link::Lost) {
+            let slots = 8_usize.saturating_sub(self.read_recovery.running.len());
+            let queued: Vec<_> =
+                (0..slots).filter_map(|_| self.read_recovery.queued.pop_first()).collect();
+            self.spawn_reads(queued, false);
         }
         self.send_receipts();
     }

@@ -7,6 +7,8 @@ import subprocess
 # Extend these lists in the PR that introduces each case. Future cases must
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
+    "bridge::scope::review_retry_tests::recovery_reads_have_bounded_concurrency_and_drain_the_queue",
+    "translate::stream::tests::recovery_reads_only_two_watched_of_fifty_listed_conversations",
     "bridge::scope::idle_tests::daemon_eof_with_only_locked_account_reconnects_and_refreshes_nodes_without_jobs",
     "bridge::scope::idle_tests::stream_timeout_keeps_healthy_ordinary_connection_connected",
     "bridge::scope::idle_tests::ordinary_disconnect_is_observed_without_data_requests",
@@ -73,6 +75,7 @@ def main():
         "bus::trace::retention_tests::ring_export_is_bounded_and_contains_only_send_metadata")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "custody"],
         "a_pending_account_follows_networking_events_without_status_polling")
+    # Unlock/entry-listing race guard; SDK tasks_contract owns the de-focused gap proof.
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "demo_rehearsal_fake"],
         "every_step_passes_on_a_node_that_behaves")
     for features in ([], ["--features", "bus-trace"]):

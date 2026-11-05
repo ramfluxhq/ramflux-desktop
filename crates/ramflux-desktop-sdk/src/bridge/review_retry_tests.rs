@@ -176,3 +176,29 @@ async fn in_flight_refresh_reads_committed_state_once_after_all_completion_paths
         }
     }
 }
+
+#[tokio::test]
+async fn recovery_reads_have_bounded_concurrency_and_drain_the_queue() {
+    let path = socket_path("bounded-recovery");
+    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({"messages":[]})));
+    let (mut task, mut inbox, _delivered) = task();
+    task.client = BusClient::new(path, Duration::from_secs(2), task.config.deadlines);
+    let reads: Vec<_> =
+        (0..50).map(|n| Fetch::Messages(ContextId::new(format!("c-{n}")))).collect();
+    task.request_reads(reads);
+    assert_eq!(task.read_recovery.running.len(), 8);
+    assert_eq!(task.read_recovery.queued.len(), 42);
+    for _ in 0..50 {
+        answer(&mut task, &mut inbox).await;
+        assert!(task.read_recovery.running.len() <= 8);
+    }
+    assert!(task.read_recovery.running.is_empty());
+    assert!(task.read_recovery.queued.is_empty());
+    assert_eq!(fake.seen().len(), 50, "each queued read executes once");
+    task.request_reads(
+        (0..50).map(|n| Fetch::Messages(ContextId::new(format!("c-{n}")))).collect(),
+    );
+    task.locked();
+    assert!(task.read_recovery.queued.is_empty(), "lock cancels queued reads too");
+    assert!(task.read_recovery.running.is_empty());
+}

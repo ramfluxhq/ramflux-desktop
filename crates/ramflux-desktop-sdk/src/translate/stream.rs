@@ -204,15 +204,11 @@ impl Translator {
         self.watched().into_iter().flat_map(|(id, kind)| self.messages_read(&id, kind)).collect()
     }
 
-    /// Recover every displayed context, task and surface after opening at the
-    /// head. Focus can change while the subscription is opening; those rows
-    /// still live in the store and must not miss changes in that window.
+    /// Recover watched conversations and already loaded tasks and surfaces.
+    /// A directory row alone never causes history reads or a group pull.
+    /// Known tasks and surfaces remain recoverable after focus moves away.
     pub fn recovery_reads(&self) -> Vec<Fetch> {
-        let mut reads: Vec<_> = self
-            .contexts
-            .iter()
-            .flat_map(|(id, context)| self.messages_read(id, context.kind))
-            .collect();
+        let mut reads = self.watched_reads();
         reads.extend(self.tasks.values().map(|task| {
             Fetch::Task(task.target.conversation.clone(), task.target.task_id.clone())
         }));
@@ -235,6 +231,32 @@ mod tests {
 
     fn translator() -> Translator {
         Translator::new(Scope::Account(ramflux_desktop_core::AccountId::new("a")), "s")
+    }
+
+    #[test]
+    fn recovery_reads_only_two_watched_of_fifty_listed_conversations() {
+        let mut translator = translator();
+        let rows: Vec<_> = (0..50)
+            .map(|n| json!({"id": format!("c-{n}"), "kind": "direct", "participants": []}))
+            .collect();
+        translator.fetched(
+            &Fetch::first(Paged::Conversations),
+            &json!({"conversations": rows}),
+            Timestamp(0),
+        );
+        translator.set_pins(vec![ContextId::new("c-0")]);
+        translator.set_focus(Some(ContextId::new("c-1")));
+        let reads = translator.recovery_reads();
+        assert_eq!(translator.contexts.len(), 50);
+        assert_eq!(reads.len(), 6, "three reads per watched conversation only");
+        assert_eq!(reads.iter().filter(|r| matches!(r, Fetch::Messages(_))).count(), 2);
+        assert!(!reads.iter().any(|r| matches!(r, Fetch::GroupReceive { .. })));
+        translator.set_focus(None);
+        translator.set_pins(Vec::new());
+        assert!(
+            translator.recovery_reads().is_empty(),
+            "unwatched directory rows require no recovery"
+        );
     }
 
     #[test]

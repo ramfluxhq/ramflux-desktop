@@ -19,6 +19,7 @@ enum Retry {
 #[derive(Default)]
 pub(super) struct ReadRecovery {
     retries: BTreeMap<Fetch, Retry>,
+    pub(super) queued: BTreeSet<Fetch>,
     pub(super) running: BTreeMap<Fetch, AbortHandle>,
     /// A newer action/event needs a read after the in-flight answer.
     pub(super) rerun: BTreeSet<Fetch>,
@@ -75,6 +76,7 @@ impl ReadRecovery {
 
     pub(super) fn cancel(&mut self) {
         self.retries.clear();
+        self.queued.clear();
         self.rerun.clear();
         for (_, task) in std::mem::take(&mut self.running) {
             task.abort();
