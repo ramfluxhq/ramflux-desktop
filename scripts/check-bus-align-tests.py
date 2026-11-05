@@ -7,6 +7,8 @@ import subprocess
 # Extend these lists in the PR that introduces each case. Future cases must
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
+    "bridge::scope::idle_tests::daemon_eof_with_only_locked_account_reconnects_and_refreshes_nodes_without_jobs",
+    "bridge::scope::idle_tests::stream_timeout_keeps_healthy_ordinary_connection_connected",
     "bridge::scope::idle_tests::ordinary_disconnect_is_observed_without_data_requests",
     "local::launch::tests::old_settings_file_loads",
     "bridge::scope::idle_tests::no_periodic_requests_when_idle",

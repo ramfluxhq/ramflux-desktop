@@ -15,7 +15,7 @@
 //! key. A keyed request whose answer was lost (broken connection, missed
 //! deadline) is sent once more with the same key: the daemon then answers
 //! from its saved body or joins the live lifecycle execution. Requests without a key are
-//! not resent here; reads are simply repeated by the next poll.
+//! not resent here; read recovery, events and explicit actions own later attempts.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

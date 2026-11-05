@@ -337,8 +337,8 @@ impl Translator {
     /// The read that refreshes one context's messages: a group conversation
     /// is received through the group the directory links it to (none when
     /// no group is linked).
-    fn messages_read(&self, context: &ContextId, kind: ContextKind, pull: bool) -> Vec<Fetch> {
-        let mut reads = self.message_reads(context, kind, pull);
+    fn messages_read(&self, context: &ContextId, kind: ContextKind) -> Vec<Fetch> {
+        let mut reads = self.message_reads(context, kind);
         if !reads.is_empty() {
             // The conversation's surfaces come with its messages.
             reads.push(Self::surfaces_read(context));
@@ -348,7 +348,7 @@ impl Translator {
         reads
     }
 
-    fn message_reads(&self, context: &ContextId, kind: ContextKind, _pull: bool) -> Vec<Fetch> {
+    fn message_reads(&self, context: &ContextId, kind: ContextKind) -> Vec<Fetch> {
         match kind {
             ContextKind::Group => self
                 .directory
@@ -491,7 +491,7 @@ impl Translator {
         contexts
             .into_iter()
             .filter_map(|id| self.contexts.get(&id).map(|c| (id.clone(), c.kind)))
-            .flat_map(|(id, kind)| self.messages_read(&id, kind, false))
+            .flat_map(|(id, kind)| self.messages_read(&id, kind))
             .collect()
     }
 

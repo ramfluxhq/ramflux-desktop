@@ -140,10 +140,7 @@ impl Task {
                     StreamEnd::Lagged { .. } | StreamEnd::ResyncRequired | StreamEnd::NotOpen => {
                         Some(now)
                     }
-                    StreamEnd::Lost(_) => {
-                        self.connection_status(ramflux_desktop_core::SourceStatus::Disconnected);
-                        Some(now + self.config.reconnect_backoff)
-                    }
+                    StreamEnd::Lost(_) => Some(now + self.config.reconnect_backoff),
                     StreamEnd::Unsupported(_) => None,
                 };
             }

@@ -254,6 +254,7 @@ fn describe(entry: &InspectorEntry) -> (String, bool) {
 
 impl Render for DevPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.store.update(cx, |store, _| store.refresh_bus_trace());
         let active = self.store.read(cx).session().map(|s| s.scenario_name().to_owned());
         let active = active.as_deref().and_then(|a| SCENARIO_NAMES.into_iter().find(|n| *n == a));
         v_flex()

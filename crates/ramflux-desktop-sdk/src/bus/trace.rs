@@ -72,6 +72,7 @@ mod enabled {
             self.entries.push_back((self.sequence, socket.to_owned(), entry));
         }
 
+        #[cfg(test)]
         fn export(&self, path: &Path) {
             let entries: Vec<_> = self.entries.iter().map(|(_, _, e)| e).collect();
             if let Ok(bytes) = serde_json::to_vec(&entries) {
@@ -114,7 +115,12 @@ mod enabled {
         ring.append(socket, entry);
         if let Some(path) = std::env::var_os("RAMFLUX_BUS_TRACE_FILE") {
             // The file is a bounded snapshot, with exactly the public metadata.
-            ring.export(Path::new(&path));
+            let entries: Vec<_> = ring.entries.iter().map(|(_, _, e)| e.clone()).collect();
+            drop(ring);
+            // Serialization and file I/O never hold the global send ring lock.
+            if let Ok(bytes) = serde_json::to_vec(&entries) {
+                let _ = std::fs::write(path, bytes);
+            }
         }
     }
 

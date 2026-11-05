@@ -303,7 +303,6 @@ impl Task {
             StreamEnd::NotOpen => self.locked(),
             StreamEnd::Unsupported(reason) => self.fall_back(reason),
             StreamEnd::Lost(error) => {
-                self.connection_status(ramflux_desktop_core::SourceStatus::Disconnected);
                 self.sync.failures += 1;
                 if self.sync.failures >= STREAM_ATTEMPTS {
                     self.fall_back(lost_reason(&error));

@@ -181,7 +181,8 @@ async fn ordinary_disconnect_is_observed_without_data_requests() {
     delivered.try_iter().for_each(drop);
     let before = sent.load(Ordering::SeqCst);
     fake.shutdown();
-    pump(&mut daemon, &mut inbox, |t| t.transport_disconnected).await;
+    pump(&mut daemon, &mut inbox, |t| t.transport_disconnected && t.link == Link::Lost).await;
+    assert_eq!(daemon.link, Link::Lost, "ordinary EOF schedules independent recovery");
     assert!(
         delivered.try_iter().any(|d| matches!(
             d.event,
@@ -195,7 +196,122 @@ async fn ordinary_disconnect_is_observed_without_data_requests() {
             .any(|d| matches!(d.event, DomainEvent::SourceStatusChanged(SourceStatus::Connected))),
         "late pre-EOF reply cannot restore connectivity"
     );
+    for _ in 0..3 {
+        tokio::time::advance(Duration::from_secs(2)).await;
+        daemon.tick();
+        pump(&mut daemon, &mut inbox, |t| t.link == Link::Lost).await;
+        assert_eq!(sent.load(Ordering::SeqCst), before, "down daemon receives no frames");
+    }
+    let restarted = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({})));
+    tokio::time::advance(Duration::from_millis(1999)).await;
+    daemon.tick();
+    assert!(restarted.seen().is_empty(), "reconnect respects backoff");
+    tokio::time::advance(Duration::from_millis(1)).await;
+    daemon.tick();
+    pump(&mut daemon, &mut inbox, |t| t.link == Link::Live && t.snapshot_task.is_none()).await;
+    let methods: Vec<_> = restarted.seen().iter().map(|r| r.method.clone()).collect();
+    assert_eq!(methods.len(), 3, "exactly one full daemon snapshot: {methods:?}");
+    for method in ["daemon.status", "account.list", "node.list"] {
+        assert!(methods.iter().any(|m| m == method), "snapshot includes {method}");
+    }
     tokio::time::advance(Duration::from_secs(600)).await;
     daemon.tick();
-    assert_eq!(sent.load(Ordering::SeqCst), before, "EOF observation sends no data requests");
+    assert_eq!(restarted.seen().len(), 3, "no recurring snapshot");
+}
+
+#[tokio::test(start_paused = true)]
+async fn daemon_eof_with_only_locked_account_reconnects_and_refreshes_nodes_without_jobs() {
+    let path = socket_path("daemon-locked-restart");
+    let mut frames: std::collections::BTreeMap<String, serde_json::Value> =
+        serde_json::from_str(include_str!("../../tests/fixtures/rfd_frames.json")).expect("frames");
+    frames.insert(
+        "account.list".into(),
+        json!({"accounts":[],"account_details":[{"id":"acct-main","label":"Me","state":"locked"}]}),
+    );
+    let sent = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let observed = sent.clone();
+    let first = frames.clone();
+    let fake = FakeBus::start(&path, move |method, _, _| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Reply::Ok(first.get(method).cloned().unwrap_or(json!({})))
+    });
+    let (mut daemon, mut inbox, delivered) = task(&path, Scope::Daemon);
+    daemon.config.backup_api = false;
+    let (mut account, _account_inbox, _account_delivery) =
+        task(&path, Scope::Account(AccountId::new("acct-main")));
+    account.config.backup_api = false;
+    account.locked();
+    daemon.accounts_live(true);
+    assert_eq!(account.link, Link::Locked);
+    assert!(account.sync.open_at.is_none());
+    daemon.snapshot();
+    pump(&mut daemon, &mut inbox, |t| {
+        t.link == Link::Live && t.snapshot_task.is_none() && t.read_recovery.running.is_empty()
+    })
+    .await;
+    assert!(!daemon.found.backup);
+    assert!(daemon.jobs_open_at.is_none());
+    assert!(delivered.try_iter().any(|d| matches!(d.event, DomainEvent::NodeUpserted(_))));
+    let count = sent.load(Ordering::SeqCst);
+    fake.shutdown();
+    pump(&mut daemon, &mut inbox, |t| t.transport_disconnected && t.link == Link::Lost).await;
+    assert_eq!(daemon.link, Link::Lost);
+    assert_eq!(daemon.reconnect_at, Instant::now() + Duration::from_secs(2));
+    // Failed reconnects are bounded and send no frames while rfd is down.
+    for _ in 0..2 {
+        tokio::time::advance(Duration::from_millis(1999)).await;
+        daemon.tick();
+        assert_eq!(daemon.link, Link::Lost);
+        tokio::time::advance(Duration::from_millis(1)).await;
+        daemon.tick();
+        pump(&mut daemon, &mut inbox, |t| t.link == Link::Lost && t.snapshot_task.is_none()).await;
+        assert_eq!(sent.load(Ordering::SeqCst), count);
+    }
+    let mut second = frames;
+    second.get_mut("node.list").expect("nodes")["nodes"][0]["node_id"] = json!("n-restarted");
+    second.get_mut("node.list").expect("nodes")["default_node_id"] = json!("n-restarted");
+    let restarted = FakeBus::start(&path, move |method, _, _| {
+        Reply::Ok(second.get(method).cloned().unwrap_or(json!({})))
+    });
+    tokio::time::advance(Duration::from_millis(1999)).await;
+    daemon.tick();
+    assert!(restarted.seen().is_empty());
+    tokio::time::advance(Duration::from_millis(1)).await;
+    daemon.tick();
+    pump(&mut daemon, &mut inbox, |t| {
+        t.link == Link::Live && t.snapshot_task.is_none() && t.read_recovery.running.is_empty()
+    })
+    .await;
+    assert!(delivered.try_iter().any(
+        |d| matches!(d.event, DomainEvent::NodeUpserted(node) if node.id.as_str() == "n-restarted")
+    ));
+    let methods: Vec<_> = restarted.seen().iter().map(|r| r.method.clone()).collect();
+    assert_eq!(methods.len(), 3, "exactly one full daemon snapshot");
+    for method in ["daemon.status", "node.list", "account.list"] {
+        assert_eq!(methods.iter().filter(|m| *m == method).count(), 1);
+    }
+    tokio::time::advance(Duration::from_secs(600)).await;
+    daemon.tick();
+    assert_eq!(restarted.seen().len(), 3, "settled reconnect does not poll");
+}
+
+#[tokio::test(start_paused = true)]
+async fn stream_timeout_keeps_healthy_ordinary_connection_connected() {
+    let path = socket_path("stream-only-timeout");
+    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({})));
+    fake.enable_stream();
+    let (mut task, mut inbox, delivered) = task(&path, Scope::Account(AccountId::new("acct-main")));
+    task.snapshot();
+    settle(&mut task, &mut inbox).await;
+    delivered.try_iter().for_each(drop);
+    task.on_streamed(Streamed::Ended(StreamEnd::Lost(BusError::Timeout)));
+    task.on_jobs(JobStreamed::Ended(StreamEnd::Lost(BusError::Timeout)));
+    assert!(!task.transport_disconnected);
+    assert_eq!(task.link, Link::Live);
+    assert!(
+        !delivered.try_iter().any(|d| matches!(
+            d.event,
+            DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)
+        ))
+    );
 }

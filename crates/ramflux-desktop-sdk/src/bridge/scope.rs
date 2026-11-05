@@ -23,7 +23,8 @@
 //! an account follows the daemon's event stream from its cursor (see
 //! [`super::live`]). Actions, account state events and stream opens refresh
 //! the daemon status and account list. A lost connection reports
-//! `Disconnected` and re-snapshots after a back-off.
+//! `Disconnected`; ordinary EOF on the daemon scope enters lost-state backoff
+//! and independently re-snapshots, including nodes, after reconnect.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -115,7 +116,8 @@ pub(super) struct Task {
     pub(super) streamed: mpsc::UnboundedSender<Streamed>,
     pub(super) cursors: CursorStore,
     pub(super) sync: SyncState,
-    /// A legacy push connection, if present.
+    /// Legacy push translation retained for compatibility tests; no production
+    /// sender starts it. Remove with the legacy subscription API in a follow-up.
     pub(super) push_task: Option<tokio::task::AbortHandle>,
     pub(super) link: Link,
     pub(super) daemon_refresh: Option<mpsc::UnboundedSender<super::DaemonNotice>>,
@@ -198,6 +200,8 @@ pub(super) fn build(
 ) -> (Task, Inbox) {
     let (internal, internal_rx) = mpsc::unbounded_channel();
     let (connection_states, connection_rx) = mpsc::unbounded_channel();
+    // Legacy push is intentionally dormant: no sender/task is retained.
+    // Account event streams own delivery; remove this compatibility branch in a follow-up.
     let (_pushed, pushed_rx) = mpsc::unbounded_channel();
     let (streamed, streamed_rx) = mpsc::unbounded_channel();
     let (jobs_out, jobs_rx) = mpsc::unbounded_channel::<JobStreamed>();
@@ -433,7 +437,12 @@ impl Task {
             }
         } else {
             self.transport_disconnected = true;
-            self.connection_status(SourceStatus::Disconnected);
+            if self.scope == Scope::Daemon {
+                // No account/job stream is required to recover the daemon.
+                self.lost();
+            } else {
+                self.connection_status(SourceStatus::Disconnected);
+            }
         }
     }
 
@@ -828,7 +837,7 @@ impl Task {
     /// Translates one read; returns whether it produced events.
     fn on_read(&mut self, fetch: &Fetch, result: Result<Value, BusError>) -> bool {
         if let Err(error) = &result
-            // Network pulls retain their poll/error handling; bounded local-read
+            // Network receives retain their refusal handling; bounded local-read
             // recovery must not turn a refused pull into a failed user effect.
             && !matches!(fetch, Fetch::GroupReceive { .. })
             && !error.is_connection_lost()
@@ -934,7 +943,7 @@ impl Task {
                 true
             }
             // A refused read (for example a receive while the node is
-            // unreachable) changes nothing; the next poll tries again.
+            // unreachable) changes nothing; a later event or action can retry.
             Err(_) => false,
         }
     }

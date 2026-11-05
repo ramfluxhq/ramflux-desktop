@@ -149,7 +149,7 @@ impl Translator {
             "message.received" | "message.updated" | "group.message.received" => {
                 match (context, kind) {
                     (Some(context), Some(kind)) => {
-                        let mut reads = self.messages_read(&context, kind, false);
+                        let mut reads = self.messages_read(&context, kind);
                         if kind == ContextKind::Group && reads.is_empty() {
                             reads.push(Fetch::first(Paged::Groups));
                         }
@@ -201,18 +201,12 @@ impl Translator {
     /// The reads that show the watched contexts' stored messages (no pull
     /// from the node: the daemon receives by itself).
     pub fn watched_reads(&self) -> Vec<Fetch> {
-        self.watched()
-            .into_iter()
-            .flat_map(|(id, kind)| self.messages_read(&id, kind, false))
-            .collect()
+        self.watched().into_iter().flat_map(|(id, kind)| self.messages_read(&id, kind)).collect()
     }
 
     /// The read that shows one context's stored messages, if it is known.
     pub fn context_reads(&self, context: &ContextId) -> Vec<Fetch> {
-        self.contexts
-            .get(context)
-            .map(|c| self.messages_read(context, c.kind, false))
-            .unwrap_or_default()
+        self.contexts.get(context).map(|c| self.messages_read(context, c.kind)).unwrap_or_default()
     }
 }
 
