@@ -8,6 +8,9 @@ import subprocess
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
     "bus::tests::a_retry_the_daemon_cannot_replay_asks_the_user_to_check",
+    "bridge::scope::requests_retry_tests::unlocked_status_is_delivered_before_slow_snapshot_lists",
+    "bridge::scope::requests_retry_tests::read_timeout_keeps_rows_and_retries_once",
+    "bridge::scope::requests_retry_tests::read_retry_cancels_on_lock_or_detach_and_coalesces",
     "bus::deadline::tests::unlock_budget_and_weights",
     "bus::tests::reconciliation_refusal_is_matched_by_code",
     "bridge::s5_lifecycle_tests::reconcile_retry_sends_a_fresh_key",

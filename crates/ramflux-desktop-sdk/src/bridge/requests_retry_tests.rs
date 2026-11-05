@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Request-list retry scheduling across stream and polling transitions.
+//! Bounded read recovery, cancellation, coalescing and local readiness.
 
 use super::*;
-use crate::bus::stream::Streamed;
-use ramflux_desktop_core::{AccountId, SyncMode};
+use ramflux_desktop_core::{AccountId, EventEnvelope, LockState, Store, SyncMode};
 use ramflux_desktop_test::fake_bus::{FakeBus, Reply, socket_path};
 use serde_json::json;
 
 fn task() -> (Task, Inbox, std_mpsc::Receiver<Delivery>) {
     let mut config = SdkConfig::new("retry-test.sock");
-    config.poll_fast = Duration::from_millis(80);
-    config.poll_slow = Duration::from_millis(300);
+    config.poll_fallback = false;
+    config.call_api = false;
+    config.backup_api = false;
     let (outbox, delivered) = std_mpsc::channel();
     let (phrases, _) = std_mpsc::channel();
     let (mut task, inbox) = build(
@@ -26,85 +26,167 @@ fn task() -> (Task, Inbox, std_mpsc::Receiver<Delivery>) {
     (task, inbox, delivered)
 }
 
-#[test]
-fn persistent_request_failures_back_off_to_slow_and_success_resets_the_wait() {
-    let (mut task, _inbox, _delivered) = task();
-    for milliseconds in [80, 160, 300, 300] {
-        let before = Instant::now();
-        task.on_read(&Fetch::ContactRequests, Err(BusError::Timeout));
-        assert_eq!(task.requests_retry_wait, Duration::from_millis(milliseconds));
-        let due = task.requests_retry_at.expect("retry armed");
-        assert!(due >= before + Duration::from_millis(milliseconds));
-        assert_eq!(task.next_wake(), due);
+fn apply(delivered: &std_mpsc::Receiver<Delivery>, store: &mut Store, seq: &mut u64) {
+    for delivery in delivered.try_iter() {
+        *seq += 1;
+        store.apply(&EventEnvelope::new(*seq, delivery.at, delivery.event)).expect("apply");
     }
-    task.on_read(&Fetch::ContactRequests, Ok(json!({ "requests": [] })));
-    assert!(task.requests_retry_at.is_none());
-    assert_eq!(task.requests_retry_wait, Duration::ZERO);
-    task.on_read(&Fetch::ContactRequests, Err(BusError::Timeout));
-    assert_eq!(task.requests_retry_wait, task.config.poll_fast);
 }
 
-#[test]
-fn unknown_method_connection_loss_and_lock_clear_request_retry_state() {
-    for clear in 0..3 {
-        let (mut task, _inbox, _delivered) = task();
-        task.on_read(&Fetch::ContactRequests, Err(BusError::Timeout));
-        assert!(task.requests_retry_at.is_some());
-        match clear {
-            0 => {
-                task.on_read(
-                    &Fetch::ContactRequests,
-                    Err(BusError::daemon("ValidationFailed", "unsupported local bus method")),
-                );
-            }
-            1 => {
-                task.on_read(
-                    &Fetch::ContactRequests,
-                    Err(BusError::Transport("connection closed".into())),
-                );
-                assert_eq!(task.link, Link::Lost);
-            }
-            _ => task.locked(),
-        }
-        assert!(task.requests_retry_at.is_none());
-        assert_eq!(task.requests_retry_wait, Duration::ZERO);
-    }
+async fn answer(task: &mut Task, inbox: &mut Inbox) {
+    let answer = tokio::time::timeout(Duration::from_secs(3), inbox.internal.recv())
+        .await
+        .expect("answer deadline")
+        .expect("internal answer");
+    task.internal(answer);
 }
 
 #[tokio::test]
-async fn a_polling_failure_is_retried_after_stream_reopens_with_a_cursor_then_stops() {
-    let path = socket_path("requests-retry-cursor");
-    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({ "requests": [] })));
-    let (mut task, mut inbox, _delivered) = task();
-    task.client = BusClient::new(path, task.config.connect_timeout, task.config.deadlines);
-    task.sync.mode = SyncMode::Polling;
-    task.sync.cursor = Some(42);
-    task.polls_in_flight = 1;
-    task.subscribed = true;
-    task.on_read(&Fetch::ContactRequests, Err(BusError::Timeout));
-    assert!(task.requests_retry_at.is_some(), "a failed polling read also arms recovery");
-    task.requests_retry_at = Some(Instant::now());
-    assert_ne!(Some(task.next_wake()), task.requests_retry_at, "polling ignores the retry wake");
-    task.tick();
-    assert!(task.requests_retry_at.is_some(), "polling retains the retry for stream recovery");
+async fn read_timeout_keeps_rows_and_retries_once() {
+    let path = socket_path("bounded-read-timeout");
+    let fake = FakeBus::start(&path, |_, _, _| Reply::Slow(Duration::from_secs(2), json!({})));
+    let (mut task, mut inbox, delivered) = task();
+    task.client = BusClient::new(
+        path,
+        Duration::from_secs(2),
+        crate::config::Deadlines::uniform(Duration::from_millis(10)),
+    );
+    for fetch in [Fetch::ContactRequests, Fetch::ContactList, Fetch::NodeList] {
+        let mut store = Store::new();
+        let mut seq = 0;
+        task.on_read(&Fetch::ContactRequests, Ok(json!({"requests": [{
+            "request_id":"kept", "principal_id":"peer", "direction":"inbound", "state":"pending", "note":"keep me"
+        }]})));
+        apply(&delivered, &mut store, &mut seq);
+        assert_eq!(store.contact_requests().count(), 1);
+        let before = Instant::now();
+        task.spawn_fetches(vec![fetch.clone(), fetch.clone()]);
+        answer(&mut task, &mut inbox).await;
+        apply(&delivered, &mut store, &mut seq);
+        assert!(store.failures().is_empty(), "first failure stays silent");
+        assert!(store.contact_requests_read_error().is_none());
+        assert_eq!(store.contact_requests().count(), 1);
+        let due = task.read_recovery.next_due().expect("one retry armed");
+        assert!(due >= before + Duration::from_secs(1));
+        assert!(due <= Instant::now() + Duration::from_secs(1));
+        let sent = fake.seen().len();
+        task.tick();
+        assert_eq!(fake.seen().len(), sent, "no immediate retry");
+        tokio::time::sleep_until(due).await;
+        task.tick();
+        answer(&mut task, &mut inbox).await;
+        apply(&delivered, &mut store, &mut seq);
+        assert!(task.read_recovery.next_due().is_none(), "second timeout exhausts retry");
+        assert_eq!(store.contact_requests().count(), 1, "last good rows survive both timeouts");
+        assert_eq!(
+            store.contact_requests().next().expect("kept row").note.as_deref(),
+            Some("keep me")
+        );
+        if fetch == Fetch::ContactRequests {
+            assert!(store.contact_requests_read_error().is_some(), "second timeout reported");
+        } else {
+            assert!(!store.failures().is_empty(), "second timeout reported");
+        }
+        for _ in 0..3 {
+            task.tick();
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert_eq!(fake.seen().len(), sent + 1, "only one retry request");
+        assert!(inbox.internal.try_recv().is_err());
+        task.spawn_reads(vec![fetch.clone()], false);
+        assert!(task.read_recovery.running.is_empty(), "timer cannot rearm exhausted reads");
+        // Only a new event/action can rearm an exhausted cycle.
+        task.spawn_fetches(vec![fetch]);
+        answer(&mut task, &mut inbox).await;
+        assert!(task.read_recovery.next_due().is_some(), "new action rearms recovery");
+        task.read_recovery.cancel();
+    }
+    fake.shutdown();
+}
 
-    // No cursor gap: stream_opened does not reload the snapshot. The
-    // pending retry must survive this exact polling-to-stream transition.
-    task.on_streamed(Streamed::Opened { head_seq: 42, floor_seq: 0 });
-    assert_eq!(task.sync.mode, SyncMode::Stream);
-    assert!(fake.seen().is_empty(), "opening with a cursor did not reload");
-    task.tick();
-    let answer = tokio::time::timeout(Duration::from_secs(3), inbox.internal.recv())
-        .await
-        .expect("retry answered")
-        .expect("internal channel");
-    assert!(matches!(&answer, Internal::Fetched((Fetch::ContactRequests, _, Ok(_)))));
-    task.internal(answer);
-    assert_eq!(fake.seen().len(), 1);
-    assert_eq!(fake.seen()[0].method, "contact.requests.list");
-    assert!(task.requests_retry_at.is_none(), "success cancels retry-originated reads");
-    assert_eq!(task.requests_retry_wait, Duration::ZERO);
-    task.tick();
-    assert!(inbox.internal.try_recv().is_err(), "no retry work was scheduled after success");
+#[tokio::test]
+async fn read_retry_cancels_on_lock_or_detach_and_coalesces() {
+    let path = socket_path("bounded-read-cancel");
+    let fake = FakeBus::start(&path, |_, _, _| {
+        Reply::Slow(Duration::from_millis(80), json!({"requests": []}))
+    });
+    for cancel in 0..3 {
+        let (mut task, mut inbox, _delivered) = task();
+        task.client = BusClient::new(
+            path.clone(),
+            Duration::from_secs(2),
+            crate::config::Deadlines::standard(),
+        );
+        let baseline = fake.seen().len();
+        task.spawn_fetches(vec![Fetch::ContactRequests; 3]);
+        assert_eq!(task.read_recovery.running.len(), 1);
+        answer(&mut task, &mut inbox).await;
+        assert_eq!(fake.seen().len(), baseline + 1, "concurrent refreshes coalesce");
+        task.on_read(&Fetch::ContactRequests, Err(BusError::Timeout));
+        let due = task.read_recovery.next_due().expect("retry");
+        tokio::time::sleep_until(due).await;
+        task.tick();
+        answer(&mut task, &mut inbox).await;
+        assert!(task.read_recovery.next_due().is_none(), "success ends recovery");
+        task.tick();
+        assert_eq!(fake.seen().len(), baseline + 2);
+        // A new event can rearm, and concurrent event refreshes coalesce.
+        task.on_pushed(Pushed::Event { topic: "contact.requested".into(), body: json!({}) });
+        task.on_pushed(Pushed::Event { topic: "contact.requested".into(), body: json!({}) });
+        assert_eq!(task.read_recovery.running.len(), 1);
+        answer(&mut task, &mut inbox).await;
+        assert_eq!(fake.seen().len(), baseline + 3);
+        task.on_read(&Fetch::ContactRequests, Err(BusError::Timeout));
+        let cancel_due = task.read_recovery.next_due().expect("new episode");
+        // Also cancel an active fetch, including a late completion already queued.
+        task.spawn_fetches(vec![Fetch::ContactList]);
+        let handle = task.read_recovery.running[&Fetch::ContactList].clone();
+        match cancel {
+            0 => task.locked(),
+            1 => task.lost(),
+            _ => {
+                drop(task);
+                tokio::task::yield_now().await;
+                assert!(handle.is_finished());
+                tokio::time::sleep_until(cancel_due).await;
+                assert_eq!(
+                    fake.seen().iter().filter(|s| s.method == "contact.requests.list").count(),
+                    (cancel as usize + 1) * 3
+                );
+                continue;
+            }
+        }
+        assert!(task.read_recovery.next_due().is_none());
+        tokio::time::sleep_until(cancel_due).await;
+        // Keep the disconnected task before its reconnect deadline.
+        task.reconnect_at = Instant::now() + Duration::from_secs(60);
+        task.tick();
+        assert!(task.read_recovery.running.is_empty());
+        task.internal(Internal::Fetched((Fetch::ContactList, None, Err(BusError::Timeout))));
+        assert!(task.read_recovery.next_due().is_none(), "late completion cannot rearm");
+    }
+    fake.shutdown();
+}
+
+#[tokio::test]
+async fn unlocked_status_is_delivered_before_slow_snapshot_lists() {
+    let path = socket_path("local-readiness");
+    let fake = FakeBus::start(&path, |method, _, _| {
+        if method == "account.status" {
+            Reply::Ok(json!({"state":"unlocked", "networking":"networking_pending"}))
+        } else {
+            Reply::Slow(Duration::from_secs(2), json!({}))
+        }
+    });
+    let (mut task, mut inbox, delivered) = task();
+    task.client =
+        BusClient::new(path, Duration::from_secs(2), crate::config::Deadlines::standard());
+    task.snapshot();
+    answer(&mut task, &mut inbox).await;
+    assert_eq!(task.link, Link::Live);
+    assert!(task.snapshot_task.is_some(), "other snapshot reads still pending");
+    assert!(delivered.try_iter().any(|delivery| matches!(delivery.event,
+        DomainEvent::AccountUpdated(account) if account.lock_state == LockState::Unlocked)));
+    task.locked();
     fake.shutdown();
 }

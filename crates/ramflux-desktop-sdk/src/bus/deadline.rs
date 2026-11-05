@@ -11,8 +11,8 @@
 //!
 //! The budget depends on what the method does: a read of local state is
 //! quick, a local change takes a write and possibly key derivation, and a
-//! method that reaches a node (account creation, unlock, sends, pulls,
-//! probes) waits for the network.
+//! method that reaches a node (account creation, sends, pulls, probes)
+//! waits for the network. Local unlock has its own key-derivation budget.
 
 use std::time::Duration;
 

@@ -349,7 +349,7 @@ fn a_busy_daemon_is_asked_again_later_and_nothing_is_retried() {
 
 /// A list read refused with `code` and `message` (not as an unknown
 /// method): the requests stay supported, the failure is said, and the next
-/// poll lists them.
+/// event or action lists them.
 fn a_failed_list_read_is_recoverable(name: &str, code: &'static str, message: &str) {
     let world = World::start(name, true);
     world.requests.fail_list(Some((code, message)));
@@ -363,7 +363,7 @@ fn a_failed_list_read_is_recoverable(name: &str, code: &'static str, message: &s
     );
     let id = world.requests.incoming(ACCOUNT, "principal-cy", Some("hello"));
     world.requests.fail_list(None);
-    // The next poll (or the event's read) lists them; the failure clears.
+    // A new event rearms the bounded read cycle and clears the failure.
     account.until("listed again", |s, _| {
         pending(s) == ["principal-cy"] && s.contact_requests_read_error().is_none()
     });
@@ -398,9 +398,13 @@ fn a_request_read_that_races_recovery_is_retried_without_another_event() {
     world.requests.fail_list(Some(("Unavailable", "list temporarily unavailable")));
     let mut account = live(&world);
     account.until("the initial failed read", |s, _| s.contact_requests_read_error().is_some());
-    // Force the event's read to finish before recovery. Previously this
-    // ordering consumed the only invalidation, leaving the read failed
-    // forever: a live event stream disables the regular polling fallback.
+    // Observe the event's first failed fetch, then recover before its single
+    // delayed retry. Waiting for another displayed failure would exhaust it.
+    let before = world.requests("contact.requests.list").len();
+    let id = world.requests.incoming(ACCOUNT, "principal-race", Some("recover this list"));
+    account.until("the event's first read failed silently", |_, _| {
+        world.requests("contact.requests.list").len() > before
+    });
     let failures = |events: &[ramflux_desktop_core::EventEnvelope]| {
         events
             .iter()
@@ -409,9 +413,6 @@ fn a_request_read_that_races_recovery_is_retried_without_another_event() {
             })
             .count()
     };
-    let before = failures(&account.envelopes);
-    let id = world.requests.incoming(ACCOUNT, "principal-race", Some("recover this list"));
-    account.until("the event's read also failed", |_, events| failures(events) > before);
     world.requests.fail_list(None);
     let head = world.fake.head(ACCOUNT);
     account.until("the list recovered without a second event", |s, _| {

@@ -19,7 +19,7 @@ use ramflux_desktop_core::{DomainEvent, Effect, EffectFailure, FailureCode, meth
 use serde_json::{Value, json};
 
 use super::now;
-use super::scope::{Internal, Link, Task};
+use super::scope::{Internal, Task};
 use crate::bus::client::BusClient;
 use crate::bus::{BusError, BusRequest, idempotency, wipe};
 use crate::capabilities;
@@ -165,7 +165,7 @@ impl Task {
                 if method == ramflux_desktop_core::methods::ACCOUNT_LOCK
                     && self.scope.account().is_some()
                 {
-                    self.link = Link::Locked;
+                    self.locked();
                 }
             }
             Err(error) => {

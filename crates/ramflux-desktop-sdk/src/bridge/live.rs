@@ -113,6 +113,12 @@ impl SyncState {
         }
     }
 
+    /// Clears coalescing state when the scope cancels its reads.
+    pub(super) fn clear_reads(&mut self) {
+        self.reading.clear();
+        self.stale.clear();
+    }
+
     /// Stops the stream connection, if any.
     pub(super) fn stop(&mut self) {
         if let Some(task) = self.task.take() {

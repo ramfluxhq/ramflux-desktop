@@ -18,8 +18,9 @@
 //! so a listing never undoes a newer one (a conversation just started and
 //! listed is not removed by a listing read before the start).
 //!
-//! Lifecycle: attach, then snapshot. When every read answered the scope is
-//! live: an account follows the daemon's event stream from its cursor (see
+//! Lifecycle: attach, then snapshot. Local account status establishes
+//! readiness before unrelated snapshot reads finish. After the snapshot,
+//! an account follows the daemon's event stream from its cursor (see
 //! [`super::live`]), and polls only as a fallback; the daemon scope polls
 //! the daemon status and account list. A lost connection reports
 //! `Disconnected` and re-snapshots after a back-off.
@@ -78,7 +79,7 @@ pub(super) type Read = (Fetch, Option<u64>, Result<Value, BusError>);
 pub(super) enum Internal {
     Snapshot(Vec<Read>),
     Fetched(Read),
-    PollDone,
+    PollDone(Vec<Fetch>),
     EffectDone {
         method: String,
         body: Value,
@@ -123,12 +124,9 @@ pub(super) struct Task {
     pub(super) poll_changed: bool,
     pub(super) interval: Duration,
     pub(super) next_poll: Instant,
-    /// A failed request-list read must recover even with a live stream:
-    /// recovery itself need not publish another invalidation. Kept while
-    /// polling, but only wakes the task when polling is off.
-    requests_retry_at: Option<Instant>,
-    /// Doubled after failures up to poll_slow; reset when recovery ends.
-    requests_retry_wait: Duration,
+    /// Per-fetch bounded recovery and cancellable reads.
+    pub(super) read_recovery: super::read_recovery::ReadRecovery,
+    snapshot_task: Option<tokio::task::AbortHandle>,
     pub(super) reconnect_at: Instant,
     pub(super) alive: bool,
     /// Numbers listings' first pages in the order they are sent.
@@ -249,8 +247,8 @@ pub(super) fn build(
         polls_in_flight: 0,
         poll_changed: false,
         next_poll: start,
-        requests_retry_at: None,
-        requests_retry_wait: Duration::ZERO,
+        read_recovery: super::read_recovery::ReadRecovery::default(),
+        snapshot_task: None,
         reconnect_at: start,
         alive: true,
         listings_sent: Arc::new(AtomicU64::new(0)),
@@ -316,6 +314,7 @@ pub(crate) async fn run(
 
 impl Drop for Task {
     fn drop(&mut self) {
+        self.cancel_reads();
         self.save_cursor(true);
         self.sync.stop();
         self.stop_push_subscription();
@@ -360,7 +359,7 @@ impl Task {
                 if let Some(due) = self.net_due {
                     wake = wake.min(due);
                 }
-                if let Some(due) = self.requests_retry_at.filter(|_| !polls) {
+                if let Some(due) = self.read_recovery.next_due() {
                     wake = wake.min(due);
                 }
                 if let Some(due) = self.receipts.as_ref().and_then(Receipts::next_due) {
@@ -386,13 +385,11 @@ impl Task {
                 if self.net_due.is_some_and(|at| now >= at) {
                     self.net_due = None;
                     if let Some(account) = self.scope.account().cloned() {
-                        self.spawn_fetches(vec![Fetch::AccountStatus(account)]);
+                        self.spawn_reads(vec![Fetch::AccountStatus(account)], false);
                     }
                 }
-                if !self.polls() && self.requests_retry_at.is_some_and(|at| now >= at) {
-                    self.requests_retry_at = None;
-                    self.request_reads(vec![Fetch::ContactRequests]);
-                }
+                let retries = self.read_recovery.due(now);
+                self.spawn_reads(retries, false);
                 let polls = self.polls();
                 if polls
                     && self.scope.account().is_some()
@@ -473,12 +470,19 @@ impl Task {
 
     fn snapshot(&mut self) {
         self.link = Link::Attaching;
-        let reads = self.reads_for_snapshot();
+        self.cancel_reads();
+        let mut reads = self.reads_for_snapshot();
+        // Local unlocked state opens the workspace before unrelated lists finish.
+        if let Some(account) = self.scope.account().cloned() {
+            reads.retain(|fetch| !matches!(fetch, Fetch::AccountStatus(_)));
+            self.spawn_fetches(vec![Fetch::AccountStatus(account)]);
+        }
+        let reserved = reads.clone();
         let client = self.client.clone();
         let account = self.account();
         let internal = self.internal.clone();
         let sent = self.listings_sent.clone();
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             let mut set = JoinSet::new();
             for (index, fetch) in reads.into_iter().enumerate() {
                 let (client, account, sent) = (client.clone(), account.clone(), sent.clone());
@@ -494,6 +498,11 @@ impl Task {
             let results = results.into_iter().map(|(_, read)| read).collect();
             let _ = internal.send(Internal::Snapshot(results));
         });
+        let handle = task.abort_handle();
+        for fetch in reserved {
+            self.read_recovery.running.insert(fetch, handle.clone());
+        }
+        self.snapshot_task = Some(handle);
     }
 
     fn subscribe(&mut self) {
@@ -518,7 +527,7 @@ impl Task {
     }
 
     pub(super) fn lost(&mut self) {
-        self.clear_requests_retry();
+        self.cancel_reads();
         if self.link != Link::Lost {
             self.emit(vec![DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)]);
         }
@@ -533,7 +542,7 @@ impl Task {
     }
 
     pub(super) fn locked(&mut self) {
-        self.clear_requests_retry();
+        self.cancel_reads();
         self.link = Link::Locked;
         self.net_due = None;
         self.net_wait = Duration::ZERO;
@@ -563,14 +572,31 @@ impl Task {
         }
     }
 
-    pub(super) fn spawn_fetches(&self, fetches: Vec<Fetch>) {
+    pub(super) fn spawn_fetches(&mut self, fetches: Vec<Fetch>) {
+        self.spawn_reads(fetches, true);
+    }
+
+    fn spawn_reads(&mut self, fetches: Vec<Fetch>, rearm: bool) {
+        if matches!(self.link, Link::Locked | Link::Lost) {
+            return;
+        }
         for fetch in fetches {
+            if self.read_recovery.running.contains_key(&fetch)
+                || (!rearm && self.read_recovery.blocks_timer(&fetch))
+            {
+                continue;
+            }
+            if rearm {
+                self.read_recovery.rearm(&fetch);
+            }
             let (client, account) = (self.client.clone(), self.account());
             let (internal, sent) = (self.internal.clone(), self.listings_sent.clone());
-            tokio::spawn(async move {
+            let key = fetch.clone();
+            let task = tokio::spawn(async move {
                 let read = read(&client, fetch, account.as_deref(), &sent).await;
                 let _ = internal.send(Internal::Fetched(read));
             });
+            self.read_recovery.running.insert(key, task.abort_handle());
         }
     }
 
@@ -593,15 +619,21 @@ impl Task {
         if self.found.backup && self.translator.backup_running() && !self.jobs_yield() {
             sequences.push(vec![Fetch::BackupJobs]);
         }
+        for sequence in &mut sequences {
+            sequence.retain(|fetch| !self.read_recovery.blocks_poll(fetch));
+        }
+        sequences.retain(|sequence| !sequence.is_empty());
         self.polls_in_flight = sequences.len();
         self.poll_changed = false;
         for sequence in sequences {
+            let reserved = sequence.clone();
             let client = self.client.clone();
             let account = self.account();
             let internal = self.internal.clone();
             let sent = self.listings_sent.clone();
-            tokio::spawn(async move {
-                for fetch in sequence {
+            let task = tokio::spawn(async move {
+                let mut sequence = sequence.into_iter();
+                for fetch in sequence.by_ref() {
                     let (fetch, number, result) =
                         read(&client, fetch, account.as_deref(), &sent).await;
                     // A failed pull from the node (`message.receive`) never
@@ -616,8 +648,11 @@ impl Task {
                         break;
                     }
                 }
-                let _ = internal.send(Internal::PollDone);
+                let _ = internal.send(Internal::PollDone(sequence.collect()));
             });
+            for fetch in reserved {
+                self.read_recovery.running.insert(fetch, task.abort_handle());
+            }
         }
     }
 
@@ -625,6 +660,13 @@ impl Task {
         match internal {
             Internal::Snapshot(results) => self.on_snapshot(results),
             Internal::Fetched((fetch, number, result)) => {
+                self.read_recovery.running.remove(&fetch);
+                if matches!(self.link, Link::Locked | Link::Lost) {
+                    return;
+                }
+                if self.link == Link::Attaching && matches!(fetch, Fetch::AccountStatus(_)) {
+                    self.link = Link::Live;
+                }
                 let finished = last_page(&fetch, &result);
                 if !self.outdated(&fetch, number, &result) {
                     if self.on_read(&fetch, result) && self.polls_in_flight > 0 {
@@ -636,7 +678,10 @@ impl Task {
                 }
                 self.read_ended(&fetch, finished);
             }
-            Internal::PollDone => {
+            Internal::PollDone(skipped) => {
+                for fetch in skipped {
+                    self.read_recovery.running.remove(&fetch);
+                }
                 self.polls_in_flight = self.polls_in_flight.saturating_sub(1);
                 if self.polls_in_flight == 0 {
                     self.interval = if self.poll_changed {
@@ -686,13 +731,20 @@ impl Task {
     }
 
     fn on_snapshot(&mut self, results: Vec<Read>) {
+        self.snapshot_task = None;
+        for (fetch, _, _) in &results {
+            self.read_recovery.running.remove(fetch);
+        }
+        if matches!(self.link, Link::Locked | Link::Lost) {
+            return;
+        }
         let unanswered = |r: &Result<Value, BusError>| {
             r.as_ref().is_err_and(|e| e.is_connection_lost() || *e == BusError::Timeout)
         };
         // A daemon that accepts the connection but answers none of the reads
         // in time is treated as gone (and retried), not as an empty one.
         if results.iter().any(|(_, _, r)| r.as_ref().is_err_and(BusError::is_connection_lost))
-            || results.iter().all(|(_, _, r)| unanswered(r))
+            || (self.scope.account().is_none() && results.iter().all(|(_, _, r)| unanswered(r)))
         {
             self.lost();
             return;
@@ -734,6 +786,33 @@ impl Task {
 
     /// Translates one read; returns whether it produced events.
     fn on_read(&mut self, fetch: &Fetch, result: Result<Value, BusError>) -> bool {
+        if let Err(error) = &result
+            && !error.is_connection_lost()
+            && !error.is_unknown_method()
+            && !(matches!(fetch, Fetch::AccountStatus(_))
+                && matches!(error, BusError::Daemon { message, .. } if message.contains("account not open")))
+        {
+            if !self.read_recovery.failed(fetch, Instant::now()) {
+                return false;
+            }
+            if matches!(fetch, Fetch::ContactRequests) {
+                let events = self.translator.requests_read_failed(error);
+                return self.emit(events);
+            }
+            let failure = ramflux_desktop_core::EffectFailure {
+                method: fetch.request(self.account().as_deref()).method,
+                code: match error {
+                    BusError::Timeout => ramflux_desktop_core::FailureCode::Timeout,
+                    BusError::Transport(_) => ramflux_desktop_core::FailureCode::Transport,
+                    BusError::Daemon { code, .. } => {
+                        ramflux_desktop_core::FailureCode::Daemon(code.clone())
+                    }
+                },
+                message: error.message(),
+            };
+            return self.emit(vec![DomainEvent::EffectFailed(failure)]);
+        }
+        self.read_recovery.succeeded(fetch);
         let status = matches!(fetch, Fetch::AccountStatus(_));
         let changed = self.on_read_inner(fetch, result);
         if status {
@@ -769,23 +848,6 @@ impl Task {
                 Err(error) if error.is_unknown_method() => Some(false),
                 Err(_) => None,
             };
-            if let (false, Err(error)) = (calls, &result)
-                && !error.is_unknown_method()
-                && !error.is_connection_lost()
-            {
-                let failed = self.translator.requests_read_failed(error);
-                self.emit(failed);
-                if self.scope.account().is_some() {
-                    self.requests_retry_wait = if self.requests_retry_wait.is_zero() {
-                        self.config.poll_fast
-                    } else {
-                        (self.requests_retry_wait * 2).min(self.config.poll_slow)
-                    };
-                    self.requests_retry_at = Some(Instant::now() + self.requests_retry_wait);
-                }
-            } else if !calls {
-                self.clear_requests_retry();
-            }
             match (live, calls) {
                 (Some(live), true) => self.calls_answered(live),
                 (Some(live), false) => self.requests_answered(live),
@@ -878,9 +940,13 @@ impl Task {
         }
     }
 
-    fn clear_requests_retry(&mut self) {
-        self.requests_retry_at = None;
-        self.requests_retry_wait = Duration::ZERO;
+    fn cancel_reads(&mut self) {
+        self.read_recovery.cancel();
+        self.sync.clear_reads();
+        self.polls_in_flight = 0;
+        if let Some(task) = self.snapshot_task.take() {
+            task.abort();
+        }
     }
 
     /// Reads a call's media session for the engine. Its secrets go
