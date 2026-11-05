@@ -8,6 +8,7 @@ import subprocess
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
     "bus::tests::a_retry_the_daemon_cannot_replay_asks_the_user_to_check",
+    "bus::deadline::tests::unlock_budget_and_weights",
     "bus::tests::reconciliation_refusal_is_matched_by_code",
     "bridge::s5_lifecycle_tests::reconcile_retry_sends_a_fresh_key",
     "bridge::s5_lifecycle_tests::lifecycle_answer_lost_resends_once_with_same_key",
@@ -18,7 +19,7 @@ GUARD = "a_lost_answer_is_resent_under_the_same_key_and_applied_once"
 
 
 def run(command):
-    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+    result = subprocess.run(command, timeout=300, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
     print(result.stdout, end="", flush=True)
     if result.returncode:
         raise SystemExit(result.returncode)

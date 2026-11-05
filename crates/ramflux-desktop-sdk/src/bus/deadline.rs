@@ -21,6 +21,10 @@ use std::time::Duration;
 pub enum Weight {
     /// Reads local daemon state.
     Read,
+    /// Unlocks local account state, including key derivation.
+    Unlock,
+    /// Locks or switches the active account.
+    Session,
     /// Changes local daemon state only.
     Local,
     /// Reaches a node or derives keys.
@@ -30,12 +34,11 @@ pub enum Weight {
 }
 
 /// Methods that reach a node, or derive keys from a passphrase.
-const NETWORK: [&str; 32] = [
+const NETWORK: [&str; 31] = [
     "account.create",
     // The owner-attended creation of an AI participant: the daemon
     // verifies the custodian and registers the new account with its node.
     "account.create.begin",
-    "account.unlock",
     "account.backup.import",
     "account.backup.export",
     "account.backup.create",
@@ -97,6 +100,10 @@ const READS: [&str; 19] = [
 pub fn weight(method: &str) -> Weight {
     if method == "daemon.stop" {
         Weight::Stop
+    } else if method == "account.unlock" {
+        Weight::Unlock
+    } else if matches!(method, "account.lock" | "account.switch") {
+        Weight::Session
     } else if NETWORK.contains(&method) {
         Weight::Network
     } else if READS.contains(&method) {
@@ -111,6 +118,10 @@ pub fn weight(method: &str) -> Weight {
 pub struct Deadlines {
     /// Reads of local state.
     pub read: Duration,
+    /// Local account unlock.
+    pub unlock: Duration,
+    /// Account lock and switch.
+    pub session: Duration,
     /// Local changes.
     pub local: Duration,
     /// Node round trips and key derivation.
@@ -123,7 +134,9 @@ impl Deadlines {
     /// The application's budgets.
     pub const fn standard() -> Self {
         Self {
-            read: Duration::from_secs(15),
+            read: Duration::from_secs(2),
+            unlock: Duration::from_secs(10),
+            session: Duration::from_secs(5),
             local: Duration::from_secs(20),
             network: Duration::from_secs(60),
             stop: Duration::from_secs(10),
@@ -132,13 +145,22 @@ impl Deadlines {
 
     /// The same budget for every method (tests).
     pub const fn uniform(budget: Duration) -> Self {
-        Self { read: budget, local: budget, network: budget, stop: budget }
+        Self {
+            read: budget,
+            unlock: budget,
+            session: budget,
+            local: budget,
+            network: budget,
+            stop: budget,
+        }
     }
 
     /// The budget of `method`.
     pub fn budget(&self, method: &str) -> Duration {
         match weight(method) {
             Weight::Read => self.read,
+            Weight::Unlock => self.unlock,
+            Weight::Session => self.session,
             Weight::Local => self.local,
             Weight::Network => self.network,
             Weight::Stop => self.stop,
@@ -175,6 +197,30 @@ mod tests {
         assert_eq!(deadlines.budget("account.create.begin"), deadlines.network);
         assert_eq!(deadlines.budget("account.export_agent_credentials"), deadlines.network);
         assert!(deadlines.read < deadlines.network);
+    }
+
+    #[test]
+    fn unlock_budget_and_weights() {
+        let deadlines = Deadlines::standard();
+        assert_eq!(weight("account.unlock"), Weight::Unlock);
+        assert!(!NETWORK.contains(&"account.unlock"));
+        for (method, seconds) in [
+            ("account.unlock", 10),
+            ("account.lock", 5),
+            ("account.switch", 5),
+            ("account.status", 2),
+            ("contact.list", 2),
+            ("contact.block", 20),
+            ("message.submit", 60),
+            ("daemon.stop", 10),
+        ] {
+            assert_eq!(deadlines.budget(method), Duration::from_secs(seconds), "{method}");
+            assert_eq!(
+                Deadlines::uniform(Duration::from_millis(7)).budget(method),
+                Duration::from_millis(7)
+            );
+        }
+        assert_eq!(crate::config::SdkConfig::default().connect_timeout, Duration::from_secs(2));
     }
 
     #[test]

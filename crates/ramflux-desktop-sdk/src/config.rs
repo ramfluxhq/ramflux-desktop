@@ -76,7 +76,7 @@ impl SdkConfig {
     pub fn new(socket_path: impl Into<PathBuf>) -> Self {
         Self {
             socket_path: socket_path.into(),
-            connect_timeout: Duration::from_secs(5),
+            connect_timeout: Duration::from_secs(2),
             deadlines: Deadlines::standard(),
             poll_fallback: true,
             stream_retry: Duration::from_secs(30),
