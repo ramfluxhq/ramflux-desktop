@@ -31,6 +31,12 @@ pub struct SdkHub {
 }
 
 impl SdkHub {
+    /// Advances a bridge configured with paused test time, independently of UI ticks.
+    #[cfg(feature = "test-support")]
+    pub fn advance_test_time(&self, duration: std::time::Duration) {
+        self.bridge.send(Command::AdvanceTestTime(duration));
+    }
+
     /// Starts the bridge thread for `config`.
     ///
     /// # Errors

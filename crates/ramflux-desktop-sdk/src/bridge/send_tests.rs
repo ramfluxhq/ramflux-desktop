@@ -139,3 +139,89 @@ async fn pending_without_hint_follows_ladder() {
     }
     assert_eq!(pending(&wrong), None, "code required");
 }
+
+#[tokio::test]
+async fn waiting_send_fails_after_ten_minutes_and_manual_retry_uses_new_key() {
+    use ramflux_desktop_core::{
+        EventEnvelope, Intent, IntentKind, MomentKind, Store, Timestamp, handle_intent,
+    };
+    let (mut task, mut inbox, rx, fake) = fixture("waiting-expiry");
+    let frames: std::collections::BTreeMap<String, Value> =
+        serde_json::from_str(include_str!("../../tests/fixtures/rfd_frames.json")).expect("frames");
+    for (fetch, key) in [
+        (Fetch::AccountStatus(AccountId::new("a")), "account.status"),
+        (Fetch::DeviceList, "device.list"),
+        (Fetch::first(crate::plan::fetch::Paged::Identities), "identity.directory"),
+        (Fetch::first(crate::plan::fetch::Paged::Conversations), "conversation.directory"),
+    ] {
+        let out = task.translator.fetched(&fetch, &frames[key], Timestamp(0));
+        task.emit(out.events);
+    }
+    task.start_send(
+        json!({"context_id":"dm-ana","text":"hello"}),
+        BusRequest::new(
+            Some("a"),
+            "message",
+            "message.submit",
+            json!({"message_id":"m","conversation_id":"dm-ana"}),
+        )
+        .with_operation_id("original".to_owned()),
+        Vec::new(),
+    );
+    let _ = inbox.internal.recv().await.expect("first");
+    tokio::time::pause();
+    task.send_done("m", Err(refusal(Some(600_000))));
+    tokio::time::advance(Duration::from_secs(599)).await;
+    task.retry_sends(false);
+    assert!(task.sends.contains_key("m"), "not before ten minutes");
+    tokio::time::advance(Duration::from_secs(1)).await;
+    task.retry_sends(false);
+    assert!(task.sends.is_empty());
+    let mut store = Store::new();
+    for (index, d) in rx.try_iter().enumerate() {
+        store.apply(&EventEnvelope::new(index as u64 + 1, d.at, d.event)).expect("project");
+    }
+    let moment = store.moments().find(|m| matches!(&m.kind, MomentKind::Message(p) if p.receipt == (Receipt::Failed { retryable: true }))).expect("failed").id.clone();
+    let effects = handle_intent(
+        &store,
+        Intent::human(IntentKind::RetryMessage { moment_id: moment }),
+        Timestamp(0),
+    )
+    .expect("manual retry");
+    tokio::time::resume();
+    for effect in effects {
+        task.effect(effect);
+    }
+    let Internal::SendDone { .. } =
+        tokio::time::timeout(Duration::from_secs(3), inbox.internal.recv())
+            .await
+            .expect("manual send deadline")
+            .expect("manual request")
+    else {
+        panic!("send")
+    };
+    let seen = fake.seen();
+    assert_eq!(seen.len(), 2);
+    assert_ne!(seen[0].operation_id, seen[1].operation_id);
+    assert_ne!(
+        seen[0].body["message_id"], seen[1].body["message_id"],
+        "manual retry is a new action"
+    );
+}
+
+#[tokio::test]
+async fn timeout_send_is_never_retried_with_fresh_key() {
+    let (mut task, mut inbox, rx, fake) = fixture("send-timeout");
+    start(&mut task);
+    let _ = inbox.internal.recv().await.expect("first");
+    task.send_done("m", Err(BusError::Timeout));
+    assert_eq!(receipt(&rx), Receipt::Failed { retryable: false });
+    task.networking_event(&json!({"account_id":"a","state":"live","session":{"state":"live"}}));
+    task.retry_sends(true);
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(fake.seen().len(), 1, "no fresh operation after an ambiguous outcome");
+    assert!(task.next_send_due().is_none());
+    assert!(task.sends.is_empty());
+}

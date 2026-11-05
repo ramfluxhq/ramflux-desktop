@@ -94,6 +94,7 @@ const MOMENT_KIND_VARIANTS: usize = 17;
 
 fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
+        IntentKind::RetryMessage { .. } => "RetryMessage",
         IntentKind::SendMessage { .. } => "SendMessage",
         IntentKind::StartConversation { .. } => "StartConversation",
         IntentKind::AttachObject { .. } => "AttachObject",
@@ -169,10 +170,11 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the eleven secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 61;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 62;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
+        UiEventKind::RetryMessagePressed => "RetryMessagePressed",
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
         UiEventKind::StartConversationRequested { .. } => "StartConversationRequested",
         UiEventKind::AttachFile { .. } => "AttachFile",
@@ -220,7 +222,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 45;
+const UI_EVENT_KIND_VARIANTS: usize = 46;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -773,6 +775,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         },
         IntentKind::SetContactRequestPolicy { policy: RequestPolicy::Manual },
         IntentKind::ClearRequestFloors,
+        IntentKind::RetryMessage { moment_id: MomentId::new("m-1") },
         IntentKind::SendMessage { context_id: ContextId::new("c-1"), text: "hi".into() },
         IntentKind::StartConversation {
             context_id: ContextId::new("c-new"),
@@ -880,6 +883,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
 
 fn all_ui_event_kinds() -> Vec<UiEventKind> {
     vec![
+        UiEventKind::RetryMessagePressed,
         UiEventKind::SubmitMessage { text: "hi".into() },
         UiEventKind::StartConversationRequested {
             context_id: ContextId::new("c-new"),

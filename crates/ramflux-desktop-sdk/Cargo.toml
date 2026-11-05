@@ -10,8 +10,8 @@ repository.workspace = true
 [features]
 # Bounded send metadata; disabled in ordinary builds.
 bus-trace = []
-# Completion ordering hooks for integration tests.
-test-support = []
+# Completion ordering and deterministic bridge time for integration tests.
+test-support = ["tokio/test-util"]
 
 [dependencies]
 ramflux-crypto.workspace = true

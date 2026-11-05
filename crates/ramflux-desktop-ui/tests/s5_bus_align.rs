@@ -734,3 +734,87 @@ fn hidden_scenario_playback_stops_render_ticks(cx: &mut TestAppContext) {
     advance(cx, 500);
     assert_eq!(before, cx.update(|cx| store.read(cx).session().expect("session").clock_ms()));
 }
+
+#[gpui_kit::test]
+fn hidden_waiting_send_expires_without_render_ticks(cx: &mut TestAppContext) {
+    use gpui_kit::WindowVisibility;
+    use ramflux_desktop_core::{Intent, IntentKind, MomentKind, Receipt};
+    use ramflux_desktop_sdk::SdkHub;
+    use std::time::Duration;
+    let _locale = locale_guard();
+    let path = socket_path("s5-hidden-send");
+    let frames: std::collections::BTreeMap<String, Value> = serde_json::from_str(include_str!(
+        "../../ramflux-desktop-sdk/tests/fixtures/rfd_frames.json"
+    ))
+    .expect("frames");
+    let fake = FakeBus::start(&path, move |method, _, _| {
+        if method == "message.submit" {
+            return Reply::Refused {
+                code: "NetworkingPending",
+                message: "arbitrary wording".into(),
+                reason_code: "pending",
+                details: Some(json!({"networking":{"state":"networking_pending"}})),
+            };
+        }
+        Reply::Ok(frames.get(method).cloned().unwrap_or(json!({})))
+    });
+    fake.enable_stream();
+    let mut config = SdkConfig::new(path);
+    config.call_api = false;
+    config.backup_api = false;
+    config.pause_test_time = true;
+    let hub = SdkHub::start(config.clone()).expect("hub");
+    let mut options = ShellOptions::for_scenario("", true);
+    options.source = SourceChoice::Rfd(config);
+    let (window, shell) = open_with(cx, options);
+    let store = store_handle(cx, &shell);
+    cx.update(|cx| store.update(cx, |store, cx| store.attach_live(hub.clone(), cx)));
+    wait_for_workspace(cx, &shell);
+    show_context(cx, window, &shell, "dm-ana");
+    cx.update(|cx| {
+        store.update(cx, |store, cx| {
+            store.dispatch(
+                Intent::human(IntentKind::SendMessage {
+                    context_id: ramflux_desktop_core::ContextId::new("dm-ana"),
+                    text: "Hidden expiry".into(),
+                }),
+                cx,
+            );
+        })
+    });
+    let has = |cx: &mut TestAppContext, wanted: Receipt| {
+        with_store(cx, &shell, |s| {
+            s.moments().any(|m| matches!(&m.kind, MomentKind::Message(p) if p.receipt == wanted))
+        })
+    };
+    without_time(cx, |cx| {
+        with_store(cx, &shell, |s| {
+            s.moments().any(|m| matches!(&m.kind, MomentKind::Message(p) if matches!(p.receipt, Receipt::WaitingForNode { .. })))
+        })
+    });
+    cx.simulate_window_visibility_change(window.into(), WindowVisibility::Hidden);
+    cx.run_until_parked();
+    assert!(!cx.update(|cx| store.read(cx).render_clock_running()));
+    let elapsed = cx.update(|cx| store.read(cx).session().expect("session").clock_ms());
+    hub.advance_test_time(Duration::from_secs(599));
+    without_time(cx, |cx| {
+        fake.seen().iter().filter(|r| r.method == "message.submit").count() >= 2
+            && with_store(cx, &shell, |s| {
+                s.moments().any(|m| matches!(&m.kind, MomentKind::Message(p) if matches!(p.receipt, Receipt::WaitingForNode { .. })))
+            })
+    });
+    assert!(!has(cx, Receipt::Failed { retryable: true }), "not before ten minutes");
+    hub.advance_test_time(Duration::from_secs(1));
+    without_time(cx, |cx| has(cx, Receipt::Failed { retryable: true }));
+    assert_eq!(
+        elapsed,
+        cx.update(|cx| store.read(cx).session().expect("session").clock_ms()),
+        "no render ticks drove expiry"
+    );
+    assert!(!cx.update(|cx| store.read(cx).render_clock_running()));
+    cx.simulate_window_visibility_change(window.into(), WindowVisibility::Visible);
+    cx.run_until_parked();
+    assert!(exists(cx, window, "message-retry"));
+    fake.shutdown();
+
+}

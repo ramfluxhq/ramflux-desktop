@@ -10,10 +10,11 @@
 //! the reason when it failed.
 
 use gpui_kit::TestSupportExt as _;
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
-use ramflux_desktop_core::{MessagePayload, Receipt, TransferState};
+use ramflux_desktop_core::{MessagePayload, Receipt, TransferState, UiEventKind};
 
 use super::RowRefs;
 use crate::bubble::EventSink;
@@ -25,7 +26,7 @@ pub fn render(
     body: Option<&SharedString>,
     refs: &RowRefs,
     outbound: bool,
-    _sink: &EventSink,
+    sink: &EventSink,
     cx: &App,
 ) -> impl IntoElement {
     let muted = cx.theme().muted_foreground;
@@ -79,6 +80,7 @@ pub fn render(
         Receipt::Failed { .. } => crate::tone::text(cx.theme().danger, cx),
     };
     let text = body.cloned();
+    let retry = sink.clone();
     v_flex()
         .id("message-body")
         .gap_1()
@@ -96,6 +98,13 @@ pub fn render(
             )
         })
         .children(attachment)
+        .when(payload.receipt == (Receipt::Failed { retryable: true }), |col| {
+            col.child(
+                Button::new("message-retry").small().label(tr("moment.message.retry")).on_click(
+                    move |_, window, cx| retry.emit(UiEventKind::RetryMessagePressed, window, cx),
+                ),
+            )
+        })
         .when(
             outbound
                 || matches!(

@@ -96,6 +96,21 @@ impl Task {
         }
         let operation = match planned.plan {
             Plan::Call { request, refresh } if method == methods::SEND_MESSAGE => {
+                if let Some(id) = body["retry_moment"].as_str() {
+                    self.emit(vec![DomainEvent::MomentUpdated {
+                        moment_id: ramflux_desktop_core::MomentId::new(id),
+                        lifecycle: None,
+                        kind: Some(ramflux_desktop_core::MomentKind::Message(
+                            ramflux_desktop_core::MessagePayload {
+                                text: body["text"].as_str().unwrap_or_default().to_owned(),
+                                receipt: ramflux_desktop_core::Receipt::Failed { retryable: false },
+                                tombstone: false,
+                                attachment: None,
+                                franking: None,
+                            },
+                        )),
+                    }]);
+                }
                 self.start_send(body, request, refresh);
                 return;
             }

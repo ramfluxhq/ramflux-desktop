@@ -24,6 +24,9 @@ pub struct SdkConfig {
     /// Test-only ordering of a late phrase handoff after its ready event.
     #[cfg(feature = "test-support")]
     pub phrase_handoff_gate: Option<std::sync::Arc<crate::test_support::PhraseHandoffGate>>,
+    /// Freeze Tokio time for deterministic test-driven deadline advancement.
+    #[cfg(feature = "test-support")]
+    pub pause_test_time: bool,
     /// The daemon's local-bus socket.
     pub socket_path: PathBuf,
     /// Longest wait for the daemon socket to accept a connection.
@@ -64,6 +67,8 @@ impl SdkConfig {
         Self {
             #[cfg(feature = "test-support")]
             phrase_handoff_gate: None,
+            #[cfg(feature = "test-support")]
+            pause_test_time: false,
             socket_path: socket_path.into(),
             connect_timeout: Duration::from_secs(2),
             deadlines: Deadlines::standard(),

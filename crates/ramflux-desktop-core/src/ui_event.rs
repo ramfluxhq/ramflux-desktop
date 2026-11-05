@@ -70,6 +70,8 @@ pub enum NodeAction {
 /// event can carry human confirmation: only the hold-to-confirm strip adds it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum UiEventKind {
+    /// Retry a message whose pre-acceptance wait expired.
+    RetryMessagePressed,
     /// Composer submitted text.
     SubmitMessage {
         /// Text.

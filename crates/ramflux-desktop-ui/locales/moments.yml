@@ -75,6 +75,9 @@ moment:
     failed:
       en: "Failed"
       zh-CN: "发送失败"
+    retry:
+      en: "Retry"
+      zh-CN: "重试"
     retry_in:
       en: "Retry in %{seconds}s"
       zh-CN: "%{seconds} 秒后重试"

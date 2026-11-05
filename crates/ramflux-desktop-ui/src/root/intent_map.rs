@@ -57,6 +57,7 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
     let moment = event.moment_id().and_then(|id| store.moment(id))?;
     let moment_id = moment.id.clone();
     Some(match &event.kind {
+        UiEventKind::RetryMessagePressed => IntentKind::RetryMessage { moment_id },
         UiEventKind::ActionInvoked { action_id, values, surface_hash, version } => {
             let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
             IntentKind::SurfaceAction {

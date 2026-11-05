@@ -626,6 +626,7 @@ impl Task {
     }
 
     pub(super) fn locked(&mut self) {
+        self.sends.clear();
         self.cancel_reads();
         self.link = Link::Locked;
         self.stop_push_subscription();

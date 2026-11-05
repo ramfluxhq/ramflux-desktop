@@ -41,6 +41,7 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::ConflictResolved { .. } => "ConflictResolved",
         UiEventKind::TaskRequested { .. } => "TaskRequested",
         UiEventKind::CancelPressed => "CancelPressed",
+        UiEventKind::RetryMessagePressed => "RetryMessagePressed",
         UiEventKind::RetryDecisionPressed => "RetryDecisionPressed",
         UiEventKind::ProposalAccepted => "ProposalAccepted",
         UiEventKind::PinToggled { .. } => "PinToggled",
@@ -86,6 +87,7 @@ pub fn intent_name(intent: &Intent) -> &'static str {
 /// Variant name of an intent kind.
 pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
+        IntentKind::RetryMessage { .. } => "RetryMessage",
         IntentKind::SendMessage { .. } => "SendMessage",
         IntentKind::StartConversation { .. } => "StartConversation",
         IntentKind::AttachObject { .. } => "AttachObject",

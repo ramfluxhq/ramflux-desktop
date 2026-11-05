@@ -63,6 +63,8 @@ pub type MediaAnswer = (CallId, Result<CallMedia, String>);
 
 /// A request from a source to the bridge.
 pub(crate) enum Command {
+    #[cfg(feature = "test-support")]
+    AdvanceTestTime(std::time::Duration),
     /// Start serving `scope`, delivering into `outbox`.
     Attach {
         scope: Scope,
@@ -101,7 +103,11 @@ impl Bridge {
     ///
     /// Returns the I/O error when the thread or its runtime cannot start.
     pub fn start(config: SdkConfig) -> std::io::Result<Self> {
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+        let mut builder = tokio::runtime::Builder::new_current_thread();
+        builder.enable_all();
+        #[cfg(feature = "test-support")]
+        builder.start_paused(config.pause_test_time);
+        let runtime = builder.build()?;
         let (commands, inbox) = mpsc::unbounded_channel();
         let audit = Arc::new(PhraseAudit::default());
         let shared = audit.clone();
@@ -127,6 +133,16 @@ async fn serve(
     audit: Arc<PhraseAudit>,
     mut inbox: mpsc::UnboundedReceiver<Command>,
 ) {
+    // Paused Tokio runtimes normally auto-advance when idle. Keep this test
+    // runtime runnable so only an explicit command advances the clock.
+    #[cfg(feature = "test-support")]
+    if config.pause_test_time {
+        tokio::spawn(async {
+            loop {
+                tokio::task::yield_now().await;
+            }
+        });
+    }
     let mut scopes: BTreeMap<Scope, mpsc::UnboundedSender<scope::ScopeCommand>> = BTreeMap::new();
     // The daemon scope follows the backup jobs only while no account scope
     // is attached (an account's own link follows them then): it is told
@@ -154,6 +170,8 @@ async fn serve(
             }
         };
         match command {
+            #[cfg(feature = "test-support")]
+            Command::AdvanceTestTime(duration) => tokio::time::advance(duration).await,
             Command::Attach { scope, outbox, phrases } => {
                 let (tx, rx) = mpsc::unbounded_channel();
                 let ceremonies = scope::Ceremonies { phrases, audit: audit.clone() };

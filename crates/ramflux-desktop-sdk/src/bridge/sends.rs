@@ -81,7 +81,10 @@ impl Task {
     }
 
     pub(super) fn next_send_due(&self) -> Option<Instant> {
-        self.sends.values().filter_map(|s| s.due).min()
+        self.sends
+            .values()
+            .filter_map(|s| s.due.map(|due| due.min(s.started + Duration::from_secs(600))))
+            .min()
     }
 
     pub(super) fn send_done(&mut self, id: &str, result: Result<Value, BusError>) {
@@ -92,8 +95,9 @@ impl Task {
             const LADDER: [u64; 5] = [2_000, 5_000, 15_000, 30_000, 60_000];
             let delay = hint.unwrap_or(LADDER[send.refusals.min(4)]).clamp(1, 600_000);
             send.refusals = send.refusals.saturating_add(1);
-            let due = Instant::now() + Duration::from_millis(delay);
-            send.due = Some(due);
+            let due = (Instant::now() + Duration::from_millis(delay))
+                .min(send.started + Duration::from_secs(600));
+            send.due = Some(due.min(send.started + Duration::from_secs(600)));
             let retry_at = send.at.saturating_add_ms(
                 u64::try_from(due.duration_since(send.started).as_millis()).unwrap_or(u64::MAX),
             );
@@ -123,6 +127,18 @@ impl Task {
             .map(|(id, _)| id.clone())
             .collect();
         for id in ids {
+            if self.sends.get(&id).is_some_and(|s| now >= s.started + Duration::from_secs(600)) {
+                if let Some(send) = self.sends.remove(&id) {
+                    let events = self.translator.outgoing_message(
+                        &send.body,
+                        &id,
+                        Receipt::Failed { retryable: true },
+                        send.at,
+                    );
+                    self.emit(events);
+                }
+                continue;
+            }
             let Some(send) = self.sends.get_mut(&id) else { continue };
             // Only entries waiting after a typed refusal can reach this path.
             let Ok(key) = idempotency::fresh_key() else { continue };

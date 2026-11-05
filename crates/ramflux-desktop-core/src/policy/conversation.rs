@@ -13,6 +13,19 @@ use crate::model::{Direction, Object, TransferState};
 /// Decides conversation-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
     Some(match kind {
+        IntentKind::RetryMessage { moment_id } => p.moment(moment_id).and_then(|moment| {
+            let crate::MomentKind::Message(payload) = &moment.kind else {
+                return Err(IntentError::NotActionable(moment_id.clone()));
+            };
+            if payload.receipt != (crate::Receipt::Failed { retryable: true }) {
+                return Err(IntentError::NotActionable(moment_id.clone()));
+            }
+            let text = p.store.body(moment_id).ok_or(IntentError::Empty("message text"))?;
+            Ok(Decision::Call(
+                methods::SEND_MESSAGE,
+                json!({"context_id":moment.context_id,"text":text,"retry_moment":moment_id}),
+            ))
+        }),
         IntentKind::SendMessage { context_id, text } => p.context(context_id).and_then(|context| {
             if text.trim().is_empty() {
                 return Err(IntentError::Empty("message text"));

@@ -31,6 +31,11 @@ pub enum SyncDirection {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum IntentKind {
     // Conversation.
+    /// Retry a send that expired before acceptance.
+    RetryMessage {
+        /// Failed message.
+        moment_id: MomentId,
+    },
     /// Send a text message.
     SendMessage {
         /// Target context.
