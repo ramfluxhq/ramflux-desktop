@@ -147,6 +147,8 @@ jobs:
         run: cargo fetch --locked
 
       - name: Required bus alignment tests (positive counts)
+        if: matrix.repeat == 1
+        timeout-minutes: 15
         run: python3 scripts/check-bus-align-tests.py
 
       - name: Test
@@ -198,6 +200,7 @@ jobs:
         run: scripts/check-shot-programs.sh
 
       - name: Required bus alignment tests (positive counts)
+        timeout-minutes: 15
         run: python3 scripts/check-bus-align-tests.py
 
       - name: Test

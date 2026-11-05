@@ -314,8 +314,9 @@ fn the_real_daemon_reads_the_retry_key_of_a_mutation() {
     let again = runtime.block_on(client.call(&remove(key)));
     println!("same key again: {again:?}");
     assert!(
-        matches!(&again, Err(BusError::Daemon { message, .. })
-            if message.contains("operation requires reconciliation")),
+        matches!(&again, Err(BusError::Daemon { code, message, .. })
+            if code == "OperationReconciliationRequired"
+                && message.contains("operation requires reconciliation")),
         "{again:?}"
     );
 }

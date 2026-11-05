@@ -59,7 +59,7 @@ fn exercise(name: &str, refuse_first: bool) {
             if refuse_first && attempt == 0 {
                 return Reply::Error(
                     "OperationReconciliationRequired",
-                    "inspect the saved operation".into(),
+                    "operation requires reconciliation: desk-op-1".into(),
                 );
             }
             let body = json!({"local_account_id": "acct-work", "state": "unlocked", "networking": "networking_pending"});

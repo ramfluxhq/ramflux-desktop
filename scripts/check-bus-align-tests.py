@@ -7,6 +7,7 @@ import subprocess
 # Extend these lists in the PR that introduces each case. Future cases must
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
+    "bus::tests::a_retry_the_daemon_cannot_replay_asks_the_user_to_check",
     "bus::tests::reconciliation_refusal_is_matched_by_code",
     "bridge::s5_lifecycle_tests::reconcile_retry_sends_a_fresh_key",
     "bridge::s5_lifecycle_tests::lifecycle_answer_lost_resends_once_with_same_key",

@@ -501,7 +501,7 @@ mod tests {
     #[test]
     fn a_retry_the_daemon_cannot_replay_asks_the_user_to_check() {
         let refused = BusError::from(SdkError::LocalBus(
-            "OperationReconciliationRequired: storage error: event id conflict: operation requires \
+            "OperationReconciliationRequired: storage error: operation requires \
              reconciliation: desk-op-1"
                 .to_owned(),
         ));
@@ -513,7 +513,7 @@ mod tests {
     fn reconciliation_refusal_is_matched_by_code() {
         let error = BusError::from_error_body(Some(ramflux_sdk::LocalBusErrorBody {
             code: RECONCILE_CODE.to_owned(),
-            message: "inspect the saved operation before retrying".to_owned(),
+            message: "storage error: operation requires reconciliation: desk-op-1".to_owned(),
             reason_code: None,
             details: None,
             retry_after_ms: None,
@@ -522,10 +522,18 @@ mod tests {
         assert_eq!(error.message(), RECONCILE_KEY);
         assert!(!error.is_retryable());
         assert!(!error.is_connection_lost());
-        let flattened = BusError::from(SdkError::LocalBus(format!("{RECONCILE_CODE}: inspect")));
+        let flattened = BusError::from(SdkError::LocalBus(format!(
+            "{RECONCILE_CODE}: storage error: operation requires reconciliation: desk-op-1"
+        )));
         assert_eq!(flattened.message(), RECONCILE_KEY);
-        let unrelated = BusError::daemon("ValidationFailed", "operation requires reconciliation");
-        assert_eq!(unrelated.message(), "operation requires reconciliation");
+        let unrelated = BusError::daemon(
+            "ValidationFailed",
+            "storage error: event id conflict: operation requires reconciliation: ordinary-event-id",
+        );
+        assert_eq!(
+            unrelated.message(),
+            "storage error: event id conflict: operation requires reconciliation: ordinary-event-id"
+        );
     }
 
     #[test]
