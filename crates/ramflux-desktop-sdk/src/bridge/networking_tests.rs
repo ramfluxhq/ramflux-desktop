@@ -232,8 +232,12 @@ async fn missed_networking_event_is_replayed_from_cursor() {
 async fn custody_pending_and_authority_blocked_override_live_session() {
     let (mut task, _, delivered) = task();
     for blocked in [false, true] {
+        task.on_read(
+            &Fetch::AccountStatus(AccountId::new("acct-main")),
+            Ok(json!({"networking":"networking_pending", "authority_blocked":blocked})),
+        );
         task.networking_event(&json!({"account_id":"acct-main", "state":"networking_pending",
-            "authority_blocked":blocked, "networking_reason":null, "session":{"state":"live"}}));
+            "networking_reason":null, "session":{"state":"live"}}));
         let account = latest(&delivered);
         assert_eq!(account.networking_session, Some(Networking::Live));
         assert_eq!(account.networking_custody, Some(Networking::Pending));
@@ -316,4 +320,34 @@ async fn sessionless_terminal_reason_survives_delayed_status() {
         account.networking_reason.expect("terminal reason").kind,
         ramflux_desktop_core::NetworkingReasonKind::CustodyExpired
     );
+}
+
+#[tokio::test]
+async fn authority_restored_event_clears_blocked_and_fences_delayed_status() {
+    let (mut task, _, delivered) = task();
+    let fetch = Fetch::AccountStatus(AccountId::new("acct-main"));
+    let blocked = json!({"state":"unlocked", "networking":"networking_pending",
+        "authority_blocked":true, "networking_snapshot":{"state":"live"}});
+    task.on_read(&fetch, Ok(blocked.clone()));
+    assert!(latest(&delivered).authority_blocked);
+    let old_revision = task.networking_revision;
+    // A Live resident session alone does not establish custody authority.
+    task.networking_event(&json!({"account_id":"acct-main", "session":{"state":"live"}}));
+    assert!(!delivered.try_iter().any(|d| matches!(d.event,
+        DomainEvent::AccountUpdated(a) if !a.authority_blocked || a.networking == Networking::Live)));
+    task.networking_event(&event("live"));
+    let restored = latest(&delivered);
+    assert!(!restored.authority_blocked);
+    assert_eq!(restored.networking, Networking::Live);
+    // A status dispatched before the event cannot reintroduce the old block.
+    let mut delayed = blocked;
+    delayed["node_id"] = json!("node-local");
+    task.internal(Internal::Fetched((fetch, Some(old_revision), Ok(delayed))));
+    let fenced = latest(&delivered);
+    assert!(!fenced.authority_blocked);
+    assert_eq!(fenced.networking, Networking::Live);
+    assert_eq!(fenced.node_id.as_ref().map(|id| id.as_str()), Some("node-local"));
+    // The translator itself must retain the cleared flag on later events.
+    task.networking_event(&event("networking_pending"));
+    assert!(!latest(&delivered).authority_blocked);
 }

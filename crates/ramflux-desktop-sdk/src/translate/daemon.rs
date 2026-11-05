@@ -46,6 +46,10 @@ pub(super) fn apply_networking(account: &mut Account, row: &Value) {
     }
     if let Some(blocked) = row["authority_blocked"].as_bool() {
         account.authority_blocked = blocked;
+    } else if custody_state == Some(ramflux_desktop_core::Networking::Live) {
+        // The daemon reports blocked authority as custody NetworkingPending.
+        // A Live custody event therefore proves authority has been restored.
+        account.authority_blocked = false;
     }
     let session = row.get("session").or_else(|| row.get("networking_snapshot"));
     if let Some(session) = session {

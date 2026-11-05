@@ -24,6 +24,14 @@ use std::{
 };
 
 fn fixture(cx: &mut TestAppContext, locked: bool) -> (FakeBus, common::Opened) {
+    fixture_with_authority(cx, locked, false)
+}
+
+fn fixture_with_authority(
+    cx: &mut TestAppContext,
+    locked: bool,
+    authority_blocked: bool,
+) -> (FakeBus, common::Opened) {
     let path = socket_path("s5-ui");
     let frames: std::collections::BTreeMap<String, Value> = serde_json::from_str(include_str!(
         "../../ramflux-desktop-sdk/tests/fixtures/rfd_frames.json"
@@ -35,7 +43,7 @@ fn fixture(cx: &mut TestAppContext, locked: bool) -> (FakeBus, common::Opened) {
         match method {
             "account.list" => {
                 Reply::Ok(json!({"accounts":if unlocked {vec!["acct-main"]} else {vec![]},
-                "account_details":[{"id":"acct-main","label":"Work","state":if unlocked {"unlocked"} else {"locked"},"networking":"networking_pending"}]}))
+                "account_details":[{"id":"acct-main","label":"Work","state":if unlocked {"unlocked"} else {"locked"},"networking":"networking_pending","authority_blocked":authority_blocked}]}))
             }
             "account.unlock" => {
                 opened.store(true, Ordering::SeqCst);
@@ -45,7 +53,9 @@ fn fixture(cx: &mut TestAppContext, locked: bool) -> (FakeBus, common::Opened) {
             }
             "account.status" => {
                 let mut status = frames.get(method).cloned().unwrap_or(json!({}));
-                status["networking"] = json!("live");
+                status["networking"] =
+                    json!(if authority_blocked { "networking_pending" } else { "live" });
+                status["authority_blocked"] = json!(authority_blocked);
                 status["networking_snapshot"] = json!({"state":"networking_pending","phase":"connecting","generation":1,"cause":null,"retry_after_ms":null});
                 Reply::Ok(status)
             }
@@ -214,7 +224,8 @@ fn header_shows_connecting_until_live_or_typed_reason(cx: &mut TestAppContext) {
         }
         let mut blocked = event(Value::Null, "live");
         blocked["state"] = json!("networking_pending");
-        blocked["authority_blocked"] = json!(true);
+        blocked["networking_reason"] =
+            json!({"kind":"registration_refused","code":"authority_unavailable"});
         fake.publish("acct-main", "account.networking.changed", blocked);
         wait(cx, "authority beats live session", |cx| {
             title(cx, handle) == tr("network_header.authority").as_ref()
@@ -222,7 +233,6 @@ fn header_shows_connecting_until_live_or_typed_reason(cx: &mut TestAppContext) {
         // No cause and a Live event restore the normal workspace title.
         let mut live = event(Value::Null, "live");
         live["session"]["cause"] = Value::Null;
-        live["authority_blocked"] = json!(false);
         fake.publish("acct-main", "account.networking.changed", live);
         wait(cx, "live title", |cx| title(cx, handle) == tr("app.name").as_ref());
     }
@@ -295,5 +305,32 @@ fn header_shows_connecting_until_live_or_typed_reason(cx: &mut TestAppContext) {
         assert_eq!(title(cx, handle), tr(key).as_ref());
     }
     cx.update(|cx| select_locale("en", cx));
+    fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn authority_restored_event_returns_blocked_header_to_live(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
+    cx.update(|cx| select_locale("en", cx));
+    let (fake, (handle, shell)) = fixture_with_authority(cx, false, true);
+    wait_for_workspace(cx, &shell);
+    wait(cx, "blocked status header and stream", |cx| {
+        fake.streaming("acct-main")
+            && title(cx, handle) == tr("network_header.authority").as_ref()
+            && with_store(cx, &shell, |s| {
+                s.account(&AccountId::new("acct-main")).is_some_and(|a| a.authority_blocked)
+            })
+    });
+    let mut restored = event(Value::Null, "live");
+    restored["session"]["cause"] = Value::Null;
+    assert!(restored.get("authority_blocked").is_none(), "product event has no flag");
+    fake.publish("acct-main", "account.networking.changed", restored);
+    wait(cx, "authority event restores Live header", |cx| {
+        title(cx, handle) == tr("app.name").as_ref()
+            && with_store(cx, &shell, |s| {
+                s.account(&AccountId::new("acct-main"))
+                    .is_some_and(|a| !a.authority_blocked && a.networking == Networking::Live)
+            })
+    });
     fake.shutdown();
 }

@@ -7,6 +7,7 @@ import subprocess
 # Extend these lists in the PR that introduces each case. Future cases must
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
+    "bridge::scope::networking_tests::authority_restored_event_clears_blocked_and_fences_delayed_status",
     "bridge::scope::networking_tests::custody_pending_and_authority_blocked_override_live_session",
     "bridge::scope::networking_tests::daemon_list_and_lifecycle_merge_preserves_account_session",
     "bridge::scope::networking_tests::push_gap_reopen_recovers_networking_snapshot",
@@ -32,7 +33,11 @@ SDK_TESTS = [
     "bridge::s5_lifecycle_tests::lifecycle_answer_lost_resends_once_with_same_key",
     "local::daemon_process::tests::daemon_spawn_sets_default_rust_log_unless_inherited",
 ]
-UI_TESTS = ["unlock_opens_account_on_networking_pending", "header_shows_connecting_until_live_or_typed_reason"]
+UI_TESTS = [
+    "authority_restored_event_returns_blocked_header_to_live",
+    "unlock_opens_account_on_networking_pending",
+    "header_shows_connecting_until_live_or_typed_reason",
+]
 GUARD = "a_lost_answer_is_resent_under_the_same_key_and_applied_once"
 
 
