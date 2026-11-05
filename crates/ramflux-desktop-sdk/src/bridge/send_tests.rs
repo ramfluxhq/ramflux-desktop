@@ -56,14 +56,22 @@ fn refusal(hint: Option<u64>) -> BusError {
 
 fn receipt(rx: &mpsc::Receiver<super::super::Delivery>) -> Receipt {
     rx.try_iter()
-        .filter_map(|d| match d.event {
-            DomainEvent::MomentAdded(m) => Some(m.kind),
-            DomainEvent::MomentUpdated { kind, .. } => kind,
-            _ => None,
-        })
-        .filter_map(|k| match k {
-            ramflux_desktop_core::MomentKind::Message(p) => Some(p.receipt),
-            _ => None,
+        .filter_map(|d| {
+            let (kind, lifecycle) = match d.event {
+                DomainEvent::MomentAdded(m) => (Some(m.kind), Some(m.lifecycle)),
+                DomainEvent::MomentUpdated { kind, lifecycle, .. } => (kind, lifecycle),
+                _ => return None,
+            };
+            let Some(ramflux_desktop_core::MomentKind::Message(p)) = kind else { return None };
+            let expected = match p.receipt {
+                Receipt::Sent | Receipt::Delivered | Receipt::Read => {
+                    ramflux_desktop_core::Lifecycle::Done
+                }
+                Receipt::Failed { .. } => ramflux_desktop_core::Lifecycle::Failed,
+                _ => ramflux_desktop_core::Lifecycle::InProgress,
+            };
+            assert_eq!(lifecycle, Some(expected), "receipt and lifecycle must agree");
+            Some(p.receipt)
         })
         .last()
         .expect("receipt")
@@ -101,11 +109,14 @@ async fn repeated_pending_reschedules_without_live_event() {
     // Account may already be Live when the method refuses pre-acceptance.
     task.networking_event(&json!({"account_id":"a","state":"live","session":{"state":"live"}}));
     task.send_done("m", Err(refusal(Some(1))));
+    tokio::time::pause();
     for _ in 0..3 {
         let due = task.next_send_due().expect("each refusal rearms");
-        tokio::time::sleep_until(due).await;
+        tokio::time::advance(due.saturating_duration_since(Instant::now())).await;
         task.retry_sends(false);
+        tokio::time::resume();
         let _ = inbox.internal.recv().await.expect("retry reached bus");
+        tokio::time::pause();
         task.send_done("m", Err(refusal(Some(1))));
         assert!(matches!(receipt(&rx), Receipt::WaitingForNode { .. }));
     }
@@ -211,17 +222,68 @@ async fn waiting_send_fails_after_ten_minutes_and_manual_retry_uses_new_key() {
 
 #[tokio::test]
 async fn timeout_send_is_never_retried_with_fresh_key() {
-    let (mut task, mut inbox, rx, fake) = fixture("send-timeout");
-    start(&mut task);
-    let _ = inbox.internal.recv().await.expect("first");
-    task.send_done("m", Err(BusError::Timeout));
-    assert_eq!(receipt(&rx), Receipt::Failed { retryable: false });
-    task.networking_event(&json!({"account_id":"a","state":"live","session":{"state":"live"}}));
-    task.retry_sends(true);
-    for _ in 0..8 {
-        tokio::task::yield_now().await;
+    for (name, error) in [
+        ("send-timeout", BusError::Timeout),
+        ("send-transport", BusError::Transport("answer lost".into())),
+    ] {
+        let (mut task, mut inbox, rx, fake) = fixture(name);
+        start(&mut task);
+        let _ = inbox.internal.recv().await.expect("first");
+        task.send_done("m", Err(error));
+        assert_eq!(receipt(&rx), Receipt::Failed { retryable: false });
+        task.networking_event(&json!({"account_id":"a","state":"live","session":{"state":"live"}}));
+        task.retry_sends(true);
+        for _ in 0..8 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(fake.seen().len(), 1, "no fresh operation after an ambiguous outcome");
+        assert!(task.next_send_due().is_none());
+        assert!(task.sends.is_empty());
+        fake.shutdown();
     }
-    assert_eq!(fake.seen().len(), 1, "no fresh operation after an ambiguous outcome");
-    assert!(task.next_send_due().is_none());
-    assert!(task.sends.is_empty());
+}
+
+#[tokio::test]
+async fn waiting_send_survives_lost_and_attaching_links_until_live_or_expiry() {
+    for link in [Link::Lost, Link::Attaching] {
+        for expire in [false, true] {
+            let (mut task, mut inbox, rx, fake) = fixture(&format!("send-{link:?}-{expire}"));
+            start(&mut task);
+            let _ = inbox.internal.recv().await.expect("first");
+            task.send_done("m", Err(refusal(Some(1_000))));
+            task.link = link;
+            let expiry = task.sends["m"].started + Duration::from_secs(600);
+            tokio::time::pause();
+            tokio::time::advance(Duration::from_secs(1)).await;
+            task.retry_sends(false);
+            assert!(matches!(receipt(&rx), Receipt::WaitingForNode { .. }));
+            assert_eq!(fake.seen().len(), 1, "offline link dispatches nothing");
+            assert_eq!(task.next_send_due(), Some(expiry), "no busy wake on overdue retry");
+            assert_eq!(task.sends["m"].request.operation_id.as_deref(), Some("original"));
+            if expire {
+                tokio::time::advance(expiry.saturating_duration_since(Instant::now())).await;
+                task.retry_sends(false);
+                assert_eq!(receipt(&rx), Receipt::Failed { retryable: true });
+                assert!(task.sends.is_empty());
+                assert_eq!(fake.seen().len(), 1);
+                tokio::time::resume();
+            } else {
+                task.link = Link::Live;
+                task.retry_sends(false);
+                tokio::time::resume();
+                let Internal::SendDone { id, result } =
+                    tokio::time::timeout(Duration::from_secs(3), inbox.internal.recv())
+                        .await
+                        .expect("retry deadline")
+                        .expect("retry")
+                else {
+                    panic!("send")
+                };
+                task.send_done(&id, result);
+                assert_eq!(receipt(&rx), Receipt::Sent);
+                assert_eq!(fake.seen().len(), 2);
+            }
+            fake.shutdown();
+        }
+    }
 }

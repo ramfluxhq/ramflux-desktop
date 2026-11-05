@@ -815,6 +815,59 @@ fn hidden_waiting_send_expires_without_render_ticks(cx: &mut TestAppContext) {
     cx.simulate_window_visibility_change(window.into(), WindowVisibility::Visible);
     cx.run_until_parked();
     assert!(exists(cx, window, "message-retry"));
+    let failed = with_store(cx, &shell, |s| {
+        s.moments().find(|m| matches!(&m.kind, MomentKind::Message(p) if p.receipt == (Receipt::Failed { retryable: true }))).expect("failed moment").clone()
+    });
+    assert_eq!(failed.lifecycle, ramflux_desktop_core::Lifecycle::Failed);
+    in_window(cx, window, |window, _| {
+        let label =
+            window.find(format!("moment-{}", failed.id)).label().expect("row label").to_owned();
+        assert!(label.contains(tr("lifecycle.failed").as_ref()));
+        assert!(!label.contains(tr("lifecycle.in_progress").as_ref()));
+        assert!(
+            window.find("message-retry").bounds().size.width < gpui_kit::px(160.),
+            "Retry stays compact inside the receipt row"
+        );
+    });
     fake.shutdown();
+}
 
+#[gpui_kit::test]
+fn sent_text_has_done_lifecycle_and_no_in_progress_label(cx: &mut TestAppContext) {
+    use ramflux_desktop_core::{Intent, IntentKind, Lifecycle, MomentKind, Receipt};
+    let _locale = locale_guard();
+    let (fake, (window, shell)) = fixture(cx, false);
+    wait_for_workspace(cx, &shell);
+    show_context(cx, window, &shell, "dm-ana");
+    let store = store_handle(cx, &shell);
+    cx.update(|cx| {
+        store.update(cx, |store, cx| {
+            store.dispatch(
+                Intent::human(IntentKind::SendMessage {
+                    context_id: ramflux_desktop_core::ContextId::new("dm-ana"),
+                    text: "Completed text".into(),
+                }),
+                cx,
+            );
+        })
+    });
+    without_time(cx, |cx| {
+        with_store(cx, &shell, |s| {
+            s.moments().any(|m| {
+                s.body(&m.id) == Some("Completed text")
+                    && matches!(&m.kind, MomentKind::Message(p) if p.receipt == Receipt::Sent)
+            })
+        })
+    });
+    let sent = with_store(cx, &shell, |s| {
+        s.moments().find(|m| s.body(&m.id) == Some("Completed text")).expect("sent").clone()
+    });
+    assert_eq!(sent.lifecycle, Lifecycle::Done);
+    in_window(cx, window, |window, _| {
+        let label =
+            window.find(format!("moment-{}", sent.id)).label().expect("row label").to_owned();
+        assert!(label.contains(tr("lifecycle.done").as_ref()));
+        assert!(!label.contains(tr("lifecycle.in_progress").as_ref()));
+    });
+    fake.shutdown();
 }

@@ -99,7 +99,7 @@ impl Task {
                 if let Some(id) = body["retry_moment"].as_str() {
                     self.emit(vec![DomainEvent::MomentUpdated {
                         moment_id: ramflux_desktop_core::MomentId::new(id),
-                        lifecycle: None,
+                        lifecycle: Some(ramflux_desktop_core::Lifecycle::Failed),
                         kind: Some(ramflux_desktop_core::MomentKind::Message(
                             ramflux_desktop_core::MessagePayload {
                                 text: body["text"].as_str().unwrap_or_default().to_owned(),

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! Text sends: only a typed pre-acceptance refusal permits a fresh attempt.
-use super::scope::{Internal, Task};
+use super::scope::{Internal, Link, Task};
 use crate::bus::{BusError, BusRequest, idempotency, wipe};
 use crate::plan::fetch::Fetch;
 use ramflux_desktop_core::{Receipt, Timestamp, methods};
@@ -83,7 +83,12 @@ impl Task {
     pub(super) fn next_send_due(&self) -> Option<Instant> {
         self.sends
             .values()
-            .filter_map(|s| s.due.map(|due| due.min(s.started + Duration::from_secs(600))))
+            .filter_map(|s| {
+                s.due.map(|due| {
+                    let expiry = s.started + Duration::from_secs(600);
+                    if self.link == Link::Live { due.min(expiry) } else { expiry }
+                })
+            })
             .min()
     }
 
@@ -137,6 +142,11 @@ impl Task {
                     );
                     self.emit(events);
                 }
+                continue;
+            }
+            // Connection recovery must not turn a pre-acceptance wait into an
+            // ambiguous transport failure. Expiry above runs in every state.
+            if self.link != Link::Live {
                 continue;
             }
             let Some(send) = self.sends.get_mut(&id) else { continue };

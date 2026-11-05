@@ -7,6 +7,7 @@ import subprocess
 # Extend these lists in the PR that introduces each case. Future cases must
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
+    "bridge::sends::tests::waiting_send_survives_lost_and_attaching_links_until_live_or_expiry",
     "bridge::sends::tests::waiting_send_fails_after_ten_minutes_and_manual_retry_uses_new_key",
     "bridge::sends::tests::timeout_send_is_never_retried_with_fresh_key",
     "bridge::sends::tests::send_while_offline_shows_waiting_with_retry_countdown_then_sends_on_live",
@@ -52,6 +53,7 @@ SDK_TESTS = [
 UI_TESTS = [
     "background_account_media_drains_without_render_ticks",
     "hidden_scenario_playback_stops_render_ticks",
+    "sent_text_has_done_lifecycle_and_no_in_progress_label",
     "hidden_waiting_send_expires_without_render_ticks",
     "visible_render_clock_stops_and_restarts",
     "ui_wakes_on_bridge_event_within_one_frame",

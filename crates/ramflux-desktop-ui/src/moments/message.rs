@@ -98,13 +98,6 @@ pub fn render(
             )
         })
         .children(attachment)
-        .when(payload.receipt == (Receipt::Failed { retryable: true }), |col| {
-            col.child(
-                Button::new("message-retry").small().label(tr("moment.message.retry")).on_click(
-                    move |_, window, cx| retry.emit(UiEventKind::RetryMessagePressed, window, cx),
-                ),
-            )
-        })
         .when(
             outbound
                 || matches!(
@@ -129,6 +122,16 @@ pub fn render(
                             .xsmall(),
                         )
                         .child(i18n::receipt(payload.receipt))
+                        .when(payload.receipt == (Receipt::Failed { retryable: true }), |row| {
+                            row.child(
+                                Button::new("message-retry")
+                                    .small()
+                                    .label(tr("moment.message.retry"))
+                                    .on_click(move |_, window, cx| {
+                                        retry.emit(UiEventKind::RetryMessagePressed, window, cx)
+                                    }),
+                            )
+                        })
                         .when_some(refs.send_retry_ms, |row, ms| {
                             row.child(crate::i18n::tr_args(
                                 "moment.message.retry_in",

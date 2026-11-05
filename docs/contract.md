@@ -1435,7 +1435,9 @@ including when the account is already Live. A Live event retries immediately.
 Automatic attempts retain the message payload and identity and choose a fresh
 operation key only after that refusal. The countdown displays the scheduled
 deadline, and the visible rendering clock updates it; hidden/background one-shots
-continue without rendering ticks. After ten minutes from the first submission,
+continue without rendering ticks. While the daemon link is Lost or Attaching,
+a due send remains waiting and only its expiry alarm runs; once the link is
+Live, the overdue attempt can resume. After ten minutes from the first submission,
 the receipt is `Failed { retryable: true }`. Retry is a new validated user action,
 with a new message/operation key; the earlier failure remains in the timeline.
 `Timeout`, `Transport` and lost answers use only the bus client's existing

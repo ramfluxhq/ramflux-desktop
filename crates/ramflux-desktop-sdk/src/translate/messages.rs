@@ -171,7 +171,7 @@ impl Translator {
             Some(seen) if seen.digest == digest && !wanted => return None,
             Some(_) => DomainEvent::MomentUpdated {
                 moment_id: moment.id.clone(),
-                lifecycle: None,
+                lifecycle: Some(moment.lifecycle),
                 kind: Some(moment.kind.clone()),
             },
             None => DomainEvent::MomentAdded(Box::new(moment.clone())),

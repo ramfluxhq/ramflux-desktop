@@ -220,7 +220,7 @@ mod shots {
         run.until("waiting", Run::waiting);
         run.shot("waiting_for_node");
         hub.advance_test_time(Duration::from_secs(600));
-        run.until("failed", |r| r.store(|s| s.moments().any(|m| matches!(&m.kind, MomentKind::Message(p) if p.receipt == (Receipt::Failed { retryable: true })))));
+        run.until("failed", |r| r.store(|s| s.moments().any(|m| m.lifecycle == ramflux_desktop_core::Lifecycle::Failed && matches!(&m.kind, MomentKind::Message(p) if p.receipt == (Receipt::Failed { retryable: true })))));
         run.shot("failed");
         fake.disable_stream();
         fake.end_streams("acct-main", false);
