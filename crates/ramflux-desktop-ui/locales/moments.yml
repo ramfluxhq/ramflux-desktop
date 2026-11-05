@@ -69,6 +69,15 @@ moment:
     deleted:
       en: "Message deleted"
       zh-CN: "消息已删除"
+    waiting:
+      en: "Waiting for node"
+      zh-CN: "等待节点"
+    failed:
+      en: "Failed"
+      zh-CN: "发送失败"
+    retry_in:
+      en: "Retry in %{seconds}s"
+      zh-CN: "%{seconds} 秒后重试"
     sending:
       en: "Sending"
       zh-CN: "发送中"

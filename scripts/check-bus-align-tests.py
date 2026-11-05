@@ -7,6 +7,9 @@ import subprocess
 # Extend these lists in the PR that introduces each case. Future cases must
 # not block earlier preparatory PRs; existing cases must remain required.
 SDK_TESTS = [
+    "bridge::sends::tests::send_while_offline_shows_waiting_with_retry_countdown_then_sends_on_live",
+    "bridge::sends::tests::repeated_pending_reschedules_without_live_event",
+    "bridge::sends::tests::pending_without_hint_follows_ladder",
     "bridge::scope::review_retry_tests::recovery_reads_have_bounded_concurrency_and_drain_the_queue",
     "translate::stream::tests::recovery_reads_only_two_watched_of_fifty_listed_conversations",
     "source::tests::every_completion_channel_notifies_and_phrase_ownership_survives_late_handoff",

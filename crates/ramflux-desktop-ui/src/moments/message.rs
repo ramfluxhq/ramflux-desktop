@@ -73,7 +73,10 @@ pub fn render(
     });
     let receipt_color = match payload.receipt {
         Receipt::Read => crate::tone::text(cx.theme().success, cx),
-        Receipt::Sending | Receipt::Sent | Receipt::Delivered => muted,
+        Receipt::Sending | Receipt::WaitingForNode { .. } | Receipt::Sent | Receipt::Delivered => {
+            muted
+        }
+        Receipt::Failed { .. } => crate::tone::text(cx.theme().danger, cx),
     };
     let text = body.cloned();
     v_flex()
@@ -93,23 +96,39 @@ pub fn render(
             )
         })
         .children(attachment)
-        .when(outbound || payload.receipt == Receipt::Sending, |body| {
-            body.child(
-                h_flex()
-                    .id("message-receipt")
-                    .gap_1()
-                    .text_xs()
-                    .text_color(receipt_color)
-                    .child(
-                        Icon::new(match payload.receipt {
-                            Receipt::Sending => IconName::Loader,
-                            Receipt::Sent => IconName::Check,
-                            Receipt::Delivered | Receipt::Read => IconName::CircleCheck,
+        .when(
+            outbound
+                || matches!(
+                    payload.receipt,
+                    Receipt::Sending | Receipt::WaitingForNode { .. } | Receipt::Failed { .. }
+                ),
+            |body| {
+                body.child(
+                    h_flex()
+                        .id("message-receipt")
+                        .gap_1()
+                        .text_xs()
+                        .text_color(receipt_color)
+                        .child(
+                            Icon::new(match payload.receipt {
+                                Receipt::WaitingForNode { .. } | Receipt::Failed { .. } => {
+                                    IconName::Loader
+                                }
+                                Receipt::Sending => IconName::Loader,
+                                Receipt::Sent => IconName::Check,
+                                Receipt::Delivered | Receipt::Read => IconName::CircleCheck,
+                            })
+                            .xsmall(),
+                        )
+                        .child(i18n::receipt(payload.receipt))
+                        .when_some(refs.send_retry_ms, |row, ms| {
+                            row.child(crate::i18n::tr_args(
+                                "moment.message.retry_in",
+                                &[("seconds", &ms.div_ceil(1000).to_string())],
+                            ))
                         })
-                        .xsmall(),
-                    )
-                    .child(i18n::receipt(payload.receipt))
-                    .test_support(),
-            )
-        })
+                        .test_support(),
+                )
+            },
+        )
 }

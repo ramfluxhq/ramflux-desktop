@@ -42,6 +42,37 @@ fn decoded_len(encoded: &str) -> u64 {
 }
 
 impl Translator {
+    /// Projects a locally submitted text message using its final daemon identity.
+    pub(crate) fn outgoing_message(
+        &mut self,
+        body: &Value,
+        message: &str,
+        receipt: Receipt,
+        at: Timestamp,
+    ) -> Vec<DomainEvent> {
+        let context = ContextId::new(text(body, "context_id"));
+        self.remember_sent(message, text(body, "text"));
+        let moment = Moment {
+            id: message_moment_id(&context, message),
+            context_id: context,
+            origin: self.own_origin(),
+            at,
+            lifecycle: match receipt {
+                Receipt::Failed { .. } => Lifecycle::Failed,
+                Receipt::Sent => Lifecycle::Done,
+                _ => Lifecycle::InProgress,
+            },
+            kind: MomentKind::Message(MessagePayload {
+                text: text(body, "text").to_owned(),
+                receipt,
+                tombstone: false,
+                attachment: None,
+                franking: None,
+            }),
+        };
+        self.report_moment(moment).into_iter().collect()
+    }
+
     /// A conversation this device started (its first message was accepted).
     pub(super) fn conversation_started(
         &mut self,

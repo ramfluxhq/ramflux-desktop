@@ -94,7 +94,14 @@ impl Task {
             let events = self.translator.attachment_sending(&request.body, &mut body, now());
             self.emit(events);
         }
-        match planned.plan {
+        let operation = match planned.plan {
+            Plan::Call { request, refresh } if method == methods::SEND_MESSAGE => {
+                self.start_send(body, request, refresh);
+                return;
+            }
+            other => other,
+        };
+        match operation {
             Plan::Local => {
                 let events = self.translator.local(&method, &body);
                 self.persist_pins();
@@ -321,13 +328,27 @@ async fn in_order(client: &BusClient, requests: Vec<BusRequest>) -> Result<Value
         wipe(request.body);
         match result {
             Ok(answer) => last = answer,
-            Err(BusError::Daemon { code, message, reason_code, details, cause }) if done > 0 => {
+            Err(BusError::Daemon {
+                code,
+                message,
+                reason_code,
+                details,
+                cause,
+                retry_after_ms,
+            }) if done > 0 => {
                 let (done, total) = (done.to_string(), total.to_string());
                 let message = keyed(
                     key::PARTIAL,
                     &[("done", &done), ("total", &total), ("reason", &message)],
                 );
-                return Err(BusError::Daemon { code, message, reason_code, details, cause });
+                return Err(BusError::Daemon {
+                    code,
+                    message,
+                    reason_code,
+                    details,
+                    cause,
+                    retry_after_ms,
+                });
             }
             Err(error) => return Err(error),
         }

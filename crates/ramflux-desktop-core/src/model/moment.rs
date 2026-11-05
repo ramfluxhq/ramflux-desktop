@@ -78,6 +78,10 @@ pub struct MessagePayload {
 pub enum Receipt {
     /// Not yet accepted by the node.
     Sending,
+    /// Pre-acceptance networking refusal; retry at this projected monotonic deadline.
+    WaitingForNode { retry_at: Timestamp },
+    /// Send failed; only a known pre-acceptance expiry permits manual retry.
+    Failed { retryable: bool },
     /// Accepted by the node.
     #[default]
     Sent,

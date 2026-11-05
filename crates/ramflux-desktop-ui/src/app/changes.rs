@@ -80,6 +80,7 @@ impl ChangeSet {
     /// itself among the changed moments.
     pub fn touches_row_refs(&self, store: &Store, context_id: &ContextId) -> bool {
         self.reset
+            || (self.clock_moved && store.context_moments(context_id).any(|m| matches!(&m.kind, MomentKind::Message(p) if matches!(p.receipt, ramflux_desktop_core::Receipt::WaitingForNode { .. }))))
             || self.changes.bodies_cleared
             || self.changes.contexts.contains(context_id)
             || !self.changes.participants.is_empty()

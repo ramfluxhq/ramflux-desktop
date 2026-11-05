@@ -293,6 +293,7 @@ mod tests {
 
     fn refused(reason: Option<&str>) -> BusError {
         BusError::Daemon {
+            retry_after_ms: None,
             code: "ValidationFailed".to_owned(),
             message: "inbound rejected: contact request is closed or cooling down".to_owned(),
             reason_code: reason.map(str::to_owned),
@@ -331,6 +332,7 @@ mod tests {
         );
         // Another refusal code is not the cooldown.
         let other = BusError::Daemon {
+            retry_after_ms: None,
             code: "Unavailable".to_owned(),
             message: "down".to_owned(),
             reason_code: None,

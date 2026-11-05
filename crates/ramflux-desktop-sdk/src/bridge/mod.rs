@@ -20,6 +20,7 @@ mod effects;
 mod jobs;
 mod live;
 mod scope;
+mod sends;
 
 #[cfg(test)]
 mod s5_lifecycle_tests;

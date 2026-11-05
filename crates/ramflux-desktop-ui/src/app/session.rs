@@ -72,6 +72,7 @@ pub struct AccountSession {
     paused: bool,
     /// Message bodies asked of the source and not delivered yet (asked once).
     requested: BTreeSet<MomentId>,
+    focused_context: Option<ContextId>,
     renderer_errors: RendererErrors,
     networking_deadlines: std::collections::BTreeMap<
         ramflux_desktop_core::AccountId,
@@ -131,6 +132,7 @@ impl AccountSession {
             time_floor: Timestamp(0),
             paused: false,
             requested: BTreeSet::new(),
+            focused_context: None,
             renderer_errors: RendererErrors::default(),
             networking_deadlines: Default::default(),
         };
@@ -188,6 +190,7 @@ impl AccountSession {
 
     /// Tells the source which context the user looks at.
     pub fn focus(&mut self, context: Option<&ContextId>) {
+        self.focused_context = context.cloned();
         self.source_mut().focus(context);
     }
 
@@ -273,6 +276,7 @@ impl AccountSession {
         self.networking_deadlines
             .keys()
             .any(|id| self.networking_retry_remaining(id).is_some_and(|ms| ms > 0))
+            || self.focused_context.as_ref().is_some_and(|id| self.store.context_moments(id).any(|m| matches!(&m.kind, ramflux_desktop_core::MomentKind::Message(p) if matches!(p.receipt, ramflux_desktop_core::Receipt::WaitingForNode { .. }))))
             || self.logical_deadline().is_some()
             || ramflux_desktop_core::selectors::current_call(&self.store).is_some()
     }

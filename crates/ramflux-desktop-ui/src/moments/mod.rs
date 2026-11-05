@@ -59,6 +59,8 @@ pub use object_transfer::save_with_dialog;
 /// Everything a moment references, resolved from the store.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RowRefs {
+    /// Remaining scheduled retry time, derived from the session monotonic clock.
+    pub send_retry_ms: Option<u64>,
     /// Grants referenced by an intervention, approval blocks or task steps.
     pub grants: BTreeMap<GrantId, Grant>,
     /// Objects referenced by a transfer, an attachment or a conflict.

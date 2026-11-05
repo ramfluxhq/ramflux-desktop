@@ -98,6 +98,8 @@ pub fn system_level(level: SystemLevel) -> SharedString {
 /// Label of a delivery receipt.
 pub fn receipt(receipt: Receipt) -> SharedString {
     tr(match receipt {
+        Receipt::WaitingForNode { .. } => "moment.message.waiting",
+        Receipt::Failed { .. } => "moment.message.failed",
         Receipt::Sending => "moment.message.sending",
         Receipt::Sent => "moment.message.sent",
         Receipt::Delivered => "moment.message.delivered",

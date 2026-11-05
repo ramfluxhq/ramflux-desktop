@@ -43,7 +43,7 @@ pub fn export_refusal(error: &BusError) -> AgentExportRefusal {
     match error {
         BusError::Timeout => AgentExportRefusal::Timeout,
         BusError::Transport(_) => AgentExportRefusal::Transport,
-        BusError::Daemon { code, message, cause, .. } => classify(code, message, cause.as_ref()),
+        BusError::Daemon { code, message, cause, .. } => classify(code, message, cause.as_deref()),
     }
 }
 
@@ -199,11 +199,12 @@ mod tests {
 
     fn io(kind: &str, errno: Option<i32>) -> BusError {
         BusError::Daemon {
+            retry_after_ms: None,
             code: "ValidationFailed".to_owned(),
             message: "words that may change".to_owned(),
             reason_code: None,
             details: None,
-            cause: Some(IoCause { kind: kind.to_owned(), raw_os_error: errno }),
+            cause: Some(Box::new(IoCause { kind: kind.to_owned(), raw_os_error: errno })),
         }
     }
 

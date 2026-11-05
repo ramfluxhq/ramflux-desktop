@@ -137,6 +137,16 @@ impl Rows {
             }
         }
         self.add_surface_dependents(store, context, changes, &mut changed);
+        if changes.is_clock_moved() {
+            for (ix, row) in self.rows.iter().enumerate() {
+                if matches!(&row.moment.kind, MomentKind::Message(p) if matches!(p.receipt, ramflux_desktop_core::Receipt::WaitingForNode { .. }))
+                    && !changed.iter().any(|(at, _)| *at == ix)
+                    && let Some(moment) = store.moment(&row.moment.id)
+                {
+                    changed.push((ix, moment));
+                }
+            }
+        }
         added.sort_by(|a, b| key(a).cmp(&key(b)));
         let last = self.rows.last().map(|r| (r.moment.at, r.moment.id.clone()));
         if let (Some(first), Some((at, id))) = (added.first(), &last)
@@ -154,6 +164,7 @@ impl Rows {
         let mut touched = Vec::new();
         for (ix, moment) in changed {
             let mut row = MomentRow::build_with(store, moment, me.as_ref(), &audit);
+            countdown(&mut row, now);
             row.day_header = rows[ix].day_header.clone();
             if row != rows[ix] {
                 rows[ix] = row;
@@ -231,10 +242,19 @@ fn day_row(
     last_day: &mut Option<chrono::NaiveDate>,
 ) -> MomentRow {
     let mut row = MomentRow::build_with(store, moment, me, audit);
+    countdown(&mut row, now);
     let day = i18n::clock::local_day(moment.at);
     if day != *last_day {
         row.day_header = Some(i18n::day_label(moment.at, now));
         *last_day = day;
     }
     row
+}
+
+fn countdown(row: &mut MomentRow, now: Timestamp) {
+    if let MomentKind::Message(p) = &row.moment.kind
+        && let ramflux_desktop_core::Receipt::WaitingForNode { retry_at } = p.receipt
+    {
+        row.refs.send_retry_ms = Some(retry_at.saturating_since(now));
+    }
 }

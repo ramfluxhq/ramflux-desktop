@@ -203,7 +203,11 @@ impl Task {
         }
         self.networking_revision = self.networking_revision.saturating_add(1);
         let events = self.translator.networking_changed(body);
+        let live = events.iter().any(|event| matches!(event, DomainEvent::AccountUpdated(a) if a.networking == ramflux_desktop_core::Networking::Live));
         self.emit(events);
+        if live {
+            self.retry_sends(true);
+        }
     }
 
     fn stream_event(&mut self, seq: Option<u64>, at: Option<i64>, topic: &str, body: &Value) {

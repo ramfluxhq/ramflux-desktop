@@ -137,6 +137,7 @@ mod tests {
 
     fn refused(reason: Option<&str>, details: Option<Value>) -> BusError {
         BusError::Daemon {
+            retry_after_ms: None,
             code: "ValidationFailed".to_owned(),
             message: "refused".to_owned(),
             reason_code: reason.map(str::to_owned),

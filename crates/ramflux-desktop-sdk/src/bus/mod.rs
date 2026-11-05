@@ -150,6 +150,8 @@ pub struct IoCause {
 pub enum BusError {
     /// The daemon answered with an error frame.
     Daemon {
+        /// Suggested delay for a pre-acceptance refusal.
+        retry_after_ms: Option<u64>,
         /// Daemon error code.
         code: String,
         /// Daemon message.
@@ -162,7 +164,7 @@ pub enum BusError {
         details: Option<Box<Value>>,
         /// The operating-system cause of an I/O refusal (`cause` on the
         /// error frame): the kind and errno, never text.
-        cause: Option<IoCause>,
+        cause: Option<Box<IoCause>>,
     },
     /// No connection, or it broke.
     Transport(String),
@@ -174,6 +176,7 @@ impl BusError {
     /// A daemon refusal without a typed reason.
     pub fn daemon(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::Daemon {
+            retry_after_ms: None,
             code: code.into(),
             message: message.into(),
             reason_code: None,
@@ -192,13 +195,14 @@ impl BusError {
             return Self::Timeout;
         }
         Self::Daemon {
+            retry_after_ms: error.retry_after_ms,
             code: error.code,
             message: error.message,
             reason_code: error.reason_code,
             details: error.details,
-            cause: error
-                .cause
-                .map(|cause| IoCause { kind: cause.kind, raw_os_error: cause.raw_os_error }),
+            cause: error.cause.map(|cause| {
+                Box::new(IoCause { kind: cause.kind, raw_os_error: cause.raw_os_error })
+            }),
         }
     }
 

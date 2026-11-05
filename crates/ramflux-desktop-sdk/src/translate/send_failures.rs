@@ -148,6 +148,7 @@ mod tests {
             key::CALL_CONTROL_CAPACITY
         );
         let held = |reason: Option<&str>| BusError::Daemon {
+            retry_after_ms: None,
             code: "transfer_requires_sync".to_owned(),
             message: "Ownership transfer requires synchronization".to_owned(),
             reason_code: reason.map(str::to_owned),

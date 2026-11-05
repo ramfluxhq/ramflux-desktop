@@ -346,6 +346,7 @@ mod tests {
     #[test]
     fn a_resync_refusal_is_recognized_in_every_shape() {
         let daemon = |code: &str, message: &str, reason: Option<&str>| BusError::Daemon {
+            retry_after_ms: None,
             code: code.to_owned(),
             message: message.to_owned(),
             reason_code: reason.map(str::to_owned),

@@ -86,6 +86,10 @@ pub(super) type Read = (Fetch, Option<u64>, Result<Value, BusError>);
 
 pub(super) enum Internal {
     Snapshot(Vec<Read>),
+    SendDone {
+        id: String,
+        result: Result<Value, BusError>,
+    },
     Fetched(Read),
     EffectDone {
         method: String,
@@ -111,6 +115,7 @@ pub(super) enum Link {
 }
 
 pub(super) struct Task {
+    pub(super) sends: BTreeMap<String, super::sends::PendingSend>,
     pub(super) config: SdkConfig,
     pub(super) scope: Scope,
     pub(super) client: BusClient,
@@ -276,6 +281,7 @@ pub(super) fn build(
         jobs_open_at: None,
         accounts_live: false,
         custody: super::custody::Custody::new(),
+        sends: BTreeMap::new(),
         networking_revision: 0,
         transport_disconnected: false,
         ceremonies,
@@ -453,9 +459,10 @@ impl Task {
     }
 
     fn next_wake(&self) -> Instant {
-        let far = Instant::now() + Duration::from_secs(3_600);
+        let far =
+            self.next_send_due().unwrap_or_else(|| Instant::now() + Duration::from_secs(3_600));
         match self.link {
-            Link::Lost => self.reconnect_at,
+            Link::Lost => self.reconnect_at.min(far),
             Link::Live => {
                 let mut wake = far;
                 if let Some(open_at) = self.sync.open_at {
@@ -477,6 +484,7 @@ impl Task {
     }
 
     fn tick(&mut self) {
+        self.retry_sends(false);
         let now = Instant::now();
         match self.link {
             Link::Lost if now >= self.reconnect_at => self.snapshot(),
@@ -704,6 +712,7 @@ impl Task {
     fn internal(&mut self, internal: Internal) {
         match internal {
             Internal::Snapshot(results) => self.on_snapshot(results),
+            Internal::SendDone { id, result } => self.send_done(&id, result),
             Internal::Fetched((fetch, number, result)) => {
                 self.read_recovery.running.remove(&fetch);
                 if matches!(self.link, Link::Locked | Link::Lost) {
