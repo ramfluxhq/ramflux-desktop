@@ -138,8 +138,12 @@ fn a_principal_id_is_added_unverified_and_a_conversation_starts_at_once(cx: &mut
         Some(tr("dock.contacts.add.kind_id").as_ref()),
         "before anything is sent the form says an id is trusted on first use"
     );
+    let held_add = state.lock().expect("state").contact_add.clone();
+    held_add.close();
     click(cx, handle, "contact-add");
-    assert_eq!(note(cx, &shell), Some(FormNote::Adding(ParticipantId::new("principal-kai"))));
+    let pending = note(cx, &shell);
+    held_add.open();
+    assert_eq!(pending, Some(FormNote::Adding(ParticipantId::new("principal-kai"))));
     wait(cx, "kai reachable", |cx| {
         contact(cx, &shell, "principal-kai")
             .is_some_and(|p| p.reachable == Some(true) && p.display == "Kai")
@@ -202,8 +206,12 @@ fn cards_add_the_contact_they_name_and_refusals_show_the_daemon_reason(cx: &mut 
         label(cx, handle, "contact-add-kind").as_deref(),
         Some(tr("dock.contacts.add.kind_card").as_ref())
     );
+    let held_add = state.lock().expect("state").contact_add.clone();
+    held_add.close();
     click(cx, handle, "contact-add");
-    assert_eq!(note(cx, &shell), Some(FormNote::AddingCard));
+    let pending = note(cx, &shell);
+    held_add.open();
+    assert_eq!(pending, Some(FormNote::AddingCard));
     wait(cx, "the card's contact", |cx| contact(cx, &shell, "principal-bot").is_some());
     let bot = contact(cx, &shell, "principal-bot").expect("bot");
     assert_eq!(

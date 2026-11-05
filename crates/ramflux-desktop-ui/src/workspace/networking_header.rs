@@ -12,6 +12,7 @@ use ramflux_desktop_core::{
 pub(super) fn header(
     account: Option<&Account>,
     failure: Option<&FailureCode>,
+    retry_remaining: Option<u64>,
 ) -> (SharedString, Option<SharedString>) {
     let Some(account) = account else { return (tr("app.name"), None) };
     if account.authority_blocked {
@@ -33,7 +34,7 @@ pub(super) fn header(
         }
     }
     if let Some(reason) = &account.networking_reason {
-        let detail = reason_text(reason);
+        let detail = reason_text(reason, retry_remaining);
         if reason.requires_action() {
             return (detail, None);
         }
@@ -48,7 +49,7 @@ pub(super) fn header(
     }
 }
 
-fn reason_text(reason: &NetworkingReason) -> SharedString {
+fn reason_text(reason: &NetworkingReason, retry_remaining: Option<u64>) -> SharedString {
     let key = match reason.kind {
         Kind::NoNodeSelected => "network_header.choose_node",
         Kind::NodeCustodyUnavailable => "network_header.choose_custody",
@@ -72,7 +73,9 @@ fn reason_text(reason: &NetworkingReason) -> SharedString {
         },
     };
     let mut text = tr(key).to_string();
-    if let Some(ms) = reason.retry_after_ms.filter(|_| !reason.requires_action()) {
+    if let Some(ms) =
+        retry_remaining.or(reason.retry_after_ms).filter(|_| !reason.requires_action())
+    {
         text = tr_args(
             "network_header.retry",
             &[("reason", &text), ("seconds", &ms.div_ceil(1000).to_string())],

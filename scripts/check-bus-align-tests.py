@@ -45,6 +45,7 @@ SDK_TESTS = [
     "local::daemon_process::tests::daemon_spawn_sets_default_rust_log_unless_inherited",
 ]
 UI_TESTS = [
+    "visible_render_clock_stops_and_restarts",
     "ui_wakes_on_bridge_event_within_one_frame",
     "authority_restored_event_returns_blocked_header_to_live",
     "unlock_opens_account_on_networking_pending",

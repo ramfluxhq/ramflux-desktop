@@ -65,10 +65,17 @@ pub struct AccountSession {
     backing: Backing,
     store: Store,
     clock_ms: u64,
+    live_epoch: Timestamp,
+    live_started: std::time::Instant,
+    time_floor: Timestamp,
     paused: bool,
     /// Message bodies asked of the source and not delivered yet (asked once).
     requested: BTreeSet<MomentId>,
     renderer_errors: RendererErrors,
+    networking_deadlines: std::collections::BTreeMap<
+        ramflux_desktop_core::AccountId,
+        (ramflux_desktop_core::NetworkingReason, Timestamp),
+    >,
 }
 
 impl std::fmt::Debug for AccountSession {
@@ -105,9 +112,13 @@ impl AccountSession {
             backing,
             store: Store::new(),
             clock_ms: 0,
+            live_epoch: super::wall_clock_now(),
+            live_started: std::time::Instant::now(),
+            time_floor: Timestamp(0),
             paused: false,
             requested: BTreeSet::new(),
             renderer_errors: RendererErrors::default(),
+            networking_deadlines: Default::default(),
         };
         let profile = crate::moments::surface::registry::profile();
         session.source_mut().renderer_profile(profile);
@@ -215,8 +226,45 @@ impl AccountSession {
     pub fn now(&self) -> Timestamp {
         match self.mock() {
             Some(source) => source.epoch().saturating_add_ms(self.clock_ms),
-            None => super::wall_clock_now(),
+            None => self
+                .live_epoch
+                .saturating_add_ms(
+                    u64::try_from(self.live_started.elapsed().as_millis())
+                        .unwrap_or(u64::MAX)
+                        .max(self.clock_ms),
+                )
+                .max(self.time_floor),
         }
+    }
+
+    /// Advances a live session to an independently fired monotonic deadline.
+    pub(super) fn reached_deadline(&mut self, deadline: Timestamp) {
+        if self.is_live() {
+            self.time_floor = self.time_floor.max(deadline);
+        }
+    }
+
+    pub(super) fn logical_deadline(&self) -> Option<Timestamp> {
+        let now = self.now();
+        let ceremony = self.store.ceremony().filter(|c| c.is_active()).map(|c| c.expires_at);
+        let recovery = self.store.recovery().filter(|c| c.is_active()).map(|c| c.expires_at);
+        ceremony.into_iter().chain(recovery).filter(|due| *due > now).min()
+    }
+
+    pub(super) fn needs_render_time(&self) -> bool {
+        self.networking_deadlines
+            .keys()
+            .any(|id| self.networking_retry_remaining(id).is_some_and(|ms| ms > 0))
+            || self.logical_deadline().is_some()
+            || ramflux_desktop_core::selectors::current_call(&self.store).is_some()
+    }
+
+    /// Remaining monotonic retry hint for the workspace header.
+    pub fn networking_retry_remaining(
+        &self,
+        account: &ramflux_desktop_core::AccountId,
+    ) -> Option<u64> {
+        self.networking_deadlines.get(account).map(|(_, due)| due.saturating_since(self.now()))
     }
 
     /// Offset of the next scheduled event, if any (scenarios only).
@@ -380,6 +428,27 @@ impl AccountSession {
             error: result.as_ref().err().map(ToString::to_string),
         });
         if let Ok(changes) = result {
+            let now = self.now();
+            for id in &changes.accounts {
+                let reason = self
+                    .store
+                    .account(id)
+                    .and_then(|a| a.networking_reason.as_ref())
+                    .filter(|r| !r.requires_action() && r.retry_after_ms.is_some());
+                if let Some(reason) = reason {
+                    if self.networking_deadlines.get(id).is_none_or(|(seen, _)| seen != reason) {
+                        self.networking_deadlines.insert(
+                            id.clone(),
+                            (
+                                reason.clone(),
+                                now.saturating_add_ms(reason.retry_after_ms.unwrap_or(0)),
+                            ),
+                        );
+                    }
+                } else {
+                    self.networking_deadlines.remove(id);
+                }
+            }
             let errors = self.renderer_errors.check(&self.store, &changes.moments);
             self.report(errors, applied);
             applied.changes.merge(changes);

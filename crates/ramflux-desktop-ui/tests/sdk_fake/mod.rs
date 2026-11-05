@@ -148,7 +148,7 @@ impl Latch {
         self.changed.notify_all();
     }
 
-    fn pass(&self) {
+    pub(crate) fn pass(&self) {
         let mut closed = self.closed.lock().expect("latch");
         while *closed {
             closed = self.changed.wait(closed).expect("latch");

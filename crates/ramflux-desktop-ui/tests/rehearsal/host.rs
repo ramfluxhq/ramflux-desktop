@@ -83,6 +83,8 @@ impl Host for HeadlessAppContext {
 
 impl Host for TestAppContext {
     fn app<R>(&mut self, f: impl FnOnce(&mut App) -> R) -> R {
+        // Rehearsals use real bridge I/O and cross-thread completion wakes.
+        self.executor().allow_parking();
         self.update(f)
     }
 

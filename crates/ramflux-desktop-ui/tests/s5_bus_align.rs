@@ -5,7 +5,7 @@
 mod common;
 use common::*;
 use gpui_kit::TestAppContext;
-use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
 use ramflux_desktop_core::{AccountId, DomainEvent, EffectFailure, FailureCode, Networking};
 use ramflux_desktop_sdk::SdkConfig;
 use ramflux_desktop_test::fake_bus::{FakeBus, Reply, socket_path};
@@ -28,6 +28,15 @@ fn fixture_with_authority(
     cx: &mut TestAppContext,
     locked: bool,
     authority_blocked: bool,
+) -> (FakeBus, common::Opened) {
+    fixture_with_calls(cx, locked, authority_blocked, false)
+}
+
+fn fixture_with_calls(
+    cx: &mut TestAppContext,
+    locked: bool,
+    authority_blocked: bool,
+    call_api: bool,
 ) -> (FakeBus, common::Opened) {
     let path = socket_path("s5-ui");
     let frames: std::collections::BTreeMap<String, Value> = serde_json::from_str(include_str!(
@@ -61,7 +70,7 @@ fn fixture_with_authority(
     });
     fake.enable_stream();
     let mut config = SdkConfig::new(&path);
-    config.call_api = false;
+    config.call_api = call_api;
     config.backup_api = false;
     let options = ShellOptions {
         source: SourceChoice::Rfd(config),
@@ -453,4 +462,132 @@ fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
     drop(phrase);
     phrase_fake.shutdown();
     fake.shutdown();
+}
+
+#[gpui_kit::test]
+fn visible_render_clock_stops_and_restarts(cx: &mut TestAppContext) {
+    use gpui_kit::WindowVisibility;
+    use ramflux_desktop_core::{CallId, Intent, IntentKind, methods};
+    let _locale = locale_guard();
+    let (fake, (handle, shell)) = fixture_with_calls(cx, false, false, true);
+    wait_for_workspace(cx, &shell);
+    wait(cx, "stream", |_| fake.streaming("acct-main"));
+    let store = store_handle(cx, &shell);
+    let ticking = |cx: &mut TestAppContext| cx.update(|cx| store.read(cx).render_clock_running());
+    assert!(!ticking(cx), "settled idle has no render clock");
+    let idle_time = cx.update(|cx| store.read(cx).session().expect("session").clock_ms());
+    advance(cx, 10_000);
+    assert_eq!(idle_time, cx.update(|cx| store.read(cx).session().expect("session").clock_ms()));
+
+    let calls = ramflux_desktop_test::fake_calls::FakeCalls::new("127.0.0.1:1");
+    calls.conversation("dm-ana", "principal-ana");
+    let Reply::Ok(row) = calls
+        .handle("call.invite", Some("acct-main"), &json!({"conversation_id":"dm-ana"}))
+        .expect("invite")
+    else {
+        panic!("invite")
+    };
+    let id = row["call_id"].as_str().expect("id").to_owned();
+    calls.peer_answers(&id);
+    fake.publish("acct-main", "call.changed", calls.row(&id).expect("row"));
+    without_time(cx, |cx| with_store(cx, &shell, |s| s.call(&CallId::new(&id)).is_some()));
+    assert!(ticking(cx), "visible call starts time rendering");
+    advance(cx, 1_000);
+    let visible_time = cx.update(|cx| store.read(cx).session().expect("session").clock_ms());
+    assert!(visible_time > idle_time);
+    cx.simulate_window_visibility_change(handle.into(), WindowVisibility::Hidden);
+    cx.run_until_parked();
+    assert!(!ticking(cx), "occluded call stops rendering");
+    advance(cx, 2_000);
+    assert_eq!(visible_time, cx.update(|cx| store.read(cx).session().expect("session").clock_ms()));
+    cx.simulate_window_visibility_change(handle.into(), WindowVisibility::Visible);
+    cx.run_until_parked();
+    assert!(ticking(cx), "visible call restarts rendering");
+    advance(cx, 1_000);
+    assert!(cx.update(|cx| store.read(cx).session().expect("session").clock_ms()) > visible_time);
+    calls.peer_hangs_up(&id);
+    fake.publish("acct-main", "call.changed", calls.row(&id).expect("ended"));
+    without_time(cx, |cx| !ticking(cx));
+
+    // A retry hint is rendered from a monotonic deadline, not a repeated
+    // copy of the original five-second duration.
+    fake.publish(
+        "acct-main",
+        "account.networking.changed",
+        event(json!({"kind":"node_busy","retry_after_ms":5000}), "networking_pending"),
+    );
+    without_time(cx, |cx| ticking(cx));
+    advance(cx, 1_000);
+    assert_eq!(
+        cx.update(|cx| store
+            .read(cx)
+            .session()
+            .expect("session")
+            .networking_retry_remaining(&AccountId::new("acct-main"))),
+        Some(4000)
+    );
+    advance(cx, 4_000);
+    assert!(!ticking(cx), "expired render-only hint leaves idle stopped");
+    fake.shutdown();
+
+    // A live creation deadline survives occlusion and a stopped render clock.
+    let path = socket_path("s5-hidden-logical");
+    let custody = Arc::new(ramflux_desktop_test::fake_custody::FakeCustody::new());
+    let expiry_fake = FakeBus::start_with(
+        &path,
+        |method, _, _| match method {
+            "daemon.status" => Reply::Ok(json!({"born_v3_creation":true})),
+            "account.list" => Reply::Ok(json!({"accounts":[],"account_details":[]})),
+            _ => Reply::Ok(json!({})),
+        },
+        custody,
+    );
+    let mut options = ShellOptions::for_scenario("", true);
+    options.source = SourceChoice::Rfd(SdkConfig::new(path));
+    let (expiry_window, expiry_shell) = open_with(cx, options);
+    let expiry_store = store_handle(cx, &expiry_shell);
+    wait(cx, "creation capability", |cx| {
+        with_store(cx, &expiry_shell, |s| s.capabilities().born_v3_creation)
+    });
+    cx.update(|cx| {
+        expiry_store.update(cx, |store, cx| {
+            store.dispatch(Intent::human(IntentKind::BeginCeremony { label: "Alex".into() }), cx);
+        })
+    });
+    without_time(cx, |cx| {
+        with_store(cx, &expiry_shell, |s| s.ceremony().is_some_and(|c| c.is_active()))
+    });
+    cx.simulate_window_visibility_change(expiry_window.into(), WindowVisibility::Hidden);
+    cx.run_until_parked();
+    assert!(!cx.update(|cx| expiry_store.read(cx).render_clock_running()));
+    advance(cx, 300_001);
+    assert!(!cx.update(|cx| expiry_store.read(cx).render_clock_running()));
+    assert!(
+        cx.update(|cx| expiry_store.read(cx).session().expect("daemon").now())
+            >= with_store(cx, &expiry_shell, |s| s.ceremony().expect("ceremony").expires_at)
+    );
+    // The view's expiry handling has run without any visible rendering tick.
+    assert!(
+        cx.update(|cx| expiry_shell.read(cx).entry().read(cx).ceremony().read(cx).expired_seen())
+    );
+    expiry_fake.shutdown();
+
+    // Hold progress uses its own visible gesture timer. Hiding cancels the
+    // gesture; showing lets a new hold complete normally.
+    let (hold_window, hold_shell) = open(cx, "s03_intervention");
+    advance(cx, 1_000);
+    click_in(cx, hold_window, "moment-m-approve", "approve");
+    in_window(cx, hold_window, |window, cx| window.key_down("space", false, cx));
+    advance(cx, 400);
+    let strip = cx.update(|cx| hold_shell.read(cx).root().read(cx).confirm_strip().clone());
+    assert!(cx.update(|cx| strip.read(cx).progress()) > 0.1);
+    cx.simulate_window_visibility_change(hold_window.into(), WindowVisibility::Hidden);
+    cx.run_until_parked();
+    advance(cx, 2_000);
+    assert_eq!(cx.update(|cx| strip.read(cx).progress()), 0.0);
+    assert!(effects(cx, &hold_shell).is_empty());
+    cx.simulate_window_visibility_change(hold_window.into(), WindowVisibility::Visible);
+    cx.run_until_parked();
+    hold_confirm(cx, hold_window);
+    assert_eq!(effects(cx, &hold_shell), [methods::GRANT_APPROVE]);
 }

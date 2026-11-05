@@ -54,6 +54,7 @@ pub struct ConfirmStrip {
     progress: f32,
     hold: Option<Task<()>>,
     focus_handle: FocusHandle,
+    visibility: Option<gpui_kit::Subscription>,
 }
 
 impl EventEmitter<ConfirmEvent> for ConfirmStrip {}
@@ -73,11 +74,18 @@ impl ConfirmStrip {
             progress: 0.0,
             hold: None,
             focus_handle: cx.focus_handle().tab_stop(true),
+            visibility: None,
         }
     }
 
     /// Shows `request` and moves keyboard focus to the strip.
     pub fn open(&mut self, request: ConfirmRequest, window: &mut Window, cx: &mut Context<Self>) {
+        self.visibility =
+            Some(cx.observe_window_visibility(window, |this: &mut Self, visibility, _, cx| {
+                if !visibility.is_visible() {
+                    this.release_hold(cx);
+                }
+            }));
         self.request = Some(request);
         self.reset_hold();
         window.focus(&self.focus_handle, cx);

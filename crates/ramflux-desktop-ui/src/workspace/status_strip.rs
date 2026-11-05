@@ -40,7 +40,11 @@ impl StatusStrip {
     /// A strip reading `store`.
     pub fn new(store: Entity<StoreHandle>, cx: &mut Context<Self>) -> Self {
         let subscription = cx.subscribe(&store, |_, _, event: &StoreEvent, cx| match event {
-            StoreEvent::Changed(changes) if changes.touches_status() => cx.notify(),
+            StoreEvent::Changed(changes)
+                if changes.touches_status() || changes.is_clock_moved() =>
+            {
+                cx.notify()
+            }
             StoreEvent::BackgroundChanged(_) => cx.notify(),
             _ => {}
         });
@@ -246,6 +250,7 @@ impl Render for StatusStrip {
             super::networking_header::header(
                 account.filter(|_| self.show_commands),
                 account.and_then(|a| a.networking_failure.as_ref()),
+                account.and_then(|a| handle.session()?.networking_retry_remaining(&a.id)),
             )
         };
         let switcher = account_switcher(handle, self.store.downgrade(), cx);

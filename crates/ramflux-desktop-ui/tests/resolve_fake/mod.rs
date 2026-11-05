@@ -89,6 +89,8 @@ pub struct State {
     /// The account names no home node (`account.status` without
     /// `node_id`).
     pub without_home: bool,
+    /// Holds contact additions while a test inspects the pending UI.
+    pub contact_add: Arc<crate::sdk_fake::Latch>,
 }
 
 /// The shared state.
@@ -371,9 +373,15 @@ pub fn start_with(name: &str, without_home: bool) -> (FakeBus, Shared, std::path
     let state = shared.clone();
     let all = crate::sdk_fake::frames();
     let fake = FakeBus::start(&path, move |method, _, body| {
-        let mut state = state.lock().expect("state");
-        state.seen.push((method.to_owned(), body.clone()));
-        handle(&mut state, &all, method, body)
+        let contact_add = {
+            let mut state = state.lock().expect("state");
+            state.seen.push((method.to_owned(), body.clone()));
+            state.contact_add.clone()
+        };
+        if method == "contact.add" {
+            contact_add.pass();
+        }
+        handle(&mut state.lock().expect("state"), &all, method, body)
     });
     (fake, shared, path)
 }

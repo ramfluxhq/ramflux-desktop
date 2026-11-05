@@ -34,6 +34,10 @@ impl LiveLink {
         &self.daemon
     }
 
+    pub(super) fn daemon_mut(&mut self) -> &mut AccountSession {
+        &mut self.daemon
+    }
+
     /// The recovery phrase the daemon session's source handed out, once.
     pub(super) fn take_daemon_recovery_phrase(
         &mut self,

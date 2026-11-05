@@ -200,6 +200,7 @@ impl Shell {
                     )),
                 },
             }
+            store.set_render_visible(window.is_visible(), cx);
             if options.start_clock {
                 store.start_clock(cx);
             }
@@ -220,6 +221,10 @@ impl Shell {
         let dev = cfg!(debug_assertions)
             .then(|| cx.new(|cx| DevPanel::new(store.clone(), workspace.downgrade(), cx)));
         let subscriptions = vec![
+            cx.observe_window_visibility(window, |this: &mut Self, visibility, _, cx| {
+                this.store
+                    .update(cx, |store, cx| store.set_render_visible(visibility.is_visible(), cx));
+            }),
             // The entry page holds a full restore's result in view: the
             // page it asks for changes when that result is closed.
             cx.observe(&entry, |this, _, cx| this.sync_page(cx)),

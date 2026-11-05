@@ -205,11 +205,18 @@ pub struct CallBar {
     /// Re-renders every second while a call is under way (its duration).
     ticker: Option<Task<()>>,
     _subscription: Subscription,
+    _visibility: Subscription,
+    visible: bool,
 }
 
 impl CallBar {
     /// A bar reading `store`, emitting through `sink` (the root sink).
-    pub fn new(store: Entity<StoreHandle>, sink: EventSink, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        store: Entity<StoreHandle>,
+        sink: EventSink,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let subscription = cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
             let relevant = match event {
                 StoreEvent::Changed(changes) => changes.touches_calls(),
@@ -218,13 +225,29 @@ impl CallBar {
             };
             if relevant {
                 let under_way = selectors::current_call(store.read(cx).store()).is_some();
-                this.keep_ticking(under_way, cx);
+                this.keep_ticking(under_way && this.visible, cx);
                 cx.notify();
             }
         });
-        let mut bar = Self { store, sink, ticker: None, _subscription: subscription };
+        let visibility =
+            cx.observe_window_visibility(window, |this: &mut Self, visibility, _, cx| {
+                this.visible = visibility.is_visible();
+                let under_way = selectors::current_call(this.store.read(cx).store()).is_some();
+                this.keep_ticking(under_way && this.visible, cx);
+                if this.visible {
+                    cx.notify();
+                }
+            });
+        let mut bar = Self {
+            store,
+            sink,
+            ticker: None,
+            _subscription: subscription,
+            _visibility: visibility,
+            visible: window.is_visible(),
+        };
         let under_way = selectors::current_call(bar.store.read(cx).store()).is_some();
-        bar.keep_ticking(under_way, cx);
+        bar.keep_ticking(under_way && bar.visible, cx);
         bar
     }
 

@@ -129,7 +129,7 @@ impl Workspace {
         let members = cx.new(|cx| MembersDock::new(store.clone(), sink.clone(), cx));
         let approvals = cx.new(|cx| ApprovalsDock::new(store.clone(), sink.clone(), cx));
         let evidence = cx.new(|cx| EvidenceDock::new(store.clone(), cx));
-        let call_bar = cx.new(|cx| CallBar::new(store.clone(), sink.clone(), cx));
+        let call_bar = cx.new(|cx| CallBar::new(store.clone(), sink.clone(), window, cx));
         let incoming_call = cx.new(|cx| IncomingCall::new(store.clone(), sink.clone(), cx));
         let contents: [(DockTool, gpui_kit::AnyView); 5] = [
             (DockTool::Objects, objects.clone().into()),

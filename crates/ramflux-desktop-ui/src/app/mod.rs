@@ -17,6 +17,7 @@
 
 mod call_audio;
 mod changes;
+mod clock;
 mod inspector;
 mod live;
 mod names;
@@ -86,6 +87,11 @@ pub struct StoreHandle {
     clock: Option<Task<()>>,
     completion_task: Option<Task<()>>,
     last_tick: Option<Instant>,
+    clock_enabled: bool,
+    render_visible: bool,
+    clock_generation: u64,
+    logical_clock: Option<Task<()>>,
+    logical_due: Option<Timestamp>,
     wall_clock: bool,
     live: Option<live::LiveLink>,
     /// The daemon session's connection as last announced (a status change
@@ -116,6 +122,11 @@ impl StoreHandle {
             clock: None,
             completion_task: None,
             last_tick: None,
+            clock_enabled: false,
+            render_visible: true,
+            clock_generation: 0,
+            logical_clock: None,
+            logical_due: None,
             wall_clock: false,
             live: None,
             daemon_status: None,
@@ -332,34 +343,6 @@ impl StoreHandle {
         cx.emit(StoreEvent::Inspected);
     }
 
-    /// Starts the real-time clock task. Calling it again restarts it.
-    pub fn start_clock(&mut self, cx: &mut Context<Self>) {
-        self.last_tick = Some(cx.background_executor().now());
-        self.clock = Some(cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(TICK).await;
-                let alive = this.update(cx, |handle, cx| handle.tick(cx)).is_ok();
-                if !alive {
-                    break;
-                }
-            }
-        }));
-    }
-
-    /// Stops the clock task.
-    pub fn stop_clock(&mut self) {
-        self.clock = None;
-        self.last_tick = None;
-    }
-
-    fn tick(&mut self, cx: &mut Context<Self>) {
-        let now = cx.background_executor().now();
-        let elapsed = self.last_tick.map_or(TICK, |last| now.saturating_duration_since(last));
-        self.last_tick = Some(now);
-        let ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
-        self.advance(ms, cx);
-    }
-
     /// Installs the audio calls use (the computer's devices in the
     /// application, a stand-in in tests). Without it calls show but carry
     /// no audio.
@@ -459,6 +442,7 @@ impl StoreHandle {
         }
         self.advance_live(ms, cx);
         self.drive_calls(cx);
+        self.refresh_clocks(cx);
     }
 
     /// Whether the active session's clock is frozen.
@@ -556,6 +540,7 @@ impl StoreHandle {
     }
 
     fn emit_reset(&mut self, cx: &mut Context<Self>) {
+        self.refresh_clocks(cx);
         let mut changes = ChangeSet::reset();
         changes.mark_clock();
         cx.emit(StoreEvent::Changed(Rc::new(changes)));
