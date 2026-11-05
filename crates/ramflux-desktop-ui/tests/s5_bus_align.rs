@@ -123,7 +123,7 @@ fn header_shows_connecting_until_live_or_typed_reason(cx: &mut TestAppContext) {
         cx.update(|cx| select_locale(locale, cx));
         assert_eq!(
             tr("network_header.connecting").as_ref(),
-            if locale == "en" { "Connecting…" } else { "正在连接…" }
+            if locale == "en" { "Connecting…" } else { "\u{6b63}\u{5728}\u{8fde}\u{63a5}…" }
         );
         let mut cases = vec![
             (json!({"kind":"no_node_selected"}), "network_header.choose_node", false),

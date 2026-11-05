@@ -356,7 +356,12 @@ fn the_asked_words_complete_from_a_prefix_and_confirming_creates_the_account(
     // Now the account's own workspace opens, and it says what the account
     // cannot do yet.
     assert_eq!(page(cx, &shell), Page::Workspace);
-    assert!(has_label(cx, handle, &tr("networking.pending_text")), "the account carries its state");
+    assert!(with_store(cx, &shell, |s| s.accounts().any(|a| a.networking == Networking::Pending)));
+    let shown = in_window(cx, handle, |window, _| {
+        window.find("workspace-networking-title").label().expect("networking title").to_owned()
+    });
+    assert_eq!(shown, tr("network_header.connecting").to_string(), "the header carries its state");
+    assert!(!exists(cx, handle, "networking-banner"));
 }
 
 #[gpui_kit::test]

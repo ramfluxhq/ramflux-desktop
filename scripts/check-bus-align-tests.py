@@ -72,6 +72,10 @@ def main():
         "a_daemon_that_goes_away_during_the_hold_releases_it",
     ):
         required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "backup_ui"], name)
+    required(
+        ["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "ceremony_ui"],
+        "the_asked_words_complete_from_a_prefix_and_confirming_creates_the_account",
+    )
     target = ["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "s5_bus_align"]
     # Compile the normal libtest target even before its first owned case lands.
     run([*target, "--", "--list"])
