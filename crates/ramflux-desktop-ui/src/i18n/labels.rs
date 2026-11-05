@@ -199,6 +199,7 @@ pub fn transfer(state: &TransferState) -> SharedString {
         TransferState::Queued => "object.queued",
         TransferState::Transferring { .. } => "object.transferring",
         TransferState::Complete => "object.complete",
+        TransferState::Failed { reason } if reason == "paused" => "object.paused",
         TransferState::Failed { .. } => "object.failed",
     })
 }

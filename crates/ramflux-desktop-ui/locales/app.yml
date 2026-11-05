@@ -321,6 +321,9 @@ object:
   outbound:
     en: "Sent"
     zh-CN: "发送"
+  paused:
+    en: "Paused"
+    zh-CN: "已暂停"
   queued:
     en: "Waiting"
     zh-CN: "等待中"

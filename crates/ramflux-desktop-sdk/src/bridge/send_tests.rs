@@ -195,7 +195,7 @@ async fn waiting_send_fails_after_ten_minutes_and_manual_retry_uses_new_key() {
     let moment = store.moments().find(|m| matches!(&m.kind, MomentKind::Message(p) if p.receipt == (Receipt::Failed { retryable: true }))).expect("failed").id.clone();
     let effects = handle_intent(
         &store,
-        Intent::human(IntentKind::RetryMessage { moment_id: moment }),
+        Intent::human(IntentKind::RetryMessage { moment_id: moment.clone() }),
         Timestamp(0),
     )
     .expect("manual retry");
@@ -203,6 +203,21 @@ async fn waiting_send_fails_after_ten_minutes_and_manual_retry_uses_new_key() {
     for effect in effects {
         task.effect(effect);
     }
+    // Retirement is its own event for the old row, independent of the new
+    // send's Sending event. Check the actual effect path before its reply.
+    let retired: Vec<_> = rx
+        .try_iter()
+        .filter_map(|delivery| match delivery.event {
+            DomainEvent::MomentUpdated { moment_id, lifecycle, kind } if moment_id == moment => {
+                Some((lifecycle, kind))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(retired.len(), 1, "the old failure is retired exactly once");
+    assert_eq!(retired[0].0, Some(ramflux_desktop_core::Lifecycle::Failed));
+    assert!(matches!(&retired[0].1, Some(MomentKind::Message(payload))
+        if payload.receipt == Receipt::Failed { retryable: false }));
     let Internal::SendDone { .. } =
         tokio::time::timeout(Duration::from_secs(3), inbox.internal.recv())
             .await

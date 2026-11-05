@@ -40,12 +40,15 @@ pub fn render(
     }
     let attachment = payload.attachment.as_ref().map(|id| {
         let object = refs.objects.get(id);
-        let name = object.map_or_else(|| id.to_string(), |o| o.label());
+        let name = object
+            .and_then(|o| o.name.as_deref())
+            .filter(|name| !name.trim().is_empty())
+            .map_or_else(|| tr("moment.message.attachment"), |name| name.to_owned().into());
         let moving =
             object.is_some_and(|o| matches!(o.transfer, TransferState::Transferring { .. }));
         let failed = object.is_some_and(|o| matches!(o.transfer, TransferState::Failed { .. }));
         let detail = object.map(|o| match &o.transfer {
-            TransferState::Failed { reason } => format!(
+            TransferState::Failed { reason } if reason != "paused" => format!(
                 "{} · {} · {}",
                 i18n::size(o.size),
                 i18n::transfer(&o.transfer),
@@ -54,8 +57,11 @@ pub fn render(
             other => format!("{} · {}", i18n::size(o.size), i18n::transfer(other)),
         });
         let detail_color = if failed { crate::tone::text(cx.theme().danger, cx) } else { muted };
+        let label =
+            detail.as_ref().map_or_else(|| name.to_string(), |detail| format!("{name} · {detail}"));
         h_flex()
             .id("message-attachment")
+            .aria_label(label)
             .gap_2()
             .px_2()
             .py_1()

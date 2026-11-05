@@ -123,7 +123,7 @@ pub fn render(
         TransferState::Transferring { .. } if measured => {
             format!("{} · {percent:.0}%", i18n::transfer(&object.transfer))
         }
-        TransferState::Failed { reason } => {
+        TransferState::Failed { reason } if reason != "paused" => {
             format!("{} · {}", i18n::transfer(&object.transfer), i18n::backend_text(reason))
         }
         other => i18n::transfer(other).to_string(),

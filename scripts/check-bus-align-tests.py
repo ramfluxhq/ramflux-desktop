@@ -53,6 +53,7 @@ SDK_TESTS = [
     "local::daemon_process::tests::daemon_spawn_sets_default_rust_log_unless_inherited",
 ]
 UI_TESTS = [
+    "attachment_fallback_and_paused_state_are_localized",
     "background_account_media_drains_without_render_ticks",
     "hidden_scenario_playback_stops_render_ticks",
     "sent_text_has_done_lifecycle_and_no_in_progress_label",

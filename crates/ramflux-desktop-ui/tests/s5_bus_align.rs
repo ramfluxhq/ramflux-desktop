@@ -871,3 +871,50 @@ fn sent_text_has_done_lifecycle_and_no_in_progress_label(cx: &mut TestAppContext
     });
     fake.shutdown();
 }
+
+#[gpui_kit::test]
+fn attachment_fallback_and_paused_state_are_localized(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
+    for locale in ["en", "zh-CN"] {
+        cx.update(|cx| select_locale(locale, cx));
+        let (fake, (window, shell)) = fixture(cx, false);
+        wait_for_workspace(cx, &shell);
+        show_context(cx, window, &shell, "dm-ana");
+        wait(cx, "paused attachment row", |cx| {
+            with_store(cx, &shell, |s| {
+                s.object(&ramflux_desktop_core::ObjectId::new("attachment:m2:0")).is_some()
+            }) && with_store(cx, &shell, |s| {
+                s.moments().any(|m| {
+                    matches!(&m.kind,
+                ramflux_desktop_core::MomentKind::Message(p)
+                if p.attachment.as_ref().is_some_and(|id| id.as_str() == "attachment:m2:0"))
+                })
+            })
+        });
+        let scope = with_store(cx, &shell, |s| {
+            let moment = s
+                .moments()
+                .find(|m| {
+                    matches!(&m.kind,
+                ramflux_desktop_core::MomentKind::Message(p)
+                if p.attachment.as_ref().is_some_and(|id| id.as_str() == "attachment:m2:0"))
+                })
+                .expect("attachment moment");
+            format!("moment-{}", moment.id)
+        });
+        let label = in_window(cx, window, |window, _| {
+            window
+                .within(scope)
+                .find("message-attachment")
+                .label()
+                .expect("attachment label")
+                .to_owned()
+        });
+        assert!(label.contains(tr("moment.message.attachment").as_ref()), "{locale}: {label}");
+        assert!(label.contains(tr("object.paused").as_ref()), "{locale}: {label}");
+        assert!(!label.contains("attachment:m2:0"), "{locale}: {label}");
+        assert!(!label.contains("paused"), "{locale}: {label}");
+        fake.shutdown();
+    }
+    cx.update(|cx| select_locale("en", cx));
+}

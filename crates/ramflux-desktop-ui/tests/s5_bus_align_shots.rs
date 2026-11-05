@@ -176,6 +176,17 @@ mod shots {
                 && r.store(|s| s.context(&ContextId::new("dm-ana")).is_some())
         });
         run.show();
+        // Capture the actual unnamed, paused attachment after its directory
+        // has arrived, rather than a partially loaded row.
+        run.until("paused attachment fixture", |r| {
+            r.store(|s| {
+                s.object(&ramflux_desktop_core::ObjectId::new("attachment:m2:0"))
+                    .is_some_and(|o| o.name.is_none()
+                        && matches!(&o.transfer, ramflux_desktop_core::TransferState::Failed { reason } if reason == "paused"))
+                    && s.moments().any(|m| matches!(&m.kind, MomentKind::Message(p)
+                        if p.attachment.as_ref().is_some_and(|id| id.as_str() == "attachment:m2:0")))
+            })
+        });
         run.until("stream", |_| fake.streaming("acct-main"));
         run.until("connecting", |r| {
             r.store(|s| {

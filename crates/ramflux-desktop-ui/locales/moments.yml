@@ -63,6 +63,9 @@ moment:
       en: "%{row}. Risk: %{risk}"
       zh-CN: "%{row}。风险：%{risk}"
   message:
+    attachment:
+      en: "Attachment"
+      zh-CN: "附件"
     not_loaded:
       en: "Loading message text…"
       zh-CN: "正在加载消息正文…"
