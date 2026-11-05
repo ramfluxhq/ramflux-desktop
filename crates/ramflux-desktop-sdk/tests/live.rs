@@ -124,11 +124,15 @@ fn pushed_approvals_and_decisions_become_grant_events() {
         }
         _ => fixture(method),
     });
+    fake.enable_stream();
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
-    fake.enable_stream();
     account.until("subscribed", |_, _| fake.streaming("acct-main"));
-    let open = fake.seen().into_iter().find(|s| s.method == "bus.subscribe").expect("open");
+    let open = fake
+        .seen()
+        .into_iter()
+        .find(|s| s.method == "bus.subscribe" && s.account.as_deref() == Some("acct-main"))
+        .expect("open");
     assert_eq!(open.body["attended_frontend"], true);
     assert!(
         open.body["topics"].as_array().is_some_and(|t| t.contains(&json!("mcp.approval.request")))

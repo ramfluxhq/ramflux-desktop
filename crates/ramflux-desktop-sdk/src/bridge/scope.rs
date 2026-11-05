@@ -157,6 +157,7 @@ pub(super) struct Task {
     pub(super) custody: super::custody::Custody,
     /// Revision of the newest applied networking event.
     pub(super) networking_revision: u64,
+    transport_disconnected: bool,
     pub(super) ceremonies: Ceremonies,
 }
 
@@ -182,6 +183,7 @@ async fn read(
 /// What a scope's task listens to besides its commands.
 pub(super) struct Inbox {
     pub(super) internal: mpsc::UnboundedReceiver<Internal>,
+    pub(super) connection_states: mpsc::UnboundedReceiver<crate::bus::client::ConnectionState>,
     pub(super) pushed: mpsc::UnboundedReceiver<Pushed>,
     pub(super) streamed: mpsc::UnboundedReceiver<Streamed>,
     pub(super) jobs: mpsc::UnboundedReceiver<JobStreamed>,
@@ -195,14 +197,19 @@ pub(super) fn build(
     ceremonies: Ceremonies,
 ) -> (Task, Inbox) {
     let (internal, internal_rx) = mpsc::unbounded_channel();
+    let (connection_states, connection_rx) = mpsc::unbounded_channel();
     let (_pushed, pushed_rx) = mpsc::unbounded_channel();
     let (streamed, streamed_rx) = mpsc::unbounded_channel();
     let (jobs_out, jobs_rx) = mpsc::unbounded_channel::<JobStreamed>();
     let socket = config.socket_path.to_string_lossy().into_owned();
     let cursors = CursorStore::new(config.settings_path.clone(), socket.clone());
     let cursor = scope.account().and_then(|account| cursors.load(account));
-    let client =
-        BusClient::new(config.socket_path.clone(), config.connect_timeout, config.deadlines);
+    let client = BusClient::with_status(
+        config.socket_path.clone(),
+        config.connect_timeout,
+        config.deadlines,
+        Some(connection_states),
+    );
     let job_link = JobLink::new(
         config.socket_path.clone(),
         config.connect_timeout,
@@ -260,9 +267,19 @@ pub(super) fn build(
         accounts_live: false,
         custody: super::custody::Custody::new(),
         networking_revision: 0,
+        transport_disconnected: false,
         ceremonies,
     };
-    (task, Inbox { internal: internal_rx, pushed: pushed_rx, streamed: streamed_rx, jobs: jobs_rx })
+    (
+        task,
+        Inbox {
+            internal: internal_rx,
+            connection_states: connection_rx,
+            pushed: pushed_rx,
+            streamed: streamed_rx,
+            jobs: jobs_rx,
+        },
+    )
 }
 
 /// Runs one scope until its command channel closes or its source is gone.
@@ -278,6 +295,7 @@ pub(crate) async fn run(
     task.daemon_refresh = Some(daemon_refresh);
     let Inbox {
         internal: mut internal_rx,
+        connection_states: mut connection_rx,
         pushed: mut pushed_rx,
         streamed: mut streamed_rx,
         jobs: mut jobs_rx,
@@ -294,6 +312,7 @@ pub(crate) async fn run(
                 None => break,
             },
             Some(internal) = internal_rx.recv() => task.internal(internal),
+            Some(status) = connection_rx.recv() => task.connection_changed(status),
             Some(pushed) = pushed_rx.recv() => task.on_pushed(pushed),
             Some(jobs) = jobs_rx.recv() => task.on_jobs(jobs),
             Some(streamed) = streamed_rx.recv() => {
@@ -326,6 +345,12 @@ impl Task {
 
     /// Delivers events; returns whether there were any.
     pub(super) fn emit(&mut self, mut events: Vec<DomainEvent>) -> bool {
+        // A reply dispatched before EOF cannot make the closed connection live.
+        if self.transport_disconnected {
+            events.retain(|event| {
+                !matches!(event, DomainEvent::SourceStatusChanged(SourceStatus::Connected))
+            });
+        }
         if let Some(id) = self.scope.account() {
             events.extend(Self::networking_failures(&events, id));
         }
@@ -376,11 +401,39 @@ impl Task {
     }
 
     pub(super) fn connection_status(&mut self, status: SourceStatus) {
+        // Initial readiness still comes from account.status, not a subscription.
+        if status == SourceStatus::Connected && !self.transport_disconnected {
+            return;
+        }
+        self.transport_disconnected = status == SourceStatus::Disconnected;
+        if status == SourceStatus::Connected
+            && self.scope.account().is_some()
+            && self.link == Link::Live
+        {
+            // A recovered connection may be a new daemon with changed local
+            // state even when its cursor is still valid. Recover once here.
+            let reads = self.reads_for_snapshot();
+            self.request_reads(reads);
+        }
         self.emit(vec![DomainEvent::SourceStatusChanged(status)]);
         if self.scope.account().is_some()
             && let Some(tx) = &self.daemon_refresh
         {
             let _ = tx.send(super::DaemonNotice::Status(status));
+        }
+    }
+
+    pub(super) fn connection_changed(&mut self, status: crate::bus::client::ConnectionState) {
+        if status.generation != self.client.connections_opened() {
+            return;
+        }
+        if status.connected {
+            if self.transport_disconnected {
+                self.connection_status(SourceStatus::Connected);
+            }
+        } else {
+            self.transport_disconnected = true;
+            self.connection_status(SourceStatus::Disconnected);
         }
     }
 
@@ -967,9 +1020,7 @@ impl Task {
             ScopeCommand::CallMedia(call_id, reply) => self.call_media(call_id, reply),
             ScopeCommand::AccountsLive(live) => self.accounts_live(live),
             ScopeCommand::RefreshDaemon => self.refresh_daemon(),
-            ScopeCommand::ConnectionStatus(status) => {
-                self.emit(vec![DomainEvent::SourceStatusChanged(status)]);
-            }
+            ScopeCommand::ConnectionStatus(status) => self.connection_status(status),
         }
     }
 }

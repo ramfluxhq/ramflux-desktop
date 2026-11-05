@@ -21,6 +21,9 @@ fn task(path: &std::path::Path, scope: Scope) -> (Task, Inbox, std_mpsc::Receive
 async fn pump(task: &mut Task, inbox: &mut Inbox, done: impl Fn(&Task) -> bool) {
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     loop {
+        while let Ok(status) = inbox.connection_states.try_recv() {
+            task.connection_changed(status);
+        }
         while let Ok(read) = inbox.internal.try_recv() {
             task.internal(read);
         }
@@ -143,10 +146,6 @@ async fn daemon_scope_refreshes_on_actions_not_timers() {
     let (mut account, _, _delivered) = task(&path, Scope::Account(AccountId::new("acct-main")));
     account.daemon_refresh = Some(tx);
     account.on_streamed(Streamed::Opened { head_seq: 0, floor_seq: 0 });
-    assert!(matches!(
-        rx.try_recv(),
-        Ok(super::super::DaemonNotice::Status(SourceStatus::Connected))
-    ));
     assert!(
         matches!(rx.try_recv(), Ok(super::super::DaemonNotice::Refresh)),
         "every stream reopen refreshes daemon"
@@ -161,4 +160,42 @@ async fn daemon_scope_refreshes_on_actions_not_timers() {
         matches!(rx.try_recv(), Ok(super::super::DaemonNotice::Refresh)),
         "account.state refreshes daemon"
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn ordinary_disconnect_is_observed_without_data_requests() {
+    let path = socket_path("ordinary-idle-close");
+    let sent = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = sent.clone();
+    let fake = FakeBus::start(&path, move |_, _, _| {
+        count.fetch_add(1, Ordering::SeqCst);
+        Reply::Ok(json!({}))
+    });
+    let (mut daemon, mut inbox, delivered) = task(&path, Scope::Daemon);
+    daemon.config.backup_api = false;
+    daemon.snapshot();
+    pump(&mut daemon, &mut inbox, |t| {
+        t.link == Link::Live && t.snapshot_task.is_none() && t.read_recovery.running.is_empty()
+    })
+    .await;
+    delivered.try_iter().for_each(drop);
+    let before = sent.load(Ordering::SeqCst);
+    fake.shutdown();
+    pump(&mut daemon, &mut inbox, |t| t.transport_disconnected).await;
+    assert!(
+        delivered.try_iter().any(|d| matches!(
+            d.event,
+            DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)
+        ))
+    );
+    daemon.internal(Internal::Fetched((Fetch::DaemonStatus, None, Ok(json!({})))));
+    assert!(
+        !delivered
+            .try_iter()
+            .any(|d| matches!(d.event, DomainEvent::SourceStatusChanged(SourceStatus::Connected))),
+        "late pre-EOF reply cannot restore connectivity"
+    );
+    tokio::time::advance(Duration::from_secs(600)).await;
+    daemon.tick();
+    assert_eq!(sent.load(Ordering::SeqCst), before, "EOF observation sends no data requests");
 }

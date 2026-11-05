@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use ramflux_sdk::{LocalBusClient, LocalBusFrame, LocalBusFrameKind};
 use serde_json::Value;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, Semaphore, mpsc};
 
 use super::deadline::{Deadlines, deadline_ms};
 use super::{BusError, BusRequest};
@@ -43,12 +43,33 @@ pub struct BusClient {
     inner: Arc<Inner>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ConnectionState {
+    pub(crate) generation: u64,
+    pub(crate) connected: bool,
+}
+
+struct OpenConnection {
+    generation: u64,
+    client: LocalBusClient,
+    observer: Option<tokio::task::AbortHandle>,
+}
+
+impl Drop for OpenConnection {
+    fn drop(&mut self) {
+        if let Some(observer) = &self.observer {
+            observer.abort();
+        }
+    }
+}
+
 struct Inner {
     socket: PathBuf,
     connect_timeout: Duration,
     deadlines: Deadlines,
     /// The open connection and its generation.
-    link: Mutex<Option<(u64, LocalBusClient)>>,
+    link: Mutex<Option<OpenConnection>>,
+    status: Option<mpsc::UnboundedSender<ConnectionState>>,
     generations: AtomicU64,
     next_id: AtomicU64,
     slots: Semaphore,
@@ -57,12 +78,22 @@ struct Inner {
 impl BusClient {
     /// A client of `socket`; nothing connects until the first request.
     pub fn new(socket: PathBuf, connect_timeout: Duration, deadlines: Deadlines) -> Self {
+        Self::with_status(socket, connect_timeout, deadlines, None)
+    }
+
+    pub(crate) fn with_status(
+        socket: PathBuf,
+        connect_timeout: Duration,
+        deadlines: Deadlines,
+        status: Option<mpsc::UnboundedSender<ConnectionState>>,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 socket,
                 connect_timeout,
                 deadlines,
                 link: Mutex::new(None),
+                status,
                 generations: AtomicU64::new(0),
                 next_id: AtomicU64::new(1),
                 slots: Semaphore::new(MAX_IN_FLIGHT),
@@ -118,9 +149,13 @@ impl BusClient {
 
     async fn connection(&self) -> Result<(u64, LocalBusClient), BusError> {
         let mut link = self.inner.link.lock().await;
-        if let Some((generation, client)) = link.as_ref() {
-            return Ok((*generation, client.clone()));
+        if let Some(open) = link
+            .as_ref()
+            .filter(|open| open.observer.as_ref().is_none_or(|task| !task.is_finished()))
+        {
+            return Ok((open.generation, open.client.clone()));
         }
+        link.take();
         let client = tokio::time::timeout(
             self.inner.connect_timeout,
             LocalBusClient::connect(&self.inner.socket),
@@ -129,14 +164,26 @@ impl BusClient {
         .map_err(|_| BusError::Transport("the daemon socket did not accept in time".to_owned()))?
         .map_err(BusError::from)?;
         let generation = self.inner.generations.fetch_add(1, Ordering::Relaxed) + 1;
-        *link = Some((generation, client.clone()));
+        let observer = self.inner.status.as_ref().map(|out| {
+            let out = out.clone();
+            let _ = out.send(ConnectionState { generation, connected: true });
+            let mut client = client.clone();
+            tokio::spawn(async move {
+                // Ordinary connections have no subscription; their event receiver
+                // also closes on EOF, without a probe or a periodic request.
+                while client.next_event().await.is_ok() {}
+                let _ = out.send(ConnectionState { generation, connected: false });
+            })
+            .abort_handle()
+        });
+        *link = Some(OpenConnection { generation, client: client.clone(), observer });
         Ok((generation, client))
     }
 
     /// Drops the connection of `generation` if it is still the open one.
     async fn forget(&self, generation: u64) {
         let mut link = self.inner.link.lock().await;
-        if link.as_ref().is_some_and(|(open, _)| *open == generation) {
+        if link.as_ref().is_some_and(|open| open.generation == generation) {
             *link = None;
         }
     }

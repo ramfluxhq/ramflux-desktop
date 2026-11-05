@@ -563,23 +563,59 @@ fn restoring(cx: &mut TestAppContext, name: &str) -> Restoring {
 }
 
 impl Restoring {
-    fn set_account(&self, state: &str) {
-        self.set_labeled_account(state, "Personal");
+    fn set_account(&self, cx: &mut TestAppContext, state: &str) {
+        self.set_labeled_account(cx, state, "Personal");
     }
 
-    fn set_labeled_account(&self, state: &str, label: &str) {
+    fn set_labeled_account(&self, cx: &mut TestAppContext, state: &str, label: &str) {
         let open = state == "unlocked";
+        let was_locked = self
+            .state
+            .lock()
+            .expect("state")
+            .accounts
+            .as_ref()
+            .and_then(|accounts| accounts["account_details"].as_array())
+            .is_some_and(|rows| {
+                rows.iter().any(|row| row["id"] == ACCOUNT && row["state"] == "locked")
+            });
         self.state.lock().expect("state").accounts = Some(serde_json::json!({
             "accounts": if open { vec![ACCOUNT] } else { vec![] },
             "account_details": [{ "id": ACCOUNT, "label": label, "kind": "human",
                                   "state": state }],
         }));
+        // The fixture models a lifecycle action. The daemon refreshes its
+        // account list after that action, without relying on a timer.
+        let intent = if !open {
+            Some(ramflux_desktop_core::IntentKind::LockAccount {
+                account_id: ramflux_desktop_core::AccountId::new(ACCOUNT),
+            })
+        } else if was_locked {
+            Some(ramflux_desktop_core::IntentKind::Unlock {
+                account_id: ramflux_desktop_core::AccountId::new(ACCOUNT),
+                secret: ramflux_desktop_core::SecretInput::new("fixture passphrase"),
+            })
+        } else {
+            None
+        };
+        if let Some(intent) = intent {
+            let root = cx.update(|cx| self.shell.read(cx).root().clone());
+            in_window(cx, self.handle, |window, cx| {
+                root.update(cx, |root, cx| root.submit_secret(intent, window, cx))
+            });
+            if !open {
+                wait(cx, "lock detaches the previous account session", |cx| {
+                    let store = store_handle(cx, &self.shell);
+                    cx.update(|cx| store.read(cx).active_account().is_none())
+                });
+            }
+        }
     }
 
     /// Installs; as the real daemon does, the account is reopened,
     /// unlocked, and its session's first jobs listing is held back.
     fn install_and_hold(&self, cx: &mut TestAppContext) -> Arc<sdk_fake::Latch> {
-        self.set_account("unlocked");
+        self.set_account(cx, "unlocked");
         let account_jobs = self.state.lock().expect("state").account_jobs.clone();
         account_jobs.close();
         click(cx, self.handle, "restore-install");
@@ -680,14 +716,14 @@ fn only_the_installed_restore_is_held_not_an_old_one_after_lock_and_unlock(
     assert!(!awaits(cx), "the first listing ended the hold");
     // The account locks and opens again: a fresh session starts empty, and
     // the old, unclosed result must not take the page over again.
-    world.set_account("locked");
+    world.set_account(cx, "locked");
     wait(cx, "locked", |cx| {
         with_store(cx, &world.shell, |s| {
             s.accounts().next().map(|a| a.lock_state) != Some(LockState::Unlocked)
         })
     });
     account_jobs.close();
-    world.set_account("unlocked");
+    world.set_account(cx, "unlocked");
     wait(cx, "the new session", |cx| {
         with_store(cx, &world.shell, |s| !s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
     });
@@ -715,7 +751,7 @@ fn a_freshly_unlocked_account_shows_a_loading_line_not_the_daemon_step(cx: &mut 
     advance(cx, 300);
     // The account locks and opens again, and its new session has received
     // nothing yet.
-    world.set_account("locked");
+    world.set_account(cx, "locked");
     wait(cx, "locked", |cx| {
         with_store(cx, &world.shell, |s| {
             s.accounts().next().map(|a| a.lock_state) != Some(LockState::Unlocked)
@@ -723,7 +759,7 @@ fn a_freshly_unlocked_account_shows_a_loading_line_not_the_daemon_step(cx: &mut 
     });
     let account_reads = world.state.lock().expect("state").account_reads.clone();
     account_reads.close();
-    world.set_account("unlocked");
+    world.set_account(cx, "unlocked");
     wait(cx, "the new session", |cx| {
         with_store(cx, &world.shell, |s| !s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
     });
@@ -778,7 +814,7 @@ fn never_loading_as(
         with_store(cx, &world.shell, |s| s.is_listed(ramflux_desktop_core::Listing::BackupJobs))
     });
     advance(cx, 300);
-    world.set_labeled_account("locked", label);
+    world.set_labeled_account(cx, "locked", label);
     wait(cx, "locked", |cx| {
         with_store(cx, &world.shell, |s| {
             s.accounts().next().map(|a| a.lock_state) != Some(LockState::Unlocked)
@@ -786,7 +822,7 @@ fn never_loading_as(
     });
     let account_reads = world.state.lock().expect("state").account_reads.clone();
     account_reads.close();
-    world.set_labeled_account("unlocked", label);
+    world.set_labeled_account(cx, "unlocked", label);
     wait(cx, "the loading line", |cx| exists(cx, world.handle, "entry-session-loading"));
     assert!(!exists(cx, world.handle, "entry-session-retry"), "nothing to retry yet");
     // Past the bound with no answer: the error and the ways out replace

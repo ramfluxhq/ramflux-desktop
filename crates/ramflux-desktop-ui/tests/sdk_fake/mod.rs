@@ -300,7 +300,7 @@ pub fn start_with_custody(
                     state.account_reads.clone(),
                 )
             };
-            if account.is_some() {
+            if account.is_some() && !matches!(method, "account.unlock" | "account.lock") {
                 account_reads.pass();
             }
             if method == "account.backup.jobs" && account.is_some() {
@@ -406,6 +406,9 @@ pub fn start_with_custody(
                         }
                     }
                     frame
+                }
+                "account.unlock" => {
+                    json!({"local_account_id":account.unwrap_or("acct-main"), "state":"unlocked", "networking":"live"})
                 }
                 "group.list" => match &state.groups {
                     Some(groups) => json!({ "groups": groups, "next_cursor": null }),
