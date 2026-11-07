@@ -63,9 +63,18 @@ impl Fed {
             }
             assert!(
                 Instant::now() < deadline,
-                "timed out waiting for: {what} (failures {:?}, rejections {:?})",
+                "timed out waiting for: {what} (failures {:?}, rejections {:?}, status {:?}, source events {:?})",
                 self.store.failures(),
-                self.store.rejections()
+                self.store.rejections(),
+                self.store.source_status(),
+                self.envelopes
+                    .iter()
+                    .filter(|e| matches!(
+                        e.event,
+                        ramflux_desktop_core::DomainEvent::SourceStatusChanged(_)
+                    ))
+                    .map(|e| format!("{}:{:?}", e.seq, e.event))
+                    .collect::<Vec<_>>()
             );
             std::thread::sleep(Duration::from_millis(15));
         }

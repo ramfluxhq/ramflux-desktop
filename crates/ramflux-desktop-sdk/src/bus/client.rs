@@ -53,6 +53,11 @@ struct OpenConnection {
     generation: u64,
     client: LocalBusClient,
     observer: Option<tokio::task::AbortHandle>,
+    /// Whether this connection's loss has been reported. A loss is reported
+    /// exactly once, by whoever finds it first: the observer on the end of
+    /// the stream, or `forget` when a request finds the connection broken
+    /// (which aborts the observer before it can).
+    down: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Drop for OpenConnection {
@@ -235,27 +240,39 @@ impl BusClient {
         .map_err(|_| BusError::Transport("the daemon socket did not accept in time".to_owned()))?
         .map_err(BusError::from)?;
         let generation = self.inner.generations.fetch_add(1, Ordering::Relaxed) + 1;
+        let down = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let observer = self.inner.status.as_ref().map(|out| {
             let out = out.clone();
             let _ = out.send(ConnectionState { generation, connected: true });
             let mut client = client.clone();
+            let down = down.clone();
             tokio::spawn(async move {
                 // Ordinary connections have no subscription; their event receiver
                 // also closes on EOF, without a probe or a periodic request.
                 while client.next_event().await.is_ok() {}
-                let _ = out.send(ConnectionState { generation, connected: false });
+                if !down.swap(true, Ordering::SeqCst) {
+                    let _ = out.send(ConnectionState { generation, connected: false });
+                }
             })
             .abort_handle()
         });
-        *link = Some(OpenConnection { generation, client: client.clone(), observer });
+        *link = Some(OpenConnection { generation, client: client.clone(), observer, down });
         Ok((generation, client))
     }
 
     /// Drops the connection of `generation` if it is still the open one.
     async fn forget(&self, generation: u64) {
         let mut link = self.inner.link.lock().await;
-        if link.as_ref().is_some_and(|open| open.generation == generation) {
-            *link = None;
+        if link.as_ref().is_some_and(|open| open.generation == generation)
+            && let Some(open) = link.take()
+        {
+            // Dropping it aborts the observer, which may not have seen the
+            // end yet: the loss is reported here if nobody has.
+            if !open.down.swap(true, Ordering::SeqCst)
+                && let Some(out) = &self.inner.status
+            {
+                let _ = out.send(ConnectionState { generation, connected: false });
+            }
         }
     }
 }
@@ -301,4 +318,40 @@ pub(super) async fn exchange(
 /// request.
 fn answer_lost(error: &BusError) -> bool {
     matches!(error, BusError::Transport(_) | BusError::Timeout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ramflux_desktop_test::fake_bus::{FakeBus, Reply, socket_path};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn a_connection_found_broken_by_a_request_is_still_reported_once() {
+        let path = socket_path("client-report");
+        let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({})));
+        let (out, mut states) = mpsc::unbounded_channel();
+        let client = BusClient::with_status(
+            path,
+            Duration::from_secs(5),
+            Deadlines::uniform(Duration::from_secs(5)),
+            Some(out),
+        );
+        let generation = client.attach().await.expect("connects");
+        let first = states.recv().await.expect("a state");
+        assert_eq!((first.generation, first.connected), (generation, true));
+        // A request finds the connection broken and forgets it before the
+        // observer has seen the end: the loss must still be reported.
+        client.forget(generation).await;
+        let lost = tokio::time::timeout(Duration::from_secs(10), states.recv())
+            .await
+            .expect("the loss is reported")
+            .expect("the channel is open");
+        assert_eq!((lost.generation, lost.connected), (generation, false));
+        // Once: closing the daemon later reports nothing more for it.
+        fake.shutdown();
+        let next = client.attach().await;
+        assert!(next.is_err(), "no daemon to connect to");
+        assert!(states.try_recv().is_err(), "the loss is reported once");
+    }
 }
