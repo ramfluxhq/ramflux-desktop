@@ -107,6 +107,7 @@ impl Task {
                                 tombstone: false,
                                 attachment: None,
                                 franking: None,
+                                ..Default::default()
                             },
                         )),
                     }]);

@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use super::conversation::{PeerKind, Role};
 use super::grant::Risk;
+use super::message_v1::{
+    DeleteScope, ForwardRef, MediaView, ReactionCount, ReplyRef, TextSpan, UnsupportedInfo,
+};
+use super::order::OrderKey;
 use super::protected::Protected;
 use super::surface::{Block, SurfaceAction};
 use crate::ids::{
@@ -55,7 +59,7 @@ impl Lifecycle {
 }
 
 /// Payload of a [`MomentKind::Message`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessagePayload {
     /// Body text.
     pub text: String,
@@ -71,6 +75,27 @@ pub struct MessagePayload {
     /// Franking commitment, shown read-only in the evidence dock.
     #[serde(default)]
     pub franking: Option<String>,
+    /// Message this one replies to.
+    #[serde(default)]
+    pub reply_to: Option<ReplyRef>,
+    /// Origin when the message was forwarded.
+    #[serde(default)]
+    pub forward: Option<ForwardRef>,
+    /// Edit revision; 0 for an unedited message.
+    #[serde(default)]
+    pub revision: u64,
+    /// Reaction chips.
+    #[serde(default)]
+    pub reactions: Vec<ReactionCount>,
+    /// Formatted ranges of `text` (Unicode scalar offsets).
+    #[serde(default)]
+    pub spans: Vec<TextSpan>,
+    /// Media rows.
+    #[serde(default)]
+    pub media: Vec<MediaView>,
+    /// Scope of the delete that produced the tombstone.
+    #[serde(default)]
+    pub delete_scope: Option<DeleteScope>,
 }
 
 /// Delivery receipt of an outbound message.
@@ -355,6 +380,9 @@ pub struct FallbackPayload {
     pub reason: String,
     /// Text to show instead.
     pub text: String,
+    /// Set when the content kind is not understood by this build.
+    #[serde(default)]
+    pub unsupported: Option<UnsupportedInfo>,
 }
 
 /// Severity of a system moment.
@@ -434,6 +462,10 @@ pub struct Moment {
     /// Lifecycle.
     #[serde(default)]
     pub lifecycle: Lifecycle,
+    /// Position in the conversation stream, when the daemon gave one.
+    /// Display time is [`Moment::at`]; only this orders a stream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<OrderKey>,
 }
 
 #[cfg(test)]

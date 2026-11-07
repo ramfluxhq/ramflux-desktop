@@ -47,6 +47,7 @@ fn row_count(cx: &mut TestAppContext, shell: &Entity<Shell>) -> usize {
 /// A message arriving in the large context at `offset` ms.
 fn arriving(offset: u64, id: &str, text: &str) -> (u64, DomainEvent) {
     let moment = Moment {
+        order: None,
         id: id.into(),
         context_id: ContextId::new(LARGE_CONTEXT),
         origin: ParticipantId::new("p-ana"),
@@ -57,6 +58,7 @@ fn arriving(offset: u64, id: &str, text: &str) -> (u64, DomainEvent) {
             tombstone: false,
             attachment: None,
             franking: None,
+            ..Default::default()
         }),
         lifecycle: Lifecycle::Done,
     };

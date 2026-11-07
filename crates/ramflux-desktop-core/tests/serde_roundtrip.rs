@@ -276,6 +276,7 @@ fn all_moment_kinds() -> Vec<MomentKind> {
         MomentKind::Fallback(FallbackPayload {
             reason: "unsupported surface".to_owned(),
             text: "Open on a newer client".to_owned(),
+            unsupported: None,
         }),
         MomentKind::System(SystemPayload { level: SystemLevel::Warning, text: "Node slow".into() }),
         MomentKind::TaskEvent(TaskEventPayload {

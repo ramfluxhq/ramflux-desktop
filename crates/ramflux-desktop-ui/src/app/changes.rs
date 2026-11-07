@@ -220,6 +220,7 @@ mod tests {
 
     fn message(id: &str, context: &str) -> DomainEvent {
         DomainEvent::MomentAdded(Box::new(Moment {
+            order: None,
             id: MomentId::new(id),
             context_id: ContextId::new(context),
             origin: ParticipantId::new("p-1"),
@@ -230,6 +231,7 @@ mod tests {
                 tombstone: false,
                 attachment: None,
                 franking: None,
+                ..Default::default()
             }),
             lifecycle: Lifecycle::Done,
         }))
@@ -272,6 +274,7 @@ mod tests {
             ))
             .expect("apply");
         let event = DomainEvent::MomentAdded(Box::new(Moment {
+            order: None,
             id: MomentId::new("m-event"),
             context_id: ContextId::new("c-a"),
             origin: ParticipantId::new("p-1"),

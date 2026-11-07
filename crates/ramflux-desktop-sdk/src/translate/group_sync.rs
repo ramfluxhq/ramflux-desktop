@@ -99,6 +99,7 @@ impl Translator {
                     // account, as for the rename line.
                     let origin = self.directory.self_principal.clone().unwrap_or_default();
                     events.extend(self.report_moment(Moment {
+                        order: None,
                         id: MomentId::new(id),
                         context_id: context.clone(),
                         origin: ParticipantId::new(origin),
@@ -119,6 +120,7 @@ impl Translator {
                 let epoch = group.name_epoch.map_or_else(|| stamp.clone(), |e| e.to_string());
                 let origin = self.directory.self_principal.clone().unwrap_or_default();
                 events.extend(self.report_moment(Moment {
+                    order: None,
                     id: MomentId::new(format!("group-sync:{context}:name:{epoch}")),
                     context_id: context.clone(),
                     origin: ParticipantId::new(origin),

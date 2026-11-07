@@ -90,6 +90,7 @@ pub fn large_context(messages: usize) -> Scenario {
         let at = Timestamp((index - count) * 60_000);
         let origin = if n % 3 == 0 { me.clone() } else { ana.clone() };
         let moment = Moment {
+            order: None,
             id: large_message_id(n),
             context_id: ContextId::new(LARGE_CONTEXT),
             origin,
@@ -100,6 +101,7 @@ pub fn large_context(messages: usize) -> Scenario {
                 tombstone: false,
                 attachment: None,
                 franking: None,
+                ..Default::default()
             }),
             lifecycle: Lifecycle::Done,
         };

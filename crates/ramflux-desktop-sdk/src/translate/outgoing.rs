@@ -53,6 +53,7 @@ impl Translator {
         let context = ContextId::new(text(body, "context_id"));
         self.remember_sent(message, text(body, "text"));
         let moment = Moment {
+            order: None,
             id: message_moment_id(&context, message),
             context_id: context,
             origin: self.own_origin(),
@@ -68,6 +69,7 @@ impl Translator {
                 tombstone: false,
                 attachment: None,
                 franking: None,
+                ..Default::default()
             }),
         };
         self.report_moment(moment).into_iter().collect()
@@ -140,6 +142,7 @@ impl Translator {
             tombstone: false,
             attachment: Some(object_id.clone()),
             franking: None,
+            ..Default::default()
         });
         self.moments.insert(id.clone(), Reported { digest: digest(&kind), message: true });
         self.sent_attachments.insert(message.to_owned(), object_id.clone());
@@ -150,6 +153,7 @@ impl Translator {
         let origin = self.own_origin();
         let mut events = self.put_object(object);
         events.push(DomainEvent::MomentAdded(Box::new(Moment {
+            order: None,
             id,
             context_id: context,
             origin,
