@@ -128,6 +128,24 @@ impl World {
         self.fake.seen().len()
     }
 
+    /// A mark taken once the scope's own reads are over: the gate orders
+    /// them (prerequisites first, messages after), so some can still be on
+    /// their way after the first views appear. Waits until the daemon has
+    /// received nothing new for a whole quiet spell (subscription attempts
+    /// apart), each round bounded, then marks.
+    pub fn quiet_mark(&self, account: &mut Fed) -> usize {
+        let mut last = usize::MAX;
+        for _ in 0..120 {
+            account.settle(250);
+            let now = self.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
+            if now == last {
+                return self.mark();
+            }
+            last = now;
+        }
+        panic!("the daemon keeps receiving requests");
+    }
+
     /// The requests of `method` received in `seen[from..to]`.
     pub fn between(&self, from: usize, to: usize, method: &str) -> Vec<Seen> {
         let seen = self.fake.seen();

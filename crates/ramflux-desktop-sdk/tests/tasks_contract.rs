@@ -143,7 +143,7 @@ fn a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_
     let mut account = open(&path);
     account.until("still pending", |s, _| s.task(&id).is_some_and(|t| t.answer == pending));
     account.until("subscription held", |_, _| world.fake.account_subscribe_held());
-    let mark = world.mark();
+    let mark = world.quiet_mark(&mut account);
     account.source.focus(Some(&ContextId::new("dm-ana")));
     account.until("focus moved away from task", |_, _| {
         world.since(mark, "message.list").iter().any(|s| s.body["conversation_id"] == "dm-ana")
@@ -196,7 +196,7 @@ fn a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_
     account.until("unconfirmed", |s, _| s.task(&id).is_some_and(|t| t.answer == unconfirmed));
 
     // Returning after the gap must refresh even an already loaded context.
-    let mark = world.mark();
+    let mark = world.quiet_mark(&mut account);
     account.source.focus(Some(&ContextId::new(GROUP)));
     account.until("refocused group refreshed", |_, _| {
         !world.since(mark, "group.receive").is_empty() && !world.since(mark, "task.list").is_empty()

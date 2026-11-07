@@ -34,7 +34,10 @@ fn a_pruned_task_is_dropped_with_its_moment_and_not_read_again() {
     world.tasks.finish(GROUP, "t-1", TaskStatus::Done, done, "Indexed").unwrap();
     account.until("done", |s, _| s.task(&id).is_some_and(|t| t.state == TaskState::Done));
 
-    let mark = world.mark();
+    // The removal is published once the stream is live (an event before the
+    // subscription would only be seen by the re-read).
+    account.until("the stream", |_, _| world.fake.streaming(ACCOUNT));
+    let mark = world.quiet_mark(&mut account);
     world.tasks.remove(GROUP, "t-1");
     account.until("dropped", |s, _| s.task(&id).is_none() && s.moment(&moment).is_none());
     account.settle(300);
@@ -72,7 +75,7 @@ fn an_undelivered_decision_is_shown_and_retry_sends_the_same_decision_again() {
     account.until("not delivered", |s, _| s.task(&id).is_some_and(|t| t.answer == undelivered));
 
     // Retry: the same grant.approve, no new consent, no second resolution.
-    let mark = world.mark();
+    let mark = world.quiet_mark(&mut account);
     act(&mut account, human(IntentKind::RetryTaskDecision { task_id: id.clone() }));
     account.until("on its way again", |s, _| s.task(&id).is_some_and(|t| t.answer == pending));
     account.settle(300);
