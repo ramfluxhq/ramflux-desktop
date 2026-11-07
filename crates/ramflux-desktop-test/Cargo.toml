@@ -22,5 +22,7 @@ zeroize.workspace = true
 [features]
 # A fake daemon local bus (std only) for adapter and UI tests.
 fake-bus = ["dep:ramflux-protocol", "dep:ramflux-crypto"]
+# Generated message schema v1 updates, built with the generated types.
+v1-fixtures = ["dep:ramflux-protocol"]
 # A real `rf daemon` from the pinned product revision for live tests.
 live-daemon = []

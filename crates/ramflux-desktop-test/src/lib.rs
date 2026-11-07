@@ -23,6 +23,8 @@
 //!   The daemon side of the born-v3 creation and recovery ceremonies, on
 //!   the same bus, is `fake_custody` (per-connection ceremonies, accounts
 //!   that survive a restart).
+//! - `v1_fixtures` (feature `v1-fixtures`): message schema v1 updates built
+//!   only with the generated types, never JSON literals.
 //! - `live_daemon` (feature `live-daemon`): a real `rf daemon` from the
 //!   pinned product revision for live tests.
 
@@ -56,6 +58,8 @@ pub mod mock_source;
 pub mod player;
 pub mod scale;
 pub mod scenario;
+#[cfg(feature = "v1-fixtures")]
+pub mod v1_fixtures;
 
 pub use mock_ceremony::MockCeremony;
 pub use mock_recovery::MockRecovery;

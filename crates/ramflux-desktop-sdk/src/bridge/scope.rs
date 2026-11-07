@@ -64,6 +64,9 @@ pub(crate) enum ScopeCommand {
     Focus(Option<ContextId>),
     /// A view needs these messages' bodies again.
     Bodies(Vec<MomentId>),
+    /// Typed v1 updates, through the projection test seam.
+    #[cfg(feature = "test-support")]
+    Generated(Vec<ramflux_protocol::message::MessageUpdate>),
     /// The media engine needs a call's media session.
     CallMedia(
         ramflux_desktop_core::CallId,
@@ -1058,6 +1061,12 @@ impl Task {
             ScopeCommand::Bodies(moments) => {
                 let reads = self.translator.request_bodies(&moments);
                 self.spawn_fetches(reads);
+            }
+            #[cfg(feature = "test-support")]
+            ScopeCommand::Generated(updates) => {
+                let translated =
+                    crate::translate::v1::candidate::apply(&mut self.translator, &updates);
+                self.emit(translated.events);
             }
             ScopeCommand::CallMedia(call_id, reply) => self.call_media(call_id, reply),
             ScopeCommand::AccountsLive(live) => self.accounts_live(live),

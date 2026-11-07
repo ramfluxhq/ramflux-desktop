@@ -32,7 +32,7 @@ qrcodegen = "1.8"
 [dev-dependencies]
 ramflux-desktop-sdk = { workspace = true, features = ["test-support"] }
 gpui-kit = { workspace = true, features = ["test-support"] }
-ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon"] }
+ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon", "v1-fixtures"] }
 # The node key fingerprint and base64 of the demo rehearsal (already in the graph).
 ramflux-protocol.workspace = true
 # The principal commitment of the demo ③ rehearsal's accounts (already in the graph).

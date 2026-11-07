@@ -52,6 +52,11 @@ fn moment_v1_payloads_roundtrip() {
     let text = serde_json::to_string(&message).expect("serialize message");
     let back: MomentKind = serde_json::from_str(&text).expect("decode message");
     assert_eq!(back, message, "full v1 message round-trips");
+    assert_eq!(
+        serde_json::to_string(&back).expect("encode again"),
+        text,
+        "decode then encode keeps the message bytes"
+    );
 
     let fallback = MomentKind::Fallback(FallbackPayload {
         reason: "unsupported".to_owned(),
@@ -66,6 +71,11 @@ fn moment_v1_payloads_roundtrip() {
     let text = serde_json::to_string(&fallback).expect("serialize fallback");
     let back: MomentKind = serde_json::from_str(&text).expect("decode fallback");
     assert_eq!(back, fallback, "fallback with unsupported info round-trips");
+    assert_eq!(
+        serde_json::to_string(&back).expect("encode again"),
+        text,
+        "decode then encode keeps the fallback bytes"
+    );
 }
 
 #[test]

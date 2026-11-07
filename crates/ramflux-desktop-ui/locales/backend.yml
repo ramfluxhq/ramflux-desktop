@@ -131,6 +131,15 @@ backend:
       en: "The group could not take this change, and nothing was changed."
       zh-CN: "群组无法接受此更改，未做任何更改。"
   message:
+    span_out_of_range:
+      en: "This message uses formatting this app cannot show, so its text is not displayed."
+      zh-CN: "此消息的格式超出了本应用可显示的范围，因此不显示其正文。"
+    unknown_entity:
+      en: "This message uses a kind of formatting this app version does not know, so its text is not displayed."
+      zh-CN: "此消息使用了本应用版本不认识的格式，因此不显示其正文。"
+    unknown_service_action:
+      en: "This group notice is of a kind this app version does not know."
+      zh-CN: "此群组通知的类型本应用版本不认识。"
     encrypted_at_rest:
       en: "This message is stored encrypted; its text is shown only when it is received or sent here."
       zh-CN: "此消息以密文存储，仅在本机收发时显示正文。"
