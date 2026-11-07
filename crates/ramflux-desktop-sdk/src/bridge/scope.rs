@@ -882,10 +882,23 @@ impl Task {
     /// The connection is open: a generation not yet recovered is recovered;
     /// one that already has been is not recovered again (that would be a
     /// second decision for it), its reads are only read again in its epoch.
-    fn attach_live(&mut self) {
+    pub(super) fn attach_live(&mut self) {
         if self.gate.enabled() && self.client.connections_opened() <= self.recovered_generation {
             self.attach_pending = false;
             self.cancel_reads();
+            self.batch_pending = 0;
+            self.start_epoch_reads(false);
+        } else {
+            self.recover_connection();
+        }
+    }
+
+    /// A resync on the connection already recovered: the snapshot is read
+    /// again through the ordered pipeline in the open epoch. Nothing is
+    /// cancelled (reads in flight on this connection stay valid, whatever
+    /// context they were issued for), and the gate is not closed.
+    pub(super) fn resync(&mut self) {
+        if self.gate.enabled() && self.client.connections_opened() <= self.recovered_generation {
             self.start_epoch_reads(false);
         } else {
             self.recover_connection();
@@ -934,8 +947,7 @@ impl Task {
         if new_epoch {
             self.begin_gate_epoch();
         } else {
-            // The same epoch reads again: what was in flight was cancelled.
-            self.batch_pending = 0;
+            // The same epoch reads again.
             if self.gate.enabled() && self.gate.verdict() == SchemaGate::Unresolved {
                 self.spawn_schema_status(self.gate.epoch());
             }

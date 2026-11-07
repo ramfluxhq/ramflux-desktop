@@ -61,7 +61,12 @@ impl Fed {
             if done(&self.store, &self.envelopes) {
                 return;
             }
-            assert!(Instant::now() < deadline, "timed out waiting for: {what}");
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for: {what} (failures {:?}, rejections {:?})",
+                self.store.failures(),
+                self.store.rejections()
+            );
             std::thread::sleep(Duration::from_millis(15));
         }
     }

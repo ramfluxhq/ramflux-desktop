@@ -130,7 +130,31 @@ fn streaming(world: &World, mut config: SdkConfig) -> Fed {
     if opened.body.get("since_seq").is_none() {
         account.until("the reload on open", |_, _| world.reloaded());
     }
+    // The gate orders the reads (prerequisites first, messages after), so
+    // some of them can still be on their way when the stream shows as open.
+    drained(world, &mut account);
     account
+}
+
+/// Pumps until the daemon has received nothing new for a whole quiet spell:
+/// the scope's ordered reads (prerequisites, then messages, after the gate
+/// opens) have all been sent, so a test counts only requests of its own.
+/// The spell is only a quiescence check; each round is bounded by the
+/// 30 s limit of `until`.
+fn drained(world: &World, account: &mut Fed) {
+    let mut last = usize::MAX;
+    let mut rounds = 0;
+    loop {
+        account.settle(250);
+        // (Subscription attempts repeat on their own while a stream is refused.)
+        let now = world.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
+        if now == last {
+            return;
+        }
+        last = now;
+        rounds += 1;
+        assert!(rounds < 120, "the daemon keeps receiving requests");
+    }
 }
 
 /// Waits until the fake received `method` after `mark`.
@@ -392,6 +416,9 @@ fn refused_stream_retries_without_polling_data() {
     let hub = ramflux_desktop_sdk::SdkHub::start(config(&path)).expect("bridge");
     let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
     account.until("off", |s, _| s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Off));
+    // The snapshot's reads (the jobs list included) are all in before the
+    // polling check starts.
+    drained(&world, &mut account);
     let mark = world.mark();
     account.settle(500);
     let polled: Vec<String> = world.fake.seen().into_iter().skip(mark).map(|s| s.method).collect();

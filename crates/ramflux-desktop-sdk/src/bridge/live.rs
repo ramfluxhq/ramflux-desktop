@@ -191,11 +191,15 @@ impl Task {
         self.show_sync(true);
     }
 
-    /// Reads everything again (after a gap in the stream).
-    /// Through the one recovery routine, so the prerequisite reads
-    /// (identities, devices) precede the messages here as everywhere.
+    /// Reads everything again (after a gap in the stream), through the
+    /// ordered pipeline, so the prerequisite reads (identities, devices)
+    /// precede the messages here as everywhere. The request connection is
+    /// unchanged by a resync: a generation not yet recovered is recovered,
+    /// otherwise the reads are only repeated in the open epoch, which keeps
+    /// the gate (and the approval) as the schema check left them, and reads
+    /// already in flight on the same connection are left alone.
     fn reload(&mut self) {
-        self.recover_connection();
+        self.resync();
     }
 
     pub(super) fn networking_event(&mut self, body: &Value) {

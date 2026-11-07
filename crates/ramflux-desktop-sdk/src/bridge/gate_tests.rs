@@ -1616,15 +1616,36 @@ async fn a_subscription_resync_reads_the_prerequisites_before_the_messages() {
     // The subscription needs a resync while the request connection stays
     // healthy: the stream reopens and reads everything again.
     shared.identities.close();
+    let (epoch, generation) = (task.gate.epoch(), task.client.connections_opened());
+    let attempt = task.read_attempt;
     task.sync.reload_on_open = true;
     task.on_streamed(Streamed::Opened { head_seq: 9, floor_seq: 1 });
+    // A resync does not change the connection: the gate stays open and the
+    // approval stays, so a user action during the re-read is not refused.
+    assert_eq!(task.gate.epoch(), epoch, "no new epoch for a resync");
+    assert_eq!(task.read_attempt, attempt, "reads in flight on this connection are not cancelled");
+    assert_eq!(verdict(&task), SchemaGate::Open);
+    assert!(task.client.approval().permits("task.start", generation));
+    let start = BusRequest::new(Some("acct-main"), "task", "task.start", json!({}));
+    let outcome = task.client.call(&start).await;
+    assert!(
+        !matches!(&outcome, Err(BusError::Daemon { code, .. }) if code == "SchemaGateClosed"),
+        "a user action during a resync is carried: {outcome:?}"
+    );
     pump(&mut task, &mut inbox, |t| {
-        t.gate.prerequisites_pending() && verdict(t) == SchemaGate::Open
+        t.gate.prerequisites_pending()
+            && verdict(t) == SchemaGate::Open
+            && fake.seen()[before..].iter().any(|r| r.method == "identity.directory")
     })
     .await;
     // A focus read for a newly encountered sender's conversation is held too.
     task.spawn_fetches(vec![Fetch::Messages(ramflux_desktop_core::ContextId::new("c-new"))]);
-    let held: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
+    // (The user action above is the one message-class frame allowed.)
+    let held: Vec<String> = fake.seen()[before..]
+        .iter()
+        .map(|r| r.method.clone())
+        .filter(|m| m != "task.start")
+        .collect();
     assert!(held.iter().any(|m| m == "identity.directory"), "the prerequisites were requested");
     assert!(
         !held.iter().any(|m| gate::is_message_method(m)),
@@ -1632,7 +1653,11 @@ async fn a_subscription_resync_reads_the_prerequisites_before_the_messages() {
     );
     shared.identities.release();
     settle(&mut task, &mut inbox).await;
-    let order: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
+    let order: Vec<String> = fake.seen()[before..]
+        .iter()
+        .map(|r| r.method.clone())
+        .filter(|m| m != "task.start")
+        .collect();
     let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
     let messages = order.iter().position(|m| m == "message.list").expect("the held focus read");
     assert!(identities < messages, "identities first: {order:?}");
@@ -1778,7 +1803,10 @@ fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
             }
             if body.contains("start_epoch_reads(") {
                 assert!(
-                    allowed(&name, &["attach_live", "recover_connection", "start_epoch_reads"]),
+                    allowed(
+                        &name,
+                        &["attach_live", "resync", "recover_connection", "start_epoch_reads"]
+                    ),
                     "{file}: `{name}` starts an epoch's reads outside the recovery routine"
                 );
             }
@@ -1790,7 +1818,10 @@ fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
             }
             // The two resync/restore entry points end in the one routine.
             if name == "reload" {
-                assert!(body.contains("recover_connection("), "{file}: reload must recover");
+                assert!(
+                    body.contains("resync("),
+                    "{file}: reload must resync through the pipeline"
+                );
                 assert!(!body.contains("request_reads("), "{file}: reload must not re-read");
             }
             if name == "snapshot" && file == "scope.rs" {
@@ -1817,7 +1848,7 @@ fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
                 assert!(
                     allowed(
                         &name,
-                        &["observe_connection", "attach_live", "reload", "recover_connection"]
+                        &["observe_connection", "attach_live", "resync", "recover_connection"]
                     ),
                     "{file}: `{name}` decides a recovery; only the generation check may"
                 );
