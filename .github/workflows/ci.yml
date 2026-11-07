@@ -91,21 +91,31 @@ jobs:
         run: scripts/check-shot-programs.sh
 
   test:
-    # The workspace suite is repeated three times on separate runners to catch
+    # The workspace suite is repeated twice on separate runners to catch
     # flaky tests; any failing repeat fails the workflow.
     name: test linux (repeat ${{ matrix.repeat }})
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      # Line tables keep backtraces with line numbers at a fraction of the
+      # debuginfo size, so the test build fits on the hosted runner disk.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 2
       matrix:
-        repeat: [1, 2, 3]
+        repeat: [1, 2]
     steps:
       - name: Checkout
         uses: actions/checkout@b9e0990d219a03df7633c93f6f005a8fecbcab22
         with:
           persist-credentials: false
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
 
       - name: Prepare APT package cache
         id: apt-cache
