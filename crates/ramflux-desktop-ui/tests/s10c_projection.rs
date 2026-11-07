@@ -16,7 +16,10 @@ use ramflux_desktop_test::v1_fixtures::{
     entity, forward_of, identity, message_ref, message_update, service_update, text_message,
     unknown_entity, unknown_service_update,
 };
-use ramflux_protocol::message::{Entity, EntityKind, MessageUpdate, ServiceAction};
+use ramflux_protocol::message::{
+    Content, Entity, EntityKind, MessageUpdate, ServiceAction, content::Value,
+    message_update::State,
+};
 
 const CONTEXT: &str = "c-group";
 
@@ -100,13 +103,23 @@ fn v1_message_service_projection_and_order() {
         &[],
         Some("Renamed"),
     );
+    // A pin names its target message; it sits in the stream by its clock.
+    let mut pin = service_update(
+        identity(CONTEXT, &id_of(4), "dev-bo", 250, 2),
+        ServiceAction::ServicePinChanged,
+        &[],
+        None,
+    );
+    if let Some(State::Content(Content { value: Some(Value::Service(service)) })) = &mut pin.state {
+        service.target = Some(message_ref(CONTEXT, &id_of(1)));
+    }
     let mut reply = text_message("first", vec![entity(0, 5, EntityKind::EntityBold)]);
     reply.reply_to = Some(message_ref(CONTEXT, &id_of(9)));
     reply.forward = Some(forward_of(message_ref("c-other", &id_of(8)), "Kai"));
     let first = message_update(identity(CONTEXT, &id_of(1), "dev-ana", 100, 1), reply);
 
     let mut tr = translator();
-    let events = apply(&mut tr, &[late, rename, first]).events;
+    let events = apply(&mut tr, &[late, pin, rename, first]).events;
     let mut store = Store::new();
     store
         .apply(&EventEnvelope::new(1, Timestamp(1), DomainEvent::ContextUpserted(context())))
@@ -120,6 +133,7 @@ fn v1_message_service_projection_and_order() {
             let kind = match &m.kind {
                 MomentKind::Message(_) => "message",
                 MomentKind::GroupRename(_) => "rename",
+                MomentKind::System(_) => "pin",
                 _ => "other",
             };
             (m.id.to_string(), kind)
@@ -127,10 +141,13 @@ fn v1_message_service_projection_and_order() {
         .collect();
     assert_eq!(
         stream.iter().map(|(_, kind)| *kind).collect::<Vec<_>>(),
-        vec!["message", "rename", "message"],
+        vec!["message", "rename", "pin", "message"],
         "one stream, ordered by hlc: {stream:?}"
     );
-    assert!(stream[0].0.ends_with("01010101") && stream[2].0.ends_with("03030303"));
+    assert!(stream[0].0.ends_with("01010101") && stream[3].0.ends_with("03030303"));
+    let pinned = store.moment(&MomentId::new(stream[2].0.clone())).expect("pin row");
+    let MomentKind::System(note) = &pinned.kind else { panic!("system row") };
+    assert_eq!(note.text, r#"backend.service.pinned {"actor":"dev-bo"}"#);
 
     // The first message keeps its spans, reply and forward references.
     let shown = store.moment(&MomentId::new(stream[0].0.clone())).expect("first");
@@ -165,16 +182,16 @@ fn service_actions_project_to_their_rows() {
     let unknown = one(&unknown_service_update(identity(CONTEXT, &id_of(5), "dev-ana", 11, 5), 77));
     let info = refused(&unknown).unsupported.as_ref().expect("info");
     assert_eq!(info.reason, "unknown_service_action");
-    assert!(
-        moments(&service_update(
-            identity(CONTEXT, &id_of(6), "dev-ana", 12, 6),
-            ServiceAction::ServicePinChanged,
-            &[],
-            None,
-        ))
-        .is_empty(),
-        "a pin is not a stream row"
-    );
+    // No target message: an unpin, still a visible row.
+    let unpinned = one(&service_update(
+        identity(CONTEXT, &id_of(6), "dev-ana", 12, 6),
+        ServiceAction::ServicePinChanged,
+        &[],
+        None,
+    ));
+    let MomentKind::System(note) = &unpinned.kind else { panic!("system row") };
+    assert_eq!(note.text, r#"backend.service.unpinned {"actor":"dev-ana"}"#);
+    assert!(unpinned.order.is_some(), "the row is ordered by its clock");
 }
 
 #[test]

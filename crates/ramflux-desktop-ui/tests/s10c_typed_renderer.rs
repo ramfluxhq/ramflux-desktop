@@ -11,10 +11,12 @@ mod sdk_fake;
 use common::*;
 use ramflux_desktop_core::{ContextId, MomentId, MomentKind, SpanKind};
 use ramflux_desktop_test::v1_fixtures::{
-    entity, forward_of, identity, message_ref, message_update, text_message,
+    entity, forward_of, identity, message_ref, message_update, service_update, text_message,
 };
 use ramflux_desktop_ui::route::Page;
-use ramflux_protocol::message::EntityKind;
+use ramflux_protocol::message::{
+    Content, EntityKind, ServiceAction, content::Value, message_update::State,
+};
 
 const TEXT: &str = "A\u{1F600}\u{e9}";
 
@@ -70,5 +72,19 @@ fn typed_renderer_unknown_unicode_delete_and_transient(cx: &mut gpui_kit::TestAp
     assert!(!has_label(cx, handle, "bold: A\u{1F600}\u{e9}"));
     assert!(has_label(cx, handle, "Reply to: earlier words"));
     assert!(has_label(cx, handle, "Forwarded from Kai"));
+
+    // A pin is a visible Service row, in the same stream.
+    let mut pin = service_update(
+        identity("dm-ana", &[3; 4], "dev-ana", 300, 3),
+        ServiceAction::ServicePinChanged,
+        &[],
+        None,
+    );
+    if let Some(State::Content(Content { value: Some(Value::Service(service)) })) = &mut pin.state {
+        service.target = Some(message_ref("dm-ana", &[2; 4]));
+    }
+    assert!(sdk_fake::push_generated(&path, pin));
+    wait(cx, "the pin row", |cx| with_store(cx, &shell, |s| s.moment(&moment_id(3)).is_some()));
+    wait(cx, "the pin row shown", |cx| has_label(cx, handle, "dev-ana pinned a message"));
     fake.shutdown();
 }
