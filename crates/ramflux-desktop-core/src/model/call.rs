@@ -148,6 +148,10 @@ pub struct Call {
     /// When it ended.
     #[serde(default)]
     pub ended_at: Option<Timestamp>,
+    /// Where the call's record sits in the conversation stream (D4), when
+    /// the source knows it; it only matters when the call is first reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<super::OrderKey>,
 }
 
 impl Call {
@@ -310,6 +314,7 @@ mod tests {
             started_at: Timestamp(1_000),
             answered_at: answered.then_some(Timestamp(2_000)),
             ended_at: Some(Timestamp(65_000)),
+            order: None,
         }
     }
 

@@ -76,6 +76,10 @@ pub fn render(
         return div().id("call-record").into_any_element();
     };
     let (title, detail, icon, missed) = summary(call);
+    let spoken: SharedString = match &detail {
+        Some(detail) => format!("{title} {detail}").into(),
+        None => title.clone(),
+    };
     let color: Hsla = if missed { cx.theme().danger } else { cx.theme().muted_foreground };
     let call_back = call.state.is_ended().then(|| {
         // The same gate as the header's Call button.
@@ -94,6 +98,7 @@ pub fn render(
     });
     h_flex()
         .id("call-record")
+        .aria_label(spoken)
         .gap_2()
         .text_sm()
         .child(Icon::new(icon).small().text_color(color))

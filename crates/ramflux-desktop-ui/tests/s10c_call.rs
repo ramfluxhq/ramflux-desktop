@@ -10,17 +10,19 @@ mod sdk_fake;
 
 use common::*;
 use gpui_kit::TestAppContext;
+use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{
-    AccountId, Call, CallEndReason as End, CallId, CallState as State, ContextId, DomainEvent,
+    AccountId, Call, CallEndReason as End, CallId, CallState as State, Context, ContextId,
+    ContextKind, DomainEvent, EventEnvelope, MomentKind, Store, Timestamp,
 };
 use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::translate::Translator;
 use ramflux_desktop_sdk::translate::v1::call::{
-    MAX_CALLS, Signal, generations, set_self_principal, signal_of,
+    MAX_CALLS, MAX_RETIRED, Signal, counts, generations, set_self_principal, signal_of,
 };
 use ramflux_desktop_sdk::translate::v1::candidate::apply;
 use ramflux_desktop_test::v1_call_fixtures::{CallSpec, SECRET_KEY, action, all_actions, rekey};
-use ramflux_desktop_test::v1_fixtures::identity;
+use ramflux_desktop_test::v1_fixtures::{identity, message_update, text_message};
 use ramflux_protocol::message::MessageUpdate;
 
 const DM: &str = "dm-ana";
@@ -306,10 +308,11 @@ fn open_dm(
 ) -> (
     ramflux_desktop_test::fake_bus::FakeBus,
     std::path::PathBuf,
+    gpui_kit::WindowHandle<gpui_kit::base::Root>,
     gpui_kit::Entity<ramflux_desktop_ui::Shell>,
 ) {
     let (fake, _state, path) = sdk_fake::start(name);
-    let (_handle, shell) = open_with(cx, sdk_fake::options(&path));
+    let (handle, shell) = open_with(cx, sdk_fake::options(&path));
     wait(cx, "workspace", |cx| page(cx, &shell) == ramflux_desktop_ui::route::Page::Workspace);
     wait(cx, "the conversation", |cx| {
         with_store(cx, &shell, |s| s.context(&ContextId::new(DM)).is_some())
@@ -317,13 +320,15 @@ fn open_dm(
     wait(cx, "the account principal", |cx| {
         with_store(cx, &shell, |s| s.context(&ContextId::new(DM)).is_some())
     });
-    (fake, path, shell)
+    cx.update(|cx| ramflux_desktop_ui::i18n::select_locale("en", cx));
+    show_context(cx, handle, &shell, DM);
+    (fake, path, handle, shell)
 }
 
 #[gpui_kit::test]
 fn a_pushed_v1_call_follows_its_signals_in_the_store(cx: &mut TestAppContext) {
     let _locale = locale_guard();
-    let (fake, path, shell) = open_dm(cx, "s10c-call");
+    let (fake, path, window, shell) = open_dm(cx, "s10c-call");
     let call = CallSpec::new(DM, "call-ui", ANA, DM_ME);
     let push = |n: u8, sender: &str, name: &str| {
         let update = call.control(
@@ -342,6 +347,30 @@ fn a_pushed_v1_call_follows_its_signals_in_the_store(cx: &mut TestAppContext) {
         with_store(cx, &shell, |s| s.call(&id).map(|c| c.state)),
         Some(State::IncomingRinging)
     );
+    // The record on screen reads as an incoming ringing call.
+    let scope = format!("moment-{}", ramflux_desktop_core::Call::moment_id(&id));
+    let want = format!(
+        "{} {}",
+        ramflux_desktop_ui::i18n::tr("moment.call.incoming"),
+        ramflux_desktop_ui::i18n::tr("moment.call.ringing")
+    );
+    let mut shown = None;
+    wait(cx, "the call record", |cx| {
+        let handle = window;
+        let scope = scope.clone();
+        shown = in_window(cx, handle, move |w, _| {
+            w.try_find(scope.clone())
+                .is_some()
+                .then(|| {
+                    w.within(scope)
+                        .try_find("call-record")
+                        .and_then(|e| e.label().map(str::to_owned))
+                })
+                .flatten()
+        });
+        shown.is_some()
+    });
+    assert_eq!(shown.as_deref(), Some(want.as_str()), "rendered call text");
     push(2, DM_ME, "answer");
     wait(cx, "connecting", |cx| {
         with_store(cx, &shell, |s| s.call(&id).map(|c| c.state)) == Some(State::Connecting)
@@ -352,4 +381,200 @@ fn a_pushed_v1_call_follows_its_signals_in_the_store(cx: &mut TestAppContext) {
             == Some(State::Ended(End::Completed))
     });
     fake.shutdown();
+}
+
+fn in_conversation(spec: &CallSpec, n: u8, hlc: u64, sender: &str, name: &str) -> MessageUpdate {
+    spec.control(
+        identity(&spec.conversation, &[n; 4], "dev-x", hlc, hlc),
+        sender,
+        1,
+        1_000,
+        action(name),
+    )
+}
+
+#[test]
+fn a_call_id_belongs_to_one_conversation() {
+    let a = CallSpec::new(DM, "call-same", ANA, ME);
+    let b = CallSpec::new("c-other", "call-same", "principal-bo", ME);
+    let mut t = translator();
+    let placed = calls(&mut t, &[in_conversation(&a, 1, 10, ANA, "invite")]);
+    assert_eq!(placed.len(), 1);
+    // The same id from another conversation changes nothing.
+    assert!(calls(&mut t, &[in_conversation(&b, 2, 20, "principal-bo", "invite")]).is_empty());
+    let hangup = spec_control(&b, 3, "principal-bo", 2, "hangup");
+    assert!(calls(&mut t, &[hangup]).is_empty());
+    assert_eq!(counts(&t), (1, 0), "the call is untouched");
+    let ended = calls(&mut t, &[spec_control(&a, 4, ANA, 2, "hangup")]);
+    assert_eq!(ended.len(), 1);
+    assert_eq!(ended[0].context_id, ContextId::new(DM));
+}
+
+/// One completed call: invite, answer, hang-up, created at `at` seconds.
+fn completed(n: usize, at: i64) -> Vec<MessageUpdate> {
+    let call = CallSpec::new(DM, &format!("call-n{n}"), ANA, ME);
+    let key = u32::try_from(n).expect("small").to_be_bytes();
+    let step = |k: u8, sender: &str, seq: u64, name: &str| {
+        let mut id = key.to_vec();
+        id.push(k);
+        call.control(identity(DM, &id, "dev-x", 1, 1), sender, seq, at, action(name))
+    };
+    vec![step(1, ANA, 1, "invite"), step(2, ME, 2, "answer"), step(3, ANA, 3, "hangup")]
+}
+
+#[test]
+fn finished_calls_never_use_up_live_capacity_and_never_come_back() {
+    let mut t = translator();
+    for n in 0..(MAX_RETIRED + 88) {
+        let at = 10_000 + i64::try_from(n).expect("small");
+        let states = states(&mut t, &completed(n, at));
+        assert_eq!(
+            states,
+            [State::IncomingRinging, State::Connecting, State::Ended(End::Completed)],
+            "call {n} is placed and completed"
+        );
+    }
+    assert_eq!(counts(&t), (0, MAX_RETIRED), "ended calls leave the live set; history is bounded");
+    // A new invite is accepted after more than 256 completed calls.
+    let fresh = completed(9_999, 20_000);
+    assert_eq!(states(&mut t, &fresh[..1]), [State::IncomingRinging]);
+    // The replay of an ended call still in the history does not revive it.
+    let last =
+        completed(MAX_RETIRED + 87, 10_000 + i64::try_from(MAX_RETIRED + 87).expect("small"));
+    assert!(states(&mut t, &last).is_empty(), "retired call");
+    // Nor does the replay of one evicted from it (its invite is under the floor).
+    let evicted = completed(0, 10_000);
+    assert!(states(&mut t, &evicted).is_empty(), "evicted call");
+    assert_eq!(counts(&t), (1, MAX_RETIRED), "nothing was placed by the replays");
+    // Live capacity itself is still bounded.
+    let mut t = translator();
+    let mut placed = 0;
+    for n in 0..(MAX_CALLS + 8) {
+        let call = CallSpec::new(DM, &format!("live-{n}"), ANA, ME);
+        let key = u32::try_from(n).expect("small").to_be_bytes();
+        let invite =
+            call.control(identity(DM, &key, "dev-x", 1, 1), ANA, 1, 30_000, action("invite"));
+        placed += calls(&mut t, &[invite]).len();
+    }
+    assert_eq!(placed, MAX_CALLS);
+}
+
+#[test]
+fn malformed_controls_place_nothing_and_change_nothing() {
+    let incoming = spec(ANA, ME);
+    let base = || control(&incoming, ANA, 1, "invite");
+    let nothing = |update: MessageUpdate, what: &str| {
+        let mut t = translator();
+        assert!(states(&mut t, &[update]).is_empty(), "{what}: no event");
+        assert_eq!(counts(&t), (0, 0), "{what}: no state");
+    };
+    // A zero sequence.
+    let zero =
+        incoming.control(identity(DM, &[1; 4], "dev-x", 10, 1), ANA, 0, 1_000, action("invite"));
+    nothing(zero, "zero sequence");
+    // An empty call id, and an empty endpoint.
+    let blank = CallSpec::new(DM, "", ANA, ME);
+    nothing(
+        blank.control(identity(DM, &[1; 4], "dev-x", 10, 1), ANA, 1, 1_000, action("invite")),
+        "empty call id",
+    );
+    let empty_callee = CallSpec::new(DM, "call-1", ANA, "");
+    nothing(
+        empty_callee.control(
+            identity(DM, &[1; 4], "dev-x", 10, 1),
+            ANA,
+            1,
+            1_000,
+            action("invite"),
+        ),
+        "empty endpoint",
+    );
+    // The caller and the callee are one principal.
+    let same = CallSpec::new(DM, "call-1", ME, ME);
+    nothing(
+        same.control(identity(DM, &[1; 4], "dev-x", 10, 1), ME, 1, 1_000, action("invite")),
+        "equal principals",
+    );
+    // An action without a value.
+    let none = incoming.control(
+        identity(DM, &[1; 4], "dev-x", 10, 1),
+        ANA,
+        1,
+        1_000,
+        ramflux_protocol::message::CallAction { value: None },
+    );
+    nothing(none, "no action");
+    // The control must come in the conversation of its envelope.
+    let elsewhere = CallSpec::new("c-elsewhere", "call-1", ANA, ME);
+    nothing(
+        elsewhere.control(identity(DM, &[1; 4], "dev-x", 10, 1), ANA, 1, 1_000, action("invite")),
+        "other conversation",
+    );
+    // A wrong-role answer: the caller cannot answer its own call.
+    let mut t = translator();
+    assert_eq!(states(&mut t, &[base()]), [State::IncomingRinging]);
+    assert!(states(&mut t, &[control(&incoming, ANA, 2, "answer")]).is_empty(), "caller answers");
+    assert_eq!(counts(&t), (1, 0));
+    assert!(
+        states(&mut t, &[control(&incoming, ME, 2, "answer")]).contains(&State::Connecting),
+        "the callee still can: the refused answer left the state alone"
+    );
+}
+
+fn spec_control(spec: &CallSpec, n: u8, sender: &str, seq: u64, name: &str) -> MessageUpdate {
+    spec.control(
+        identity(&spec.conversation, &[n; 4], "dev-x", u64::from(n) * 10, seq),
+        sender,
+        seq,
+        1_000,
+        action(name),
+    )
+}
+
+#[test]
+fn a_call_record_sorts_in_the_one_stream_with_messages() {
+    let call = CallSpec::new(DM, "call-order", ANA, ME);
+    let message = |n: u8, hlc: u64| {
+        message_update(identity(DM, &[n; 4], "dev-ana", hlc, hlc), text_message("m", Vec::new()))
+    };
+    let invite =
+        call.control(identity(DM, &[5; 4], "dev-ana", 150, 150), ANA, 1, 1_000, action("invite"));
+    // The call ends later by a control with a later clock: its record stays put.
+    let hangup =
+        call.control(identity(DM, &[6; 4], "dev-ana", 300, 300), ANA, 2, 1_001, action("hangup"));
+    let events =
+        apply(&mut translator(), &[message(3, 200), invite, message(1, 100), hangup]).events;
+    let mut store = Store::new();
+    let context = Context {
+        id: ContextId::new(DM),
+        kind: ContextKind::Group,
+        title: "Team".to_owned(),
+        participants: Vec::new(),
+        pinned: false,
+        unread: 0,
+        muted: false,
+        disappearing_secs: None,
+        roles: std::collections::BTreeMap::new(),
+        epoch: None,
+    };
+    store
+        .apply(&EventEnvelope::new(1, Timestamp(1), DomainEvent::ContextUpserted(context)))
+        .expect("context");
+    for (seq, event) in events.into_iter().enumerate() {
+        store.apply(&EventEnvelope::new(2 + seq as u64, Timestamp(1), event)).expect("event");
+    }
+    let kinds: Vec<&str> = store
+        .context_moments(&ContextId::new(DM))
+        .map(|m| match &m.kind {
+            MomentKind::Message(_) => "message",
+            MomentKind::Call(_) => "call",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["message", "call", "message"], "hlc 100, 150, 200");
+    let record = store
+        .context_moments(&ContextId::new(DM))
+        .find(|m| matches!(m.kind, MomentKind::Call(_)))
+        .expect("call record");
+    assert_eq!(record.order.as_ref().map(|o| o.hlc), Some(150));
 }

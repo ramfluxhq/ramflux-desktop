@@ -60,6 +60,7 @@ fn call(id: &str, direction: CallDirection, state: CallState, version: u64) -> C
         started_at: Timestamp(1_000),
         answered_at: matches!(state, CallState::Active).then_some(Timestamp(5_000)),
         ended_at: None,
+        order: None,
     }
 }
 
@@ -99,6 +100,7 @@ fn a_call_brings_its_record_which_follows_its_state() {
         state: CallState::Ended(CallEndReason::Completed),
         version: 4,
         ended_at: Some(Timestamp(65_000)),
+        order: None,
         ..call("k1", CallDirection::Incoming, CallState::Active, 3)
     };
     feed.ok(5, upsert(ended));

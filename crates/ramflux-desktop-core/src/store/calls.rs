@@ -62,7 +62,7 @@ impl Store {
             changes.moments.insert(moment_id);
         } else {
             let moment = Moment {
-                order: None,
+                order: call.order.clone(),
                 id: moment_id,
                 context_id: call.context_id.clone(),
                 origin: call.caller.clone(),

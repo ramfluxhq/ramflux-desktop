@@ -19,9 +19,19 @@
 //! Who may send what is checked: a control must come from the caller or the
 //! callee of its call, and an invite only from the caller. A control at or
 //! below the last sequence of its sender is a replay; a call that ended
-//! never revives. At most [`MAX_CALLS`] calls are retained, dropped on lock.
+//! never revives.
+//!
+//! Capacity: at most [`MAX_CALLS`] calls are live. An ended call leaves the
+//! live set at once and is remembered in a bounded history of
+//! [`MAX_RETIRED`] ids; when the history evicts an id, its invite time joins
+//! a floor, and an invite at or below the floor is refused. So finished
+//! calls never use up live capacity, and an ended call, retired or evicted,
+//! cannot be placed again by replaying its invite. A call id belongs to
+//! one conversation (call ids are account-wide upstream): a control that
+//! names another conversation or other endpoints is refused. Everything is
+//! dropped on lock.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use ramflux_desktop_core::{
     Call, CallDirection, CallEndReason, CallId, CallState, DomainEvent, ParticipantId, Timestamp,
@@ -30,11 +40,14 @@ use ramflux_protocol::message::{
     Call as WireCall, CallAction, CallEndpoint, EventIdentity, call_action::Value as Action,
 };
 
-use super::context_of;
+use super::{context_of, order_of};
 use crate::translate::Translator;
 
-/// Calls retained per account.
+/// Live calls retained per account.
 pub const MAX_CALLS: usize = 256;
+
+/// Ended calls remembered by id.
+pub const MAX_RETIRED: usize = 512;
 
 /// What a control says, without any key material.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,30 +116,59 @@ struct Known {
     seen: BTreeMap<String, u64>,
     requested: u64,
     acknowledged: u64,
+    /// When the invite was made, in seconds.
+    invited_at: i64,
 }
 
 /// The v1 calls seen.
 #[derive(Debug, Default)]
 pub struct Book {
     calls: BTreeMap<CallId, Known>,
+    /// Ended calls, oldest first, with their invite times.
+    retired: VecDeque<(CallId, i64)>,
+    retired_ids: BTreeSet<CallId>,
+    /// Invites at or below this time are never placed (their calls ended
+    /// and were forgotten).
+    floor: i64,
 }
 
 impl Book {
     /// Forgets everything (lock, account switch).
     pub fn clear(&mut self) {
         self.calls.clear();
+        self.retired.clear();
+        self.retired_ids.clear();
+        self.floor = 0;
     }
 
-    /// Calls retained.
+    /// Live calls.
     #[must_use]
     pub fn len(&self) -> usize {
         self.calls.len()
     }
 
-    /// Whether no call is retained.
+    /// Whether no call is live.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.calls.is_empty()
+    }
+
+    /// Ended calls remembered by id.
+    #[must_use]
+    pub fn retired(&self) -> usize {
+        self.retired.len()
+    }
+
+    fn retire(&mut self, id: CallId, invited_at: i64) {
+        self.calls.remove(&id);
+        self.retired_ids.insert(id.clone());
+        self.retired.push_back((id, invited_at));
+        while self.retired.len() > MAX_RETIRED {
+            if let Some((old, at)) = self.retired.pop_front() {
+                self.retired_ids.remove(&old);
+                self.floor = self.floor.max(at);
+            }
+        }
     }
 }
 
@@ -135,6 +177,13 @@ impl Book {
 #[must_use]
 pub fn generations(translator: &Translator, call: &CallId) -> Option<(u64, u64)> {
     translator.v1_calls.calls.get(call).map(|known| (known.requested, known.acknowledged))
+}
+
+/// Live and retired calls (tests only).
+#[cfg(feature = "test-support")]
+#[must_use]
+pub fn counts(translator: &Translator) -> (usize, usize) {
+    (translator.v1_calls.len(), translator.v1_calls.retired())
 }
 
 /// Sets the principal the translator acts for (tests only).
@@ -177,10 +226,17 @@ pub(super) fn project(
     let at = Timestamp(control.created_at.saturating_mul(1000));
     let incoming = local == callee;
     let book = &mut translator.v1_calls;
+    // An ended call stays ended, whatever arrives for it.
+    if book.retired_ids.contains(&id) {
+        return Vec::new();
+    }
     let Some(known) = book.calls.get_mut(&id) else {
         // A call is placed by its invite; any other first control cannot be
         // placed (nothing is guessed).
-        if signal != Signal::Invite || book.calls.len() >= MAX_CALLS {
+        if signal != Signal::Invite
+            || book.calls.len() >= MAX_CALLS
+            || control.created_at <= book.floor
+        {
             return Vec::new();
         }
         let call = Call {
@@ -194,6 +250,7 @@ pub(super) fn project(
             started_at: at,
             answered_at: None,
             ended_at: None,
+            order: Some(order_of(identity)),
         };
         let known = Known {
             call: call.clone(),
@@ -202,6 +259,7 @@ pub(super) fn project(
             seen: BTreeMap::from([(sender.to_owned(), control.seq)]),
             requested: 0,
             acknowledged: 0,
+            invited_at: control.created_at,
         };
         book.calls.insert(id, known);
         return vec![DomainEvent::CallUpserted(call)];
@@ -243,7 +301,12 @@ pub(super) fn project(
         CallState::Ended(_) => known.call.ended_at = Some(at),
         _ => {}
     }
-    vec![DomainEvent::CallUpserted(known.call.clone())]
+    let event = DomainEvent::CallUpserted(known.call.clone());
+    if state.is_ended() {
+        let invited_at = known.invited_at;
+        book.retire(id, invited_at);
+    }
+    vec![event]
 }
 
 /// The state `signal` from `sender` leads to, as the local side shows it.

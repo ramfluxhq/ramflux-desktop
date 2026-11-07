@@ -689,6 +689,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             started_at: Timestamp(10),
             answered_at: None,
             ended_at: Some(Timestamp(45_010)),
+            order: Some(OrderKey { hlc: 9, author: "a/d".into(), device_sequence: 3 }),
         }),
         DomainEvent::ContactRequestsListed(vec![contact_request()]),
         DomainEvent::ContactRequestUpserted(ContactRequest {

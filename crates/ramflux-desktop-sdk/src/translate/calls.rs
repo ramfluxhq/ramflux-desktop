@@ -87,6 +87,7 @@ impl Translator {
             started_at: row.get("created_at").and_then(seconds)?,
             answered_at: row.get("answered_at").and_then(seconds),
             ended_at: row.get("ended_at").and_then(seconds),
+            order: None,
         })
     }
 
