@@ -183,7 +183,7 @@ fn seed_plaintext(task: &mut Task) {
         ramflux_desktop_core::Timestamp(1),
     );
     assert!(!events.is_empty());
-    assert_eq!(task.translator.cached_plaintext(), 1, "the oracle is seeded");
+    assert_eq!(task.translator.plaintext_len(), 1, "the oracle is seeded");
 }
 
 fn receipt() -> Delivered {
@@ -207,11 +207,13 @@ fn answer(task: &mut Task, generation: serde_json::Value) {
     });
 }
 
-/// Waits until the daemon has been asked for its status and has received
-/// every non-message read of the snapshot (so a held answer is really
-/// outstanding and a leaked message read would be on the wire too), then
-/// lets the task run a fixed number of rounds.
-async fn status_held(task: &mut Task, inbox: &mut Inbox, fake: &FakeBus) {
+/// A dispatch/drain barrier for a held status: every non-message request of
+/// the snapshot has reached the daemon (the tasks run in snapshot order on
+/// this single-threaded runtime, so anything dispatched before the last of
+/// them is on the wire too) and nothing but the `held` requests is still in
+/// flight. A message-class read leaked ahead of the answer would be in the
+/// daemon's log by now.
+async fn status_held(task: &mut Task, inbox: &mut Inbox, fake: &FakeBus, held: usize) {
     const BATCH: [&str; 9] = [
         "daemon.status",
         "node.list",
@@ -223,15 +225,10 @@ async fn status_held(task: &mut Task, inbox: &mut Inbox, fake: &FakeBus) {
         "mcp.tool.list",
         "mcp.server.list",
     ];
-    pump(task, inbox, |_| {
+    pump(task, inbox, |t| {
         let seen = fake.seen();
         BATCH.iter().all(|method| seen.iter().any(|r| r.method == *method))
-    })
-    .await;
-    let mut rounds = 0;
-    pump(task, inbox, |_| {
-        rounds += 1;
-        rounds > 500
+            && t.client.in_flight() == held
     })
     .await;
 }
@@ -251,7 +248,7 @@ async fn schema_gate_state_machine_blocks_message_traffic() {
     let (fake, path) = start("gate-held", &shared);
     let (mut task, mut inbox, delivered) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     task.snapshot();
-    status_held(&mut task, &mut inbox, &fake).await;
+    status_held(&mut task, &mut inbox, &fake, 2).await;
     assert_eq!(verdict(&task), SchemaGate::Unresolved);
     assert_eq!(
         task.gate.queued_reads(),
@@ -565,16 +562,22 @@ async fn a_reconnect_cannot_carry_a_message_ahead_of_the_new_epochs_status() {
         fake.seen().iter().all(|r| r.method != "message.submit"),
         "nothing message-class reached the restarted daemon"
     );
-    // Only once the new epoch's status answers does the connection carry it.
+    // The reconnect is noticed through the connection notification alone
+    // (no manual epoch): the same recovery asks the new connection for its
+    // status, and only then does it carry messages.
     restarted.hold.store(false, Ordering::SeqCst);
-    task.begin_gate_epoch();
-    pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
+    let known = task.gate_connection;
+    pump(&mut task, &mut inbox, |t| {
+        verdict(t) == SchemaGate::Open && t.gate_connection > known && t.pending_markers == 0
+    })
+    .await;
     settle(&mut task, &mut inbox).await;
     let outcome = task.client.call(&submit).await;
     assert!(
         !matches!(&outcome, Err(BusError::Daemon { code, .. }) if code == "SchemaGateClosed"),
         "approved on the new connection: {outcome:?}"
     );
+    assert!(fake.seen().iter().any(|r| r.method == "message.submit"), "messages flow again");
     fake.shutdown();
 }
 
@@ -609,7 +612,7 @@ async fn reconnect_revokes_the_approval_and_a_late_old_epoch_answer_cannot_reope
     status_asked(&mut task, &mut inbox, &fake).await;
     assert_eq!(verdict(&task), SchemaGate::Unresolved, "the approval is revoked");
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "zero message-class requests");
-    assert_eq!(task.translator.cached_plaintext(), 0, "caches are empty at the data layer");
+    assert_eq!(task.translator.plaintext_len(), 0, "caches are empty at the data layer");
     assert_eq!(
         task.receipts.as_ref().map(Receipts::pending_len),
         Some(0),
@@ -687,7 +690,7 @@ async fn a_changed_status_in_the_same_epoch_blocks_at_once_and_late_results_are_
     // The next status read says generation 1: this build cannot open it.
     task.on_read(&Fetch::DaemonStatus, Ok(json!({ "schema_generation": 1 })));
     assert_eq!(verdict(&task), SchemaGate::UpdateApp);
-    assert_eq!(task.translator.cached_plaintext(), 0, "translator caches are dropped");
+    assert_eq!(task.translator.plaintext_len(), 0, "translator caches are dropped");
     assert_eq!(gates(&delivered), [(SchemaGate::UpdateApp, Some(1))]);
     // A group receive that was in flight completes late: not translated.
     let late = Fetch::GroupReceive {
@@ -700,7 +703,7 @@ async fn a_changed_status_in_the_same_epoch_blocks_at_once_and_late_results_are_
         None,
         Ok(json!({ "decrypted_messages": [{ "message_id": "m-late", "body_utf8": "late" }] })),
     )));
-    assert_eq!(task.translator.cached_plaintext(), 0, "a late result does not repopulate");
+    assert_eq!(task.translator.plaintext_len(), 0, "a late result does not repopulate");
     // Message-class effects are refused; nothing reaches the daemon.
     task.effect(Effect::Call {
         method: "message.send".to_owned(),
@@ -727,7 +730,7 @@ async fn a_changed_status_in_the_same_epoch_blocks_at_once_and_late_results_are_
         fake.seen()[before..].iter().any(|r| r.method == "conversation.directory"),
         "the messages are read again after opening"
     );
-    assert_eq!(task.translator.cached_plaintext(), 0, "nothing came from the late result");
+    assert_eq!(task.translator.plaintext_len(), 0, "nothing came from the late result");
     fake.shutdown();
 }
 
@@ -799,5 +802,87 @@ async fn an_account_from_an_older_build_is_never_opened_or_written() {
             "no destructive request: {method}"
         );
     }
+    fake.shutdown();
+}
+
+#[tokio::test]
+async fn an_older_epochs_single_read_completing_after_reopening_is_not_translated() {
+    let shared = daemon(Status::Field(json!(0)));
+    let (fake, path) = start("gate-old-read", &shared);
+    let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
+    task.snapshot();
+    pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
+    settle(&mut task, &mut inbox).await;
+    let old_epoch = task.gate.epoch();
+    // A group receive is outstanding when the connection changes: a new
+    // epoch begins, closes on an incompatible status, and reopens.
+    *shared.status.lock().expect("status") = Status::Field(json!(2));
+    task.snapshot();
+    pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Unsupported).await;
+    settle(&mut task, &mut inbox).await;
+    *shared.status.lock().expect("status") = Status::Field(json!(0));
+    task.recheck_schema();
+    pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
+    settle(&mut task, &mut inbox).await;
+    assert_eq!(task.pending_markers, 0, "the epoch marker has been seen");
+    assert_eq!(task.translator.plaintext_len(), 0);
+    // The old epoch's receive completes only now.
+    let late = Fetch::GroupReceive {
+        context: ramflux_desktop_core::ContextId::new("c-1"),
+        group: "g-1".to_owned(),
+        title: None,
+    };
+    task.internal(Internal::FetchedAt {
+        epoch: old_epoch,
+        read: (
+            late,
+            None,
+            Ok(json!({ "decrypted_messages": [{ "message_id": "m-old", "body_utf8": "old" }] })),
+        ),
+    });
+    assert_eq!(
+        task.translator.plaintext_len(),
+        0,
+        "an older epoch's result is dropped untranslated"
+    );
+    fake.shutdown();
+}
+
+#[tokio::test]
+async fn recovery_of_a_changed_connection_holds_messages_behind_the_identities() {
+    let shared = daemon(Status::Field(json!(0)));
+    let (fake, path) = start("gate-recover-order", &shared);
+    let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
+    task.snapshot();
+    pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
+    settle(&mut task, &mut inbox).await;
+    let known = task.gate_connection;
+    fake.shutdown();
+
+    // The daemon restarts with the identity directory held. A keyed resend
+    // reconnects; the connection notification starts the recovery.
+    let restarted = daemon(Status::Field(json!(0)));
+    restarted.identities.store(true, Ordering::SeqCst);
+    let (fake, _) = start("gate-recover-order", &restarted);
+    let submit = BusRequest::new(Some("acct-main"), "message", "message.submit", json!({}))
+        .with_operation_id("recover-key".to_owned());
+    let _ = task.client.call(&submit).await;
+    // The status resolves open, but the identities have not arrived: the
+    // messages stay behind them.
+    pump(&mut task, &mut inbox, |t| {
+        verdict(t) == SchemaGate::Open && t.gate_connection > known && t.held_release.is_some()
+    })
+    .await;
+    assert_eq!(
+        message_requests(&fake).iter().filter(|m| *m != "message.submit").count(),
+        0,
+        "no message read is released while the identities are held"
+    );
+    restarted.identities.store(false, Ordering::SeqCst);
+    settle(&mut task, &mut inbox).await;
+    let order: Vec<String> = fake.seen().iter().map(|r| r.method.clone()).collect();
+    let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
+    let messages = order.iter().position(|m| m == "conversation.directory").expect("messages");
+    assert!(identities < messages, "identities were read first: {order:?}");
     fake.shutdown();
 }

@@ -109,6 +109,13 @@ impl BusClient {
         &self.inner.approval
     }
 
+    /// Requests that hold a slot now: sent and not yet answered (tests).
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn in_flight(&self) -> usize {
+        MAX_IN_FLIGHT - self.inner.slots.available_permits()
+    }
+
     /// The budgets this client puts on its requests.
     pub fn deadlines(&self) -> Deadlines {
         self.inner.deadlines

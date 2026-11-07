@@ -514,14 +514,14 @@ impl Translator {
     /// message content is dropped (it is read again once the gate opens).
     pub fn drop_message_state(&mut self) {
         self.plaintext.clear();
-        self.media_moments.clear();
+        self.v1.drop_text();
         self.media_refused.clear();
     }
 
     /// How many message plaintexts are cached (tests only).
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
-    pub fn cached_plaintext(&self) -> usize {
+    pub fn plaintext_len(&self) -> usize {
         self.plaintext.len()
     }
 

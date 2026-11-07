@@ -124,6 +124,12 @@ pub(super) enum Internal {
         generation: u64,
         result: Result<Value, BusError>,
     },
+    /// A single read's completion, tagged with the epoch it was dispatched
+    /// in; one of an older epoch is dropped before any bookkeeping.
+    FetchedAt {
+        epoch: u64,
+        read: Read,
+    },
     /// Marks where a new gate epoch began in this channel: whatever was
     /// queued before it belongs to an older epoch.
     EpochStart,
@@ -181,6 +187,9 @@ pub(super) struct Task {
     gate_told: (SchemaGate, Option<i64>),
     /// When a failed status read is repeated.
     gate_retry_at: Option<Instant>,
+    /// The request-connection generation the current epoch's status was
+    /// read on; a newer generation starts a new epoch.
+    gate_connection: Option<u64>,
     /// Epoch markers not yet seen in the internal channel: while any is
     /// pending, a completion is an older epoch's.
     pending_markers: u32,
@@ -312,6 +321,7 @@ pub(super) fn build(
         gate,
         gate_told: (SchemaGate::Open, None),
         gate_retry_at: None,
+        gate_connection: None,
         pending_markers: 0,
         batch_pending: 0,
         held_release: None,
@@ -488,6 +498,7 @@ impl Task {
         self.client.approval().revoke();
         let epoch = self.gate.begin_epoch();
         self.gate_retry_at = None;
+        self.gate_connection = None;
         self.batch_pending = 0;
         self.held_release = None;
         // Everything queued in the channel before this marker is an older
@@ -514,7 +525,7 @@ impl Task {
 
     /// Reads the daemon status again in this epoch; a different generation
     /// re-evaluates the gate.
-    #[cfg(feature = "test-support")]
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) fn recheck_schema(&mut self) {
         if self.gate.enabled() && !matches!(self.link, Link::Locked | Link::Lost) {
             self.spawn_schema_status(self.gate.epoch());
@@ -525,11 +536,17 @@ impl Task {
     fn on_schema_status(&mut self, epoch: u64, generation: u64, result: &Result<Value, BusError>) {
         // An answer of an older epoch, or one that travelled on a connection
         // that is no longer the current one, decides nothing.
-        if self.pending_markers > 0
-            || epoch != self.gate.epoch()
-            || (result.is_ok() && generation != self.client.connections_opened())
-        {
+        if self.pending_markers > 0 || epoch != self.gate.epoch() {
             return;
+        }
+        if result.is_ok() && generation != self.client.connections_opened() {
+            // The connection changed under the status read: ask again on the
+            // new one, in a new epoch.
+            self.recover_connection();
+            return;
+        }
+        if generation > 0 {
+            self.gate_connection = Some(generation);
         }
         let answer = result.as_ref().map_err(|_| ());
         if !self.gate.resolve(epoch, answer) {
@@ -625,9 +642,7 @@ impl Task {
         {
             // A recovered connection may be a new daemon with changed local
             // state even when its cursor is still valid. Recover once here.
-            self.begin_gate_epoch();
-            let reads = self.reads_for_snapshot();
-            self.request_reads(reads);
+            self.recover_connection();
         }
         self.emit(vec![DomainEvent::SourceStatusChanged(status)]);
         if self.scope.account().is_some()
@@ -644,6 +659,13 @@ impl Task {
         if status.connected {
             if self.transport_disconnected {
                 self.connection_status(SourceStatus::Connected);
+            } else if self.link == Link::Live
+                && self.gate.enabled()
+                && self.gate_connection.is_some_and(|known| status.generation > known)
+            {
+                // A request opened a newer connection (a keyed resend, say)
+                // before the old one's loss was noticed: the same recovery.
+                self.recover_connection();
             }
         } else {
             self.transport_disconnected = true;
@@ -769,6 +791,22 @@ impl Task {
     fn snapshot(&mut self) {
         self.link = Link::Attaching;
         self.cancel_reads();
+        self.start_epoch_reads();
+    }
+
+    /// The one recovery routine for a connection that changed, however it was
+    /// noticed (a loss, a resend that reconnected, the stream recovering):
+    /// outstanding reads are cancelled, a new epoch asks the daemon for its
+    /// schema, and the prerequisite reads run before the messages.
+    fn recover_connection(&mut self) {
+        self.cancel_reads();
+        self.start_epoch_reads();
+    }
+
+    /// A new epoch's reads: its status, the local account state at once, the
+    /// other non-message reads as a batch, and the message-class reads held
+    /// until the gate opens and that batch is in.
+    fn start_epoch_reads(&mut self) {
         self.begin_gate_epoch();
         let mut reads = self.reads_for_snapshot();
         // Local unlocked state opens the workspace before unrelated lists finish.
@@ -914,9 +952,10 @@ impl Task {
             let (internal, sent) = (self.internal.clone(), self.listings_sent.clone());
             let key = fetch.clone();
             let revision = self.networking_revision;
+            let epoch = self.gate.epoch();
             let task = tokio::spawn(async move {
                 let read = read(&client, fetch, account.as_deref(), &sent, revision).await;
-                let _ = internal.send(Internal::Fetched(read));
+                let _ = internal.send(Internal::FetchedAt { epoch, read });
             });
             self.read_recovery.running.insert(key, task.abort_handle());
         }
@@ -937,6 +976,13 @@ impl Task {
             Internal::SchemaAnswer { epoch, generation, result } => {
                 if !matches!(self.link, Link::Locked | Link::Lost) {
                     self.on_schema_status(epoch, generation, &result);
+                }
+            }
+            Internal::FetchedAt { epoch, read } => {
+                // Dispatched in an older epoch: nothing of it is kept, not
+                // even its slot in the running set (a newer read may hold it).
+                if !self.gate.enabled() || epoch == self.gate.epoch() {
+                    self.internal(Internal::Fetched(read));
                 }
             }
             Internal::EpochStart => {
@@ -1359,7 +1405,7 @@ impl Task {
                     epoch: self.gate.epoch(),
                     gate: self.gate.verdict(),
                     queued: self.gate.queued(),
-                    plaintext: self.translator.cached_plaintext(),
+                    plaintext: self.translator.plaintext_len(),
                     receipts: self.receipts.as_ref().map_or(0, Receipts::pending_len),
                 });
             }
