@@ -47,14 +47,13 @@ pub(super) fn project(
                 })
             })
             .collect(),
-        // The schema carries no pin/unpin flag: a change that names its
-        // target message is a pin, one that names none is an unpin.
+        // The schema defines only "pin changed", not pin versus unpin: one
+        // neutral row, whatever the target.
         Ok(ServiceAction::ServicePinChanged) => {
-            let key = if service.target.is_some() { "pinned" } else { "unpinned" };
             let args = serde_json::json!({ "actor": translator.display_of(&origin) });
             vec![MomentKind::System(SystemPayload {
                 level: SystemLevel::Info,
-                text: format!("backend.service.{key} {args}"),
+                text: format!("backend.service.pin_changed {args}"),
             })]
         }
         Ok(ServiceAction::ServiceUnspecified) | Err(_) => {
