@@ -187,6 +187,7 @@ impl Translator {
         // inferred from the role or the flag.
         let actor_kind = record["actor_kind"].as_str().and_then(super::contacts::peer_kind);
         Some(Moment {
+            order: None,
             id: message_moment_id(context, message),
             context_id: context.clone(),
             origin: self.origin(text(record, "sender_id")),

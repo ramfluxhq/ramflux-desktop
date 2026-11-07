@@ -40,6 +40,20 @@ use ramflux_desktop_ui::shell::{ShellOptions, SourceChoice};
 use ramflux_desktop_ui::workspace::PrefsStore;
 use serde_json::{Value, json};
 
+/// Routes a generated message update into the fake account's scope of the
+/// bridge serving `socket`, through the v1 projection test seam
+/// (`translate::v1::candidate::apply`). Returns whether the bridge runs.
+pub fn push_generated(
+    socket: &std::path::Path,
+    update: ramflux_protocol::message::MessageUpdate,
+) -> bool {
+    ramflux_desktop_sdk::test_support::push_generated(
+        socket,
+        &ramflux_desktop_core::AccountId::new(ramflux_desktop_test::v1_fixtures::ACCOUNT),
+        update,
+    )
+}
+
 /// The SDK's recorded and typed frames.
 pub fn frames() -> BTreeMap<String, Value> {
     let text = include_str!("../../../ramflux-desktop-sdk/tests/fixtures/rfd_frames.json");

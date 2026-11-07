@@ -385,6 +385,7 @@ impl Translator {
         let mut events = Vec::new();
         for context in contexts {
             let moment = Moment {
+                order: None,
                 id: MomentId::new(format!("name-change:{context}:{}", record.key())),
                 context_id: context,
                 origin: principal.clone(),

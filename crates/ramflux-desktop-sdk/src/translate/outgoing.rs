@@ -53,6 +53,7 @@ impl Translator {
         let context = ContextId::new(text(body, "context_id"));
         self.remember_sent(message, text(body, "text"));
         let moment = Moment {
+            order: None,
             id: message_moment_id(&context, message),
             context_id: context,
             origin: self.own_origin(),
@@ -152,6 +153,7 @@ impl Translator {
         let origin = self.own_origin();
         let mut events = self.put_object(object);
         events.push(DomainEvent::MomentAdded(Box::new(Moment {
+            order: None,
             id,
             context_id: context,
             origin,

@@ -397,14 +397,14 @@ impl Store {
         &self.bodies
     }
 
-    /// Moments of one context ordered by `(at, id)`; O(k).
+    /// Moments of one context in stream order (order key, then `(at, id)`); O(k).
     pub fn context_moments(&self, id: &ContextId) -> impl DoubleEndedIterator<Item = &Moment> {
         self.index
             .timeline
             .get(id)
             .into_iter()
             .flatten()
-            .filter_map(|(_, moment)| self.moments.get(moment))
+            .filter_map(|(_, _, moment)| self.moments.get(moment))
     }
 
     /// Number of moments in one context.
