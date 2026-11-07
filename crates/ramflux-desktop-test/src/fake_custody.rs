@@ -138,6 +138,10 @@ struct State {
     /// How long an export takes to answer (a vault that waits for the
     /// person).
     export_delay: Duration,
+    /// An error object (written out as JSON) the daemon answers every
+    /// ceremony begin, recovery begin and credential export with, in place
+    /// of its own checks.
+    error_frame: Option<Value>,
 }
 
 /// The fake daemon's custody state, shared across restarts of the fake bus.
@@ -200,6 +204,7 @@ impl FakeCustody {
                 exports: Vec::new(),
                 refuse_headless: false,
                 export_delay: Duration::ZERO,
+                error_frame: None,
             }),
         }
     }
@@ -259,6 +264,12 @@ impl FakeCustody {
     /// Exports answer after `delay` from now on.
     pub fn set_export_delay(&self, delay: Duration) {
         self.state().export_delay = delay;
+    }
+
+    /// From now on the begins and the credential export answer with this
+    /// error object (or, with `None`, with their own checks again).
+    pub fn set_error_frame(&self, frame: Option<Value>) {
+        self.state().error_frame = frame;
     }
 
     /// The daemon refuses every AI participant's begin from now on.
@@ -519,6 +530,9 @@ impl FakeCustody {
 
     fn begin(state: &mut State, connection: usize, account: Option<&str>, body: &Value) -> Reply {
         state.ceremonies.remove(&connection);
+        if let Some(frame) = state.error_frame.clone() {
+            return Reply::ErrorFrame(frame);
+        }
         if !state.vault_available {
             return refuse("CustodyVaultUnavailable");
         }
@@ -554,6 +568,9 @@ impl FakeCustody {
 
     fn recover_begin(state: &mut State, connection: usize, body: &Value) -> Reply {
         state.ceremonies.remove(&connection);
+        if let Some(frame) = state.error_frame.clone() {
+            return Reply::ErrorFrame(frame);
+        }
         if !state.vault_available {
             return refuse("CustodyVaultUnavailable");
         }
@@ -673,6 +690,9 @@ impl FakeCustody {
         let open = state.accounts.get(owner).is_some_and(|found| !found.locked);
         if state.attended.get(&connection).map(String::as_str) != Some(owner) || !open {
             return permission();
+        }
+        if let Some(frame) = state.error_frame.clone() {
+            return Reply::ErrorFrame(frame);
         }
         let fields: Vec<&str> = body
             .as_object()

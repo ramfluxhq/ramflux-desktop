@@ -1,149 +1,97 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! S10c c09: every reason the key vault names reaches visible, distinct
-//! copy on each of three paths (the account ceremonies, the bus and the AI
-//! participant credential export), in both languages. One file, one test:
-//! the locale is process-global.
+//! S10c c09: the nine refusals of the key vault, as the daemon writes them,
+//! are read into the right desktop reason, retry facts and words on each
+//! path (the account ceremonies, the bus, the AI participant credential
+//! export), in both languages. Every expectation is a literal row in
+//! `vault_rows`; the frames are bytes, not product builders. The same rows
+//! drive the rendered views in `s10c_vault_live`. One test: the locale is
+//! process-global.
 
-use std::collections::BTreeSet;
+mod vault_rows;
 
-use ramflux_desktop_core::{AgentExportRefusal, CeremonyFailure, VaultReason};
+use ramflux_desktop_core::{AgentExportRefusal, CeremonyFailure};
 use ramflux_desktop_sdk::bridge::ceremony_refusal;
-use ramflux_desktop_sdk::bus::{BusError, vault_reason_of};
+use ramflux_desktop_sdk::bus::BusError;
 use ramflux_desktop_sdk::translate::agents::{export_refusal, export_refusal_key};
-use ramflux_desktop_ui::i18n::{backend_text, labels, tr};
+use ramflux_desktop_ui::i18n::{backend_text, labels};
 use ramflux_sdk::SdkError;
-use ramflux_sdk::custody::CustodyVaultReason as Product;
+use ramflux_sdk::custody::CustodyVaultReason;
+use vault_rows::ROWS;
 
-const PRODUCT: [Product; 9] = [
-    Product::Missing,
-    Product::InitPending,
-    Product::ImportPending,
-    Product::Corrupt,
-    Product::Permission,
-    Product::Locked,
-    Product::Busy,
-    Product::PrimaryUnavailable,
-    Product::ModeMismatch,
-];
-
-/// The error frame the daemon sends for a reason.
-fn frame(reason: Product) -> BusError {
-    BusError::Daemon {
-        retry_after_ms: reason.retry_after_ms(),
-        code: reason.wire_code().to_owned(),
-        message: "local bus error".to_owned(),
-        reason_code: Some(reason.as_str().to_owned()),
-        details: None,
-        cause: None,
-    }
-}
-
-fn has_cjk(text: &str) -> bool {
-    text.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
+/// The error object of a frame, decoded as the bus client decodes it.
+fn decoded(frame: &str) -> BusError {
+    let body: ramflux_sdk::LocalBusErrorBody = serde_json::from_str(frame).expect("frame json");
+    BusError::from_error_body(Some(body))
 }
 
 #[test]
 fn custody_vault_reasons_map_and_render() {
     for locale in ["en", "zh-CN"] {
         rust_i18n::set_locale(locale);
-        let mut ceremony = BTreeSet::new();
-        let mut recovery = BTreeSet::new();
-        let mut bus = BTreeSet::new();
-        let mut export = BTreeSet::new();
-        for product in PRODUCT {
-            let reason = vault_reason_of(product);
-            assert_eq!(reason.code(), product.as_str(), "the reason codes are the daemon's");
-            assert_eq!(reason.wire_code(), product.wire_code());
-            let mode = reason == VaultReason::ModeMismatch;
+        for row in &ROWS {
+            let name = format!("{} {locale}", row.reason_code);
+            let error = decoded(row.frame);
 
-            // Custody path: the ceremony failure and its rendered copy.
-            let failure = ceremony_refusal(&SdkError::CustodyVault(product));
-            let expected =
-                if mode { CeremonyFailure::Invalid } else { CeremonyFailure::Vault(reason) };
-            assert_eq!(failure, Some(expected), "{reason:?}: custody mapping");
-            let shown = labels::ceremony_ended(expected).to_string();
-            let recovered = labels::recovery_ended(expected).to_string();
-            for (text, key) in [
-                (&shown, labels::ceremony_ended_key(expected)),
-                (&recovered, labels::recovery_ended_key(expected)),
-            ] {
-                assert_ne!(text, key, "{reason:?}: {key} is translated");
-                assert!(!text.is_empty());
-                assert_eq!(has_cjk(text), locale == "zh-CN", "{reason:?} {locale}: {text}");
-            }
-            if !mode {
-                assert_ne!(
-                    shown,
-                    tr("ceremony.ended.vault").to_string(),
-                    "{reason:?}: not generic"
-                );
-                assert_ne!(
-                    recovered,
-                    tr("recovery.ended.vault").to_string(),
-                    "{reason:?}: not generic"
-                );
-            }
-            ceremony.insert(shown.clone());
-            recovery.insert(recovered);
-            // The pending reasons name what to finish.
-            match reason {
-                VaultReason::InitPending => assert!(shown.contains("rf vault init"), "{shown}"),
-                VaultReason::ImportPending => {
-                    let english = locale == "en";
-                    assert!(!english || shown.contains("provisioning import"), "{shown}");
-                }
-                _ => {}
-            }
-
-            // Bus path: the typed refusal, from the daemon's frame and from
-            // the product's error, is retried for a busy vault only.
-            for error in [frame(product), BusError::from(SdkError::CustodyVault(product))] {
-                assert_eq!(error.vault_reason(), Some(reason), "{reason:?}: reason from the frame");
-                assert_eq!(
-                    error.is_retryable(),
-                    reason == VaultReason::Busy,
-                    "{reason:?}: only busy retryable"
-                );
-                let key = error.message();
-                let text = backend_text(&key).to_string();
-                assert_ne!(text, key, "{reason:?}: {key} is translated");
-                assert_eq!(has_cjk(&text), locale == "zh-CN", "{reason:?} {locale}: {text}");
-                bus.insert(text);
-            }
-            assert_eq!(
-                frame(product).vault_reason().map(VaultReason::retryable),
-                Some(reason == VaultReason::Busy)
-            );
-
-            // Agent export path: a mode mismatch is a refused setup, every
-            // other reason has its own wording.
-            let refusal = export_refusal(&frame(product));
-            let expected_refusal = if mode {
-                AgentExportRefusal::NotCustodian
-            } else {
-                AgentExportRefusal::Vault(reason)
+            // The frame, read by the bus.
+            let BusError::Daemon { code, reason_code, retry_after_ms, details, .. } = &error else {
+                panic!("{name}: a daemon refusal");
             };
-            assert_eq!(refusal, expected_refusal, "{reason:?}: export mapping");
-            let said = labels::agent_export_refusal(refusal).to_string();
-            let backend = backend_text(export_refusal_key(refusal)).to_string();
-            assert_ne!(
-                said,
-                tr("agent.export.refused.credentials_gone").to_string(),
-                "{reason:?}: not the generic credentials-gone text"
+            assert_eq!(code, row.wire_code, "{name}: wire code");
+            assert_eq!(reason_code.as_deref(), Some(row.reason_code), "{name}: reason code");
+            assert_eq!(*retry_after_ms, row.retry_after_ms, "{name}: retry_after_ms");
+            let details = details.as_deref().expect("details");
+            assert_eq!(details["retryable"], serde_json::json!(row.retryable), "{name}");
+            assert_eq!(error.vault_reason(), Some(row.reason), "{name}: desktop reason");
+            assert_eq!(error.is_retryable(), row.retryable, "{name}: retryable");
+            assert_eq!(
+                backend_text(&error.message()).to_string(),
+                row.bus.in_locale(locale),
+                "{name}: bus text"
             );
-            assert_eq!(has_cjk(&said), locale == "zh-CN", "{reason:?} {locale}: {said}");
-            assert_eq!(has_cjk(&backend), locale == "zh-CN", "{reason:?} {locale}: {backend}");
-            export.insert(said);
+
+            // The AI participant export.
+            let refusal = export_refusal(&error);
+            assert_eq!(refusal, row.export_refusal, "{name}: export mapping");
+            assert_eq!(
+                labels::agent_export_refusal(refusal).to_string(),
+                row.export.in_locale(locale),
+                "{name}: export text"
+            );
+            assert_eq!(
+                backend_text(export_refusal_key(refusal)).to_string(),
+                row.export_backend.in_locale(locale),
+                "{name}: export backend text"
+            );
+
+            // The ceremonies, from the product's reading of the same wire.
+            let product = CustodyVaultReason::from_wire(row.wire_code, Some(row.reason_code))
+                .expect("the product reads the frame");
+            let failure = ceremony_refusal(&SdkError::CustodyVault(product));
+            assert_eq!(failure, Some(row.custody_failure), "{name}: custody mapping");
+            assert_eq!(
+                labels::ceremony_ended(row.custody_failure).to_string(),
+                row.ceremony.in_locale(locale),
+                "{name}: ceremony text"
+            );
+            assert_eq!(
+                labels::recovery_ended(row.custody_failure).to_string(),
+                row.recovery.in_locale(locale),
+                "{name}: recovery text"
+            );
+
+            // The product's own error reaches the bus as the same refusal.
+            let from_product = BusError::from(SdkError::CustodyVault(product));
+            let BusError::Daemon { code, reason_code, retry_after_ms, .. } = &from_product else {
+                panic!("{name}: a daemon refusal");
+            };
+            assert_eq!(code, row.wire_code, "{name}");
+            assert_eq!(reason_code.as_deref(), Some(row.reason_code), "{name}");
+            assert_eq!(*retry_after_ms, row.retry_after_ms, "{name}");
+            assert_eq!(from_product.vault_reason(), Some(row.reason), "{name}");
+            assert_eq!(from_product.is_retryable(), row.retryable, "{name}");
         }
-        // Eight reasons have their own text; the ninth, a mode mismatch, is
-        // the refused setup (ceremonies: the invalid copy; export: not the
-        // custodian), also distinct from the rest.
-        assert_eq!(ceremony.len(), 9, "{locale}: ceremony copy is distinct");
-        assert_eq!(recovery.len(), 9, "{locale}: recovery copy is distinct");
-        assert_eq!(bus.len(), 9, "{locale}: bus copy is distinct");
-        assert_eq!(export.len(), 9, "{locale}: export copy is distinct");
     }
 
     // Negatives: nothing is invented. An untyped vault refusal keeps its old
@@ -153,27 +101,18 @@ fn custody_vault_reasons_map_and_render() {
         ceremony_refusal(&SdkError::CustodyVaultUnavailable),
         Some(CeremonyFailure::VaultUnavailable)
     );
-    let untyped = BusError::daemon("CustodyVaultUnavailable", "vault");
+    let untyped =
+        decoded(r#"{"code":"CustodyVaultUnavailable","message":"vault","retry_after_ms":null}"#);
     assert_eq!(export_refusal(&untyped), AgentExportRefusal::CredentialsGone);
     assert!(untyped.vault_reason().is_none());
-    let wrong_code = BusError::Daemon {
-        retry_after_ms: None,
-        code: "CustodySetupInvalid".to_owned(),
-        message: "x".to_owned(),
-        reason_code: Some("vault_busy".to_owned()),
-        details: None,
-        cause: None,
-    };
+    let wrong_code = decoded(
+        r#"{"code":"CustodySetupInvalid","message":"x","reason_code":"vault_busy","retry_after_ms":1000}"#,
+    );
     assert!(wrong_code.vault_reason().is_none(), "a reason belongs to its own code");
     assert!(!wrong_code.is_retryable());
-    let unknown = BusError::Daemon {
-        retry_after_ms: None,
-        code: "CustodyVaultUnavailable".to_owned(),
-        message: "x".to_owned(),
-        reason_code: Some("vault_something_new".to_owned()),
-        details: None,
-        cause: None,
-    };
+    let unknown = decoded(
+        r#"{"code":"CustodyVaultUnavailable","message":"x","reason_code":"vault_something_new","retry_after_ms":null}"#,
+    );
     assert!(unknown.vault_reason().is_none());
     assert_eq!(export_refusal(&unknown), AgentExportRefusal::CredentialsGone);
 }

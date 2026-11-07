@@ -105,6 +105,9 @@ pub struct State {
     pub objects: Vec<Value>,
     /// Make the next submissions fail with this message.
     pub fail_submit: Option<String>,
+    /// Make the next submissions fail with this error object (JSON, as the
+    /// daemon writes it on the wire).
+    pub fail_submit_frame: Option<Value>,
     /// Delay before a submission answers.
     pub submit_delay: Duration,
     /// While set, submissions wait to answer (the test releases them).
@@ -382,6 +385,9 @@ pub fn start_with_custody(
                     std::thread::sleep(Duration::from_millis(5));
                 }
                 let mut state = state.lock().expect("state");
+                if let Some(frame) = state.fail_submit_frame.clone() {
+                    return Reply::ErrorFrame(frame);
+                }
                 if let Some(message) = state.fail_submit.clone() {
                     return Reply::Error("ValidationFailed", message);
                 }
