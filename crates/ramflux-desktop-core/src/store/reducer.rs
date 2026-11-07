@@ -172,6 +172,20 @@ impl Store {
                     changes.accounts.insert(account_id.clone());
                 }
             }
+            DomainEvent::SchemaGateChanged { account_id, gate, generation } => {
+                let verdict = (*gate, *generation);
+                if self.schema.get(account_id).copied().unwrap_or((crate::SchemaGate::Open, None))
+                    != verdict
+                {
+                    if verdict.0.is_open() && verdict.1.is_none() {
+                        self.schema.remove(account_id);
+                    } else {
+                        self.schema.insert(account_id.clone(), verdict);
+                    }
+                    changes.accounts.insert(account_id.clone());
+                    changes.source_status = true;
+                }
+            }
             DomainEvent::EffectFailed(failure) => {
                 if self.failures.len() == super::MAX_FAILURES {
                     self.failures.remove(0);

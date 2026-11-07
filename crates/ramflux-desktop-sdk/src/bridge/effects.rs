@@ -49,6 +49,17 @@ impl Task {
             }
             Err(effect) => effect,
         };
+        if let Some(method) = effect.method().filter(|m| super::gate::is_message_method(m))
+            && !self.gate.is_open()
+        {
+            let failure = EffectFailure {
+                method: method.to_owned(),
+                code: FailureCode::Daemon("SchemaGateClosed".to_owned()),
+                message: key::SCHEMA_GATE_CLOSED.to_owned(),
+            };
+            self.emit(vec![DomainEvent::EffectFailed(failure)]);
+            return;
+        }
         if !self.found.calls
             && let Some(method) = effect.method().filter(|m| capabilities::CALL_METHODS.contains(m))
         {

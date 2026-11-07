@@ -52,6 +52,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::SyncStatusChanged(_) => "SyncStatusChanged",
         DomainEvent::EffectFailed(_) => "EffectFailed",
         DomainEvent::AccountNetworkingFailed { .. } => "AccountNetworkingFailed",
+        DomainEvent::SchemaGateChanged { .. } => "SchemaGateChanged",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
         DomainEvent::CallUpserted(_) => "CallUpserted",
@@ -67,7 +68,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 49;
+const DOMAIN_EVENT_VARIANTS: usize = 50;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -669,6 +670,11 @@ fn all_domain_events() -> Vec<DomainEvent> {
             text: "card-text".to_owned(),
             link: Some("ramflux:contact/card".to_owned()),
         }),
+        DomainEvent::SchemaGateChanged {
+            account_id: AccountId::new("a"),
+            gate: SchemaGate::UpdateApp,
+            generation: Some(1),
+        },
         DomainEvent::AccountNetworkingFailed {
             account_id: AccountId::new("a"),
             code: FailureCode::Daemon("CustodyForkFenced".into()),

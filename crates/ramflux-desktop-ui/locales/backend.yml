@@ -195,6 +195,9 @@ backend:
     surface_action_rejected:
       en: "The daemon did not send the action: %{reason}"
       zh-CN: "守护进程未发送此操作：%{reason}"
+    schema_gate_closed:
+      en: "Messages are not available right now, so this was not sent."
+      zh-CN: "消息功能暂不可用，因此未发送。"
     label:
       en: "Last error"
       zh-CN: "上次错误"
@@ -412,6 +415,9 @@ backend:
     root_conflict:
       en: "This backup belongs to a different identity than the account here. It can't replace it."
       zh-CN: "此备份属于与本账户不同的身份，无法替换。"
+    schema_reset_required:
+      en: "This backup was made by an older development build and can't be imported. Nothing was changed or removed."
+      zh-CN: "此备份由较旧的开发版本创建，无法导入。未做任何更改，也未删除任何内容。"
     busy:
       en: "Another backup or restore is running. Wait until it ends."
       zh-CN: "另一个备份或恢复正在进行，请等待其结束。"

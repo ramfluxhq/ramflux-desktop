@@ -98,3 +98,41 @@ pub fn push_media_failure(
             .is_ok()
     })
 }
+
+fn bridge_of(
+    socket: &std::path::Path,
+) -> Option<tokio::sync::mpsc::UnboundedSender<crate::bridge::Command>> {
+    BRIDGES
+        .lock()
+        .expect("bridge registry")
+        .iter()
+        .find(|(path, _)| path == socket)
+        .and_then(|(_, sender)| sender.upgrade())
+}
+
+/// Makes `account`'s scope read the daemon status again for its schema gate.
+/// Returns whether such a bridge is running.
+pub fn recheck_schema(socket: &std::path::Path, account: &ramflux_desktop_core::AccountId) -> bool {
+    bridge_of(socket).is_some_and(|sender| {
+        sender
+            .send(crate::bridge::Command::RecheckSchema {
+                scope: crate::translate::Scope::Account(account.clone()),
+            })
+            .is_ok()
+    })
+}
+
+/// What `account`'s schema gate holds, or `None` when no bridge answers.
+pub fn gate_probe(
+    socket: &std::path::Path,
+    account: &ramflux_desktop_core::AccountId,
+) -> Option<crate::bridge::GateProbe> {
+    let (reply, answer) = std::sync::mpsc::channel();
+    bridge_of(socket)?
+        .send(crate::bridge::Command::GateProbe {
+            scope: crate::translate::Scope::Account(account.clone()),
+            reply,
+        })
+        .ok()?;
+    answer.recv_timeout(std::time::Duration::from_secs(5)).ok()
+}

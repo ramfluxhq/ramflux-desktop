@@ -34,12 +34,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use ramflux_desktop_core::{ContextId, DomainEvent, Effect, MomentId, SourceStatus};
+use ramflux_desktop_core::{ContextId, DomainEvent, Effect, MomentId, SchemaGate, SourceStatus};
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 
+use super::gate::{self, Admit, Gate};
 use super::live::{SyncState, last_page};
 use super::read_recovery::MAX_READS;
 use super::{Delivery, now};
@@ -70,6 +71,12 @@ pub(crate) enum ScopeCommand {
     /// Typed v1 updates, through the projection test seam.
     #[cfg(feature = "test-support")]
     Generated(Vec<ramflux_protocol::message::MessageUpdate>),
+    /// Reads the daemon status again for the schema gate (tests).
+    #[cfg(feature = "test-support")]
+    RecheckSchema,
+    /// Reports what the gate holds (tests).
+    #[cfg(feature = "test-support")]
+    GateProbe(std::sync::mpsc::Sender<GateProbe>),
     /// The media engine needs a call's media session.
     CallMedia(
         ramflux_desktop_core::CallId,
@@ -80,6 +87,22 @@ pub(crate) enum ScopeCommand {
     AccountsLive(bool),
     RefreshDaemon,
     ConnectionStatus(SourceStatus),
+}
+
+/// What the schema gate holds, for tests.
+#[cfg(feature = "test-support")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateProbe {
+    /// The connection epoch.
+    pub epoch: u64,
+    /// The verdict.
+    pub gate: SchemaGate,
+    /// Message-class reads waiting.
+    pub queued: usize,
+    /// Cached message plaintexts in the translator.
+    pub plaintext: usize,
+    /// Delivery receipts waiting to be sent.
+    pub receipts: usize,
 }
 
 /// Where a scope's ceremonies hand the recovery phrase and count it.
@@ -141,6 +164,12 @@ pub(super) struct Task {
     /// Per-fetch bounded recovery and cancellable reads.
     pub(super) read_recovery: super::read_recovery::ReadRecovery,
     snapshot_task: Option<tokio::task::AbortHandle>,
+    /// The schema gate of this connection (account scopes).
+    pub(super) gate: Gate,
+    /// What the store was last told of the gate.
+    gate_told: (SchemaGate, Option<i64>),
+    /// When a failed status read is repeated.
+    gate_retry_at: Option<Instant>,
     pub(super) reconnect_at: Instant,
     pub(super) alive: bool,
     /// Numbers listings' first pages in the order they are sent.
@@ -260,7 +289,11 @@ pub(super) fn build(
     }
     let custodians = crate::custodians::CustodianStore::new(config.settings_path.clone(), socket);
     translator.restore_custodians(custodians.links());
+    let gate = Gate::new(scope.account().is_some(), config.schema_support);
     let task = Task {
+        gate,
+        gate_told: (SchemaGate::Open, None),
+        gate_retry_at: None,
         translator,
         pins,
         config,
@@ -424,6 +457,94 @@ impl Task {
         }
     }
 
+    /// Begins a connection epoch: the gate's approval is revoked, what it
+    /// held is dropped, and the daemon is asked for its schema generation.
+    pub(super) fn begin_gate_epoch(&mut self) {
+        if !self.gate.enabled() {
+            return;
+        }
+        let epoch = self.gate.begin_epoch();
+        self.gate_retry_at = None;
+        if let Some(receipts) = &mut self.receipts {
+            receipts.drop_pending();
+        }
+        self.gate_changed();
+        self.spawn_fetches(vec![Fetch::SchemaStatus(epoch)]);
+    }
+
+    /// Reads the daemon status again in this epoch; a different generation
+    /// re-evaluates the gate.
+    #[cfg(feature = "test-support")]
+    pub(super) fn recheck_schema(&mut self) {
+        if self.gate.enabled() && !matches!(self.link, Link::Locked | Link::Lost) {
+            let epoch = self.gate.epoch();
+            self.spawn_fetches(vec![Fetch::SchemaStatus(epoch)]);
+        }
+    }
+
+    /// A status read for the gate came back.
+    fn on_schema_status(&mut self, epoch: u64, result: &Result<Value, BusError>) {
+        let answer = result.as_ref().map_err(|_| ());
+        if !self.gate.resolve(epoch, answer) {
+            return;
+        }
+        if self.gate.verdict() == SchemaGate::Failed {
+            self.gate_retry_at = Some(Instant::now() + self.config.reconnect_backoff);
+        } else {
+            self.gate_retry_at = None;
+        }
+        self.gate_changed();
+    }
+
+    /// Tells the store the gate's verdict when it changed; closing drops what
+    /// was remembered of message content, opening releases what was held.
+    fn gate_changed(&mut self) {
+        let told = (self.gate.verdict(), self.gate.generation());
+        if told == self.gate_told {
+            return;
+        }
+        let was_open = self.gate_told.0.is_open();
+        self.gate_told = told;
+        if let Some(account) = self.scope.account().cloned() {
+            self.emit(vec![DomainEvent::SchemaGateChanged {
+                account_id: account,
+                gate: told.0,
+                generation: told.1,
+            }]);
+        }
+        if was_open && !told.0.is_open() {
+            self.translator.drop_message_state();
+            if let Some(receipts) = &mut self.receipts {
+                receipts.drop_pending();
+            }
+        } else if !was_open && told.0.is_open() {
+            self.release_gate();
+        }
+    }
+
+    /// The gate opened: what it held is read, in order.
+    fn release_gate(&mut self) {
+        let (queue, dropped) = self.gate.release();
+        let (batch, single): (Vec<_>, Vec<_>) = queue.into_iter().partition(|(_, batch)| *batch);
+        self.run_batch(batch.into_iter().map(|(fetch, _)| fetch).collect());
+        self.spawn_fetches(single.into_iter().map(|(fetch, _)| fetch).collect());
+        if dropped {
+            let again = self.reads_for_snapshot().into_iter().filter(gate::is_message_read);
+            self.request_reads(again.collect());
+        }
+    }
+
+    /// Repeats a failed status read when its backoff is over.
+    fn retry_gate(&mut self, now: Instant) {
+        if self.gate_retry_at.is_some_and(|at| now >= at) {
+            self.gate_retry_at = None;
+            self.gate.retry();
+            self.gate_changed();
+            let epoch = self.gate.epoch();
+            self.spawn_fetches(vec![Fetch::SchemaStatus(epoch)]);
+        }
+    }
+
     pub(super) fn connection_status(&mut self, status: SourceStatus) {
         // Initial readiness still comes from account.status, not a subscription.
         if status == SourceStatus::Connected && !self.transport_disconnected {
@@ -436,6 +557,7 @@ impl Task {
         {
             // A recovered connection may be a new daemon with changed local
             // state even when its cursor is still valid. Recover once here.
+            self.begin_gate_epoch();
             let reads = self.reads_for_snapshot();
             self.request_reads(reads);
         }
@@ -469,6 +591,7 @@ impl Task {
     fn next_wake(&self) -> Instant {
         let far =
             self.next_send_due().unwrap_or_else(|| Instant::now() + Duration::from_secs(3_600));
+        let far = self.gate_retry_at.map_or(far, |at| far.min(at));
         match self.link {
             Link::Lost => self.reconnect_at.min(far),
             Link::Live => {
@@ -494,6 +617,9 @@ impl Task {
     fn tick(&mut self) {
         self.retry_sends(false);
         let now = Instant::now();
+        if !matches!(self.link, Link::Lost | Link::Locked) {
+            self.retry_gate(now);
+        }
         match self.link {
             Link::Lost if now >= self.reconnect_at => self.snapshot(),
             Link::Live => {
@@ -575,11 +701,23 @@ impl Task {
     fn snapshot(&mut self) {
         self.link = Link::Attaching;
         self.cancel_reads();
+        self.begin_gate_epoch();
         let mut reads = self.reads_for_snapshot();
         // Local unlocked state opens the workspace before unrelated lists finish.
         if let Some(account) = self.scope.account().cloned() {
             reads.retain(|fetch| !matches!(fetch, Fetch::AccountStatus(_)));
             self.spawn_fetches(vec![Fetch::AccountStatus(account)]);
+        }
+        // Message-class reads wait for the schema gate (held in its queue, in
+        // order, and read as a batch of their own once it opens).
+        reads.retain(|fetch| self.gate.admit(fetch, true) == Admit::Run);
+        self.run_batch(reads);
+    }
+
+    /// Reads `reads` together; they are translated in this order.
+    fn run_batch(&mut self, reads: Vec<Fetch>) {
+        if reads.is_empty() {
+            return;
         }
         let reserved = reads.clone();
         let client = self.client.clone();
@@ -636,6 +774,7 @@ impl Task {
     pub(super) fn locked(&mut self) {
         self.sends.clear();
         self.cancel_reads();
+        self.gate_retry_at = None;
         self.link = Link::Locked;
         self.stop_push_subscription();
         self.sync.stop();
@@ -676,6 +815,10 @@ impl Task {
         let mut seen = BTreeSet::new();
         for fetch in fetches {
             if !seen.insert(fetch.clone()) {
+                continue;
+            }
+            // A message-class read waits for (or is dropped by) the schema gate.
+            if self.gate.admit(&fetch, false) != Admit::Run {
                 continue;
             }
             if self.read_recovery.running.contains_key(&fetch) {
@@ -725,6 +868,10 @@ impl Task {
             Internal::Fetched((fetch, number, result)) => {
                 self.read_recovery.running.remove(&fetch);
                 if matches!(self.link, Link::Locked | Link::Lost) {
+                    return;
+                }
+                if let Fetch::SchemaStatus(epoch) = fetch {
+                    self.on_schema_status(epoch, &result);
                     return;
                 }
                 if self.link == Link::Attaching && matches!(fetch, Fetch::AccountStatus(_)) {
@@ -777,7 +924,7 @@ impl Task {
         };
         let now = Instant::now();
         receipts.observe(listed, now);
-        if self.link != Link::Live {
+        if self.link != Link::Live || !self.gate.is_open() {
             return;
         }
         for delivered in receipts.due(now) {
@@ -873,6 +1020,16 @@ impl Task {
 
     /// Translates one read; returns whether it produced events.
     fn on_read(&mut self, fetch: &Fetch, result: Result<Value, BusError>) -> bool {
+        // An account made by an older development build cannot be opened:
+        // nothing is retried and nothing is written to it.
+        if let Err(BusError::Daemon { code, .. }) = &result
+            && code == "SchemaResetRequired"
+            && self.gate.enabled()
+        {
+            self.gate.reset_required();
+            self.gate_changed();
+            return false;
+        }
         if let Err(error) = &result
             // Network receives retain their refusal handling; bounded local-read
             // recovery must not turn a refused pull into a failed user effect.
@@ -931,6 +1088,12 @@ impl Task {
             // Only the daemon's own word offers creation with a phrase.
             let offered = status["born_v3_creation"].as_bool() == Some(true);
             self.found_now(capabilities::Found { born_v3: offered, ..self.found });
+            // Once this epoch's status is known, a later one that differs
+            // re-evaluates the gate (never before: an answer of an older
+            // connection could otherwise open it).
+            if self.gate.reevaluate(status) {
+                self.gate_changed();
+            }
         }
         if matches!(fetch, Fetch::BackupJobs) {
             // Only a method the daemon does not know says the API is
@@ -1077,9 +1240,24 @@ impl Task {
             }
             #[cfg(feature = "test-support")]
             ScopeCommand::Generated(updates) => {
+                if !self.gate.is_open() {
+                    return;
+                }
                 let translated =
                     crate::translate::v1::candidate::apply(&mut self.translator, &updates);
                 self.emit(translated.events);
+            }
+            #[cfg(feature = "test-support")]
+            ScopeCommand::RecheckSchema => self.recheck_schema(),
+            #[cfg(feature = "test-support")]
+            ScopeCommand::GateProbe(reply) => {
+                let _ = reply.send(GateProbe {
+                    epoch: self.gate.epoch(),
+                    gate: self.gate.verdict(),
+                    queued: self.gate.queued(),
+                    plaintext: self.translator.cached_plaintext(),
+                    receipts: self.receipts.as_ref().map_or(0, Receipts::pending_len),
+                });
             }
             ScopeCommand::CallMedia(call_id, reply) => self.call_media(call_id, reply),
             ScopeCommand::AccountsLive(live) => self.accounts_live(live),
@@ -1104,3 +1282,7 @@ mod networking_tests;
 #[cfg(test)]
 #[path = "idle_tests.rs"]
 mod idle_tests;
+
+#[cfg(test)]
+#[path = "gate_tests.rs"]
+mod gate_tests;

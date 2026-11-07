@@ -17,9 +17,12 @@
 
 mod custody;
 mod effects;
+mod gate;
 mod jobs;
 mod live;
 mod scope;
+#[cfg(feature = "test-support")]
+pub use scope::GateProbe;
 mod sends;
 
 #[cfg(test)]
@@ -86,6 +89,12 @@ pub(crate) enum Command {
     /// Typed v1 updates for `scope`, through the projection test seam.
     #[cfg(feature = "test-support")]
     Generated { scope: Scope, updates: Vec<ramflux_protocol::message::MessageUpdate> },
+    /// Read the daemon status again for `scope`'s schema gate (tests).
+    #[cfg(feature = "test-support")]
+    RecheckSchema { scope: Scope },
+    /// Report what `scope`'s schema gate holds (tests).
+    #[cfg(feature = "test-support")]
+    GateProbe { scope: Scope, reply: std_mpsc::Sender<GateProbe> },
     /// An object fetch failed in `scope`, through the media test seam.
     #[cfg(feature = "test-support")]
     MediaFailed { scope: Scope, object_id: String, failure: BusError },
@@ -231,6 +240,18 @@ async fn serve(
             Command::Generated { scope, updates } => {
                 if let Some(tx) = scopes.get(&scope) {
                     let _ = tx.send(scope::ScopeCommand::Generated(updates));
+                }
+            }
+            #[cfg(feature = "test-support")]
+            Command::RecheckSchema { scope } => {
+                if let Some(tx) = scopes.get(&scope) {
+                    let _ = tx.send(scope::ScopeCommand::RecheckSchema);
+                }
+            }
+            #[cfg(feature = "test-support")]
+            Command::GateProbe { scope, reply } => {
+                if let Some(tx) = scopes.get(&scope) {
+                    let _ = tx.send(scope::ScopeCommand::GateProbe(reply));
                 }
             }
             #[cfg(feature = "test-support")]

@@ -100,6 +100,9 @@ pub struct Store {
     capabilities: Capabilities,
     daemon: Option<DaemonInfo>,
     sync: Option<SyncStatus>,
+    /// Message gate verdicts and reported schema generations by account;
+    /// an account without one is open.
+    schema: BTreeMap<AccountId, (crate::SchemaGate, Option<i64>)>,
     own_card: Option<ContactCard>,
     contact_requests: BTreeMap<(ParticipantId, RequestDirection), ContactRequest>,
     request_policy: Option<RequestPolicy>,
@@ -314,6 +317,17 @@ impl Store {
     /// What the local daemon last reported about itself.
     pub fn daemon(&self) -> Option<&DaemonInfo> {
         self.daemon.as_ref()
+    }
+
+    /// Whether `account`'s message traffic may flow (open unless the source
+    /// said otherwise).
+    pub fn schema_gate(&self, account: &AccountId) -> crate::SchemaGate {
+        self.schema.get(account).map_or(crate::SchemaGate::Open, |(gate, _)| *gate)
+    }
+
+    /// The schema generation the daemon reported for `account`, if it did.
+    pub fn schema_generation(&self, account: &AccountId) -> Option<i64> {
+        self.schema.get(account).and_then(|(_, generation)| *generation)
     }
 
     /// How the source is kept up to date, once it said so.

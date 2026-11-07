@@ -164,6 +164,7 @@ pub fn failure(failure: &BackupFailure) -> SharedString {
         }
         BackupFailure::IdentityRollback => tr(&key("identity_rollback")),
         BackupFailure::RootConflict => tr(&key("root_conflict")),
+        BackupFailure::SchemaResetRequired => tr(&key("schema_reset_required")),
         BackupFailure::Other(code) => tr_args("settings.backup.error_other", &[("code", code)]),
     }
 }

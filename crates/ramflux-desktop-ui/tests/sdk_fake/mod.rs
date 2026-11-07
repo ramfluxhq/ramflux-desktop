@@ -28,6 +28,7 @@
 #![allow(dead_code)]
 
 pub mod author;
+pub mod schema;
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -155,6 +156,8 @@ pub struct State {
     pub account_reads: Arc<Latch>,
     /// The daemon reports `born_v3_creation: true` in `daemon.status`.
     pub born_v3: bool,
+    /// The schema generation reported and the old-generation refusal.
+    pub schema: Arc<schema::Schema>,
     /// The daemon has no default node until `node.set_default` sets one.
     pub no_default: bool,
 }
@@ -318,7 +321,7 @@ pub fn start_with_custody(
     let fake = FakeBus::start_with(
         &path,
         move |method, account, body| {
-            let (surfaces, tasks, calls, requests, backup, account_jobs, account_reads) = {
+            let (surfaces, tasks, calls, requests, backup, account_jobs, account_reads, schema) = {
                 let state = state.lock().expect("state");
                 (
                     state.surfaces.clone(),
@@ -328,8 +331,12 @@ pub fn start_with_custody(
                     state.backup.clone(),
                     state.account_jobs.clone(),
                     state.account_reads.clone(),
+                    state.schema.clone(),
                 )
             };
+            if let Some(reply) = schema.gate(method, account) {
+                return reply;
+            }
             if account.is_some() && !matches!(method, "account.unlock" | "account.lock") {
                 account_reads.pass();
             }
@@ -456,9 +463,12 @@ pub fn start_with_custody(
                     frame
                 }
                 "account.list" => state.accounts.clone().unwrap_or_else(fixture),
-                "daemon.status" if state.born_v3 => {
+                "daemon.status" => {
                     let mut frame = fixture();
-                    frame["born_v3_creation"] = json!(true);
+                    if state.born_v3 {
+                        frame["born_v3_creation"] = json!(true);
+                    }
+                    state.schema.patch(&mut frame);
                     frame
                 }
                 "account.status" => {

@@ -45,7 +45,7 @@ pub mod source;
 pub mod surface;
 pub mod translate;
 
-pub use config::{DEFAULT_SOCKET, Deadlines, SdkConfig};
+pub use config::{DEFAULT_SOCKET, Deadlines, SchemaSupport, SdkConfig};
 pub use plan::conversation::fresh_conversation_id;
 pub use plan::message::ATTACHMENT_LIMIT;
 

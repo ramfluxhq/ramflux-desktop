@@ -223,6 +223,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::SyncStatusChanged(_) => "SyncStatusChanged",
         DomainEvent::EffectFailed(_) => "EffectFailed",
         DomainEvent::AccountNetworkingFailed { .. } => "AccountNetworkingFailed",
+        DomainEvent::SchemaGateChanged { .. } => "SchemaGateChanged",
         DomainEvent::ListingsLoaded(_) => "ListingsLoaded",
         DomainEvent::OwnContactCardUpdated(_) => "OwnContactCardUpdated",
         DomainEvent::CallUpserted(_) => "CallUpserted",

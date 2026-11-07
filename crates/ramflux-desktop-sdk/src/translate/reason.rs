@@ -57,6 +57,7 @@ pub mod key {
 
     /// The daemon did not send a surface action (`reason`).
     pub const SURFACE_ACTION_REJECTED: &str = "backend.failure.surface_action_rejected";
+    pub const SCHEMA_GATE_CLOSED: &str = "backend.failure.schema_gate_closed";
     /// The daemon refused a surface request with a code the desktop does
     /// not know (`code`).
     pub const SURFACE_REFUSED: &str = "backend.surface.refused";
@@ -209,7 +210,7 @@ pub mod key {
     pub const AGENT_EXPORT_OTHER: &str = "backend.agent.export.other";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 77] = [
+    pub const ALL: [&str; 78] = [
         AGENT_EXPORT_NO_LOCATION,
         AGENT_EXPORT_NOT_OWNER_SESSION,
         AGENT_EXPORT_OWNER_LOCKED,
@@ -241,6 +242,7 @@ pub mod key {
         START_NO_TARGET,
         START_UNVERIFIED_KEY,
         SURFACE_ACTION_REJECTED,
+        SCHEMA_GATE_CLOSED,
         SURFACE_REFUSED,
         SURFACE_STALE_VERSION,
         SURFACE_STALE_HASH,

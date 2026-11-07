@@ -47,6 +47,22 @@ status:
     source:
       en: "Daemon"
       zh-CN: "守护进程"
+    schema:
+      en: "Schema"
+      zh-CN: "数据格式"
+  schema:
+    generation:
+      en: "generation %{generation}"
+      zh-CN: "第 %{generation} 代"
+    checking:
+      en: "Checking"
+      zh-CN: "检查中"
+    unavailable:
+      en: "Not available"
+      zh-CN: "不可用"
+    unknown:
+      en: "Unknown"
+      zh-CN: "未知"
   account:
     local:
       en: "Local"

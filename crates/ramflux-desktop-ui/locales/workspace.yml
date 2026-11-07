@@ -831,3 +831,54 @@ networking:
   pending_text:
     en: "Connecting to its node: this account cannot send or receive messages until it is connected. This updates by itself."
     zh-CN: "正在连接其节点：连接成功前，此账户暂时无法收发消息。本提示会自动更新。"
+schema:
+  connecting:
+    en: "Connecting to the local daemon…"
+    zh-CN: "正在连接本地守护进程……"
+  failed:
+    en: "Can't read the local daemon's status — retrying"
+    zh-CN: "无法读取本地守护进程的状态，正在重试"
+  composer:
+    connecting:
+      en: "Sending resumes once the local daemon answers."
+      zh-CN: "本地守护进程响应后即可发送。"
+    failed:
+      en: "Can't send until the local daemon's status can be read."
+      zh-CN: "读取到本地守护进程的状态之前无法发送。"
+    blocked:
+      en: "This account's messages are not available, so nothing can be sent."
+      zh-CN: "此账户的消息暂不可用，因此无法发送。"
+  older_daemon:
+    title:
+      en: "The local daemon is older than this app"
+      zh-CN: "本地守护进程比此应用更旧"
+    body:
+      en: "Update the local daemon, then reopen the account. Nothing was changed."
+      zh-CN: "请更新本地守护进程后重新打开账户。未做任何更改。"
+  update_app:
+    title:
+      en: "Update the desktop app to open this account"
+      zh-CN: "请更新桌面应用以打开此账户"
+    body:
+      en: "This account uses a newer message format than this app reads. Nothing was changed."
+      zh-CN: "此账户使用的消息格式比此应用能读取的更新。未做任何更改。"
+  unsupported:
+    title:
+      en: "This local daemon version is not supported"
+      zh-CN: "不支持此本地守护进程版本"
+    body:
+      en: "The daemon reports a message format this app does not know. Nothing was changed."
+      zh-CN: "守护进程报告了此应用不认识的消息格式。未做任何更改。"
+  reset:
+    title:
+      en: "This account was created by an older development build and cannot be opened"
+      zh-CN: "此账户由较旧的开发版本创建，无法打开"
+    body:
+      en: "Create a new account or switch to another one. Nothing in this account is deleted or converted."
+      zh-CN: "请创建新账户或切换到其他账户。此账户中的内容不会被删除或转换。"
+    switch:
+      en: "Switch account"
+      zh-CN: "切换账户"
+    create:
+      en: "Create a new account"
+      zh-CN: "创建新账户"

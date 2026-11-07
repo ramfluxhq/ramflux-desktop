@@ -126,6 +126,19 @@ impl Receipts {
         Self { path, socket, account, sent, order, pending: BTreeMap::new() }
     }
 
+    /// Drops the receipts waiting to be sent or retried (a new connection
+    /// epoch re-derives them when the messages are listed again). What was
+    /// already sent stays remembered.
+    pub fn drop_pending(&mut self) {
+        self.pending.clear();
+    }
+
+    /// Receipts waiting to be sent or retried.
+    #[must_use]
+    pub fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
+
     /// Whether the receipt for `key` was sent.
     pub fn was_sent(&self, key: &str) -> bool {
         self.sent.contains(key)

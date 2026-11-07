@@ -18,9 +18,25 @@ pub const DEFAULT_SOCKET: &str = "/tmp/ramflux/rfd.sock";
 /// repeat a moment later goes through.
 pub const LOCAL_NETWORK_RETRY_MS: [u16; 2] = [2_000, 4_000];
 
+/// Which message schema this build opens (S10c D1). A build reads the
+/// legacy rows until activation (c15a) switches it to the v1 path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SchemaSupport {
+    /// The legacy message path: opens a daemon at generation 0 (or one that
+    /// reports none).
+    #[default]
+    Legacy,
+    /// The v1 path, constructible only through the test seam until
+    /// activation: opens a daemon at generation 1.
+    #[cfg(feature = "test-support")]
+    V1Candidate,
+}
+
 /// Settings of the SDK source.
 #[derive(Debug, Clone)]
 pub struct SdkConfig {
+    /// Which message schema this build opens.
+    pub schema_support: SchemaSupport,
     /// Test-only ordering of a late phrase handoff after its ready event.
     #[cfg(feature = "test-support")]
     pub phrase_handoff_gate: Option<std::sync::Arc<crate::test_support::PhraseHandoffGate>>,
@@ -82,6 +98,7 @@ impl SdkConfig {
             call_api: true,
             backup_api: true,
             inline_thumbnails: false,
+            schema_support: SchemaSupport::Legacy,
         }
     }
 }

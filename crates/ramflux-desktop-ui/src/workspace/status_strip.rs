@@ -19,7 +19,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, Hsla, IntoElement, Render, SharedString, Subscription, Window, div,
 };
-use ramflux_desktop_core::{AccountId, LockState, NodeHealth, SourceStatus, Store};
+use ramflux_desktop_core::{AccountId, LockState, NodeHealth, SchemaGate, SourceStatus, Store};
 
 use crate::actions::{GoToNeedsMe, OpenPalette, OpenSettings, ToggleDevPanel, ToggleTheme};
 use crate::app::{LOCAL_ACCOUNT, StoreEvent, StoreHandle};
@@ -155,8 +155,32 @@ fn fields(handle: &StoreHandle, cx: &App) -> Vec<Field> {
             attention: source != SourceStatus::Connected,
         },
     ];
+    fields.extend(schema_line(handle, cx));
     fields.extend(failure);
     fields
+}
+
+/// The account-status schema line: the generation the daemon reports, or
+/// why the gate is closed.
+fn schema_line(handle: &StoreHandle, cx: &App) -> Option<Field> {
+    let (account, gate) = super::schema_gate::active(handle)?;
+    let generation = handle.store().schema_generation(&account);
+    if generation.is_none() && gate.is_open() {
+        return None;
+    }
+    let value = match (generation, gate) {
+        (Some(n), _) => tr_args("status.schema.generation", &[("generation", &n.to_string())]),
+        (None, SchemaGate::Unresolved) => tr("status.schema.checking"),
+        (None, SchemaGate::Failed | SchemaGate::ResetRequired) => tr("status.schema.unavailable"),
+        (None, _) => tr("status.schema.unknown"),
+    };
+    Some(Field {
+        id: "status-schema",
+        label: tr("status.label.schema"),
+        value,
+        color: (!gate.is_open()).then(|| cx.theme().warning),
+        attention: !gate.is_open(),
+    })
 }
 
 /// The account switcher: the rendered account, the "needs me" count of the

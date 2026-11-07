@@ -146,7 +146,8 @@ impl Task {
             }
             // Connection recovery must not turn a pre-acceptance wait into an
             // ambiguous transport failure. Expiry above runs in every state.
-            if self.link != Link::Live {
+            // Nothing is sent while the schema gate is closed.
+            if self.link != Link::Live || !self.gate.is_open() {
                 continue;
             }
             let Some(send) = self.sends.get_mut(&id) else { continue };

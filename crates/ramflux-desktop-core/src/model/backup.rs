@@ -357,6 +357,9 @@ pub enum BackupFailure {
     /// Restore: the archive's identity root differs from the account's here;
     /// a root is never replaced.
     RootConflict,
+    /// The archive was made by an older development build (another schema
+    /// generation) and cannot be imported. Nothing was changed or removed.
+    SchemaResetRequired,
     /// Another code (kept as the daemon wrote it).
     Other(String),
 }

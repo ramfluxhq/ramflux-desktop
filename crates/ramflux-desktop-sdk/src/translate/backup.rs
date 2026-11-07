@@ -61,7 +61,7 @@ pub const RESTORED_TOPIC: &str = "account.restored";
 
 /// The typed error codes of a job and the reasons a job request is refused
 /// with (`reason_code`), each with its locale key.
-pub const ERROR_KEYS: [(&str, &str); 17] = [
+pub const ERROR_KEYS: [(&str, &str); 18] = [
     ("wrong_passphrase", "backend.backup.wrong_passphrase"),
     ("tampered", "backend.backup.tampered"),
     ("truncated", "backend.backup.truncated"),
@@ -75,6 +75,7 @@ pub const ERROR_KEYS: [(&str, &str); 17] = [
     ("attachments_unavailable", "backend.backup.attachments_unavailable"),
     ("identity_rollback", "backend.backup.identity_rollback"),
     ("root_conflict", "backend.backup.root_conflict"),
+    ("schema_reset_required", "backend.backup.schema_reset_required"),
     ("busy", "backend.backup.busy"),
     ("account_locked", "backend.backup.account_locked"),
     ("unknown_job", "backend.backup.unknown_job"),
@@ -185,6 +186,7 @@ pub fn failure(error: &Value, checks: Option<AttachmentCheck>) -> BackupFailure 
         },
         "identity_rollback" => BackupFailure::IdentityRollback,
         "root_conflict" => BackupFailure::RootConflict,
+        "schema_reset_required" => BackupFailure::SchemaResetRequired,
         other => BackupFailure::Other(other.to_owned()),
     }
 }
@@ -433,6 +435,7 @@ mod tests {
             ("interrupted", BackupFailure::Interrupted),
             ("identity_rollback", BackupFailure::IdentityRollback),
             ("root_conflict", BackupFailure::RootConflict),
+            ("schema_reset_required", BackupFailure::SchemaResetRequired),
         ];
         for (code, expected) in typed {
             let mut row = base("restore", "failed");

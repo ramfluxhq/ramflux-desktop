@@ -449,6 +449,7 @@ impl Translator {
     fn translate(&mut self, fetch: &Fetch, value: &Value, now: Timestamp) -> Translated {
         match fetch {
             Fetch::DaemonStatus => Translated::events(self.daemon_status(value)),
+            Fetch::SchemaStatus(_) => Translated::default(),
             Fetch::NodeList => Translated::events(self.node_list(value)),
             Fetch::AccountList => self.account_list(value),
             Fetch::AccountStatus(id) => Translated::events(self.account_status(id, value)),
@@ -507,6 +508,21 @@ impl Translator {
             Paged::Approvals => Translated::events(self.approval_list(rows, now)),
             Paged::McpServers => Translated::events(self.mcp_servers(rows)),
         }
+    }
+
+    /// The message gate closed on this account: everything remembered of
+    /// message content is dropped (it is read again once the gate opens).
+    pub fn drop_message_state(&mut self) {
+        self.plaintext.clear();
+        self.media_moments.clear();
+        self.media_refused.clear();
+    }
+
+    /// How many message plaintexts are cached (tests only).
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn cached_plaintext(&self) -> usize {
+        self.plaintext.len()
     }
 
     /// This scope's account was found locked: report it and forget what was

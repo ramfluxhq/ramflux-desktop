@@ -188,6 +188,7 @@ impl Workspace {
                     }
                     if changes.touches_status() {
                         this.sync_composer(cx);
+                        cx.notify();
                     }
                 }
             }),
@@ -502,12 +503,16 @@ impl Workspace {
                     crate::i18n::unsupported(store, &methods::in_context(method, kind))
                 })
             };
+            let gate_reason = schema_gate::active(self.store.read(cx))
+                .and_then(|(_, gate)| schema_gate::composer_reason(gate));
             composer::Unavailable {
-                message: if draft.is_open() {
-                    draft.blocked(store)
-                } else {
-                    in_context(methods::SEND_MESSAGE)
-                },
+                message: gate_reason.or_else(|| {
+                    if draft.is_open() {
+                        draft.blocked(store)
+                    } else {
+                        in_context(methods::SEND_MESSAGE)
+                    }
+                }),
                 task: crate::i18n::unsupported(store, methods::TASK_START),
                 attach: in_context(methods::ATTACH_OBJECT)
                     .or_else(|| crate::i18n::unsupported(store, methods::ATTACH_OBJECT)),
@@ -723,6 +728,13 @@ impl Workspace {
 impl Render for Workspace {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.weak_entity();
+        let gate = schema_gate::active(self.store.read(cx));
+        let blocking =
+            gate.as_ref().filter(|(_, gate)| gate.blocks_view()).map(|(account, gate)| {
+                let handle = self.store.read(cx);
+                let other = handle.accounts().find(|id| *id != account).cloned();
+                schema_gate::blocking(*gate, other, self.store.downgrade(), cx)
+            });
         h_flex()
             .id("workspace")
             .track_focus(&self.focus_handle)
@@ -737,9 +749,13 @@ impl Render for Workspace {
                     .flex_1()
                     .min_w_0()
                     .h_full()
+                    .children(gate.and_then(|(_, gate)| schema_gate::banner(gate)))
                     .children(self.secure_sessions_banner(cx))
                     .child(self.call_bar.clone())
-                    .child(gpui_kit::div().flex_1().min_h_0().child(self.dock_area.clone()))
+                    .child(gpui_kit::div().flex_1().min_h_0().child(match blocking {
+                        Some(screen) => screen,
+                        None => self.dock_area.clone().into_any_element(),
+                    }))
                     .child(
                         gpui_kit::div()
                             .absolute()
@@ -755,3 +771,4 @@ impl Render for Workspace {
 }
 
 mod networking_header;
+mod schema_gate;

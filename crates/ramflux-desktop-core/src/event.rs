@@ -283,6 +283,16 @@ pub enum DomainEvent {
         /// Typed terminal failure.
         code: crate::FailureCode,
     },
+    /// Whether this account's message traffic may flow (S10c D1/D7), and the
+    /// schema generation the daemon reported, when it did.
+    SchemaGateChanged {
+        /// The account.
+        account_id: AccountId,
+        /// The verdict.
+        gate: crate::SchemaGate,
+        /// The generation the daemon reported.
+        generation: Option<i64>,
+    },
     /// The source answered these collections in full (each may be empty).
     ListingsLoaded(Vec<Listing>),
     /// This account's contact card, as the backend exported it.

@@ -53,6 +53,9 @@ impl Paged {
 pub enum Fetch {
     /// `daemon.status`.
     DaemonStatus,
+    /// `daemon.status` read for the schema gate of one connection epoch: the
+    /// answer is never translated, and an answer of another epoch is ignored.
+    SchemaStatus(u64),
     /// `node.list`.
     NodeList,
     /// `account.list`.
@@ -117,7 +120,9 @@ impl Fetch {
     pub fn request(&self, account: Option<&str>) -> BusRequest {
         let empty = json!({});
         match self {
-            Self::DaemonStatus => BusRequest::new(None, "daemon", "daemon.status", empty),
+            Self::DaemonStatus | Self::SchemaStatus(_) => {
+                BusRequest::new(None, "daemon", "daemon.status", empty)
+            }
             Self::NodeList => BusRequest::new(None, "node", "node.list", empty),
             Self::AccountList => BusRequest::new(None, "account", "account.list", empty),
             Self::AccountStatus(id) => {
