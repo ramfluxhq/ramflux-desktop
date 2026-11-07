@@ -64,6 +64,9 @@ pub(crate) enum ScopeCommand {
     Focus(Option<ContextId>),
     /// A view needs these messages' bodies again.
     Bodies(Vec<MomentId>),
+    /// An object fetch failed, through the media test seam.
+    #[cfg(feature = "test-support")]
+    MediaFailed(String, crate::bus::BusError),
     /// Typed v1 updates, through the projection test seam.
     #[cfg(feature = "test-support")]
     Generated(Vec<ramflux_protocol::message::MessageUpdate>),
@@ -238,6 +241,7 @@ pub(super) fn build(
     let start = Instant::now();
     let pins = PinStore::new(config.settings_path.clone());
     let mut translator = Translator::new(scope.clone(), socket.clone());
+    translator.set_inline_thumbnails(config.inline_thumbnails);
     if let Some(recorded) = scope.account().and_then(|account| pins.load(account)) {
         translator.set_pins(recorded);
     }
@@ -1061,6 +1065,15 @@ impl Task {
             ScopeCommand::Bodies(moments) => {
                 let reads = self.translator.request_bodies(&moments);
                 self.spawn_fetches(reads);
+            }
+            #[cfg(feature = "test-support")]
+            ScopeCommand::MediaFailed(object_id, failure) => {
+                let translated = crate::translate::v1::candidate::media_failed(
+                    &mut self.translator,
+                    &object_id,
+                    &failure,
+                );
+                self.emit(translated.events);
             }
             #[cfg(feature = "test-support")]
             ScopeCommand::Generated(updates) => {

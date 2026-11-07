@@ -9,11 +9,13 @@
 //! [`candidate`] (feature `test-support`) reaches it until the live decode
 //! path lands.
 //!
+//! - `media`: media rows, the thumbnail policy and object refusals.
 //! - `message`: a message and its scalar-offset spans, reply and forward.
 //! - `service`: group service events (membership, rename, key change).
 
 #[cfg(feature = "test-support")]
 pub mod candidate;
+pub mod media;
 mod message;
 mod service;
 

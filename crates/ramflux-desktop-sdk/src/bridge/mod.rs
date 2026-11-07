@@ -86,6 +86,9 @@ pub(crate) enum Command {
     /// Typed v1 updates for `scope`, through the projection test seam.
     #[cfg(feature = "test-support")]
     Generated { scope: Scope, updates: Vec<ramflux_protocol::message::MessageUpdate> },
+    /// An object fetch failed in `scope`, through the media test seam.
+    #[cfg(feature = "test-support")]
+    MediaFailed { scope: Scope, object_id: String, failure: BusError },
     /// Stop serving `scope`.
     Detach { scope: Scope },
     /// Ask the daemon to stop (`daemon.stop`) and report its answer.
@@ -228,6 +231,12 @@ async fn serve(
             Command::Generated { scope, updates } => {
                 if let Some(tx) = scopes.get(&scope) {
                     let _ = tx.send(scope::ScopeCommand::Generated(updates));
+                }
+            }
+            #[cfg(feature = "test-support")]
+            Command::MediaFailed { scope, object_id, failure } => {
+                if let Some(tx) = scopes.get(&scope) {
+                    let _ = tx.send(scope::ScopeCommand::MediaFailed(object_id, failure));
                 }
             }
             Command::Detach { scope } => {

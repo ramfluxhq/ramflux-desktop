@@ -59,6 +59,10 @@ pub struct SdkConfig {
     /// with a daemon without it, or off, they are declared unsupported
     /// (`backend.gap.full_backup`).
     pub backup_api: bool,
+    /// Whether an inline media thumbnail may be shown (the local opt-in; off
+    /// by default). Off, a message's media always shows as a file row and no
+    /// thumbnail is checked or decoded.
+    pub inline_thumbnails: bool,
 }
 
 impl SdkConfig {
@@ -77,6 +81,7 @@ impl SdkConfig {
             local_network_retry_ms: LOCAL_NETWORK_RETRY_MS,
             call_api: true,
             backup_api: true,
+            inline_thumbnails: false,
         }
     }
 }

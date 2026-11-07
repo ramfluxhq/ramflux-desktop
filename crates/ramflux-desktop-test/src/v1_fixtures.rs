@@ -4,8 +4,9 @@
 //! Message schema v1 updates for tests, built only with the generated types.
 
 use ramflux_protocol::message::{
-    Content, Entity, EntityKind, EventIdentity, Forward, Message, MessageRef, MessageUpdate,
-    QualifiedDevice, Service, ServiceAction, content::Value, message_update::State,
+    Content, Entity, EntityKind, EventIdentity, Forward, MediaRef, Message, MessageRef,
+    MessageUpdate, QualifiedDevice, Service, ServiceAction, Thumbnail, content::Value,
+    message_update::State,
 };
 
 /// The account the fixtures belong to.
@@ -144,5 +145,42 @@ fn content_update(identity: EventIdentity, value: Value) -> MessageUpdate {
         journal_sequence: identity.device_sequence,
         identity: Some(identity),
         state: Some(State::Content(Content { value: Some(value) })),
+    }
+}
+
+/// A thumbnail of `mime`, `width` by `height`, whose bytes start with the
+/// codec's signature and are `len` bytes long.
+#[must_use]
+pub fn thumbnail(mime: &str, width: u32, height: u32, len: usize) -> Thumbnail {
+    let signature: &[u8] = match mime {
+        "image/png" => &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+        "image/jpeg" => &[0xff, 0xd8, 0xff],
+        "image/webp" => b"RIFF\0\0\0\0WEBP",
+        _ => &[],
+    };
+    let mut bytes = signature.to_vec();
+    bytes.resize(len.max(signature.len()), 0);
+    bytes.truncate(len.max(signature.len()));
+    Thumbnail { mime_type: mime.to_owned(), width, height, encoded_image: bytes }
+}
+
+/// A media reference to `object_id` with an optional inline thumbnail.
+#[must_use]
+pub fn media_ref(
+    object_id: &str,
+    name: &str,
+    mime: &str,
+    size: u64,
+    thumbnail: Option<Thumbnail>,
+) -> MediaRef {
+    MediaRef {
+        object_id: object_id.to_owned(),
+        manifest_digest: Vec::new(),
+        mime_type: mime.to_owned(),
+        size,
+        key_slots: Vec::new(),
+        file_name: Some(name.to_owned()),
+        inline_thumbnail: thumbnail,
+        large_manifest: None,
     }
 }

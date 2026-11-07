@@ -54,6 +54,22 @@ pub fn push_generated(
     )
 }
 
+/// Reports that fetching `object_id` failed with `failure` in the fake
+/// account's scope of the bridge serving `socket`, through the media test
+/// seam. Returns whether the bridge runs.
+pub fn push_media_failure(
+    socket: &std::path::Path,
+    object_id: &str,
+    failure: ramflux_desktop_sdk::bus::BusError,
+) -> bool {
+    ramflux_desktop_sdk::test_support::push_media_failure(
+        socket,
+        &ramflux_desktop_core::AccountId::new(ramflux_desktop_test::v1_fixtures::ACCOUNT),
+        object_id,
+        failure,
+    )
+}
+
 /// The SDK's recorded and typed frames.
 pub fn frames() -> BTreeMap<String, Value> {
     let text = include_str!("../../../ramflux-desktop-sdk/tests/fixtures/rfd_frames.json");

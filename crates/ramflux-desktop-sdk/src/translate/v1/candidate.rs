@@ -14,3 +14,13 @@ pub fn apply(translator: &mut Translator, updates: &[MessageUpdate]) -> Translat
     let events = updates.iter().flat_map(|update| project(translator, update)).collect();
     Translated::events(events)
 }
+
+/// An object fetch failed: the media rows of `object_id` follow the typed
+/// refusal (revoked) or the generic failure (unavailable).
+pub fn media_failed(
+    translator: &mut Translator,
+    object_id: &str,
+    failure: &crate::bus::BusError,
+) -> Translated {
+    Translated::events(super::media::refuse(translator, object_id, failure))
+}

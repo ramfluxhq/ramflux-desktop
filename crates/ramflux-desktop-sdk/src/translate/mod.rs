@@ -230,6 +230,14 @@ pub struct Translator {
     groups_listed: bool,
     /// AI participants: custodians known, and the links told to the store.
     agents: agents::Agents,
+    /// The local opt-in for inline media thumbnails.
+    inline_thumbnails: bool,
+    /// v1 messages with media as last reported, by moment: what a later
+    /// object refusal changes.
+    media_moments: BTreeMap<MomentId, ramflux_desktop_core::Moment>,
+    /// Thumbnails decoded (header-checked) so far.
+    #[cfg(feature = "test-support")]
+    thumbnail_decodes: usize,
 }
 
 impl Translator {
@@ -289,6 +297,10 @@ impl Translator {
             new_name_changes: Vec::new(),
             groups_listed: false,
             agents: agents::Agents::default(),
+            inline_thumbnails: false,
+            media_moments: BTreeMap::new(),
+            #[cfg(feature = "test-support")]
+            thumbnail_decodes: 0,
             outgoing_requests: BTreeMap::new(),
             reported_jobs: BTreeMap::new(),
             lost_jobs: BTreeSet::new(),
@@ -298,6 +310,11 @@ impl Translator {
     /// The scope.
     pub fn scope(&self) -> &Scope {
         &self.scope
+    }
+
+    /// Sets the local opt-in for inline media thumbnails.
+    pub fn set_inline_thumbnails(&mut self, on: bool) {
+        self.inline_thumbnails = on;
     }
 
     /// Whether `device` is this account's own device.
