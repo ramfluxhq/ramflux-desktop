@@ -40,7 +40,7 @@ pub(super) struct SyncState {
     saved: Option<u64>,
     saved_at: Instant,
     /// Subscribe from the head and reload once the stream is open.
-    reload_on_open: bool,
+    pub(super) reload_on_open: bool,
     /// Failed attempts since the stream was last open.
     failures: u32,
     /// The running stream connection.
@@ -168,6 +168,7 @@ impl Task {
     }
 
     pub(super) fn on_streamed(&mut self, streamed: Streamed) {
+        self.observe_connection();
         match streamed {
             Streamed::Opened { head_seq, .. } => self.stream_opened(head_seq),
             Streamed::Event { seq, at, topic, body } => self.stream_event(seq, at, &topic, &body),
@@ -191,10 +192,10 @@ impl Task {
     }
 
     /// Reads everything again (after a gap in the stream).
+    /// Through the one recovery routine, so the prerequisite reads
+    /// (identities, devices) precede the messages here as everywhere.
     fn reload(&mut self) {
-        let mut reads = self.reads_for_snapshot();
-        reads.extend(self.translator.recovery_reads());
-        self.request_reads(reads);
+        self.recover_connection();
     }
 
     pub(super) fn networking_event(&mut self, body: &Value) {

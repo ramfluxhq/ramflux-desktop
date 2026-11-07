@@ -123,6 +123,10 @@ pub(super) struct Gate {
     queue: Vec<(Fetch, bool)>,
     /// Reads were dropped while blocked: read the messages again on open.
     dropped: bool,
+    /// The prerequisite reads (identities, devices, ...) of this epoch are
+    /// still in flight: message-class reads wait behind them, whichever
+    /// path asks for them.
+    prerequisites: bool,
 }
 
 impl Gate {
@@ -137,6 +141,7 @@ impl Gate {
             reset: false,
             queue: Vec::new(),
             dropped: false,
+            prerequisites: false,
         }
     }
 
@@ -177,7 +182,24 @@ impl Gate {
         self.reset = false;
         self.queue.clear();
         self.dropped = false;
+        self.prerequisites = false;
         self.epoch
+    }
+
+    /// Marks the epoch's prerequisite reads as in flight (or done).
+    pub(super) fn set_prerequisites(&mut self, pending: bool) {
+        self.prerequisites = pending;
+    }
+
+    /// Whether message-class reads still wait for the prerequisite reads.
+    #[cfg(test)]
+    pub(super) fn prerequisites_pending(&self) -> bool {
+        self.prerequisites
+    }
+
+    /// Whether a message-class read may be sent right now.
+    pub(super) fn pipeline_clear(&self) -> bool {
+        !self.enabled || (self.is_open() && !self.prerequisites)
     }
 
     /// A status read of `epoch` came back. An answer of another epoch is
@@ -248,11 +270,12 @@ impl Gate {
 
     /// Decides what happens to a read; a held read joins the queue.
     pub(super) fn admit(&mut self, fetch: &Fetch, snapshot: bool) -> Admit {
-        if !self.enabled || !is_message_read(fetch) || self.is_open() {
+        if !self.enabled || !is_message_read(fetch) || self.pipeline_clear() {
             return Admit::Run;
         }
         match self.verdict() {
-            SchemaGate::Unresolved | SchemaGate::Failed => {
+            // Open but behind the prerequisites: held like an unresolved one.
+            SchemaGate::Open | SchemaGate::Unresolved | SchemaGate::Failed => {
                 if self.queue.iter().any(|(held, _)| held == fetch) {
                     return Admit::Held;
                 }
