@@ -131,12 +131,9 @@ backend:
       en: "The group could not take this change, and nothing was changed."
       zh-CN: "群组无法接受此更改，未做任何更改。"
   service:
-    pinned:
-      en: "%{actor} pinned a message"
-      zh-CN: "%{actor} 置顶了一条消息"
-    unpinned:
-      en: "%{actor} unpinned a message"
-      zh-CN: "%{actor} 取消置顶了一条消息"
+    pin_changed:
+      en: "%{actor} changed the pinned message"
+      zh-CN: "%{actor} 更改了置顶消息"
   message:
     span_out_of_range:
       en: "This message uses formatting this app cannot show, so its text is not displayed."

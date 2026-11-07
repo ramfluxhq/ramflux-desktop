@@ -85,6 +85,6 @@ fn typed_renderer_unknown_unicode_delete_and_transient(cx: &mut gpui_kit::TestAp
     }
     assert!(sdk_fake::push_generated(&path, pin));
     wait(cx, "the pin row", |cx| with_store(cx, &shell, |s| s.moment(&moment_id(3)).is_some()));
-    wait(cx, "the pin row shown", |cx| has_label(cx, handle, "dev-ana pinned a message"));
+    wait(cx, "the pin row shown", |cx| has_label(cx, handle, "dev-ana changed the pinned message"));
     fake.shutdown();
 }

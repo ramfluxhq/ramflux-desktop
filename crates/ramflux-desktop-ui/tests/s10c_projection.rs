@@ -147,7 +147,7 @@ fn v1_message_service_projection_and_order() {
     assert!(stream[0].0.ends_with("01010101") && stream[3].0.ends_with("03030303"));
     let pinned = store.moment(&MomentId::new(stream[2].0.clone())).expect("pin row");
     let MomentKind::System(note) = &pinned.kind else { panic!("system row") };
-    assert_eq!(note.text, r#"backend.service.pinned {"actor":"dev-bo"}"#);
+    assert_eq!(note.text, r#"backend.service.pin_changed {"actor":"dev-bo"}"#);
 
     // The first message keeps its spans, reply and forward references.
     let shown = store.moment(&MomentId::new(stream[0].0.clone())).expect("first");
@@ -182,16 +182,16 @@ fn service_actions_project_to_their_rows() {
     let unknown = one(&unknown_service_update(identity(CONTEXT, &id_of(5), "dev-ana", 11, 5), 77));
     let info = refused(&unknown).unsupported.as_ref().expect("info");
     assert_eq!(info.reason, "unknown_service_action");
-    // No target message: an unpin, still a visible row.
-    let unpinned = one(&service_update(
+    // No target message: the same neutral row (pin versus unpin is not defined).
+    let untargeted = one(&service_update(
         identity(CONTEXT, &id_of(6), "dev-ana", 12, 6),
         ServiceAction::ServicePinChanged,
         &[],
         None,
     ));
-    let MomentKind::System(note) = &unpinned.kind else { panic!("system row") };
-    assert_eq!(note.text, r#"backend.service.unpinned {"actor":"dev-ana"}"#);
-    assert!(unpinned.order.is_some(), "the row is ordered by its clock");
+    let MomentKind::System(note) = &untargeted.kind else { panic!("system row") };
+    assert_eq!(note.text, r#"backend.service.pin_changed {"actor":"dev-ana"}"#);
+    assert!(untargeted.order.is_some(), "the row is ordered by its clock");
 }
 
 #[test]
