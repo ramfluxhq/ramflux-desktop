@@ -17,10 +17,20 @@ use crate::ids::{ContextId, ParticipantId, Timestamp};
 /// The longest a notice stays visible after it was received, in milliseconds.
 pub const TYPING_MAX_MS: i64 = 5_000;
 
+/// The longest a received notice is remembered to recognise a replay, in
+/// milliseconds: until the notice itself expires, but bounded so a far
+/// `expires_at` cannot silence a participant for long.
+pub const TYPING_REPLAY_MS: i64 = 60_000;
+
 /// Transient typing notices, keyed by conversation and participant.
 #[derive(Debug, Clone, Default)]
 pub struct TypingStore {
+    /// Visible notices and when they stop being shown.
     deadlines: BTreeMap<(ContextId, ParticipantId), Timestamp>,
+    /// Notices already received, until they expire themselves (bounded by
+    /// [`TYPING_REPLAY_MS`]): a replay after the display cap must not make
+    /// them visible again. Not a notice: it is never shown or counted.
+    seen: BTreeMap<(ContextId, ParticipantId), Timestamp>,
 }
 
 impl TypingStore {
@@ -32,7 +42,8 @@ impl TypingStore {
 
     /// Records an `active = true` notice received at `now` that expires at
     /// `expires_at`. A notice already expired on receipt is not stored, and
-    /// a duplicate of a live notice keeps its stored deadline.
+    /// a duplicate of a received notice (also one already hidden by the
+    /// display cap, until it expires itself) changes nothing.
     pub fn observe(
         &mut self,
         context: &ContextId,
@@ -41,26 +52,36 @@ impl TypingStore {
         expires_at: Timestamp,
     ) {
         self.expire(now);
+        let key = (context.clone(), participant.clone());
+        if self.seen.contains_key(&key) {
+            return;
+        }
         let deadline = expires_at.min(Timestamp(now.millis().saturating_add(TYPING_MAX_MS)));
         if deadline <= now {
             return;
         }
-        self.deadlines.entry((context.clone(), participant.clone())).or_insert(deadline);
+        let remembered = expires_at.min(Timestamp(now.millis().saturating_add(TYPING_REPLAY_MS)));
+        self.seen.insert(key.clone(), remembered);
+        self.deadlines.insert(key, deadline);
     }
 
     /// Clears one participant (an `active = false` notice).
     pub fn stop(&mut self, context: &ContextId, participant: &ParticipantId) {
-        self.deadlines.remove(&(context.clone(), participant.clone()));
+        let key = (context.clone(), participant.clone());
+        self.deadlines.remove(&key);
+        self.seen.remove(&key);
     }
 
     /// Drops every notice whose deadline has been reached.
     pub fn expire(&mut self, now: Timestamp) {
         self.deadlines.retain(|_, deadline| *deadline > now);
+        self.seen.retain(|_, expires_at| *expires_at > now);
     }
 
     /// Clears everything (reconnect, lock, account switch, gate change).
     pub fn clear(&mut self) {
         self.deadlines.clear();
+        self.seen.clear();
     }
 
     /// The participants typing in `context` at `now`, in participant order.
@@ -73,7 +94,7 @@ impl TypingStore {
             .collect()
     }
 
-    /// Stored notices, expired ones included until [`TypingStore::expire`].
+    /// Visible notices, expired ones included until [`TypingStore::expire`].
     #[must_use]
     pub fn len(&self) -> usize {
         self.deadlines.len()

@@ -127,3 +127,48 @@ fn typing_stop_and_clear_leave_nothing() {
     typing.clear();
     assert!(typing.is_empty(), "cleared, not only hidden");
 }
+
+#[test]
+fn typing_replay_after_the_display_cap_stays_hidden() {
+    let mut typing = TypingStore::new();
+    typing.observe(&ctx(), &who(), Timestamp(1_000), Timestamp(7_000));
+    assert!(typing.typing(&ctx(), Timestamp(6_000)).is_empty(), "hidden at receipt + 5 s");
+    // The identical notice replayed at the cap, before it expired itself.
+    typing.observe(&ctx(), &who(), Timestamp(6_000), Timestamp(7_000));
+    assert!(
+        typing.typing(&ctx(), Timestamp(6_000)).is_empty(),
+        "duplicate must not resurrect capped notice"
+    );
+    assert!(typing.is_empty(), "no visible entry");
+    // Once the notice expired itself a new one is shown again.
+    typing.observe(&ctx(), &who(), Timestamp(7_000), Timestamp(8_000));
+    assert_eq!(typing.typing(&ctx(), Timestamp(7_000)).len(), 1);
+}
+
+#[test]
+fn typing_stop_lets_a_new_notice_show() {
+    let mut typing = TypingStore::new();
+    typing.observe(&ctx(), &who(), Timestamp(1_000), Timestamp(3_000));
+    typing.stop(&ctx(), &who());
+    typing.observe(&ctx(), &who(), Timestamp(1_500), Timestamp(3_000));
+    assert_eq!(typing.typing(&ctx(), Timestamp(1_500)).len(), 1, "stop forgets the old notice");
+}
+
+#[test]
+fn moment_bytes_match_the_parent_writer_and_keyed_bytes_round_trip() {
+    let plain = moment("m-1", "c-1", 5, message("hi"), Lifecycle::Done);
+    let bytes = serde_json::to_string(&plain).expect("encode");
+    assert_eq!(bytes, PARENT_GOLDEN, "an unkeyed moment encodes exactly as before the field");
+    let mut keyed = plain;
+    keyed.order = Some(key(7, "dev-1", 3));
+    let keyed_bytes = serde_json::to_string(&keyed).expect("encode");
+    let back: Moment = serde_json::from_str(&keyed_bytes).expect("decode");
+    assert_eq!(
+        serde_json::to_string(&back).expect("encode again"),
+        keyed_bytes,
+        "decode then encode keeps the bytes"
+    );
+}
+
+/// A plain moment as the writer before `Moment.order` produced it.
+const PARENT_GOLDEN: &str = r#"{"id":"m-1","context_id":"c-1","origin":"p-ada","at":5,"kind":{"Message":{"text":"hi","receipt":"Sent","tombstone":false,"attachment":null,"franking":null,"reply_to":null,"forward":null,"revision":0,"reactions":[],"spans":[],"media":[],"delete_scope":null}},"lifecycle":"Done"}"#;
