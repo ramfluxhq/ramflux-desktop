@@ -6,7 +6,7 @@
 
 use ramflux_desktop_core::{
     DomainEvent, GovernanceAction, GovernancePayload, GroupRenamePayload, MomentKind,
-    SafetyChangeKind, SafetyChangePayload,
+    SafetyChangeKind, SafetyChangePayload, SystemLevel, SystemPayload,
 };
 use ramflux_protocol::message::{EventIdentity, Service, ServiceAction};
 
@@ -47,8 +47,16 @@ pub(super) fn project(
                 })
             })
             .collect(),
-        // A pin is conversation state, not a row of the stream.
-        Ok(ServiceAction::ServicePinChanged) => Vec::new(),
+        // The schema carries no pin/unpin flag: a change that names its
+        // target message is a pin, one that names none is an unpin.
+        Ok(ServiceAction::ServicePinChanged) => {
+            let key = if service.target.is_some() { "pinned" } else { "unpinned" };
+            let args = serde_json::json!({ "actor": translator.display_of(&origin) });
+            vec![MomentKind::System(SystemPayload {
+                level: SystemLevel::Info,
+                text: format!("backend.service.{key} {args}"),
+            })]
+        }
         Ok(ServiceAction::ServiceUnspecified) | Err(_) => {
             vec![unsupported("unknown_service_action", "unknown_service_action")]
         }

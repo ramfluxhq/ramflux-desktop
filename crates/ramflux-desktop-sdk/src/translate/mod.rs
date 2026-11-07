@@ -305,6 +305,16 @@ impl Translator {
         self.self_device.as_deref() == Some(device)
     }
 
+    /// The name to show for a participant: its reported display name, else
+    /// its id.
+    pub(crate) fn display_of(&self, id: &ParticipantId) -> String {
+        self.reported_people
+            .get(id)
+            .map(|p| p.display.clone())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| id.to_string())
+    }
+
     /// The title of a known conversation.
     pub(crate) fn context_title(&self, context: &ContextId) -> Option<String> {
         self.contexts.get(context).map(|c| c.title.clone())
