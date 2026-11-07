@@ -5,6 +5,10 @@
 //! carries only kind, layer, reason and stored length; a supported reparse
 //! of the same message replaces it exactly once; a tombstone always wins.
 
+mod common;
+mod sdk_fake;
+
+use common::*;
 use ramflux_desktop_core::{
     AccountId, DomainEvent, MessagePayload, MomentId, MomentKind, UnsupportedInfo,
 };
@@ -12,8 +16,8 @@ use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::translate::Translator;
 use ramflux_desktop_sdk::translate::v1::candidate::apply;
 use ramflux_desktop_test::v1_fixtures::{
-    delete_update, entity, identity, message_ref, message_update, text_message, unknown_entity,
-    unsupported_update, with_journal,
+    delete_update, edit_update, entity, identity, message_ref, message_update, text_message,
+    unknown_entity, unsupported_update, with_journal,
 };
 use ramflux_protocol::message::{DeleteScope, EntityKind, MessageUpdate};
 
@@ -159,4 +163,104 @@ fn unknown_entity_kind_placeholder_is_replaced_once_by_a_supported_reparse() {
     );
     assert_eq!(message(&run(&mut translator, supported.clone())).text, "see here");
     assert!(run(&mut translator, supported).is_empty(), "replaced once");
+}
+
+#[test]
+fn reparse_with_the_same_sequence_as_the_placeholder_replaces_it() {
+    let mut translator = translator();
+    run(&mut translator, placeholder(10));
+    assert_eq!(message(&run(&mut translator, reparse(10))).text, TEXT, "equal sequence replaces");
+}
+
+#[test]
+fn a_bad_span_placeholder_is_replaced_by_a_supported_reparse() {
+    let mut translator = translator();
+    // Three scalars of text and a span of four: the whole message is refused.
+    let bad = with_journal(
+        message_update(id(), text_message("abc", vec![entity(0, 4, EntityKind::EntityBold)])),
+        10,
+    );
+    assert_eq!(info(&run(&mut translator, bad)).reason, "span_out_of_range");
+    let good = with_journal(
+        message_update(id(), text_message("abc", vec![entity(0, 3, EntityKind::EntityBold)])),
+        11,
+    );
+    let shown = message(&run(&mut translator, good));
+    assert_eq!((shown.text.as_str(), shown.spans.len()), ("abc", 1));
+}
+
+fn local_delete() -> MessageUpdate {
+    delete_update(
+        identity(CTX, &[9; 4], "dev-me", 20, 2),
+        vec![message_ref(CTX, &[1; 4])],
+        DeleteScope::Local,
+    )
+}
+
+#[test]
+fn local_delete_tombstones_an_own_placeholder() {
+    let mut translator = translator();
+    translator.set_own_device("dev-me");
+    run(&mut translator, unsupported_update(identity(CTX, &[1; 4], "dev-me", 10, 1), 10, 1, 99, 5));
+    let erased = message(&run(&mut translator, local_delete()));
+    assert!(erased.tombstone && erased.text.is_empty(), "the own placeholder is erased");
+    assert!(run(&mut translator, reparse(11)).is_empty(), "and stays erased");
+}
+
+#[test]
+fn local_delete_leaves_a_peer_placeholder() {
+    let mut translator = translator();
+    translator.set_own_device("dev-me");
+    run(&mut translator, placeholder(10));
+    assert!(run(&mut translator, local_delete()).is_empty(), "no tombstone for a peer's row");
+    assert_eq!(message(&run(&mut translator, reparse(11))).text, TEXT, "the reparse still shows");
+}
+
+#[test]
+fn a_requested_reload_publishes_the_latest_payload_and_a_replay_does_not() {
+    let mut translator = translator();
+    run(&mut translator, placeholder(10));
+    run(&mut translator, reparse(11));
+    let edit = edit_update(
+        identity(CTX, &[8; 4], "dev-ana", 30, 3),
+        message_ref(CTX, &[1; 4]),
+        2,
+        text_message("edited words", Vec::new()),
+    );
+    run(&mut translator, edit);
+    assert!(run(&mut translator, reparse(11)).is_empty(), "an ordinary replay changes nothing");
+    translator.request_reload(&moment_id());
+    let reloaded = message(&run(&mut translator, reparse(11)));
+    assert_eq!(
+        (reloaded.text.as_str(), reloaded.revision),
+        ("edited words", 2),
+        "the latest payload"
+    );
+    assert!(run(&mut translator, reparse(11)).is_empty(), "one reload, one publication");
+}
+
+#[gpui_kit::test]
+fn the_placeholder_is_shown_in_chinese(cx: &mut gpui_kit::TestAppContext) {
+    let _locale = locale_guard();
+    let (fake, _state, path) = sdk_fake::start("s10c-unsupported-zh");
+    let (handle, shell) = open_with(cx, sdk_fake::options(&path));
+    cx.update(|cx| ramflux_desktop_ui::i18n::select_locale("zh-CN", cx));
+    wait(cx, "workspace", |cx| page(cx, &shell) == ramflux_desktop_ui::route::Page::Workspace);
+    wait(cx, "the conversation", |cx| {
+        with_store(cx, &shell, |s| {
+            s.context(&ramflux_desktop_core::ContextId::new("dm-ana")).is_some()
+        })
+    });
+    show_context(cx, handle, &shell, "dm-ana");
+    let newer = unsupported_update(identity("dm-ana", &[6; 4], "dev-ana", 600, 6), 6, 1, 99, 412);
+    assert!(sdk_fake::push_generated(&path, newer));
+    // The Chinese copy comes from the locale table (sources hold no CJK text).
+    let zh = ramflux_desktop_ui::i18n::backend_text("backend.message.unsupported_kind").to_string();
+    assert_ne!(
+        zh, "This message is of a newer type this app version cannot show yet.",
+        "the locale is Chinese, not English"
+    );
+    wait(cx, "the placeholder in Chinese", |cx| has_label(cx, handle, &zh));
+    cx.update(|cx| ramflux_desktop_ui::i18n::select_locale("en", cx));
+    fake.shutdown();
 }

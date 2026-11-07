@@ -8,8 +8,8 @@
 //! partial text, no link, no action (design §3, lines 2944-2954).
 
 use ramflux_desktop_core::{
-    ContextId, DomainEvent, FallbackPayload, ForwardRef, MessagePayload, MomentId, MomentKind,
-    ParticipantId, Receipt, ReplyRef, SpanKind, TextSpan, UnsupportedInfo,
+    ContextId, DomainEvent, FallbackPayload, ForwardRef, MessagePayload, Moment, MomentId,
+    MomentKind, ParticipantId, Receipt, ReplyRef, SpanKind, TextSpan, UnsupportedInfo,
 };
 use ramflux_protocol::message::{
     Entity, EntityKind, EventIdentity, Forward, Message, MessageRef, UnsupportedView,
@@ -39,9 +39,8 @@ pub(super) fn project(
     if translator.v1.tombstoned.contains(&id) {
         return None;
     }
-    // A stale journal entry, or content for a message already shown (the
-    // reparse of a placeholder replaces it once), changes nothing.
-    if !fresh(translator, &id, journal) || shown(translator, &id) {
+    // A stale journal entry changes nothing.
+    if !fresh(translator, &id, journal) {
         return None;
     }
     let device = identity.author.as_ref().map_or("", |a| a.device_id.as_str());
@@ -50,11 +49,16 @@ pub(super) fn project(
     if translator.v1.pending_local.remove(&id) && translator.is_own_device(device) {
         return mutation::tombstone_pending(translator, identity, &id);
     }
-    // The same content again (a replay, or a body reload) re-reports the
-    // message as it is now: the edit, receipt and reactions applied since
-    // are not rolled back. Once the message left the retained set, content
-    // older than an applied edit is kept silently as the base of the replayed edit.
-    if let Some(current) = translator.v1.message(&id).cloned() {
+    // The same content again (a replay, or a requested body reload)
+    // re-reports the message as it is now, so a reload is honoured and the
+    // edit, receipt and reactions applied since are not rolled back; an
+    // ordinary replay changes nothing. A placeholder is not a message: the
+    // reparse falls through and replaces it once. Content older than an
+    // applied edit (after a lock, or once the message left the retained set)
+    // is a pending base: `emit` withholds it until the edit is applied again.
+    if let Some(current) = translator.v1.message(&id).cloned()
+        && matches!(current.kind, MomentKind::Message(_))
+    {
         return emit(translator, current);
     }
     let kind = match spans(&message.text, &message.entities) {
@@ -86,19 +90,24 @@ pub(super) fn project(
             payload.receipt = receipt;
         }
     }
+    retain(translator, &moment, device);
+    emit(translator, moment)
+}
+
+/// Remembers a reported message or placeholder with its author, so later
+/// mutations (a local delete, a receipt) can tell whose row it is.
+fn retain(translator: &mut Translator, moment: &Moment, device: &str) {
     if let MomentKind::Message(payload) = &moment.kind {
         translator.v1.cache_text(&moment.id, &payload.text);
-        translator.v1.put(moment.clone(), Some(device.to_owned()));
     }
-    emit(translator, moment)
+    translator.v1.put(moment.clone(), Some(device.to_owned()));
 }
 
 /// Whether `id` is already shown as a live message (not a tombstone).
 fn shown(translator: &Translator, id: &MomentId) -> bool {
     translator
         .v1
-        .messages
-        .get(id)
+        .message(id)
         .is_some_and(|m| matches!(&m.kind, MomentKind::Message(p) if !p.tombstone))
 }
 
@@ -141,7 +150,9 @@ pub(super) fn unsupported_view(
     });
     let device = identity.author.as_ref().map_or("", |a| a.device_id.as_str());
     let origin = translator.origin(device);
-    translator.report_moment(moment_of(identity, id, origin.as_str(), kind))
+    let moment = moment_of(identity, id, origin.as_str(), kind);
+    retain(translator, &moment, device);
+    emit(translator, moment)
 }
 
 /// The spans of `text`, or why the whole message is refused.
