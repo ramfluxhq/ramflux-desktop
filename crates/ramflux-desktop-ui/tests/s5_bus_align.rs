@@ -401,16 +401,34 @@ fn without_time_named(
 /// consuming poll and a separate pending assertion. `late(n)` runs just
 /// before poll `n` (test hook for the interleaving).
 fn register_waiter<F: std::future::Future<Output = ()>>(
-    mut fresh: impl FnMut() -> F,
+    fresh: impl FnMut() -> F,
     context: &mut std::task::Context<'_>,
     late: &mut dyn FnMut(u32),
 ) -> std::pin::Pin<Box<F>> {
+    register_waiter_within(fresh, context, late, std::time::Duration::from_secs(10))
+}
+
+/// `register_waiter` with a diagnostic deadline: a source that is ready on
+/// every poll fails the test in bounded time instead of spinning outside the
+/// hang guards. Pending stays the only success condition.
+fn register_waiter_within<F: std::future::Future<Output = ()>>(
+    mut fresh: impl FnMut() -> F,
+    context: &mut std::task::Context<'_>,
+    late: &mut dyn FnMut(u32),
+    limit: std::time::Duration,
+) -> std::pin::Pin<Box<F>> {
+    let deadline = std::time::Instant::now() + limit;
     for attempt in 0.. {
         let mut waiter = Box::pin(fresh());
         late(attempt);
         if waiter.as_mut().poll(context).is_pending() {
             return waiter;
         }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "waiter did not reach pending: the source was ready on all {} polls",
+            attempt + 1
+        );
     }
     unreachable!("the loop returns on the first pending poll")
 }
@@ -446,6 +464,31 @@ fn waiter_registration_survives_late_notification() {
     assert!(pending.as_mut().poll(&mut context).is_pending());
     wake.notify();
     assert_eq!(counter.0.load(Ordering::SeqCst), 1, "the registered waiter is woken once");
+}
+
+/// A source that is ready on every poll cannot spin the registration forever:
+/// it fails with a diagnostic once the deadline passes.
+#[test]
+#[should_panic(expected = "waiter did not reach pending")]
+fn registration_fails_in_bounded_time_on_an_always_ready_source() {
+    use ramflux_desktop_core::source::SourceWake;
+    let wake = SourceWake::default();
+    let counter = Arc::new(CountedWake(std::sync::atomic::AtomicUsize::new(0)));
+    let waker = std::task::Waker::from(counter);
+    let mut context = std::task::Context::from_waker(&waker);
+    let started = std::time::Instant::now();
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        register_waiter_within(
+            || wake.notified(),
+            &mut context,
+            &mut |_| wake.notify(), // a notification before every poll
+            std::time::Duration::from_millis(200),
+        )
+    }));
+    assert!(started.elapsed() < std::time::Duration::from_secs(5), "failure is bounded");
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
 }
 
 /// The previous shape (single reset, then assert pending) loses to the same
@@ -520,16 +563,13 @@ fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
     });
     background.drain(Timestamp(0));
     // Late attach notifications may still arrive from the hub threads.
-    let mut pending = register_waiter(|| wake.notified(), &mut context, &mut |_| {});
+    drop(register_waiter(|| wake.notified(), &mut context, &mut |_| {}));
     background.request_call_media(&CallId::new("background-call"));
     without_time(cx, |_| media_latch.entered.load(Ordering::SeqCst));
     // Attach may have consumed the earlier waiter. Re-register under the
     // reply latch; never clear the counter after registering this waiter.
     counter.0.store(0, Ordering::SeqCst);
-    pending.set(wake.notified());
-    while pending.as_mut().poll(&mut context).is_ready() {
-        pending.set(wake.notified());
-    }
+    let mut pending = register_waiter(|| wake.notified(), &mut context, &mut |_| {});
     media_latch.release();
     let mut media_answer = None;
     without_time_named(cx, "latched media completion", |_| {
