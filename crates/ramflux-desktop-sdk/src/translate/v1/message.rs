@@ -8,10 +8,12 @@
 //! partial text, no link, no action (design §3, lines 2944-2954).
 
 use ramflux_desktop_core::{
-    ContextId, DomainEvent, ForwardRef, MessagePayload, MomentKind, ParticipantId, Receipt,
-    ReplyRef, SpanKind, TextSpan,
+    ContextId, DomainEvent, FallbackPayload, ForwardRef, MessagePayload, MomentId, MomentKind,
+    ParticipantId, Receipt, ReplyRef, SpanKind, TextSpan, UnsupportedInfo,
 };
-use ramflux_protocol::message::{Entity, EntityKind, EventIdentity, Forward, Message, MessageRef};
+use ramflux_protocol::message::{
+    Entity, EntityKind, EventIdentity, Forward, Message, MessageRef, UnsupportedView,
+};
 
 use super::emit::emit;
 use super::{context_of, media, moment_id, moment_of, mutation, unsupported};
@@ -28,12 +30,18 @@ pub(super) enum Refusal {
 pub(super) fn project(
     translator: &mut Translator,
     identity: &EventIdentity,
+    journal: u64,
     message: &Message,
 ) -> Option<DomainEvent> {
     let context = context_of(identity);
     let id = moment_id(&context, &identity.id);
     // A tombstone is sticky: content arriving after a delete changes nothing.
     if translator.v1.tombstoned.contains(&id) {
+        return None;
+    }
+    // A stale journal entry, or content for a message already shown (the
+    // reparse of a placeholder replaces it once), changes nothing.
+    if !fresh(translator, &id, journal) || shown(translator, &id) {
         return None;
     }
     let device = identity.author.as_ref().map_or("", |a| a.device_id.as_str());
@@ -83,6 +91,57 @@ pub(super) fn project(
         translator.v1.put(moment.clone(), Some(device.to_owned()));
     }
     emit(translator, moment)
+}
+
+/// Whether `id` is already shown as a live message (not a tombstone).
+fn shown(translator: &Translator, id: &MomentId) -> bool {
+    translator
+        .v1
+        .messages
+        .get(id)
+        .is_some_and(|m| matches!(&m.kind, MomentKind::Message(p) if !p.tombstone))
+}
+
+/// Whether `journal` is not older than what was accepted for `id`; records it.
+fn fresh(translator: &mut Translator, id: &MomentId, journal: u64) -> bool {
+    let last = translator.v1.journal.entry(id.clone()).or_insert(journal);
+    if journal < *last {
+        return false;
+    }
+    *last = journal;
+    true
+}
+
+/// A message this build cannot parse (a newer type): a placeholder carrying
+/// only the kind, layer, reason and stored length, never the raw bytes or
+/// the handle to them. A supported reparse of the same id replaces it once.
+pub(super) fn unsupported_view(
+    translator: &mut Translator,
+    identity: &EventIdentity,
+    journal: u64,
+    view: &UnsupportedView,
+) -> Option<DomainEvent> {
+    let context = context_of(identity);
+    let id = moment_id(&context, &identity.id);
+    if translator.v1.tombstoned.contains(&id)
+        || shown(translator, &id)
+        || !fresh(translator, &id, journal)
+    {
+        return None;
+    }
+    let kind = MomentKind::Fallback(FallbackPayload {
+        reason: "backend.message.unsupported_kind".to_owned(),
+        text: String::new(),
+        unsupported: Some(UnsupportedInfo {
+            kind: view.kind.to_string(),
+            layer: view.layer.to_string(),
+            reason: view.reason.clone(),
+            raw_length: u64::from(view.raw_length),
+        }),
+    });
+    let device = identity.author.as_ref().map_or("", |a| a.device_id.as_str());
+    let origin = translator.origin(device);
+    translator.report_moment(moment_of(identity, id, origin.as_str(), kind))
 }
 
 /// The spans of `text`, or why the whole message is refused.

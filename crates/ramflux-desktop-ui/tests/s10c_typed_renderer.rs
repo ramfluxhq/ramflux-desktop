@@ -12,7 +12,7 @@ use common::*;
 use ramflux_desktop_core::{ContextId, MomentId, MomentKind, SpanKind};
 use ramflux_desktop_test::v1_fixtures::{
     delete_update, entity, forward_of, identity, message_ref, message_update, service_update,
-    text_message,
+    text_message, unsupported_update, with_journal,
 };
 use ramflux_desktop_ui::route::Page;
 use ramflux_protocol::message::{
@@ -118,5 +118,41 @@ fn typed_renderer_unknown_unicode_delete_and_transient(cx: &mut gpui_kit::TestAp
     wait(cx, "the tombstone shown", |cx| has_label(cx, handle, "Message deleted"));
     assert!(!has_label(cx, handle, "bold: \u{1F600}"), "no span of the old text on screen");
     assert!(!has_label(cx, handle, "Forwarded from Kai"), "no forward header of the old message");
+
+    // Unknown leg: a message of a newer type is a placeholder with no text;
+    // a supported reparse replaces it exactly once.
+    let newer = unsupported_update(identity("dm-ana", &[6; 4], "dev-ana", 600, 6), 6, 1, 99, 412);
+    assert!(sdk_fake::push_generated(&path, newer));
+    wait(cx, "the placeholder", |cx| {
+        with_store(cx, &shell, |s| {
+            matches!(&s.moment(&moment_id(6)).map(|m| &m.kind), Some(MomentKind::Fallback(_)))
+        })
+    });
+    wait(cx, "the placeholder shown", |cx| {
+        has_label(cx, handle, "This message is of a newer type this app version cannot show yet.")
+    });
+    let reparsed = with_journal(
+        message_update(
+            identity("dm-ana", &[6; 4], "dev-ana", 600, 6),
+            text_message("now readable", Vec::new()),
+        ),
+        7,
+    );
+    assert!(sdk_fake::push_generated(&path, reparsed.clone()));
+    wait(cx, "the reparse", |cx| {
+        with_store(cx, &shell, |s| s.bodies().get(&moment_id(6)).is_some())
+    });
+    assert!(sdk_fake::push_generated(&path, reparsed));
+    advance(cx, 200);
+    with_store(cx, &shell, |s| {
+        assert!(matches!(&s.moment(&moment_id(6)).map(|m| &m.kind), Some(MomentKind::Message(_))));
+        assert_eq!(
+            s.bodies().get(&moment_id(6)).map(|t| t.to_string()),
+            Some("now readable".to_owned())
+        );
+    });
+    wait(cx, "the placeholder gone", |cx| {
+        !has_label(cx, handle, "This message is of a newer type this app version cannot show yet.")
+    });
     fake.shutdown();
 }

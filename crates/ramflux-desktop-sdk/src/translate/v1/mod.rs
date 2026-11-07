@@ -42,7 +42,9 @@ pub fn project(translator: &mut Translator, update: &MessageUpdate) -> Vec<Domai
     match &update.state {
         Some(State::Content(content)) => match &content.value {
             Some(ContentValue::Message(message)) => {
-                message::project(translator, identity, message).into_iter().collect()
+                message::project(translator, identity, update.journal_sequence, message)
+                    .into_iter()
+                    .collect()
             }
             Some(ContentValue::Service(service)) => service::project(translator, identity, service),
             Some(ContentValue::Edit(edit)) => {
@@ -57,6 +59,11 @@ pub fn project(translator: &mut Translator, update: &MessageUpdate) -> Vec<Domai
             }
             _ => Vec::new(),
         },
+        Some(State::Unsupported(view)) => {
+            message::unsupported_view(translator, identity, update.journal_sequence, view)
+                .into_iter()
+                .collect()
+        }
         // The SDK's own tombstone of a message: the same sticky delete.
         Some(State::Tombstone(delete)) => mutation::delete(translator, identity, delete),
         _ => Vec::new(),

@@ -504,6 +504,7 @@ impl Store {
         }
         if let Some(kind) = kind
             && mem::discriminant(kind) != mem::discriminant(&moment.kind)
+            && !replaces_placeholder(&moment.kind, kind)
         {
             return Err(ApplyError::KindMismatch(moment_id.clone()));
         }
@@ -531,6 +532,14 @@ impl Store {
         changes.moments.insert(moment_id.clone());
         Ok(())
     }
+}
+
+/// Whether `new` is the message a stored "newer message type" placeholder
+/// stands for (a supported reparse, or a delete): the one change of kind a
+/// moment may make.
+fn replaces_placeholder(old: &MomentKind, new: &MomentKind) -> bool {
+    matches!(old, MomentKind::Fallback(p) if p.unsupported.is_some())
+        && matches!(new, MomentKind::Message(_))
 }
 
 /// Moves a message's text into the body cache; the stored row keeps an

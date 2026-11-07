@@ -135,6 +135,9 @@ backend:
       en: "%{actor} changed the pinned message"
       zh-CN: "%{actor} 更改了置顶消息"
   message:
+    unsupported_kind:
+      en: "This message is of a newer type this app version cannot show yet."
+      zh-CN: "此消息属于较新的类型，当前应用版本暂时无法显示。"
     span_out_of_range:
       en: "This message uses formatting this app cannot show, so its text is not displayed."
       zh-CN: "此消息的格式超出了本应用可显示的范围，因此不显示其正文。"

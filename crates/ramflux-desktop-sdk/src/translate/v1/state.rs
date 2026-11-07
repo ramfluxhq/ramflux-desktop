@@ -116,6 +116,9 @@ pub(crate) struct V1State {
     plaintext: Bounded<MomentId, String>,
     preview: Bounded<MomentId, String>,
     notification: Bounded<MomentId, String>,
+    /// The journal sequence last accepted for each message id (a light
+    /// fence): an update with a lower one is stale.
+    pub journal: BTreeMap<MomentId, u64>,
     /// Ids that were deleted: later content, edits and reactions leave them
     /// alone.
     pub tombstoned: BTreeSet<MomentId>,

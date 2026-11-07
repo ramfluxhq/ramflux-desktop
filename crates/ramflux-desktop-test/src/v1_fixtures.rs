@@ -6,7 +6,7 @@
 use ramflux_protocol::message::{
     Content, Delete, DeleteScope, Edit, Entity, EntityKind, EventIdentity, Forward, MediaRef,
     Message, MessageRef, MessageUpdate, QualifiedDevice, Reaction, Receipt, ReceiptState, Service,
-    ServiceAction, Thumbnail, content::Value, message_update::State,
+    ServiceAction, Thumbnail, UnsupportedView, content::Value, message_update::State,
 };
 
 /// The account the fixtures belong to.
@@ -276,4 +276,37 @@ pub fn receipt_update(
             receiver: Some(device(receiver)),
         }),
     )
+}
+
+/// `update` with the journal sequence `journal` (a reparse of the same
+/// event is journaled again).
+#[must_use]
+pub fn with_journal(mut update: MessageUpdate, journal: u64) -> MessageUpdate {
+    update.journal_sequence = journal;
+    update
+}
+
+/// An update the SDK could not parse: layer, kind and stored length, plus the
+/// raw digest and the handle that no desktop model may keep.
+#[must_use]
+pub fn unsupported_update(
+    identity: EventIdentity,
+    journal: u64,
+    layer: u32,
+    kind: u32,
+    raw_length: u32,
+) -> MessageUpdate {
+    MessageUpdate {
+        account_id: ACCOUNT.to_owned(),
+        journal_sequence: journal,
+        identity: Some(identity),
+        state: Some(State::Unsupported(UnsupportedView {
+            layer,
+            kind,
+            raw_digest: b"RAW-DIGEST-BYTES".to_vec(),
+            raw_length,
+            raw_handle: b"RAW-HANDLE-SECRET".to_vec(),
+            reason: "unknown_kind".to_owned(),
+        })),
+    }
 }
