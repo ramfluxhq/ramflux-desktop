@@ -127,6 +127,25 @@ impl BusClient {
         self.inner.generations.load(Ordering::Relaxed)
     }
 
+    /// Whether a connection is open now (not while one is being opened).
+    pub(crate) fn is_connected(&self) -> bool {
+        self.inner.link.try_lock().is_ok_and(|link| {
+            link.as_ref()
+                .is_some_and(|open| open.observer.as_ref().is_none_or(|task| !task.is_finished()))
+        })
+    }
+
+    /// Drops the open connection, as a broken one is (tests).
+    #[cfg(test)]
+    pub(crate) async fn drop_connection(&self) {
+        self.inner.link.lock().await.take();
+    }
+
+    /// Opens the connection if there is none and returns its generation.
+    pub(crate) async fn attach(&self) -> Result<u64, BusError> {
+        self.connection().await.map(|(generation, _)| generation)
+    }
+
     /// Sends one request and waits for its answer, at most until its
     /// deadline (twice, when a keyed request is resent).
     pub async fn call(&self, request: &BusRequest) -> Result<Value, BusError> {

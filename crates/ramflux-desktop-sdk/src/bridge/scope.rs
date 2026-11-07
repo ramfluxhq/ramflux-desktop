@@ -133,6 +133,12 @@ pub(super) enum Internal {
     /// Marks where a new gate epoch began in this channel: whatever was
     /// queued before it belongs to an older epoch.
     EpochStart,
+    /// The request connection was opened (or found open) for an attach or a
+    /// wake; it decides nothing by itself.
+    Attached {
+        snapshot: bool,
+        result: Result<u64, BusError>,
+    },
     SendDone {
         id: String,
         result: Result<Value, BusError>,
@@ -195,16 +201,18 @@ pub(super) struct Task {
     pending_markers: u32,
     /// Snapshot batches of this epoch still in flight.
     batch_pending: u32,
-    /// The request-connection generation this task has accounted for; a
-    /// newer one starts a recovery wherever it is noticed.
-    seen_generation: u64,
-    /// The connection generation that belongs to the epoch being started (the
-    /// old connection is gone), not to a recovery: exactly that generation
-    /// is adopted, any other one is recovered.
-    adopt_generation: Option<u64>,
-    /// An epoch has begun since the transport was last reported lost: that
-    /// loss has had its one recovery decision, whoever made it.
-    recovered_since_loss: bool,
+    /// The newest request-connection generation a recovery has been run for.
+    /// Recovery is a pure function of the client's monotonic generation
+    /// counter: whenever the counter is ahead of this, `recover_connection`
+    /// runs (once) and takes the generation it observed. Notifications only
+    /// wake that check; they never decide.
+    recovered_generation: u64,
+    /// A snapshot has asked for a connection and no recovery has run since
+    /// (cleared by every recovery, whichever handler ran it).
+    attach_pending: bool,
+    /// The generation of every recovery run, in order (tests).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(super) recoveries: Vec<u64>,
     /// Message-class reads sent while the pipeline was not clear (tests).
     #[cfg(any(test, feature = "test-support"))]
     pub(super) guard_violations: u32,
@@ -335,9 +343,10 @@ pub(super) fn build(
         gate_connection: None,
         pending_markers: 0,
         batch_pending: 0,
-        seen_generation: 0,
-        adopt_generation: None,
-        recovered_since_loss: false,
+        recovered_generation: 0,
+        #[cfg(any(test, feature = "test-support"))]
+        recoveries: Vec::new(),
+        attach_pending: false,
         #[cfg(any(test, feature = "test-support"))]
         guard_violations: 0,
         translator,
@@ -555,17 +564,12 @@ impl Task {
         }
         if generation > 0 && generation != self.client.connections_opened() {
             // The connection changed under the status read (its answer or its
-            // failure is the old connection's): ask again on the new one, in
-            // a new epoch.
-            self.recover_connection();
+            // failure is the old connection's). It decides nothing: the
+            // generation check recovers the newer connection on its own.
             return;
         }
         if generation > 0 {
             self.gate_connection = Some(generation);
-            // The epoch has its connection; an adoption still pending was
-            // for a connection that never opened, and must not swallow the
-            // next real one.
-            self.adopt_generation = None;
         }
         let answer = result.as_ref().map_err(|_| ());
         if !self.gate.resolve(epoch, answer) {
@@ -657,31 +661,16 @@ impl Task {
             return;
         }
         self.transport_disconnected = status == SourceStatus::Disconnected;
-        if self.transport_disconnected {
-            self.recovered_since_loss = false;
-        }
         if status == SourceStatus::Connected
             && self.scope.account().is_some()
             && self.link == Link::Live
         {
             // A recovered connection may be a new daemon with changed local
-            // state even when its cursor is still valid. If the request
-            // connection is still the one accounted for (it is dead and will
-            // reconnect), recover here and let its reconnect be this epoch's.
-            // One recovery decision per loss: the observer may already have
-            // recovered (or adopted) the connection that followed it, and
-            // then nothing is done again here. Only when no epoch has begun
-            // since the loss and the request connection is still the old
-            // one (dead, about to reconnect) does the recovery start here,
-            // and then the next generation, and only that one, is its own.
+            // state even when its cursor is still valid. This only wakes the
+            // generation check: the request connection is opened if it is
+            // dead, and the counter, not this notification, decides.
             self.observe_connection();
-            if !self.recovered_since_loss
-                && self.client.connections_opened() == self.seen_generation
-                && self.gate.enabled()
-            {
-                self.recover_connection();
-                self.adopt_generation = Some(self.seen_generation + 1);
-            }
+            self.spawn_attach(false);
         }
         self.emit(vec![DomainEvent::SourceStatusChanged(status)]);
         if self.scope.account().is_some()
@@ -822,32 +811,62 @@ impl Task {
         self.jobs_found(live);
     }
 
+    /// Attaches the scope: recovery for the generation observed now. A live
+    /// connection is recovered at once; a dead one is opened first and the
+    /// generation it gets is recovered by the check (or by `Attached`).
     fn snapshot(&mut self) {
         self.link = Link::Attaching;
         self.cancel_reads();
-        // The previous connection (if any) is gone; the next one is this
-        // epoch's own.
-        self.seen_generation = self.client.connections_opened();
-        self.adopt_generation = Some(self.seen_generation + 1);
-        self.recovered_since_loss = true;
-        self.start_epoch_reads();
+        if self.client.is_connected() {
+            self.attach_live();
+        } else {
+            self.attach_pending = true;
+            self.spawn_attach(true);
+        }
     }
 
-    /// The one recovery routine for a connection that changed, however it was
-    /// noticed (a loss, a resend that reconnected, the stream recovering):
-    /// outstanding reads are cancelled, a new epoch asks the daemon for its
-    /// schema, and the prerequisite reads run before the messages.
+    /// The connection is open: a generation not yet recovered is recovered;
+    /// one that already has been is not recovered again (that would be a
+    /// second decision for it), its reads are only read again in its epoch.
+    fn attach_live(&mut self) {
+        if self.gate.enabled()
+            && self.gate.epoch() > 0
+            && self.client.connections_opened() <= self.recovered_generation
+        {
+            self.attach_pending = false;
+            self.cancel_reads();
+            self.start_epoch_reads(false);
+        } else {
+            self.recover_connection();
+        }
+    }
+
+    /// Opens the request connection if it is dead; the answer only wakes
+    /// the generation check (and finishes a snapshot's attach).
+    fn spawn_attach(&self, snapshot: bool) {
+        let (client, internal) = (self.client.clone(), self.internal.clone());
+        tokio::spawn(async move {
+            let result = client.attach().await;
+            let _ = internal.send(Internal::Attached { snapshot, result });
+        });
+    }
+
+    /// The one recovery routine. It always takes the generation observed at
+    /// its start: outstanding reads are cancelled, a new epoch asks the
+    /// daemon for its schema, and the prerequisite reads run before the
+    /// messages.
     pub(super) fn recover_connection(&mut self) {
-        self.seen_generation = self.client.connections_opened();
-        self.adopt_generation = None;
-        self.recovered_since_loss = true;
+        self.recovered_generation = self.client.connections_opened();
+        #[cfg(any(test, feature = "test-support"))]
+        self.recoveries.push(self.recovered_generation);
+        self.attach_pending = false;
         self.cancel_reads();
-        self.start_epoch_reads();
+        self.start_epoch_reads(true);
     }
 
-    /// Notices a request connection newer than the one accounted for, from
-    /// whichever handler runs first, and recovers: unconditionally, whatever
-    /// the state of the epoch's status or of the notifications.
+    /// The generation check, run on entry to every handler and on every
+    /// notification: a request connection newer than the last one recovered
+    /// is recovered, whatever the state of any status or notification.
     pub(super) fn observe_connection(&mut self) {
         // Nothing is accounted for before the first epoch begins.
         if !self.gate.enabled()
@@ -856,25 +875,24 @@ impl Task {
         {
             return;
         }
-        let current = self.client.connections_opened();
-        if current == self.seen_generation {
-            return;
+        if self.client.connections_opened() > self.recovered_generation {
+            self.recover_connection();
         }
-        if self.adopt_generation == Some(current) {
-            // The connection an epoch was started for, after the old one was
-            // gone: it is that epoch's own. Only that generation is adopted.
-            self.seen_generation = current;
-            self.adopt_generation = None;
-            return;
-        }
-        self.recover_connection();
     }
 
     /// A new epoch's reads: its status, the local account state at once, the
     /// other non-message reads as a batch, and the message-class reads held
     /// until the gate opens and that batch is in.
-    fn start_epoch_reads(&mut self) {
-        self.begin_gate_epoch();
+    fn start_epoch_reads(&mut self, new_epoch: bool) {
+        if new_epoch {
+            self.begin_gate_epoch();
+        } else {
+            // The same epoch reads again: what was in flight was cancelled.
+            self.batch_pending = 0;
+            if self.gate.enabled() && self.gate.verdict() == SchemaGate::Unresolved {
+                self.spawn_schema_status(self.gate.epoch());
+            }
+        }
         let mut reads = self.reads_for_snapshot();
         // Local unlocked state opens the workspace before unrelated lists finish.
         if let Some(account) = self.scope.account().cloned() {
@@ -1064,6 +1082,17 @@ impl Task {
                 // even its slot in the running set (a newer read may hold it).
                 if !self.gate.enabled() || epoch == self.gate.epoch() {
                     self.internal(Internal::Fetched(read));
+                }
+            }
+            Internal::Attached { snapshot, result } => {
+                // The check above has recovered a new generation already
+                // (clearing `attach_pending`); this only finishes an attach
+                // that opened nothing new, or reports that it failed.
+                if snapshot && self.attach_pending && self.link == Link::Attaching {
+                    match result {
+                        Ok(_) => self.attach_live(),
+                        Err(_) => self.lost(),
+                    }
                 }
             }
             Internal::EpochStart => {
