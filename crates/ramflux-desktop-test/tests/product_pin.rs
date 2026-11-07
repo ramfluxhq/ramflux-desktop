@@ -7,8 +7,9 @@
 //!
 //! Lock scope, by class: (a) the product crates take the pinned commit;
 //! (b) packages newly required by the pinned product manifests are the listed
-//! `ALLOWED_NEW` ones; (c) no existing package changes version; (d) dependency
-//! edge rewires are allowed because only package versions are compared. The
+//! `ALLOWED_NEW` ones; (c) no existing package changes its full identity (name, version, source,
+//! checksum); (d) dependency edge rewires are allowed because only package
+//! identities are compared. The
 //! baseline fixture lists every non-product package of the lock before the
 //! pin moved; a later repin updates the fixture and `ALLOWED_NEW` with it.
 
@@ -27,11 +28,11 @@ const PRODUCT_CRATES: [&str; 7] = [
     "ramflux-transport",
 ];
 const ALLOWED_NEW: [&str; 5] = [
-    "pbjson 0.9.0",
-    "prost 0.14.4",
-    "prost-derive 0.14.4",
-    "prost-reflect 0.16.5",
-    "prost-types 0.14.4",
+    "pbjson|0.9.0|registry+https://github.com/rust-lang/crates.io-index|e8edd1efdd8ab23ba9cb9ace3d9987a72663d5d7c9f74fa00b51d6213645cf6c",
+    "prost|0.14.4|registry+https://github.com/rust-lang/crates.io-index|528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1",
+    "prost-derive|0.14.4|registry+https://github.com/rust-lang/crates.io-index|b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf",
+    "prost-reflect|0.16.5|registry+https://github.com/rust-lang/crates.io-index|01b80ea363c31af2de2b92e3c07ed1156628f7838c4afb4df75ee78a37fedbd1",
+    "prost-types|0.14.4|registry+https://github.com/rust-lang/crates.io-index|f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a",
 ];
 const BASELINE: &str = include_str!("fixtures/product_pin_lock_baseline.txt");
 
@@ -52,8 +53,8 @@ fn manifest_revs(manifest: &str) -> Vec<String> {
         .collect()
 }
 
-/// `(name, version, source)` of every package in the lock file.
-fn lock_packages(lock: &str) -> Vec<(String, String, String)> {
+/// `(name, version, source, checksum)` of every package in the lock file.
+fn lock_packages(lock: &str) -> Vec<(String, String, String, String)> {
     lock.split("[[package]]")
         .skip(1)
         .map(|block| {
@@ -64,7 +65,7 @@ fn lock_packages(lock: &str) -> Vec<(String, String, String)> {
                     .map(|r| r.trim_end_matches('"').to_owned())
                     .unwrap_or_default()
             };
-            (field("name"), field("version"), field("source"))
+            (field("name"), field("version"), field("source"), field("checksum"))
         })
         .collect()
 }
@@ -79,7 +80,7 @@ fn product_pin_single_rev_and_lock_scope() {
 
     // (a) every product package comes from the pinned commit, and no other.
     let mut product_seen = BTreeSet::new();
-    for (name, _, source) in &packages {
+    for (name, _, source, _) in &packages {
         if source.starts_with(PRODUCT_SOURCE) {
             assert!(
                 source.ends_with(&format!("#{PINNED_REV}"))
@@ -96,11 +97,11 @@ fn product_pin_single_rev_and_lock_scope() {
     // allowed new ones, so a version bump or an unexpected package fails.
     let actual: BTreeSet<String> = packages
         .iter()
-        .filter(|(name, _, source)| {
+        .filter(|(name, _, source, _)| {
             !name.starts_with("ramflux-")
                 || !source.is_empty() && !source.starts_with(PRODUCT_SOURCE)
         })
-        .map(|(name, version, _)| format!("{name} {version}"))
+        .map(|(name, version, source, checksum)| format!("{name}|{version}|{source}|{checksum}"))
         .collect();
     let mut allowed: BTreeSet<String> = BASELINE.lines().map(str::to_owned).collect();
     allowed.extend(ALLOWED_NEW.iter().map(|s| (*s).to_owned()));
@@ -108,7 +109,7 @@ fn product_pin_single_rev_and_lock_scope() {
     let missing: Vec<&String> = allowed.difference(&actual).collect();
     assert!(
         unexpected.is_empty(),
-        "lock has unclassified packages or version bumps: {unexpected:?}"
+        "lock has unclassified packages, version bumps or source/checksum changes: {unexpected:?}"
     );
     assert!(missing.is_empty(), "lock dropped packages: {missing:?}");
 }
