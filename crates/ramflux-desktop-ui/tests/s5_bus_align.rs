@@ -395,6 +395,78 @@ fn without_time_named(
     }
 }
 
+/// Registers a fresh waiter: consumes any stale notification, and returns the
+/// waiter whose poll answered pending. That poll is the registration, so a
+/// notification arriving later is delivered to it and none can slip between a
+/// consuming poll and a separate pending assertion. `late(n)` runs just
+/// before poll `n` (test hook for the interleaving).
+fn register_waiter<F: std::future::Future<Output = ()>>(
+    mut fresh: impl FnMut() -> F,
+    context: &mut std::task::Context<'_>,
+    late: &mut dyn FnMut(u32),
+) -> std::pin::Pin<Box<F>> {
+    for attempt in 0.. {
+        let mut waiter = Box::pin(fresh());
+        late(attempt);
+        if waiter.as_mut().poll(context).is_pending() {
+            return waiter;
+        }
+    }
+    unreachable!("the loop returns on the first pending poll")
+}
+
+struct CountedWake(std::sync::atomic::AtomicUsize);
+impl std::task::Wake for CountedWake {
+    fn wake(self: Arc<Self>) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+/// The interleaving behind the CI failure: one stale notification is consumed
+/// by the first poll, and a late one lands before the next poll. The
+/// registration still completes with a pending waiter that a later send wakes.
+#[test]
+fn waiter_registration_survives_late_notification() {
+    use ramflux_desktop_core::source::SourceWake;
+    let wake = SourceWake::default();
+    wake.notify(); // stale: consumed by the first poll
+    let counter = Arc::new(CountedWake(std::sync::atomic::AtomicUsize::new(0)));
+    let waker = std::task::Waker::from(counter.clone());
+    let mut context = std::task::Context::from_waker(&waker);
+    let mut pending = register_waiter(
+        || wake.notified(),
+        &mut context,
+        // Before poll 1 (the one after the reset) a hub thread notifies again.
+        &mut |attempt| {
+            if attempt == 1 {
+                wake.notify();
+            }
+        },
+    );
+    assert!(pending.as_mut().poll(&mut context).is_pending());
+    wake.notify();
+    assert_eq!(counter.0.load(Ordering::SeqCst), 1, "the registered waiter is woken once");
+}
+
+/// The previous shape (single reset, then assert pending) loses to the same
+/// interleaving, which is why `register_waiter` loops.
+#[test]
+#[should_panic(expected = "is_pending")]
+fn single_reset_registration_loses_to_late_notification() {
+    use ramflux_desktop_core::source::SourceWake;
+    let wake = SourceWake::default();
+    let counter = Arc::new(CountedWake(std::sync::atomic::AtomicUsize::new(0)));
+    let waker = std::task::Waker::from(counter);
+    let mut context = std::task::Context::from_waker(&waker);
+    wake.notify();
+    let mut pending = std::pin::pin!(wake.notified());
+    if pending.as_mut().poll(&mut context).is_ready() {
+        pending.set(wake.notified());
+    }
+    wake.notify(); // the late notification, exactly between reset and the poll
+    assert!(pending.as_mut().poll(&mut context).is_pending());
+}
+
 #[gpui_kit::test]
 fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
     use ramflux_desktop_core::{CallId, Source, Timestamp};
@@ -447,13 +519,8 @@ fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
             .any(|e| matches!(&e.event, DomainEvent::CapabilitiesUpdated(c) if c.unsupported_reason("call.invite").is_none()))
     });
     background.drain(Timestamp(0));
-    // Late attach notifications may still arrive from the hub threads, so
-    // consume them until a fresh waiter polls pending; that poll is the
-    // registration, with nothing to race a separate assertion.
-    let mut pending = pin!(wake.notified());
-    while pending.as_mut().poll(&mut context).is_ready() {
-        pending.set(wake.notified());
-    }
+    // Late attach notifications may still arrive from the hub threads.
+    let mut pending = register_waiter(|| wake.notified(), &mut context, &mut |_| {});
     background.request_call_media(&CallId::new("background-call"));
     without_time(cx, |_| media_latch.entered.load(Ordering::SeqCst));
     // Attach may have consumed the earlier waiter. Re-register under the
