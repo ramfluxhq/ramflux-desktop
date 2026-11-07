@@ -35,6 +35,7 @@ pub mod selectors;
 pub mod source;
 pub mod store;
 pub mod surface_event;
+pub mod typing;
 pub mod ui_event;
 
 pub use conformance::{
@@ -71,4 +72,5 @@ pub use store::{
     ApplyError, BodyCache, Changes, MAX_AUDIT, MAX_BODIES, MAX_FAILURES, MAX_REJECTIONS, Rejection,
     Store, StreamState, SurfaceRecord, SurfaceState, UpdateRequest,
 };
+pub use typing::{TYPING_MAX_MS, TypingStore};
 pub use ui_event::{NodeAction, ObjectAction, Scope, UiEvent, UiEventKind};

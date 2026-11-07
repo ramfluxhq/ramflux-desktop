@@ -221,6 +221,7 @@ impl Translator {
             }),
         };
         Moment {
+            order: None,
             id: message_moment_id(context, message),
             context_id: context.clone(),
             origin: self.origin(sender),
