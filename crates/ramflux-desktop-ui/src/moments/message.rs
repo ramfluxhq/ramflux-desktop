@@ -33,12 +33,13 @@ pub fn render(
 ) -> impl IntoElement {
     let muted = cx.theme().muted_foreground;
     if payload.tombstone {
-        return v_flex()
-            .id("message-body")
-            .text_sm()
-            .italic()
-            .text_color(muted)
-            .child(tr("moment.message.deleted"));
+        return v_flex().id("message-body").text_sm().italic().text_color(muted).child(
+            div()
+                .id("message-deleted")
+                .aria_label(tr("moment.message.deleted"))
+                .child(tr("moment.message.deleted"))
+                .test_support(),
+        );
     }
     let attachment = payload.attachment.as_ref().map(|id| {
         let object = refs.objects.get(id);
@@ -144,6 +145,40 @@ pub fn render(
             )
         })
         .children(attachment)
+        .when(payload.revision > 0, |col| {
+            col.child(
+                div()
+                    .id("message-edited")
+                    .aria_label(tr("moment.message.edited"))
+                    .text_xs()
+                    .text_color(muted)
+                    .child(tr("moment.message.edited"))
+                    .test_support(),
+            )
+        })
+        .when(!payload.reactions.is_empty(), |col| {
+            col.child(h_flex().id("message-reactions").flex_wrap().gap_1().children(
+                payload.reactions.iter().enumerate().map(|(index, chip)| {
+                    let count = chip.count.to_string();
+                    let key = if chip.mine {
+                        "moment.message.reaction_mine"
+                    } else {
+                        "moment.message.reaction"
+                    };
+                    let label = i18n::tr_args(key, &[("token", &chip.token), ("count", &count)]);
+                    div()
+                        .id(SharedString::from(format!("message-reaction-{index}")))
+                        .aria_label(label.clone())
+                        .px_2()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .rounded(cx.theme().radius)
+                        .text_xs()
+                        .child(label)
+                        .test_support()
+                }),
+            ))
+        })
         .children(payload.media.iter().enumerate().map(|(index, row)| media_row(index, row, cx)))
         .when(
             outbound

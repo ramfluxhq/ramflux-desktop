@@ -4,9 +4,9 @@
 //! Message schema v1 updates for tests, built only with the generated types.
 
 use ramflux_protocol::message::{
-    Content, Entity, EntityKind, EventIdentity, Forward, MediaRef, Message, MessageRef,
-    MessageUpdate, QualifiedDevice, Service, ServiceAction, Thumbnail, content::Value,
-    message_update::State,
+    Content, Delete, DeleteScope, Edit, Entity, EntityKind, EventIdentity, Forward, MediaRef,
+    Message, MessageRef, MessageUpdate, QualifiedDevice, Reaction, Receipt, ReceiptState, Service,
+    ServiceAction, Thumbnail, content::Value, message_update::State,
 };
 
 /// The account the fixtures belong to.
@@ -201,4 +201,79 @@ pub fn real_thumbnail(mime: &str) -> Thumbnail {
         _ => REAL_PNG,
     };
     Thumbnail { mime_type: mime.to_owned(), width: 1, height: 1, encoded_image: bytes.to_vec() }
+}
+
+/// An edit of `target` to `revision` with the replacement `message`.
+#[must_use]
+pub fn edit_update(
+    identity: EventIdentity,
+    target: MessageRef,
+    revision: u64,
+    message: Message,
+) -> MessageUpdate {
+    content_update(
+        identity,
+        Value::Edit(Edit {
+            target: Some(target),
+            revision,
+            previous_content_digest: Vec::new(),
+            replacement: Some(message),
+        }),
+    )
+}
+
+/// A delete of `targets` with `scope`.
+#[must_use]
+pub fn delete_update(
+    identity: EventIdentity,
+    targets: Vec<MessageRef>,
+    scope: DeleteScope,
+) -> MessageUpdate {
+    content_update(
+        identity,
+        Value::Delete(Delete {
+            targets,
+            scope: scope as i32,
+            tombstone_id: Vec::new(),
+            native_group_authorization: Vec::new(),
+        }),
+    )
+}
+
+/// A reaction of `token` on `target` (`remove` takes it back).
+#[must_use]
+pub fn reaction_update(
+    identity: EventIdentity,
+    target: MessageRef,
+    token: &str,
+    remove: bool,
+) -> MessageUpdate {
+    content_update(
+        identity,
+        Value::Reaction(Reaction {
+            target: Some(target),
+            token: token.to_owned(),
+            remove,
+            operation_id: Vec::new(),
+        }),
+    )
+}
+
+/// A receipt of `state` for `targets` from the device `receiver`.
+#[must_use]
+pub fn receipt_update(
+    identity: EventIdentity,
+    targets: Vec<MessageRef>,
+    state: ReceiptState,
+    receiver: &str,
+) -> MessageUpdate {
+    content_update(
+        identity,
+        Value::Receipt(Receipt {
+            targets,
+            state: state as i32,
+            at: 0,
+            receiver: Some(device(receiver)),
+        }),
+    )
 }

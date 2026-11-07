@@ -79,60 +79,6 @@ fn worse(a: MediaState, b: MediaState) -> MediaState {
     if severity(b) > severity(a) { b } else { a }
 }
 
-/// How many messages with media (with their text, needed to re-emit a row)
-/// and refused objects are kept: the store's own body cache size, so media
-/// messages cannot defeat that bound.
-pub const RETAINED_MAX: usize = 4_096;
-
-/// A map holding at most [`RETAINED_MAX`] entries; the oldest inserted is
-/// dropped first.
-#[derive(Debug)]
-pub(crate) struct Bounded<K, V> {
-    entries: std::collections::BTreeMap<K, V>,
-    order: std::collections::VecDeque<K>,
-}
-
-impl<K, V> Default for Bounded<K, V> {
-    fn default() -> Self {
-        Self {
-            entries: std::collections::BTreeMap::new(),
-            order: std::collections::VecDeque::new(),
-        }
-    }
-}
-
-impl<K: Ord + Clone, V> Bounded<K, V> {
-    pub fn insert(&mut self, key: K, value: V) {
-        if self.entries.insert(key.clone(), value).is_some() {
-            self.order.retain(|k| k != &key);
-        }
-        self.order.push_back(key);
-        while self.entries.len() > RETAINED_MAX {
-            if let Some(oldest) = self.order.pop_front() {
-                self.entries.remove(&oldest);
-            }
-        }
-    }
-
-    pub fn get(&self, key: &K) -> Option<&V> {
-        self.entries.get(key)
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
-        self.entries.iter()
-    }
-
-    #[cfg(feature = "test-support")]
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    pub fn clear(&mut self) {
-        self.entries.clear();
-        self.order.clear();
-    }
-}
-
 /// The thumbnail to show, or `None` for a plain file row.
 fn accepted(translator: &mut Translator, wire: &WireThumbnail) -> Option<Thumbnail> {
     if !translator.inline_thumbnails {
@@ -199,7 +145,8 @@ pub fn refuse(
         worse(seen, if revoked(failure) { MediaState::Revoked } else { MediaState::Unavailable });
     translator.media_refused.insert(object.clone(), state);
     let affected: Vec<MomentId> = translator
-        .media_moments
+        .v1
+        .messages
         .iter()
         .filter(|(_, moment)| rows(&moment.kind).iter().any(|row| row.object_id == object))
         .map(|(id, _)| id.clone())
@@ -207,14 +154,14 @@ pub fn refuse(
     affected
         .into_iter()
         .filter_map(|id| {
-            let mut moment = translator.media_moments.get(&id)?.clone();
+            let mut moment = translator.v1.messages.get(&id)?.clone();
             if let MomentKind::Message(payload) = &mut moment.kind {
                 for row in payload.media.iter_mut().filter(|row| row.object_id == object) {
                     row.state = worse(row.state, state);
                     row.thumbnail = None;
                 }
             }
-            translator.media_moments.insert(id, moment.clone());
+            translator.v1.messages.insert(id, moment.clone());
             translator.report_moment(moment)
         })
         .collect()
@@ -236,12 +183,12 @@ impl Translator {
 
     /// How many messages with media are retained (a test probe).
     pub fn retained_media_messages(&self) -> usize {
-        self.media_moments.len()
+        self.v1.retained()
     }
 
     /// Thumbnail bytes kept for a message's media rows (a test probe).
     pub fn cached_thumbnail_bytes(&self, moment: &MomentId) -> usize {
-        self.media_moments.get(moment).map_or(0, |m| {
+        self.v1.messages.get(moment).map_or(0, |m| {
             rows(&m.kind)
                 .iter()
                 .filter_map(|row| row.thumbnail.as_ref())

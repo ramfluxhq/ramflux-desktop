@@ -78,6 +78,15 @@ moment:
     forwarded_from:
       en: "Forwarded from %{name}"
       zh-CN: "转发自 %{name}"
+    edited:
+      en: "Edited"
+      zh-CN: "已编辑"
+    reaction:
+      en: "%{token} %{count}"
+      zh-CN: "%{token} %{count}"
+    reaction_mine:
+      en: "%{token} %{count}, you reacted"
+      zh-CN: "%{token} %{count}，包括你"
     media:
       revoked:
         en: "Access revoked"

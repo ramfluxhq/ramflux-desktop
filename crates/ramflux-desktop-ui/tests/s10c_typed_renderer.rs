@@ -11,11 +11,12 @@ mod sdk_fake;
 use common::*;
 use ramflux_desktop_core::{ContextId, MomentId, MomentKind, SpanKind};
 use ramflux_desktop_test::v1_fixtures::{
-    entity, forward_of, identity, message_ref, message_update, service_update, text_message,
+    delete_update, entity, forward_of, identity, message_ref, message_update, service_update,
+    text_message,
 };
 use ramflux_desktop_ui::route::Page;
 use ramflux_protocol::message::{
-    Content, EntityKind, ServiceAction, content::Value, message_update::State,
+    Content, DeleteScope, EntityKind, ServiceAction, content::Value, message_update::State,
 };
 
 const TEXT: &str = "A\u{1F600}\u{e9}";
@@ -86,5 +87,36 @@ fn typed_renderer_unknown_unicode_delete_and_transient(cx: &mut gpui_kit::TestAp
     assert!(sdk_fake::push_generated(&path, pin));
     wait(cx, "the pin row", |cx| with_store(cx, &shell, |s| s.moment(&moment_id(3)).is_some()));
     wait(cx, "the pin row shown", |cx| has_label(cx, handle, "dev-ana changed the pinned message"));
+
+    // Delete leg: a delete for everyone leaves a tombstone, no text anywhere
+    // in the store and nothing of the old text on screen.
+    let delete = delete_update(
+        identity("dm-ana", &[4; 4], "dev-ana", 400, 4),
+        vec![message_ref("dm-ana", &[2; 4])],
+        DeleteScope::Everyone,
+    );
+    assert!(sdk_fake::push_generated(&path, delete));
+    wait(cx, "the tombstone", |cx| {
+        with_store(
+            cx,
+            &shell,
+            |s| matches!(&s.moment(&moment_id(2)).map(|m| &m.kind), Some(MomentKind::Message(p)) if p.tombstone),
+        )
+    });
+    with_store(cx, &shell, |s| {
+        let MomentKind::Message(p) = &s.moment(&moment_id(2)).expect("deleted").kind else {
+            panic!("message")
+        };
+        assert!(p.text.is_empty() && p.spans.is_empty() && p.reply_to.is_none());
+        assert_eq!(p.delete_scope, Some(ramflux_desktop_core::DeleteScope::Everyone));
+        assert_eq!(
+            s.bodies().get(&moment_id(2)).map(|t| t.to_string()).unwrap_or_default(),
+            "",
+            "no body text left in the store"
+        );
+    });
+    wait(cx, "the tombstone shown", |cx| has_label(cx, handle, "Message deleted"));
+    assert!(!has_label(cx, handle, "bold: \u{1F600}"), "no span of the old text on screen");
+    assert!(!has_label(cx, handle, "Forwarded from Kai"), "no forward header of the old message");
     fake.shutdown();
 }

@@ -10,6 +10,8 @@
 //! path lands.
 //!
 //! - `media`: media rows, the thumbnail policy and object refusals.
+//! - `mutation`: edit, delete, reaction and receipt.
+//! - `state`: what the projection remembers between updates.
 //! - `message`: a message and its scalar-offset spans, reply and forward.
 //! - `service`: group service events (membership, rename, key change).
 
@@ -17,7 +19,9 @@
 pub mod candidate;
 pub mod media;
 mod message;
+mod mutation;
 mod service;
+pub(crate) mod state;
 
 use ramflux_desktop_core::{
     ContextId, DomainEvent, FallbackPayload, Lifecycle, Moment, MomentId, MomentKind, OrderKey,
@@ -33,14 +37,27 @@ use super::conversation::message_moment_id;
 
 /// Projects one update; updates this part does not own yet project to nothing.
 pub fn project(translator: &mut Translator, update: &MessageUpdate) -> Vec<DomainEvent> {
-    let (Some(identity), Some(State::Content(content))) = (&update.identity, &update.state) else {
-        return Vec::new();
-    };
-    match &content.value {
-        Some(ContentValue::Message(message)) => {
-            message::project(translator, identity, message).into_iter().collect()
-        }
-        Some(ContentValue::Service(service)) => service::project(translator, identity, service),
+    let Some(identity) = &update.identity else { return Vec::new() };
+    match &update.state {
+        Some(State::Content(content)) => match &content.value {
+            Some(ContentValue::Message(message)) => {
+                message::project(translator, identity, message).into_iter().collect()
+            }
+            Some(ContentValue::Service(service)) => service::project(translator, identity, service),
+            Some(ContentValue::Edit(edit)) => {
+                mutation::edit(translator, identity, edit).into_iter().collect()
+            }
+            Some(ContentValue::Delete(delete)) => mutation::delete(translator, identity, delete),
+            Some(ContentValue::Reaction(reaction)) => {
+                mutation::reaction(translator, identity, reaction).into_iter().collect()
+            }
+            Some(ContentValue::Receipt(receipt)) => {
+                mutation::receipt(translator, identity, receipt)
+            }
+            _ => Vec::new(),
+        },
+        // The SDK's own tombstone of a message: the same sticky delete.
+        Some(State::Tombstone(delete)) => mutation::delete(translator, identity, delete),
         _ => Vec::new(),
     }
 }

@@ -13,11 +13,11 @@ use ramflux_desktop_core::{
 };
 use ramflux_protocol::message::{Entity, EntityKind, EventIdentity, Forward, Message, MessageRef};
 
-use super::{context_of, media, moment_id, moment_of, unsupported};
+use super::{context_of, media, moment_id, moment_of, mutation, unsupported};
 use crate::translate::Translator;
 
 /// Why a message cannot be shown.
-enum Refusal {
+pub(super) enum Refusal {
     /// An entity range leaves the text or overflows.
     SpanRange,
     /// An entity kind this build does not know, or a kind missing its value.
@@ -31,7 +31,26 @@ pub(super) fn project(
 ) -> Option<DomainEvent> {
     let context = context_of(identity);
     let id = moment_id(&context, &identity.id);
+    // A tombstone is sticky: content arriving after a delete changes nothing.
+    if translator.v1.tombstoned.contains(&id) {
+        return None;
+    }
     let device = identity.author.as_ref().map_or("", |a| a.device_id.as_str());
+    // A local delete that arrived first applies if this turns out to be the
+    // account's own message, and is dropped otherwise.
+    if translator.v1.pending_local.remove(&id) && translator.is_own_device(device) {
+        return mutation::tombstone_pending(translator, identity, &id);
+    }
+    // The same content again (a replay, or a body reload) re-reports the
+    // message as it is now: the edit, receipt and reactions applied since
+    // are not rolled back. Once the message left the retained set, content
+    // older than an applied edit is ignored.
+    if let Some(current) = translator.v1.messages.get(&id).cloned() {
+        return translator.report_moment(current);
+    }
+    if translator.v1.fences.get(&id).is_some_and(|fence| fence.revision > 0) {
+        return None;
+    }
     let kind = match spans(&message.text, &message.entities) {
         Ok(spans) => MomentKind::Message(MessagePayload {
             text: message.text.clone(),
@@ -44,21 +63,33 @@ pub(super) fn project(
             forward: message.forward.as_ref().map(|f| forward(&context, f)),
             spans,
             media: media::views(translator, &message.media),
+            reactions: mutation::reaction_counts(translator, &id),
             ..Default::default()
         }),
         Err(Refusal::SpanRange) => unsupported("span_out_of_range", "span_out_of_range"),
         Err(Refusal::EntityKind) => unsupported("unknown_entity", "unknown_entity_kind"),
     };
     let origin = translator.origin(device);
-    let moment = moment_of(identity, id, origin.as_str(), kind);
-    if matches!(&moment.kind, MomentKind::Message(p) if !p.media.is_empty()) {
-        translator.media_moments.insert(moment.id.clone(), moment.clone());
+    let mut moment = moment_of(identity, id, origin.as_str(), kind);
+    if let MomentKind::Message(payload) = &mut moment.kind {
+        // Keep the highest receipt applied before the message was retained.
+        let floor = translator.v1.fences.get(&moment.id).map_or(0, |fence| fence.receipt);
+        if let Some(receipt) = mutation::receipt_of(floor)
+            && mutation::rank(receipt) > mutation::rank(payload.receipt)
+        {
+            payload.receipt = receipt;
+        }
+    }
+    if let MomentKind::Message(payload) = &moment.kind {
+        translator.v1.cache_text(&moment.id, &payload.text);
+        translator.v1.authors.insert(moment.id.clone(), device.to_owned());
+        translator.v1.messages.insert(moment.id.clone(), moment.clone());
     }
     translator.report_moment(moment)
 }
 
 /// The spans of `text`, or why the whole message is refused.
-fn spans(text: &str, entities: &[Entity]) -> Result<Vec<TextSpan>, Refusal> {
+pub(super) fn spans(text: &str, entities: &[Entity]) -> Result<Vec<TextSpan>, Refusal> {
     let scalars = u64::try_from(text.chars().count()).unwrap_or(u64::MAX);
     entities
         .iter()
@@ -90,7 +121,7 @@ fn span_kind(entity: &Entity) -> Result<SpanKind, Refusal> {
 }
 
 /// The context a reference points into: its own, else the message's.
-fn target_context(here: &ContextId, reference: &MessageRef) -> ContextId {
+pub(super) fn target_context(here: &ContextId, reference: &MessageRef) -> ContextId {
     if reference.conversation_id.is_empty() {
         here.clone()
     } else {
