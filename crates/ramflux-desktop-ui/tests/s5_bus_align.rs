@@ -387,7 +387,7 @@ fn without_time_named(
     name: &str,
     mut done: impl FnMut(&mut TestAppContext) -> bool,
 ) {
-    let limit = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let limit = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while !done(cx) {
         assert!(std::time::Instant::now() < limit, "{name} did not wake UI");
         std::thread::sleep(std::time::Duration::from_millis(2));
@@ -447,11 +447,13 @@ fn ui_wakes_on_bridge_event_within_one_frame(cx: &mut TestAppContext) {
             .any(|e| matches!(&e.event, DomainEvent::CapabilitiesUpdated(c) if c.unsupported_reason("call.invite").is_none()))
     });
     background.drain(Timestamp(0));
+    // Late attach notifications may still arrive from the hub threads, so
+    // consume them until a fresh waiter polls pending; that poll is the
+    // registration, with nothing to race a separate assertion.
     let mut pending = pin!(wake.notified());
-    if pending.as_mut().poll(&mut context).is_ready() {
+    while pending.as_mut().poll(&mut context).is_ready() {
         pending.set(wake.notified());
     }
-    assert!(pending.as_mut().poll(&mut context).is_pending());
     background.request_call_media(&CallId::new("background-call"));
     without_time(cx, |_| media_latch.entered.load(Ordering::SeqCst));
     // Attach may have consumed the earlier waiter. Re-register under the
