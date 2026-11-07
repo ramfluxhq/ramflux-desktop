@@ -16,6 +16,7 @@
 //! - `service`: group service events (membership, rename, key change).
 //! - `surface`: kind 9 surfaces, the catalog gate and action/receipt binding.
 
+pub mod call;
 #[cfg(feature = "test-support")]
 pub mod candidate;
 mod emit;
@@ -50,6 +51,7 @@ pub fn project(translator: &mut Translator, update: &MessageUpdate) -> Vec<Domai
             }
             Some(ContentValue::Service(service)) => service::project(translator, identity, service),
             Some(ContentValue::Surface(surface)) => surface::project(translator, identity, surface),
+            Some(ContentValue::Call(call)) => call::project(translator, identity, call),
             Some(ContentValue::Edit(edit)) => {
                 mutation::edit(translator, identity, edit).into_iter().collect()
             }

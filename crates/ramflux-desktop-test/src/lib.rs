@@ -59,6 +59,8 @@ pub mod player;
 pub mod scale;
 pub mod scenario;
 #[cfg(feature = "v1-fixtures")]
+pub mod v1_call_fixtures;
+#[cfg(feature = "v1-fixtures")]
 pub mod v1_fixtures;
 
 pub use mock_ceremony::MockCeremony;

@@ -238,6 +238,8 @@ pub struct Translator {
     media_refused: v1::state::Bounded<ObjectId, ramflux_desktop_core::MediaState>,
     /// What the v1 projection remembers between updates.
     v1: v1::state::V1State,
+    /// v1 calls (dormant projection).
+    v1_calls: v1::call::Book,
     /// Thumbnails decoded (header-checked) so far.
     #[cfg(feature = "test-support")]
     thumbnail_decodes: usize,
@@ -304,6 +306,7 @@ impl Translator {
             inline_thumbnails: false,
             media_refused: v1::state::Bounded::default(),
             v1: v1::state::V1State::default(),
+            v1_calls: v1::call::Book::default(),
             #[cfg(feature = "test-support")]
             thumbnail_decodes: 0,
             outgoing_requests: BTreeMap::new(),
@@ -514,6 +517,7 @@ impl Translator {
         self.v1.drop_text();
         self.media_refused.clear();
         self.v1_surfaces.clear();
+        self.v1_calls.clear();
         self.set_lock(&id, ramflux_desktop_core::LockState::Locked)
     }
 
