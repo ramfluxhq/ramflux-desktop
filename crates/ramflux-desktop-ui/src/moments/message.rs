@@ -16,7 +16,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{MessagePayload, Receipt, TransferState, UiEventKind};
 
-use super::RowRefs;
+use super::{RowRefs, message_text};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr};
 
@@ -87,12 +87,50 @@ pub fn render(
     };
     let text = body.cloned();
     let retry = sink.clone();
+    let reply = payload.reply_to.as_ref().map(|_| {
+        let label = refs.reply_excerpt.as_deref().map_or_else(
+            || tr("moment.message.reply_missing"),
+            |quoted| i18n::tr_args("moment.message.reply", &[("text", quoted)]),
+        );
+        div()
+            .id("message-reply")
+            .aria_label(label.clone())
+            .px_2()
+            .border_l_2()
+            .border_color(cx.theme().border)
+            .text_xs()
+            .text_color(muted)
+            .child(label)
+            .test_support()
+    });
+    let forwarded = payload.forward.as_ref().map(|forward| {
+        let label = forward.from_name.as_deref().map_or_else(
+            || tr("moment.message.forwarded"),
+            |name| i18n::tr_args("moment.message.forwarded_from", &[("name", name)]),
+        );
+        div()
+            .id("message-forward")
+            .aria_label(label.clone())
+            .text_xs()
+            .italic()
+            .text_color(muted)
+            .child(label)
+            .test_support()
+    });
     v_flex()
         .id("message-body")
         .gap_1()
         .text_sm()
         .text_color(cx.theme().foreground)
-        .when_some(text.filter(|t| !t.is_empty()), |col, text| col.child(text))
+        .children(forwarded)
+        .children(reply)
+        .when_some(text.filter(|t| !t.is_empty()), |col, text| {
+            if payload.spans.is_empty() {
+                col.child(text)
+            } else {
+                col.child(message_text::render(&text, &payload.spans, cx))
+            }
+        })
         .when(body.is_none(), |col| {
             col.child(
                 div()

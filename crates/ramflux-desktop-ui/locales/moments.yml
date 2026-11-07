@@ -62,7 +62,47 @@ moment:
     with_risk:
       en: "%{row}. Risk: %{risk}"
       zh-CN: "%{row}。风险：%{risk}"
+    span:
+      en: "%{kind}: %{text}"
+      zh-CN: "%{kind}：%{text}"
   message:
+    reply:
+      en: "Reply to: %{text}"
+      zh-CN: "回复：%{text}"
+    reply_missing:
+      en: "Reply to an earlier message"
+      zh-CN: "回复较早的一条消息"
+    forwarded:
+      en: "Forwarded message"
+      zh-CN: "转发的消息"
+    forwarded_from:
+      en: "Forwarded from %{name}"
+      zh-CN: "转发自 %{name}"
+    span:
+      bold:
+        en: "bold"
+        zh-CN: "粗体"
+      italic:
+        en: "italic"
+        zh-CN: "斜体"
+      code:
+        en: "code"
+        zh-CN: "代码"
+      spoiler:
+        en: "spoiler"
+        zh-CN: "剧透"
+      mention:
+        en: "mention"
+        zh-CN: "提及"
+      link:
+        en: "link"
+        zh-CN: "链接"
+      underline:
+        en: "underline"
+        zh-CN: "下划线"
+      strikethrough:
+        en: "strikethrough"
+        zh-CN: "删除线"
     attachment:
       en: "Attachment"
       zh-CN: "附件"
