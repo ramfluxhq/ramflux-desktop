@@ -71,3 +71,30 @@ pub fn push_generated(
             .is_ok()
     })
 }
+
+/// Reports that fetching `object_id` failed with `failure` in `account`'s
+/// scope of the bridge serving `socket`, through
+/// `translate::v1::candidate::media_failed`. Returns whether such a bridge
+/// is running.
+pub fn push_media_failure(
+    socket: &std::path::Path,
+    account: &ramflux_desktop_core::AccountId,
+    object_id: &str,
+    failure: crate::bus::BusError,
+) -> bool {
+    let sender = BRIDGES
+        .lock()
+        .expect("bridge registry")
+        .iter()
+        .find(|(path, _)| path == socket)
+        .and_then(|(_, sender)| sender.upgrade());
+    sender.is_some_and(|sender| {
+        sender
+            .send(crate::bridge::Command::MediaFailed {
+                scope: crate::translate::Scope::Account(account.clone()),
+                object_id: object_id.to_owned(),
+                failure,
+            })
+            .is_ok()
+    })
+}

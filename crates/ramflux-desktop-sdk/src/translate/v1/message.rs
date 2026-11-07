@@ -13,7 +13,7 @@ use ramflux_desktop_core::{
 };
 use ramflux_protocol::message::{Entity, EntityKind, EventIdentity, Forward, Message, MessageRef};
 
-use super::{context_of, moment_id, moment_of, unsupported};
+use super::{context_of, media, moment_id, moment_of, unsupported};
 use crate::translate::Translator;
 
 /// Why a message cannot be shown.
@@ -43,13 +43,18 @@ pub(super) fn project(
             reply_to: message.reply_to.as_ref().map(|r| reply(&context, r)),
             forward: message.forward.as_ref().map(|f| forward(&context, f)),
             spans,
+            media: media::views(translator, &message.media),
             ..Default::default()
         }),
         Err(Refusal::SpanRange) => unsupported("span_out_of_range", "span_out_of_range"),
         Err(Refusal::EntityKind) => unsupported("unknown_entity", "unknown_entity_kind"),
     };
     let origin = translator.origin(device);
-    translator.report_moment(moment_of(identity, id, origin.as_str(), kind))
+    let moment = moment_of(identity, id, origin.as_str(), kind);
+    if matches!(&moment.kind, MomentKind::Message(p) if !p.media.is_empty()) {
+        translator.media_moments.insert(moment.id.clone(), moment.clone());
+    }
+    translator.report_moment(moment)
 }
 
 /// The spans of `text`, or why the whole message is refused.

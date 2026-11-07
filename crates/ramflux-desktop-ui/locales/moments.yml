@@ -78,6 +78,16 @@ moment:
     forwarded_from:
       en: "Forwarded from %{name}"
       zh-CN: "转发自 %{name}"
+    media:
+      revoked:
+        en: "Access revoked"
+        zh-CN: "访问已撤销"
+      unavailable:
+        en: "Unavailable"
+        zh-CN: "暂不可用"
+      thumbnail:
+        en: "Preview of %{name}"
+        zh-CN: "%{name} 的预览"
     span:
       bold:
         en: "bold"
