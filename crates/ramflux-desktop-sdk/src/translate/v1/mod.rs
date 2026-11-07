@@ -17,6 +17,7 @@
 
 #[cfg(feature = "test-support")]
 pub mod candidate;
+mod emit;
 pub mod media;
 mod message;
 mod mutation;

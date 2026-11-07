@@ -24,6 +24,7 @@ use ramflux_protocol::message::{
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 
+use super::emit::emit;
 use super::message::{spans, target_context};
 use super::{context_of, media, moment_id};
 use crate::translate::Translator;
@@ -45,7 +46,7 @@ fn payload_of(moment: &Moment) -> Option<&MessagePayload> {
 /// Stores `moment` as the message's latest state and reports the change.
 fn publish(translator: &mut Translator, moment: Moment) -> Option<DomainEvent> {
     translator.v1.set_moment(moment.clone());
-    translator.report_moment(moment)
+    emit(translator, moment)
 }
 
 /// The reaction chips of a message from its reactors.
@@ -290,6 +291,12 @@ impl Translator {
     /// Declares `device` this account's own device (a test seam).
     pub fn set_own_device(&mut self, device: &str) {
         self.self_device = Some(device.to_owned());
+    }
+
+    /// Asks for the body of a v1 message again, as the view does after its
+    /// store evicted it (a test seam).
+    pub fn request_reload(&mut self, id: &MomentId) {
+        self.resend.insert(id.clone());
     }
 
     /// How many v1 messages are retained with their text (a test probe).

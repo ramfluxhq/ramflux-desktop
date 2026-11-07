@@ -68,7 +68,7 @@ pub(super) fn project(
             if index > 0 {
                 id = ramflux_desktop_core::MomentId::new(format!("{id}#{index}"));
             }
-            translator.report_moment(moment_of(identity, id, origin.as_str(), kind))
+            super::emit::emit(translator, moment_of(identity, id, origin.as_str(), kind))
         })
         .collect()
 }

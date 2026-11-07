@@ -621,3 +621,101 @@ fn a_refusal_after_a_delete_does_not_bring_the_text_back() {
     );
     assert_eq!(translator.cached_plaintext(&moment_id(1)), None);
 }
+
+/// A message edited to revision 3, then an account lock and the content
+/// replayed once: its base is retained but pending, nothing is reported.
+fn pending_base(author: &str) -> Translator {
+    let mut translator = seeded(author);
+    edit_to(&mut translator, 3, "new words");
+    lock(&mut translator);
+    assert!(run(&mut translator, content(1, author, OLD)).is_empty(), "the base is silent");
+    translator
+}
+
+fn assert_edit_returns(translator: &mut Translator) -> MessagePayload {
+    let shown = payload(&edit_to(translator, 3, "new words"));
+    assert_eq!((shown.text.as_str(), shown.revision), ("new words", 3), "the edited state");
+    shown
+}
+
+#[test]
+fn a_pending_base_is_not_republished_by_a_second_content_replay() {
+    let mut translator = pending_base("dev-ana");
+    assert!(
+        run(&mut translator, content(1, "dev-ana", OLD)).is_empty(),
+        "the same content again must not show the text the edit removed"
+    );
+    assert_edit_returns(&mut translator);
+}
+
+#[test]
+fn a_pending_base_is_not_published_by_a_requested_body_reload() {
+    let mut translator = pending_base("dev-ana");
+    translator.request_reload(&moment_id(1));
+    assert!(run(&mut translator, content(1, "dev-ana", OLD)).is_empty(), "no pre-edit text");
+    assert_edit_returns(&mut translator);
+}
+
+#[test]
+fn a_pending_base_is_not_republished_by_a_media_refusal() {
+    use ramflux_desktop_sdk::translate::v1::candidate::media_failed;
+    use ramflux_desktop_test::v1_fixtures::media_ref;
+    let mut translator = seeded("dev-ana");
+    let with_media = |text: &str| {
+        let mut message = text_message(text, Vec::new());
+        message.media = vec![media_ref("o-9", "cat.png", "image/png", 10, None)];
+        message
+    };
+    run(
+        &mut translator,
+        message_update(identity(CTX, &id_of(2), "dev-ana", 2, 2), with_media(OLD)),
+    );
+    let edit =
+        edit_update(event(61, "dev-ana"), message_ref(CTX, &id_of(2)), 3, with_media("new words"));
+    run(&mut translator, edit.clone());
+    lock(&mut translator);
+    run(
+        &mut translator,
+        message_update(identity(CTX, &id_of(2), "dev-ana", 2, 2), with_media(OLD)),
+    );
+    let after = media_failed(&mut translator, "o-9", &ramflux_desktop_sdk::bus::BusError::Timeout);
+    assert!(
+        after.events.is_empty(),
+        "a refusal must not republish the pre-edit text: {:?}",
+        after.events
+    );
+    let shown = payload(&run(&mut translator, edit));
+    assert_eq!((shown.text.as_str(), shown.revision), ("new words", 3));
+    assert_eq!(
+        shown.media[0].state,
+        ramflux_desktop_core::MediaState::Unavailable,
+        "the refusal is applied to the edited state"
+    );
+}
+
+#[test]
+fn a_pending_base_is_not_republished_by_a_reaction() {
+    let mut translator = pending_base("dev-ana");
+    assert_eq!(react(&mut translator, &thumbs(), false, "dev-bo"), None, "silent while pending");
+    let shown = assert_edit_returns(&mut translator);
+    assert_eq!(shown.reactions.len(), 1, "the reaction is part of the edited state");
+}
+
+#[test]
+fn a_pending_base_is_not_republished_by_a_receipt() {
+    let mut translator = pending_base("dev-me");
+    assert!(
+        receipt_for_own_message(&mut translator, ReceiptState::ReceiptRead, "dev-ana").is_empty(),
+        "silent while pending"
+    );
+    let shown = assert_edit_returns(&mut translator);
+    assert_eq!(shown.receipt, Receipt::Read, "the receipt is part of the edited state");
+}
+
+#[test]
+fn a_delete_still_wins_over_a_pending_base() {
+    let mut translator = pending_base("dev-ana");
+    let shown = payload(&delete(&mut translator, 1, DeleteScope::Everyone));
+    assert!(shown.tombstone && shown.text.is_empty(), "no pre-edit text in the tombstone");
+    assert!(edit_to(&mut translator, 3, "new words").is_empty(), "the tombstone is sticky");
+}

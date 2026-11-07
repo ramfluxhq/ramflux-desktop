@@ -161,7 +161,7 @@ pub fn refuse(
                 }
             }
             translator.v1.set_moment(moment.clone());
-            translator.report_moment(moment)
+            super::emit::emit(translator, moment)
         })
         .collect()
 }

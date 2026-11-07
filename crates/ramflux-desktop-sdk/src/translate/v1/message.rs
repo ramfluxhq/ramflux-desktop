@@ -13,6 +13,7 @@ use ramflux_desktop_core::{
 };
 use ramflux_protocol::message::{Entity, EntityKind, EventIdentity, Forward, Message, MessageRef};
 
+use super::emit::emit;
 use super::{context_of, media, moment_id, moment_of, mutation, unsupported};
 use crate::translate::Translator;
 
@@ -46,7 +47,7 @@ pub(super) fn project(
     // are not rolled back. Once the message left the retained set, content
     // older than an applied edit is kept silently as the base of the replayed edit.
     if let Some(current) = translator.v1.message(&id).cloned() {
-        return translator.report_moment(current);
+        return emit(translator, current);
     }
     let kind = match spans(&message.text, &message.entities) {
         Ok(spans) => MomentKind::Message(MessagePayload {
@@ -80,16 +81,8 @@ pub(super) fn project(
     if let MomentKind::Message(payload) = &moment.kind {
         translator.v1.cache_text(&moment.id, &payload.text);
         translator.v1.put(moment.clone(), Some(device.to_owned()));
-        // Content older than an applied edit (after a lock, or once the
-        // message left the retained set) is only the base of the edit that is
-        // replayed after it: keep it without reporting it, and forget what
-        // was reported so the edited state is published again.
-        if translator.v1.fences.get(&moment.id).is_some_and(|fence| fence.revision > 0) {
-            translator.moments.remove(&moment.id);
-            return None;
-        }
     }
-    translator.report_moment(moment)
+    emit(translator, moment)
 }
 
 /// The spans of `text`, or why the whole message is refused.
