@@ -16,6 +16,7 @@ mod common;
 mod sdk_fake;
 mod vault_rows;
 
+use std::io::Write as _;
 use std::sync::Arc;
 
 use common::*;
@@ -37,8 +38,11 @@ const LOCALES: [&str; 2] = ["en", "zh-CN"];
 
 /// A hang guard for the steps that are not condition waits (those panic at
 /// `WAIT_LIMIT`): if a step is not finished within the limit, the process
-/// reports which one and exits, so a hang fails fast with its name instead
-/// of running into the CI step timeout.
+/// reports which one and aborts, so a hang fails fast with its name instead
+/// of running into the CI step timeout. It is armed per test thread with
+/// [`arm`] and lives in a thread-local, so it is disarmed when the test
+/// thread exits, after the gpui test teardown that runs once the test body
+/// has returned.
 struct Guard {
     done: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -57,11 +61,34 @@ impl Guard {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
-            eprintln!("HANG GUARD: step `{step}` did not finish in {:?}", Self::LIMIT);
-            std::process::exit(101);
+            // Written straight to stderr: the test harness's output capture
+            // would swallow a print, and `abort` skips every destructor.
+            let _ = writeln!(
+                std::io::stderr().lock(),
+                "HANG GUARD: step `{step}` did not finish in {:?}",
+                Self::LIMIT
+            );
+            std::process::abort();
         });
         Self { done }
     }
+}
+
+thread_local! {
+    static ARMED: std::cell::RefCell<Option<Guard>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Arms the hang guard of this test thread for `step`.
+fn arm(step: String) {
+    ARMED.with(|armed| *armed.borrow_mut() = Some(Guard::new(step)));
+}
+
+/// Ends a test: the window is closed and the executor settles before the
+/// fake daemon goes away, so no bridge is left reconnecting to it.
+fn finish(cx: &mut TestAppContext, handle: Handle, fake: Fake) {
+    cx.update_window(handle.into(), |_, window, _| window.remove_window()).expect("window");
+    cx.run_until_parked();
+    fake.shutdown();
 }
 
 impl Drop for Guard {
@@ -137,7 +164,7 @@ fn ceremony_row(cx: &mut TestAppContext, ix: usize) {
     let _locale = locale_guard();
     let row = &ROWS[ix];
     let name = row.reason_code;
-    let _hang = Guard::new(format!("creation row: {name}"));
+    arm(format!("creation row: {name}"));
     speak(cx, "en");
     let (fake, handle, shell) = fresh_device(cx, &format!("ui-vault-c{ix}"), row, false);
     click(cx, handle, "account-create-phrase");
@@ -157,14 +184,14 @@ fn ceremony_row(cx: &mut TestAppContext, ix: usize) {
     }
     assert!(fake.seen().iter().any(|s| s.method.starts_with("account.create")), "{name}");
     speak(cx, "en");
-    fake.shutdown();
+    finish(cx, handle, fake);
 }
 
 fn recovery_row(cx: &mut TestAppContext, ix: usize) {
     let _locale = locale_guard();
     let row = &ROWS[ix];
     let name = row.reason_code;
-    let _hang = Guard::new(format!("recovery row: {name}"));
+    arm(format!("recovery row: {name}"));
     speak(cx, "en");
     let (fake, handle, shell) = fresh_device(cx, &format!("ui-vault-r{ix}"), row, true);
     click(cx, handle, "account-recover-acct-r");
@@ -183,14 +210,14 @@ fn recovery_row(cx: &mut TestAppContext, ix: usize) {
     }
     assert!(fake.seen().iter().any(|s| s.method.starts_with("account.recover")), "{name}");
     speak(cx, "en");
-    fake.shutdown();
+    finish(cx, handle, fake);
 }
 
 fn send_row(cx: &mut TestAppContext, ix: usize) {
     let _locale = locale_guard();
     let row = &ROWS[ix];
     let name = row.reason_code;
-    let _hang = Guard::new(format!("refused send row: {name}"));
+    arm(format!("refused send row: {name}"));
     speak(cx, "en");
     let (fake, state, path) = sdk_fake::start(&format!("ui-vault-b{ix}"));
     state.lock().expect("state").fail_submit_frame = Some(frame_of(row));
@@ -217,14 +244,14 @@ fn send_row(cx: &mut TestAppContext, ix: usize) {
     let submits = fake.seen().iter().filter(|s| s.method == "message.submit").count();
     assert_eq!(submits, 1, "{name}: the refusal was not retried by the desktop");
     speak(cx, "en");
-    fake.shutdown();
+    finish(cx, handle, fake);
 }
 
 fn export_row(cx: &mut TestAppContext, ix: usize) {
     let _locale = locale_guard();
     let row = &ROWS[ix];
     let name = row.reason_code;
-    let _hang = Guard::new(format!("agent export row: {name}"));
+    arm(format!("agent export row: {name}"));
     speak(cx, "en");
     let custody = Arc::new(FakeCustody::new());
     custody.set_live(true);
@@ -285,7 +312,7 @@ fn export_row(cx: &mut TestAppContext, ix: usize) {
     // Nothing was written, whatever the reason.
     assert!(std::fs::read_dir(&dir).expect("dir").next().is_none());
     assert!(custody.exports().is_empty());
-    fake.shutdown();
+    finish(cx, handle, fake);
     let _ = std::fs::remove_dir_all(dir);
 }
 
