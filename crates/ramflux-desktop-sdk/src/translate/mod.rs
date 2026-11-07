@@ -234,7 +234,9 @@ pub struct Translator {
     inline_thumbnails: bool,
     /// v1 messages with media as last reported, by moment: what a later
     /// object refusal changes.
-    media_moments: BTreeMap<MomentId, ramflux_desktop_core::Moment>,
+    media_moments: v1::media::Bounded<MomentId, ramflux_desktop_core::Moment>,
+    /// Objects whose fetch was refused (revoked or unavailable).
+    media_refused: v1::media::Bounded<ObjectId, ramflux_desktop_core::MediaState>,
     /// Thumbnails decoded (header-checked) so far.
     #[cfg(feature = "test-support")]
     thumbnail_decodes: usize,
@@ -298,7 +300,8 @@ impl Translator {
             groups_listed: false,
             agents: agents::Agents::default(),
             inline_thumbnails: false,
-            media_moments: BTreeMap::new(),
+            media_moments: v1::media::Bounded::default(),
+            media_refused: v1::media::Bounded::default(),
             #[cfg(feature = "test-support")]
             thumbnail_decodes: 0,
             outgoing_requests: BTreeMap::new(),
@@ -506,6 +509,8 @@ impl Translator {
     pub fn own_account_locked(&mut self) -> Vec<DomainEvent> {
         let Some(id) = self.scope.account().cloned() else { return Vec::new() };
         self.plaintext.clear();
+        self.media_moments.clear();
+        self.media_refused.clear();
         self.set_lock(&id, ramflux_desktop_core::LockState::Locked)
     }
 

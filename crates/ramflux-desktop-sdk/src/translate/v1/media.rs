@@ -39,18 +39,98 @@ enum Codec {
 pub(super) fn views(translator: &mut Translator, media: &[MediaRef]) -> Vec<MediaView> {
     media
         .iter()
-        .map(|reference| MediaView {
-            object_id: ObjectId::new(&reference.object_id),
-            name: reference.file_name.clone().unwrap_or_default(),
-            mime: reference.mime_type.clone(),
-            size: reference.size,
-            state: MediaState::Available,
-            thumbnail: reference
-                .inline_thumbnail
-                .as_ref()
-                .and_then(|thumbnail| accepted(translator, thumbnail)),
+        .map(|reference| {
+            let object_id = ObjectId::new(&reference.object_id);
+            // An object that was refused stays refused when its message is
+            // delivered again or referenced anew: no thumbnail is checked
+            // or kept for it.
+            let state = translator.media_refused.get(&object_id).copied();
+            MediaView {
+                name: reference.file_name.clone().unwrap_or_default(),
+                mime: reference.mime_type.clone(),
+                size: reference.size,
+                state: state.unwrap_or(MediaState::Available),
+                thumbnail: if state.is_some() {
+                    None
+                } else {
+                    reference
+                        .inline_thumbnail
+                        .as_ref()
+                        .and_then(|thumbnail| accepted(translator, thumbnail))
+                },
+                object_id,
+            }
         })
         .collect()
+}
+
+/// How refused a state is: a revoke is never lowered by a later, generic
+/// failure.
+fn severity(state: MediaState) -> u8 {
+    match state {
+        MediaState::Available => 0,
+        MediaState::Unavailable => 1,
+        MediaState::Revoked => 2,
+    }
+}
+
+/// The more severe of two states.
+fn worse(a: MediaState, b: MediaState) -> MediaState {
+    if severity(b) > severity(a) { b } else { a }
+}
+
+/// How many messages with media (with their text, needed to re-emit a row)
+/// and refused objects are kept: the store's own body cache size, so media
+/// messages cannot defeat that bound.
+pub const RETAINED_MAX: usize = 4_096;
+
+/// A map holding at most [`RETAINED_MAX`] entries; the oldest inserted is
+/// dropped first.
+#[derive(Debug)]
+pub(crate) struct Bounded<K, V> {
+    entries: std::collections::BTreeMap<K, V>,
+    order: std::collections::VecDeque<K>,
+}
+
+impl<K, V> Default for Bounded<K, V> {
+    fn default() -> Self {
+        Self {
+            entries: std::collections::BTreeMap::new(),
+            order: std::collections::VecDeque::new(),
+        }
+    }
+}
+
+impl<K: Ord + Clone, V> Bounded<K, V> {
+    pub fn insert(&mut self, key: K, value: V) {
+        if self.entries.insert(key.clone(), value).is_some() {
+            self.order.retain(|k| k != &key);
+        }
+        self.order.push_back(key);
+        while self.entries.len() > RETAINED_MAX {
+            if let Some(oldest) = self.order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
+    }
+
+    pub fn get(&self, key: &K) -> Option<&V> {
+        self.entries.get(key)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.entries.iter()
+    }
+
+    #[cfg(feature = "test-support")]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.order.clear();
+    }
 }
 
 /// The thumbnail to show, or `None` for a plain file row.
@@ -114,7 +194,10 @@ pub fn refuse(
     failure: &BusError,
 ) -> Vec<DomainEvent> {
     let object = ObjectId::new(object_id);
-    let state = if revoked(failure) { MediaState::Revoked } else { MediaState::Unavailable };
+    let seen = translator.media_refused.get(&object).copied().unwrap_or(MediaState::Available);
+    let state =
+        worse(seen, if revoked(failure) { MediaState::Revoked } else { MediaState::Unavailable });
+    translator.media_refused.insert(object.clone(), state);
     let affected: Vec<MomentId> = translator
         .media_moments
         .iter()
@@ -127,7 +210,7 @@ pub fn refuse(
             let mut moment = translator.media_moments.get(&id)?.clone();
             if let MomentKind::Message(payload) = &mut moment.kind {
                 for row in payload.media.iter_mut().filter(|row| row.object_id == object) {
-                    row.state = state;
+                    row.state = worse(row.state, state);
                     row.thumbnail = None;
                 }
             }
@@ -149,6 +232,11 @@ impl Translator {
     /// How many thumbnails were decoded so far (a test probe).
     pub fn thumbnail_decodes(&self) -> usize {
         self.thumbnail_decodes
+    }
+
+    /// How many messages with media are retained (a test probe).
+    pub fn retained_media_messages(&self) -> usize {
+        self.media_moments.len()
     }
 
     /// Thumbnail bytes kept for a message's media rows (a test probe).

@@ -18,7 +18,7 @@ use ramflux_desktop_sdk::translate::Translator;
 use ramflux_desktop_sdk::translate::v1::candidate::{apply, media_failed};
 use ramflux_desktop_sdk::translate::v1::media::REVOKED_REASON;
 use ramflux_desktop_test::v1_fixtures::{
-    identity, media_ref, message_update, text_message, thumbnail,
+    identity, media_ref, message_update, real_thumbnail, text_message, thumbnail,
 };
 use ramflux_desktop_ui::route::Page;
 use ramflux_protocol::message::{MediaRef, MessageUpdate};
@@ -187,6 +187,110 @@ fn v1_media_rows_thumbnail_policy_and_revoked() {
     assert_eq!(after[0].state, MediaState::Revoked, "a revoked row stays revoked");
 }
 
+fn revoked() -> BusError {
+    BusError::Daemon {
+        retry_after_ms: None,
+        code: "Refused".to_owned(),
+        message: "access revoked".to_owned(),
+        reason_code: Some(REVOKED_REASON.to_owned()),
+        details: None,
+        cause: None,
+    }
+}
+
+#[test]
+fn real_png_jpeg_and_webp_thumbnails_are_shown() {
+    for mime in ["image/png", "image/jpeg", "image/webp"] {
+        let (rows, decodes, kept) = with_thumbnail(true, real_thumbnail(mime));
+        let shown = rows[0].thumbnail.as_ref().unwrap_or_else(|| panic!("{mime} thumbnail"));
+        assert_eq!((shown.width, shown.height, decodes), (1, 1, 1), "{mime}");
+        assert_eq!(kept, shown.bytes.len(), "{mime}");
+    }
+}
+
+#[test]
+fn thumbnails_are_off_by_default() {
+    assert!(!ramflux_desktop_sdk::SdkConfig::new("/tmp/x.sock").inline_thumbnails);
+    // A translator nobody switched on never shows or decodes a thumbnail.
+    let mut translator =
+        Translator::new(Scope::Account(AccountId::new("acct-main")), "/tmp/s10c-media.sock");
+    let events = apply(
+        &mut translator,
+        &[update(1, vec![media_ref("o-1", "cat.png", "image/png", 2048, Some(png(64, 64, 100)))])],
+    )
+    .events;
+    assert!(rows(events)[0].thumbnail.is_none());
+    assert_eq!(translator.thumbnail_decodes(), 0);
+}
+
+#[test]
+fn a_replayed_message_does_not_resurrect_a_revoked_object() {
+    let mut translator = translator(true);
+    let message =
+        update(1, vec![media_ref("o-1", "cat.png", "image/png", 2048, Some(png(64, 64, 100)))]);
+    apply(&mut translator, std::slice::from_ref(&message));
+    media_failed(&mut translator, "o-1", &revoked());
+    // The replay builds the same revoked row, so nothing is emitted: the
+    // available row with its thumbnail does not come back.
+    let replay = apply(&mut translator, &[message]).events;
+    assert!(replay.is_empty(), "the revoked row is unchanged: {replay:?}");
+    assert_eq!(translator.cached_thumbnail_bytes(&moment_id(1)), 0, "no cached bytes");
+}
+
+#[test]
+fn a_new_reference_to_a_revoked_object_is_revoked() {
+    let mut translator = translator(true);
+    media_failed(&mut translator, "o-1", &revoked());
+    let events = apply(
+        &mut translator,
+        &[update(2, vec![media_ref("o-1", "cat.png", "image/png", 2048, Some(png(64, 64, 100)))])],
+    )
+    .events;
+    let shown = rows(events);
+    assert_eq!(shown[0].state, MediaState::Revoked);
+    assert!(shown[0].thumbnail.is_none());
+    assert_eq!(translator.thumbnail_decodes(), 0, "a refused object's thumbnail is not decoded");
+}
+
+#[test]
+fn a_generic_failure_never_lowers_a_revoke() {
+    let mut translator = translator(true);
+    apply(&mut translator, &[update(1, vec![media_ref("o-1", "cat.png", "image/png", 10, None)])]);
+    media_failed(&mut translator, "o-1", &revoked());
+    media_failed(&mut translator, "o-1", &BusError::Timeout);
+    let after = media_failed(&mut translator, "o-1", &BusError::Timeout).events;
+    assert!(after.is_empty(), "nothing changes: the row stays revoked");
+    let replay = rows(
+        apply(
+            &mut translator,
+            &[update(3, vec![media_ref("o-1", "cat.png", "image/png", 10, None)])],
+        )
+        .events,
+    );
+    assert_eq!(replay[0].state, MediaState::Revoked);
+}
+
+#[test]
+fn retained_media_messages_are_bounded_and_dropped_on_lock() {
+    let mut translator = translator(false);
+    for n in 0..4_200_u32 {
+        let id = n.to_be_bytes();
+        let mut message = text_message("see attached", Vec::new());
+        message.media = vec![media_ref("o-1", "f.bin", "application/octet-stream", 1, None)];
+        apply(
+            &mut translator,
+            &[message_update(
+                identity("c-media", &id, "dev-ana", u64::from(n), u64::from(n)),
+                message,
+            )],
+        );
+    }
+    assert!(translator.retained_media_messages() <= 4_096, "bounded like the body cache");
+    assert!(translator.retained_media_messages() > 4_000);
+    translator.own_account_locked();
+    assert_eq!(translator.retained_media_messages(), 0, "a lock drops them");
+}
+
 const DM: &str = "dm-ana";
 
 fn dm_id(n: u8) -> MomentId {
@@ -219,6 +323,7 @@ fn open_with_media(
     message.media = vec![
         media_ref("o-1", "cat.png", "image/png", 2048, Some(png(64, 64, 100))),
         media_ref("o-2", "notes.pdf", "application/pdf", 10, None),
+        media_ref("o-3", "photo.jpg", "image/jpeg", 5, Some(real_thumbnail("image/png"))),
     ];
     let update = message_update(identity(DM, &[5; 4], "dev-ana", 500, 5), message);
     assert!(sdk_fake::push_generated(&path, update), "bridge running");
@@ -236,6 +341,10 @@ fn media_rows_render_file_thumbnail_and_revoked_state(cx: &mut gpui_kit::TestApp
     assert!(has_label(cx, handle, "notes.pdf \u{b7} 10 B"));
     assert!(exists_in(cx, handle, row, "message-media-thumbnail-0"), "opt-in on: thumbnail");
     assert!(!exists_in(cx, handle, row, "message-media-thumbnail-1"));
+    assert!(
+        exists_in(cx, handle, row, "message-media-thumbnail-2"),
+        "a JPEG attachment with a PNG preview shows the preview"
+    );
 
     let revoked = BusError::Daemon {
         retry_after_ms: None,

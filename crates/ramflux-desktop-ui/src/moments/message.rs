@@ -211,8 +211,8 @@ fn media_row(index: usize, row: &MediaView, cx: &App) -> impl IntoElement {
         None => i18n::size(Some(row.size)),
     };
     let label = format!("{name} \u{b7} {detail}");
-    let thumbnail = row.thumbnail.as_ref().map(|thumbnail| {
-        let image = gpui_kit::Image::from_bytes(image_format(&row.mime), thumbnail.bytes.clone());
+    let thumbnail = thumbnail_image(row);
+    let thumbnail = thumbnail.map(|(thumbnail, image)| {
         div()
             .id(SharedString::from(format!("message-media-thumbnail-{index}")))
             .aria_label(tr_args("moment.message.media.thumbnail", &[("name", &name)]))
@@ -243,10 +243,74 @@ fn media_row(index: usize, row: &MediaView, cx: &App) -> impl IntoElement {
         .test_support()
 }
 
-fn image_format(mime: &str) -> gpui_kit::ImageFormat {
-    match mime {
-        "image/jpeg" => gpui_kit::ImageFormat::Jpeg,
-        "image/webp" => gpui_kit::ImageFormat::Webp,
-        _ => gpui_kit::ImageFormat::Png,
+/// The thumbnail of a row and its image. It is decoded as what its own bytes
+/// are, not as the file's type: a JPEG attachment can carry a PNG preview.
+fn thumbnail_image(row: &MediaView) -> Option<(&ramflux_desktop_core::Thumbnail, gpui_kit::Image)> {
+    let thumbnail = row.thumbnail.as_ref()?;
+    let format = image_format(&thumbnail.bytes)?;
+    Some((thumbnail, gpui_kit::Image::from_bytes(format, thumbnail.bytes.clone())))
+}
+
+/// The codec of encoded image bytes, from their signature.
+fn image_format(bytes: &[u8]) -> Option<gpui_kit::ImageFormat> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        Some(gpui_kit::ImageFormat::Png)
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some(gpui_kit::ImageFormat::Jpeg)
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some(gpui_kit::ImageFormat::Webp)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use ramflux_desktop_test::v1_fixtures::{REAL_JPEG, REAL_PNG, REAL_WEBP};
+
+    use super::*;
+
+    /// Whether the image decoder accepts `bytes` as the format found in them.
+    fn decodes(bytes: &[u8]) -> bool {
+        let renderer = gpui_kit::SvgRenderer::new(Arc::new(crate::AppAssets));
+        image_format(bytes)
+            .map(|format| gpui_kit::Image::from_bytes(format, bytes.to_vec()))
+            .is_some_and(|image| image.to_image_data(renderer).is_ok())
+    }
+
+    #[test]
+    fn real_png_jpeg_and_webp_thumbnails_decode_as_their_own_codec() {
+        assert!(decodes(REAL_PNG), "png");
+        assert!(decodes(REAL_JPEG), "jpeg");
+        assert!(decodes(REAL_WEBP), "webp");
+    }
+
+    #[test]
+    fn a_jpeg_attachment_with_a_png_preview_decodes_the_preview() {
+        let row = MediaView {
+            object_id: ramflux_desktop_core::ObjectId::new("o-1"),
+            name: "photo.jpg".to_owned(),
+            mime: "image/jpeg".to_owned(),
+            size: 5,
+            state: MediaState::Available,
+            thumbnail: Some(ramflux_desktop_core::Thumbnail {
+                width: 1,
+                height: 1,
+                bytes: REAL_PNG.to_vec(),
+            }),
+        };
+        let (_, image) = thumbnail_image(&row).expect("a thumbnail image");
+        let renderer = gpui_kit::SvgRenderer::new(Arc::new(crate::AppAssets));
+        assert!(image.to_image_data(renderer).is_ok(), "the PNG preview decodes");
+    }
+
+    #[test]
+    fn the_codec_follows_the_thumbnail_bytes_not_the_file_type() {
+        // A JPEG attachment carrying a PNG preview: the preview is a PNG.
+        assert!(matches!(image_format(REAL_PNG), Some(gpui_kit::ImageFormat::Png)));
+        assert!(matches!(image_format(REAL_JPEG), Some(gpui_kit::ImageFormat::Jpeg)));
+        assert!(image_format(b"not an image").is_none());
     }
 }

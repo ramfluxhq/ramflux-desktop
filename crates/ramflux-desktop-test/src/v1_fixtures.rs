@@ -184,3 +184,21 @@ pub fn media_ref(
         large_manifest: None,
     }
 }
+
+/// A real 1x1 PNG, JPEG and WebP: bytes the image decoders accept.
+pub const REAL_PNG: &[u8] = include_bytes!("../assets/1x1.png");
+/// See [`REAL_PNG`].
+pub const REAL_JPEG: &[u8] = include_bytes!("../assets/1x1.jpg");
+/// See [`REAL_PNG`].
+pub const REAL_WEBP: &[u8] = include_bytes!("../assets/1x1.webp");
+
+/// A 1x1 thumbnail of `mime` made of real image bytes.
+#[must_use]
+pub fn real_thumbnail(mime: &str) -> Thumbnail {
+    let bytes = match mime {
+        "image/jpeg" => REAL_JPEG,
+        "image/webp" => REAL_WEBP,
+        _ => REAL_PNG,
+    };
+    Thumbnail { mime_type: mime.to_owned(), width: 1, height: 1, encoded_image: bytes.to_vec() }
+}
