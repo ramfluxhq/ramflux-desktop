@@ -49,10 +49,6 @@ fn is_stateful(row: &MomentRow) -> bool {
     matches!(row.moment.kind, MomentKind::AgentSurface(_) | MomentKind::Conflict(_))
 }
 
-fn key(moment: &Moment) -> (Timestamp, &MomentId) {
-    (moment.at, &moment.id)
-}
-
 impl Rows {
     /// The rows, shareable with the row renderer.
     pub fn shared(&self) -> Rc<Vec<MomentRow>> {
@@ -147,10 +143,9 @@ impl Rows {
                 }
             }
         }
-        added.sort_by(|a, b| key(a).cmp(&key(b)));
-        let last = self.rows.last().map(|r| (r.moment.at, r.moment.id.clone()));
-        if let (Some(first), Some((at, id))) = (added.first(), &last)
-            && key(first) < (*at, id)
+        added.sort_by(|a, b| a.stream_cmp(b));
+        if let (Some(first), Some(last)) = (added.first(), self.rows.last())
+            && first.stream_cmp(&last.moment).is_lt()
         {
             return None;
         }

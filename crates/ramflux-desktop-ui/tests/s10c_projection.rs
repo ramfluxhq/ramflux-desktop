@@ -13,8 +13,8 @@ use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::translate::Translator;
 use ramflux_desktop_sdk::translate::v1::candidate::apply;
 use ramflux_desktop_test::v1_fixtures::{
-    entity, forward_of, identity, message_ref, message_update, service_update, text_message,
-    unknown_entity, unknown_service_update,
+    entity, entity_with_value, forward_of, identity, message_ref, message_update, service_update,
+    text_message, unknown_entity, unknown_service_update,
 };
 use ramflux_protocol::message::{
     Content, Entity, EntityKind, MessageUpdate, ServiceAction, content::Value,
@@ -233,9 +233,51 @@ fn unrecognized_entity_kind_refuses_the_whole_message_with_no_link_or_action() {
             Some("unknown_entity_kind")
         );
     }
-    // A link without its target carries no usable value either.
-    let moment = one(&message_at(1, 1, "see here", vec![entity(0, 3, EntityKind::EntityLink)]));
-    assert!(matches!(moment.kind, MomentKind::Fallback(_)));
+}
+
+fn value_refusal(kind: EntityKind, value: Option<&str>) {
+    let moment = one(&message_at(1, 1, "see here", vec![entity_with_value(0, 3, kind, value)]));
+    let placeholder = refused(&moment);
+    assert_eq!(placeholder.text, "", "no partial text for {kind:?} {value:?}");
+    assert_eq!(
+        placeholder.unsupported.as_ref().map(|i| i.reason.as_str()),
+        Some("unknown_entity_kind"),
+        "{kind:?} {value:?}"
+    );
+}
+
+#[test]
+fn link_without_a_value_refuses_the_whole_message() {
+    value_refusal(EntityKind::EntityLink, None);
+}
+
+#[test]
+fn link_with_an_empty_value_refuses_the_whole_message() {
+    value_refusal(EntityKind::EntityLink, Some(""));
+}
+
+#[test]
+fn mention_without_a_value_refuses_the_whole_message() {
+    value_refusal(EntityKind::EntityMention, None);
+}
+
+#[test]
+fn mention_with_an_empty_value_refuses_the_whole_message() {
+    value_refusal(EntityKind::EntityMention, Some(""));
+}
+
+#[test]
+fn link_and_mention_with_values_render() {
+    let moment = one(&message_at(
+        1,
+        1,
+        "see here",
+        vec![
+            entity_with_value(0, 3, EntityKind::EntityLink, Some("https://example.com")),
+            entity_with_value(4, 4, EntityKind::EntityMention, Some("p-kai")),
+        ],
+    ));
+    assert_eq!(payload(&moment).spans.len(), 2);
 }
 
 #[test]
@@ -264,5 +306,9 @@ fn spans_count_scalars_not_bytes_or_utf16_units() {
     assert_eq!(covered(text, spans[1].offset, spans[1].length), "\u{e9}");
     // UTF-16 offset 3 is not a scalar offset: it leaves the text.
     let utf16 = one(&message_at(1, 1, text, vec![entity(3, 1, EntityKind::EntityBold)]));
-    assert!(matches!(utf16.kind, MomentKind::Fallback(_)));
+    assert_eq!(
+        refused(&utf16).unsupported.as_ref().map(|i| i.reason.as_str()),
+        Some("span_out_of_range"),
+        "a UTF-16 offset is out of range, not a shifted span"
+    );
 }

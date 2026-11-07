@@ -47,6 +47,17 @@ pub fn entity(offset: u32, length: u32, kind: EntityKind) -> Entity {
     Entity { offset, length, kind: kind as i32, value: None }
 }
 
+/// An entity of `kind` carrying `value` (a link target, a mention).
+#[must_use]
+pub fn entity_with_value(
+    offset: u32,
+    length: u32,
+    kind: EntityKind,
+    value: Option<&str>,
+) -> Entity {
+    Entity { offset, length, kind: kind as i32, value: value.map(str::to_owned) }
+}
+
 /// An entity whose kind number is not a known `EntityKind`.
 #[must_use]
 pub fn unknown_entity(offset: u32, length: u32, kind: i32) -> Entity {

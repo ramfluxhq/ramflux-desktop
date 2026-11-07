@@ -468,6 +468,20 @@ pub struct Moment {
     pub order: Option<OrderKey>,
 }
 
+impl Moment {
+    /// Where this moment sits against `other` in a conversation stream: the
+    /// daemon's order key first (moments without one sort before keyed
+    /// ones), then display time, then id. The store's timeline and any view
+    /// that patches rows in place must use this one comparison.
+    #[must_use]
+    pub fn stream_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.order
+            .cmp(&other.order)
+            .then_with(|| self.at.cmp(&other.at))
+            .then_with(|| self.id.cmp(&other.id))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
