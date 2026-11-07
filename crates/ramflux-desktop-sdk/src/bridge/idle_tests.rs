@@ -190,7 +190,7 @@ async fn ordinary_disconnect_is_observed_without_data_requests() {
             DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)
         ))
     );
-    daemon.internal(Internal::Fetched((Fetch::DaemonStatus, None, Ok(json!({})))));
+    daemon.internal(daemon.fetched_now((Fetch::DaemonStatus, None, Ok(json!({})))));
     assert!(
         !delivered
             .try_iter()

@@ -345,7 +345,7 @@ async fn authority_restored_event_clears_blocked_and_fences_delayed_status() {
     // A status dispatched before the event cannot reintroduce the old block.
     let mut delayed = blocked;
     delayed["node_id"] = json!("node-local");
-    task.internal(Internal::Fetched((fetch, Some(old_revision), Ok(delayed))));
+    task.internal(task.fetched_now((fetch, Some(old_revision), Ok(delayed))));
     let fenced = latest(&delivered);
     assert!(!fenced.authority_blocked);
     assert_eq!(fenced.networking, Networking::Live);

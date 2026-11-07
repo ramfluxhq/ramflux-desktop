@@ -114,21 +114,31 @@ pub(crate) struct Ceremonies {
 /// A read's answer, with the listing number of a first page.
 pub(super) type Read = (Fetch, Option<u64>, Result<Value, BusError>);
 
+/// Which read attempt, in which gate epoch, produced a completion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Stamp {
+    pub(super) epoch: u64,
+    pub(super) attempt: u64,
+}
+
+/// Everything that reaches the scope's inbox. A completion of a read carries
+/// the [`Stamp`] it was dispatched under; [`Internal::stamp`] is exhaustive,
+/// so a new variant must say whether it is a read, and the one check in
+/// `Task::internal` drops a superseded read before any bookkeeping,
+/// translation or lock.
 pub(super) enum Internal {
-    /// A batch of snapshot reads, with the gate epoch and the read attempt
-    /// it was sent in.
-    Snapshot(u64, u64, Vec<Read>),
-    /// The daemon's schema status for `epoch`, with the generation of the
+    /// A batch of snapshot reads.
+    Snapshot(Stamp, Vec<Read>),
+    /// The daemon's schema status for the gate, with the generation of the
     /// connection it travelled on.
     SchemaAnswer {
-        epoch: u64,
+        stamp: Stamp,
         generation: u64,
         result: Result<Value, BusError>,
     },
-    /// A single read's completion, tagged with the epoch it was dispatched
-    /// in; one of an older epoch is dropped before any bookkeeping.
+    /// A single read's completion.
     FetchedAt {
-        epoch: u64,
+        stamp: Stamp,
         read: Read,
     },
     /// Marks where a new gate epoch began in this channel: whatever was
@@ -144,7 +154,6 @@ pub(super) enum Internal {
         id: String,
         result: Result<Value, BusError>,
     },
-    Fetched(Read),
     EffectDone {
         method: String,
         body: Value,
@@ -158,6 +167,28 @@ pub(super) enum Internal {
     },
     /// What a creation or recovery step came to.
     Custody(super::custody::Outcome),
+}
+
+impl Internal {
+    /// The stamp of a read's completion; `None` for what is not a read.
+    fn stamp(&self) -> Option<Stamp> {
+        match self {
+            Self::Snapshot(stamp, _)
+            | Self::SchemaAnswer { stamp, .. }
+            | Self::FetchedAt { stamp, .. } => Some(*stamp),
+            // Not reads: an attach wake (guarded by `attach_pending`), the
+            // epoch marker, and answers to sends, effects, receipts and
+            // custody ceremonies, each keyed by its own record. Reads that
+            // an effect asks for are spawned when it is handled, under the
+            // stamp then current.
+            Self::Attached { .. }
+            | Self::EpochStart
+            | Self::SendDone { .. }
+            | Self::EffectDone { .. }
+            | Self::ReceiptDone { .. }
+            | Self::Custody(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -562,9 +593,10 @@ impl Task {
     fn spawn_schema_status(&self, epoch: u64) {
         let (client, internal) = (self.client.clone(), self.internal.clone());
         let request = Fetch::SchemaStatus(epoch).request(None);
+        let stamp = Stamp { epoch, attempt: self.read_attempt };
         tokio::spawn(async move {
             let (generation, result) = client.call_on_connection(&request).await;
-            let _ = internal.send(Internal::SchemaAnswer { epoch, generation, result });
+            let _ = internal.send(Internal::SchemaAnswer { stamp, generation, result });
         });
     }
 
@@ -939,7 +971,7 @@ impl Task {
                 self.guard_violations += 1;
             }
         }
-        let (epoch, attempt) = (self.gate.epoch(), self.read_attempt);
+        let stamp = self.stamp();
         self.batch_pending += 1;
         let client = self.client.clone();
         let account = self.account();
@@ -960,7 +992,7 @@ impl Task {
             }
             results.sort_by_key(|(index, _)| *index);
             let results = results.into_iter().map(|(_, read)| read).collect();
-            let _ = internal.send(Internal::Snapshot(epoch, attempt, results));
+            let _ = internal.send(Internal::Snapshot(stamp, results));
         });
         let handle = task.abort_handle();
         for fetch in reserved {
@@ -1069,10 +1101,10 @@ impl Task {
             let (internal, sent) = (self.internal.clone(), self.listings_sent.clone());
             let key = fetch.clone();
             let revision = self.networking_revision;
-            let epoch = self.gate.epoch();
+            let stamp = self.stamp();
             let task = tokio::spawn(async move {
                 let read = read(&client, fetch, account.as_deref(), &sent, revision).await;
-                let _ = internal.send(Internal::FetchedAt { epoch, read });
+                let _ = internal.send(Internal::FetchedAt { stamp, read });
             });
             self.read_recovery.running.insert(key, task.abort_handle());
         }
@@ -1087,22 +1119,30 @@ impl Task {
         }
     }
 
+    /// A read's completion as if dispatched now (fixtures).
+    #[cfg(test)]
+    pub(super) fn fetched_now(&self, read: Read) -> Internal {
+        Internal::FetchedAt { stamp: self.stamp(), read }
+    }
+
+    /// The stamp reads are dispatched under now.
+    pub(super) fn stamp(&self) -> Stamp {
+        Stamp { epoch: self.gate.epoch(), attempt: self.read_attempt }
+    }
+
     fn internal(&mut self, internal: Internal) {
         self.observe_connection();
+        // The one place a superseded read is rejected: before bookkeeping
+        // (running handles, pending counts, the barrier), before any
+        // translation, before an error can lock the scope.
+        if internal.stamp().is_some_and(|stamp| stamp != self.stamp()) {
+            return;
+        }
         match internal {
-            Internal::Snapshot(epoch, attempt, results) => {
-                self.on_snapshot(epoch, attempt, results)
-            }
-            Internal::SchemaAnswer { epoch, generation, result } => {
+            Internal::Snapshot(stamp, results) => self.on_snapshot(stamp.epoch, results),
+            Internal::SchemaAnswer { stamp, generation, result } => {
                 if !matches!(self.link, Link::Locked | Link::Lost) {
-                    self.on_schema_status(epoch, generation, &result);
-                }
-            }
-            Internal::FetchedAt { epoch, read } => {
-                // Dispatched in an older epoch: nothing of it is kept, not
-                // even its slot in the running set (a newer read may hold it).
-                if !self.gate.enabled() || epoch == self.gate.epoch() {
-                    self.internal(Internal::Fetched(read));
+                    self.on_schema_status(stamp.epoch, generation, &result);
                 }
             }
             Internal::Attached { snapshot, result } => {
@@ -1120,7 +1160,7 @@ impl Task {
                 self.pending_markers = self.pending_markers.saturating_sub(1);
             }
             Internal::SendDone { id, result } => self.send_done(&id, result),
-            Internal::Fetched((fetch, number, result)) => {
+            Internal::FetchedAt { read: (fetch, number, result), .. } => {
                 self.read_recovery.running.remove(&fetch);
                 if matches!(self.link, Link::Locked | Link::Lost) {
                     return;
@@ -1201,12 +1241,7 @@ impl Task {
         }
     }
 
-    fn on_snapshot(&mut self, epoch: u64, attempt: u64, mut results: Vec<Read>) {
-        // A completion of a cancelled attempt touches nothing: not the
-        // running handles, not the pending count that holds the barrier.
-        if attempt != self.read_attempt {
-            return;
-        }
+    fn on_snapshot(&mut self, epoch: u64, mut results: Vec<Read>) {
         for (fetch, _, _) in &results {
             self.read_recovery.running.remove(fetch);
         }

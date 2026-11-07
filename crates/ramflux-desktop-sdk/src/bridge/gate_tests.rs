@@ -301,7 +301,7 @@ fn answer(task: &mut Task, generation: serde_json::Value) {
     let epoch = task.gate.epoch();
     let connection = task.client.connections_opened();
     task.internal(Internal::SchemaAnswer {
-        epoch,
+        stamp: Stamp { epoch, attempt: task.read_attempt },
         generation: connection,
         result: Ok(json!({ "schema_generation": generation })),
     });
@@ -847,7 +847,7 @@ async fn play(task: &mut Task, event: Ev, old: u64) {
         Ev::StatusOld => {
             let epoch = task.gate.epoch();
             task.internal(Internal::SchemaAnswer {
-                epoch,
+                stamp: Stamp { epoch, attempt: task.read_attempt },
                 generation: old,
                 result: Ok(json!({ "schema_generation": 0 })),
             });
@@ -858,7 +858,7 @@ async fn play(task: &mut Task, event: Ev, old: u64) {
             task.observe_connection();
             let epoch = task.gate.epoch();
             task.internal(Internal::SchemaAnswer {
-                epoch,
+                stamp: Stamp { epoch, attempt: task.read_attempt },
                 generation: old + 1,
                 result: Ok(json!({ "schema_generation": 0 })),
             });
@@ -1125,14 +1125,21 @@ async fn a_stale_batch_completion_cannot_release_the_barrier_of_a_retry() {
     // the scope has not looked at it yet.
     task.lost();
     task.snapshot();
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
-    while !(task.client.in_flight() == 0 && task.batch_pending == 1 && !inbox.internal.is_empty()) {
-        assert!(std::time::Instant::now() < deadline, "the batch completion is queued");
-        tokio::task::yield_now().await;
-    }
+    // Collect, without dispatching, until the batch's own completion has
+    // arrived.
     let mut queued = Vec::new();
-    while let Ok(item) = inbox.internal.try_recv() {
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        let item = tokio::time::timeout(left, inbox.internal.recv())
+            .await
+            .expect("the snapshot completion arrives")
+            .expect("the inbox is open");
+        let done = matches!(item, Internal::Snapshot(..));
         queued.push(item);
+        if done {
+            break;
+        }
     }
     assert!(queued.iter().any(|i| matches!(i, Internal::Snapshot(..))), "a batch is queued");
 
@@ -1163,6 +1170,62 @@ async fn a_stale_batch_completion_cannot_release_the_barrier_of_a_retry() {
     assert_eq!(task.guard_violations, 0);
     shared.identities.release();
     settle(&mut task, &mut inbox).await;
+    let order: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
+    let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
+    let messages = order.iter().position(|m| m == "conversation.directory").expect("messages");
+    assert!(identities < messages, "identities first: {order:?}");
+    fake.shutdown();
+}
+
+#[tokio::test]
+async fn a_stale_single_read_error_cannot_lock_or_cancel_a_retry() {
+    let shared = daemon(Status::Field(json!(0)));
+    let _teardown_shared = Teardown(shared.clone());
+    let (fake, path) = start("gate-stale-single", &shared);
+    let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
+    attach(&mut task, &mut inbox).await;
+    pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
+    settle(&mut task, &mut inbox).await;
+    let epoch = task.gate.epoch();
+
+    // An account.status completion of the current attempt is on its way and
+    // says the account is not open.
+    let stale = Internal::FetchedAt {
+        stamp: task.stamp(),
+        read: (
+            Fetch::AccountStatus(AccountId::new("acct-main")),
+            None,
+            Err(BusError::daemon("AccountNotOpen", "account not open: acct-main")),
+        ),
+    };
+
+    // The job link fails and the backoff retry reads again in the same
+    // epoch (the account is open again), identities held.
+    let before = fake.seen().len();
+    shared.identities.close();
+    task.lost();
+    task.snapshot();
+    assert_eq!(task.gate.epoch(), epoch, "same epoch: it is a retry");
+    pump_with(&mut task, &mut inbox, false, |t| {
+        t.gate.prerequisites_pending()
+            && fake.seen()[before..].iter().any(|r| r.method == "identity.directory")
+    })
+    .await;
+    assert!(task.snapshot_task.is_some(), "the retry batch is running");
+
+    task.internal(stale);
+    assert_ne!(task.link, Link::Locked, "a stale error does not lock the recovered scope");
+    assert!(task.snapshot_task.is_some(), "the retry batch was not cancelled");
+    assert!(task.gate.prerequisites_pending(), "the barrier stands");
+    assert_eq!(task.batch_pending, 1);
+    let held: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
+    assert!(
+        !held.iter().any(|m| gate::is_message_method(m) || m == "conversation.directory"),
+        "no message read beside the held identities: {held:?}"
+    );
+    shared.identities.release();
+    settle(&mut task, &mut inbox).await;
+    assert_eq!(task.link, Link::Live);
     let order: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
     let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
     let messages = order.iter().position(|m| m == "conversation.directory").expect("messages");
@@ -1215,7 +1278,7 @@ async fn reconnect_revokes_the_approval_and_a_late_old_epoch_answer_cannot_reope
     );
     // An old epoch's compatible answer cannot open the gate.
     task.internal(Internal::SchemaAnswer {
-        epoch: first_epoch,
+        stamp: Stamp { epoch: first_epoch, attempt: task.read_attempt },
         generation: task.client.connections_opened(),
         result: Ok(json!({ "schema_generation": 0 })),
     });
@@ -1244,8 +1307,7 @@ async fn an_older_snapshot_arriving_after_the_new_epoch_cannot_reopen_the_gate()
     // reports) completes only now: nothing of it is translated.
     delivered.try_iter().for_each(drop);
     task.internal(Internal::Snapshot(
-        old_epoch,
-        task.read_attempt,
+        Stamp { epoch: old_epoch, attempt: task.read_attempt },
         vec![(
             Fetch::DaemonStatus,
             None,
@@ -1259,7 +1321,7 @@ async fn an_older_snapshot_arriving_after_the_new_epoch_cannot_reopen_the_gate()
     );
     // The same holds for a single read queued before the new epoch began.
     task.pending_markers = 1;
-    task.internal(Internal::Fetched((
+    task.internal(task.fetched_now((
         Fetch::DaemonStatus,
         None,
         Ok(json!({ "schema_generation": 0 })),
@@ -1291,7 +1353,7 @@ async fn a_changed_status_in_the_same_epoch_blocks_at_once_and_late_results_are_
         group: "g-1".to_owned(),
         title: None,
     };
-    task.internal(Internal::Fetched((
+    task.internal(task.fetched_now((
         late.clone(),
         None,
         Ok(json!({ "decrypted_messages": [{ "message_id": "m-late", "body_utf8": "late" }] })),
@@ -1431,7 +1493,7 @@ async fn an_older_epochs_single_read_completing_after_reopening_is_not_translate
         title: None,
     };
     task.internal(Internal::FetchedAt {
-        epoch: old_epoch,
+        stamp: Stamp { epoch: old_epoch, attempt: task.read_attempt },
         read: (
             late,
             None,
@@ -1733,6 +1795,17 @@ fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
             }
             if name == "snapshot" && file == "scope.rs" {
                 assert!(body.contains("attach_live("), "snapshot attaches through the one path");
+            }
+            // Every inbox message says whether it is a read (exhaustively), and
+            // the one check at the inbox drops a superseded read first.
+            if name == "stamp" && body.contains("Self::Snapshot") {
+                assert!(!body.contains("_ =>"), "{file}: Internal::stamp has no wildcard arm");
+            }
+            if name == "internal" && file == "scope.rs" {
+                assert!(
+                    body.contains("internal.stamp()") && body.contains("self.stamp()"),
+                    "the inbox rejects superseded reads in one shared check"
+                );
             }
             if name == "recover_connection" {
                 assert!(body.contains("start_epoch_reads("), "recovery starts the ordered epoch");

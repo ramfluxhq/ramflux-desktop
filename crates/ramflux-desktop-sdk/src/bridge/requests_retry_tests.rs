@@ -194,7 +194,7 @@ async fn read_retry_cancels_on_lock_or_detach_and_coalesces() {
         task.reconnect_at = Instant::now() + Duration::from_secs(60);
         task.tick();
         assert!(task.read_recovery.running.is_empty());
-        task.internal(Internal::Fetched((Fetch::ContactList, None, Err(BusError::Timeout))));
+        task.internal(task.fetched_now((Fetch::ContactList, None, Err(BusError::Timeout))));
         assert!(task.read_recovery.next_due().is_none(), "late completion cannot rearm");
     }
     fake.shutdown();
