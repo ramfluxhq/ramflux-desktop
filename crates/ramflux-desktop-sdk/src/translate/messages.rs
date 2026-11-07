@@ -204,6 +204,7 @@ impl Translator {
                 tombstone: deleted,
                 attachment: self.attachment_of(message),
                 franking: None,
+                ..Default::default()
             }),
             None if deleted => MomentKind::Message(MessagePayload {
                 text: String::new(),
@@ -211,10 +212,12 @@ impl Translator {
                 tombstone: true,
                 attachment: None,
                 franking: None,
+                ..Default::default()
             }),
             None => MomentKind::Fallback(FallbackPayload {
                 reason: "backend.message.encrypted_at_rest".to_owned(),
                 text: String::new(),
+                unsupported: None,
             }),
         };
         Moment {

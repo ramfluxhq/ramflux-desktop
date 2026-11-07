@@ -100,6 +100,7 @@ pub fn large_context(messages: usize) -> Scenario {
                 tombstone: false,
                 attachment: None,
                 franking: None,
+                ..Default::default()
             }),
             lifecycle: Lifecycle::Done,
         };

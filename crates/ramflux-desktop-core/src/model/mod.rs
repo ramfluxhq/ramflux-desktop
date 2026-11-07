@@ -41,6 +41,7 @@ mod conversation;
 mod grant;
 mod integrations;
 mod listing;
+mod message_v1;
 mod moment;
 mod object;
 mod protected;
@@ -79,6 +80,10 @@ pub use conversation::{
 pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingApproval};
 pub use integrations::{A2iItem, Integrations, McpServer};
 pub use listing::{ListState, Listing};
+pub use message_v1::{
+    DeleteScope, ForwardRef, MediaState, MediaView, ReactionCount, ReplyRef, SpanKind, TextSpan,
+    Thumbnail, UnsupportedInfo,
+};
 pub use moment::{
     AgentSurfacePayload, CallPayload, ConflictPayload, ConflictResolution, ConflictSide,
     ContactRequestPayload, FallbackPayload, GovernanceAction, GovernancePayload,

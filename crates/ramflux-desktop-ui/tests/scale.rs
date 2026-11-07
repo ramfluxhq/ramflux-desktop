@@ -57,6 +57,7 @@ fn arriving(offset: u64, id: &str, text: &str) -> (u64, DomainEvent) {
             tombstone: false,
             attachment: None,
             franking: None,
+            ..Default::default()
         }),
         lifecycle: Lifecycle::Done,
     };

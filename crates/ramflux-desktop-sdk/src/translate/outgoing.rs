@@ -68,6 +68,7 @@ impl Translator {
                 tombstone: false,
                 attachment: None,
                 franking: None,
+                ..Default::default()
             }),
         };
         self.report_moment(moment).into_iter().collect()
@@ -140,6 +141,7 @@ impl Translator {
             tombstone: false,
             attachment: Some(object_id.clone()),
             franking: None,
+            ..Default::default()
         });
         self.moments.insert(id.clone(), Reported { digest: digest(&kind), message: true });
         self.sent_attachments.insert(message.to_owned(), object_id.clone());

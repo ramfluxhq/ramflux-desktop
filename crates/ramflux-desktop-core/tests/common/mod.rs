@@ -54,6 +54,7 @@ pub fn message(text: &str) -> MomentKind {
         tombstone: false,
         attachment: None,
         franking: None,
+        ..Default::default()
     })
 }
 

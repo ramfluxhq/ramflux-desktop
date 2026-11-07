@@ -230,6 +230,7 @@ mod tests {
                 tombstone: false,
                 attachment: None,
                 franking: None,
+                ..Default::default()
             }),
             lifecycle: Lifecycle::Done,
         }))
