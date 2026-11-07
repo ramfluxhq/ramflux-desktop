@@ -198,9 +198,13 @@ pub(super) struct Task {
     /// The request-connection generation this task has accounted for; a
     /// newer one starts a recovery wherever it is noticed.
     seen_generation: u64,
-    /// The next new generation belongs to the epoch being started (the old
-    /// connection is gone), not to a recovery.
-    adopt_generation: bool,
+    /// The connection generation that belongs to the epoch being started (the
+    /// old connection is gone), not to a recovery: exactly that generation
+    /// is adopted, any other one is recovered.
+    adopt_generation: Option<u64>,
+    /// An epoch has begun since the transport was last reported lost: that
+    /// loss has had its one recovery decision, whoever made it.
+    recovered_since_loss: bool,
     /// Message-class reads sent while the pipeline was not clear (tests).
     #[cfg(any(test, feature = "test-support"))]
     pub(super) guard_violations: u32,
@@ -332,7 +336,8 @@ pub(super) fn build(
         pending_markers: 0,
         batch_pending: 0,
         seen_generation: 0,
-        adopt_generation: false,
+        adopt_generation: None,
+        recovered_since_loss: false,
         #[cfg(any(test, feature = "test-support"))]
         guard_violations: 0,
         translator,
@@ -557,6 +562,10 @@ impl Task {
         }
         if generation > 0 {
             self.gate_connection = Some(generation);
+            // The epoch has its connection; an adoption still pending was
+            // for a connection that never opened, and must not swallow the
+            // next real one.
+            self.adopt_generation = None;
         }
         let answer = result.as_ref().map_err(|_| ());
         if !self.gate.resolve(epoch, answer) {
@@ -648,6 +657,9 @@ impl Task {
             return;
         }
         self.transport_disconnected = status == SourceStatus::Disconnected;
+        if self.transport_disconnected {
+            self.recovered_since_loss = false;
+        }
         if status == SourceStatus::Connected
             && self.scope.account().is_some()
             && self.link == Link::Live
@@ -656,10 +668,19 @@ impl Task {
             // state even when its cursor is still valid. If the request
             // connection is still the one accounted for (it is dead and will
             // reconnect), recover here and let its reconnect be this epoch's.
+            // One recovery decision per loss: the observer may already have
+            // recovered (or adopted) the connection that followed it, and
+            // then nothing is done again here. Only when no epoch has begun
+            // since the loss and the request connection is still the old
+            // one (dead, about to reconnect) does the recovery start here,
+            // and then the next generation, and only that one, is its own.
             self.observe_connection();
-            if self.client.connections_opened() == self.seen_generation && self.gate.enabled() {
+            if !self.recovered_since_loss
+                && self.client.connections_opened() == self.seen_generation
+                && self.gate.enabled()
+            {
                 self.recover_connection();
-                self.adopt_generation = true;
+                self.adopt_generation = Some(self.seen_generation + 1);
             }
         }
         self.emit(vec![DomainEvent::SourceStatusChanged(status)]);
@@ -807,7 +828,8 @@ impl Task {
         // The previous connection (if any) is gone; the next one is this
         // epoch's own.
         self.seen_generation = self.client.connections_opened();
-        self.adopt_generation = true;
+        self.adopt_generation = Some(self.seen_generation + 1);
+        self.recovered_since_loss = true;
         self.start_epoch_reads();
     }
 
@@ -817,7 +839,8 @@ impl Task {
     /// schema, and the prerequisite reads run before the messages.
     pub(super) fn recover_connection(&mut self) {
         self.seen_generation = self.client.connections_opened();
-        self.adopt_generation = false;
+        self.adopt_generation = None;
+        self.recovered_since_loss = true;
         self.cancel_reads();
         self.start_epoch_reads();
     }
@@ -837,11 +860,11 @@ impl Task {
         if current == self.seen_generation {
             return;
         }
-        if self.adopt_generation {
-            // The first connection of an epoch started after the old one was
-            // gone: it is that epoch's own.
+        if self.adopt_generation == Some(current) {
+            // The connection an epoch was started for, after the old one was
+            // gone: it is that epoch's own. Only that generation is adopted.
             self.seen_generation = current;
-            self.adopt_generation = false;
+            self.adopt_generation = None;
             return;
         }
         self.recover_connection();

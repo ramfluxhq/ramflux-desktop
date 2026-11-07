@@ -14,6 +14,61 @@ use ramflux_desktop_test::fake_bus::{FakeBus, Reply, socket_path};
 use serde_json::json;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::sync::{Condvar, MutexGuard};
+
+/// A request the fake daemon holds until the test releases it. The handler
+/// thread sleeps on a condition variable (no polling), is woken the moment
+/// the latch opens, and gives up after a panic guard so a test that fails
+/// before releasing cannot leave the thread running.
+struct Latch {
+    closed: Mutex<bool>,
+    changed: Condvar,
+}
+
+impl Latch {
+    /// Longer than any wait a row makes; a guard only.
+    const GUARD: Duration = Duration::from_secs(30);
+
+    fn new() -> Self {
+        Self { closed: Mutex::new(false), changed: Condvar::new() }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, bool> {
+        self.closed.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn is_closed(&self) -> bool {
+        *self.lock()
+    }
+
+    fn close(&self) {
+        *self.lock() = true;
+    }
+
+    fn release(&self) {
+        *self.lock() = false;
+        self.changed.notify_all();
+    }
+
+    fn wait(&self) {
+        let closed = self.lock();
+        let _ = self
+            .changed
+            .wait_timeout_while(closed, Self::GUARD, |closed| *closed)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+    }
+}
+
+/// Releases every latch of the daemon when the test ends, however it ends.
+struct Teardown(Shared);
+
+impl Drop for Teardown {
+    fn drop(&mut self) {
+        self.0.hold.release();
+        self.0.identities.release();
+        self.0.first_status.release();
+    }
+}
 
 /// What the fake daemon answers to `daemon.status`.
 #[derive(Clone)]
@@ -25,13 +80,13 @@ enum Status {
 
 struct Daemon {
     status: Mutex<Status>,
-    hold: AtomicBool,
+    hold: Latch,
     reset: AtomicBool,
     /// Holds `identity.directory` answers (a prerequisite of messages).
-    identities: AtomicBool,
+    identities: Latch,
     /// Holds only the first `daemon.status` request (the gate's own), until
     /// cleared; the snapshot's status read is answered.
-    first_status: AtomicBool,
+    first_status: Latch,
     first_seen: AtomicBool,
 }
 
@@ -40,10 +95,10 @@ type Shared = Arc<Daemon>;
 fn daemon(status: Status) -> Shared {
     Arc::new(Daemon {
         status: Mutex::new(status),
-        hold: AtomicBool::new(false),
+        hold: Latch::new(),
         reset: AtomicBool::new(false),
-        identities: AtomicBool::new(false),
-        first_status: AtomicBool::new(false),
+        identities: Latch::new(),
+        first_status: Latch::new(),
         first_seen: AtomicBool::new(false),
     })
 }
@@ -53,16 +108,10 @@ fn start(name: &str, shared: &Shared) -> (FakeBus, std::path::PathBuf) {
     let shared = shared.clone();
     let fake = FakeBus::start(&path, move |method, _, _| {
         if method == "daemon.status" {
-            if shared.first_status.load(Ordering::SeqCst)
-                && !shared.first_seen.swap(true, Ordering::SeqCst)
-            {
-                while shared.first_status.load(Ordering::SeqCst) {
-                    std::thread::sleep(Duration::from_millis(5));
-                }
+            if shared.first_status.is_closed() && !shared.first_seen.swap(true, Ordering::SeqCst) {
+                shared.first_status.wait();
             }
-            while shared.hold.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(5));
-            }
+            shared.hold.wait();
             return match shared.status.lock().expect("status").clone() {
                 Status::Field(value) => Reply::Ok(json!({ "schema_generation": value })),
                 Status::Absent => Reply::Ok(json!({})),
@@ -70,9 +119,7 @@ fn start(name: &str, shared: &Shared) -> (FakeBus, std::path::PathBuf) {
             };
         }
         if method == "identity.directory" {
-            while shared.identities.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(5));
-            }
+            shared.identities.wait();
         }
         if method == "account.status" && shared.reset.load(Ordering::SeqCst) {
             return Reply::Error("SchemaResetRequired", "older generation".to_owned());
@@ -123,11 +170,22 @@ fn settled(task: &Task) -> bool {
         && task.pending_markers == 0
 }
 
-async fn pump(task: &mut Task, inbox: &mut Inbox, mut done: impl FnMut(&Task) -> bool) {
+async fn pump(task: &mut Task, inbox: &mut Inbox, done: impl FnMut(&Task) -> bool) {
+    pump_with(task, inbox, true, done).await;
+}
+
+/// `pump`, optionally leaving the connection notifications queued so a row
+/// can deliver them in an order of its own.
+async fn pump_with(
+    task: &mut Task,
+    inbox: &mut Inbox,
+    notifications: bool,
+    mut done: impl FnMut(&Task) -> bool,
+) {
     // A panic guard only: every wait below is on a causal condition.
     let deadline = std::time::Instant::now() + Duration::from_secs(20);
     loop {
-        while let Ok(status) = inbox.connection_states.try_recv() {
+        while notifications && let Ok(status) = inbox.connection_states.try_recv() {
             task.connection_changed(status);
         }
         while let Ok(read) = inbox.internal.try_recv() {
@@ -257,7 +315,8 @@ async fn schema_gate_state_machine_blocks_message_traffic() {
     // the queue, in order; nothing message-class is on the wire until the
     // answer comes, and then the queue is sent.
     let shared = daemon(Status::Field(json!(0)));
-    shared.hold.store(true, Ordering::SeqCst);
+    let _teardown_shared = Teardown(shared.clone());
+    shared.hold.close();
     let (fake, path) = start("gate-held", &shared);
     let (mut task, mut inbox, delivered) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     task.snapshot();
@@ -275,7 +334,7 @@ async fn schema_gate_state_machine_blocks_message_traffic() {
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "zero message-class requests");
     assert!(fake.seen().iter().any(|r| r.method == "account.status"), "non-message reads flow");
     assert_eq!(gates(&delivered), [(SchemaGate::Unresolved, None)]);
-    shared.hold.store(false, Ordering::SeqCst);
+    shared.hold.release();
     pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
     settle(&mut task, &mut inbox).await;
     let sent = message_requests(&fake);
@@ -287,6 +346,7 @@ async fn schema_gate_state_machine_blocks_message_traffic() {
 
     // Status error: Failed, nothing sent; then a successful retry opens.
     let shared = daemon(Status::Fail);
+    let _teardown_shared = Teardown(shared.clone());
     let (fake, path) = start("gate-error", &shared);
     let (mut task, mut inbox, delivered) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     task.snapshot();
@@ -302,14 +362,15 @@ async fn schema_gate_state_machine_blocks_message_traffic() {
 
     // Status timeout: Failed as well.
     let shared = daemon(Status::Field(json!(0)));
-    shared.hold.store(true, Ordering::SeqCst);
+    let _teardown_shared = Teardown(shared.clone());
+    shared.hold.close();
     let (fake, path) = start("gate-timeout", &shared);
     let (mut task, mut inbox, _delivered) =
         account_task_with(&path, "acct-main", SchemaSupport::Legacy, Duration::from_millis(250));
     task.snapshot();
     pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Failed).await;
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "timed out: zero requests");
-    shared.hold.store(false, Ordering::SeqCst);
+    shared.hold.release();
     pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
     fake.shutdown();
 }
@@ -547,6 +608,7 @@ async fn every_message_class_wire_operation_is_refused_while_blocked_and_others_
 #[tokio::test]
 async fn a_reconnect_cannot_carry_a_message_ahead_of_the_new_epochs_status() {
     let shared = daemon(Status::Field(json!(0)));
+    let _teardown_shared = Teardown(shared.clone());
     let (fake, path) = start("gate-restart", &shared);
     let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     task.snapshot();
@@ -558,7 +620,8 @@ async fn a_reconnect_cannot_carry_a_message_ahead_of_the_new_epochs_status() {
     // The daemon restarts with its status held; the scope has not noticed:
     // its approval is still the old connection's.
     let restarted = daemon(Status::Field(json!(0)));
-    restarted.hold.store(true, Ordering::SeqCst);
+    let _teardown_restarted = Teardown(restarted.clone());
+    restarted.hold.close();
     let (fake, _) = start("gate-restart", &restarted);
     assert_eq!(verdict(&task), SchemaGate::Open, "no notification was processed yet");
     let submit = BusRequest::new(Some("acct-main"), "message", "message.submit", json!({}))
@@ -578,7 +641,7 @@ async fn a_reconnect_cannot_carry_a_message_ahead_of_the_new_epochs_status() {
     // The reconnect is noticed through the connection notification alone
     // (no manual epoch): the same recovery asks the new connection for its
     // status, and only then does it carry messages.
-    restarted.hold.store(false, Ordering::SeqCst);
+    restarted.hold.release();
     let known = task.gate_connection;
     pump(&mut task, &mut inbox, |t| {
         verdict(t) == SchemaGate::Open && t.gate_connection > known && t.pending_markers == 0
@@ -594,9 +657,95 @@ async fn a_reconnect_cannot_carry_a_message_ahead_of_the_new_epochs_status() {
     fake.shutdown();
 }
 
+/// The next connection notification, which must be `(generation, connected)`.
+async fn next_state(
+    inbox: &mut Inbox,
+    generation: u64,
+    connected: bool,
+) -> crate::bus::client::ConnectionState {
+    let state = tokio::time::timeout(Duration::from_secs(20), inbox.connection_states.recv())
+        .await
+        .expect("a connection notification arrives")
+        .expect("the notification channel is open");
+    assert_eq!((state.generation, state.connected), (generation, connected));
+    state
+}
+
+#[tokio::test]
+async fn a_second_reconnect_after_a_settled_one_recovers_in_its_own_epoch() {
+    let a = daemon(Status::Field(json!(0)));
+    let _teardown_a = Teardown(a.clone());
+    let (fake, path) = start("gate-two-reconnects", &a);
+    let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
+    task.snapshot();
+    pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
+    settle(&mut task, &mut inbox).await;
+    let first = task.client.connections_opened();
+    let submit = BusRequest::new(Some("acct-main"), "message", "message.submit", json!({}))
+        .with_operation_id("two-reconnects".to_owned());
+
+    // N is lost and its disconnect is processed before anything reconnects.
+    fake.shutdown();
+    let lost = next_state(&mut inbox, first, false).await;
+    task.connection_changed(lost);
+    assert!(task.transport_disconnected);
+
+    // N+1 opens (a keyed resend) and its connect notification is processed:
+    // exactly one recovery for that generation.
+    let b = daemon(Status::Field(json!(0)));
+    let _teardown_b = Teardown(b.clone());
+    let (fake, _) = start("gate-two-reconnects", &b);
+    let epoch = task.gate.epoch();
+    let _ = task.client.call(&submit).await;
+    assert_eq!(task.client.connections_opened(), first + 1);
+    let connected = next_state(&mut inbox, first + 1, true).await;
+    task.connection_changed(connected);
+    assert_eq!(task.gate.epoch(), epoch + 1, "one recovery decision for connection N+1");
+    pump_with(&mut task, &mut inbox, false, |t| {
+        verdict(t) == SchemaGate::Open && t.gate_connection == Some(first + 1) && settled(t)
+    })
+    .await;
+    assert_eq!(task.gate.epoch(), epoch + 1, "and no second one while it settles");
+
+    // N+2 opens before N+1's disconnect is processed. It is a new connection
+    // and gets its own epoch; nothing left over from N+1 adopts it.
+    fake.shutdown();
+    let c = daemon(Status::Field(json!(0)));
+    let _teardown_c = Teardown(c.clone());
+    let (fake, _) = start("gate-two-reconnects", &c);
+    let _ = task.client.call(&submit).await;
+    assert_eq!(task.client.connections_opened(), first + 2);
+    pump_with(&mut task, &mut inbox, false, |t| {
+        t.gate.epoch() > epoch + 1
+            && verdict(t) == SchemaGate::Open
+            && t.gate_connection == Some(first + 2)
+            && settled(t)
+    })
+    .await;
+    assert_eq!(task.gate.epoch(), epoch + 2, "N+2 was recovered in a new epoch, not adopted");
+    // The stale disconnect of N+1 and N+2's connect change nothing.
+    // (N+1's disconnect may never be reported: its observer is replaced.)
+    let mut late = Vec::new();
+    while let Ok(state) = inbox.connection_states.try_recv() {
+        late.push((state.generation, state.connected));
+        task.connection_changed(state);
+    }
+    assert!(late.contains(&(first + 2, true)), "N+2's connect was reported: {late:?}");
+    settle(&mut task, &mut inbox).await;
+    assert_eq!(task.gate.epoch(), epoch + 2, "the late notifications start no epoch");
+    let outcome = task.client.call(&submit).await;
+    assert!(
+        !matches!(&outcome, Err(BusError::Daemon { code, .. }) if code == "SchemaGateClosed"),
+        "approved on N+2: {outcome:?}"
+    );
+    assert_eq!(task.guard_violations, 0);
+    fake.shutdown();
+}
+
 #[tokio::test]
 async fn reconnect_revokes_the_approval_and_a_late_old_epoch_answer_cannot_reopen() {
     let shared = daemon(Status::Field(json!(0)));
+    let _teardown_shared = Teardown(shared.clone());
     let (fake, path) = start("gate-reconnect", &shared);
     let (mut task, mut inbox, delivered) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     task.snapshot();
@@ -616,7 +765,8 @@ async fn reconnect_revokes_the_approval_and_a_late_old_epoch_answer_cannot_reope
 
     // The daemon restarts with its status held.
     let restarted = daemon(Status::Field(json!(0)));
-    restarted.hold.store(true, Ordering::SeqCst);
+    let _teardown_restarted = Teardown(restarted.clone());
+    restarted.hold.close();
     let (fake, _) = start("gate-reconnect", &restarted);
     // A request on the dead connection finds it lost; the scope re-attaches
     // after its backoff, in a new epoch.
@@ -642,7 +792,7 @@ async fn reconnect_revokes_the_approval_and_a_late_old_epoch_answer_cannot_reope
         result: Ok(json!({ "schema_generation": 0 })),
     });
     assert_eq!(verdict(&task), SchemaGate::Unresolved, "a late old-epoch answer is ignored");
-    restarted.hold.store(false, Ordering::SeqCst);
+    restarted.hold.release();
     pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
     fake.shutdown();
 }
@@ -750,7 +900,8 @@ async fn a_changed_status_in_the_same_epoch_blocks_at_once_and_late_results_are_
 #[tokio::test]
 async fn messages_wait_for_the_identities_and_devices_they_are_attributed_by() {
     let shared = daemon(Status::Field(json!(0)));
-    shared.identities.store(true, Ordering::SeqCst);
+    let _teardown_shared = Teardown(shared.clone());
+    shared.identities.close();
     let (fake, path) = start("gate-order", &shared);
     let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     task.snapshot();
@@ -760,7 +911,7 @@ async fn messages_wait_for_the_identities_and_devices_they_are_attributed_by() {
     })
     .await;
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "no message read before identities");
-    shared.identities.store(false, Ordering::SeqCst);
+    shared.identities.release();
     settle(&mut task, &mut inbox).await;
     let order: Vec<String> = fake.seen().iter().map(|r| r.method.clone()).collect();
     let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
@@ -772,7 +923,8 @@ async fn messages_wait_for_the_identities_and_devices_they_are_attributed_by() {
 #[tokio::test]
 async fn each_account_scope_holds_its_own_queue_while_unresolved() {
     let shared = daemon(Status::Field(json!(0)));
-    shared.hold.store(true, Ordering::SeqCst);
+    let _teardown_shared = Teardown(shared.clone());
+    shared.hold.close();
     let (fake, path) = start("gate-accounts", &shared);
     let (mut first, mut first_inbox, _) = account_task(&path, "acct-one", SchemaSupport::Legacy);
     let (mut second, mut second_inbox, _) = account_task(&path, "acct-two", SchemaSupport::Legacy);
@@ -866,6 +1018,7 @@ async fn an_older_epochs_single_read_completing_after_reopening_is_not_translate
 #[tokio::test]
 async fn recovery_of_a_changed_connection_holds_messages_behind_the_identities() {
     let shared = daemon(Status::Field(json!(0)));
+    let _teardown_shared = Teardown(shared.clone());
     let (fake, path) = start("gate-recover-order", &shared);
     let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     task.snapshot();
@@ -877,7 +1030,8 @@ async fn recovery_of_a_changed_connection_holds_messages_behind_the_identities()
     // The daemon restarts with the identity directory held. A keyed resend
     // reconnects; the connection notification starts the recovery.
     let restarted = daemon(Status::Field(json!(0)));
-    restarted.identities.store(true, Ordering::SeqCst);
+    let _teardown_restarted = Teardown(restarted.clone());
+    restarted.identities.close();
     let (fake, _) = start("gate-recover-order", &restarted);
     let submit = BusRequest::new(Some("acct-main"), "message", "message.submit", json!({}))
         .with_operation_id("recover-key".to_owned());
@@ -895,7 +1049,7 @@ async fn recovery_of_a_changed_connection_holds_messages_behind_the_identities()
         0,
         "no message read is released while the identities are held"
     );
-    restarted.identities.store(false, Ordering::SeqCst);
+    restarted.identities.release();
     settle(&mut task, &mut inbox).await;
     let order: Vec<String> = fake.seen().iter().map(|r| r.method.clone()).collect();
     let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
@@ -910,7 +1064,8 @@ async fn a_reconnect_while_the_status_is_unresolved_recovers_in_a_new_epoch() {
     // own status read is answered) while the gate's schema status stays
     // outstanding.
     let shared = daemon(Status::Field(json!(0)));
-    shared.first_status.store(true, Ordering::SeqCst);
+    let _teardown_shared = Teardown(shared.clone());
+    shared.first_status.close();
     let (fake, path) = start("gate-unresolved-reconnect", &shared);
     let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     task.snapshot();
@@ -926,7 +1081,8 @@ async fn a_reconnect_while_the_status_is_unresolved_recovers_in_a_new_epoch() {
     // The daemon restarts with changed identities held; a keyed resend opens
     // N+1 before N's disconnect (or N's failing status) is processed.
     let restarted = daemon(Status::Field(json!(0)));
-    restarted.identities.store(true, Ordering::SeqCst);
+    let _teardown_restarted = Teardown(restarted.clone());
+    restarted.identities.close();
     let (fake, _) = start("gate-unresolved-reconnect", &restarted);
     let submit = BusRequest::new(Some("acct-main"), "message", "message.submit", json!({}))
         .with_operation_id("unresolved-key".to_owned());
@@ -941,7 +1097,7 @@ async fn a_reconnect_while_the_status_is_unresolved_recovers_in_a_new_epoch() {
     // the old epoch, and nothing message-class goes ahead of the held
     // prerequisites.
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "messages wait for the identities");
-    restarted.identities.store(false, Ordering::SeqCst);
+    restarted.identities.release();
     settle(&mut task, &mut inbox).await;
     let order: Vec<String> = fake.seen().iter().map(|r| r.method.clone()).collect();
     let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
@@ -954,6 +1110,7 @@ async fn a_reconnect_while_the_status_is_unresolved_recovers_in_a_new_epoch() {
 #[tokio::test]
 async fn a_subscription_resync_reads_the_prerequisites_before_the_messages() {
     let shared = daemon(Status::Field(json!(0)));
+    let _teardown_shared = Teardown(shared.clone());
     let (fake, path) = start("gate-resync", &shared);
     let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     task.snapshot();
@@ -962,7 +1119,7 @@ async fn a_subscription_resync_reads_the_prerequisites_before_the_messages() {
     let before = fake.seen().len();
     // The subscription needs a resync while the request connection stays
     // healthy: the stream reopens and reads everything again.
-    shared.identities.store(true, Ordering::SeqCst);
+    shared.identities.close();
     task.sync.reload_on_open = true;
     task.on_streamed(Streamed::Opened { head_seq: 9, floor_seq: 1 });
     pump(&mut task, &mut inbox, |t| {
@@ -977,7 +1134,7 @@ async fn a_subscription_resync_reads_the_prerequisites_before_the_messages() {
         !held.iter().any(|m| gate::is_message_method(m)),
         "no message-class read while identities are held: {held:?}"
     );
-    shared.identities.store(false, Ordering::SeqCst);
+    shared.identities.release();
     settle(&mut task, &mut inbox).await;
     let order: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
     let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
@@ -987,40 +1144,169 @@ async fn a_subscription_resync_reads_the_prerequisites_before_the_messages() {
     fake.shutdown();
 }
 
+/// One non-test bridge module, normalized: comments removed, whitespace
+/// collapsed and no space around `.` and `(`, so a call split over lines or
+/// spelled with another receiver is still the same text.
+struct Module {
+    file: String,
+    text: String,
+}
+
+impl Module {
+    fn count(&self, needle: &str) -> usize {
+        self.text.matches(needle).count()
+    }
+
+    /// `(function name, body)` for every `fn` of the module.
+    fn functions(&self) -> Vec<(String, &str)> {
+        let bytes = self.text.as_bytes();
+        let mut starts = Vec::new();
+        let mut at = 0;
+        while let Some(found) = self.text[at..].find("fn ") {
+            let index = at + found;
+            let boundary = index == 0
+                || !(bytes[index - 1].is_ascii_alphanumeric() || bytes[index - 1] == b'_');
+            if boundary {
+                starts.push(index);
+            }
+            at = index + 3;
+        }
+        starts
+            .iter()
+            .enumerate()
+            .map(|(n, &start)| {
+                let end = starts.get(n + 1).copied().unwrap_or(self.text.len());
+                let name: String = self.text[start + 3..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                (name, &self.text[start..end])
+            })
+            .collect()
+    }
+}
+
+fn normalize(source: &str) -> String {
+    // Cut the trailing test modules (their own files are skipped below).
+    let source = source.split("#[cfg(test)]\n#[path").next().unwrap_or(source);
+    let mut text = String::new();
+    for line in source.lines() {
+        text.push_str(line.split("//").next().unwrap_or(""));
+        text.push(' ');
+    }
+    let mut text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    for (from, to) in [(" .", "."), (". ", "."), (" (", "("), ("( ", "("), (" )", ")")] {
+        while text.contains(from) {
+            text = text.replace(from, to);
+        }
+    }
+    text
+}
+
+/// Every module under `bridge/`, found on disk (a new module is covered
+/// without being listed); test files are not product code.
+fn bridge_modules() -> Vec<Module> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bridge");
+    let mut modules = Vec::new();
+    for entry in std::fs::read_dir(&dir).expect("read bridge dir") {
+        let path = entry.expect("entry").path();
+        let file = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_owned();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") || file.ends_with("_tests.rs") {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path).expect("read module");
+        modules.push(Module { file, text: normalize(&source) });
+    }
+    modules.sort_by(|a, b| a.file.cmp(&b.file));
+    modules
+}
+
 #[test]
 fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
-    // Mechanical guard: every transmission site in the bridge is listed.
-    // A new `client.call` / read dispatch must be classified (message-class
-    // sites are gated at the client, reads go through `spawn_reads` or
-    // `run_batch`) and added here deliberately.
-    let count = |source: &str, needle: &str| source.matches(needle).count();
-    let scope = include_str!("scope.rs");
-    let sites = [
-        ("scope.rs", scope, 3, 1, 2),
-        ("sends.rs", include_str!("sends.rs"), 1, 0, 0),
-        ("effects.rs", include_str!("effects.rs"), 7, 0, 0),
-        ("mod.rs", include_str!("mod.rs"), 1, 0, 0),
-        ("live.rs", include_str!("live.rs"), 0, 0, 0),
-        ("jobs.rs", include_str!("jobs.rs"), 0, 0, 0),
-        ("custody.rs", include_str!("custody.rs"), 0, 0, 0),
+    // Mechanical guard over every bridge module on disk. A transmission site
+    // (`.call(<anything>)`, `call_on_connection(`, `read(&client`) is listed
+    // here deliberately; a module that is not listed must have none.
+    // Message-class sites are gated at the client; reads go through
+    // `spawn_reads` or `run_batch`.
+    let known: &[(&str, usize, usize, usize)] = &[
+        ("effects.rs", 8, 0, 0),
+        ("mod.rs", 1, 0, 0),
+        ("scope.rs", 3, 1, 2),
+        ("sends.rs", 1, 0, 0),
     ];
-    for (file, source, calls, on_connection, reads) in sites {
-        // Tests live in other files; cut a trailing test module if any.
-        let source = source.split("#[cfg(test)]\n#[path").next().unwrap_or(source);
-        assert_eq!(count(source, ".call(&"), calls, "{file}: .call(& sites");
-        assert_eq!(count(source, "call_on_connection("), on_connection, "{file}: schema status");
-        assert_eq!(count(source, "read(&client"), reads, "{file}: read dispatch sites");
+    let modules = bridge_modules();
+    assert!(modules.iter().any(|m| m.file == "scope.rs"), "the scan found the bridge");
+    for module in &modules {
+        let (calls, on_connection, reads) = known
+            .iter()
+            .find(|(file, ..)| *file == module.file)
+            .map_or((0, 0, 0), |&(_, c, o, r)| (c, o, r));
+        let file = &module.file;
+        assert_eq!(module.count(".call("), calls, "{file}: .call( sites");
+        assert_eq!(module.count("call_on_connection("), on_connection, "{file}: schema status");
+        assert_eq!(module.count("read(&client"), reads, "{file}: read dispatch sites");
     }
-    // The unordered full re-read is gone: reload and connection recovery
-    // never hand `reads_for_snapshot()` to `request_reads`.
-    for (file, source) in [("scope.rs", scope), ("live.rs", include_str!("live.rs"))] {
-        let source = source.split("#[cfg(test)]\n#[path").next().unwrap_or(source);
-        assert!(
-            !source.contains("request_reads(reads_for_snapshot")
-                && !source.contains(
-                    "let reads = self.reads_for_snapshot();\n            self.request_reads"
-                ),
-            "{file}: a full re-read must go through recover_connection"
-        );
+
+    // Recovery goes through the ordered pipeline only: the primitives that
+    // start or restart an epoch are reached from nowhere else, and no
+    // function re-reads the snapshot's list through the unordered coalescer
+    // (whatever the local variable is called).
+    let allowed = |name: &str, only: &[&str]| only.contains(&name);
+    for module in &modules {
+        for (name, body) in module.functions() {
+            let file = &module.file;
+            if body.contains("cancel_reads(") {
+                assert!(
+                    allowed(
+                        &name,
+                        // Teardown (a lost link, a lock, the task ending) only
+                        // stops reads; it starts none.
+                        &[
+                            "snapshot",
+                            "recover_connection",
+                            "cancel_reads",
+                            "lost",
+                            "locked",
+                            "drop"
+                        ]
+                    ),
+                    "{file}: `{name}` cancels reads outside the recovery routine"
+                );
+            }
+            if body.contains("begin_gate_epoch(") {
+                assert!(
+                    allowed(&name, &["start_epoch_reads", "begin_gate_epoch"]),
+                    "{file}: `{name}` starts an epoch outside the ordered pipeline"
+                );
+            }
+            if body.contains("start_epoch_reads(") {
+                assert!(
+                    allowed(&name, &["snapshot", "recover_connection", "start_epoch_reads"]),
+                    "{file}: `{name}` starts an epoch's reads outside the recovery routine"
+                );
+            }
+            if body.contains("reads_for_snapshot(") {
+                assert!(
+                    allowed(&name, &["start_epoch_reads", "run_release", "reads_for_snapshot"]),
+                    "{file}: `{name}` re-reads the snapshot list outside the ordered pipeline"
+                );
+            }
+            // The two resync/restore entry points end in the one routine.
+            if name == "reload" {
+                assert!(body.contains("recover_connection("), "{file}: reload must recover");
+                assert!(!body.contains("request_reads("), "{file}: reload must not re-read");
+            }
+            if name == "snapshot" && file == "scope.rs" {
+                assert!(body.contains("start_epoch_reads("), "snapshot starts the ordered epoch");
+            }
+            if name == "recover_connection" {
+                assert!(body.contains("start_epoch_reads("), "recovery starts the ordered epoch");
+            }
+        }
     }
+    // The pipeline's own steps: prerequisites are tracked and the release is
+    // held behind them.
+    let scope = modules.iter().find(|m| m.file == "scope.rs").expect("scope.rs");
+    let epoch = scope.functions().into_iter().find(|(n, _)| n == "start_epoch_reads").expect("fn");
+    assert!(epoch.1.contains("set_prerequisites("), "the epoch tracks its prerequisite batch");
 }
