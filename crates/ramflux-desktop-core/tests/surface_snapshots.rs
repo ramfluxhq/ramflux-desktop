@@ -59,6 +59,7 @@ fn snapshot(version: u64, hash: &str, text: &str) -> SurfaceSnapshot {
         out_of_sync: false,
         open_streams: Vec::new(),
         final_streams: Vec::new(),
+        order: None,
     }
 }
 

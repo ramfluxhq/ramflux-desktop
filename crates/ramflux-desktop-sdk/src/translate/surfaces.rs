@@ -455,6 +455,7 @@ impl Translator {
                 .filter(|b| streamable(b.kind) && view.final_(&b.id))
                 .map(|b| b.id.clone())
                 .collect(),
+            order: None,
         }))
     }
 

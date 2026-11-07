@@ -213,7 +213,15 @@ pub fn fallback(text: &SharedString, cx: &App) -> AnyElement {
                 .child(Icon::new(IconName::EyeOff).xsmall())
                 .child(tr("surface.fallback")),
         )
-        .child(div().text_sm().text_color(cx.theme().foreground).child(text.clone()))
+        .child(
+            div()
+                .id("block-fallback-text")
+                .aria_label(text.clone())
+                .test_support()
+                .text_sm()
+                .text_color(cx.theme().foreground)
+                .child(text.clone()),
+        )
         .test_support()
         .into_any_element()
 }

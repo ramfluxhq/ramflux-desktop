@@ -267,7 +267,7 @@ impl Store {
             }
             None => {
                 let moment = Moment {
-                    order: None,
+                    order: snapshot.order.clone(),
                     id: snapshot.moment_id.clone(),
                     context_id: snapshot.context_id.clone(),
                     origin: snapshot.origin.clone(),

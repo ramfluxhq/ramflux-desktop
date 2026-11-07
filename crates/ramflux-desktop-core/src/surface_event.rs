@@ -106,6 +106,11 @@ pub struct SurfaceSnapshot {
     /// their streams end here, whatever was seen of them before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub final_streams: Vec<BlockId>,
+    /// The creating event's place in the conversation stream (D4), when the
+    /// source knows it; a surface without one sorts before keyed moments.
+    /// It only matters when the snapshot creates the moment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<crate::model::OrderKey>,
 }
 
 /// A versioned event on one agent surface.

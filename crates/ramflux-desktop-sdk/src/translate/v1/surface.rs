@@ -25,8 +25,8 @@
 use std::collections::BTreeMap;
 
 use ramflux_desktop_core::{
-    Block, ContextId, DomainEvent, ParticipantId, SurfaceAction, SurfaceEvent, SurfaceHash,
-    SurfaceId, SurfaceSnapshot, Timestamp,
+    Block, ContextId, DomainEvent, OrderKey, ParticipantId, SurfaceAction, SurfaceEvent,
+    SurfaceHash, SurfaceId, SurfaceSnapshot, Timestamp,
 };
 use ramflux_protocol::message::{
     CreateSurfaceCommand, EventIdentity, JsonValue, Surface, SurfaceCarrier, json_value,
@@ -35,7 +35,7 @@ use ramflux_protocol::message::{
 };
 use serde_json::{Map, Number, Value};
 
-use super::context_of;
+use super::{context_of, order_of};
 use crate::surface::catalog;
 use crate::translate::Translator;
 use crate::translate::surfaces::surface_moment_id;
@@ -103,6 +103,8 @@ pub fn route(catalog_name: &str, version: &str) -> Route {
 struct Known {
     context: ContextId,
     origin: ParticipantId,
+    /// The creating event's place in the conversation stream (D4).
+    order: OrderKey,
     at: Timestamp,
     version: u64,
     hash: SurfaceHash,
@@ -139,10 +141,11 @@ impl Book {
     }
 }
 
-/// The desktop id of a surface: its author and its own id (two authors may
-/// use one id in a conversation).
-fn reference(carrier: &SurfaceCarrier, surface_id: &str) -> String {
-    format!("{}:{surface_id}", carrier.author_principal_id)
+/// The desktop id of a surface, scoped as the daemon scopes it: conversation,
+/// author and the author's own id. Two authors may use one id in a
+/// conversation, and one author the same id in two conversations.
+fn reference(carrier: &SurfaceCarrier, surface_id: &str) -> Option<String> {
+    crate::surface::surface_ref(&carrier.conversation_id, &carrier.author_principal_id, surface_id)
 }
 
 pub(super) fn project(
@@ -157,7 +160,6 @@ pub(super) fn project(
     {
         return Vec::new();
     }
-    let context = context_of(identity);
     match &carrier.payload {
         Some(CarrierPayload::Event(event)) if event.conversation_id == carrier.conversation_id => {
             match event.command.as_ref().and_then(|c| c.value.as_ref()) {
@@ -165,7 +167,7 @@ pub(super) fn project(
                     .value
                     .as_ref()
                     .filter(|value| value.surface_id == carrier.surface_id)
-                    .map(|value| created(translator, &context, carrier, event.version, value))
+                    .map(|value| created(translator, identity, carrier, event.version, value))
                     .unwrap_or_default(),
                 // Existing surfaces: the live path (P16). An inert surface
                 // is never revived, so nothing here can reach it.
@@ -182,12 +184,12 @@ pub(super) fn project(
 
 fn created(
     translator: &mut Translator,
-    context: &ContextId,
+    identity: &EventIdentity,
     carrier: &SurfaceCarrier,
     version: u64,
     create: &CreateSurfaceCommand,
 ) -> Vec<DomainEvent> {
-    let key = reference(carrier, &create.surface_id);
+    let Some(key) = reference(carrier, &create.surface_id) else { return Vec::new() };
     if version == 0 {
         return Vec::new();
     }
@@ -218,8 +220,12 @@ fn created(
         .map_or_else(|| SurfaceHash::of_version(version), SurfaceHash::new);
     let at = carrier.posted_at.map(Timestamp);
     let known = Known {
-        context: context.clone(),
+        context: context_of(identity),
         origin: ParticipantId::new(&carrier.author_principal_id),
+        order: book
+            .surfaces
+            .get(&key)
+            .map_or_else(|| order_of(identity), |known| known.order.clone()),
         at: at.unwrap_or(Timestamp(0)),
         version,
         hash,
@@ -237,7 +243,7 @@ fn requested(
     carrier: &SurfaceCarrier,
     version: u64,
 ) -> Vec<DomainEvent> {
-    let key = reference(carrier, &carrier.surface_id);
+    let Some(key) = reference(carrier, &carrier.surface_id) else { return Vec::new() };
     let requester = carrier.sender_principal_id.clone();
     let book = &mut translator.v1_surfaces;
     let Some(known) = book.surfaces.get(&key) else { return Vec::new() };
@@ -265,7 +271,7 @@ fn answered(
     receipt: &SurfaceCarrier,
     original: &SurfaceCarrier,
 ) -> Vec<DomainEvent> {
-    let key = reference(receipt, &receipt.surface_id);
+    let Some(key) = reference(receipt, &receipt.surface_id) else { return Vec::new() };
     if !translator.v1_surfaces.surfaces.contains_key(&key) {
         return Vec::new();
     }
@@ -321,6 +327,7 @@ fn snapshot(key: &str, known: &Known, content: (Vec<Block>, Vec<SurfaceAction>))
         out_of_sync: false,
         open_streams: Vec::new(),
         final_streams: Vec::new(),
+        order: Some(known.order.clone()),
     }))
 }
 

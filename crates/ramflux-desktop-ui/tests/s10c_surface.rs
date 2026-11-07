@@ -11,27 +11,47 @@ mod sdk_fake;
 
 use common::*;
 use gpui_kit::TestAppContext;
+use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{
-    AccountId, ContextId, DomainEvent, Intent, IntentError, IntentKind, MomentId, MomentKind,
-    SurfaceEvent,
+    AccountId, Context, ContextId, ContextKind, DomainEvent, EventEnvelope, Intent, IntentError,
+    IntentKind, MomentId, MomentKind, Store, SurfaceEvent, Timestamp,
 };
 use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::translate::Translator;
 use ramflux_desktop_sdk::translate::v1::candidate::{apply, surface_counts};
 use ramflux_desktop_sdk::translate::v1::surface::{Inert, Route, route};
-use ramflux_desktop_test::v1_fixtures::{SurfaceSpec, identity, surface_update};
+use ramflux_desktop_test::v1_fixtures::{
+    SurfaceSpec, identity, message_update, service_update, surface_update, text_message,
+};
 use ramflux_desktop_ui::app::DispatchOutcome;
 use ramflux_protocol::message::MessageUpdate;
+use ramflux_protocol::message::{
+    JsonMember, JsonObject, JsonValue, ServiceAction, SurfaceCarrier, json_value,
+    surface_carrier::Payload as CarrierPayload, surface_command::Value as Command,
+};
 
 const DM: &str = "dm-ana";
 const AUTHOR: &str = "principal-ana";
 
+/// The scoped reference of a surface, as the daemon scopes it.
+fn scoped(spec: &SurfaceSpec) -> String {
+    ramflux_desktop_sdk::surface::surface_ref(&spec.conversation, &spec.author, &spec.surface_id)
+        .expect("canonical ids")
+}
+
 fn moment_of(spec: &SurfaceSpec) -> MomentId {
-    MomentId::new(format!("surface:{DM}:{}:{}", spec.author, spec.surface_id))
+    MomentId::new(format!("surface:{}:{}", spec.conversation, scoped(spec)))
 }
 
 fn update(n: u8, carrier: ramflux_protocol::message::SurfaceCarrier) -> MessageUpdate {
     surface_update(identity(DM, &[n; 4], "dev-ana", u64::from(n) * 10, u64::from(n)), carrier)
+}
+
+fn update_in(conversation: &str, n: u8, carrier: SurfaceCarrier) -> MessageUpdate {
+    surface_update(
+        identity(conversation, &[n; 4], "dev-ana", u64::from(n) * 10, u64::from(n)),
+        carrier,
+    )
 }
 
 fn created(n: u8, spec: &SurfaceSpec) -> MessageUpdate {
@@ -123,23 +143,91 @@ fn basic_projects_blocks_and_actions_and_others_project_fallback_only() {
     }
 }
 
-#[test]
-fn malformed_components_are_inert_not_partial() {
-    let mut twice = SurfaceSpec::basic(DM, "s-dup", AUTHOR);
-    twice.components.push(twice.components[0].clone());
-    let mut no_id = SurfaceSpec::basic(DM, "s-noid", AUTHOR);
-    no_id.components = vec![serde_json::json!({ "type": "Text", "text": "x" })];
+/// A text block whose value nests `levels` arrays: the component object plus
+/// `levels` arrays is `1 + levels` containers deep.
+fn nested(levels: usize) -> SurfaceSpec {
     let mut deep = serde_json::json!("leaf");
-    for _ in 0..20 {
+    for _ in 0..levels {
         deep = serde_json::json!([deep]);
     }
-    let mut nested = SurfaceSpec::basic(DM, "s-deep", AUTHOR);
-    nested.components = vec![serde_json::json!({ "id": "b", "type": "Text", "text": deep })];
-    for spec in [twice, no_id, nested] {
-        let shown = snapshots(&mut translator(), &[created(3, &spec)]);
-        let inert = snapshot_of(&shown[0]);
-        assert!(inert.blocks.is_empty() && inert.actions.is_empty(), "{}", spec.surface_id);
-    }
+    let mut spec = SurfaceSpec::basic(DM, "s-deep", AUTHOR);
+    spec.components = vec![serde_json::json!({ "id": "b", "type": "Text", "text": deep })];
+    spec
+}
+
+fn counted(components: usize, actions: usize) -> SurfaceSpec {
+    let mut spec = SurfaceSpec::basic(DM, "s-count", AUTHOR);
+    spec.components = (0..components)
+        .map(|n| serde_json::json!({ "id": format!("b-{n}"), "type": "Text", "text": "x" }))
+        .collect();
+    spec.actions = (0..actions).map(|n| serde_json::json!({ "name": format!("a-{n}") })).collect();
+    spec
+}
+
+/// The first component's object members, to edit the wire form directly.
+fn first_members(carrier: &mut SurfaceCarrier) -> &mut Vec<JsonMember> {
+    let Some(CarrierPayload::Event(event)) = &mut carrier.payload else { panic!("event") };
+    let Some(Command::CreateSurface(create)) =
+        event.command.as_mut().and_then(|c| c.value.as_mut())
+    else {
+        panic!("create")
+    };
+    let value = create.value.as_mut().expect("create value").components[0]
+        .value
+        .as_mut()
+        .expect("component");
+    let json_value::Value::Object(JsonObject { members }) = value else { panic!("object") };
+    members
+}
+
+fn is_inert(spec: &SurfaceSpec) -> bool {
+    let shown = snapshots(&mut translator(), &[created(3, spec)]);
+    let snapshot = snapshot_of(&shown[0]);
+    snapshot.blocks.is_empty() && snapshot.actions.is_empty()
+}
+
+#[test]
+fn component_and_action_bounds_are_exact() {
+    // Depth: 16 containers are read, 17 are refused.
+    assert!(!is_inert(&nested(15)), "depth 16 renders");
+    assert!(is_inert(&nested(16)), "depth 17 is inert");
+    // Count: 512 components are read, 513 are refused.
+    assert!(!is_inert(&counted(512, 1)), "512 components render");
+    assert!(is_inert(&counted(513, 1)), "513 components are inert");
+    // A repeated action id refuses the whole surface.
+    let mut repeated = SurfaceSpec::basic(DM, "s-act", AUTHOR);
+    repeated.actions.push(repeated.actions[0].clone());
+    assert!(is_inert(&repeated), "duplicate action");
+    // A repeated block id too, and a block without an id.
+    let mut twice = SurfaceSpec::basic(DM, "s-dup", AUTHOR);
+    twice.components.push(twice.components[0].clone());
+    assert!(is_inert(&twice), "duplicate block");
+    let mut no_id = SurfaceSpec::basic(DM, "s-noid", AUTHOR);
+    no_id.components = vec![serde_json::json!({ "type": "Text", "text": "x" })];
+    assert!(is_inert(&no_id), "no id");
+    // A repeated object member in the wire form.
+    let basic = SurfaceSpec::basic(DM, "s-member", AUTHOR);
+    let mut carrier = basic.create_carrier("m-1");
+    let members = first_members(&mut carrier);
+    let copy = members[0].clone();
+    members.push(copy);
+    let shown = snapshots(&mut translator(), &[update(3, carrier)]);
+    let snapshot = snapshot_of(&shown[0]);
+    assert!(snapshot.blocks.is_empty() && snapshot.actions.is_empty(), "duplicate member");
+    // A member without a value, and a number that is not one.
+    let mut carrier = basic.create_carrier("m-1");
+    first_members(&mut carrier)[0].value = None;
+    let shown = snapshots(&mut translator(), &[update(3, carrier)]);
+    assert!(snapshot_of(&shown[0]).blocks.is_empty(), "member without a value");
+    let mut carrier = basic.create_carrier("m-1");
+    first_members(&mut carrier).push(JsonMember {
+        key: "n".to_owned(),
+        value: Some(JsonValue {
+            value: Some(json_value::Value::Number("not-a-number".to_owned())),
+        }),
+    });
+    let shown = snapshots(&mut translator(), &[update(3, carrier)]);
+    assert!(snapshot_of(&shown[0]).blocks.is_empty(), "bad number");
 }
 
 #[test]
@@ -200,15 +288,44 @@ fn receipts_bind_to_the_original_requester_only() {
         &[created(1, &spec), update(2, action("principal-bo")), update(3, action("principal-cy"))],
     );
     assert!(snapshot_of(twice.last().expect("neutralised")).actions.is_empty());
-    // A receipt of a receipt, and one for another author.
-    let nested =
-        spec.receipt_carrier("rcpt-2", spec.receipt_carrier("rcpt-1", action("principal-bo")));
-    let mut t = translator();
-    let chain = snapshots(
-        &mut t,
-        &[created(1, &spec), update(2, action("principal-bo")), update(3, nested)],
-    );
-    assert!(snapshot_of(chain.last().expect("neutralised")).actions.is_empty());
+    // Each binding operand, changed alone from a valid receipt.
+    type Change = Box<dyn Fn(&mut SurfaceCarrier)>;
+    let operands: [(&str, Change); 5] = [
+        ("inner surface id", Box::new(|c| c.surface_id = "s-other".to_owned())),
+        ("inner author", Box::new(|c| c.author_principal_id = "principal-cy".to_owned())),
+        ("inner conversation", Box::new(|c| c.conversation_id = "c-elsewhere".to_owned())),
+        (
+            "inner action surface id",
+            Box::new(|c| {
+                if let Some(CarrierPayload::Action(action)) = &mut c.payload {
+                    action.surface_id = "s-other".to_owned();
+                }
+            }),
+        ),
+        (
+            "inner payload kind",
+            Box::new(|c| {
+                c.payload = Some(CarrierPayload::ActionReceipt(Box::new(c.clone())));
+            }),
+        ),
+    ];
+    for (operand, change) in operands {
+        let mut inner = action("principal-bo");
+        change(&mut inner);
+        let mut t = translator();
+        let out = snapshots(
+            &mut t,
+            &[
+                created(1, &spec),
+                update(2, action("principal-bo")),
+                update(3, spec.receipt_carrier("rcpt-1", inner)),
+            ],
+        );
+        let last = snapshot_of(out.last().expect("neutralised"));
+        assert_eq!(out.len(), 2, "{operand}: exactly one neutralising snapshot");
+        assert!(last.actions.is_empty() && last.blocks.is_empty(), "{operand}");
+    }
+    // The receipt's own author names another surface: it is not this one.
     let mut foreign = spec.receipt_carrier("rcpt-3", action("principal-bo"));
     foreign.author_principal_id = "principal-cy".to_owned();
     let mut t = translator();
@@ -374,12 +491,16 @@ fn v1_surface_projection_catalog_gate_and_answer_binding(cx: &mut TestAppContext
             drawn
         });
         assert!(!offered, "{row}: no action to click");
-        let id = moment_of(spec);
-        let text = with_store(cx, &shell, |s| match s.moment(&id).map(|m| m.kind.clone()) {
-            Some(MomentKind::AgentSurface(p)) => p.fallback_text,
-            _ => String::new(),
+        let rendered = in_window(cx, handle, {
+            let scope = scope.clone();
+            move |window, _| {
+                window
+                    .within(scope)
+                    .try_find("block-fallback-text")
+                    .and_then(|e| e.label().map(str::to_owned))
+            }
         });
-        assert_eq!(text, "Report is ready", "{row}: the author's fallback text");
+        assert_eq!(rendered.as_deref(), Some("Report is ready"), "{row}: the rendered text");
         assert!(!exists_in(cx, handle, &scope, "action-open"), "{row}: no action to click");
         assert!(
             matches!(
@@ -423,4 +544,102 @@ fn v1_surface_projection_catalog_gate_and_answer_binding(cx: &mut TestAppContext
 
     assert_eq!(wire_actions(&fake), 0, "zero surface action requests on the wire");
     fake.shutdown();
+}
+
+fn scoped_id(spec: &SurfaceSpec) -> ramflux_desktop_core::SurfaceId {
+    ramflux_desktop_core::SurfaceId::new(scoped(spec))
+}
+
+fn actions_of(event: &SurfaceEvent) -> Vec<String> {
+    snapshot_of(event).actions.iter().map(|a| a.id.clone()).collect()
+}
+
+#[test]
+fn one_author_and_id_in_two_conversations_stay_apart() {
+    let a = SurfaceSpec::basic(DM, "s-same", AUTHOR);
+    let b = SurfaceSpec::basic("c-other", "s-same", AUTHOR);
+    assert_ne!(scoped(&a), scoped(&b), "the scoped reference names the conversation");
+    let create_b = update_in("c-other", 2, b.create_carrier("m-2"));
+    let mut t = translator();
+    let both = snapshots(&mut t, &[created(1, &a), create_b]);
+    assert_eq!(both.len(), 2, "B's surface is not dropped after A's");
+    assert_eq!(snapshot_of(&both[0]).surface_id, scoped_id(&a));
+    assert_eq!(snapshot_of(&both[1]).surface_id, scoped_id(&b));
+    assert_eq!(snapshot_of(&both[1]).context_id, ContextId::new("c-other"));
+    assert_eq!(surface_counts(&t).0, 2);
+    // Same action message id in both conversations: A's binding is its own.
+    let asked_a = a.action_carrier("act-1", "principal-bo", "open", 1);
+    let asked_b = b.action_carrier("act-1", "principal-cy", "open", 1);
+    assert!(snapshots(&mut t, &[update(3, asked_a), update_in("c-other", 4, asked_b)]).is_empty());
+    assert_eq!(surface_counts(&t).1, 2, "two pending actions, one per conversation");
+    // B's receipt from the wrong requester neutralises B only.
+    let wrong = b.action_carrier("act-1", "principal-bo", "open", 1);
+    let out = snapshots(&mut t, &[update_in("c-other", 5, b.receipt_carrier("rcpt-b", wrong))]);
+    assert_eq!(out.len(), 1);
+    assert_eq!(snapshot_of(&out[0]).surface_id, scoped_id(&b));
+    assert!(actions_of(&out[0]).is_empty());
+    // A's own receipt from its requester still binds, and A keeps its actions.
+    let right = a.action_carrier("act-1", "principal-bo", "open", 1);
+    assert!(snapshots(&mut t, &[update(6, a.receipt_carrier("rcpt-a", right))]).is_empty());
+    assert_eq!(surface_counts(&t).1, 0);
+}
+
+fn context() -> Context {
+    Context {
+        id: ContextId::new(DM),
+        kind: ContextKind::Group,
+        title: "Team".to_owned(),
+        participants: Vec::new(),
+        pinned: false,
+        unread: 0,
+        muted: false,
+        disappearing_secs: None,
+        roles: std::collections::BTreeMap::new(),
+        epoch: None,
+    }
+}
+
+#[test]
+fn a_surface_sorts_in_the_one_stream_with_messages_and_services() {
+    let spec = SurfaceSpec::basic(DM, "s-order", AUTHOR);
+    let message = |n: u8, hlc: u64| {
+        message_update(identity(DM, &[n; 4], "dev-ana", hlc, hlc), text_message("m", Vec::new()))
+    };
+    let pin = service_update(
+        identity(DM, &[4; 4], "dev-ana", 120, 120),
+        ServiceAction::ServicePinChanged,
+        &[],
+        None,
+    );
+    let surface =
+        surface_update(identity(DM, &[5; 4], "dev-ana", 150, 150), spec.create_carrier("m-5"));
+    // A bad receipt neutralises the card later: it keeps its place.
+    let asked = update(6, spec.action_carrier("act-1", "principal-bo", "open", 1));
+    let wrong = spec.action_carrier("act-1", "principal-cy", "open", 1);
+    let receipt = update(7, spec.receipt_carrier("rcpt-1", wrong));
+    // Arrival order is not stream order.
+    let events =
+        apply(&mut translator(), &[message(3, 200), surface, message(1, 100), pin, asked, receipt])
+            .events;
+    let mut store = Store::new();
+    store
+        .apply(&EventEnvelope::new(1, Timestamp(1), DomainEvent::ContextUpserted(context())))
+        .expect("context");
+    for (seq, event) in events.into_iter().enumerate() {
+        store.apply(&EventEnvelope::new(2 + seq as u64, Timestamp(1), event)).expect("event");
+    }
+    let kinds: Vec<&str> = store
+        .context_moments(&ContextId::new(DM))
+        .map(|m| match &m.kind {
+            MomentKind::Message(_) => "message",
+            MomentKind::System(_) => "pin",
+            MomentKind::AgentSurface(_) => "surface",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["message", "pin", "surface", "message"], "hlc 100, 120, 150, 200");
+    let shown = store.moment(&moment_of(&spec)).expect("surface moment");
+    assert_eq!(shown.order.as_ref().map(|o| o.hlc), Some(150));
+    let MomentKind::AgentSurface(card) = &shown.kind else { panic!("surface") };
+    assert!(card.actions.is_empty(), "neutralised, same place");
 }
