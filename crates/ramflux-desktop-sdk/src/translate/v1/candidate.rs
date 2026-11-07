@@ -24,3 +24,9 @@ pub fn media_failed(
 ) -> Translated {
     Translated::events(super::media::refuse(translator, object_id, failure))
 }
+
+/// How many v1 surfaces and pending surface actions `translator` retains.
+#[must_use]
+pub fn surface_counts(translator: &Translator) -> (usize, usize) {
+    (translator.v1_surfaces.surfaces(), translator.v1_surfaces.pending())
+}

@@ -181,6 +181,8 @@ pub struct Translator {
     /// When each surface was posted (conversation, surface id, author), from
     /// its first message.
     surface_times: BTreeMap<(ContextId, String, String), Timestamp>,
+    /// v1 surfaces and their pending actions (dormant projection).
+    v1_surfaces: v1::surface::Book,
     /// Tasks reported, by desktop task id.
     tasks: BTreeMap<ramflux_desktop_core::TaskId, tasks::KnownTask>,
     /// The approval (desktop grant) that requested each daemon grant id.
@@ -277,6 +279,7 @@ impl Translator {
             message_objects: BTreeMap::new(),
             surfaces: BTreeMap::new(),
             surface_times: BTreeMap::new(),
+            v1_surfaces: v1::surface::Book::default(),
             tasks: BTreeMap::new(),
             requested_grants: BTreeMap::new(),
             review_again: BTreeSet::new(),
@@ -510,6 +513,7 @@ impl Translator {
         self.plaintext.clear();
         self.v1.drop_text();
         self.media_refused.clear();
+        self.v1_surfaces.clear();
         self.set_lock(&id, ramflux_desktop_core::LockState::Locked)
     }
 

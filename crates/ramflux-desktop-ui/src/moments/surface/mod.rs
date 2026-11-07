@@ -188,6 +188,7 @@ impl RenderOnce for SurfaceBody {
             .when(self.status.out_of_sync, |col| {
                 col.child(status::out_of_sync(self.status.update.as_ref(), &surface_sink, cx))
             })
+            .when(total == 0, |col| col.child(content::fallback(&fallback, cx)))
             .children(blocks)
             .when(collapsible || (expanded && total > COLLAPSED_BLOCKS + 1), |col| {
                 let label = if expanded {

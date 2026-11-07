@@ -4,9 +4,13 @@
 //! Message schema v1 updates for tests, built only with the generated types.
 
 use ramflux_protocol::message::{
-    Content, Delete, DeleteScope, Edit, Entity, EntityKind, EventIdentity, Forward, MediaRef,
-    Message, MessageRef, MessageUpdate, QualifiedDevice, Reaction, Receipt, ReceiptState, Service,
-    ServiceAction, Thumbnail, UnsupportedView, content::Value, message_update::State,
+    Content, CreateSurfaceCommand, Delete, DeleteScope, Edit, Entity, EntityKind, EventIdentity,
+    Forward, JsonArray, JsonMember, JsonNull, JsonObject, JsonValue, MediaRef, Message, MessageRef,
+    MessageUpdate, QualifiedDevice, Reaction, Receipt, ReceiptState, Service, ServiceAction,
+    Surface, SurfaceAction, SurfaceCarrier, SurfaceCommand, SurfaceCommandCreateSurface,
+    SurfaceDelivery, SurfaceEvent, SurfaceSnapshotProof, Thumbnail, UnsupportedView,
+    content::Value, json_value, message_update::State, surface::Payload as SurfacePayload,
+    surface_carrier::Payload as CarrierPayload, surface_command::Value as Command,
 };
 
 /// The account the fixtures belong to.
@@ -309,4 +313,190 @@ pub fn unsupported_update(
             reason: "unknown_kind".to_owned(),
         })),
     }
+}
+
+/// A typed JSON tree of `value`.
+#[must_use]
+pub fn json_value(value: &serde_json::Value) -> JsonValue {
+    use serde_json::Value as Json;
+    JsonValue {
+        value: Some(match value {
+            Json::Null => json_value::Value::Null(JsonNull {}),
+            Json::Bool(flag) => json_value::Value::Boolean(*flag),
+            Json::Number(number) => json_value::Value::Number(number.to_string()),
+            Json::String(text) => json_value::Value::Text(text.clone()),
+            Json::Array(items) => json_value::Value::Array(JsonArray {
+                values: items.iter().map(json_value).collect(),
+            }),
+            Json::Object(map) => json_value::Value::Object(JsonObject {
+                members: map
+                    .iter()
+                    .map(|(key, inner)| JsonMember {
+                        key: key.clone(),
+                        value: Some(json_value(inner)),
+                    })
+                    .collect(),
+            }),
+        }),
+    }
+}
+
+/// One created surface and who is involved, built into carriers.
+#[derive(Debug, Clone)]
+pub struct SurfaceSpec {
+    /// Conversation.
+    pub conversation: String,
+    /// The surface's own id.
+    pub surface_id: String,
+    /// Its author principal.
+    pub author: String,
+    /// Catalog name.
+    pub catalog: String,
+    /// Catalog version.
+    pub catalog_version: String,
+    /// Text for clients that cannot draw it.
+    pub fallback_text: String,
+    /// Components, as plain JSON.
+    pub components: Vec<serde_json::Value>,
+    /// Allowed actions, as plain JSON.
+    pub actions: Vec<serde_json::Value>,
+    /// The version the event creates.
+    pub version: u64,
+    /// The snapshot hash the carrier attests.
+    pub hash: String,
+}
+
+impl SurfaceSpec {
+    /// A `basic/1` surface with one text block and one action.
+    #[must_use]
+    pub fn basic(conversation: &str, surface_id: &str, author: &str) -> Self {
+        Self {
+            conversation: conversation.to_owned(),
+            surface_id: surface_id.to_owned(),
+            author: author.to_owned(),
+            catalog: "basic".to_owned(),
+            catalog_version: "1".to_owned(),
+            fallback_text: "Report is ready".to_owned(),
+            components: vec![
+                serde_json::json!({ "id": "b-text", "type": "Text", "text": "Report" }),
+            ],
+            actions: vec![serde_json::json!({ "name": "open", "label": "Open report" })],
+            version: 1,
+            hash: format!("hash-{surface_id}-1"),
+        }
+    }
+
+    /// The same surface in another catalog.
+    #[must_use]
+    pub fn in_catalog(mut self, catalog: &str, version: &str) -> Self {
+        self.catalog = catalog.to_owned();
+        self.catalog_version = version.to_owned();
+        self
+    }
+
+    /// The same surface at `version`.
+    #[must_use]
+    pub fn at_version(mut self, version: u64) -> Self {
+        self.version = version;
+        self.hash = format!("hash-{}-{version}", self.surface_id);
+        self
+    }
+
+    fn carrier(&self, message_id: &str, sender: &str) -> SurfaceCarrier {
+        SurfaceCarrier {
+            schema: "ramflux.surface.carrier.v2".to_owned(),
+            content_type: "surface".to_owned(),
+            posted_at: Some(1_000),
+            updated_at: None,
+            conversation_id: self.conversation.clone(),
+            surface_id: self.surface_id.clone(),
+            message_id: message_id.to_owned(),
+            sender_principal_id: sender.to_owned(),
+            sender_device_id: format!("dev-{sender}"),
+            author_principal_id: self.author.clone(),
+            signature: String::new(),
+            snapshot: None,
+            payload: None,
+        }
+    }
+
+    /// The carrier of the create event.
+    #[must_use]
+    pub fn create_carrier(&self, message_id: &str) -> SurfaceCarrier {
+        let mut carrier = self.carrier(message_id, &self.author);
+        carrier.snapshot = Some(SurfaceSnapshotProof {
+            surface_hash: Some(self.hash.clone()),
+            ..SurfaceSnapshotProof::default()
+        });
+        carrier.payload = Some(CarrierPayload::Event(SurfaceEvent {
+            schema: "ramflux.a2ui.conversation.v2".to_owned(),
+            conversation_id: self.conversation.clone(),
+            version: self.version,
+            command: Some(SurfaceCommand {
+                value: Some(Command::CreateSurface(SurfaceCommandCreateSurface {
+                    value: Some(CreateSurfaceCommand {
+                        surface_id: self.surface_id.clone(),
+                        surface_type: None,
+                        catalog: self.catalog.clone(),
+                        catalog_version: self.catalog_version.clone(),
+                        fallback_text: self.fallback_text.clone(),
+                        fallback_markdown: None,
+                        components: self.components.iter().map(json_value).collect(),
+                        data_model: None,
+                        allowed_actions: self.actions.iter().map(json_value).collect(),
+                    }),
+                })),
+            }),
+        }));
+        carrier
+    }
+
+    /// The carrier of `requester` asking for `action_id` on version `version`.
+    #[must_use]
+    pub fn action_carrier(
+        &self,
+        message_id: &str,
+        requester: &str,
+        action_id: &str,
+        version: u64,
+    ) -> SurfaceCarrier {
+        let mut carrier = self.carrier(message_id, requester);
+        carrier.payload = Some(CarrierPayload::Action(SurfaceAction {
+            schema: "ramflux.a2ui.action.v2".to_owned(),
+            conversation_id: self.conversation.clone(),
+            surface_id: self.surface_id.clone(),
+            version,
+            surface_hash: self.hash.clone(),
+            action_id: action_id.to_owned(),
+            values: None,
+            args_hash: String::new(),
+            task_binding: None,
+        }));
+        carrier
+    }
+
+    /// The author's receipt holding `original`.
+    #[must_use]
+    pub fn receipt_carrier(&self, message_id: &str, original: SurfaceCarrier) -> SurfaceCarrier {
+        let mut carrier = self.carrier(message_id, &self.author);
+        carrier.payload = Some(CarrierPayload::ActionReceipt(Box::new(original)));
+        carrier
+    }
+}
+
+/// A content update carrying a surface delivery of `carrier`.
+#[must_use]
+pub fn surface_update(identity: EventIdentity, carrier: SurfaceCarrier) -> MessageUpdate {
+    content_update(
+        identity,
+        Value::Surface(Surface {
+            payload: Some(SurfacePayload::Delivery(SurfaceDelivery {
+                kind: None,
+                carrier: Some(carrier),
+                group_epoch: None,
+                context: None,
+                manifests: Vec::new(),
+            })),
+        }),
+    )
 }
