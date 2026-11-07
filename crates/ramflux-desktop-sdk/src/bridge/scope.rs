@@ -115,8 +115,9 @@ pub(crate) struct Ceremonies {
 pub(super) type Read = (Fetch, Option<u64>, Result<Value, BusError>);
 
 pub(super) enum Internal {
-    /// A batch of snapshot reads, with the gate epoch it was sent in.
-    Snapshot(u64, Vec<Read>),
+    /// A batch of snapshot reads, with the gate epoch and the read attempt
+    /// it was sent in.
+    Snapshot(u64, u64, Vec<Read>),
     /// The daemon's schema status for `epoch`, with the generation of the
     /// connection it travelled on.
     SchemaAnswer {
@@ -201,6 +202,11 @@ pub(super) struct Task {
     pending_markers: u32,
     /// Snapshot batches of this epoch still in flight.
     batch_pending: u32,
+    /// Numbers the current read attempt: every cancellation (a new epoch, a
+    /// retry in the same epoch, a lost link) starts a new one, and a batch
+    /// completion of an earlier attempt is dropped before any bookkeeping,
+    /// whatever its epoch.
+    read_attempt: u64,
     /// The newest request-connection generation a recovery has been run for.
     /// Recovery is a pure function of the client's monotonic generation
     /// counter: whenever the counter is ahead of this, `recover_connection`
@@ -348,6 +354,7 @@ pub(super) fn build(
         gate_connection: None,
         pending_markers: 0,
         batch_pending: 0,
+        read_attempt: 0,
         recovered_generation: 0,
         #[cfg(any(test, feature = "test-support"))]
         recoveries: Vec::new(),
@@ -932,7 +939,7 @@ impl Task {
                 self.guard_violations += 1;
             }
         }
-        let epoch = self.gate.epoch();
+        let (epoch, attempt) = (self.gate.epoch(), self.read_attempt);
         self.batch_pending += 1;
         let client = self.client.clone();
         let account = self.account();
@@ -953,7 +960,7 @@ impl Task {
             }
             results.sort_by_key(|(index, _)| *index);
             let results = results.into_iter().map(|(_, read)| read).collect();
-            let _ = internal.send(Internal::Snapshot(epoch, results));
+            let _ = internal.send(Internal::Snapshot(epoch, attempt, results));
         });
         let handle = task.abort_handle();
         for fetch in reserved {
@@ -1083,7 +1090,9 @@ impl Task {
     fn internal(&mut self, internal: Internal) {
         self.observe_connection();
         match internal {
-            Internal::Snapshot(epoch, results) => self.on_snapshot(epoch, results),
+            Internal::Snapshot(epoch, attempt, results) => {
+                self.on_snapshot(epoch, attempt, results)
+            }
             Internal::SchemaAnswer { epoch, generation, result } => {
                 if !matches!(self.link, Link::Locked | Link::Lost) {
                     self.on_schema_status(epoch, generation, &result);
@@ -1192,7 +1201,12 @@ impl Task {
         }
     }
 
-    fn on_snapshot(&mut self, epoch: u64, mut results: Vec<Read>) {
+    fn on_snapshot(&mut self, epoch: u64, attempt: u64, mut results: Vec<Read>) {
+        // A completion of a cancelled attempt touches nothing: not the
+        // running handles, not the pending count that holds the barrier.
+        if attempt != self.read_attempt {
+            return;
+        }
         for (fetch, _, _) in &results {
             self.read_recovery.running.remove(fetch);
         }
@@ -1448,6 +1462,9 @@ impl Task {
     }
 
     fn cancel_reads(&mut self) {
+        // Completions already queued by the reads being cancelled belong to
+        // the attempt that ends here.
+        self.read_attempt += 1;
         self.read_recovery.cancel();
         self.sync.clear_reads();
         if let Some(task) = self.snapshot_task.take() {

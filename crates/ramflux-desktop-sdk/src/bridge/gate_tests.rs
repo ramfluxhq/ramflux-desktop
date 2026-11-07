@@ -943,6 +943,15 @@ async fn play_orderings(name: &str, hop1: &[Ev], second: Option<&[Ev]>, overlap:
             seen.iter().filter(|r| r.connection == connection).map(|r| r.method.as_str()).collect();
         if on.iter().any(|m| *m != "bus.subscribe") {
             newest_request = connection;
+            // Settled hops: every request generation was recovered, so every
+            // one carried messages. (An overlapping hop may supersede a
+            // generation before anything was sent on it.)
+            if !overlap {
+                assert!(
+                    on.iter().any(|m| gate::is_message_method(m) || *m == "conversation.directory"),
+                    "settled connection {connection} carried messages: {on:?} ({hop1:?})"
+                );
+            }
         }
         let status = on.iter().position(|m| *m == "daemon.status");
         if let Some(message) = on.iter().position(|m| gate::is_message_method(m)) {
@@ -1078,8 +1087,12 @@ async fn a_snapshot_retry_on_a_healthy_connection_holds_messages_behind_the_iden
     task.snapshot();
     assert_eq!(task.client.connections_opened(), generation, "the same connection");
     assert_eq!(task.gate.epoch(), epoch, "no new epoch: it is a retry");
-    pump(&mut task, &mut inbox, |t| t.gate.prerequisites_pending() && t.client.in_flight() > 0)
-        .await;
+    // The daemon has the identity request in hand (its latch is held).
+    pump(&mut task, &mut inbox, |t| {
+        t.gate.prerequisites_pending()
+            && fake.seen()[before..].iter().any(|r| r.method == "identity.directory")
+    })
+    .await;
     let held: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
     assert!(held.iter().any(|m| m == "identity.directory"), "the prerequisites were asked");
     assert!(
@@ -1094,6 +1107,66 @@ async fn a_snapshot_retry_on_a_healthy_connection_holds_messages_behind_the_iden
     let messages = order.iter().position(|m| m == "conversation.directory").expect("messages");
     assert!(identities < messages, "identities first: {order:?}");
     assert_eq!(task.guard_violations, 0);
+    fake.shutdown();
+}
+
+#[tokio::test]
+async fn a_stale_batch_completion_cannot_release_the_barrier_of_a_retry() {
+    let shared = daemon(Status::Field(json!(0)));
+    let _teardown_shared = Teardown(shared.clone());
+    let (fake, path) = start("gate-stale-batch", &shared);
+    let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
+    attach(&mut task, &mut inbox).await;
+    pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
+    settle(&mut task, &mut inbox).await;
+    let epoch = task.gate.epoch();
+
+    // A successful snapshot batch is queued (its answers are all in) and
+    // the scope has not looked at it yet.
+    task.lost();
+    task.snapshot();
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while !(task.client.in_flight() == 0 && task.batch_pending == 1 && !inbox.internal.is_empty()) {
+        assert!(std::time::Instant::now() < deadline, "the batch completion is queued");
+        tokio::task::yield_now().await;
+    }
+    let mut queued = Vec::new();
+    while let Ok(item) = inbox.internal.try_recv() {
+        queued.push(item);
+    }
+    assert!(queued.iter().any(|i| matches!(i, Internal::Snapshot(..))), "a batch is queued");
+
+    // The job link fails and the backoff is due: the retry reads again in
+    // the same epoch, with the identities held.
+    let before = fake.seen().len();
+    shared.identities.close();
+    task.lost();
+    task.snapshot();
+    assert_eq!(task.gate.epoch(), epoch, "same epoch: it is a retry");
+    pump_with(&mut task, &mut inbox, false, |t| {
+        t.gate.prerequisites_pending()
+            && fake.seen()[before..].iter().any(|r| r.method == "identity.directory")
+    })
+    .await;
+
+    // Only now the old attempt's completion is looked at.
+    for item in queued {
+        task.internal(item);
+    }
+    assert!(task.gate.prerequisites_pending(), "the barrier still stands");
+    assert_eq!(task.batch_pending, 1, "the old completion did not count");
+    let held: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
+    assert!(
+        !held.iter().any(|m| gate::is_message_method(m) || m == "conversation.directory"),
+        "no message read beside the held identities: {held:?}"
+    );
+    assert_eq!(task.guard_violations, 0);
+    shared.identities.release();
+    settle(&mut task, &mut inbox).await;
+    let order: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
+    let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
+    let messages = order.iter().position(|m| m == "conversation.directory").expect("messages");
+    assert!(identities < messages, "identities first: {order:?}");
     fake.shutdown();
 }
 
@@ -1172,6 +1245,7 @@ async fn an_older_snapshot_arriving_after_the_new_epoch_cannot_reopen_the_gate()
     delivered.try_iter().for_each(drop);
     task.internal(Internal::Snapshot(
         old_epoch,
+        task.read_attempt,
         vec![(
             Fetch::DaemonStatus,
             None,

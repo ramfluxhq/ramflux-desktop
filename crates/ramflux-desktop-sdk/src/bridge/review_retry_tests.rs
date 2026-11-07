@@ -155,7 +155,11 @@ async fn in_flight_refresh_reads_committed_state_once_after_all_completion_paths
                     let (Internal::Fetched(read) | Internal::FetchedAt { read, .. }) = first else {
                         panic!("fetch expected")
                     };
-                    task.internal(Internal::Snapshot(task.gate.epoch(), vec![read]));
+                    task.internal(Internal::Snapshot(
+                        task.gate.epoch(),
+                        task.read_attempt,
+                        vec![read],
+                    ));
                 } else {
                     task.internal(first)
                 }
