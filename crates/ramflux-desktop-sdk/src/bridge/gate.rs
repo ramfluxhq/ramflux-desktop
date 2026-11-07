@@ -155,8 +155,8 @@ impl Gate {
 
     /// The current verdict.
     pub(super) fn verdict(&self) -> SchemaGate {
-        if !self.enabled || self.epoch == 0 {
-            // Before the first connection there is nothing to hold back.
+        if !self.enabled {
+            // The daemon scope has no schema to check.
             SchemaGate::Open
         } else if self.reset {
             SchemaGate::ResetRequired
@@ -205,7 +205,7 @@ impl Gate {
     /// A status read of `epoch` came back. An answer of another epoch is
     /// ignored; returns whether the answer counted.
     pub(super) fn resolve(&mut self, epoch: u64, answer: Result<&Value, ()>) -> bool {
-        if !self.enabled || epoch != self.epoch {
+        if !self.enabled || self.epoch == 0 || epoch != self.epoch {
             return false;
         }
         match answer {

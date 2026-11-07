@@ -881,10 +881,13 @@ async fn quiesce(task: &mut Task, inbox: &mut Inbox) {
 }
 
 /// One ordering of the events of `old -> old + 1`, then (when `second` is
-/// given) the events of `old + 1 -> old + 2`: every connection generation is
-/// recovered exactly once, none is lost, and nothing message-class is sent
-/// before the status of the connection it travels on.
-async fn play_orderings(name: &str, hop1: &[Ev], second: Option<&[Ev]>) {
+/// given) the events of `old + 1 -> old + 2`, either after the first hop has
+/// settled or straight away. Settled: every connection generation is
+/// recovered exactly once. Overlapping: a generation superseded before any
+/// check saw it is never recovered, the rest once each, in order, and the
+/// newest is never lost. Either way nothing message-class travels on a
+/// connection before that connection's own status.
+async fn play_orderings(name: &str, hop1: &[Ev], second: Option<&[Ev]>, overlap: bool) {
     let shared = daemon(Status::Field(json!(0)));
     let (fake, path) = start(name, &shared);
     let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
@@ -895,34 +898,66 @@ async fn play_orderings(name: &str, hop1: &[Ev], second: Option<&[Ev]>) {
     for event in hop1 {
         play(&mut task, *event, first).await;
     }
-    quiesce(&mut task, &mut inbox).await;
     let mut expected = vec![first, first + 1];
-    assert_eq!(task.recoveries, expected, "{hop1:?}: one recovery per generation");
+    if !overlap {
+        quiesce(&mut task, &mut inbox).await;
+        assert_eq!(task.recoveries, expected, "{hop1:?}: one recovery per generation");
+    }
     if let Some(hop2) = second {
         for event in hop2 {
             play(&mut task, *event, first + 1).await;
         }
         quiesce(&mut task, &mut inbox).await;
         expected.push(first + 2);
-        assert_eq!(task.recoveries, expected, "{hop1:?} then {hop2:?}: one recovery each");
+        if !overlap {
+            assert_eq!(task.recoveries, expected, "{hop1:?} then {hop2:?}: one recovery each");
+        }
     }
     // Whatever notifications are still queued change nothing.
+    let recovered = task.recoveries.len();
     while let Ok(state) = inbox.connection_states.try_recv() {
         task.connection_changed(state);
     }
     quiesce(&mut task, &mut inbox).await;
-    assert_eq!(task.recoveries, expected, "late notifications decide nothing: {hop1:?}");
+    assert_eq!(task.recoveries.len(), recovered, "late notifications decide nothing: {hop1:?}");
     // No lost generation, and the last connection carries messages.
-    assert_eq!(task.recovered_generation, task.client.connections_opened());
-    assert!(task.client.approval().permits("message.submit", task.client.connections_opened()));
+    let last = task.client.connections_opened();
+    assert_eq!(task.recovered_generation, last);
+    assert!(task.client.approval().permits("message.submit", last));
     assert_eq!(task.guard_violations, 0, "no message read left the ordered pipeline: {hop1:?}");
-    // Nothing message-class reached the daemon before a status read of its
-    // own epoch: the first of them follows the first daemon.status.
-    let seen: Vec<String> = fake.seen().iter().map(|r| r.method.clone()).collect();
-    let status = seen.iter().position(|m| m == "daemon.status").expect("a status read");
-    if let Some(message) = seen.iter().position(|m| gate::is_message_method(m)) {
-        assert!(status < message, "status before messages: {seen:?}");
+    if overlap {
+        let log = &task.recoveries;
+        assert!(log.windows(2).all(|pair| pair[0] < pair[1]), "in order, once each: {log:?}");
+        assert_eq!((log.first(), log.last()), (Some(&first), Some(&last)), "{hop1:?}: {log:?}");
     }
+    // Per connection (the fake numbers them in accept order, as the client
+    // numbers its generations): a message-class request is preceded by the
+    // status read of the same connection.
+    let seen = fake.seen();
+    // The event stream is a connection of its own (it carries no request of
+    // the gate's); the request connections are the others.
+    let connections = seen.iter().map(|r| r.connection).max().unwrap_or(0);
+    let mut newest_request = 0;
+    for connection in 1..=connections {
+        let on: Vec<&str> =
+            seen.iter().filter(|r| r.connection == connection).map(|r| r.method.as_str()).collect();
+        if on.iter().any(|m| *m != "bus.subscribe") {
+            newest_request = connection;
+        }
+        let status = on.iter().position(|m| *m == "daemon.status");
+        if let Some(message) = on.iter().position(|m| gate::is_message_method(m)) {
+            let status = status.unwrap_or_else(|| {
+                panic!("connection {connection} carried messages without a status: {on:?}")
+            });
+            assert!(status < message, "connection {connection}: status first: {on:?} ({hop1:?})");
+        }
+    }
+    let on_newest: Vec<&str> =
+        seen.iter().filter(|r| r.connection == newest_request).map(|r| r.method.as_str()).collect();
+    assert!(
+        on_newest.iter().any(|m| gate::is_message_method(m)),
+        "the newest request connection carries messages: {on_newest:?}"
+    );
     fake.shutdown();
 }
 
@@ -954,6 +989,7 @@ async fn a_delayed_disconnect_after_the_backoff_attach_recovers_the_new_connecti
         "gate-delayed-disconnect",
         &[Ev::Failure, Ev::Snapshot, Ev::StatusNew, Ev::Disconnect, Ev::Connect, Ev::StatusOld],
         None,
+        false,
     )
     .await;
 }
@@ -963,7 +999,7 @@ async fn every_ordering_of_a_connection_change_recovers_each_generation_exactly_
     let all = orderings();
     assert_eq!(all.len(), 360, "all orderings with the failure before the attach");
     for order in &all {
-        play_orderings("gate-orderings", order, None).await;
+        play_orderings("gate-orderings", order, None, false).await;
     }
 }
 
@@ -976,8 +1012,89 @@ async fn every_ordering_of_two_consecutive_connection_changes_recovers_each_gene
     let second = permutations(&[Ev::Disconnect, Ev::Connect, Ev::StatusOld, Ev::StatusNew]);
     assert_eq!(second.len(), 24);
     for (index, order) in all.iter().enumerate() {
-        play_orderings("gate-orderings-two", order, Some(&second[index % second.len()])).await;
+        play_orderings("gate-orderings-two", order, Some(&second[index % second.len()]), false)
+            .await;
     }
+}
+
+#[tokio::test]
+async fn a_second_hop_that_starts_before_the_first_settles_still_recovers_in_order() {
+    // Not quiesced between the hops: the first hop's attach and status reads
+    // are still outstanding when the next connection opens.
+    let all = orderings();
+    let second = permutations(&[Ev::Disconnect, Ev::Connect, Ev::StatusOld, Ev::StatusNew]);
+    for (index, order) in all.iter().enumerate().filter(|(index, _)| index % 6 == 0) {
+        play_orderings("gate-overlap", order, Some(&second[index % second.len()]), true).await;
+    }
+}
+
+#[tokio::test]
+async fn nothing_message_class_is_sent_before_the_first_attach_completes() {
+    let shared = daemon(Status::Field(json!(0)));
+    let (fake, path) = start("gate-fail-closed", &shared);
+    let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
+    // Built, not attached: the default is closed, never open.
+    assert_eq!(verdict(&task), SchemaGate::Unresolved);
+    let start_effect = |task: &mut Task| {
+        task.effect(Effect::Call {
+            method: "conversation.start".to_owned(),
+            body: json!({ "context_id": "c-9", "participant_id": "principal-ana", "text": "hi" }),
+        });
+    };
+    start_effect(&mut task);
+    // The attach is requested; its completion has not been handled yet.
+    task.snapshot();
+    assert!(task.attach_pending, "the connection is still being opened");
+    assert_eq!(verdict(&task), SchemaGate::Unresolved);
+    start_effect(&mut task);
+    let submit = BusRequest::new(Some("acct-main"), "message", "message.submit", json!({}))
+        .with_operation_id("before-attach".to_owned());
+    let outcome = task.client.call(&submit).await;
+    assert!(
+        matches!(&outcome, Err(BusError::Daemon { code, .. }) if code == "SchemaGateClosed"),
+        "the wire refuses before any schema check: {outcome:?}"
+    );
+    assert_eq!(message_requests(&fake), Vec::<String>::new(), "zero message-class frames");
+    settle(&mut task, &mut inbox).await;
+    assert_eq!(verdict(&task), SchemaGate::Open);
+    fake.shutdown();
+}
+
+#[tokio::test]
+async fn a_snapshot_retry_on_a_healthy_connection_holds_messages_behind_the_identities() {
+    let shared = daemon(Status::Field(json!(0)));
+    let _teardown_shared = Teardown(shared.clone());
+    let (fake, path) = start("gate-healthy-retry", &shared);
+    let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
+    attach(&mut task, &mut inbox).await;
+    pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
+    settle(&mut task, &mut inbox).await;
+    let (before, generation, epoch) =
+        (fake.seen().len(), task.client.connections_opened(), task.gate.epoch());
+    // The job link failed (the ordinary connection is healthy and approved):
+    // the scope attaches again, with the identities held.
+    shared.identities.close();
+    task.lost();
+    task.snapshot();
+    assert_eq!(task.client.connections_opened(), generation, "the same connection");
+    assert_eq!(task.gate.epoch(), epoch, "no new epoch: it is a retry");
+    pump(&mut task, &mut inbox, |t| t.gate.prerequisites_pending() && t.client.in_flight() > 0)
+        .await;
+    let held: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
+    assert!(held.iter().any(|m| m == "identity.directory"), "the prerequisites were asked");
+    assert!(
+        !held.iter().any(|m| gate::is_message_method(m) || m == "conversation.directory"),
+        "no message read beside the held identities: {held:?}"
+    );
+    assert_eq!(task.guard_violations, 0);
+    shared.identities.release();
+    settle(&mut task, &mut inbox).await;
+    let order: Vec<String> = fake.seen()[before..].iter().map(|r| r.method.clone()).collect();
+    let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
+    let messages = order.iter().position(|m| m == "conversation.directory").expect("messages");
+    assert!(identities < messages, "identities first: {order:?}");
+    assert_eq!(task.guard_violations, 0);
+    fake.shutdown();
 }
 
 #[tokio::test]
@@ -1305,12 +1422,15 @@ async fn a_reconnect_while_the_status_is_unresolved_recovers_in_a_new_epoch() {
     // outstanding.
     let shared = daemon(Status::Field(json!(0)));
     let _teardown_shared = Teardown(shared.clone());
-    shared.first_status.close();
+    // Every status stays outstanding (the gate's own and the snapshot's):
+    // which of them the daemon sees first is not under the test's control.
+    shared.hold.close();
     let (fake, path) = start("gate-unresolved-reconnect", &shared);
     let (mut task, mut inbox, _) = account_task(&path, "acct-main", SchemaSupport::Legacy);
     attach(&mut task, &mut inbox).await;
-    pump(&mut task, &mut inbox, |t| {
-        t.client.in_flight() == 1 && !t.gate.prerequisites_pending() && t.batch_pending == 0
+    // Both status reads have reached the daemon, and neither is answered.
+    pump(&mut task, &mut inbox, |_| {
+        fake.seen().iter().filter(|r| r.method == "daemon.status").count() >= 2
     })
     .await;
     assert_eq!(verdict(&task), SchemaGate::Unresolved);

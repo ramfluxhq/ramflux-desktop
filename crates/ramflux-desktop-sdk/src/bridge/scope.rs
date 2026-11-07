@@ -336,6 +336,11 @@ pub(super) fn build(
     let custodians = crate::custodians::CustodianStore::new(config.settings_path.clone(), socket);
     translator.restore_custodians(custodians.links());
     let gate = Gate::new(scope.account().is_some(), config.schema_support);
+    if gate.enabled() {
+        // Fail closed from the start: before any connection has been checked
+        // the gate is unresolved and the wire refuses message-class traffic.
+        client.approval().enforce();
+    }
     let task = Task {
         gate,
         gate_told: (SchemaGate::Open, None),
@@ -510,6 +515,16 @@ impl Task {
         } else if let Some(tx) = &self.daemon_refresh {
             let _ = tx.send(super::DaemonNotice::Refresh);
         }
+    }
+
+    /// A fixture that never attaches: an open gate whose check is inert.
+    #[cfg(test)]
+    pub(super) fn open_gate_for_tests(&mut self) {
+        self.gate.begin_epoch();
+        let epoch = self.gate.epoch();
+        let _ = self.gate.resolve(epoch, Ok(&serde_json::json!({ "schema_generation": 0 })));
+        self.client.approval().approve_any();
+        self.recovered_generation = u64::MAX;
     }
 
     /// Begins a connection epoch: the gate's approval is revoked, what it
@@ -829,10 +844,7 @@ impl Task {
     /// one that already has been is not recovered again (that would be a
     /// second decision for it), its reads are only read again in its epoch.
     fn attach_live(&mut self) {
-        if self.gate.enabled()
-            && self.gate.epoch() > 0
-            && self.client.connections_opened() <= self.recovered_generation
-        {
+        if self.gate.enabled() && self.client.connections_opened() <= self.recovered_generation {
             self.attach_pending = false;
             self.cancel_reads();
             self.start_epoch_reads(false);
@@ -868,11 +880,7 @@ impl Task {
     /// notification: a request connection newer than the last one recovered
     /// is recovered, whatever the state of any status or notification.
     pub(super) fn observe_connection(&mut self) {
-        // Nothing is accounted for before the first epoch begins.
-        if !self.gate.enabled()
-            || self.gate.epoch() == 0
-            || matches!(self.link, Link::Locked | Link::Lost)
-        {
+        if !self.gate.enabled() || matches!(self.link, Link::Locked | Link::Lost) {
             return;
         }
         if self.client.connections_opened() > self.recovered_generation {
@@ -903,9 +911,13 @@ impl Task {
         // Message-class reads wait for the schema gate and for the
         // prerequisite batch (held in its queue, in order, and read as a
         // batch of their own once both are done).
+        // The barrier stands before any read is admitted, so this holds on
+        // every path, including a retry on an already open gate.
+        self.gate.set_prerequisites(true);
         reads.retain(|fetch| self.gate.admit(fetch, true) == Admit::Run);
         self.gate.set_prerequisites(!reads.is_empty());
         self.run_batch(reads);
+        self.flush_gate();
     }
 
     /// Reads `reads` together; they are translated in this order.

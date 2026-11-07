@@ -26,6 +26,7 @@ fn fixture(name: &str) -> (Task, Inbox, mpsc::Receiver<super::super::Delivery>, 
         Ceremonies { phrases: phrase.into(), audit: Arc::default() },
     );
     task.link = Link::Live;
+    task.open_gate_for_tests();
     (task, inbox, rx, fake)
 }
 

@@ -52,6 +52,12 @@ impl Approval {
         self.inner.approved.store(generation, Ordering::SeqCst);
     }
 
+    /// Approves messages on every connection (fixtures that never attach).
+    #[cfg(test)]
+    pub fn approve_any(&self) {
+        self.inner.approved.store(u64::MAX, Ordering::SeqCst);
+    }
+
     /// Withdraws the approval.
     pub fn revoke(&self) {
         self.inner.approved.store(0, Ordering::SeqCst);
@@ -63,5 +69,6 @@ impl Approval {
         !self.inner.enforced.load(Ordering::SeqCst)
             || !is_message_method(method)
             || self.inner.approved.load(Ordering::SeqCst) == generation
+            || (cfg!(test) && self.inner.approved.load(Ordering::SeqCst) == u64::MAX)
     }
 }

@@ -25,6 +25,7 @@ fn task() -> (Task, Inbox, std_mpsc::Receiver<Delivery>) {
         },
     );
     task.link = Link::Live;
+    task.open_gate_for_tests();
     (task, inbox, delivered)
 }
 
