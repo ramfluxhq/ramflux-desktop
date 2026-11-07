@@ -14,6 +14,7 @@
 //! - [`subscription`]: the push subscription of an account on a daemon
 //!   without the stream.
 
+pub mod approval;
 pub mod attended;
 pub mod client;
 pub mod deadline;

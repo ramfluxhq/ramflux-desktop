@@ -73,6 +73,7 @@ struct Inner {
     generations: AtomicU64,
     next_id: AtomicU64,
     slots: Semaphore,
+    approval: super::approval::Approval,
 }
 
 impl BusClient {
@@ -97,8 +98,15 @@ impl BusClient {
                 generations: AtomicU64::new(0),
                 next_id: AtomicU64::new(1),
                 slots: Semaphore::new(MAX_IN_FLIGHT),
+                approval: super::approval::Approval::default(),
             }),
         }
+    }
+
+    /// The approval this client checks before transmitting message-class
+    /// requests (not enforced until [`Approval::enforce`]).
+    pub(crate) fn approval(&self) -> &super::approval::Approval {
+        &self.inner.approval
     }
 
     /// The budgets this client puts on its requests.
@@ -115,25 +123,62 @@ impl BusClient {
     /// Sends one request and waits for its answer, at most until its
     /// deadline (twice, when a keyed request is resent).
     pub async fn call(&self, request: &BusRequest) -> Result<Value, BusError> {
-        match self.once(request).await {
+        match self.once(request).await.1 {
             Err(error) if request.operation_id.is_some() && answer_lost(&error) => {
-                self.once(request).await
+                self.once(request).await.1
             }
             other => other,
         }
     }
 
-    async fn once(&self, request: &BusRequest) -> Result<Value, BusError> {
-        let _slot = self
-            .inner
-            .slots
-            .acquire()
-            .await
-            .map_err(|_| BusError::Transport("request connection closed".to_owned()))?;
-        let (generation, client) = self.connection().await?;
+    /// Like [`call`](Self::call) without the keyed resend, and with the
+    /// generation of the connection the request travelled on (0 when none
+    /// was opened).
+    pub(crate) async fn call_on_connection(
+        &self,
+        request: &BusRequest,
+    ) -> (u64, Result<Value, BusError>) {
+        self.once(request).await
+    }
+
+    async fn once(&self, request: &BusRequest) -> (u64, Result<Value, BusError>) {
+        let _slot = match self.inner.slots.acquire().await {
+            Ok(slot) => slot,
+            Err(_) => {
+                return (0, Err(BusError::Transport("request connection closed".to_owned())));
+            }
+        };
+        let (generation, client) = match self.connection().await {
+            Ok(open) => open,
+            Err(error) => return (0, Err(error)),
+        };
+        // The approval names one connection: a request that reconnected is
+        // checked against the connection it actually got.
+        if !self.inner.approval.permits(&request.method, generation) {
+            return (
+                generation,
+                Err(BusError::Daemon {
+                    code: super::approval::GATE_CLOSED.to_owned(),
+                    message: "messages are not approved on this connection".to_owned(),
+                    retry_after_ms: None,
+                    reason_code: None,
+                    details: None,
+                    cause: None,
+                }),
+            );
+        }
+        (generation, self.exchange_once(request, generation, &client).await)
+    }
+
+    async fn exchange_once(
+        &self,
+        request: &BusRequest,
+        generation: u64,
+        client: &LocalBusClient,
+    ) -> Result<Value, BusError> {
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let answer = exchange(
-            &client,
+            client,
             request,
             self.inner.deadlines,
             &format!("desk_{id}"),

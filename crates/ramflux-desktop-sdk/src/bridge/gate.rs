@@ -96,10 +96,7 @@ pub(super) fn is_message_read(fetch: &Fetch) -> bool {
     }
 }
 
-/// Whether an effect's method is message-class.
-pub(super) fn is_message_method(method: &str) -> bool {
-    ["message.", "surface.", "task.", "object."].iter().any(|prefix| method.starts_with(prefix))
-}
+pub(super) use crate::bus::approval::is_message_method;
 
 /// What the gate says about a read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,12 +211,24 @@ impl Gate {
         {
             return false;
         }
-        self.status = classify(answer);
+        // A later answer can close the gate or confirm it; reopening needs
+        // a status read that is checked against its connection.
+        let status = classify(answer);
+        if !self.is_open() && verdict(status, self.support).is_open() {
+            return false;
+        }
+        self.status = status;
         self.generation = match self.status {
             Status::Known(n) => Some(n),
             _ => None,
         };
         true
+    }
+
+    /// A message-class result was dropped while closed: read it again once
+    /// the gate opens.
+    pub(super) fn note_dropped(&mut self) {
+        self.dropped = true;
     }
 
     /// A status read is being repeated in this epoch.

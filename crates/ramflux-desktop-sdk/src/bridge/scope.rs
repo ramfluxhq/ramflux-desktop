@@ -115,7 +115,18 @@ pub(crate) struct Ceremonies {
 pub(super) type Read = (Fetch, Option<u64>, Result<Value, BusError>);
 
 pub(super) enum Internal {
-    Snapshot(Vec<Read>),
+    /// A batch of snapshot reads, with the gate epoch it was sent in.
+    Snapshot(u64, Vec<Read>),
+    /// The daemon's schema status for `epoch`, with the generation of the
+    /// connection it travelled on.
+    SchemaAnswer {
+        epoch: u64,
+        generation: u64,
+        result: Result<Value, BusError>,
+    },
+    /// Marks where a new gate epoch began in this channel: whatever was
+    /// queued before it belongs to an older epoch.
+    EpochStart,
     SendDone {
         id: String,
         result: Result<Value, BusError>,
@@ -170,6 +181,13 @@ pub(super) struct Task {
     gate_told: (SchemaGate, Option<i64>),
     /// When a failed status read is repeated.
     gate_retry_at: Option<Instant>,
+    /// Epoch markers not yet seen in the internal channel: while any is
+    /// pending, a completion is an older epoch's.
+    pending_markers: u32,
+    /// Snapshot batches of this epoch still in flight.
+    batch_pending: u32,
+    /// A release waiting for the earlier batch (identities, devices, ...).
+    held_release: Option<(Vec<(Fetch, bool)>, bool)>,
     pub(super) reconnect_at: Instant,
     pub(super) alive: bool,
     /// Numbers listings' first pages in the order they are sent.
@@ -294,6 +312,9 @@ pub(super) fn build(
         gate,
         gate_told: (SchemaGate::Open, None),
         gate_retry_at: None,
+        pending_markers: 0,
+        batch_pending: 0,
+        held_release: None,
         translator,
         pins,
         config,
@@ -463,13 +484,32 @@ impl Task {
         if !self.gate.enabled() {
             return;
         }
+        self.client.approval().enforce();
+        self.client.approval().revoke();
         let epoch = self.gate.begin_epoch();
         self.gate_retry_at = None;
+        self.batch_pending = 0;
+        self.held_release = None;
+        // Everything queued in the channel before this marker is an older
+        // epoch's: its completions are dropped untranslated.
+        self.pending_markers += 1;
+        let _ = self.internal.send(Internal::EpochStart);
         if let Some(receipts) = &mut self.receipts {
             receipts.drop_pending();
         }
         self.gate_changed();
-        self.spawn_fetches(vec![Fetch::SchemaStatus(epoch)]);
+        self.spawn_schema_status(epoch);
+    }
+
+    /// Reads the daemon status for the gate of `epoch`, remembering which
+    /// connection carried it.
+    fn spawn_schema_status(&self, epoch: u64) {
+        let (client, internal) = (self.client.clone(), self.internal.clone());
+        let request = Fetch::SchemaStatus(epoch).request(None);
+        tokio::spawn(async move {
+            let (generation, result) = client.call_on_connection(&request).await;
+            let _ = internal.send(Internal::SchemaAnswer { epoch, generation, result });
+        });
     }
 
     /// Reads the daemon status again in this epoch; a different generation
@@ -477,13 +517,20 @@ impl Task {
     #[cfg(feature = "test-support")]
     pub(super) fn recheck_schema(&mut self) {
         if self.gate.enabled() && !matches!(self.link, Link::Locked | Link::Lost) {
-            let epoch = self.gate.epoch();
-            self.spawn_fetches(vec![Fetch::SchemaStatus(epoch)]);
+            self.spawn_schema_status(self.gate.epoch());
         }
     }
 
     /// A status read for the gate came back.
-    fn on_schema_status(&mut self, epoch: u64, result: &Result<Value, BusError>) {
+    fn on_schema_status(&mut self, epoch: u64, generation: u64, result: &Result<Value, BusError>) {
+        // An answer of an older epoch, or one that travelled on a connection
+        // that is no longer the current one, decides nothing.
+        if self.pending_markers > 0
+            || epoch != self.gate.epoch()
+            || (result.is_ok() && generation != self.client.connections_opened())
+        {
+            return;
+        }
         let answer = result.as_ref().map_err(|_| ());
         if !self.gate.resolve(epoch, answer) {
             return;
@@ -493,12 +540,21 @@ impl Task {
         } else {
             self.gate_retry_at = None;
         }
+        if self.gate.is_open() {
+            // Messages may travel on this connection, and only on it.
+            self.client.approval().approve(generation);
+        } else {
+            self.client.approval().revoke();
+        }
         self.gate_changed();
     }
 
     /// Tells the store the gate's verdict when it changed; closing drops what
     /// was remembered of message content, opening releases what was held.
     fn gate_changed(&mut self) {
+        if !self.gate.is_open() {
+            self.client.approval().revoke();
+        }
         let told = (self.gate.verdict(), self.gate.generation());
         if told == self.gate_told {
             return;
@@ -522,15 +578,28 @@ impl Task {
         }
     }
 
-    /// The gate opened: what it held is read, in order.
+    /// The gate opened: what it held is read, in order, once the earlier
+    /// batch (identities, devices, ...) that messages depend on is in.
     fn release_gate(&mut self) {
-        let (queue, dropped) = self.gate.release();
+        let held = self.gate.release();
+        if self.batch_pending > 0 {
+            self.held_release = Some(held);
+        } else {
+            self.run_release(held.0, held.1);
+        }
+    }
+
+    fn run_release(&mut self, queue: Vec<(Fetch, bool)>, dropped: bool) {
         let (batch, single): (Vec<_>, Vec<_>) = queue.into_iter().partition(|(_, batch)| *batch);
         self.run_batch(batch.into_iter().map(|(fetch, _)| fetch).collect());
         self.spawn_fetches(single.into_iter().map(|(fetch, _)| fetch).collect());
         if dropped {
-            let again = self.reads_for_snapshot().into_iter().filter(gate::is_message_read);
-            self.request_reads(again.collect());
+            // Reads were dropped while closed (or their results rejected):
+            // the messages are read again.
+            let mut again: Vec<Fetch> =
+                self.reads_for_snapshot().into_iter().filter(gate::is_message_read).collect();
+            again.extend(self.translator.watched_reads());
+            self.request_reads(again);
         }
     }
 
@@ -540,8 +609,7 @@ impl Task {
             self.gate_retry_at = None;
             self.gate.retry();
             self.gate_changed();
-            let epoch = self.gate.epoch();
-            self.spawn_fetches(vec![Fetch::SchemaStatus(epoch)]);
+            self.spawn_schema_status(self.gate.epoch());
         }
     }
 
@@ -720,6 +788,8 @@ impl Task {
             return;
         }
         let reserved = reads.clone();
+        let epoch = self.gate.epoch();
+        self.batch_pending += 1;
         let client = self.client.clone();
         let account = self.account();
         let internal = self.internal.clone();
@@ -739,7 +809,7 @@ impl Task {
             }
             results.sort_by_key(|(index, _)| *index);
             let results = results.into_iter().map(|(_, read)| read).collect();
-            let _ = internal.send(Internal::Snapshot(results));
+            let _ = internal.send(Internal::Snapshot(epoch, results));
         });
         let handle = task.abort_handle();
         for fetch in reserved {
@@ -863,15 +933,31 @@ impl Task {
 
     fn internal(&mut self, internal: Internal) {
         match internal {
-            Internal::Snapshot(results) => self.on_snapshot(results),
+            Internal::Snapshot(epoch, results) => self.on_snapshot(epoch, results),
+            Internal::SchemaAnswer { epoch, generation, result } => {
+                if !matches!(self.link, Link::Locked | Link::Lost) {
+                    self.on_schema_status(epoch, generation, &result);
+                }
+            }
+            Internal::EpochStart => {
+                self.pending_markers = self.pending_markers.saturating_sub(1);
+            }
             Internal::SendDone { id, result } => self.send_done(&id, result),
             Internal::Fetched((fetch, number, result)) => {
                 self.read_recovery.running.remove(&fetch);
                 if matches!(self.link, Link::Locked | Link::Lost) {
                     return;
                 }
-                if let Fetch::SchemaStatus(epoch) = fetch {
-                    self.on_schema_status(epoch, &result);
+                // A completion queued before this epoch began belongs to an
+                // older connection; a message-class one that arrives while
+                // the gate is closed is not translated either (it is read
+                // again once the gate opens).
+                if self.pending_markers > 0 {
+                    return;
+                }
+                if self.gate.enabled() && !self.gate.is_open() && gate::is_message_read(&fetch) {
+                    self.gate.note_dropped();
+                    self.read_ended(&fetch, true);
                     return;
                 }
                 if self.link == Link::Attaching && matches!(fetch, Fetch::AccountStatus(_)) {
@@ -938,13 +1024,26 @@ impl Task {
         }
     }
 
-    fn on_snapshot(&mut self, results: Vec<Read>) {
-        self.snapshot_task = None;
+    fn on_snapshot(&mut self, epoch: u64, mut results: Vec<Read>) {
         for (fetch, _, _) in &results {
             self.read_recovery.running.remove(fetch);
         }
+        // A batch of an older epoch is never translated: its status (and
+        // every other answer) belongs to a connection that is gone.
+        if epoch != self.gate.epoch() || self.pending_markers > 0 {
+            return;
+        }
+        self.snapshot_task = None;
+        self.batch_pending = self.batch_pending.saturating_sub(1);
         if matches!(self.link, Link::Locked | Link::Lost) {
             return;
+        }
+        if self.gate.enabled() && !self.gate.is_open() {
+            let before = results.len();
+            results.retain(|(fetch, _, _)| !gate::is_message_read(fetch));
+            if results.len() != before {
+                self.gate.note_dropped();
+            }
         }
         let unanswered = |r: &Result<Value, BusError>| {
             r.as_ref().is_err_and(|e| e.is_connection_lost() || *e == BusError::Timeout)
@@ -972,6 +1071,11 @@ impl Task {
         self.restore_pins();
         if self.link == Link::Live {
             self.live_after_snapshot();
+        }
+        if self.batch_pending == 0
+            && let Some((queue, dropped)) = self.held_release.take()
+        {
+            self.run_release(queue, dropped);
         }
     }
 

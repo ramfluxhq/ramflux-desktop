@@ -213,8 +213,10 @@ async fn unlocked_status_is_delivered_before_slow_snapshot_lists() {
     task.client =
         BusClient::new(path, Duration::from_secs(2), crate::config::Deadlines::standard());
     task.snapshot();
-    answer(&mut task, &mut inbox).await;
-    assert_eq!(task.link, Link::Live);
+    // The epoch marker comes first in the channel; the status answer follows.
+    while task.link != Link::Live {
+        answer(&mut task, &mut inbox).await;
+    }
     assert!(task.snapshot_task.is_some(), "other snapshot reads still pending");
     let events: Vec<_> = delivered.try_iter().map(|delivery| delivery.event).collect();
     assert!(events.iter().any(|event| matches!(event,
