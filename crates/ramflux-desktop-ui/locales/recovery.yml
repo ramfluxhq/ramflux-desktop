@@ -119,6 +119,30 @@ recovery:
     vault:
       en: "This device has no secure place to keep the account keys. Nothing was changed."
       zh-CN: "这台设备没有可安全保存账户密钥的位置。未做任何更改。"
+    vault_missing:
+      en: "This device's key vault is not set up, so the account was not recovered. Set it up, then start over. Nothing was changed."
+      zh-CN: "这台设备的密钥保管库尚未设置，因此未恢复账户。请先设置，然后重新开始。未做任何更改。"
+    vault_init_pending:
+      en: "Setting up this device's key vault was not finished, so the account was not recovered. Finish it on this device (rf vault init), then start over. Nothing was changed."
+      zh-CN: "这台设备的密钥保管库尚未设置完成，因此未恢复账户。请在这台设备上完成设置（rf vault init），然后重新开始。未做任何更改。"
+    vault_import_pending:
+      en: "Importing the provisioned keys into this device's key vault was not finished. Retry the provisioning import, then start over. Nothing was changed."
+      zh-CN: "向这台设备的密钥保管库导入预置密钥尚未完成。请重试预置导入，然后重新开始。未做任何更改。"
+    vault_corrupt:
+      en: "This device's key vault is damaged or failed its checks, so the account was not recovered. Nothing was changed."
+      zh-CN: "这台设备的密钥保管库已损坏或未通过检查，因此未恢复账户。未做任何更改。"
+    vault_permission:
+      en: "This device's key vault cannot be used: its files are not safe to use or access was denied. Nothing was changed."
+      zh-CN: "无法使用这台设备的密钥保管库：其文件不安全或访问被拒绝。未做任何更改。"
+    vault_locked:
+      en: "This device's key vault is locked, or the unlock was cancelled or took too long. Unlock it and start over. Nothing was changed."
+      zh-CN: "这台设备的密钥保管库已锁定，或解锁被取消、超时。请解锁后重新开始。未做任何更改。"
+    vault_busy:
+      en: "This device's key vault is busy right now. Wait a moment and start over. Nothing was changed."
+      zh-CN: "这台设备的密钥保管库当前正忙。请稍候后重新开始。未做任何更改。"
+    vault_primary_unavailable:
+      en: "This device's key vault holds no primary key for this account, so it was not recovered. Nothing was changed."
+      zh-CN: "这台设备的密钥保管库中没有此账户的主密钥，因此未恢复账户。未做任何更改。"
     invalid:
       en: "The recovery could not be completed. Check the account passphrase and start over. Nothing was changed."
       zh-CN: "无法完成恢复。请检查账户口令后重新开始。未做任何更改。"

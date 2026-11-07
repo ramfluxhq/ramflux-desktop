@@ -50,6 +50,7 @@ mod recovery_ceremony;
 mod schema_gate;
 mod surface;
 mod task;
+mod vault;
 
 pub use account::{
     Account, AccountKind, Device, LockState, NetworkingCapacity, NetworkingReason,
@@ -104,3 +105,4 @@ pub use task::{
     NeedsMe, StepState, Task, TaskActor, TaskActors, TaskAnswer, TaskFlags, TaskRefusal, TaskRole,
     TaskState, TaskStep,
 };
+pub use vault::VaultReason;

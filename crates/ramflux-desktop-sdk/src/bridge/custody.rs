@@ -33,7 +33,7 @@ use std::time::Duration;
 use ramflux_desktop_core::{
     AccountId, AccountKind, CeremonyAccount, CeremonyFailure, CeremonyPhase, DomainEvent,
     EffectFailure, FailureCode, Networking, RecoveryCeremony, RecoveryPhase, SecretInput,
-    Timestamp, methods,
+    Timestamp, VaultReason, methods,
 };
 use ramflux_sdk::custody::CreationState;
 use ramflux_sdk::{LocalBusCreationClient, LocalBusRecoveryClient, SdkError};
@@ -367,14 +367,33 @@ fn failed(method: &str, code: FailureCode, message: &str) -> DomainEvent {
 
 /// The failure the user is told about, for a custody refusal; `None` for a
 /// connection that broke (no refusal came).
-fn refusal(error: &SdkError) -> Option<CeremonyFailure> {
+pub fn refusal(error: &SdkError) -> Option<CeremonyFailure> {
     Some(match error {
         SdkError::CustodyConfirmationFailed => CeremonyFailure::ConfirmationFailed,
         SdkError::CustodyVaultUnavailable => CeremonyFailure::VaultUnavailable,
+        // The vault named why: a mode it does not support is a refused step
+        // (the daemon's `CustodySetupInvalid`), every other reason has its
+        // own wording. One arm per reason, no wildcard.
+        SdkError::CustodyVault(reason) => vault_failure(crate::bus::vault_reason_of(*reason)),
         SdkError::CustodyExpired => CeremonyFailure::Expired,
         SdkError::CustodySetupInvalid => CeremonyFailure::Invalid,
         _ => return None,
     })
+}
+
+/// The ceremony failure for a vault reason.
+fn vault_failure(reason: VaultReason) -> CeremonyFailure {
+    match reason {
+        VaultReason::ModeMismatch => CeremonyFailure::Invalid,
+        VaultReason::Missing
+        | VaultReason::InitPending
+        | VaultReason::ImportPending
+        | VaultReason::Corrupt
+        | VaultReason::Permission
+        | VaultReason::Locked
+        | VaultReason::Busy
+        | VaultReason::PrimaryUnavailable => CeremonyFailure::Vault(reason),
+    }
 }
 
 fn networking(state: CreationState) -> Networking {

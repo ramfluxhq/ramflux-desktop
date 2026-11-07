@@ -144,6 +144,30 @@ agent:
       credentials_gone:
         en: "The credentials were exported already, or the vault no longer holds them. They can be exported once, and this AI participant cannot export them again."
         zh-CN: "凭据已经导出过，或保管库中已没有它们。凭据只能导出一次，此 AI 参与者无法再次导出。"
+      vault_missing:
+        en: "The credentials were not exported: this device's key vault is not set up. Set it up first. They can be exported once."
+        zh-CN: "凭据未导出：这台设备的密钥保管库尚未设置。请先设置。凭据只能导出一次。"
+      vault_init_pending:
+        en: "The credentials were not exported: setting up this device's key vault was not finished. Finish it on this device (rf vault init), then export again."
+        zh-CN: "凭据未导出：这台设备的密钥保管库尚未设置完成。请在这台设备上完成设置（rf vault init），然后再次导出。"
+      vault_import_pending:
+        en: "The credentials were not exported: importing the provisioned keys into this device's key vault was not finished. Retry the provisioning import, then export again."
+        zh-CN: "凭据未导出：向这台设备的密钥保管库导入预置密钥尚未完成。请重试预置导入，然后再次导出。"
+      vault_corrupt:
+        en: "The credentials were not exported: this device's key vault is damaged or failed its checks. Nothing was written."
+        zh-CN: "凭据未导出：这台设备的密钥保管库已损坏或未通过检查。没有写入任何内容。"
+      vault_permission:
+        en: "The credentials were not exported: this device's key vault cannot be used because its files are not safe to use or access was denied. Nothing was written."
+        zh-CN: "凭据未导出：无法使用这台设备的密钥保管库，其文件不安全或访问被拒绝。没有写入任何内容。"
+      vault_locked:
+        en: "The credentials were not exported: this device's key vault is locked, or the unlock was cancelled or took too long. Unlock it and export again."
+        zh-CN: "凭据未导出：这台设备的密钥保管库已锁定，或解锁被取消、超时。请解锁后再次导出。"
+      vault_busy:
+        en: "The credentials were not exported: this device's key vault is busy right now. Wait a moment and export again."
+        zh-CN: "凭据未导出：这台设备的密钥保管库当前正忙。请稍候后再次导出。"
+      vault_primary_unavailable:
+        en: "The credentials were not exported: this device's key vault holds no primary key for this account."
+        zh-CN: "凭据未导出：这台设备的密钥保管库中没有此账户的主密钥。"
       timeout:
         en: "The daemon did not answer in time. The credentials may have been written: check the location before you try again."
         zh-CN: "守护进程未在规定时间内响应。凭据可能已经写入：重试前请先检查该位置。"

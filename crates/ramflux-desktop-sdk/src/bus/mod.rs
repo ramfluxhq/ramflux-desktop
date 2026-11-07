@@ -24,7 +24,7 @@ pub mod stream;
 pub mod subscription;
 pub mod trace;
 
-use ramflux_desktop_core::SecretInput;
+use ramflux_desktop_core::{SecretInput, VaultReason};
 use ramflux_sdk::SdkError;
 use serde_json::Value;
 use zeroize::{Zeroize, Zeroizing};
@@ -228,10 +228,26 @@ impl BusError {
         matches!(self, Self::Transport(_))
     }
 
+    /// The reason the key vault named for a refusal: `reason_code` read
+    /// against the error code that carried it (an unknown reason, or one on
+    /// another code, is none).
+    pub fn vault_reason(&self) -> Option<VaultReason> {
+        match self {
+            Self::Daemon { code, reason_code, .. } => {
+                VaultReason::from_wire(code, reason_code.as_deref())
+            }
+            _ => None,
+        }
+    }
+
     /// Whether trying the same request again later may work: a transient
     /// outage, a lost link or a missed deadline. A refusal, an
-    /// unauthenticated session and a failed trust check are not retried.
+    /// unauthenticated session and a failed trust check are not retried. A
+    /// vault refusal is retried only when the vault is busy.
     pub fn is_retryable(&self) -> bool {
+        if let Some(reason) = self.vault_reason() {
+            return reason.retryable();
+        }
         match self {
             Self::Daemon { code, .. } => RETRYABLE_CODES.contains(&code.as_str()),
             Self::Transport(_) | Self::Timeout => true,
@@ -240,6 +256,9 @@ impl BusError {
 
     /// Short text for the user.
     pub fn message(&self) -> String {
+        if let Some(reason) = self.vault_reason() {
+            return vault_failure_key(reason).to_owned();
+        }
         match self {
             Self::Daemon { code, .. } if code == RECONCILE_CODE => RECONCILE_KEY.to_owned(),
             Self::Daemon { code, .. } if code == "Unauthenticated" => {
@@ -252,6 +271,24 @@ impl BusError {
             Self::Transport(message) => message.clone(),
             Self::Timeout => TIMEOUT_KEY.to_owned(),
         }
+    }
+}
+
+/// The locale key that says why the key vault refused a request, one per
+/// reason (no reason falls back to a generic string).
+#[must_use]
+pub fn vault_failure_key(reason: VaultReason) -> &'static str {
+    use crate::translate::reason::key;
+    match reason {
+        VaultReason::Missing => key::VAULT_MISSING,
+        VaultReason::InitPending => key::VAULT_INIT_PENDING,
+        VaultReason::ImportPending => key::VAULT_IMPORT_PENDING,
+        VaultReason::Corrupt => key::VAULT_CORRUPT,
+        VaultReason::Permission => key::VAULT_PERMISSION,
+        VaultReason::Locked => key::VAULT_LOCKED,
+        VaultReason::Busy => key::VAULT_BUSY,
+        VaultReason::PrimaryUnavailable => key::VAULT_PRIMARY_UNAVAILABLE,
+        VaultReason::ModeMismatch => key::VAULT_MODE_MISMATCH,
     }
 }
 
@@ -367,8 +404,39 @@ impl From<SdkError> for BusError {
                 Some((code, message)) if daemon_code(code) => Self::daemon(code, message),
                 _ => Self::Transport(text),
             },
+            // The vault named why it refused: kept as the typed refusal the
+            // daemon sends, so the bus classifies it by its reason.
+            SdkError::CustodyVault(reason) => {
+                let mapped = vault_reason_of(reason);
+                Self::Daemon {
+                    retry_after_ms: reason.retry_after_ms(),
+                    code: reason.wire_code().to_owned(),
+                    message: reason.as_str().to_owned(),
+                    reason_code: Some(mapped.code().to_owned()),
+                    details: None,
+                    cause: None,
+                }
+            }
             other => Self::Transport(other.to_string()),
         }
+    }
+}
+
+/// The desktop's vault reason for the product's, one arm per reason (a new
+/// product reason does not compile until it is handled here).
+#[must_use]
+pub fn vault_reason_of(reason: ramflux_sdk::custody::CustodyVaultReason) -> VaultReason {
+    use ramflux_sdk::custody::CustodyVaultReason as R;
+    match reason {
+        R::Missing => VaultReason::Missing,
+        R::InitPending => VaultReason::InitPending,
+        R::ImportPending => VaultReason::ImportPending,
+        R::Corrupt => VaultReason::Corrupt,
+        R::Permission => VaultReason::Permission,
+        R::Locked => VaultReason::Locked,
+        R::Busy => VaultReason::Busy,
+        R::PrimaryUnavailable => VaultReason::PrimaryUnavailable,
+        R::ModeMismatch => VaultReason::ModeMismatch,
     }
 }
 

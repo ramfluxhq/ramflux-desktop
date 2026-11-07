@@ -43,8 +43,8 @@ use crate::bus::{BusError, BusRequest};
 use crate::config::SdkConfig;
 use crate::translate::Scope;
 
-pub use custody::PhraseAudit;
 pub(crate) use custody::{Handoff, NativeAccount};
+pub use custody::{PhraseAudit, refusal as ceremony_refusal};
 
 /// Account connection notices shared with the daemon scope without data polling.
 pub(super) enum DaemonNotice {

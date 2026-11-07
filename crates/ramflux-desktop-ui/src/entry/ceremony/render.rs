@@ -746,14 +746,7 @@ fn failure_line(index: usize, key: &str, cx: &App) -> AnyElement {
 
 /// The message of a ceremony that ended without an account.
 fn failure_key(failure: CeremonyFailure) -> &'static str {
-    match failure {
-        CeremonyFailure::CustodianRefused => "agent.ended.custodian_refused",
-        CeremonyFailure::Disabled => "ceremony.ended.disabled",
-        CeremonyFailure::ConfirmationFailed => "ceremony.ended.mismatch",
-        CeremonyFailure::VaultUnavailable => "ceremony.ended.vault",
-        CeremonyFailure::Expired => "ceremony.ended.expired",
-        CeremonyFailure::Invalid => "ceremony.ended.invalid",
-    }
+    crate::i18n::labels::ceremony_ended_key(failure)
 }
 
 impl Render for CeremonyPanel {

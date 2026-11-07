@@ -5,9 +5,10 @@
 
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
-    AccountKind, AgentCustodyProblem, AgentExportRefusal, Direction, GovernanceAction, GrantState,
-    Lifecycle, MomentKind, NodeHealth, PeerKind, PinSource, Receipt, Risk, Role, SafetyState,
-    SourceStatus, StepState, SystemLevel, TaskState, TransferState,
+    AccountKind, AgentCustodyProblem, AgentExportRefusal, CeremonyFailure, Direction,
+    GovernanceAction, GrantState, Lifecycle, MomentKind, NodeHealth, PeerKind, PinSource, Receipt,
+    Risk, Role, SafetyState, SourceStatus, StepState, SystemLevel, TaskState, TransferState,
+    VaultReason,
 };
 
 use super::tr;
@@ -167,6 +168,64 @@ pub fn agent_custody_problem(problem: Option<AgentCustodyProblem>) -> SharedStri
     })
 }
 
+/// The message of an account creation that ended without an account.
+pub fn ceremony_ended(failure: CeremonyFailure) -> SharedString {
+    tr(ceremony_ended_key(failure))
+}
+
+/// The locale key of [`ceremony_ended`].
+#[must_use]
+pub fn ceremony_ended_key(failure: CeremonyFailure) -> &'static str {
+    match failure {
+        CeremonyFailure::CustodianRefused => "agent.ended.custodian_refused",
+        CeremonyFailure::Disabled => "ceremony.ended.disabled",
+        CeremonyFailure::ConfirmationFailed => "ceremony.ended.mismatch",
+        CeremonyFailure::VaultUnavailable => "ceremony.ended.vault",
+        CeremonyFailure::Vault(reason) => match reason {
+            VaultReason::Missing => "ceremony.ended.vault_missing",
+            VaultReason::InitPending => "ceremony.ended.vault_init_pending",
+            VaultReason::ImportPending => "ceremony.ended.vault_import_pending",
+            VaultReason::Corrupt => "ceremony.ended.vault_corrupt",
+            VaultReason::Permission => "ceremony.ended.vault_permission",
+            VaultReason::Locked => "ceremony.ended.vault_locked",
+            VaultReason::Busy => "ceremony.ended.vault_busy",
+            VaultReason::PrimaryUnavailable => "ceremony.ended.vault_primary_unavailable",
+            VaultReason::ModeMismatch => "ceremony.ended.invalid",
+        },
+        CeremonyFailure::Expired => "ceremony.ended.expired",
+        CeremonyFailure::Invalid => "ceremony.ended.invalid",
+    }
+}
+
+/// The message of a recovery that ended without a change.
+pub fn recovery_ended(failure: CeremonyFailure) -> SharedString {
+    tr(recovery_ended_key(failure))
+}
+
+/// The locale key of [`recovery_ended`].
+#[must_use]
+pub fn recovery_ended_key(failure: CeremonyFailure) -> &'static str {
+    match failure {
+        CeremonyFailure::Disabled => "recovery.ended.disabled",
+        CeremonyFailure::ConfirmationFailed => "recovery.ended.mismatch",
+        CeremonyFailure::VaultUnavailable => "recovery.ended.vault",
+        CeremonyFailure::Vault(reason) => match reason {
+            VaultReason::Missing => "recovery.ended.vault_missing",
+            VaultReason::InitPending => "recovery.ended.vault_init_pending",
+            VaultReason::ImportPending => "recovery.ended.vault_import_pending",
+            VaultReason::Corrupt => "recovery.ended.vault_corrupt",
+            VaultReason::Permission => "recovery.ended.vault_permission",
+            VaultReason::Locked => "recovery.ended.vault_locked",
+            VaultReason::Busy => "recovery.ended.vault_busy",
+            VaultReason::PrimaryUnavailable => "recovery.ended.vault_primary_unavailable",
+            VaultReason::ModeMismatch => "recovery.ended.invalid",
+        },
+        CeremonyFailure::Expired => "recovery.ended.expired",
+        // A recovery never has a custodian: a ceremony of another kind.
+        CeremonyFailure::Invalid | CeremonyFailure::CustodianRefused => "recovery.ended.invalid",
+    }
+}
+
 /// Why the credentials of an AI participant were not exported.
 pub fn agent_export_refusal(refusal: AgentExportRefusal) -> SharedString {
     tr(match refusal {
@@ -179,6 +238,18 @@ pub fn agent_export_refusal(refusal: AgentExportRefusal) -> SharedString {
         AgentExportRefusal::LocationDenied => "agent.export.refused.location_denied",
         AgentExportRefusal::LocationMissing => "agent.export.refused.location_missing",
         AgentExportRefusal::CredentialsGone => "agent.export.refused.credentials_gone",
+        AgentExportRefusal::Vault(reason) => match reason {
+            VaultReason::Missing => "agent.export.refused.vault_missing",
+            VaultReason::InitPending => "agent.export.refused.vault_init_pending",
+            VaultReason::ImportPending => "agent.export.refused.vault_import_pending",
+            VaultReason::Corrupt => "agent.export.refused.vault_corrupt",
+            VaultReason::Permission => "agent.export.refused.vault_permission",
+            VaultReason::Locked => "agent.export.refused.vault_locked",
+            VaultReason::Busy => "agent.export.refused.vault_busy",
+            VaultReason::PrimaryUnavailable => "agent.export.refused.vault_primary_unavailable",
+            // A refused setup, as the daemon sends it: not the custodian's.
+            VaultReason::ModeMismatch => "agent.export.refused.not_custodian",
+        },
         AgentExportRefusal::Timeout => "agent.export.refused.timeout",
         AgentExportRefusal::Transport => "agent.export.refused.transport",
         AgentExportRefusal::Other => "agent.export.refused.other",

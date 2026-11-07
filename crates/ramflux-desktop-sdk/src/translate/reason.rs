@@ -208,9 +208,44 @@ pub mod key {
     pub const AGENT_EXPORT_TRANSPORT: &str = "backend.agent.export.transport";
     /// A refusal without its own wording.
     pub const AGENT_EXPORT_OTHER: &str = "backend.agent.export.other";
+    /// The key vault refused an AI participant's credential export: `vault_missing`.
+    pub const AGENT_EXPORT_VAULT_MISSING: &str = "backend.agent.export.vault_missing";
+    /// The key vault refused an AI participant's credential export: `vault_init_pending`.
+    pub const AGENT_EXPORT_VAULT_INIT_PENDING: &str = "backend.agent.export.vault_init_pending";
+    /// The key vault refused an AI participant's credential export: `vault_import_pending`.
+    pub const AGENT_EXPORT_VAULT_IMPORT_PENDING: &str = "backend.agent.export.vault_import_pending";
+    /// The key vault refused an AI participant's credential export: `vault_corrupt`.
+    pub const AGENT_EXPORT_VAULT_CORRUPT: &str = "backend.agent.export.vault_corrupt";
+    /// The key vault refused an AI participant's credential export: `vault_permission`.
+    pub const AGENT_EXPORT_VAULT_PERMISSION: &str = "backend.agent.export.vault_permission";
+    /// The key vault refused an AI participant's credential export: `vault_locked`.
+    pub const AGENT_EXPORT_VAULT_LOCKED: &str = "backend.agent.export.vault_locked";
+    /// The key vault refused an AI participant's credential export: `vault_busy`.
+    pub const AGENT_EXPORT_VAULT_BUSY: &str = "backend.agent.export.vault_busy";
+    /// The key vault refused an AI participant's credential export: `vault_primary_unavailable`.
+    pub const AGENT_EXPORT_VAULT_PRIMARY_UNAVAILABLE: &str =
+        "backend.agent.export.vault_primary_unavailable";
+    /// A request failed because the key vault refused it: `vault_missing`.
+    pub const VAULT_MISSING: &str = "backend.failure.vault_missing";
+    /// A request failed because the key vault refused it: `vault_init_pending`.
+    pub const VAULT_INIT_PENDING: &str = "backend.failure.vault_init_pending";
+    /// A request failed because the key vault refused it: `vault_import_pending`.
+    pub const VAULT_IMPORT_PENDING: &str = "backend.failure.vault_import_pending";
+    /// A request failed because the key vault refused it: `vault_corrupt`.
+    pub const VAULT_CORRUPT: &str = "backend.failure.vault_corrupt";
+    /// A request failed because the key vault refused it: `vault_permission`.
+    pub const VAULT_PERMISSION: &str = "backend.failure.vault_permission";
+    /// A request failed because the key vault refused it: `vault_locked`.
+    pub const VAULT_LOCKED: &str = "backend.failure.vault_locked";
+    /// A request failed because the key vault refused it: `vault_busy`.
+    pub const VAULT_BUSY: &str = "backend.failure.vault_busy";
+    /// A request failed because the key vault refused it: `vault_primary_unavailable`.
+    pub const VAULT_PRIMARY_UNAVAILABLE: &str = "backend.failure.vault_primary_unavailable";
+    /// A request failed because the key vault refused it: `vault_mode_mismatch`.
+    pub const VAULT_MODE_MISMATCH: &str = "backend.failure.vault_mode_mismatch";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 78] = [
+    pub const ALL: [&str; 95] = [
         AGENT_EXPORT_NO_LOCATION,
         AGENT_EXPORT_NOT_OWNER_SESSION,
         AGENT_EXPORT_OWNER_LOCKED,
@@ -223,6 +258,23 @@ pub mod key {
         AGENT_EXPORT_TIMEOUT,
         AGENT_EXPORT_TRANSPORT,
         AGENT_EXPORT_OTHER,
+        AGENT_EXPORT_VAULT_MISSING,
+        AGENT_EXPORT_VAULT_INIT_PENDING,
+        AGENT_EXPORT_VAULT_IMPORT_PENDING,
+        AGENT_EXPORT_VAULT_CORRUPT,
+        AGENT_EXPORT_VAULT_PERMISSION,
+        AGENT_EXPORT_VAULT_LOCKED,
+        AGENT_EXPORT_VAULT_BUSY,
+        AGENT_EXPORT_VAULT_PRIMARY_UNAVAILABLE,
+        VAULT_MISSING,
+        VAULT_INIT_PENDING,
+        VAULT_IMPORT_PENDING,
+        VAULT_CORRUPT,
+        VAULT_PERMISSION,
+        VAULT_LOCKED,
+        VAULT_BUSY,
+        VAULT_PRIMARY_UNAVAILABLE,
+        VAULT_MODE_MISMATCH,
         CEREMONY_REFUSED,
         NO_ROUTE,
         NO_GROUP_LINK,

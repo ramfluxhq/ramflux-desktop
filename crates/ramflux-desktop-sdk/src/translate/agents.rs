@@ -21,7 +21,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ramflux_desktop_core::{
-    AccountId, AgentExport, AgentExportPhase, AgentExportRefusal, DomainEvent, FailureCode, methods,
+    AccountId, AgentExport, AgentExportPhase, AgentExportRefusal, DomainEvent, FailureCode,
+    VaultReason, methods,
 };
 use serde_json::Value;
 
@@ -43,7 +44,9 @@ pub fn export_refusal(error: &BusError) -> AgentExportRefusal {
     match error {
         BusError::Timeout => AgentExportRefusal::Timeout,
         BusError::Transport(_) => AgentExportRefusal::Transport,
-        BusError::Daemon { code, message, cause, .. } => classify(code, message, cause.as_deref()),
+        BusError::Daemon { code, message, cause, reason_code, .. } => {
+            classify(code, message, cause.as_deref(), reason_code.as_deref())
+        }
     }
 }
 
@@ -53,7 +56,28 @@ pub fn export_refusal(error: &BusError) -> AgentExportRefusal {
 /// one refusal with no structured form, the peer-credential check (the
 /// daemon sends it as a plain `ValidationFailed`), is told by that check's
 /// own message.
-fn classify(code: &str, message: &str, cause: Option<&IoCause>) -> AgentExportRefusal {
+fn classify(
+    code: &str,
+    message: &str,
+    cause: Option<&IoCause>,
+    reason_code: Option<&str>,
+) -> AgentExportRefusal {
+    // The vault named its reason: a mode mismatch is a refused setup (not the
+    // custodian's), every other reason has its own wording (a busy vault says
+    // to try again, the pending ones say what to finish).
+    if let Some(reason) = VaultReason::from_wire(code, reason_code) {
+        return match reason {
+            VaultReason::ModeMismatch => AgentExportRefusal::NotCustodian,
+            VaultReason::Missing
+            | VaultReason::InitPending
+            | VaultReason::ImportPending
+            | VaultReason::Corrupt
+            | VaultReason::Permission
+            | VaultReason::Locked
+            | VaultReason::Busy
+            | VaultReason::PrimaryUnavailable => AgentExportRefusal::Vault(reason),
+        };
+    }
     match code {
         "NetworkingPending" => return AgentExportRefusal::NotConnected,
         "CustodySetupInvalid" => return AgentExportRefusal::NotCustodian,
@@ -88,9 +112,26 @@ pub fn export_refusal_key(refusal: AgentExportRefusal) -> &'static str {
         AgentExportRefusal::LocationDenied => key::AGENT_EXPORT_LOCATION_DENIED,
         AgentExportRefusal::LocationMissing => key::AGENT_EXPORT_LOCATION_MISSING,
         AgentExportRefusal::CredentialsGone => key::AGENT_EXPORT_CREDENTIALS_GONE,
+        AgentExportRefusal::Vault(reason) => vault_export_key(reason),
         AgentExportRefusal::Timeout => key::AGENT_EXPORT_TIMEOUT,
         AgentExportRefusal::Transport => key::AGENT_EXPORT_TRANSPORT,
         AgentExportRefusal::Other => key::AGENT_EXPORT_OTHER,
+    }
+}
+
+/// The locale key that says why the vault could not give the credentials
+/// out, one per reason. A mode mismatch is a refused setup, never this.
+fn vault_export_key(reason: VaultReason) -> &'static str {
+    match reason {
+        VaultReason::Missing => key::AGENT_EXPORT_VAULT_MISSING,
+        VaultReason::InitPending => key::AGENT_EXPORT_VAULT_INIT_PENDING,
+        VaultReason::ImportPending => key::AGENT_EXPORT_VAULT_IMPORT_PENDING,
+        VaultReason::Corrupt => key::AGENT_EXPORT_VAULT_CORRUPT,
+        VaultReason::Permission => key::AGENT_EXPORT_VAULT_PERMISSION,
+        VaultReason::Locked => key::AGENT_EXPORT_VAULT_LOCKED,
+        VaultReason::Busy => key::AGENT_EXPORT_VAULT_BUSY,
+        VaultReason::PrimaryUnavailable => key::AGENT_EXPORT_VAULT_PRIMARY_UNAVAILABLE,
+        VaultReason::ModeMismatch => key::AGENT_EXPORT_NOT_CUSTODIAN,
     }
 }
 
@@ -156,6 +197,12 @@ impl Translator {
             FailureCode::Transport => AgentExportRefusal::Transport,
             _ => ALL
                 .into_iter()
+                .chain(
+                    VaultReason::ALL
+                        .into_iter()
+                        .filter(|reason| *reason != VaultReason::ModeMismatch)
+                        .map(AgentExportRefusal::Vault),
+                )
                 .find(|refusal| export_refusal_key(*refusal) == message)
                 .unwrap_or(AgentExportRefusal::Other),
         };

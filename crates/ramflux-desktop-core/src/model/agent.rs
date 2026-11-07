@@ -55,6 +55,9 @@ pub enum AgentExportRefusal {
     /// The credentials are no longer held: they were exported once already
     /// (the export is one-shot), or the vault does not hold them.
     CredentialsGone,
+    /// The vault named why it cannot give the credentials out (every reason
+    /// but a mode mismatch, which is [`Self::NotCustodian`]).
+    Vault(crate::VaultReason),
     /// The daemon did not answer in time.
     Timeout,
     /// The connection to the daemon broke.

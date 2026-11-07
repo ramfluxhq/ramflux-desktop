@@ -42,6 +42,9 @@ pub enum CeremonyFailure {
     ConfirmationFailed,
     /// The device has no usable primary vault (`CustodyVaultUnavailable`).
     VaultUnavailable,
+    /// The vault named why it cannot be used (one of the nine reasons; a
+    /// mode mismatch is [`Self::Invalid`]).
+    Vault(crate::VaultReason),
     /// The five minutes passed before the ceremony was confirmed.
     Expired,
     /// The daemon refused a step as out of order, replayed or not valid

@@ -36,14 +36,7 @@ fn grouped(anchor: &str) -> String {
 
 /// The message of a recovery that ended without a change.
 fn failure_key(failure: CeremonyFailure) -> &'static str {
-    match failure {
-        CeremonyFailure::Disabled => "recovery.ended.disabled",
-        CeremonyFailure::ConfirmationFailed => "recovery.ended.mismatch",
-        CeremonyFailure::VaultUnavailable => "recovery.ended.vault",
-        CeremonyFailure::Expired => "recovery.ended.expired",
-        // A recovery never has a custodian: a ceremony of another kind.
-        CeremonyFailure::Invalid | CeremonyFailure::CustodianRefused => "recovery.ended.invalid",
-    }
+    crate::i18n::labels::recovery_ended_key(failure)
 }
 
 impl RecoveryPanel {
