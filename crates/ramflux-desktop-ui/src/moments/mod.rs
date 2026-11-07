@@ -22,6 +22,7 @@ mod group_rename;
 mod handoff;
 mod intervention;
 mod message;
+mod message_text;
 mod name_change;
 mod notice;
 mod object_transfer;
@@ -61,6 +62,9 @@ pub use object_transfer::save_with_dialog;
 pub struct RowRefs {
     /// Remaining scheduled retry time, derived from the session monotonic clock.
     pub send_retry_ms: Option<u64>,
+    /// For a reply: the start of the message it answers, when that text is
+    /// in memory.
+    pub reply_excerpt: Option<String>,
     /// Grants referenced by an intervention, approval blocks or task steps.
     pub grants: BTreeMap<GrantId, Grant>,
     /// Objects referenced by a transfer, an attachment or a conflict.
@@ -225,6 +229,9 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
             if let Some(id) = &p.attachment {
                 object(id, &mut refs);
             }
+            refs.reply_excerpt = p.reply_to.as_ref().and_then(|reply| {
+                store.bodies().get(&reply.message_id).map(|text| message_text::excerpt(text))
+            });
             Vec::new()
         }
         MomentKind::AgentSurface(p) => {

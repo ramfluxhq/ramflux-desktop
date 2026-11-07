@@ -83,6 +83,12 @@ pub(crate) enum Command {
         call_id: CallId,
         reply: crate::completion::CompletionSender<MediaAnswer>,
     },
+    /// Typed v1 updates for `scope`, through the projection test seam.
+    #[cfg(feature = "test-support")]
+    Generated { scope: Scope, updates: Vec<ramflux_protocol::message::MessageUpdate> },
+    /// An object fetch failed in `scope`, through the media test seam.
+    #[cfg(feature = "test-support")]
+    MediaFailed { scope: Scope, object_id: String, failure: BusError },
     /// Stop serving `scope`.
     Detach { scope: Scope },
     /// Ask the daemon to stop (`daemon.stop`) and report its answer.
@@ -109,6 +115,8 @@ impl Bridge {
         builder.start_paused(config.pause_test_time);
         let runtime = builder.build()?;
         let (commands, inbox) = mpsc::unbounded_channel();
+        #[cfg(feature = "test-support")]
+        crate::test_support::register_bridge(&config.socket_path, &commands);
         let audit = Arc::new(PhraseAudit::default());
         let shared = audit.clone();
         std::thread::Builder::new()
@@ -219,6 +227,18 @@ async fn serve(
                     let _ = reply.send((call_id, Err("backend.call.media".to_owned())));
                 }
             },
+            #[cfg(feature = "test-support")]
+            Command::Generated { scope, updates } => {
+                if let Some(tx) = scopes.get(&scope) {
+                    let _ = tx.send(scope::ScopeCommand::Generated(updates));
+                }
+            }
+            #[cfg(feature = "test-support")]
+            Command::MediaFailed { scope, object_id, failure } => {
+                if let Some(tx) = scopes.get(&scope) {
+                    let _ = tx.send(scope::ScopeCommand::MediaFailed(object_id, failure));
+                }
+            }
             Command::Detach { scope } => {
                 if scopes.remove(&scope).is_some() && scope != Scope::Daemon {
                     account_scopes = account_scopes.saturating_sub(1);

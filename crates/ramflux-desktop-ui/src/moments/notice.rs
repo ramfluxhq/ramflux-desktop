@@ -3,6 +3,7 @@
 
 //! System and fallback notices: quiet status lines inside the conversation.
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
@@ -17,14 +18,18 @@ pub fn system(payload: &SystemPayload, cx: &App) -> impl IntoElement {
         SystemLevel::Warning => (IconName::TriangleAlert, cx.theme().warning),
         SystemLevel::Error => (IconName::CircleAlert, cx.theme().danger),
     };
+    let text = i18n::backend_text(&payload.text);
     h_flex()
+        .id("system-note")
+        .aria_label(text.clone())
         .gap_2()
         .text_sm()
         .child(Icon::new(icon).small().text_color(color))
         .child(
             div().text_color(crate::tone::text(color, cx)).child(i18n::system_level(payload.level)),
         )
-        .child(div().min_w_0().text_color(cx.theme().foreground).child(payload.text.clone()))
+        .child(div().min_w_0().text_color(cx.theme().foreground).child(text))
+        .test_support()
 }
 
 /// Renders a capability downgrade notice.

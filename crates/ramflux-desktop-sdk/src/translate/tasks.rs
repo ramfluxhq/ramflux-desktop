@@ -289,6 +289,7 @@ impl Translator {
         }
         if first {
             events.push(DomainEvent::MomentAdded(Box::new(Moment {
+                order: None,
                 id: task_moment_id(&id),
                 context_id: context,
                 origin,

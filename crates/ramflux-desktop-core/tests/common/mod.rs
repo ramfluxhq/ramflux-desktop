@@ -60,6 +60,7 @@ pub fn message(text: &str) -> MomentKind {
 
 pub fn moment(id: &str, ctx: &str, at: i64, kind: MomentKind, lifecycle: Lifecycle) -> Moment {
     Moment {
+        order: None,
         id: MomentId::new(id),
         context_id: ContextId::new(ctx),
         origin: ParticipantId::new("p-ada"),

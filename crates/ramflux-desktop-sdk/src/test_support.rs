@@ -30,3 +30,71 @@ impl PhraseHandoffGate {
         }
     }
 }
+
+type Registry = Mutex<
+    Vec<(std::path::PathBuf, tokio::sync::mpsc::WeakUnboundedSender<crate::bridge::Command>)>,
+>;
+
+/// Bridges by daemon socket, held weakly so a dropped hub still stops its
+/// bridge.
+static BRIDGES: Registry = Mutex::new(Vec::new());
+
+pub(crate) fn register_bridge(
+    socket: &std::path::Path,
+    commands: &tokio::sync::mpsc::UnboundedSender<crate::bridge::Command>,
+) {
+    let mut bridges = BRIDGES.lock().expect("bridge registry");
+    bridges.retain(|(path, sender)| path != socket && sender.upgrade().is_some());
+    bridges.push((socket.to_path_buf(), commands.downgrade()));
+}
+
+/// Routes a generated message update into `account`'s scope of the bridge
+/// serving `socket`, through `translate::v1::candidate::apply`. Returns
+/// whether such a bridge is running.
+pub fn push_generated(
+    socket: &std::path::Path,
+    account: &ramflux_desktop_core::AccountId,
+    update: ramflux_protocol::message::MessageUpdate,
+) -> bool {
+    let sender = BRIDGES
+        .lock()
+        .expect("bridge registry")
+        .iter()
+        .find(|(path, _)| path == socket)
+        .and_then(|(_, sender)| sender.upgrade());
+    sender.is_some_and(|sender| {
+        sender
+            .send(crate::bridge::Command::Generated {
+                scope: crate::translate::Scope::Account(account.clone()),
+                updates: vec![update],
+            })
+            .is_ok()
+    })
+}
+
+/// Reports that fetching `object_id` failed with `failure` in `account`'s
+/// scope of the bridge serving `socket`, through
+/// `translate::v1::candidate::media_failed`. Returns whether such a bridge
+/// is running.
+pub fn push_media_failure(
+    socket: &std::path::Path,
+    account: &ramflux_desktop_core::AccountId,
+    object_id: &str,
+    failure: crate::bus::BusError,
+) -> bool {
+    let sender = BRIDGES
+        .lock()
+        .expect("bridge registry")
+        .iter()
+        .find(|(path, _)| path == socket)
+        .and_then(|(_, sender)| sender.upgrade());
+    sender.is_some_and(|sender| {
+        sender
+            .send(crate::bridge::Command::MediaFailed {
+                scope: crate::translate::Scope::Account(account.clone()),
+                object_id: object_id.to_owned(),
+                failure,
+            })
+            .is_ok()
+    })
+}

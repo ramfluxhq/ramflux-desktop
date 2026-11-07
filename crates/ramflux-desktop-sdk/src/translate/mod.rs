@@ -36,6 +36,7 @@
 //! - `calls`: voice call rows, and the media session read for the engine.
 //! - `backup`: full backup and restore job rows.
 //! - `reason`: locale keys with arguments.
+//! - `v1`: typed message schema v1 updates (dormant, see the module).
 
 pub mod account;
 pub mod agents;
@@ -66,6 +67,7 @@ pub mod task_answers;
 mod task_decisions;
 mod task_events;
 pub mod tasks;
+pub mod v1;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -228,6 +230,14 @@ pub struct Translator {
     groups_listed: bool,
     /// AI participants: custodians known, and the links told to the store.
     agents: agents::Agents,
+    /// The local opt-in for inline media thumbnails.
+    inline_thumbnails: bool,
+    /// v1 messages with media as last reported, by moment: what a later
+    /// object refusal changes.
+    media_moments: BTreeMap<MomentId, ramflux_desktop_core::Moment>,
+    /// Thumbnails decoded (header-checked) so far.
+    #[cfg(feature = "test-support")]
+    thumbnail_decodes: usize,
 }
 
 impl Translator {
@@ -287,6 +297,10 @@ impl Translator {
             new_name_changes: Vec::new(),
             groups_listed: false,
             agents: agents::Agents::default(),
+            inline_thumbnails: false,
+            media_moments: BTreeMap::new(),
+            #[cfg(feature = "test-support")]
+            thumbnail_decodes: 0,
             outgoing_requests: BTreeMap::new(),
             reported_jobs: BTreeMap::new(),
             lost_jobs: BTreeSet::new(),
@@ -296,6 +310,31 @@ impl Translator {
     /// The scope.
     pub fn scope(&self) -> &Scope {
         &self.scope
+    }
+
+    /// Sets the local opt-in for inline media thumbnails.
+    pub fn set_inline_thumbnails(&mut self, on: bool) {
+        self.inline_thumbnails = on;
+    }
+
+    /// Whether `device` is this account's own device.
+    pub(crate) fn is_own_device(&self, device: &str) -> bool {
+        self.self_device.as_deref() == Some(device)
+    }
+
+    /// The name to show for a participant: its reported display name, else
+    /// its id.
+    pub(crate) fn display_of(&self, id: &ParticipantId) -> String {
+        self.reported_people
+            .get(id)
+            .map(|p| p.display.clone())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| id.to_string())
+    }
+
+    /// The title of a known conversation.
+    pub(crate) fn context_title(&self, context: &ContextId) -> Option<String> {
+        self.contexts.get(context).map(|c| c.title.clone())
     }
 
     /// What the directories listed so far.

@@ -26,7 +26,7 @@ zeroize.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon"] }
+ramflux-desktop-test = { workspace = true, features = ["fake-bus", "live-daemon", "v1-fixtures"] }
 
 # Its own binary is the stand-in daemon it starts (see the file), so it has
 # its own `main` instead of the libtest harness.

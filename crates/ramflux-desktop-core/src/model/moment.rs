@@ -11,6 +11,7 @@ use super::grant::Risk;
 use super::message_v1::{
     DeleteScope, ForwardRef, MediaView, ReactionCount, ReplyRef, TextSpan, UnsupportedInfo,
 };
+use super::order::OrderKey;
 use super::protected::Protected;
 use super::surface::{Block, SurfaceAction};
 use crate::ids::{
@@ -461,6 +462,10 @@ pub struct Moment {
     /// Lifecycle.
     #[serde(default)]
     pub lifecycle: Lifecycle,
+    /// Position in the conversation stream, when the daemon gave one.
+    /// Display time is [`Moment::at`]; only this orders a stream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<OrderKey>,
 }
 
 #[cfg(test)]

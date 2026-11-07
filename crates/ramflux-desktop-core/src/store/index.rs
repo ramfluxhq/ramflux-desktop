@@ -12,13 +12,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ids::{ContextId, GrantId, MomentId, ParticipantId, TaskId, Timestamp};
-use crate::model::{Lifecycle, Moment, MomentKind, Task};
+use crate::model::{Lifecycle, Moment, MomentKind, OrderKey, Task};
 
 /// The indexes of one store.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Indexes {
-    /// Moments of each context, ordered by `(at, id)`.
-    pub timeline: BTreeMap<ContextId, BTreeSet<(Timestamp, MomentId)>>,
+    /// Moments of each context in stream order (see [`stream_key`]).
+    pub timeline: BTreeMap<ContextId, BTreeSet<StreamKey>>,
     /// `NeedsMe` moments, ordered by `(since, id)`.
     pub needs_me: BTreeSet<(Timestamp, MomentId)>,
     /// `NeedsMe` moments per context.
@@ -33,6 +33,17 @@ pub(crate) struct Indexes {
     pub task_presenters: BTreeMap<TaskId, BTreeSet<MomentId>>,
     /// Tasks with a step waiting on a grant.
     pub step_owners: BTreeMap<GrantId, BTreeSet<TaskId>>,
+}
+
+/// A moment's place in its conversation stream: the daemon's order key when
+/// it has one, then display time and id. Moments without an order key sort
+/// before keyed ones, by `(at, id)` as they always did, so a stream of one
+/// kind keeps its order; display time never overrides an order key.
+pub(crate) type StreamKey = (Option<OrderKey>, Timestamp, MomentId);
+
+/// The stream key of `moment`.
+pub(crate) fn stream_key(moment: &Moment) -> StreamKey {
+    (moment.order.clone(), moment.at, moment.id.clone())
 }
 
 /// Grants a moment payload presents.
@@ -69,7 +80,7 @@ impl Indexes {
     /// Indexes a new moment; `since` is when it entered `NeedsMe`.
     pub fn add_moment(&mut self, moment: &Moment, since: Option<Timestamp>) {
         let id = &moment.id;
-        self.timeline.entry(moment.context_id.clone()).or_default().insert((moment.at, id.clone()));
+        self.timeline.entry(moment.context_id.clone()).or_default().insert(stream_key(moment));
         self.enter(moment, moment.lifecycle, since);
         self.present(id, &moment.kind);
     }
@@ -78,7 +89,7 @@ impl Indexes {
     pub fn remove_moment(&mut self, moment: &Moment, since: Option<Timestamp>) {
         let id = &moment.id;
         if let Some(set) = self.timeline.get_mut(&moment.context_id) {
-            set.remove(&(moment.at, id.clone()));
+            set.remove(&stream_key(moment));
         }
         self.leave(moment, moment.lifecycle, since);
         self.unpresent(id, &moment.kind);

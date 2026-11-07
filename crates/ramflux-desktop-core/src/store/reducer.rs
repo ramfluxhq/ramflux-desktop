@@ -419,7 +419,7 @@ impl Store {
             .get(context_id)
             .into_iter()
             .flatten()
-            .map(|(_, id)| id.clone())
+            .map(|(_, _, id)| id.clone())
             .collect();
         for id in removed {
             if let Some(moment) = self.moments.remove(&id) {

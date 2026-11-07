@@ -46,6 +46,7 @@ impl Translator {
             return Vec::new();
         };
         let moment = Moment {
+            order: None,
             id: moment_id(&grant.id),
             context_id: context.clone(),
             // The MCP server that asked, as the daemon names it.

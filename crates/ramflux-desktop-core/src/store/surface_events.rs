@@ -76,6 +76,7 @@ impl Store {
                 streaming: false,
             };
             let moment = Moment {
+                order: None,
                 id: moment_id.clone(),
                 context_id: context_id.clone(),
                 origin: origin.clone(),
@@ -266,6 +267,7 @@ impl Store {
             }
             None => {
                 let moment = Moment {
+                    order: None,
                     id: snapshot.moment_id.clone(),
                     context_id: snapshot.context_id.clone(),
                     origin: snapshot.origin.clone(),
