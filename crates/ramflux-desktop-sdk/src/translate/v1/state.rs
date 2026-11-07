@@ -90,6 +90,14 @@ impl<K: Ord + Clone, V: Default> Bounded<K, V> {
 /// Reactors by reaction token.
 pub(crate) type Reactors = BTreeMap<String, BTreeSet<String>>;
 
+/// A retained message and the device that authored it (unknown for a
+/// message first seen as a delete).
+#[derive(Debug, Clone)]
+pub(crate) struct Entry {
+    pub moment: Moment,
+    pub author: Option<String>,
+}
+
 /// The highest revision and receipt applied to a message: light enough to
 /// keep for every message, so a replay of older content cannot roll them back.
 #[derive(Debug, Default, Clone, Copy)]
@@ -100,10 +108,9 @@ pub(crate) struct Fence {
 
 #[derive(Debug, Default)]
 pub(crate) struct V1State {
-    /// Messages as last reported.
-    pub messages: Bounded<MomentId, Moment>,
-    /// The authoring device of each message.
-    pub authors: Bounded<MomentId, String>,
+    /// Messages as last reported, each with its authoring device: one
+    /// entry, so the two are evicted together.
+    entries: Bounded<MomentId, Entry>,
     /// Who reacted with what, per message (kept even before its content).
     pub reactions: Bounded<MomentId, Reactors>,
     plaintext: Bounded<MomentId, String>,
@@ -122,6 +129,32 @@ pub(crate) struct V1State {
 }
 
 impl V1State {
+    /// The message as last reported.
+    pub fn message(&self, id: &MomentId) -> Option<&Moment> {
+        self.entries.get(id).map(|entry| &entry.moment)
+    }
+
+    /// The authoring device of a retained message.
+    pub fn author(&self, id: &MomentId) -> Option<&str> {
+        self.entries.get(id).and_then(|entry| entry.author.as_deref())
+    }
+
+    /// Retains a message with its author.
+    pub fn put(&mut self, moment: Moment, author: Option<String>) {
+        self.entries.insert(moment.id.clone(), Entry { moment, author });
+    }
+
+    /// Replaces a retained message's latest state, keeping its author.
+    pub fn set_moment(&mut self, moment: Moment) {
+        let author = self.entries.get(&moment.id).and_then(|entry| entry.author.clone());
+        self.put(moment, author);
+    }
+
+    /// The retained messages.
+    pub fn messages(&self) -> impl Iterator<Item = (&MomentId, &Moment)> {
+        self.entries.iter().map(|(id, entry)| (id, &entry.moment))
+    }
+
     /// Remembers the text caches of a message.
     pub fn cache_text(&mut self, id: &MomentId, text: &str) {
         self.plaintext.insert(id.clone(), text.to_owned());
@@ -145,8 +178,7 @@ impl V1State {
     /// the caches); the light fences stay, so a replay after a lock still
     /// cannot undo a delete, an edit or a receipt.
     pub fn drop_text(&mut self) {
-        self.messages.clear();
-        self.authors.clear();
+        self.entries.clear();
         self.reactions.clear();
         self.plaintext.clear();
         self.preview.clear();
@@ -156,7 +188,7 @@ impl V1State {
     /// Messages retained (a test probe).
     #[cfg(feature = "test-support")]
     pub fn retained(&self) -> usize {
-        self.messages.len()
+        self.entries.len()
     }
 
     #[cfg(feature = "test-support")]

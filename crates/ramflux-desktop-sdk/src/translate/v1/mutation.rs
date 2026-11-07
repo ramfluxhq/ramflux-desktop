@@ -44,7 +44,7 @@ fn payload_of(moment: &Moment) -> Option<&MessagePayload> {
 
 /// Stores `moment` as the message's latest state and reports the change.
 fn publish(translator: &mut Translator, moment: Moment) -> Option<DomainEvent> {
-    translator.v1.messages.insert(moment.id.clone(), moment.clone());
+    translator.v1.set_moment(moment.clone());
     translator.report_moment(moment)
 }
 
@@ -71,10 +71,13 @@ pub(super) fn edit(
     if translator.v1.tombstoned.contains(&id) {
         return None;
     }
-    let mut moment = translator.v1.messages.get(&id)?.clone();
+    let mut moment = translator.v1.message(&id)?.clone();
     let replacement = edit.replacement.as_ref()?;
     let MomentKind::Message(payload) = &mut moment.kind else { return None };
-    if edit.revision <= payload.revision {
+    // Only newer than what is shown, and never older than an applied edit.
+    if edit.revision <= payload.revision
+        || edit.revision < translator.v1.fences.get(&id).map_or(0, |fence| fence.revision)
+    {
         return None;
     }
     // A replacement the build cannot show leaves the shown revision alone.
@@ -119,7 +122,7 @@ fn tombstone(
     if translator.v1.tombstoned.contains(&id) {
         return None;
     }
-    let known = translator.v1.messages.get(&id).cloned();
+    let known = translator.v1.message(&id).cloned();
     if scope == DeleteScope::Local {
         // A local delete touches the account's own rows only. Whose row an
         // unseen message is will be known when it arrives: keep the intent.
@@ -127,12 +130,12 @@ fn tombstone(
             translator.v1.pending_local.insert(id);
             return None;
         }
-        let author = translator.v1.authors.get(&id).map(String::as_str);
+        let author = translator.v1.author(&id);
         if !author.is_some_and(|device| translator.is_own_device(device)) {
             return None;
         }
     }
-    erase(translator, identity, &id, known, scope)
+    erase(translator, identity, &id, known, scope, None)
 }
 
 /// A local delete that arrived before its target turned out to hit an own
@@ -142,7 +145,8 @@ pub(super) fn tombstone_pending(
     identity: &EventIdentity,
     id: &MomentId,
 ) -> Option<DomainEvent> {
-    erase(translator, identity, id, None, DeleteScope::Local)
+    let author = identity.author.as_ref().map(|a| a.device_id.clone());
+    erase(translator, identity, id, None, DeleteScope::Local, author)
 }
 
 /// Turns the message into a sticky tombstone and purges every text cache.
@@ -152,6 +156,7 @@ fn erase(
     id: &MomentId,
     known: Option<Moment>,
     scope: DeleteScope,
+    author: Option<String>,
 ) -> Option<DomainEvent> {
     translator.v1.tombstoned.insert(id.clone());
     translator.v1.purge_text(id);
@@ -173,6 +178,9 @@ fn erase(
         receipt: receipt.unwrap_or_default(),
         ..Default::default()
     });
+    if translator.v1.message(id).is_none() {
+        translator.v1.put(moment.clone(), author);
+    }
     publish(translator, moment)
 }
 
@@ -216,7 +224,7 @@ pub(super) fn reaction(
         return None;
     }
     let counts = reaction_counts(translator, &id);
-    let mut moment = translator.v1.messages.get(&id)?.clone();
+    let mut moment = translator.v1.message(&id)?.clone();
     let MomentKind::Message(payload) = &mut moment.kind else { return None };
     payload.reactions = counts;
     publish(translator, moment)
@@ -242,11 +250,11 @@ pub(super) fn receipt(
         .iter()
         .filter_map(|target| {
             let id = target_id(identity, target);
-            let author = translator.v1.authors.get(&id)?.clone();
+            let author = translator.v1.author(&id)?.to_owned();
             if !translator.is_own_device(&author) {
                 return None;
             }
-            let mut moment = translator.v1.messages.get(&id)?.clone();
+            let mut moment = translator.v1.message(&id)?.clone();
             let MomentKind::Message(payload) = &mut moment.kind else { return None };
             if payload.tombstone || rank(payload.receipt) >= rank(state) {
                 return None;

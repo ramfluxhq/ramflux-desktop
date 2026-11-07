@@ -524,3 +524,100 @@ fn a_lock_keeps_the_light_fences() {
         "a deleted message stays deleted"
     );
 }
+
+fn lock(translator: &mut Translator) {
+    translator.own_account_locked();
+}
+
+#[test]
+fn an_edited_message_returns_after_a_lock() {
+    let mut translator = seeded("dev-ana");
+    edit_to(&mut translator, 3, "new words");
+    lock(&mut translator);
+    assert!(
+        run(&mut translator, content(1, "dev-ana", OLD)).is_empty(),
+        "the base is kept silently"
+    );
+    let shown = payload(&edit_to(&mut translator, 3, "new words"));
+    assert_eq!(
+        (shown.text.as_str(), shown.revision),
+        ("new words", 3),
+        "the edit is published again"
+    );
+    assert_eq!(translator.cached_plaintext(&moment_id(1)), Some("new words"));
+}
+
+#[test]
+fn an_edited_message_returns_after_eviction() {
+    let mut translator = seeded("dev-ana");
+    edit_to(&mut translator, 3, "new words");
+    evict(&mut translator);
+    assert!(
+        run(&mut translator, content(1, "dev-ana", OLD)).is_empty(),
+        "the base is kept silently"
+    );
+    let shown = payload(&edit_to(&mut translator, 3, "new words"));
+    assert_eq!((shown.text.as_str(), shown.revision), ("new words", 3));
+}
+
+#[test]
+fn an_older_edit_is_ignored_when_the_base_comes_back() {
+    let mut translator = seeded("dev-ana");
+    edit_to(&mut translator, 3, "new words");
+    lock(&mut translator);
+    run(&mut translator, content(1, "dev-ana", OLD));
+    assert!(edit_to(&mut translator, 2, "stale words").is_empty(), "older than the applied edit");
+    assert_eq!(payload(&edit_to(&mut translator, 3, "new words")).revision, 3);
+}
+
+/// Floods the translator with `count` other messages starting at `from`.
+fn flood(translator: &mut Translator, from: u32, count: u32) {
+    for n in from..from + count {
+        let update = message_update(
+            identity(CTX, &n.to_be_bytes(), "dev-ana", 1_000 + u64::from(n), 1_000 + u64::from(n)),
+            text_message("history", Vec::new()),
+        );
+        run(translator, update);
+    }
+}
+
+#[test]
+fn a_republished_message_keeps_its_author_for_a_local_delete() {
+    let mut translator = seeded("dev-me");
+    flood(&mut translator, 10, 3_000);
+    // A peer receipt republishes the message, refreshing its retention.
+    receipt_for_own_message(&mut translator, ReceiptState::ReceiptDelivered, "dev-ana");
+    flood(&mut translator, 5_000, 3_000);
+    let shown = payload(&delete(&mut translator, 1, DeleteScope::Local));
+    assert!(shown.tombstone, "the own row is still known as own after the republication");
+}
+
+#[test]
+fn a_republished_message_keeps_its_author_for_a_peer_receipt() {
+    let mut translator = seeded("dev-me");
+    flood(&mut translator, 10, 3_000);
+    receipt_for_own_message(&mut translator, ReceiptState::ReceiptDelivered, "dev-ana");
+    flood(&mut translator, 5_000, 3_000);
+    let shown =
+        payload(&receipt_for_own_message(&mut translator, ReceiptState::ReceiptRead, "dev-ana"));
+    assert_eq!(shown.receipt, Receipt::Read);
+}
+
+#[test]
+fn a_refusal_after_a_delete_does_not_bring_the_text_back() {
+    use ramflux_desktop_sdk::translate::v1::candidate::media_failed;
+    use ramflux_desktop_test::v1_fixtures::media_ref;
+    let mut translator = translator();
+    let mut message = text_message(OLD, Vec::new());
+    message.media = vec![media_ref("o-1", "cat.png", "image/png", 10, None)];
+    run(&mut translator, message_update(identity(CTX, &id_of(1), "dev-ana", 1, 1), message));
+    let erased = payload(&delete(&mut translator, 1, DeleteScope::Everyone));
+    assert!(erased.tombstone && erased.media.is_empty());
+    let after = media_failed(&mut translator, "o-1", &ramflux_desktop_sdk::bus::BusError::Timeout);
+    assert!(
+        after.events.is_empty(),
+        "nothing is re-emitted over the tombstone: {:?}",
+        after.events
+    );
+    assert_eq!(translator.cached_plaintext(&moment_id(1)), None);
+}

@@ -146,22 +146,21 @@ pub fn refuse(
     translator.media_refused.insert(object.clone(), state);
     let affected: Vec<MomentId> = translator
         .v1
-        .messages
-        .iter()
+        .messages()
         .filter(|(_, moment)| rows(&moment.kind).iter().any(|row| row.object_id == object))
         .map(|(id, _)| id.clone())
         .collect();
     affected
         .into_iter()
         .filter_map(|id| {
-            let mut moment = translator.v1.messages.get(&id)?.clone();
+            let mut moment = translator.v1.message(&id)?.clone();
             if let MomentKind::Message(payload) = &mut moment.kind {
                 for row in payload.media.iter_mut().filter(|row| row.object_id == object) {
                     row.state = worse(row.state, state);
                     row.thumbnail = None;
                 }
             }
-            translator.v1.messages.insert(id, moment.clone());
+            translator.v1.set_moment(moment.clone());
             translator.report_moment(moment)
         })
         .collect()
@@ -188,7 +187,7 @@ impl Translator {
 
     /// Thumbnail bytes kept for a message's media rows (a test probe).
     pub fn cached_thumbnail_bytes(&self, moment: &MomentId) -> usize {
-        self.v1.messages.get(moment).map_or(0, |m| {
+        self.v1.message(moment).map_or(0, |m| {
             rows(&m.kind)
                 .iter()
                 .filter_map(|row| row.thumbnail.as_ref())

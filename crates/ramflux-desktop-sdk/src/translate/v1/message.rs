@@ -44,12 +44,9 @@ pub(super) fn project(
     // The same content again (a replay, or a body reload) re-reports the
     // message as it is now: the edit, receipt and reactions applied since
     // are not rolled back. Once the message left the retained set, content
-    // older than an applied edit is ignored.
-    if let Some(current) = translator.v1.messages.get(&id).cloned() {
+    // older than an applied edit is kept silently as the base of the replayed edit.
+    if let Some(current) = translator.v1.message(&id).cloned() {
         return translator.report_moment(current);
-    }
-    if translator.v1.fences.get(&id).is_some_and(|fence| fence.revision > 0) {
-        return None;
     }
     let kind = match spans(&message.text, &message.entities) {
         Ok(spans) => MomentKind::Message(MessagePayload {
@@ -82,8 +79,15 @@ pub(super) fn project(
     }
     if let MomentKind::Message(payload) = &moment.kind {
         translator.v1.cache_text(&moment.id, &payload.text);
-        translator.v1.authors.insert(moment.id.clone(), device.to_owned());
-        translator.v1.messages.insert(moment.id.clone(), moment.clone());
+        translator.v1.put(moment.clone(), Some(device.to_owned()));
+        // Content older than an applied edit (after a lock, or once the
+        // message left the retained set) is only the base of the edit that is
+        // replayed after it: keep it without reporting it, and forget what
+        // was reported so the edited state is published again.
+        if translator.v1.fences.get(&moment.id).is_some_and(|fence| fence.revision > 0) {
+            translator.moments.remove(&moment.id);
+            return None;
+        }
     }
     translator.report_moment(moment)
 }
