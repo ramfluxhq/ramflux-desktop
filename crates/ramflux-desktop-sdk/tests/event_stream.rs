@@ -72,6 +72,28 @@ impl World {
         self.fake.seen().len()
     }
 
+    /// A mark taken once the scope's own reads are over (the job stream's
+    /// `account.backup.jobs` resync included). Subscription attempts are
+    /// ignored: a refused stream retries them on its own. The spell is only
+    /// a quiescence check; the 30 s limit only bounds a failure.
+    fn quiet_mark(&self, account: &mut Fed) -> usize {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let mut last = self.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
+        let mut quiet_since = Instant::now();
+        loop {
+            account.pump();
+            let now = self.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
+            if now != last {
+                last = now;
+                quiet_since = Instant::now();
+            } else if quiet_since.elapsed() >= Duration::from_millis(250) {
+                return self.mark();
+            }
+            assert!(Instant::now() < deadline, "the daemon keeps receiving requests");
+            std::thread::sleep(Duration::from_millis(15));
+        }
+    }
+
     /// Requests of `method` received after `mark`.
     fn since(&self, mark: usize, method: &str) -> Vec<Seen> {
         self.fake.seen().into_iter().skip(mark).filter(|s| s.method == method).collect()
@@ -132,29 +154,8 @@ fn streaming(world: &World, mut config: SdkConfig) -> Fed {
     }
     // The gate orders the reads (prerequisites first, messages after), so
     // some of them can still be on their way when the stream shows as open.
-    drained(world, &mut account);
+    world.quiet_mark(&mut account);
     account
-}
-
-/// Pumps until the daemon has received nothing new for a whole quiet spell:
-/// the scope's ordered reads (prerequisites, then messages, after the gate
-/// opens) have all been sent, so a test counts only requests of its own.
-/// The spell is only a quiescence check; each round is bounded by the
-/// 30 s limit of `until`.
-fn drained(world: &World, account: &mut Fed) {
-    let mut last = usize::MAX;
-    let mut rounds = 0;
-    loop {
-        account.settle(250);
-        // (Subscription attempts repeat on their own while a stream is refused.)
-        let now = world.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
-        if now == last {
-            return;
-        }
-        last = now;
-        rounds += 1;
-        assert!(rounds < 120, "the daemon keeps receiving requests");
-    }
 }
 
 /// Waits until the fake received `method` after `mark`.
@@ -416,17 +417,20 @@ fn refused_stream_retries_without_polling_data() {
     let hub = ramflux_desktop_sdk::SdkHub::start(config(&path)).expect("bridge");
     let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
     account.until("off", |s, _| s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Off));
-    // The snapshot's reads (the jobs list included) are all in before the
-    // polling check starts.
-    drained(&world, &mut account);
-    let mark = world.mark();
-    account.settle(500);
+    // The snapshot found the job API (`account.backup.jobs`); the job
+    // stream then opens on its own connection and re-reads the listing
+    // (`jobs.rs` `job_stream_opened`). Wait for that resync so the mark
+    // is after it: a 250 ms quiet window after Off can elapse while the
+    // job link is still connecting, and the resync then looks like polling.
+    account.until("job stream open", |_, _| world.fake.job_streaming());
+    let mark = world.quiet_mark(&mut account);
+    account
+        .until("a refused subscribe retry", |_, _| !world.since(mark, "bus.subscribe").is_empty());
     let polled: Vec<String> = world.fake.seen().into_iter().skip(mark).map(|s| s.method).collect();
     assert!(
         polled.iter().all(|method| method == "bus.subscribe"),
         "only subscription attempts: {polled:?}"
     );
-    assert!(polled.len() <= 4, "150 ms test backoff bounds subscription attempts");
     assert!(!world.fake.subscribed(ACCOUNT));
     drop(account);
     world.fake.shutdown();

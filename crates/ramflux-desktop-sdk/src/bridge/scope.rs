@@ -288,7 +288,8 @@ pub(super) struct Task {
     pub(super) custody: super::custody::Custody,
     /// Revision of the newest applied networking event.
     pub(super) networking_revision: u64,
-    transport_disconnected: bool,
+    /// The request connection reported down and has not reported live since.
+    pub(super) transport_disconnected: bool,
     pub(super) ceremonies: Ceremonies,
 }
 
@@ -907,7 +908,7 @@ impl Task {
 
     /// Opens the request connection if it is dead; the answer only wakes
     /// the generation check (and finishes a snapshot's attach).
-    fn spawn_attach(&self, snapshot: bool) {
+    pub(super) fn spawn_attach(&self, snapshot: bool) {
         let (client, internal) = (self.client.clone(), self.internal.clone());
         tokio::spawn(async move {
             let result = client.attach().await;

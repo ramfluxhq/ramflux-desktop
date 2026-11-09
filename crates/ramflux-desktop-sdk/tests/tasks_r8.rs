@@ -15,7 +15,7 @@ use common::task_world::*;
 use ramflux_desktop_core::Source as _;
 use ramflux_desktop_core::{
     ConfirmationIssuer, DomainEvent, Effect, GrantId, IntentKind, MomentId, StepId, SurfaceEvent,
-    SurfaceId, TaskAnswer, TaskState, methods,
+    SurfaceId, SyncMode, TaskAnswer, TaskState, methods,
 };
 use ramflux_desktop_sdk::surface::author::Author;
 use ramflux_desktop_test::fake_tasks::{approval_step, choice_step, task_step};
@@ -35,12 +35,21 @@ fn a_pruned_task_is_dropped_with_its_moment_and_not_read_again() {
     account.until("done", |s, _| s.task(&id).is_some_and(|t| t.state == TaskState::Done));
 
     // The removal is published once the stream is live (an event before the
-    // subscription would only be seen by the re-read).
-    account.until("the stream", |_, _| world.fake.streaming(ACCOUNT));
+    // subscription would only be seen by the re-read). Wait for the SDK's
+    // stream mode, not only the fake's accept: quiet_mark can run while the
+    // scope is still Connecting, and a removal published then is missed.
+    account.until("the stream", |s, _| {
+        world.fake.streaming(ACCOUNT)
+            && s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Stream)
+    });
     let mark = world.quiet_mark(&mut account);
+    account.until("the stream still live", |s, _| {
+        world.fake.streaming(ACCOUNT)
+            && s.sync_status().is_some_and(|sync| sync.mode == SyncMode::Stream)
+    });
     world.tasks.remove(GROUP, "t-1");
     account.until("dropped", |s, _| s.task(&id).is_none() && s.moment(&moment).is_none());
-    account.settle(300);
+    let _ = world.quiet_mark(&mut account);
     assert!(world.since(mark, "task.get").is_empty(), "a removal is not read");
     assert!(account.store.rejections().is_empty(), "{:?}", account.store.rejections());
     world.fake.shutdown();

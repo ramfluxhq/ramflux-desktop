@@ -217,6 +217,11 @@ fn a_lost_daemon_reports_disconnected_and_a_new_one_is_resnapshotted() {
     account.source.focus(Some(&ContextId::new("dm-ana")));
     account.until("live", |s, _| s.moment(&MomentId::new("msg:dm-ana:m1")).is_some());
     fake.shutdown();
+    // Detection is socket EOF on the request connection observer
+    // (`bus/client.rs` `connection`, no heartbeat) or `forget` when a
+    // request finds the connection broken. Worst-case in-flight wait is
+    // the request budget plus `DEADLINE_GRACE` (3.5 s in these tests).
+    // `Fed::until` bounds a failure at 30 s.
     account.until("disconnected", |s, _| s.source_status() == SourceStatus::Disconnected);
     let seq_at_loss = account.store.last_seq();
     let restarted = FakeBus::start(&path, |method, _, _| match method {

@@ -8,6 +8,7 @@
 //! each approval's decision for the assignee to check.
 
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use ramflux_desktop_core::Source as _;
 use ramflux_desktop_core::{
@@ -132,18 +133,24 @@ impl World {
     /// them (prerequisites first, messages after), so some can still be on
     /// their way after the first views appear. Waits until the daemon has
     /// received nothing new for a whole quiet spell (subscription attempts
-    /// apart), each round bounded, then marks.
+    /// apart). The spell is only a quiescence check; the 30 s limit only
+    /// bounds a failure.
     pub fn quiet_mark(&self, account: &mut Fed) -> usize {
-        let mut last = usize::MAX;
-        for _ in 0..120 {
-            account.settle(250);
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let mut last = self.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
+        let mut quiet_since = Instant::now();
+        loop {
+            account.pump();
             let now = self.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
-            if now == last {
+            if now != last {
+                last = now;
+                quiet_since = Instant::now();
+            } else if quiet_since.elapsed() >= Duration::from_millis(250) {
                 return self.mark();
             }
-            last = now;
+            assert!(Instant::now() < deadline, "the daemon keeps receiving requests");
+            std::thread::sleep(Duration::from_millis(15));
         }
-        panic!("the daemon keeps receiving requests");
     }
 
     /// The requests of `method` received in `seen[from..to]`.

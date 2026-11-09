@@ -111,19 +111,7 @@ impl Task {
                 self.jobs_open_at = None;
                 self.job_link.close_soon();
             }
-            JobStreamed::Opened { resync, .. } => {
-                self.connection_status(ramflux_desktop_core::SourceStatus::Connected);
-                self.jobs = Jobs::Open;
-                self.refresh_daemon();
-                if resync {
-                    // The daemon holds nothing up to the cursor followed: it
-                    // restarted, and the jobs it ran are gone with it. The
-                    // listing below settles those reported as running.
-                    self.translator.backup_stream_resynced();
-                }
-                // Whatever changed while the stream was not open.
-                self.request_reads(vec![Fetch::BackupJobs]);
-            }
+            JobStreamed::Opened { resync, .. } => self.job_stream_opened(resync),
             JobStreamed::Row { body, .. } => {
                 let translated = self.translator.backup_job_row(&body);
                 self.request_reads(translated.follow);
@@ -146,6 +134,33 @@ impl Task {
             }
         }
     }
+
+    /// The job stream is a second connection. When the request connection
+    /// is already down, a late `Opened` (the job link connected as the
+    /// daemon went away) must not report `Connected`: that overwrote
+    /// `Disconnected` and left the account "connected" to a dead daemon.
+    /// Re-attach instead; the request connection's observer reports live
+    /// when that connection actually is.
+    fn job_stream_opened(&mut self, resync: bool) {
+        if self.transport_disconnected {
+            if self.scope.account().is_some() && self.link == Link::Live {
+                self.observe_connection();
+                self.spawn_attach(false);
+            }
+        } else {
+            self.connection_status(ramflux_desktop_core::SourceStatus::Connected);
+        }
+        self.jobs = Jobs::Open;
+        self.refresh_daemon();
+        if resync {
+            // The daemon holds nothing up to the cursor followed: it
+            // restarted, and the jobs it ran are gone with it. The
+            // listing below settles those reported as running.
+            self.translator.backup_stream_resynced();
+        }
+        // Whatever changed while the stream was not open.
+        self.request_reads(vec![Fetch::BackupJobs]);
+    }
 }
 
 #[cfg(test)]
@@ -154,8 +169,10 @@ mod tests {
 
     use super::*;
     use crate::bridge::scope::build;
+    use crate::bus::client::ConnectionState;
     use crate::config::SdkConfig;
     use crate::translate::Scope;
+    use ramflux_desktop_core::{AccountId, DomainEvent, SourceStatus};
 
     /// A daemon scope that found the job API and is live, its link being
     /// opened (asked for at the link's current close count). Nothing
@@ -211,6 +228,42 @@ mod tests {
             task.on_jobs(JobStreamed::Opened { resync: false, epoch: 0 });
             assert_eq!(task.jobs, Jobs::Closed);
             assert!(task.jobs_open_at.is_some(), "nothing else reports that open: reopen");
+        });
+    }
+
+    #[test]
+    fn a_job_stream_open_does_not_clear_a_lost_request_connection() {
+        runtime().block_on(async {
+            let (outbox, deliveries) = std_mpsc::channel();
+            let (mut task, _inbox) = build(
+                SdkConfig::new("/nonexistent/rfd.sock"),
+                Scope::Account(AccountId::new("acct-main")),
+                outbox,
+                ceremonies(),
+            );
+            task.link = Link::Live;
+            task.found.backup = true;
+            task.jobs = Jobs::Opening { epoch: task.job_link.epoch() };
+            task.connection_changed(ConnectionState { generation: 0, connected: false });
+            let lost: Vec<_> = deliveries.try_iter().map(|d| d.event).collect();
+            assert!(
+                lost.iter().any(|e| matches!(
+                    e,
+                    DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)
+                )),
+                "the request connection reported down: {lost:?}"
+            );
+            task.on_jobs(JobStreamed::Opened { resync: false, epoch: task.job_link.epoch() });
+            let after: Vec<_> = deliveries.try_iter().map(|d| d.event).collect();
+            assert!(
+                !after.iter().any(|e| matches!(
+                    e,
+                    DomainEvent::SourceStatusChanged(SourceStatus::Connected)
+                )),
+                "a late job-stream open does not claim the request connection live: {after:?}"
+            );
+            assert_eq!(task.jobs, Jobs::Open);
+            assert!(task.transport_disconnected);
         });
     }
 }
