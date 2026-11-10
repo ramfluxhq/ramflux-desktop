@@ -136,21 +136,7 @@ impl World {
     /// apart). The spell is only a quiescence check; the 30 s limit only
     /// bounds a failure.
     pub fn quiet_mark(&self, account: &mut Fed) -> usize {
-        let deadline = Instant::now() + Duration::from_secs(30);
-        let mut last = self.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
-        let mut quiet_since = Instant::now();
-        loop {
-            account.pump();
-            let now = self.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
-            if now != last {
-                last = now;
-                quiet_since = Instant::now();
-            } else if quiet_since.elapsed() >= Duration::from_millis(250) {
-                return self.mark();
-            }
-            assert!(Instant::now() < deadline, "the daemon keeps receiving requests");
-            std::thread::sleep(Duration::from_millis(15));
-        }
+        quiet_mark(&self.fake, account)
     }
 
     /// The requests of `method` received in `seen[from..to]`.
@@ -179,6 +165,27 @@ impl World {
         };
         account.until("the probe read", |_, _| position(&self.fake).is_some());
         from + position(&self.fake).expect("probe read")
+    }
+}
+
+/// Waits until `fake` has received nothing new for a whole quiet spell
+/// (subscription attempts apart) and returns the current `seen` length.
+/// The spell is only a quiescence check; the 30 s limit only bounds a failure.
+pub fn quiet_mark(fake: &FakeBus, account: &mut Fed) -> usize {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut last = fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
+    let mut quiet_since = Instant::now();
+    loop {
+        account.pump();
+        let now = fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
+        if now != last {
+            last = now;
+            quiet_since = Instant::now();
+        } else if quiet_since.elapsed() >= Duration::from_millis(250) {
+            return fake.seen().len();
+        }
+        assert!(Instant::now() < deadline, "the daemon keeps receiving requests");
+        std::thread::sleep(Duration::from_millis(15));
     }
 }
 

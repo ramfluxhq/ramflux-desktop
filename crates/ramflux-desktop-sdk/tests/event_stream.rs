@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use common::task_world;
 use common::*;
 use ramflux_desktop_core::{AccountId, ContextId, DaemonSyncState, LockState, SyncMode};
 use ramflux_desktop_sdk::SdkConfig;
@@ -70,28 +71,6 @@ impl World {
 
     fn mark(&self) -> usize {
         self.fake.seen().len()
-    }
-
-    /// A mark taken once the scope's own reads are over (the job stream's
-    /// `account.backup.jobs` resync included). Subscription attempts are
-    /// ignored: a refused stream retries them on its own. The spell is only
-    /// a quiescence check; the 30 s limit only bounds a failure.
-    fn quiet_mark(&self, account: &mut Fed) -> usize {
-        let deadline = Instant::now() + Duration::from_secs(30);
-        let mut last = self.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
-        let mut quiet_since = Instant::now();
-        loop {
-            account.pump();
-            let now = self.fake.seen().iter().filter(|s| s.method != "bus.subscribe").count();
-            if now != last {
-                last = now;
-                quiet_since = Instant::now();
-            } else if quiet_since.elapsed() >= Duration::from_millis(250) {
-                return self.mark();
-            }
-            assert!(Instant::now() < deadline, "the daemon keeps receiving requests");
-            std::thread::sleep(Duration::from_millis(15));
-        }
     }
 
     /// Requests of `method` received after `mark`.
@@ -154,7 +133,7 @@ fn streaming(world: &World, mut config: SdkConfig) -> Fed {
     }
     // The gate orders the reads (prerequisites first, messages after), so
     // some of them can still be on their way when the stream shows as open.
-    world.quiet_mark(&mut account);
+    task_world::quiet_mark(&world.fake, &mut account);
     account
 }
 
@@ -423,7 +402,7 @@ fn refused_stream_retries_without_polling_data() {
     // is after it: a 250 ms quiet window after Off can elapse while the
     // job link is still connecting, and the resync then looks like polling.
     account.until("job stream open", |_, _| world.fake.job_streaming());
-    let mark = world.quiet_mark(&mut account);
+    let mark = task_world::quiet_mark(&world.fake, &mut account);
     account
         .until("a refused subscribe retry", |_, _| !world.since(mark, "bus.subscribe").is_empty());
     let polled: Vec<String> = world.fake.seen().into_iter().skip(mark).map(|s| s.method).collect();
@@ -431,6 +410,7 @@ fn refused_stream_retries_without_polling_data() {
         polled.iter().all(|method| method == "bus.subscribe"),
         "only subscription attempts: {polled:?}"
     );
+    assert!(polled.len() <= 4, "150 ms test backoff bounds subscription attempts");
     assert!(!world.fake.subscribed(ACCOUNT));
     drop(account);
     world.fake.shutdown();

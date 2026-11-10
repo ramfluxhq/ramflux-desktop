@@ -15,7 +15,7 @@ use ramflux_desktop_core::{DomainEvent, SyncMode, SyncStatus};
 use serde_json::Value;
 use tokio::time::Instant;
 
-use super::scope::Task;
+use super::scope::{Link, Task};
 use crate::bus::BusError;
 use crate::bus::stream::{self, StreamEnd, Streamed, Subscription};
 use crate::plan::fetch::Fetch;
@@ -176,8 +176,21 @@ impl Task {
         }
     }
 
+    /// The data stream is a second connection. When the request connection
+    /// is already down, a late `Opened` (the data stream connected as the
+    /// daemon went away) must not report `Connected`: that overwrote
+    /// `Disconnected` and left the account "connected" to a dead daemon.
+    /// Re-attach instead; the request connection's observer reports live
+    /// when that connection actually is.
     fn stream_opened(&mut self, head_seq: u64) {
-        self.connection_status(ramflux_desktop_core::SourceStatus::Connected);
+        if self.transport_disconnected {
+            if self.scope.account().is_some() && self.link == Link::Live {
+                self.observe_connection();
+                self.spawn_attach(false);
+            }
+        } else {
+            self.connection_status(ramflux_desktop_core::SourceStatus::Connected);
+        }
         self.refresh_daemon();
         self.sync.mode = SyncMode::Stream;
         self.sync.reason = None;
@@ -293,7 +306,7 @@ impl Task {
 
     fn stream_ended(&mut self, end: StreamEnd) {
         self.sync.task = None;
-        if self.link != super::scope::Link::Live {
+        if self.link != Link::Live {
             return;
         }
         let now = Instant::now();
@@ -423,10 +436,17 @@ fn lost_reason(error: &BusError) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc as std_mpsc;
+
     use serde_json::json;
 
     use super::*;
+    use crate::bridge::scope::build;
+    use crate::bus::client::ConnectionState;
+    use crate::config::SdkConfig;
     use crate::plan::fetch::Paged;
+    use crate::translate::Scope;
+    use ramflux_desktop_core::{AccountId, DomainEvent, SourceStatus};
 
     #[test]
     fn reads_are_coalesced_by_list() {
@@ -436,5 +456,63 @@ mod tests {
         assert!(last_page(&next, &Ok(json!({ "next_cursor": null }))));
         assert!(last_page(&Fetch::Grants, &Ok(json!({}))));
         assert!(last_page(&next, &Err(BusError::Timeout)));
+    }
+
+    fn ceremonies() -> crate::bridge::scope::Ceremonies {
+        let (phrases, _) = std_mpsc::channel();
+        crate::bridge::scope::Ceremonies {
+            phrases: phrases.into(),
+            audit: std::sync::Arc::default(),
+        }
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime")
+    }
+
+    #[test]
+    fn a_data_stream_open_does_not_clear_a_lost_request_connection() {
+        runtime().block_on(async {
+            let (outbox, deliveries) = std_mpsc::channel();
+            let (mut task, _inbox) = build(
+                SdkConfig::new("/nonexistent/rfd.sock"),
+                Scope::Account(AccountId::new("acct-main")),
+                outbox,
+                ceremonies(),
+            );
+            task.link = Link::Live;
+            task.connection_changed(ConnectionState { generation: 0, connected: false });
+            let lost: Vec<_> = deliveries.try_iter().map(|d| d.event).collect();
+            assert!(
+                lost.iter().any(|e| matches!(
+                    e,
+                    DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)
+                )),
+                "the request connection reported down: {lost:?}"
+            );
+            task.on_streamed(Streamed::Opened { head_seq: 0, floor_seq: 0 });
+            let after: Vec<_> = deliveries.try_iter().map(|d| d.event).collect();
+            assert!(
+                !after.iter().any(|e| matches!(
+                    e,
+                    DomainEvent::SourceStatusChanged(SourceStatus::Connected)
+                )),
+                "a late data-stream open does not claim the request connection live: {after:?}"
+            );
+            assert_eq!(task.sync.mode, SyncMode::Stream);
+            assert!(task.transport_disconnected);
+
+            task.connection_changed(ConnectionState { generation: 0, connected: true });
+            let recovered: Vec<_> = deliveries.try_iter().map(|d| d.event).collect();
+            let connected = recovered
+                .iter()
+                .filter(|e| matches!(e, DomainEvent::SourceStatusChanged(SourceStatus::Connected)))
+                .count();
+            assert_eq!(
+                connected, 1,
+                "a real reconnect still yields exactly one Connected: {recovered:?}"
+            );
+            assert!(!task.transport_disconnected);
+        });
     }
 }
