@@ -1,0 +1,32 @@
+_version: 2
+call_ui:
+  offline:
+    en: "You are offline and cannot place a call. Call again once the connection is back."
+    zh-CN: "当前离线，无法发起通话。恢复连接后可以重新发起通话。"
+  failed:
+    en: "Call did not connect"
+    zh-CN: "未能接通"
+  failed_help:
+    en: "The call could not be connected. Try again later."
+    zh-CN: "暂时无法接通，请稍后重试。"
+  busy:
+    en: "They are busy."
+    zh-CN: "对方正忙。"
+  declined:
+    en: "They declined the call."
+    zh-CN: "对方拒绝了通话。"
+  timeout:
+    en: "No answer: the call timed out."
+    zh-CN: "无人接听，通话已超时。"
+  failed_a11y:
+    en: "Call to %{name} did not connect. %{detail}"
+    zh-CN: "呼叫 %{name} 未能接通。%{detail}"
+  again:
+    en: "Call again"
+    zh-CN: "重新呼叫"
+  dismiss:
+    en: "Dismiss"
+    zh-CN: "关闭"
+  waiting:
+    en: "Waiting for them to answer · not connected yet"
+    zh-CN: "等待对方接听 · 尚未接通"

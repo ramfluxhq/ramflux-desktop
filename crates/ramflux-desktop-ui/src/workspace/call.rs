@@ -51,6 +51,10 @@ pub fn call_blocked(store: &Store, context: &ContextId) -> Option<SharedString> 
     if let Some(reason) = i18n::unsupported(store, methods::CALL_INVITE) {
         return Some(reason);
     }
+    // Design K40: no call can be placed while the source is offline.
+    if store.source_status() == ramflux_desktop_core::SourceStatus::Disconnected {
+        return Some(tr("call_ui.offline"));
+    }
     let error = check_start_call(store, context).err()?;
     Some(tr(match error {
         IntentError::CallInProgress => "call.blocked.in_progress",
@@ -202,6 +206,8 @@ impl Render for IncomingCall {
 pub struct CallBar {
     store: Entity<StoreHandle>,
     sink: EventSink,
+    /// The failed call whose notice the user closed.
+    dismissed: Option<ramflux_desktop_core::CallId>,
     /// Re-renders every second while a call is under way (its duration).
     ticker: Option<Task<()>>,
     _subscription: Subscription,
@@ -241,6 +247,7 @@ impl CallBar {
         let mut bar = Self {
             store,
             sink,
+            dismissed: None,
             ticker: None,
             _subscription: subscription,
             _visibility: visibility,
@@ -295,12 +302,102 @@ fn quality(view: &CallAudioView) -> Option<(IconName, &'static str)> {
     })
 }
 
+/// This device's latest outgoing call when it ended without connecting
+/// (design K41, B35): busy, declined, timed out or failed.
+pub fn failed_call(store: &Store) -> Option<&Call> {
+    use ramflux_desktop_core::{CallDirection, CallEndReason};
+    store
+        .calls()
+        .filter(|call| call.direction == CallDirection::Outgoing)
+        .max_by_key(|call| call.started_at)
+        .filter(|call| {
+            matches!(
+                call.state,
+                CallState::Ended(
+                    CallEndReason::Failed
+                        | CallEndReason::Timeout
+                        | CallEndReason::Busy
+                        | CallEndReason::Declined
+                )
+            ) && call.answered_at.is_none()
+        })
+}
+
+impl CallBar {
+    /// The notice of a call that did not connect, with Call again (the
+    /// same conversation, through the same policy) and Dismiss.
+    fn failure_notice(&self, call: &Call, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
+        use ramflux_desktop_core::CallEndReason;
+        let store = self.store.read(cx).store();
+        let name = peer_name(store, call);
+        let detail = match call.state {
+            CallState::Ended(CallEndReason::Busy) => "call_ui.busy",
+            CallState::Ended(CallEndReason::Declined) => "call_ui.declined",
+            CallState::Ended(CallEndReason::Timeout) => "call_ui.timeout",
+            _ => "call_ui.failed_help",
+        };
+        let again_reason = call_blocked(store, &call.context_id);
+        let sink = self.sink.scoped(ramflux_desktop_core::Scope::Context(call.context_id.clone()));
+        let id = call.id.clone();
+        h_flex()
+            .id("call-failed")
+            .role(Role::Alert)
+            .aria_label(tr_args("call_ui.failed_a11y", &[("name", &name), ("detail", &tr(detail))]))
+            .test_support()
+            .w_full()
+            .gap_3()
+            .px_4()
+            .py_2()
+            .bg(cx.theme().danger.opacity(0.08))
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(Icon::new(IconName::PhoneMissed).small().text_color(cx.theme().danger))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .child(div().font_semibold().child(tr("call_ui.failed")))
+                    .child(
+                        div().text_sm().text_color(cx.theme().muted_foreground).child(tr(detail)),
+                    ),
+            )
+            .child(crate::gate::gated(
+                Button::new("call-again")
+                    .small()
+                    .outline()
+                    .icon(IconName::Phone)
+                    .label(tr("call_ui.again"))
+                    .on_click(move |_, window, cx| {
+                        sink.emit(UiEventKind::CallStartRequested, window, cx);
+                    }),
+                again_reason,
+            ))
+            .child(
+                Button::new("call-failed-dismiss")
+                    .small()
+                    .ghost()
+                    .label(tr("call_ui.dismiss"))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.dismissed = Some(id.clone());
+                        cx.notify();
+                    })),
+            )
+            .into_any_element()
+    }
+}
+
 impl Render for CallBar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let handle = self.store.read(cx);
         let store = handle.store();
         let Some(call) = selectors::current_call(store).cloned() else {
-            return div().id("call-bar").into_any_element();
+            let failed = failed_call(store)
+                .filter(|call| self.dismissed.as_ref() != Some(&call.id))
+                .cloned();
+            return match failed {
+                Some(call) => self.failure_notice(&call, cx),
+                None => div().id("call-bar").into_any_element(),
+            };
         };
         let audio = handle.call_audio().filter(|a| a.call_id == call.id);
         let name = peer_name(store, &call);
@@ -341,6 +438,14 @@ impl Render for CallBar {
                     .child(name.clone())
                     .test_support(),
             )
+            .when(ringing, |row| {
+                row.child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(tr("call_ui.waiting")),
+                )
+            })
             .child(
                 div()
                     .id("call-bar-status")
