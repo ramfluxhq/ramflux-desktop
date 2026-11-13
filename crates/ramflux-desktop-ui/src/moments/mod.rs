@@ -22,7 +22,8 @@ mod group_rename;
 mod handoff;
 mod intervention;
 mod message;
-mod message_text;
+pub(crate) mod message_bubble;
+pub(crate) mod message_text;
 mod name_change;
 mod notice;
 mod object_transfer;
@@ -65,6 +66,12 @@ pub struct RowRefs {
     /// For a reply: the start of the message it answers, when that text is
     /// in memory.
     pub reply_excerpt: Option<String>,
+    /// Replied-to author and availability from this same conversation.
+    pub reply_author: Option<SharedString>,
+    /// The source target is a tombstone.
+    pub reply_deleted: bool,
+    /// The target exists in the current conversation and can be located.
+    pub reply_available: bool,
     /// Grants referenced by an intervention, approval blocks or task steps.
     pub grants: BTreeMap<GrantId, Grant>,
     /// Objects referenced by a transfer, an attachment or a conflict.
@@ -230,6 +237,19 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
                 object(id, &mut refs);
             }
             refs.reply_excerpt = p.reply_to.as_ref().and_then(|reply| {
+                let target = store
+                    .moment(&reply.message_id)
+                    .filter(|m| m.context_id == moment.context_id)?;
+                refs.reply_available = true;
+                refs.reply_author = Some(
+                    store
+                        .participant(&target.origin)
+                        .map_or_else(|| target.origin.short().into(), |p| p.display.clone().into()),
+                );
+                refs.reply_deleted = matches!(&target.kind, MomentKind::Message(p) if p.tombstone);
+                if refs.reply_deleted {
+                    return None;
+                }
                 store.bodies().get(&reply.message_id).map(|text| message_text::excerpt(text))
             });
             Vec::new()
@@ -319,6 +339,9 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
             refs.call.as_ref().map(|c| vec![&c.peer]).unwrap_or_default()
         }
     };
+    if let Some(origin) = store.participant(&moment.origin) {
+        refs.people.insert(moment.origin.clone(), origin.clone());
+    }
     for id in people {
         if let Some(p) = store.participant(id) {
             refs.people.insert(id.clone(), p.clone());
@@ -341,6 +364,12 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
 pub struct RowState {
     /// The row's disclosure is expanded.
     pub expanded: bool,
+    /// Same sender immediately precedes this row within the grouping window.
+    pub joined: bool,
+    /// Retained message-menu trigger focus.
+    pub menu_focus: Option<FocusHandle>,
+    /// Retained native text selection, cleared with the current body's lifetime.
+    pub message_text: Option<Entity<gpui_kit::component::text::TextViewState>>,
     /// The row is the target of "take me to what needs me".
     pub highlighted: bool,
     /// Selected values of surface select blocks, by block.
@@ -382,8 +411,7 @@ impl RenderOnce for MomentView {
         let lifecycle = moment.lifecycle;
         let body = match &moment.kind {
             MomentKind::Message(p) => {
-                message::render(p, row.body.as_ref(), &row.refs, row.outbound, &sink, cx)
-                    .into_any_element()
+                message::render(p, &row, &state, &sink, cx).into_any_element()
             }
             MomentKind::AgentSurface(p) => match row.surface.clone() {
                 Some(status) => {
@@ -433,6 +461,10 @@ impl RenderOnce for MomentView {
         // A task event, a name change, a group rename and a membership record
         // from a signed group state are one compact line each: they carry
         // their own time.
+        if matches!(moment.kind, MomentKind::Message(_)) {
+            return message_bubble::render(&row, body, &sink, &state, window, cx)
+                .into_any_element();
+        }
         let compact = is_compact(&moment.kind);
         let focused = state.focus.as_ref().is_some_and(|f| f.is_focused(window));
         v_flex()
@@ -459,6 +491,7 @@ impl RenderOnce for MomentView {
                     .when(!compact, |col| col.child(header(&row, cx)))
                     .child(body),
             )
+            .into_any_element()
     }
 }
 

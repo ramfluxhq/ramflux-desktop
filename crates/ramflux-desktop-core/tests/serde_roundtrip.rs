@@ -175,6 +175,7 @@ const SERIALIZABLE_INTENT_VARIANTS: usize = 62;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
+        UiEventKind::CopyMessagePressed => "CopyMessagePressed",
         UiEventKind::RetryMessagePressed => "RetryMessagePressed",
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
         UiEventKind::StartConversationRequested { .. } => "StartConversationRequested",
@@ -223,7 +224,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 46;
+const UI_EVENT_KIND_VARIANTS: usize = 47;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -893,6 +894,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
 fn all_ui_event_kinds() -> Vec<UiEventKind> {
     vec![
         UiEventKind::RetryMessagePressed,
+        UiEventKind::CopyMessagePressed,
         UiEventKind::SubmitMessage { text: "hi".into() },
         UiEventKind::StartConversationRequested {
             context_id: ContextId::new("c-new"),

@@ -10,28 +10,35 @@
 //! the reason when it failed.
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::button::Button;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, h_flex, v_flex,
+};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{
     MediaState, MediaView, MessagePayload, Receipt, TransferState, UiEventKind,
 };
 
-use super::{RowRefs, message_text};
+use super::{MomentRow, RowState, message_text};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
 
 /// Renders a message body.
 pub fn render(
     payload: &MessagePayload,
-    body: Option<&SharedString>,
-    refs: &RowRefs,
-    outbound: bool,
+    row: &MomentRow,
+    state: &RowState,
     sink: &EventSink,
     cx: &App,
 ) -> impl IntoElement {
-    let muted = cx.theme().muted_foreground;
+    let body = row.body.as_ref();
+    let refs = &row.refs;
+    let outbound = row.outbound;
+    let selection = state.message_text.as_ref();
+    let palette = ramflux_desktop_navigation::palette(cx);
+    let foreground = if outbound { palette.outgoing_text } else { cx.theme().foreground };
+    let muted = if outbound { palette.outgoing_meta } else { cx.theme().muted_foreground };
     if payload.tombstone {
         return v_flex().id("message-body").text_sm().italic().text_color(muted).child(
             div()
@@ -59,26 +66,27 @@ pub fn render(
             ),
             other => format!("{} · {}", i18n::size(o.size), i18n::transfer(other)),
         });
-        let detail_color = if failed { crate::tone::text(cx.theme().danger, cx) } else { muted };
         let label =
             detail.as_ref().map_or_else(|| name.to_string(), |detail| format!("{name} · {detail}"));
-        h_flex()
+        div()
             .id("message-attachment")
             .aria_label(label)
-            .gap_2()
-            .px_2()
-            .py_1()
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded(cx.theme().radius)
-            .child(Icon::new(IconName::File).small().text_color(muted))
-            .child(div().text_sm().text_color(cx.theme().foreground).child(name))
-            .when(moving, |row| {
-                row.child(Icon::new(IconName::LoaderCircle).xsmall().text_color(muted))
-            })
-            .when_some(detail, |row, detail| {
-                row.child(div().text_xs().text_color(detail_color).child(detail))
-            })
+            .min_w_0()
+            .child(ramflux_desktop_navigation::generated::catalog::attachment_shell(
+                name,
+                detail.unwrap_or_default().into(),
+                Icon::new(IconName::File).small(),
+                h_flex()
+                    .when(moving, |row| row.child(Icon::new(IconName::LoaderCircle).xsmall()))
+                    .when(failed, |row| {
+                        row.child(
+                            Icon::new(IconName::TriangleAlert)
+                                .xsmall()
+                                .text_color(crate::tone::text(cx.theme().danger, cx)),
+                        )
+                    }),
+                ramflux_desktop_navigation::palette(cx),
+            ))
             .test_support()
     });
     let receipt_color = match payload.receipt {
@@ -90,21 +98,36 @@ pub fn render(
     };
     let text = body.cloned();
     let retry = sink.clone();
-    let reply = payload.reply_to.as_ref().map(|_| {
-        let label = refs.reply_excerpt.as_deref().map_or_else(
-            || tr("moment.message.reply_missing"),
-            |quoted| i18n::tr_args("moment.message.reply", &[("text", quoted)]),
-        );
-        div()
-            .id("message-reply")
-            .aria_label(label.clone())
-            .px_2()
-            .border_l_2()
-            .border_color(cx.theme().border)
-            .text_xs()
-            .text_color(muted)
-            .child(label)
-            .test_support()
+    let reply = payload.reply_to.as_ref().map(|target| {
+        let label = if refs.reply_deleted {
+            tr("message_ui.reply_deleted")
+        } else {
+            refs.reply_excerpt.as_deref().map_or_else(
+                || tr("moment.message.reply_missing"),
+                |quoted| quoted.to_owned().into(),
+            )
+        };
+        let jump = sink.clone();
+        let target = target.message_id.clone();
+        Button::new("message-reply")
+            .ghost()
+            .h_auto()
+            .w_full()
+            .p_0()
+            .accessibility_label(label.clone())
+            .disabled(!refs.reply_available)
+            .on_click(move |_, window, cx| {
+                jump.emit(
+                    UiEventKind::FocusMomentRequested { moment_id: target.clone() },
+                    window,
+                    cx,
+                )
+            })
+            .child(ramflux_desktop_navigation::generated::catalog::quote_excerpt(
+                refs.reply_author.clone().unwrap_or_else(|| tr("message_ui.quoted")),
+                label,
+                ramflux_desktop_navigation::palette(cx),
+            ))
     });
     let forwarded = payload.forward.as_ref().map(|forward| {
         let label = forward.from_name.as_deref().map_or_else(
@@ -124,14 +147,20 @@ pub fn render(
         .id("message-body")
         .gap_1()
         .text_sm()
-        .text_color(cx.theme().foreground)
+        .text_color(foreground)
         .children(forwarded)
         .children(reply)
         .when_some(text.filter(|t| !t.is_empty()), |col, text| {
-            if payload.spans.is_empty() {
-                col.child(text)
+            if let Some(selection) = selection.filter(|_| payload.spans.is_empty()) {
+                col.child(
+                    div().id("message-text").test_support().min_w_0().child(
+                        gpui_kit::component::text::TextView::new(selection)
+                            .selectable(true)
+                            .text_color(foreground),
+                    ),
+                )
             } else {
-                col.child(message_text::render(&text, &payload.spans, cx))
+                col.child(message_text::render(&text, &payload.spans, foreground, cx))
             }
         })
         .when(body.is_none(), |col| {
@@ -157,8 +186,8 @@ pub fn render(
             )
         })
         .when(!payload.reactions.is_empty(), |col| {
-            col.child(h_flex().id("message-reactions").flex_wrap().gap_1().children(
-                payload.reactions.iter().enumerate().map(|(index, chip)| {
+            col.child(h_flex().id("message-reactions").test_support().flex_wrap().gap_1().children(
+                payload.reactions.iter().map(|chip| {
                     let count = chip.count.to_string();
                     let key = if chip.mine {
                         "moment.message.reaction_mine"
@@ -167,13 +196,19 @@ pub fn render(
                     };
                     let label = i18n::tr_args(key, &[("token", &chip.token), ("count", &count)]);
                     div()
-                        .id(SharedString::from(format!("message-reaction-{index}")))
+                        .id(SharedString::from(format!("message-reaction-{}", chip.token)))
                         .aria_label(label.clone())
                         .px_2()
                         .border_1()
-                        .border_color(cx.theme().border)
+                        .border_color(if chip.mine {
+                            cx.theme().primary
+                        } else {
+                            cx.theme().border
+                        })
+                        .bg(if chip.mine { cx.theme().muted } else { cx.theme().background })
                         .rounded(cx.theme().radius)
                         .text_xs()
+                        .text_color(cx.theme().foreground)
                         .child(label)
                         .test_support()
                 }),
@@ -292,7 +327,10 @@ fn image_format(bytes: &[u8]) -> Option<gpui_kit::ImageFormat> {
         Some(gpui_kit::ImageFormat::Png)
     } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
         Some(gpui_kit::ImageFormat::Jpeg)
-    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+    } else if bytes.len() >= 12
+        && bytes.get(..4) == Some(b"RIFF".as_slice())
+        && bytes.get(8..12) == Some(b"WEBP".as_slice())
+    {
         Some(gpui_kit::ImageFormat::Webp)
     } else {
         None

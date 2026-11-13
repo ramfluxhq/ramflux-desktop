@@ -216,3 +216,9 @@ name = "s5_bus_align_shots"
 path = "tests/s5_bus_align_shots.rs"
 harness = false
 test = false
+
+[[test]]
+name = "desk_conversation_shots"
+path = "tests/desk_conversation_shots.rs"
+test = false
+harness = false

@@ -48,13 +48,16 @@ fn pick_language(cx: &mut TestAppContext, handle: Handle, locale: &str) {
 fn placeholders(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<SharedString> {
     cx.update(|cx| {
         let shell = shell.read(cx);
-        let mut inputs: Vec<Entity<InputState>> =
-            vec![shell.workspace().read(cx).composer().read(cx).input().clone()];
+        let composer = shell.workspace().read(cx).composer().read(cx);
+        let mut labels = vec![composer.input().read(cx).presentation().placeholder().clone()];
+        let mut inputs: Vec<Entity<InputState>> = Vec::new();
         inputs.push(shell.entry().read(cx).passphrase().clone());
         let settings = shell.settings().read(cx);
         inputs.extend(settings.rotate_inputs().into_iter().cloned());
         inputs.push(settings.backup_input().clone());
-        inputs.iter().map(|input| input.read(cx).presentation().placeholder().clone()).collect()
+        labels
+            .extend(inputs.iter().map(|input| input.read(cx).presentation().placeholder().clone()));
+        labels
     })
 }
 

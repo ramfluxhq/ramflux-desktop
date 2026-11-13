@@ -20,6 +20,25 @@ use ramflux_desktop_core::{SpanKind, TextSpan};
 
 use crate::i18n::{tr, tr_args};
 
+/// Encodes literal message text for native selection. Peer text cannot introduce
+/// links, images or markup. Typed formatting spans keep their existing renderer.
+pub(crate) fn literal_html(text: &str) -> String {
+    let mut html = String::from("<p>");
+    for c in text.chars() {
+        match c {
+            '&' => html.push_str("&amp;"),
+            '<' => html.push_str("&lt;"),
+            '>' => html.push_str("&gt;"),
+            '"' => html.push_str("&quot;"),
+            '\n' => html.push_str("<br>"),
+            '\r' => {}
+            c => html.push(c),
+        }
+    }
+    html.push_str("</p>");
+    html
+}
+
 /// How many scalars of a replied-to message a reply row quotes.
 const EXCERPT_SCALARS: usize = 80;
 
@@ -101,7 +120,7 @@ fn kind_key(kind: &SpanKind) -> &'static str {
     }
 }
 
-fn style_of(class: Class, cx: &App) -> HighlightStyle {
+fn style_of(class: Class, foreground: gpui_kit::Hsla, cx: &App) -> HighlightStyle {
     let theme = cx.theme();
     let line = |color| UnderlineStyle { thickness: px(1.), color: Some(color), wavy: false };
     match class {
@@ -110,29 +129,30 @@ fn style_of(class: Class, cx: &App) -> HighlightStyle {
             HighlightStyle { font_style: Some(FontStyle::Italic), ..Default::default() }
         }
         Class::Underline => {
-            HighlightStyle { underline: Some(line(theme.foreground)), ..Default::default() }
+            HighlightStyle { underline: Some(line(foreground)), ..Default::default() }
         }
         Class::Strikethrough => HighlightStyle {
-            strikethrough: Some(StrikethroughStyle {
-                thickness: px(1.),
-                color: Some(theme.foreground),
-            }),
+            strikethrough: Some(StrikethroughStyle { thickness: px(1.), color: Some(foreground) }),
             ..Default::default()
         },
-        Class::Code => HighlightStyle { background_color: Some(theme.muted), ..Default::default() },
+        Class::Code => HighlightStyle {
+            color: Some(theme.foreground),
+            background_color: Some(theme.muted),
+            ..Default::default()
+        },
         Class::Spoiler => HighlightStyle {
             color: Some(theme.muted),
             background_color: Some(theme.muted),
             ..Default::default()
         },
         Class::Mention => HighlightStyle {
-            color: Some(crate::tone::text(theme.primary, cx)),
+            color: Some(foreground),
             font_weight: Some(FontWeight::MEDIUM),
             ..Default::default()
         },
         Class::Link => HighlightStyle {
-            color: Some(crate::tone::text(theme.primary, cx)),
-            underline: Some(line(crate::tone::text(theme.primary, cx))),
+            color: Some(foreground),
+            underline: Some(line(foreground)),
             ..Default::default()
         },
     }
@@ -199,7 +219,12 @@ fn mask_of(counts: &[u32; CLASSES.len()]) -> u8 {
 /// Renders `text` with `spans`. The first few spans also get a marker that
 /// names their kind and the text they cover (shortened), for assistive
 /// technology and tests; the full text is always in the message itself.
-pub fn render(text: &SharedString, spans: &[TextSpan], cx: &App) -> impl IntoElement {
+pub fn render(
+    text: &SharedString,
+    spans: &[TextSpan],
+    foreground: gpui_kit::Hsla,
+    cx: &App,
+) -> impl IntoElement {
     let plan = plan(text, spans);
     let highlights: Vec<(Range<usize>, HighlightStyle)> = plan
         .runs
@@ -208,7 +233,7 @@ pub fn render(text: &SharedString, spans: &[TextSpan], cx: &App) -> impl IntoEle
             let mut style = HighlightStyle::default();
             for (bit, class) in CLASSES.iter().enumerate() {
                 if mask & (1 << bit) != 0 {
-                    merged(&mut style, style_of(*class, cx));
+                    merged(&mut style, style_of(*class, foreground, cx));
                 }
             }
             (run, style)

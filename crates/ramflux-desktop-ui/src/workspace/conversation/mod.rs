@@ -263,6 +263,14 @@ impl Conversation {
             .is_some_and(|row| row.body.is_some())
     }
 
+    /// Native text-selection state, absent after eviction, deletion or lock.
+    pub fn message_text_state(
+        &self,
+        id: &MomentId,
+    ) -> Option<&Entity<gpui_kit::component::text::TextViewState>> {
+        self.view.message_text(id)
+    }
+
     /// The scroller state (virtual list bookkeeping), for tests.
     pub fn scroller(&self) -> &Entity<MessageScrollerState> {
         &self.scroller
@@ -372,13 +380,15 @@ impl Conversation {
             Some(id) => self.rows.sync(self.store.read(cx), id, changes),
             None => self.rows.clear(),
         };
+        self.view.sync_message_text(self.rows.as_slice(), cx);
         let count = self.rows.as_slice().len();
         self.scroller.update(cx, |state, cx| match update {
             RowUpdate::None => {}
             RowUpdate::Reset => state.reset(count, cx),
             RowUpdate::Patched { changed, appended } => {
                 for ix in changed {
-                    let _ = state.remeasure_items(ix..ix + 1, cx);
+                    let end = (ix + 2).min(count);
+                    let _ = state.remeasure_items(ix..end, cx);
                 }
                 if appended > 0 {
                     let _ = state.append(appended, cx);
@@ -411,6 +421,19 @@ impl Conversation {
         context_sink.scoped_map(
             Scope::Moment(id.clone()),
             move |event: UiEvent, _, cx| match &event.kind {
+                UiEventKind::CopyMessagePressed => {
+                    this.update(cx, |field, cx| {
+                        let store = field.store.read(cx).store();
+                        if ramflux_desktop_core::projection::conversations::is_visible(store)
+                            && let Some(moment) = store.moment(&moment_id)
+                            && Some(&moment.context_id) == field.context_id.as_ref()
+                            && matches!(&moment.kind, ramflux_desktop_core::MomentKind::Message(p) if !p.tombstone)
+                            && let Some(text) = store.body(&moment_id) {
+                            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(text.to_owned()));
+                        }
+                    }).ok();
+                    None
+                }
                 UiEventKind::ExpandToggled { expanded } => {
                     let expanded = *expanded;
                     this.update(cx, |field, cx| field.set_expanded(&moment_id, expanded, cx)).ok();
@@ -568,6 +591,10 @@ impl Render for Conversation {
                     }
                     let is_highlighted = highlighted.as_ref() == Some(id);
                     let mut state = view.row_state(id, is_highlighted, ask_call.clone());
+                    state.joined =
+                        ix.checked_sub(1).and_then(|at| rows.get(at)).is_some_and(|previous| {
+                            crate::moments::message_bubble::joins(previous, row)
+                        });
                     state.focus = is_highlighted.then(|| highlight_focus.clone());
                     let sink = Self::moment_sink(this.clone(), &context_sink, id);
                     MomentView::new(row.clone(), sink, state).into_any_element()

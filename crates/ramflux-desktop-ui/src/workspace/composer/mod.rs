@@ -28,13 +28,14 @@ pub mod attachment;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window, div,
+    App, Context, Entity, Focusable as _, IntoElement, Render, SharedString, Subscription, Window,
+    div,
 };
 use ramflux_desktop_core::{ContextId, ParticipantId, ParticipantKind, UiEventKind, selectors};
 
@@ -67,7 +68,7 @@ pub struct DraftTarget {
 /// The composer view.
 pub struct Composer {
     store: Entity<StoreHandle>,
-    input: Entity<InputState>,
+    input: Entity<TextareaState>,
     sink: Option<EventSink>,
     context: Option<ContextId>,
     picked: Option<ParticipantId>,
@@ -93,8 +94,12 @@ impl Composer {
     /// A composer with no target context, following `store` for the
     /// outcome of a sent attachment.
     pub fn new(store: Entity<StoreHandle>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input =
-            cx.new(|cx| InputState::new(window, cx).placeholder(tr("composer.placeholder")));
+        let input = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .auto_grow(1, 6)
+                .submit_on_enter(true)
+                .placeholder(tr("composer.placeholder"))
+        });
         let subscriptions = vec![
             cx.subscribe_in(&input, window, |this, _, event, window, cx| {
                 if matches!(event, InputEvent::PressEnter { secondary: false, shift: false }) {
@@ -190,7 +195,7 @@ impl Composer {
     }
 
     /// The text input, for focus and tests.
-    pub fn input(&self) -> &Entity<InputState> {
+    pub fn input(&self) -> &Entity<TextareaState> {
         &self.input
     }
 
@@ -360,6 +365,7 @@ impl Composer {
 
 impl Render for Composer {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let input_focus = self.input.read(cx).focus_handle(cx);
         let enabled = self.sink.is_some();
         let reason = self.unavailable_reason().cloned();
         let can_send = enabled && reason.is_none();
@@ -376,6 +382,7 @@ impl Render for Composer {
             attachment::chip(staged, cx.listener(|this, _, _, cx| this.remove_staged(cx)), cx)
         });
         let row = h_flex()
+            .items_end()
             .w_full()
             .gap_2()
             .child(
@@ -412,11 +419,18 @@ impl Render for Composer {
                     .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx))),
             )
             .child(
-                Input::new(&self.input)
+                div()
                     .id("composer-input")
-                    .aria_label(tr("composer.label"))
-                    .disabled(!enabled)
-                    .flex_1(),
+                    .test_support()
+                    .track_focus(&input_focus)
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        Textarea::new(&self.input)
+                            .accessibility_id("composer-input")
+                            .aria_label(tr("composer.label"))
+                            .disabled(!enabled),
+                    ),
             )
             .child(
                 Button::new("composer-send")
@@ -436,8 +450,15 @@ impl Render for Composer {
             .p_3()
             .border_t_1()
             .border_color(cx.theme().border)
-            .children(chip)
-            .child(row)
+            .child(ramflux_desktop_navigation::generated::catalog::composer_shell(
+                ramflux_desktop_navigation::generated::catalog::ComposerSlots::new(
+                    "conversation".into(),
+                    row,
+                    div(),
+                )
+                .attachment(div().children(chip)),
+                ramflux_desktop_navigation::palette(cx),
+            ))
             .when_some(reason.filter(|_| enabled), |col, reason| {
                 col.child(
                     div()

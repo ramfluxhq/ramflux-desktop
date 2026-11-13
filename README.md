@@ -61,6 +61,7 @@ Control elsewhere.
 | `secondary-1` … `secondary-6` | Show one of the first six visible conversations and focus the composer |
 | `secondary-f` | Focus conversation search; Up/Down and Enter choose a result |
 | `secondary-[` | Return to conversations in a compact window |
+| `Shift-Enter` | Insert a line in the composer; Enter sends |
 | `secondary-k` | Command palette (search contexts, people, objects, history) |
 | `secondary-j` | Take me to what needs me (focuses the moment; Tab reaches its actions) |
 | Enter | Send from the composer; activate the focused button |
@@ -74,3 +75,10 @@ Control elsewhere.
 
 Ramflux Desktop is licensed under AGPL-3.0-or-later with the Ramflux App Store
 Exception. See `LICENSE`, `LICENSING.md`, and `NOTICE`.
+
+Messages use source-provided quote, attachment, reaction and receipt facts. The
+message menu copies current cached text locally. Reply, edit, reaction and delete
+commands remain disabled until this connection supplies their mutation contracts.
+Plain text supports native selection and copying; typed formatted spans retain
+their existing renderer. Selection state is discarded with deletion, eviction,
+account locking or a conversation switch.

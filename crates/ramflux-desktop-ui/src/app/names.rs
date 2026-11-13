@@ -30,6 +30,7 @@ pub fn format_scope(scope: &Scope) -> String {
 /// Variant name of a UI event.
 pub fn ui_event_name(event: &UiEvent) -> &'static str {
     match event.kind {
+        UiEventKind::CopyMessagePressed => "CopyMessagePressed",
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
         UiEventKind::StartConversationRequested { .. } => "StartConversationRequested",
         UiEventKind::AttachFile { .. } => "AttachFile",

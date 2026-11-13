@@ -7,3 +7,5 @@ pub mod conversations;
 pub mod devices;
 pub mod requests;
 pub mod wizard;
+
+pub mod messages;

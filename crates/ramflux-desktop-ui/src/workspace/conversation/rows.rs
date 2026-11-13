@@ -133,6 +133,16 @@ impl Rows {
             }
         }
         self.add_surface_dependents(store, context, changes, &mut changed);
+        // Quoted text is live content: editing/deleting its target must rebuild
+        // the dependent row before an old excerpt can be painted again.
+        for (ix, row) in self.rows.iter().enumerate() {
+            if matches!(&row.moment.kind, MomentKind::Message(p) if p.reply_to.as_ref().is_some_and(|reply| changes.moments().any(|id| id == &reply.message_id)))
+                && !changed.iter().any(|(at, _)| *at == ix)
+                && let Some(moment) = store.moment(&row.moment.id)
+            {
+                changed.push((ix, moment));
+            }
+        }
         if changes.is_clock_moved() {
             for (ix, row) in self.rows.iter().enumerate() {
                 if matches!(&row.moment.kind, MomentKind::Message(p) if matches!(p.receipt, ramflux_desktop_core::Receipt::WaitingForNode { .. }))

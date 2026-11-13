@@ -929,3 +929,38 @@ navigation:
   back:
     en: "Back to conversations"
     zh-CN: "返回会话列表"
+
+message_ui:
+  agent:
+    en: "Agent"
+    zh-CN: "Agent"
+  actions:
+    en: "Message actions"
+    zh-CN: "消息操作"
+  copy:
+    en: "Copy text"
+    zh-CN: "复制文字"
+  reply:
+    en: "Reply"
+    zh-CN: "回复"
+  react:
+    en: "Add reaction"
+    zh-CN: "添加回应"
+  edit:
+    en: "Edit message"
+    zh-CN: "编辑消息"
+  delete_local:
+    en: "Delete for me"
+    zh-CN: "仅为我删除"
+  delete_everyone:
+    en: "Delete for everyone"
+    zh-CN: "为所有人删除"
+  unavailable:
+    en: "Message changes are unavailable on this connection"
+    zh-CN: "当前连接不支持修改消息"
+  quoted:
+    en: "Quoted message"
+    zh-CN: "引用的消息"
+  reply_deleted:
+    en: "Original message deleted"
+    zh-CN: "原消息已删除"
