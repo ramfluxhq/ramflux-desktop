@@ -32,7 +32,7 @@ pub fn progress(id: &BlockId, data: &JsonValue, cx: &App) -> Option<AnyElement> 
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
                     .child(label.clone())
-                    .child(format!("{percent:.0}%")),
+                    .child(crate::i18n::percent(value)),
             )
             .child(
                 Progress::new(domain_id("progress", id)).value(percent).accessibility_label(label),

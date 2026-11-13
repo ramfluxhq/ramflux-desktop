@@ -279,8 +279,11 @@ pub fn writing_mark(cx: &App) -> AnyElement {
 /// time: shown when it reads differently from the posting time (another
 /// minute; with the date on another day).
 pub fn updated_mark(posted: Timestamp, updated: Timestamp, cx: &App) -> Option<AnyElement> {
-    let same_day = i18n::date_time(posted).get(..10) == i18n::date_time(updated).get(..10);
-    let time = if same_day { i18n::time_of_day(updated) } else { i18n::date_time(updated) };
+    let time = if i18n::same_day(posted, updated) {
+        i18n::time_of_day(updated)
+    } else {
+        i18n::date_time(updated)
+    };
     (updated > posted && time != i18n::time_of_day(posted)).then(|| {
         div()
             .id("surface-updated")

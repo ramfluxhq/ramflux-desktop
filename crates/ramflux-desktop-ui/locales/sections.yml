@@ -33,8 +33,12 @@ sections:
       en: "New group"
       zh-CN: "创建群组"
     members:
-      en: "%{count} members"
-      zh-CN: "%{count} 位成员"
+      one:
+        en: "%{count} member"
+        zh-CN: "%{count} 位成员"
+      other:
+        en: "%{count} members"
+        zh-CN: "%{count} 位成员"
     joined_only:
       en: "Only groups this account has joined are shown."
       zh-CN: "仅显示当前账号已加入的群组。"
@@ -204,8 +208,12 @@ sections:
       en: "Note"
       zh-CN: "附言"
     held:
-      en: "%{count} messages held until you decide"
-      zh-CN: "%{count} 条消息在你处理前暂存"
+      one:
+        en: "%{count} message held until you decide"
+        zh-CN: "%{count} 条消息在你处理前暂存"
+      other:
+        en: "%{count} messages held until you decide"
+        zh-CN: "%{count} 条消息在你处理前暂存"
     held_hidden:
       en: "The first message is shown after you decide."
       zh-CN: "处理后才显示第一条消息。"

@@ -352,7 +352,7 @@ fn accessible_name(entry: &Entry) -> SharedString {
     if entry.needs_me > 0 {
         text.push(tr_args("stack.needs_me", &[("count", &entry.needs_me.to_string())]).to_string());
     }
-    text.join(", ").into()
+    crate::i18n::clauses(&text)
 }
 
 impl Render for ContextStack {

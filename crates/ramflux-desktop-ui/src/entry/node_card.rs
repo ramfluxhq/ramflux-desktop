@@ -99,11 +99,7 @@ impl RenderOnce for NodeCard {
                     .item(tr("node.id"), SharedString::from(node.id.to_string()), 1)
                     .item(tr("node.fingerprint"), fingerprint, 1)
                     .item(tr("node.endpoints"), join(&node.endpoints), 1)
-                    .item(
-                        tr("node.capabilities"),
-                        SharedString::from(node.capabilities.join(", ")),
-                        1,
-                    )
+                    .item(tr("node.capabilities"), crate::i18n::list(&node.capabilities), 1)
                     .item(tr("node.expires"), expiry, 1)
                     .item(tr("node.pin_source"), i18n::pin_source(node.pin_source), 1)
                     .item(tr("node.health"), i18n::node_health(node.health), 1)

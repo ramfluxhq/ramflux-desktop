@@ -63,7 +63,7 @@ impl TableDelegate for ObjectsDelegate {
             "name" => div().truncate().child(object.label()).into_any_element(),
             "direction" => div().child(i18n::direction(object.direction)).into_any_element(),
             "progress" => {
-                div().child(format!("{:.0}%", object.progress() * 100.0)).into_any_element()
+                div().child(i18n::percent(f64::from(object.progress()))).into_any_element()
             }
             "state" => div()
                 .text_color(match object.transfer {

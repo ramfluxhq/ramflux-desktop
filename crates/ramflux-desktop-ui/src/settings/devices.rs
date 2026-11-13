@@ -39,6 +39,8 @@ pub(crate) fn page(
     // Listed per account: one account's answer never ends another's loading.
     let listed = errors.devices_listed(rendered.as_ref()) && store.is_listed(Listing::Devices);
     let offline = store.source_status() == SourceStatus::Disconnected;
+    // Relative times ("5 minutes ago") are read against the session clock.
+    let now = context.store.read(cx).session().map(crate::app::AccountSession::now);
     // Only a directory failure newer than the last success, switch or
     // reconnect for this account explains an empty list.
     let failure = errors
@@ -98,7 +100,11 @@ pub(crate) fn page(
                     device.last_seen.map_or_else(
                         || tr("settings.devices.never"),
                         |at| {
-                            tr_args("settings.devices.last_seen", &[("time", &i18n::date_time(at))])
+                            let time = now.map_or_else(
+                                || i18n::date_time(at),
+                                |now| i18n::relative(at, now).to_string(),
+                            );
+                            tr_args("settings.devices.last_seen", &[("time", &time)])
                         },
                     )
                 };

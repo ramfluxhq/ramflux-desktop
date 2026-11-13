@@ -123,12 +123,10 @@ pub(crate) fn render(
         catalog::BubbleKind::Peer
     };
     let sender = if agent {
-        format!(
-            "{} · {}",
-            ramflux_desktop_navigation::row::list_text(&row.author),
-            tr("message_ui.agent")
+        crate::i18n::join(
+            &ramflux_desktop_navigation::row::list_text(&row.author),
+            &tr("message_ui.agent"),
         )
-        .into()
     } else {
         ramflux_desktop_navigation::row::list_text(&row.author)
     };

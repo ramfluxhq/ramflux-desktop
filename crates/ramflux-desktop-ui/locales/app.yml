@@ -3,6 +3,9 @@ app:
   name:
     en: "Ramflux"
     zh-CN: "Ramflux"
+  mark:
+    en: "R"
+    zh-CN: "R"
 locale:
   english:
     en: "English"
@@ -10,6 +13,71 @@ locale:
   chinese:
     en: "简体中文"
     zh-CN: "简体中文"
+  system:
+    en: "Follow system"
+    zh-CN: "跟随系统"
+theme:
+  name:
+    light:
+      en: "Light"
+      zh-CN: "浅色"
+    dark:
+      en: "Dark"
+      zh-CN: "深色"
+format:
+  number:
+    group:
+      en: ","
+      zh-CN: ","
+    decimal:
+      en: "."
+      zh-CN: "."
+  percent:
+    en: "%{value}%"
+    zh-CN: "%{value}%"
+  join:
+    en: "%{a} · %{b}"
+    zh-CN: "%{a} · %{b}"
+  sentences:
+    en: "%{a}. %{b}"
+    zh-CN: "%{a}。%{b}"
+  labeled:
+    en: "%{a}: %{b}"
+    zh-CN: "%{a}：%{b}"
+  clause:
+    en: "%{a}, %{b}"
+    zh-CN: "%{a}，%{b}"
+  list:
+    en: ", "
+    zh-CN: "、"
+  time:
+    en: "%-I:%M %p"
+    zh-CN: "%H:%M"
+  time_unknown:
+    en: "--:--"
+    zh-CN: "--:--"
+  date:
+    en: "%b %-d, %Y"
+    zh-CN: "%Y年%-m月%-d日"
+  date_time:
+    en: "%b %-d, %Y, %-I:%M %p"
+    zh-CN: "%Y年%-m月%-d日 %H:%M"
+  size:
+    bytes:
+      en: "%{value} B"
+      zh-CN: "%{value} B"
+    kib:
+      en: "%{value} KiB"
+      zh-CN: "%{value} KiB"
+    mib:
+      en: "%{value} MiB"
+      zh-CN: "%{value} MiB"
+    gib:
+      en: "%{value} GiB"
+      zh-CN: "%{value} GiB"
+    tib:
+      en: "%{value} TiB"
+      zh-CN: "%{value} TiB"
 list:
   loading:
     en: "Loading…"
@@ -68,8 +136,12 @@ status:
       en: "Local"
       zh-CN: "本地"
     with_count:
-      en: "%{name} · %{count} need me"
-      zh-CN: "%{name} · %{count} 项需要我"
+      one:
+        en: "%{name} · %{count} needs me"
+        zh-CN: "%{name} · %{count} 项需要我"
+      other:
+        en: "%{name} · %{count} need me"
+        zh-CN: "%{name} · %{count} 项需要我"
     background:
       en: "%{count} in other accounts"
       zh-CN: "其他账户 %{count} 项"
@@ -441,6 +513,30 @@ clock:
   date:
     en: "%{date}"
     zh-CN: "%{date}"
+  relative:
+    just_now:
+      en: "just now"
+      zh-CN: "刚刚"
+    minutes_ago:
+      one:
+        en: "%{count} minute ago"
+        zh-CN: "%{count} 分钟前"
+      other:
+        en: "%{count} minutes ago"
+        zh-CN: "%{count} 分钟前"
+    hours_ago:
+      one:
+        en: "%{count} hour ago"
+        zh-CN: "%{count} 小时前"
+      other:
+        en: "%{count} hours ago"
+        zh-CN: "%{count} 小时前"
+    yesterday:
+      en: "yesterday"
+      zh-CN: "昨天"
+    on_date:
+      en: "on %{date}"
+      zh-CN: "%{date}"
 timer:
   off:
     en: "Off"
@@ -508,8 +604,12 @@ confirm:
       en: "Remove %{contact} from your contacts; what you shared with them is revoked"
       zh-CN: "将 %{contact} 移出联系人，已共享给对方的内容将被撤销"
     clear_floors:
-      en: "Forget %{count} remembered entries of closed contact requests. This device then no longer notices if those people later present an older version of their identity. Declines and blocks stay."
-      zh-CN: "清除已结束联系人请求留下的 %{count} 条记录。此后，如果这些人出示其身份的旧版本，本设备将无法察觉。拒绝和屏蔽记录保留。"
+      one:
+        en: "Forget %{count} remembered entry of a closed contact request. This device then no longer notices if that person later presents an older version of their identity. Declines and blocks stay."
+        zh-CN: "清除已结束联系人请求留下的 %{count} 条记录。此后，如果这些人出示其身份的旧版本，本设备将无法察觉。拒绝和屏蔽记录保留。"
+      other:
+        en: "Forget %{count} remembered entries of closed contact requests. This device then no longer notices if those people later present an older version of their identity. Declines and blocks stay."
+        zh-CN: "清除已结束联系人请求留下的 %{count} 条记录。此后，如果这些人出示其身份的旧版本，本设备将无法察觉。拒绝和屏蔽记录保留。"
     request_block:
       en: "Block %{contact}: their request and waiting messages are deleted, and they can't message you or ask again until you unblock them"
       zh-CN: "屏蔽 %{contact}：其请求和待送达的消息将被删除，在你解除屏蔽前，对方无法给你发消息或再次请求"

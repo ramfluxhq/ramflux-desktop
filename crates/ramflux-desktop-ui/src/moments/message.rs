@@ -58,16 +58,16 @@ pub fn render(
             object.is_some_and(|o| matches!(o.transfer, TransferState::Transferring { .. }));
         let failed = object.is_some_and(|o| matches!(o.transfer, TransferState::Failed { .. }));
         let detail = object.map(|o| match &o.transfer {
-            TransferState::Failed { reason } if reason != "paused" => format!(
-                "{} · {} · {}",
-                i18n::size(o.size),
-                i18n::transfer(&o.transfer),
-                i18n::backend_text(reason)
-            ),
-            other => format!("{} · {}", i18n::size(o.size), i18n::transfer(other)),
+            TransferState::Failed { reason } if reason != "paused" => i18n::join(
+                &i18n::join(&i18n::size(o.size), &i18n::transfer(&o.transfer)),
+                &i18n::backend_text(reason),
+            )
+            .to_string(),
+            other => i18n::join(&i18n::size(o.size), &i18n::transfer(other)).to_string(),
         });
-        let label =
-            detail.as_ref().map_or_else(|| name.to_string(), |detail| format!("{name} · {detail}"));
+        let label = detail
+            .as_ref()
+            .map_or_else(|| name.to_string(), |detail| i18n::join(&name, detail).to_string());
         div()
             .id("message-attachment")
             .aria_label(label)
@@ -301,10 +301,10 @@ fn media_row(index: usize, row: &MediaView, cx: &App) -> impl IntoElement {
         MediaState::Unavailable => Some(tr("moment.message.media.unavailable")),
     };
     let detail = match &state {
-        Some(state) => format!("{} \u{b7} {state}", i18n::size(Some(row.size))),
+        Some(state) => i18n::join(&i18n::size(Some(row.size)), state).to_string(),
         None => i18n::size(Some(row.size)),
     };
-    let label = format!("{name} \u{b7} {detail}");
+    let label = i18n::join(&name, &detail).to_string();
     let thumbnail = thumbnail_image(row);
     let thumbnail = thumbnail.map(|(thumbnail, image)| {
         div()

@@ -120,11 +120,13 @@ pub fn render(
     let measured =
         matches!(object.transfer, TransferState::Transferring { transferred } if transferred > 0);
     let status = match &object.transfer {
-        TransferState::Transferring { .. } if measured => {
-            format!("{} · {percent:.0}%", i18n::transfer(&object.transfer))
-        }
+        TransferState::Transferring { .. } if measured => i18n::join(
+            &i18n::transfer(&object.transfer),
+            &i18n::percent(f64::from(object.progress())),
+        )
+        .to_string(),
         TransferState::Failed { reason } if reason != "paused" => {
-            format!("{} · {}", i18n::transfer(&object.transfer), i18n::backend_text(reason))
+            i18n::join(&i18n::transfer(&object.transfer), &i18n::backend_text(reason)).to_string()
         }
         other => i18n::transfer(other).to_string(),
     };
@@ -148,10 +150,9 @@ pub fn render(
                         .flex_1()
                         .min_w_0()
                         .child(div().text_sm().font_medium().truncate().child(object.label()))
-                        .child(div().text_xs().text_color(muted).child(format!(
-                            "{} · {}",
-                            i18n::direction(object.direction),
-                            i18n::size(object.size)
+                        .child(div().text_xs().text_color(muted).child(i18n::join(
+                            &i18n::direction(object.direction),
+                            &i18n::size(object.size),
                         ))),
                 )
                 .when(

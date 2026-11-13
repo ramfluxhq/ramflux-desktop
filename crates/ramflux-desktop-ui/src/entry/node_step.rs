@@ -66,10 +66,9 @@ impl EntryPage {
                 .gap_2()
                 .text_sm()
                 .child(div().child(node.id.to_string()))
-                .child(div().text_xs().text_color(muted).child(format!(
-                    "{} · {}",
-                    crate::i18n::pin_source(node.pin_source),
-                    crate::i18n::node_health(node.health)
+                .child(div().text_xs().text_color(muted).child(crate::i18n::join(
+                    &crate::i18n::pin_source(node.pin_source),
+                    &crate::i18n::node_health(node.health),
                 )))
         });
         let daemon = store.daemon().map(|info| {

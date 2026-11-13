@@ -38,7 +38,7 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                             .min_w_0()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
-                            .child(server.tools.join(", ")),
+                            .child(crate::i18n::list(&server.tools)),
                     )
                     .child(
                         div()

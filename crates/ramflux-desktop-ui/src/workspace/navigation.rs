@@ -169,7 +169,7 @@ impl Workspace {
                     .justify_center()
                     .text_xl()
                     .font_semibold()
-                    .child("R"),
+                    .child(tr("app.mark")),
             );
         for (id, key, icon, route) in [
             (

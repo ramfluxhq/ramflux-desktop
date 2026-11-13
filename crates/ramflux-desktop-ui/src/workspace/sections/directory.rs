@@ -259,7 +259,7 @@ pub(crate) fn state(spec: StateSpec, cx: &App) -> Option<AnyElement> {
             .id(id)
             .test_support()
             .role(if kind == catalog::StateKind::Error { Role::Alert } else { Role::Status })
-            .aria_label(format!("{title}. {description}"))
+            .aria_label(crate::i18n::sentences(&title, &description))
             .p_3()
             .whitespace_normal()
             .child(catalog::state_block(
@@ -295,7 +295,7 @@ pub(crate) fn placeholder(
         .id(id)
         .test_support()
         .role(Role::Status)
-        .aria_label(format!("{title}. {text}"))
+        .aria_label(crate::i18n::sentences(&title, &text))
         .size_full()
         .items_center()
         .justify_center()

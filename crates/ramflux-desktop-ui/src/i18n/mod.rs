@@ -8,36 +8,97 @@
 //! keys describe stable intent.
 //!
 //! - [`labels`]: names of contract enums (lifecycle, risk, roles, states).
-//! - [`clock`]: local wall-clock times, day headers and sizes.
+//! - [`clock`]: local wall-clock times, day headers, relative times and
+//!   sizes, in the patterns of the current locale.
+//! - [`format`]: numbers, plurals and composed labels.
+//!
+//! A message whose text depends on a count is a plural message: its key
+//! has one child per CLDR plural category (`one`, `other`), and
+//! [`tr_args`] picks the child for the `count` argument (or `total`). Count
+//! arguments are formatted as numbers of the current locale.
 
 pub mod clock;
+pub mod format;
 pub mod labels;
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::{App, AppContext as _, Context, Entity, Global, SharedString, Subscription, Window};
 use ramflux_desktop_core::{EffectFailure, Store};
 
-pub use clock::{bytes, date_time, day_label, offset, size, time_of_day};
+pub use clock::{bytes, date_time, day_label, offset, relative, same_day, size, time_of_day};
+pub use format::{clause, clauses, join, join_all, labeled, list, number, percent, sentences};
 pub use labels::*;
 
-/// Locale used when nothing else is selected.
+/// Locale used when nothing else is selected and the system's language is
+/// not known (tests, screenshots).
 pub const DEFAULT_LOCALE: &str = "zh-CN";
 
 /// Supported locales and the key of each locale's own name.
 pub const LOCALES: [(&str, &str); 2] = [("zh-CN", "locale.chinese"), ("en", "locale.english")];
+
+/// The locale of the shipped ones that serves a language tag (`zh-Hans-CN`,
+/// `en_US.UTF-8`): any Chinese tag gets `zh-CN`, everything else English.
+pub fn resolve_locale(tag: &str) -> &'static str {
+    let language = tag.split(['-', '_', '.']).next().unwrap_or_default();
+    if language.eq_ignore_ascii_case("zh") { "zh-CN" } else { "en" }
+}
+
+/// The shipped locale serving the operating system's preferred language.
+pub fn system_locale() -> &'static str {
+    sys_locale::get_locale().as_deref().map_or("en", resolve_locale)
+}
+
+/// The text of `key` in the current locale (or its fallback), if any.
+fn lookup(key: &str) -> Option<String> {
+    crate::_rust_i18n_try_translate(&locale(), key).map(std::borrow::Cow::into_owned)
+}
 
 /// Looks up a translated string for the current locale.
 pub fn tr(key: &str) -> SharedString {
     SharedString::from(rust_i18n::t!(key).into_owned())
 }
 
+/// Arguments that are counts: formatted as numbers of the locale.
+const COUNT_ARGS: [&str; 4] = ["count", "total", "done", "bad"];
+
 /// Looks up a translated string and substitutes `%{name}` placeholders.
+///
+/// When `key` is a plural message, the child for the `count` argument (else
+/// `total`) is used. Count arguments that are whole numbers are written as
+/// numbers of the current locale.
 pub fn tr_args(key: &str, args: &[(&str, &str)]) -> SharedString {
-    let mut text = rust_i18n::t!(key).into_owned();
+    let operand = ["count", "total"]
+        .iter()
+        .find_map(|name| args.iter().find(|(n, _)| n == name))
+        .and_then(|(_, value)| parse_count(value));
+    let plural = operand.and_then(|n| {
+        lookup(&format!("{key}.{}", format::category(n)))
+            .or_else(|| lookup(&format!("{key}.other")))
+    });
+    let mut text = plural
+        .or_else(|| lookup(key))
+        .or_else(|| lookup(&format!("{key}.other")))
+        .unwrap_or_else(|| rust_i18n::t!(key).into_owned());
     for (name, value) in args {
-        text = text.replace(&format!("%{{{name}}}"), value);
+        let count = COUNT_ARGS.contains(name).then(|| parse_count(value)).flatten();
+        let value = count.map_or_else(|| (*value).to_owned(), format::number);
+        text = text.replace(&format!("%{{{name}}}"), &value);
     }
     SharedString::from(text)
+}
+
+/// A count argument as a number: plain digits, or digits already grouped
+/// with the locale's separator.
+fn parse_count(value: &str) -> Option<u64> {
+    let group = tr("format.number.group");
+    let digits =
+        if group.is_empty() { value.to_owned() } else { value.replace(group.as_ref(), "") };
+    digits.parse::<u64>().ok()
+}
+
+/// A plural message for `n`, with `n` as its `count` argument.
+pub fn tr_count(key: &str, n: u64) -> SharedString {
+    tr_args(key, &[("count", &n.to_string())])
 }
 
 /// The current locale.

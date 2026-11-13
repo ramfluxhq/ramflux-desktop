@@ -136,7 +136,7 @@ fn node_row(row: &Row, sink: &EventSink, cx: &App) -> AnyElement {
                     div()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child(badges.join(" · ")),
+                        .child(crate::i18n::join_all(&badges)),
                 )
                 .child(div().flex_1())
                 .child(div().text_xs().child(i18n::node_health(node.health))),
@@ -152,7 +152,7 @@ fn node_row(row: &Row, sink: &EventSink, cx: &App) -> AnyElement {
             div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child(node.endpoints.join(", ")),
+                .child(crate::i18n::list(&node.endpoints)),
         )
         .children(probe)
         .when(node.probe.is_none(), |col| {

@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Locale resource checks: every key has every locale, English text has no
-//! CJK characters, every key used in code exists, keys are unique across the
-//! per-area files, the runtime resolves every file, and no Rust source in the
-//! workspace contains CJK text (translated text lives only in locale files).
+//! Locale resource checks: every key has every locale, `en` and `zh-CN`
+//! have exactly the same keys with no empty text, English text has no CJK
+//! characters, every key used in code exists, plural messages carry every
+//! category, keys are unique across the per-area files, the runtime resolves
+//! every file, no Rust source in the workspace contains CJK text (translated
+//! text lives only in locale files), and no view passes a hard-coded
+//! user-visible string to a text, label, tooltip or accessibility API.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -128,7 +131,11 @@ fn every_key_used_in_code_exists() {
         entries.keys().filter_map(|k| k.split('.').next()).map(str::to_owned).collect();
     let used = used_keys(&groups);
     assert!(used.len() > 100, "found {} keys in code", used.len());
-    let missing: Vec<&String> = used.iter().filter(|key| !entries.contains_key(*key)).collect();
+    // A plural message is used by its base key and defined per category.
+    let missing: Vec<&String> = used
+        .iter()
+        .filter(|key| !entries.contains_key(*key) && !entries.contains_key(&format!("{key}.other")))
+        .collect();
     assert!(missing.is_empty(), "keys used in code but missing in the locale files: {missing:?}");
 }
 
@@ -216,4 +223,230 @@ fn user_facing_text_has_no_card_ids_or_protocol_terms() {
             }
         }
     }
+}
+
+/// Every `en` and `zh-CN` leaf of a file, by key, read strictly: an empty
+/// text is kept (as empty) instead of being taken for a group.
+fn strict_leaves(file: &Path) -> BTreeMap<&'static str, BTreeMap<String, String>> {
+    let text = fs::read_to_string(file).expect("test: locale file reads");
+    let mut path: Vec<String> = Vec::new();
+    let mut leaves: BTreeMap<&'static str, BTreeMap<String, String>> = BTreeMap::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty() && !l.starts_with("_version")) {
+        let depth = (line.len() - line.trim_start().len()) / 2;
+        let (name, value) = line.trim().split_once(':').expect("test: key: value");
+        path.truncate(depth);
+        if let Some(locale) = LOCALES.iter().find(|l| **l == name) {
+            let value = value.trim().trim_matches('"').to_owned();
+            leaves.entry(locale).or_default().insert(path.join("."), value);
+        } else {
+            path.push(name.to_owned());
+        }
+    }
+    leaves
+}
+
+#[test]
+fn en_and_zh_cn_have_exactly_the_same_keys_and_no_empty_text() {
+    let mut total = 0;
+    for file in locale_files() {
+        let leaves = strict_leaves(&file);
+        let keys = |locale: &str| -> BTreeSet<String> {
+            leaves.get(locale).map(|m| m.keys().cloned().collect()).unwrap_or_default()
+        };
+        let (en, zh) = (keys("en"), keys("zh-CN"));
+        let only_en: Vec<_> = en.difference(&zh).collect();
+        let only_zh: Vec<_> = zh.difference(&en).collect();
+        assert!(only_en.is_empty(), "{}: only in en: {only_en:?}", file.display());
+        assert!(only_zh.is_empty(), "{}: only in zh-CN: {only_zh:?}", file.display());
+        for (locale, texts) in &leaves {
+            for (key, text) in texts {
+                assert!(!text.trim().is_empty(), "{key} ({locale}) has empty text");
+            }
+        }
+        total += en.len();
+    }
+    assert!(total > 1_000, "parsed {total} keys per locale");
+}
+
+#[test]
+fn plural_messages_carry_one_and_other_with_the_same_placeholders() {
+    let entries = parse_locales();
+    let placeholders = |text: &str| -> BTreeSet<String> {
+        text.split("%{")
+            .skip(1)
+            .filter_map(|p| p.split_once('}'))
+            .map(|(n, _)| n.to_owned())
+            .collect()
+    };
+    let mut plurals = 0;
+    for (key, texts) in &entries {
+        let Some(base) = key.strip_suffix(".one") else { continue };
+        plurals += 1;
+        let other = entries
+            .get(&format!("{base}.other"))
+            .unwrap_or_else(|| panic!("{base} has `one` but no `other`"));
+        for locale in LOCALES {
+            assert_eq!(
+                placeholders(&texts[locale]),
+                placeholders(&other[locale]),
+                "{base} ({locale}): `one` and `other` must take the same arguments"
+            );
+        }
+    }
+    assert!(plurals >= 20, "found {plurals} plural messages");
+}
+
+#[test]
+fn a_plural_message_follows_the_count_and_formats_it() {
+    use ramflux_desktop_ui::i18n::{self, tr_args, tr_count};
+    rust_i18n::set_locale("en");
+    assert_eq!(tr_count("palette.matches", 1).as_ref(), "1 match");
+    assert_eq!(tr_count("palette.matches", 3).as_ref(), "3 matches");
+    assert_eq!(tr_count("palette.matches", 12_345).as_ref(), "12,345 matches");
+    assert_eq!(
+        tr_args("moment.task.count", &[("done", "1"), ("total", "1")]).as_ref(),
+        "1 of 1 step",
+        "without a count the total picks the form"
+    );
+    assert_eq!(i18n::bytes(482_133), "470.8 KiB");
+    assert_eq!(i18n::bytes(512), "512 B");
+    assert_eq!(i18n::percent(0.425).as_ref(), "43%");
+    assert_eq!(i18n::join("a", "b").as_ref(), "a \u{b7} b");
+    assert_eq!(i18n::sentences("Offline", "Retry later").as_ref(), "Offline. Retry later");
+}
+
+#[test]
+fn date_and_time_patterns_are_valid_in_every_locale() {
+    let entries = parse_locales();
+    for key in ["format.time", "format.date", "format.date_time"] {
+        for locale in LOCALES {
+            let pattern = &entries[key][locale];
+            let items = chrono::format::StrftimeItems::new(pattern);
+            assert!(
+                !items.into_iter().any(|item| matches!(item, chrono::format::Item::Error)),
+                "{key} ({locale}) is not a valid date pattern: {pattern}"
+            );
+        }
+    }
+}
+
+/// Methods and constructors that put text on screen or into the
+/// accessibility tree.
+const TEXT_APIS: [&str; 16] = [
+    ".child(",
+    ".aria_label(",
+    ".accessibility_label(",
+    ".tooltip(",
+    ".label(",
+    ".placeholder(",
+    ".title(",
+    ".description(",
+    ".prompt(",
+    ".message(",
+    "Label::new(",
+    "PopupMenuItem::new(",
+    "PopupMenuItem::label(",
+    "Tooltip::new(",
+    "Notification::new(",
+    "SharedString::new_static(",
+];
+
+/// Decorative glyphs that are the same in every language (separator dots,
+/// a mask bullet, an ellipsis).
+const GLYPHS: [&str; 6] = ["\\u{b7}", "\\u{2022}", "\\u{2026}", "\u{b7}", "\u{2022}", "\u{2026}"];
+
+/// The production part of a source file (before its unit tests).
+fn production(text: &str) -> &str {
+    text.find("#[cfg(test)]").map_or(text, |end| &text[..end])
+}
+
+/// The string literal at the start of `rest` (after optional whitespace and
+/// an optional `format!(`), if any.
+fn leading_literal(rest: &str) -> Option<&str> {
+    let rest = rest.trim_start();
+    let rest = rest.strip_prefix("format!(").map_or(rest, str::trim_start);
+    let body = rest.strip_prefix('"')?;
+    let mut escaped = false;
+    for (i, c) in body.char_indices() {
+        match c {
+            '\\' if !escaped => escaped = true,
+            '"' if !escaped => return Some(&body[..i]),
+            _ => escaped = false,
+        }
+    }
+    None
+}
+
+/// What a literal shows besides placeholders, whitespace and decorative
+/// glyphs.
+fn visible_text(literal: &str) -> String {
+    let mut shown = String::new();
+    let mut depth = 0;
+    for c in literal.chars() {
+        match c {
+            '{' => depth += 1,
+            '}' if depth > 0 => depth -= 1,
+            _ if depth == 0 => shown.push(c),
+            _ => {}
+        }
+    }
+    for glyph in GLYPHS {
+        shown = shown.replace(glyph, "");
+    }
+    shown.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+#[test]
+fn no_view_passes_a_hard_coded_user_visible_string() {
+    // The scanner itself: words are caught, placeholders and glyphs are not.
+    assert_eq!(leading_literal(r#" format!("Save {name}")"#), Some("Save {name}"));
+    assert_eq!(visible_text("Save {name}"), "Save");
+    assert_eq!(visible_text("{a} \u{b7} {b}"), "");
+    let mut files = Vec::new();
+    rust_files(&crate_dir().join("src"), &mut files);
+    rust_files(&crate_dir().join("../../apps"), &mut files);
+    let mut found = Vec::new();
+    for file in files {
+        let source = fs::read_to_string(&file).expect("test: source reads");
+        let code = production(&source);
+        for api in TEXT_APIS {
+            for (at, _) in code.match_indices(api) {
+                let Some(literal) = leading_literal(&code[at + api.len()..]) else { continue };
+                let shown = visible_text(literal);
+                if !shown.is_empty() {
+                    let line = code[..at].lines().count();
+                    found.push(format!("{}:{line}: {api}\"{literal}\"", file.display()));
+                }
+            }
+        }
+        // Lists are joined with the locale's separator.
+        for (at, _) in code.match_indices(".join(") {
+            // Punctuation differs per language; spaces, newlines and path
+            // segments do not.
+            let punctuated = leading_literal(&code[at + ".join(".len()..])
+                .is_some_and(|sep| sep.contains([',', ';', '\u{b7}']) || sep.contains("\\u{b7}"));
+            let path = file.display().to_string();
+            let exempt = ["/dev/", "/diagnostics.rs", "/root/mod.rs", "/launch/"];
+            if punctuated && !exempt.iter().any(|dir| path.contains(dir)) {
+                let line = code[..at].lines().count();
+                found.push(format!("{path}:{line}: joins a list with a fixed separator"));
+            }
+        }
+        // Separators joining translated parts belong to the locale too.
+        for literal in code.split('"').skip(1).step_by(2) {
+            let joins = literal.contains('{')
+                && (literal.contains('\u{b7}') || literal.contains("\\u{b7}"));
+            if joins {
+                found.push(format!(
+                    "{}: joins with a fixed separator: \"{literal}\"",
+                    file.display()
+                ));
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "hard-coded user-visible text (use the locale files):\n{}",
+        found.join("\n")
+    );
 }

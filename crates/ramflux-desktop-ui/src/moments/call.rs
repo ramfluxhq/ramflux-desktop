@@ -77,7 +77,7 @@ pub fn render(
     };
     let (title, detail, icon, missed) = summary(call);
     let spoken: SharedString = match &detail {
-        Some(detail) => format!("{title} {detail}").into(),
+        Some(detail) => crate::i18n::clause(&title, detail),
         None => title.clone(),
     };
     let color: Hsla = if missed { cx.theme().danger } else { cx.theme().muted_foreground };

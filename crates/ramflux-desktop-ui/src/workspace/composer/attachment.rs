@@ -160,7 +160,7 @@ pub fn chip(
     h_flex()
         .id("composer-attachment")
         .role(Role::Status)
-        .aria_label(SharedString::from(format!("{name}: {detail}")))
+        .aria_label(crate::i18n::labeled(name, &detail))
         .test_support()
         .gap_2()
         .px_2()

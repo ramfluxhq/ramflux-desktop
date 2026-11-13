@@ -146,7 +146,8 @@ fn a_picked_file_is_staged_then_sent_and_shown_while_it_travels(cx: &mut TestApp
     pick(cx, handle, &file.0);
     assert!(matches!(staged(cx, &shell), Some(Staged::Ready { size: 8192, .. })));
     let chip = label(cx, handle, "composer-attachment").expect("chip");
-    assert!(chip.starts_with("report.txt: "), "{chip}");
+    let prefix = ramflux_desktop_ui::i18n::labeled("report.txt", "");
+    assert!(chip.starts_with(prefix.as_ref()), "the chip names the file first: {chip}");
     assert!(submits(&fake).is_empty(), "nothing is sent before Send");
     click(cx, handle, "composer-send");
     let sent = submitted_object(cx, &fake);

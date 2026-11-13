@@ -349,11 +349,11 @@ fn a_pushed_v1_call_follows_its_signals_in_the_store(cx: &mut TestAppContext) {
     );
     // The record on screen reads as an incoming ringing call.
     let scope = format!("moment-{}", ramflux_desktop_core::Call::moment_id(&id));
-    let want = format!(
-        "{} {}",
-        ramflux_desktop_ui::i18n::tr("moment.call.incoming"),
-        ramflux_desktop_ui::i18n::tr("moment.call.ringing")
-    );
+    let want = ramflux_desktop_ui::i18n::clause(
+        &ramflux_desktop_ui::i18n::tr("moment.call.incoming"),
+        &ramflux_desktop_ui::i18n::tr("moment.call.ringing"),
+    )
+    .to_string();
     let mut shown = None;
     wait(cx, "the call record", |cx| {
         let handle = window;

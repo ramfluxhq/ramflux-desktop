@@ -44,8 +44,8 @@ fn amounts(progress: &BackupProgress) -> SharedString {
             &[("done", &count(progress.items_done)), ("total", &count(total))],
         )
     });
-    let parts: Vec<String> = bytes.into_iter().chain(items).map(|s| s.to_string()).collect();
-    SharedString::from(parts.join(" · "))
+    let parts: Vec<SharedString> = bytes.into_iter().chain(items).collect();
+    i18n::join_all(&parts)
 }
 
 /// What a finished restore's file check says.
@@ -154,7 +154,7 @@ impl BackupPanel {
                 doing,
                 div().children(percent.map(|p| {
                     ramflux_desktop_navigation::generated::catalog::badge(
-                        SharedString::from(format!("{p:.0}%")),
+                        i18n::percent(f64::from(p) / 100.0),
                         ramflux_desktop_navigation::palette(cx),
                     )
                 })),

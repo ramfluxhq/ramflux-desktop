@@ -499,7 +499,7 @@ impl AgentsPanel {
             if items.is_empty() {
                 tr("agent_wizard.none")
             } else {
-                items.iter().cloned().collect::<Vec<_>>().join(", ").into()
+                crate::i18n::list(&items.iter().collect::<Vec<_>>())
             }
         };
         let runtime: SharedString = if draft.runtime.is_empty() {

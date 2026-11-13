@@ -75,8 +75,12 @@ conversation:
     en: "No conversations yet. A conversation appears here when a contact writes or you join a group."
     zh-CN: "还没有对话。联系人发来消息或你加入群组后，对话会出现在这里。"
   members:
-    en: "%{count} members"
-    zh-CN: "%{count} 位成员"
+    one:
+      en: "%{count} member"
+      zh-CN: "%{count} 位成员"
+    other:
+      en: "%{count} members"
+      zh-CN: "%{count} 位成员"
   pin:
     en: "Pin"
     zh-CN: "固定"
@@ -150,8 +154,12 @@ stack:
     en: "Conversations"
     zh-CN: "对话"
   needs_me:
-    en: "%{count} need me"
-    zh-CN: "%{count} 项需要我"
+    one:
+      en: "%{count} needs me"
+      zh-CN: "%{count} 项需要我"
+    other:
+      en: "%{count} need me"
+      zh-CN: "%{count} 项需要我"
   muted:
     en: "Muted"
     zh-CN: "静音"
@@ -404,11 +412,19 @@ dock:
         en: "1 message waiting until you answer: %{preview}"
         zh-CN: "1 条消息等你回复后送达：%{preview}"
       held:
-        en: "%{count} messages waiting until you answer"
-        zh-CN: "%{count} 条消息等你回复后送达"
+        one:
+          en: "%{count} message waiting until you answer"
+          zh-CN: "%{count} 条消息等你回复后送达"
+        other:
+          en: "%{count} messages waiting until you answer"
+          zh-CN: "%{count} 条消息等你回复后送达"
       held_preview:
-        en: "%{count} messages waiting until you answer: %{preview}"
-        zh-CN: "%{count} 条消息等你回复后送达：%{preview}"
+        one:
+          en: "%{count} message waiting until you answer: %{preview}"
+          zh-CN: "%{count} 条消息等你回复后送达：%{preview}"
+        other:
+          en: "%{count} messages waiting until you answer: %{preview}"
+          zh-CN: "%{count} 条消息等你回复后送达：%{preview}"
       no_safety_number:
         en: "No safety number to compare, so you can't verify who this is yet"
         zh-CN: "没有可比对的安全码，暂时无法核实对方身份"
@@ -673,8 +689,12 @@ palette:
     en: "Nothing matches"
     zh-CN: "没有匹配项"
   matches:
-    en: "%{count} matches"
-    zh-CN: "%{count} 项匹配"
+    one:
+      en: "%{count} match"
+      zh-CN: "%{count} 项匹配"
+    other:
+      en: "%{count} matches"
+      zh-CN: "%{count} 项匹配"
   hint:
     en: "↑↓ move · Enter choose · Esc close"
     zh-CN: "↑↓ 移动 · Enter 选择 · Esc 关闭"

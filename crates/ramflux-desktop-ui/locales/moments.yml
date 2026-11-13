@@ -296,8 +296,12 @@ moment:
       zh-CN: "已拒绝"
   task:
     count:
-      en: "%{done} of %{total} steps"
-      zh-CN: "第 %{done}/%{total} 步"
+      one:
+        en: "%{done} of %{total} step"
+        zh-CN: "第 %{done}/%{total} 步"
+      other:
+        en: "%{done} of %{total} steps"
+        zh-CN: "第 %{done}/%{total} 步"
     proposal_hint:
       en: "%{name} proposes this plan and starts only when you do."
       zh-CN: "%{name} 提议了这个计划，你开始后才会执行。"
@@ -603,8 +607,12 @@ surface:
     en: "Hide final view"
     zh-CN: "收起最终界面"
   show_all:
-    en: "Show all %{count} blocks"
-    zh-CN: "显示全部 %{count} 个内容块"
+    one:
+      en: "Show %{count} block"
+      zh-CN: "显示全部 %{count} 个内容块"
+    other:
+      en: "Show all %{count} blocks"
+      zh-CN: "显示全部 %{count} 个内容块"
   show_less:
     en: "Show less"
     zh-CN: "收起"
