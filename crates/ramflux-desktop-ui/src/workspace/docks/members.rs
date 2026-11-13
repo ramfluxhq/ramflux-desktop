@@ -29,6 +29,13 @@ use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 
+/// What the members dock asks the workspace to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MembersDockEvent {
+    /// Rename the group for this account only (design C15, C30).
+    RenameRequested(ContextId),
+}
+
 /// The members dock content.
 pub struct MembersDock {
     store: Entity<StoreHandle>,
@@ -39,6 +46,8 @@ pub struct MembersDock {
     asking: Option<GovernanceOp>,
     _subscription: Subscription,
 }
+
+impl gpui_kit::EventEmitter<MembersDockEvent> for MembersDock {}
 
 impl MembersDock {
     /// A dock over `store`; `sink` is the root sink (the dock adds its scopes).
@@ -209,19 +218,87 @@ impl Render for MembersDock {
             .scoped(Scope::Context(context.id.clone()))
             .scoped(Scope::Panel(super::DockTool::Members.scope_name()));
         let me = selectors::self_participant(store);
-        let members: Vec<(Participant, Role)> = selectors::participants(store, &context.id)
+        // Owners first, then admins, members and bots (design C02).
+        let mut members: Vec<(Participant, Role)> = selectors::participants(store, &context.id)
             .into_iter()
             .map(|p| (p.clone(), context.role_of(&p.id)))
             .collect();
+        members.sort_by(|(a, ra), (b, rb)| {
+            ra.cmp(rb).then_with(|| a.display.to_lowercase().cmp(&b.display.to_lowercase()))
+        });
+        let my_role = me.as_ref().map(|me| context.role_of(me));
+        let title = selectors::context_title(store, &context);
+        let context_id = context.id.clone();
         let candidates: Vec<Participant> = selectors::contacts(store)
             .into_iter()
             .filter(|p| !context.participants.contains(&p.id))
             .cloned()
             .collect();
+        let profile = v_flex()
+            .id("group-profile")
+            .test_support()
+            .gap_1()
+            .px_3()
+            .py_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                h_flex()
+                    .gap_2()
+                    .child(ramflux_desktop_navigation::generated::catalog::avatar(
+                        ramflux_desktop_navigation::row::initial(&title),
+                        ramflux_desktop_navigation::generated::catalog::AvatarKind::Group,
+                        ramflux_desktop_navigation::palette(cx),
+                    ))
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .id("group-profile-name")
+                                    .test_support()
+                                    .truncate()
+                                    .font_semibold()
+                                    .child(ramflux_desktop_navigation::row::list_text(&title)),
+                            )
+                            .child(div().text_xs().text_color(cx.theme().muted_foreground).child(
+                                tr_args(
+                                    "sections.groups.members",
+                                    &[("count", &members.len().to_string())],
+                                ),
+                            )),
+                    )
+                    .child(
+                        Button::new("group-rename")
+                            .ghost()
+                            .xsmall()
+                            .icon(gpui_kit::assets::IconName::Pencil)
+                            .label(tr("sections.groups.rename"))
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                cx.emit(MembersDockEvent::RenameRequested(context_id.clone()));
+                            })),
+                    ),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .whitespace_normal()
+                    .child(tr("sections.groups.local_name")),
+            )
+            .children(my_role.map(|role| {
+                div()
+                    .id("group-profile-role")
+                    .test_support()
+                    .text_xs()
+                    .child(tr_args("sections.groups.my_role", &[("role", &i18n::role(role))]))
+            }));
         v_flex()
             .id("dock-members")
             .size_full()
             .overflow_y_scroll()
+            .child(profile)
             .child(section("dock.members.list", cx))
             .children(members.iter().map(|(member, role)| {
                 member_row(member, *role, me.as_ref() == Some(&member.id), &sink, cx)

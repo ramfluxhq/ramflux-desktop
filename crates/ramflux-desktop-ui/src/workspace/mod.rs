@@ -23,6 +23,7 @@ pub mod docks;
 mod navigation;
 pub mod new_conversation;
 pub mod new_group;
+pub mod sections;
 mod status_strip;
 
 use std::sync::Arc;
@@ -60,10 +61,16 @@ pub use new_conversation::{NewConversation, NewConversationEvent};
 pub use new_group::{NewGroup, NewGroupEvent};
 pub use status_strip::StatusStrip;
 
+use sections::contact_profile::{ContactProfile, ContactProfileEvent};
+use sections::{
+    ContactsDirectory, ContactsDirectoryEvent, GroupDirectory, GroupDirectoryEvent, StrangersArea,
+    StrangersEvent,
+};
+
 use docks::approvals::ApprovalsDock;
 use docks::contacts::{ContactsDock, ContactsDockEvent};
 use docks::evidence::EvidenceDock;
-use docks::members::MembersDock;
+use docks::members::{MembersDock, MembersDockEvent};
 use docks::objects::ObjectsDock;
 
 /// Dock engine panel name of the conversation field.
@@ -93,6 +100,12 @@ pub struct Workspace {
     evidence: Entity<EvidenceDock>,
     call_bar: Entity<CallBar>,
     incoming_call: Entity<IncomingCall>,
+    groups: Entity<GroupDirectory>,
+    contact_directory: Entity<ContactsDirectory>,
+    contact_profile: Entity<ContactProfile>,
+    strangers: Entity<StrangersArea>,
+    /// A group was chosen in the group directory since it was opened.
+    group_shown: bool,
     open_tool: Option<DockTool>,
     prefs: DockPrefs,
     prefs_store: PrefsStore,
@@ -138,6 +151,10 @@ impl Workspace {
         let evidence = cx.new(|cx| EvidenceDock::new(store.clone(), cx));
         let call_bar = cx.new(|cx| CallBar::new(store.clone(), sink.clone(), window, cx));
         let incoming_call = cx.new(|cx| IncomingCall::new(store.clone(), sink.clone(), cx));
+        let groups = cx.new(|cx| GroupDirectory::new(store.clone(), window, cx));
+        let contact_directory = cx.new(|cx| ContactsDirectory::new(store.clone(), window, cx));
+        let contact_profile = cx.new(|cx| ContactProfile::new(store.clone(), sink.clone(), cx));
+        let strangers = cx.new(|cx| StrangersArea::new(store.clone(), sink.clone(), window, cx));
         let contents: [(DockTool, gpui_kit::AnyView); 5] = [
             (DockTool::Objects, objects.clone().into()),
             (DockTool::Contacts, contacts.clone().into()),
@@ -225,6 +242,58 @@ impl Workspace {
                     }
                 }
             }),
+            cx.subscribe_in(&members, window, |this, _, event: &MembersDockEvent, window, cx| {
+                let MembersDockEvent::RenameRequested(id) = event;
+                if this.current.as_ref() != Some(id) {
+                    this.select_context(Some(id.clone()), window, cx);
+                }
+                this.conversation.update(cx, |field, cx| field.start_rename(window, cx));
+            }),
+            cx.subscribe_in(&groups, window, |this, _, event: &GroupDirectoryEvent, window, cx| {
+                match event {
+                    GroupDirectoryEvent::Selected(id) => this.show_group(id.clone(), window, cx),
+                    GroupDirectoryEvent::Create => this.open_new_group(window, cx),
+                }
+            }),
+            cx.subscribe_in(
+                &contact_directory,
+                window,
+                |this, _, event: &ContactsDirectoryEvent, window, cx| match event {
+                    ContactsDirectoryEvent::Selected(id) => {
+                        this.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
+                        this.contact_directory
+                            .update(cx, |list, cx| list.set_selected(Some(id.clone()), cx));
+                        this.contact_profile.update(cx, |profile, cx| {
+                            profile.set_participant(Some(id.clone()), cx)
+                        });
+                        this.list_visible = false;
+                        cx.notify();
+                    }
+                    ContactsDirectoryEvent::AddContact => this.open_add_contact(window, cx),
+                    ContactsDirectoryEvent::Strangers => {
+                        this.navigate(WorkspaceRoute::Strangers, window, cx)
+                    }
+                },
+            ),
+            cx.subscribe_in(
+                &contact_profile,
+                window,
+                |this, _, event: &ContactProfileEvent, window, cx| {
+                    let ContactProfileEvent::Message(participant) = event;
+                    this.route = WorkspaceRoute::Messages;
+                    this.stack.update(cx, |stack, cx| {
+                        stack.set_filter(context_stack::ListFilter::Messages, cx)
+                    });
+                    this.open_conversation_with(participant.clone(), window, cx);
+                },
+            ),
+            cx.subscribe_in(&strangers, window, |this, _, event: &StrangersEvent, _, cx| {
+                let StrangersEvent::Selected(_) = event;
+                this.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
+                this.list_visible = false;
+                cx.notify();
+            }),
+            cx.observe(&strangers, |_, _, cx| cx.notify()),
             cx.subscribe_in(&contacts, window, |this, _, event: &ContactsDockEvent, window, cx| {
                 let ContactsDockEvent::MessageRequested(participant) = event;
                 this.open_conversation_with(participant.clone(), window, cx);
@@ -320,6 +389,11 @@ impl Workspace {
             evidence,
             call_bar,
             incoming_call,
+            groups,
+            contact_directory,
+            contact_profile,
+            strangers,
+            group_shown: false,
             open_tool: None,
             prefs,
             prefs_store,
@@ -367,6 +441,26 @@ impl Workspace {
     /// The new-conversation draft.
     pub fn new_conversation(&self) -> &Entity<NewConversation> {
         &self.new_conversation
+    }
+
+    /// The group directory (groups route list pane).
+    pub fn group_directory(&self) -> &Entity<GroupDirectory> {
+        &self.groups
+    }
+
+    /// The contact directory (contacts route list pane).
+    pub fn contact_directory(&self) -> &Entity<ContactsDirectory> {
+        &self.contact_directory
+    }
+
+    /// The contact profile (contacts route detail pane).
+    pub fn contact_profile(&self) -> &Entity<ContactProfile> {
+        &self.contact_profile
+    }
+
+    /// The strangers area (strangers route).
+    pub fn strangers(&self) -> &Entity<StrangersArea> {
+        &self.strangers
     }
 
     /// The new-group form.
@@ -782,11 +876,17 @@ impl Render for Workspace {
         let compact = scaled_width < 800.0 / 15.0;
         let show_list = !compact || self.list_visible;
         let show_detail = !compact || !self.list_visible;
+        // Breakpoints 640 / 800 / 1024 / 1440: compact alternates list and
+        // detail; the list narrows below 1024 and widens from 1440.
         let list_width = if scaled_width < 1024.0 / 15.0 {
             224.0 / 15.0
+        } else if scaled_width >= 1440.0 / 15.0 {
+            304.0 / 15.0
         } else {
             ramflux_desktop_navigation::theme::SECTION_REM
         };
+        let section_detail = if show_detail { self.section_detail(window, cx) } else { None };
+        let list_pane = self.section_list();
         let rail = self.navigation_rail(cx);
         h_flex()
             .id("workspace")
@@ -815,7 +915,7 @@ impl Render for Workspace {
                         .min_w_0()
                         .when(compact, |pane| pane.flex_1())
                         .when(!compact, |pane| pane.w(gpui_kit::rems(list_width)).flex_none())
-                        .child(self.stack.clone()),
+                        .child(list_pane),
                 )
             })
             .when(show_detail, |row| {
@@ -839,10 +939,13 @@ impl Render for Workspace {
                         .children(gate.and_then(|(_, gate)| schema_gate::banner(gate)))
                         .children(self.secure_sessions_banner(cx))
                         .child(self.call_bar.clone())
-                        .child(gpui_kit::div().flex_1().min_h_0().child(match blocking {
-                            Some(screen) => screen,
-                            None => self.dock_area.clone().into_any_element(),
-                        }))
+                        .child(gpui_kit::div().flex_1().min_h_0().child(
+                            match (blocking, section_detail) {
+                                (Some(screen), _) => screen,
+                                (None, Some(detail)) => detail,
+                                (None, None) => self.dock_area.clone().into_any_element(),
+                            },
+                        ))
                         .child(
                             gpui_kit::div()
                                 .absolute()

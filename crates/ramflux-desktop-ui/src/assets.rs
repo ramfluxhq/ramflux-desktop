@@ -14,6 +14,7 @@ gpui_kit::assets::icon_assets!(pub ExtraIcons, [
     SignalHigh, SignalMedium, SignalLow, SignalZero,
     Cpu, ShieldAlert, Signature, UserPen, Users,
     MessagesSquare, Contact, SquareCheck,
+    MessageSquare, UserPlus, ListChecks, ShieldCheck, Reply, Flag, Pencil,
 ]);
 
 /// GPUI Kit's default icons and [`ExtraIcons`].

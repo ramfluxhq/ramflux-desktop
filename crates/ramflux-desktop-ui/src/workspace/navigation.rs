@@ -35,7 +35,9 @@ impl Workspace {
         self.route
     }
 
-    /// Routes through existing account-scoped feature owners.
+    /// Routes through existing account-scoped feature owners. Every route
+    /// change first cancels a pending hold, so it can never be confirmed
+    /// after its reviewed facts left the screen.
     pub fn navigate(&mut self, route: WorkspaceRoute, window: &mut Window, cx: &mut Context<Self>) {
         self.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
         self.route = route;
@@ -45,13 +47,23 @@ impl Workspace {
             _ => ListFilter::Messages,
         };
         self.stack.update(cx, |stack, cx| stack.set_filter(filter, cx));
+        self.list_visible = true;
         match route {
-            WorkspaceRoute::Contacts | WorkspaceRoute::Strangers => {
-                self.list_visible = false;
-                self.open_tool(DockTool::Contacts, window, cx);
+            WorkspaceRoute::Groups => {
+                self.group_shown = false;
+                let current = self.current.clone();
+                self.groups.update(cx, |groups, cx| groups.set_selected(current, cx));
+                self.groups.update(cx, |groups, cx| groups.focus_search(window, cx));
             }
-            _ => {
-                self.list_visible = true;
+            WorkspaceRoute::Contacts => {
+                self.close_dock(window, cx);
+                self.contact_directory.update(cx, |list, cx| list.focus_search(window, cx));
+            }
+            WorkspaceRoute::Strangers => {
+                self.close_dock(window, cx);
+                self.strangers.update(cx, |area, cx| area.focus_search(window, cx));
+            }
+            WorkspaceRoute::Messages | WorkspaceRoute::Tasks => {
                 self.close_dock(window, cx);
                 self.stack.update(cx, |stack, cx| stack.focus_search(window, cx));
             }
@@ -59,10 +71,82 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Shows a group chosen in the group directory with its member panel
+    /// (design C02): the conversation and the members tool side by side.
+    pub fn show_group(
+        &mut self,
+        id: ramflux_desktop_core::ContextId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.group_shown = true;
+        self.select_context(Some(id.clone()), window, cx);
+        self.groups.update(cx, |groups, cx| groups.set_selected(Some(id), cx));
+        self.open_tool(DockTool::Members, window, cx);
+        cx.notify();
+    }
+
+    /// The list pane of the current route.
+    pub(super) fn section_list(&self) -> AnyElement {
+        match self.route {
+            WorkspaceRoute::Groups => self.groups.clone().into_any_element(),
+            WorkspaceRoute::Contacts => self.contact_directory.clone().into_any_element(),
+            WorkspaceRoute::Strangers => self.strangers.clone().into_any_element(),
+            WorkspaceRoute::Messages | WorkspaceRoute::Tasks => {
+                self.stack.clone().into_any_element()
+            }
+        }
+    }
+
+    /// The detail pane of a route that has its own (contacts, strangers, a
+    /// group directory with no group chosen yet); `None` shows the
+    /// conversation workspace.
+    pub(super) fn section_detail(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        match self.route {
+            WorkspaceRoute::Contacts => Some(self.contact_profile.clone().into_any_element()),
+            WorkspaceRoute::Strangers => {
+                Some(self.strangers.update(cx, |area, cx| area.detail(window, cx)))
+            }
+            WorkspaceRoute::Groups if !self.group_shown => {
+                Some(super::sections::directory::placeholder(
+                    "groups-detail-empty",
+                    tr("sections.groups.choose"),
+                    tr("sections.groups.choose_help"),
+                    cx,
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether the rail item of `route` is the current one (the strangers
+    /// area lives under contacts).
+    fn is_route_shown(&self, route: WorkspaceRoute) -> bool {
+        self.route == route
+            || (route == WorkspaceRoute::Contacts && self.route == WorkspaceRoute::Strangers)
+    }
+
     pub(crate) fn show_list(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
         self.list_visible = true;
-        self.stack.update(cx, |stack, cx| stack.focus_search(window, cx));
+        match self.route {
+            WorkspaceRoute::Groups => {
+                self.groups.update(cx, |groups, cx| groups.focus_search(window, cx));
+            }
+            WorkspaceRoute::Contacts => {
+                self.contact_directory.update(cx, |list, cx| list.focus_search(window, cx));
+            }
+            WorkspaceRoute::Strangers => {
+                self.strangers.update(cx, |area, cx| area.focus_search(window, cx));
+            }
+            WorkspaceRoute::Messages | WorkspaceRoute::Tasks => {
+                self.stack.update(cx, |stack, cx| stack.focus_search(window, cx));
+            }
+        }
         cx.notify();
     }
 
@@ -105,7 +189,8 @@ impl Workspace {
                     .p_0()
                     .w_full()
                     .h(rems(52.0 / 15.0))
-                    .selected(self.route == route)
+                    .selected(self.is_route_shown(route))
+                    .toggled(self.is_route_shown(route))
                     .accessibility_label(tr(key))
                     .tooltip(tr(key))
                     .on_click(

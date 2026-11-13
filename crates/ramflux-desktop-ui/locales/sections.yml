@@ -1,0 +1,232 @@
+_version: 2
+sections:
+  loading_help:
+    en: "Waiting for the local service to answer."
+    zh-CN: "正在等待本地服务响应。"
+  offline_help:
+    en: "What this device already knows stays listed. Changes resume when the connection is back."
+    zh-CN: "仍显示本机已知的内容。恢复连接后继续同步。"
+  no_match:
+    en: "Nothing matches this search."
+    zh-CN: "没有符合搜索的结果。"
+  refine:
+    en: "Only the first 500 are shown. Refine the search to see others."
+    zh-CN: "只显示前 500 项。请缩小搜索范围查看其余项。"
+  unavailable:
+    stranger_actions:
+      en: "Not available yet: this version of the local service cannot reply without accepting, or report."
+      zh-CN: "暂不可用：当前版本的本地服务还不能在不通过的情况下回复，也不能举报。"
+    agent_configuration:
+      en: "Not available yet: this version of the local service cannot save an Agent's runtime, capabilities or conversations. Your choices are kept here."
+      zh-CN: "暂不可用：当前版本的本地服务还不能保存 Agent 的运行时、能力或可加入的会话。你的选择仍保留在这里。"
+  groups:
+    title:
+      en: "Groups · %{count}"
+      zh-CN: "群组 · %{count}"
+    search:
+      en: "Search groups"
+      zh-CN: "搜索群组"
+    list:
+      en: "Groups"
+      zh-CN: "群组"
+    create:
+      en: "New group"
+      zh-CN: "创建群组"
+    members:
+      en: "%{count} members"
+      zh-CN: "%{count} 位成员"
+    joined_only:
+      en: "Only groups this account has joined are shown."
+      zh-CN: "仅显示当前账号已加入的群组。"
+    loading:
+      en: "Loading groups"
+      zh-CN: "正在加载群组"
+    offline:
+      en: "Offline"
+      zh-CN: "当前离线"
+    failed:
+      en: "Groups could not be loaded"
+      zh-CN: "群组加载失败"
+    empty:
+      en: "No groups yet"
+      zh-CN: "还没有群组"
+    empty_help:
+      en: "Create a group with contacts who have accepted you."
+      zh-CN: "与已通过的联系人一起创建群组。"
+    choose:
+      en: "Find your group"
+      zh-CN: "找到你的群组"
+    choose_help:
+      en: "Choose a group on the left to see its conversation and members."
+      zh-CN: "从左侧选择一个群组，查看会话和成员。"
+    rename:
+      en: "Local name"
+      zh-CN: "本地显示名"
+    local_name:
+      en: "The name applies to this account only. It does not change the group for other members."
+      zh-CN: "名称仅对当前账号生效，不会更改其他成员看到的群组名称。"
+    my_role:
+      en: "Your role: %{role}"
+      zh-CN: "当前角色：%{role}"
+  contacts:
+    title:
+      en: "Contacts · %{count}"
+      zh-CN: "联系人 · %{count}"
+    search:
+      en: "Search contacts"
+      zh-CN: "搜索联系人"
+    list:
+      en: "Contacts"
+      zh-CN: "联系人"
+    add:
+      en: "Add contact"
+      zh-CN: "添加联系人"
+    loading:
+      en: "Loading contacts"
+      zh-CN: "正在加载联系人"
+    offline:
+      en: "Offline"
+      zh-CN: "当前离线"
+    failed:
+      en: "Contacts could not be loaded"
+      zh-CN: "联系人加载失败"
+    empty:
+      en: "No contacts yet"
+      zh-CN: "还没有联系人"
+    empty_help:
+      en: "Add a contact by their username or contact card."
+      zh-CN: "通过用户名或联系人名片添加联系人。"
+  contact:
+    choose:
+      en: "Choose a contact"
+      zh-CN: "选择联系人"
+    choose_help:
+      en: "Their safety number, shared conversations and actions appear here."
+      zh-CN: "这里会显示安全号码、共同会话和可用操作。"
+    gone:
+      en: "This contact is no longer listed"
+      zh-CN: "该联系人已不在列表中"
+    gone_help:
+      en: "It may have been removed or blocked on another device."
+      zh-CN: "可能已在其他设备上被移除或屏蔽。"
+    a11y:
+      en: "Contact %{name}"
+      zh-CN: "联系人 %{name}"
+    call:
+      en: "Voice call"
+      zh-CN: "语音通话"
+    call_needs_conversation:
+      en: "Start a private conversation first, then call from it."
+      zh-CN: "请先开始私人会话，再从会话中发起通话。"
+    safety_number:
+      en: "Safety number"
+      zh-CN: "安全号码"
+    no_number:
+      en: "No safety number to compare yet."
+      zh-CN: "暂时没有可核对的安全号码。"
+    key_changed:
+      en: "Their identity changed"
+      zh-CN: "对方身份已变更"
+    key_changed_help:
+      en: "Compare the new safety number in person or over another channel before you trust them again."
+      zh-CN: "请当面或通过其他渠道核对新的安全号码，再继续信任对方。"
+    shared:
+      en: "Shared groups"
+      zh-CN: "共同群组"
+    shared_none:
+      en: "No shared groups."
+      zh-CN: "没有共同群组。"
+    danger_help:
+      en: "Blocking or removing revokes what you shared with them. You confirm it by holding."
+      zh-CN: "屏蔽或移除会撤销你与对方共享的内容，需要按住确认。"
+  strangers:
+    entry:
+      en: "Strangers · %{count}"
+      zh-CN: "陌生人 · %{count}"
+    title:
+      en: "Strangers · %{count}"
+      zh-CN: "陌生人 · %{count}"
+    search:
+      en: "Search strangers"
+      zh-CN: "搜索陌生人"
+    list:
+      en: "People who are not contacts"
+      zh-CN: "非联系人"
+    batch:
+      en: "Batch"
+      zh-CN: "批量处理"
+    selected:
+      en: "%{count} selected"
+      zh-CN: "已选择 %{count} 位"
+    accept:
+      en: "Accept"
+      zh-CN: "通过"
+    decline:
+      en: "Decline"
+      zh-CN: "不通过"
+    block:
+      en: "Block"
+      zh-CN: "屏蔽"
+    block_one:
+      en: "Block one person at a time; each block is confirmed on its own."
+      zh-CN: "每次屏蔽一位，每次都需要单独确认。"
+    batch_size:
+      en: "Select between 1 and 100 requests."
+      zh-CN: "请选择 1 到 100 条请求。"
+    batch_stale:
+      en: "Some selected requests changed. Nothing was sent; check the list and try again."
+      zh-CN: "部分已选请求已变化，未发送任何操作。请检查列表后重试。"
+    batch_expired:
+      en: "A selected request expired. Nothing was sent."
+      zh-CN: "有已选请求已过期，未发送任何操作。"
+    empty:
+      en: "No strangers waiting"
+      zh-CN: "没有等待处理的陌生人"
+    unread:
+      en: "Requests could not be read just now"
+      zh-CN: "暂时无法读取请求"
+    empty_help:
+      en: "When someone who is not a contact writes to you, they wait here until you decide."
+      zh-CN: "非联系人给你发消息时，会在这里等待你处理。"
+    choose:
+      en: "Choose a person"
+      zh-CN: "选择一位"
+    choose_help:
+      en: "Their note, held messages and safety number appear here."
+      zh-CN: "这里会显示对方的附言、暂存消息和安全号码。"
+    detail_a11y:
+      en: "Request from %{name}"
+      zh-CN: "%{name} 的请求"
+    unverified:
+      en: "First contact · identity not verified"
+      zh-CN: "首次联系 · 身份未经验证"
+    note:
+      en: "Note"
+      zh-CN: "附言"
+    held:
+      en: "%{count} messages held until you decide"
+      zh-CN: "%{count} 条消息在你处理前暂存"
+    held_hidden:
+      en: "The first message is shown after you decide."
+      zh-CN: "处理后才显示第一条消息。"
+    expires:
+      en: "Request expires"
+      zh-CN: "请求到期"
+    expired:
+      en: "This request expired."
+      zh-CN: "该请求已过期。"
+    accept_help:
+      en: "Accepting makes them a contact and moves the conversation to your messages. Declining tells them nothing."
+      zh-CN: "通过后对方成为联系人，会话移到消息列表。不通过不会通知对方。"
+    reply:
+      en: "Reply"
+      zh-CN: "回复"
+    reply_help:
+      en: "Replying does not accept them: they stay a stranger until you accept."
+      zh-CN: "回复不等于通过：在你通过之前，对方仍是陌生人。"
+    report:
+      en: "Report"
+      zh-CN: "举报"
+    open_account:
+      en: "Open account"
+      zh-CN: "开放账号"
