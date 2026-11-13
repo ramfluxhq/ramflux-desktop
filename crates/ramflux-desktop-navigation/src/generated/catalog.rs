@@ -263,26 +263,30 @@ pub fn chat_header(model: RowContent, kind: ChatHeaderKind, mobile: bool, theme:
 }
 /// InputState is retained and subscribed by the host, including query and clear actions.
 pub fn search_field(id: SharedString, label: SharedString, state: &Entity<InputState>, disabled: bool, mobile: bool, theme: RFTheme) -> impl IntoElement {
-    search_field_with_style(id, label, state, disabled, mobile, SearchTextStyle::default(), theme)
+    search_field_with_style(id, label, state, SearchFieldStyle::default().disabled(disabled).mobile(mobile), theme)
 }
-/// Optional host-selected design typography tokens; geometry still comes from the design source.
+/// Controlled search presentation and optional design typography tokens.
 #[derive(Clone, Copy, Default)]
-pub struct SearchTextStyle { label_size: Option<f32>, editor_size: Option<f32> }
-impl SearchTextStyle {
+pub struct SearchFieldStyle { disabled: bool, mobile: bool, label_size: Option<f32>, editor_size: Option<f32> }
+impl SearchFieldStyle {
+    pub fn disabled(mut self, value: bool) -> Self { self.disabled = value; self }
+    pub fn mobile(mut self, value: bool) -> Self { self.mobile = value; self }
     pub fn label_size(mut self, value: f32) -> Self { self.label_size = valid_text_size(value); self }
     pub fn editor_size(mut self, value: f32) -> Self { self.editor_size = valid_text_size(value); self }
 }
-pub fn search_field_with_style(id: SharedString, label: SharedString, state: &Entity<InputState>, disabled: bool, mobile: bool, typography: SearchTextStyle, theme: RFTheme) -> impl IntoElement {
-    let style = styles::search_field_default(theme, mobile);
-    div().flex().flex_col().gap(design_rem(style.gap)).child(div().text_color(theme.secondary).text_size(design_rem(typography.label_size.unwrap_or(style.title_size))).child(label.clone()))
-        .child(Input::new(state).id(element_id(&id, "search")).disabled(disabled).aria_label(label)
-            .text_size(design_rem(typography.editor_size.unwrap_or(style.subtitle_size)))
+pub fn search_field_with_style(id: SharedString, label: SharedString, state: &Entity<InputState>, presentation: SearchFieldStyle, theme: RFTheme) -> impl IntoElement {
+    let style = styles::search_field_default(theme, presentation.mobile);
+    div().flex().flex_col().gap(design_rem(style.gap)).child(div().text_color(theme.secondary).text_size(design_rem(presentation.label_size.unwrap_or(style.title_size))).child(label.clone()))
+        .child(Input::new(state).id(element_id(&id, "search")).disabled(presentation.disabled).aria_label(label)
+            .text_size(design_rem(presentation.editor_size.unwrap_or(style.subtitle_size)))
             .min_h(design_rem(style.editor_height)).bg(style.editor_background))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{ComposerSlots, RowContent, list_row_style, row_content};
+    use super::super::{rf_geometry::design_rem, rf_tokens::RFTheme};
+    use gpui_kit::{div, px, relative, FontWeight, Styled};
 
     #[test]
     fn list_selection_is_state_owned_and_content_fills_the_available_width() {
