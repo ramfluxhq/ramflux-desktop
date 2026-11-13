@@ -112,7 +112,7 @@ fn native_selection_and_message_menu_copy_literal_text_without_mutating(cx: &mut
     let copied = cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
     assert_eq!(
         copied.as_deref(),
-        Some("Agreed. <img src='never'> & **literal** 😀"),
+        Some("Agreed. <img src='never'> & **literal** \u{1f600}"),
         "native selection must copy literal peer content, never interpreted markup"
     );
     click_in(cx, handle, "moment-x-03", "message-menu");
@@ -145,7 +145,7 @@ fn native_selection_and_message_menu_copy_literal_text_without_mutating(cx: &mut
     });
     assert_eq!(
         cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text())).as_deref(),
-        Some("Agreed. <img src='never'> & **literal** 😀"),
+        Some("Agreed. <img src='never'> & **literal** \u{1f600}"),
         "menu copy must read the current account body"
     );
     click_in(cx, handle, "moment-x-03", "message-menu");
@@ -186,7 +186,7 @@ fn one_multiline_composer_preserves_drafts_and_enter_send_policy(cx: &mut TestAp
     in_window(cx, handle, |w, cx| {
         w.input("First line", cx);
         w.press("shift-enter", cx);
-        w.input("第二行 😀", cx);
+        w.input("\u{7b2c}\u{4e8c}\u{884c} \u{1f600}", cx);
     });
     assert!(effects(cx, &shell).is_empty(), "Shift+Enter must insert a line without submitting");
     show_context(cx, handle, &shell, "c-team");
@@ -195,14 +195,14 @@ fn one_multiline_composer_preserves_drafts_and_enter_send_policy(cx: &mut TestAp
     let composer = cx.update(|cx| workspace.read(cx).composer().clone());
     assert_eq!(
         cx.update(|cx| composer.read(cx).input().read(cx).value().to_string()),
-        "First line\n第二行 😀",
+        "First line\n\u{7b2c}\u{4e8c}\u{884c} \u{1f600}",
         "existing draft text must survive navigation"
     );
     in_window(cx, handle, |w, cx| w.press("enter", cx));
     let body = last_body(cx, &shell, methods::SEND_MESSAGE);
     assert_eq!(
         body.get("text").and_then(|v| v.as_str()),
-        Some("First line\n第二行 😀"),
+        Some("First line\n\u{7b2c}\u{4e8c}\u{884c} \u{1f600}"),
         "plain Enter must submit the existing context-scoped send intent once"
     );
     assert_eq!(
@@ -228,7 +228,7 @@ fn long_literal_bodies_fit_reading_width_in_both_themes_and_all_shell_widths(
                     && moment.id == MomentId::new("x-03")
                     && let ramflux_desktop_core::MomentKind::Message(payload) = &mut moment.kind
                 {
-                    payload.text = "Verify daylight samples before confirming. 先核对资料。 😀\n"
+                    payload.text = "Verify daylight samples before confirming. \u{5148}\u{6838}\u{5bf9}\u{8d44}\u{6599}\u{3002} \u{1f600}\n"
                         .repeat(PARAGRAPHS);
                 }
             }
@@ -376,7 +376,7 @@ fn drafts_are_isolated_between_contexts_and_erased_on_lock(cx: &mut TestAppConte
 fn selected_plain_body_preserves_all_whitespace_and_unicode_verbatim(cx: &mut TestAppContext) {
     let _locale = locale_guard();
     let (handle, shell) = open(cx, "s02_daily");
-    const BODY: &str = "\n  a    b\t😀\n\nline\u{202e} text\n\n";
+    const BODY: &str = "\n  a    b\t\u{1f600}\n\nline\u{202e} text\n\n";
     let mut scenario = source_facts::scenario();
     for (_, event) in &mut scenario.timeline {
         if let DomainEvent::MomentAdded(moment) = event
@@ -501,7 +501,12 @@ fn ime_candidate_confirmation_does_not_send_until_next_enter(cx: &mut TestAppCon
     in_window(cx, handle, |w, cx| {
         let bounds = w.find("composer-input").bounds();
         let handler = gpui_kit::ElementInputHandler::new(bounds, input.clone());
-        gpui_kit::test::TestInput::new(handler, w).compose_text(None, "候选", Some(2..2), cx);
+        gpui_kit::test::TestInput::new(handler, w).compose_text(
+            None,
+            "\u{5019}\u{9009}",
+            Some(2..2),
+            cx,
+        );
     });
     in_window(cx, handle, |w, cx| w.press("enter", cx));
     assert!(

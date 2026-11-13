@@ -115,6 +115,14 @@ pub fn render(
                 ramflux_desktop_navigation::row::list_text,
             )
         };
+        // The accessible name says it is a reply, as the visual quote does.
+        let spoken = if refs.reply_excerpt.is_some() && !refs.reply_deleted {
+            // The isolate marks only protect the visual layout of the excerpt.
+            let text = label.trim_start_matches('\u{2068}').trim_end_matches('\u{2069}');
+            i18n::tr_args("moment.message.reply", &[("text", text)])
+        } else {
+            label.clone()
+        };
         let jump = sink.clone();
         let target = target.message_id.clone();
         Button::new("message-reply")
@@ -124,7 +132,7 @@ pub fn render(
             .min_w_0()
             .overflow_hidden()
             .p_0()
-            .accessibility_label(label.clone())
+            .accessibility_label(spoken)
             .disabled(!refs.reply_available)
             .on_click(move |_, window, cx| {
                 jump.emit(
