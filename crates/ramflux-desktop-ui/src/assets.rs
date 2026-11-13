@@ -13,6 +13,7 @@ gpui_kit::assets::icon_assets!(pub ExtraIcons, [
     Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Mic, MicOff,
     SignalHigh, SignalMedium, SignalLow, SignalZero,
     Cpu, ShieldAlert, Signature, UserPen, Users,
+    MessagesSquare, Contact, SquareCheck,
 ]);
 
 /// GPUI Kit's default icons and [`ExtraIcons`].
@@ -45,6 +46,9 @@ mod tests {
             gpui_kit::assets::IconName::Search,
             // The group rename line.
             gpui_kit::assets::IconName::Users,
+            gpui_kit::assets::IconName::MessagesSquare,
+            gpui_kit::assets::IconName::Contact,
+            gpui_kit::assets::IconName::SquareCheck,
         ] {
             let path = icon.path();
             assert!(AppAssets.load(&path).ok().flatten().is_some(), "{path}");

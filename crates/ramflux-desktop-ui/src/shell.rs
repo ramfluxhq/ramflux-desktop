@@ -19,11 +19,11 @@ use ramflux_desktop_sdk::{SdkConfig, SdkHub};
 use ramflux_desktop_test::load_fixture;
 
 use crate::actions::{
-    ClosePalette, CloseSettings, GoToNeedsMe, NextSettingsSection, OpenDiagnosticsSettings,
-    OpenPalette, OpenSettings, PreviousSettingsSection, SelectStackEntry1, SelectStackEntry2,
-    SelectStackEntry3, SelectStackEntry4, SelectStackEntry5, SelectStackEntry6, StartLocalDaemon,
-    StopLocalDaemon, ToggleApprovalsDock, ToggleContactsDock, ToggleDevPanel, ToggleEvidenceDock,
-    ToggleMembersDock, ToggleObjectsDock, TogglePinContext, ToggleTheme,
+    ClosePalette, CloseSettings, GoToNeedsMe, NextSettingsSection, OpenAgentsSettings,
+    OpenDiagnosticsSettings, OpenPalette, OpenSettings, PreviousSettingsSection, SelectStackEntry1,
+    SelectStackEntry2, SelectStackEntry3, SelectStackEntry4, SelectStackEntry5, SelectStackEntry6,
+    StartLocalDaemon, StopLocalDaemon, ToggleApprovalsDock, ToggleContactsDock, ToggleDevPanel,
+    ToggleEvidenceDock, ToggleMembersDock, ToggleObjectsDock, TogglePinContext, ToggleTheme,
 };
 use crate::app::{StoreEvent, StoreHandle};
 use crate::dev::DevPanel;
@@ -582,6 +582,20 @@ impl Render for Shell {
             .on_action(cx.listener(Self::go_to_needs_me))
             .on_action(cx.listener(Self::toggle_pin))
             .on_action(cx.listener(Self::open_settings))
+            .on_action(cx.listener(
+                |this, _: &crate::actions::FocusConversationSearch, window, cx| {
+                    if this.page == Page::Workspace {
+                        this.workspace.update(cx, |workspace, cx| workspace.show_list(window, cx));
+                    }
+                },
+            ))
+            .on_action(cx.listener(|this, _: &OpenAgentsSettings, window, cx| {
+                if !this.settings_open {
+                    this.remember_focus(window, cx);
+                }
+                this.open_settings_at(SettingsSection::Agents, cx);
+                window.focus(&this.settings.read(cx).focus_handle(cx), cx);
+            }))
             .on_action(cx.listener(Self::open_diagnostics))
             .on_action(cx.listener(Self::start_daemon))
             .on_action(cx.listener(Self::stop_daemon))

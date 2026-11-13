@@ -180,6 +180,7 @@ impl Translator {
         }
         let known = self.contexts.get(id);
         let context = Context {
+            last_activity: conversation.last_activity,
             id: id.clone(),
             kind,
             title: field(row, "title").unwrap_or_else(|| id.to_string()),
@@ -270,5 +271,40 @@ impl Translator {
             muted,
             disappearing,
         }]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plan::fetch::{Fetch, Paged};
+    use crate::translate::Scope;
+    use ramflux_desktop_core::projection::conversations::{Preview, conversations};
+    use ramflux_desktop_core::{AccountId, EventEnvelope, Store};
+
+    #[test]
+    fn directory_activity_reaches_the_account_store_without_loading_history() {
+        let mut translator = Translator::new(Scope::Account(AccountId::new("owner")), "unused");
+        let translated=translator.fetched(&Fetch::first(Paged::Conversations),&serde_json::json!({"conversations":[{"id":"c","kind":"direct","title":"Peer","last_activity":10}],"next_cursor":null}),Timestamp(0));
+        let mut store = Store::new();
+        for (ix, event) in translated.events.into_iter().enumerate() {
+            let seq = u64::try_from(ix + 1).expect("test: bounded event sequence");
+            store
+                .apply(&EventEnvelope::new(seq, Timestamp(0), event))
+                .expect("test: translated source fact");
+        }
+        let page = conversations(&store, "", 0, 100).expect("test: directory presentation");
+        let row = page.rows.first().expect("test: unloaded conversation row");
+        assert_eq!(
+            row.at,
+            Some(Timestamp(10_000)),
+            "directory time must cross Source-to-Store as contract milliseconds"
+        );
+        assert_eq!(
+            row.preview,
+            Preview::Unavailable,
+            "unloaded source activity must not acquire a fabricated preview"
+        );
+        assert_eq!(row.receipt, None, "unloaded source activity has no outgoing receipt fact");
     }
 }

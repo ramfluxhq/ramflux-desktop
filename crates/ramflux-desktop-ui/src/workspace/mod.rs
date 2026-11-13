@@ -3,8 +3,8 @@
 
 //! The conversation workspace (P1).
 //!
-//! Layout: context stack | dock area (conversation field in the center,
-//! summoned tools on the right) | dock rail. The terminal status strip lives
+//! Layout: navigation rail | full searchable list | conversation detail and
+//! optional dock tools. Compact windows alternate between list and detail. The terminal status strip lives
 //! in the window title bar (see `shell`), the command palette above
 //! everything (see `palette`).
 //!
@@ -19,6 +19,7 @@ pub(crate) mod composer;
 mod context_stack;
 mod conversation;
 pub mod docks;
+mod navigation;
 pub mod new_conversation;
 pub mod new_group;
 mod status_strip;
@@ -27,6 +28,7 @@ use std::sync::Arc;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::dock::{
     BasePanelView, DockArea, DockEvent, DockLayout, DockPlacement, DockSkin, DockToggleEvent,
     panel_handle,
@@ -52,6 +54,7 @@ pub use context_stack::{ContextStack, ContextStackEvent};
 pub use conversation::{Conversation, TIMERS, timer_label};
 pub use docks::prefs::{DockPrefs, LAYOUT_SCHEMA, PrefsStore};
 pub use docks::{DockRail, DockTool, DockToolEvent, DockToolPanel};
+pub use navigation::WorkspaceRoute;
 pub use new_conversation::{NewConversation, NewConversationEvent};
 pub use new_group::{NewGroup, NewGroupEvent};
 pub use status_strip::StatusStrip;
@@ -93,7 +96,10 @@ pub struct Workspace {
     prefs: DockPrefs,
     prefs_store: PrefsStore,
     current: Option<ContextId>,
+    route: WorkspaceRoute,
+    list_visible: bool,
     focus_handle: FocusHandle,
+    agents_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -117,7 +123,7 @@ impl Workspace {
         let composer = cx.new(|cx| Composer::new(store.clone(), window, cx));
         let new_conversation = cx.new(|cx| NewConversation::new(store.clone(), cx));
         let new_group = cx.new(|cx| NewGroup::new(store.clone(), window, cx));
-        let stack = cx.new(|cx| ContextStack::new(store.clone(), cx));
+        let stack = cx.new(|cx| ContextStack::new(store.clone(), window, cx));
         let conversation =
             cx.new(|cx| Conversation::new(store.clone(), root.clone(), composer.clone(), cx));
         let objects = cx.new(|cx| {
@@ -196,12 +202,18 @@ impl Workspace {
                 match event {
                     ContextStackEvent::Selected(id) => {
                         this.select_context(Some(id.clone()), window, cx);
+                        this.list_visible = false;
+                        this.composer.update(cx, |composer, cx| composer.focus(window, cx));
+                        cx.notify();
                     }
                     ContextStackEvent::NewConversation(participant) => {
                         this.open_conversation_with(participant.clone(), window, cx);
                     }
                     ContextStackEvent::AddContact => this.open_add_contact(window, cx),
                     ContextStackEvent::NewGroup => this.open_new_group(window, cx),
+                    ContextStackEvent::Strangers => {
+                        this.navigate(WorkspaceRoute::Strangers, window, cx)
+                    }
                 }
             }),
             cx.subscribe_in(&contacts, window, |this, _, event: &ContactsDockEvent, window, cx| {
@@ -297,10 +309,14 @@ impl Workspace {
             prefs,
             prefs_store,
             current: None,
+            route: WorkspaceRoute::Messages,
+            list_visible: true,
             focus_handle: cx.focus_handle(),
+            agents_focus: cx.focus_handle().tab_stop(true),
             _subscriptions: subscriptions,
         };
         workspace.ensure_current(window, cx);
+        workspace.list_visible = true;
         if let Some(tool) = workspace.prefs.pinned {
             workspace.sync_pins(cx);
             workspace.open_tool(tool, window, cx);
@@ -462,6 +478,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.list_visible = false;
         let changed = self.current != id;
         let switching = changed && self.current.is_some();
         self.current = id.clone();
@@ -536,7 +553,10 @@ impl Workspace {
             .next()
             .or_else(|| store.contexts().next().map(|c| c.id.clone()));
         if next != self.current {
+            let list_visible = self.list_visible;
             self.select_context(next, window, cx);
+            self.list_visible = list_visible;
+            cx.notify();
         }
     }
 
@@ -726,7 +746,7 @@ impl Workspace {
 }
 
 impl Render for Workspace {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.weak_entity();
         let gate = schema_gate::active(self.store.read(cx));
         let blocking =
@@ -735,38 +755,85 @@ impl Render for Workspace {
                 let other = handle.accounts().find(|id| *id != account).cloned();
                 schema_gate::blocking(*gate, other, self.store.downgrade(), cx)
             });
+        let scaled_width = f32::from(window.viewport_size().width) / f32::from(window.rem_size());
+        let compact = scaled_width < 800.0 / 15.0;
+        let show_list = !compact || self.list_visible;
+        let show_detail = !compact || !self.list_visible;
+        let list_width = if scaled_width < 1024.0 / 15.0 {
+            224.0 / 15.0
+        } else {
+            ramflux_desktop_navigation::theme::SECTION_REM
+        };
+        let rail = self.navigation_rail(cx);
         h_flex()
             .id("workspace")
+            .test_support()
+            .key_context("Workspace")
+            .on_action(cx.listener(
+                |this, _: &crate::actions::FocusConversationSearch, window, cx| {
+                    this.show_list(window, cx)
+                },
+            ))
+            .on_action(cx.listener(|this, _: &crate::actions::ShowConversationList, window, cx| {
+                this.show_list(window, cx)
+            }))
             .track_focus(&self.focus_handle)
             .items_stretch()
             .size_full()
             .min_h_0()
             .bg(cx.theme().background)
-            .child(self.stack.clone())
-            .child(
-                gpui_kit::component::v_flex()
-                    .relative()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .children(gate.and_then(|(_, gate)| schema_gate::banner(gate)))
-                    .children(self.secure_sessions_banner(cx))
-                    .child(self.call_bar.clone())
-                    .child(gpui_kit::div().flex_1().min_h_0().child(match blocking {
-                        Some(screen) => screen,
-                        None => self.dock_area.clone().into_any_element(),
-                    }))
-                    .child(
-                        gpui_kit::div()
-                            .absolute()
-                            .top_3()
-                            .right_3()
-                            .child(self.incoming_call.clone()),
-                    ),
-            )
-            .child(DockRail::new(self.open_tool, move |tool, window, cx| {
-                this.update(cx, |workspace, cx| workspace.toggle_tool(tool, window, cx)).ok();
-            }))
+            .child(rail)
+            .when(show_list, |row| {
+                row.child(
+                    gpui_kit::div()
+                        .id("section-list")
+                        .test_support()
+                        .h_full()
+                        .min_w_0()
+                        .when(compact, |pane| pane.flex_1())
+                        .when(!compact, |pane| pane.w(gpui_kit::rems(list_width)).flex_none())
+                        .child(self.stack.clone()),
+                )
+            })
+            .when(show_detail, |row| {
+                row.child(
+                    gpui_kit::component::v_flex()
+                        .relative()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .when(compact, |detail| {
+                            detail.child(
+                                gpui_kit::component::button::Button::new("back-to-list")
+                                    .ghost()
+                                    .small()
+                                    .label(crate::i18n::tr("navigation.back"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.show_list(window, cx)
+                                    })),
+                            )
+                        })
+                        .children(gate.and_then(|(_, gate)| schema_gate::banner(gate)))
+                        .children(self.secure_sessions_banner(cx))
+                        .child(self.call_bar.clone())
+                        .child(gpui_kit::div().flex_1().min_h_0().child(match blocking {
+                            Some(screen) => screen,
+                            None => self.dock_area.clone().into_any_element(),
+                        }))
+                        .child(
+                            gpui_kit::div()
+                                .absolute()
+                                .top_3()
+                                .right_3()
+                                .child(self.incoming_call.clone()),
+                        ),
+                )
+            })
+            .when(show_detail, |row| {
+                row.child(DockRail::new(self.open_tool, move |tool, window, cx| {
+                    this.update(cx, |workspace, cx| workspace.toggle_tool(tool, window, cx)).ok();
+                }))
+            })
     }
 }
 

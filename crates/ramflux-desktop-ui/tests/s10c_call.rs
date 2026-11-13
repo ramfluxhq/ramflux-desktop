@@ -556,6 +556,7 @@ fn a_call_record_sorts_in_the_one_stream_with_messages() {
         disappearing_secs: None,
         roles: std::collections::BTreeMap::new(),
         epoch: None,
+        last_activity: None,
     };
     store
         .apply(&EventEnvelope::new(1, Timestamp(1), DomainEvent::ContextUpserted(context)))

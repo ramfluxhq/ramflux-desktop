@@ -66,6 +66,9 @@ pub const MIN_WINDOW_SIZE: (f32, f32) = (640., 480.);
 ///
 /// Call after `gpui_kit::init` and before opening windows.
 pub fn init(cx: &mut gpui_kit::App) {
+    if let Err(error) = ramflux_desktop_navigation::theme::install(cx) {
+        ramflux_desktop_sdk::local::app_log::warn(&format!("cannot install RF theme: {error}"));
+    }
     rust_i18n::set_locale(i18n::DEFAULT_LOCALE);
     actions::bind_keys(cx);
 }

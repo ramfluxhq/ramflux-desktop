@@ -40,7 +40,7 @@ jobs:
           echo "OK: no tracked .rs/.toml/.yml file over 5000 lines"
 
       - name: Generated RF tokens
-        run: python3 scripts/generate-rf-tokens.py --check
+        run: python3 scripts/check-rf-design.py
 
       - name: Prepare APT package cache
         id: apt-cache

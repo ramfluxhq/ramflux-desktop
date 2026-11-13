@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{ContextId, ParticipantId};
+use crate::ids::{ContextId, ParticipantId, Timestamp};
 
 /// What kind of party a participant is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -293,6 +293,9 @@ pub enum Disappearing {
 /// A conversation context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Context {
+    /// Source directory activity, even when this conversation's history is unloaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_activity: Option<Timestamp>,
     /// Context id.
     pub id: ContextId,
     /// Shape.

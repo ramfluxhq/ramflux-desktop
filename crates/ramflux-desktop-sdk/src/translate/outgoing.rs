@@ -106,6 +106,7 @@ impl Translator {
             disappearing_secs: None,
             roles: std::collections::BTreeMap::new(),
             epoch: None,
+            last_activity: None,
         };
         self.put_context(context)
     }

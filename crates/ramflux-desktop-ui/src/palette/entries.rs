@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! What the command palette offers, built from the store: every context (the
-//! full conversation list is reachable only here), contacts, objects,
+//! palette complements the full conversation list), contacts, objects,
 //! message history, and actions on the current context and the workspace.
 
 use gpui_kit::SharedString;

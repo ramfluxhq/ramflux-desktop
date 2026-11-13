@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "generator": "PEN-GEN-01",
+  "files": {
+    "design/tokens/rf-tokens.json": "f5b269cdb3a747dd41a311434662a4442ac392f0835cbfc44d95c373da5c07b1",
+    "design/generated/light.json": "a55170c68e828e506e7519687c32320fb8eeee29d22497a1a675d936b81fc3e7",
+    "design/generated/dark.json": "7580ae103565b90cf686b8ca5fae4f6aa97f3e610f7f14383fdc057979927177",
+    "crates/ramflux-desktop-navigation/src/geometry.rs": "bcf1bea3cd32dbc51602d73d66bd0a4cec64871950a1426384fa5da1a1296661"
+  }
+}

@@ -215,6 +215,7 @@ mod tests {
             disappearing_secs: None,
             roles: BTreeMap::new(),
             epoch: None,
+            last_activity: None,
         }
     }
 

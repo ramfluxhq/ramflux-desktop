@@ -80,7 +80,9 @@ pub fn conversations<'a>(
     offset: usize,
     limit: usize,
 ) -> Result<ConversationPage<'a>, QueryError> {
-    conversations_with_activity(store, query, offset, limit, |_| None)
+    conversations_with_activity(store, query, offset, limit, |id| {
+        store.context(id).and_then(|context| context.last_activity)
+    })
 }
 
 /// Builds a page with source directory activity, including unloaded timelines.

@@ -596,6 +596,7 @@ fn context() -> Context {
         disappearing_secs: None,
         roles: std::collections::BTreeMap::new(),
         epoch: None,
+        last_activity: None,
     }
 }
 

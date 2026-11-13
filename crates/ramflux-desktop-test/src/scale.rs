@@ -80,6 +80,7 @@ pub fn large_context(messages: usize) -> Scenario {
                 disappearing_secs: None,
                 roles: BTreeMap::new(),
                 epoch: None,
+                last_activity: None,
             }),
         ),
     ];

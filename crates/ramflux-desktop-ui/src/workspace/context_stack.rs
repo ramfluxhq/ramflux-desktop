@@ -1,208 +1,271 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The compact context stack: pinned contexts, then contexts that need the
-//! user (selector `context_stack`, at most six). It is a spatial switcher,
-//! not a list of every conversation; every other context is reached only
-//! through the command palette, which the footer opens. Choosing a context is
-//! navigation (view-local), so it is reported to the workspace as a
-//! [`ContextStackEvent`], not a UI event. The "+" in the header lists the
-//! accepted contacts to start a conversation with, then making a new group
-//! and adding a contact.
+//! Full account-scoped conversation list. Store changes own its snapshot;
+//! the retained input owns search, and the Kit virtual list owns scrolling.
 
+use crate::actions::{NextConversation, PreviousConversation};
+use crate::app::{StoreEvent, StoreHandle};
+use crate::i18n::{self, tr, tr_args};
+use crate::ids::domain_id;
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _,
+    VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Context, Entity, EventEmitter, IntoElement, Render, SharedString, Subscription, Window, div,
+    Context, Entity, EventEmitter, Focusable, IntoElement, Render, ScrollStrategy, SharedString,
+    Subscription, Window, div, px, size,
 };
+use ramflux_desktop_core::projection::conversations::{Preview, conversations, strangers};
 use ramflux_desktop_core::{
-    ContactLink, ContextId, ContextKind, Listing, ParticipantId, Store, selectors,
+    ContactLink, ContextId, ContextKind, Listing, MomentKind, ParticipantId, ParticipantKind,
+    Store, selectors,
 };
+use ramflux_desktop_navigation::{
+    row::{AvatarKind, Row},
+    theme,
+};
+use std::rc::Rc;
 
-use crate::actions::OpenPalette;
-use crate::app::{StoreEvent, StoreHandle};
-use crate::i18n::{tr, tr_args};
-use crate::ids::domain_id;
-
-/// Reported to the workspace.
+/// Reported to the workspace; navigation never submits business effects.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContextStackEvent {
-    /// The user chose a context.
+    /// Select an existing conversation.
     Selected(ContextId),
-    /// The user chose a contact to start a conversation with.
+    /// Start a conversation with a contact.
     NewConversation(ParticipantId),
-    /// The user chose to add a contact first.
+    /// Open the add-contact field.
     AddContact,
-    /// The user chose to make a new group.
+    /// Open the new-group form.
     NewGroup,
+    /// Open incoming requests without accepting anybody.
+    Strangers,
 }
 
-/// The context stack view.
-pub struct ContextStack {
-    store: Entity<StoreHandle>,
-    current: Option<ContextId>,
-    _subscription: Subscription,
-}
-
-impl EventEmitter<ContextStackEvent> for ContextStack {}
-
-impl ContextStack {
-    /// A stack reading `store`; it re-renders only when contexts, pins or
-    /// attention change.
-    pub fn new(store: Entity<StoreHandle>, cx: &mut Context<Self>) -> Self {
-        let subscription = cx.subscribe(&store, |_, _, event: &StoreEvent, cx| {
-            if let StoreEvent::Changed(changes) = event
-                && changes.touches_context_stack()
-            {
-                cx.notify();
-            }
-        });
-        Self { store, current: None, _subscription: subscription }
-    }
-
-    /// Marks the current context.
-    pub fn set_current(&mut self, current: Option<ContextId>, cx: &mut Context<Self>) {
-        if self.current != current {
-            self.current = current;
-            cx.notify();
-        }
-    }
-
-    fn select(&mut self, id: ContextId, cx: &mut Context<Self>) {
-        cx.emit(ContextStackEvent::Selected(id));
-    }
-
-    /// The contexts shown, top to bottom (what secondary-1..6 select).
-    pub fn entry_ids(&self, store: &Store) -> Vec<ContextId> {
-        entries(store, self.current.as_ref()).into_iter().map(|entry| entry.id).collect()
-    }
-}
-
-/// The accessible name of an entry: its title and every state the row shows.
-fn accessible_name(entry: &Entry) -> SharedString {
-    let mut parts = vec![entry.title.to_string()];
-    if entry.pinned {
-        parts.push(tr("stack.pinned").to_string());
-    }
-    if entry.muted {
-        parts.push(tr("stack.muted").to_string());
-    }
-    if entry.needs_me > 0 {
-        parts
-            .push(tr_args("stack.needs_me", &[("count", &entry.needs_me.to_string())]).to_string());
-    } else if entry.unread > 0 {
-        parts.push(tr_args("stack.unread", &[("count", &entry.unread.to_string())]).to_string());
-    }
-    parts.join(", ").into()
+/// Which source conversations are shown by a workspace section.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ListFilter {
+    /// Every conversation, including unpinned ones.
+    #[default]
+    Messages,
+    /// Groups only.
+    Groups,
+    /// Conversations with existing task moments.
+    Tasks,
 }
 
 struct Entry {
     id: ContextId,
     title: SharedString,
-    kind: ContextKind,
+    preview: SharedString,
+    time: SharedString,
+    kind: AvatarKind,
     pinned: bool,
     muted: bool,
     needs_me: usize,
     unread: u32,
 }
 
-fn entries(store: &Store, current: Option<&ContextId>) -> Vec<Entry> {
-    let mut ids = selectors::context_stack(store);
-    if let Some(current) = current
-        && !ids.contains(current)
-        && store.context(current).is_some()
-    {
-        ids.push(current.clone());
+/// Retained full-list state. The historical name keeps keyboard/API callers stable.
+pub struct ContextStack {
+    store: Entity<StoreHandle>,
+    current: Option<ContextId>,
+    query: Entity<InputState>,
+    rows: Rc<Vec<Entry>>,
+    filter: ListFilter,
+    active: usize,
+    query_invalid: bool,
+    scroll: VirtualListScrollHandle,
+    _subscriptions: Vec<Subscription>,
+}
+impl EventEmitter<ContextStackEvent> for ContextStack {}
+
+impl ContextStack {
+    /// Creates the search input once and subscribes to the active account store.
+    pub fn new(store: Entity<StoreHandle>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let query = cx.new(|cx| InputState::new(window, cx).placeholder(tr("navigation.search")));
+        let subscriptions = vec![
+            cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, window, cx| {
+                if let StoreEvent::Changed(changes) = event {
+                    if changes.is_reset() {
+                        this.query.update(cx, |input, cx| input.set_value("", window, cx));
+                    }
+                    if !changes.is_domain_empty() {
+                        this.refresh(cx);
+                    }
+                }
+            }),
+            cx.subscribe_in(&query, window, |this, _, event: &InputEvent, _, cx| match event {
+                InputEvent::Change => {
+                    this.active = 0;
+                    this.refresh(cx);
+                }
+                InputEvent::PressEnter { .. } => this.select_active(cx),
+                _ => {}
+            }),
+        ];
+        let mut list = Self {
+            store,
+            current: None,
+            query,
+            rows: Rc::new(Vec::new()),
+            filter: ListFilter::Messages,
+            active: 0,
+            query_invalid: false,
+            scroll: VirtualListScrollHandle::new(),
+            _subscriptions: subscriptions,
+        };
+        list.refresh(cx);
+        list
     }
-    ids.into_iter()
-        .filter_map(|id| {
-            let context = store.context(&id)?;
-            let needs_me = selectors::needs_me_count(store, &id);
-            Some(Entry {
-                title: selectors::context_title(store, context).into(),
-                kind: context.kind,
-                pinned: context.pinned,
-                muted: context.muted,
-                unread: context.unread,
-                needs_me,
-                id,
-            })
-        })
-        .collect()
+
+    fn refresh(&mut self, cx: &mut Context<Self>) {
+        let handle = self.store.read(cx);
+        self.query_invalid = self.query.read(cx).value().len()
+            > ramflux_desktop_core::projection::conversations::QUERY_LIMIT;
+        self.rows = Rc::new(entries(handle.store(), &self.query.read(cx).value(), self.filter));
+        self.active = self.active.min(self.rows.len().saturating_sub(1));
+        cx.notify();
+    }
+
+    /// Marks selection without changing unread state or submitting a request.
+    pub fn set_current(&mut self, current: Option<ContextId>, cx: &mut Context<Self>) {
+        self.current = current;
+        if let Some(ix) = self.rows.iter().position(|row| Some(&row.id) == self.current.as_ref()) {
+            self.active = ix;
+        }
+        cx.notify();
+    }
+
+    /// Selects a navigation section and resets its local scroll/keyboard cursor.
+    pub fn set_filter(&mut self, filter: ListFilter, cx: &mut Context<Self>) {
+        self.filter = filter;
+        self.active = 0;
+        self.refresh(cx);
+        self.scroll.scroll_to_item(0, ScrollStrategy::Top);
+    }
+
+    /// Focuses the retained search field from the window command.
+    pub fn focus_search(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let focus = self.query.read(cx).focus_handle(cx);
+        window.focus(&focus, cx);
+    }
+
+    /// Current visible IDs in the same order as keyboard navigation.
+    pub fn entry_ids(&self, _: &Store) -> Vec<ContextId> {
+        self.rows.iter().map(|row| row.id.clone()).collect()
+    }
+
+    fn select_active(&mut self, cx: &mut Context<Self>) {
+        if let Some(row) = self.rows.get(self.active) {
+            cx.emit(ContextStackEvent::Selected(row.id.clone()));
+        }
+    }
+
+    fn move_cursor(&mut self, next: bool, cx: &mut Context<Self>) {
+        if self.rows.is_empty() {
+            return;
+        }
+        self.active = if next {
+            (self.active + 1).min(self.rows.len() - 1)
+        } else {
+            self.active.saturating_sub(1)
+        };
+        self.scroll.scroll_to_item(self.active, ScrollStrategy::Top);
+        cx.notify();
+    }
+}
+
+fn entries(store: &Store, query: &str, filter: ListFilter) -> Vec<Entry> {
+    let mut rows = Vec::new();
+    let mut offset = 0;
+    loop {
+        let Ok(page) = conversations(store, query, offset, 100) else {
+            return rows;
+        };
+        for row in page.rows {
+            if filter == ListFilter::Groups && row.context.kind != ContextKind::Group {
+                continue;
+            }
+            if filter == ListFilter::Tasks
+                && !store.context_moments(&row.context.id).any(|m| {
+                    matches!(m.kind, MomentKind::TaskProgress(_) | MomentKind::TaskEvent(_))
+                })
+            {
+                continue;
+            }
+            let preview = match row.preview {
+                Preview::Text(text) => text.to_owned().into(),
+                Preview::Deleted => tr("moment.message.deleted"),
+                Preview::Unavailable => tr("navigation.not_loaded"),
+                Preview::Attachment => tr("moment.message.attachment"),
+                Preview::Activity => tr("navigation.activity"),
+                Preview::Empty => tr("navigation.empty_preview"),
+            };
+            let agent = row.context.kind == ContextKind::Direct
+                && row.context.participants.iter().any(|id| {
+                    store.participant(id).is_some_and(|p| p.kind == ParticipantKind::Agent)
+                });
+            rows.push(Entry {
+                id: row.context.id.clone(),
+                title: row.title.into(),
+                preview,
+                time: row.at.map_or_else(SharedString::default, |at| i18n::time_of_day(at).into()),
+                kind: if agent { AvatarKind::Agent } else { AvatarKind::Person },
+                pinned: row.context.pinned,
+                muted: row.context.muted,
+                needs_me: row.attention,
+                unread: row.context.unread,
+            });
+        }
+        match page.next_offset {
+            Some(next) => offset = next,
+            None => break,
+        }
+    }
+    rows
+}
+
+fn accessible_name(entry: &Entry) -> SharedString {
+    let mut text = vec![entry.title.to_string(), entry.preview.to_string()];
+    if entry.pinned {
+        text.push(tr("stack.pinned").to_string());
+    }
+    if entry.muted {
+        text.push(tr("stack.muted").to_string());
+    }
+    if entry.unread > 0 {
+        text.push(tr_args("stack.unread", &[("count", &entry.unread.to_string())]).to_string());
+    }
+    if entry.needs_me > 0 {
+        text.push(tr_args("stack.needs_me", &[("count", &entry.needs_me.to_string())]).to_string());
+    }
+    text.join(", ").into()
 }
 
 impl Render for ContextStack {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let store = self.store.read(cx).store();
-        let rows = entries(store, self.current.as_ref());
-        let total = store.contexts().count();
-        let others = total.saturating_sub(rows.len());
-        // Nothing stacked: tell "still loading" from "no conversations".
-        let placeholder = rows.is_empty().then(|| {
-            let state = crate::list_state::of(store, Listing::Contexts, total == 0);
-            crate::list_state::placeholder("stack-list-state", state, "stack.empty", cx)
-        });
-        let has_others = others > 0;
-        let theme = cx.theme();
-        let (muted, warning, border, sidebar) =
-            (theme.muted_foreground, theme.warning, theme.border, theme.sidebar);
-        // Text on a row, selected (the darker background) or not.
-        let warning = crate::tone::on(warning, theme.secondary_active);
-
-        let list = rows.into_iter().map(|entry| {
-            let selected = self.current.as_ref() == Some(&entry.id);
-            let icon = match entry.kind {
-                ContextKind::Direct => IconName::User,
-                ContextKind::Group => IconName::Building2,
-                ContextKind::Space => IconName::LayoutDashboard,
-            };
-            let id = entry.id.clone();
-            Button::new(domain_id("stack", &entry.id))
-                .ghost()
-                .small()
-                .w_full()
-                .accessibility_label(accessible_name(&entry))
-                .selected(selected)
-                .on_click(cx.listener(move |this, _, _, cx| this.select(id.clone(), cx)))
-                .child(
-                    h_flex()
-                        .w_full()
-                        .min_w_0()
-                        .gap_2()
-                        .child(Icon::new(icon).small())
-                        .child(div().flex_1().min_w_0().truncate().child(entry.title))
-                        .when(entry.pinned, |row| {
-                            row.child(Icon::new(IconName::Star).xsmall().text_color(muted))
-                        })
-                        .when(entry.muted, |row| {
-                            row.child(div().text_xs().text_color(muted).child(tr("stack.muted")))
-                        })
-                        // The bell and count, as the title bar's Needs me: a
-                        // worded badge pushed long titles into an ellipsis.
-                        // The row's accessible name says it in words.
-                        .when(entry.needs_me > 0, |row| {
-                            row.child(
-                                h_flex()
-                                    .flex_none()
-                                    .gap_0p5()
-                                    .text_xs()
-                                    .text_color(warning)
-                                    .child(Icon::new(IconName::Bell).xsmall())
-                                    .child(entry.needs_me.to_string()),
-                            )
-                        })
-                        .when(entry.needs_me == 0 && entry.unread > 0, |row| {
-                            row.child(
-                                div().text_xs().text_color(muted).child(entry.unread.to_string()),
-                            )
-                        }),
-                )
-        });
-
+        let (request_count, _) = strangers(store);
+        let placeholder = if self.rows.is_empty() && !self.query_invalid {
+            crate::list_state::placeholder(
+                "stack-list-state",
+                crate::list_state::of(store, Listing::Contexts, true),
+                if self.query.read(cx).value().is_empty() {
+                    "stack.empty"
+                } else {
+                    "navigation.no_matches"
+                },
+                cx,
+            )
+        } else {
+            None
+        };
         let contacts: Vec<(ParticipantId, String)> = selectors::contacts(store)
             .into_iter()
             .filter(|p| p.link_state() == ContactLink::Accepted)
@@ -243,39 +306,101 @@ impl Render for ContextStack {
                             .on_click(emit(ContextStackEvent::AddContact)),
                     )
             });
+        let row_height = window.rem_size() * theme::ROW_REM;
+        let sizes = Rc::new(vec![size(px(0.), row_height); self.rows.len()]);
+        let list =
+            v_virtual_list(cx.entity(), "conversation-rows", sizes, |this, range, window, cx| {
+                range
+                    .filter_map(|ix| {
+                        let entry = this.rows.get(ix)?;
+                        let id = entry.id.clone();
+                        let selected = this.current.as_ref() == Some(&id);
+                        let mut content = Row::new(entry.title.clone(), entry.preview.clone());
+                        content.time = entry.time.clone();
+                        content.unread = entry.unread;
+                        content.attention = entry.needs_me;
+                        content.kind = entry.kind;
+                        Some(
+                            Button::new(domain_id("stack", &id))
+                                .ghost()
+                                .w_full()
+                                .h(gpui_kit::rems(theme::ROW_REM))
+                                .selected(selected)
+                                .accessibility_label(accessible_name(entry))
+                                .when(
+                                    ix == this.active
+                                        && this.query.read(cx).focus_handle(cx).is_focused(window),
+                                    |button| button.border_1().border_color(cx.theme().ring),
+                                )
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    cx.emit(ContextStackEvent::Selected(id.clone()))
+                                }))
+                                .child(content.content(cx))
+                                .into_any_element(),
+                        )
+                    })
+                    .collect()
+            })
+            .track_scroll(&self.scroll);
         v_flex()
             .id("context-stack")
+            .key_context("ConversationList")
             .h_full()
-            .w_56()
-            .flex_shrink_0()
-            .gap_1()
-            .p_2()
-            .bg(sidebar)
+            .w_full()
+            .min_w_0()
+            .min_h_0()
+            .on_action(cx.listener(|this, _: &NextConversation, _, cx| this.move_cursor(true, cx)))
+            .on_action(
+                cx.listener(|this, _: &PreviousConversation, _, cx| this.move_cursor(false, cx)),
+            )
+            .bg(cx.theme().sidebar)
             .border_r_1()
-            .border_color(border)
+            .border_color(cx.theme().border)
             .child(
                 h_flex()
-                    .pl_2()
-                    .child(
-                        div().flex_1().py_1().text_xs().text_color(muted).child(tr("stack.title")),
-                    )
+                    .p_3()
+                    .child(div().flex_1().font_medium().child(tr(match self.filter {
+                        ListFilter::Messages => "navigation.messages",
+                        ListFilter::Groups => "navigation.groups",
+                        ListFilter::Tasks => "navigation.tasks",
+                    })))
                     .child(new_menu),
             )
-            .children(list)
-            .children(placeholder.flatten())
-            .child(div().flex_1())
             .child(
-                Button::new("stack-search")
-                    .ghost()
-                    .small()
-                    .w_full()
-                    .icon(IconName::Search)
-                    .label(if has_others {
-                        tr_args("stack.search_more", &[("count", &others.to_string())])
-                    } else {
-                        tr("stack.search")
-                    })
-                    .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenPalette), cx)),
+                div().px_3().pb_2().child(
+                    Input::new(&self.query)
+                        .id("conversation-search")
+                        .small()
+                        .prefix(Icon::new(IconName::Search)),
+                ),
             )
+            .child(
+                div().px_2().pb_2().child(
+                    Button::new("strangers-entry")
+                        .ghost()
+                        .w_full()
+                        .label(tr_args(
+                            "navigation.strangers_count",
+                            &[("count", &request_count.to_string())],
+                        ))
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(ContextStackEvent::Strangers))),
+                ),
+            )
+            .children(placeholder)
+            .when(self.query_invalid, |pane| {
+                pane.child(
+                    div()
+                        .id("conversation-query-error")
+                        .test_support()
+                        .role(gpui_kit::Role::Status)
+                        .aria_label(tr("navigation.query_error"))
+                        .px_3()
+                        .pb_2()
+                        .text_sm()
+                        .text_color(cx.theme().danger)
+                        .child(tr("navigation.query_error")),
+                )
+            })
+            .child(div().flex_1().min_h_0().child(list))
     }
 }

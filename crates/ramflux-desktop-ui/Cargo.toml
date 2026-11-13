@@ -12,6 +12,7 @@ bus-trace = ["ramflux-desktop-sdk/bus-trace"]
 
 [dependencies]
 gpui-kit.workspace = true
+ramflux-desktop-navigation.workspace = true
 ramflux-desktop-core.workspace = true
 # The real source over the daemon (its tokio runtime stays on the bridge thread).
 ramflux-desktop-sdk.workspace = true
@@ -42,6 +43,12 @@ ramflux-sdk.workspace = true
 [[test]]
 name = "screenshots"
 path = "tests/screenshots.rs"
+test = false
+harness = false
+
+[[test]]
+name = "desk_ui_shots"
+path = "tests/desk_ui_shots.rs"
 test = false
 harness = false
 

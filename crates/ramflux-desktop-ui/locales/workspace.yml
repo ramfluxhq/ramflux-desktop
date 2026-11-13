@@ -882,3 +882,44 @@ schema:
     create:
       en: "Create a new account"
       zh-CN: "创建新账户"
+
+navigation:
+  no_matches:
+    en: "No matching conversations"
+    zh-CN: "没有匹配的会话"
+  query_error:
+    en: "Shorten your search to continue."
+    zh-CN: "请缩短搜索内容后重试。"
+  messages:
+    en: "Messages"
+    zh-CN: "消息"
+  groups:
+    en: "Groups"
+    zh-CN: "群组"
+  contacts:
+    en: "Contacts"
+    zh-CN: "联系人"
+  tasks:
+    en: "Tasks"
+    zh-CN: "任务"
+  agents:
+    en: "Agents"
+    zh-CN: "Agents"
+  search:
+    en: "Search conversations"
+    zh-CN: "搜索会话"
+  not_loaded:
+    en: "Latest message not loaded"
+    zh-CN: "最新消息尚未加载"
+  activity:
+    en: "Conversation activity"
+    zh-CN: "会话动态"
+  empty_preview:
+    en: "No messages yet"
+    zh-CN: "暂无消息"
+  strangers_count:
+    en: "Strangers · %{count}"
+    zh-CN: "陌生人 · %{count}"
+  back:
+    en: "Back to conversations"
+    zh-CN: "返回会话列表"

@@ -119,6 +119,15 @@ impl IntentRoot {
         cx.notify();
     }
 
+    /// Cancels a pending gesture before navigation can hide its reviewed facts.
+    pub fn cancel_for_navigation(&mut self, cx: &mut Context<Self>) {
+        if let Some(intent) = self.pending.take() {
+            self.confirm.update(cx, ConfirmStrip::close);
+            self.record_intent(&intent, "confirmation cancelled: navigation changed", cx);
+            cx.notify();
+        }
+    }
+
     /// Submits an intent proposed by an agent participant. It follows the
     /// same policy as human intents and never carries a confirmation (R6).
     pub fn submit_agent(

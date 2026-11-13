@@ -6574,6 +6574,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ramflux-desktop-navigation"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ramflux-desktop-sdk"
 version = "0.1.0"
 dependencies = [
@@ -6613,6 +6622,7 @@ dependencies = [
  "qrcodegen",
  "ramflux-desktop-core",
  "ramflux-desktop-media",
+ "ramflux-desktop-navigation",
  "ramflux-desktop-sdk",
  "ramflux-desktop-test",
  "ramflux-protocol",

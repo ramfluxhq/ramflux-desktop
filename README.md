@@ -58,7 +58,9 @@ Control elsewhere.
 | Keys | Command |
 |---|---|
 | Tab, Shift-Tab | Move between controls (overlays keep focus inside) |
-| `secondary-1` … `secondary-6` | Show a context of the stack and focus the composer |
+| `secondary-1` … `secondary-6` | Show one of the first six visible conversations and focus the composer |
+| `secondary-f` | Focus conversation search; Up/Down and Enter choose a result |
+| `alt-left` | Return to conversations in a compact window |
 | `secondary-k` | Command palette (search contexts, people, objects, history) |
 | `secondary-j` | Take me to what needs me (focuses the moment; Tab reaches its actions) |
 | Enter | Send from the composer; activate the focused button |

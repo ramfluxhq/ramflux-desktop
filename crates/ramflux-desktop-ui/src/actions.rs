@@ -23,6 +23,16 @@ gpui_kit::actions!(
         CloseSettings,
         /// Switch between the light and dark theme.
         ToggleTheme,
+        /// Focus the full conversation search field.
+        FocusConversationSearch,
+        /// Move to the next visible conversation.
+        NextConversation,
+        /// Move to the previous visible conversation.
+        PreviousConversation,
+        /// Return to the list in a compact window.
+        ShowConversationList,
+        /// Open settings at owned Agent identities.
+        OpenAgentsSettings,
         /// Cancel the pending hold-to-confirm request.
         CancelConfirmation,
         /// Escape in the account creation ceremony: ask whether to cancel it. In
@@ -91,6 +101,10 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-,", OpenSettings, None),
         KeyBinding::new("secondary-shift-t", ToggleTheme, None),
         KeyBinding::new("secondary-k", OpenPalette, None),
+        KeyBinding::new("secondary-f", FocusConversationSearch, None),
+        KeyBinding::new("down", NextConversation, Some("ConversationList")),
+        KeyBinding::new("up", PreviousConversation, Some("ConversationList")),
+        KeyBinding::new("alt-left", ShowConversationList, Some("Workspace")),
         KeyBinding::new("escape", ClosePalette, Some(PALETTE_CONTEXT)),
         KeyBinding::new("escape", CancelConfirmation, Some(CONFIRM_CONTEXT)),
         KeyBinding::new("escape", CloseSettings, Some(SETTINGS_CONTEXT)),
