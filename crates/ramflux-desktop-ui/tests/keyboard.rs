@@ -9,7 +9,7 @@
 mod common;
 
 use common::*;
-use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
+use gpui_kit::test::{TestEventExt as _, TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::{Entity, TestAppContext, WindowHandle};
 use ramflux_desktop_core::{ContextId, GrantId, GrantState, methods};
 use ramflux_desktop_ui::Shell;
@@ -138,8 +138,17 @@ fn contexts_switch_by_palette_pin_and_stack_keys_and_land_in_the_composer(cx: &m
     assert!(composer_focused(cx, handle));
 }
 
+fn key_repeat(cx: &mut TestAppContext, handle: Handle, key: &'static str) {
+    in_window(cx, handle, move |window, cx| {
+        window.key_down(key, true, cx);
+        window.key_up(key, cx);
+    });
+}
+
 #[gpui_kit::test]
-fn needs_me_then_tab_enter_and_one_key_press_approve_a_high_risk_grant(cx: &mut TestAppContext) {
+fn needs_me_then_tab_to_confirm_and_one_key_press_approve_a_high_risk_grant(
+    cx: &mut TestAppContext,
+) {
     let (handle, shell) = open(cx, "s03_intervention");
     advance(cx, 1_000);
     press(cx, handle, "secondary-j");
@@ -147,10 +156,15 @@ fn needs_me_then_tab_enter_and_one_key_press_approve_a_high_risk_grant(cx: &mut 
     tab_to(cx, handle, Some("moment-m-approve"), "approve", 6);
     press(cx, handle, "enter");
     assert!(strip_open(cx, &shell), "approve asks for the confirmation");
-    assert!(focused(cx, handle, None, "confirm-accept"), "focus moves to the Confirm button");
+    assert!(
+        focused(cx, handle, None, "confirm-cancel"),
+        "a destructive strip opens with the focus on Cancel, not Confirm"
+    );
     assert!(effects(cx, &shell).is_empty(), "the key that opened the strip does not confirm it");
 
-    // One press of Space on the focused Confirm button confirms.
+    // Tab reaches Confirm; one fresh press of Space there confirms.
+    press(cx, handle, "tab");
+    assert!(focused(cx, handle, None, "confirm-accept"), "Tab moves from Cancel to Confirm");
     press(cx, handle, "space");
     let body = last_body(cx, &shell, methods::GRANT_APPROVE);
     assert_eq!(body["confirmed_by"]["gesture"], "Tap", "the human confirmed with one press");
@@ -162,13 +176,47 @@ fn needs_me_then_tab_enter_and_one_key_press_approve_a_high_risk_grant(cx: &mut 
 }
 
 #[gpui_kit::test]
-fn enter_on_the_confirm_button_confirms(cx: &mut TestAppContext) {
+fn a_repeating_key_from_the_opener_never_confirms_or_cancels(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s03_intervention");
+    advance(cx, 1_000);
+    press(cx, handle, "secondary-j");
+    tab_to(cx, handle, Some("moment-m-approve"), "approve", 6);
+    // Enter on Approve opens the strip; repeat events of a key that is
+    // still held (auto-repeat) then arrive at the open strip.
+    press(cx, handle, "enter");
+    assert!(strip_open(cx, &shell), "Enter on Approve opens the strip");
+    key_repeat(cx, handle, "enter");
+    key_repeat(cx, handle, "enter");
+    assert!(strip_open(cx, &shell), "a repeating Enter neither cancels nor confirms");
+    assert!(effects(cx, &shell).is_empty(), "a repeating Enter sends nothing");
+
+    // Even on Confirm, a repeating Space or Enter does not count.
+    press(cx, handle, "tab");
+    assert!(focused(cx, handle, None, "confirm-accept"), "Tab reaches Confirm");
+    key_repeat(cx, handle, "space");
+    key_repeat(cx, handle, "enter");
+    assert!(strip_open(cx, &shell), "repeats on Confirm do not confirm");
+    assert!(effects(cx, &shell).is_empty(), "repeats on Confirm send nothing");
+
+    // A fresh press does.
+    press(cx, handle, "enter");
+    assert_eq!(effects(cx, &shell), [methods::GRANT_APPROVE], "one fresh Enter confirms");
+}
+
+#[gpui_kit::test]
+fn enter_on_the_default_cancel_cancels_and_enter_on_confirm_confirms(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s03_intervention");
     advance(cx, 1_000);
     click_in(cx, handle, "moment-m-approve", "approve");
-    assert!(focused(cx, handle, None, "confirm-accept"), "focus moves to the Confirm button");
+    assert!(focused(cx, handle, None, "confirm-cancel"), "the default focus is Cancel");
     press(cx, handle, "enter");
-    assert_eq!(effects(cx, &shell), [methods::GRANT_APPROVE], "one Enter press confirms");
+    assert!(!strip_open(cx, &shell), "Enter on the default focus cancels");
+    assert!(effects(cx, &shell).is_empty(), "cancelling sends nothing");
+
+    click_in(cx, handle, "moment-m-approve", "approve");
+    press(cx, handle, "tab");
+    press(cx, handle, "enter");
+    assert_eq!(effects(cx, &shell), [methods::GRANT_APPROVE], "one Enter on Confirm confirms");
     assert!(!strip_open(cx, &shell), "confirming closes the strip");
 }
 

@@ -557,6 +557,9 @@ confirm:
   accept:
     en: "Confirm"
     zh-CN: "确认"
+  accept_named:
+    en: "Confirm: %{summary}"
+    zh-CN: "确认：%{summary}"
   keys:
     en: "Press Enter or Space to confirm, Escape to cancel"
     zh-CN: "按回车键或空格键确认，按 Esc 取消"

@@ -79,7 +79,7 @@ pub(crate) struct Policy<'a> {
 }
 
 impl Policy<'_> {
-    /// `Call`, or `Confirm` when `risk` needs a confirmation that has not happened.
+    /// `Call`, or `Confirm` when `risk` needs a confirmation the human has not given yet.
     pub fn gated(&self, risk: Risk, method: &'static str, body: Value) -> Decision {
         if risk.requires_confirmation() && !self.human_confirmed {
             Decision::Confirm(method)

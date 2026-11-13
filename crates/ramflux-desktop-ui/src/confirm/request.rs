@@ -47,6 +47,12 @@ impl ConfirmRequest {
         self.risk
     }
 
+    /// Whether the request is destructive (high or critical risk): its
+    /// strip opens with the focus on Cancel, never on Confirm.
+    pub fn is_destructive(&self) -> bool {
+        self.risk.requires_confirmation()
+    }
+
     /// Display name of the agent that proposed the intent, if an agent did.
     pub fn proposed_by(&self) -> Option<&SharedString> {
         self.proposed_by.as_ref()

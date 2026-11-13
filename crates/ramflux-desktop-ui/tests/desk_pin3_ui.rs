@@ -146,7 +146,11 @@ fn check_floors(cx: &mut TestAppContext, name: &str, locale: &str) {
     };
     assert_ne!(focus(cx, "contacts-floors-clear"), Some(true), "the button is not focused");
     click(cx, world.handle, "contacts-floors-clear");
-    assert_eq!(focus(cx, "confirm-accept"), Some(true), "the confirm strip takes the focus");
+    assert_eq!(
+        focus(cx, "confirm-cancel"),
+        Some(true),
+        "the destructive strip takes the focus on Cancel"
+    );
     assert!(strip_open(cx, &world.shell), "forgetting needs the confirmation");
     assert!(sent(&world, methods::CONTACT_REQUESTS_POLICY).is_empty());
     assert!(sent(&world, "contact.requests.policy.set").is_empty());

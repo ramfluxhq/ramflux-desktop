@@ -338,10 +338,10 @@ mod shots {
         }
         s.both("13_keyboard_focus_approve");
 
-        // 14. Enter opens the confirm strip with focus on its Confirm button.
+        // 14. Enter opens the confirm strip with focus on Cancel (destructive).
         s.in_window(|window, cx| window.press("enter", cx));
         s.cx.run_until_parked();
-        s.both("14_keyboard_confirm_focused");
+        s.both("14_keyboard_cancel_focused");
         s.in_window(|window, cx| window.press("escape", cx));
     }
 

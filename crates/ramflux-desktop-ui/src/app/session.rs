@@ -497,7 +497,7 @@ impl AccountSession {
 }
 
 /// The audit pair of an intent as an inspector label, e.g.
-/// `Agent(p-orbit), confirmed by Tap`.
+/// `Agent(p-orbit), confirmed by Tap` (developer inspector only, untranslated).
 pub fn audit_label(intent: &Intent) -> String {
     match &intent.confirmed_by {
         Some(confirmation) => {

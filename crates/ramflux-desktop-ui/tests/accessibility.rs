@@ -147,10 +147,25 @@ fn moments_announce_kind_state_and_risk_and_the_strip_its_risk(cx: &mut TestAppC
         let accept = window.find("confirm-accept");
         (accept.role(), accept.label().map(str::to_owned))
     });
+    let summary = cx.update(|cx| {
+        let strip = shell.read(cx).root().read(cx).confirm_strip().clone();
+        strip.read(cx).request().map(|r| r.summary().to_string()).unwrap_or_default()
+    });
+    assert!(!summary.is_empty(), "the strip has a request to name");
+    assert_eq!(accept.0, Some(Role::Button), "Confirm is a button");
+    let name = accept.1.unwrap_or_default();
+    assert!(
+        name.starts_with(tr("confirm.accept").as_ref()) && name.contains(&summary),
+        "Confirm's accessible name says what it confirms: {name}"
+    );
+    let cancel = in_window(cx, handle, |window, _| {
+        let cancel = window.find("confirm-cancel");
+        (cancel.role(), cancel.label().map(str::to_owned))
+    });
     assert_eq!(
-        accept,
-        (Some(Role::Button), Some(tr("confirm.accept").to_string())),
-        "the Confirm button is a labelled button"
+        cancel,
+        (Some(Role::Button), Some(tr("common.cancel").to_string())),
+        "Cancel is a labelled button"
     );
 }
 

@@ -9,18 +9,22 @@
 //! it with the human's confirmation when the strip reports
 //! [`ConfirmEvent::Confirmed`]. The host draws the facts, then Cancel first
 //! and Confirm beside it. One click on Confirm, or one press of Enter or
-//! Space while it has the focus, confirms; Cancel or Escape dismisses. The
-//! key that opened the strip never confirms it: GPUI counts a keyboard click
-//! only when the key went down while the button already had the focus.
+//! Space while it has the focus, confirms; Cancel or Escape dismisses.
+//!
+//! A destructive request (high or critical risk) opens with the focus on
+//! Cancel, so Tab (or the pointer) has to reach Confirm; other requests open
+//! on Confirm. A key only activates either button after a fresh key-down
+//! inside the open strip: the key that opened it, held down or repeating,
+//! never confirms or cancels it.
 
 use crate::actions::{CONFIRM_CONTEXT, CancelConfirmation};
 use crate::i18n::{self, tr, tr_args};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, EventEmitter, FocusHandle, Focusable, IntoElement, Render, Role, Window, div,
+    App, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent,
+    Render, Role, Window, div,
 };
 
 mod request;
@@ -39,7 +43,13 @@ pub enum ConfirmEvent {
 /// The confirm strip.
 pub struct ConfirmStrip {
     request: Option<ConfirmRequest>,
+    /// Tracked by the Confirm button.
     focus_handle: FocusHandle,
+    /// Tracked by the Cancel button.
+    cancel_focus: FocusHandle,
+    /// Whether Enter or Space went down fresh (not a repeat) since the
+    /// strip opened; keyboard clicks count only after one.
+    fresh_key: bool,
 }
 
 impl EventEmitter<ConfirmEvent> for ConfirmStrip {}
@@ -53,13 +63,21 @@ impl Focusable for ConfirmStrip {
 impl ConfirmStrip {
     /// A closed strip.
     pub fn new(cx: &mut Context<Self>) -> Self {
-        Self { request: None, focus_handle: cx.focus_handle().tab_stop(true) }
+        Self {
+            request: None,
+            focus_handle: cx.focus_handle().tab_stop(true),
+            cancel_focus: cx.focus_handle().tab_stop(true),
+            fresh_key: false,
+        }
     }
 
-    /// Shows `request` and moves keyboard focus to its Confirm button.
+    /// Shows `request` and moves keyboard focus into the strip: to Cancel
+    /// for a destructive request, to Confirm otherwise.
     pub fn open(&mut self, request: ConfirmRequest, window: &mut Window, cx: &mut Context<Self>) {
+        let target = if request.is_destructive() { &self.cancel_focus } else { &self.focus_handle };
+        window.focus(target, cx);
         self.request = Some(request);
-        window.focus(&self.focus_handle, cx);
+        self.fresh_key = false;
         cx.notify();
     }
 
@@ -77,6 +95,18 @@ impl ConfirmStrip {
     /// The showing request.
     pub fn request(&self) -> Option<&ConfirmRequest> {
         self.request.as_ref()
+    }
+
+    /// Whether a click may act: a pointer click always, a keyboard click
+    /// only after a fresh key-down inside the open strip.
+    fn accepts(&self, event: &ClickEvent) -> bool {
+        !event.is_keyboard() || self.fresh_key
+    }
+
+    fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, _: &mut Context<Self>) {
+        if matches!(event.keystroke.key.as_str(), "enter" | "space") && !event.is_held {
+            self.fresh_key = true;
+        }
     }
 
     fn confirm(&mut self, cx: &mut Context<Self>) {
@@ -117,6 +147,8 @@ impl Render for ConfirmStrip {
         let announce =
             tr_args("confirm.announce", &[("summary", request.summary()), ("risk", &risk)]);
         let focused = self.focus_handle.is_focused(window);
+        let cancel_focused = self.cancel_focus.is_focused(window);
+        let cancel_label = tr("common.cancel");
         h_flex()
             .id("confirm-strip")
             .role(Role::Alert)
@@ -124,6 +156,7 @@ impl Render for ConfirmStrip {
             .test_support()
             .key_context(CONFIRM_CONTEXT)
             .on_action(cx.listener(Self::on_cancel_action))
+            .on_key_down(cx.listener(Self::on_key_down))
             .flex_shrink_0()
             .mx_3()
             .mt_2()
@@ -171,17 +204,37 @@ impl Render for ConfirmStrip {
                     ),
             )
             .child(
-                Button::new("confirm-cancel")
-                    .outline()
-                    .icon(IconName::Close)
-                    .label(tr("common.cancel"))
-                    .on_click(cx.listener(|this, _, _, cx| this.cancel(cx))),
+                div()
+                    .id("confirm-cancel")
+                    .role(Role::Button)
+                    .aria_label(cancel_label.clone())
+                    .test_support()
+                    .track_focus(&self.cancel_focus)
+                    .h_8()
+                    .px_3()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded(cx.theme().radius)
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .cursor_pointer()
+                    .when(cancel_focused, |control| control.focus_ring_style(window, cx))
+                    .child(Icon::new(IconName::Close))
+                    .child(cancel_label)
+                    .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                        if this.accepts(event) {
+                            this.cancel(cx);
+                        }
+                    })),
             )
             .child(
                 div()
                     .id("confirm-accept")
                     .role(Role::Button)
-                    .aria_label(confirm_label.clone())
+                    .aria_label(tr_args("confirm.accept_named", &[("summary", request.summary())]))
                     .aria_description(tr("confirm.keys"))
                     .aria_keyshortcuts("Enter")
                     .test_support()
@@ -199,9 +252,13 @@ impl Render for ConfirmStrip {
                     .cursor_pointer()
                     .when(focused, |control| control.focus_ring_style(window, cx))
                     .child(confirm_label)
-                    // A click, or Enter or Space pressed and released while
-                    // the button has the focus (GPUI's keyboard click).
-                    .on_click(cx.listener(|this, _, _, cx| this.confirm(cx))),
+                    // A click, or Enter or Space pressed fresh and released
+                    // while the button has the focus (GPUI's keyboard click).
+                    .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                        if this.accepts(event) {
+                            this.confirm(cx);
+                        }
+                    })),
             )
             .into_any_element()
     }

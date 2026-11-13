@@ -234,7 +234,7 @@ impl Translator {
     }
 }
 
-/// The audit record of an effect the attended human confirmed with a confirmation.
+/// The audit record of an effect the attended human confirmed.
 fn audit(method: &str, body: &Value, at: Timestamp) -> DomainEvent {
     let subject = [
         "grant_id",
