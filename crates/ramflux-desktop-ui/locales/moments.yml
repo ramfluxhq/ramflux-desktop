@@ -444,7 +444,7 @@ moment:
           zh-CN: "此步骤仍需要你处理。"
       other:
         en: "The daemon refused it: %{reason}"
-        zh-CN: "守护进程拒绝了该请求：%{reason}"
+        zh-CN: "本地服务拒绝了该请求：%{reason}"
   conflict:
     title:
       en: "%{name} changed in two places"

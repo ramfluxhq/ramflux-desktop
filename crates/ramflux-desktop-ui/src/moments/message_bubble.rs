@@ -78,7 +78,8 @@ pub(crate) fn render(
     // with the same font and size rather than stretching every short reply.
     let body_width = row.body.as_ref().filter(|_| state.message_text.is_some()).map(|body| {
         let style = window.text_style();
-        let size = window.rem_size() * 0.875;
+        // Bodies use the design's body size (15 px on a 15 px rem).
+        let size = window.rem_size() * (theme.size_body / 15.0);
         let mut width = gpui_kit::px(0.0);
         let attachment = payload
             .attachment
@@ -109,9 +110,25 @@ pub(crate) fn render(
                 break;
             }
         }
+        // The time sits at the end of the body line (design `RF / Bubble`):
+        // reserve its width and the 8 px gap before it.
+        let time: gpui_kit::SharedString = i18n::time_of_day(row.moment.at).into();
+        let run = gpui_kit::TextRun {
+            len: time.len(),
+            font: style.font(),
+            color: style.color,
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let meta = window
+            .text_system()
+            .shape_line(time, window.rem_size() * (theme.size_caption / 15.0), &[run], None)
+            .width;
         // Shell padding plus a small caret/glyph rounding allowance. Metadata
         // and attachment/quote content retain their own intrinsic minimum.
-        (width + window.rem_size() * 2.0).max(window.rem_size() * 8.0)
+        (width + meta + window.rem_size() * (8.0 / 15.0) + window.rem_size() * 2.0)
+            .max(window.rem_size() * 8.0)
     });
     let agent =
         row.refs.people.get(&row.moment.origin).is_some_and(|p| p.kind == ParticipantKind::Agent);
@@ -141,7 +158,7 @@ pub(crate) fn render(
                     .id("message-sender")
                     .test_support()
                     .aria_label(sender.clone())
-                    .text_sm()
+                    .text_size(rems(theme.size_secondary / 15.0))
                     .font_semibold()
                     .child(sender),
             )
@@ -165,13 +182,25 @@ pub(crate) fn render(
                     .child(lifecycle),
             )
         })
-        .child(body)
         .child(
             h_flex()
-                .justify_end()
-                .text_xs()
-                .text_color(if row.outbound { theme.outgoing_meta } else { theme.incoming_meta })
-                .child(i18n::time_of_day(row.moment.at)),
+                .w_full()
+                .min_w_0()
+                .items_end()
+                .gap_2()
+                .child(div().flex_1().min_w_0().child(body))
+                .child(
+                    div()
+                        .flex_none()
+                        .pb(gpui_kit::px(2.))
+                        .text_size(rems(theme.size_caption / 15.0))
+                        .text_color(if row.outbound {
+                            theme.outgoing_meta
+                        } else {
+                            theme.incoming_meta
+                        })
+                        .child(i18n::time_of_day(row.moment.at)),
+                ),
         );
     let shell = catalog::message_bubble(
         catalog::MessageContent::new(row.moment.id.to_string().into(), kind, content),

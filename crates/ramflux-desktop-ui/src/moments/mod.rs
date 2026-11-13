@@ -539,16 +539,19 @@ pub fn accessible_label(row: &MomentRow) -> SharedString {
 /// A day header: its rules share the row content's inset (`px_2`), so they
 /// end where the cards below end.
 fn day_header(day: SharedString, cx: &App) -> impl IntoElement {
-    h_flex()
-        .w_full()
-        .gap_2()
-        .px_2()
-        .pt_2()
-        .text_xs()
-        .text_color(cx.theme().muted_foreground)
-        .child(div().h_px().flex_1().bg(cx.theme().border))
-        .child(day)
-        .child(div().h_px().flex_1().bg(cx.theme().border))
+    // Design `RF / Date separator`: a centred chip on the surface colour.
+    let palette = ramflux_desktop_navigation::palette(cx);
+    h_flex().w_full().justify_center().pt_2().child(
+        div()
+            .px_2()
+            .py(gpui_kit::px(2.))
+            .rounded(gpui_kit::rems(palette.radius_chip / 15.0))
+            .bg(palette.surface)
+            .text_size(gpui_kit::rems(palette.size_meta / 15.0))
+            .font_medium()
+            .text_color(palette.secondary)
+            .child(day),
+    )
 }
 
 /// The state a row names, and whether its header shows it. A task row

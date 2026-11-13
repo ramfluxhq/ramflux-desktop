@@ -3,43 +3,43 @@ agent:
   create:
     title:
       en: "Create AI participant"
-      zh-CN: "创建 AI 参与者"
+      zh-CN: "创建 Agent"
     help:
       en: "An AI participant is an account of its own that you custody. You will see its 24-word recovery phrase once and write it down; the AI never sees it. The daemon makes the AI's data passphrase itself, so you type none. Afterwards you export its credentials for the agent host."
-      zh-CN: "AI 参与者是一个由你托管的独立账户。你将看到它的 24 个恢复单词一次并抄下来；AI 永远看不到它们。AI 的数据口令由守护进程自行生成，你无需输入。之后你可以导出它的凭据，交给智能体宿主使用。"
+      zh-CN: "Agent 是一个由你托管的独立账号。你将看到它的 24 个恢复单词一次并抄下来；AI 永远看不到它们。AI 的数据口令由本地服务自行生成，你无需输入。之后你可以导出它的凭据，交给智能体宿主使用。"
     label:
       en: "AI participant name"
-      zh-CN: "AI 参与者名称"
+      zh-CN: "Agent 名称"
     custodian:
       en: "Custodian: %{name}, your account. It must stay unlocked and connected."
-      zh-CN: "托管人：%{name}，你的账户。它必须保持解锁并已连接。"
+      zh-CN: "托管人：%{name}，你的账号。它必须保持解锁并已连接。"
     submit:
       en: "Create AI participant"
-      zh-CN: "创建 AI 参与者"
+      zh-CN: "创建 Agent"
   custody:
     unknown:
       en: "Open and unlock your own account first. The daemon lists no account of yours that can custody an AI participant."
-      zh-CN: "请先打开并解锁你自己的账户。守护进程没有列出可以托管 AI 参与者的账户。"
+      zh-CN: "请先打开并解锁你自己的账号。本地服务没有列出可以托管 Agent 的账号。"
     locked:
       en: "Your account is locked. Unlock it first: only an unlocked account can custody an AI participant."
-      zh-CN: "你的账户已锁定。请先解锁：只有已解锁的账户才能托管 AI 参与者。"
+      zh-CN: "你的账号已锁定。请先解锁：只有已解锁的账号才能托管 Agent。"
     not_person:
       en: "Only a person's account can custody an AI participant. Open your own account."
-      zh-CN: "只有个人账户才能托管 AI 参与者。请打开你自己的账户。"
+      zh-CN: "只有个人账号才能托管 Agent。请打开你自己的账号。"
     not_connected:
       en: "Your account is not connected to its node yet. Wait until it is connected, then try again."
-      zh-CN: "你的账户尚未连接到它的节点。请等待连接完成后再试。"
+      zh-CN: "你的账号尚未连接到它的节点。请等待连接完成后再试。"
   creating:
     title:
       en: "Creating the AI participant"
-      zh-CN: "正在创建 AI 参与者"
+      zh-CN: "正在创建 Agent"
     text:
       en: "The daemon is checking the three words and creating the account…"
-      zh-CN: "守护进程正在核对这三个单词并创建账户…"
+      zh-CN: "本地服务正在核对这三个单词并创建账号…"
   done:
     title:
       en: "AI participant created"
-      zh-CN: "AI 参与者已创建"
+      zh-CN: "Agent 已创建"
     text:
       en: "%{name} was created and you are its custodian. It cannot be unlocked from this app."
       zh-CN: "%{name} 已创建，你是它的托管人。它无法在本应用中解锁。"
@@ -49,20 +49,20 @@ agent:
   ended:
     custodian_refused:
       en: "The daemon did not accept your account as the custodian. It must be your unlocked, connected personal account on this daemon, used from this window. No AI participant was created."
-      zh-CN: "守护进程不接受你的账户作为托管人。托管人必须是此守护进程上你已解锁并已连接的个人账户，并从此窗口使用。没有创建 AI 参与者。"
+      zh-CN: "本地服务不接受你的账号作为托管人。托管人必须是此本地服务上你已解锁并已连接的个人账号，并从此窗口使用。没有创建 Agent。"
   settings:
     intro:
       en: "AI participants are accounts you custody. Each one runs under the agent host from a one-time credentials bundle you export here. This app never unlocks them."
-      zh-CN: "AI 参与者是由你托管的账户。每一个都使用你在这里导出的一次性凭据包，在智能体宿主下运行。本应用不会解锁它们。"
+      zh-CN: "Agent 是由你托管的账号。每一个都使用你在这里导出的一次性凭据包，在智能体宿主下运行。本应用不会解锁它们。"
     create:
       en: "Create AI participant…"
-      zh-CN: "创建 AI 参与者…"
+      zh-CN: "创建 Agent…"
     list_title:
       en: "Your AI participants"
-      zh-CN: "你的 AI 参与者"
+      zh-CN: "你的 Agent"
     empty:
       en: "You have no AI participant yet. Create one to let an AI take part in your conversations."
-      zh-CN: "你还没有 AI 参与者。创建一个，让 AI 参与你的对话。"
+      zh-CN: "你还没有 Agent。创建一个，让 AI 参与你的对话。"
   row:
     detail:
       en: "%{kind} · %{custodian}"
@@ -72,7 +72,7 @@ agent:
       zh-CN: "托管人：%{name}"
     custodian_unknown:
       en: "Custodian: not reported by the daemon"
-      zh-CN: "托管人：守护进程未报告"
+      zh-CN: "托管人：本地服务未报告"
     not_unlocked:
       en: "Not unlocked here. The agent host starts it from the exported credentials."
       zh-CN: "不会在此解锁。智能体宿主使用导出的凭据启动它。"
@@ -84,7 +84,7 @@ agent:
       zh-CN: "已连接"
     label:
       en: "AI participant %{name}"
-      zh-CN: "AI 参与者 %{name}"
+      zh-CN: "Agent %{name}"
   export:
     button:
       en: "Export credentials…"
@@ -109,7 +109,7 @@ agent:
       zh-CN: "正在写入凭据…"
     once:
       en: "The daemon writes one file that only you can read (mode 0600) and never replaces a file that exists. The credentials can be exported once. The file holds the data passphrase and the account id, no recovery phrase and no master key, and this app never sees it."
-      zh-CN: "守护进程会写入一个只有你能读取的文件（权限 0600），并且不会替换已存在的文件。凭据只能导出一次。该文件包含数据口令和账户标识，不含恢复短语和主密钥，本应用也看不到它。"
+      zh-CN: "本地服务会写入一个只有你能读取的文件（权限 0600），并且不会替换已存在的文件。凭据只能导出一次。该文件包含数据口令和账号标识，不含恢复短语和主密钥，本应用也看不到它。"
     done:
       en: "Credentials written to %{path}."
       zh-CN: "凭据已写入 %{path}。"
@@ -122,28 +122,28 @@ agent:
         zh-CN: "请为文件指定完整路径，例如放在你的主目录下。"
       not_owner_session:
         en: "The daemon does not accept this from this session. Use your own unlocked account on this daemon."
-        zh-CN: "守护进程不接受来自此会话的请求。请使用此守护进程上你自己已解锁的账户。"
+        zh-CN: "本地服务不接受来自此会话的请求。请使用此本地服务上你自己已解锁的账号。"
       owner_locked:
         en: "Your account is locked. Unlock it, then export the credentials."
-        zh-CN: "你的账户已锁定。请先解锁，再导出凭据。"
+        zh-CN: "你的账号已锁定。请先解锁，再导出凭据。"
       not_custodian:
         en: "Only the custodian of this AI participant can export its credentials, and your account is not its custodian."
-        zh-CN: "只有此 AI 参与者的托管人才能导出它的凭据，而你的账户不是它的托管人。"
+        zh-CN: "只有此 Agent 的托管人才能导出它的凭据，而你的账号不是它的托管人。"
       not_connected:
         en: "Your account or the AI participant is not connected to its node yet. Wait until it is connected, then try again."
-        zh-CN: "你的账户或此 AI 参与者尚未连接到它的节点。请等待连接完成后再试。"
+        zh-CN: "你的账号或此 Agent 尚未连接到它的节点。请等待连接完成后再试。"
       file_exists:
         en: "A file already exists there, and the daemon never replaces one. Choose another location. Nothing was written."
-        zh-CN: "该位置已有文件，守护进程不会替换它。请选择其他位置。没有写入任何内容。"
+        zh-CN: "该位置已有文件，本地服务不会替换它。请选择其他位置。没有写入任何内容。"
       location_denied:
         en: "The daemon cannot write there. Choose a folder you can write to. Nothing was written."
-        zh-CN: "守护进程无法写入该位置。请选择你有权写入的文件夹。没有写入任何内容。"
+        zh-CN: "本地服务无法写入该位置。请选择你有权写入的文件夹。没有写入任何内容。"
       location_missing:
         en: "That folder does not exist. Choose an existing folder. Nothing was written."
         zh-CN: "该文件夹不存在。请选择已存在的文件夹。没有写入任何内容。"
       credentials_gone:
         en: "The credentials were exported already, or the vault no longer holds them. They can be exported once, and this AI participant cannot export them again."
-        zh-CN: "凭据已经导出过，或保管库中已没有它们。凭据只能导出一次，此 AI 参与者无法再次导出。"
+        zh-CN: "凭据已经导出过，或保管库中已没有它们。凭据只能导出一次，此 Agent 无法再次导出。"
       vault_missing:
         en: "The credentials were not exported: this device's key vault is not set up. Set it up first. They can be exported once."
         zh-CN: "凭据未导出：这台设备的密钥保管库尚未设置。请先设置。凭据只能导出一次。"
@@ -167,17 +167,17 @@ agent:
         zh-CN: "凭据未导出：这台设备的密钥保管库当前正忙。请稍候后再次导出。"
       vault_primary_unavailable:
         en: "The credentials were not exported: this device's key vault holds no primary key for this account."
-        zh-CN: "凭据未导出：这台设备的密钥保管库中没有此账户的主密钥。"
+        zh-CN: "凭据未导出：这台设备的密钥保管库中没有此账号的主密钥。"
       timeout:
         en: "The daemon did not answer in time. The credentials may have been written: check the location before you try again."
-        zh-CN: "守护进程未在规定时间内响应。凭据可能已经写入：重试前请先检查该位置。"
+        zh-CN: "本地服务未在规定时间内响应。凭据可能已经写入：重试前请先检查该位置。"
       transport:
         en: "The connection to the daemon broke. The credentials may have been written: check the location before you try again."
-        zh-CN: "与守护进程的连接中断。凭据可能已经写入：重试前请先检查该位置。"
+        zh-CN: "与本地服务的连接中断。凭据可能已经写入：重试前请先检查该位置。"
       other:
         en: "The daemon refused to export the credentials. Nothing was shown or changed here."
-        zh-CN: "守护进程拒绝导出凭据。这里没有显示或更改任何内容。"
+        zh-CN: "本地服务拒绝导出凭据。这里没有显示或更改任何内容。"
   entry:
     not_unlocked:
       en: "AI participant. It is started by the agent host and cannot be unlocked here."
-      zh-CN: "AI 参与者。它由智能体宿主启动，无法在此解锁。"
+      zh-CN: "Agent。它由智能体宿主启动，无法在此解锁。"

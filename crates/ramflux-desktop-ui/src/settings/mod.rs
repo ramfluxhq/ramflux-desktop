@@ -42,7 +42,9 @@ use gpui_kit::component::FocusTrapElement as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::Settings;
-use gpui_kit::component::{ActiveTheme as _, IconName, Selectable as _, Sizable as _, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _, v_flex,
+};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, SharedString, Subscription,
@@ -293,17 +295,13 @@ impl Render for SettingsPage {
         };
         let root = context.root.read(cx);
         let strip = (root.host() == ConfirmHost::Settings).then(|| root.confirm_strip().clone());
-        let subtitle = context
-            .store
-            .read(cx)
-            .active_account()
-            .and_then(|id| context.store.read(cx).store().account(id))
-            .map_or_else(|| tr("settings.account.none"), |account| account.label.clone().into());
+        let palette = ramflux_desktop_navigation::palette(cx);
         let close = Button::new("settings-close")
             .ghost()
             .small()
             .icon(IconName::Close)
-            .label(tr("common.close"))
+            .accessibility_label(tr("common.close"))
+            .tooltip(tr("common.close"))
             .on_click(|_, window, cx| window.dispatch_action(Box::new(CloseSettings), cx));
         let compact =
             f32::from(window.viewport_size().width) / f32::from(window.rem_size()) < 800.0 / 15.0;
@@ -316,25 +314,58 @@ impl Render for SettingsPage {
                 .current(handle.active_account(), self.section, handle.store())
                 .map(|failure| crate::i18n::backend_text(&failure.message))
         };
+        // Design G01–G13: the section list sits in the 264 px list pane under
+        // a "Settings" title; the current page fills the content area.
         let navigation = div()
             .id("settings-navigation")
             .test_support()
             .flex()
             .gap_1()
             .when(compact, |nav| nav.flex_row().flex_wrap().p_2().border_b_1())
-            .when(!compact, |nav| nav.flex_col().w(gpui_kit::rems(216.0 / 15.0)).p_3().border_r_1())
+            .when(!compact, |nav| {
+                nav.flex_col()
+                    .w(gpui_kit::rems(ramflux_desktop_navigation::theme::SECTION_REM))
+                    .px_3()
+                    .pt(gpui_kit::rems(24.0 / 15.0))
+                    .border_r_1()
+                    .child(
+                        div()
+                            .id("settings-title")
+                            .flex()
+                            .px_2()
+                            .pb_3()
+                            .text_size(gpui_kit::rems(palette.size_page / 15.0))
+                            .font_semibold()
+                            .child(tr("settings.title")),
+                    )
+            })
             .flex_shrink_0()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().sidebar)
+            .border_color(palette.line)
+            .bg(palette.nav)
             .children(SettingsSection::ALL.into_iter().map(|section| {
                 Button::new(SharedString::from(format!("settings-section-{}", section.key())))
                     .ghost()
-                    .small()
+                    .when(!compact, |button| {
+                        button
+                            .w_full()
+                            .justify_start()
+                            .px_3()
+                            .h(gpui_kit::rems(40.0 / 15.0))
+                            .rounded(gpui_kit::px(palette.radius_sm))
+                            .text_size(gpui_kit::rems(palette.size_body / 15.0))
+                    })
+                    .when(compact, |button| button.small())
                     .selected(self.section == section)
                     // The current section is exposed to assistive technology,
                     // not only drawn as selected.
                     .toggled(self.section == section)
-                    .label(tr(&format!("settings.section.{}", section.key())))
+                    .accessibility_label(tr(&format!("settings.section.{}", section.key())))
+                    .child(
+                        div()
+                            .flex_1()
+                            .when(compact, |label| label.flex_none())
+                            .child(tr(&format!("settings.section.{}", section.key()))),
+                    )
                     // Focus stays on the pressed button, so keyboard users keep
                     // their ring and Tab position.
                     .on_click(cx.listener(move |this, _, _, cx| this.show(section, cx)))
@@ -348,22 +379,6 @@ impl Render for SettingsPage {
             .inset_0()
             .min_w_0()
             .bg(cx.theme().background)
-            .child(
-                div()
-                    .id("settings-header")
-                    .test_support()
-                    .w_full()
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .child(ramflux_desktop_navigation::generated::catalog::page_header(
-                        tr("settings.title"),
-                        subtitle,
-                        compact,
-                        div(),
-                        close,
-                        ramflux_desktop_navigation::palette(cx),
-                    )),
-            )
             .when(offline, |page| page.child(presentation::offline(cx)))
             .when_some(failure, |page, reason| {
                 page.child(presentation::notice(
@@ -385,18 +400,36 @@ impl Render for SettingsPage {
                     .when(compact, |content| content.flex_col())
                     .child(navigation)
                     .child(
-                        div().flex_1().min_h_0().min_w_0().child(
-                            Settings::new(SharedString::from(format!(
-                                "settings-pages-{}",
-                                self.opened
-                            )))
-                            // Navigation is owned here so pointer and keyboard
-                            // changes cancel a host confirmation before hiding facts.
-                            .sidebar_width(gpui_kit::px(0.0))
-                            .sidebar_size_range(gpui_kit::px(0.0)..gpui_kit::px(0.0))
-                            .sidebar_style(&gpui_kit::StyleRefinement::default().hidden())
-                            .page(page),
-                        ),
+                        div()
+                            .id("settings-header")
+                            .test_support()
+                            .relative()
+                            .flex()
+                            .justify_center()
+                            .flex_1()
+                            .min_h_0()
+                            .min_w_0()
+                            .child(
+                                div().size_full().child(
+                                    Settings::new(SharedString::from(format!(
+                                        "settings-pages-{}",
+                                        self.opened
+                                    )))
+                                    // Navigation is owned here so pointer and keyboard
+                                    // changes cancel a host confirmation before hiding facts.
+                                    .sidebar_width(gpui_kit::px(0.0))
+                                    .sidebar_size_range(gpui_kit::px(0.0)..gpui_kit::px(0.0))
+                                    .sidebar_style(&gpui_kit::StyleRefinement::default().hidden())
+                                    .page(page),
+                                ),
+                            )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .top(gpui_kit::rems(20.0 / 15.0))
+                                    .right(gpui_kit::rems(32.0 / 15.0))
+                                    .child(close),
+                            ),
                     ),
             )
             .children(strip.map(|strip| div().flex_shrink_0().pb_2().child(strip)))

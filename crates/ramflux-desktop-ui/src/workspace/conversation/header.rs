@@ -107,63 +107,53 @@ pub fn render(
     let muted_color = cx.theme().muted_foreground;
     let is_group = context.kind == ContextKind::Group;
     let Renaming { field, start } = renaming;
+    let palette = ramflux_desktop_navigation::palette(cx);
     let title = field.unwrap_or_else(|| {
         div()
             .id("conversation-title")
             .test_support()
+            .text_size(gpui_kit::rems(palette.size_subheading / 15.0))
             .font_semibold()
-            .text_color(cx.theme().foreground)
+            .text_color(palette.text)
             .child(selectors::context_title(store, context))
             .into_any_element()
     });
+    let fact = |text: SharedString| {
+        div()
+            .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
+            .text_color(muted_color)
+            .child(text)
+    };
+    let dot = || fact("·".into());
+    // Design `RF / Chat header`: the title over one context line, then the
+    // conversation's commands at the right; pinning lives in "More".
+    let context_line = h_flex()
+        .gap_1()
+        .min_w_0()
+        .when(members > 0, |line| {
+            line.child(fact(tr_args("conversation.members", &[("count", &members.to_string())])))
+        })
+        .when(muted, |line| {
+            line.when(members > 0, |line| line.child(dot()))
+                .child(fact(tr("conversation.muted")).id("header-muted").test_support())
+        })
+        .when_some(timer, |line, secs| {
+            line.when(members > 0 || muted, |line| line.child(dot())).child(
+                fact(tr_args("conversation.timer", &[("timer", &timer_label(Some(secs)))]))
+                    .id("header-timer")
+                    .test_support(),
+            )
+        });
     let row = h_flex()
         .w_full()
-        .gap_2()
-        .px_4()
-        .py_2()
-        .child(title)
-        .when(members > 0, |row| {
-            row.child(
-                div()
-                    .text_xs()
-                    .text_color(muted_color)
-                    .child(tr_args("conversation.members", &[("count", &members.to_string())])),
-            )
-        })
-        .when(muted, |row| {
-            row.child(
-                div()
-                    .id("header-muted")
-                    .text_xs()
-                    .text_color(muted_color)
-                    .child(tr("conversation.muted"))
-                    .test_support(),
-            )
-        })
-        .when_some(timer, |row, secs| {
-            row.child(
-                div()
-                    .id("header-timer")
-                    .text_xs()
-                    .text_color(muted_color)
-                    .child(tr_args("conversation.timer", &[("timer", &timer_label(Some(secs)))]))
-                    .test_support(),
-            )
-        })
-        .child(div().flex_1())
+        .gap_3()
+        .px(gpui_kit::rems(32.0 / 15.0))
+        .py(gpui_kit::rems(20.0 / 15.0))
+        .min_h(gpui_kit::rems(88.0 / 15.0))
+        .child(v_flex().flex_1().min_w_0().gap(gpui_kit::px(2.)).child(title).child(context_line))
         .when(context.kind == ContextKind::Direct, |row| {
             row.child(call_button(store, context, &sink, &call_ack))
         })
-        .child(
-            Button::new("conversation-pin")
-                .ghost()
-                .small()
-                .icon(if pinned { IconName::StarFill } else { IconName::Star })
-                .label(tr(if pinned { "conversation.unpin" } else { "conversation.pin" }))
-                .on_click(move |_, window, cx| {
-                    pin_sink.emit(UiEventKind::PinToggled { pinned: !pinned }, window, cx);
-                }),
-        )
         .child(
             Button::new("conversation-more")
                 .ghost()
@@ -173,6 +163,19 @@ pub fn render(
                 .tooltip(tr("conversation.more"))
                 .dropdown_menu(move |menu, _, _| {
                     let mute = menu_sink.clone();
+                    let pin = pin_sink.clone();
+                    let menu = menu
+                        .item(
+                            PopupMenuItem::new(tr(if pinned {
+                                "conversation.unpin"
+                            } else {
+                                "conversation.pin"
+                            }))
+                            .on_click(move |_, window, cx| {
+                                pin.emit(UiEventKind::PinToggled { pinned: !pinned }, window, cx);
+                            }),
+                        )
+                        .separator();
                     let menu = if is_group {
                         let start = start.clone();
                         menu.item(
@@ -235,7 +238,7 @@ pub fn render(
         .id("conversation-header")
         .w_full()
         .border_b_1()
-        .border_color(cx.theme().border)
+        .border_color(palette.line)
         .child(row)
         .children(identity)
         .children(warnings.into_iter().map(|participant| safety_banner(&participant, &sink, cx)))

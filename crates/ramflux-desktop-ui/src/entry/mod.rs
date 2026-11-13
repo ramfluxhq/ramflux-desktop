@@ -35,7 +35,7 @@ mod recovery;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::stepper::{Stepper, StepperItem};
-use gpui_kit::component::{ActiveTheme as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window, div, rems};
 use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
@@ -410,18 +410,36 @@ impl Render for EntryPage {
             v_flex()
                 .mx_auto()
                 .w_full()
-                .max_w(rems(38.))
+                .max_w(rems(656.0 / 15.0))
                 .gap_6()
                 .px_6()
                 .py_12()
-                .child(ramflux_desktop_navigation::generated::catalog::page_header(
-                    tr("entry.title"),
-                    tr("entry.subtitle"),
-                    true,
-                    div(),
-                    div(),
-                    ramflux_desktop_navigation::palette(cx),
-                ))
+                // Design A01: the product name, then the page title in the
+                // page size over a one-line description.
+                .child({
+                    let palette = ramflux_desktop_navigation::palette(cx);
+                    v_flex()
+                        .id("entry-header")
+                        .gap_4()
+                        .child(
+                            div()
+                                .text_size(rems(palette.size_title / 15.0))
+                                .font_semibold()
+                                .child(tr("app.name")),
+                        )
+                        .child(
+                            div()
+                                .text_size(rems(palette.size_page / 15.0))
+                                .font_semibold()
+                                .child(tr("entry.title")),
+                        )
+                        .child(
+                            div()
+                                .text_size(rems(palette.size_secondary / 15.0))
+                                .text_color(palette.secondary)
+                                .child(tr("entry.subtitle")),
+                        )
+                })
                 .child(Stepper::new("entry-steps").selected_index(selected).items([
                     StepperItem::new().child(tr("entry.step.daemon")),
                     StepperItem::new().child(tr("entry.step.node")),

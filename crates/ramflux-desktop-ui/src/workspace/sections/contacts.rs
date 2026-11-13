@@ -232,27 +232,36 @@ impl Render for ContactsDirectory {
             .on_action(cx.listener(|this, _: &PreviousConversation, _, cx| this.step(-1, cx)))
             .size_full()
             .min_w_0()
-            .bg(cx.theme().sidebar)
+            .bg(ramflux_desktop_navigation::palette(cx).nav)
+            .border_r_1()
+            .border_color(ramflux_desktop_navigation::palette(cx).line)
+            .px_3()
+            .pt(gpui_kit::rems(24.0 / 15.0))
+            .gap_4()
             .child(directory::header(
                 tr_args("sections.contacts.title", &[("count", &count.to_string())]),
                 h_flex().child(add),
                 cx,
             ))
             .child(self.search.field("contacts-search", tr("sections.contacts.search")))
-            .child(
-                div().px_2().pb_2().child(
-                    Button::new("contacts-strangers")
-                        .ghost()
-                        .small()
-                        .w_full()
-                        .icon(IconName::Inbox)
-                        .label(strangers_label.clone())
-                        .accessibility_label(strangers_label)
-                        .on_click(
-                            cx.listener(|_, _, _, cx| cx.emit(ContactsDirectoryEvent::Strangers)),
-                        ),
-                ),
-            )
+            .child({
+                // The strangers entry is a list row (design board 07).
+                let mut row = ramflux_desktop_navigation::row::Row::new(
+                    tr("navigation.strangers"),
+                    tr_args("navigation.strangers_detail", &[("count", &strangers.to_string())]),
+                );
+                row.glyph = Some("?".into());
+                row.unread = u32::try_from(strangers).unwrap_or(u32::MAX);
+                Button::new("contacts-strangers")
+                    .ghost()
+                    .w_full()
+                    .h(gpui_kit::rems(ramflux_desktop_navigation::theme::ROW_REM))
+                    .px_3()
+                    .rounded(gpui_kit::px(ramflux_desktop_navigation::palette(cx).radius_sm))
+                    .accessibility_label(strangers_label)
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(ContactsDirectoryEvent::Strangers)))
+                    .child(row.content(cx))
+            })
             .children(state)
             .child(directory::rows(
                 directory::RowList {

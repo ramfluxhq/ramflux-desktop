@@ -14,7 +14,7 @@ composer:
     zh-CN: "开始"
   task_mode:
     en: "Ask an AI participant"
-    zh-CN: "请 AI 参与者处理"
+    zh-CN: "请 Agent 处理"
   task_placeholder:
     en: "Describe what should happen, in one sentence"
     zh-CN: "用一句话描述要完成的事"
@@ -23,10 +23,10 @@ composer:
     zh-CN: "用一句话请 %{name} 做一件事"
   no_agent:
     en: "No AI participant in this conversation"
-    zh-CN: "此会话中没有 AI 参与者"
+    zh-CN: "此会话中没有 Agent"
   kind_unknown:
     en: "Not known to be an AI participant: %{name} was added by ID, which does not say. Add them from their contact card to ask for tasks."
-    zh-CN: "无法确认 %{name} 是 AI 参与者：按 ID 添加的联系人不含此信息。通过对方的联系人名片添加后即可请求任务。"
+    zh-CN: "无法确认 %{name} 是 Agent：按 ID 添加的联系人不含此信息。通过对方的联系人名片添加后即可请求任务。"
   first_placeholder:
     en: "Write the first message"
     zh-CN: "输入第一条消息"
@@ -127,7 +127,7 @@ conversation:
     error:
       self:
         en: "This is your own account."
-        zh-CN: "这是你自己的账户。"
+        zh-CN: "这是你自己的账号。"
       not_accepted:
         en: "%{name} has not accepted your contact request yet. Their answer arrives in Contacts."
         zh-CN: "%{name} 尚未接受你的联系人请求，对方的答复会显示在联系人中。"
@@ -145,7 +145,7 @@ conversation:
         zh-CN: "%{name} 的安全码已变更，请先在联系人中验证后再开启会话。"
       unreachable:
         en: "%{name} is not reachable yet: this account has none of their devices. Add them from their contact card in Contacts."
-        zh-CN: "暂时无法联系 %{name}：此账户还没有对方的任何设备。请在联系人中通过对方的联系人名片添加。"
+        zh-CN: "暂时无法联系 %{name}：此账号还没有对方的任何设备。请在联系人中通过对方的联系人名片添加。"
   jump_latest:
     en: "Jump to latest"
     zh-CN: "跳到最新"
@@ -254,7 +254,7 @@ dock:
         zh-CN: "粘贴对方分享的联系人名片，或对方的用户 ID。"
       kind_card:
         en: "Contact card: the daemon checks its signature and pins the identity it names."
-        zh-CN: "联系人名片：守护进程会校验签名，并固定名片所指的身份。"
+        zh-CN: "联系人名片：本地服务会校验签名，并固定名片所指的身份。"
       kind_id:
         en: "User ID: looked up on your home node and trusted on first use. Provisional until their card pins it or you compare safety numbers."
         zh-CN: "用户 ID：在你的主节点上查询，首次使用即信任。在对方名片固定其身份或你比对安全码之前均为临时身份。"
@@ -381,13 +381,13 @@ dock:
       zh-CN: "暂不可联系"
     unreachable_reason:
       en: "%{name} is not reachable yet: this account has none of their devices. Add them from their contact card."
-      zh-CN: "暂时无法联系 %{name}：此账户还没有对方的任何设备。请通过对方的联系人名片添加。"
+      zh-CN: "暂时无法联系 %{name}：此账号还没有对方的任何设备。请通过对方的联系人名片添加。"
     requests:
       en: "Requests"
       zh-CN: "请求"
     requests_local:
       en: "Accepting adds them on this account; they are not told yet."
-      zh-CN: "接受后对方会加入此账户的联系人，但暂不会通知对方。"
+      zh-CN: "接受后对方会加入此账号的联系人，但暂不会通知对方。"
     floors:
       full:
         en: "New contact requests are on hold: this device already remembers as many earlier requesters as it can (%{retained} of %{limit}). Nothing is lost; requests resume as old entries expire."
@@ -609,7 +609,7 @@ group:
       zh-CN: "群组的用途"
     name_help:
       en: "This name is kept on your account. Members name the group themselves."
-      zh-CN: "此名称保存在你的账户中，成员各自为群组命名。"
+      zh-CN: "此名称保存在你的账号中，成员各自为群组命名。"
     members:
       en: "Members"
       zh-CN: "成员"
@@ -850,58 +850,58 @@ networking:
     zh-CN: "正在连接"
   pending_text:
     en: "Connecting to its node: this account cannot send or receive messages until it is connected. This updates by itself."
-    zh-CN: "正在连接其节点：连接成功前，此账户暂时无法收发消息。本提示会自动更新。"
+    zh-CN: "正在连接其节点：连接成功前，此账号暂时无法收发消息。本提示会自动更新。"
 schema:
   connecting:
     en: "Connecting to the local daemon…"
-    zh-CN: "正在连接本地守护进程……"
+    zh-CN: "正在连接本地服务……"
   failed:
     en: "Can't read the local daemon's status — retrying"
-    zh-CN: "无法读取本地守护进程的状态，正在重试"
+    zh-CN: "无法读取本地服务的状态，正在重试"
   composer:
     connecting:
       en: "Sending resumes once the local daemon answers."
-      zh-CN: "本地守护进程响应后即可发送。"
+      zh-CN: "本地服务响应后即可发送。"
     failed:
       en: "Can't send until the local daemon's status can be read."
-      zh-CN: "读取到本地守护进程的状态之前无法发送。"
+      zh-CN: "读取到本地服务的状态之前无法发送。"
     blocked:
       en: "This account's messages are not available, so nothing can be sent."
-      zh-CN: "此账户的消息暂不可用，因此无法发送。"
+      zh-CN: "此账号的消息暂不可用，因此无法发送。"
   older_daemon:
     title:
       en: "The local daemon is older than this app"
-      zh-CN: "本地守护进程比此应用更旧"
+      zh-CN: "本地服务比此应用更旧"
     body:
       en: "Update the local daemon, then reopen the account. Nothing was changed."
-      zh-CN: "请更新本地守护进程后重新打开账户。未做任何更改。"
+      zh-CN: "请更新本地服务后重新打开账号。未做任何更改。"
   update_app:
     title:
       en: "Update the desktop app to open this account"
-      zh-CN: "请更新桌面应用以打开此账户"
+      zh-CN: "请更新桌面应用以打开此账号"
     body:
       en: "This account uses a newer message format than this app reads. Nothing was changed."
-      zh-CN: "此账户使用的消息格式比此应用能读取的更新。未做任何更改。"
+      zh-CN: "此账号使用的消息格式比此应用能读取的更新。未做任何更改。"
   unsupported:
     title:
       en: "This local daemon version is not supported"
-      zh-CN: "不支持此本地守护进程版本"
+      zh-CN: "不支持此本地服务版本"
     body:
       en: "The daemon reports a message format this app does not know. Nothing was changed."
-      zh-CN: "守护进程报告了此应用不认识的消息格式。未做任何更改。"
+      zh-CN: "本地服务报告了此应用不认识的消息格式。未做任何更改。"
   reset:
     title:
       en: "This account was created by an older development build and cannot be opened"
-      zh-CN: "此账户由较旧的开发版本创建，无法打开"
+      zh-CN: "此账号由较旧的开发版本创建，无法打开"
     body:
       en: "Create a new account or switch to another one. Nothing in this account is deleted or converted."
-      zh-CN: "请创建新账户或切换到其他账户。此账户中的内容不会被删除或转换。"
+      zh-CN: "请创建新账号或切换到其他账号。此账号中的内容不会被删除或转换。"
     switch:
       en: "Switch account"
-      zh-CN: "切换账户"
+      zh-CN: "切换账号"
     create:
       en: "Create a new account"
-      zh-CN: "创建新账户"
+      zh-CN: "创建新账号"
 
 navigation:
   tasks_none_loaded:
@@ -935,8 +935,8 @@ navigation:
     en: "Agents"
     zh-CN: "Agents"
   search:
-    en: "Search conversations"
-    zh-CN: "搜索会话"
+    en: "Search"
+    zh-CN: "搜索"
   not_loaded:
     en: "Latest message not loaded"
     zh-CN: "最新消息尚未加载"
@@ -946,6 +946,12 @@ navigation:
   empty_preview:
     en: "No messages yet"
     zh-CN: "暂无消息"
+  strangers:
+    en: "Strangers"
+    zh-CN: "陌生人"
+  strangers_detail:
+    en: "%{count} non-contacts"
+    zh-CN: "%{count} 位非联系人"
   strangers_count:
     en: "Strangers · %{count}"
     zh-CN: "陌生人 · %{count}"

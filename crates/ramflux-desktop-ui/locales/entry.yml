@@ -1,43 +1,43 @@
 _version: 2
 entry:
   title:
-    en: "Welcome to Ramflux"
-    zh-CN: "欢迎使用 Ramflux"
+    en: "Connect Ramflux"
+    zh-CN: "连接 Ramflux"
   subtitle:
-    en: "Connect this device to your local daemon, a node, and your account."
-    zh-CN: "将这台设备连接到本地守护进程、节点和你的账户。"
+    en: "Connect your local daemon, choose a node, then unlock your account."
+    zh-CN: "连接本地服务、选择节点，然后解锁你的账号。"
   step:
     daemon:
       en: "Daemon"
-      zh-CN: "守护进程"
+      zh-CN: "本地服务"
     node:
       en: "Node"
       zh-CN: "节点"
     account:
       en: "Account"
-      zh-CN: "账户"
+      zh-CN: "账号"
   daemon:
     waiting:
       en: "Waiting for the local daemon"
-      zh-CN: "正在等待本地守护进程"
+      zh-CN: "正在等待本地服务"
     help:
       en: "Ramflux connects to the background service on this device."
       zh-CN: "Ramflux 会连接到本机的后台服务。"
     none:
       en: "No local daemon is answering"
-      zh-CN: "没有本地守护进程响应"
+      zh-CN: "没有本地服务响应"
     none_help:
       en: "Ramflux Desktop connects as soon as a daemon answers at %{path}. Start one here, or start it yourself with rf daemon start."
-      zh-CN: "只要 %{path} 上有守护进程响应，Ramflux Desktop 就会立即连接。可以在这里启动，也可以自行运行 rf daemon start。"
+      zh-CN: "只要 %{path} 上有本地服务响应，Ramflux Desktop 就会立即连接。可以在这里启动，也可以自行运行 rf daemon start。"
     start:
       en: "Start local daemon"
-      zh-CN: "启动本地守护进程"
+      zh-CN: "启动本地服务"
     retry:
       en: "Try again"
       zh-CN: "重试"
     settings:
       en: "Daemon settings…"
-      zh-CN: "守护进程设置…"
+      zh-CN: "本地服务设置…"
     runs:
       en: "Program: %{path}"
       zh-CN: "程序：%{path}"
@@ -46,50 +46,50 @@ entry:
       zh-CN: "数据文件夹：%{path}"
     only_on_request:
       en: "Nothing starts until you press Start. A daemon started here stops when you quit Ramflux Desktop."
-      zh-CN: "在你点击启动之前不会启动任何进程。在这里启动的守护进程会在退出 Ramflux Desktop 时停止。"
+      zh-CN: "在你点击启动之前不会启动任何进程。在这里启动的本地服务会在退出 Ramflux Desktop 时停止。"
     missing_title:
       en: "No daemon program set"
-      zh-CN: "未设置守护进程程序"
+      zh-CN: "未设置本地服务程序"
     missing:
       en: "Choose the rf program in Settings › Diagnostics, or start a daemon yourself."
-      zh-CN: "请在“设置 › 诊断”中选择 rf 程序，或自行启动守护进程。"
+      zh-CN: "请在“设置 › 诊断”中选择 rf 程序，或自行启动本地服务。"
     starting:
       en: "Starting the local daemon…"
-      zh-CN: "正在启动本地守护进程…"
+      zh-CN: "正在启动本地服务…"
     connecting:
       en: "The daemon is running. Connecting…"
-      zh-CN: "守护进程已在运行，正在连接…"
+      zh-CN: "本地服务已在运行，正在连接…"
     output:
       en: "Daemon output: %{path}"
-      zh-CN: "守护进程输出：%{path}"
+      zh-CN: "本地服务输出：%{path}"
     failed_title:
       en: "The local daemon is not running"
-      zh-CN: "本地守护进程未在运行"
+      zh-CN: "本地服务未在运行"
     not_found:
       en: "The daemon program was not found at %{path}."
-      zh-CN: "在 %{path} 找不到守护进程程序。"
+      zh-CN: "在 %{path} 找不到本地服务程序。"
     not_executable:
       en: "%{path} is not an executable program."
       zh-CN: "%{path} 不是可执行程序。"
     no_data_dir:
       en: "No data folder is set for the daemon."
-      zh-CN: "尚未为守护进程设置数据文件夹。"
+      zh-CN: "尚未为本地服务设置数据文件夹。"
     spawn_failed:
       en: "The daemon could not be started: %{error}"
-      zh-CN: "无法启动守护进程：%{error}"
+      zh-CN: "无法启动本地服务：%{error}"
     exited:
       en: "The daemon stopped right after starting (exit status %{status}). Its output is in the daemon log."
-      zh-CN: "守护进程启动后立即停止（退出状态 %{status}）。输出见守护进程日志。"
+      zh-CN: "本地服务启动后立即停止（退出状态 %{status}）。输出见本地服务日志。"
     signal:
       en: "signal"
       zh-CN: "信号"
     stop_failed:
       en: "The daemon did not stop: %{reason}"
-      zh-CN: "守护进程未停止：%{reason}"
+      zh-CN: "本地服务未停止：%{reason}"
   node:
     intro:
       en: "Your account lives on a node. Confirm the node you were invited to, or add one by address."
-      zh-CN: "你的账户托管在节点上。请确认邀请你的节点，或按地址添加节点。"
+      zh-CN: "你的账号托管在节点上。请确认邀请你的节点，或按地址添加节点。"
     waiting:
       en: "Connected. Looking for nodes."
       zh-CN: "已连接。正在查找节点。"
@@ -126,7 +126,7 @@ entry:
   path:
     create:
       en: "Create account"
-      zh-CN: "创建账户"
+      zh-CN: "创建账号"
     join:
       en: "This is a new device"
       zh-CN: "这是一台新设备"
@@ -136,7 +136,7 @@ entry:
   create:
     label:
       en: "Account name"
-      zh-CN: "账户名称"
+      zh-CN: "账号名称"
     label_placeholder:
       en: "Personal"
       zh-CN: "个人"
@@ -145,7 +145,7 @@ entry:
       zh-CN: "新口令"
     submit:
       en: "Create account"
-      zh-CN: "创建账户"
+      zh-CN: "创建账号"
   join:
     help:
       en: "Open Settings · Devices on a device that is already signed in to get an activation code."
@@ -161,7 +161,7 @@ entry:
       zh-CN: "激活码"
     submit:
       en: "Join account"
-      zh-CN: "加入账户"
+      zh-CN: "加入账号"
   restore:
     full:
       en: "Full backup"
@@ -171,13 +171,13 @@ entry:
       zh-CN: "密钥备份"
     full_help:
       en: "A full backup holds everything: messages, groups, contacts and every file. It is checked completely before anything is installed; the account then appears here and can be unlocked."
-      zh-CN: "完整备份包含全部内容：消息、群组、联系人和所有文件。安装前会完整检查；之后账户会出现在此处，可以解锁。"
+      zh-CN: "完整备份包含全部内容：消息、群组、联系人和所有文件。安装前会完整检查；之后账号会出现在此处，可以解锁。"
     key_help:
       en: "A key backup holds the identity keys and contacts only."
       zh-CN: "密钥备份只包含身份密钥和联系人。"
     open_account:
       en: "Open account"
-      zh-CN: "打开账户"
+      zh-CN: "打开账号"
     finishing:
       en: "Finishing the restore…"
       zh-CN: "正在完成恢复…"
@@ -199,10 +199,10 @@ entry:
   account:
     loading:
       en: "Loading your account…"
-      zh-CN: "正在加载你的账户…"
+      zh-CN: "正在加载你的账号…"
     load_failed:
       en: "%{name} did not load. The daemon is running, but the account has not answered."
-      zh-CN: "%{name} 未能加载。守护进程正在运行，但该账户没有响应。"
+      zh-CN: "%{name} 未能加载。本地服务正在运行，但该账号没有响应。"
     retry:
       en: "Try again"
       zh-CN: "重试"

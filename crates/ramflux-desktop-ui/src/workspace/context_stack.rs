@@ -95,7 +95,8 @@ impl EventEmitter<ContextStackEvent> for ContextStack {}
 impl ContextStack {
     /// Creates the search input once and subscribes to the active account store.
     pub fn new(store: Entity<StoreHandle>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let query = cx.new(|cx| InputState::new(window, cx).placeholder(tr("navigation.search")));
+        // The placeholder follows a language switch like every other field.
+        let query = i18n::localized_input("navigation.search", window, cx, |input| input);
         let subscriptions = vec![
             cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, window, cx| {
                 if let StoreEvent::Changed(changes) = event {
@@ -413,6 +414,7 @@ impl Render for ContextStack {
                             .on_click(emit(ContextStackEvent::AddContact)),
                     )
             });
+        let palette = ramflux_desktop_navigation::palette(cx);
         let row_height = window.rem_size() * theme::ROW_REM;
         if self.row_height != row_height {
             self.row_height = row_height;
@@ -436,6 +438,10 @@ impl Render for ContextStack {
                                 .ghost()
                                 .w_full()
                                 .h(gpui_kit::rems(theme::ROW_REM))
+                                .px_3()
+                                .rounded(gpui_kit::px(
+                                    ramflux_desktop_navigation::palette(cx).radius_sm,
+                                ))
                                 .selected(selected)
                                 .accessibility_label(accessible_name(entry))
                                 .when(
@@ -466,39 +472,63 @@ impl Render for ContextStack {
             .on_action(cx.listener(|this, _: &PreviousConversation, window, cx| {
                 this.move_cursor(false, window, cx)
             }))
-            .bg(cx.theme().sidebar)
+            .bg(palette.nav)
             .border_r_1()
-            .border_color(cx.theme().border)
+            .border_color(palette.line)
+            .px_3()
+            .pt(gpui_kit::rems(24.0 / 15.0))
+            .gap_4()
+            // Design board 02: the list title with its add command, the
+            // search field, then the strangers entry as the first row.
             .child(
                 h_flex()
-                    .p_3()
-                    .child(div().flex_1().font_medium().child(tr(match self.filter {
-                        ListFilter::Messages => "navigation.messages",
-                        ListFilter::Groups => "navigation.groups",
-                        ListFilter::Tasks => "navigation.tasks",
-                    })))
+                    .px_2()
+                    .h(gpui_kit::rems(28.0 / 15.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(gpui_kit::rems(palette.size_title / 15.0))
+                            .font_semibold()
+                            .child(tr(match self.filter {
+                                ListFilter::Messages => "navigation.messages",
+                                ListFilter::Groups => "navigation.groups",
+                                ListFilter::Tasks => "navigation.tasks",
+                            })),
+                    )
                     .child(new_menu),
             )
             .child(
-                div().px_3().pb_2().child(
-                    Input::new(&self.query)
-                        .id("conversation-search")
-                        .small()
-                        .prefix(Icon::new(IconName::Search)),
-                ),
+                Input::new(&self.query)
+                    .id("conversation-search")
+                    .small()
+                    .prefix(Icon::new(IconName::Search)),
             )
-            .child(
-                div().px_2().pb_2().child(
+            // The strangers entry belongs to the message list only (boards 02, E01).
+            .when(self.filter == ListFilter::Messages, |pane| {
+                pane.child({
+                    let mut row = Row::new(
+                        tr("navigation.strangers"),
+                        tr_args(
+                            "navigation.strangers_detail",
+                            &[("count", &request_count.to_string())],
+                        ),
+                    );
+                    row.glyph = Some("?".into());
+                    row.unread = u32::try_from(request_count).unwrap_or(u32::MAX);
                     Button::new("strangers-entry")
                         .ghost()
                         .w_full()
-                        .label(tr_args(
+                        .h(gpui_kit::rems(theme::ROW_REM))
+                        .px_3()
+                        .rounded(gpui_kit::px(palette.radius_sm))
+                        .accessibility_label(tr_args(
                             "navigation.strangers_count",
                             &[("count", &request_count.to_string())],
                         ))
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(ContextStackEvent::Strangers))),
-                ),
-            )
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(ContextStackEvent::Strangers)))
+                        .child(row.content(cx))
+                })
+            })
             .when(self.filter == ListFilter::Tasks, |pane| {
                 pane.child(
                     div()

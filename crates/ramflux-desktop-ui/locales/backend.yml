@@ -6,28 +6,28 @@ backend:
       zh-CN: "会话中暂不支持智能体卡片。"
     handoff:
       en: "Handoff is not available from the daemon yet."
-      zh-CN: "守护进程尚不支持接力。"
+      zh-CN: "本地服务尚不支持接力。"
     conflicts:
       en: "Resolving conflicts is not available from the daemon yet."
-      zh-CN: "守护进程尚不支持解决冲突。"
+      zh-CN: "本地服务尚不支持解决冲突。"
     reveal:
       en: "Revealing hidden content is not available from the daemon yet."
-      zh-CN: "守护进程尚不支持显示隐藏内容。"
+      zh-CN: "本地服务尚不支持显示隐藏内容。"
     calls:
       en: "Voice calls are not available from the daemon yet."
-      zh-CN: "守护进程尚不支持语音通话。"
+      zh-CN: "本地服务尚不支持语音通话。"
     contact_requests:
       en: "Contact requests are not available from the daemon yet."
-      zh-CN: "守护进程尚不支持联系人请求。"
+      zh-CN: "本地服务尚不支持联系人请求。"
     full_backup:
       en: "Full backup and restore need a newer daemon."
-      zh-CN: "完整备份与恢复需要更新版本的守护进程。"
+      zh-CN: "完整备份与恢复需要更新版本的本地服务。"
     contact_route:
       en: "A contact request travels to the contact's node and needs a federation route to it, which the daemon does not list."
-      zh-CN: "联系人请求需发送到对方节点，需要通往该节点的联邦路由，守护进程未提供。"
+      zh-CN: "联系人请求需发送到对方节点，需要通往该节点的联邦路由，本地服务未提供。"
     spaces:
       en: "The daemon has no shared spaces."
-      zh-CN: "守护进程不支持共享空间。"
+      zh-CN: "本地服务不支持共享空间。"
     group_attachments:
       en: "Group messages cannot carry attachments yet."
       zh-CN: "群消息暂不支持附件。"
@@ -48,23 +48,23 @@ backend:
       zh-CN: "尚未列出该联系人的身份承诺。"
     no_relay:
       en: "The relay of this account's node is not known."
-      zh-CN: "未知此账户所在节点的中继。"
+      zh-CN: "未知此账号所在节点的中继。"
     no_self:
       en: "This account's own identity is not known yet."
-      zh-CN: "尚未获知此账户自身的身份。"
+      zh-CN: "尚未获知此账号自身的身份。"
     no_direction:
       en: "It is not known whether this object was sent or received."
       zh-CN: "无法确定此文件是发送还是接收的。"
     activation:
       en: "Joining by activation code is not available from the daemon yet."
-      zh-CN: "守护进程尚不支持通过激活码加入。"
+      zh-CN: "本地服务尚不支持通过激活码加入。"
     device_sync:
       en: "Device sync needs a relay route and a target device the desktop cannot choose yet."
       zh-CN: "设备同步需要中继路由和目标设备，桌面端暂不能选择。"
   surface:
     refused:
       en: "the daemon refused it (%{code})."
-      zh-CN: "守护进程拒绝了此请求（%{code}）。"
+      zh-CN: "本地服务拒绝了此请求（%{code}）。"
     stale_version:
       en: "the surface changed after you saw it."
       zh-CN: "界面在你查看后已更改。"
@@ -85,7 +85,7 @@ backend:
       zh-CN: "界面过大，无法发送。"
     not_found:
       en: "the daemon no longer has this surface."
-      zh-CN: "守护进程中已没有此界面。"
+      zh-CN: "本地服务中已没有此界面。"
     out_of_sync:
       en: "this surface is not up to date. Request an update first."
       zh-CN: "此界面未同步到最新，请先请求更新。"
@@ -103,7 +103,7 @@ backend:
       zh-CN: "此界面不允许该操作。"
     invalid_request:
       en: "the daemon could not accept the request."
-      zh-CN: "守护进程无法接受此请求。"
+      zh-CN: "本地服务无法接受此请求。"
   call:
     control_capacity:
       en: "This call has reached the limit of call updates it can track, so further updates from the other side are refused."
@@ -157,16 +157,16 @@ backend:
         zh-CN: "凭据未导出：请为文件指定完整路径。"
       not_owner_session:
         en: "The credentials were not exported: the daemon does not accept this from this session."
-        zh-CN: "凭据未导出：守护进程不接受来自此会话的请求。"
+        zh-CN: "凭据未导出：本地服务不接受来自此会话的请求。"
       owner_locked:
         en: "The credentials were not exported: your account is locked."
-        zh-CN: "凭据未导出：你的账户已锁定。"
+        zh-CN: "凭据未导出：你的账号已锁定。"
       not_custodian:
         en: "The credentials were not exported: your account is not the custodian of this AI participant."
-        zh-CN: "凭据未导出：你的账户不是此 AI 参与者的托管人。"
+        zh-CN: "凭据未导出：你的账号不是此 Agent 的托管人。"
       not_connected:
         en: "The credentials were not exported: an account is not connected to its node yet."
-        zh-CN: "凭据未导出：有账户尚未连接到它的节点。"
+        zh-CN: "凭据未导出：有账号尚未连接到它的节点。"
       file_exists:
         en: "The credentials were not exported: a file already exists at that location."
         zh-CN: "凭据未导出：该位置已有文件。"
@@ -202,23 +202,23 @@ backend:
         zh-CN: "凭据未导出：这台设备的密钥保管库当前正忙。请稍候后再次导出。"
       vault_primary_unavailable:
         en: "The credentials were not exported: this device's key vault holds no primary key for this account."
-        zh-CN: "凭据未导出：这台设备的密钥保管库中没有此账户的主密钥。"
+        zh-CN: "凭据未导出：这台设备的密钥保管库中没有此账号的主密钥。"
       timeout:
         en: "The daemon did not answer in time. Check the location before you export again."
-        zh-CN: "守护进程未在规定时间内响应。再次导出前请先检查该位置。"
+        zh-CN: "本地服务未在规定时间内响应。再次导出前请先检查该位置。"
       transport:
         en: "The connection to the daemon broke. Check the location before you export again."
-        zh-CN: "与守护进程的连接中断。再次导出前请先检查该位置。"
+        zh-CN: "与本地服务的连接中断。再次导出前请先检查该位置。"
       other:
         en: "The daemon refused to export the credentials."
-        zh-CN: "守护进程拒绝导出凭据。"
+        zh-CN: "本地服务拒绝导出凭据。"
   failure:
     ceremony:
       en: "There is no setup or recovery under way to do this. Nothing was changed."
       zh-CN: "当前没有正在进行的设置或恢复，无法执行此操作。未做任何更改。"
     surface_action_rejected:
       en: "The daemon did not send the action: %{reason}"
-      zh-CN: "守护进程未发送此操作：%{reason}"
+      zh-CN: "本地服务未发送此操作：%{reason}"
     schema_gate_closed:
       en: "Messages are not available right now, so this was not sent."
       zh-CN: "消息功能暂不可用，因此未发送。"
@@ -245,7 +245,7 @@ backend:
       zh-CN: "这台设备的密钥保管库当前正忙。请稍后重试。"
     vault_primary_unavailable:
       en: "The key vault of this device holds no primary key for this account."
-      zh-CN: "这台设备的密钥保管库中没有此账户的主密钥。"
+      zh-CN: "这台设备的密钥保管库中没有此账号的主密钥。"
     vault_mode_mismatch:
       en: "This device's key vault does not support what was asked."
       zh-CN: "这台设备的密钥保管库不支持所请求的操作。"
@@ -254,7 +254,7 @@ backend:
       zh-CN: "上次错误"
     timeout:
       en: "The daemon did not answer in time."
-      zh-CN: "守护进程未在规定时间内响应。"
+      zh-CN: "本地服务未在规定时间内响应。"
     unauthenticated:
       en: "The node refused this device's session as not signed in. Nothing was sent, and it will not be retried until you sign in again."
       zh-CN: "节点认为本设备的会话未登录并拒绝了它。未发送任何内容，在你重新登录前不会重试。"
@@ -263,11 +263,11 @@ backend:
       zh-CN: "节点证书与本设备信任的证书不符。未发送任何内容，在修复节点信任前不会重试。"
     reconcile:
       en: "The daemon cannot tell whether this was applied after an interrupted attempt. Check the result before trying again."
-      zh-CN: "上次尝试中断，守护进程无法确定此操作是否已生效。请先核对结果再重试。"
+      zh-CN: "上次尝试中断，本地服务无法确定此操作是否已生效。请先核对结果再重试。"
     action:
       account:
         en: "Account"
-        zh-CN: "账户"
+        zh-CN: "账号"
       backup:
         en: "Backup"
         zh-CN: "备份"
@@ -333,7 +333,7 @@ backend:
       zh-CN: "完成 %{done}/%{total} 后停止：%{reason}"
     start_no_identity:
       en: "This account does not list %{name}'s devices yet, so the first message has no route. Add %{name} from their contact card, or try again once their node lists them."
-      zh-CN: "此账户尚未列出 %{name} 的设备，第一条消息没有路由。请通过 %{name} 的联系人名片添加，或在其节点列出后重试。"
+      zh-CN: "此账号尚未列出 %{name} 的设备，第一条消息没有路由。请通过 %{name} 的联系人名片添加，或在其节点列出后重试。"
     start_no_target:
       en: "None of %{name}'s devices has a delivery address yet, so the first message cannot be addressed. Ask %{name} to open Ramflux once so their device registers, then try again."
       zh-CN: "%{name} 的设备都还没有投递地址，第一条消息无法寻址。请 %{name} 打开一次 Ramflux 以注册设备，然后重试。"
@@ -342,14 +342,14 @@ backend:
       zh-CN: "未列出 %{name} 的已验证设备，群组未创建。请先通过 %{name} 的联系人名片添加。"
     start_unverified_key:
       en: "%{name}'s device keys are not verified for this account yet. Open Contacts and verify %{name}'s safety number, then try again."
-      zh-CN: "%{name} 的设备密钥尚未在此账户中验证。请打开联系人，验证 %{name} 的安全码后重试。"
+      zh-CN: "%{name} 的设备密钥尚未在此账号中验证。请打开联系人，验证 %{name} 的安全码后重试。"
   contact:
     unknown_principal:
       en: "No one is registered under this id on your home node. Check the id, or ask for their contact card."
       zh-CN: "你的主节点上没有以此 ID 注册的人。请核对 ID，或向对方索取联系人名片。"
     invalid_card:
       en: "This is not a contact card this account can use. Cards work only for people on your own home node."
-      zh-CN: "这不是此账户可用的联系人名片。名片仅适用于与你同一主节点上的人。"
+      zh-CN: "这不是此账号可用的联系人名片。名片仅适用于与你同一主节点上的人。"
     card_signature_invalid:
       en: "The card's signature does not match the identity it names. Do not use it; ask for a new card in person."
       zh-CN: "名片的签名与其所述身份不符。请勿使用，并当面索取新名片。"
@@ -358,7 +358,7 @@ backend:
       zh-CN: "此联系人名片已过期。请索取新名片。"
     self_contact:
       en: "That is this account itself."
-      zh-CN: "这是此账户自己。"
+      zh-CN: "这是此账号自己。"
     already_contact:
       en: "Already a contact."
       zh-CN: "已经是联系人。"
@@ -412,14 +412,14 @@ backend:
       zh-CN: "你的主节点资料已过期。请在“设置 › 节点”中刷新该节点后重试。"
     export_failed:
       en: "this account's home node cannot be named on a contact card."
-      zh-CN: "此账户的主节点无法写入联系人名片。"
+      zh-CN: "此账号的主节点无法写入联系人名片。"
     no_home_node:
       en: "Contact cards need this account's home node, and none is set up. Join your home node in Settings › Nodes first."
-      zh-CN: "联系人名片需要此账户的主节点，但尚未设置。请先在“设置 › 节点”中加入你的主节点。"
+      zh-CN: "联系人名片需要此账号的主节点，但尚未设置。请先在“设置 › 节点”中加入你的主节点。"
   daemon:
     socket:
       en: "Attached to %{path} · %{accounts} open accounts"
-      zh-CN: "已连接 %{path} · 已打开 %{accounts} 个账户"
+      zh-CN: "已连接 %{path} · 已打开 %{accounts} 个账号"
   backup:
     wrong_passphrase:
       en: "This passphrase doesn't open the backup. Check it and try again."
@@ -447,7 +447,7 @@ backend:
       zh-CN: "检查过的副本在恢复前已过期。请重新检查备份。"
     interrupted:
       en: "The daemon stopped while this was running. Nothing was changed."
-      zh-CN: "运行期间守护进程已停止，未作任何更改。"
+      zh-CN: "运行期间本地服务已停止，未作任何更改。"
     attachment_mismatch:
       en: "Some files in the backup are missing or don't match their checksums, so nothing was restored."
       zh-CN: "备份中有文件缺失或与校验值不一致，因此未恢复任何内容。"
@@ -460,20 +460,20 @@ backend:
         zh-CN: "备份的 %{count} 个文件中有 %{bad} 个缺失或与校验值不一致，因此未恢复任何内容。"
     attachments_unavailable:
       en: "Some files in this account could not be fetched, so no backup was written."
-      zh-CN: "此账户中有文件无法获取，因此未写入备份。"
+      zh-CN: "此账号中有文件无法获取，因此未写入备份。"
     attachments_unavailable_count:
       one:
         en: "%{count} file in this account could not be fetched, so no backup was written."
-        zh-CN: "此账户中有 %{count} 个文件无法获取，因此未写入备份。"
+        zh-CN: "此账号中有 %{count} 个文件无法获取，因此未写入备份。"
       other:
         en: "%{count} files in this account could not be fetched, so no backup was written."
-        zh-CN: "此账户中有 %{count} 个文件无法获取，因此未写入备份。"
+        zh-CN: "此账号中有 %{count} 个文件无法获取，因此未写入备份。"
     identity_rollback:
       en: "This backup holds an older identity than this device trusts, so it can't be restored as a new account."
-      zh-CN: "此备份中的身份比本设备信任的更旧，无法作为新账户恢复。"
+      zh-CN: "此备份中的身份比本设备信任的更旧，无法作为新账号恢复。"
     root_conflict:
       en: "This backup belongs to a different identity than the account here. It can't replace it."
-      zh-CN: "此备份属于与本账户不同的身份，无法替换。"
+      zh-CN: "此备份属于与本账号不同的身份，无法替换。"
     schema_reset_required:
       en: "This backup was made by an older development build and can't be imported. Nothing was changed or removed."
       zh-CN: "此备份由较旧的开发版本创建，无法导入。未做任何更改，也未删除任何内容。"
@@ -482,10 +482,10 @@ backend:
       zh-CN: "另一个备份或恢复正在进行，请等待其结束。"
     account_locked:
       en: "The account is locked. Unlock it to back it up."
-      zh-CN: "账户已锁定。请先解锁再备份。"
+      zh-CN: "账号已锁定。请先解锁再备份。"
     unknown_job:
       en: "The daemon no longer knows this backup or restore (it may have restarted)."
-      zh-CN: "守护进程已不再记录此备份或恢复（可能已重启）。"
+      zh-CN: "本地服务已不再记录此备份或恢复（可能已重启）。"
     invalid_job_phase:
       en: "The backup or restore can't do this now."
       zh-CN: "该备份或恢复当前无法执行此操作。"

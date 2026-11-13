@@ -664,7 +664,24 @@ impl Render for Shell {
                             .min_w_0()
                             .h_full()
                             .child(content)
-                            .when(self.settings_open, |area| area.child(self.settings.clone()))
+                            .when(self.settings_open, |area| {
+                                // In the workspace the navigation rail stays
+                                // beside settings (design G01–G13).
+                                area.child(
+                                    div()
+                                        .absolute()
+                                        .top_0()
+                                        .bottom_0()
+                                        .right_0()
+                                        .when(self.page == Page::Workspace, |frame| {
+                                            frame.left(gpui_kit::rems(
+                                                ramflux_desktop_navigation::theme::RAIL_REM,
+                                            ))
+                                        })
+                                        .when(self.page != Page::Workspace, |frame| frame.left_0())
+                                        .child(self.settings.clone()),
+                                )
+                            })
                             .when(self.palette_open, |area| area.child(self.palette.clone())),
                     )
                     .when_some(self.dev.clone().filter(|_| self.dev_visible), |row, dev| {

@@ -5,25 +5,25 @@ settings_ui:
     zh-CN: "离线"
   offline_help:
     en: "Showing the last available account data. Reconnect to refresh device and backup status."
-    zh-CN: "显示最近可用的账户数据。重新连接后可刷新设备和备份状态。"
+    zh-CN: "显示最近可用的账号数据。重新连接后可刷新设备和备份状态。"
   last_error:
     en: "Last settings error"
     zh-CN: "最近的设置错误"
   privacy:
     en: "Account privacy"
-    zh-CN: "账户隐私"
+    zh-CN: "账号隐私"
   privacy_unavailable:
     en: "Open account controls are unavailable in this version. Contact request acceptance does not change account visibility."
-    zh-CN: "此版本暂不支持开放账户控制。联系人请求的接受策略不会改变账户可见性。"
+    zh-CN: "此版本暂不支持开放账号控制。联系人请求的接受策略不会改变账号可见性。"
   devices_loading:
     en: "Loading devices"
     zh-CN: "正在加载设备"
   devices_loading_help:
     en: "Waiting for the account's device directory."
-    zh-CN: "正在等待账户的设备目录。"
+    zh-CN: "正在等待账号的设备目录。"
   devices_empty_help:
     en: "The source returned an empty device directory for this account."
-    zh-CN: "数据源返回了此账户的空设备目录。"
+    zh-CN: "数据源返回了此账号的空设备目录。"
   devices_error:
     en: "Last device directory error"
     zh-CN: "最近的设备目录错误"

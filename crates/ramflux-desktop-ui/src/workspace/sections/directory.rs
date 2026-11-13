@@ -13,9 +13,11 @@
 use std::rc::Rc;
 
 use gpui_kit::TestSupportExt as _;
+use gpui_kit::component::Selectable as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, ElementId, Entity, Focusable as _, Role, SharedString, Window, div,
@@ -104,8 +106,6 @@ impl Search {
         div()
             .id(id)
             .test_support()
-            .px_3()
-            .pb_2()
             .child(Input::new(&self.input).small().aria_label(label).cleanable(true))
             .into_any_element()
     }
@@ -118,14 +118,26 @@ pub(crate) fn matches(query: &str, fields: &[&str]) -> bool {
 
 /// The section header: title, count and trailing controls.
 pub(crate) fn header(title: SharedString, trailing: impl IntoElement, cx: &App) -> AnyElement {
-    div()
-        .px_1()
-        .pt_2()
-        .child(catalog::section_header(title, trailing, palette(cx)))
+    // The list pane's title line (design boards 02, 07): the section name in
+    // the title size with its add command at the right.
+    let theme = palette(cx);
+    h_flex()
+        .px_2()
+        .min_h(gpui_kit::rems(28.0 / 15.0))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_size(gpui_kit::rems(theme.size_title / 15.0))
+                .font_semibold()
+                .text_color(theme.text)
+                .child(title),
+        )
+        .child(trailing)
         .into_any_element()
 }
 
-/// A row callback: receives the row key.
 pub(crate) type RowAction = Rc<dyn Fn(&str, &mut Window, &mut App)>;
 
 /// What a directory list draws.
@@ -149,7 +161,6 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
     let RowList { id, label, rows, active, on_pick, on_check } = list;
     let theme = palette(cx);
     let total = rows.len();
-    let selected_bg = cx.theme().list_active;
     let active_border = cx.theme().ring;
     v_flex()
         .id(id)
@@ -159,24 +170,24 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
         .flex_1()
         .min_h_0()
         .overflow_y_scroll()
-        .px_2()
         .gap_1()
         .children(rows.into_iter().take(ROW_LIMIT).enumerate().map(|(ix, row)| {
             let pick = on_pick.clone();
             let check = on_check.clone();
             let key = row.key.clone();
+            // The design's `List row / Conversation` (sections 03, 07, F17):
+            // the generated list row paints every row selected and does not
+            // fill the pane, so the handwritten row content is used here.
             let mut content =
-                catalog::RowContent::new(row.key.clone(), row.title.clone(), row.subtitle).leading(
-                    catalog::avatar(
-                        ramflux_desktop_navigation::row::initial(&row.title),
-                        row.avatar,
-                        theme,
-                    ),
-                );
+                ramflux_desktop_navigation::row::Row::new(row.title.clone(), row.subtitle.clone());
+            content.kind = match row.avatar {
+                catalog::AvatarKind::Agent => ramflux_desktop_navigation::row::AvatarKind::Agent,
+                catalog::AvatarKind::Person | catalog::AvatarKind::Group => {
+                    ramflux_desktop_navigation::row::AvatarKind::Person
+                }
+            };
             if let Some(trailing) = row.trailing {
-                content = content.trailing(
-                    div().text_xs().text_color(cx.theme().muted_foreground).child(trailing),
-                );
+                content.time = trailing;
             }
             h_flex()
                 .id(ElementId::from(format!("{id}-row-{}", row.key)))
@@ -185,14 +196,13 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                 .aria_selected(row.selected)
                 .gap_1()
                 .min_w_0()
-                .rounded(cx.theme().radius)
+                .rounded(gpui_kit::px(theme.radius_sm))
                 .border_1()
                 .border_color(if ix == active {
                     active_border.opacity(0.5)
                 } else {
                     cx.theme().transparent
                 })
-                .when(row.selected, |item| item.bg(selected_bg))
                 .when_some(row.checked.zip(check), |item, (checked, check)| {
                     let key = key.clone();
                     item.child(
@@ -202,12 +212,19 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                             .on_click(move |_, window, cx| check(&key, window, cx)),
                     )
                 })
-                .child(div().flex_1().min_w_0().child(catalog::list_row(
-                    content,
-                    false,
-                    theme,
-                    move |key, window, cx| pick(key, window, cx),
-                )))
+                .child(
+                    Button::new(ElementId::from(format!("{}:list-row", row.key)))
+                        .ghost()
+                        .flex_1()
+                        .min_w_0()
+                        .h(gpui_kit::rems(ramflux_desktop_navigation::theme::ROW_REM))
+                        .px_3()
+                        .rounded(gpui_kit::px(theme.radius_sm))
+                        .selected(row.selected)
+                        .accessibility_label(row.title.clone())
+                        .on_click(move |_, window, cx| pick(&key, window, cx))
+                        .child(content.content(cx)),
+                )
         }))
         .when(total > ROW_LIMIT, |list| {
             list.child(
@@ -300,14 +317,16 @@ pub(crate) fn placeholder(
         .items_center()
         .justify_center()
         .p_6()
-        .child(catalog::state_block(
+        // A block child takes the column's width, so the text wraps at the
+        // column and not at its longest word.
+        .child(div().w_full().max_w(gpui_kit::rems(360.0 / 15.0)).child(catalog::state_block(
             SharedString::from(id),
             title,
             text,
             catalog::StateKind::Empty,
             div(),
             palette(cx),
-        ))
+        )))
         .into_any_element()
 }
 

@@ -28,24 +28,24 @@ recovery:
       zh-CN: "使用恢复短语恢复“%{name}”"
     warning:
       en: "Recover only if you started this yourself. Recovery removes every other device from this account. Never type your 24 words because a message, a website or another app asked you to."
-      zh-CN: "只有在你自己发起时才进行恢复。恢复会将此账户的其他所有设备移除。绝不要因为消息、网站或其他应用的要求而输入你的 24 个单词。"
+      zh-CN: "只有在你自己发起时才进行恢复。恢复会将此账号的其他所有设备移除。绝不要因为消息、网站或其他应用的要求而输入你的 24 个单词。"
     help:
       en: "You will need your 24 recovery words and this account's passphrase on this device. Nothing is sent until you confirm the account fingerprint."
-      zh-CN: "你需要准备好 24 个恢复单词，以及此设备上该账户的口令。在你确认账户指纹之前，不会发送任何内容。"
+      zh-CN: "你需要准备好 24 个恢复单词，以及此设备上该账号的口令。在你确认账号指纹之前，不会发送任何内容。"
     pending:
       en: "Checking the account's latest records…"
-      zh-CN: "正在核对账户的最新记录……"
+      zh-CN: "正在核对账号的最新记录……"
   check:
     title:
       en: "Check the account fingerprint"
-      zh-CN: "核对账户指纹"
+      zh-CN: "核对账号指纹"
   fingerprint:
     help:
       en: "Compare this fingerprint with the one you saved when you created the account. If it differs, stop and cancel."
-      zh-CN: "请将此指纹与你创建账户时保存的指纹比对。如果不一致，请停止并取消。"
+      zh-CN: "请将此指纹与你创建账号时保存的指纹比对。如果不一致，请停止并取消。"
     shown:
       en: "Account fingerprint: %{value}"
-      zh-CN: "账户指纹：%{value}"
+      zh-CN: "账号指纹：%{value}"
     label:
       en: "Type the fingerprint to confirm it"
       zh-CN: "输入指纹以确认"
@@ -54,7 +54,7 @@ recovery:
       zh-CN: "上方显示的指纹"
     mismatch:
       en: "This is not the fingerprint of this account."
-      zh-CN: "这不是此账户的指纹。"
+      zh-CN: "这不是此账号的指纹。"
     match:
       en: "Fingerprint confirmed."
       zh-CN: "指纹已确认。"
@@ -80,23 +80,23 @@ recovery:
   passphrase:
     label:
       en: "Account passphrase on this device"
-      zh-CN: "此设备上的账户口令"
+      zh-CN: "此设备上的账号口令"
     placeholder:
       en: "The passphrase you unlock this account with"
-      zh-CN: "你用来解锁此账户的口令"
+      zh-CN: "你用来解锁此账号的口令"
     help:
       en: "Recovery does not change this passphrase."
       zh-CN: "恢复不会更改这个口令。"
   submit:
     en: "Recover account"
-    zh-CN: "恢复账户"
+    zh-CN: "恢复账号"
   confirming:
     en: "Checking your recovery phrase…"
     zh-CN: "正在核对你的恢复短语……"
   done:
     title:
       en: "Account recovered"
-      zh-CN: "账户已恢复"
+      zh-CN: "账号已恢复"
     text:
       en: "%{name} is recovered and unlocked on this device."
       zh-CN: "“%{name}”已恢复，并已在这台设备上解锁。"
@@ -112,25 +112,25 @@ recovery:
       zh-CN: "此次恢复已在 5 分钟后过期。未做任何更改。"
     mismatch:
       en: "The words or the fingerprint did not match this account. Nothing was changed."
-      zh-CN: "单词或指纹与此账户不匹配。未做任何更改。"
+      zh-CN: "单词或指纹与此账号不匹配。未做任何更改。"
     disabled:
       en: "This daemon does not offer recovery with a recovery phrase."
-      zh-CN: "此守护进程不提供使用恢复短语恢复。"
+      zh-CN: "此本地服务不提供使用恢复短语恢复。"
     vault:
       en: "This device has no secure place to keep the account keys. Nothing was changed."
-      zh-CN: "这台设备没有可安全保存账户密钥的位置。未做任何更改。"
+      zh-CN: "这台设备没有可安全保存账号密钥的位置。未做任何更改。"
     vault_missing:
       en: "This device's key vault is not set up, so the account was not recovered. Set it up, then start over. Nothing was changed."
-      zh-CN: "这台设备的密钥保管库尚未设置，因此未恢复账户。请先设置，然后重新开始。未做任何更改。"
+      zh-CN: "这台设备的密钥保管库尚未设置，因此未恢复账号。请先设置，然后重新开始。未做任何更改。"
     vault_init_pending:
       en: "Setting up this device's key vault was not finished, so the account was not recovered. Finish it on this device (rf vault init), then start over. Nothing was changed."
-      zh-CN: "这台设备的密钥保管库尚未设置完成，因此未恢复账户。请在这台设备上完成设置（rf vault init），然后重新开始。未做任何更改。"
+      zh-CN: "这台设备的密钥保管库尚未设置完成，因此未恢复账号。请在这台设备上完成设置（rf vault init），然后重新开始。未做任何更改。"
     vault_import_pending:
       en: "Importing the provisioned keys into this device's key vault was not finished. Retry the provisioning import, then start over. Nothing was changed."
       zh-CN: "向这台设备的密钥保管库导入预置密钥尚未完成。请重试预置导入，然后重新开始。未做任何更改。"
     vault_corrupt:
       en: "This device's key vault is damaged or failed its checks, so the account was not recovered. Nothing was changed."
-      zh-CN: "这台设备的密钥保管库已损坏或未通过检查，因此未恢复账户。未做任何更改。"
+      zh-CN: "这台设备的密钥保管库已损坏或未通过检查，因此未恢复账号。未做任何更改。"
     vault_permission:
       en: "This device's key vault cannot be used: its files are not safe to use or access was denied. Nothing was changed."
       zh-CN: "无法使用这台设备的密钥保管库：其文件不安全或访问被拒绝。未做任何更改。"
@@ -142,7 +142,7 @@ recovery:
       zh-CN: "这台设备的密钥保管库当前正忙。请稍候后重新开始。未做任何更改。"
     vault_primary_unavailable:
       en: "This device's key vault holds no primary key for this account, so it was not recovered. Nothing was changed."
-      zh-CN: "这台设备的密钥保管库中没有此账户的主密钥，因此未恢复账户。未做任何更改。"
+      zh-CN: "这台设备的密钥保管库中没有此账号的主密钥，因此未恢复账号。未做任何更改。"
     invalid:
       en: "The recovery could not be completed. Check the account passphrase and start over. Nothing was changed."
-      zh-CN: "无法完成恢复。请检查账户口令后重新开始。未做任何更改。"
+      zh-CN: "无法完成恢复。请检查账号口令后重新开始。未做任何更改。"

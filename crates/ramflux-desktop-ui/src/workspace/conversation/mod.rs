@@ -656,11 +656,24 @@ impl Render for Conversation {
                             });
                         state.focus = is_highlighted.then(|| highlight_focus.clone());
                         let sink = Self::moment_sink(this.clone(), &context_sink, id);
-                        MomentView::new(row.clone(), sink, state).into_any_element()
+                        // Design board 02: rows sit in a centred 880 px
+                        // reading column.
+                        let column = ramflux_desktop_navigation::palette(cx).column_max;
+                        div()
+                            .w_full()
+                            .flex()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .w_full()
+                                    .max_w(gpui_kit::rems(column / 15.0))
+                                    .child(MomentView::new(row.clone(), sink, state)),
+                            )
+                            .into_any_element()
                     },
                 )
                 .with_jump_button_label(tr("conversation.jump_latest"))
-                .with_row_style(StyleRefinement::default().pb_2())
+                .with_row_style(StyleRefinement::default().pb_3())
                 .flex_1()
                 .min_h_0()
                 .into_any_element()

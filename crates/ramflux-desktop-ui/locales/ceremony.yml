@@ -2,30 +2,30 @@ _version: 2
 ceremony:
   title:
     en: "Create account with a recovery phrase"
-    zh-CN: "使用恢复短语创建账户"
+    zh-CN: "使用恢复短语创建账号"
   entry:
     button:
       en: "Create account with recovery phrase…"
-      zh-CN: "使用恢复短语创建账户…"
+      zh-CN: "使用恢复短语创建账号…"
     help:
       en: "Accounts are protected by 24 words that only you hold. No one can reset them for you."
-      zh-CN: "账户由 24 个只有你持有的单词保护。任何人都无法替你重置。"
+      zh-CN: "账号由 24 个只有你持有的单词保护。任何人都无法替你重置。"
   name:
     label:
       en: "Account name"
-      zh-CN: "账户名称"
+      zh-CN: "账号名称"
     placeholder:
       en: "Account name"
-      zh-CN: "账户名称"
+      zh-CN: "账号名称"
     node:
       en: "This account will connect to the node %{node}."
-      zh-CN: "此账户将连接到节点 %{node}。"
+      zh-CN: "此账号将连接到节点 %{node}。"
     no_node:
       en: "Add and confirm a node first: an account needs a node to connect to."
-      zh-CN: "请先添加并确认一个节点：账户需要一个可连接的节点。"
+      zh-CN: "请先添加并确认一个节点：账号需要一个可连接的节点。"
     help:
       en: "The account is created on this device, then it connects to the node."
-      zh-CN: "账户先在这台设备上创建，然后连接到节点。"
+      zh-CN: "账号先在这台设备上创建，然后连接到节点。"
   continue:
     en: "Continue"
     zh-CN: "继续"
@@ -60,7 +60,7 @@ ceremony:
       zh-CN: "你的恢复短语"
     warning:
       en: "Write these 24 words down offline, in order. Never share them. Anyone who has these words owns your account."
-      zh-CN: "请离线按顺序抄下这 24 个单词。绝不要分享。任何拥有这些单词的人都拥有你的账户。"
+      zh-CN: "请离线按顺序抄下这 24 个单词。绝不要分享。任何拥有这些单词的人都拥有你的账号。"
     grid:
       en: "Recovery phrase, 24 words"
       zh-CN: "恢复短语，共 24 个单词"
@@ -90,7 +90,7 @@ ceremony:
     zh-CN: "正在选择要询问的三个单词……"
   cancel_question:
     en: "Cancel this setup? The recovery phrase is erased and no account is created."
-    zh-CN: "要取消这次设置吗？恢复短语会被清除，也不会创建账户。"
+    zh-CN: "要取消这次设置吗？恢复短语会被清除，也不会创建账号。"
   cancel_yes:
     en: "Cancel setup"
     zh-CN: "取消设置"
@@ -103,23 +103,23 @@ ceremony:
       zh-CN: "设置这台设备的口令"
     help:
       en: "You type this passphrase to unlock the account on this device. It is not the recovery phrase and cannot recover it. If you forget it, you'll need your 24 words to restore this account."
-      zh-CN: "你需要用这个口令在这台设备上解锁账户。它不是恢复短语，也无法用来找回恢复短语。如果忘记了它，你需要用这 24 个单词来恢复此账户。"
+      zh-CN: "你需要用这个口令在这台设备上解锁账号。它不是恢复短语，也无法用来找回恢复短语。如果忘记了它，你需要用这 24 个单词来恢复此账号。"
     label:
       en: "Account passphrase"
-      zh-CN: "账户口令"
+      zh-CN: "账号口令"
     repeat:
       en: "Repeat passphrase"
       zh-CN: "再次输入口令"
     submit:
       en: "Confirm and create account"
-      zh-CN: "确认并创建账户"
+      zh-CN: "确认并创建账号"
   confirm:
     title:
       en: "Type three words back"
       zh-CN: "输入其中三个单词"
     once:
       en: "You have one attempt. If a word is wrong, the setup ends and no account is created."
-      zh-CN: "只有一次机会。如果有单词不对，设置会结束，不会创建账户。"
+      zh-CN: "只有一次机会。如果有单词不对，设置会结束，不会创建账号。"
     word:
       en: "Word %{number}"
       zh-CN: "第 %{number} 个单词"
@@ -141,7 +141,7 @@ ceremony:
   done:
     title:
       en: "Account created on this device"
-      zh-CN: "账户已在这台设备上创建"
+      zh-CN: "账号已在这台设备上创建"
     state:
       en: "Connecting"
       zh-CN: "正在连接"
@@ -150,7 +150,7 @@ ceremony:
       zh-CN: "状态：正在连接节点"
     text:
       en: "%{name} was created on this device and is unlocked. It is connecting to %{node}: you can send and receive messages as soon as it is connected, and this screen updates by itself. If it does not connect, check that the node is reachable. Keep your 24 words safe: without another device, they are the only way to restore this account."
-      zh-CN: "%{name} 已在这台设备上创建并已解锁。它正在连接 %{node}：连接成功后即可收发消息，本界面会自动更新。如果一直连不上，请检查节点是否可达。请妥善保管这 24 个单词：没有其他设备时，它们是恢复此账户的唯一方式。"
+      zh-CN: "%{name} 已在这台设备上创建并已解锁。它正在连接 %{node}：连接成功后即可收发消息，本界面会自动更新。如果一直连不上，请检查节点是否可达。请妥善保管这 24 个单词：没有其他设备时，它们是恢复此账号的唯一方式。"
     node_unknown:
       en: "its node"
       zh-CN: "它的节点"
@@ -162,50 +162,50 @@ ceremony:
       zh-CN: "状态：已联网"
     live_text:
       en: "%{name} was created on this device and is unlocked. Keep your 24 words safe: without another device, they are the only way to restore this account."
-      zh-CN: "%{name} 已在这台设备上创建并已解锁。请妥善保管这 24 个单词：没有其他设备时，它们是恢复此账户的唯一方式。"
+      zh-CN: "%{name} 已在这台设备上创建并已解锁。请妥善保管这 24 个单词：没有其他设备时，它们是恢复此账号的唯一方式。"
     close:
       en: "Done"
       zh-CN: "完成"
   ended:
     cancelled:
       en: "Setup cancelled. The recovery phrase was erased and no account was created."
-      zh-CN: "设置已取消。恢复短语已被清除，没有创建账户。"
+      zh-CN: "设置已取消。恢复短语已被清除，没有创建账号。"
     expired:
       en: "This setup expired after 5 minutes. The recovery phrase was erased and no account was created."
-      zh-CN: "此次设置已在 5 分钟后过期。恢复短语已被清除，没有创建账户。"
+      zh-CN: "此次设置已在 5 分钟后过期。恢复短语已被清除，没有创建账号。"
     mismatch:
       en: "The words did not match. The setup ended and no account was created. Start over to get a new recovery phrase."
-      zh-CN: "单词不匹配。设置已结束，没有创建账户。请重新开始以获得新的恢复短语。"
+      zh-CN: "单词不匹配。设置已结束，没有创建账号。请重新开始以获得新的恢复短语。"
     disabled:
       en: "This daemon does not offer account creation with a recovery phrase."
-      zh-CN: "此守护进程不提供使用恢复短语创建账户。"
+      zh-CN: "此本地服务不提供使用恢复短语创建账号。"
     vault:
       en: "This device has no secure place to keep the account keys, so no account was created."
-      zh-CN: "这台设备没有可安全保存账户密钥的位置，因此没有创建账户。"
+      zh-CN: "这台设备没有可安全保存账号密钥的位置，因此没有创建账号。"
     vault_missing:
       en: "This device's key vault is not set up, so no account was created. Set it up, then try again."
-      zh-CN: "这台设备的密钥保管库尚未设置，因此没有创建账户。请先设置，然后重试。"
+      zh-CN: "这台设备的密钥保管库尚未设置，因此没有创建账号。请先设置，然后重试。"
     vault_init_pending:
       en: "Setting up this device's key vault was not finished, so no account was created. Finish it on this device (rf vault init), then try again."
-      zh-CN: "这台设备的密钥保管库尚未设置完成，因此没有创建账户。请在这台设备上完成设置（rf vault init），然后重试。"
+      zh-CN: "这台设备的密钥保管库尚未设置完成，因此没有创建账号。请在这台设备上完成设置（rf vault init），然后重试。"
     vault_import_pending:
       en: "Importing the provisioned keys into this device's key vault was not finished, so no account was created. Retry the provisioning import, then try again."
-      zh-CN: "向这台设备的密钥保管库导入预置密钥尚未完成，因此没有创建账户。请重试预置导入，然后重试。"
+      zh-CN: "向这台设备的密钥保管库导入预置密钥尚未完成，因此没有创建账号。请重试预置导入，然后重试。"
     vault_corrupt:
       en: "This device's key vault is damaged or failed its checks, so no account was created. Nothing was changed."
-      zh-CN: "这台设备的密钥保管库已损坏或未通过检查，因此没有创建账户。未做任何更改。"
+      zh-CN: "这台设备的密钥保管库已损坏或未通过检查，因此没有创建账号。未做任何更改。"
     vault_permission:
       en: "This device's key vault cannot be used: its files are not safe to use or access was denied. No account was created."
-      zh-CN: "无法使用这台设备的密钥保管库：其文件不安全或访问被拒绝。没有创建账户。"
+      zh-CN: "无法使用这台设备的密钥保管库：其文件不安全或访问被拒绝。没有创建账号。"
     vault_locked:
       en: "This device's key vault is locked, or the unlock was cancelled or took too long. Unlock it and try again. No account was created."
-      zh-CN: "这台设备的密钥保管库已锁定，或解锁被取消、超时。请解锁后重试。没有创建账户。"
+      zh-CN: "这台设备的密钥保管库已锁定，或解锁被取消、超时。请解锁后重试。没有创建账号。"
     vault_busy:
       en: "This device's key vault is busy right now. Wait a moment and try again. No account was created."
-      zh-CN: "这台设备的密钥保管库当前正忙。请稍候再试。没有创建账户。"
+      zh-CN: "这台设备的密钥保管库当前正忙。请稍候再试。没有创建账号。"
     vault_primary_unavailable:
       en: "This device's key vault holds no primary key for this account, so no account was created."
-      zh-CN: "这台设备的密钥保管库中没有此账户的主密钥，因此没有创建账户。"
+      zh-CN: "这台设备的密钥保管库中没有此账号的主密钥，因此没有创建账号。"
     invalid:
       en: "The setup could not continue because a step was refused. No account was created."
-      zh-CN: "设置因某一步被拒绝而无法继续，没有创建账户。"
+      zh-CN: "设置因某一步被拒绝而无法继续，没有创建账号。"

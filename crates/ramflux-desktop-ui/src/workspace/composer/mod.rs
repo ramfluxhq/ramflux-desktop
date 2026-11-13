@@ -445,8 +445,13 @@ impl Render for Composer {
         let chip = self.staged.as_ref().map(|staged| {
             attachment::chip(staged, cx.listener(|this, _, _, cx| this.remove_staged(cx)), cx)
         });
+        let palette = ramflux_desktop_navigation::palette(cx);
+        let send_label = tr(match self.mode {
+            ComposerMode::Message => "composer.send",
+            ComposerMode::Task => "composer.start",
+        });
         let row = h_flex()
-            .items_end()
+            .items_center()
             .w_full()
             .gap_2()
             .child(
@@ -482,36 +487,56 @@ impl Render for Composer {
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx))),
             )
-            .child(div().id("composer-input").test_support().flex_1().min_w_0().child(
-                Textarea::new(&self.input).aria_label(tr("composer.label")).disabled(!enabled),
-            ))
+            .child(
+                div().id("composer-input").test_support().flex_1().min_w_0().child(
+                    // The design's composer is one bordered field: the editor
+                    // itself draws no second box.
+                    Textarea::new(&self.input)
+                        .aria_label(tr("composer.label"))
+                        .appearance(false)
+                        .bordered(false)
+                        .text_size(gpui_kit::rems(palette.size_body / 15.0))
+                        .disabled(!enabled),
+                ),
+            )
             .child(
                 Button::new("composer-send")
                     .primary()
+                    .small()
                     .icon(IconName::ArrowUp)
-                    .label(tr(match self.mode {
-                        ComposerMode::Message => "composer.send",
-                        ComposerMode::Task => "composer.start",
-                    }))
+                    .rounded(gpui_kit::px(palette.radius_xl))
+                    .accessibility_label(send_label.clone())
+                    .tooltip(send_label)
                     .disabled(!can_send)
                     .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
             );
+        // Design board 02: the composer region is the 880 px reading column,
+        // 8 px above and 16 px below.
         v_flex()
             .id("composer")
             .w_full()
+            .max_w(gpui_kit::rems(palette.column_max / 15.0))
+            .mx_auto()
             .gap_1()
-            .p_3()
-            .border_t_1()
-            .border_color(cx.theme().border)
-            .child(ramflux_desktop_navigation::generated::catalog::composer_shell(
-                ramflux_desktop_navigation::generated::catalog::ComposerSlots::new(
-                    "conversation".into(),
-                    row,
-                    div(),
-                )
-                .attachment(div().children(chip)),
-                ramflux_desktop_navigation::palette(cx),
-            ))
+            .px_3()
+            .pt_2()
+            .pb(gpui_kit::rems(16.0 / 15.0))
+            // Design `Composer / Default`. Built here rather than with the
+            // generated shell, whose empty mode/quote slots each add a gap
+            // above the editor.
+            .child(
+                v_flex()
+                    .id("conversation:composer")
+                    .w_full()
+                    .gap_2()
+                    .p_2()
+                    .rounded(gpui_kit::rems(palette.radius_lg / 15.0))
+                    .border_1()
+                    .border_color(palette.input_border)
+                    .bg(palette.input)
+                    .children(chip)
+                    .child(row),
+            )
             .when_some(reason.filter(|_| enabled), |col, reason| {
                 col.child(
                     div()

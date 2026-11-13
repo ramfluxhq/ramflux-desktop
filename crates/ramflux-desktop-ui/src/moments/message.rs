@@ -161,10 +161,11 @@ pub fn render(
             .child(label)
             .test_support()
     });
+    let body_size = gpui_kit::rems(ramflux_desktop_navigation::palette(cx).size_body / 15.0);
     v_flex()
         .id("message-body")
         .gap_1()
-        .text_sm()
+        .text_size(body_size)
         .text_color(foreground)
         .children(forwarded)
         .children(reply)
@@ -173,7 +174,7 @@ pub fn render(
                 col.child(
                     div().id("message-text").test_support().min_w_0().child(
                         gpui_kit::component::input::Textarea::new(selection)
-                            .text_sm()
+                            .text_size(body_size)
                             .w_full()
                             .readonly(true)
                             .appearance(false)

@@ -876,12 +876,11 @@ impl Render for Workspace {
         let compact = scaled_width < 800.0 / 15.0;
         let show_list = !compact || self.list_visible;
         let show_detail = !compact || !self.list_visible;
-        // Breakpoints 640 / 800 / 1024 / 1440: compact alternates list and
-        // detail; the list narrows below 1024 and widens from 1440.
+        // Breakpoints 640 / 800 / 1024: compact alternates list and detail;
+        // the list narrows below 1024 and otherwise keeps the design's
+        // 264 px (boards 02 and 11B).
         let list_width = if scaled_width < 1024.0 / 15.0 {
             224.0 / 15.0
-        } else if scaled_width >= 1440.0 / 15.0 {
-            304.0 / 15.0
         } else {
             ramflux_desktop_navigation::theme::SECTION_REM
         };

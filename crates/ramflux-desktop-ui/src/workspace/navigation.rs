@@ -151,98 +151,151 @@ impl Workspace {
     }
 
     pub(super) fn navigation_rail(&self, cx: &mut Context<Self>) -> AnyElement {
-        let mut rail = v_flex()
+        // Design board 02: monogram, Messages / Groups / Agents, a short
+        // divider, Contacts / Tasks, then Settings and the account at the
+        // bottom. Items are 52 px squares with a 20 px icon over a caption.
+        let palette = ramflux_desktop_navigation::palette(cx);
+        let settings_open = self.root.read(cx).host() == crate::root::ConfirmHost::Settings;
+        let item = |id: &'static str, key: &'static str, icon: IconName, route: WorkspaceRoute| {
+            let shown = !settings_open && self.is_route_shown(route);
+            Button::new(id)
+                .ghost()
+                .small()
+                .p_0()
+                .w_full()
+                .h(rems(52.0 / 15.0))
+                .rounded(gpui_kit::px(palette.radius_sm))
+                .selected(shown)
+                .toggled(shown)
+                .accessibility_label(tr(key))
+                .tooltip(tr(key))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    window.dispatch_action(Box::new(crate::actions::CloseSettings), cx);
+                    this.navigate(route, window, cx)
+                }))
+                .child(rail_label(icon, key, palette))
+        };
+        let agents = gpui_kit::base::Button::new("nav-agents")
+            .track_focus(&self.agents_focus)
+            .flex()
+            .items_center()
+            .justify_center()
+            .w_full()
+            .h(rems(52.0 / 15.0))
+            .rounded(rems(palette.radius_sm / 15.0))
+            .border_1()
+            .border_color(cx.theme().transparent)
+            .hover(|style| style.bg(cx.theme().secondary_hover))
+            .focus_visible(|style| style.border_color(cx.theme().ring))
+            .accessibility_label(tr("navigation.agents"))
+            .on_click(cx.listener(|this, _, window, cx| {
+                window.focus(&this.agents_focus, cx);
+                window.dispatch_action(Box::new(OpenAgentsSettings), cx);
+            }))
+            .child(rail_label(IconName::Bot, "navigation.agents", palette));
+        let account = self.store.read(cx);
+        let initial = account
+            .active_account()
+            .and_then(|id| account.store().account(id))
+            .map_or_else(|| "?".into(), |a| ramflux_desktop_navigation::row::initial(&a.label));
+        v_flex()
             .id("navigation-rail")
             .test_support()
             .h_full()
             .w(rems(theme::RAIL_REM))
             .flex_none()
-            .gap_2()
+            .items_center()
+            .gap_3()
             .px_2()
-            .py_3()
+            .pt(rems(20.0 / 15.0))
+            .pb(rems(20.0 / 15.0))
             .bg(theme::colors(cx).rail)
             .child(
                 div()
-                    .h_10()
+                    .h(rems(34.0 / 15.0))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_xl()
+                    .text_size(rems(palette.size_page / 15.0))
                     .font_semibold()
                     .child(tr("app.mark")),
-            );
-        for (id, key, icon, route) in [
-            (
+            )
+            .child(item(
                 "nav-messages",
                 "navigation.messages",
                 IconName::MessagesSquare,
                 WorkspaceRoute::Messages,
-            ),
-            ("nav-groups", "navigation.groups", IconName::Users, WorkspaceRoute::Groups),
-            ("nav-contacts", "navigation.contacts", IconName::Contact, WorkspaceRoute::Contacts),
-            ("nav-tasks", "navigation.tasks", IconName::SquareCheck, WorkspaceRoute::Tasks),
-        ] {
-            rail = rail.child(
-                Button::new(id)
+            ))
+            .child(item("nav-groups", "navigation.groups", IconName::Users, WorkspaceRoute::Groups))
+            .child(agents)
+            .child(
+                div()
+                    .id("navigation-divider")
+                    .py(rems(4.0 / 15.0))
+                    .child(div().w(rems(24.0 / 15.0)).h(gpui_kit::px(1.)).bg(palette.line)),
+            )
+            .child(item(
+                "nav-contacts",
+                "navigation.contacts",
+                IconName::Contact,
+                WorkspaceRoute::Contacts,
+            ))
+            .child(item(
+                "nav-tasks",
+                "navigation.tasks",
+                IconName::SquareCheck,
+                WorkspaceRoute::Tasks,
+            ))
+            .child(div().flex_1())
+            .child(
+                Button::new("nav-settings")
                     .ghost()
                     .small()
-                    .p_0()
                     .w_full()
-                    .h(rems(52.0 / 15.0))
-                    .selected(self.is_route_shown(route))
-                    .toggled(self.is_route_shown(route))
-                    .accessibility_label(tr(key))
-                    .tooltip(tr(key))
-                    .on_click(
-                        cx.listener(move |this, _, window, cx| this.navigate(route, window, cx)),
-                    )
+                    .h(rems(40.0 / 15.0))
+                    .rounded(gpui_kit::px(palette.radius_sm))
+                    .selected(settings_open)
+                    .toggled(settings_open)
+                    .child(Icon::new(IconName::Settings).with_size(gpui_kit::px(20.)))
+                    .accessibility_label(tr("settings.title"))
+                    .tooltip(tr("settings.title"))
+                    .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx)),
+            )
+            .child(
+                Button::new("nav-account")
+                    .ghost()
+                    .p_0()
+                    .size(rems(40.0 / 15.0))
+                    .rounded(gpui_kit::px(palette.radius_full))
+                    .accessibility_label(tr("settings.section.account"))
+                    .tooltip(tr("settings.section.account"))
+                    .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx))
                     .child(
-                        v_flex()
+                        div()
+                            .size(rems(40.0 / 15.0))
+                            .flex()
                             .items_center()
-                            .gap_1()
-                            .child(Icon::new(icon).small())
-                            .child(div().text_xs().child(tr(key))),
+                            .justify_center()
+                            .rounded(rems(palette.radius_full / 15.0))
+                            .bg(palette.avatar_person)
+                            .text_color(palette.on_avatar_person)
+                            .font_semibold()
+                            .child(initial),
                     ),
-            );
-        }
-        rail.child(
-            // Base accepts the retained focus handle used after settings closes.
-            gpui_kit::base::Button::new("nav-agents")
-                .track_focus(&self.agents_focus)
-                .flex()
-                .items_center()
-                .justify_center()
-                .w_full()
-                .h(rems(52.0 / 15.0))
-                .rounded(cx.theme().radius)
-                .border_1()
-                .border_color(cx.theme().transparent)
-                .hover(|style| style.bg(cx.theme().secondary_hover))
-                .focus_visible(|style| style.border_color(cx.theme().ring))
-                .accessibility_label(tr("navigation.agents"))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    window.focus(&this.agents_focus, cx);
-                    window.dispatch_action(Box::new(OpenAgentsSettings), cx);
-                }))
-                .child(
-                    v_flex()
-                        .items_center()
-                        .gap_1()
-                        .child(Icon::new(IconName::Bot).small())
-                        .child(div().text_xs().child(tr("navigation.agents"))),
-                ),
-        )
-        .child(div().flex_1())
-        .child(
-            Button::new("nav-settings")
-                .ghost()
-                .small()
-                .w_full()
-                .icon(IconName::Settings)
-                .accessibility_label(tr("settings.title"))
-                .tooltip(tr("settings.title"))
-                .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx)),
-        )
-        .into_any_element()
+            )
+            .into_any_element()
     }
+}
+
+/// A rail item's content: the 20 px icon over its caption.
+fn rail_label(
+    icon: IconName,
+    key: &'static str,
+    palette: ramflux_desktop_navigation::generated::rf_tokens::RFTheme,
+) -> impl IntoElement {
+    v_flex()
+        .items_center()
+        .gap_1()
+        .child(Icon::new(icon).with_size(gpui_kit::px(20.)))
+        .child(div().text_size(rems(palette.size_caption / 15.0)).child(tr(key)))
 }

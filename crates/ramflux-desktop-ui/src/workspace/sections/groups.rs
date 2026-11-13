@@ -245,7 +245,12 @@ impl Render for GroupDirectory {
             .on_action(cx.listener(|this, _: &PreviousConversation, _, cx| this.step(-1, cx)))
             .size_full()
             .min_w_0()
-            .bg(cx.theme().sidebar)
+            .bg(ramflux_desktop_navigation::palette(cx).nav)
+            .border_r_1()
+            .border_color(ramflux_desktop_navigation::palette(cx).line)
+            .px_3()
+            .pt(gpui_kit::rems(24.0 / 15.0))
+            .gap_4()
             .child(directory::header(
                 tr_args("sections.groups.title", &[("count", &count.to_string())]),
                 h_flex().child(create),

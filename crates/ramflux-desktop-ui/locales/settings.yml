@@ -6,13 +6,13 @@ settings:
   section:
     account:
       en: "Account"
-      zh-CN: "账户"
+      zh-CN: "账号"
     backup:
-      en: "Backup"
-      zh-CN: "备份"
+      en: "Backup and restore"
+      zh-CN: "备份与恢复"
     agents:
-      en: "AI participants"
-      zh-CN: "AI 参与者"
+      en: "Agents"
+      zh-CN: "Agents"
     devices:
       en: "Devices"
       zh-CN: "设备"
@@ -20,14 +20,14 @@ settings:
       en: "Nodes"
       zh-CN: "节点"
     integrations:
-      en: "MCP and A2I"
-      zh-CN: "MCP 与 A2I"
+      en: "Integrations"
+      zh-CN: "集成"
     diagnostics:
       en: "Diagnostics"
       zh-CN: "诊断"
     appearance:
-      en: "Appearance"
-      zh-CN: "外观"
+      en: "Appearance and language"
+      zh-CN: "外观与语言"
   theme:
     en: "Theme"
     zh-CN: "主题"
@@ -42,7 +42,7 @@ settings:
     zh-CN: "语言"
   local_only:
     en: "Local preference: stays on this device and is not part of your account."
-    zh-CN: "本地偏好：仅保存在此设备，不属于账户数据。"
+    zh-CN: "本地偏好：仅保存在此设备，不属于账号数据。"
   readonly:
     en: "View only. Registering servers, calling tools and acknowledging events stays in the command line."
     zh-CN: "仅供查看。注册服务器、调用工具与确认事件请在命令行中进行。"
@@ -61,10 +61,10 @@ settings:
       zh-CN: "此设备"
     none:
       en: "No account is open"
-      zh-CN: "没有打开的账户"
+      zh-CN: "没有打开的账号"
     lock:
       en: "Lock account"
-      zh-CN: "锁定账户"
+      zh-CN: "锁定账号"
     export:
       en: "Export backup…"
       zh-CN: "导出备份…"
@@ -120,7 +120,7 @@ settings:
   nodes:
     description:
       en: "Nodes are kept by this device. An account stays on the node it was created on."
-      zh-CN: "节点信息保存在此设备上。账户始终位于创建时所在的节点。"
+      zh-CN: "节点信息保存在此设备上。账号始终位于创建时所在的节点。"
     none:
       en: "No nodes"
       zh-CN: "没有节点"
@@ -129,7 +129,7 @@ settings:
       zh-CN: "内置"
     default:
       en: "Default for new accounts"
-      zh-CN: "新账户默认"
+      zh-CN: "新账号默认"
     disabled:
       en: "Disabled"
       zh-CN: "已停用"
@@ -162,16 +162,16 @@ settings:
       zh-CN: "设为默认"
     disable:
       en: "Disable for new accounts"
-      zh-CN: "对新账户停用"
+      zh-CN: "对新账号停用"
     enable:
       en: "Enable for new accounts"
-      zh-CN: "对新账户启用"
+      zh-CN: "对新账号启用"
     remove:
       en: "Remove"
       zh-CN: "移除"
     bound:
       en: "An account uses this node, so it cannot be removed"
-      zh-CN: "有账户正在使用此节点，无法移除"
+      zh-CN: "有账号正在使用此节点，无法移除"
   integrations:
     mcp:
       en: "MCP servers"
@@ -225,7 +225,7 @@ settings:
         zh-CN: "正在连接事件流"
       stream:
         en: "Live, from the daemon's event stream"
-        zh-CN: "实时，来自守护进程的事件流"
+        zh-CN: "实时，来自本地服务的事件流"
       polling:
         en: "Polling, the event stream is unavailable"
         zh-CN: "轮询，事件流不可用"
@@ -238,7 +238,7 @@ settings:
     daemon_sync:
       label:
         en: "Daemon sync"
-        zh-CN: "守护进程同步"
+        zh-CN: "本地服务同步"
       running:
         en: "Receiving"
         zh-CN: "正在接收"
@@ -262,29 +262,29 @@ settings:
       zh-CN: "事件流不可用时轮询"
     poll_fallback_help:
       en: "Applies the next time the app connects to the daemon."
-      zh-CN: "下次连接守护进程时生效。"
+      zh-CN: "下次连接本地服务时生效。"
   launch:
     title:
       en: "Startup"
       zh-CN: "启动"
     use_daemon:
       en: "Use the local daemon"
-      zh-CN: "使用本地守护进程"
+      zh-CN: "使用本地服务"
     source_help:
       en: "Off: play the bundled demo scenarios instead. Saved at once; applies the next time Ramflux Desktop starts."
       zh-CN: "关闭时改为播放内置演示场景。立即保存，下次启动 Ramflux Desktop 时生效。"
     socket:
       en: "Daemon socket"
-      zh-CN: "守护进程套接字"
+      zh-CN: "本地服务套接字"
     binary:
       en: "Daemon program (rf)"
-      zh-CN: "守护进程程序（rf）"
+      zh-CN: "本地服务程序（rf）"
     binary_placeholder:
       en: "Not set: choose the rf program"
       zh-CN: "未设置：请选择 rf 程序"
     data_dir:
       en: "Daemon data folder"
-      zh-CN: "守护进程数据文件夹"
+      zh-CN: "本地服务数据文件夹"
     browse:
       en: "Choose…"
       zh-CN: "选择…"
@@ -299,31 +299,31 @@ settings:
       zh-CN: "未保存：%{error}"
     apply_help:
       en: "Empty fields use the default shown. The socket applies the next time Ramflux Desktop starts; program and data folder apply to the next daemon start."
-      zh-CN: "留空则使用显示的默认值。套接字在下次启动 Ramflux Desktop 时生效；程序和数据文件夹在下次启动守护进程时生效。"
+      zh-CN: "留空则使用显示的默认值。套接字在下次启动 Ramflux Desktop 时生效；程序和数据文件夹在下次启动本地服务时生效。"
     daemon_title:
       en: "Local daemon"
-      zh-CN: "本地守护进程"
+      zh-CN: "本地服务"
     status_none:
       en: "No daemon answers at %{path}."
-      zh-CN: "%{path} 上没有守护进程响应。"
+      zh-CN: "%{path} 上没有本地服务响应。"
     status_attached:
       en: "Attached to a daemon at %{path}."
-      zh-CN: "已连接到 %{path} 上的守护进程。"
+      zh-CN: "已连接到 %{path} 上的本地服务。"
     status_owned:
       en: "Running, started by Ramflux Desktop (process %{pid})."
       zh-CN: "正在运行，由 Ramflux Desktop 启动（进程 %{pid}）。"
     status_stopping:
       en: "Stopping the local daemon…"
-      zh-CN: "正在停止本地守护进程…"
+      zh-CN: "正在停止本地服务…"
     status_left_behind:
       en: "Running, started by an earlier Ramflux Desktop session that did not stop it (process %{pid})."
       zh-CN: "正在运行，由此前未正常结束的 Ramflux Desktop 会话启动（进程 %{pid}）。"
     status_scenarios:
       en: "Playing the demo scenarios; no daemon is used."
-      zh-CN: "正在播放演示场景，未使用守护进程。"
+      zh-CN: "正在播放演示场景，未使用本地服务。"
     stop:
       en: "Stop daemon"
-      zh-CN: "停止守护进程"
+      zh-CN: "停止本地服务"
     about_title:
       en: "Version and logs"
       zh-CN: "版本与日志"
@@ -335,7 +335,7 @@ settings:
       zh-CN: "应用日志"
     daemon_log:
       en: "Daemon log"
-      zh-CN: "守护进程日志"
+      zh-CN: "本地服务日志"
     settings_file:
       en: "Settings file"
       zh-CN: "设置文件"
@@ -348,7 +348,7 @@ settings:
       zh-CN: "完整备份"
     create_help:
       en: "One encrypted file with everything in this account: all messages, groups, contacts and files."
-      zh-CN: "一个加密文件，包含此账户的全部内容：所有消息、群组、联系人和文件。"
+      zh-CN: "一个加密文件，包含此账号的全部内容：所有消息、群组、联系人和文件。"
     last:
       en: "Last backup %{time} · %{size}"
       zh-CN: "上次备份 %{time} · %{size}"
@@ -503,13 +503,13 @@ settings:
         zh-CN: "恢复此备份？"
       account:
         en: "Account"
-        zh-CN: "账户"
+        zh-CN: "账号"
       made:
         en: "Made"
         zh-CN: "备份时间"
       merge:
         en: "This account is already on this device. The backup merges with it: where both have the same item, the newer one is kept, including newer removals and blocks. Nothing newer here is replaced."
-        zh-CN: "此账户已在本设备上。备份将与之合并：同一项目以较新的为准，包括较新的删除和屏蔽。本设备上较新的内容不会被替换。"
+        zh-CN: "此账号已在本设备上。备份将与之合并：同一项目以较新的为准，包括较新的删除和屏蔽。本设备上较新的内容不会被替换。"
       files:
         en: "Files checked"
         zh-CN: "已检查文件"
@@ -536,7 +536,7 @@ settings:
           zh-CN: "创建此备份时有 %{count} 个文件无法获取。备份将其记录为缺失，恢复后它们仍为缺失。"
       add:
         en: "This account will be added to this device."
-        zh-CN: "此账户将被添加到本设备。"
+        zh-CN: "此账号将被添加到本设备。"
       install:
         en: "Restore"
         zh-CN: "恢复"

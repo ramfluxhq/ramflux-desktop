@@ -4,7 +4,7 @@
 //! Stateless two-line conversation content; a Kit Button owns row interaction.
 
 use crate::theme;
-use gpui_kit::component::{ActiveTheme as _, StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{StyledExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div, rems};
 
@@ -32,6 +32,9 @@ pub struct Row {
     pub attention: usize,
     /// Source kind; this does not mean verified.
     pub kind: AvatarKind,
+    /// A fixed avatar glyph instead of the title's initial (the strangers
+    /// entry shows "?").
+    pub glyph: Option<SharedString>,
 }
 
 impl Row {
@@ -45,21 +48,29 @@ impl Row {
             unread: 0,
             attention: 0,
             kind: AvatarKind::Person,
+            glyph: None,
         }
     }
 
     /// Composes content only; the host supplies Button, stable ID and callback.
+    ///
+    /// Geometry follows the design's `List row / Conversation`: a 40 px
+    /// avatar, the name in the body size over a secondary-size preview, the
+    /// time in the caption size and the unread count in a badge.
     pub fn content(self, cx: &App) -> impl IntoElement {
         let colors = theme::colors(cx);
-        let initial = self
-            .title
-            .chars()
-            .find(|c| !matches!(c, '\u{2068}' | '\u{2069}'))
-            .map_or_else(|| "?".to_owned(), |c| c.to_string());
+        let palette = theme::palette(cx);
+        let initial = self.glyph.clone().unwrap_or_else(|| {
+            self.title
+                .chars()
+                .find(|c| !matches!(c, '\u{2068}' | '\u{2069}'))
+                .map_or_else(|| "?".into(), |c| c.to_string().into())
+        });
         let (background, foreground) = match self.kind {
             AvatarKind::Person => (colors.avatar, colors.on_avatar),
             AvatarKind::Agent => (colors.agent, colors.on_agent),
         };
+        let rem = |px: f32| rems(px / 15.0);
         h_flex()
             .w_full()
             .min_w_0()
@@ -67,35 +78,43 @@ impl Row {
             .child(
                 div()
                     .flex_none()
-                    .size(rems(crate::geometry::AVATAR / 15.0))
+                    .size(rem(crate::geometry::AVATAR))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded(if self.kind == AvatarKind::Agent {
-                        rems(crate::geometry::AVATAR / 4.0 / 15.0)
+                        // The design's agent avatar: a 10 px corner on 40 px.
+                        rem(crate::geometry::AVATAR / 4.0)
                     } else {
-                        rems(crate::geometry::AVATAR / 2.0 / 15.0)
+                        rem(palette.radius_full)
                     })
                     .bg(background)
                     .text_color(foreground)
+                    .font_semibold()
                     .child(initial),
             )
             .child(
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .gap_1()
                     .child(
                         h_flex()
                             .gap_2()
                             .child(
-                                div().flex_1().min_w_0().truncate().font_medium().child(self.title),
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_size(rem(palette.size_body))
+                                    .font_medium()
+                                    .text_color(palette.text)
+                                    .child(self.title),
                             )
                             .child(
                                 div()
                                     .flex_none()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
+                                    .text_size(rem(palette.size_caption))
+                                    .text_color(palette.secondary)
                                     .child(self.time),
                             ),
                     )
@@ -107,22 +126,33 @@ impl Row {
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
+                                    .text_size(rem(palette.size_secondary))
+                                    .text_color(palette.secondary)
                                     .child(self.preview),
                             )
                             .when(self.attention > 0, |row| {
-                                row.child(div().text_xs().child(format!("! {}", self.attention)))
+                                row.child(
+                                    div()
+                                        .flex_none()
+                                        .text_size(rem(palette.size_caption))
+                                        .font_bold()
+                                        .text_color(palette.text)
+                                        .child(format!("! {}", self.attention)),
+                                )
                             })
                             .when(self.unread > 0, |row| {
                                 row.child(
                                     div()
                                         .flex_none()
-                                        .px_1()
-                                        .rounded(cx.theme().radius)
-                                        .bg(cx.theme().primary)
-                                        .text_color(cx.theme().primary_foreground)
-                                        .text_xs()
+                                        .min_w(rem(16.0))
+                                        .px(rem(4.0))
+                                        .flex()
+                                        .justify_center()
+                                        .rounded(rem(palette.radius_md))
+                                        .bg(palette.badge)
+                                        .text_color(palette.on_badge)
+                                        .text_size(rem(palette.size_caption))
+                                        .font_bold()
                                         .child(self.unread.to_string()),
                                 )
                             }),

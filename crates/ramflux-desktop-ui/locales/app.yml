@@ -102,7 +102,7 @@ status:
   label:
     account:
       en: "Account"
-      zh-CN: "账户"
+      zh-CN: "账号"
     device:
       en: "Device"
       zh-CN: "设备"
@@ -114,7 +114,7 @@ status:
       zh-CN: "投影"
     source:
       en: "Daemon"
-      zh-CN: "守护进程"
+      zh-CN: "本地服务"
     schema:
       en: "Schema"
       zh-CN: "数据格式"
@@ -144,7 +144,7 @@ status:
         zh-CN: "%{name} · %{count} 项需要我"
     background:
       en: "%{count} in other accounts"
-      zh-CN: "其他账户 %{count} 项"
+      zh-CN: "其他账号 %{count} 项"
   none:
     en: "None"
     zh-CN: "无"
@@ -314,7 +314,7 @@ identity:
       zh-CN: "%{kind}（自称）"
     verified_help:
       en: "Signed by their account; does not prove who they are or that a person is behind it."
-      zh-CN: "由对方账户签名；不能证明对方是谁，也不能证明背后是真人。"
+      zh-CN: "由对方账号签名；不能证明对方是谁，也不能证明背后是真人。"
     claimed_help:
       en: "Only their own claim; nothing verified it."
       zh-CN: "仅为对方自称，未经任何验证。"

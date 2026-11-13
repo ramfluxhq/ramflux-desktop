@@ -225,6 +225,12 @@ test = false
 harness = false
 
 [[test]]
+name = "design_align_shots"
+path = "tests/design_align_shots.rs"
+test = false
+harness = false
+
+[[test]]
 name = "desk_settings_shots"
 path = "tests/desk_settings_shots.rs"
 test = false
