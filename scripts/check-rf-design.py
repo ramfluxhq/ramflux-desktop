@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2026 Span Brain
-"""Verify imported RF artifacts against their reviewed design-pipeline manifest."""
+"""Verify imported RF artifacts against their reviewed design-pipeline manifest.
+
+Every theme is a token file in design/generated/ (the desktop embeds each one at
+build time). Light and dark are required; any further theme file must be listed
+in the manifest like the others, so it comes from the reviewed pipeline.
+"""
 import hashlib
 import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FILES = (
+REQUIRED = (
     "design/tokens/rf-tokens.json",
     "design/generated/light.json",
     "design/generated/dark.json",
@@ -17,9 +22,19 @@ FILES = (
 
 def main():
     manifest = json.loads((ROOT / "design/generated/manifest.json").read_text(encoding="utf-8"))
-    if manifest.get("format_version") != 1 or set(manifest.get("files", {})) != set(FILES):
+    listed = set(manifest.get("files", {}))
+    themes = {
+        f"design/generated/{path.name}"
+        for path in (ROOT / "design/generated").glob("*.json")
+        if path.name != "manifest.json"
+    }
+    if manifest.get("format_version") != 1 or not set(REQUIRED) <= listed:
         raise SystemExit("Invalid RF design import manifest")
-    for name in FILES:
+    if not themes <= listed:
+        raise SystemExit(f"Theme token files not in the manifest: {sorted(themes - listed)}")
+    if not listed <= set(REQUIRED) | themes:
+        raise SystemExit(f"Manifest lists unknown files: {sorted(listed - set(REQUIRED) - themes)}")
+    for name in sorted(listed):
         path = ROOT / name
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != manifest["files"][name]:
             raise SystemExit(f"Stale RF design artifact: {name}")

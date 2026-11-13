@@ -14,13 +14,9 @@ pub mod theme;
 #[rustfmt::skip]
 pub mod generated;
 
-/// Active generated palette, selected by the installed native theme.
+/// Active generated palette: the active theme's token set (see
+/// [`theme::palette`]).
 #[must_use]
 pub fn palette(cx: &gpui_kit::App) -> generated::rf_tokens::RFTheme {
-    use gpui_kit::component::ActiveTheme as _;
-    if cx.theme().is_dark() {
-        generated::rf_tokens::RFTheme::dark()
-    } else {
-        generated::rf_tokens::RFTheme::light()
-    }
+    theme::palette(cx)
 }
