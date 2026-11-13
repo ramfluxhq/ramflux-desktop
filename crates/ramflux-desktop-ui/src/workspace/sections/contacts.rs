@@ -113,7 +113,7 @@ impl ContactsDirectory {
             .into_iter()
             .filter(|p| directory::matches(&query, &[&p.display, p.id.as_str()]))
             .collect();
-        contacts.sort_by(|a, b| a.display.to_lowercase().cmp(&b.display.to_lowercase()));
+        contacts.sort_by_key(|p| p.display.to_lowercase());
         contacts
     }
 
@@ -190,18 +190,20 @@ impl Render for ContactsDirectory {
             )
         } else {
             directory::state(
-                "contacts-state",
-                list,
-                status,
-                failure,
-                StateKeys {
-                    loading: "sections.contacts.loading",
-                    offline: "sections.contacts.offline",
-                    failed: "sections.contacts.failed",
-                    empty: "sections.contacts.empty",
-                    empty_help: "sections.contacts.empty_help",
+                directory::StateSpec {
+                    id: "contacts-state",
+                    list,
+                    status,
+                    failure,
+                    keys: StateKeys {
+                        loading: "sections.contacts.loading",
+                        offline: "sections.contacts.offline",
+                        failed: "sections.contacts.failed",
+                        empty: "sections.contacts.empty",
+                        empty_help: "sections.contacts.empty_help",
+                    },
+                    action: None,
                 },
-                None,
                 cx,
             )
         };
@@ -218,7 +220,7 @@ impl Render for ContactsDirectory {
         let strangers_label =
             tr_args("sections.strangers.entry", &[("count", &strangers.to_string())]);
         let this = cx.weak_entity();
-        let pick: Rc<dyn Fn(&str, &mut Window, &mut App)> = Rc::new(move |key, _, cx| {
+        let pick: directory::RowAction = Rc::new(move |key, _, cx| {
             let id = ParticipantId::new(key);
             this.update(cx, |_, cx| cx.emit(ContactsDirectoryEvent::Selected(id))).ok();
         });
@@ -253,12 +255,14 @@ impl Render for ContactsDirectory {
             )
             .children(state)
             .child(directory::rows(
-                "contacts-list",
-                tr("sections.contacts.list"),
-                rows,
-                self.search.active,
-                pick,
-                None,
+                directory::RowList {
+                    id: "contacts-list",
+                    label: tr("sections.contacts.list"),
+                    rows,
+                    active: self.search.active,
+                    on_pick: pick,
+                    on_check: None,
+                },
                 cx,
             ))
     }

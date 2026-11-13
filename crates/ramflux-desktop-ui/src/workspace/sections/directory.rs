@@ -125,17 +125,28 @@ pub(crate) fn header(title: SharedString, trailing: impl IntoElement, cx: &App) 
         .into_any_element()
 }
 
-/// Rows drawn with the generated list row; `on_pick` receives the row key,
-/// `on_check` (when given) the key of a toggled checkbox.
-pub(crate) fn rows(
-    id: &'static str,
-    label: SharedString,
-    rows: Vec<DirectoryRow>,
-    active: usize,
-    on_pick: Rc<dyn Fn(&str, &mut Window, &mut App)>,
-    on_check: Option<Rc<dyn Fn(&str, &mut Window, &mut App)>>,
-    cx: &App,
-) -> AnyElement {
+/// A row callback: receives the row key.
+pub(crate) type RowAction = Rc<dyn Fn(&str, &mut Window, &mut App)>;
+
+/// What a directory list draws.
+pub(crate) struct RowList {
+    /// Element id of the list.
+    pub id: &'static str,
+    /// Accessible name of the list.
+    pub label: SharedString,
+    /// The rows in display order.
+    pub rows: Vec<DirectoryRow>,
+    /// Row under the keyboard cursor.
+    pub active: usize,
+    /// Called with the key of a chosen row.
+    pub on_pick: RowAction,
+    /// Called with the key of a toggled checkbox (batch selection).
+    pub on_check: Option<RowAction>,
+}
+
+/// Rows drawn with the generated list row.
+pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
+    let RowList { id, label, rows, active, on_pick, on_check } = list;
     let theme = palette(cx);
     let total = rows.len();
     let selected_bg = cx.theme().list_active;
@@ -213,15 +224,24 @@ pub(crate) fn rows(
 
 /// The state block of a directory with no rows to show, or `None` when it
 /// has rows. Failure wins over offline, offline over loading or empty.
-pub(crate) fn state(
-    id: &'static str,
-    list: ListState,
-    status: SourceStatus,
-    failure: Option<SharedString>,
-    keys: StateKeys,
-    action: Option<AnyElement>,
-    cx: &App,
-) -> Option<AnyElement> {
+/// What decides a directory's state block.
+pub(crate) struct StateSpec {
+    /// Element id of the block.
+    pub id: &'static str,
+    /// Whether the collection is loading, empty or has rows.
+    pub list: ListState,
+    /// The source connection.
+    pub status: SourceStatus,
+    /// The current read failure, translated.
+    pub failure: Option<SharedString>,
+    /// Locale keys of the four states.
+    pub keys: StateKeys,
+    /// An optional action under the text.
+    pub action: Option<AnyElement>,
+}
+
+pub(crate) fn state(spec: StateSpec, cx: &App) -> Option<AnyElement> {
+    let StateSpec { id, list, status, failure, keys, action } = spec;
     if list == ListState::Ready {
         return None;
     }

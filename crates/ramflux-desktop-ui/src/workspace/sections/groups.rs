@@ -195,18 +195,20 @@ impl Render for GroupDirectory {
             )
         } else {
             directory::state(
-                "groups-state",
-                list,
-                store.source_status(),
-                self.failure(store),
-                StateKeys {
-                    loading: "sections.groups.loading",
-                    offline: "sections.groups.offline",
-                    failed: "sections.groups.failed",
-                    empty: "sections.groups.empty",
-                    empty_help: "sections.groups.empty_help",
+                directory::StateSpec {
+                    id: "groups-state",
+                    list,
+                    status: store.source_status(),
+                    failure: self.failure(store),
+                    keys: StateKeys {
+                        loading: "sections.groups.loading",
+                        offline: "sections.groups.offline",
+                        failed: "sections.groups.failed",
+                        empty: "sections.groups.empty",
+                        empty_help: "sections.groups.empty_help",
+                    },
+                    action: None,
                 },
-                None,
                 cx,
             )
         };
@@ -231,7 +233,7 @@ impl Render for GroupDirectory {
             })
             .collect();
         let this = cx.weak_entity();
-        let pick: Rc<dyn Fn(&str, &mut Window, &mut App)> = Rc::new(move |key, _, cx| {
+        let pick: directory::RowAction = Rc::new(move |key, _, cx| {
             let id = ContextId::new(key);
             this.update(cx, |_, cx| cx.emit(GroupDirectoryEvent::Selected(id))).ok();
         });
@@ -252,12 +254,14 @@ impl Render for GroupDirectory {
             .child(self.search.field("groups-search", tr("sections.groups.search")))
             .children(state)
             .child(directory::rows(
-                "groups-list",
-                tr("sections.groups.list"),
-                rows,
-                self.search.active,
-                pick,
-                None,
+                directory::RowList {
+                    id: "groups-list",
+                    label: tr("sections.groups.list"),
+                    rows,
+                    active: self.search.active,
+                    on_pick: pick,
+                    on_check: None,
+                },
                 cx,
             ))
             .child(

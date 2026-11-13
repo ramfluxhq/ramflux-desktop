@@ -319,7 +319,7 @@ impl Render for StrangersArea {
                     let subtitle =
                         request.note.as_deref().or(request.preview.as_deref()).map_or_else(
                             || SharedString::from(request.peer.to_string()),
-                            |text| ramflux_desktop_navigation::row::list_text(text),
+                            ramflux_desktop_navigation::row::list_text,
                         );
                     DirectoryRow {
                         key: request.id.clone().into(),
@@ -350,7 +350,7 @@ impl Render for StrangersArea {
             )
         });
         let this = cx.weak_entity();
-        let pick: Rc<dyn Fn(&str, &mut Window, &mut App)> = Rc::new(move |key, _, cx| {
+        let pick: directory::RowAction = Rc::new(move |key, _, cx| {
             let id = key.to_owned();
             this.update(cx, |area, cx| {
                 area.selected = Some(id.clone());
@@ -360,7 +360,7 @@ impl Render for StrangersArea {
             .ok();
         });
         let this = cx.weak_entity();
-        let check: Rc<dyn Fn(&str, &mut Window, &mut App)> = Rc::new(move |key, _, cx| {
+        let check: directory::RowAction = Rc::new(move |key, _, cx| {
             this.update(cx, |area, cx| area.toggle_checked(key, cx)).ok();
         });
         let batch = self.batch;
@@ -389,12 +389,14 @@ impl Render for StrangersArea {
             .children(read_error)
             .children(empty)
             .child(directory::rows(
-                "strangers-list",
-                tr("sections.strangers.list"),
-                rows,
-                self.search.active,
-                pick,
-                Some(check),
+                directory::RowList {
+                    id: "strangers-list",
+                    label: tr("sections.strangers.list"),
+                    rows,
+                    active: self.search.active,
+                    on_pick: pick,
+                    on_check: Some(check),
+                },
                 cx,
             ))
             .when(batch, |area| area.child(self.batch_bar(cx)))
