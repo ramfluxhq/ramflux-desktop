@@ -34,8 +34,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, Entity, Focusable as _, IntoElement, Render, SharedString, Subscription, Window,
-    div,
+    App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window, div,
 };
 use ramflux_desktop_core::{ContextId, ParticipantId, ParticipantKind, UiEventKind, selectors};
 
@@ -67,6 +66,7 @@ pub struct DraftTarget {
 
 /// The composer view.
 pub struct Composer {
+    drafts: std::collections::BTreeMap<ContextId, String>,
     store: Entity<StoreHandle>,
     input: Entity<TextareaState>,
     sink: Option<EventSink>,
@@ -103,10 +103,31 @@ impl Composer {
         let subscriptions = vec![
             cx.subscribe_in(&input, window, |this, _, event, window, cx| {
                 if matches!(event, InputEvent::PressEnter { secondary: false, shift: false }) {
-                    this.submit(window, cx);
+                    let composing = this.input.update(cx, |input, cx| {
+                        let marked =
+                            gpui_kit::EntityInputHandler::marked_text_range(input, window, cx)
+                                .is_some();
+                        if marked {
+                            gpui_kit::EntityInputHandler::unmark_text(input, window, cx);
+                        }
+                        marked
+                    });
+                    if !composing {
+                        this.submit(window, cx);
+                    }
                 }
             }),
-            cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
+            cx.subscribe_in(&store, window, |this, store, event: &StoreEvent, window, cx| {
+                if let StoreEvent::Changed(changes) = event
+                    && (changes.is_reset()
+                        || !ramflux_desktop_core::projection::conversations::is_visible(
+                            store.read(cx).store(),
+                        ))
+                {
+                    this.drafts.clear();
+                    this.input.update(cx, |input, cx| input.set_value("", window, cx));
+                    this.staged = None;
+                }
                 if matches!(event, StoreEvent::Changed(_)) {
                     let next = this.staged.as_ref().and_then(|s| s.observe(store.read(cx).store()));
                     if let Some(next) = next {
@@ -120,6 +141,7 @@ impl Composer {
             }),
         ];
         Self {
+            drafts: std::collections::BTreeMap::new(),
             store,
             input,
             sink: None,
@@ -143,6 +165,12 @@ impl Composer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.context != context || self.draft.is_some() {
+            self.save_draft(cx);
+            let text =
+                context.as_ref().and_then(|id| self.drafts.get(id)).cloned().unwrap_or_default();
+            self.input.update(cx, |input, cx| input.set_value(text, window, cx));
+        }
         self.sink = sink;
         self.context = context;
         self.picked = None;
@@ -162,6 +190,12 @@ impl Composer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let previous = self.draft.as_ref().map(|draft| &draft.context_id).or(self.context.as_ref());
+        if previous != Some(&draft.context_id) {
+            self.save_draft(cx);
+            let text = self.drafts.get(&draft.context_id).cloned().unwrap_or_default();
+            self.input.update(cx, |input, cx| input.set_value(text, window, cx));
+        }
         self.sink = Some(sink);
         self.context = None;
         self.picked = None;
@@ -170,6 +204,19 @@ impl Composer {
         self.set_mode(ComposerMode::Message, window, cx);
         self.set_placeholder(window, cx);
         cx.notify();
+    }
+
+    fn save_draft(&mut self, cx: &App) {
+        if let Some(id) =
+            self.draft.as_ref().map(|draft| &draft.context_id).or(self.context.as_ref())
+        {
+            let text = self.input.read(cx).value().to_string();
+            if text.is_empty() {
+                self.drafts.remove(id);
+            } else {
+                self.drafts.insert(id.clone(), text);
+            }
+        }
     }
 
     /// The draft the composer writes for, if any.
@@ -211,6 +258,11 @@ impl Composer {
 
     /// Clears the text.
     pub fn clear(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(id) =
+            self.draft.as_ref().map(|draft| &draft.context_id).or(self.context.as_ref())
+        {
+            self.drafts.remove(id);
+        }
         self.input.update(cx, |input, cx| input.set_value("", window, cx));
     }
 
@@ -358,6 +410,9 @@ impl Composer {
                 UiEventKind::TaskRequested { assignee: agent.id.clone(), text }
             }
         };
+        if let Some(id) = self.context.as_ref() {
+            self.drafts.remove(id);
+        }
         self.input.update(cx, |input, cx| input.set_value("", window, cx));
         sink.emit(kind, window, cx);
     }
@@ -365,7 +420,6 @@ impl Composer {
 
 impl Render for Composer {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let input_focus = self.input.read(cx).focus_handle(cx);
         let enabled = self.sink.is_some();
         let reason = self.unavailable_reason().cloned();
         let can_send = enabled && reason.is_none();
@@ -418,20 +472,9 @@ impl Render for Composer {
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx))),
             )
-            .child(
-                div()
-                    .id("composer-input")
-                    .test_support()
-                    .track_focus(&input_focus)
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        Textarea::new(&self.input)
-                            .accessibility_id("composer-input")
-                            .aria_label(tr("composer.label"))
-                            .disabled(!enabled),
-                    ),
-            )
+            .child(div().id("composer-input").test_support().flex_1().min_w_0().child(
+                Textarea::new(&self.input).aria_label(tr("composer.label")).disabled(!enabled),
+            ))
             .child(
                 Button::new("composer-send")
                     .primary()

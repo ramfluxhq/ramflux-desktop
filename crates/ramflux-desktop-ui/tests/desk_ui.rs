@@ -46,7 +46,11 @@ fn full_directory_search_reaches_unpinned_rows_and_enter_focuses_composer(cx: &m
         "Enter must select the real source conversation"
     );
     assert!(
-        in_window(cx, handle, |window, _| window.find("composer-input").focused() == Some(true)),
+        in_window(cx, handle, |window, _| window
+            .within("composer-input")
+            .find_by_label(&ramflux_desktop_ui::i18n::tr("composer.label"))
+            .focused()
+            == Some(true)),
         "selection must hand focus to the conversation composer"
     );
     in_window(cx, handle, |window, cx| {
@@ -325,4 +329,39 @@ fn bounded_previews_tasks_unknown_history_and_compact_return_are_visible(cx: &mu
         exists(cx, handle, "conversation-search"),
         "the Back shortcut must work with composer focused"
     );
+}
+
+#[gpui_kit::test]
+fn body_search_reuses_normalized_source_documents_and_tasks_describe_loaded_history(
+    cx: &mut TestAppContext,
+) {
+    let _locale = locale_guard();
+    let (handle, shell) = open(cx, "s02_daily");
+    advance(cx, 3000);
+    let workspace = workspace(cx, &shell);
+    let list = cx.update(|cx| workspace.read(cx).conversation_list().clone());
+    let before = cx.update(|cx| list.read(cx).search_builds());
+    in_window(cx, handle, |w, cx| {
+        w.press("secondary-f", cx);
+        w.input("12:30", cx);
+    });
+    assert!(exists(cx, handle, "stack-c-lena"), "search must still include cached message text");
+    assert_eq!(
+        cx.update(|cx| list.read(cx).search_builds()),
+        before,
+        "query keystrokes must not normalize every cached body again"
+    );
+    in_window(cx, handle, |w, cx| {
+        w.press("secondary-a", cx);
+        w.press("backspace", cx);
+    });
+    click(cx, handle, "nav-tasks");
+    in_window(cx, handle, |w, _| {
+        let row = w.find("stack-c-lena");
+        assert!(
+            row.label().is_some_and(|label| label
+                .contains(&*ramflux_desktop_ui::i18n::tr("navigation.tasks_none_loaded"))),
+            "loaded history without tasks must not be called unloaded"
+        );
+    });
 }

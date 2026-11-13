@@ -241,11 +241,10 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
                     .moment(&reply.message_id)
                     .filter(|m| m.context_id == moment.context_id)?;
                 refs.reply_available = true;
-                refs.reply_author = Some(
-                    store
-                        .participant(&target.origin)
-                        .map_or_else(|| target.origin.short().into(), |p| p.display.clone().into()),
-                );
+                refs.reply_author = Some(store.participant(&target.origin).map_or_else(
+                    || ramflux_desktop_navigation::row::list_text(target.origin.short().as_str()),
+                    |p| ramflux_desktop_navigation::row::list_text(&p.display),
+                ));
                 refs.reply_deleted = matches!(&target.kind, MomentKind::Message(p) if p.tombstone);
                 if refs.reply_deleted {
                     return None;
@@ -369,7 +368,7 @@ pub struct RowState {
     /// Retained message-menu trigger focus.
     pub menu_focus: Option<FocusHandle>,
     /// Retained native text selection, cleared with the current body's lifetime.
-    pub message_text: Option<Entity<gpui_kit::component::text::TextViewState>>,
+    pub message_text: Option<Entity<gpui_kit::component::input::TextareaState>>,
     /// The row is the target of "take me to what needs me".
     pub highlighted: bool,
     /// Selected values of surface select blocks, by block.
@@ -524,7 +523,7 @@ pub fn accessible_label(row: &MomentRow) -> SharedString {
         "moment.a11y.row",
         &[
             ("kind", &i18n::moment_kind(&moment.kind)),
-            ("author", &row.author),
+            ("author", &ramflux_desktop_navigation::row::list_text(&row.author)),
             ("time", &i18n::time_of_day(moment.at)),
             ("state", &state_label(row).0),
         ],

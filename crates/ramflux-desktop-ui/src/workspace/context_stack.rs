@@ -22,8 +22,7 @@ use gpui_kit::{
     SharedString, Size, Subscription, Window, div, px, size,
 };
 use ramflux_desktop_core::projection::conversations::{
-    ConversationRow, Preview, is_visible, matches_query, ordered_conversations_with_activity, row,
-    strangers,
+    ConversationRow, Preview, is_visible, row, strangers,
 };
 use ramflux_desktop_core::{
     ContactLink, ContextId, ContextKind, Listing, MomentKind, ParticipantId, ParticipantKind,
@@ -77,6 +76,7 @@ struct Entry {
 
 /// Retained full-list state. The historical name keeps keyboard/API callers stable.
 pub struct ContextStack {
+    search: super::context_search::Index,
     store: Entity<StoreHandle>,
     current: Option<ContextId>,
     query: Entity<InputState>,
@@ -116,7 +116,10 @@ impl ContextStack {
                 _ => {}
             }),
         ];
+        let mut search = super::context_search::Index::default();
+        search.reset(store.read(cx).store());
         let mut list = Self {
+            search,
             store,
             current: None,
             query,
@@ -139,7 +142,12 @@ impl ContextStack {
         let handle = self.store.read(cx);
         self.query_invalid = self.query.read(cx).value().len()
             > ramflux_desktop_core::projection::conversations::QUERY_LIMIT;
-        self.rows = Rc::new(entries(handle.store(), &self.query.read(cx).value(), self.filter));
+        self.rows = Rc::new(entries(
+            handle.store(),
+            &self.query.read(cx).value(),
+            self.filter,
+            &self.search,
+        ));
         self.projected += self.rows.len();
         self.finish_refresh(active, cx);
     }
@@ -147,9 +155,11 @@ impl ContextStack {
     fn update_rows(&mut self, changes: &ChangeSet, cx: &mut Context<Self>) {
         let store = self.store.read(cx).store();
         let Some(ids) = changes.directory_contexts(store) else {
+            self.search.reset(store);
             self.refresh(cx);
             return;
         };
+        self.search.prune(store);
         if ids.is_empty() {
             cx.notify();
             return;
@@ -158,6 +168,7 @@ impl ContextStack {
         let query = self.query.read(cx).value().trim().to_lowercase();
         let rows = Rc::make_mut(&mut self.rows);
         for id in ids {
+            self.search.update(store, &id);
             rows.retain(|entry| entry.id != id);
             if self.query_invalid || !is_visible(store) {
                 continue;
@@ -165,7 +176,7 @@ impl ContextStack {
             let Some(context) = store.context(&id) else {
                 continue;
             };
-            if !matches_query(store, context, &query) {
+            if !self.search.matches(&id, &query) {
                 continue;
             }
             if let Some(entry) =
@@ -196,6 +207,11 @@ impl ContextStack {
     /// Used to check that a source delta does not rebuild untouched rows.
     pub fn projected_rows(&self) -> usize {
         self.projected
+    }
+
+    /// Number of source documents normalized; typing a query does not change it.
+    pub fn search_builds(&self) -> usize {
+        self.search.builds
     }
 
     /// Marks selection without changing unread state or submitting a request.
@@ -247,14 +263,27 @@ impl ContextStack {
     }
 }
 
-fn entries(store: &Store, query: &str, filter: ListFilter) -> Vec<Rc<Entry>> {
-    ordered_conversations_with_activity(store, query, |id| {
-        store.context(id).and_then(|c| c.last_activity)
-    })
-    .unwrap_or_default()
-    .into_iter()
-    .filter_map(|row| entry(store, row, filter).map(Rc::new))
-    .collect()
+fn entries(
+    store: &Store,
+    query: &str,
+    filter: ListFilter,
+    search: &super::context_search::Index,
+) -> Vec<Rc<Entry>> {
+    if query.len() > ramflux_desktop_core::projection::conversations::QUERY_LIMIT
+        || !is_visible(store)
+    {
+        return Vec::new();
+    }
+    let query = query.trim().to_lowercase();
+    let mut entries: Vec<_> = store
+        .contexts()
+        .filter(|context| search.matches(&context.id, &query))
+        .filter_map(|context| {
+            entry(store, row(store, context, context.last_activity), filter).map(Rc::new)
+        })
+        .collect();
+    entries.sort_by(|a, b| order(a, b));
+    entries
 }
 
 fn order(a: &Entry, b: &Entry) -> std::cmp::Ordering {
@@ -274,7 +303,11 @@ fn entry(store: &Store, row: ConversationRow<'_>, filter: ListFilter) -> Option<
     // visible rather than asserting that an unloaded conversation has no tasks.
     let task_unknown = filter == ListFilter::Tasks && !has_task();
     let preview = if task_unknown {
-        tr("navigation.tasks_not_loaded")
+        tr(if store.context_moment_count(&row.context.id) == 0 {
+            "navigation.tasks_not_loaded"
+        } else {
+            "navigation.tasks_none_loaded"
+        })
     } else {
         match row.preview {
             Preview::Text(text) => ramflux_desktop_navigation::row::list_text(text),

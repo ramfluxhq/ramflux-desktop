@@ -148,6 +148,7 @@ pub fn list_text(text: &str) -> SharedString {
             continue;
         }
         if c.is_control()
+            || matches!(c, '\u{200b}'..='\u{200d}' | '\u{2060}' | '\u{feff}')
             || matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
         {
             continue;
@@ -172,6 +173,15 @@ pub fn list_text(text: &str) -> SharedString {
         return SharedString::default();
     }
     format!("\u{2068}{clean}\u{2069}").into()
+}
+
+/// First visible scalar of a sanitized identity, excluding directional isolates.
+#[must_use]
+pub fn initial(text: &str) -> SharedString {
+    list_text(text)
+        .chars()
+        .find(|c| !matches!(c, '\u{2068}' | '\u{2069}') && !c.is_whitespace())
+        .map_or_else(|| "?".into(), |c| c.to_string().into())
 }
 
 #[cfg(test)]

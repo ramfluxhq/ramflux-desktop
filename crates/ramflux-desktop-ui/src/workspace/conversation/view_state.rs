@@ -20,11 +20,7 @@ use crate::moments::{MomentRow, RowState};
 #[derive(Clone, Default)]
 pub struct ViewState {
     expanded: BTreeSet<MomentId>,
-    menu_focus: BTreeMap<MomentId, gpui_kit::FocusHandle>,
-    message_text: BTreeMap<
-        MomentId,
-        (gpui_kit::SharedString, Entity<gpui_kit::component::text::TextViewState>),
-    >,
+    pub(super) selection: super::selection::Cache,
     fields: BTreeMap<MomentId, Rc<BTreeMap<BlockId, String>>>,
     inputs: BTreeMap<MomentId, Rc<BTreeMap<BlockId, Entity<InputState>>>>,
     diffs: BTreeMap<MomentId, Entity<DiffState>>,
@@ -79,8 +75,8 @@ impl ViewState {
         RowState {
             expanded: self.expanded.contains(id),
             joined: false,
-            menu_focus: self.menu_focus.get(id).cloned(),
-            message_text: self.message_text.get(id).map(|(_, state)| state.clone()),
+            menu_focus: self.selection.focus(id),
+            message_text: self.selection.text(id).cloned(),
             highlighted,
             fields: self.fields.get(id).cloned().unwrap_or_default(),
             inputs: self.inputs.get(id).cloned().unwrap_or_default(),
@@ -95,44 +91,8 @@ impl ViewState {
     pub fn message_text(
         &self,
         id: &MomentId,
-    ) -> Option<&Entity<gpui_kit::component::text::TextViewState>> {
-        self.message_text.get(id).map(|(_, state)| state)
-    }
-
-    /// Keeps native selection state tied to current cached, non-deleted bodies.
-    /// Updates occur on source changes, never by constructing entities in render.
-    pub fn sync_message_text(&mut self, rows: &[MomentRow], cx: &mut App) {
-        let messages: BTreeSet<_> = rows
-            .iter()
-            .filter(|row| matches!(row.moment.kind, MomentKind::Message(_)))
-            .map(|row| row.moment.id.clone())
-            .collect();
-        self.menu_focus.retain(|id, _| messages.contains(id));
-        for id in messages {
-            self.menu_focus.entry(id).or_insert_with(|| cx.focus_handle().tab_stop(true));
-        }
-        let wanted: BTreeSet<_> = rows.iter().filter(|row| matches!(&row.moment.kind, MomentKind::Message(p) if !p.tombstone && p.spans.is_empty()) && row.body.is_some()).map(|row| row.moment.id.clone()).collect();
-        self.message_text.retain(|id, _| wanted.contains(id));
-        for row in rows.iter().filter(|row| wanted.contains(&row.moment.id)) {
-            let Some(body) = row.body.as_ref() else {
-                continue;
-            };
-            if let Some((old, state)) = self.message_text.get_mut(&row.moment.id) {
-                if old != body {
-                    let html = crate::moments::message_text::literal_html(body);
-                    *state = cx.new(|cx| {
-                        gpui_kit::component::text::TextViewState::html(&html, cx).selectable(true)
-                    });
-                    old.clone_from(body);
-                }
-            } else {
-                let html = crate::moments::message_text::literal_html(body);
-                let state = cx.new(|cx| {
-                    gpui_kit::component::text::TextViewState::html(&html, cx).selectable(true)
-                });
-                self.message_text.insert(row.moment.id.clone(), (body.clone(), state));
-            }
-        }
+    ) -> Option<&Entity<gpui_kit::component::input::TextareaState>> {
+        self.selection.text(id)
     }
 
     /// Creates the retained states rows need: a text input per surface input

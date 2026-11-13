@@ -82,3 +82,8 @@ commands remain disabled until this connection supplies their mutation contracts
 Plain text supports native selection and copying; typed formatted spans retain
 their existing renderer. Selection state is discarded with deletion, eviction,
 account locking or a conversation switch.
+
+Composer drafts are kept separately for each conversation and cleared with the
+account session on lock/reset. Plain message selection uses native readonly text
+controls so spaces, tabs and terminal blank lines copy exactly. Selection state
+is allocated for visible rows and retained in a bounded 64-entry cache.

@@ -884,6 +884,9 @@ schema:
       zh-CN: "创建新账户"
 
 navigation:
+  tasks_none_loaded:
+    en: "No tasks in loaded history"
+    zh-CN: "已载入的历史中没有任务"
   tasks_history_notice:
     en: "Task history is incomplete. Open a conversation to load its tasks."
     zh-CN: "任务历史尚未完整载入。打开会话以载入任务。"
@@ -931,6 +934,12 @@ navigation:
     zh-CN: "返回会话列表"
 
 message_ui:
+  body:
+    en: "Message text"
+    zh-CN: "消息正文"
+  reply_not_loaded:
+    en: "Quoted message (not loaded)"
+    zh-CN: "引用的消息（尚未载入）"
   agent:
     en: "Agent"
     zh-CN: "Agent"

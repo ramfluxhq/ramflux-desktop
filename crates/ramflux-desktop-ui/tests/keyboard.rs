@@ -58,7 +58,13 @@ fn current(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Option<ContextId> 
 }
 
 fn composer_focused(cx: &mut TestAppContext, handle: Handle) -> bool {
-    focused(cx, handle, None, "composer-input")
+    in_window(cx, handle, |window, _| {
+        window
+            .within("composer-input")
+            .find_by_label(&ramflux_desktop_ui::i18n::tr("composer.label"))
+            .focused()
+            == Some(true)
+    })
 }
 
 #[gpui_kit::test]

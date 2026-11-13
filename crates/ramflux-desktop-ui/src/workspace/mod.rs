@@ -16,6 +16,7 @@
 
 mod call;
 pub(crate) mod composer;
+mod context_search;
 mod context_stack;
 mod conversation;
 pub mod docks;
@@ -187,6 +188,14 @@ impl Workspace {
         });
 
         let mut subscriptions = vec![
+            cx.observe_window_bounds(window, |this, window, cx| {
+                let compact = f32::from(window.viewport_size().width)
+                    / f32::from(window.rem_size())
+                    < 800.0 / 15.0;
+                if compact && this.list_visible {
+                    this.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
+                }
+            }),
             cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, window, cx| {
                 if let StoreEvent::Changed(changes) = event {
                     if changes.touches_context_stack() {
@@ -767,9 +776,6 @@ impl Render for Workspace {
         let compact = scaled_width < 800.0 / 15.0;
         let show_list = !compact || self.list_visible;
         let show_detail = !compact || !self.list_visible;
-        if !show_detail && self.root.read(cx).pending_intent().is_some() {
-            self.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
-        }
         let list_width = if scaled_width < 1024.0 / 15.0 {
             224.0 / 15.0
         } else {

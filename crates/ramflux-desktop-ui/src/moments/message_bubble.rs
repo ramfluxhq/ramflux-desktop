@@ -84,9 +84,14 @@ pub(crate) fn render(
         catalog::BubbleKind::Peer
     };
     let sender = if agent {
-        format!("{} · {}", row.author, tr("message_ui.agent")).into()
+        format!(
+            "{} · {}",
+            ramflux_desktop_navigation::row::list_text(&row.author),
+            tr("message_ui.agent")
+        )
+        .into()
     } else {
-        row.author.clone()
+        ramflux_desktop_navigation::row::list_text(&row.author)
     };
     let (lifecycle, tone) = super::state_label(row);
     let show_author = !state.joined || row.author_warning.is_some();
@@ -95,7 +100,13 @@ pub(crate) fn render(
         .gap_1()
         .when(show_author && !row.outbound, |col| {
             col.child(
-                div().id("message-sender").test_support().text_sm().font_semibold().child(sender),
+                div()
+                    .id("message-sender")
+                    .test_support()
+                    .aria_label(sender.clone())
+                    .text_sm()
+                    .font_semibold()
+                    .child(sender),
             )
         })
         .when_some(row.author_warning.as_ref(), |col, (warning, mixed_only)| {
@@ -201,24 +212,25 @@ pub(crate) fn render(
                 .gap_2()
                 .when(row.outbound, |line| line.justify_end())
                 .when(!row.outbound, |line| {
-                    line.child(div().flex_none().w(rems(40.0 / 16.0)).when(
-                        !state.joined,
-                        |avatar| {
-                            avatar.child(catalog::avatar(
-                                row.author
-                                    .chars()
-                                    .next()
-                                    .map_or_else(|| "?".to_owned(), |c| c.to_string())
-                                    .into(),
-                                if agent {
-                                    catalog::AvatarKind::Agent
-                                } else {
-                                    catalog::AvatarKind::Person
-                                },
-                                theme,
-                            ))
-                        },
-                    ))
+                    line.child(
+                        div()
+                            .id("message-avatar")
+                            .test_support()
+                            .aria_label(ramflux_desktop_navigation::row::initial(&row.author))
+                            .flex_none()
+                            .w(rems(40.0 / 16.0))
+                            .when(!state.joined, |avatar| {
+                                avatar.child(catalog::avatar(
+                                    ramflux_desktop_navigation::row::initial(&row.author),
+                                    if agent {
+                                        catalog::AvatarKind::Agent
+                                    } else {
+                                        catalog::AvatarKind::Person
+                                    },
+                                    theme,
+                                ))
+                            }),
+                    )
                 })
                 .child(
                     v_flex()
@@ -226,6 +238,7 @@ pub(crate) fn render(
                         .test_support()
                         .min_w_0()
                         .max_w(rems(theme.bubble_max / 16.0))
+                        .when(state.message_text.is_some(), |bubble| bubble.w_full())
                         .when(state.highlighted, |col| {
                             col.border_2()
                                 .border_color(cx.theme().ring)

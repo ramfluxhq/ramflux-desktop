@@ -20,25 +20,6 @@ use ramflux_desktop_core::{SpanKind, TextSpan};
 
 use crate::i18n::{tr, tr_args};
 
-/// Encodes literal message text for native selection. Peer text cannot introduce
-/// links, images or markup. Typed formatting spans keep their existing renderer.
-pub(crate) fn literal_html(text: &str) -> String {
-    let mut html = String::from("<p>");
-    for c in text.chars() {
-        match c {
-            '&' => html.push_str("&amp;"),
-            '<' => html.push_str("&lt;"),
-            '>' => html.push_str("&gt;"),
-            '"' => html.push_str("&quot;"),
-            '\n' => html.push_str("<br>"),
-            '\r' => {}
-            c => html.push(c),
-        }
-    }
-    html.push_str("</p>");
-    html
-}
-
 /// How many scalars of a replied-to message a reply row quotes.
 const EXCERPT_SCALARS: usize = 80;
 

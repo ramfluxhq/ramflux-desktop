@@ -72,6 +72,8 @@ pub fn render(
             .id("message-attachment")
             .aria_label(label)
             .min_w_0()
+            .w_full()
+            .overflow_hidden()
             .child(ramflux_desktop_navigation::generated::catalog::attachment_shell(
                 name,
                 detail.unwrap_or_default().into(),
@@ -103,8 +105,14 @@ pub fn render(
             tr("message_ui.reply_deleted")
         } else {
             refs.reply_excerpt.as_deref().map_or_else(
-                || tr("moment.message.reply_missing"),
-                |quoted| quoted.to_owned().into(),
+                || {
+                    tr(if refs.reply_available {
+                        "message_ui.reply_not_loaded"
+                    } else {
+                        "moment.message.reply_missing"
+                    })
+                },
+                ramflux_desktop_navigation::row::list_text,
             )
         };
         let jump = sink.clone();
@@ -113,6 +121,8 @@ pub fn render(
             .ghost()
             .h_auto()
             .w_full()
+            .min_w_0()
+            .overflow_hidden()
             .p_0()
             .accessibility_label(label.clone())
             .disabled(!refs.reply_available)
@@ -154,8 +164,13 @@ pub fn render(
             if let Some(selection) = selection.filter(|_| payload.spans.is_empty()) {
                 col.child(
                     div().id("message-text").test_support().min_w_0().child(
-                        gpui_kit::component::text::TextView::new(selection)
-                            .selectable(true)
+                        gpui_kit::component::input::Textarea::new(selection)
+                            .w_full()
+                            .readonly(true)
+                            .appearance(false)
+                            .bordered(false)
+                            .p_0()
+                            .aria_label(tr("message_ui.body"))
                             .text_color(foreground),
                     ),
                 )

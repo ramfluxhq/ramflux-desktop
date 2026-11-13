@@ -13,6 +13,7 @@
 mod header;
 mod rename;
 mod rows;
+mod selection;
 mod view_state;
 
 use std::rc::Rc;
@@ -267,8 +268,37 @@ impl Conversation {
     pub fn message_text_state(
         &self,
         id: &MomentId,
-    ) -> Option<&Entity<gpui_kit::component::text::TextViewState>> {
+    ) -> Option<&Entity<gpui_kit::component::input::TextareaState>> {
         self.view.message_text(id)
+    }
+
+    /// Retained message-selection entries, created entities, and rows examined
+    /// by the latest source delta; counters expose the virtualization contract.
+    pub fn message_selection_counts(&self) -> (usize, usize, usize) {
+        (self.view.selection.len(), self.view.selection.created, self.view.selection.last_touched)
+    }
+
+    fn ensure_visible_message(
+        &mut self,
+        id: &MomentId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let created = self
+            .rows
+            .position(id)
+            .and_then(|ix| self.rows.as_slice().get(ix))
+            .is_some_and(|row| self.view.selection.ensure(row, window, cx));
+        if created {
+            if let Some(input) = self.view.selection.text(id).cloned() {
+                let id = id.clone();
+                let observed_id = id.clone();
+                let subscription =
+                    cx.observe(&input, move |this, _, cx| this.remeasure(&observed_id, cx));
+                self.view.selection.observe(&id, subscription);
+            }
+            self.remeasure(id, cx);
+        }
     }
 
     /// The scroller state (virtual list bookkeeping), for tests.
@@ -380,7 +410,21 @@ impl Conversation {
             Some(id) => self.rows.sync(self.store.read(cx), id, changes),
             None => self.rows.clear(),
         };
-        self.view.sync_message_text(self.rows.as_slice(), cx);
+        self.view.selection.last_touched = 0;
+        match &update {
+            RowUpdate::Reset => self.view.selection.clear(),
+            RowUpdate::Patched { changed, appended } => {
+                for ix in changed.iter().copied().chain(
+                    self.rows.as_slice().len().saturating_sub(*appended)
+                        ..self.rows.as_slice().len(),
+                ) {
+                    if let Some(row) = self.rows.as_slice().get(ix) {
+                        self.view.selection.changed(row);
+                    }
+                }
+            }
+            RowUpdate::None => {}
+        }
         let count = self.rows.as_slice().len();
         self.scroller.update(cx, |state, cx| match update {
             RowUpdate::None => {}
@@ -578,27 +622,40 @@ impl Render for Conversation {
                 let this = cx.weak_entity();
                 let store = self.store.downgrade();
                 let ask_call = ask_call.clone();
-                MessageScroller::new("conversation", self.scroller.clone(), move |ix, _, cx| {
-                    let Some(row) = rows.get(ix) else {
-                        return div().into_any_element();
-                    };
-                    let id = &row.moment.id;
-                    if row.is_missing_body() {
-                        let (store, id) = (store.clone(), id.clone());
-                        cx.defer(move |cx| {
-                            store.update(cx, |store, _| store.request_bodies(&[id])).ok();
-                        });
-                    }
-                    let is_highlighted = highlighted.as_ref() == Some(id);
-                    let mut state = view.row_state(id, is_highlighted, ask_call.clone());
-                    state.joined =
-                        ix.checked_sub(1).and_then(|at| rows.get(at)).is_some_and(|previous| {
-                            crate::moments::message_bubble::joins(previous, row)
-                        });
-                    state.focus = is_highlighted.then(|| highlight_focus.clone());
-                    let sink = Self::moment_sink(this.clone(), &context_sink, id);
-                    MomentView::new(row.clone(), sink, state).into_any_element()
-                })
+                MessageScroller::new(
+                    "conversation",
+                    self.scroller.clone(),
+                    move |ix, window, cx| {
+                        let Some(row) = rows.get(ix) else {
+                            return div().into_any_element();
+                        };
+                        let id = &row.moment.id;
+                        if row.is_missing_body() {
+                            let (store, id) = (store.clone(), id.clone());
+                            cx.defer(move |cx| {
+                                store.update(cx, |store, _| store.request_bodies(&[id])).ok();
+                            });
+                        }
+                        if matches!(row.moment.kind, ramflux_desktop_core::MomentKind::Message(_)) {
+                            let (this, id) = (this.clone(), id.clone());
+                            window.defer(cx, move |window, cx| {
+                                this.update(cx, |field, cx| {
+                                    field.ensure_visible_message(&id, window, cx)
+                                })
+                                .ok();
+                            });
+                        }
+                        let is_highlighted = highlighted.as_ref() == Some(id);
+                        let mut state = view.row_state(id, is_highlighted, ask_call.clone());
+                        state.joined =
+                            ix.checked_sub(1).and_then(|at| rows.get(at)).is_some_and(|previous| {
+                                crate::moments::message_bubble::joins(previous, row)
+                            });
+                        state.focus = is_highlighted.then(|| highlight_focus.clone());
+                        let sink = Self::moment_sink(this.clone(), &context_sink, id);
+                        MomentView::new(row.clone(), sink, state).into_any_element()
+                    },
+                )
                 .with_jump_button_label(tr("conversation.jump_latest"))
                 .with_row_style(StyleRefinement::default().pb_2())
                 .flex_1()
