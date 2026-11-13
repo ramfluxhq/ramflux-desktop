@@ -6,7 +6,7 @@
 //! area where replying never accepts.
 mod common;
 use common::*;
-use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
+use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{Entity, TestAppContext};
 use ramflux_desktop_core::{
     ContactRequest, DomainEvent, ParticipantId, RequestDirection, RequestState,
