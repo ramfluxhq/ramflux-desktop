@@ -26,7 +26,7 @@ pub fn conversation_row(model: ConversationRowModel, theme: RFTheme,
     on_select: impl Fn(&str, &mut Window, &mut App) + 'static) -> impl IntoElement {
     let id = model.id.clone();
     let upper = div().flex().items_center().w_full()
-        .child(div().flex_1().text_color(theme.text).text_size(rems(16.0 / 16.0)).child(model.title))
+        .child(div().flex_1().text_color(theme.text).text_size(rems(17.0 / 16.0)).child(model.title))
         .child(div().text_color(if model.unread > 0 { theme.text } else { theme.secondary })
             .when(model.unread > 0, |time| time.font_weight(FontWeight::SEMIBOLD))
             .text_size(rems(theme.size_mobile_caption / 16.0)).child(model.timestamp));

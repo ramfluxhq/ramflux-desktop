@@ -39,7 +39,7 @@ def main():
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != manifest["files"][name]:
             raise SystemExit(f"Stale RF design artifact: {name}")
     generated = ROOT / "crates/ramflux-desktop-navigation/src/generated"
-    imported = json.loads((generated / ".pen-gen-manifest.json").read_text(encoding="utf-8"))
+    imported = json.loads((generated / ".ramflux-design-manifest.json").read_text(encoding="utf-8"))
     if (imported.get("owner") != "ramflux design generator sync desktop"
             or imported.get("generator") != "ramflux design generator"
             or imported.get("version") != 1):

@@ -6,4 +6,3 @@ pub mod rf_geometry;
 pub mod conversation_row;
 pub mod catalog;
 pub mod catalog_styles;
-pub mod catalog_previews;
