@@ -170,6 +170,9 @@ moment:
       en: "Shown in a simpler form"
       zh-CN: "以简化形式显示"
   intervention:
+    decide:
+      en: "Your decision is needed"
+      zh-CN: "需要你确认"
     risk:
       en: "Risk: %{risk}"
       zh-CN: "风险：%{risk}"

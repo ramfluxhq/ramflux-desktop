@@ -169,7 +169,14 @@ impl RenderOnce for InterventionBody {
             .when(expanded, |body| body.child(details(self.grant.as_ref(), self.payload.risk)))
             .child(match self.grant.as_ref().and_then(|g| g.failure) {
                 Some(failure) => super::grant_failure::render(failure, cx),
-                None if open => decision(decision_sink, self.payload.risk).into_any_element(),
+                None if open => decision(
+                    decision_sink,
+                    self.payload.risk,
+                    self.grant.as_ref(),
+                    &self.proposer,
+                    cx,
+                )
+                .into_any_element(),
                 None => resolution(self.grant.as_ref(), self.lifecycle, cx).into_any_element(),
             })
             .child(audit_line(&self.proposer, self.audit.as_ref(), cx))
@@ -194,7 +201,19 @@ fn details(grant: Option<&Grant>, risk: Risk) -> impl IntoElement {
     list
 }
 
-fn decision(sink: EventSink, risk: Risk) -> impl IntoElement {
+/// The host-drawn approval: the trusted facts the decision binds (risk,
+/// scope, single use, expiry, who asked) in the RF approval presentation,
+/// then Deny and Allow in the design's order. Allowing a high-risk grant
+/// opens the host's hold strip first; nothing here authorizes on its own.
+fn decision(
+    sink: EventSink,
+    risk: Risk,
+    grant: Option<&Grant>,
+    proposer: &SharedString,
+    cx: &App,
+) -> impl IntoElement {
+    use ramflux_desktop_navigation::generated::catalog;
+    let theme = ramflux_desktop_navigation::palette(cx);
     let approve_sink = sink.clone();
     // Approving a high-risk grant needs the hold-to-confirm strip first, so
     // the label carries an ellipsis.
@@ -203,20 +222,53 @@ fn decision(sink: EventSink, risk: Risk) -> impl IntoElement {
     } else {
         "moment.intervention.approve"
     });
-    h_flex()
-        .gap_2()
-        .child(Button::new("approve").primary().small().label(approve_label).on_click(
+    let mut facts = vec![catalog::ApprovalFact::new(
+        "approval-risk".into(),
+        tr("grant.risk"),
+        i18n::risk(risk),
+    )];
+    if let Some(grant) = grant {
+        facts.push(catalog::ApprovalFact::new(
+            "approval-scope".into(),
+            tr("grant.scope"),
+            SharedString::from(grant.scope.clone()),
+        ));
+        facts.push(catalog::ApprovalFact::new(
+            "approval-single-use".into(),
+            tr("grant.single_use"),
+            tr(if grant.single_use { "common.yes" } else { "common.no" }),
+        ));
+        facts.push(catalog::ApprovalFact::new(
+            "approval-expiry".into(),
+            tr("grant.expiry"),
+            grant.expiry.map_or_else(|| tr("grant.no_expiry"), |at| i18n::time_of_day(at).into()),
+        ));
+    }
+    let controls = catalog::approval_controls(
+        Button::new("deny").outline().small().label(tr("moment.intervention.deny")).on_click(
+            move |_, window, cx| {
+                sink.emit(UiEventKind::DenyPressed, window, cx);
+            },
+        ),
+        Button::new("approve").primary().small().label(approve_label).on_click(
             move |_, window, cx| {
                 approve_sink.emit(UiEventKind::ApprovePressed, window, cx);
             },
-        ))
-        .child(
-            Button::new("deny").outline().small().label(tr("moment.intervention.deny")).on_click(
-                move |_, window, cx| {
-                    sink.emit(UiEventKind::DenyPressed, window, cx);
-                },
-            ),
-        )
+        ),
+        theme,
+    );
+    div().id("approval-presentation").test_support().whitespace_normal().child(
+        catalog::approval_presentation(
+            catalog::ApprovalPresentation::new(
+                tr("moment.intervention.decide"),
+                tr_args("moment.intervention.proposed_by", &[("name", proposer)]),
+                controls,
+            )
+            .facts(facts),
+            true,
+            theme,
+        ),
+    )
 }
 
 fn resolution(grant: Option<&Grant>, lifecycle: Lifecycle, cx: &App) -> impl IntoElement {

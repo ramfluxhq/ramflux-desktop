@@ -280,6 +280,13 @@ impl IntentRoot {
                         root.recheck_pending(cx);
                     }
                 }),
+                // A hidden window shows no facts: a pending hold cannot be
+                // confirmed unseen, so it is cancelled.
+                cx.observe_window_visibility(window, |root: &mut Self, visibility, _, cx| {
+                    if !visibility.is_visible() {
+                        root.cancel_for_navigation(cx);
+                    }
+                }),
             ];
             Self {
                 store,
