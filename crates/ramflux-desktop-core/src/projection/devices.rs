@@ -47,8 +47,11 @@ impl DeviceFacts {
 /// Security presentation for a device row or pairing review.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceTrust<'a> {
-    /// No Web claim is made; this does not imply primary custody.
-    NativeOrUnknown,
+    /// Explicit Desktop/iOS/Android source facts; does not imply primary custody.
+    Native,
+    /// Platform/origin unverified; browser operator access cannot be ruled out.
+    /// Pairing review must show a cautious origin warning.
+    Unverified,
     /// Browser with an exact origin; operator can read its keys and plaintext.
     WebOperator { origin: &'a str },
     /// Browser without origin metadata. Pairing must remain unavailable.
@@ -65,7 +68,23 @@ pub fn trust<'a>(device: &Device, facts: Option<&'a DeviceFacts>) -> DeviceTrust
             }
             _ => DeviceTrust::WebOriginMissing,
         },
-        _ => DeviceTrust::NativeOrUnknown,
+        Some(facts)
+            if matches!(
+                facts.platform,
+                DevicePlatform::Desktop | DevicePlatform::Ios | DevicePlatform::Android
+            ) =>
+        {
+            DeviceTrust::Native
+        }
+        _ => DeviceTrust::Unverified,
+    }
+}
+
+impl DeviceTrust<'_> {
+    /// Whether the host must display origin/operator risk in pairing review.
+    #[must_use]
+    pub const fn requires_origin_warning(self) -> bool {
+        !matches!(self, Self::Native)
     }
 }
 
@@ -96,8 +115,8 @@ mod tests {
         );
         assert_eq!(
             trust(&device, None),
-            DeviceTrust::NativeOrUnknown,
-            "legacy rows must not gain invented platform facts"
+            DeviceTrust::Unverified,
+            "missing facts must retain the cautious origin warning"
         );
         let missing = DeviceFacts::new(device.id.clone(), DevicePlatform::Web, None);
         assert_eq!(
@@ -112,8 +131,28 @@ mod tests {
         );
         assert_eq!(
             trust(&device, Some(&foreign)),
-            DeviceTrust::NativeOrUnknown,
+            DeviceTrust::Unverified,
             "device facts cannot cross device identities"
+        );
+        let unknown = DeviceFacts::new(device.id.clone(), DevicePlatform::Unknown, None);
+        assert_eq!(
+            trust(&device, Some(&unknown)),
+            DeviceTrust::Unverified,
+            "an explicit unknown platform cannot be inferred native"
+        );
+        let native = DeviceFacts::new(device.id.clone(), DevicePlatform::Ios, None);
+        assert_eq!(
+            trust(&device, Some(&native)),
+            DeviceTrust::Native,
+            "only explicit matching native facts suppress the operator warning"
+        );
+        assert!(
+            trust(&device, None).requires_origin_warning(),
+            "pairing must warn when the platform contract is absent"
+        );
+        assert!(
+            !trust(&device, Some(&native)).requires_origin_warning(),
+            "native status requires explicit source evidence"
         );
     }
 }

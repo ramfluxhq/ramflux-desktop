@@ -18,7 +18,7 @@ pub const QUERY_LIMIT: usize = 1024;
 pub enum Preview<'a> {
     /// Text currently present in the body cache.
     Text(&'a str),
-    /// Body not loaded or already evicted.
+    /// Latest activity is newer than the loaded timeline, or its body is evicted.
     Unavailable,
     /// The latest message was deleted; do not reveal its cached text.
     Deleted,
@@ -69,6 +69,8 @@ pub enum QueryError {
 /// Returns every matching conversation through bounded pages, including unpinned rows.
 /// Searches titles, participant names/IDs and currently cached message bodies.
 /// A locked account yields no rows. No content is loaded as a side effect.
+/// Contexts/moments must come from one account session. Other account metadata
+/// may be listed, but combining several accounts' context stores is unsupported.
 ///
 /// # Errors
 /// Returns [`QueryError::TooLong`] for an oversized query.
@@ -140,17 +142,23 @@ pub fn conversations_with_activity<'a>(
         .take(limit)
         .map(|context| {
             let latest = store.context_moments(&context.id).next_back();
-            let preview = match latest.map(|m| &m.kind) {
-                Some(MomentKind::Message(p)) if p.tombstone => Preview::Deleted,
-                Some(MomentKind::Message(p)) => match latest.and_then(|m| store.body(&m.id)) {
-                    Some(text) if !text.is_empty() => Preview::Text(text),
-                    _ if p.attachment.is_some() || !p.media.is_empty() => Preview::Attachment,
-                    _ => Preview::Unavailable,
-                },
-                Some(_) => Preview::Activity,
-                None => Preview::Empty,
+            let newer_unloaded =
+                activity(&context.id).is_some_and(|at| latest.is_none_or(|moment| at > moment.at));
+            let preview = if newer_unloaded {
+                Preview::Unavailable
+            } else {
+                match latest.map(|m| &m.kind) {
+                    Some(MomentKind::Message(p)) if p.tombstone => Preview::Deleted,
+                    Some(MomentKind::Message(p)) => match latest.and_then(|m| store.body(&m.id)) {
+                        Some(text) if !text.is_empty() => Preview::Text(text),
+                        _ if p.attachment.is_some() || !p.media.is_empty() => Preview::Attachment,
+                        _ => Preview::Unavailable,
+                    },
+                    Some(_) => Preview::Activity,
+                    None => Preview::Empty,
+                }
             };
-            let receipt = latest.and_then(|m| match &m.kind {
+            let receipt = latest.filter(|_| !newer_unloaded).and_then(|m| match &m.kind {
                 MomentKind::Message(p) if local.as_ref() == Some(&m.origin) => Some(p.receipt),
                 _ => None,
             });
@@ -222,6 +230,89 @@ mod tests {
             conversations(&store, &"x".repeat(QUERY_LIMIT + 1), 0, 100).err(),
             Some(QueryError::TooLong),
             "oversized queries must fail before allocating search state"
+        );
+    }
+
+    #[test]
+    fn ordering_and_second_page_vectors_match_the_shared_model() {
+        let mut store = Store::new();
+        for (seq, id, pinned) in [(1, "b", false), (2, "p", true), (3, "a", false)] {
+            let context = serde_json::from_value(
+                serde_json::json!({"id":id,"kind":"Direct","title":id,"pinned":pinned}),
+            )
+            .expect("test: context fixture");
+            apply(&mut store, seq, DomainEvent::ContextUpserted(context));
+        }
+        let activity = |id: &ContextId| if id.as_str() == "p" { None } else { Some(Timestamp(10)) };
+        let all = conversations_with_activity(&store, "", 0, 100, activity)
+            .expect("test: ordering vector");
+        assert_eq!(
+            all.rows.iter().map(|r| r.context.id.as_str()).collect::<Vec<_>>(),
+            ["p", "a", "b"],
+            "native and shared models must use pin/activity/stable-id ordering"
+        );
+        let second = conversations_with_activity(&store, "", 1, 2, activity)
+            .expect("test: second page vector");
+        assert_eq!(
+            second.rows.iter().map(|r| r.context.id.as_str()).collect::<Vec<_>>(),
+            ["a", "b"],
+            "native and shared models must page the same sorted snapshot"
+        );
+        assert_eq!(second.next_offset, None, "the final page must terminate");
+    }
+
+    #[test]
+    fn newer_unloaded_activity_suppresses_old_preview_and_receipt() {
+        let mut store = Store::new();
+        let account=serde_json::from_value(serde_json::json!({"id":"a","label":"Owner","lock_state":"Unlocked","self_participant_id":"self"})).expect("test: account fixture");
+        apply(&mut store, 1, DomainEvent::AccountUpdated(account));
+        let context =
+            serde_json::from_value(serde_json::json!({"id":"c","kind":"Direct","title":"Peer"}))
+                .expect("test: context fixture");
+        apply(&mut store, 2, DomainEvent::ContextUpserted(context));
+        let message = Moment {
+            id: MomentId::new("m"),
+            context_id: ContextId::new("c"),
+            origin: ParticipantId::new("self"),
+            at: Timestamp(5_000),
+            order: None,
+            lifecycle: Lifecycle::Done,
+            kind: MomentKind::Message(MessagePayload {
+                text: "old cached words".into(),
+                receipt: Receipt::Delivered,
+                ..Default::default()
+            }),
+        };
+        apply(&mut store, 3, DomainEvent::MomentAdded(Box::new(message)));
+        let page = conversations_with_activity(&store, "", 0, 100, |_| Some(Timestamp(10_000)))
+            .expect("test: newer directory activity");
+        let row = page.rows.first().expect("test: one row");
+        assert_eq!(
+            row.at,
+            Some(Timestamp(10_000)),
+            "new source activity must retain its timestamp"
+        );
+        assert_eq!(
+            row.preview,
+            Preview::Unavailable,
+            "a new timestamp cannot label an older cached body as current"
+        );
+        assert_eq!(
+            row.receipt, None,
+            "an older outgoing receipt cannot describe unloaded activity"
+        );
+        let equal = conversations_with_activity(&store, "", 0, 100, |_| Some(Timestamp(5_000)))
+            .expect("test: equal directory activity");
+        let row = equal.rows.first().expect("test: one equal-time row");
+        assert_eq!(
+            row.preview,
+            Preview::Text("old cached words"),
+            "an equally current loaded body remains displayable"
+        );
+        assert_eq!(
+            row.receipt,
+            Some(Receipt::Delivered),
+            "an equally current receipt remains authoritative"
         );
     }
 

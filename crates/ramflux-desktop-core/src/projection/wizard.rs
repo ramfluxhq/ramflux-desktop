@@ -67,6 +67,13 @@ impl AgentDraft {
     /// Refuses stale custody, missing/oversized fields, unknown runtimes and unoffered permissions.
     pub fn validate(&self, store: &Store, offers: &[RuntimeOffer]) -> Result<(), DraftError> {
         check_agent_custodian(store, &self.owner).map_err(DraftError::Custody)?;
+        if valid_field(&self.name)
+            && self.runtime.is_empty()
+            && self.tools.is_empty()
+            && self.scopes.is_empty()
+        {
+            return Ok(());
+        }
         self.validate_selections(offers)
     }
 
@@ -92,16 +99,20 @@ impl AgentDraft {
     }
 
     /// Returns the existing identity-creation intent after current-state review.
-    /// Runtime configuration remains a separate operation from identity custody.
+    /// Configured drafts are unavailable until the backend can carry every selection.
     ///
     /// # Errors
-    /// Returns the same validation errors as [`Self::validate`].
+    /// Returns validation errors or [`DraftError::ConfigurationUnavailable`]; no
+    /// runtime/tool/scope selection is silently discarded.
     pub fn begin_identity(
         &self,
         store: &Store,
         offers: &[RuntimeOffer],
     ) -> Result<IntentKind, DraftError> {
         self.validate(store, offers)?;
+        if !self.runtime.is_empty() || !self.tools.is_empty() || !self.scopes.is_empty() {
+            return Err(DraftError::ConfigurationUnavailable);
+        }
         Ok(IntentKind::BeginAgentCeremony {
             label: self.name.trim().to_owned(),
             custodian_id: self.owner.clone(),
@@ -116,6 +127,9 @@ fn valid_field(value: &str) -> bool {
 /// Why the configuration cannot proceed to review/identity creation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum DraftError {
+    /// The backend cannot apply runtime/tools/scopes; the draft must be retained.
+    #[error("agent configuration is unavailable in the backend")]
+    ConfigurationUnavailable,
     /// Owner is no longer eligible.
     #[error("agent custodian is unavailable: {0:?}")]
     Custody(AgentCustodyProblem),
@@ -136,6 +150,69 @@ pub enum DraftError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Account, DomainEvent, EventEnvelope, LockState, Timestamp};
+
+    fn owner_store() -> Store {
+        let mut store = Store::new();
+        let account:Account=serde_json::from_value(serde_json::json!({"id":"owner","label":"Owner","lock_state":"Unlocked","networking":"Live"})).expect("test: connected human owner");
+        store
+            .apply(&EventEnvelope::new(1, Timestamp(0), DomainEvent::AccountUpdated(account)))
+            .expect("test: owner source fact");
+        store
+    }
+
+    #[test]
+    fn creation_never_accepts_then_drops_configuration() {
+        let mut store = owner_store();
+        let mut draft = AgentDraft::new(AccountId::new("owner"));
+        draft.name = "Research helper".into();
+        assert_eq!(
+            draft.validate(&store, &[]),
+            Ok(()),
+            "identity-only review must validate current custody without inventing a runtime"
+        );
+        assert!(
+            matches!(draft.begin_identity(&store,&[]),Ok(IntentKind::BeginAgentCeremony{label,custodian_id}) if label=="Research helper" && custodian_id==draft.owner),
+            "identity-only creation carries every selected field"
+        );
+        let offers = vec![RuntimeOffer::new(
+            "host".into(),
+            BTreeSet::from(["read".into()]),
+            BTreeSet::new(),
+        )];
+        draft.runtime = "host".into();
+        draft.tools.insert("read".into());
+        assert_eq!(
+            draft.validate(&store, &offers),
+            Ok(()),
+            "the configured draft is structurally valid against the offered catalog"
+        );
+        assert!(
+            matches!(
+                draft.begin_identity(&store, &offers),
+                Err(DraftError::ConfigurationUnavailable)
+            ),
+            "creation must preserve configured drafts rather than drop their permissions"
+        );
+        draft.tools.clear();
+        assert!(
+            matches!(
+                draft.begin_identity(&store, &offers),
+                Err(DraftError::ConfigurationUnavailable)
+            ),
+            "even a runtime-only choice cannot be silently discarded"
+        );
+        let mut account = store.account(&draft.owner).cloned().expect("test: known owner");
+        account.lock_state = LockState::Locked;
+        store
+            .apply(&EventEnvelope::new(2, Timestamp(1), DomainEvent::AccountUpdated(account)))
+            .expect("test: owner locks before review");
+        assert_eq!(
+            draft.validate(&store, &offers),
+            Err(DraftError::Custody(AgentCustodyProblem::Locked)),
+            "public validation must recheck custody after the draft was displayed"
+        );
+    }
 
     #[test]
     fn configuration_cannot_expand_catalog_permissions_or_choose_defaults() {

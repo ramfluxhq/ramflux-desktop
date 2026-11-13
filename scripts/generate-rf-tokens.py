@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Span Brain
 """Generate GPUI themes and geometry from the shared W3C token snapshot."""
 import argparse
 import json
@@ -35,7 +37,7 @@ def color(token):
 
 
 def outputs():
-    tokens = json.loads(TOKENS.read_text())
+    tokens = json.loads(TOKENS.read_text(encoding="utf-8"))
     files = {}
     for mode in ("light", "dark"):
         values = tokens[mode]
@@ -59,11 +61,11 @@ def main():
     for name, content in outputs().items():
         path = OUTPUT / name
         if args.check:
-            if not path.exists() or path.read_text() != content:
+            if not path.exists() or path.read_text(encoding="utf-8") != content:
                 raise SystemExit(f"Stale generated tokens: {path.relative_to(ROOT)}")
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content)
+            path.write_text(content, encoding="utf-8")
     print("RF_TOKENS_OK")
 
 

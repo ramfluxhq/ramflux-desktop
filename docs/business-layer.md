@@ -28,6 +28,17 @@ loaded facts, not a durable or server full-text index. Reading does not mark a
 conversation read. Directory timestamps are Unix seconds converted through the
 same saturating conversion as message timestamps.
 
+When directory activity is newer than the loaded timeline, the preview is
+`Unavailable` and no outgoing receipt is shown. Equal timestamps keep the
+cached preview/receipt. Attention counts cover loaded decision moments; a zero
+does not establish that an unloaded history has no pending decisions.
+
+Each `app::AccountSession` owns its own `Store` and `Source`.
+`app::StoreHandle::session` selects exactly one account's session; contexts and
+moments from background accounts are not merged. The projection API requires
+that same account-scoped snapshot even when account-list metadata names other
+accounts. It is not a cross-account directory API.
+
 Request batches validate the complete selection before returning effects. A
 stale, duplicate or expired row refuses the batch before submission. Effects
 are sequential; the daemon does not promise an atomic batch transaction.
@@ -38,6 +49,16 @@ stranger reply/report/batch outcomes. Agent drafts and Web warnings are pure
 models until those source facts/operations are published. A successful account
 or device list is not acceptance of these missing flows. Reply/report must not
 be emulated with contact acceptance or an unrelated message submission.
+
+`AgentDraft::begin_identity` accepts only an identity-only draft. Any selected
+runtime/tool/scope returns `ConfigurationUnavailable`, retaining the original
+draft rather than silently dropping its selections. Public draft validation
+always rechecks current owner custody.
+
+Device trust is `Native` only for explicit matching Desktop/iOS/Android facts.
+Missing, unknown or foreign-device facts are `Unverified` and require the
+cautious origin/operator warning in pairing review. A label never establishes
+native platform or suppresses the warning.
 
 The product's separate `ramflux-client-model` crate defines a UI-independent
 borrowed directory row/page, unread/attention totals and receipt presentation.
