@@ -1663,13 +1663,6 @@
         "unit": "px"
       }
     },
-    "section": {
-      "$type": "dimension",
-      "$value": {
-        "value": 280,
-        "unit": "px"
-      }
-    },
     "avatar": {
       "$type": "dimension",
       "$value": {
