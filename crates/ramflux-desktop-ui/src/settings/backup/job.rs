@@ -150,13 +150,15 @@ impl BackupPanel {
             .id("backup-job")
             .test_support()
             .gap_2()
-            .child(h_flex().gap_2().justify_between().child(div().text_sm().child(doing)).children(
-                percent.map(|p| {
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(SharedString::from(format!("{p:.0}%")))
-                }),
+            .child(ramflux_desktop_navigation::generated::catalog::section_header(
+                doing,
+                div().children(percent.map(|p| {
+                    ramflux_desktop_navigation::generated::catalog::badge(
+                        SharedString::from(format!("{p:.0}%")),
+                        ramflux_desktop_navigation::palette(cx),
+                    )
+                })),
+                ramflux_desktop_navigation::palette(cx),
             ))
             .child(
                 Progress::new("backup-progress")
@@ -237,6 +239,7 @@ impl BackupPanel {
             )
             .child(
                 h_flex()
+                    .flex_wrap()
                     .gap_2()
                     .child(
                         Button::new("restore-discard")
@@ -303,12 +306,15 @@ impl BackupPanel {
                     || tr_args("settings.backup.error_other", &[("code", "")]),
                     text::failure,
                 );
-                body = body.child(
-                    div()
-                        .id("backup-failure")
-                        .test_support()
-                        .child(Alert::error("backup-failure-alert", why).small()),
-                );
+                body = body.child(div().id("backup-failure").test_support().child(
+                    crate::settings::presentation::notice(
+                        "backup-failure-alert",
+                        text::heading(job),
+                        why,
+                        ramflux_desktop_navigation::generated::catalog::StateKind::Error,
+                        cx,
+                    ),
+                ));
                 if kind == BackupJobKind::Restore {
                     body = body.child(muted(tr("settings.backup.failed.unchanged"), cx));
                 }

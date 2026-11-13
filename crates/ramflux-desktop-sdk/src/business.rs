@@ -64,6 +64,10 @@ pub enum ContractGap {
     AgentConfiguration,
     /// Authenticated browser platform and exact origin in the device directory.
     WebDeviceFacts,
+    /// Approving a new device with authenticated pairing review facts.
+    DevicePairingApproval,
+    /// Open-account visibility facts and mutation (not contact request policy).
+    AccountPrivacy,
     /// Reply without acceptance, report and batch outcomes for strangers.
     StrangerActions,
 }
@@ -100,11 +104,14 @@ pub fn read_plan(area: Area, account: &AccountId) -> ReadPlan {
             vec![Fetch::AccountList, Fetch::first(Paged::Identities)],
             vec![ContractGap::AgentConfiguration],
         ),
-        Area::Devices => (vec![Fetch::DeviceList], vec![ContractGap::WebDeviceFacts]),
+        Area::Devices => (
+            vec![Fetch::DeviceList],
+            vec![ContractGap::WebDeviceFacts, ContractGap::DevicePairingApproval],
+        ),
         Area::Backup => (vec![Fetch::BackupJobs], vec![]),
         Area::Settings => (
             vec![Fetch::AccountStatus(account.clone()), Fetch::NodeList, Fetch::ContactRequests],
-            vec![],
+            vec![ContractGap::AccountPrivacy],
         ),
     };
     ReadPlan { reads, gaps }
@@ -248,6 +255,14 @@ mod tests {
             read_plan(Area::Agents, &account).gaps,
             vec![ContractGap::AgentConfiguration],
             "missing configuration cannot be represented as a successful identity read"
+        );
+        assert!(
+            read_plan(Area::Devices, &account).gaps.contains(&ContractGap::DevicePairingApproval),
+            "joining with a code is not authority to approve another device"
+        );
+        assert!(
+            read_plan(Area::Settings, &account).gaps.contains(&ContractGap::AccountPrivacy),
+            "request acceptance cannot masquerade as open-account visibility"
         );
         assert!(
             read_plan(Area::Conversations, &account).gaps.is_empty(),

@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 /// A collection the source lists in full.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Listing {
+    /// Devices returned by the account source, including an empty result.
+    Devices,
     /// Node profiles.
     Nodes,
     /// Local accounts.
@@ -32,7 +34,8 @@ pub enum Listing {
 
 impl Listing {
     /// Every listing.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
+        Self::Devices,
         Self::Nodes,
         Self::Accounts,
         Self::Contexts,

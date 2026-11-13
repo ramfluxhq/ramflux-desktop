@@ -422,6 +422,7 @@ impl Translator {
     fn listing_answered(&mut self, fetch: &Fetch) -> Option<DomainEvent> {
         let complete = |paged| self.completed.contains(&paged);
         let listing = match fetch {
+            Fetch::DeviceList => Listing::Devices,
             Fetch::NodeList => Listing::Nodes,
             Fetch::AccountList => Listing::Accounts,
             // Contexts are conversations and groups: listed once both are.

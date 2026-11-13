@@ -89,3 +89,12 @@ controls so spaces, tabs and terminal blank lines copy exactly. Selection state
 is allocated for visible rows; the cache protects the visible window plus overscan,
 with a 64-entry warm-cache floor. Inactive drafts are capped at 128 and pruned
 when their source conversation disappears.
+
+Settings uses the generated account/device presentation and retains the native
+masked secret inputs, backup jobs and host confirmation footer. At compact
+widths its section navigation wraps above the scrolling page; section changes
+cancel pending destructive confirmations. Device rows belong to the active
+account. Missing authenticated platform/origin facts keep the operator-access
+warning, including on the current or revoked device. Approving another device
+and open-account privacy controls remain explicitly unavailable until their
+source contracts exist; contact request acceptance is a separate setting.

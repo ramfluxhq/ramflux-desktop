@@ -33,15 +33,15 @@ pub mod diagnostics;
 pub mod integrations;
 pub mod local_setup;
 pub mod nodes;
+pub(crate) mod presentation;
 pub mod sync;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::FocusTrapElement as _;
-use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::setting::{SelectIndex, Settings};
-use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::setting::Settings;
+use gpui_kit::component::{ActiveTheme as _, IconName, Selectable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, SharedString, Subscription,
@@ -54,7 +54,7 @@ use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::i18n::tr;
 use crate::launch::DaemonLauncher;
-use crate::root::{ConfirmHost, IntentRoot};
+use crate::root::{ConfirmHost, IntentRoot, RootEvent};
 
 /// A settings section, in sidebar order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +166,13 @@ impl SettingsPage {
                 }
             }),
             cx.observe(&root, |_, _, cx| cx.notify()),
+            cx.subscribe_in(&root, window, |this, root, event: &RootEvent, window, cx| {
+                if *event == RootEvent::ConfirmClosed
+                    && root.read(cx).host() == ConfirmHost::Settings
+                {
+                    window.focus(&this.focus_handle, cx);
+                }
+            }),
             cx.observe(&launcher, |_, _, cx| cx.notify()),
         ];
         let launch_inputs = local_setup::LaunchInputs::new(&launcher, window, cx);
@@ -203,6 +210,9 @@ impl SettingsPage {
 
     /// Shows `section` the next time the overlay renders.
     pub fn show(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
+        if self.section != section {
+            self.context.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
+        }
         self.section = section;
         self.opened += 1;
         cx.notify();
@@ -219,8 +229,10 @@ impl SettingsPage {
         let count = SettingsSection::ALL.len();
         let current = isize::try_from(self.section.index()).unwrap_or(0);
         let len = isize::try_from(count).unwrap_or(1);
-        let next = usize::try_from((current + step).rem_euclid(len)).unwrap_or(0);
-        self.show(SettingsSection::ALL[next], cx);
+        let next = usize::try_from((current + step.rem_euclid(len)).rem_euclid(len)).unwrap_or(0);
+        if let Some(section) = SettingsSection::ALL.get(next) {
+            self.show(*section, cx);
+        }
     }
 
     /// The masked inputs of passphrase rotation.
@@ -245,55 +257,130 @@ impl SettingsPage {
 }
 
 impl Render for SettingsPage {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let context = &self.context;
-        let pages = [
-            account::page(context, &self.inputs, cx),
-            backup::page(&self.backup, cx),
-            agents::page(&self.agents),
-            devices::page(context, cx),
-            nodes::page(context, cx),
-            integrations::page(context, cx),
-            diagnostics::page(context, &self.launch_inputs, cx),
-            appearance::page(),
-        ];
+        let page = match self.section {
+            SettingsSection::Account => account::page(context, &self.inputs, cx),
+            SettingsSection::Backup => backup::page(&self.backup, cx),
+            SettingsSection::Agents => agents::page(&self.agents),
+            SettingsSection::Devices => devices::page(context, cx),
+            SettingsSection::Nodes => nodes::page(context, cx),
+            SettingsSection::Integrations => integrations::page(context, cx),
+            SettingsSection::Diagnostics => diagnostics::page(context, &self.launch_inputs, cx),
+            SettingsSection::Appearance => appearance::page(),
+        };
         let root = context.root.read(cx);
         let strip = (root.host() == ConfirmHost::Settings).then(|| root.confirm_strip().clone());
+        let subtitle = context
+            .store
+            .read(cx)
+            .active_account()
+            .and_then(|id| context.store.read(cx).store().account(id))
+            .map_or_else(|| tr("settings.account.none"), |account| account.label.clone().into());
+        let close = Button::new("settings-close")
+            .ghost()
+            .small()
+            .icon(IconName::Close)
+            .label(tr("common.close"))
+            .on_click(|_, window, cx| window.dispatch_action(Box::new(CloseSettings), cx));
+        let compact =
+            f32::from(window.viewport_size().width) / f32::from(window.rem_size()) < 800.0 / 15.0;
+
+        let offline = context.store.read(cx).store().source_status()
+            == ramflux_desktop_core::SourceStatus::Disconnected;
+        let failure = context
+            .store
+            .read(cx)
+            .store()
+            .failures()
+            .iter()
+            .rev()
+            .find(|failure| {
+                ["account.", "device.", "backup.", "node."]
+                    .iter()
+                    .any(|prefix| failure.method.starts_with(prefix))
+            })
+            .map(|failure| crate::i18n::backend_text(&failure.message));
+        let navigation = div()
+            .id("settings-navigation")
+            .test_support()
+            .flex()
+            .gap_1()
+            .when(compact, |nav| nav.flex_row().flex_wrap().p_2().border_b_1())
+            .when(!compact, |nav| nav.flex_col().w(gpui_kit::rems(216.0 / 15.0)).p_3().border_r_1())
+            .flex_shrink_0()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().sidebar)
+            .children(SettingsSection::ALL.into_iter().map(|section| {
+                Button::new(SharedString::from(format!("settings-section-{}", section.key())))
+                    .ghost()
+                    .small()
+                    .selected(self.section == section)
+                    .label(tr(&format!("settings.section.{}", section.key())))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.show(section, cx);
+                        window.focus(&this.focus_handle, cx);
+                    }))
+            }));
         v_flex()
             .id("settings")
             .test_support()
             .key_context(SETTINGS_CONTEXT)
             .absolute()
+            .occlude()
             .inset_0()
+            .min_w_0()
             .bg(cx.theme().background)
             .child(
-                h_flex()
-                    .px_4()
-                    .py_2()
-                    .gap_2()
+                div()
+                    .id("settings-header")
+                    .test_support()
+                    .w_full()
                     .border_b_1()
                     .border_color(cx.theme().border)
-                    .child(div().flex_1().font_semibold().child(tr("settings.title")))
-                    .child(
-                        Button::new("settings-close")
-                            .ghost()
-                            .small()
-                            .icon(IconName::Close)
-                            .label(tr("common.close"))
-                            .on_click(|_, window, cx| {
-                                window.dispatch_action(Box::new(CloseSettings), cx)
-                            }),
-                    ),
+                    .child(ramflux_desktop_navigation::generated::catalog::page_header(
+                        tr("settings.title"),
+                        subtitle,
+                        compact,
+                        div(),
+                        close,
+                        ramflux_desktop_navigation::palette(cx),
+                    )),
             )
+            .when(offline, |page| page.child(presentation::offline(cx)))
+            .when_some(failure, |page, reason| {
+                page.child(presentation::notice(
+                    "settings-last-error",
+                    tr("settings_ui.last_error"),
+                    reason,
+                    ramflux_desktop_navigation::generated::catalog::StateKind::Error,
+                    cx,
+                ))
+            })
             .child(
-                div().flex_1().min_h_0().child(
-                    Settings::new(SharedString::from(format!("settings-pages-{}", self.opened)))
-                        .default_selected_index(SelectIndex {
-                            page_ix: self.section.index(),
-                            group_ix: None,
-                        })
-                        .pages(pages),
-                ),
+                div()
+                    .id("settings-content")
+                    .test_support()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .when(compact, |content| content.flex_col())
+                    .child(navigation)
+                    .child(
+                        div().flex_1().min_h_0().min_w_0().child(
+                            Settings::new(SharedString::from(format!(
+                                "settings-pages-{}",
+                                self.opened
+                            )))
+                            // Navigation is owned here so pointer and keyboard
+                            // changes cancel a host confirmation before hiding facts.
+                            .sidebar_width(gpui_kit::px(0.0))
+                            .sidebar_size_range(gpui_kit::px(0.0)..gpui_kit::px(0.0))
+                            .sidebar_style(&gpui_kit::StyleRefinement::default().hidden())
+                            .page(page),
+                        ),
+                    ),
             )
             .children(strip.map(|strip| div().flex_shrink_0().pb_2().child(strip)))
             // An overlay over the whole window: Tab stays inside it. The trap

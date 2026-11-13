@@ -25,7 +25,9 @@ def main():
             raise SystemExit(f"Stale RF design artifact: {name}")
     generated = ROOT / "crates/ramflux-desktop-navigation/src/generated"
     imported = json.loads((generated / ".pen-gen-manifest.json").read_text(encoding="utf-8"))
-    if imported.get("owner") != "pen-gen-02-sync-desktop" or imported.get("version") != 1:
+    if (imported.get("owner") != "ramflux design generator sync desktop"
+            or imported.get("generator") != "ramflux design generator"
+            or imported.get("version") != 1):
         raise SystemExit("Invalid RF component import manifest")
     for name, digest in imported.get("files", {}).items():
         path = generated / name

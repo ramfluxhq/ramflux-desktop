@@ -46,7 +46,7 @@ use ramflux_desktop_core::{
 use crate::app::{AccountAttention, StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::confirm::ConfirmStrip;
-use crate::root::{IntentRoot, RootEvent};
+use crate::root::{ConfirmHost, IntentRoot, RootEvent};
 
 pub use call::{CallBar, IncomingCall, call_blocked, call_status};
 pub use composer::attachment::Staged;
@@ -254,14 +254,20 @@ impl Workspace {
                     }
                 }
             }),
-            cx.subscribe_in(&root, window, |this, _, event: &RootEvent, window, cx| match event {
-                RootEvent::ConfirmClosed => {
-                    this.composer.update(cx, |composer, cx| composer.focus(window, cx));
-                }
-                RootEvent::SurfaceChanged(moment) => {
-                    this.conversation.update(cx, |field, cx| field.review_again(moment, cx));
-                }
-            }),
+            cx.subscribe_in(
+                &root,
+                window,
+                |this, root, event: &RootEvent, window, cx| match event {
+                    RootEvent::ConfirmClosed => {
+                        if root.read(cx).host() == ConfirmHost::Workspace {
+                            this.composer.update(cx, |composer, cx| composer.focus(window, cx));
+                        }
+                    }
+                    RootEvent::SurfaceChanged(moment) => {
+                        this.conversation.update(cx, |field, cx| field.review_again(moment, cx));
+                    }
+                },
+            ),
             cx.subscribe(&dock_area, |this, _, event: &DockToggleEvent, cx| {
                 if !event.is_open() {
                     this.open_tool = None;

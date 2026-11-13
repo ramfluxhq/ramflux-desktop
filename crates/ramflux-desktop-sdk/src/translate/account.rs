@@ -241,4 +241,15 @@ mod tests {
         assert_eq!(t.self_device.as_deref(), Some("device-status"), "the status stays the source");
         assert_eq!(t.accounts.get(&id).and_then(|a| a.device_id.as_deref()), Some("device-status"));
     }
+    #[test]
+    fn empty_device_directory_finishes_loading_once() {
+        let mut translator = Translator::new(Scope::Account(AccountId::new("owner")), "rfd.sock");
+        let first = translator.fetched(&Fetch::DeviceList, &json!({"devices":[]}), Timestamp(0));
+        assert!(first.events.iter().any(|event| matches!(event, DomainEvent::ListingsLoaded(listings) if listings.contains(&ramflux_desktop_core::Listing::Devices))), "an empty authoritative response must end loading");
+        let second = translator.fetched(&Fetch::DeviceList, &json!({"devices":[]}), Timestamp(1));
+        assert!(
+            !second.events.iter().any(|event| matches!(event, DomainEvent::ListingsLoaded(_))),
+            "an unchanged listing is declared once"
+        );
+    }
 }

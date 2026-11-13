@@ -33,7 +33,6 @@ mod parts;
 mod recovery;
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::stepper::{Stepper, StepperItem};
 use gpui_kit::component::{ActiveTheme as _, v_flex};
@@ -415,17 +414,14 @@ impl Render for EntryPage {
                 .gap_6()
                 .px_6()
                 .py_12()
-                .child(
-                    v_flex()
-                        .gap_1()
-                        .child(div().text_xl().font_semibold().child(tr("entry.title")))
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(tr("entry.subtitle")),
-                        ),
-                )
+                .child(ramflux_desktop_navigation::generated::catalog::page_header(
+                    tr("entry.title"),
+                    tr("entry.subtitle"),
+                    true,
+                    div(),
+                    div(),
+                    ramflux_desktop_navigation::palette(cx),
+                ))
                 .child(Stepper::new("entry-steps").selected_index(selected).items([
                     StepperItem::new().child(tr("entry.step.daemon")),
                     StepperItem::new().child(tr("entry.step.node")),

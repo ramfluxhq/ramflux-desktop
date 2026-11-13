@@ -469,11 +469,12 @@ impl EntryPage {
     ) -> AnyElement {
         let label = tr(label);
         let input = Input::new(input).id(id).aria_label(label.clone());
-        v_flex()
-            .gap_1()
-            .child(div().text_xs().text_color(cx.theme().muted_foreground).child(label))
-            .child(if masked { input.mask_toggle() } else { input })
-            .into_any_element()
+        crate::settings::presentation::field(
+            label,
+            if masked { input.mask_toggle() } else { input },
+            cx,
+        )
+        .into_any_element()
     }
 
     fn render_create(&self, cx: &mut Context<Self>) -> AnyElement {

@@ -5,15 +5,16 @@
 //! revoked), revocation through the hold strip, and own-device sync export
 //! and import.
 
-use gpui_kit::component::StyledExt as _;
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, div};
-use ramflux_desktop_core::{Device, SyncDirection, UiEventKind};
+use ramflux_desktop_core::{Device, Listing, SourceStatus, SyncDirection, UiEventKind};
+use ramflux_desktop_navigation::{generated::catalog, palette};
 
-use super::{SectionContext, SettingsSection, note};
+use super::{SectionContext, SettingsSection, presentation};
 use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
@@ -23,7 +24,22 @@ pub const SYNC_FILE_NAME: &str = "ramflux-device-sync.bundle";
 
 /// The devices section.
 pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
-    let devices: Vec<Device> = context.store.read(cx).store().devices().cloned().collect();
+    let account = super::account::active_account(context, cx).map(|account| account.id);
+    let store = context.store.read(cx).store();
+    let devices: Vec<Device> = store
+        .devices()
+        .filter(|device| account.as_ref() == Some(&device.account_id))
+        .cloned()
+        .collect();
+    let listed = store.is_listed(Listing::Devices);
+    let offline = store.source_status() == SourceStatus::Disconnected;
+    let failure = store
+        .failures()
+        .iter()
+        .rev()
+        .find(|failure| failure.method == "device.list")
+        .map(|failure| i18n::backend_text(&failure.message));
+    let revoke_reason = crate::gate::reason(store, ramflux_desktop_core::methods::DEVICE_REVOKE);
     let sink = context.sink(SettingsSection::Devices);
     let list_sink = sink.clone();
     let (export_reason, import_reason) = {
@@ -35,11 +51,34 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
     };
     let list = SettingItem::render(move |_, _, cx: &mut App| {
         if devices.is_empty() {
-            return note("settings.devices.none", cx);
+            let (title, description, kind) = if let Some(reason) = failure.as_ref() {
+                (tr("settings_ui.devices_error"), reason.clone(), catalog::StateKind::Error)
+            } else if offline {
+                (
+                    tr("settings_ui.offline"),
+                    tr("settings_ui.offline_help"),
+                    catalog::StateKind::Offline,
+                )
+            } else if listed {
+                (
+                    tr("settings.devices.none"),
+                    tr("settings_ui.devices_empty_help"),
+                    catalog::StateKind::Empty,
+                )
+            } else {
+                (
+                    tr("settings_ui.devices_loading"),
+                    tr("settings_ui.devices_loading_help"),
+                    catalog::StateKind::Loading,
+                )
+            };
+            return presentation::notice("settings-devices-state", title, description, kind, cx);
         }
         v_flex()
             .id("settings-devices")
-            .gap_1()
+            .test_support()
+            .min_w_0()
+            .gap_3()
             .children(devices.iter().map(|device| {
                 let detail = if device.revoked {
                     tr("settings.devices.revoked")
@@ -68,23 +107,43 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                             );
                         })
                 });
-                h_flex()
+                let action = div().children(
+                    revoke.map(|button| crate::gate::gated(button, revoke_reason.clone())),
+                );
+                // This SDK version provides no authenticated platform/origin
+                // facts. Never infer native custody from a label or local flag.
+                let trust = ramflux_desktop_core::projection::devices::trust(device, None);
+                v_flex()
                     .id(domain_id("device", &device.id))
+                    .test_support()
+                    .min_w_0()
                     .gap_2()
-                    .py_1()
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .child(div().text_sm().font_medium().child(device.label.clone()))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(detail),
-                            ),
+                    .child(catalog::identity_row(
+                        catalog::RowContent::new(
+                            device.id.to_string().into(),
+                            ramflux_desktop_navigation::row::list_text(&device.label),
+                            detail,
+                        )
+                        .leading(catalog::avatar(
+                            ramflux_desktop_navigation::row::initial(&device.label),
+                            catalog::AvatarKind::Person,
+                            palette(cx),
+                        ))
+                        .trailing(action),
+                        palette(cx),
+                    ))
+                    .child(div().text_xs().child(device.id.to_string()))
+                    .when(
+                        trust == ramflux_desktop_core::projection::devices::DeviceTrust::Unverified,
+                        |row| {
+                            row.child(presentation::warning(
+                                "device-origin-warning",
+                                tr("settings_ui.origin_unknown"),
+                                tr("settings_ui.origin_warning"),
+                                cx,
+                            ))
+                        },
                     )
-                    .children(revoke)
             }))
             .into_any_element()
     });
@@ -92,6 +151,7 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
         let export = sink.clone();
         let import = sink.clone();
         h_flex()
+            .flex_wrap()
             .gap_2()
             .child(crate::gate::gated(
                 Button::new("sync-export")
@@ -149,4 +209,29 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
     SettingPage::new(tr("settings.section.devices"))
         .group(SettingGroup::new().item(list))
         .group(SettingGroup::new().title(tr("settings.devices.sync")).item(sync))
+        .group(SettingGroup::new().title(tr("settings_ui.link_device")).item(SettingItem::render(
+            |_, _, cx: &mut App| {
+                v_flex()
+                    .gap_2()
+                    .child(crate::gate::gated(
+                        Button::new("settings-link-device")
+                            .small()
+                            .outline()
+                            .label(tr("settings_ui.link_device")),
+                        Some(presentation::contract_reason(
+                            ramflux_desktop_sdk::business::ContractGap::DevicePairingApproval,
+                        )),
+                    ))
+                    .child(presentation::notice(
+                        "device-pairing-unavailable",
+                        tr("settings_ui.pairing_review"),
+                        presentation::contract_reason(
+                            ramflux_desktop_sdk::business::ContractGap::DevicePairingApproval,
+                        ),
+                        catalog::StateKind::Empty,
+                        cx,
+                    ))
+                    .into_any_element()
+            },
+        )))
 }

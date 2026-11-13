@@ -1,0 +1,47 @@
+_version: 2
+settings_ui:
+  offline:
+    en: "Offline"
+    zh-CN: "离线"
+  offline_help:
+    en: "Showing the last available account data. Reconnect to refresh device and backup status."
+    zh-CN: "显示最近可用的账户数据。重新连接后可刷新设备和备份状态。"
+  last_error:
+    en: "Last settings error"
+    zh-CN: "最近的设置错误"
+  privacy:
+    en: "Account privacy"
+    zh-CN: "账户隐私"
+  privacy_unavailable:
+    en: "Open account controls are unavailable in this version. Contact request acceptance does not change account visibility."
+    zh-CN: "此版本暂不支持开放账户控制。联系人请求的接受策略不会改变账户可见性。"
+  devices_loading:
+    en: "Loading devices"
+    zh-CN: "正在加载设备"
+  devices_loading_help:
+    en: "Waiting for the account's device directory."
+    zh-CN: "正在等待账户的设备目录。"
+  devices_empty_help:
+    en: "The source returned an empty device directory for this account."
+    zh-CN: "数据源返回了此账户的空设备目录。"
+  devices_error:
+    en: "Last device directory error"
+    zh-CN: "最近的设备目录错误"
+  origin_unknown:
+    en: "Device platform and origin unverified"
+    zh-CN: "设备平台和来源尚未验证"
+  origin_warning:
+    en: "The source has not provided verified platform or exact web origin facts. A browser operator may access this device's keys and plaintext. A device name or “this device” label does not verify its platform."
+    zh-CN: "数据源尚未提供经过验证的平台或准确的网页来源信息。浏览器运营者可能访问此设备的密钥和明文。设备名称或“本设备”标签不能证明其平台。"
+  link_device:
+    en: "Link a new device"
+    zh-CN: "连接新设备"
+  pairing_review:
+    en: "Device pairing unavailable"
+    zh-CN: "设备配对暂不可用"
+  pairing_unavailable:
+    en: "This version cannot approve another device with a verified pairing review. No pairing code will be generated."
+    zh-CN: "此版本无法通过经过验证的配对审核批准其他设备，不会生成配对码。"
+  source_unavailable:
+    en: "The required source contract is unavailable in this version."
+    zh-CN: "此版本尚未提供所需的数据源接口。"

@@ -29,7 +29,7 @@ pub struct AccountInputs {
     pub backup: Entity<InputState>,
 }
 
-fn active_account(context: &SectionContext, cx: &App) -> Option<Account> {
+pub(super) fn active_account(context: &SectionContext, cx: &App) -> Option<Account> {
     let handle = context.store.read(cx);
     let store = handle.store();
     handle
@@ -57,21 +57,41 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
     let summary = {
         let account = account.clone();
         SettingItem::render(move |_, _, cx: &mut App| match &account {
-            Some(a) => DescriptionList::new()
-                .columns(1)
-                .item(tr("settings.account.label"), SharedString::from(a.label.clone()), 1)
-                .item(tr("settings.account.kind"), i18n::account_kind(a.kind), 1)
-                .item(
-                    tr("settings.account.node"),
-                    SharedString::from(
-                        a.node_id.as_ref().map_or_else(String::new, ToString::to_string),
+            Some(a) => v_flex()
+                .gap_3()
+                .min_w_0()
+                .child(ramflux_desktop_navigation::generated::catalog::identity_row(
+                    ramflux_desktop_navigation::generated::catalog::RowContent::new(
+                        a.id.to_string().into(),
+                        ramflux_desktop_navigation::row::list_text(&a.label),
+                        i18n::account_kind(a.kind),
+                    )
+                    .leading(
+                        ramflux_desktop_navigation::generated::catalog::avatar(
+                            ramflux_desktop_navigation::row::initial(&a.label),
+                            ramflux_desktop_navigation::generated::catalog::AvatarKind::Person,
+                            ramflux_desktop_navigation::palette(cx),
+                        ),
                     ),
-                    1,
-                )
-                .item(
-                    tr("settings.account.device"),
-                    SharedString::from(a.device_id.clone().unwrap_or_default()),
-                    1,
+                    ramflux_desktop_navigation::palette(cx),
+                ))
+                .child(
+                    DescriptionList::new()
+                        .columns(1)
+                        .item(tr("settings.account.label"), SharedString::from(a.label.clone()), 1)
+                        .item(tr("settings.account.kind"), i18n::account_kind(a.kind), 1)
+                        .item(
+                            tr("settings.account.node"),
+                            SharedString::from(
+                                a.node_id.as_ref().map_or_else(String::new, ToString::to_string),
+                            ),
+                            1,
+                        )
+                        .item(
+                            tr("settings.account.device"),
+                            SharedString::from(a.device_id.clone().unwrap_or_default()),
+                            1,
+                        ),
                 )
                 .into_any_element(),
             None => note("settings.account.none", cx),
@@ -200,8 +220,20 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                 .into_any_element()
         })
     };
+    let privacy = SettingItem::render(|_, _, cx: &mut App| {
+        super::presentation::notice(
+            "account-privacy-unavailable",
+            tr("settings_ui.privacy"),
+            super::presentation::contract_reason(
+                ramflux_desktop_sdk::business::ContractGap::AccountPrivacy,
+            ),
+            ramflux_desktop_navigation::generated::catalog::StateKind::Empty,
+            cx,
+        )
+    });
     SettingPage::new(tr("settings.section.account"))
         .group(SettingGroup::new().item(summary).item(actions))
         .group(SettingGroup::new().title(tr("settings.account.backup_title")).item(backup))
         .group(SettingGroup::new().title(tr("settings.account.rotate_title")).item(rotation))
+        .group(SettingGroup::new().title(tr("settings_ui.privacy")).item(privacy))
 }

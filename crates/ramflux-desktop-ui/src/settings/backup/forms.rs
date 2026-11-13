@@ -22,11 +22,7 @@ use crate::i18n::{self, tr, tr_args};
 
 /// A labelled field.
 fn field(label: SharedString, body: impl IntoElement, cx: &App) -> AnyElement {
-    v_flex()
-        .gap_1()
-        .child(div().text_xs().text_color(cx.theme().muted_foreground).child(label))
-        .child(body)
-        .into_any_element()
+    crate::settings::presentation::field(label, body, cx)
 }
 
 fn masked(input: &Entity<InputState>, id: &'static str, label: SharedString) -> Input {
@@ -119,6 +115,7 @@ impl BackupPanel {
             .child(field(
                 tr("settings.backup.location"),
                 h_flex()
+                    .flex_wrap()
                     .gap_2()
                     .child(chosen(self.location.as_ref(), "settings.backup.no_location", cx))
                     .child(
@@ -195,6 +192,7 @@ impl BackupPanel {
             .children(self.refusal(cx))
             .child(
                 h_flex()
+                    .flex_wrap()
                     .gap_2()
                     .child(
                         Button::new("backup-form-cancel")
@@ -247,6 +245,7 @@ impl BackupPanel {
             .child(field(
                 tr("settings.backup.file"),
                 h_flex()
+                    .flex_wrap()
                     .gap_2()
                     .child(chosen(self.file.as_ref(), "settings.backup.no_file", cx))
                     .child(
@@ -281,6 +280,7 @@ impl BackupPanel {
             .children(self.refusal(cx))
             .child(
                 h_flex()
+                    .flex_wrap()
                     .gap_2()
                     .children((!self.standalone).then(|| {
                         Button::new("restore-form-cancel")
