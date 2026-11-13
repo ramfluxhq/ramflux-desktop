@@ -79,8 +79,8 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             else {
                 return Err(IntentError::NothingToRetry(task_id.clone()));
             };
-            // The decision was already made (and held to confirm when it
-            // needed it): this sends the same signed decision again.
+            // The decision was already made (and confirmed by the human when
+            // it needed it): this sends the same signed decision again.
             let method = if *approved { methods::GRANT_APPROVE } else { methods::GRANT_DENY };
             Ok(Decision::Call(method, json!({ "grant_id": grant_id, "retry": true })))
         }),

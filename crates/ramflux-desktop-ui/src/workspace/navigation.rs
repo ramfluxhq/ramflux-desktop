@@ -36,7 +36,7 @@ impl Workspace {
     }
 
     /// Routes through existing account-scoped feature owners. Every route
-    /// change first cancels a pending hold, so it can never be confirmed
+    /// change first cancels a pending confirmation, so it can never be confirmed
     /// after its reviewed facts left the screen.
     pub fn navigate(&mut self, route: WorkspaceRoute, window: &mut Window, cx: &mut Context<Self>) {
         self.root.update(cx, |root, cx| root.cancel_for_navigation(cx));

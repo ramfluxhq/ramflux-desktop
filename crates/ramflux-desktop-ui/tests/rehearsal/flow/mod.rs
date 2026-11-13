@@ -5,7 +5,7 @@
 //!
 //! 1. both desktops attach to their daemons;
 //! 2. each adds the node by URL, checks the shown key fingerprint against
-//!    the expected key and confirms it with the hold;
+//!    the expected key and confirms it with one tap;
 //! 3. each creates its account (Alice, Bob) on the node;
 //! 4. Alice adds Bob from the contact card Bob's desktop shows, Bob adds
 //!    Alice by principal id; both are reachable at once, and each verifies
@@ -216,7 +216,7 @@ impl<'h, H: Host, D: DemoDaemon> Demo<'h, H, D> {
 pub fn run<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
     let mut steps = Steps::default();
     steps.run(1, "Two desktops attach to two daemons", &[], |n| setup::start(demo, n));
-    steps.run(2, "Add the node by URL, check its key, confirm with the hold", &[1], |n| {
+    steps.run(2, "Add the node by URL, check its key, confirm with one tap", &[1], |n| {
         setup::node(demo, n)
     });
     steps.run(3, "Create Alice and Bob on the node", &[2], |n| setup::accounts(demo, n));
@@ -241,7 +241,7 @@ pub fn run<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
 pub fn run_live<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
     let mut steps = Steps::default();
     steps.run(1, "Two desktops attach to two daemons", &[], |n| setup::start(demo, n));
-    steps.run(2, "Add the node by URL, check its key, confirm with the hold", &[1], |n| {
+    steps.run(2, "Add the node by URL, check its key, confirm with one tap", &[1], |n| {
         setup::node(demo, n)
     });
     steps.run(3, "Create Alice and Bob on the node", &[2], |n| setup::accounts(demo, n));
@@ -281,7 +281,7 @@ pub fn run_calls<H: Host, D: DemoDaemon>(
         }
         Ok(())
     });
-    steps.run(2, "Add the node by URL, check its key, confirm with the hold", &[1], |n| {
+    steps.run(2, "Add the node by URL, check its key, confirm with one tap", &[1], |n| {
         setup::node(demo, n)
     });
     steps.run(3, "Create Alice and Bob on the node", &[2], |n| setup::accounts(demo, n));

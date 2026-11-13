@@ -65,7 +65,7 @@ Control elsewhere.
 | `secondary-k` | Command palette (search contexts, people, objects, history) |
 | `secondary-j` | Take me to what needs me (focuses the moment; Tab reaches its actions) |
 | Enter | Send from the composer; activate the focused button |
-| Space or Enter, held | Hold to confirm a high-risk request; Escape cancels |
+| Enter or Space on Confirm | Confirm a high-risk request with one press (the strip focuses Confirm, Cancel comes first); Escape cancels |
 | `secondary-shift-p` | Pin or unpin the shown context |
 | `secondary-alt-1` … `secondary-alt-5` | Open or close the objects, contacts, members, approvals, evidence dock; Escape closes it |
 | `secondary-,` | Settings; Ctrl-Tab and Ctrl-Shift-Tab change section; Escape closes |

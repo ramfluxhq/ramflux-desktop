@@ -3,7 +3,7 @@
 
 //! Accessibility state in painted frames: every interactive control on every
 //! page has an AccessKit role and a non-empty name, moments announce their
-//! kind and state, the hold strip announces its request and risk, and
+//! kind and state, the confirm strip announces its request and risk, and
 //! list placeholders are status nodes.
 
 mod common;
@@ -143,11 +143,15 @@ fn moments_announce_kind_state_and_risk_and_the_strip_its_risk(cx: &mut TestAppC
     });
     assert_eq!(role, Some(Role::Alert), "the strip is announced");
     assert!(label.contains(i18n::risk(risk).as_ref()), "with its risk: {label}");
-    let hold = in_window(cx, handle, |window, _| {
-        let hold = window.find("hold-confirm");
-        (hold.role(), hold.label().map(str::to_owned))
+    let accept = in_window(cx, handle, |window, _| {
+        let accept = window.find("confirm-accept");
+        (accept.role(), accept.label().map(str::to_owned))
     });
-    assert_eq!(hold, (Some(Role::Button), Some(tr("confirm.hold").to_string())));
+    assert_eq!(
+        accept,
+        (Some(Role::Button), Some(tr("confirm.accept").to_string())),
+        "the Confirm button is a labelled button"
+    );
 }
 
 #[gpui_kit::test]

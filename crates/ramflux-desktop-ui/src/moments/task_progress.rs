@@ -13,7 +13,7 @@
 //! A step that needs the user asks in exactly one place. An approval is
 //! decided right inside the step: the grant it waits on, with Approve and
 //! Deny scoped to that step (`Block(step-N)`), through the same grant flow
-//! and hold-to-confirm strip as any approval. A choice or an input lives in
+//! and confirm strip as any approval. A choice or an input lives in
 //! the agent's surface; the step only points there and brings it into view.
 //! Only the requester decides a step; on someone else's task the step says
 //! who decides.
@@ -482,7 +482,7 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
                         .primary()
                         .small()
                         .label(tr(if grant.risk.requires_confirmation() {
-                            "moment.intervention.approve_hold"
+                            "moment.intervention.approve_ask"
                         } else {
                             "moment.intervention.approve"
                         }))

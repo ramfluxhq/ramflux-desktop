@@ -67,7 +67,7 @@ pub enum NodeAction {
 }
 
 /// Semantic interaction kinds. Secrets never travel in UI events, and no UI
-/// event can carry human confirmation: only the hold-to-confirm strip adds it.
+/// event can carry human confirmation: only the confirm strip adds it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum UiEventKind {
     /// Copy the current, still-visible message body locally; no source mutation.

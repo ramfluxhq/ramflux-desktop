@@ -3,8 +3,8 @@
 
 //! The approvals dock: pending requests (decided in place, through the same
 //! policy as the inline intervention), decided grants (an approved, unused
-//! grant can be revoked with a hold), standing approvals (revocable with a
-//! hold) and the read-only audit trail.
+//! grant can be revoked with a confirmation), standing approvals (revocable with a
+//! confirmation) and the read-only audit trail.
 
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -95,7 +95,7 @@ fn pending_row(store: &Store, grant: &Grant, sink: &EventSink, cx: &App) -> AnyE
                     .xsmall()
                     .primary()
                     .label(tr(if grant.risk.requires_confirmation() {
-                        "moment.intervention.approve_hold"
+                        "moment.intervention.approve_ask"
                     } else {
                         "moment.intervention.approve"
                     }))
@@ -225,7 +225,8 @@ fn audit_row(store: &Store, entry: &AuditEntry, cx: &App) -> AnyElement {
             store.participant(id).map_or_else(|| id.short().into(), |p| p.display.clone().into())
         }
     };
-    let held = if entry.human_confirmed { tr("audit.held") } else { tr("audit.not_held") };
+    let confirmed =
+        if entry.human_confirmed { tr("audit.confirmed") } else { tr("audit.not_confirmed") };
     h_flex()
         .gap_2()
         .px_3()
@@ -243,7 +244,7 @@ fn audit_row(store: &Store, entry: &AuditEntry, cx: &App) -> AnyElement {
         .child(
             div()
                 .text_color(cx.theme().muted_foreground)
-                .child(tr_args("audit.by", &[("who", &who), ("held", &held)])),
+                .child(tr_args("audit.by", &[("who", &who), ("confirmed", &confirmed)])),
         )
         .into_any_element()
 }

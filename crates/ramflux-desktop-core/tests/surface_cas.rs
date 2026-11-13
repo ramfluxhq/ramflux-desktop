@@ -117,9 +117,9 @@ fn an_action_shown_on_an_older_version_is_refused() {
 }
 
 #[test]
-fn a_confirmed_action_is_refused_when_the_surface_changed_during_the_hold() {
+fn a_confirmed_action_is_refused_when_the_surface_changed_during_the_confirmation() {
     let mut feed = seeded();
-    // Make the action high risk so it waits for a hold.
+    // Make the action high risk so it waits for a confirmation.
     feed.ok(
         3,
         patch(
@@ -133,19 +133,18 @@ fn a_confirmed_action_is_refused_when_the_surface_changed_during_the_hold() {
         ),
     );
     let shown = hash(&feed);
-    let effects = handle_intent(&feed.store, run(shown.clone()), NOW).expect("needs a hold");
+    let effects =
+        handle_intent(&feed.store, run(shown.clone()), NOW).expect("needs a confirmation");
     let Some(Effect::RequireConfirmation { intent }) = effects.into_iter().next() else {
-        panic!("a high-risk action waits for the hold");
+        panic!("a high-risk action waits for the confirmation");
     };
     // The patch lands while the strip is open.
     feed.ok(4, patch(vec![append(" (changed)")], None));
-    let confirmed = intent.confirmed_by_human(
-        ConfirmationIssuer::new().issue_hold(MIN_HOLD_MS + 10).expect("a full hold"),
-    );
+    let confirmed = intent.confirmed_by_human(ConfirmationIssuer::new().issue_tap());
     assert_eq!(
         handle_intent(&feed.store, confirmed, NOW).err(),
         Some(IntentError::SurfaceChanged(MomentId::new("m-s"))),
-        "a hold never confirms content the user did not review"
+        "a confirmation never covers content the user did not review"
     );
 }
 

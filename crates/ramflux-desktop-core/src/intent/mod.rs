@@ -41,7 +41,7 @@ pub use secret::SecretInput;
 pub struct Intent {
     /// Who proposed it. Never rewritten by a confirmation.
     pub proposed_by: Actor,
-    /// Set only by the hold-to-confirm strip after the gesture completes.
+    /// Set only by the confirm strip after the gesture completes.
     /// Never deserialized: a stored or received intent is always unconfirmed.
     #[serde(default, skip_deserializing)]
     pub confirmed_by: Option<HumanConfirmation>,
@@ -56,14 +56,14 @@ impl Intent {
     }
 
     /// An intent proposed by an agent participant. It never carries a
-    /// confirmation; only a later hold by the human can add one.
+    /// confirmation; only a later confirmation by the human can add one.
     pub fn agent(agent: crate::ids::ParticipantId, kind: IntentKind) -> Self {
         Self { proposed_by: Actor::Agent(agent), confirmed_by: None, kind }
     }
 
     /// Returns this intent with the attended human's confirmation attached.
     ///
-    /// Used only by the hold-to-confirm strip after the gesture completes.
+    /// Used only by the confirm strip after the gesture completes.
     /// `proposed_by` is kept, so the audit shows who proposed and who confirmed.
     #[must_use]
     pub fn confirmed_by_human(self, confirmation: HumanConfirmation) -> Self {

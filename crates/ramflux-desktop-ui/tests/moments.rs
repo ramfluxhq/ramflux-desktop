@@ -137,7 +137,7 @@ fn approval_blocks_decide_their_grant(cx: &mut TestAppContext) {
         gpui_kit::test::TestWindowExt::within(window, "block-b-notice").click("approve", cx)
     });
     let body = last_body(cx, &shell, methods::GRANT_APPROVE);
-    assert_eq!(body["grant_id"], "g-notice", "the block's own grant, medium risk: no hold");
+    assert_eq!(body["grant_id"], "g-notice", "the block's own grant, medium risk: no confirmation");
     assert!(!strip_open(cx, &shell));
 }
 
@@ -250,17 +250,17 @@ fn conflicts_compare_side_by_side_and_resolve(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn privacy_reveal_needs_a_hold_and_writes_an_audit_line(cx: &mut TestAppContext) {
+fn privacy_reveal_needs_confirmation_and_writes_an_audit_line(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s07_conflict_privacy_handoff");
     advance(cx, 1_000);
     assert!(exists_in(cx, handle, "moment-m-iban", "privacy-mask"));
     click_in(cx, handle, "moment-m-iban", "privacy-reveal-button");
-    assert!(strip_open(cx, &shell), "revealing opens the hold strip");
+    assert!(strip_open(cx, &shell), "revealing opens the confirm strip");
     assert!(effects(cx, &shell).is_empty());
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::PRIVACY_REVEAL);
     assert_eq!(body["moment_id"], "m-iban");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     advance(cx, 300);
     assert!(exists_in(cx, handle, "moment-m-iban", "privacy-content"));
     assert!(exists_in(cx, handle, "moment-m-iban", "privacy-audit"), "the audit note line");

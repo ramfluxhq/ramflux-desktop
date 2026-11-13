@@ -141,8 +141,8 @@ sections:
       en: "No shared groups."
       zh-CN: "没有共同群组。"
     danger_help:
-      en: "Blocking or removing revokes what you shared with them. You confirm it by holding."
-      zh-CN: "屏蔽或移除会撤销你与对方共享的内容，需要按住确认。"
+      en: "Blocking or removing revokes what you shared with them. You confirm it first."
+      zh-CN: "屏蔽或移除会撤销你与对方共享的内容，需要先确认。"
   strangers:
     entry:
       en: "Strangers · %{count}"

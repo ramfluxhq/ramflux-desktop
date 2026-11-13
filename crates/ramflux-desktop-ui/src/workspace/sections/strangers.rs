@@ -14,7 +14,7 @@
 //! Batch mode selects several requests. Accept and Decline are validated as
 //! a whole against the current store with the core's batch rule before any
 //! request leaves; a stale or expired row refuses the whole batch. Block
-//! keeps its own hold, so it is offered for one request at a time.
+//! keeps its own confirmation, so it is offered for one request at a time.
 
 use std::collections::BTreeSet;
 use std::rc::Rc;

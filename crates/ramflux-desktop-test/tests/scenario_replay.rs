@@ -34,13 +34,13 @@ fn attention_ids(player: &ScenarioPlayer) -> Vec<String> {
 }
 
 fn approve(grant: &str, confirmed: bool) -> Intent {
-    held_if(Intent::human(IntentKind::Approve { grant_id: GrantId::new(grant) }), confirmed)
+    confirmed_if(Intent::human(IntentKind::Approve { grant_id: GrantId::new(grant) }), confirmed)
 }
 
-/// Adds the hold-to-confirm evidence the strip would add.
-fn held_if(intent: Intent, confirmed: bool) -> Intent {
+/// Adds the confirmation evidence the strip would add.
+fn confirmed_if(intent: Intent, confirmed: bool) -> Intent {
     if confirmed {
-        intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
+        intent.confirmed_by_human(ConfirmationIssuer::new().issue_tap())
     } else {
         intent
     }
@@ -91,7 +91,7 @@ fn every_timeline_replays_without_errors() {
 }
 
 #[test]
-fn s01_tofu_node_needs_a_hold_then_create_lock_and_unlock() {
+fn s01_tofu_node_needs_confirmation_then_create_lock_and_unlock() {
     let mut p = player("s01_first_launch");
     p.advance(1000);
     assert_eq!(p.store().source_status(), SourceStatus::Disconnected);
@@ -111,7 +111,9 @@ fn s01_tofu_node_needs_a_hold_then_create_lock_and_unlock() {
     };
     let pending = p.dispatch(Intent::human(confirm())).expect("confirm");
     assert!(matches!(pending.as_slice(), [Effect::RequireConfirmation { .. }]));
-    assert!(p.dispatch(held_if(Intent::human(confirm()), true)).expect("held").is_empty());
+    assert!(
+        p.dispatch(confirmed_if(Intent::human(confirm()), true)).expect("confirmed").is_empty()
+    );
     p.advance(200);
     assert!(p.store().node(&NodeId::new("n-studio")).expect("node").confirmed);
     assert!(
@@ -257,7 +259,7 @@ fn s04_key_change_is_sticky_until_verified() {
 }
 
 fn garden(op: GovernanceOp, confirmed: bool) -> Intent {
-    held_if(
+    confirmed_if(
         Intent::human(IntentKind::Governance { context_id: ContextId::new("c-garden"), op }),
         confirmed,
     )
@@ -361,9 +363,9 @@ fn s07_conflict_reveal_and_handoff_complete() {
     let pending = p.dispatch(Intent::human(reveal())).expect("reveal");
     assert!(
         matches!(pending.as_slice(), [Effect::RequireConfirmation { .. }]),
-        "a reveal needs a hold"
+        "a reveal needs a confirmation"
     );
-    assert!(p.dispatch(held_if(Intent::human(reveal()), true)).expect("reveal").is_empty());
+    assert!(p.dispatch(confirmed_if(Intent::human(reveal()), true)).expect("reveal").is_empty());
     p.advance(6000);
     assert_eq!(lifecycle(&p, "m-handoff"), Lifecycle::NeedsMe, "handoff waits for the user");
     let accept = IntentKind::AcceptHandoff { moment_id: MomentId::new("m-handoff") };
@@ -382,7 +384,7 @@ fn s07_conflict_reveal_and_handoff_complete() {
     assert!(payload.content.is_some());
     assert!(
         store.audit().iter().any(|a| a.action == methods::PRIVACY_REVEAL && a.subject == "m-iban"),
-        "the held reveal is audited"
+        "the confirmed reveal is audited"
     );
     let handoff = store.moment(&MomentId::new("m-handoff")).expect("handoff");
     let MomentKind::Handoff(payload) = &handoff.kind else { panic!("not a handoff") };

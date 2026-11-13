@@ -1,6 +1,6 @@
 // s11 Surface versions: a task step asks the user to choose in a surface
 // (needs me at the surface, not at the task), the AI participant changes
-// the surface while the user reviews it (a pending hold is cancelled and
+// the surface while the user reviews it (a pending confirmation is cancelled and
 // the surface asks for a new review), then sends a change made against an
 // older version (the surface is out of date and refuses actions) and
 // resends it against the current one (resolved). Answering the choice gets

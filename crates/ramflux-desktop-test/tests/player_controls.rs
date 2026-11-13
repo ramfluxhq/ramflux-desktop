@@ -7,13 +7,13 @@ use ramflux_desktop_core::*;
 use ramflux_desktop_test::{EffectMatcher, MockSource, ScenarioPlayer, load_fixture};
 
 fn approve(grant: &str, confirmed: bool) -> Intent {
-    held_if(Intent::human(IntentKind::Approve { grant_id: GrantId::new(grant) }), confirmed)
+    confirmed_if(Intent::human(IntentKind::Approve { grant_id: GrantId::new(grant) }), confirmed)
 }
 
-/// Adds the hold-to-confirm evidence the strip would add.
-fn held_if(intent: Intent, confirmed: bool) -> Intent {
+/// Adds the confirmation evidence the strip would add.
+fn confirmed_if(intent: Intent, confirmed: bool) -> Intent {
     if confirmed {
-        intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
+        intent.confirmed_by_human(ConfirmationIssuer::new().issue_tap())
     } else {
         intent
     }

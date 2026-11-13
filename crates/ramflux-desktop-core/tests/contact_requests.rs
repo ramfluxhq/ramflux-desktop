@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! Contact requests in the store (listing and updates, one per peer and
-//! direction) and in policy (who may answer what, Block's hold, the
+//! direction) and in policy (who may answer what, Block's confirmation, the
 //! request setting).
 
 mod common;
@@ -149,7 +149,7 @@ fn a_new_request_from_a_peer_with_an_ended_one_is_pending() {
 }
 
 #[test]
-fn answers_go_to_pending_incoming_requests_and_block_needs_the_hold() {
+fn answers_go_to_pending_incoming_requests_and_block_needs_confirmation() {
     let mut feed = feed();
     let effects = handle_intent(
         &feed.store,
@@ -342,7 +342,7 @@ fn floors(retained: u32, clearable: u32) -> RequestFloors {
 }
 
 #[test]
-fn forgetting_old_entries_needs_the_hold_keeps_the_setting_and_is_human_only() {
+fn forgetting_old_entries_needs_confirmation_keeps_the_setting_and_is_human_only() {
     let mut feed = feed();
     let forget = || IntentKind::ClearRequestFloors;
     // Nothing is known of the bound, or nothing can be forgotten.
@@ -358,13 +358,13 @@ fn forgetting_old_entries_needs_the_hold_keeps_the_setting_and_is_human_only() {
     ));
     feed.ok(4, DomainEvent::ContactRequestFloorsUpdated(floors(4096, 12)));
     assert_eq!(feed.store.request_floors(), Some(floors(4096, 12)));
-    // It gives up rollback protection: it needs the hold.
+    // It gives up rollback protection: it needs the confirmation.
     let effects =
         handle_intent(&feed.store, Intent::human(forget()), Timestamp(0)).expect("forget");
     assert!(matches!(&effects[..], [Effect::RequireConfirmation { .. }]), "{effects:?}");
     // Held, the daemon is sent the current setting with the clear action.
-    let confirmed = Intent::human(forget())
-        .confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"));
+    let confirmed =
+        Intent::human(forget()).confirmed_by_human(ConfirmationIssuer::new().issue_tap());
     let effects = handle_intent(&feed.store, confirmed, Timestamp(0)).expect("confirmed");
     assert!(
         matches!(&effects[..], [Effect::Call { method, body }]

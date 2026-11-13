@@ -29,7 +29,7 @@ pub enum Effect {
         secrets: Vec<SecretInput>,
     },
     /// Policy requires explicit human confirmation before the intent may proceed.
-    /// The app shows a hold-to-confirm strip and resubmits the intent with
+    /// The app shows a confirm strip and resubmits the intent with
     /// `confirmed_by` set.
     RequireConfirmation {
         /// The intent awaiting confirmation.

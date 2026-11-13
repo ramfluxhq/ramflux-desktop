@@ -7,7 +7,7 @@ mod common;
 use common::*;
 use gpui_kit::TestAppContext;
 use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode};
-use gpui_kit::test::{TestEventExt as _, TestQueryExt as _, TestWindowExt as _};
+use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use ramflux_desktop_core::{ContextId, DomainEvent, methods};
 use ramflux_desktop_test::load_fixture;
 use ramflux_desktop_ui::settings::SettingsSection;
@@ -185,7 +185,7 @@ fn navigation_cancels_an_unseen_confirmation_instead_of_completing_it(cx: &mut T
     advance(cx, 1_000);
     in_window(cx, handle, |window, cx| window.press("secondary-j", cx));
     click_in(cx, handle, "moment-m-approve", "approve");
-    assert!(strip_open(cx, &shell), "source high-risk grant must first ask for the existing hold");
+    assert!(strip_open(cx, &shell), "source high-risk grant must first ask for confirmation");
     click(cx, handle, "nav-groups");
     assert!(!strip_open(cx, &shell), "navigation must cancel the old reviewed gesture");
     assert!(
@@ -248,7 +248,7 @@ fn large_directory_updates_only_changed_rows_and_keeps_cursor_identity(cx: &mut 
 }
 
 #[gpui_kit::test]
-fn resize_and_context_selection_cancel_pending_and_in_progress_holds(cx: &mut TestAppContext) {
+fn resize_and_context_selection_cancel_a_pending_confirmation(cx: &mut TestAppContext) {
     let _locale = locale_guard();
     let (handle, shell) = open_width(cx, "s03_intervention", 1024.);
     advance(cx, 1000);
@@ -257,24 +257,16 @@ fn resize_and_context_selection_cancel_pending_and_in_progress_holds(cx: &mut Te
     in_window(cx, handle, |w, cx| w.press("secondary-j", cx));
     click_in(cx, handle, "moment-m-approve", "approve");
     assert!(strip_open(cx, &shell), "the source grant must first request confirmation");
-    let center = in_window(cx, handle, |w, cx| {
-        let center = w.find("hold-confirm").bounds().center();
-        w.pointer_down(center, gpui_kit::MouseButton::Left, cx);
-        center
-    });
     cx.simulate_window_resize(
         handle.into(),
         gpui_kit::size(gpui_kit::px(640.), gpui_kit::px(860.)),
     );
     cx.run_until_parked();
     in_window(cx, handle, |_, _| {});
-    assert!(
-        !strip_open(cx, &shell),
-        "hiding reviewed facts must cancel even an in-progress gesture"
-    );
+    assert!(!strip_open(cx, &shell), "hiding reviewed facts must cancel the pending confirmation");
     advance(cx, 2000);
-    in_window(cx, handle, |w, cx| w.pointer_up(center, gpui_kit::MouseButton::Left, cx));
-    assert!(effects(cx, &shell).is_empty(), "a hidden hold must never complete later");
+    assert!(!exists(cx, handle, "confirm-accept"), "no Confirm button is left to press");
+    assert!(effects(cx, &shell).is_empty(), "a cancelled confirmation never completes later");
     in_window(cx, handle, |w, cx| w.press("secondary-1", cx));
     click_in(cx, handle, "moment-m-approve", "approve");
     assert!(strip_open(cx, &shell), "the request must still be actionable after cancellation");

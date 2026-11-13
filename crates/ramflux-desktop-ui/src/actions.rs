@@ -33,7 +33,7 @@ gpui_kit::actions!(
         ShowConversationList,
         /// Open settings at owned Agent identities.
         OpenAgentsSettings,
-        /// Cancel the pending hold-to-confirm request.
+        /// Cancel the pending confirmation request.
         CancelConfirmation,
         /// Escape in the account creation ceremony: ask whether to cancel it. In
         /// the recovery screens it cancels them.

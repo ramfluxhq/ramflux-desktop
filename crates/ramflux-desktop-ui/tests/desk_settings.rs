@@ -73,18 +73,23 @@ fn account_devices_backup_fit_all_widths_and_themes(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn section_navigation_cancels_a_pending_device_hold_before_hiding_facts(cx: &mut TestAppContext) {
+fn section_navigation_cancels_a_pending_device_confirmation_before_hiding_facts(
+    cx: &mut TestAppContext,
+) {
     let _locale = locale_guard();
     let (handle, shell) = open_width(cx, "s09_multi_account_day", 640.);
     advance(cx, 1000);
     show(cx, &shell, SettingsSection::Devices);
     click_in(cx, handle, "device-dev-phone-01", "revoke");
-    assert!(strip_open(cx, &shell), "source device revocation must require a host hold");
+    assert!(
+        strip_open(cx, &shell),
+        "source device revocation must require a host-drawn confirmation"
+    );
     in_window(cx, handle, |w, _| {
-        let strip = w.find("hold-confirm").bounds();
+        let strip = w.find("confirm-accept").bounds();
         assert!(
             strip.bottom() <= gpui_kit::px(860.) && strip.size.height > gpui_kit::px(0.),
-            "host hold stays in the reserved footer at compact width"
+            "the Confirm button stays in the reserved footer at compact width"
         );
     });
     click(cx, handle, "settings-section-account");
@@ -114,19 +119,19 @@ fn section_navigation_cancels_a_pending_device_hold_before_hiding_facts(cx: &mut
     assert!(effects(cx, &shell).is_empty(), "navigation cannot authorize revocation");
     click(cx, handle, "settings-section-devices");
     click_in(cx, handle, "device-dev-phone-01", "revoke");
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     assert_eq!(
         last_body(cx, &shell, ramflux_desktop_core::methods::DEVICE_REVOKE)
             .get("device_id")
             .and_then(|id| id.as_str()),
         Some("dev-phone-01"),
-        "the new hold authorizes only its reviewed source device"
+        "the new confirmation authorizes only its reviewed source device"
     );
     in_window(cx, handle, |w, _| {
         assert_eq!(
             w.find("settings").focused(),
             Some(true),
-            "a completed settings hold must return focus to its host rather than the obscured workspace"
+            "a completed settings confirmation must return focus to its host rather than the obscured workspace"
         )
     });
 }

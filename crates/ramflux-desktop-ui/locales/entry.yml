@@ -264,7 +264,7 @@ node:
   confirm:
     en: "Confirm node"
     zh-CN: "确认节点"
-  confirm_hold:
+  trust:
     en: "Trust this key…"
     zh-CN: "信任此密钥…"
   decline:

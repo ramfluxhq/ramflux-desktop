@@ -10,8 +10,8 @@ use ramflux_desktop_core::*;
 
 const NOW: Timestamp = Timestamp(100);
 
-fn held(intent: Intent) -> Intent {
-    intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
+fn tapped(intent: Intent) -> Intent {
+    intent.confirmed_by_human(ConfirmationIssuer::new().issue_tap())
 }
 
 fn node(id: &str, pin_source: PinSource, confirmed: bool) -> Node {
@@ -135,12 +135,12 @@ fn decide(store: &Store, intent: Intent) -> Result<Effect, IntentError> {
     handle_intent(store, intent, NOW).map(|mut effects| effects.remove(0))
 }
 
-fn needs_hold(store: &Store, kind: IntentKind) -> bool {
+fn needs_confirmation(store: &Store, kind: IntentKind) -> bool {
     matches!(decide(store, Intent::human(kind)), Ok(Effect::RequireConfirmation { .. }))
 }
 
 #[test]
-fn reveals_and_revocations_need_a_hold_and_carry_the_audit_pair() {
+fn reveals_and_revocations_need_confirmation_and_carry_the_audit_pair() {
     let store = store();
     let kinds = || {
         [
@@ -151,13 +151,13 @@ fn reveals_and_revocations_need_a_hold_and_carry_the_audit_pair() {
         ]
     };
     for kind in kinds() {
-        assert!(needs_hold(&store, kind));
+        assert!(needs_confirmation(&store, kind));
     }
     for kind in kinds() {
-        let effect = decide(&store, held(Intent::human(kind))).expect("held intent passes");
+        let effect = decide(&store, tapped(Intent::human(kind))).expect("confirmed intent passes");
         let body = effect.body().expect("call body");
         assert_eq!(body["proposed_by"], "Human");
-        assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+        assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     }
     assert_eq!(
         decide(
@@ -184,19 +184,19 @@ fn object_actions_follow_the_transfer_state() {
 }
 
 #[test]
-fn confirming_a_tofu_node_needs_a_hold_and_is_human_only() {
+fn confirming_a_tofu_node_needs_confirmation_and_is_human_only() {
     let store = store();
     let confirm =
         |id: &str, pin_source| IntentKind::ConfirmNode { node_id: NodeId::new(id), pin_source };
-    assert!(needs_hold(&store, confirm("n-tofu", PinSource::Manual)));
+    assert!(needs_confirmation(&store, confirm("n-tofu", PinSource::Manual)));
     let effect =
-        decide(&store, held(Intent::human(confirm("n-tofu", PinSource::Manual)))).expect("ok");
+        decide(&store, tapped(Intent::human(confirm("n-tofu", PinSource::Manual)))).expect("ok");
     let body = effect.body().expect("body");
     assert_eq!(effect.method(), Some(methods::NODE_CONFIRM));
     assert_eq!(body["fingerprint"], "SHA256:aa");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     assert!(
-        !needs_hold(&store, confirm("n-invite", PinSource::Invite)),
+        !needs_confirmation(&store, confirm("n-invite", PinSource::Invite)),
         "an invite pin is not TOFU"
     );
     assert_eq!(

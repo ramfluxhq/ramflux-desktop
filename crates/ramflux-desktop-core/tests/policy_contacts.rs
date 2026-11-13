@@ -46,9 +46,9 @@ fn human(store: &Store, kind: IntentKind) -> Result<Vec<Effect>, IntentError> {
     handle_intent(store, Intent::human(kind), Timestamp(10))
 }
 
-fn held(store: &Store, kind: IntentKind) -> Result<Vec<Effect>, IntentError> {
-    let hold = ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold");
-    handle_intent(store, Intent::human(kind).confirmed_by_human(hold), Timestamp(10))
+fn tapped(store: &Store, kind: IntentKind) -> Result<Vec<Effect>, IntentError> {
+    let tap = ConfirmationIssuer::new().issue_tap();
+    handle_intent(store, Intent::human(kind).confirmed_by_human(tap), Timestamp(10))
 }
 
 fn call(effects: &[Effect]) -> (&str, &JsonValue) {
@@ -71,7 +71,7 @@ fn adding_a_contact_calls_contact_add_with_the_typed_id() {
     assert_eq!(method, methods::CONTACT_ADD);
     assert_eq!(body["participant_id"], "principal-new");
     assert_eq!(body["proposed_by"], "Human");
-    assert_eq!(body["confirmed_by"], json!(null), "adding is low risk: no hold");
+    assert_eq!(body["confirmed_by"], json!(null), "adding is low risk: no confirmation");
     // A removed link can be added again.
     assert!(human(&store, add("p-gone")).is_ok());
 }
@@ -144,11 +144,11 @@ fn each_contact_action_maps_to_its_method_for_the_states_it_applies_to() {
         Err(IntentError::UnknownParticipant(_))
     ));
     // A scenario contact (contact flag, no link) is an accepted link.
-    assert!(held(&store, act("p-scenario", ContactAction::Remove)).is_ok());
+    assert!(tapped(&store, act("p-scenario", ContactAction::Remove)).is_ok());
 }
 
 #[test]
-fn blocking_and_removing_need_the_hold_and_carry_it() {
+fn blocking_and_removing_need_confirmation_and_carry_it() {
     let store = store();
     for (id, action, method) in [
         ("p-friend", ContactAction::Block, methods::CONTACT_BLOCK),
@@ -159,22 +159,22 @@ fn blocking_and_removing_need_the_hold_and_carry_it() {
         let pending = human(&store, act(id, action)).expect("allowed");
         assert!(
             matches!(pending.as_slice(), [Effect::RequireConfirmation { .. }]),
-            "{action:?} needs the hold"
+            "{action:?} needs the confirmation"
         );
-        let effects = held(&store, act(id, action)).expect("allowed");
+        let effects = tapped(&store, act(id, action)).expect("allowed");
         let (m, body) = call(&effects);
         assert_eq!(m, method);
         assert_eq!(body["participant_id"], id);
-        assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+        assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     }
-    // An agent may propose a block; only the human's hold sends it.
+    // An agent may propose a block; only the human's confirmation sends it.
     let agent = Intent::agent(ParticipantId::new("p-agent"), act("p-friend", ContactAction::Block));
     let effects = handle_intent(&store, agent, Timestamp(10)).expect("proposal allowed");
     assert!(matches!(effects.as_slice(), [Effect::RequireConfirmation { .. }]));
 }
 
 #[test]
-fn unsupported_contact_methods_are_refused_before_any_hold() {
+fn unsupported_contact_methods_are_refused_before_any_confirmation() {
     let mut store = store();
     let mut unsupported = std::collections::BTreeMap::new();
     unsupported.insert(methods::CONTACT_BLOCK.to_owned(), "backend.gap.test".to_owned());

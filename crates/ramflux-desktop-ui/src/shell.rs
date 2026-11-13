@@ -8,7 +8,7 @@
 //! Window-wide commands are handled here and routed to the view that owns
 //! them, so a command works the same from a key binding, the title bar, the
 //! palette or a menu. The shell also tells the intent root which page hosts
-//! the hold-to-confirm strip.
+//! the confirm strip.
 
 use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode, h_flex, v_flex};
 use gpui_kit::prelude::*;

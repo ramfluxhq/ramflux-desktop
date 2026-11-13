@@ -6,7 +6,7 @@
 //! The step comes from the store ([`crate::route::page_for`]); the user may
 //! look back at the node step from the account step (view-local). Every path
 //! in is enabled: confirm a discovered node or add one by URL (NODE-01 card,
-//! trust-on-first-use pins need a hold), unlock, create an account, join as
+//! trust-on-first-use pins need a confirmation), unlock, create an account, join as
 //! a new device, or restore a backup.
 //!
 //! Non-secret decisions bubble as UI events through the root sink (scope
@@ -429,7 +429,7 @@ impl Render for EntryPage {
                 ]))
                 .child(content),
         );
-        // The hold strip stays in view at the foot of the page. It is a
+        // The confirm strip stays in view at the foot of the page. It is a
         // footer that reserves its own height (it never shrinks), separated
         // by a rule, so the scrolling content ends above it and is never
         // drawn underneath.

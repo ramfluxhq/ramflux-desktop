@@ -103,7 +103,7 @@ permission.
 On the node step type the node's discovery URL and press **Look up**. The
 node's signed record is checked before anything is saved; the card shows its
 endpoints, fingerprint and expiry. A node that is not from an invitation is
-trusted on first use, which needs a hold-to-confirm. Supported today.
+trusted on first use, which needs a confirmation. Supported today.
 
 ## 6. Create an account
 
@@ -151,7 +151,7 @@ A request appears under **Requests** in the dock as soon as the daemon has
 recorded it (its event stream says so). **Accept** adds the contact on
 this account and **Reject** declines.
 The requester is not told yet, for the same reason. A contact's menu blocks or
-removes them (both revoke what you shared and need a hold-to-confirm); blocked
+removes them (both revoke what you shared and need a confirmation); blocked
 contacts can be unblocked. **Verify** compares the contact's devices through the
 node and marks the safety number verified (it needs the node, and the contact's
 identity, which the daemon lists once it has fetched their device manifest, for

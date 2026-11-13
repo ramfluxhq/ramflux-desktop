@@ -128,7 +128,7 @@ impl ContactAction {
     }
 
     /// Blocking and removing revoke object shares and capabilities: they
-    /// need the attended human's hold.
+    /// need the attended human's confirmation.
     pub const fn risk(self) -> Risk {
         match self {
             Self::Block | Self::Remove => Risk::High,

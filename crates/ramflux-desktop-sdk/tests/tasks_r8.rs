@@ -68,7 +68,7 @@ fn an_undelivered_decision_is_shown_and_retry_sends_the_same_decision_again() {
     let id = key(GROUP, "t-1");
     account.until("needs me", |s, _| s.task(&id).is_some_and(|t| t.state == TaskState::NeedsMe));
     let mut intent = human(IntentKind::Approve { grant_id: GrantId::new("appr-7") });
-    intent.confirmed_by = ConfirmationIssuer::new().issue_hold(1_200);
+    intent.confirmed_by = Some(ConfirmationIssuer::new().issue_tap());
     act(&mut account, intent);
     let step = StepId::new("deploy");
     let pending = Some(TaskAnswer::DecisionPending { step_id: step.clone() });

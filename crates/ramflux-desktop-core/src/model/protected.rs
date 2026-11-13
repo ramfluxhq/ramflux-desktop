@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Protected text: content the human revealed with a hold.
+//! Protected text: content the human revealed with a confirmation.
 //!
 //! It is shown in its moment and nowhere else. `Debug` prints a marker,
 //! so it never reaches logs, the event inspector or a diagnostics bundle;

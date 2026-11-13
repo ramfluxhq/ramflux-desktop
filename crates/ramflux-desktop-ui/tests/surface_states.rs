@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! Renderer conformance in the production window: a patch that lands while
-//! the hold strip is open cancels the hold and asks for a new review; a
+//! the confirm strip is open cancels the pending confirmation and asks for a new review; a
 //! surface over a limit shows only its summary; an out-of-date surface
 //! disables its actions; a refused approval shows its fail-closed state in
 //! the moment and the approvals dock and is never sent again.
@@ -10,8 +10,7 @@
 mod common;
 
 use common::*;
-use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
-use gpui_kit::{MouseButton, TestAppContext};
+use gpui_kit::TestAppContext;
 use ramflux_desktop_core::{GrantFailure, GrantId, MomentId, methods};
 use ramflux_desktop_test::load_conformance;
 use ramflux_desktop_ui::app::InspectorEntry;
@@ -63,23 +62,16 @@ fn review_again(
 }
 
 #[gpui_kit::test]
-fn a_patch_during_the_hold_cancels_it_and_asks_for_a_new_review(cx: &mut TestAppContext) {
+fn a_patch_while_the_strip_is_open_cancels_it_and_asks_for_a_new_review(cx: &mut TestAppContext) {
     // The agent patches the deploy action at 3000 ms.
     let (handle, shell) = play(cx, "l2_interactive", 2_500);
     click_in(cx, handle, "moment-m-form", "action-deploy");
-    assert!(strip_open(cx, &shell), "a high-risk action opens the hold strip");
+    assert!(strip_open(cx, &shell), "a high-risk action opens the confirm strip");
 
-    // Start holding; the patch lands 500 ms into the 1200 ms hold.
-    let center = in_window(cx, handle, |window, cx| {
-        let center = window.find("hold-confirm").bounds().center();
-        window.pointer_down(center, MouseButton::Left, cx);
-        center
-    });
+    // The patch lands while the strip is still open, before any Confirm.
     advance(cx, 700);
-    assert!(!strip_open(cx, &shell), "the hold is cancelled by the patch");
-    advance(cx, 1_000);
-    in_window(cx, handle, |window, cx| window.pointer_up(center, MouseButton::Left, cx));
-    assert!(!strip_open(cx, &shell), "the hold is cancelled by the patch");
+    assert!(!strip_open(cx, &shell), "the pending confirmation is cancelled by the patch");
+    assert!(!exists(cx, handle, "confirm-accept"), "no Confirm button is left to press");
     assert_eq!(surface_actions(cx, &shell), 0, "nothing was performed");
     assert!(
         intent_results(cx, &shell).iter().any(|r| r == "confirmation cancelled: surface changed")
@@ -87,12 +79,12 @@ fn a_patch_during_the_hold_cancels_it_and_asks_for_a_new_review(cx: &mut TestApp
     assert!(review_again(cx, &shell));
     assert!(exists_in(cx, handle, "moment-m-form", "surface-review-again"), "the notice is shown");
 
-    // Acting again is the new review: the notice clears and the hold binds
+    // Acting again is the new review: the notice clears and the confirmation binds
     // the new version.
     click_in(cx, handle, "moment-m-form", "action-deploy");
     assert!(!review_again(cx, &shell));
     assert!(strip_open(cx, &shell));
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::SURFACE_ACTION);
     let current = with_store(cx, &shell, |s| s.surface_hash(&MomentId::new("m-form")).cloned());
     assert_eq!(body["surface_hash"], serde_json::json!(current.expect("hash")));
@@ -117,7 +109,7 @@ fn a_reloaded_world_drops_the_review_notice(cx: &mut TestAppContext) {
 fn a_click_after_a_patch_binds_the_new_version(cx: &mut TestAppContext) {
     let (handle, shell) = play(cx, "l2_interactive", 500);
     // The patch lands between two frames; the next frame re-renders the row,
-    // so the click binds the patched version and the hold strip opens.
+    // so the click binds the patched version and the confirm strip opens.
     let store = store_handle(cx, &shell);
     cx.update(|cx| store.update(cx, |store, cx| store.advance(2_600, cx)));
     click_in(cx, handle, "moment-m-form", "action-deploy");
@@ -152,7 +144,7 @@ fn redacted_and_unsupported_blocks_render_as_fallbacks(cx: &mut TestAppContext) 
 fn a_refused_approval_fails_closed_inline_and_in_the_dock(cx: &mut TestAppContext) {
     let (handle, shell) = play(cx, "l2_interactive", 500);
     click_in(cx, handle, "moment-m-tool", "approve");
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     advance(cx, 300);
     let failure =
         with_store(cx, &shell, |s| s.grant(&GrantId::new("g-tool")).and_then(|g| g.failure));

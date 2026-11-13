@@ -8,15 +8,14 @@
 use std::time::Duration;
 
 use gpui_kit::base::Root;
-use gpui_kit::test::{TestEventExt as _, TestQueryExt as _, TestWindowExt as _};
+use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::{
-    AppContext as _, Bounds, Entity, MouseButton, Point, TestAppContext, Window, WindowBounds,
-    WindowHandle, WindowOptions, px, size,
+    AppContext as _, Bounds, Entity, Point, TestAppContext, Window, WindowBounds, WindowHandle,
+    WindowOptions, px, size,
 };
 use ramflux_desktop_core::{JsonValue, Store};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::app::StoreHandle;
-use ramflux_desktop_ui::confirm::HOLD_DURATION;
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::workspace::Workspace;
 
@@ -199,15 +198,9 @@ pub fn has_label(cx: &mut TestAppContext, handle: WindowHandle<Root>, label: &st
     in_window(cx, handle, move |window, _| !window.find_all_by_label(&label).is_empty())
 }
 
-/// Holds the confirm control for longer than [`HOLD_DURATION`].
-pub fn hold_confirm(cx: &mut TestAppContext, handle: WindowHandle<Root>) {
-    let center = in_window(cx, handle, |window, cx| {
-        let center = window.find("hold-confirm").bounds().center();
-        window.pointer_down(center, MouseButton::Left, cx);
-        center
-    });
-    advance(cx, u64::try_from(HOLD_DURATION.as_millis()).unwrap_or(0) + 200);
-    in_window(cx, handle, |window, cx| window.pointer_up(center, MouseButton::Left, cx));
+/// Clicks the Confirm button of the open confirm strip once.
+pub fn tap_confirm(cx: &mut TestAppContext, handle: WindowHandle<Root>) {
+    click(cx, handle, "confirm-accept");
 }
 
 pub fn store_handle(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Entity<StoreHandle> {
@@ -289,7 +282,7 @@ pub fn last_body(cx: &mut TestAppContext, shell: &Entity<Shell>, method: &str) -
         .unwrap_or_else(|| panic!("no {method} effect"))
 }
 
-/// Whether the hold-to-confirm strip is open.
+/// Whether the confirm strip is open.
 pub fn strip_open(cx: &mut TestAppContext, shell: &Entity<Shell>) -> bool {
     cx.update(|cx| shell.read(cx).root().read(cx).confirm_strip().read(cx).is_open())
 }

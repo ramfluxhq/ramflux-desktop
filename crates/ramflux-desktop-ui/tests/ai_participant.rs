@@ -3,7 +3,7 @@
 
 //! UI integration tests of the AI participant in the conversation: a
 //! streamed reply, a task proposal started from its card, a step that needs
-//! the user (approve with the hold, deny), cancel by the requester, asking
+//! the user (approve with the confirmation, deny), cancel by the requester, asking
 //! from the composer and the command palette, a choice answered in the
 //! agent's surface, a surface that changed under review or is out of date,
 //! a closed surface, and surfaces over the renderer limits. Each drives the
@@ -124,15 +124,19 @@ fn a_proposal_is_started_from_its_card_and_needs_me_once(cx: &mut TestAppContext
 }
 
 #[gpui_kit::test]
-fn approving_the_step_needs_the_hold_then_the_result_is_patched_in(cx: &mut TestAppContext) {
+fn approving_the_step_needs_confirmation_then_the_result_is_patched_in(cx: &mut TestAppContext) {
     let (handle, shell) = at_approval(cx);
     click_in(cx, handle, "moment-m-task", "step-approve");
-    assert!(strip_open(cx, &shell), "high risk: the hold-to-confirm strip");
-    assert_eq!(count(cx, &shell, methods::GRANT_APPROVE), 0, "nothing sent before the hold");
-    hold_confirm(cx, handle);
+    assert!(strip_open(cx, &shell), "high risk: the confirm strip");
+    assert_eq!(
+        count(cx, &shell, methods::GRANT_APPROVE),
+        0,
+        "nothing sent before the confirmation"
+    );
+    tap_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::GRANT_APPROVE);
     assert_eq!(body["grant_id"], "g-deploy");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     assert_eq!(body["proposed_by"], "Human");
     advance(cx, 900);
     assert!(
@@ -155,7 +159,7 @@ fn approving_the_step_needs_the_hold_then_the_result_is_patched_in(cx: &mut Test
 fn denying_the_step_fails_the_task(cx: &mut TestAppContext) {
     let (handle, shell) = at_approval(cx);
     click_in(cx, handle, "moment-m-task", "step-deny");
-    assert!(!strip_open(cx, &shell), "denying needs no hold");
+    assert!(!strip_open(cx, &shell), "denying needs no confirmation");
     assert_eq!(last_body(cx, &shell, methods::GRANT_DENY)["grant_id"], "g-deploy");
     advance(cx, 400);
     let t = task(cx, &shell, "t-launch");
@@ -218,7 +222,7 @@ fn a_task_row_names_its_state_in_every_state(cx: &mut TestAppContext) {
     assert_eq!(task(cx, &shell, "t-launch").state, TaskState::NeedsMe);
     names_state(cx, handle, TaskState::NeedsMe);
     click_in(cx, handle, "moment-m-task", "step-approve");
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     advance(cx, 1_600);
     assert_eq!(task(cx, &shell, "t-launch").state, TaskState::Done);
     names_state(cx, handle, TaskState::Done);
@@ -340,9 +344,9 @@ fn a_surface_changed_under_review_is_never_acted_on_silently(cx: &mut TestAppCon
     advance(cx, 300);
     show_context(cx, handle, &shell, "c-plan");
     click_in(cx, handle, "moment-m-pick", "action-fri");
-    assert!(strip_open(cx, &shell), "a high-risk choice waits for the hold");
+    assert!(strip_open(cx, &shell), "a high-risk choice waits for the confirmation");
     advance(cx, 1_300);
-    assert!(!strip_open(cx, &shell), "the change cancelled the pending hold");
+    assert!(!strip_open(cx, &shell), "the change cancelled the pending confirmation");
     assert!(exists_in(cx, handle, "moment-m-pick", "surface-review-again"));
     assert_eq!(count(cx, &shell, methods::SURFACE_ACTION), 0, "no silent resend");
 }

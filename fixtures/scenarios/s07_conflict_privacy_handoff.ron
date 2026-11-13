@@ -2,9 +2,9 @@
 // shared object, masked content revealed with an audit record, and a
 // cross-device handoff.
 // The conflict carries the conflicting lines for a side-by-side compare; a
-// reveal needs a hold and is audited.
-// Demonstrates: Conflict + ResolveConflict, PrivacyReveal + Reveal (held and
-// audited), Handoff + AcceptHandoff / DeclineHandoff.
+// reveal needs a confirmation and is audited.
+// Demonstrates: Conflict + ResolveConflict, PrivacyReveal + Reveal (confirmed
+// and audited), Handoff + AcceptHandoff / DeclineHandoff.
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (

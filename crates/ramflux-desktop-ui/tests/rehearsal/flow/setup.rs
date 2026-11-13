@@ -45,7 +45,7 @@ pub fn start<H: Host, D: DemoDaemon>(
 
 /// Step 2: each desktop looks the node up by URL, the shown fingerprint is
 /// checked against the expected key, and only then confirmed (a node
-/// trusted on first use needs the hold, in the strip, never a modal).
+/// trusted on first use needs the confirmation, in the strip, never a modal).
 pub fn node<H: Host, D: DemoDaemon>(
     demo: &mut Demo<'_, H, D>,
     notes: &mut Notes,
@@ -95,11 +95,11 @@ pub fn node<H: Host, D: DemoDaemon>(
         desk.click(demo.host, Some(&card), "node-confirm")?;
         if node.pin_source.is_trust_on_first_use() {
             if !desk.strip_open(demo.host) || !desk.exists(demo.host, "entry-confirm-footer") {
-                return Err(format!("desktop {tag}: no hold strip for a first-use pin"));
+                return Err(format!("desktop {tag}: no confirm strip for a first-use pin"));
             }
-            demo.shots(ix, "02_node_hold", notes)?;
-            demo.sides[ix].desk()?.hold_confirm(demo.host)?;
-            notes.add(format!("{tag}: trusted on first use, confirmed with the hold"));
+            demo.shots(ix, "02_node_confirm", notes)?;
+            demo.sides[ix].desk()?.tap_confirm(demo.host)?;
+            notes.add(format!("{tag}: trusted on first use, confirmed with one tap"));
         }
         let id = node.id.clone();
         demo.wait(ix, limit, "the confirmed node", |desk, host| {

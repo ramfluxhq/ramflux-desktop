@@ -28,7 +28,7 @@ UiEvent -> Intent -> Effect -> Source -> EventEnvelope -> Store -> selectors -> 
 | R3 | Core has no GPUI, async runtime, or SDK dependency (only `serde`, `serde_json`, `thiserror`). |
 | R4 | View-local state (expanded, hover, scroll) never enters the store. |
 | R5 | Optimistic UI uses only a `Pending` moment, which a later event confirms or rolls back. |
-| R6 | Humans and agents share one pipeline. Every `Intent` records who proposed it (`proposed_by: Actor`) and, after a hold, that the human confirmed it (`confirmed_by`). |
+| R6 | Humans and agents share one pipeline. Every `Intent` records who proposed it (`proposed_by: Actor`) and, after a confirmation, that the human confirmed it (`confirmed_by`). |
 
 ## Identifiers and time
 
@@ -193,7 +193,7 @@ empty)` gives `Loading`, `Empty` or `Ready`; every list view shows a spinner
 only while loading and an explicit empty state once listed.
 
 Policy refuses an intent whose method the backend declared unsupported
-(`IntentError::UnsupportedByBackend`), before any hold, and the UI shows such
+(`IntentError::UnsupportedByBackend`), before any confirmation, and the UI shows such
 controls disabled with the reason. A method may be unsupported only in some
 context kinds (`methods::in_context`, e.g. `message.send@Space`,
 `object.send@Group`). Sources never fake data for a method they lack. A
@@ -255,13 +255,14 @@ All selectors are pure functions of `&Store`.
 
 `Intent { proposed_by: Actor, confirmed_by: Option<HumanConfirmation>, kind: IntentKind }`.
 `Actor` is `Human` or `Agent(ParticipantId)`. `HumanConfirmation` (gesture
-`Hold`, `held_ms`) is an unforgeable capability: it has no public constructor,
-is neither `Clone` nor `Deserialize`, and only a `ConfirmationIssuer` mints it,
-for a completed hold of at least `MIN_HOLD_MS`. The application creates one
-issuer and the intent root (owner of the hold-to-confirm strip) keeps it.
+`Tap`) is an unforgeable capability: it has no public constructor, is neither
+`Clone` nor `Deserialize`, and only a `ConfirmationIssuer` mints it, when the
+human presses the host-drawn Confirm button once (a click, or Enter or Space on
+the focused button; there is no hold and no timer). The application creates one
+issuer and the intent root (owner of the confirm strip) keeps it.
 `confirmed_by` is skipped on deserialization, so a stored, received or scenario
 intent is always unconfirmed, and policy counts a confirmation only when it is
-present with a full hold. Confirming never changes `proposed_by`, so an agent
+present. Confirming never changes `proposed_by`, so an agent
 proposal confirmed by the human keeps the agent as proposer. Agent intents are
 built without a confirmation (`Intent::agent`) and no UI event can carry one.
 
@@ -349,7 +350,7 @@ export, full backup, restore verification, rotate) are excluded from serde. A `S
 `handle_intent(&Store, Intent, now: Timestamp) -> Result<Vec<Effect>, IntentError>`
 checks the intent against the store at time `now` and never mutates it.
 
-- The attended human's hold is required (without `confirmed_by` the result is
+- The attended human's confirmation is required (without `confirmed_by` the result is
   `[Effect::RequireConfirmation { intent }]`) for: approving a `High` or
   `Critical` grant, a `High` or `Critical` surface action, `Kick`, `Ban` and
   `SetRole`, every `Reveal`, `RevokeGrant`, `RevokeStandingApproval`,
@@ -370,7 +371,7 @@ checks the intent against the store at time `now` and never mutates it.
 
 - `Call { method, body }`. `method` is a contract method name from
   `intent::methods`, such as `grant.approve`. Every body includes
-  `proposed_by` and `confirmed_by` (null or the hold record): the audit pair.
+  `proposed_by` and `confirmed_by` (null or the confirmation record): the audit pair.
 - `SecretCall { method, body, secrets }`. The body never contains secret
   material; the secrets travel beside it and only reach the source.
 - `RequireConfirmation { intent }`. The app handles this one; it never goes to
@@ -430,8 +431,8 @@ Scenario.companions = [Companion { account_id, scenario }]   (background account
   Reveal records and node probes written with `at: 0` are stamped too.
 - Effects no rule answers fall back to the built-in local echo (pin, unpin,
   mute, disappearing timer, default, enabled and removed nodes, account lock),
-  so local intents round-trip in every scenario. Every call confirmed with a
-  hold is also echoed as an `AuditAppended` record.
+  so local intents round-trip in every scenario. Every call the human
+  confirmed is also echoed as an `AuditAppended` record.
 - When a submitted effect matches a rule, it schedules that rule's events
   after the submission time.
 
@@ -448,16 +449,16 @@ controls:
 
 | Scenario | Demonstrates |
 |---|---|
-| `s01_first_launch` | No daemon, then bootstrap and invite nodes, a node added by URL (TOFU, hold), create, join or restore an account, lock and unlock |
+| `s01_first_launch` | No daemon, then bootstrap and invite nodes, a node added by URL (TOFU, confirmed), create, join or restore an account, lock and unlock |
 | `s02_daily` | Three contexts, unread counts, a streaming agent reply, an object transfer |
-| `s03_intervention` | A high-risk tool request, hold-to-confirm approval, the result in the conversation |
+| `s03_intervention` | A high-risk tool request, one-tap confirm approval, the result in the conversation |
 | `s04_safety` | A contact's key changes, a sticky warning, the safety number verified |
 | `s05_group_governance` | An invitation, a role change, a member removal with a confirmation bar |
 | `s06_in_progress` | A one-sentence request becomes a multi-step task that needs the user midway, then completes |
 | `s07_conflict_privacy_handoff` | A CAS conflict, an audited privacy reveal, a cross-device handoff |
 | `s08_failures` | A daemon disconnect, an unhealthy node, a failed transfer and its retry, an unknown block rendered as fallback |
 | `s09_multi_account_day` | Two accounts (companion `s09_work_account`), attention in the background account, switch and resolve; node, device and integration data for settings |
-| `s10_ai_participant` | Demo 3: ask the AI participant in a group, streamed reply, task proposal, needs-me approval with a hold, result patch, done (deny and cancel branches) |
+| `s10_ai_participant` | Demo 3: ask the AI participant in a group, streamed reply, task proposal, needs-me approval with a confirmation, result patch, done (deny and cancel branches) |
 | `s11_surface_versions` | A choice answered in a surface, a change during review, a conflicting patch and its resend, close |
 | `s12_surface_limits` | A surface over the action limit, a stream over the delta limit |
 | `s13_born_v3` | A fresh device whose daemon offers account creation with a recovery phrase (after two seconds); the mock source answers the ceremony |
@@ -624,7 +625,7 @@ accepted).
 **Intents.** `AnswerContactRequest { request_id, answer: Accept | Decline |
 Block }` (human only; a pending incoming request): methods
 `contact.request.accept`, `contact.request.decline`, `contact.request.block`;
-Block drops whatever the requester sends from now on and needs the hold.
+Block drops whatever the requester sends from now on and needs the confirmation.
 `SetContactRequestPolicy { policy }` (human only): `contact.requests.policy.set`.
 `AddContact` on a participant with a pending incoming request is refused
 (`ContactLinkState Incoming`): the request is answered instead. `AddContact`
@@ -695,7 +696,7 @@ emits `AddContactRequested`.
   held messages as ordinary `message.received` / `message.list` with their
   original send times (the desktop reads the conversations again). Decline
   sends the requester a decline; block tells the requester nothing (their
-  request looks pending until it expires). Block needs the hold, whose
+  request looks pending until it expires). Block needs the confirmation, whose
   strip names the requester and the consequence (`confirm.contact.request_block`:
   their request and waiting messages are deleted, and they can't message or
   ask again until unblocked). Once a request is answered or expired the

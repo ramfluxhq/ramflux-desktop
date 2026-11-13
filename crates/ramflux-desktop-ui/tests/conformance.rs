@@ -9,8 +9,8 @@
 use ramflux_desktop_core::conformance::{BlockIssue, LimitKind, RendererErrorKind};
 use ramflux_desktop_core::{
     BlockId, BlockKind, ConfirmationIssuer, ContextId, GrantFailure, GrantId, GrantState, Intent,
-    IntentError, IntentKind, JsonValue, MIN_HOLD_MS, MomentId, MomentKind, Scope, SurfaceHash,
-    UiEvent, UiEventKind, methods,
+    IntentError, IntentKind, JsonValue, MomentId, MomentKind, Scope, SurfaceHash, UiEvent,
+    UiEventKind, methods,
 };
 use ramflux_desktop_test::load_conformance;
 use ramflux_desktop_ui::app::{AccountSession, DispatchOutcome, InspectorEntry};
@@ -91,8 +91,8 @@ impl Run {
     }
 }
 
-fn hold() -> ramflux_desktop_core::HumanConfirmation {
-    ConfirmationIssuer::new().issue_hold(MIN_HOLD_MS + 50).expect("a full hold")
+fn tap() -> ramflux_desktop_core::HumanConfirmation {
+    ConfirmationIssuer::new().issue_tap()
 }
 
 #[test]
@@ -225,30 +225,27 @@ fn l2_form_tool_call_approval_and_capability_negotiation() {
     assert_eq!(body["values"]["region"], "us");
     run.advance(200);
 
-    // Deploy is high risk: the hold is required, and a patch arriving
-    // during the hold invalidates it (policy refuses the confirmed intent).
+    // Deploy is high risk: the confirmation is required, and a patch
+    // arriving while the strip is open invalidates it (policy refuses the confirmed intent).
     let DispatchOutcome::NeedsConfirmation(pending) = run.dispatch(run.click("m-form", "deploy"))
     else {
-        panic!("deploy waits for the hold")
+        panic!("deploy waits for the confirmation")
     };
     run.advance(2_500);
-    let refused = run.dispatch(pending.confirmed_by_human(hold()));
+    let refused = run.dispatch(pending.confirmed_by_human(tap()));
     assert!(
         matches!(refused, DispatchOutcome::Refused(IntentError::SurfaceChanged(ref m)) if m.as_str() == "m-form")
     );
-    // Reviewed again on the new version, the hold goes through.
+    // Reviewed again on the new version, the confirmation goes through.
     let DispatchOutcome::NeedsConfirmation(again) = run.dispatch(run.click("m-form", "deploy"))
     else {
-        panic!("deploy waits for the hold")
+        panic!("deploy waits for the confirmation")
     };
-    assert!(matches!(
-        run.dispatch(again.confirmed_by_human(hold())),
-        DispatchOutcome::Submitted(_)
-    ));
+    assert!(matches!(run.dispatch(again.confirmed_by_human(tap())), DispatchOutcome::Submitted(_)));
     let (label, body) = run.effects().pop().expect("effect");
     assert_eq!(label, methods::SURFACE_ACTION);
     assert_eq!(body["surface_hash"], serde_json::json!(run.hash("m-form")));
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
 
     // Approval block: a medium grant decided in place.
     let approve =
@@ -258,9 +255,9 @@ fn l2_form_tool_call_approval_and_capability_negotiation() {
     // Tool call: the high-risk approval is refused by the backend and fails
     // closed; nothing retries it and policy refuses it from now on.
     let DispatchOutcome::NeedsConfirmation(tool) = run.dispatch(approve("g-tool")) else {
-        panic!("a high-risk approval waits for the hold")
+        panic!("a high-risk approval waits for the confirmation")
     };
-    assert!(matches!(run.dispatch(tool.confirmed_by_human(hold())), DispatchOutcome::Submitted(_)));
+    assert!(matches!(run.dispatch(tool.confirmed_by_human(tap())), DispatchOutcome::Submitted(_)));
     run.advance(300);
     let store = run.session.store();
     assert_eq!(store.grant(&GrantId::new("g-notice")).expect("g").state, GrantState::Approved);

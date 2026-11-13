@@ -6,7 +6,7 @@
 //! - Local echo: local-only settings (pin, unpin, mute, disappearing timer,
 //!   default, enabled and removed node profiles, account lock) round-trip in every scenario
 //!   without a scripted rule. A scenario rule for the same effect wins.
-//! - Audit echo: every call the attended human confirmed with a hold is
+//! - Audit echo: every call the attended human confirmed with a confirmation is
 //!   recorded in the audit trail, whether or not a scenario rule matched.
 
 use ramflux_desktop_core::{
@@ -67,7 +67,7 @@ pub fn local_echo(effect: &Effect) -> Vec<DomainEvent> {
     event.into_iter().collect()
 }
 
-/// The audit record of a call the human confirmed with a hold, if any.
+/// The audit record of a call the human confirmed with a confirmation, if any.
 pub fn audit_echo(effect: &Effect, at: Timestamp) -> Option<DomainEvent> {
     let (method, body) = (effect.method()?, effect.body()?);
     if body.get("confirmed_by").is_none_or(JsonValue::is_null) {
@@ -128,15 +128,15 @@ mod tests {
 
     #[test]
     fn only_confirmed_calls_are_audited() {
-        let held = call(
+        let confirmed = call(
             methods::PRIVACY_REVEAL,
             json!({
                 "moment_id": "m-1",
                 "proposed_by": { "Agent": "p-orbit" },
-                "confirmed_by": { "gesture": "Hold", "held_ms": 1_200 },
+                "confirmed_by": { "gesture": "Tap" },
             }),
         );
-        let Some(DomainEvent::AuditAppended(entry)) = audit_echo(&held, Timestamp(7)) else {
+        let Some(DomainEvent::AuditAppended(entry)) = audit_echo(&confirmed, Timestamp(7)) else {
             panic!("expected an audit record");
         };
         assert_eq!(entry.subject, MomentId::new("m-1").as_str());

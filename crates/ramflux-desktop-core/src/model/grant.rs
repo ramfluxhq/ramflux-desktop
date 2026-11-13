@@ -124,7 +124,7 @@ pub struct AuditEntry {
     pub subject: String,
     /// Who proposed it.
     pub proposed_by: Actor,
-    /// Whether the attended human confirmed it with a hold.
+    /// Whether the attended human confirmed it with a confirmation.
     #[serde(default)]
     pub human_confirmed: bool,
 }

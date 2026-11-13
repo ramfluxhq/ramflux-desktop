@@ -15,8 +15,8 @@ fn agent(kind: IntentKind) -> Intent {
     Intent::agent(ParticipantId::new("p-agent"), kind)
 }
 
-fn held(intent: Intent) -> Intent {
-    intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
+fn tapped(intent: Intent) -> Intent {
+    intent.confirmed_by_human(ConfirmationIssuer::new().issue_tap())
 }
 
 fn store() -> Store {
@@ -114,10 +114,13 @@ fn critical_surface_action_needs_human_confirmation() {
         version: 0,
     };
     assert!(is_confirmation(&effects(&store, Intent::human(wipe()))));
-    assert!(is_confirmation(&effects(&store, agent(wipe()))), "an agent proposal waits for a hold");
-    let (method, body) = call_body(effects(&store, held(Intent::human(wipe()))));
+    assert!(
+        is_confirmation(&effects(&store, agent(wipe()))),
+        "an agent proposal waits for a confirmation"
+    );
+    let (method, body) = call_body(effects(&store, tapped(Intent::human(wipe()))));
     assert_eq!(method, methods::SURFACE_ACTION);
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
 
     let run = IntentKind::SurfaceAction {
         moment_id: MomentId::new("m-risky"),
@@ -142,12 +145,12 @@ fn kick_ban_and_set_role_need_confirmation_add_and_invite_do_not() {
     for op in high {
         assert!(is_confirmation(&effects(&store, Intent::human(governance(op.clone())))));
         assert!(is_confirmation(&effects(&store, agent(governance(op.clone())))));
-        let (method, body) = call_body(effects(&store, held(agent(governance(op.clone())))));
+        let (method, body) = call_body(effects(&store, tapped(agent(governance(op.clone())))));
         assert_eq!(method, op.method());
         assert_eq!(body["participant_id"], "p-bo");
         assert_eq!(body["context_id"], "c-group");
         assert_eq!(body["proposed_by"]["Agent"], "p-agent", "the proposer is kept");
-        assert_eq!(body["confirmed_by"]["held_ms"], 1_200);
+        assert_eq!(body["confirmed_by"]["gesture"], "Tap", "the human tapped Confirm");
     }
     let add =
         GovernanceOp::AddMember { participant_id: ParticipantId::new("p-cy"), role: Role::Member };
@@ -224,9 +227,13 @@ fn handoff_answers_target_open_handoff_moments() {
 fn human_confirmation_keeps_the_proposer() {
     let proposed = agent(IntentKind::Approve { grant_id: GrantId::new("g-1") });
     assert!(!proposed.is_confirmed());
-    let confirmed = held(proposed);
+    let confirmed = tapped(proposed);
     assert_eq!(confirmed.proposed_by, Actor::Agent(ParticipantId::new("p-agent")));
-    assert_eq!(confirmed.confirmed_by.as_ref().map(HumanConfirmation::held_ms), Some(1_200));
+    assert_eq!(
+        confirmed.confirmed_by.as_ref().map(HumanConfirmation::gesture),
+        Some(ConfirmGesture::Tap),
+        "the confirmation records the tap"
+    );
     assert!(confirmed.is_confirmed());
 }
 
@@ -241,16 +248,15 @@ fn secret_input_exposes_by_reference() {
 fn a_confirmation_cannot_be_forged_through_serde() {
     let forged = serde_json::json!({
         "proposed_by": { "Agent": "p-agent" },
-        "confirmed_by": { "gesture": "Hold", "held_ms": 5_000 },
+        "confirmed_by": { "gesture": "Tap" },
         "kind": { "RevokeGrant": { "grant_id": "g-old" } },
     });
     let intent: Intent = serde_json::from_value(forged).expect("intent");
     assert!(!intent.is_confirmed(), "deserialization never yields a confirmation");
-    assert!(ConfirmationIssuer::new().issue_hold(MIN_HOLD_MS - 1).is_none());
 }
 
 #[test]
-fn methods_the_backend_cannot_perform_are_refused_before_any_hold() {
+fn methods_the_backend_cannot_perform_are_refused_before_any_confirmation() {
     let mut feed = Feed::new();
     let mut ctx = context("c-1", false);
     ctx.kind = ContextKind::Direct;

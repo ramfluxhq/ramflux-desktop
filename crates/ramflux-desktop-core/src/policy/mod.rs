@@ -60,7 +60,7 @@ pub(crate) enum Decision {
     Call(&'static str, Value),
     /// Call `method` with `body` and the intent's secrets.
     SecretCall(&'static str, Value),
-    /// The intent (calling `method`) needs the attended human's hold first.
+    /// The intent (calling `method`) needs the attended human's confirmation first.
     Confirm(&'static str),
 }
 
@@ -74,12 +74,12 @@ pub(crate) struct Policy<'a> {
     pub proposer: &'a Actor,
     /// The intent was proposed by an agent.
     pub is_agent: bool,
-    /// The attended human completed the hold.
+    /// The attended human confirmed.
     pub human_confirmed: bool,
 }
 
 impl Policy<'_> {
-    /// `Call`, or `Confirm` when `risk` needs a hold that has not happened.
+    /// `Call`, or `Confirm` when `risk` needs a confirmation that has not happened.
     pub fn gated(&self, risk: Risk, method: &'static str, body: Value) -> Decision {
         if risk.requires_confirmation() && !self.human_confirmed {
             Decision::Confirm(method)
@@ -110,7 +110,7 @@ impl Policy<'_> {
 /// `Critical` surface action, a high-risk governance operation (`Kick`,
 /// `Ban`, `SetRole`), revealing masked content, revoking a grant, standing
 /// approval or device, blocking or removing a contact, and confirming a
-/// trust-on-first-use node all need the attended human's hold: without
+/// trust-on-first-use node all need the attended human's confirmation: without
 /// `confirmed_by` they yield [`Effect::RequireConfirmation`]. Agent proposals
 /// follow the same rules. Agents may never unlock, create, activate or
 /// restore an account, rotate its passphrase, export a backup, back up or
@@ -120,7 +120,7 @@ impl Policy<'_> {
 /// denied.
 ///
 /// Every call body carries `proposed_by` and `confirmed_by`. An intent whose
-/// method the backend declared unsupported is refused before any hold.
+/// method the backend declared unsupported is refused before any confirmation.
 ///
 /// # Errors
 ///
@@ -138,10 +138,7 @@ pub fn handle_intent(
         now,
         proposer: &intent.proposed_by,
         is_agent: !matches!(intent.proposed_by, Actor::Human),
-        human_confirmed: intent
-            .confirmed_by
-            .as_ref()
-            .is_some_and(|c| c.held_ms() >= crate::model::MIN_HOLD_MS),
+        human_confirmed: intent.confirmed_by.is_some(),
     };
     let decision = conversation::decide(&policy, &intent.kind)
         .or_else(|| tasks::decide(&policy, &intent.kind))

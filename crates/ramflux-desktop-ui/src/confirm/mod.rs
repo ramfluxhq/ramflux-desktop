@@ -1,60 +1,45 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The inline hold-to-confirm strip for high-risk intents (rule B4).
+//! The inline confirm strip for high-risk intents (rule B4).
 //!
 //! The strip sits inline (above the composer, under the entry node card, at
 //! the foot of settings); it is never a modal dialog. It owns only the
-//! gesture: the pending intent stays with the intent root, which re-submits
+//! decision: the pending intent stays with the intent root, which re-submits
 //! it with the human's confirmation when the strip reports
-//! [`ConfirmEvent::HoldCompleted`]. A click is not a hold: the button must be
-//! held (pointer, Space or Enter) for [`HOLD_DURATION`]; releasing early
-//! resets it. The strip is an alert that names the request and its risk, and
-//! the hold control reports its progress as a value from 0 to 100.
-
-use std::time::{Duration, Instant};
+//! [`ConfirmEvent::Confirmed`]. The host draws the facts, then Cancel first
+//! and Confirm beside it. One click on Confirm, or one press of Enter or
+//! Space while it has the focus, confirms; Cancel or Escape dismisses. The
+//! key that opened the strip never confirms it: GPUI counts a keyboard click
+//! only when the key went down while the button already had the focus.
 
 use crate::actions::{CONFIRM_CONTEXT, CancelConfirmation};
 use crate::i18n::{self, tr, tr_args};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, ThemeStyled as _, h_flex, v_flex,
-};
+use gpui_kit::component::button::Button;
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent, KeyUpEvent,
-    MouseButton, Render, Role, Task, Window, div, relative,
+    App, Context, EventEmitter, FocusHandle, Focusable, IntoElement, Render, Role, Window, div,
 };
 
 mod request;
 
 pub use request::ConfirmRequest;
 
-/// How long the confirm control must be held.
-pub const HOLD_DURATION: Duration = Duration::from_millis(1_200);
-const HOLD_FRAME: Duration = Duration::from_millis(30);
-
 /// Reported to the owner of the strip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfirmEvent {
-    /// The hold completed; the owner submits the confirmed intent.
-    HoldCompleted {
-        /// How long the control was held, in milliseconds.
-        held_ms: u64,
-    },
+    /// The human pressed Confirm; the owner submits the confirmed intent.
+    Confirmed,
     /// The user cancelled; the owner discards the intent.
     Cancelled,
 }
 
-/// The hold-to-confirm strip.
+/// The confirm strip.
 pub struct ConfirmStrip {
     request: Option<ConfirmRequest>,
-    hold_started: Option<Instant>,
-    progress: f32,
-    hold: Option<Task<()>>,
     focus_handle: FocusHandle,
-    visibility: Option<gpui_kit::Subscription>,
 }
 
 impl EventEmitter<ConfirmEvent> for ConfirmStrip {}
@@ -68,26 +53,12 @@ impl Focusable for ConfirmStrip {
 impl ConfirmStrip {
     /// A closed strip.
     pub fn new(cx: &mut Context<Self>) -> Self {
-        Self {
-            request: None,
-            hold_started: None,
-            progress: 0.0,
-            hold: None,
-            focus_handle: cx.focus_handle().tab_stop(true),
-            visibility: None,
-        }
+        Self { request: None, focus_handle: cx.focus_handle().tab_stop(true) }
     }
 
-    /// Shows `request` and moves keyboard focus to the strip.
+    /// Shows `request` and moves keyboard focus to its Confirm button.
     pub fn open(&mut self, request: ConfirmRequest, window: &mut Window, cx: &mut Context<Self>) {
-        self.visibility =
-            Some(cx.observe_window_visibility(window, |this: &mut Self, visibility, _, cx| {
-                if !visibility.is_visible() {
-                    this.release_hold(cx);
-                }
-            }));
         self.request = Some(request);
-        self.reset_hold();
         window.focus(&self.focus_handle, cx);
         cx.notify();
     }
@@ -95,7 +66,6 @@ impl ConfirmStrip {
     /// Hides the strip without emitting anything.
     pub fn close(&mut self, cx: &mut Context<Self>) {
         self.request = None;
-        self.reset_hold();
         cx.notify();
     }
 
@@ -109,67 +79,15 @@ impl ConfirmStrip {
         self.request.as_ref()
     }
 
-    /// Hold progress from 0 to 1.
-    pub fn progress(&self) -> f32 {
-        self.progress
-    }
-
-    fn reset_hold(&mut self) {
-        self.hold = None;
-        self.hold_started = None;
-        self.progress = 0.0;
-    }
-
-    fn begin_hold(&mut self, cx: &mut Context<Self>) {
-        if self.request.is_none() || self.hold.is_some() {
-            return;
-        }
-        self.hold_started = Some(cx.background_executor().now());
-        self.hold = Some(cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(HOLD_FRAME).await;
-                let done = this.update(cx, |strip, cx| strip.advance_hold(cx)).unwrap_or(true);
-                if done {
-                    break;
-                }
-            }
-        }));
-        cx.notify();
-    }
-
-    /// Returns true when the hold finished (completed or abandoned).
-    fn advance_hold(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(started) = self.hold_started else {
-            return true;
-        };
-        let held = cx.background_executor().now().saturating_duration_since(started);
-        self.progress = (held.as_secs_f32() / HOLD_DURATION.as_secs_f32()).min(1.0);
-        cx.notify();
-        if held < HOLD_DURATION {
-            return false;
-        }
-        self.request = None;
-        self.hold_started = None;
-        self.progress = 0.0;
-        // Detach instead of dropping: this runs inside the hold task itself.
-        if let Some(task) = self.hold.take() {
-            task.detach();
-        }
-        let held_ms = u64::try_from(held.as_millis()).unwrap_or(u64::MAX);
-        cx.emit(ConfirmEvent::HoldCompleted { held_ms });
-        true
-    }
-
-    fn release_hold(&mut self, cx: &mut Context<Self>) {
-        if self.hold_started.is_some() {
-            self.reset_hold();
+    fn confirm(&mut self, cx: &mut Context<Self>) {
+        if self.request.take().is_some() {
+            cx.emit(ConfirmEvent::Confirmed);
             cx.notify();
         }
     }
 
     fn cancel(&mut self, cx: &mut Context<Self>) {
         if self.request.take().is_some() {
-            self.reset_hold();
             cx.emit(ConfirmEvent::Cancelled);
             cx.notify();
         }
@@ -184,11 +102,6 @@ impl ConfirmStrip {
     }
 }
 
-/// Keys that press and hold the focused hold control.
-fn is_hold_key(key: &str) -> bool {
-    matches!(key, "space" | "enter")
-}
-
 impl Render for ConfirmStrip {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(request) = self.request.clone() else {
@@ -199,8 +112,7 @@ impl Render for ConfirmStrip {
         } else {
             cx.theme().warning
         };
-        let progress = self.progress;
-        let hold_label = tr("confirm.hold");
+        let confirm_label = tr("confirm.accept");
         let risk = i18n::risk(request.risk());
         let announce =
             tr_args("confirm.announce", &[("summary", request.summary()), ("risk", &risk)]);
@@ -259,19 +171,21 @@ impl Render for ConfirmStrip {
                     ),
             )
             .child(
+                Button::new("confirm-cancel")
+                    .outline()
+                    .icon(IconName::Close)
+                    .label(tr("common.cancel"))
+                    .on_click(cx.listener(|this, _, _, cx| this.cancel(cx))),
+            )
+            .child(
                 div()
-                    .id("hold-confirm")
+                    .id("confirm-accept")
                     .role(Role::Button)
-                    .aria_label(hold_label.clone())
-                    .aria_description(tr("confirm.hold_keys"))
-                    .aria_keyshortcuts("Space")
-                    .aria_numeric_value(f64::from(progress * 100.))
-                    .aria_min_numeric_value(0.)
-                    .aria_max_numeric_value(100.)
+                    .aria_label(confirm_label.clone())
+                    .aria_description(tr("confirm.keys"))
+                    .aria_keyshortcuts("Enter")
                     .test_support()
                     .track_focus(&self.focus_handle)
-                    .relative()
-                    .overflow_hidden()
                     .h_8()
                     .px_3()
                     .flex()
@@ -279,49 +193,15 @@ impl Render for ConfirmStrip {
                     .border_1()
                     .border_color(accent)
                     .rounded(cx.theme().radius)
+                    .bg(accent.opacity(0.15))
                     .text_sm()
                     .text_color(cx.theme().foreground)
+                    .cursor_pointer()
                     .when(focused, |control| control.focus_ring_style(window, cx))
-                    .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .h_full()
-                            .w(relative(progress))
-                            .bg(accent.opacity(0.3)),
-                    )
-                    .child(div().relative().child(hold_label))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, _, _, cx| this.begin_hold(cx)),
-                    )
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        cx.listener(|this, _, _, cx| this.release_hold(cx)),
-                    )
-                    .on_mouse_up_out(
-                        MouseButton::Left,
-                        cx.listener(|this, _, _, cx| this.release_hold(cx)),
-                    )
-                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                        if is_hold_key(&event.keystroke.key) && !event.is_held {
-                            this.begin_hold(cx);
-                        }
-                    }))
-                    .on_key_up(cx.listener(|this, event: &KeyUpEvent, _, cx| {
-                        if is_hold_key(&event.keystroke.key) {
-                            this.release_hold(cx);
-                        }
-                    })),
-            )
-            .child(
-                Button::new("confirm-cancel")
-                    .ghost()
-                    .small()
-                    .icon(IconName::Close)
-                    .label(tr("common.cancel"))
-                    .on_click(cx.listener(|this, _, _, cx| this.cancel(cx))),
+                    .child(confirm_label)
+                    // A click, or Enter or Space pressed and released while
+                    // the button has the focus (GPUI's keyboard click).
+                    .on_click(cx.listener(|this, _, _, cx| this.confirm(cx))),
             )
             .into_any_element()
     }

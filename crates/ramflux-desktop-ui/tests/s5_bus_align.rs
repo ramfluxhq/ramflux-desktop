@@ -5,7 +5,7 @@
 mod common;
 use common::*;
 use gpui_kit::TestAppContext;
-use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
+use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{AccountId, DomainEvent, EffectFailure, FailureCode, Networking};
 use ramflux_desktop_sdk::SdkConfig;
 use ramflux_desktop_test::fake_bus::{FakeBus, Reply, socket_path};
@@ -702,24 +702,19 @@ fn visible_render_clock_stops_and_restarts(cx: &mut TestAppContext) {
     );
     expiry_fake.shutdown();
 
-    // Hold progress uses its own visible gesture timer. Hiding cancels the
-    // gesture; showing lets a new hold complete normally.
-    let (hold_window, hold_shell) = open(cx, "s03_intervention");
+    // The confirm strip has no timer: hiding the window never confirms, and
+    // once it is visible again one click on Confirm does.
+    let (confirm_window, confirm_shell) = open(cx, "s03_intervention");
     advance(cx, 1_000);
-    click_in(cx, hold_window, "moment-m-approve", "approve");
-    in_window(cx, hold_window, |window, cx| window.key_down("space", false, cx));
-    advance(cx, 400);
-    let strip = cx.update(|cx| hold_shell.read(cx).root().read(cx).confirm_strip().clone());
-    assert!(cx.update(|cx| strip.read(cx).progress()) > 0.1);
-    cx.simulate_window_visibility_change(hold_window.into(), WindowVisibility::Hidden);
+    click_in(cx, confirm_window, "moment-m-approve", "approve");
+    cx.simulate_window_visibility_change(confirm_window.into(), WindowVisibility::Hidden);
     cx.run_until_parked();
     advance(cx, 2_000);
-    assert_eq!(cx.update(|cx| strip.read(cx).progress()), 0.0);
-    assert!(effects(cx, &hold_shell).is_empty());
-    cx.simulate_window_visibility_change(hold_window.into(), WindowVisibility::Visible);
+    assert!(effects(cx, &confirm_shell).is_empty(), "nothing is confirmed while hidden");
+    cx.simulate_window_visibility_change(confirm_window.into(), WindowVisibility::Visible);
     cx.run_until_parked();
-    hold_confirm(cx, hold_window);
-    assert_eq!(effects(cx, &hold_shell), [methods::GRANT_APPROVE]);
+    tap_confirm(cx, confirm_window);
+    assert_eq!(effects(cx, &confirm_shell), [methods::GRANT_APPROVE], "one click confirms");
 }
 
 fn late_phrase_handoff(cx: &mut TestAppContext) {

@@ -40,7 +40,6 @@ mod shots {
     use ramflux_desktop_core::{ContextId, TaskId, TaskState};
     use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
-    use ramflux_desktop_ui::confirm::HOLD_DURATION;
     use ramflux_desktop_ui::i18n;
 
     /// The window sizes reviewed, and their file name tags.
@@ -164,8 +163,8 @@ mod shots {
         run.shot("f15_01_conversation");
     }
 
-    /// Orbit's task: asked, started, needs the user, approved with the
-    /// hold, done.
+    /// Orbit's task: asked, started, needs the user, approved with one
+    /// tap on Confirm, done.
     fn task(width: f32, height: f32, tag: &'static str, out: &Path) {
         let mut run = Run::open("s10_ai_participant", width, height, tag, out);
         run.advance(200);
@@ -182,13 +181,11 @@ mod shots {
         assert_eq!(run.task_state("t-launch"), Some(TaskState::NeedsMe));
         run.shot("f15_02_task_needs_me");
         run.click_in("moment-m-task", "step-approve");
-        let center = run.window(|window, cx| {
-            let center = window.find("hold-confirm").bounds().center();
+        run.window(|window, cx| {
+            let center = window.find("confirm-accept").bounds().center();
             window.pointer_down(center, MouseButton::Left, cx);
-            center
+            window.pointer_up(center, MouseButton::Left, cx);
         });
-        run.advance(u64::try_from(HOLD_DURATION.as_millis()).unwrap_or(0) + 200);
-        run.window(|window, cx| window.pointer_up(center, MouseButton::Left, cx));
         run.advance(1_600);
         assert_eq!(run.task_state("t-launch"), Some(TaskState::Done));
         run.shot("f15_03_task_done");

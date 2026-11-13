@@ -2,7 +2,7 @@
 // user asks the AI participant Orbit to check the launch checklist. Orbit
 // streams its reply into a surface, then proposes a task. The user starts
 // it; Orbit drafts the release notes, then needs the user's approval for the
-// staging deploy (high risk: a hold). After the approval Orbit patches its
+// staging deploy (high risk: a confirmation). After the approval Orbit patches its
 // checklist surface with the result (against the hash of the version it
 // last sent) and finishes the task.
 //

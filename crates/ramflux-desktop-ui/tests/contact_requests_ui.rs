@@ -4,7 +4,7 @@
 //! UI integration tests of contact requests in the contacts dock, driving
 //! the production window on the fake daemon with the CONTACT-02 request
 //! API (contract-first): a pending request with its note, held messages and
-//! safety number; Accept, Decline and Block (through the hold) reaching the
+//! safety number; Accept, Decline and Block (through the confirmation) reaching the
 //! daemon by request id; the auto-accept setting; this account's own
 //! request on a contact (Send again while it waits, a decline shown as
 //! such, a re-request during the decline's cooldown explained in the add
@@ -106,7 +106,7 @@ fn a_request_shows_its_note_held_messages_and_safety_number_and_is_accepted(
 }
 
 #[gpui_kit::test]
-fn decline_and_block_through_the_hold_reach_the_daemon(cx: &mut TestAppContext) {
+fn decline_and_block_through_the_confirmation_reach_the_daemon(cx: &mut TestAppContext) {
     let world = open_requests(cx, "ui-request-decline", true);
     let declined = world.requests.incoming(ACCOUNT, "principal-old", None);
     let blocked = world.requests.incoming(ACCOUNT, "principal-spam", None);
@@ -134,7 +134,7 @@ fn decline_and_block_through_the_hold_reach_the_daemon(cx: &mut TestAppContext) 
     let summary = tr_args("confirm.contact.request_block", &[("contact", &name)]);
     assert!(strip.contains(summary.as_ref()), "{strip}");
     assert!(summary.contains(&name), "{summary}");
-    hold_confirm(cx, world.handle);
+    tap_confirm(cx, world.handle);
     wait(cx, "blocked", |_| world.requests.row(&blocked).is_some_and(|r| r["state"] == "blocked"));
     assert_eq!(sent(&world, "contact.block"), [json!({ "request_id": blocked })]);
 }

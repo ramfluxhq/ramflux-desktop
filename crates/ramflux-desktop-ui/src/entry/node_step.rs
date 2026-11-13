@@ -3,7 +3,7 @@
 
 //! The node step: discovered nodes waiting for a decision as full NODE-01
 //! cards, the add-node form, then the nodes already confirmed as compact
-//! rows. The hold strip for trust-on-first-use pins is the page's footer.
+//! rows. The confirm strip for trust-on-first-use pins is the page's footer.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;

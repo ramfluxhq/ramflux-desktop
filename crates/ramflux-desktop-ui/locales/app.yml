@@ -494,15 +494,15 @@ audit:
   you:
     en: "you"
     zh-CN: "你"
-  held:
-    en: "confirmed with a hold"
-    zh-CN: "已按住确认"
-  not_held:
-    en: "no hold"
-    zh-CN: "未按住确认"
+  confirmed:
+    en: "confirmed by you"
+    zh-CN: "已由你确认"
+  not_confirmed:
+    en: "not confirmed"
+    zh-CN: "未确认"
   by:
-    en: "proposed by %{who}, %{held}"
-    zh-CN: "由%{who}提出，%{held}"
+    en: "proposed by %{who}, %{confirmed}"
+    zh-CN: "由%{who}提出，%{confirmed}"
 clock:
   today:
     en: "Today"
@@ -554,12 +554,12 @@ timer:
     en: "%{seconds} s"
     zh-CN: "%{seconds} 秒"
 confirm:
-  hold:
-    en: "Hold to confirm"
-    zh-CN: "按住确认"
-  hold_keys:
-    en: "Hold Space or Enter for a moment to confirm, Escape to cancel"
-    zh-CN: "按住空格键或回车键片刻以确认，按 Esc 取消"
+  accept:
+    en: "Confirm"
+    zh-CN: "确认"
+  keys:
+    en: "Press Enter or Space to confirm, Escape to cancel"
+    zh-CN: "按回车键或空格键确认，按 Esc 取消"
   announce:
     en: "Confirmation needed: %{summary}. Risk: %{risk}"
     zh-CN: "需要确认：%{summary}。风险：%{risk}"
@@ -567,8 +567,8 @@ confirm:
     en: "Risk: %{risk}"
     zh-CN: "风险：%{risk}"
   proposed_by_agent:
-    en: "Proposed by %{agent}; your hold is the decision"
-    zh-CN: "由 %{agent} 提出，需由你按住确认"
+    en: "Proposed by %{agent}; your confirmation is the decision"
+    zh-CN: "由 %{agent} 提出，需由你确认"
   approve:
     en: "Approve: %{summary}"
     zh-CN: "批准：%{summary}"

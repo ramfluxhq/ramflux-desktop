@@ -2,7 +2,7 @@
 // bootstrap node and a node from an invite link awaiting confirmation. The
 // user may add a node by URL (trust on first use: the card shows the key
 // fingerprint, endpoints, capabilities, expiry and a sticky warning, and the
-// confirmation needs a hold), then creates an account, joins as a new device,
+// confirmation needs a confirmation), then creates an account, joins as a new device,
 // or restores a backup. Locking from settings returns to entry; unlocking
 // returns to the workspace.
 // Demonstrates: SourceStatusChanged, NodeUpserted (confirmed and pending),

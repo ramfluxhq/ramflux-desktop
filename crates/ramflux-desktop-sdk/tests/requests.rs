@@ -195,7 +195,7 @@ fn a_lost_answer_is_resent_under_the_same_key_and_applied_once() {
     account.source.submit(Effect::Call {
         method: methods::GRANT_APPROVE.to_owned(),
         body: json!({ "grant_id": "appr-1", "args_hash": "h", "proposed_by": "Human",
-            "confirmed_by": { "gesture": "Hold", "held_ms": 1200 } }),
+            "confirmed_by": { "gesture": "Tap" } }),
     });
     account.until("approved", |s, _| {
         s.grant(&GrantId::new("appr-1")).is_some_and(|g| g.state == GrantState::Approved)

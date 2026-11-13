@@ -88,26 +88,20 @@ fn s02_day_headers_group_history_by_local_day(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn s03_approval_opens_the_strip_and_a_hold_confirms(cx: &mut TestAppContext) {
+fn s03_approval_opens_the_strip_and_a_tap_confirms(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s03_intervention");
     advance(cx, 1_000);
 
     click_in(cx, handle, "moment-m-approve", "approve");
     assert!(strip_open(cx, &shell), "high risk opens the inline strip");
-    assert!(effects(cx, &shell).is_empty(), "nothing reaches the source before the hold");
+    assert!(effects(cx, &shell).is_empty(), "nothing reaches the source before the confirmation");
+    assert_eq!(grant_state(cx, &shell), GrantState::Pending, "opening the strip decides nothing");
 
-    // A click is not a hold.
-    click(cx, handle, "hold-confirm");
-    advance(cx, 2_000);
-    assert_eq!(grant_state(cx, &shell), GrantState::Pending);
-    assert!(strip_open(cx, &shell));
-
-    hold_confirm(cx, handle);
-    assert_eq!(effects(cx, &shell), [methods::GRANT_APPROVE]);
+    tap_confirm(cx, handle);
+    assert_eq!(effects(cx, &shell), [methods::GRANT_APPROVE], "one click confirms");
     let body = last_body(cx, &shell, methods::GRANT_APPROVE);
     assert_eq!(body["proposed_by"], "Human");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
-    assert!(body["confirmed_by"]["held_ms"].as_u64().unwrap_or(0) >= 1_200);
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     assert!(!strip_open(cx, &shell));
     advance(cx, 1_000);
 
@@ -119,11 +113,14 @@ fn s03_approval_opens_the_strip_and_a_hold_confirms(cx: &mut TestAppContext) {
         rows(cx, &shell).contains(&"m-result".to_owned()),
         "the result returns to the conversation"
     );
-    assert!(exists(cx, handle, "intervention-audit"), "the moment shows who proposed and the hold");
+    assert!(
+        exists(cx, handle, "intervention-audit"),
+        "the moment shows who proposed and the confirmation"
+    );
 }
 
 #[gpui_kit::test]
-fn s03_agent_proposal_keeps_the_proposer_after_the_human_hold(cx: &mut TestAppContext) {
+fn s03_agent_proposal_keeps_the_proposer_after_the_human_confirmation(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s03_intervention");
     advance(cx, 1_000);
     let workspace = workspace(cx, &shell);
@@ -147,11 +144,11 @@ fn s03_agent_proposal_keeps_the_proposer_after_the_human_hold(cx: &mut TestAppCo
     assert!(effects(cx, &shell).is_empty());
     assert_eq!(grant_state(cx, &shell), GrantState::Pending);
 
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     advance(cx, 500);
     let body = last_body(cx, &shell, methods::GRANT_APPROVE);
     assert_eq!(body["proposed_by"]["Agent"], "p-orbit", "the proposer is kept");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold", "the human confirmed");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap", "the human confirmed");
     assert_eq!(grant_state(cx, &shell), GrantState::Approved);
 }
 

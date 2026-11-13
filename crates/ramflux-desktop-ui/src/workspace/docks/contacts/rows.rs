@@ -6,7 +6,7 @@
 //! blocked participant.
 //!
 //! Every action emits a UI event; the root turns it into an intent. Block
-//! and Remove revoke what was shared with the contact and need the hold.
+//! and Remove revoke what was shared with the contact and need the confirmation.
 //! Message (on an accepted contact) is navigation: it shows the direct
 //! conversation with the contact, or a draft of a new one; it is disabled,
 //! with the reason, while the contact is not reachable yet.

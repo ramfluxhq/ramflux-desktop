@@ -4,7 +4,7 @@
 //! Tasks in the production window on the SDK source, against a fake daemon
 //! that holds them on the protocol's state machine (see `sdk_fake`): asked
 //! from the composer and cancelled from the card, a proposal started from
-//! its card, an approval decided in its step with the hold, not delivered
+//! its card, an approval decided in its step with the confirmation, not delivered
 //! and sent again with Retry, then confirmed by the assignee, a stalled assignee, a refusal shown on the card, and
 //! someone else's task that this account does not decide; what a member
 //! did to a task is a line (never wire text), and a denied task says who
@@ -118,7 +118,7 @@ fn a_proposal_is_started_from_its_card(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn an_approval_is_decided_in_its_step_with_the_hold_then_confirmed(cx: &mut TestAppContext) {
+fn an_approval_is_decided_in_its_step_with_confirmation_then_confirmed(cx: &mut TestAppContext) {
     let opened = open_group(cx, "ui-task-approve");
     opened.tasks.start_as("principal-me", GROUP, "t-deploy", BOT, "Deploy to staging").unwrap();
     opened.state.lock().unwrap().approvals.push(sdk_fake::approval("appr-9", "high"));
@@ -139,9 +139,9 @@ fn an_approval_is_decided_in_its_step_with_the_hold_then_confirmed(cx: &mut Test
     advance(cx, 50);
     assert!(shown(cx, &opened, &id, "step-decision"), "decided in its step");
     click_on(cx, &opened, &id, "step-approve");
-    assert!(strip_open(cx, &opened.shell), "a high-risk approval needs the hold");
-    assert!(sent(&opened.fake, "grant.approve").is_empty(), "nothing before the hold");
-    hold_confirm(cx, opened.handle);
+    assert!(strip_open(cx, &opened.shell), "a high-risk approval needs the confirmation");
+    assert!(sent(&opened.fake, "grant.approve").is_empty(), "nothing before the confirmation");
+    tap_confirm(cx, opened.handle);
     wait(cx, "on its way", |cx| task(cx, &opened, &id).is_some_and(|t| t.answer.is_some()));
     advance(cx, 50);
     assert!(shown(cx, &opened, &id, "task-answer"), "the card says the decision is on its way");
@@ -149,7 +149,7 @@ fn an_approval_is_decided_in_its_step_with_the_hold_then_confirmed(cx: &mut Test
     assert_eq!(resolve["decision_id"], "mcpd_appr-9", "the decision id the grant flow answered");
 
     // The decision did not reach the assignee: the card says so, and Retry
-    // sends the same approval again (no second hold, no second resolution).
+    // sends the same approval again (no second confirmation, no second resolution).
     opened.tasks.fail_delivery(GROUP, "t-deploy", "deploy", "appr-9");
     wait(cx, "not delivered", |cx| {
         task(cx, &opened, &id).is_some_and(|t| {

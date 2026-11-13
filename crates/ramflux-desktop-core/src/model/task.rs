@@ -114,7 +114,7 @@ impl StepState {
 /// surface whose actions carry the answer.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum NeedsMe {
-    /// Approve or deny a grant (through the grant flow and its hold).
+    /// Approve or deny a grant (through the grant flow and its confirmation).
     Approval {
         /// The grant.
         grant_id: GrantId,

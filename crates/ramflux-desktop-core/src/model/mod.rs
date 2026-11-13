@@ -57,7 +57,7 @@ pub use account::{
     NetworkingReasonKind, Node, NodeHealth, NodeProbe, PinSource, ProbeOutcome,
     RegistrationRefusal, SecureSessions,
 };
-pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation, MIN_HOLD_MS};
+pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation};
 pub use agent::{AgentCustodyProblem, AgentExport, AgentExportPhase, AgentExportRefusal};
 pub use backend::{
     Capabilities, DaemonInfo, DaemonSyncState, EffectFailure, FailureCode, SyncMode, SyncStatus,

@@ -7,8 +7,8 @@
 //! emits through an [`EventSink`] whose chain ends here. The root maps the
 //! event with [`intent_for`], hands the intent to the [`StoreHandle`] and,
 //! when policy asks for the attended human's confirmation, keeps the pending
-//! intent and opens the inline hold-to-confirm strip. Only a completed hold
-//! re-submits it, with `confirmed_by` set and `proposed_by` unchanged.
+//! intent and opens the inline confirm strip. Only a press of its
+//! Confirm button re-submits it, with `confirmed_by` set and `proposed_by` unchanged.
 //!
 //! Secret-carrying intents (unlock, create, activate, restore, passphrase
 //! rotation) cannot travel in UI events; their forms call
@@ -16,7 +16,7 @@
 //!
 //! A pending confirmation is bound to what the user reviewed. When the store
 //! changes under it (the surface was patched, the grant was decided or
-//! failed), the root cancels it before a hold can complete; a surface change
+//! failed), the root cancels it before it can be confirmed; a surface change
 //! is reported ([`RootEvent::SurfaceChanged`]) so the row asks the user to
 //! review it again. Policy re-checks the bound version on submit as well.
 
@@ -40,7 +40,7 @@ use crate::confirm::{ConfirmEvent, ConfirmRequest, ConfirmStrip};
 
 pub use intent_map::{intent_for, step_block_id};
 
-/// Which page shows the hold-to-confirm strip.
+/// Which page shows the confirm strip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfirmHost {
     /// Above the composer.
@@ -54,21 +54,21 @@ pub enum ConfirmHost {
 /// Reported to the pages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RootEvent {
-    /// The strip closed (held or cancelled); the host restores focus.
+    /// The strip closed (confirmed or cancelled); the host restores focus.
     ConfirmClosed,
     /// An action on this surface was not performed because the surface
     /// changed after the user reviewed it.
     SurfaceChanged(MomentId),
 }
 
-/// Owns the pending intent and the hold-to-confirm strip.
+/// Owns the pending intent and the confirm strip.
 pub struct IntentRoot {
     store: Entity<StoreHandle>,
     confirm: Entity<ConfirmStrip>,
     pending: Option<Intent>,
     host: ConfirmHost,
     /// The only issuer of human confirmations in the application. Not
-    /// `Clone`; it mints one only when the strip reports a completed hold.
+    /// `Clone`; it mints one only when the strip reports a press of Confirm.
     issuer: ConfirmationIssuer,
     _subscriptions: Vec<Subscription>,
 }
@@ -90,12 +90,12 @@ impl IntentRoot {
         )
     }
 
-    /// The hold-to-confirm strip.
+    /// The confirm strip.
     pub fn confirm_strip(&self) -> &Entity<ConfirmStrip> {
         &self.confirm
     }
 
-    /// The intent waiting for the human's hold.
+    /// The intent waiting for the human's confirmation.
     pub fn pending_intent(&self) -> Option<&Intent> {
         self.pending.as_ref()
     }
@@ -242,14 +242,8 @@ impl IntentRoot {
     ) {
         let Some(intent) = self.pending.take() else { return };
         match event {
-            ConfirmEvent::HoldCompleted { held_ms } => {
-                let Some(confirmation) = self.issuer.issue_hold(held_ms) else {
-                    self.record_intent(&intent, "confirmation refused: hold too short", cx);
-                    cx.emit(RootEvent::ConfirmClosed);
-                    cx.notify();
-                    return;
-                };
-                let confirmed = intent.confirmed_by_human(confirmation);
+            ConfirmEvent::Confirmed => {
+                let confirmed = intent.confirmed_by_human(self.issuer.issue_tap());
                 let label = audit_label(&confirmed);
                 let name = intent_name(&confirmed);
                 let result = self.submit(confirmed, window, cx);

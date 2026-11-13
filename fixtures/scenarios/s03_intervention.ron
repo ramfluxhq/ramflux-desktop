@@ -1,5 +1,5 @@
 // s03 Intervention: the agent asks to run a high-risk tool. The approval is
-// bound to a single-use grant; approving without hold-to-confirm yields a
+// bound to a single-use grant; approving without confirmation yields a
 // confirmation request, a confirmed approval resolves the grant and the
 // result returns to the conversation. The agent also offers a form (select
 // and input) and an approval block for a medium-risk notice. The approvals
@@ -14,7 +14,7 @@
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s03_intervention",
-    description: "Agent requests a high-risk tool, hold-to-confirm approval, form surface, approvals dock",
+    description: "Agent requests a high-risk tool, one-tap confirm approval, form surface, approvals dock",
     timeline: [
         (0, SourceStatusChanged(Connected)),
         (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),

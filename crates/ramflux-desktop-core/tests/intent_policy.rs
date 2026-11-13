@@ -89,8 +89,8 @@ fn approve(grant: &str) -> IntentKind {
     IntentKind::Approve { grant_id: GrantId::new(grant) }
 }
 
-fn held(intent: Intent) -> Intent {
-    intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
+fn tapped(intent: Intent) -> Intent {
+    intent.confirmed_by_human(ConfirmationIssuer::new().issue_tap())
 }
 
 fn single(effects: Vec<Effect>) -> Effect {
@@ -115,12 +115,12 @@ fn high_risk_approve_without_confirmation_requires_confirmation() {
 fn high_risk_approve_with_confirmation_calls_source() {
     let store = store_with_grants();
     let effect =
-        single(handle_intent_now(&store, held(Intent::human(approve("g-high")))).expect("ok"));
+        single(handle_intent_now(&store, tapped(Intent::human(approve("g-high")))).expect("ok"));
     let Effect::Call { method, body } = effect else { panic!("expected Call") };
     assert_eq!(method, methods::GRANT_APPROVE);
     assert_eq!(body["grant_id"], "g-high");
     assert_eq!(body["args_hash"], "hash-g-high");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     assert_eq!(body["proposed_by"], "Human");
 }
 
@@ -161,7 +161,7 @@ fn unknown_or_non_agent_actor_is_rejected() {
 #[test]
 fn approving_a_decided_grant_is_an_error() {
     let store = store_with_grants();
-    let result = handle_intent_now(&store, held(Intent::human(approve("g-done"))));
+    let result = handle_intent_now(&store, tapped(Intent::human(approve("g-done"))));
     assert_eq!(result.err(), Some(IntentError::GrantNotPending(GrantId::new("g-done"))));
     let missing = handle_intent_now(
         &store,

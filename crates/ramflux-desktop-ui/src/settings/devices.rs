@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! Settings · Devices: the account's devices (this device, last seen,
-//! revoked), revocation through the hold strip, and own-device sync export
+//! revoked), revocation through the confirm strip, and own-device sync export
 //! and import.
 
 use gpui_kit::TestSupportExt as _;

@@ -5,7 +5,7 @@
 //! their kind as far as it is proven, a warning on a name that could pass
 //! for another's (see [`crate::identity`]), their safety, and the
 //! governance actions. Role changes, kicks and bans are
-//! high risk: the root opens the hold-to-confirm strip before anything is
+//! high risk: the root opens the confirm strip before anything is
 //! sent. Adding a contact and creating an invitation are low risk, but they
 //! go through the same identity gate as a new group: a contact whose key
 //! changed or forked is refused (the buttons are disabled with the reason),

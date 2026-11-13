@@ -205,7 +205,7 @@ fn an_intervention_closes_with_the_decision_on_its_grant() {
     account.source.submit(call(
         methods::GRANT_APPROVE,
         json!({ "grant_id": "appr-1", "args_hash": "h-123", "proposed_by": "Human",
-            "confirmed_by": { "gesture": "Hold", "held_ms": 1200 } }),
+            "confirmed_by": { "gesture": "Tap" } }),
     ));
     account.until("done", |s, _| s.moment(&moment).is_some_and(|m| m.lifecycle == Lifecycle::Done));
     assert!(

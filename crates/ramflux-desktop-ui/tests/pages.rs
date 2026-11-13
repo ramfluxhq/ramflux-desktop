@@ -25,7 +25,7 @@ fn inspector_text(cx: &mut TestAppContext, shell: &gpui_kit::Entity<Shell>) -> S
     cx.update(|cx| format!("{:?}", shell.read(cx).store().read(cx).inspector()))
 }
 
-/// s01 until the invite node is confirmed (no hold for an invite pin).
+/// s01 until the invite node is confirmed (no confirmation for an invite pin).
 fn harbor_confirmed(cx: &mut TestAppContext) -> (Handle, gpui_kit::Entity<Shell>) {
     let (handle, shell) = open(cx, "s01_first_launch");
     advance(cx, 100);
@@ -39,7 +39,7 @@ fn harbor_confirmed(cx: &mut TestAppContext) -> (Handle, gpui_kit::Entity<Shell>
     click_in(cx, handle, "node-n-harbor", "node-confirm");
     let body = last_body(cx, &shell, methods::NODE_CONFIRM);
     assert_eq!(body["pin_source"], "Invite");
-    assert!(body["confirmed_by"].is_null(), "an invitation pin needs no hold");
+    assert!(body["confirmed_by"].is_null(), "an invitation pin needs no confirmation");
     advance(cx, 200);
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account));
     (handle, shell)
@@ -57,7 +57,7 @@ fn settings(
 }
 
 #[gpui_kit::test]
-fn entry_adds_a_tofu_node_with_a_hold_then_creates_an_account(cx: &mut TestAppContext) {
+fn entry_adds_a_tofu_node_with_confirmation_then_creates_an_account(cx: &mut TestAppContext) {
     let (handle, shell) = harbor_confirmed(cx);
     click(cx, handle, "entry-review-nodes");
     type_into(cx, handle, "node-url", "https://studio.example.org");
@@ -70,22 +70,22 @@ fn entry_adds_a_tofu_node_with_a_hold_then_creates_an_account(cx: &mut TestAppCo
     };
     let before = confirms(cx);
     click_in(cx, handle, "node-n-studio", "node-confirm");
-    assert!(strip_open(cx, &shell), "trusting a key on first use needs the hold");
+    assert!(strip_open(cx, &shell), "trusting a key on first use needs the confirmation");
     let (page_bounds, footer, strip) = in_window(cx, handle, |window, _| {
         let page = window.find("entry").bounds();
-        (page, window.find("entry-confirm-footer").bounds(), window.find("hold-confirm").bounds())
+        (page, window.find("entry-confirm-footer").bounds(), window.find("confirm-accept").bounds())
     });
     assert!(
         page_bounds.bottom() <= footer.top() && footer.top() < strip.top(),
-        "the hold strip is a footer below the scrolling entry content, never over it: \
+        "the confirm strip is a footer below the scrolling entry content, never over it: \
          {page_bounds:?} {footer:?} {strip:?}"
     );
-    assert_eq!(confirms(cx), before, "nothing is pinned before the hold");
-    hold_confirm(cx, handle);
+    assert_eq!(confirms(cx), before, "nothing is pinned before the confirmation");
+    tap_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::NODE_CONFIRM);
     assert_eq!(body["node_id"], "n-studio");
     assert_eq!(body["fingerprint"], "SHA256:e21f 9c07 3b5a 0d88 41e6 f2c9 7a13 5d06");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     advance(cx, 200);
     assert!(with_store(cx, &shell, |s| s
         .node(&NodeId::new("n-studio"))
@@ -190,17 +190,17 @@ fn settings_nodes_probe_set_default_and_guard_bound_nodes(cx: &mut TestAppContex
 }
 
 #[gpui_kit::test]
-fn settings_devices_revoke_through_the_hold_and_sync(cx: &mut TestAppContext) {
+fn settings_devices_revoke_through_the_confirmation_and_sync(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s09_multi_account_day");
     advance(cx, 1_000);
     settings(cx, handle, &shell, SettingsSection::Devices);
     click_in(cx, handle, "device-dev-phone-01", "revoke");
-    assert!(strip_open(cx, &shell), "revoking a device needs the hold");
-    assert!(exists_in(cx, handle, "settings", "hold-confirm"), "the strip shows inside settings");
-    hold_confirm(cx, handle);
+    assert!(strip_open(cx, &shell), "revoking a device needs the confirmation");
+    assert!(exists_in(cx, handle, "settings", "confirm-accept"), "the strip shows inside settings");
+    tap_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::DEVICE_REVOKE);
     assert_eq!(body["device_id"], "dev-phone-01");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     advance(cx, 300);
     assert!(with_store(cx, &shell, |s| s
         .device(&DeviceId::new("dev-phone-01"))

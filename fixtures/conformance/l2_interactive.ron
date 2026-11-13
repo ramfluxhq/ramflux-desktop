@@ -1,7 +1,7 @@
 // Renderer conformance L2: form, tool call, approval, capability negotiation.
 // A form surface (select, input, action group) with a low-risk submit and a
 // high-risk deploy action; at 3000 ms the agent patches the deploy action,
-// so a deploy held over that moment is cancelled and must be reviewed again.
+// so a deploy awaiting confirmation at that moment is cancelled and must be reviewed again.
 // A tool call waits on a high-risk, single-use grant: approving it from this
 // device is refused by the backend (the request needs a signed approval),
 // and the grant fails closed. An approval block decides a medium grant.

@@ -3,7 +3,7 @@
 
 //! UI integration tests of the contacts dock: the add-contact form (checks,
 //! the daemon's answer, its failure), incoming requests, the contact menu
-//! (block, remove through the hold), blocked contacts, and the palette entry.
+//! (block, remove through the confirmation), blocked contacts, and the palette entry.
 
 mod common;
 
@@ -98,7 +98,7 @@ fn adding_a_contact_sends_contact_add_and_the_contact_appears(cx: &mut TestAppCo
     let body = last_body(cx, &shell, methods::CONTACT_ADD);
     assert_eq!(body["participant_id"], "principal-kai", "trimmed");
     assert_eq!(body["proposed_by"], "Human");
-    assert!(body["confirmed_by"].is_null(), "adding needs no hold");
+    assert!(body["confirmed_by"].is_null(), "adding needs no confirmation");
     assert!(!strip_open(cx, &shell));
     assert_eq!(note(cx, &shell), Some(FormNote::Adding(ParticipantId::new("principal-kai"))));
     assert_eq!(field(cx, &shell), "  principal-kai ", "the input is kept while waiting");
@@ -162,16 +162,16 @@ fn an_incoming_request_is_rejected_from_the_dock(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn blocking_from_the_contact_menu_needs_the_hold(cx: &mut TestAppContext) {
+fn blocking_from_the_contact_menu_needs_confirmation(cx: &mut TestAppContext) {
     let (handle, shell) = open_contacts(cx);
     click_in(cx, handle, "contacts-p-tomas", "contact-actions");
     click_label(cx, handle, &tr("dock.contacts.block"));
-    assert!(strip_open(cx, &shell), "blocking needs the hold");
+    assert!(strip_open(cx, &shell), "blocking needs the confirmation");
     assert!(!effects(cx, &shell).contains(&methods::CONTACT_BLOCK.to_owned()));
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::CONTACT_BLOCK);
     assert_eq!(body["participant_id"], "p-tomas");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     advance(cx, 200);
     assert_eq!(link(cx, &shell, "p-tomas"), Some(ContactLink::Blocked));
     assert!(exists(cx, handle, "contacts-blocked-p-tomas"), "listed under Blocked");
@@ -187,18 +187,18 @@ fn a_blocked_contact_is_unblocked_or_removed(cx: &mut TestAppContext) {
     let (handle, shell) = open_contacts(cx);
     assert!(exists(cx, handle, "contacts-blocked-p-ivo"));
     click_in(cx, handle, "contacts-blocked-p-ivo", "remove");
-    assert!(strip_open(cx, &shell), "removing needs the hold");
-    hold_confirm(cx, handle);
+    assert!(strip_open(cx, &shell), "removing needs the confirmation");
+    tap_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::CONTACT_REMOVE);
     assert_eq!(body["participant_id"], "p-ivo");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     advance(cx, 200);
     assert_eq!(link(cx, &shell, "p-ivo"), Some(ContactLink::Removed));
     assert!(!exists(cx, handle, "contacts-blocked-p-ivo"));
 }
 
 #[gpui_kit::test]
-fn unblocking_needs_no_hold(cx: &mut TestAppContext) {
+fn unblocking_needs_no_confirmation(cx: &mut TestAppContext) {
     let (handle, shell) = open_contacts(cx);
     click_in(cx, handle, "contacts-blocked-p-ivo", "unblock");
     assert!(!strip_open(cx, &shell));
@@ -207,11 +207,11 @@ fn unblocking_needs_no_hold(cx: &mut TestAppContext) {
     advance(cx, 200);
     assert_eq!(link(cx, &shell, "p-ivo"), Some(ContactLink::Accepted));
     assert!(exists(cx, handle, "contacts-p-ivo"));
-    // Removing an accepted contact goes through its menu and the hold.
+    // Removing an accepted contact goes through its menu and the confirmation.
     click_in(cx, handle, "contacts-p-ivo", "contact-actions");
     click_label(cx, handle, &tr("dock.contacts.remove"));
     assert!(strip_open(cx, &shell));
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     assert_eq!(last_body(cx, &shell, methods::CONTACT_REMOVE)["participant_id"], "p-ivo");
 }
 
@@ -239,7 +239,7 @@ fn the_palette_opens_the_add_contact_field(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_contact_can_be_unblocked_and_blocked_again(cx: &mut TestAppContext) {
     // CONTACT-BLOCK-01: unblock, block again and unblock again are three
-    // decisions the daemon takes in turn. The second block needs the hold
+    // decisions the daemon takes in turn. The second block needs the confirmation
     // like the first, and each row reads as what it is.
     let (handle, shell) = open_contacts(cx);
     let blocked_row = "contacts-blocked-p-ivo";
@@ -257,8 +257,8 @@ fn a_contact_can_be_unblocked_and_blocked_again(cx: &mut TestAppContext) {
         if round == 1 {
             click_in(cx, handle, "contacts-p-ivo", "contact-actions");
             click_label(cx, handle, &tr("dock.contacts.block"));
-            assert!(strip_open(cx, &shell), "blocking again needs the hold");
-            hold_confirm(cx, handle);
+            assert!(strip_open(cx, &shell), "blocking again needs the confirmation");
+            tap_confirm(cx, handle);
             advance(cx, 200);
             assert_eq!(link(cx, &shell, "p-ivo"), Some(ContactLink::Blocked), "blocked again");
             assert!(exists(cx, handle, blocked_row), "listed under Blocked again");

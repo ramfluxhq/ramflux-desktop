@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! One desktop: the production window root on its own daemon, driven
-//! through its painted controls (click, type, hold) and read back through
+//! through its painted controls (click, type, confirm) and read back through
 //! its store. Every helper returns an error instead of panicking, so a
 //! failed step is recorded and the rehearsal goes on.
 
@@ -18,7 +18,6 @@ use gpui_kit::{
 };
 use ramflux_desktop_core::{ContextId, Store};
 use ramflux_desktop_ui::Shell;
-use ramflux_desktop_ui::confirm::HOLD_DURATION;
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::shell::ShellOptions;
 
@@ -180,23 +179,20 @@ impl Desk {
         if found { Ok(()) } else { Err(format!("desktop {}: no input to type into", self.tag)) }
     }
 
-    /// Whether the hold-to-confirm strip is open (it is never a modal).
+    /// Whether the confirm strip is open (it is never a modal).
     pub fn strip_open(&self, host: &mut impl Host) -> bool {
         host.app(|cx| self.shell.read(cx).root().read(cx).confirm_strip().read(cx).is_open())
     }
 
-    /// Holds the confirm control for longer than the hold duration.
-    pub fn hold_confirm(&self, host: &mut impl Host) -> Result<(), String> {
+    /// Clicks the Confirm button of the open confirm strip once.
+    pub fn tap_confirm(&self, host: &mut impl Host) -> Result<(), String> {
         let center = host.window(self.handle.into(), |window, cx| {
-            let center = window.try_find("hold-confirm")?.bounds().center();
+            let center = window.try_find("confirm-accept")?.bounds().center();
             window.pointer_down(center, MouseButton::Left, cx);
+            window.pointer_up(center, MouseButton::Left, cx);
             Some(center)
         })?;
-        let center = center.ok_or_else(|| format!("desktop {}: no hold control", self.tag))?;
-        host.advance(u64::try_from(HOLD_DURATION.as_millis()).unwrap_or(0) + 200);
-        host.window(self.handle.into(), move |window, cx| {
-            window.pointer_up(center, MouseButton::Left, cx);
-        })
+        center.map(|_| ()).ok_or_else(|| format!("desktop {}: no Confirm button", self.tag))
     }
 
     /// Shows a conversation through the workspace navigation.

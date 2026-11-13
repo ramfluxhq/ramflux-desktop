@@ -44,7 +44,7 @@ pub struct Applied {
 pub enum DispatchOutcome {
     /// Effects went to the source; labels for display.
     Submitted(Vec<String>),
-    /// Policy requires the hold-to-confirm strip first. Nothing was submitted.
+    /// Policy requires the confirm strip first. Nothing was submitted.
     NeedsConfirmation(Box<Intent>),
     /// The intent was refused.
     Refused(IntentError),
@@ -497,7 +497,7 @@ impl AccountSession {
 }
 
 /// The audit pair of an intent as an inspector label, e.g.
-/// `Agent(p-orbit), confirmed by Hold`.
+/// `Agent(p-orbit), confirmed by Tap`.
 pub fn audit_label(intent: &Intent) -> String {
     match &intent.confirmed_by {
         Some(confirmation) => {
@@ -543,8 +543,8 @@ mod tests {
         AccountSession::new(&load_fixture(name).expect("fixture"))
     }
 
-    fn hold(ms: u64) -> ramflux_desktop_core::HumanConfirmation {
-        ConfirmationIssuer::new().issue_hold(ms).expect("a full hold")
+    fn tap() -> ramflux_desktop_core::HumanConfirmation {
+        ConfirmationIssuer::new().issue_tap()
     }
 
     fn approve(actor: Actor, confirmed: bool) -> Intent {
@@ -553,7 +553,7 @@ mod tests {
             confirmed_by: None,
             kind: IntentKind::Approve { grant_id: GrantId::new("g-rotate") },
         };
-        if confirmed { intent.confirmed_by_human(hold(1_200)) } else { intent }
+        if confirmed { intent.confirmed_by_human(tap()) } else { intent }
     }
 
     #[test]
@@ -587,16 +587,16 @@ mod tests {
     }
 
     #[test]
-    fn high_risk_approval_is_held_until_a_human_hold_for_humans_and_agents() {
+    fn high_risk_approval_waits_until_a_human_confirmation_for_humans_and_agents() {
         let mut s = session("s03_intervention");
         s.advance(1_000);
         let agent = Actor::Agent(ParticipantId::new("p-orbit"));
         let (outcome, _) = s.dispatch(approve(agent.clone(), false));
         let DispatchOutcome::NeedsConfirmation(intent) = outcome else {
-            panic!("an unconfirmed agent proposal waits for the hold");
+            panic!("an unconfirmed agent proposal waits for the confirmation");
         };
         assert_eq!(intent.proposed_by, agent);
-        let (outcome, records) = s.dispatch(intent.confirmed_by_human(hold(1_300)));
+        let (outcome, records) = s.dispatch(intent.confirmed_by_human(tap()));
         assert!(
             matches!(outcome, DispatchOutcome::Submitted(ref labels) if labels == &[methods::GRANT_APPROVE]),
             "{outcome:?}"

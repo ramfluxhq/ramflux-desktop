@@ -242,17 +242,13 @@ mod shots {
         run.until("needs me", |r| r.task(&deploy).is_some_and(|t| t.state == TaskState::NeedsMe));
         run.shot("f13b_02_task_needs_me_approval");
 
-        // Approved with the hold, confirmed by the assignee, then done.
+        // Approved with the confirmation, confirmed by the assignee, then done.
         run.click(scope(&deploy), "step-approve");
-        let center = run.window(|window, cx| {
-            let center = window.find("hold-confirm").bounds().center();
+        run.window(|window, cx| {
+            let center = window.find("confirm-accept").bounds().center();
             window.pointer_down(center, gpui_kit::MouseButton::Left, cx);
-            center
+            window.pointer_up(center, gpui_kit::MouseButton::Left, cx);
         });
-        for _ in 0..40 {
-            run.tick();
-        }
-        run.window(move |window, cx| window.pointer_up(center, gpui_kit::MouseButton::Left, cx));
         run.until("the decision on its way", |r| {
             r.task(&deploy).is_some_and(|t| t.answer.is_some())
         });

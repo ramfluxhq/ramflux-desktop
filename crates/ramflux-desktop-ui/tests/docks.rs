@@ -74,7 +74,7 @@ fn contacts_dock_answers_requests_and_verifies(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn members_dock_kicks_through_the_hold_strip(cx: &mut TestAppContext) {
+fn members_dock_kicks_through_the_confirm_strip(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s05_group_governance");
     advance(cx, 500);
     click(cx, handle, "rail-members");
@@ -89,18 +89,18 @@ fn members_dock_kicks_through_the_hold_strip(cx: &mut TestAppContext) {
     );
     in_window(cx, handle, |window, cx| window.within("member-add-p-mira").click("add", cx));
     let body = last_body(cx, &shell, methods::GROUP_ADD_MEMBER);
-    assert_eq!(body["participant_id"], "p-mira", "adding a contact is low risk: no hold");
+    assert_eq!(body["participant_id"], "p-mira", "adding a contact is low risk: no confirmation");
     advance(cx, 1_200);
 
     in_window(cx, handle, |window, cx| window.within("member-p-tomas").click("member-actions", cx));
     click_label(cx, handle, &ramflux_desktop_ui::i18n::tr("dock.members.kick"));
-    assert!(strip_open(cx, &shell), "kicking needs the hold");
+    assert!(strip_open(cx, &shell), "kicking needs the confirmation");
     assert!(!effects(cx, &shell).contains(&methods::GROUP_KICK.to_owned()));
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::GROUP_KICK);
     assert_eq!(body["participant_id"], "p-tomas");
     assert_eq!(body["context_id"], "c-garden");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     advance(cx, 300);
     let members = with_store(cx, &shell, |s| {
         s.context(&ContextId::new("c-garden")).map(|c| c.participants.len())
@@ -126,7 +126,7 @@ fn members_dock_kicks_through_the_hold_strip(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn approvals_dock_revokes_with_a_hold_and_lists_the_audit(cx: &mut TestAppContext) {
+fn approvals_dock_revokes_with_confirmation_and_lists_the_audit(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s03_intervention");
     advance(cx, 1_000);
     click(cx, handle, "rail-approvals");
@@ -135,11 +135,11 @@ fn approvals_dock_revokes_with_a_hold_and_lists_the_audit(cx: &mut TestAppContex
     in_window(cx, handle, |window, cx| {
         window.within("approvals-grant-g-calendar").click("revoke", cx)
     });
-    assert!(strip_open(cx, &shell), "revoking needs the hold");
-    hold_confirm(cx, handle);
+    assert!(strip_open(cx, &shell), "revoking needs the confirmation");
+    tap_confirm(cx, handle);
     let body = last_body(cx, &shell, methods::GRANT_REVOKE);
     assert_eq!(body["grant_id"], "g-calendar");
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
     advance(cx, 200);
     let state = with_store(cx, &shell, |s| s.grant(&GrantId::new("g-calendar")).map(|g| g.state));
     assert_eq!(state, Some(GrantState::Revoked));
@@ -147,15 +147,17 @@ fn approvals_dock_revokes_with_a_hold_and_lists_the_audit(cx: &mut TestAppContex
     in_window(cx, handle, |window, cx| {
         window.within("approvals-standing-sa-calendar").click("revoke", cx)
     });
-    hold_confirm(cx, handle);
+    tap_confirm(cx, handle);
     assert_eq!(last_body(cx, &shell, methods::STANDING_REVOKE)["approval_id"], "sa-calendar");
+    // Let the source answer the revocation before reading the audit.
+    advance(cx, 200);
 
     in_window(cx, handle, |window, cx| {
         window.within("approvals-pending-g-rotate").click("approve", cx)
     });
     assert!(
         strip_open(cx, &shell),
-        "a high-risk pending grant decided from the dock still needs the hold"
+        "a high-risk pending grant decided from the dock still needs the confirmation"
     );
     let audit = with_store(cx, &shell, |s| s.audit().len());
     assert!(audit >= 3, "the audit lists the confirmed revocations");

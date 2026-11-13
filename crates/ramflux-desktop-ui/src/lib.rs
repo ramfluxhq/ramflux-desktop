@@ -15,7 +15,7 @@
 //!   only caller of the source; one session per account.
 //! - [`bubble`]: [`bubble::EventSink`], the bubbling chain.
 //! - [`root`]: [`root::IntentRoot`], where UI events become intents.
-//! - [`confirm`]: the inline hold-to-confirm strip.
+//! - [`confirm`]: the inline confirm strip.
 //! - [`shell`], [`entry`], [`workspace`], [`settings`], [`palette`], [`dev`]:
 //!   pages, overlays and panels.
 //! - [`moments`]: inline moment renderers.

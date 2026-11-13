@@ -5,7 +5,7 @@
 //!
 //! The body has three blocks: `summary`, `details` (a disclosure, view-local)
 //! and `decision` (Approve / Deny). Approving a high-risk grant never commits
-//! here: the root receives the request and policy opens the hold-to-confirm
+//! here: the root receives the request and policy opens the confirmation
 //! strip above the composer.
 //!
 //! When a task step owns the grant, the decision lives only in that step
@@ -197,15 +197,15 @@ fn details(grant: Option<&Grant>, risk: Risk) -> impl IntoElement {
 /// The host-drawn decision: Deny then Allow in the RF approval controls.
 /// The trusted facts it binds stay visible in the header (risk, scope) and
 /// in full in the details disclosure, so the card keeps its height in the
-/// conversation. Allowing a high-risk grant opens the host's hold strip
+/// conversation. Allowing a high-risk grant opens the host's confirm strip
 /// first; nothing here authorizes on its own.
 fn decision(sink: EventSink, risk: Risk, cx: &App) -> impl IntoElement {
     use ramflux_desktop_navigation::generated::catalog;
     let approve_sink = sink.clone();
-    // Approving a high-risk grant needs the hold-to-confirm strip first, so
+    // Approving a high-risk grant needs the confirm strip first, so
     // the label carries an ellipsis.
     let approve_label = tr(if risk.requires_confirmation() {
-        "moment.intervention.approve_hold"
+        "moment.intervention.approve_ask"
     } else {
         "moment.intervention.approve"
     });
@@ -238,7 +238,7 @@ fn resolution(grant: Option<&Grant>, lifecycle: Lifecycle, cx: &App) -> impl Int
     div().text_xs().text_color(cx.theme().muted_foreground).child(tr(key))
 }
 
-/// Who proposed the request and, once decided with a hold, that the
+/// Who proposed the request and, once decided with a confirmation, that the
 /// attended human confirmed it (and when).
 fn audit_line(proposer: &SharedString, audit: Option<&AuditEntry>, cx: &App) -> impl IntoElement {
     let confirmed = audit.filter(|entry| entry.human_confirmed).map(|entry| {

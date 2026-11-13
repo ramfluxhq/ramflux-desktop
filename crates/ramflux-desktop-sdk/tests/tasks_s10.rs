@@ -4,7 +4,7 @@
 //! s10 (demo 3) on the SDK path: the scenario's task, played through the
 //! fake daemon on the protocol's state machine. The AI participant's
 //! proposal and updates are its signed events; the user's two decisions
-//! (start the proposal, approve the deploy with a hold) go through the core
+//! (start the proposal, approve the deploy with a confirmation) go through the core
 //! policy and the SDK as on the real daemon. Every version the scenario
 //! shows is shown on the SDK path with the same state and steps; the
 //! deploy step is decided through its approval, and the task ends done
@@ -146,11 +146,11 @@ fn s10_replays_through_the_daemon_to_the_same_task() {
                     .update(GROUP, TASK, status(expected.state), steps(expected), None)
                     .unwrap();
             }
-            // The user approves the deploy with a hold; the assignee checks
+            // The user approves the deploy with a confirmation; the assignee checks
             // the grant and confirms the step.
             6 => {
                 let mut intent = human(IntentKind::Approve { grant_id: GrantId::new(GRANT) });
-                intent.confirmed_by = ConfirmationIssuer::new().issue_hold(1_500);
+                intent.confirmed_by = Some(ConfirmationIssuer::new().issue_tap());
                 act(&mut account, intent);
                 account.until("the decision on its way", |s, _| {
                     shown(s, &id).is_some_and(|t| t.answer.is_some())

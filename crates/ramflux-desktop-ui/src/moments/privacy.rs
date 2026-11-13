@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! Privacy reveal moments: the content stays masked until the human reveals
-//! it with a hold; the reveal is recorded in an audit note line.
+//! it with a confirmation; the reveal is recorded in an audit note line.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;

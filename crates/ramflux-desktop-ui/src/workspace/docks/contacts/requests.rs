@@ -9,7 +9,7 @@
 //!   number to compare before accepting, the messages they sent meanwhile
 //!   (held until an answer: a "message request", with a preview of the
 //!   first), and Accept, Decline and Block (Block drops anything they send
-//!   from now on, and needs the hold);
+//!   from now on, and needs the confirmation);
 //! - the account's setting: accept every request automatically;
 //! - on a contact this account asked: that the request waits for them
 //!   (with Send again, the explicit retry of the same request), that they
@@ -190,7 +190,7 @@ pub fn read_error(store: &Store, cx: &App) -> Option<AnyElement> {
 /// bound on remembered requester identities is full (CONTACT-FU-03,
 /// `authority_floors`). It is a state, not an error: nothing is dropped, the
 /// daemon takes the requests again as entries expire, and the user may forget
-/// the entries of closed requests now (with the hold: it gives up rollback
+/// the entries of closed requests now (with the confirmation: it gives up rollback
 /// protection for those people). Only a saturated daemon shows it.
 pub fn floors_notice(store: &Store, sink: &EventSink, cx: &App) -> Option<AnyElement> {
     let floors = store.request_floors().filter(|f| f.saturated)?;

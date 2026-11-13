@@ -174,7 +174,7 @@ fn an_incoming_request_shows_its_held_messages_and_is_accepted() {
 }
 
 #[test]
-fn decline_and_block_reach_the_daemon_and_block_needs_the_hold() {
+fn decline_and_block_reach_the_daemon_and_block_needs_confirmation() {
     let world = World::start("decline", true);
     let mut account = live(&world);
     let declined = world.requests.incoming(ACCOUNT, "principal-cy", None);
@@ -202,14 +202,12 @@ fn decline_and_block_reach_the_daemon_and_block_needs_the_hold() {
         matches!(effects.as_slice(), [ramflux_desktop_core::Effect::RequireConfirmation { .. }]),
         "{effects:?}"
     );
-    let held = Intent::human(IntentKind::AnswerContactRequest {
+    let confirmed = Intent::human(IntentKind::AnswerContactRequest {
         request_id: blocked.clone(),
         answer: RequestAnswer::Block,
     })
-    .confirmed_by_human(
-        ramflux_desktop_core::ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"),
-    );
-    for effect in handle_intent(&account.store, held, Timestamp(0)).expect("held") {
+    .confirmed_by_human(ramflux_desktop_core::ConfirmationIssuer::new().issue_tap());
+    for effect in handle_intent(&account.store, confirmed, Timestamp(0)).expect("confirmed") {
         account.source.submit(effect);
     }
     account.until("blocked", |s, _| {

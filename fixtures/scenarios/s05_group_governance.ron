@@ -1,6 +1,6 @@
 // s05 Group governance through intents: adding a member, promoting a member
 // (SetRole, high risk), kicking or banning a member (high risk) and creating
-// an invitation. The high-risk operations go through the hold-to-confirm
+// an invitation. The high-risk operations go through the confirmation
 // strip before the call reaches the source; response rules then emit the
 // membership facts. The members dock lists roles and offers the actions.
 // Demonstrates: Governance intents, the high-risk governance policy,

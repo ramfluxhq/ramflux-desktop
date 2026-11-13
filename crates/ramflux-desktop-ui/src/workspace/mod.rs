@@ -559,7 +559,7 @@ impl Workspace {
         self.contacts.update(cx, |dock, cx| dock.focus_add(window, cx));
     }
 
-    /// The hold-to-confirm strip.
+    /// The confirm strip.
     pub fn confirm_strip(&self, cx: &App) -> Entity<ConfirmStrip> {
         self.root.read(cx).confirm_strip().clone()
     }

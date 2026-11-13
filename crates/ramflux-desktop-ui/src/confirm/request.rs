@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! What the hold-to-confirm strip says about a pending intent: the object
+//! What the confirm strip says about a pending intent: the object
 //! and verb in plain words, the effective risk, and who proposed it.
 
 use gpui_kit::SharedString;
@@ -140,7 +140,7 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
             )
         }
         IntentKind::Contact { participant_id, action } => {
-            // Only blocking and removing need a hold.
+            // Only blocking and removing need a confirmation.
             let key = match action {
                 ContactAction::Block => "confirm.contact.block",
                 ContactAction::Remove => "confirm.contact.remove",
@@ -152,7 +152,7 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
                 action.risk(),
             )
         }
-        // Only Block needs a hold: it names who is blocked and what it does.
+        // Only Block needs a confirmation: it names who is blocked and what it does.
         IntentKind::AnswerContactRequest { request_id, answer: RequestAnswer::Block } => {
             let peer = store.contact_request_by_id(request_id).map(|r| r.peer.clone());
             let contact =
@@ -166,7 +166,7 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
             )
         }
         // Forgetting the entries of closed requests gives up rollback
-        // protection for those people: it needs the hold, and says so.
+        // protection for those people: it needs the confirmation, and says so.
         IntentKind::ClearRequestFloors => {
             let count = store.request_floors().map_or(0, |f| f.clearable).to_string();
             (tr_args("confirm.contact.clear_floors", &[("count", &count)]), None, Risk::High)

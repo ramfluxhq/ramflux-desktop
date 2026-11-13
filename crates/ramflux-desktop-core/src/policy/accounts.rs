@@ -64,7 +64,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 if node.pin_source != *pin_source {
                     return Err(IntentError::PinMismatch(node_id.clone()));
                 }
-                // Trusting a key on first use is a security decision: hold it.
+                // Trusting a key on first use is a security decision: confirm it.
                 let risk =
                     if pin_source.is_trust_on_first_use() { Risk::High } else { Risk::Medium };
                 Ok(p.gated(

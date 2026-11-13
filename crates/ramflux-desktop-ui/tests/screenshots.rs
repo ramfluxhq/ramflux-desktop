@@ -207,7 +207,7 @@ mod shots {
         }
 
         // 1. Entry: a node added by address, its NODE-01 card with the
-        //    trust-on-first-use warning, and the hold strip for trusting it.
+        //    trust-on-first-use warning, and the confirm strip for trusting it.
         s.scenario("s01_first_launch", 3_000);
         s.click_in("node-n-harbor", "node-confirm");
         s.advance(200);
@@ -338,35 +338,22 @@ mod shots {
         }
         s.both("13_keyboard_focus_approve");
 
-        // 14. Enter opens the hold strip with focus on the hold control;
-        //     Space held part-way shows the progress.
+        // 14. Enter opens the confirm strip with focus on its Confirm button.
         s.in_window(|window, cx| window.press("enter", cx));
-        s.in_window(|window, cx| window.key_down("space", false, cx));
-        s.cx.advance_clock(std::time::Duration::from_millis(500));
         s.cx.run_until_parked();
-        s.both("14_keyboard_hold_in_progress");
-        s.in_window(|window, cx| window.key_up("space", cx));
+        s.both("14_keyboard_confirm_focused");
+        s.in_window(|window, cx| window.press("escape", cx));
     }
 
     /// Renderer conformance states.
     fn conformance(s: &mut Session) {
-        // 15. A patch lands while the hold strip is held: the hold is
-        //     cancelled and the surface asks for a new review.
+        // 15. A patch lands while the confirm strip is open: the pending
+        //     confirmation is cancelled and the surface asks for a new review.
         let l2 = load_conformance("l2_interactive").expect("fixture");
         s.play(&l2, 2_500);
         s.show("c-conf", Some("m-form"));
         s.click_in("moment-m-form", "action-deploy");
-        let center = std::cell::Cell::new(None);
-        s.in_window(|window, cx| {
-            let at = window.find("hold-confirm").bounds().center();
-            window.pointer_down(at, gpui_kit::MouseButton::Left, cx);
-            center.set(Some(at));
-        });
-        s.cx.advance_clock(std::time::Duration::from_millis(400));
-        s.advance(600);
-        if let Some(at) = center.get() {
-            s.in_window(|window, cx| window.pointer_up(at, gpui_kit::MouseButton::Left, cx));
-        }
+        s.advance(1_000);
         s.show("c-conf", Some("m-form"));
         s.both("15_surface_changed_review_again");
 
@@ -382,15 +369,11 @@ mod shots {
         s.show("c-conf", Some("m-tool"));
         s.click_in("moment-m-tool", "approve");
         s.in_window(|window, cx| {
-            let at = window.find("hold-confirm").bounds().center();
+            let at = window.find("confirm-accept").bounds().center();
             window.pointer_down(at, gpui_kit::MouseButton::Left, cx);
-            center.set(Some(at));
+            window.pointer_up(at, gpui_kit::MouseButton::Left, cx);
         });
-        s.cx.advance_clock(std::time::Duration::from_millis(1_400));
         s.cx.run_until_parked();
-        if let Some(at) = center.get() {
-            s.in_window(|window, cx| window.pointer_up(at, gpui_kit::MouseButton::Left, cx));
-        }
         s.advance(300);
         s.show("c-conf", Some("m-tool"));
         s.click("rail-approvals");
@@ -417,23 +400,18 @@ mod shots {
         s.settle();
         s.both("19_ai_task_needs_me");
 
-        // 20. Approve pressed: the hold-to-confirm strip above the composer.
+        // 20. Approve pressed: the confirm strip above the composer.
         s.click_in("moment-m-task", "step-approve");
         s.settle();
         s.both("20_ai_approval_confirm");
 
-        // 22. Held: the result patched into Orbit's checklist, task done.
-        let center = std::cell::Cell::new(None);
+        // 22. Confirmed: the result patched into Orbit's checklist, task done.
         s.in_window(|window, cx| {
-            let at = window.find("hold-confirm").bounds().center();
+            let at = window.find("confirm-accept").bounds().center();
             window.pointer_down(at, gpui_kit::MouseButton::Left, cx);
-            center.set(Some(at));
+            window.pointer_up(at, gpui_kit::MouseButton::Left, cx);
         });
-        s.cx.advance_clock(std::time::Duration::from_millis(1_400));
         s.cx.run_until_parked();
-        if let Some(at) = center.get() {
-            s.in_window(|window, cx| window.pointer_up(at, gpui_kit::MouseButton::Left, cx));
-        }
         s.advance(1_700);
         s.show("c-launch", Some("m-task"));
         s.settle();

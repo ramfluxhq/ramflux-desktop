@@ -12,7 +12,7 @@
 //! 4. Alice asks Orbit for a task from the composer; Orbit accepts it;
 //! 5. Orbit reaches a step that needs a single-use MCP approval: the step
 //!    asks on both of Alice's desktops;
-//! 6. Alice approves on her first desktop with the hold; Orbit's daemon
+//! 6. Alice approves on her first desktop with the confirmation; Orbit's daemon
 //!    commits the decision, the tool runs once, the task continues and
 //!    finishes with its signed result summary, shown on both desktops;
 //! 7. a second task: Alice denies on her second desktop; Orbit ends it
@@ -372,7 +372,7 @@ fn asking<H: Host>(demo: &mut Demo3<'_, H>, ix: usize, key: &TaskId) -> Result<G
         .ok_or_else(|| "no approval step".into())
 }
 
-/// Steps 4 to 6: ask, accept, approve with the hold, continue, done.
+/// Steps 4 to 6: ask, accept, approve with the confirmation, continue, done.
 fn approve<H: Host>(demo: &mut Demo3<'_, H>, notes: &mut Notes) -> Result<(), String> {
     let run = demo.config.run_id.clone();
     let task = ask(demo, &format!("Deploy build 2.4.0-rc1 to staging ({run})"), notes)?;
@@ -397,10 +397,10 @@ fn approve<H: Host>(demo: &mut Demo3<'_, H>, notes: &mut Notes) -> Result<(), St
     let desk = demo.desks[0].as_ref().ok_or("desktop not open")?;
     desk.click(demo.host, Some(&scope), "step-approve")?;
     if !desk.strip_open(demo.host) {
-        return Err("a high-risk approval opened no hold".into());
+        return Err("a high-risk approval opened no confirm strip".into());
     }
-    demo.shots(0, "d3_06_hold", notes)?;
-    demo.desks[0].as_ref().ok_or("desktop not open")?.hold_confirm(demo.host)?;
+    demo.shots(0, "d3_06_confirm", notes)?;
+    demo.desks[0].as_ref().ok_or("desktop not open")?.tap_confirm(demo.host)?;
     let version = task["version"].as_u64().unwrap_or(0);
     demo.wait(0, "the decision on its way", |desk, host| {
         desk.store(host, |s| {
@@ -526,7 +526,7 @@ pub fn run<H: Host>(demo: &mut Demo3<'_, H>) -> Steps {
     steps.run(3, "Alice writes to Orbit from the contacts dock", &[2], |n| conversation(demo, n));
     steps.run(
         4,
-        "Ask a task; Orbit accepts; approval asked on both desktops; approve with the hold; the task continues and finishes with its signed summary",
+        "Ask a task; Orbit accepts; approval asked on both desktops; approve with the confirmation; the task continues and finishes with its signed summary",
         &[3],
         |n| approve(demo, n),
     );

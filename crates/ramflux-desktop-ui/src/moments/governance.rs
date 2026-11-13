@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! Governance moments: membership, role and invitation records. The actions
-//! themselves (kick, ban, role changes through the hold strip, invitations)
+//! themselves (kick, ban, role changes through the confirm strip, invitations)
 //! live in the members dock.
 
 use gpui_kit::TestSupportExt as _;

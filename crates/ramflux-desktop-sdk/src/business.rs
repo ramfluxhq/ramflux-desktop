@@ -271,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_hold_is_preserved_and_cannot_become_a_daemon_call() {
+    fn pending_confirmation_is_preserved_and_cannot_become_a_daemon_call() {
         let mut store = Store::new();
         let node=serde_json::from_value(serde_json::json!({"id":"node","url":"https://node.example","pin_source":"Manual","confirmed":false})).expect("test: node fixture");
         store
@@ -282,7 +282,7 @@ mod tests {
             pin_source: PinSource::Manual,
         });
         let mut prepared =
-            actions(&store, intent, Timestamp(2)).expect("test: policy requests a hold");
+            actions(&store, intent, Timestamp(2)).expect("test: policy requests a confirmation");
         let pending = prepared.pop().expect("test: one confirmation action");
         assert!(
             matches!(pending.into_plan(None, &EmptyKnown), Err(BusinessAction::Confirmation(_))),

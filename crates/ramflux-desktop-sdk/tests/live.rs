@@ -41,7 +41,7 @@ fn effects_reach_the_daemon_and_their_answers_become_events() {
     account.until("approval", |s, _| s.grant(&GrantId::new("appr-1")).is_some());
     account.source.submit(call(
         methods::GRANT_APPROVE,
-        json!({ "grant_id": "appr-1", "args_hash": "h-123", "proposed_by": "Human", "confirmed_by": { "gesture": "Hold", "held_ms": 1200 } }),
+        json!({ "grant_id": "appr-1", "args_hash": "h-123", "proposed_by": "Human", "confirmed_by": { "gesture": "Tap" } }),
     ));
     account.until("approved", |s, _| {
         s.grant(&GrantId::new("appr-1")).is_some_and(|g| g.state == GrantState::Approved)

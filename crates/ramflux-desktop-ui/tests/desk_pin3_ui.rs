@@ -7,7 +7,7 @@
 //!
 //! - The daemon's bound on remembered requester identities
 //!   (`authority_floors`, product CONTACT-FU-03): the notice that new
-//!   requests are on hold, and "Forget old entries" behind the hold, which
+//!   requests are on hold, and "Forget old entries" behind a confirmation, which
 //!   sends the current setting with `clear_retired_authority_floors`.
 //! - A group change refused `transfer_requires_sync` while the group's head
 //!   is held for an ownership transfer: said in words, with the reason, and
@@ -139,29 +139,29 @@ fn check_floors(cx: &mut TestAppContext, name: &str, locale: &str) {
     assert_ne!(clear, "dock.contacts.floors.clear", "a translation exists in {locale}");
 
     // The notice does not take the focus; pressing the button asks first,
-    // nothing is sent, and the hold strip then takes the focus (a single
+    // nothing is sent, and the confirm strip then takes the focus (a single
     // key press never fires it: keyboard.rs).
     let focus = |cx: &mut TestAppContext, id: &'static str| {
         in_window(cx, world.handle, |window, _| window.try_find(id).and_then(|e| e.focused()))
     };
     assert_ne!(focus(cx, "contacts-floors-clear"), Some(true), "the button is not focused");
     click(cx, world.handle, "contacts-floors-clear");
-    assert_eq!(focus(cx, "hold-confirm"), Some(true), "the hold strip takes the focus");
-    assert!(strip_open(cx, &world.shell), "forgetting needs the hold");
+    assert_eq!(focus(cx, "confirm-accept"), Some(true), "the confirm strip takes the focus");
+    assert!(strip_open(cx, &world.shell), "forgetting needs the confirmation");
     assert!(sent(&world, methods::CONTACT_REQUESTS_POLICY).is_empty());
     assert!(sent(&world, "contact.requests.policy.set").is_empty());
     let asked = tr_args("confirm.contact.clear_floors", &[("count", "3")]).to_string();
     assert_ne!(asked, "confirm.contact.clear_floors");
     let announced = label(cx, &world, "confirm-strip").unwrap_or_default();
-    assert!(announced.contains(&asked), "the hold says what it does: {announced}");
+    assert!(announced.contains(&asked), "the confirm strip says what it does: {announced}");
     // Escape declines it: nothing is sent, and the notice stays.
     in_window(cx, world.handle, |window, cx| window.press("escape", cx));
-    assert!(!strip_open(cx, &world.shell), "Escape closes the hold");
+    assert!(!strip_open(cx, &world.shell), "Escape closes the confirm strip");
     assert!(sent(&world, "contact.requests.policy.set").is_empty());
     assert!(exists(cx, world.handle, "contacts-floors"));
     click(cx, world.handle, "contacts-floors-clear");
     assert!(strip_open(cx, &world.shell));
-    hold_confirm(cx, world.handle);
+    tap_confirm(cx, world.handle);
     wait(cx, "the daemon is asked", |_| !sent(&world, "contact.requests.policy.set").is_empty());
     assert_eq!(
         sent(&world, "contact.requests.policy.set"),
@@ -215,8 +215,8 @@ fn check_group_refusal(cx: &mut TestAppContext, name: &str, locale: &str) {
             window.within("member-principal-bo").click("member-actions", cx);
         });
         click_label(cx, world.handle, &tr("dock.members.kick"));
-        assert!(strip_open(cx, &world.shell), "kicking needs the hold");
-        hold_confirm(cx, world.handle);
+        assert!(strip_open(cx, &world.shell), "kicking needs the confirmation");
+        tap_confirm(cx, world.handle);
         wait(cx, "the refusal", |cx| with_store(cx, &world.shell, |s| s.failures().len() > before));
         let shown = label(cx, &world, "status-failure-value").unwrap_or_default();
         let words = tr(key).to_string();

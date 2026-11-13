@@ -376,7 +376,7 @@ impl ActionRow<'_> {
             let hash = self.hash.clone();
             let version = self.version;
             let label: SharedString = if action.risk.requires_confirmation() {
-                tr_args("surface.action_hold", &[("label", &action.label)])
+                tr_args("surface.action_ask", &[("label", &action.label)])
             } else {
                 action.label.clone().into()
             };

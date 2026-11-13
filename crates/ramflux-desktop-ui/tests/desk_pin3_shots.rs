@@ -134,17 +134,14 @@ mod shots {
             });
         }
 
-        /// Holds the hold-to-confirm control until it is done.
-        fn hold_confirm(&mut self) {
-            let at = self.window(|window, cx| {
-                let at = window.find("hold-confirm").bounds().center();
+        /// Clicks the Confirm button once.
+        fn tap_confirm(&mut self) {
+            self.window(|window, cx| {
+                let at = window.find("confirm-accept").bounds().center();
                 window.pointer_down(at, gpui_kit::MouseButton::Left, cx);
-                at
+                window.pointer_up(at, gpui_kit::MouseButton::Left, cx);
             });
-            for _ in 0..30 {
-                self.tick();
-            }
-            self.window(move |window, cx| window.pointer_up(at, gpui_kit::MouseButton::Left, cx));
+            self.tick();
         }
 
         fn click(&mut self, id: &str) {
@@ -228,7 +225,7 @@ mod shots {
     }
 
     /// The bound on remembered requester identities: full with entries to
-    /// forget (and the hold that asks before forgetting them), then full with
+    /// forget (and the confirmation that asks before forgetting them), then full with
     /// nothing to forget yet.
     fn floors_states(out: &std::path::Path, locale: &str) {
         let (fake, state, socket, _tasks) =
@@ -258,10 +255,10 @@ mod shots {
         run.settle();
         run.shot("pin3_03_floors_full_clearable");
         run.click("contacts-floors-clear");
-        run.until("the hold", |r| r.exists("hold-confirm"));
+        run.until("the confirm strip", |r| r.exists("confirm-accept"));
         run.settle();
-        run.shot("pin3_04_floors_forget_hold");
-        run.hold_confirm();
+        run.shot("pin3_04_floors_forget_confirm");
+        run.tap_confirm();
         run.until("the notice is gone", |r| !r.exists("contacts-floors"));
         requests.set_floors(Some((4096, 0, 4096)));
         bus.publish("acct-main", "contact.requested", serde_json::json!({}));
@@ -308,8 +305,8 @@ mod shots {
                 window.within("member-principal-bo").click("member-actions", cx)
             });
             run.click_label(&ramflux_desktop_ui::i18n::tr("dock.members.kick"));
-            run.until("the hold", |r| r.exists("hold-confirm"));
-            run.hold_confirm();
+            run.until("the confirm strip", |r| r.exists("confirm-accept"));
+            run.tap_confirm();
             run.until("the refusal", |r| r.store(|s| s.failures().len() > before));
             run.settle();
             run.shot(name);

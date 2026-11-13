@@ -179,7 +179,7 @@ moment:
     approve:
       en: "Approve"
       zh-CN: "批准"
-    approve_hold:
+    approve_ask:
       en: "Approve…"
       zh-CN: "批准…"
     in_task:
@@ -210,8 +210,8 @@ moment:
       en: "Requested by %{name}"
       zh-CN: "由 %{name} 请求"
     confirmed_by:
-      en: "Confirmed by you with a hold at %{time}"
-      zh-CN: "你已于 %{time} 按住确认"
+      en: "Confirmed by you at %{time}"
+      zh-CN: "你已于 %{time} 确认"
   object:
     pull:
       en: "Download"
@@ -619,7 +619,7 @@ surface:
   fallback:
     en: "Shown as text: this part cannot be displayed here"
     zh-CN: "以文本显示：此部分无法在此显示"
-  action_hold:
+  action_ask:
     en: "%{label}…"
     zh-CN: "%{label}…"
   redacted:

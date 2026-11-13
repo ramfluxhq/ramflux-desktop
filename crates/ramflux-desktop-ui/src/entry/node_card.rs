@@ -4,7 +4,7 @@
 //! The node card (NODE-01 summary): node id, identity key fingerprint,
 //! endpoints, capabilities, record expiry, pin source and health. A node
 //! trusted on first use carries a sticky warning. A discovered node offers
-//! Confirm (audited; a trust-on-first-use pin needs a hold) and Not now.
+//! Confirm (audited; a trust-on-first-use pin needs a confirmation) and Not now.
 
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -60,7 +60,7 @@ impl RenderOnce for NodeCard {
                     Button::new("node-confirm")
                         .primary()
                         .small()
-                        .label(tr(if tofu { "node.confirm_hold" } else { "node.confirm" }))
+                        .label(tr(if tofu { "node.trust" } else { "node.confirm" }))
                         .on_click(move |_, window, cx| {
                             confirm.emit(
                                 UiEventKind::ConfirmNodePressed { node_id: node_id.clone() },

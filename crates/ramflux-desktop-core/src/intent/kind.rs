@@ -173,7 +173,7 @@ pub enum IntentKind {
         /// Grant.
         grant_id: GrantId,
     },
-    /// Reveal masked content (needs a hold; audited).
+    /// Reveal masked content (needs a confirmation; audited).
     Reveal {
         /// PrivacyReveal moment.
         moment_id: MomentId,
@@ -243,7 +243,7 @@ pub enum IntentKind {
         policy: RequestPolicy,
     },
     /// Forget the daemon's entries of closed contact requests, so that it
-    /// can take new ones again. Human only; needs the hold.
+    /// can take new ones again. Human only; needs the confirmation.
     ClearRequestFloors,
     /// Act on the contact link with a participant.
     Contact {
@@ -298,12 +298,12 @@ pub enum IntentKind {
         /// Operation.
         op: GovernanceOp,
     },
-    /// Revoke an approved, unused grant (needs a hold).
+    /// Revoke an approved, unused grant (needs a confirmation).
     RevokeGrant {
         /// Grant.
         grant_id: GrantId,
     },
-    /// Revoke a standing approval (needs a hold).
+    /// Revoke a standing approval (needs a confirmation).
     RevokeStandingApproval {
         /// Standing approval.
         approval_id: StandingApprovalId,
@@ -354,7 +354,7 @@ pub enum IntentKind {
         url: String,
     },
     /// Confirm and pin a discovered node. Audited like an approval; a
-    /// trust-on-first-use pin needs a hold. Human only.
+    /// trust-on-first-use pin needs a confirmation. Human only.
     ConfirmNode {
         /// Discovered node.
         node_id: NodeId,
@@ -501,7 +501,7 @@ pub enum IntentKind {
     },
     /// Cancel the running recovery.
     CancelRecovery,
-    /// Revoke one of the account's devices (needs a hold).
+    /// Revoke one of the account's devices (needs a confirmation).
     RevokeDevice {
         /// Device.
         device_id: DeviceId,

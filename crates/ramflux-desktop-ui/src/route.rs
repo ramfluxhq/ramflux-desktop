@@ -77,7 +77,7 @@ mod tests {
             node_id: NodeId::new("n-harbor"),
             pin_source: PinSource::Invite,
         };
-        p.dispatch(Intent::human(confirm)).expect("invite pins need no hold");
+        p.dispatch(Intent::human(confirm)).expect("invite pins need no confirmation");
         p.advance(200);
         assert_eq!(page_for(p.store()), Page::Entry(EntryStep::Account));
         let create = IntentKind::CreateAccount {

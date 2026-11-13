@@ -51,7 +51,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                         Decision::Call(methods::CONTACT_REQUEST_DECLINE, body)
                     }
                     // Blocking drops whatever the requester sends from now
-                    // on: it needs the hold, as blocking a contact does.
+                    // on: it needs the confirmation, as blocking a contact does.
                     RequestAnswer::Block => {
                         p.gated(Risk::High, methods::CONTACT_REQUEST_BLOCK, body)
                     }
@@ -83,7 +83,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                     return Err(IntentError::NothingToForget);
                 }
                 // It forgets the rollback protection of people whose request
-                // is closed: it needs the hold.
+                // is closed: it needs the confirmation.
                 Ok(p.gated(
                     Risk::High,
                     methods::CONTACT_REQUESTS_POLICY,

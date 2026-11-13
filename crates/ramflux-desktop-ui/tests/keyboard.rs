@@ -3,17 +3,16 @@
 
 //! The whole product by keyboard only: the entry flow, switching contexts
 //! (secondary-1..6, the palette), "needs me" (secondary-j), the composer,
-//! approve, deny and the hold, opening and closing docks, and settings.
+//! approve, deny and confirm, opening and closing docks, and settings.
 //! Each step asserts where keyboard focus is and what the user's keys did.
 
 mod common;
 
 use common::*;
-use gpui_kit::test::{TestEventExt as _, TestQueryExt as _, TestWindowExt as _};
+use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::{Entity, TestAppContext, WindowHandle};
 use ramflux_desktop_core::{ContextId, GrantId, GrantState, methods};
 use ramflux_desktop_ui::Shell;
-use ramflux_desktop_ui::confirm::HOLD_DURATION;
 use ramflux_desktop_ui::route::{EntryStep, Page};
 use ramflux_desktop_ui::settings::SettingsSection;
 use ramflux_desktop_ui::workspace::DockTool;
@@ -140,43 +139,41 @@ fn contexts_switch_by_palette_pin_and_stack_keys_and_land_in_the_composer(cx: &m
 }
 
 #[gpui_kit::test]
-fn needs_me_then_tab_enter_and_a_held_key_approve_a_high_risk_grant(cx: &mut TestAppContext) {
+fn needs_me_then_tab_enter_and_one_key_press_approve_a_high_risk_grant(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s03_intervention");
     advance(cx, 1_000);
     press(cx, handle, "secondary-j");
     assert!(focused(cx, handle, None, "moment-m-approve"), "needs me focuses the moment");
     tab_to(cx, handle, Some("moment-m-approve"), "approve", 6);
     press(cx, handle, "enter");
-    assert!(strip_open(cx, &shell), "approve asks for the hold");
-    assert!(focused(cx, handle, None, "hold-confirm"), "focus moves to the hold control");
+    assert!(strip_open(cx, &shell), "approve asks for the confirmation");
+    assert!(focused(cx, handle, None, "confirm-accept"), "focus moves to the Confirm button");
+    assert!(effects(cx, &shell).is_empty(), "the key that opened the strip does not confirm it");
 
-    // A short key press is not a hold.
+    // One press of Space on the focused Confirm button confirms.
     press(cx, handle, "space");
-    advance(cx, 1_500);
-    assert!(effects(cx, &shell).is_empty() && strip_open(cx, &shell));
-
-    // Press and hold Space: the progress shows, then the hold completes.
-    in_window(cx, handle, |window, cx| window.key_down("space", false, cx));
-    advance(cx, 400);
-    let progress =
-        cx.update(|cx| shell.read(cx).root().read(cx).confirm_strip().read(cx).progress());
-    assert!(progress > 0.1 && progress < 1.0, "visible progress while held: {progress}");
-    let value =
-        in_window(cx, handle, |window, _| window.find("hold-confirm").label().map(str::to_owned));
-    assert!(value.is_some());
-    advance(cx, u64::try_from(HOLD_DURATION.as_millis()).unwrap_or(0));
-    in_window(cx, handle, |window, cx| window.key_up("space", cx));
     let body = last_body(cx, &shell, methods::GRANT_APPROVE);
-    assert_eq!(body["confirmed_by"]["gesture"], "Hold");
-    assert!(!strip_open(cx, &shell));
+    assert_eq!(body["confirmed_by"]["gesture"], "Tap", "the human confirmed with one press");
+    assert!(!strip_open(cx, &shell), "confirming closes the strip");
     assert!(composer_focused(cx, handle), "focus returns to the composer");
     advance(cx, 1_000);
     let state = with_store(cx, &shell, |s| s.grant(&GrantId::new("g-rotate")).map(|g| g.state));
-    assert_eq!(state, Some(GrantState::Approved));
+    assert_eq!(state, Some(GrantState::Approved), "the approval reached the source");
 }
 
 #[gpui_kit::test]
-fn escape_cancels_the_hold_and_deny_needs_no_hold(cx: &mut TestAppContext) {
+fn enter_on_the_confirm_button_confirms(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s03_intervention");
+    advance(cx, 1_000);
+    click_in(cx, handle, "moment-m-approve", "approve");
+    assert!(focused(cx, handle, None, "confirm-accept"), "focus moves to the Confirm button");
+    press(cx, handle, "enter");
+    assert_eq!(effects(cx, &shell), [methods::GRANT_APPROVE], "one Enter press confirms");
+    assert!(!strip_open(cx, &shell), "confirming closes the strip");
+}
+
+#[gpui_kit::test]
+fn escape_cancels_the_confirmation_and_deny_needs_none(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s03_intervention");
     advance(cx, 1_000);
     press(cx, handle, "secondary-j");
@@ -192,7 +189,7 @@ fn escape_cancels_the_hold_and_deny_needs_no_hold(cx: &mut TestAppContext) {
     tab_to(cx, handle, Some("moment-m-approve"), "deny", 8);
     press(cx, handle, "enter");
     assert_eq!(effects(cx, &shell), [methods::GRANT_DENY]);
-    assert!(!strip_open(cx, &shell), "denying needs no hold");
+    assert!(!strip_open(cx, &shell), "denying needs no confirmation");
 }
 
 #[gpui_kit::test]

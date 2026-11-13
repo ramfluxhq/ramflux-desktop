@@ -14,7 +14,7 @@
 //!   of a checked backup, and the final counts.
 //! - [`agents`]: AI participants the open account custodies: creating one,
 //!   listing them, and exporting their one-shot credentials.
-//! - [`devices`]: devices, revocation (hold), own-device sync.
+//! - [`devices`]: devices, revocation (confirmed), own-device sync.
 //! - [`nodes`]: node profiles, probe results, default, enable, remove.
 //! - [`integrations`]: MCP servers and pending A2I events (read-only).
 //! - [`diagnostics`]: redacted export preview and export.

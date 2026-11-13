@@ -72,7 +72,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             if payload.revealed.is_some() || moment.lifecycle.is_terminal() {
                 return Err(IntentError::NotActionable(moment_id.clone()));
             }
-            // A reveal exposes protected content: always a hold, always audited.
+            // A reveal exposes protected content: always a confirmation, always audited.
             Ok(p.gated(Risk::High, methods::PRIVACY_REVEAL, json!({ "moment_id": moment_id })))
         }),
         IntentKind::ResolveConflict { moment_id, resolution } => {

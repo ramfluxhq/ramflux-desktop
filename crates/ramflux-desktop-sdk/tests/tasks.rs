@@ -193,9 +193,9 @@ fn an_approval_resolves_its_step_through_the_grant_flow_once() {
     let shown = account.store.task(&id).cloned().expect("task");
     assert_eq!(shown.steps[0].grant_id(), Some(&GrantId::new("appr-7")), "decided by its approval");
 
-    // The hold confirms the grant; the step's resolution follows it.
+    // The confirmation approves the grant; the step's resolution follows it.
     let mut intent = human(IntentKind::Approve { grant_id: GrantId::new("appr-7") });
-    intent.confirmed_by = ConfirmationIssuer::new().issue_hold(1_200);
+    intent.confirmed_by = Some(ConfirmationIssuer::new().issue_tap());
     act(&mut account, intent);
     account.until("pending", |s, _| {
         s.task(&id).is_some_and(|t| {

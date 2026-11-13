@@ -8,7 +8,7 @@
 //! The three fixed actions sit in the design's order: Decline, Reply,
 //! Accept. Reply stays visible and disabled with the typed reason until the
 //! backend can reply without accepting (F21); it never accepts. Block keeps
-//! the host hold (policy opens it). Report is unavailable the same way.
+//! the host-drawn confirmation (policy opens it). Report is unavailable the same way.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;

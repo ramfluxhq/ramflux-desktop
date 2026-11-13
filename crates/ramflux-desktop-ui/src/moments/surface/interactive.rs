@@ -7,7 +7,7 @@
 //! Inputs and selections are view-local until an action is invoked; the
 //! moment level then adds the collected values to the `ActionInvoked` event
 //! (rule B3). An approval block decides the grant it names through the same
-//! policy as an intervention (high risk opens the hold strip).
+//! policy as an intervention (high risk opens the confirm strip).
 
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -130,7 +130,7 @@ pub fn approval(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Optio
         let approve_sink = context.sink.clone();
         let deny_sink = context.sink.clone();
         let approve_label: SharedString = tr(if grant.risk.requires_confirmation() {
-            "moment.intervention.approve_hold"
+            "moment.intervention.approve_ask"
         } else {
             "moment.intervention.approve"
         });

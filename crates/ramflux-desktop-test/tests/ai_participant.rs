@@ -50,8 +50,8 @@ fn task_lifecycle(p: &ScenarioPlayer) -> Lifecycle {
     p.store().moment(&MomentId::new("m-task")).expect("task moment").lifecycle
 }
 
-fn held(intent: Intent) -> Intent {
-    intent.confirmed_by_human(ConfirmationIssuer::new().issue_hold(1_200).expect("a full hold"))
+fn tapped(intent: Intent) -> Intent {
+    intent.confirmed_by_human(ConfirmationIssuer::new().issue_tap())
 }
 
 /// Plays demo 3 up to the approval the deploy step needs.
@@ -108,12 +108,12 @@ fn s10_demo_runs_from_the_question_to_done() {
     assert_eq!(t.needs_me_step().map(|(ix, _)| ix), Some(1));
     assert_eq!(task_lifecycle(&p), Lifecycle::NeedsMe);
     assert_eq!(attention(p.store())[0].reason, AttentionReason::TaskInput);
-    // High risk: the approval waits for the hold, and never runs without it.
+    // High risk: the approval waits for the confirmation, and never runs without it.
     let approve = || Intent::human(IntentKind::Approve { grant_id: GrantId::new("g-deploy") });
     let pending = p.dispatch(approve()).expect("approve");
     assert!(matches!(pending.as_slice(), [Effect::RequireConfirmation { .. }]));
     assert!(p.source().effects().iter().all(|e| e.label != methods::GRANT_APPROVE));
-    p.dispatch(held(approve())).expect("approved with a hold");
+    p.dispatch(tapped(approve())).expect("approved with a confirmation");
     p.advance(900);
     let (status, record) = surface(&p, "m-status");
     assert_eq!(record.version, 2, "the result patch applied on the version Orbit saw");
@@ -148,7 +148,7 @@ fn s10_hashes_match_the_contract() {
         })
         .expect("the result patch");
     assert_eq!(base, record.hash, "set base_hash of the s-status patch to {}", record.hash);
-    p.dispatch(held(Intent::human(IntentKind::Approve { grant_id: GrantId::new("g-deploy") })))
+    p.dispatch(tapped(Intent::human(IntentKind::Approve { grant_id: GrantId::new("g-deploy") })))
         .expect("approve");
     p.advance(2_000);
     assert!(!p.store().surface_conflict(&MomentId::new("m-status")));
@@ -192,7 +192,7 @@ fn s10_the_requester_declines_the_proposal() {
 #[test]
 fn s10_timeline_degrades_to_text() {
     let mut p = to_approval();
-    p.dispatch(held(Intent::human(IntentKind::Approve { grant_id: GrantId::new("g-deploy") })))
+    p.dispatch(tapped(Intent::human(IntentKind::Approve { grant_id: GrantId::new("g-deploy") })))
         .expect("approve");
     p.advance(2_000);
     let lines = export::timeline_text(p.store(), &ContextId::new("c-launch"));
@@ -308,8 +308,8 @@ fn s11_a_choice_waits_at_its_surface_survives_a_conflict_and_closes() {
         (items[0].moment_id.as_str(), items[0].reason),
         ("m-pick", AttentionReason::SurfaceInput)
     );
-    // A high-risk choice waits for the hold; the change at 1500 ms makes the
-    // reviewed version stale, so the held intent is refused, never resent.
+    // A high-risk choice waits for the confirmation; the change at 1500 ms makes the
+    // reviewed version stale, so the confirmed intent is refused, never resent.
     let shown = pick(&p, "fri");
     let IntentKind::SurfaceAction { surface_hash: seen, .. } = &shown.kind else { unreachable!() };
     let seen = seen.clone();
@@ -326,7 +326,7 @@ fn s11_a_choice_waits_at_its_surface_survives_a_conflict_and_closes() {
         surface_hash: seen,
         version: 1,
     });
-    assert!(matches!(p.dispatch(held(stale)), Err(IntentError::SurfaceChanged(_))));
+    assert!(matches!(p.dispatch(tapped(stale)), Err(IntentError::SurfaceChanged(_))));
     assert_eq!(surface(&p, "m-pick").1.version, 2);
     // 2500 ms: a change made against v1 leaves the surface out of date.
     p.advance(1_000);

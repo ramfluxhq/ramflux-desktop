@@ -4,7 +4,7 @@
 //! A contact's profile (design F family): who it is and how far that is
 //! proven, the safety number and its comparison, Message and Call, the
 //! conversations shared with it, and Block or Remove (both revoke what was
-//! shared and need the host hold, which policy opens).
+//! shared and need the host-drawn confirmation, which policy opens).
 //!
 //! Verifying never happens on one click: Compare opens the number and what
 //! to compare it with, and only "The numbers match" emits the verification.
