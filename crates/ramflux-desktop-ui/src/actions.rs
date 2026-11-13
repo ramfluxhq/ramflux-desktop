@@ -104,7 +104,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-f", FocusConversationSearch, None),
         KeyBinding::new("down", NextConversation, Some("ConversationList")),
         KeyBinding::new("up", PreviousConversation, Some("ConversationList")),
-        KeyBinding::new("alt-left", ShowConversationList, Some("Workspace")),
+        KeyBinding::new("secondary-[", ShowConversationList, Some("Workspace")),
         KeyBinding::new("escape", ClosePalette, Some(PALETTE_CONTEXT)),
         KeyBinding::new("escape", CancelConfirmation, Some(CONFIRM_CONTEXT)),
         KeyBinding::new("escape", CloseSettings, Some(SETTINGS_CONTEXT)),

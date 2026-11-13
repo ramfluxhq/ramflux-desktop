@@ -480,6 +480,9 @@ impl Workspace {
     ) {
         self.list_visible = false;
         let changed = self.current != id;
+        if changed {
+            self.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
+        }
         let switching = changed && self.current.is_some();
         self.current = id.clone();
         self.new_conversation.update(cx, NewConversation::close);
@@ -652,6 +655,11 @@ impl Workspace {
         }
     }
 
+    /// Retained conversation list, including its virtualized directory snapshot.
+    pub fn conversation_list(&self) -> &Entity<ContextStack> {
+        &self.stack
+    }
+
     /// Shows the `ix`-th context of the stack (secondary-1 to secondary-6)
     /// and moves focus to the composer.
     pub fn select_stack_entry(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -759,6 +767,9 @@ impl Render for Workspace {
         let compact = scaled_width < 800.0 / 15.0;
         let show_list = !compact || self.list_visible;
         let show_detail = !compact || !self.list_visible;
+        if !show_detail && self.root.read(cx).pending_intent().is_some() {
+            self.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
+        }
         let list_width = if scaled_width < 1024.0 / 15.0 {
             224.0 / 15.0
         } else {

@@ -51,7 +51,11 @@ impl Row {
     /// Composes content only; the host supplies Button, stable ID and callback.
     pub fn content(self, cx: &App) -> impl IntoElement {
         let colors = theme::colors(cx);
-        let initial = self.title.chars().next().map_or_else(|| "?".to_owned(), |c| c.to_string());
+        let initial = self
+            .title
+            .chars()
+            .find(|c| !matches!(c, '\u{2068}' | '\u{2069}'))
+            .map_or_else(|| "?".to_owned(), |c| c.to_string());
         let (background, foreground) = match self.kind {
             AvatarKind::Person => (colors.avatar, colors.on_avatar),
             AvatarKind::Agent => (colors.agent, colors.on_agent),
@@ -63,14 +67,14 @@ impl Row {
             .child(
                 div()
                     .flex_none()
-                    .size(rems(40.0 / 15.0))
+                    .size(rems(crate::geometry::AVATAR / 15.0))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded(if self.kind == AvatarKind::Agent {
-                        rems(10.0 / 15.0)
+                        rems(crate::geometry::AVATAR / 4.0 / 15.0)
                     } else {
-                        rems(20.0 / 15.0)
+                        rems(crate::geometry::AVATAR / 2.0 / 15.0)
                     })
                     .bg(background)
                     .text_color(foreground)
@@ -124,5 +128,65 @@ impl Row {
                             }),
                     ),
             )
+    }
+}
+
+/// Single-line untrusted label, bounded before copying and isolated from surrounding UI.
+/// Scan at most 4096 scalars, even when a peer prefixes a huge body with controls.
+#[must_use]
+pub fn list_text(text: &str) -> SharedString {
+    const SCAN_LIMIT: usize = 4096;
+    const DISPLAY_LIMIT: usize = 200;
+    let mut clean = String::new();
+    let mut length = 0;
+    let mut space = false;
+    for c in text.chars().take(SCAN_LIMIT) {
+        if c == '\n' || c == '\r' {
+            if !clean.is_empty() {
+                break;
+            }
+            continue;
+        }
+        if c.is_control()
+            || matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+        {
+            continue;
+        }
+        if c.is_whitespace() {
+            space = !clean.is_empty();
+            continue;
+        }
+        if length >= DISPLAY_LIMIT {
+            clean.push('…');
+            break;
+        }
+        if space {
+            clean.push(' ');
+            length += 1;
+            space = false;
+        }
+        clean.push(c);
+        length += 1;
+    }
+    if clean.is_empty() {
+        return SharedString::default();
+    }
+    format!("\u{2068}{clean}\u{2069}").into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn labels_are_single_line_bounded_and_bidi_isolated() {
+        assert_eq!(
+            list_text("\n  \nمرحبا  world\u{202e}\t !\nsecret"),
+            "\u{2068}مرحبا world !\u{2069}",
+            "unsafe controls and later lines must not escape into the row"
+        );
+        const LARGE_BODY_BYTES: usize = 1_048_576;
+        let label = list_text(&"x".repeat(LARGE_BODY_BYTES));
+        assert!(label.chars().count() <= 203, "a megabyte body must produce a small snapshot");
+        assert_eq!(list_text("\n\r\u{202e}"), "", "control-only input must remain empty");
     }
 }

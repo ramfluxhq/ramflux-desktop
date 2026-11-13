@@ -95,6 +95,34 @@ impl ChangeSet {
             })
     }
 
+    /// Directory rows affected by this batch. `None` requires a fresh account snapshot.
+    pub fn directory_contexts(
+        &self,
+        store: &Store,
+    ) -> Option<std::collections::BTreeSet<ContextId>> {
+        if self.reset
+            || self.changes.bodies_cleared
+            || !self.changes.accounts.is_empty()
+            || !self.changes.participants.is_empty()
+            || self.changes.moments.iter().any(|id| store.moment(id).is_none())
+        {
+            return None;
+        }
+        Some(
+            self.changes
+                .contexts
+                .iter()
+                .cloned()
+                .chain(
+                    self.changes
+                        .moments
+                        .iter()
+                        .filter_map(|id| store.moment(id).map(|m| m.context_id.clone())),
+                )
+                .collect(),
+        )
+    }
+
     /// Calls: the incoming-call card, the in-call bar and the call button
     /// (which also follows contexts, participants and capabilities).
     pub fn touches_calls(&self) -> bool {
@@ -157,7 +185,6 @@ impl ChangeSet {
             || self.changes.listings
             || !self.changes.contexts.is_empty()
             || !self.changes.moments.is_empty()
-            || self.changes.pin_order
     }
 
     /// One conversation field. A changed moment that is no longer in the

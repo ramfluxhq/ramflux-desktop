@@ -97,84 +97,103 @@ pub fn conversations_with_activity<'a>(
     limit: usize,
     activity: impl Fn(&ContextId) -> Option<Timestamp>,
 ) -> Result<ConversationPage<'a>, QueryError> {
+    let rows = ordered_conversations_with_activity(store, query, activity)?;
+    let limit = limit.clamp(1, PAGE_LIMIT);
+    let next_offset = offset.checked_add(limit).filter(|next| *next < rows.len());
+    Ok(ConversationPage { rows: rows.into_iter().skip(offset).take(limit).collect(), next_offset })
+}
+
+/// Filters once, snapshots each activity once and sorts one complete directory.
+/// Native virtual lists consume this; paged adapters use [`conversations`].
+///
+/// # Errors
+/// Returns [`QueryError::TooLong`] before normalizing an oversized query.
+pub fn ordered_conversations_with_activity<'a>(
+    store: &'a Store,
+    query: &str,
+    activity: impl Fn(&ContextId) -> Option<Timestamp>,
+) -> Result<Vec<ConversationRow<'a>>, QueryError> {
     if query.len() > QUERY_LIMIT {
         return Err(QueryError::TooLong);
     }
-    if store.accounts().next().is_some()
-        && !store.accounts().any(|a| a.lock_state == LockState::Unlocked)
-    {
-        return Ok(ConversationPage { rows: Vec::new(), next_offset: None });
+    if !is_visible(store) {
+        return Ok(Vec::new());
     }
     let query = query.trim().to_lowercase();
-    let mut contexts: Vec<_> = store
+    let mut rows: Vec<_> = store
         .contexts()
-        .filter(|context| {
-            query.is_empty()
-                || selectors::context_title(store, context).to_lowercase().contains(&query)
-                || context.id.as_str().to_lowercase().contains(&query)
-                || context.participants.iter().any(|id| {
-                    id.as_str().to_lowercase().contains(&query)
-                        || store
-                            .participant(id)
-                            .is_some_and(|p| p.display.to_lowercase().contains(&query))
-                })
-                || store.context_moments(&context.id).any(|moment| {
-                    matches!(&moment.kind, MomentKind::Message(p) if !p.tombstone)
-                        && store
-                            .body(&moment.id)
-                            .is_some_and(|body| body.to_lowercase().contains(&query))
-                })
-        })
+        .filter(|context| matches_query(store, context, &query))
+        .map(|context| row(store, context, activity(&context.id)))
         .collect();
-    let latest_at =
-        |id: &ContextId| activity(id).max(store.context_moments(id).next_back().map(|m| m.at));
-    contexts.sort_by(|a, b| {
-        let latest = &latest_at;
-        b.pinned
-            .cmp(&a.pinned)
-            .then_with(|| latest(&b.id).cmp(&latest(&a.id)))
-            .then_with(|| a.id.cmp(&b.id))
+    rows.sort_by(|a, b| {
+        b.context
+            .pinned
+            .cmp(&a.context.pinned)
+            .then_with(|| b.at.cmp(&a.at))
+            .then_with(|| a.context.id.cmp(&b.context.id))
     });
-    let limit = limit.clamp(1, PAGE_LIMIT);
-    let next_offset = offset.checked_add(limit).filter(|next| *next < contexts.len());
-    let local = selectors::self_participant(store);
-    let rows = contexts
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .map(|context| {
-            let latest = store.context_moments(&context.id).next_back();
-            let newer_unloaded =
-                activity(&context.id).is_some_and(|at| latest.is_none_or(|moment| at > moment.at));
-            let preview = if newer_unloaded {
-                Preview::Unavailable
-            } else {
-                match latest.map(|m| &m.kind) {
-                    Some(MomentKind::Message(p)) if p.tombstone => Preview::Deleted,
-                    Some(MomentKind::Message(p)) => match latest.and_then(|m| store.body(&m.id)) {
-                        Some(text) if !text.is_empty() => Preview::Text(text),
-                        _ if p.attachment.is_some() || !p.media.is_empty() => Preview::Attachment,
-                        _ => Preview::Unavailable,
-                    },
-                    Some(_) => Preview::Activity,
-                    None => Preview::Empty,
-                }
-            };
-            let receipt = latest.filter(|_| !newer_unloaded).and_then(|m| match &m.kind {
-                MomentKind::Message(p) if local.as_ref() == Some(&m.origin) => Some(p.receipt),
-                _ => None,
-            });
-            ConversationRow {
-                context,
-                title: selectors::context_title(store, context),
-                preview,
-                at: latest_at(&context.id),
-                receipt,
-                attention: selectors::needs_me_count(store, &context.id),
-            }
+    Ok(rows)
+}
+
+/// Whether the current account permits displaying directory content.
+#[must_use]
+pub fn is_visible(store: &Store) -> bool {
+    store.accounts().next().is_none()
+        || store.accounts().any(|a| a.lock_state == LockState::Unlocked)
+}
+
+/// Matches an already normalized query against one context and its loaded history.
+#[must_use]
+pub fn matches_query(store: &Store, context: &Context, query: &str) -> bool {
+    query.is_empty()
+        || selectors::context_title(store, context).to_lowercase().contains(query)
+        || context.id.as_str().to_lowercase().contains(query)
+        || context.participants.iter().any(|id| {
+            id.as_str().to_lowercase().contains(query)
+                || store.participant(id).is_some_and(|p| p.display.to_lowercase().contains(query))
         })
-        .collect();
-    Ok(ConversationPage { rows, next_offset })
+        || store.context_moments(&context.id).any(|moment| {
+            matches!(&moment.kind, MomentKind::Message(p) if !p.tombstone)
+                && store.body(&moment.id).is_some_and(|body| body.to_lowercase().contains(query))
+        })
+}
+
+/// Projects one context from the current account snapshot, without sorting.
+#[must_use]
+pub fn row<'a>(
+    store: &'a Store,
+    context: &'a Context,
+    activity: Option<Timestamp>,
+) -> ConversationRow<'a> {
+    let latest = store.context_moments(&context.id).next_back();
+    let newer_unloaded = activity.is_some_and(|at| latest.is_none_or(|moment| at > moment.at));
+    let preview = if newer_unloaded {
+        Preview::Unavailable
+    } else {
+        match latest.map(|m| &m.kind) {
+            Some(MomentKind::Message(p)) if p.tombstone => Preview::Deleted,
+            Some(MomentKind::Message(p)) => match latest.and_then(|m| store.body(&m.id)) {
+                Some(text) if !text.is_empty() => Preview::Text(text),
+                _ if p.attachment.is_some() || !p.media.is_empty() => Preview::Attachment,
+                _ => Preview::Unavailable,
+            },
+            Some(_) => Preview::Activity,
+            None => Preview::Empty,
+        }
+    };
+    let local = selectors::self_participant(store);
+    let receipt = latest.filter(|_| !newer_unloaded).and_then(|m| match &m.kind {
+        MomentKind::Message(p) if local.as_ref() == Some(&m.origin) => Some(p.receipt),
+        _ => None,
+    });
+    ConversationRow {
+        context,
+        title: selectors::context_title(store, context),
+        preview,
+        at: activity.max(latest.map(|m| m.at)),
+        receipt,
+        attention: selectors::needs_me_count(store, &context.id),
+    }
 }
 
 /// Number of pending incoming requests and held messages for the strangers entry.
@@ -203,6 +222,31 @@ mod tests {
         store
             .apply(&EventEnvelope::new(seq, Timestamp(1), event))
             .expect("test: valid domain event");
+    }
+
+    #[test]
+    fn large_directory_samples_activity_once_per_context() {
+        const DIRECTORY_SIZE: u64 = 2000;
+        let mut store = Store::new();
+        for ix in 0..DIRECTORY_SIZE {
+            let context = serde_json::from_value(
+                serde_json::json!({"id":format!("c-{ix:04}"),"kind":"Direct","title":"Peer"}),
+            )
+            .expect("test: directory context");
+            apply(&mut store, ix + 1, DomainEvent::ContextUpserted(context));
+        }
+        let calls = std::cell::Cell::new(0_u64);
+        let rows = ordered_conversations_with_activity(&store, "peer", |_| {
+            calls.set(calls.get() + 1);
+            Some(Timestamp(10))
+        })
+        .expect("test: complete ordered snapshot");
+        assert_eq!(rows.len(), DIRECTORY_SIZE as usize, "all directory rows must survive one pass");
+        assert_eq!(
+            calls.get(),
+            DIRECTORY_SIZE,
+            "sorting and projection must reuse one source activity snapshot per context"
+        );
     }
 
     #[test]

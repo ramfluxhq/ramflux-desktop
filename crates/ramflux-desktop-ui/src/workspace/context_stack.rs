@@ -5,7 +5,7 @@
 //! the retained input owns search, and the Kit virtual list owns scrolling.
 
 use crate::actions::{NextConversation, PreviousConversation};
-use crate::app::{StoreEvent, StoreHandle};
+use crate::app::{ChangeSet, StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 use gpui_kit::TestSupportExt as _;
@@ -18,10 +18,13 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Context, Entity, EventEmitter, Focusable, IntoElement, Render, ScrollStrategy, SharedString,
-    Subscription, Window, div, px, size,
+    Context, Entity, EventEmitter, Focusable, IntoElement, Pixels, Render, ScrollStrategy,
+    SharedString, Size, Subscription, Window, div, px, size,
 };
-use ramflux_desktop_core::projection::conversations::{Preview, conversations, strangers};
+use ramflux_desktop_core::projection::conversations::{
+    ConversationRow, Preview, is_visible, matches_query, ordered_conversations_with_activity, row,
+    strangers,
+};
 use ramflux_desktop_core::{
     ContactLink, ContextId, ContextKind, Listing, MomentKind, ParticipantId, ParticipantKind,
     Store, selectors,
@@ -61,6 +64,7 @@ pub enum ListFilter {
 
 struct Entry {
     id: ContextId,
+    at: Option<ramflux_desktop_core::Timestamp>,
     title: SharedString,
     preview: SharedString,
     time: SharedString,
@@ -76,9 +80,12 @@ pub struct ContextStack {
     store: Entity<StoreHandle>,
     current: Option<ContextId>,
     query: Entity<InputState>,
-    rows: Rc<Vec<Entry>>,
+    rows: Rc<Vec<Rc<Entry>>>,
     filter: ListFilter,
     active: usize,
+    sizes: Rc<Vec<Size<Pixels>>>,
+    row_height: Pixels,
+    projected: usize,
     query_invalid: bool,
     scroll: VirtualListScrollHandle,
     _subscriptions: Vec<Subscription>,
@@ -96,7 +103,7 @@ impl ContextStack {
                         this.query.update(cx, |input, cx| input.set_value("", window, cx));
                     }
                     if !changes.is_domain_empty() {
-                        this.refresh(cx);
+                        this.update_rows(changes, cx);
                     }
                 }
             }),
@@ -116,6 +123,9 @@ impl ContextStack {
             rows: Rc::new(Vec::new()),
             filter: ListFilter::Messages,
             active: 0,
+            sizes: Rc::new(Vec::new()),
+            row_height: window.rem_size() * theme::ROW_REM,
+            projected: 0,
             query_invalid: false,
             scroll: VirtualListScrollHandle::new(),
             _subscriptions: subscriptions,
@@ -125,12 +135,67 @@ impl ContextStack {
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
+        let active = self.rows.get(self.active).map(|row| row.id.clone());
         let handle = self.store.read(cx);
         self.query_invalid = self.query.read(cx).value().len()
             > ramflux_desktop_core::projection::conversations::QUERY_LIMIT;
         self.rows = Rc::new(entries(handle.store(), &self.query.read(cx).value(), self.filter));
-        self.active = self.active.min(self.rows.len().saturating_sub(1));
+        self.projected += self.rows.len();
+        self.finish_refresh(active, cx);
+    }
+
+    fn update_rows(&mut self, changes: &ChangeSet, cx: &mut Context<Self>) {
+        let store = self.store.read(cx).store();
+        let Some(ids) = changes.directory_contexts(store) else {
+            self.refresh(cx);
+            return;
+        };
+        if ids.is_empty() {
+            cx.notify();
+            return;
+        }
+        let active = self.rows.get(self.active).map(|row| row.id.clone());
+        let query = self.query.read(cx).value().trim().to_lowercase();
+        let rows = Rc::make_mut(&mut self.rows);
+        for id in ids {
+            rows.retain(|entry| entry.id != id);
+            if self.query_invalid || !is_visible(store) {
+                continue;
+            }
+            let Some(context) = store.context(&id) else {
+                continue;
+            };
+            if !matches_query(store, context, &query) {
+                continue;
+            }
+            if let Some(entry) =
+                entry(store, row(store, context, context.last_activity), self.filter)
+            {
+                self.projected += 1;
+                let ix = rows
+                    .binary_search_by(|existing| order(existing, &entry))
+                    .unwrap_or_else(|ix| ix);
+                rows.insert(ix, Rc::new(entry));
+            }
+        }
+        self.finish_refresh(active, cx);
+    }
+
+    fn finish_refresh(&mut self, active: Option<ContextId>, cx: &mut Context<Self>) {
+        self.active = active
+            .and_then(|id| self.rows.iter().position(|row| row.id == id))
+            .unwrap_or(self.active)
+            .min(self.rows.len().saturating_sub(1));
+        if self.sizes.len() != self.rows.len() {
+            self.sizes = Rc::new(vec![size(px(0.), self.row_height); self.rows.len()]);
+        }
         cx.notify();
+    }
+
+    /// Number of row projections performed since this list was created.
+    /// Used to check that a source delta does not rebuild untouched rows.
+    pub fn projected_rows(&self) -> usize {
+        self.projected
     }
 
     /// Marks selection without changing unread state or submitting a request.
@@ -167,7 +232,7 @@ impl ContextStack {
         }
     }
 
-    fn move_cursor(&mut self, next: bool, cx: &mut Context<Self>) {
+    fn move_cursor(&mut self, next: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.rows.is_empty() {
             return;
         }
@@ -176,59 +241,68 @@ impl ContextStack {
         } else {
             self.active.saturating_sub(1)
         };
-        self.scroll.scroll_to_item(self.active, ScrollStrategy::Top);
+        self.scroll.scroll_to_item(self.active, ScrollStrategy::Center);
+        self.focus_search(window, cx);
         cx.notify();
     }
 }
 
-fn entries(store: &Store, query: &str, filter: ListFilter) -> Vec<Entry> {
-    let mut rows = Vec::new();
-    let mut offset = 0;
-    loop {
-        let Ok(page) = conversations(store, query, offset, 100) else {
-            return rows;
-        };
-        for row in page.rows {
-            if filter == ListFilter::Groups && row.context.kind != ContextKind::Group {
-                continue;
-            }
-            if filter == ListFilter::Tasks
-                && !store.context_moments(&row.context.id).any(|m| {
-                    matches!(m.kind, MomentKind::TaskProgress(_) | MomentKind::TaskEvent(_))
-                })
-            {
-                continue;
-            }
-            let preview = match row.preview {
-                Preview::Text(text) => text.to_owned().into(),
-                Preview::Deleted => tr("moment.message.deleted"),
-                Preview::Unavailable => tr("navigation.not_loaded"),
-                Preview::Attachment => tr("moment.message.attachment"),
-                Preview::Activity => tr("navigation.activity"),
-                Preview::Empty => tr("navigation.empty_preview"),
-            };
-            let agent = row.context.kind == ContextKind::Direct
-                && row.context.participants.iter().any(|id| {
-                    store.participant(id).is_some_and(|p| p.kind == ParticipantKind::Agent)
-                });
-            rows.push(Entry {
-                id: row.context.id.clone(),
-                title: row.title.into(),
-                preview,
-                time: row.at.map_or_else(SharedString::default, |at| i18n::time_of_day(at).into()),
-                kind: if agent { AvatarKind::Agent } else { AvatarKind::Person },
-                pinned: row.context.pinned,
-                muted: row.context.muted,
-                needs_me: row.attention,
-                unread: row.context.unread,
-            });
-        }
-        match page.next_offset {
-            Some(next) => offset = next,
-            None => break,
-        }
+fn entries(store: &Store, query: &str, filter: ListFilter) -> Vec<Rc<Entry>> {
+    ordered_conversations_with_activity(store, query, |id| {
+        store.context(id).and_then(|c| c.last_activity)
+    })
+    .unwrap_or_default()
+    .into_iter()
+    .filter_map(|row| entry(store, row, filter).map(Rc::new))
+    .collect()
+}
+
+fn order(a: &Entry, b: &Entry) -> std::cmp::Ordering {
+    b.pinned.cmp(&a.pinned).then_with(|| b.at.cmp(&a.at)).then_with(|| a.id.cmp(&b.id))
+}
+
+fn entry(store: &Store, row: ConversationRow<'_>, filter: ListFilter) -> Option<Entry> {
+    if filter == ListFilter::Groups && row.context.kind != ContextKind::Group {
+        return None;
     }
-    rows
+    let has_task = || {
+        store
+            .context_moments(&row.context.id)
+            .any(|m| matches!(m.kind, MomentKind::TaskProgress(_) | MomentKind::TaskEvent(_)))
+    };
+    // The directory has no task count or history-complete fact. Keep unknown rows
+    // visible rather than asserting that an unloaded conversation has no tasks.
+    let task_unknown = filter == ListFilter::Tasks && !has_task();
+    let preview = if task_unknown {
+        tr("navigation.tasks_not_loaded")
+    } else {
+        match row.preview {
+            Preview::Text(text) => ramflux_desktop_navigation::row::list_text(text),
+            Preview::Deleted => tr("moment.message.deleted"),
+            Preview::Unavailable => tr("navigation.not_loaded"),
+            Preview::Attachment => tr("moment.message.attachment"),
+            Preview::Activity => tr("navigation.activity"),
+            Preview::Empty => tr("navigation.empty_preview"),
+        }
+    };
+    let agent = row.context.kind == ContextKind::Direct
+        && row
+            .context
+            .participants
+            .iter()
+            .any(|id| store.participant(id).is_some_and(|p| p.kind == ParticipantKind::Agent));
+    Some(Entry {
+        id: row.context.id.clone(),
+        at: row.at,
+        title: ramflux_desktop_navigation::row::list_text(&row.title),
+        preview,
+        time: row.at.map_or_else(SharedString::default, |at| i18n::time_of_day(at).into()),
+        kind: if agent { AvatarKind::Agent } else { AvatarKind::Person },
+        pinned: row.context.pinned,
+        muted: row.context.muted,
+        needs_me: row.attention,
+        unread: row.context.unread,
+    })
 }
 
 fn accessible_name(entry: &Entry) -> SharedString {
@@ -307,7 +381,11 @@ impl Render for ContextStack {
                     )
             });
         let row_height = window.rem_size() * theme::ROW_REM;
-        let sizes = Rc::new(vec![size(px(0.), row_height); self.rows.len()]);
+        if self.row_height != row_height {
+            self.row_height = row_height;
+            self.sizes = Rc::new(vec![size(px(0.), row_height); self.rows.len()]);
+        }
+        let sizes = self.sizes.clone();
         let list =
             v_virtual_list(cx.entity(), "conversation-rows", sizes, |this, range, window, cx| {
                 range
@@ -349,10 +427,12 @@ impl Render for ContextStack {
             .w_full()
             .min_w_0()
             .min_h_0()
-            .on_action(cx.listener(|this, _: &NextConversation, _, cx| this.move_cursor(true, cx)))
-            .on_action(
-                cx.listener(|this, _: &PreviousConversation, _, cx| this.move_cursor(false, cx)),
-            )
+            .on_action(cx.listener(|this, _: &NextConversation, window, cx| {
+                this.move_cursor(true, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &PreviousConversation, window, cx| {
+                this.move_cursor(false, window, cx)
+            }))
             .bg(cx.theme().sidebar)
             .border_r_1()
             .border_color(cx.theme().border)
@@ -386,6 +466,19 @@ impl Render for ContextStack {
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(ContextStackEvent::Strangers))),
                 ),
             )
+            .when(self.filter == ListFilter::Tasks, |pane| {
+                pane.child(
+                    div()
+                        .id("tasks-history-notice")
+                        .role(gpui_kit::Role::Status)
+                        .test_support()
+                        .px_3()
+                        .pb_2()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(tr("navigation.tasks_history_notice")),
+                )
+            })
             .children(placeholder)
             .when(self.query_invalid, |pane| {
                 pane.child(

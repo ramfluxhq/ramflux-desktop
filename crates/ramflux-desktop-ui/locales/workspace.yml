@@ -884,6 +884,12 @@ schema:
       zh-CN: "创建新账户"
 
 navigation:
+  tasks_history_notice:
+    en: "Task history is incomplete. Open a conversation to load its tasks."
+    zh-CN: "任务历史尚未完整载入。打开会话以载入任务。"
+  tasks_not_loaded:
+    en: "Task history not loaded"
+    zh-CN: "任务历史尚未载入"
   no_matches:
     en: "No matching conversations"
     zh-CN: "没有匹配的会话"

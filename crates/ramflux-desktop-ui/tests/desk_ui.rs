@@ -7,7 +7,7 @@ mod common;
 use common::*;
 use gpui_kit::TestAppContext;
 use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode};
-use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::test::{TestEventExt as _, TestQueryExt as _, TestWindowExt as _};
 use ramflux_desktop_core::{ContextId, DomainEvent, methods};
 use ramflux_desktop_test::load_fixture;
 use ramflux_desktop_ui::settings::SettingsSection;
@@ -187,5 +187,142 @@ fn navigation_cancels_an_unseen_confirmation_instead_of_completing_it(cx: &mut T
     assert!(
         effects(cx, &shell).is_empty(),
         "navigation cannot mint or submit a human confirmation"
+    );
+}
+
+#[gpui_kit::test]
+fn large_directory_updates_only_changed_rows_and_keeps_cursor_identity(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
+    const DIRECTORY_SIZE: usize = 1000;
+    let (handle, shell) = open(cx, "s02_daily");
+    let mut scenario = load_fixture("s02_daily").expect("test: source scenario");
+    for ix in 0..DIRECTORY_SIZE {
+        let context = serde_json::from_value(serde_json::json!({"id":format!("scale-{ix:04}"),"title":format!("Scale {ix:04}"),"kind":"Direct"})).expect("test: source context");
+        scenario.timeline.push((0, DomainEvent::ContextUpserted(context)));
+    }
+    let changed = serde_json::from_value(
+        serde_json::json!({"id":"scale-0001","title":"Scale 0001","kind":"Direct","pinned":true}),
+    )
+    .expect("test: reordered context");
+    scenario.timeline.push((4000, DomainEvent::ContextUpserted(changed)));
+    scenario.timeline.sort_by_key(|(at, _)| *at);
+    let store = store_handle(cx, &shell);
+    cx.update(|cx| store.update(cx, |s, cx| s.load_scenario(&scenario, cx)));
+    advance(cx, 3000);
+    in_window(cx, handle, |w, cx| {
+        w.press("secondary-f", cx);
+        w.input("Scale", cx);
+    });
+    in_window(cx, handle, |w, cx| w.press("down", cx));
+    let workspace = workspace(cx, &shell);
+    let list = cx.update(|cx| workspace.read(cx).conversation_list().clone());
+    let before = cx.update(|cx| list.read(cx).projected_rows());
+    assert_eq!(
+        cx.update(|cx| list.read(cx).entry_ids(store.read(cx).store()).len()),
+        DIRECTORY_SIZE,
+        "the retained model must contain the full directory"
+    );
+    in_window(cx, handle, |w, _| {
+        assert!(w.try_find("stack-scale-0999").is_none(), "offscreen rows must remain lazy");
+        assert!(
+            w.find_all_by_role(gpui_kit::Role::Button).len() < 100,
+            "a thousand-row model must render only a viewport"
+        );
+    });
+    advance(cx, 1000);
+    assert_eq!(
+        cx.update(|cx| list.read(cx).projected_rows()) - before,
+        1,
+        "one context delta must project exactly one row"
+    );
+    in_window(cx, handle, |w, cx| w.press("enter", cx));
+    assert_eq!(
+        cx.update(|cx| workspace.read(cx).current_context().cloned()),
+        Some(ContextId::new("scale-0001")),
+        "reordering must preserve the active domain ID"
+    );
+}
+
+#[gpui_kit::test]
+fn resize_and_context_selection_cancel_pending_and_in_progress_holds(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
+    let (handle, shell) = open_width(cx, "s03_intervention", 1024.);
+    advance(cx, 1000);
+    // Focus the request without selecting a list row: this keeps the wide list
+    // preference, reproducing a resize that hides detail.
+    in_window(cx, handle, |w, cx| w.press("secondary-j", cx));
+    click_in(cx, handle, "moment-m-approve", "approve");
+    assert!(strip_open(cx, &shell), "the source grant must first request confirmation");
+    let center = in_window(cx, handle, |w, cx| {
+        let center = w.find("hold-confirm").bounds().center();
+        w.pointer_down(center, gpui_kit::MouseButton::Left, cx);
+        center
+    });
+    cx.simulate_window_resize(
+        handle.into(),
+        gpui_kit::size(gpui_kit::px(640.), gpui_kit::px(860.)),
+    );
+    cx.run_until_parked();
+    in_window(cx, handle, |_, _| {});
+    assert!(
+        !strip_open(cx, &shell),
+        "hiding reviewed facts must cancel even an in-progress gesture"
+    );
+    advance(cx, 2000);
+    in_window(cx, handle, |w, cx| w.pointer_up(center, gpui_kit::MouseButton::Left, cx));
+    assert!(effects(cx, &shell).is_empty(), "a hidden hold must never complete later");
+    in_window(cx, handle, |w, cx| w.press("secondary-1", cx));
+    click_in(cx, handle, "moment-m-approve", "approve");
+    assert!(strip_open(cx, &shell), "the request must still be actionable after cancellation");
+    let workspace = workspace(cx, &shell);
+    in_window(cx, handle, move |w, cx| {
+        workspace.update(cx, |s, cx| s.select_context(Some(ContextId::new("other")), w, cx))
+    });
+    assert!(
+        !strip_open(cx, &shell),
+        "selecting another context must cancel its predecessor's confirmation"
+    );
+    assert!(effects(cx, &shell).is_empty(), "context selection is never consent");
+}
+
+#[gpui_kit::test]
+fn bounded_previews_tasks_unknown_history_and_compact_return_are_visible(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
+    let (handle, shell) = open_width(cx, "s02_daily", 640.);
+    let mut scenario = load_fixture("s02_daily").expect("test: source scenario");
+    const LARGE_BODY_BYTES: usize = 1_048_576;
+    for (_, event) in &mut scenario.timeline {
+        if let DomainEvent::MomentAdded(moment) = event
+            && let ramflux_desktop_core::MomentKind::Message(payload) = &mut moment.kind
+        {
+            payload.text = format!("مرحبا\u{202e} first line\n{}", "x".repeat(LARGE_BODY_BYTES));
+        }
+    }
+    let unknown = serde_json::from_value(serde_json::json!({"id":"unloaded-task","title":"Unloaded","kind":"Direct","last_activity":2000000})).expect("test: unloaded directory row");
+    scenario.timeline.push((0, DomainEvent::ContextUpserted(unknown)));
+    scenario.timeline.sort_by_key(|(at, _)| *at);
+    let store = store_handle(cx, &shell);
+    cx.update(|cx| store.update(cx, |s, cx| s.load_scenario(&scenario, cx)));
+    advance(cx, 3000);
+    in_window(cx, handle, |w, _| {
+        assert!(
+            (f32::from(w.find("stack-c-team").bounds().size.height) - 64.).abs() < 1.,
+            "multiline hostile text must not change fixed row height"
+        );
+    });
+    click(cx, handle, "nav-tasks");
+    assert!(
+        exists(cx, handle, "tasks-history-notice"),
+        "the route must disclose incomplete task history"
+    );
+    assert!(
+        exists(cx, handle, "stack-unloaded-task"),
+        "unloaded task contexts cannot silently disappear"
+    );
+    click(cx, handle, "stack-unloaded-task");
+    in_window(cx, handle, |w, cx| w.press("secondary-[", cx));
+    assert!(
+        exists(cx, handle, "conversation-search"),
+        "the Back shortcut must work with composer focused"
     );
 }
