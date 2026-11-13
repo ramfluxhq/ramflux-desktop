@@ -52,6 +52,9 @@ impl AgentsPanel {
         if self.creating {
             return self.ceremony.clone().into_any_element();
         }
+        if self.wizard.is_some() {
+            return self.render_wizard(cx);
+        }
         let reason = self.create_reason(cx);
         v_flex()
             .gap_2()
@@ -71,7 +74,7 @@ impl AgentsPanel {
                         .primary()
                         .label(tr("agent.settings.create"))
                         .on_click(cx.listener(|this, _, window, cx| {
-                            this.begin_creating(window, cx);
+                            this.begin_wizard(window, cx);
                         })),
                     reason,
                 )),

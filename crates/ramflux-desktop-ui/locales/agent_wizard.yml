@@ -1,0 +1,91 @@
+_version: 2
+agent_wizard:
+  title:
+    en: "New Agent"
+    zh-CN: "新建 Agent"
+  steps:
+    en: "Steps"
+    zh-CN: "步骤"
+  step_label:
+    en: "%{number} %{name}"
+    zh-CN: "%{number} %{name}"
+  step:
+    basics:
+      en: "Basics"
+      zh-CN: "基本信息"
+    runtime:
+      en: "Runtime"
+      zh-CN: "运行绑定"
+    capabilities:
+      en: "Capabilities and approvals"
+      zh-CN: "能力与审批"
+    conversations:
+      en: "Conversations it can join"
+      zh-CN: "可加入的会话"
+    review:
+      en: "Review and create"
+      zh-CN: "核对并创建"
+  back:
+    en: "Back"
+    zh-CN: "上一步"
+  next:
+    en: "Next"
+    zh-CN: "下一步"
+  create:
+    en: "Create"
+    zh-CN: "创建"
+  refused:
+    en: "Cannot continue"
+    zh-CN: "无法继续"
+  basics_help:
+    en: "Give the Agent a name you will recognise in conversations."
+    zh-CN: "为 Agent 起一个你在会话中能认出的名字。"
+  name:
+    en: "Name"
+    zh-CN: "名称"
+  name_placeholder:
+    en: "Agent name"
+    zh-CN: "Agent 名称"
+  runtime_help:
+    en: "Ramflux only carries messages and approvals; the Agent runs in a runtime."
+    zh-CN: "Ramflux 只传递消息与审批；Agent 的执行在运行时中进行。"
+  no_runtime:
+    en: "No runtime reported"
+    zh-CN: "没有可用的运行时"
+  bind_later:
+    en: "Bind later"
+    zh-CN: "稍后绑定"
+  bind_later_help:
+    en: "After creation the Agent is not running. It can join conversations first."
+    zh-CN: "创建后 Agent 处于「未运行」，可以先加入会话。"
+  capabilities_help:
+    en: "Nothing is allowed until you turn it on. Risky actions still ask you each time."
+    zh-CN: "未开启的能力一律不允许。高风险操作仍会逐次请你确认。"
+  conversations_help:
+    en: "Choose which conversations may invite this Agent. Every invitation still asks you."
+    zh-CN: "选择哪些会话可以邀请这个 Agent。每次邀请仍需要你确认。"
+  nothing_unbound:
+    en: "Bind a runtime to choose what the Agent may do. Without one it can do nothing."
+    zh-CN: "绑定运行时后才能选择 Agent 可以做什么。未绑定时它什么也不能做。"
+  nothing_offered:
+    en: "The runtime offers nothing here."
+    zh-CN: "该运行时在这里没有可选项。"
+  none:
+    en: "None"
+    zh-CN: "无"
+  review_help:
+    en: "Next you write down the Agent's recovery phrase once. You keep custody of it; the Agent never sees it."
+    zh-CN: "接下来你将抄写一次 Agent 的恢复短语。由你保管，Agent 永远看不到它。"
+  refusal:
+    field:
+      en: "Enter a name of up to 256 characters without control characters."
+      zh-CN: "请输入不超过 256 个字符、且不含控制字符的名称。"
+    limit:
+      en: "Too many items are selected."
+      zh-CN: "选择的项目过多。"
+    runtime:
+      en: "The chosen runtime is no longer offered."
+      zh-CN: "所选运行时已不可用。"
+    permission:
+      en: "A chosen permission is not offered by the runtime."
+      zh-CN: "所选权限不在运行时的可选范围内。"

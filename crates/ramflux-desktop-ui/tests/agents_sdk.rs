@@ -93,8 +93,19 @@ fn set_location(cx: &mut TestAppContext, handle: Handle, shell: &Entity<Shell>, 
     });
 }
 
-fn through_ceremony(cx: &mut TestAppContext, handle: Handle, shell: &Entity<Shell>, name: &str) {
+/// Opens the new-Agent wizard, names the Agent, binds no runtime and
+/// creates it: an identity-only draft continues into the custody ceremony.
+fn open_creation(cx: &mut TestAppContext, handle: Handle) {
     click(cx, handle, "agent-create");
+    type_into(cx, handle, "agent-wizard-name", "Ledger");
+    for _ in 0..4 {
+        click(cx, handle, "agent-wizard-next");
+    }
+    click(cx, handle, "agent-wizard-create");
+}
+
+fn through_ceremony(cx: &mut TestAppContext, handle: Handle, shell: &Entity<Shell>, name: &str) {
+    open_creation(cx, handle);
     type_into(cx, handle, "ceremony-name-input", name);
     click(cx, handle, "ceremony-continue");
     wait(cx, "prepared", |cx| phase(cx, shell) == Some(CeremonyPhase::Prepared));
@@ -133,7 +144,7 @@ fn an_ai_participant_is_created_listed_and_its_credentials_exported_once(cx: &mu
     assert!(has_label(cx, handle, &tr("agent.row.not_unlocked")));
 
     // Creation: no node line, no passphrase screen, three words confirm it.
-    click(cx, handle, "agent-create");
+    open_creation(cx, handle);
     assert!(has_label(cx, handle, &tr_args("agent.create.custodian", &[("name", "Me")])));
     assert!(!exists(cx, handle, "ceremony-node"), "no node is asked for");
     click(cx, handle, "ceremony-cancel");
@@ -263,7 +274,7 @@ fn a_custodian_the_daemon_refuses_ends_the_ceremony_with_its_own_reason(cx: &mut
     let (fake, handle, shell) = open_agents(cx, "ui-agent-custodian", &custody);
     // The daemon refuses something the window cannot see.
     custody.refuse_headless(true);
-    click(cx, handle, "agent-create");
+    open_creation(cx, handle);
     type_into(cx, handle, "ceremony-name-input", "Ledger");
     click(cx, handle, "ceremony-continue");
     wait(cx, "refused", |cx| {

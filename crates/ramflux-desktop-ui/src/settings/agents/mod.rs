@@ -25,6 +25,7 @@
 //! - `rows`: the list and the export form.
 
 mod rows;
+pub mod wizard;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
@@ -75,6 +76,10 @@ pub struct AgentsPanel {
     ceremony: Entity<CeremonyPanel>,
     /// The creation ceremony is open in place of the introduction.
     creating: bool,
+    /// The new-Agent wizard, open before the ceremony.
+    wizard: Option<wizard::Wizard>,
+    /// The wizard's name field (retained across steps).
+    wizard_name: Entity<InputState>,
     /// Where the credentials are written.
     location: Entity<InputState>,
     /// The AI participant whose export form is open.
@@ -99,6 +104,10 @@ impl AgentsPanel {
             cx.new(|cx| CeremonyPanel::for_agent(store.clone(), root.clone(), owner, window, cx));
         let location =
             crate::i18n::localized_input("agent.export.where", window, cx, |input| input);
+        let wizard_name =
+            crate::i18n::localized_input("agent_wizard.name_placeholder", window, cx, |input| {
+                input
+            });
         let subscriptions = vec![
             cx.subscribe(&store, |this, _, event: &StoreEvent, cx| {
                 if matches!(event, StoreEvent::Changed(_)) {
@@ -124,6 +133,8 @@ impl AgentsPanel {
             root,
             ceremony,
             creating: false,
+            wizard: None,
+            wizard_name,
             location,
             exporting: None,
             awaiting: None,
