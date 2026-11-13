@@ -130,9 +130,11 @@ impl RenderOnce for SurfaceBody {
             .gap_2()
             .p_3()
             .border_1()
-            .border_color(cx.theme().border)
-            .rounded(cx.theme().radius_lg)
-            .bg(cx.theme().group_box)
+            // RF card chrome from the generated tokens; the host draws it,
+            // the card content never styles its own frame.
+            .border_color(ramflux_desktop_navigation::palette(cx).line)
+            .rounded(gpui_kit::rems(ramflux_desktop_navigation::palette(cx).radius_md / 16.0))
+            .bg(ramflux_desktop_navigation::palette(cx).incoming)
             .when(self.review_again, |col| col.child(status::review_again(cx)));
         if let Some(limit) = self.status.verdict.over_limit {
             // Never a partial rendering, and nothing to act on.
