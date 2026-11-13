@@ -6630,6 +6630,7 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
+ "sys-locale",
  "unicode-segmentation",
  "unicode-width",
 ]

@@ -289,7 +289,7 @@ impl Render for SettingsPage {
             SettingsSection::Nodes => nodes::page(context, cx),
             SettingsSection::Integrations => integrations::page(context, cx),
             SettingsSection::Diagnostics => diagnostics::page(context, &self.launch_inputs, cx),
-            SettingsSection::Appearance => appearance::page(),
+            SettingsSection::Appearance => appearance::page(cx),
         };
         let root = context.root.read(cx);
         let strip = (root.host() == ConfirmHost::Settings).then(|| root.confirm_strip().clone());
@@ -408,5 +408,10 @@ impl Render for SettingsPage {
 
 /// A muted note line used by sections (for example "view-only").
 pub(crate) fn note(key: &str, cx: &App) -> gpui_kit::AnyElement {
-    div().text_xs().text_color(cx.theme().muted_foreground).child(tr(key)).into_any_element()
+    note_text(tr(key), cx)
+}
+
+/// A muted note line of already translated text.
+pub(crate) fn note_text(text: SharedString, cx: &App) -> gpui_kit::AnyElement {
+    div().text_xs().text_color(cx.theme().muted_foreground).child(text).into_any_element()
 }

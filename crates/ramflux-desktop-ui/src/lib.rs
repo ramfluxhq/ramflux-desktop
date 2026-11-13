@@ -24,6 +24,7 @@
 //! - [`gate`]: controls for actions the backend cannot perform.
 //! - [`list_state`]: loading and empty placeholders of lists.
 //! - [`qr`]: QR codes of the user's own contact card.
+//! - [`preferences`]: the per-device theme and language choices.
 
 #![forbid(unsafe_code)]
 
@@ -45,6 +46,7 @@ pub mod launch;
 pub mod list_state;
 pub mod moments;
 pub mod palette;
+pub mod preferences;
 pub mod qr;
 pub mod root;
 pub mod route;
@@ -62,13 +64,16 @@ pub use workspace::Workspace;
 /// 8.5rem cells) would no longer fit.
 pub const MIN_WINDOW_SIZE: (f32, f32) = (640., 480.);
 
-/// Initializes application-level state: locale and key bindings.
+/// Initializes application-level state: the theme registry, fixed
+/// appearance preferences (the default locale, the current theme mode;
+/// nothing saved) and key bindings. The application then installs the
+/// preferences saved on the device with [`preferences::install`].
 ///
 /// Call after `gpui_kit::init` and before opening windows.
 pub fn init(cx: &mut gpui_kit::App) {
     if let Err(error) = ramflux_desktop_navigation::theme::install(cx) {
         ramflux_desktop_sdk::local::app_log::warn(&format!("cannot install RF theme: {error}"));
     }
-    rust_i18n::set_locale(i18n::DEFAULT_LOCALE);
+    preferences::install_fixed(cx);
     actions::bind_keys(cx);
 }

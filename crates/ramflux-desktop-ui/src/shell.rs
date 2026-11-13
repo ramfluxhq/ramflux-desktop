@@ -228,6 +228,10 @@ impl Shell {
             // The entry page holds a full restore's result in view: the
             // page it asks for changes when that result is closed.
             cx.observe(&entry, |this, _, cx| this.sync_page(cx)),
+            // A theme that follows the system follows its light/dark switch.
+            cx.observe_window_appearance(window, |_, window, cx| {
+                crate::preferences::appearance_changed(window.appearance(), cx);
+            }),
             cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, _, cx| {
                 if let StoreEvent::Changed(changes) = event
                     && changes.touches_status()

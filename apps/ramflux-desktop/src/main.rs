@@ -18,7 +18,7 @@
 
 use gpui_kit::component::TitleBar;
 use gpui_kit::*;
-use ramflux_desktop_sdk::local::{LaunchStore, app_log, paths};
+use ramflux_desktop_sdk::local::{AppearanceStore, LaunchStore, app_log, paths};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::launch::choice::{self, Overrides};
 use ramflux_desktop_ui::launch::version;
@@ -60,6 +60,8 @@ fn main() {
     application().with_assets(ramflux_desktop_ui::AppAssets).run(move |cx| {
         init(cx);
         ramflux_desktop_ui::init(cx);
+        // Theme and language as chosen on this device (unset: the system's).
+        ramflux_desktop_ui::preferences::install(AppearanceStore::default_location(), cx);
         cx.on_window_closed(|cx, _| cx.quit()).detach();
         let bounds = Bounds::centered(None, size(px(WINDOW_SIZE.0), px(WINDOW_SIZE.1)), cx);
         let options = WindowOptions {
