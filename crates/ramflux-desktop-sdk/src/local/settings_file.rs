@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Span Brain
 
 //! The desktop settings file: a small versioned JSON file holding desktop
-//! preferences and local bookkeeping only (pinned contexts, launch choices,
-//! event-stream cursors, ids of delivery receipts sent), never content,
-//! keys or secrets.
+//! preferences and local bookkeeping only (pinned contexts, launch and
+//! appearance choices, event-stream cursors, ids of delivery receipts
+//! sent), never content, keys or secrets.
 //!
 //! Every writer reads, changes its own part and replaces the file
 //! atomically (write a sibling, then rename), so one writer never drops
@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use ramflux_desktop_core::{AccountId, ContextId};
 use serde::{Deserialize, Serialize};
 
+use super::appearance::AppearanceSettings;
 use super::launch::LaunchSettings;
 
 /// Schema of the settings file. Bump it on an incompatible change; new
@@ -41,6 +42,9 @@ pub struct DesktopSettings {
     /// Source, socket, daemon binary and data directory choices.
     #[serde(default)]
     pub launch: LaunchSettings,
+    /// Theme and language choices of this device.
+    #[serde(default, skip_serializing_if = "AppearanceSettings::is_empty")]
+    pub appearance: AppearanceSettings,
     /// The last event-stream entry applied, per daemon socket and account
     /// (a sequence number, not content).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

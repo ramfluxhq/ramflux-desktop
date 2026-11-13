@@ -10,18 +10,21 @@
 //! - [`paths`]: state, log and default data directories; the bundled daemon.
 //! - [`settings_file`]: the versioned desktop settings file.
 //! - [`launch`]: source, socket, daemon binary and data directory choices.
+//! - [`appearance`]: theme and language choices of this device.
 //! - [`daemon_process`]: a daemon process the desktop started and owns.
 //! - [`owned_daemon`]: the record of a started daemon, to find one left
 //!   behind by a crash.
 //! - [`app_log`]: the redacted, rotated application log.
 
 pub mod app_log;
+pub mod appearance;
 pub mod daemon_process;
 pub mod launch;
 pub mod owned_daemon;
 pub mod paths;
 pub mod settings_file;
 
+pub use appearance::{AppearanceSettings, AppearanceStore, FOLLOW_SYSTEM};
 pub use daemon_process::{DaemonCommand, DaemonProcess, LaunchError};
 pub use launch::{DaemonBinary, LaunchSettings, LaunchStore, SourceKind};
 pub use owned_daemon::{OwnedDaemon, OwnedDaemonFile};
