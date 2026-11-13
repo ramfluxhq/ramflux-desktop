@@ -62,6 +62,8 @@ pub struct Conversation {
     call_ack: Option<ContextId>,
     focus_handle: FocusHandle,
     highlight_focus: FocusHandle,
+    /// The dock tool open beside the conversation, if any.
+    open_tool: Option<crate::workspace::DockTool>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -103,6 +105,12 @@ impl Panel for Conversation {
 }
 
 impl Conversation {
+    /// Notes the dock tool open beside the conversation: the header shows
+    /// the tool switcher only while none is (the open panel carries it).
+    pub fn set_open_tool(&mut self, tool: Option<crate::workspace::DockTool>) {
+        self.open_tool = tool;
+    }
+
     /// A field with no context, emitting through the root sink.
     pub fn new(
         store: Entity<StoreHandle>,
@@ -157,6 +165,7 @@ impl Conversation {
             call_ack: None,
             focus_handle: cx.focus_handle(),
             highlight_focus: cx.focus_handle().tab_stop(true),
+            open_tool: None,
             _subscriptions: subscriptions,
         }
     }
@@ -582,7 +591,32 @@ impl Render for Conversation {
             }),
         };
         let ask_call = call_ack.ask.clone();
-        let header = header::render(store, context, context_sink.clone(), renaming, call_ack, cx);
+        let in_form =
+            self.context_id.is_none() && (self.draft.is_some() || self.group_form.is_some());
+        let switcher = || {
+            crate::workspace::DockRail::new(None, |tool, window, cx| {
+                window.dispatch_action(tool.toggle_action(), cx)
+            })
+            .into_any_element()
+        };
+        let tools = (self.open_tool.is_none() && !in_form).then(switcher);
+        // A new conversation or group form has no header: the switcher sits
+        // in a row of its own above it.
+        let tools_row = (self.open_tool.is_none() && in_form).then(|| {
+            gpui_kit::component::h_flex()
+                .justify_end()
+                .px(gpui_kit::rems(32.0 / 15.0))
+                .pt_3()
+                .child(switcher())
+        });
+        let header = header::render(
+            store,
+            context,
+            context_sink.clone(),
+            renaming,
+            header::Controls { call_ack, tools },
+            cx,
+        );
         let body = match context_sink.filter(|_| !rows.is_empty()) {
             None => {
                 let no_contexts = store.contexts().next().is_none();
@@ -691,8 +725,8 @@ impl Render for Conversation {
             .min_w_0()
             .bg(cx.theme().background)
             .map(|field| match (group_form, draft) {
-                (Some(form), _) => field.child(form),
-                (None, Some(draft)) => field.child(draft),
+                (Some(form), _) => field.children(tools_row).child(form),
+                (None, Some(draft)) => field.children(tools_row).child(draft),
                 (None, None) => field.child(header).child(body),
             })
             .children(strip)

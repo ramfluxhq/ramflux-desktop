@@ -164,6 +164,14 @@ mod shots {
         run.advance(3_000);
         run.show("c-team");
         run.shot("02_messages");
+        // Board H01: the files tool open beside the conversation.
+        run.window(|window, cx| window.click("rail-objects", cx));
+        run.shot("h01_dock_files");
+        run.window(|window, cx| window.click("rail-objects", cx));
+        // Board B01: the identity menu of the rail's avatar.
+        run.window(|window, cx| window.click("nav-account", cx));
+        run.shot("b01_account_menu");
+        run.window(|window, cx| window.press("escape", cx));
         // Board 02L-like: the direct conversation with an agent.
         run.show("c-orbit");
         run.shot("04_agent_conversation");

@@ -56,6 +56,15 @@ pub struct CallAck {
     pub close: Command,
 }
 
+/// The header's trailing controls: the call acknowledgement and, while no
+/// dock tool is open, the tool switcher (design H01).
+pub struct Controls {
+    /// The stale-contact call acknowledgement.
+    pub call_ack: CallAck,
+    /// The dock tool switcher, when the header carries it.
+    pub tools: Option<AnyElement>,
+}
+
 /// What renaming adds to the header: the inline field while a rename is
 /// open, and the Rename… command.
 pub struct Renaming {
@@ -71,17 +80,28 @@ pub fn render(
     context: Option<&Context>,
     sink: Option<EventSink>,
     renaming: Renaming,
-    call_ack: CallAck,
+    controls: Controls,
     cx: &App,
 ) -> AnyElement {
+    let Controls { call_ack, tools } = controls;
     let Some((context, sink)) = context.zip(sink) else {
+        let palette = ramflux_desktop_navigation::palette(cx);
         return h_flex()
             .id("conversation-header")
-            .px_4()
-            .py_2()
+            .gap_3()
+            .px(gpui_kit::rems(32.0 / 15.0))
+            .py(gpui_kit::rems(20.0 / 15.0))
+            .min_h(gpui_kit::rems(88.0 / 15.0))
             .border_b_1()
-            .border_color(cx.theme().border)
-            .child(div().font_semibold().child(tr("conversation.none")))
+            .border_color(palette.line)
+            .child(
+                div()
+                    .flex_1()
+                    .text_size(gpui_kit::rems(palette.size_subheading / 15.0))
+                    .font_semibold()
+                    .child(tr("conversation.none")),
+            )
+            .children(tools)
             .into_any_element();
     };
     let members = context.participants.len();
@@ -154,6 +174,7 @@ pub fn render(
         .when(context.kind == ContextKind::Direct, |row| {
             row.child(call_button(store, context, &sink, &call_ack))
         })
+        .children(tools)
         .child(
             Button::new("conversation-more")
                 .ghost()

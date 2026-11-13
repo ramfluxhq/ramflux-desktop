@@ -81,7 +81,10 @@ fn open_tool(cx: &mut TestAppContext, handle: Handle, shell: &Entity<Shell>, too
 fn every_control_on_the_entry_steps_has_a_role_and_a_name(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s01_first_launch");
     advance(cx, 100);
-    audit(cx, handle, "entry daemon step");
+    // While the daemon is being reached the step may show no control yet
+    // (the title bar carries none any more); whatever it shows is named.
+    let missing = unnamed(cx, handle);
+    assert!(missing.is_empty(), "entry daemon step: controls without a name: {missing:#?}");
     advance(cx, 2_900);
     audit(cx, handle, "entry node step");
     click_in(cx, handle, "node-n-harbor", "node-confirm");

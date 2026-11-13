@@ -132,6 +132,12 @@ status:
       en: "Unknown"
       zh-CN: "未知"
   account:
+    current:
+      en: "Current identity"
+      zh-CN: "当前身份"
+    lock:
+      en: "Lock current account"
+      zh-CN: "锁定当前账号"
     local:
       en: "Local"
       zh-CN: "本地"

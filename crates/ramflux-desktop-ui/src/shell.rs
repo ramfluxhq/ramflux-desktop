@@ -214,6 +214,7 @@ impl Shell {
         let workspace = cx.new(|cx| {
             Workspace::new(store.clone(), root.clone(), options.prefs.clone(), window, cx)
         });
+        workspace.update(cx, |workspace, _| workspace.set_status(status.clone()));
         let settings = cx
             .new(|cx| SettingsPage::new(store.clone(), root.clone(), launcher.clone(), window, cx));
         let palette =
@@ -574,8 +575,14 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The status banner sits at the top of the content: above the entry
+        // page here, inside the workspace's content column there.
         let content = match self.page {
-            Page::Entry(_) => self.entry.clone().into_any_element(),
+            Page::Entry(_) => v_flex()
+                .size_full()
+                .child(self.status.clone())
+                .child(div().flex_1().min_h_0().child(self.entry.clone()))
+                .into_any_element(),
             Page::Workspace => self.workspace.clone().into_any_element(),
         };
         v_flex()
@@ -651,7 +658,9 @@ impl Render for Shell {
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            .child(self.status.clone())
+            // Window chrome only (drag region, platform window controls):
+            // the design draws no title bar content.
+            .child(gpui_kit::component::TitleBar::new())
             .child(
                 h_flex()
                     .flex_1()

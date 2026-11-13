@@ -9,24 +9,25 @@
 //! blocked participant is not a contact and is listed only in the contacts
 //! dock's blocked section.
 
-use std::rc::Rc;
-
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputEvent;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Selectable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, Entity, EventEmitter, IntoElement, Render, SharedString, Subscription, Window,
-    div,
+    AnyElement, App, Context, Entity, EventEmitter, IntoElement, Render, SharedString,
+    Subscription, Window, div,
 };
 use ramflux_desktop_core::{
-    ListState, Listing, Participant, ParticipantId, ParticipantKind, Store, methods, selectors,
+    ListState, Listing, Participant, ParticipantId, ParticipantKind, RequestAnswer, Store,
+    UiEventKind, methods, selectors,
 };
 use ramflux_desktop_navigation::generated::catalog;
+use ramflux_desktop_sdk::business::ContractGap;
 
-use super::directory::{self, DirectoryRow, Search, StateKeys};
+use super::directory::{self, Search, StateKeys};
 use crate::actions::{NextConversation, PreviousConversation};
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
@@ -41,11 +42,16 @@ pub enum ContactsDirectoryEvent {
     AddContact,
     /// Open the strangers area.
     Strangers,
+    /// Show the people table (no contact chosen).
+    People,
+    /// Open the groups section.
+    Groups,
 }
 
 /// The contact directory's view state.
 pub struct ContactsDirectory {
     store: Entity<StoreHandle>,
+    sink: crate::bubble::EventSink,
     search: Search,
     selected: Option<ParticipantId>,
     failure_mark: u64,
@@ -64,7 +70,12 @@ pub(crate) fn avatar_kind(kind: ParticipantKind) -> catalog::AvatarKind {
 
 impl ContactsDirectory {
     /// A directory over the rendered account's store.
-    pub fn new(store: Entity<StoreHandle>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        store: Entity<StoreHandle>,
+        sink: crate::bubble::EventSink,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let search = Search::new("sections.contacts.search", window, cx);
         let subscriptions = vec![
             cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
@@ -91,7 +102,7 @@ impl ContactsDirectory {
             }),
         ];
         let failure_mark = store.read(cx).store().failures_total();
-        Self { store, search, selected: None, failure_mark, _subscriptions: subscriptions }
+        Self { store, sink, search, selected: None, failure_mark, _subscriptions: subscriptions }
     }
 
     /// Marks the shown contact (from the workspace).
@@ -146,45 +157,51 @@ impl ContactsDirectory {
     }
 }
 
-impl Render for ContactsDirectory {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (rows, list, status, failure, strangers, add_reason, filtered) = {
-            let store = self.store.read(cx).store();
-            let entries = self.entries(store, cx);
-            let list = ListState::of(store.is_listed(Listing::Contacts), entries.is_empty());
-            let rows: Vec<DirectoryRow> = entries
-                .iter()
-                .map(|p| DirectoryRow {
-                    key: p.id.to_string().into(),
-                    title: ramflux_desktop_navigation::row::list_text(&p.display),
-                    subtitle: safety_label(p.safety),
-                    avatar: avatar_kind(p.kind),
-                    trailing: crate::identity::kind_text(p.kind_claim),
-                    selected: self.selected.as_ref() == Some(&p.id),
-                    checked: None,
-                })
-                .collect();
-            let strangers = super::strangers::pending(store).len();
-            (
-                rows,
-                list,
-                store.source_status(),
-                self.failure(store),
-                strangers,
-                crate::gate::reason(store, methods::CONTACT_ADD),
-                !self.search.query(cx).is_empty(),
-            )
-        };
-        let count = rows.len();
+impl ContactsDirectory {
+    /// The people table shown in the detail pane while no contact is chosen
+    /// (design board 07): pending strangers with their answers, then every
+    /// contact with "View profile".
+    pub fn detail(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let palette = ramflux_desktop_navigation::palette(cx);
+        let store = self.store.read(cx).store();
+        let entries = self.entries(store, cx);
+        let list = ListState::of(store.is_listed(Listing::Contacts), entries.is_empty());
+        let filtered = !self.search.query(cx).is_empty();
+        let rows: Vec<(ParticipantId, SharedString, SharedString, catalog::AvatarKind)> = entries
+            .iter()
+            .map(|p| {
+                (
+                    p.id.clone(),
+                    ramflux_desktop_navigation::row::list_text(&p.display),
+                    match crate::identity::kind_text(p.kind_claim) {
+                        Some(kind) => i18n::join(&kind, &safety_label(p.safety)),
+                        None => safety_label(p.safety),
+                    },
+                    avatar_kind(p.kind),
+                )
+            })
+            .collect();
+        let requests: Vec<(String, SharedString, SharedString)> = super::strangers::pending(store)
+            .into_iter()
+            .map(|request| {
+                let name = store
+                    .participant(&request.peer)
+                    .map_or_else(|| request.peer.short(), |p| p.display.clone());
+                let note = request.note.as_deref().or(request.preview.as_deref()).map_or_else(
+                    || SharedString::from(request.peer.to_string()),
+                    ramflux_desktop_navigation::row::list_text,
+                );
+                (request.id.clone(), ramflux_desktop_navigation::row::list_text(&name), note)
+            })
+            .collect();
         let state = if filtered && list != ListState::Loading && rows.is_empty() {
             Some(
                 div()
                     .id("contacts-no-match")
                     .test_support()
-                    .px_3()
                     .py_2()
                     .text_sm()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(palette.secondary)
                     .child(tr("sections.no_match"))
                     .into_any_element(),
             )
@@ -193,8 +210,8 @@ impl Render for ContactsDirectory {
                 directory::StateSpec {
                     id: "contacts-state",
                     list,
-                    status,
-                    failure,
+                    status: store.source_status(),
+                    failure: self.failure(store),
                     keys: StateKeys {
                         loading: "sections.contacts.loading",
                         offline: "sections.contacts.offline",
@@ -207,23 +224,265 @@ impl Render for ContactsDirectory {
                 cx,
             )
         };
+        let add_reason = crate::gate::reason(store, methods::CONTACT_ADD);
+        let rem = |px: f32| gpui_kit::rems(px / 15.0);
+        let avatar = |initial: SharedString, kind: catalog::AvatarKind| {
+            let agent = matches!(kind, catalog::AvatarKind::Agent);
+            div()
+                .flex_none()
+                .size(rem(40.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(if agent { rem(10.0) } else { rem(palette.radius_full) })
+                .bg(if agent { palette.agent_av } else { palette.avatar_person })
+                .text_color(if agent { palette.on_agent_av } else { palette.on_avatar_person })
+                .font_semibold()
+                .child(initial)
+        };
+        let section_title =
+            |text: SharedString| div().pt_2().text_size(rem(palette.size_subheading)).child(text);
+        let answer_reason = crate::workspace::docks::contacts::requests::reason(store);
+        let strangers = (!requests.is_empty()).then(|| {
+            v_flex()
+                .id("contacts-strangers-table")
+                .test_support()
+                .gap_3()
+                .child(section_title(tr_args(
+                    "sections.contacts.strangers_count",
+                    &[("count", &requests.len().to_string())],
+                )))
+                .children(requests.into_iter().map(|(id, name, note)| {
+                    let answer = |suffix: &str, answer: RequestAnswer, label: &str| {
+                        let sink = self.sink.clone();
+                        let request_id = id.clone();
+                        let button = Button::new(SharedString::from(format!(
+                            "contacts-request-{id}-{suffix}"
+                        )))
+                        .small()
+                        .label(tr(label))
+                        .accessibility_label(tr_args(
+                            &format!("{label}_for"),
+                            &[("name", name.as_ref())],
+                        ))
+                        .on_click(move |_, window, cx| {
+                            sink.emit(
+                                UiEventKind::ContactRequestAnswered {
+                                    request_id: request_id.clone(),
+                                    answer,
+                                },
+                                window,
+                                cx,
+                            );
+                        });
+                        let button = match answer {
+                            RequestAnswer::Accept => button.primary(),
+                            _ => button.ghost(),
+                        };
+                        crate::gate::gated(button, answer_reason.clone())
+                    };
+                    h_flex()
+                        .id(SharedString::from(format!("contacts-request-{id}")))
+                        .gap_4()
+                        .p(rem(20.0))
+                        .rounded(rem(palette.radius_card))
+                        .bg(palette.nav)
+                        .child(avatar(
+                            ramflux_desktop_navigation::row::initial(&name),
+                            catalog::AvatarKind::Person,
+                        ))
+                        .child(
+                            v_flex()
+                                .flex_1()
+                                .min_w_0()
+                                .child(div().text_size(rem(palette.size_body)).child(name.clone()))
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_size(rem(palette.size_secondary))
+                                        .text_color(palette.secondary)
+                                        .child(note),
+                                ),
+                        )
+                        .child(answer(
+                            "decline",
+                            RequestAnswer::Decline,
+                            "dock.contacts.request.decline",
+                        ))
+                        .child(crate::gate::gated(
+                            Button::new(SharedString::from(format!("contacts-request-{id}-reply")))
+                                .small()
+                                .outline()
+                                .label(tr("sections.strangers.reply")),
+                            Some(directory::unavailable(ContractGap::StrangerActions)),
+                        ))
+                        .child(answer(
+                            "accept",
+                            RequestAnswer::Accept,
+                            "dock.contacts.request.accept",
+                        ))
+                }))
+        });
+        let table = v_flex()
+            .id("contacts-table")
+            .test_support()
+            .role(gpui_kit::Role::List)
+            .aria_label(tr("sections.contacts.list"))
+            .children(rows.into_iter().take(directory::ROW_LIMIT).map(
+                |(id, name, subtitle, kind)| {
+                    let pick = id.clone();
+                    h_flex()
+                        .id(SharedString::from(format!("contacts-table-{id}")))
+                        .role(gpui_kit::Role::ListItem)
+                        .test_support()
+                        .gap_4()
+                        .py(rem(20.0))
+                        .border_b_1()
+                        .border_color(palette.line)
+                        .child(avatar(ramflux_desktop_navigation::row::initial(&name), kind))
+                        .child(
+                            v_flex()
+                                .flex_1()
+                                .min_w_0()
+                                .child(div().text_size(rem(palette.size_body)).child(name.clone()))
+                                .child(
+                                    div()
+                                        .text_size(rem(palette.size_secondary))
+                                        .text_color(palette.secondary)
+                                        .child(subtitle),
+                                ),
+                        )
+                        .child(
+                            Button::new(SharedString::from(format!("contacts-view-{id}")))
+                                .small()
+                                .secondary()
+                                .label(tr("sections.contacts.view_profile"))
+                                .accessibility_label(tr_args(
+                                    "sections.contacts.view_profile_for",
+                                    &[("name", name.as_ref())],
+                                ))
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    cx.emit(ContactsDirectoryEvent::Selected(pick.clone()))
+                                })),
+                        )
+                },
+            ));
+        v_flex()
+            .id("contacts-people")
+            .test_support()
+            .size_full()
+            .child(
+                h_flex()
+                    .min_h(rem(88.0))
+                    .px(rem(32.0))
+                    .border_b_1()
+                    .border_color(palette.line)
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .child(
+                                div()
+                                    .text_size(rem(palette.size_subheading))
+                                    .font_semibold()
+                                    .child(tr("sections.contacts.people")),
+                            )
+                            .child(
+                                div()
+                                    .text_size(rem(palette.size_secondary))
+                                    .text_color(palette.secondary)
+                                    .child(tr("sections.contacts.people_help")),
+                            ),
+                    )
+                    .child(crate::gate::gated(
+                        Button::new("contacts-add-detail")
+                            .small()
+                            .ghost()
+                            .label(tr("sections.contacts.add"))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.emit(ContactsDirectoryEvent::AddContact)
+                            })),
+                        add_reason,
+                    )),
+            )
+            .child(
+                v_flex()
+                    .id("contacts-people-body")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .px(rem(32.0))
+                    .py(rem(24.0))
+                    .gap_4()
+                    .children(strangers)
+                    .child(section_title(tr("sections.contacts.all")))
+                    .children(state)
+                    .child(table),
+            )
+            .into_any_element()
+    }
+}
+
+impl Render for ContactsDirectory {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Design board 07: the list pane holds the categories (people,
+        // strangers, groups); the people table is the detail pane.
+        let (contacts, strangers, groups, add_reason, people) = {
+            let store = self.store.read(cx).store();
+            (
+                selectors::contacts(store).len(),
+                super::strangers::pending(store).len(),
+                store
+                    .contexts()
+                    .filter(|c| c.kind == ramflux_desktop_core::ContextKind::Group)
+                    .count(),
+                crate::gate::reason(store, methods::CONTACT_ADD),
+                self.selected.is_none(),
+            )
+        };
+        let palette = ramflux_desktop_navigation::palette(cx);
         let add = crate::gate::gated(
             Button::new("contacts-add")
                 .small()
                 .ghost()
-                .icon(IconName::UserPlus)
+                .icon(IconName::Plus)
                 .accessibility_label(tr("sections.contacts.add"))
                 .tooltip(tr("sections.contacts.add"))
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(ContactsDirectoryEvent::AddContact))),
             add_reason,
         );
-        let strangers_label =
-            tr_args("sections.strangers.entry", &[("count", &strangers.to_string())]);
-        let this = cx.weak_entity();
-        let pick: directory::RowAction = Rc::new(move |key, _, cx| {
-            let id = ParticipantId::new(key);
-            this.update(cx, |_, cx| cx.emit(ContactsDirectoryEvent::Selected(id))).ok();
-        });
+        let category = |id: &'static str,
+                        key: &'static str,
+                        detail: SharedString,
+                        selected: bool,
+                        event: ContactsDirectoryEvent| {
+            let row = ramflux_desktop_navigation::row::Row::new(tr(key), detail);
+            Button::new(id)
+                .ghost()
+                .w_full()
+                .h(gpui_kit::rems(ramflux_desktop_navigation::theme::ROW_REM))
+                .px_3()
+                .rounded(gpui_kit::px(palette.radius_sm))
+                .selected(selected)
+                .toggled(selected)
+                .accessibility_label(tr(key))
+                .on_click(cx.listener(move |_, _, _, cx| cx.emit(event.clone())))
+                .child(
+                    v_flex()
+                        .w_full()
+                        .child(
+                            div()
+                                .text_size(gpui_kit::rems(palette.size_body / 15.0))
+                                .font_medium()
+                                .child(row.title),
+                        )
+                        .child(
+                            div()
+                                .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
+                                .text_color(palette.secondary)
+                                .child(row.preview),
+                        ),
+                )
+        };
         v_flex()
             .id("contact-directory")
             .test_support()
@@ -232,47 +491,47 @@ impl Render for ContactsDirectory {
             .on_action(cx.listener(|this, _: &PreviousConversation, _, cx| this.step(-1, cx)))
             .size_full()
             .min_w_0()
-            .bg(ramflux_desktop_navigation::palette(cx).nav)
+            .bg(palette.nav)
             .border_r_1()
-            .border_color(ramflux_desktop_navigation::palette(cx).line)
+            .border_color(palette.line)
             .px_3()
             .pt(gpui_kit::rems(24.0 / 15.0))
             .gap_4()
-            .child(directory::header(
-                tr_args("sections.contacts.title", &[("count", &count.to_string())]),
-                h_flex().child(add),
-                cx,
-            ))
+            .child(directory::header(tr("navigation.contacts"), h_flex().child(add), cx))
             .child(self.search.field("contacts-search", tr("sections.contacts.search")))
-            .child({
-                // The strangers entry is a list row (design board 07).
-                let mut row = ramflux_desktop_navigation::row::Row::new(
-                    tr("navigation.strangers"),
-                    tr_args("navigation.strangers_detail", &[("count", &strangers.to_string())]),
-                );
-                row.glyph = Some("?".into());
-                row.unread = u32::try_from(strangers).unwrap_or(u32::MAX);
-                Button::new("contacts-strangers")
-                    .ghost()
-                    .w_full()
-                    .h(gpui_kit::rems(ramflux_desktop_navigation::theme::ROW_REM))
-                    .px_3()
-                    .rounded(gpui_kit::px(ramflux_desktop_navigation::palette(cx).radius_sm))
-                    .accessibility_label(strangers_label)
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(ContactsDirectoryEvent::Strangers)))
-                    .child(row.content(cx))
-            })
-            .children(state)
-            .child(directory::rows(
-                directory::RowList {
-                    id: "contacts-list",
-                    label: tr("sections.contacts.list"),
-                    rows,
-                    active: self.search.active,
-                    on_pick: pick,
-                    on_check: None,
-                },
-                cx,
-            ))
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(category(
+                        "contacts-people-entry",
+                        "sections.contacts.people",
+                        tr_args(
+                            "sections.contacts.people_count",
+                            &[("count", &contacts.to_string())],
+                        ),
+                        people,
+                        ContactsDirectoryEvent::People,
+                    ))
+                    .child(category(
+                        "contacts-strangers",
+                        "navigation.strangers",
+                        tr_args(
+                            "navigation.strangers_detail",
+                            &[("count", &strangers.to_string())],
+                        ),
+                        false,
+                        ContactsDirectoryEvent::Strangers,
+                    ))
+                    .child(category(
+                        "contacts-groups-entry",
+                        "navigation.groups",
+                        tr_args(
+                            "sections.contacts.groups_count",
+                            &[("count", &groups.to_string())],
+                        ),
+                        false,
+                        ContactsDirectoryEvent::Groups,
+                    )),
+            )
     }
 }

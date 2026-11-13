@@ -134,26 +134,51 @@ pub fn render(
         TransferState::Failed { .. } => crate::tone::text(cx.theme().danger, cx),
         _ => muted,
     };
+    // Design `02 · Attachment` / `H07`: a compact file block on the incoming
+    // surface, a 40 px icon tile, the name over its direction and size.
+    let palette = ramflux_desktop_navigation::palette(cx);
     v_flex()
         .id("object-transfer")
+        .w_full()
+        .max_w(gpui_kit::rems(448.0 / 15.0))
         .gap_2()
-        .p_3()
-        .border_1()
-        .border_color(cx.theme().border)
-        .rounded(cx.theme().radius_lg)
+        .p_2()
+        .bg(palette.incoming)
+        .rounded(gpui_kit::rems(palette.radius_bubble / 15.0))
         .child(
             h_flex()
-                .gap_3()
-                .child(Icon::new(IconName::File).text_color(muted))
+                .gap_2()
+                .child(
+                    div()
+                        .flex_none()
+                        .size(gpui_kit::rems(40.0 / 15.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(gpui_kit::rems(palette.radius_sm / 15.0))
+                        .bg(palette.surface_white)
+                        .child(Icon::new(IconName::FileText).with_size(gpui_kit::px(20.))),
+                )
                 .child(
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .child(div().text_sm().font_medium().truncate().child(object.label()))
-                        .child(div().text_xs().text_color(muted).child(i18n::join(
-                            &i18n::direction(object.direction),
-                            &i18n::size(object.size),
-                        ))),
+                        .child(
+                            div()
+                                .text_size(gpui_kit::rems(palette.size_body / 15.0))
+                                .font_medium()
+                                .truncate()
+                                .child(object.label()),
+                        )
+                        .child(
+                            div()
+                                .text_size(gpui_kit::rems(palette.size_meta / 15.0))
+                                .text_color(muted)
+                                .child(i18n::join(
+                                    &i18n::direction(object.direction),
+                                    &i18n::size(object.size),
+                                )),
+                        ),
                 )
                 .when(
                     matches!(object.transfer, TransferState::Transferring { .. }) && !measured,
@@ -162,7 +187,7 @@ pub fn render(
                 .child(
                     div()
                         .id("object-transfer-status")
-                        .text_xs()
+                        .text_size(gpui_kit::rems(palette.size_meta / 15.0))
                         .text_color(status_color)
                         .child(status)
                         .test_support(),

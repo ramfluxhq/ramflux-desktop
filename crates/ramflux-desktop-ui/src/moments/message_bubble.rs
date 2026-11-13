@@ -3,6 +3,7 @@
 
 //! Native row composition around the generated, presentation-only message shell.
 
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, ThemeStyled as _, h_flex,
@@ -11,7 +12,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, Role, TestSupportExt as _, Window, div, rems};
 use ramflux_desktop_core::projection::messages::Mutation;
-use ramflux_desktop_core::{MomentKind, ParticipantKind, UiEventKind};
+use ramflux_desktop_core::{MessagePayload, MomentKind, ParticipantKind, Receipt, UiEventKind};
 use ramflux_desktop_navigation::{generated::catalog, palette};
 
 use super::{MomentRow, RowState};
@@ -127,7 +128,10 @@ pub(crate) fn render(
             .width;
         // Shell padding plus a small caret/glyph rounding allowance. Metadata
         // and attachment/quote content retain their own intrinsic minimum.
-        (width + meta + window.rem_size() * (8.0 / 15.0) + window.rem_size() * 2.0)
+        // An own message also shows its receipt icon (12 px and a 4 px gap).
+        let receipt =
+            if row.outbound { window.rem_size() * (16.0 / 15.0) } else { gpui_kit::px(0.) };
+        (width + meta + receipt + window.rem_size() * (8.0 / 15.0) + window.rem_size() * 2.0)
             .max(window.rem_size() * 8.0)
     });
     let agent =
@@ -190,8 +194,9 @@ pub(crate) fn render(
                 .gap_2()
                 .child(div().flex_1().min_w_0().child(body))
                 .child(
-                    div()
+                    h_flex()
                         .flex_none()
+                        .gap_1()
                         .pb(gpui_kit::px(2.))
                         .text_size(rems(theme.size_caption / 15.0))
                         .text_color(if row.outbound {
@@ -199,7 +204,8 @@ pub(crate) fn render(
                         } else {
                             theme.incoming_meta
                         })
-                        .child(i18n::time_of_day(row.moment.at)),
+                        .child(i18n::time_of_day(row.moment.at))
+                        .children(receipt_meta(payload, row.outbound)),
                 ),
         );
     let shell = catalog::message_bubble(
@@ -258,6 +264,7 @@ pub(crate) fn render(
         }
     });
     let focused = state.focus.as_ref().is_some_and(|f| f.is_focused(window));
+    let failed = row.outbound && matches!(payload.receipt, Receipt::Failed { .. });
     v_flex()
         .id(domain_id("moment", &row.moment.id))
         .role(Role::ListItem)
@@ -311,9 +318,83 @@ pub(crate) fn render(
                                 .rounded(rems(theme.radius_bubble / 16.0))
                         })
                         .when(focused, |col| col.focus_ring_style(window, cx))
-                        .child(shell),
+                        .when(failed, |col| {
+                            col.rounded(rems(theme.radius_bubble / 15.0))
+                                .border_1()
+                                .border_color(theme.danger)
+                        })
+                        .child(shell)
+                        .children(receipt_line(payload, row, sink, cx)),
                 )
                 .child(menu),
         )
         .into_any_element()
+}
+
+/// The receipt beside the time of an own message (design `B23`): a clock
+/// while sending, one check when sent, a filled check when delivered or read.
+/// A failure or a wait for the node is told under the bubble instead.
+fn receipt_meta(payload: &MessagePayload, outbound: bool) -> Option<impl IntoElement> {
+    let icon = match payload.receipt {
+        _ if !outbound => return None,
+        Receipt::Failed { .. } | Receipt::WaitingForNode { .. } => return None,
+        Receipt::Sending => IconName::Loader,
+        Receipt::Sent => IconName::Check,
+        Receipt::Delivered | Receipt::Read => IconName::CircleCheck,
+    };
+    Some(
+        div()
+            .id("message-receipt")
+            .aria_label(i18n::receipt(payload.receipt))
+            .test_support()
+            .child(Icon::new(icon).xsmall()),
+    )
+}
+
+/// The line under a bubble whose send failed or waits for the node: the
+/// state in words, and Retry when the failure can be retried.
+fn receipt_line(
+    payload: &MessagePayload,
+    row: &MomentRow,
+    sink: &EventSink,
+    cx: &App,
+) -> Option<gpui_kit::AnyElement> {
+    let theme = palette(cx);
+    let failed = matches!(payload.receipt, Receipt::Failed { .. });
+    let waiting = matches!(payload.receipt, Receipt::WaitingForNode { .. });
+    if !(failed || waiting) {
+        return None;
+    }
+    let retry = sink.clone();
+    let color = if failed { crate::tone::text(theme.danger, cx) } else { theme.secondary };
+    Some(
+        h_flex()
+            .id("message-receipt")
+            .aria_label(i18n::receipt(payload.receipt))
+            .test_support()
+            .pt_1()
+            .gap_1()
+            .text_size(rems(theme.size_meta / 15.0))
+            .text_color(color)
+            .when(failed, |line| line.child(Icon::new(IconName::CircleAlert).xsmall()))
+            .child(i18n::receipt(payload.receipt))
+            .when_some(row.refs.send_retry_ms, |line, ms| {
+                line.child("·").child(i18n::tr_args(
+                    "moment.message.retry_in",
+                    &[("seconds", &ms.div_ceil(1000).to_string())],
+                ))
+            })
+            .when(payload.receipt == (Receipt::Failed { retryable: true }), |line| {
+                line.child(
+                    gpui_kit::component::button::Button::new("message-retry")
+                        .ghost()
+                        .xsmall()
+                        .label(tr("moment.message.retry"))
+                        .on_click(move |_, window, cx| {
+                            retry.emit(UiEventKind::RetryMessagePressed, window, cx)
+                        }),
+                )
+            })
+            .into_any_element(),
+    )
 }

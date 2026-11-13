@@ -34,15 +34,14 @@ mod recovery;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::stepper::{Stepper, StepperItem};
-use gpui_kit::component::{ActiveTheme as _, StyledExt as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, StyledExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window, div, rems};
 use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
-use crate::i18n::{self, tr};
+use crate::i18n::{self, tr, tr_args};
 use crate::launch::DaemonLauncher;
 use crate::root::{ConfirmHost, IntentRoot};
 use crate::route::{EntryStep, Page, page_for};
@@ -440,11 +439,46 @@ impl Render for EntryPage {
                                 .child(tr("entry.subtitle")),
                         )
                 })
-                .child(Stepper::new("entry-steps").selected_index(selected).items([
-                    StepperItem::new().child(tr("entry.step.daemon")),
-                    StepperItem::new().child(tr("entry.step.node")),
-                    StepperItem::new().child(tr("entry.step.account")),
-                ]))
+                // Design A01: the three steps as chips, the current one filled.
+                .child({
+                    let palette = ramflux_desktop_navigation::palette(cx);
+                    h_flex().id("entry-steps").role(gpui_kit::Role::List).gap_2().children(
+                        ["entry.step.daemon", "entry.step.node", "entry.step.account"]
+                            .into_iter()
+                            .enumerate()
+                            .map(|(ix, key)| {
+                                let current = ix == selected;
+                                let label = tr_args(
+                                    "entry.step.numbered",
+                                    &[
+                                        ("number", &(ix + 1).to_string()),
+                                        ("step", tr(key).as_ref()),
+                                    ],
+                                );
+                                div()
+                                    .id(gpui_kit::SharedString::from(format!("entry-step-{ix}")))
+                                    .role(gpui_kit::Role::ListItem)
+                                    .aria_label(label.clone())
+                                    .aria_selected(current)
+                                    .test_support()
+                                    .px_3()
+                                    .py(rems(6.0 / 15.0))
+                                    .rounded(rems(palette.radius_button / 15.0))
+                                    .border_1()
+                                    .text_size(rems(palette.size_button / 15.0))
+                                    .font_medium()
+                                    .when(current, |chip| {
+                                        chip.bg(palette.primary)
+                                            .border_color(palette.primary)
+                                            .text_color(palette.on_primary)
+                                    })
+                                    .when(!current, |chip| {
+                                        chip.border_color(palette.text).text_color(palette.text)
+                                    })
+                                    .child(label)
+                            }),
+                    )
+                })
                 .child(content),
         );
         // The confirm strip stays in view at the foot of the page. It is a

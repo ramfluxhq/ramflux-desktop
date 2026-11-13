@@ -61,7 +61,10 @@ fn a_contact_profile_compares_before_it_verifies(cx: &mut TestAppContext) {
     advance(cx, 1000);
     navigate(cx, handle, &shell, WorkspaceRoute::Contacts);
     assert!(exists(cx, handle, "contact-directory"));
-    assert!(exists(cx, handle, "contact-profile-empty"), "nothing is shown before a choice");
+    assert!(
+        exists(cx, handle, "contacts-people"),
+        "the people table is shown before a choice (design 07)"
+    );
     let workspace = workspace(cx, &shell);
     let contact = cx
         .update(|cx| workspace.read(cx).contact_directory().read(cx).entry_ids(cx))

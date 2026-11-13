@@ -141,13 +141,16 @@ pub struct DockToolPanel {
     tool: DockTool,
     content: AnyView,
     pinned: bool,
+    /// The open tool: only it is drawn, so the dock shows one panel with its
+    /// own header and tabs (design H01) and no tab strip of its own.
+    shown: bool,
     focus_handle: FocusHandle,
 }
 
 impl DockToolPanel {
     /// A panel for `tool` showing `content`.
     pub fn new(tool: DockTool, content: AnyView, cx: &mut Context<Self>) -> Self {
-        Self { tool, content, pinned: false, focus_handle: cx.focus_handle() }
+        Self { tool, content, pinned: false, shown: false, focus_handle: cx.focus_handle() }
     }
 
     fn close(&mut self, _: &CloseDock, _: &mut Window, cx: &mut Context<Self>) {
@@ -157,6 +160,11 @@ impl DockToolPanel {
     /// The tool shown.
     pub fn tool(&self) -> DockTool {
         self.tool
+    }
+
+    /// Marks whether this tool is the open one.
+    pub fn set_shown(&mut self, shown: bool) {
+        self.shown = shown;
     }
 
     /// Marks the tool pinned (stays open, restored on launch).
@@ -185,6 +193,10 @@ impl BasePanel for DockToolPanel {
     fn closable(&self, _: &App) -> bool {
         false
     }
+
+    fn visible(&self, _: &App) -> bool {
+        self.shown
+    }
 }
 
 impl Panel for DockToolPanel {
@@ -193,6 +205,10 @@ impl Panel for DockToolPanel {
     }
 
     fn inner_padding(&self, _: &App) -> bool {
+        false
+    }
+
+    fn title_bar(&self, _: &App) -> bool {
         false
     }
 }
@@ -211,25 +227,51 @@ impl Render for DockToolPanel {
             .on_action(cx.listener(Self::close))
             .size_full()
             .min_h_0()
-            .child(
-                h_flex()
-                    .px_3()
-                    .py_1()
-                    .gap_2()
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .child(div().flex_1().text_sm().font_semibold().child(tool.title()))
+            // Design H01: the tool's title with Pin and Close, then the
+            // tabs of every tool.
+            .child({
+                let palette = ramflux_desktop_navigation::palette(cx);
+                v_flex()
+                    .px(gpui_kit::rems(20.0 / 15.0))
+                    .pt(gpui_kit::rems(20.0 / 15.0))
+                    .pb_3()
+                    .gap_3()
                     .child(
-                        Button::new(SharedString::from(format!("dock-pin-{}", tool.key())))
-                            .ghost()
-                            .xsmall()
-                            .icon(if pinned { IconName::StarFill } else { IconName::Star })
-                            .label(tr(if pinned { "dock.unpin" } else { "dock.pin" }))
-                            .on_click(cx.listener(move |_, _, _, cx| {
-                                cx.emit(DockToolEvent::PinToggled(tool));
-                            })),
-                    ),
-            )
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(gpui_kit::rems(palette.size_subheading / 15.0))
+                                    .font_semibold()
+                                    .child(tool.title()),
+                            )
+                            .child(
+                                Button::new(SharedString::from(format!("dock-pin-{}", tool.key())))
+                                    .outline()
+                                    .small()
+                                    .selected(pinned)
+                                    .label(tr(if pinned { "dock.unpin" } else { "dock.pin" }))
+                                    .on_click(cx.listener(move |_, _, _, cx| {
+                                        cx.emit(DockToolEvent::PinToggled(tool));
+                                    })),
+                            )
+                            .child(
+                                Button::new(SharedString::from(format!(
+                                    "dock-close-{}",
+                                    tool.key()
+                                )))
+                                .ghost()
+                                .small()
+                                .icon(IconName::Close)
+                                .accessibility_label(tr("common.close"))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| this.close(&CloseDock, window, cx),
+                                )),
+                            ),
+                    )
+                    .child(DockRail::tabs(tool))
+            })
             .child(
                 div()
                     .id(SharedString::from(format!("dock-content-{}", tool.key())))
@@ -244,45 +286,67 @@ impl Render for DockToolPanel {
 /// Opens or closes a tool.
 type ToggleTool = dyn Fn(DockTool, &mut Window, &mut App);
 
-/// The vertical rail of tool buttons at the trailing edge.
+/// The tool switcher. Closed, it sits in the conversation header as icon
+/// buttons; open, it is the row of tabs under the panel's title (design
+/// H01–H05). Each button opens its tool, or closes it when it is the open one.
 #[derive(IntoElement)]
 pub struct DockRail {
     open: Option<DockTool>,
+    labeled: bool,
     on_toggle: Rc<ToggleTool>,
 }
 
 impl DockRail {
-    /// A rail showing `open` as selected; `on_toggle` opens or closes a tool.
+    /// Icon buttons showing `open` as selected; `on_toggle` opens or closes a tool.
     pub fn new(
         open: Option<DockTool>,
         on_toggle: impl Fn(DockTool, &mut Window, &mut App) + 'static,
     ) -> Self {
-        Self { open, on_toggle: Rc::new(on_toggle) }
+        Self { open, labeled: false, on_toggle: Rc::new(on_toggle) }
+    }
+
+    /// The switcher of an open panel: labelled tabs that dispatch the tools'
+    /// toggle actions.
+    pub fn tabs(open: DockTool) -> Self {
+        Self {
+            open: Some(open),
+            labeled: true,
+            on_toggle: Rc::new(|tool: DockTool, window: &mut Window, cx: &mut App| {
+                window.dispatch_action(tool.toggle_action(), cx)
+            }),
+        }
     }
 }
 
 impl RenderOnce for DockRail {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let palette = ramflux_desktop_navigation::palette(cx);
+        let labeled = self.labeled;
         let buttons = DockTool::ALL.into_iter().map(|tool| {
             let on_toggle = self.on_toggle.clone();
-            Button::new(SharedString::from(format!("rail-{}", tool.key())))
-                .ghost()
+            let open = self.open == Some(tool);
+            let button = Button::new(SharedString::from(format!("rail-{}", tool.key())))
                 .small()
-                .icon(tool.icon())
                 .accessibility_label(tool.title())
                 .tooltip_with_action(tool.title(), tool.toggle_action().as_ref(), None)
-                .selected(self.open == Some(tool))
-                .on_click(move |_: &ClickEvent, window, cx| on_toggle(tool, window, cx))
+                .selected(open)
+                .toggled(open)
+                .on_click(move |_: &ClickEvent, window, cx| on_toggle(tool, window, cx));
+            if labeled {
+                let button =
+                    button.label(tool.title()).rounded(gpui_kit::px(palette.radius_button));
+                if open { button.primary() } else { button.outline() }
+            } else {
+                button.ghost().icon(tool.icon())
+            }
         });
-        v_flex()
+        h_flex()
             .id("dock-rail")
-            .h_full()
+            .role(Role::Toolbar)
+            .aria_label(tr("dock.tools"))
             .flex_shrink_0()
+            .flex_wrap()
             .gap_1()
-            .p_1()
-            .border_l_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().sidebar)
             .children(buttons)
     }
 }

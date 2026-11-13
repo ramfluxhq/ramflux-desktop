@@ -150,6 +150,13 @@ conversation:
     en: "Jump to latest"
     zh-CN: "跳到最新"
 stack:
+  filter:
+    all:
+      en: "All"
+      zh-CN: "全部"
+    unread:
+      en: "Unread"
+      zh-CN: "未读"
   title:
     en: "Conversations"
     zh-CN: "对话"
@@ -194,6 +201,9 @@ stack:
     en: "No conversations yet"
     zh-CN: "还没有对话"
 dock:
+  tools:
+    en: "Tools"
+    zh-CN: "工具"
   title:
     objects:
       en: "Files"
@@ -676,6 +686,19 @@ group:
       en: "Not renamed: %{reason}"
       zh-CN: "未重命名：%{reason}"
 palette:
+  title:
+    en: "Command palette"
+    zh-CN: "命令面板"
+  search:
+    en: "Search"
+    zh-CN: "搜索"
+  verb:
+    open:
+      en: "Open"
+      zh-CN: "打开"
+    go:
+      en: "Go"
+      zh-CN: "前往"
   new_group:
     en: "New group…"
     zh-CN: "新建群组…"
@@ -696,8 +719,8 @@ palette:
       en: "%{count} matches"
       zh-CN: "%{count} 项匹配"
   hint:
-    en: "↑↓ move · Enter choose · Esc close"
-    zh-CN: "↑↓ 移动 · Enter 选择 · Esc 关闭"
+    en: "↑↓ select · Enter open · Esc back"
+    zh-CN: "↑↓ 选择 · Enter 打开 · Esc 返回"
   contexts:
     en: "Conversations"
     zh-CN: "对话"

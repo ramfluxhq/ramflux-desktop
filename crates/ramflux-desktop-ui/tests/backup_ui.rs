@@ -654,9 +654,14 @@ fn the_restore_result_stays_in_view_when_the_daemon_reopens_the_account(cx: &mut
     assert!(exists(cx, world.handle, "entry-restore-finishing"));
     // The title bar reads the daemon's own status while the account session
     // is silent: the daemon is up, so it does not say it is disconnected.
-    let connected =
-        ramflux_desktop_ui::i18n::source_status(ramflux_desktop_core::SourceStatus::Connected);
-    assert_eq!(source_shown(cx, &world).as_deref(), Some(connected.as_ref()));
+    // A connected daemon raises no source alarm in the status banner.
+    let store = store_handle(cx, &world.shell);
+    assert_eq!(
+        cx.update(|cx| store.read(cx).shown_source_status()),
+        ramflux_desktop_core::SourceStatus::Connected,
+        "the banner reads the daemon's own status"
+    );
+    assert_eq!(source_shown(cx, &world), None, "the daemon is connected");
     assert!(exists(cx, world.handle, "backup-result"), "the last seen result stays in view");
     assert!(!exists(cx, world.handle, "passphrase"), "no unlock form for an open account");
     account_jobs.open();
@@ -733,7 +738,7 @@ fn only_the_installed_restore_is_held_not_an_old_one_after_lock_and_unlock(
     world.finish();
 }
 
-/// The source status the title bar shows.
+/// The source alarm the status banner shows (none while connected).
 fn source_shown(cx: &mut TestAppContext, world: &Restoring) -> Option<String> {
     in_window(cx, world.handle, |window, _| {
         window.try_find("status-source-value").and_then(|e| e.label().map(str::to_owned))
@@ -772,9 +777,14 @@ fn a_freshly_unlocked_account_shows_a_loading_line_not_the_daemon_step(cx: &mut 
     // The page value agrees with the rendered step, and the title bar
     // reads the daemon's own status, not the empty session's.
     assert_eq!(page(cx, &world.shell), Page::Entry(EntryStep::Account));
-    let connected =
-        ramflux_desktop_ui::i18n::source_status(ramflux_desktop_core::SourceStatus::Connected);
-    assert_eq!(source_shown(cx, &world).as_deref(), Some(connected.as_ref()));
+    // A connected daemon raises no source alarm in the status banner.
+    let store = store_handle(cx, &world.shell);
+    assert_eq!(
+        cx.update(|cx| store.read(cx).shown_source_status()),
+        ramflux_desktop_core::SourceStatus::Connected,
+        "the banner reads the daemon's own status"
+    );
+    assert_eq!(source_shown(cx, &world), None, "the daemon is connected");
     account_reads.open();
     wait(cx, "the first data", |cx| !exists(cx, world.handle, "entry-session-loading"));
     world.finish();

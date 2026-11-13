@@ -38,8 +38,54 @@ settings:
     en: "This choice applies now but could not be saved on this device: %{reason}"
     zh-CN: "此选择已生效，但无法保存在此设备上：%{reason}"
   language:
-    en: "Language"
-    zh-CN: "语言"
+    en: "Interface language"
+    zh-CN: "界面语言"
+  appearance:
+    local_only:
+      en: "These settings only affect this device."
+      zh-CN: "这些设置只影响本机。"
+    display:
+      en: "Display"
+      zh-CN: "显示"
+    dark:
+      en: "Dark theme"
+      zh-CN: "深色主题"
+    state_on:
+      en: "On"
+      zh-CN: "开启"
+    state_off:
+      en: "Off"
+      zh-CN: "关闭"
+    dark_system_on:
+      en: "On · follows the system"
+      zh-CN: "开启 · 跟随系统"
+    dark_system_off:
+      en: "Off · follows the system"
+      zh-CN: "关闭 · 跟随系统"
+    turn_on:
+      en: "Turn on"
+      zh-CN: "开启"
+    turn_off:
+      en: "Turn off"
+      zh-CN: "关闭"
+    preview:
+      en: "Preview"
+      zh-CN: "预览"
+    preview_heading:
+      en: "A clear, quiet conversation"
+      zh-CN: "一段清楚、安静的会话"
+    preview_body:
+      en: "Messages, tasks and identity states share one type scale and spacing."
+      zh-CN: "消息、任务和身份状态采用统一的字号与间距。"
+    preview_tag:
+      en: "Waiting for confirmation"
+      zh-CN: "等待确认"
+    preview_primary:
+      en: "Primary action"
+      zh-CN: "主要操作"
+    preview_secondary:
+      en: "Secondary action"
+      zh-CN: "次要操作"
   local_only:
     en: "Local preference: stays on this device and is not part of your account."
     zh-CN: "本地偏好：仅保存在此设备，不属于账号数据。"

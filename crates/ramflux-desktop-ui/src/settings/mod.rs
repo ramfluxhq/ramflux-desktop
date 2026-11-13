@@ -43,7 +43,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::Settings;
 use gpui_kit::component::{
-    ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _, v_flex,
+    ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -305,6 +305,20 @@ impl Render for SettingsPage {
             .on_click(|_, window, cx| window.dispatch_action(Box::new(CloseSettings), cx));
         let compact =
             f32::from(window.viewport_size().width) / f32::from(window.rem_size()) < 800.0 / 15.0;
+        // The page column is at most 760 px wide and centred in the content
+        // area (the window less the rail and the 264 px section list); the
+        // Kit page keeps its own 1 rem inset inside it.
+        let column_pad = {
+            let rem = f32::from(window.rem_size());
+            let content = f32::from(window.viewport_size().width)
+                - if compact {
+                    0.0
+                } else {
+                    rem * (ramflux_desktop_navigation::theme::RAIL_REM
+                        + ramflux_desktop_navigation::theme::SECTION_REM)
+                };
+            ((content - 760.0) / 2.0 - rem).max(32.0 - rem)
+        };
 
         let offline = context.store.read(cx).store().source_status()
             == ramflux_desktop_core::SourceStatus::Disconnected;
@@ -400,35 +414,72 @@ impl Render for SettingsPage {
                     .when(compact, |content| content.flex_col())
                     .child(navigation)
                     .child(
-                        div()
-                            .id("settings-header")
-                            .test_support()
-                            .relative()
-                            .flex()
-                            .justify_center()
+                        // Design G01–G13: the page title in the page size with
+                        // the close icon, a full-width rule, then the page in a
+                        // centred 760 px column.
+                        v_flex()
                             .flex_1()
                             .min_h_0()
                             .min_w_0()
                             .child(
-                                div().size_full().child(
-                                    Settings::new(SharedString::from(format!(
-                                        "settings-pages-{}",
-                                        self.opened
-                                    )))
-                                    // Navigation is owned here so pointer and keyboard
-                                    // changes cancel a host confirmation before hiding facts.
-                                    .sidebar_width(gpui_kit::px(0.0))
-                                    .sidebar_size_range(gpui_kit::px(0.0)..gpui_kit::px(0.0))
-                                    .sidebar_style(&gpui_kit::StyleRefinement::default().hidden())
-                                    .page(page),
-                                ),
+                                h_flex()
+                                    .id("settings-header")
+                                    .test_support()
+                                    .w_full()
+                                    .min_h(gpui_kit::rems(88.0 / 15.0))
+                                    .px(gpui_kit::rems(32.0 / 15.0))
+                                    .border_b_1()
+                                    .border_color(palette.line)
+                                    .child(
+                                        div()
+                                            .id("settings-page-title")
+                                            .flex_1()
+                                            .text_size(gpui_kit::rems(palette.size_page / 15.0))
+                                            .font_semibold()
+                                            .child(tr(&format!(
+                                                "settings.section.{}",
+                                                self.section.key()
+                                            ))),
+                                    )
+                                    .child(close),
                             )
                             .child(
                                 div()
-                                    .absolute()
-                                    .top(gpui_kit::rems(20.0 / 15.0))
-                                    .right(gpui_kit::rems(32.0 / 15.0))
-                                    .child(close),
+                                    .relative()
+                                    .flex_1()
+                                    .min_h_0()
+                                    .px(gpui_kit::px(column_pad))
+                                    .child(
+                                        Settings::new(SharedString::from(format!(
+                                            "settings-pages-{}",
+                                            self.opened
+                                        )))
+                                        // Navigation is owned here so pointer and keyboard
+                                        // changes cancel a host confirmation before hiding facts.
+                                        .sidebar_width(gpui_kit::px(0.0))
+                                        .sidebar_size_range(gpui_kit::px(0.0)..gpui_kit::px(0.0))
+                                        .sidebar_style(
+                                            &gpui_kit::StyleRefinement::default().hidden(),
+                                        )
+                                        .page(
+                                            page.header_style(
+                                                &gpui_kit::StyleRefinement::default().hidden(),
+                                            ),
+                                        ),
+                                    )
+                                    // Kit's Settings keeps the divider of its
+                                    // (hidden, zero-width) sidebar; the design
+                                    // column has no rule, so it is covered.
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .top_0()
+                                            .bottom_0()
+                                            .left(gpui_kit::px(column_pad - 2.0))
+                                            .w(gpui_kit::px(6.0))
+                                            .bg(palette.bg)
+                                            .occlude(),
+                                    ),
                             ),
                     ),
             )

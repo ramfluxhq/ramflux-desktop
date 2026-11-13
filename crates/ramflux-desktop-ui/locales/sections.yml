@@ -77,8 +77,40 @@ sections:
       en: "Contacts · %{count}"
       zh-CN: "联系人 · %{count}"
     search:
-      en: "Search contacts"
-      zh-CN: "搜索联系人"
+      en: "Search"
+      zh-CN: "搜索"
+    people:
+      en: "People"
+      zh-CN: "人员"
+    people_help:
+      en: "Contacts of the current account"
+      zh-CN: "当前账号的联系人"
+    people_count:
+      one:
+        en: "%{count} contact"
+        zh-CN: "%{count} 位联系人"
+      other:
+        en: "%{count} contacts"
+        zh-CN: "%{count} 位联系人"
+    groups_count:
+      one:
+        en: "%{count} group"
+        zh-CN: "%{count} 个群组"
+      other:
+        en: "%{count} groups"
+        zh-CN: "%{count} 个群组"
+    strangers_count:
+      en: "Strangers · %{count}"
+      zh-CN: "陌生人 · %{count}"
+    all:
+      en: "All contacts"
+      zh-CN: "全部联系人"
+    view_profile:
+      en: "View profile"
+      zh-CN: "查看资料"
+    view_profile_for:
+      en: "View the profile of %{name}"
+      zh-CN: "查看 %{name} 的资料"
     list:
       en: "Contacts"
       zh-CN: "联系人"

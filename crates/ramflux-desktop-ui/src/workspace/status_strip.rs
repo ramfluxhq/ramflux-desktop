@@ -10,18 +10,16 @@
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Sizable as _, TitleBar, h_flex, tooltip::Tooltip,
-};
+use gpui_kit::component::button::Button;
+use gpui_kit::component::menu::PopupMenuItem;
+use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, tooltip::Tooltip};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, Hsla, IntoElement, Render, SharedString, Subscription, Window, div,
 };
-use ramflux_desktop_core::{AccountId, LockState, NodeHealth, SchemaGate, SourceStatus, Store};
+use ramflux_desktop_core::{LockState, NodeHealth, SchemaGate, SourceStatus, Store};
 
-use crate::actions::{GoToNeedsMe, OpenPalette, OpenSettings, ToggleDevPanel, ToggleTheme};
+use crate::actions::GoToNeedsMe;
 use crate::app::{LOCAL_ACCOUNT, StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
 
@@ -183,85 +181,46 @@ fn schema_line(handle: &StoreHandle, cx: &App) -> Option<Field> {
     })
 }
 
-/// The account switcher: the rendered account, the "needs me" count of the
-/// other accounts, and a menu that switches stores (nothing reloads).
-fn account_switcher(
-    handle: &StoreHandle,
-    store: gpui_kit::WeakEntity<StoreHandle>,
+/// The accounts this window can show, for the rail's identity menu (design
+/// B01): each with its label, kind and "needs me" count; the current one is
+/// checked, choosing another switches stores (nothing reloads).
+pub(crate) fn account_menu(
+    menu: gpui_kit::component::menu::PopupMenu,
+    store: &gpui_kit::WeakEntity<StoreHandle>,
     cx: &App,
-) -> impl IntoElement {
+) -> gpui_kit::component::menu::PopupMenu {
+    let Some(handle) = store.upgrade() else { return menu };
+    let handle = handle.read(cx);
     let active = handle.active_account().cloned();
-    let accounts: Vec<(AccountId, String, usize)> = handle
-        .accounts()
-        .map(|id| {
-            let name = handle.account_label(id).unwrap_or_else(|| id.to_string());
-            (id.clone(), name, handle.needs_me_count(id))
-        })
-        .collect();
-    let label: SharedString = match &active {
-        Some(id) if id.as_str() != LOCAL_ACCOUNT => {
-            handle.account_label(id).map_or_else(|| tr("status.none"), SharedString::from)
-        }
-        _ => tr("status.account.local"),
-    };
-    let background: usize =
-        accounts.iter().filter(|(id, _, _)| Some(id) != active.as_ref()).map(|(_, _, n)| n).sum();
-    let warning = crate::tone::text(cx.theme().warning, cx);
-    h_flex()
-        .id("status-account")
-        .flex_none()
-        .gap_1()
-        .text_xs()
-        .child(div().text_color(cx.theme().muted_foreground).child(tr("status.label.account")))
-        .child(
-            Button::new("account-switcher")
-                .ghost()
-                .xsmall()
-                .label(label)
-                .when(accounts.len() > 1, |b| b.icon(IconName::ChevronsUpDown))
-                .dropdown_menu(move |mut menu, _, _| {
-                    for (id, name, count) in &accounts {
-                        let store = store.clone();
-                        let target = id.clone();
-                        let text = if *count > 0 {
-                            tr_args(
-                                "status.account.with_count",
-                                &[("name", name), ("count", &count.to_string())],
-                            )
-                        } else {
-                            SharedString::from(name.clone())
-                        };
-                        menu = menu.item(
-                            PopupMenuItem::new(text).checked(active.as_ref() == Some(id)).on_click(
-                                move |_, _, cx| {
-                                    store
-                                        .update(cx, |store, cx| {
-                                            store.set_active_account(&target, cx)
-                                        })
-                                        .ok();
-                                },
-                            ),
-                        );
-                    }
-                    menu
-                }),
-        )
-        .when(background > 0, |row| {
-            row.child(
-                div()
-                    .id("status-background-attention")
-                    .text_color(warning)
-                    .child(tr_args(
-                        "status.account.background",
-                        &[("count", &background.to_string())],
-                    ))
-                    .test_support(),
-            )
-        })
+    let mut menu = menu.label(tr("status.account.current"));
+    for id in handle.accounts() {
+        let name = match handle.account_label(id) {
+            Some(name) => name,
+            None if id.as_str() == LOCAL_ACCOUNT => tr("status.account.local").to_string(),
+            None => id.to_string(),
+        };
+        let count = handle.needs_me_count(id);
+        let text = if count > 0 {
+            tr_args("status.account.with_count", &[("name", &name), ("count", &count.to_string())])
+        } else {
+            SharedString::from(name)
+        };
+        let (store, target) = (store.clone(), id.clone());
+        menu = menu.item(PopupMenuItem::new(text).checked(active.as_ref() == Some(id)).on_click(
+            move |_, _, cx| {
+                store.update(cx, |store, cx| store.set_active_account(&target, cx)).ok();
+            },
+        ));
+    }
+    menu
 }
 
 impl Render for StatusStrip {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Design B38 / 10: nothing while all is well; otherwise one quiet
+        // strip at the top of the content area naming what needs attention
+        // (networking, a node or the daemon not fine, a rejected projection,
+        // the latest failure, other accounts' attention, decisions waiting).
         let handle = self.store.read(cx);
         let fields = fields(handle, cx);
         let account = handle
@@ -277,176 +236,125 @@ impl Render for StatusStrip {
                 account.and_then(|a| handle.session()?.networking_retry_remaining(&a.id)),
             )
         };
-        let switcher = account_switcher(handle, self.store.downgrade(), cx);
+        let healthy_title = network_title == tr("app.name");
+        let active = handle.active_account().cloned();
+        let background: usize = handle
+            .accounts()
+            .filter(|id| Some(*id) != active.as_ref())
+            .map(|id| handle.needs_me_count(id))
+            .sum();
         let needs_me = handle.attention_across_accounts().len();
-        let muted = cx.theme().muted_foreground;
-        let foreground = cx.theme().foreground;
-        // The error comes first at every width. While one is shown, only
-        // what needs attention stays beside it (a node or source that is not
-        // fine, rejected projection) and the error's value is the one thing
-        // that gives way, with an ellipsis; neutral facts (device, a healthy
-        // node, the projection position) wait until it is gone. A narrow
-        // window drops the same facts when there is no error. The title
-        // bar's controls always stay.
-        let compact = window.viewport_size().width < gpui_kit::px(COMPACT_BELOW);
-        let has_failure = fields.iter().any(|f| f.id == "status-failure");
-        let chips =
-            fields.into_iter().filter(|f| !(compact || has_failure) || f.attention).map(|field| {
+        let palette = ramflux_desktop_navigation::palette(cx);
+        let muted = palette.secondary;
+        let foreground = palette.text;
+        let narrow = window.viewport_size().width < gpui_kit::px(COMPACT_BELOW);
+        let chips: Vec<_> = fields
+            .into_iter()
+            .filter(|f| f.attention)
+            .map(|field| {
                 // A failure appears while the user is elsewhere: a status region
                 // lets a screen reader announce it without moving focus.
+                let full = field.value.clone();
+                let is_failure = field.id == "status-failure";
                 h_flex()
                     .id(field.id)
-                    .when(field.id == "status-failure", |chip| chip.role(gpui_kit::Role::Status))
+                    .when(is_failure, |chip| chip.role(gpui_kit::Role::Status).flex_1())
+                    .when(!is_failure, |chip| chip.flex_none())
                     .test_support()
                     .gap_1()
                     .min_w_0()
                     .overflow_hidden()
-                    .text_xs()
-                    // The error takes the room; the other chips keep theirs.
-                    .when(has_failure, |chip| {
-                        if field.id == "status-failure" { chip.flex_1() } else { chip.flex_none() }
-                    })
                     .child(
                         div().flex_none().whitespace_nowrap().text_color(muted).child(field.label),
                     )
-                    .child({
-                        // The value gives way first when the window is narrow;
-                        // the full text stays in the tooltip and the label.
-                        let full = field.value.clone();
+                    .child(
                         div()
                             .id(SharedString::from(format!("{}-value", field.id)))
                             .aria_label(field.value.clone())
                             .test_support()
                             .min_w_0()
-                            .when(field.id == "status-failure", |value| value.flex_1())
-                            .when(field.id != "status-failure", |value| {
-                                value.max_w(gpui_kit::rems(24.))
-                            })
+                            .when(is_failure, |value| value.flex_1())
+                            .when(!is_failure, |value| value.max_w(gpui_kit::rems(24.)))
                             .truncate()
                             .text_color(field.color.unwrap_or(foreground))
                             .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
-                            .child(field.value)
-                    })
-            });
-        TitleBar::new()
-            .child(
-                h_flex()
-                    .id("status-strip")
+                            .child(field.value),
+                    )
+                    .into_any_element()
+            })
+            .collect();
+        let shown = !healthy_title || !chips.is_empty() || background > 0 || needs_me > 0;
+        // The connection state stays a status region even while it is fine,
+        // so assistive technology can always read it.
+        let title = div()
+            .id("workspace-networking-title")
+            .role(gpui_kit::Role::Status)
+            .aria_label(network_title.clone())
+            .test_support()
+            .flex_none()
+            .when(healthy_title, |title| title.size_0().overflow_hidden())
+            .when(!healthy_title, |title| title.font_medium().child(network_title));
+        h_flex()
+            .id("status-strip")
+            .test_support()
+            .w_full()
+            .min_w_0()
+            .gap_3()
+            .overflow_hidden()
+            .when(shown, |strip| {
+                strip
+                    .min_h(gpui_kit::rems(34.0 / 15.0))
+                    .px_4()
+                    .bg(palette.surface)
+                    .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
+                    .child(gpui_kit::component::Icon::new(IconName::Info).small().text_color(muted))
+            })
+            .child(title)
+            .children(network_detail.map(|detail| {
+                div()
+                    .id("workspace-networking-detail")
+                    .aria_label(detail.clone())
                     .test_support()
-                    .gap_4()
-                    .flex_1()
-                    // A definite zero width keeps the strip's text out of the
-                    // title bar's minimum width: the strip takes what the
-                    // controls leave and clips the rest.
-                    .w_0()
                     .min_w_0()
-                    .overflow_hidden()
-                    .child(
-                        div()
-                            .id("workspace-networking-title")
-                            .role(gpui_kit::Role::Status)
-                            .aria_label(network_title.clone())
-                            .test_support()
-                            .flex_none()
-                            .text_sm()
-                            .font_semibold()
-                            .child(network_title),
-                    )
-                    .children(network_detail.map(|detail| {
-                        div()
-                            .id("workspace-networking-detail")
-                            .aria_label(detail.clone())
-                            .test_support()
-                            .min_w_0()
-                            .truncate()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(detail)
-                    }))
-                    .child(switcher)
-                    .children(chips),
-            )
-            .child(
-                // The controls never give way: the strip beside them clips.
-                h_flex()
-                    .flex_none()
-                    .gap_1()
-                    .pr_2()
-                    .when(self.show_commands, |row| {
-                        row.child(
-                            Button::new("open-palette")
-                                .ghost()
-                                .small()
-                                .icon(IconName::Search)
-                                .accessibility_label(tr("status.palette"))
-                                .tooltip_with_action(tr("status.palette"), &OpenPalette, None)
-                                .on_click(|_, window, cx| {
-                                    window.dispatch_action(Box::new(OpenPalette), cx)
-                                }),
-                        )
-                        .child(
-                            Button::new("needs-me")
-                                .small()
-                                .when(needs_me > 0, |b| b.warning())
-                                .when(needs_me == 0, |b| b.ghost())
-                                .icon(IconName::Bell)
-                                // Icon and count in a narrow window; the full
-                                // label stays for assistive technology.
-                                .when(!compact, |b| {
-                                    b.label(tr_args(
-                                        "status.needs_me",
-                                        &[("count", &needs_me.to_string())],
-                                    ))
-                                })
-                                // The number stays visible in a narrow window.
-                                .when(compact, |b| {
-                                    b.label(needs_me.to_string()).accessibility_label(tr_args(
-                                        "status.needs_me",
-                                        &[("count", &needs_me.to_string())],
-                                    ))
-                                })
-                                .tooltip_with_action(tr("status.needs_me_hint"), &GoToNeedsMe, None)
-                                .disabled(needs_me == 0)
-                                .on_click(|_, window, cx| {
-                                    window.dispatch_action(Box::new(GoToNeedsMe), cx)
-                                }),
-                        )
-                    })
-                    .child(
-                        Button::new("toggle-theme")
-                            .ghost()
-                            .small()
-                            .icon(if cx.theme().is_dark() { IconName::Sun } else { IconName::Moon })
-                            .accessibility_label(tr("status.toggle_theme"))
-                            .tooltip_with_action(tr("status.toggle_theme"), &ToggleTheme, None)
-                            .on_click(|_, window, cx| {
-                                window.dispatch_action(Box::new(ToggleTheme), cx)
-                            }),
-                    )
-                    .child(
-                        Button::new("open-settings")
-                            .ghost()
-                            .small()
-                            .icon(IconName::Settings)
-                            .accessibility_label(tr("status.settings"))
-                            .tooltip_with_action(tr("status.settings"), &OpenSettings, None)
-                            .on_click(|_, window, cx| {
-                                window.dispatch_action(Box::new(OpenSettings), cx)
-                            }),
-                    )
-                    .when(cfg!(debug_assertions), |row| {
-                        row.child(
-                            Button::new("toggle-dev")
-                                .ghost()
-                                .small()
-                                .icon(IconName::SquareTerminal)
-                                .accessibility_label(tr("status.dev_panel"))
-                                .tooltip_with_action(tr("status.dev_panel"), &ToggleDevPanel, None)
-                                .on_click(|_, window, cx| {
-                                    window.dispatch_action(Box::new(ToggleDevPanel), cx)
-                                }),
-                        )
-                    }),
-            )
+                    .truncate()
+                    .text_color(muted)
+                    .child(detail)
+            }))
+            .children(chips)
+            .when(background > 0, |strip| {
+                strip.child(
+                    div()
+                        .id("status-background-attention")
+                        .flex_none()
+                        .text_color(crate::tone::text(palette.warning, cx))
+                        .child(tr_args(
+                            "status.account.background",
+                            &[("count", &background.to_string())],
+                        ))
+                        .test_support(),
+                )
+            })
+            .when(self.show_commands && needs_me > 0, |strip| {
+                strip.child(
+                    Button::new("needs-me")
+                        .flex_none()
+                        .ml_auto()
+                        .xsmall()
+                        .outline()
+                        .label(if narrow {
+                            needs_me.to_string().into()
+                        } else {
+                            tr_args("status.needs_me", &[("count", &needs_me.to_string())])
+                        })
+                        .accessibility_label(tr_args(
+                            "status.needs_me",
+                            &[("count", &needs_me.to_string())],
+                        ))
+                        .tooltip_with_action(tr("status.needs_me_hint"), &GoToNeedsMe, None)
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(GoToNeedsMe), cx)
+                        }),
+                )
+            })
     }
 }

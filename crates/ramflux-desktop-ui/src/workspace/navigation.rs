@@ -9,6 +9,7 @@ use crate::i18n::tr;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Icon, Selectable as _, Sizable as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, IntoElement, TestSupportExt as _, Window, div, rems};
@@ -107,6 +108,10 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         match self.route {
+            // Design board 07: the people table until a contact is chosen.
+            WorkspaceRoute::Contacts if self.contact_profile.read(cx).participant().is_none() => {
+                Some(self.contact_directory.update(cx, |list, cx| list.detail(window, cx)))
+            }
             WorkspaceRoute::Contacts => Some(self.contact_profile.clone().into_any_element()),
             WorkspaceRoute::Strangers => {
                 Some(self.strangers.update(cx, |area, cx| area.detail(window, cx)))
@@ -261,15 +266,26 @@ impl Workspace {
                     .tooltip(tr("settings.title"))
                     .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx)),
             )
-            .child(
+            .child({
+                // Design B01: the avatar opens the identity menu (switch
+                // account, lock the current one).
+                let store = self.store.downgrade();
+                let sink = crate::root::IntentRoot::sink(&self.root);
+                let lockable = {
+                    let handle = self.store.read(cx);
+                    handle
+                        .active_account()
+                        .and_then(|id| handle.store().account(id))
+                        .filter(|a| a.lock_state == ramflux_desktop_core::LockState::Unlocked)
+                        .map(|a| a.id.clone())
+                };
                 Button::new("nav-account")
                     .ghost()
                     .p_0()
                     .size(rems(40.0 / 15.0))
                     .rounded(gpui_kit::px(palette.radius_full))
-                    .accessibility_label(tr("settings.section.account"))
-                    .tooltip(tr("settings.section.account"))
-                    .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx))
+                    .accessibility_label(tr("status.account.current"))
+                    .tooltip(tr("status.account.current"))
                     .child(
                         div()
                             .size(rems(40.0 / 15.0))
@@ -281,8 +297,30 @@ impl Workspace {
                             .text_color(palette.on_avatar_person)
                             .font_semibold()
                             .child(initial),
-                    ),
-            )
+                    )
+                    .dropdown_menu(move |menu, _, cx| {
+                        let menu = super::status_strip::account_menu(menu, &store, cx);
+                        match lockable.clone() {
+                            Some(account_id) => {
+                                let sink = sink.clone();
+                                menu.separator().item(
+                                    PopupMenuItem::new(tr("status.account.lock")).on_click(
+                                        move |_, window, cx| {
+                                            sink.emit(
+                                                ramflux_desktop_core::UiEventKind::LockPressed {
+                                                    account_id: account_id.clone(),
+                                                },
+                                                window,
+                                                cx,
+                                            )
+                                        },
+                                    ),
+                                )
+                            }
+                            None => menu,
+                        }
+                    })
+            })
             .into_any_element()
     }
 }

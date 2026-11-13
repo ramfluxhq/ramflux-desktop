@@ -114,6 +114,8 @@ pub struct Workspace {
     list_visible: bool,
     focus_handle: FocusHandle,
     agents_focus: FocusHandle,
+    /// The status banner shown at the top of the content column.
+    status: Option<Entity<status_strip::StatusStrip>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -152,7 +154,8 @@ impl Workspace {
         let call_bar = cx.new(|cx| CallBar::new(store.clone(), sink.clone(), window, cx));
         let incoming_call = cx.new(|cx| IncomingCall::new(store.clone(), sink.clone(), cx));
         let groups = cx.new(|cx| GroupDirectory::new(store.clone(), window, cx));
-        let contact_directory = cx.new(|cx| ContactsDirectory::new(store.clone(), window, cx));
+        let contact_directory =
+            cx.new(|cx| ContactsDirectory::new(store.clone(), sink.clone(), window, cx));
         let contact_profile = cx.new(|cx| ContactProfile::new(store.clone(), sink.clone(), cx));
         let strangers = cx.new(|cx| StrangersArea::new(store.clone(), sink.clone(), window, cx));
         let contents: [(DockTool, gpui_kit::AnyView); 5] = [
@@ -272,6 +275,16 @@ impl Workspace {
                     ContactsDirectoryEvent::AddContact => this.open_add_contact(window, cx),
                     ContactsDirectoryEvent::Strangers => {
                         this.navigate(WorkspaceRoute::Strangers, window, cx)
+                    }
+                    ContactsDirectoryEvent::People => {
+                        this.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
+                        this.contact_directory.update(cx, |list, cx| list.set_selected(None, cx));
+                        this.contact_profile
+                            .update(cx, |profile, cx| profile.set_participant(None, cx));
+                        cx.notify();
+                    }
+                    ContactsDirectoryEvent::Groups => {
+                        this.navigate(WorkspaceRoute::Groups, window, cx)
                     }
                 },
             ),
@@ -402,6 +415,7 @@ impl Workspace {
             list_visible: true,
             focus_handle: cx.focus_handle(),
             agents_focus: cx.focus_handle().tab_stop(true),
+            status: None,
             _subscriptions: subscriptions,
         };
         workspace.ensure_current(window, cx);
@@ -456,6 +470,12 @@ impl Workspace {
     /// The contact profile (contacts route detail pane).
     pub fn contact_profile(&self) -> &Entity<ContactProfile> {
         &self.contact_profile
+    }
+
+    /// Gives the workspace the window's status banner to show at the top of
+    /// its content column.
+    pub fn set_status(&mut self, status: Entity<StatusStrip>) {
+        self.status = Some(status);
     }
 
     /// The strangers area (strangers route).
@@ -864,7 +884,14 @@ impl Workspace {
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let this = cx.weak_entity();
+        // The tool switcher lives in the conversation header while no tool
+        // is open, and in the open panel's header otherwise (design H01).
+        let open_tool = self.open_tool;
+        self.conversation.update(cx, |conversation, _| conversation.set_open_tool(open_tool));
+        for slot in &self.tools {
+            let shown = open_tool == Some(slot.tool);
+            slot.panel.update(cx, |panel, _| panel.set_shown(shown));
+        }
         let gate = schema_gate::active(self.store.read(cx));
         let blocking =
             gate.as_ref().filter(|(_, gate)| gate.blocks_view()).map(|(account, gate)| {
@@ -914,6 +941,11 @@ impl Render for Workspace {
                         .min_w_0()
                         .when(compact, |pane| pane.flex_1())
                         .when(!compact, |pane| pane.w(gpui_kit::rems(list_width)).flex_none())
+                        // While the list stands alone (compact), the
+                        // status banner heads it instead of the detail.
+                        .when(!show_detail, |pane| {
+                            pane.flex().flex_col().children(self.status.clone())
+                        })
                         .child(list_pane),
                 )
             })
@@ -935,6 +967,7 @@ impl Render for Workspace {
                                     })),
                             )
                         })
+                        .children(self.status.clone().filter(|_| show_detail))
                         .children(gate.and_then(|(_, gate)| schema_gate::banner(gate)))
                         .children(self.secure_sessions_banner(cx))
                         .child(self.call_bar.clone())
@@ -953,11 +986,6 @@ impl Render for Workspace {
                                 .child(self.incoming_call.clone()),
                         ),
                 )
-            })
-            .when(show_detail, |row| {
-                row.child(DockRail::new(self.open_tool, move |tool, window, cx| {
-                    this.update(cx, |workspace, cx| workspace.toggle_tool(tool, window, cx)).ok();
-                }))
             })
     }
 }

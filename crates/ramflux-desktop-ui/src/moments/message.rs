@@ -16,9 +16,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
-use ramflux_desktop_core::{
-    MediaState, MediaView, MessagePayload, Receipt, TransferState, UiEventKind,
-};
+use ramflux_desktop_core::{MediaState, MediaView, MessagePayload, TransferState, UiEventKind};
 
 use super::{MomentRow, RowState, message_text};
 use crate::bubble::EventSink;
@@ -74,10 +72,12 @@ pub fn render(
             .min_w_0()
             .w_full()
             .overflow_hidden()
-            .child(ramflux_desktop_navigation::generated::catalog::attachment_shell(
+            // Design B24 (message attachments): a file row inside the bubble, a 40 px
+            // icon tile, the name over its size and state.
+            .child(file_row(
                 name,
                 detail.unwrap_or_default().into(),
-                Icon::new(IconName::File).small(),
+                outbound,
                 h_flex()
                     .when(moving, |row| row.child(Icon::new(IconName::LoaderCircle).xsmall()))
                     .when(failed, |row| {
@@ -87,19 +87,11 @@ pub fn render(
                                 .text_color(crate::tone::text(cx.theme().danger, cx)),
                         )
                     }),
-                ramflux_desktop_navigation::palette(cx),
+                cx,
             ))
             .test_support()
     });
-    let receipt_color = match payload.receipt {
-        Receipt::Read => crate::tone::text(cx.theme().success, cx),
-        Receipt::Sending | Receipt::WaitingForNode { .. } | Receipt::Sent | Receipt::Delivered => {
-            muted
-        }
-        Receipt::Failed { .. } => crate::tone::text(cx.theme().danger, cx),
-    };
     let text = body.cloned();
-    let retry = sink.clone();
     let reply = payload.reply_to.as_ref().map(|target| {
         let label = if refs.reply_deleted {
             tr("message_ui.reply_deleted")
@@ -240,57 +232,12 @@ pub fn render(
             ))
         })
         .children(payload.media.iter().enumerate().map(|(index, row)| media_row(index, row, cx)))
-        .when(
-            outbound
-                || matches!(
-                    payload.receipt,
-                    Receipt::Sending | Receipt::WaitingForNode { .. } | Receipt::Failed { .. }
-                ),
-            |body| {
-                body.child(
-                    h_flex()
-                        .id("message-receipt")
-                        .gap_1()
-                        .text_xs()
-                        .text_color(receipt_color)
-                        .child(
-                            Icon::new(match payload.receipt {
-                                Receipt::WaitingForNode { .. } => IconName::Loader,
-                                Receipt::Failed { .. } => IconName::TriangleAlert,
-                                Receipt::Sending => IconName::Loader,
-                                Receipt::Sent => IconName::Check,
-                                Receipt::Delivered | Receipt::Read => IconName::CircleCheck,
-                            })
-                            .xsmall(),
-                        )
-                        .child(i18n::receipt(payload.receipt))
-                        .when(payload.receipt == (Receipt::Failed { retryable: true }), |row| {
-                            row.child(
-                                Button::new("message-retry")
-                                    .small()
-                                    .label(tr("moment.message.retry"))
-                                    .on_click(move |_, window, cx| {
-                                        retry.emit(UiEventKind::RetryMessagePressed, window, cx)
-                                    }),
-                            )
-                        })
-                        .when_some(refs.send_retry_ms, |row, ms| {
-                            row.child(crate::i18n::tr_args(
-                                "moment.message.retry_in",
-                                &[("seconds", &ms.div_ceil(1000).to_string())],
-                            ))
-                        })
-                        .test_support(),
-                )
-            },
-        )
 }
 
 /// One media row of a v1 message: the file name and facts, the thumbnail
 /// only when the policy kept one, and the reason when the object cannot be
 /// opened.
 fn media_row(index: usize, row: &MediaView, cx: &App) -> impl IntoElement {
-    let muted = cx.theme().muted_foreground;
     let name = if row.name.trim().is_empty() {
         tr("moment.message.attachment")
     } else {
@@ -323,19 +270,65 @@ fn media_row(index: usize, row: &MediaView, cx: &App) -> impl IntoElement {
         .aria_label(label)
         .gap_1()
         .children(thumbnail)
-        .child(
-            h_flex()
-                .gap_2()
-                .px_2()
-                .py_1()
-                .border_1()
-                .border_color(cx.theme().border)
-                .rounded(cx.theme().radius)
-                .child(Icon::new(IconName::File).small().text_color(muted))
-                .child(div().text_sm().text_color(cx.theme().foreground).child(name))
-                .child(div().text_xs().text_color(muted).child(detail)),
-        )
+        .child(file_row(name, detail.into(), false, div(), cx))
         .test_support()
+}
+
+/// A file row (design `B24`): a 40 px icon tile, the name in the body size
+/// over its facts in the meta size, and trailing state.
+fn file_row(
+    name: SharedString,
+    detail: SharedString,
+    outbound: bool,
+    trailing: impl IntoElement,
+    cx: &App,
+) -> impl IntoElement {
+    let palette = ramflux_desktop_navigation::palette(cx);
+    let (background, text, meta) = if outbound {
+        (palette.outgoing_quote, palette.outgoing_text, palette.outgoing_meta)
+    } else {
+        (palette.incoming_quote, palette.text, palette.incoming_meta)
+    };
+    h_flex()
+        .w_full()
+        .min_w_0()
+        .gap_2()
+        .p_2()
+        .rounded(gpui_kit::rems(palette.radius_md / 15.0))
+        .bg(background)
+        .child(
+            div()
+                .flex_none()
+                .size(gpui_kit::rems(40.0 / 15.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(gpui_kit::rems(palette.radius_sm / 15.0))
+                .bg(palette.surface_white)
+                .text_color(palette.text)
+                .child(Icon::new(IconName::FileText).with_size(gpui_kit::px(20.))),
+        )
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(gpui_kit::rems(palette.size_body / 15.0))
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .text_color(text)
+                        .child(name),
+                )
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(gpui_kit::rems(palette.size_meta / 15.0))
+                        .text_color(meta)
+                        .child(detail),
+                ),
+        )
+        .child(trailing)
 }
 
 /// The thumbnail of a row and its image. It is decoded as what its own bytes

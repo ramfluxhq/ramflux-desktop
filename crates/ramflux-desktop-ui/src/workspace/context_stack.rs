@@ -87,6 +87,8 @@ pub struct ContextStack {
     row_height: Pixels,
     projected: usize,
     query_invalid: bool,
+    /// The "Unread" chip of the message list (design board 02).
+    unread_only: bool,
     scroll: VirtualListScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -131,6 +133,7 @@ impl ContextStack {
             row_height: window.rem_size() * theme::ROW_REM,
             projected: 0,
             query_invalid: false,
+            unread_only: false,
             scroll: VirtualListScrollHandle::new(),
             _subscriptions: subscriptions,
         };
@@ -143,17 +146,25 @@ impl ContextStack {
         let handle = self.store.read(cx);
         self.query_invalid = self.query.read(cx).value().len()
             > ramflux_desktop_core::projection::conversations::QUERY_LIMIT;
-        self.rows = Rc::new(entries(
-            handle.store(),
-            &self.query.read(cx).value(),
-            self.filter,
-            &self.search,
-        ));
+        let mut rows =
+            entries(handle.store(), &self.query.read(cx).value(), self.filter, &self.search);
+        if self.unread_only && self.filter == ListFilter::Messages {
+            rows.retain(|row| row.unread > 0);
+        }
+        self.rows = Rc::new(rows);
         self.projected += self.rows.len();
         self.finish_refresh(active, cx);
     }
 
     fn update_rows(&mut self, changes: &ChangeSet, cx: &mut Context<Self>) {
+        if self.unread_only {
+            // The unread view is small and its membership follows every
+            // read change, so it is rebuilt.
+            let store = self.store.read(cx).store();
+            self.search.reset(store);
+            self.refresh(cx);
+            return;
+        }
         let store = self.store.read(cx).store();
         let Some(ids) = changes.directory_contexts(store) else {
             self.search.reset(store);
@@ -225,6 +236,15 @@ impl ContextStack {
     }
 
     /// Selects a navigation section and resets its local scroll/keyboard cursor.
+    /// Shows every conversation, or only those with unread messages.
+    pub fn set_unread_only(&mut self, unread_only: bool, cx: &mut Context<Self>) {
+        if self.unread_only != unread_only {
+            self.unread_only = unread_only;
+            self.active = 0;
+            self.refresh(cx);
+        }
+    }
+
     pub fn set_filter(&mut self, filter: ListFilter, cx: &mut Context<Self>) {
         self.filter = filter;
         self.active = 0;
@@ -503,6 +523,37 @@ impl Render for ContextStack {
                     .small()
                     .prefix(Icon::new(IconName::Search)),
             )
+            .when(self.filter == ListFilter::Messages, |pane| {
+                let chip = |id: &'static str, key: &'static str, on: bool, unread: bool| {
+                    Button::new(id)
+                        .ghost()
+                        .xsmall()
+                        .rounded(gpui_kit::px(palette.radius_chip))
+                        .selected(on)
+                        .toggled(on)
+                        .label(tr(key))
+                        .on_click(
+                            cx.listener(move |this, _, _, cx| this.set_unread_only(unread, cx)),
+                        )
+                };
+                pane.child(
+                    h_flex()
+                        .id("stack-filters")
+                        .gap_1()
+                        .child(chip(
+                            "stack-filter-all",
+                            "stack.filter.all",
+                            !self.unread_only,
+                            false,
+                        ))
+                        .child(chip(
+                            "stack-filter-unread",
+                            "stack.filter.unread",
+                            self.unread_only,
+                            true,
+                        )),
+                )
+            })
             // The strangers entry belongs to the message list only (boards 02, E01).
             .when(self.filter == ListFilter::Messages, |pane| {
                 pane.child({

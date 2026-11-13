@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The title bar never loses its controls (DESK-PIN-03 L10): a long failure
-//! in the status strip is cut with an ellipsis (its full text stays in the
-//! accessibility label), and the palette, Needs-me, theme and settings
-//! controls stay inside the window, down to the application's minimum size,
-//! in English and in Chinese. The error is what the strip gives way to: at
-//! desktop widths too, the neutral chips make room for it and only its
-//! value is cut, with an ellipsis (full text in the label).
+//! A long failure stays readable (DESK-PIN-03 L10): the status banner at the
+//! top of the content area cuts it with an ellipsis (its full text stays in
+//! the accessibility label) and stays inside the window, down to the
+//! application's minimum size, in English and in Chinese. Only what needs
+//! attention is in the banner (design B38): the neutral facts are not shown
+//! and the error's value takes the room.
 
 mod common;
 mod sdk_fake;
@@ -21,8 +20,6 @@ use ramflux_desktop_core::{Intent, IntentKind, RequestAnswer, selectors};
 use ramflux_desktop_ui::i18n;
 use ramflux_desktop_ui::route::Page;
 use serde_json::json;
-
-const CONTROLS: [&str; 4] = ["open-palette", "needs-me", "toggle-theme", "open-settings"];
 
 /// The longest refusal text the strip can show: the node lookup refused
 /// without a reason (`backend.failure.local_network_maybe`, 208 characters
@@ -83,13 +80,10 @@ fn open_with_long_failure(
 fn check(cx: &mut TestAppContext, locale: &str, width: f32) {
     let (handle, full) = open_with_long_failure(cx, locale, width);
     assert!(full.contains("ramflux-node-01.local"), "the longest refusal text: {full}");
-    let (shown, bar, controls) = in_window(cx, handle, |window, _| {
+    let (shown, window_width) = in_window(cx, handle, |window, _| {
         let shown =
             window.within("status-failure").find("status-failure-value").label().map(str::to_owned);
-        let bar = window.find("title-bar").bounds();
-        let controls: Vec<_> =
-            CONTROLS.iter().map(|id| (*id, window.try_find(*id).map(|e| e.bounds()))).collect();
-        (shown, bar, controls)
+        (shown, window.viewport_size().width)
     });
     // The error's value is cut with an ellipsis inside the strip, never by
     // the strip's edge; the neutral chips gave way to it.
@@ -111,17 +105,14 @@ fn check(cx: &mut TestAppContext, locale: &str, width: f32) {
     assert_eq!(neutral, 0, "neutral chips make room for the error at {width} px ({locale})");
     // The whole failure stays in the label even where the chip is cut.
     assert_eq!(shown.as_deref(), Some(full.as_str()), "{locale} {width}");
-    for (id, bounds) in controls {
-        let bounds = bounds.unwrap_or_else(|| panic!("{id} is shown at {width} px ({locale})"));
-        assert!(
-            bounds.right() <= bar.right() && bounds.left() >= bar.left(),
-            "{id} is inside the title bar at {width} px ({locale}): {bounds:?} in {bar:?}"
-        );
-    }
+    assert!(
+        strip.left() >= gpui_kit::px(0.) && strip.right() <= window_width,
+        "the banner stays inside the window at {width} px ({locale}): {strip:?}"
+    );
 }
 
 #[gpui_kit::test]
-fn a_long_failure_leaves_the_controls_at_1100_px_in_both_languages(cx: &mut TestAppContext) {
+fn a_long_failure_stays_readable_at_1100_px_in_both_languages(cx: &mut TestAppContext) {
     let _guard = locale_guard();
     check(cx, "en", 1_100.);
     check(cx, "zh-CN", 1_100.);
@@ -139,7 +130,7 @@ fn the_error_keeps_its_room_at_desktop_widths_in_both_languages(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
-fn a_long_failure_leaves_the_controls_at_the_minimum_size_in_both_languages(
+fn a_long_failure_stays_inside_the_window_at_the_minimum_size_in_both_languages(
     cx: &mut TestAppContext,
 ) {
     let _guard = locale_guard();

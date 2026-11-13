@@ -13,10 +13,13 @@
 
 mod entries;
 
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::command::{Command, CommandGroup, CommandItem, CommandState};
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, h_flex, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, h_flex, v_flex,
+};
 use gpui_kit::prelude::*;
-use gpui_kit::{Context, Entity, EventEmitter, IntoElement, Render, Window, div, px, rems};
+use gpui_kit::{App, Context, Entity, EventEmitter, IntoElement, Render, Window, div, rems};
 use ramflux_desktop_core::{AccountId, ContextId, Scope, UiEventKind};
 
 use crate::actions::{ClosePalette, PALETTE_CONTEXT};
@@ -148,12 +151,20 @@ impl Render for CommandPalette {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.weak_entity();
         let cancel = cx.weak_entity();
+        // Design B09: each result names the thing, what choosing it does,
+        // and the verb as an outline chip (the whole row is the target).
         let groups = self.groups.iter().map(|group| {
+            let kind = group.label.clone();
             CommandGroup::new().label(group.label.clone()).items(group.entries.iter().map(|e| {
+                let (label, kind) = (e.label.clone(), kind.clone());
+                let verb = verb(&e.choice);
                 CommandItem::new()
                     .label(e.label.clone())
                     .icon(e.icon.clone())
                     .keywords(e.keywords.clone())
+                    .child(move |_, cx| {
+                        result_row(label.clone(), kind.clone(), verb, cx).into_any_element()
+                    })
             }))
         });
         let mut command = Command::new(&self.state);
@@ -197,34 +208,127 @@ impl Render for CommandPalette {
                     .child(div().flex_1())
                     .child(tr("palette.hint"))
             });
+        let palette = ramflux_desktop_navigation::palette(cx);
+        let close = cx.weak_entity();
         div()
             .id("palette-overlay")
             .key_context(PALETTE_CONTEXT)
             .on_action(cx.listener(Self::close))
             .absolute()
             .inset_0()
-            .bg(cx.theme().background.opacity(0.4))
+            .bg(palette.scrim)
             .flex()
             .justify_center()
-            .items_start()
+            .items_center()
             .on_mouse_down(
                 gpui_kit::MouseButton::Left,
                 cx.listener(|_, _, _, cx| cx.emit(PaletteEvent::Close)),
             )
             .child(
-                div()
+                v_flex()
                     .id("palette")
-                    .mt(rems(5.))
-                    .w(px(560.))
+                    .role(gpui_kit::Role::Dialog)
+                    .aria_label(tr("palette.title"))
+                    .w(rems(608.0 / 15.0))
                     .max_w_full()
                     .h_auto()
-                    .bg(cx.theme().popover)
+                    .gap_4()
+                    .p(rems(24.0 / 15.0))
+                    .bg(palette.overlay)
                     .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius_lg)
+                    .border_color(palette.overlay_border)
+                    .rounded(rems(palette.radius_dialog / 15.0))
                     .shadow_lg()
                     .on_mouse_down(gpui_kit::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(command),
+                    .child(
+                        h_flex()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(rems(palette.size_subheading / 15.0))
+                                    .font_semibold()
+                                    .child(tr("palette.title")),
+                            )
+                            .child(
+                                Button::new("palette-close")
+                                    .ghost()
+                                    .small()
+                                    .icon(IconName::Close)
+                                    .accessibility_label(tr("common.close"))
+                                    .on_click(move |_, _, cx| {
+                                        close.update(cx, |_, cx| cx.emit(PaletteEvent::Close)).ok();
+                                    }),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(rems(palette.size_secondary / 15.0))
+                            .font_medium()
+                            .child(tr("palette.search")),
+                    )
+                    .child(
+                        div()
+                            .border_1()
+                            .border_color(palette.input_border)
+                            .rounded(rems(palette.radius_input / 15.0))
+                            .bg(palette.input)
+                            .child(command),
+                    ),
             )
     }
+}
+
+/// The verb a result row shows for what choosing it does.
+fn verb(choice: &entries::PaletteChoice) -> &'static str {
+    use entries::PaletteChoice as Choice;
+    match choice {
+        Choice::Context(_) | Choice::Moment(..) | Choice::Object(_) | Choice::Contact(_) => {
+            "palette.verb.open"
+        }
+        _ => "palette.verb.go",
+    }
+}
+
+/// One result: its name over what it is, and the verb as an outline chip.
+fn result_row(
+    label: gpui_kit::SharedString,
+    kind: gpui_kit::SharedString,
+    verb: &'static str,
+    cx: &App,
+) -> impl IntoElement {
+    let palette = ramflux_desktop_navigation::palette(cx);
+    h_flex()
+        .w_full()
+        .gap_3()
+        .py_1()
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(rems(palette.size_body / 15.0))
+                        .font_medium()
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(rems(palette.size_meta / 15.0))
+                        .text_color(palette.secondary)
+                        .child(kind),
+                ),
+        )
+        .child(
+            div()
+                .flex_none()
+                .px_2()
+                .py(gpui_kit::px(2.))
+                .rounded(rems(palette.radius_button / 15.0))
+                .border_1()
+                .border_color(palette.text)
+                .text_size(rems(palette.size_button / 15.0))
+                .child(tr(verb)),
+        )
 }

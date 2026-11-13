@@ -7,6 +7,9 @@ entry:
     en: "Connect your local daemon, choose a node, then unlock your account."
     zh-CN: "连接本地服务、选择节点，然后解锁你的账号。"
   step:
+    numbered:
+      en: "%{number} · %{step}"
+      zh-CN: "%{number} · %{step}"
     daemon:
       en: "Daemon"
       zh-CN: "本地服务"
