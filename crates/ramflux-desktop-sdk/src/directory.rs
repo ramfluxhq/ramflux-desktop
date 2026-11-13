@@ -45,6 +45,8 @@ pub struct Directory {
 /// One conversation row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Conversation {
+    /// Latest activity from the complete directory, even before history is loaded.
+    pub last_activity: Option<ramflux_desktop_core::Timestamp>,
     /// Kind; `None` for a legacy row without a classification.
     pub kind: Option<ContextKind>,
     /// The name this account keeps for the conversation; `None` when the
@@ -151,6 +153,7 @@ impl Conversation {
             .unwrap_or_default();
         Self {
             kind,
+            last_activity: row.get("last_activity").and_then(crate::translate::seconds),
             title: field(row, "title"),
             group_id: field(row, "group_id"),
             direct_route,
@@ -284,12 +287,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn directory_activity_uses_the_same_seconds_conversion_as_messages() {
+        let row = Conversation::from_row(&json!({"last_activity":1_900_000_100_i64}));
+        assert_eq!(
+            row.last_activity,
+            Some(ramflux_desktop_core::Timestamp(1_900_000_100_000)),
+            "directory seconds must align with contract milliseconds"
+        );
+        let future = Conversation::from_row(&json!({"last_activity":i64::MAX}));
+        assert_eq!(
+            future.last_activity,
+            Some(ramflux_desktop_core::Timestamp(i64::MAX)),
+            "timestamp overflow must saturate like message decoding"
+        );
+        let missing = Conversation::from_row(&json!({"last_activity":null}));
+        assert_eq!(
+            missing.last_activity, None,
+            "missing activity cannot become an epoch timestamp"
+        );
+    }
+
+    #[test]
     fn rows_keep_unknown_fields_unknown() {
         let legacy =
             Conversation::from_row(&json!({ "id": "c", "kind": null, "direct_route": null }));
         assert_eq!(
             legacy,
             Conversation {
+                last_activity: None,
                 kind: None,
                 title: None,
                 group_id: None,

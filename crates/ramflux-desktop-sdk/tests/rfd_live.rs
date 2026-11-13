@@ -397,6 +397,7 @@ fn read_model_requests() -> Vec<ramflux_desktop_sdk::bus::BusRequest> {
     directory.conversations.insert(
         ContextId::new("dm-ana"),
         Conversation {
+            last_activity: None,
             kind: Some(ContextKind::Direct),
             title: None,
             group_id: Some("g-team".to_owned()),

@@ -30,6 +30,7 @@ pub mod ids;
 pub mod intent;
 pub mod model;
 pub mod policy;
+pub mod projection;
 pub mod recovery;
 pub mod selectors;
 pub mod source;
