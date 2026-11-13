@@ -422,7 +422,8 @@ fn selection_cache_is_viewport_bounded_and_append_touches_one_row(cx: &mut TestA
     };
     let _locale = locale_guard();
     const HISTORY_SIZE: usize = 3000;
-    let (handle, shell) = open(cx, "s02_daily");
+    let (handle, shell) = open_width(cx, "s02_daily", 1440.);
+    cx.simulate_window_resize(*handle, gpui_kit::size(gpui_kit::px(1440.), gpui_kit::px(12000.)));
     let mut scenario = source_facts::scenario();
     scenario.timeline.retain(|(at, event)| {
         *at == 0
@@ -465,7 +466,7 @@ fn selection_cache_is_viewport_bounded_and_append_touches_one_row(cx: &mut TestA
     in_window(cx, handle, |_, _| {});
     let before = cx.update(|cx| field.read(cx).message_selection_counts());
     assert!(
-        before.0 <= 64 && before.1 <= 128,
+        before.0 > 64 && before.0 < 400 && before.1 <= 800,
         "opening 3000 rows must create only viewport selection state: {before:?}"
     );
     assert_eq!(
@@ -473,11 +474,17 @@ fn selection_cache_is_viewport_bounded_and_append_touches_one_row(cx: &mut TestA
         HISTORY_SIZE,
         "virtualization must retain the full source history"
     );
+    in_window(cx, handle, |_, _| {});
+    let settled = cx.update(|cx| field.read(cx).message_selection_counts());
+    assert_eq!(
+        settled.1, before.1,
+        "all visible selection entities must be retained across another render"
+    );
     advance(cx, 1000);
     let after = cx.update(|cx| field.read(cx).message_selection_counts());
     assert_eq!(after.2, 1, "an appended message must not compare every cached body");
     assert!(
-        after.0 <= 64 && after.1.saturating_sub(before.1) <= 16,
+        after.0 < 400 && after.1.saturating_sub(before.1) <= 16,
         "an append must create only newly visible states: {before:?} -> {after:?}"
     );
 }
@@ -507,4 +514,37 @@ fn ime_candidate_confirmation_does_not_send_until_next_enter(cx: &mut TestAppCon
         1,
         "the next Enter may submit the committed text exactly once"
     );
+}
+
+#[gpui_kit::test]
+fn short_plain_bubbles_shrink_to_content_in_both_themes(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
+    for mode in [ThemeMode::Light, ThemeMode::Dark] {
+        let (handle, shell) = open_width(cx, "s02_daily", 1440.);
+        let mut scenario = source_facts::scenario();
+        for (_, event) in &mut scenario.timeline {
+            if let DomainEvent::MomentAdded(moment) = event
+                && moment.id == MomentId::new("x-03")
+                && let ramflux_desktop_core::MomentKind::Message(payload) = &mut moment.kind
+            {
+                payload.text = "OK".into();
+            }
+        }
+        let store = store_handle(cx, &shell);
+        cx.update(|cx| {
+            store.update(cx, |s, cx| s.load_scenario(&scenario, cx));
+            Theme::change(mode, None, cx);
+        });
+        advance(cx, 1000);
+        show_context(cx, handle, &shell, "c-lena");
+        let conversation = field(cx, &shell);
+        focus_row(cx, handle, &conversation, "x-03");
+        in_window(cx, handle, |w, _| {
+            let width = w.within("moment-x-03").find("message-bubble").bounds().size.width;
+            assert!(
+                width < gpui_kit::px(240.),
+                "a two-character reply must shrink instead of using the full reading measure: {width:?}"
+            );
+        });
+    }
 }

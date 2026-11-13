@@ -281,6 +281,7 @@ impl Conversation {
     fn ensure_visible_message(
         &mut self,
         id: &MomentId,
+        visible: &std::collections::BTreeSet<MomentId>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -288,7 +289,7 @@ impl Conversation {
             .rows
             .position(id)
             .and_then(|ix| self.rows.as_slice().get(ix))
-            .is_some_and(|row| self.view.selection.ensure(row, window, cx));
+            .is_some_and(|row| self.view.selection.ensure(row, visible, window, cx));
         if created {
             if let Some(input) = self.view.selection.text(id).cloned() {
                 let id = id.clone();
@@ -622,6 +623,7 @@ impl Render for Conversation {
                 let this = cx.weak_entity();
                 let store = self.store.downgrade();
                 let ask_call = ask_call.clone();
+                let visible = Rc::new(std::cell::RefCell::new(std::collections::BTreeSet::new()));
                 MessageScroller::new(
                     "conversation",
                     self.scroller.clone(),
@@ -637,10 +639,11 @@ impl Render for Conversation {
                             });
                         }
                         if matches!(row.moment.kind, ramflux_desktop_core::MomentKind::Message(_)) {
-                            let (this, id) = (this.clone(), id.clone());
+                            visible.borrow_mut().insert(id.clone());
+                            let (this, id, visible) = (this.clone(), id.clone(), visible.clone());
                             window.defer(cx, move |window, cx| {
                                 this.update(cx, |field, cx| {
-                                    field.ensure_visible_message(&id, window, cx)
+                                    field.ensure_visible_message(&id, &visible.borrow(), window, cx)
                                 })
                                 .ok();
                             });

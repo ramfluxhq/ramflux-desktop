@@ -74,6 +74,45 @@ pub(crate) fn render(
         return body;
     };
     let theme = palette(cx);
+    // Native inputs need an explicit measure; shape the actual stored lines
+    // with the same font and size rather than stretching every short reply.
+    let body_width = row.body.as_ref().filter(|_| state.message_text.is_some()).map(|body| {
+        let style = window.text_style();
+        let size = window.rem_size() * 0.875;
+        let mut width = gpui_kit::px(0.0);
+        let attachment = payload
+            .attachment
+            .as_ref()
+            .and_then(|id| row.refs.objects.get(id))
+            .and_then(|object| object.name.as_deref());
+        let quote =
+            row.refs.reply_excerpt.as_deref().map(ramflux_desktop_navigation::row::list_text);
+        let author = ramflux_desktop_navigation::row::list_text(&row.author);
+        let attachment = attachment.map(ramflux_desktop_navigation::row::list_text);
+        for line in body
+            .split('\n')
+            .chain(std::iter::once(author.as_ref()))
+            .chain(quote.as_deref())
+            .chain(attachment.as_deref())
+        {
+            let line: gpui_kit::SharedString = line.to_owned().into();
+            let run = gpui_kit::TextRun {
+                len: line.len(),
+                font: style.font(),
+                color: style.color,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            };
+            width = width.max(window.text_system().shape_line(line, size, &[run], None).width);
+            if width >= window.rem_size() * (theme.bubble_max / 16.0) {
+                break;
+            }
+        }
+        // Shell padding plus a small caret/glyph rounding allowance. Metadata
+        // and attachment/quote content retain their own intrinsic minimum.
+        (width + window.rem_size() * 2.0).max(window.rem_size() * 8.0)
+    });
     let agent =
         row.refs.people.get(&row.moment.origin).is_some_and(|p| p.kind == ParticipantKind::Agent);
     let kind = if row.outbound {
@@ -238,7 +277,7 @@ pub(crate) fn render(
                         .test_support()
                         .min_w_0()
                         .max_w(rems(theme.bubble_max / 16.0))
-                        .when(state.message_text.is_some(), |bubble| bubble.w_full())
+                        .when_some(body_width, |bubble, width| bubble.w(width))
                         .when(state.highlighted, |col| {
                             col.border_2()
                                 .border_color(cx.theme().ring)

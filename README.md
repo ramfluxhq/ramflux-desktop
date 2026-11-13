@@ -86,4 +86,6 @@ account locking or a conversation switch.
 Composer drafts are kept separately for each conversation and cleared with the
 account session on lock/reset. Plain message selection uses native readonly text
 controls so spaces, tabs and terminal blank lines copy exactly. Selection state
-is allocated for visible rows and retained in a bounded 64-entry cache.
+is allocated for visible rows; the cache protects the visible window plus overscan,
+with a 64-entry warm-cache floor. Inactive drafts are capped at 128 and pruned
+when their source conversation disappears.

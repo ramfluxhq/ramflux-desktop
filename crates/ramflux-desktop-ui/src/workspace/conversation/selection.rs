@@ -6,7 +6,7 @@ use crate::moments::MomentRow;
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{App, AppContext as _, Entity, FocusHandle, SharedString, Window};
 use ramflux_desktop_core::{MomentId, MomentKind};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub(super) const CAPACITY: usize = 64;
 #[derive(Clone)]
@@ -56,7 +56,13 @@ impl Cache {
         }
     }
     /// Deferred from visible-row rendering; never constructs state in render.
-    pub fn ensure(&mut self, row: &MomentRow, window: &mut Window, cx: &mut App) -> bool {
+    pub fn ensure(
+        &mut self,
+        row: &MomentRow,
+        visible: &BTreeSet<MomentId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> bool {
         if !matches!(row.moment.kind, MomentKind::Message(_)) {
             return false;
         }
@@ -66,11 +72,14 @@ impl Cache {
         if self.entries.contains_key(id) {
             return false;
         }
-        while self.entries.len() >= CAPACITY {
-            if let Some(old) = self.recent.pop_front() {
-                self.entries.remove(&old);
-            } else {
+        // Every row in this layout pass is protected, including overscan. A
+        // tall viewport can legitimately need more than the warm-cache floor.
+        while self.entries.len() >= CAPACITY.max(visible.len()) {
+            let Some(at) = self.recent.iter().position(|id| !visible.contains(id)) else {
                 break;
+            };
+            if let Some(old) = self.recent.remove(at) {
+                self.entries.remove(&old);
             }
         }
         let body = plain_body(row).cloned();

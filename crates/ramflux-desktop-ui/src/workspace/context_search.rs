@@ -7,13 +7,14 @@ use std::collections::BTreeMap;
 #[derive(Default)]
 struct Document {
     metadata: String,
-    bodies: BTreeMap<MomentId, String>,
+    bodies: BTreeMap<MomentId, (String, String)>,
 }
 #[derive(Default)]
 pub(super) struct Index {
     documents: BTreeMap<ContextId, Document>,
     body_owners: BTreeMap<MomentId, ContextId>,
     pub builds: usize,
+    pub body_builds: usize,
 }
 impl Index {
     pub fn reset(&mut self, store: &Store) {
@@ -63,22 +64,70 @@ impl Index {
             }
         }
         document.metadata = document.metadata.to_lowercase();
+        self.documents.insert(id.clone(), document);
         for moment in store.context_moments(id) {
-            if matches!(&moment.kind, MomentKind::Message(p) if !p.tombstone)
-                && let Some(body) = store.body(&moment.id)
-            {
-                document.bodies.insert(moment.id.clone(), body.to_lowercase());
-                self.body_owners.insert(moment.id.clone(), id.clone());
+            self.update_body(store, &moment.id);
+        }
+        self.builds += 1;
+    }
+    pub fn apply(&mut self, store: &Store, changes: &crate::app::ChangeSet) {
+        // Metadata changes do not invalidate the bodies of that conversation.
+        for id in changes.contexts() {
+            let bodies = self.documents.get_mut(id).map(|d| std::mem::take(&mut d.bodies));
+            if let Some(context) = store.context(id) {
+                let mut metadata =
+                    format!("{}\n{}", selectors::context_title(store, context), id.as_str());
+                for participant in &context.participants {
+                    metadata.push('\n');
+                    metadata.push_str(participant.as_str());
+                    if let Some(person) = store.participant(participant) {
+                        metadata.push('\n');
+                        metadata.push_str(&person.display);
+                    }
+                }
+                self.documents.insert(
+                    id.clone(),
+                    Document {
+                        metadata: metadata.to_lowercase(),
+                        bodies: bodies.unwrap_or_default(),
+                    },
+                );
+                self.builds += 1;
+            } else {
+                self.documents.remove(id);
+                self.body_owners.retain(|_, owner| owner != id);
             }
         }
-        self.documents.insert(id.clone(), document);
-        self.builds += 1;
+        for id in changes.moments() {
+            self.update_body(store, id);
+        }
+    }
+    fn update_body(&mut self, store: &Store, id: &MomentId) {
+        let body = store.moment(id).and_then(|moment| {
+            matches!(&moment.kind, MomentKind::Message(p) if !p.tombstone)
+                .then(|| store.body(id).map(|body| (&moment.context_id, body)))
+                .flatten()
+        });
+        if let Some((owner, body)) = body {
+            let Some(document) = self.documents.get_mut(owner) else {
+                return;
+            };
+            if document.bodies.get(id).is_none_or(|(source, _)| source != body) {
+                document.bodies.insert(id.clone(), (body.to_owned(), body.to_lowercase()));
+                self.body_builds += 1;
+            }
+            self.body_owners.insert(id.clone(), owner.clone());
+        } else if let Some(owner) = self.body_owners.remove(id)
+            && let Some(document) = self.documents.get_mut(&owner)
+        {
+            document.bodies.remove(id);
+        }
     }
     pub fn matches(&self, id: &ContextId, normalized: &str) -> bool {
         normalized.is_empty()
             || self.documents.get(id).is_some_and(|document| {
                 document.metadata.contains(normalized)
-                    || document.bodies.values().any(|text| text.contains(normalized))
+                    || document.bodies.values().any(|(_, text)| text.contains(normalized))
             })
     }
 }
@@ -127,11 +176,38 @@ mod tests {
             index.matches(&ContextId::new("a"), "private"),
             "normalized source body must initially match"
         );
+        let builds = index.body_builds;
+        let mut receipt = crate::app::ChangeSet::default();
+        let receipt_event = DomainEvent::MomentUpdated {
+            moment_id: MomentId::new("m-a"),
+            lifecycle: None,
+            kind: Some(MomentKind::Message(MessagePayload {
+                text: "Private words".into(),
+                receipt: ramflux_desktop_core::Receipt::Read,
+                ..Default::default()
+            })),
+        };
+        receipt.merge(
+            store
+                .apply(&EventEnvelope::new(4, Timestamp(0), receipt_event))
+                .expect("test: actual receipt source delta"),
+        );
+        index.apply(&store, &receipt);
+        assert_eq!(
+            index.body_builds, builds,
+            "a receipt-only delta must reuse normalized body text"
+        );
         store
-            .apply(&EventEnvelope::new(4, Timestamp(0), message("m-b", "b", "Current words")))
+            .apply(&EventEnvelope::new(5, Timestamp(0), message("m-b", "b", "Current words")))
             .expect("test: second body");
         index.prune(&store);
-        index.update(&store, &ContextId::new("b"));
+        let mut appended = crate::app::ChangeSet::default();
+        appended.merge(ramflux_desktop_core::Changes {
+            moments: [MomentId::new("m-b")].into(),
+            ..Default::default()
+        });
+        index.apply(&store, &appended);
+        assert_eq!(index.body_builds, builds + 1, "an append normalizes only its own body");
         assert!(
             !index.matches(&ContextId::new("a"), "private"),
             "an evicted source body cannot survive in the search cache"
@@ -145,7 +221,7 @@ mod tests {
         )
         .expect("test: locked account");
         store
-            .apply(&EventEnvelope::new(5, Timestamp(0), DomainEvent::AccountUpdated(locked)))
+            .apply(&EventEnvelope::new(6, Timestamp(0), DomainEvent::AccountUpdated(locked)))
             .expect("test: lock fact");
         index.reset(&store);
         assert!(

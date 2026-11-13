@@ -61,6 +61,11 @@ impl ChangeSet {
         self.changes.participants.iter()
     }
 
+    /// Context metadata changed or removed in this batch.
+    pub fn contexts(&self) -> impl Iterator<Item = &ContextId> {
+        self.changes.contexts.iter()
+    }
+
     /// Moments added, changed or removed in this batch.
     pub fn moments(&self) -> impl Iterator<Item = &ramflux_desktop_core::MomentId> {
         self.changes.moments.iter()

@@ -25,6 +25,7 @@
 
 pub mod assignee;
 pub mod attachment;
+mod drafts;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -66,7 +67,7 @@ pub struct DraftTarget {
 
 /// The composer view.
 pub struct Composer {
-    drafts: std::collections::BTreeMap<ContextId, String>,
+    drafts: drafts::Drafts,
     store: Entity<StoreHandle>,
     input: Entity<TextareaState>,
     sink: Option<EventSink>,
@@ -129,6 +130,11 @@ impl Composer {
                     this.staged = None;
                 }
                 if matches!(event, StoreEvent::Changed(_)) {
+                    let source = store.read(cx).store();
+                    this.drafts.prune(source, this.draft.as_ref().map(|draft| &draft.context_id));
+                    if this.context.as_ref().is_some_and(|id| source.context(id).is_none()) {
+                        this.input.update(cx, |input, cx| input.set_value("", window, cx));
+                    }
                     let next = this.staged.as_ref().and_then(|s| s.observe(store.read(cx).store()));
                     if let Some(next) = next {
                         this.staged = next;
@@ -141,7 +147,7 @@ impl Composer {
             }),
         ];
         Self {
-            drafts: std::collections::BTreeMap::new(),
+            drafts: drafts::Drafts::default(),
             store,
             input,
             sink: None,
@@ -210,6 +216,10 @@ impl Composer {
         if let Some(id) =
             self.draft.as_ref().map(|draft| &draft.context_id).or(self.context.as_ref())
         {
+            if self.draft.is_none() && self.store.read(cx).store().context(id).is_none() {
+                self.drafts.remove(id);
+                return;
+            }
             let text = self.input.read(cx).value().to_string();
             if text.is_empty() {
                 self.drafts.remove(id);

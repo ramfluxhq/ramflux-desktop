@@ -165,6 +165,7 @@ pub fn render(
                 col.child(
                     div().id("message-text").test_support().min_w_0().child(
                         gpui_kit::component::input::Textarea::new(selection)
+                            .text_sm()
                             .w_full()
                             .readonly(true)
                             .appearance(false)

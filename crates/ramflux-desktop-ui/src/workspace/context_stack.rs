@@ -160,6 +160,7 @@ impl ContextStack {
             return;
         };
         self.search.prune(store);
+        self.search.apply(store, changes);
         if ids.is_empty() {
             cx.notify();
             return;
@@ -168,7 +169,6 @@ impl ContextStack {
         let query = self.query.read(cx).value().trim().to_lowercase();
         let rows = Rc::make_mut(&mut self.rows);
         for id in ids {
-            self.search.update(store, &id);
             rows.retain(|entry| entry.id != id);
             if self.query_invalid || !is_visible(store) {
                 continue;
