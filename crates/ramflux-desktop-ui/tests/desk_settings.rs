@@ -44,8 +44,16 @@ fn account_devices_backup_fit_all_widths_and_themes(cx: &mut TestAppContext) {
                         );
                     }
                     if section == SettingsSection::Devices && width == 640. {
+                        // This device carries the compact note; an active
+                        // other device carries the full wrapped warning.
+                        assert!(
+                            w.within("device-dev-laptop-01")
+                                .try_find("device-origin-note")
+                                .is_some(),
+                            "this device shows the unknown origin as one compact line"
+                        );
                         let description = w
-                            .within("device-dev-laptop-01")
+                            .within("device-dev-phone-01")
                             .find("device-origin-description")
                             .bounds();
                         assert!(
@@ -92,9 +100,9 @@ fn section_navigation_cancels_a_pending_device_hold_before_hiding_facts(cx: &mut
             .map(|e| (e.path().to_vec(), e.label().map(str::to_owned)))
             .collect();
         assert_eq!(
-            w.find("settings-section-account").focused(),
+            w.find("settings").focused(),
             Some(true),
-            "a pressed section button keeps keyboard focus: {focused:?}"
+            "a pointer section change leaves focus where it was, inside settings: {focused:?}"
         );
         w.press("ctrl-tab", cx);
     });
