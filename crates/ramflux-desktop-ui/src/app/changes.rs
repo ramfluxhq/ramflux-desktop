@@ -17,6 +17,11 @@ pub struct ChangeSet {
 }
 
 impl ChangeSet {
+    /// The merged domain changes (empty for a reset).
+    pub fn domain(&self) -> &Changes {
+        &self.changes
+    }
+
     /// A change set that invalidates every area (seek, scenario or account switch).
     pub fn reset() -> Self {
         Self { reset: true, ..Self::default() }

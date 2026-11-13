@@ -92,9 +92,9 @@ fn section_navigation_cancels_a_pending_device_hold_before_hiding_facts(cx: &mut
             .map(|e| (e.path().to_vec(), e.label().map(str::to_owned)))
             .collect();
         assert_eq!(
-            w.find("settings").focused(),
+            w.find("settings-section-account").focused(),
             Some(true),
-            "section navigation must retain settings focus: {focused:?}"
+            "a pressed section button keeps keyboard focus: {focused:?}"
         );
         w.press("ctrl-tab", cx);
     });
@@ -130,7 +130,18 @@ fn device_directory_states_follow_source_and_unknown_origin_stays_cautious(
     let _locale = locale_guard();
     let (handle, shell) = open(cx, "s09_multi_account_day");
     let mut scenario = load_fixture("s09_multi_account_day").expect("test: source scenario");
+    let later_device = scenario
+        .timeline
+        .iter()
+        .find_map(|(_, event)| match event {
+            DomainEvent::DeviceUpserted(device) if device.id.as_str() == "dev-phone-01" => {
+                Some(device.clone())
+            }
+            _ => None,
+        })
+        .expect("test: the scenario lists the phone");
     scenario.timeline.retain(|(_, event)| !matches!(event, DomainEvent::DeviceUpserted(_)));
+    scenario.timeline.push((5000, DomainEvent::DeviceUpserted(later_device)));
     scenario.timeline.push((2000, DomainEvent::ListingsLoaded(vec![Listing::Devices])));
     scenario.timeline.push((3000, DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)));
     scenario.timeline.push((4000, DomainEvent::SourceStatusChanged(SourceStatus::Connected)));
@@ -173,6 +184,15 @@ fn device_directory_states_follow_source_and_unknown_origin_stays_cautious(
     assert!(
         has_label(cx, handle, "Last device directory error. Device directory disconnected"),
         "a failed directory has an error state rather than an empty list"
+    );
+    advance(cx, 1000);
+    assert!(
+        !exists(cx, handle, "settings-last-error"),
+        "a later successful directory answer clears the stale error banner"
+    );
+    assert!(
+        exists(cx, handle, "device-dev-phone-01"),
+        "the answered directory replaces the error state"
     );
     let mut scenario = load_fixture("s09_multi_account_day").expect("test: populated source");
     let foreign = serde_json::from_value(serde_json::json!({"id":"foreign-device","account_id":"other-account","label":"Foreign device"})).expect("test: foreign source device");

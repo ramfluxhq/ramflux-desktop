@@ -23,21 +23,31 @@ use crate::ids::domain_id;
 pub const SYNC_FILE_NAME: &str = "ramflux-device-sync.bundle";
 
 /// The devices section.
-pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
+pub(crate) fn page(
+    context: &SectionContext,
+    errors: &super::errors::ErrorScope,
+    cx: &App,
+) -> SettingPage {
     let account = super::account::active_account(context, cx).map(|account| account.id);
+    let rendered = context.store.read(cx).active_account().cloned();
     let store = context.store.read(cx).store();
     let devices: Vec<Device> = store
         .devices()
         .filter(|device| account.as_ref() == Some(&device.account_id))
         .cloned()
         .collect();
-    let listed = store.is_listed(Listing::Devices);
+    // Listed per account: one account's answer never ends another's loading.
+    let listed = errors.devices_listed(rendered.as_ref()) && store.is_listed(Listing::Devices);
     let offline = store.source_status() == SourceStatus::Disconnected;
-    let failure = store
-        .failures()
-        .iter()
-        .rev()
-        .find(|failure| failure.method == "device.list")
+    // Only a directory failure newer than the last success, switch or
+    // reconnect for this account explains an empty list.
+    let failure = errors
+        .current_method(
+            rendered.as_ref(),
+            SettingsSection::Devices,
+            super::errors::DEVICE_LIST,
+            store,
+        )
         .map(|failure| i18n::backend_text(&failure.message));
     let revoke_reason = crate::gate::reason(store, ramflux_desktop_core::methods::DEVICE_REVOKE);
     let sink = context.sink(SettingsSection::Devices);
@@ -136,12 +146,23 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                     .when(
                         trust == ramflux_desktop_core::projection::devices::DeviceTrust::Unverified,
                         |row| {
-                            row.child(presentation::warning(
-                                "device-origin-warning",
-                                tr("settings_ui.origin_unknown"),
-                                tr("settings_ui.origin_warning"),
-                                cx,
-                            ))
+                            // Revoked rows and this device carry no actionable
+                            // origin risk: one compact line keeps the cautious
+                            // fact without repeating the full warning.
+                            if device.revoked || device.this_device {
+                                row.child(presentation::compact_warning(
+                                    "device-origin-note",
+                                    tr("settings_ui.origin_unknown"),
+                                    cx,
+                                ))
+                            } else {
+                                row.child(presentation::warning(
+                                    "device-origin-warning",
+                                    tr("settings_ui.origin_unknown"),
+                                    tr("settings_ui.origin_warning"),
+                                    cx,
+                                ))
+                            }
                         },
                     )
             }))

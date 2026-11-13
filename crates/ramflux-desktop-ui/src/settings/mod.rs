@@ -30,6 +30,7 @@ pub mod appearance;
 pub mod backup;
 pub mod devices;
 pub mod diagnostics;
+mod errors;
 pub mod integrations;
 pub mod local_setup;
 pub mod nodes;
@@ -57,7 +58,7 @@ use crate::launch::DaemonLauncher;
 use crate::root::{ConfirmHost, IntentRoot, RootEvent};
 
 /// A settings section, in sidebar order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SettingsSection {
     /// Account.
     Account,
@@ -138,6 +139,7 @@ pub struct SettingsPage {
     launch_inputs: local_setup::LaunchInputs,
     section: SettingsSection,
     opened: usize,
+    errors: errors::ErrorScope,
     focus_handle: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -158,12 +160,21 @@ impl SettingsPage {
         cx: &mut Context<Self>,
     ) -> Self {
         let mut subscriptions = vec![
-            cx.subscribe(&store, |_, _, event: &StoreEvent, cx| {
-                if let StoreEvent::Changed(changes) = event
-                    && (changes.touches_settings() || changes.touches_docks())
-                {
-                    cx.notify();
+            cx.subscribe(&store, |this, store, event: &StoreEvent, cx| match event {
+                StoreEvent::Changed(changes) => {
+                    let handle = store.read(cx);
+                    let account = handle.active_account().cloned();
+                    this.errors.observe(account.as_ref(), changes, handle.store());
+                    if changes.touches_settings() || changes.touches_docks() {
+                        cx.notify();
+                    }
                 }
+                StoreEvent::BackgroundChanged(account) => {
+                    if let Some(own) = store.read(cx).account_store(account) {
+                        this.errors.note_listed(account, own);
+                    }
+                }
+                StoreEvent::Inspected | StoreEvent::CallAudio => {}
             }),
             cx.observe(&root, |_, _, cx| cx.notify()),
             cx.subscribe_in(&root, window, |this, root, event: &RootEvent, window, cx| {
@@ -203,6 +214,7 @@ impl SettingsPage {
             launch_inputs,
             section: SettingsSection::Account,
             opened: 0,
+            errors: errors::ErrorScope::default(),
             focus_handle: cx.focus_handle(),
             _subscriptions: subscriptions,
         }
@@ -215,6 +227,16 @@ impl SettingsPage {
         }
         self.section = section;
         self.opened += 1;
+        // Showing a section starts its error banner afresh for the rendered
+        // account; a directory still waiting for its first answer keeps the
+        // failure that explains why it is not loading.
+        let handle = self.context.store.read(cx);
+        let account = handle.active_account().cloned();
+        let waiting =
+            section == SettingsSection::Devices && !self.errors.devices_listed(account.as_ref());
+        if !waiting {
+            self.errors.clear(account.as_ref(), section, handle.store());
+        }
         cx.notify();
     }
 
@@ -263,7 +285,7 @@ impl Render for SettingsPage {
             SettingsSection::Account => account::page(context, &self.inputs, cx),
             SettingsSection::Backup => backup::page(&self.backup, cx),
             SettingsSection::Agents => agents::page(&self.agents),
-            SettingsSection::Devices => devices::page(context, cx),
+            SettingsSection::Devices => devices::page(context, &self.errors, cx),
             SettingsSection::Nodes => nodes::page(context, cx),
             SettingsSection::Integrations => integrations::page(context, cx),
             SettingsSection::Diagnostics => diagnostics::page(context, &self.launch_inputs, cx),
@@ -288,19 +310,12 @@ impl Render for SettingsPage {
 
         let offline = context.store.read(cx).store().source_status()
             == ramflux_desktop_core::SourceStatus::Disconnected;
-        let failure = context
-            .store
-            .read(cx)
-            .store()
-            .failures()
-            .iter()
-            .rev()
-            .find(|failure| {
-                ["account.", "device.", "backup.", "node."]
-                    .iter()
-                    .any(|prefix| failure.method.starts_with(prefix))
-            })
-            .map(|failure| crate::i18n::backend_text(&failure.message));
+        let failure = {
+            let handle = context.store.read(cx);
+            self.errors
+                .current(handle.active_account(), self.section, handle.store())
+                .map(|failure| crate::i18n::backend_text(&failure.message))
+        };
         let navigation = div()
             .id("settings-navigation")
             .test_support()
@@ -316,11 +331,13 @@ impl Render for SettingsPage {
                     .ghost()
                     .small()
                     .selected(self.section == section)
+                    // The current section is exposed to assistive technology,
+                    // not only drawn as selected.
+                    .toggled(self.section == section)
                     .label(tr(&format!("settings.section.{}", section.key())))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.show(section, cx);
-                        window.focus(&this.focus_handle, cx);
-                    }))
+                    // Focus stays on the pressed button, so keyboard users keep
+                    // their ring and Tab position.
+                    .on_click(cx.listener(move |this, _, _, cx| this.show(section, cx)))
             }));
         v_flex()
             .id("settings")

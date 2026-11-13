@@ -297,6 +297,11 @@ impl StoreHandle {
         self.sessions.get(account).map_or(0, |s| selectors::attention(s.store()).len())
     }
 
+    /// The store of one account's own session (never another account's).
+    pub fn account_store(&self, account: &AccountId) -> Option<&Store> {
+        self.sessions.get(account).map(AccountSession::store)
+    }
+
     /// Display label of an account slot: the account record's label in its
     /// own store, or `None` while the slot has no account record yet.
     pub fn account_label(&self, account: &AccountId) -> Option<String> {
