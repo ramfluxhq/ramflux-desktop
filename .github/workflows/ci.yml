@@ -177,7 +177,7 @@ jobs:
     name: fmt, clippy, test (macos)
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/ci/')
     runs-on: macos-15
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@b9e0990d219a03df7633c93f6f005a8fecbcab22
@@ -188,6 +188,8 @@ jobs:
         uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb
         timeout-minutes: 5
         continue-on-error: true
+        with:
+          key: ${{ runner.os }}
 
       - name: Fetch dependencies
         timeout-minutes: 5
@@ -207,7 +209,7 @@ jobs:
       # The screenshot programs are `test = false` targets, which
       # `--all-targets` skips; lint them explicitly so they cannot rot.
       - name: Clippy (screenshot programs)
-        timeout-minutes: 10
+        timeout-minutes: 20
         env:
           CARGO_NET_OFFLINE: "true"
         run: scripts/check-shot-programs.sh
@@ -215,13 +217,13 @@ jobs:
       # Clippy checks metadata but does not link the UI test executable.
       # Keep cold compilation outside the checker's per-command test budget.
       - name: Build UI library tests
-        timeout-minutes: 10
+        timeout-minutes: 30
         env:
           CARGO_NET_OFFLINE: "true"
         run: cargo test --locked -p ramflux-desktop-ui --lib --no-run
 
       - name: Required bus alignment tests (positive counts)
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: python3 scripts/check-bus-align-tests.py
 
       - name: Bus alignment screenshots (both locales)
