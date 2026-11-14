@@ -405,7 +405,9 @@ impl Render for EntryPage {
             EntryStep::Account => self.render_account_step(window, cx).into_any_element(),
         };
         let root = self.root.read(cx);
-        let strip = (root.host() == ConfirmHost::Entry).then(|| root.confirm_strip().clone());
+        // The footer (and its rule) only while a confirmation is open.
+        let strip = (root.host() == ConfirmHost::Entry && root.confirm_strip().read(cx).is_open())
+            .then(|| root.confirm_strip().clone());
         let scroll = div().id("entry").test_support().flex_1().min_h_0().overflow_y_scroll().child(
             v_flex()
                 .mx_auto()
@@ -413,7 +415,9 @@ impl Render for EntryPage {
                 .max_w(rems(656.0 / 15.0))
                 .gap_6()
                 .px_6()
-                .py_12()
+                // The shell already keeps the 52 px drag region above (macOS).
+                .when(!cfg!(target_os = "macos"), |col| col.pt_12())
+                .pb_12()
                 // Design A01: the product name, then the page title in the
                 // page size over a one-line description.
                 .child({

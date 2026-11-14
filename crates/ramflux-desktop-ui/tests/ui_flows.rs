@@ -221,10 +221,18 @@ fn go_to_needs_me_cycles_through_attention_items(cx: &mut TestAppContext) {
             workspace.read(cx).conversation().read(cx).highlighted().map(ToString::to_string)
         })
     };
-    click(cx, handle, "needs-me");
+    go_to_needs_me(cx, handle);
     assert_eq!(highlighted(cx).as_deref(), Some("m-conflict"));
-    click(cx, handle, "needs-me");
+    go_to_needs_me(cx, handle);
     assert_eq!(highlighted(cx).as_deref(), Some("m-handoff"), "the next press moves on");
-    click(cx, handle, "needs-me");
+    go_to_needs_me(cx, handle);
     assert_eq!(highlighted(cx).as_deref(), Some("m-conflict"), "and wraps around");
+}
+
+/// Go to "needs me" (the palette command and its shortcut; the status
+/// banner's button left with the board, B38).
+fn go_to_needs_me(cx: &mut TestAppContext, handle: gpui_kit::WindowHandle<gpui_kit::base::Root>) {
+    in_window(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(ramflux_desktop_ui::actions::GoToNeedsMe), cx)
+    });
 }

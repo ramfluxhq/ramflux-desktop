@@ -584,9 +584,17 @@ impl Render for Shell {
         // The status banner sits at the top of the content: above the entry
         // page here, inside the workspace's content column there.
         let content = match self.page {
-            Page::Entry(_) => v_flex()
+            Page::Entry(step) => v_flex()
                 .size_full()
-                .child(self.status.clone())
+                // Below the macOS drag region (and its traffic lights).
+                .when(cfg!(target_os = "macos"), |page| {
+                    page.child(div().flex_none().h(gpui_kit::rems(WINDOW_DRAG_HEIGHT / 15.0)))
+                })
+                // Board A01: the local service step says itself that the
+                // service is not connected (its tip bar); no banner repeats it.
+                .when(step != crate::route::EntryStep::Daemon, |page| {
+                    page.child(self.status.clone())
+                })
                 .child(div().flex_1().min_h_0().child(self.entry.clone()))
                 .into_any_element(),
             Page::Workspace => self.workspace.clone().into_any_element(),

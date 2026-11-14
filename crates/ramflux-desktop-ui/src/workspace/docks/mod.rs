@@ -26,6 +26,7 @@ pub mod prefs;
 
 use std::rc::Rc;
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -250,8 +251,7 @@ impl Render for DockToolPanel {
                             )
                             .child(
                                 Button::new(SharedString::from(format!("dock-pin-{}", tool.key())))
-                                    .outline()
-                                    .small()
+                                    .design_secondary(cx)
                                     .selected(pinned)
                                     .label(tr(if pinned { "dock.unpin" } else { "dock.pin" }))
                                     .on_click(cx.listener(move |_, _, _, cx| {
@@ -322,28 +322,28 @@ impl DockRail {
 
 impl RenderOnce for DockRail {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let palette = ramflux_desktop_navigation::palette(cx);
         let labeled = self.labeled;
         let buttons = DockTool::ALL.into_iter().map(|tool| {
             let on_toggle = self.on_toggle.clone();
             let open = self.open == Some(tool);
-            let button = Button::new(SharedString::from(format!("rail-{}", tool.key())))
-                .small()
+            // The header icons keep `rail-*`; an open panel's labelled tabs
+            // are `dock-tab-*`, so both can show at once (board H01).
+            let id = if labeled { "dock-tab" } else { "rail" };
+            let button = Button::new(SharedString::from(format!("{id}-{}", tool.key())))
                 .accessibility_label(tool.title())
                 .tooltip_with_action(tool.title(), tool.toggle_action().as_ref(), None)
                 .selected(open)
                 .toggled(open)
                 .on_click(move |_: &ClickEvent, window, cx| on_toggle(tool, window, cx));
             if labeled {
-                let button =
-                    button.label(tool.title()).rounded(gpui_kit::px(palette.radius_button));
-                if open { button.primary() } else { button.outline() }
+                let button = button.label(tool.title());
+                if open { button.design_primary(cx) } else { button.design_secondary(cx) }
             } else {
-                button.ghost().icon(tool.icon())
+                button.small().ghost().icon(tool.icon())
             }
         });
         h_flex()
-            .id("dock-rail")
+            .id(if labeled { "dock-tabs" } else { "dock-rail" })
             .test_support()
             .role(Role::Toolbar)
             .aria_label(tr("dock.tools"))

@@ -535,10 +535,28 @@ impl Render for ContextStack {
                     )
                     .child(new_menu),
             )
+            // Design `RF / Search field` with its shortcut: the visible way
+            // into the command palette.
             .child(super::sections::directory::search_input(
                 "conversation-search",
                 &self.query,
                 tr("navigation.search"),
+                Some(
+                    Button::new("open-palette")
+                        .ghost()
+                        .xsmall()
+                        .label(tr(if cfg!(target_os = "macos") {
+                            "palette.shortcut_mac"
+                        } else {
+                            "palette.shortcut_other"
+                        }))
+                        .accessibility_label(tr("status.palette"))
+                        .tooltip(tr("status.palette"))
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(crate::actions::OpenPalette), cx)
+                        })
+                        .into_any_element(),
+                ),
                 cx,
             ))
             .when(self.filter == ListFilter::Messages, |pane| {

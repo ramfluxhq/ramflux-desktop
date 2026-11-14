@@ -64,6 +64,9 @@ pub struct Conversation {
     highlight_focus: FocusHandle,
     /// The dock tool open beside the conversation, if any.
     open_tool: Option<crate::workspace::DockTool>,
+    /// The window's status banner, shown under the header (design B38)
+    /// while this view is the workspace's detail.
+    status: Option<gpui_kit::AnyView>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -109,6 +112,11 @@ impl Conversation {
     /// the tool switcher only while none is (the open panel carries it).
     pub fn set_open_tool(&mut self, tool: Option<crate::workspace::DockTool>) {
         self.open_tool = tool;
+    }
+
+    /// Hands the window's status banner to this view (or takes it back).
+    pub fn set_status(&mut self, status: Option<gpui_kit::AnyView>) {
+        self.status = status;
     }
 
     /// A field with no context, emitting through the root sink.
@@ -166,6 +174,7 @@ impl Conversation {
             focus_handle: cx.focus_handle(),
             highlight_focus: cx.focus_handle().tab_stop(true),
             open_tool: None,
+            status: None,
             _subscriptions: subscriptions,
         }
     }
@@ -593,13 +602,15 @@ impl Render for Conversation {
         let ask_call = call_ack.ask.clone();
         let in_form =
             self.context_id.is_none() && (self.draft.is_some() || self.group_form.is_some());
+        let open_tool = self.open_tool;
         let switcher = || {
-            crate::workspace::DockRail::new(None, |tool, window, cx| {
+            crate::workspace::DockRail::new(open_tool, |tool, window, cx| {
                 window.dispatch_action(tool.toggle_action(), cx)
             })
             .into_any_element()
         };
-        let tools = (self.open_tool.is_none() && !in_form).then(switcher);
+        // Board H01: the header keeps its tools while a panel is open.
+        let tools = (!in_form).then(switcher);
         // A new conversation or group form has no header: the switcher sits
         // in a row of its own above it.
         let tools_row = (self.open_tool.is_none() && in_form).then(|| {
@@ -718,6 +729,7 @@ impl Render for Conversation {
         let draft = self.draft.clone().filter(|_| self.context_id.is_none());
         let group_form = self.group_form.clone().filter(|_| self.context_id.is_none());
         let composer = group_form.is_none().then(|| self.composer.clone());
+        let status = self.status.clone();
         v_flex()
             .id("conversation")
             .track_focus(&self.focus_handle)
@@ -727,9 +739,14 @@ impl Render for Conversation {
             .map(|field| match (group_form, draft) {
                 (Some(form), _) => field.children(tools_row).child(form),
                 (None, Some(draft)) => field.children(tools_row).child(draft),
-                (None, None) => field.child(header).child(body),
+                (None, None) => field.child(header).children(status).child(body),
             })
             .children(strip)
-            .children(composer)
+            // Board H01: the composer keeps 24 px gutters when the pane is
+            // narrower than its reading column (a tool panel open).
+            .children(
+                composer
+                    .map(|composer| div().w_full().px(gpui_kit::rems(24.0 / 15.0)).child(composer)),
+            )
     }
 }

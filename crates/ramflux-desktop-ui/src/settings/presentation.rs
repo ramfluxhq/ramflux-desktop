@@ -66,52 +66,6 @@ pub(super) fn notice(
         .into_any_element()
 }
 
-pub(super) fn warning(
-    id: impl Into<ElementId>,
-    title: SharedString,
-    description: SharedString,
-    cx: &App,
-) -> AnyElement {
-    let theme = palette(cx);
-    gpui_kit::component::v_flex()
-        .id(id)
-        .test_support()
-        .role(Role::Status)
-        .aria_label(crate::i18n::sentences(&title, &description))
-        .min_w_0()
-        .w_full()
-        .whitespace_normal()
-        .bg(theme.warning_bg)
-        .rounded(gpui_kit::rems(theme.radius_md / 16.0))
-        // The generated banner's description lives in a row with intrinsic
-        // minimum width. Keep its chrome, and constrain the long host copy in
-        // a separate full-width block so every risk fact remains readable.
-        .child(catalog::trust_banner(
-            catalog::NoticeContent::new(
-                title,
-                SharedString::default(),
-                Icon::new(IconName::TriangleAlert).text_color(cx.theme().warning),
-                div(),
-            ),
-            false,
-            theme,
-        ))
-        .child(
-            div()
-                .id("device-origin-description")
-                .test_support()
-                .min_w_0()
-                .w_full()
-                .px_3()
-                .pb_3()
-                .text_sm()
-                .text_color(theme.text)
-                .whitespace_normal()
-                .child(description),
-        )
-        .into_any_element()
-}
-
 /// One muted line with a warning icon: a cautious fact with no action.
 pub(super) fn compact_warning(
     id: impl Into<ElementId>,

@@ -48,6 +48,8 @@ use crate::i18n::{tr, tr_args};
 pub enum StrangersEvent {
     /// A request was chosen (its detail is shown).
     Selected(String),
+    /// The heading's back chevron: return to the contacts page.
+    Back,
 }
 
 /// Incoming requests that still wait for an answer, in display order.
@@ -306,7 +308,7 @@ fn batch_refusal(error: &BatchError) -> SharedString {
 }
 
 impl Render for StrangersArea {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (rows, listed, read_error, policy) = {
             let store = self.store.read(cx).store();
             let rows: Vec<DirectoryRow> = self
@@ -316,20 +318,33 @@ impl Render for StrangersArea {
                     let name = store
                         .participant(&request.peer)
                         .map_or_else(|| request.peer.short(), |p| p.display.clone());
-                    let subtitle =
-                        request.note.as_deref().or(request.preview.as_deref()).map_or_else(
-                            || SharedString::from(request.peer.to_string()),
-                            ramflux_desktop_navigation::row::list_text,
-                        );
+                    let unverified = store
+                        .participant(&request.peer)
+                        .is_none_or(|p| p.safety != ramflux_desktop_core::SafetyState::Verified);
+                    let body = match (request.note.as_deref(), request.preview.as_deref()) {
+                        (_, Some(preview)) => ramflux_desktop_navigation::row::list_text(preview),
+                        (Some(note), None) => tr_args(
+                            "sections.strangers.note_prefix",
+                            &[("note", &ramflux_desktop_navigation::row::list_text(note))],
+                        ),
+                        (None, None) => tr_args(
+                            "sections.strangers.held",
+                            &[("count", &request.held_messages.to_string())],
+                        ),
+                    };
                     DirectoryRow {
                         key: request.id.clone().into(),
                         title: ramflux_desktop_navigation::row::list_text(&name),
-                        subtitle,
+                        subtitle: SharedString::default(),
                         avatar: catalog::AvatarKind::Person,
-                        trailing: (request.held_messages > 0)
-                            .then(|| request.held_messages.to_string().into()),
+                        trailing: request.expires_at.map(|at| crate::i18n::date_time(at).into()),
                         selected: self.selected.as_deref() == Some(request.id.as_str()),
                         checked: self.batch.then(|| self.checked.contains(&request.id)),
+                        card: Some(directory::RowCard {
+                            handle: super::stranger_detail::handle(&request.peer),
+                            chip: unverified.then(|| tr("sections.strangers.unverified_chip")),
+                            body,
+                        }),
                     }
                 })
                 .collect();
@@ -378,18 +393,37 @@ impl Render for StrangersArea {
             .px_3()
             .pt(gpui_kit::rems(24.0 / 15.0))
             .gap_4()
-            .child(directory::header(
-                tr_args("sections.strangers.title", &[("count", &count.to_string())]),
-                Button::new("strangers-batch-toggle")
-                    .small()
-                    .ghost()
-                    .icon(IconName::ListChecks)
-                    .label(tr("sections.strangers.batch"))
-                    .selected(batch)
-                    .toggled(batch)
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_batch(cx))),
-                cx,
-            ))
+            // Board F17: back chevron, Strangers, Batch at the right.
+            .child(
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Button::new("strangers-back")
+                            .small()
+                            .ghost()
+                            .icon(IconName::ChevronLeft)
+                            .accessibility_label(tr("sections.strangers.back"))
+                            .tooltip(tr("sections.strangers.back"))
+                            .on_click(cx.listener(|_, _, _, cx| cx.emit(StrangersEvent::Back))),
+                    )
+                    .child(
+                        div().flex_1().min_w_0().child(directory::header(
+                            tr("sections.strangers.heading"),
+                            Button::new("strangers-batch-toggle")
+                                .small()
+                                .ghost()
+                                .label(tr("sections.strangers.batch"))
+                                .accessibility_label(tr_args(
+                                    "sections.strangers.title",
+                                    &[("count", &count.to_string())],
+                                ))
+                                .selected(batch)
+                                .toggled(batch)
+                                .on_click(cx.listener(|this, _, _, cx| this.toggle_batch(cx))),
+                            cx,
+                        )),
+                    ),
+            )
             .child(self.search.field("strangers-search", tr("sections.strangers.search"), cx))
             .children(read_error)
             .children(empty)
@@ -398,7 +432,7 @@ impl Render for StrangersArea {
                     id: "strangers-list",
                     label: tr("sections.strangers.list"),
                     rows,
-                    active: self.search.active,
+                    active: self.search.cursor(window, cx),
                     on_pick: pick,
                     on_check: Some(check),
                 },

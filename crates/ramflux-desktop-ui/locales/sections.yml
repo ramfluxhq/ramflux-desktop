@@ -205,9 +205,12 @@ sections:
     cancel:
       en: "Cancel task"
       zh-CN: "取消任务"
-    decline:
-      en: "Decline"
-      zh-CN: "不启动"
+    new:
+      en: "New task"
+      zh-CN: "新建任务"
+    new_help:
+      en: "Tasks are asked for in a conversation: open one with an agent and switch the composer to a task request."
+      zh-CN: "任务在会话中发起：打开与 Agent 的会话，把输入框切换为任务请求。"
   contacts:
     title:
       en: "Contacts · %{count}"
@@ -403,6 +406,30 @@ sections:
     report:
       en: "Report"
       zh-CN: "举报"
+    not_contact:
+      en: "Not a contact"
+      zh-CN: "非联系人"
+    unverified_chip:
+      en: "Identity not verified"
+      zh-CN: "身份未经验证"
+    first_contact:
+      en: "%{handle} · First contact: %{time}"
+      zh-CN: "%{handle} · 首次联系：%{time}"
+    node:
+      en: "Node · %{host}"
+      zh-CN: "节点 · %{host}"
+    bar_help:
+      en: "Accepting makes them a contact and moves the conversation to your messages."
+      zh-CN: "通过后成为联系人，会话移到消息列表。"
+    note_prefix:
+      en: "Note: %{note}"
+      zh-CN: "附言：%{note}"
+    back:
+      en: "Back to contacts"
+      zh-CN: "返回联系人"
+    heading:
+      en: "Strangers"
+      zh-CN: "陌生人"
     open_account:
       en: "Open account"
       zh-CN: "开放账号"

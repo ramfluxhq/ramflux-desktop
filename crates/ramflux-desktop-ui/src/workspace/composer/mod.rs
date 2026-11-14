@@ -462,74 +462,99 @@ impl Render for Composer {
             attachment::chip(staged, cx.listener(|this, _, _, cx| this.remove_staged(cx)), cx)
         });
         let palette = ramflux_desktop_navigation::palette(cx);
-        let send_label = tr(match self.mode {
-            ComposerMode::Message => "composer.send",
-            ComposerMode::Task => "composer.start",
-        });
+        // Board 04: a task request's send button names the addressee.
+        let ask_name = (self.mode == ComposerMode::Task)
+            .then(|| self.addressee(cx).map(|agent| agent.name))
+            .flatten();
+        let send_label = match (self.mode, &ask_name) {
+            (ComposerMode::Task, Some(name)) => tr_args("composer.ask_send", &[("name", name)]),
+            (ComposerMode::Task, None) => tr("composer.start"),
+            (ComposerMode::Message, _) => tr("composer.send"),
+        };
         // Design 04: where the conversation has an agent, a receiver line
         // above the field names it and switches between a plain message
         // and a task request (which still waits for an explicit start).
         let has_text = !self.input.read(cx).value().trim().is_empty() || self.staged.is_some();
         let agents = self.agents(cx);
-        let receiver =
-            ((!agents.is_empty() || self.has_unknown_member(cx)) && !in_draft).then(|| {
-                let name = self
-                    .picked
-                    .as_ref()
-                    .and_then(|id| agents.iter().find(|a| &a.id == id))
-                    .or(agents.first())
-                    .map(|a| a.name.clone())
-                    .unwrap_or_default();
-                let task = self.mode == ComposerMode::Task;
-                v_flex()
-                    .id("composer-receiver")
-                    .test_support()
-                    .gap_1()
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
-                            .child(
-                                div().text_color(palette.secondary).child(tr("composer.receiver")),
-                            )
-                            .child(div().child(name))
-                            .child(
-                                Button::new("composer-mode")
-                                    .outline()
-                                    .xsmall()
-                                    .border_color(palette.text)
-                                    .selected(task)
-                                    .toggled(task)
-                                    .label(tr(if task {
-                                        "composer.mode_task"
-                                    } else {
-                                        "composer.mode_message"
-                                    }))
-                                    .accessibility_label(tr("composer.task_mode"))
-                                    .tooltip(
-                                        task_reason
-                                            .clone()
-                                            .unwrap_or_else(|| tr("composer.task_mode")),
-                                    )
-                                    .disabled(!enabled || (task_reason.is_some() && !task))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        let next = match this.mode {
-                                            ComposerMode::Message => ComposerMode::Task,
-                                            ComposerMode::Task => ComposerMode::Message,
-                                        };
-                                        this.set_mode(next, window, cx);
-                                    })),
-                            ),
+        let can_ask = (!agents.is_empty() || self.has_unknown_member(cx)) && !in_draft;
+        // Board 04 draws the receiver line in a conversation with an agent;
+        // boards 02/I24 draw a group's composer without it. A group keeps
+        // the mode switch as an icon in the field and shows the line only
+        // while a task request is being written.
+        let direct = {
+            let store = self.store.read(cx).store();
+            self.context
+                .as_ref()
+                .and_then(|id| store.context(id))
+                .is_some_and(|c| c.kind == ramflux_desktop_core::ContextKind::Direct)
+        };
+        let task_mode = self.mode == ComposerMode::Task;
+        let mode_icon = (can_ask && !direct && !task_mode).then(|| {
+            Button::new("composer-mode")
+                .ghost()
+                .small()
+                .icon(gpui_kit::assets::IconName::ListChecks)
+                .accessibility_label(tr("composer.task_mode"))
+                .tooltip(task_reason.clone().unwrap_or_else(|| tr("composer.task_mode")))
+                .disabled(!enabled || task_reason.is_some())
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.set_mode(ComposerMode::Task, window, cx);
+                }))
+        });
+        let receiver = (can_ask && (direct || task_mode)).then(|| {
+            let name = self
+                .picked
+                .as_ref()
+                .and_then(|id| agents.iter().find(|a| &a.id == id))
+                .or(agents.first())
+                .map(|a| a.name.clone())
+                .unwrap_or_default();
+            let task = self.mode == ComposerMode::Task;
+            v_flex()
+                .id("composer-receiver")
+                .test_support()
+                .gap_1()
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
+                        .child(div().text_color(palette.secondary).child(tr("composer.receiver")))
+                        .child(div().child(name))
+                        .child(
+                            Button::new("composer-mode")
+                                .outline()
+                                .xsmall()
+                                .border_color(palette.text)
+                                .selected(task)
+                                .toggled(task)
+                                .label(tr(if task {
+                                    "composer.mode_task"
+                                } else {
+                                    "composer.mode_message"
+                                }))
+                                .accessibility_label(tr("composer.task_mode"))
+                                .tooltip(
+                                    task_reason.clone().unwrap_or_else(|| tr("composer.task_mode")),
+                                )
+                                .disabled(!enabled || (task_reason.is_some() && !task))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    let next = match this.mode {
+                                        ComposerMode::Message => ComposerMode::Task,
+                                        ComposerMode::Task => ComposerMode::Message,
+                                    };
+                                    this.set_mode(next, window, cx);
+                                })),
+                        ),
+                )
+                .when(task, |line| {
+                    line.child(
+                        div()
+                            .text_size(gpui_kit::rems(palette.size_meta / 15.0))
+                            .text_color(palette.secondary)
+                            .child(tr("composer.task_help")),
                     )
-                    .when(task, |line| {
-                        line.child(
-                            div()
-                                .text_size(gpui_kit::rems(palette.size_meta / 15.0))
-                                .text_color(palette.secondary)
-                                .child(tr("composer.task_help")),
-                        )
-                    })
-            });
+                })
+        });
         let row = h_flex()
             .items_center()
             .w_full()
@@ -546,6 +571,7 @@ impl Render for Composer {
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx))),
             )
+            .children(mode_icon)
             .child(
                 div().id("composer-input").test_support().flex_1().min_w_0().child(
                     // The design's composer is one bordered field: the editor
@@ -567,6 +593,7 @@ impl Render for Composer {
                     })
                     .small()
                     .icon(IconName::ArrowUp)
+                    .when(ask_name.is_some(), |button| button.label(send_label.clone()))
                     .rounded(gpui_kit::px(palette.radius_xl))
                     .accessibility_label(send_label.clone())
                     .tooltip(send_label)

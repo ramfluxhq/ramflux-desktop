@@ -10,7 +10,6 @@
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, tooltip::Tooltip};
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -18,13 +17,8 @@ use gpui_kit::{
 };
 use ramflux_desktop_core::{LockState, NodeHealth, SchemaGate, SourceStatus, Store};
 
-use crate::actions::GoToNeedsMe;
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
-
-/// Below this window width (logical px) the strip shows only the chips that
-/// need attention.
-const COMPACT_BELOW: f32 = 900.;
 
 /// The status strip view.
 pub struct StatusStrip {
@@ -181,7 +175,7 @@ fn schema_line(handle: &StoreHandle, cx: &App) -> Option<Field> {
 }
 
 impl Render for StatusStrip {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Design B38 / 10: nothing while all is well; otherwise one quiet
         // strip at the top of the content area naming what needs attention
         // (networking, a node or the daemon not fine, a rejected projection,
@@ -202,17 +196,9 @@ impl Render for StatusStrip {
             )
         };
         let healthy_title = network_title == tr("app.name");
-        let active = handle.active_account().cloned();
-        let background: usize = handle
-            .accounts()
-            .filter(|id| Some(*id) != active.as_ref())
-            .map(|id| handle.needs_me_count(id))
-            .sum();
-        let needs_me = handle.attention_across_accounts().len();
         let palette = ramflux_desktop_navigation::palette(cx);
         let muted = palette.secondary;
         let foreground = palette.text;
-        let narrow = window.viewport_size().width < gpui_kit::px(COMPACT_BELOW);
         let chips: Vec<_> = fields
             .into_iter()
             .filter(|f| f.attention)
@@ -248,7 +234,10 @@ impl Render for StatusStrip {
                     .into_any_element()
             })
             .collect();
-        let shown = !healthy_title || !chips.is_empty() || background > 0 || needs_me > 0;
+        // Design B38: only a connection or failure state is a banner; other
+        // accounts' attention is in the identity popover, what needs me in
+        // Tasks.
+        let shown = !healthy_title || !chips.is_empty();
         // The connection state stays a status region even while it is fine,
         // so assistive technology can always read it.
         let title = div()
@@ -286,40 +275,5 @@ impl Render for StatusStrip {
                     .child(detail)
             }))
             .children(chips)
-            .when(background > 0, |strip| {
-                strip.child(
-                    div()
-                        .id("status-background-attention")
-                        .flex_none()
-                        .text_color(crate::tone::text(palette.warning, cx))
-                        .child(tr_args(
-                            "status.account.background",
-                            &[("count", &background.to_string())],
-                        ))
-                        .test_support(),
-                )
-            })
-            .when(self.show_commands && needs_me > 0, |strip| {
-                strip.child(
-                    Button::new("needs-me")
-                        .flex_none()
-                        .ml_auto()
-                        .xsmall()
-                        .outline()
-                        .label(if narrow {
-                            needs_me.to_string().into()
-                        } else {
-                            tr_args("status.needs_me", &[("count", &needs_me.to_string())])
-                        })
-                        .accessibility_label(tr_args(
-                            "status.needs_me",
-                            &[("count", &needs_me.to_string())],
-                        ))
-                        .tooltip_with_action(tr("status.needs_me_hint"), &GoToNeedsMe, None)
-                        .on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(GoToNeedsMe), cx)
-                        }),
-                )
-            })
     }
 }

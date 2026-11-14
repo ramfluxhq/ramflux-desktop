@@ -35,7 +35,7 @@ settings_ui:
     zh-CN: "数据源尚未提供经过验证的平台或准确的网页来源信息。浏览器运营者可能访问此设备的密钥和明文。设备名称或“本设备”标签不能证明其平台。"
   link_device:
     en: "Link a new device"
-    zh-CN: "连接新设备"
+    zh-CN: "关联新设备"
   pairing_review:
     en: "Device pairing unavailable"
     zh-CN: "设备配对暂不可用"

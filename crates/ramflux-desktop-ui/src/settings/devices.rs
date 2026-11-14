@@ -6,11 +6,11 @@
 //! and import.
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{App, div};
+use gpui_kit::{App, SharedString, div};
 use ramflux_desktop_core::{Device, Listing, SourceStatus, SyncDirection, UiEventKind};
 use ramflux_desktop_navigation::{generated::catalog, palette};
 
@@ -62,7 +62,7 @@ pub(crate) fn page(
             crate::gate::reason(store, ramflux_desktop_core::methods::DEVICE_SYNC_IMPORT),
         )
     };
-    let list = SettingItem::render(move |_, _, cx: &mut App| {
+    let render_list = move |cx: &mut App| -> gpui_kit::AnyElement {
         if devices.is_empty() {
             let (title, description, kind) = if let Some(reason) = failure.as_ref() {
                 (tr("settings_ui.devices_error"), reason.clone(), catalog::StateKind::Error)
@@ -91,7 +91,6 @@ pub(crate) fn page(
             .id("settings-devices")
             .test_support()
             .min_w_0()
-            .gap_3()
             .children(devices.iter().map(|device| {
                 let detail = if device.revoked {
                     tr("settings.devices.revoked")
@@ -112,9 +111,13 @@ pub(crate) fn page(
                 let revoke = (!device.revoked && !device.this_device).then(|| {
                     let sink = list_sink.clone();
                     let device_id = device.id.clone();
+                    // Design G08: a quiet danger button.
                     Button::new("revoke")
-                        .xsmall()
-                        .design_secondary(cx)
+                        .ghost()
+                        .h(gpui_kit::rems(32.0 / 15.0))
+                        .px(gpui_kit::rems(12.0 / 15.0))
+                        .bg(palette(cx).danger_bg)
+                        .text_color(palette(cx).danger)
                         .label(tr("settings.devices.revoke"))
                         .on_click(move |_, window, cx| {
                             sink.emit(
@@ -124,7 +127,25 @@ pub(crate) fn page(
                             );
                         })
                 });
-                let action = div().children(
+                // A chip for this device or a revoked one, else the action.
+                let unverified_origin = !device.this_device
+                    && !device.revoked
+                    && ramflux_desktop_core::projection::devices::trust(device, None)
+                        == ramflux_desktop_core::projection::devices::DeviceTrust::Unverified;
+                let chip = if unverified_origin {
+                    Some(crate::workspace::sections::warning_chip(
+                        "device-origin-chip",
+                        tr("settings.devices.unverified_chip"),
+                        cx,
+                    ))
+                } else if device.this_device {
+                    Some(super::design::chip(tr("settings.devices.this_chip"), cx))
+                } else if device.revoked {
+                    Some(super::design::chip(tr("settings.devices.revoked_chip"), cx))
+                } else {
+                    None
+                };
+                let action = h_flex().gap_2().children(chip).children(
                     revoke.map(|button| crate::gate::gated(button, revoke_reason.clone())),
                 );
                 // This SDK version provides no authenticated platform/origin
@@ -134,22 +155,12 @@ pub(crate) fn page(
                     .id(domain_id("device", &device.id))
                     .test_support()
                     .min_w_0()
-                    .gap_2()
-                    .child(catalog::identity_row(
-                        catalog::RowContent::new(
-                            device.id.to_string().into(),
-                            ramflux_desktop_navigation::row::list_text(&device.label),
-                            detail,
-                        )
-                        .leading(catalog::avatar(
-                            ramflux_desktop_navigation::row::initial(&device.label),
-                            catalog::AvatarKind::Person,
-                            palette(cx),
-                        ))
-                        .trailing(action),
-                        palette(cx),
+                    .child(super::design::row(
+                        ramflux_desktop_navigation::row::list_text(&device.label),
+                        i18n::join(&detail, &device.id.to_string()),
+                        Some(action.into_any_element()),
+                        cx,
                     ))
-                    .child(div().text_xs().child(device.id.to_string()))
                     .when(
                         trust == ramflux_desktop_core::projection::devices::DeviceTrust::Unverified,
                         |row| {
@@ -163,27 +174,77 @@ pub(crate) fn page(
                                     cx,
                                 ))
                             } else {
-                                row.child(presentation::warning(
-                                    "device-origin-warning",
-                                    tr("settings_ui.origin_unknown"),
-                                    tr("settings_ui.origin_warning"),
-                                    cx,
-                                ))
+                                // Board G08 ("Chrome · macOS"): the operator
+                                // risk as the row's own wrapped line under a
+                                // warning chip, not a separate block.
+                                row.child(
+                                    div()
+                                        .id("device-origin-warning")
+                                        .test_support()
+                                        .role(gpui_kit::Role::Status)
+                                        .aria_label(crate::i18n::sentences(
+                                            &tr("settings_ui.origin_unknown"),
+                                            &tr("settings_ui.origin_warning"),
+                                        ))
+                                        .pb_3()
+                                        .border_b_1()
+                                        .border_color(palette(cx).line)
+                                        .child(
+                                            div()
+                                                .id("device-origin-description")
+                                                .test_support()
+                                                .whitespace_normal()
+                                                .text_size(gpui_kit::rems(
+                                                    palette(cx).size_secondary / 15.0,
+                                                ))
+                                                .text_color(palette(cx).secondary)
+                                                .child(i18n::join(
+                                                    &tr("settings_ui.origin_unknown"),
+                                                    &tr("settings_ui.origin_warning"),
+                                                )),
+                                        ),
+                                )
                             }
                         },
                     )
             }))
             .into_any_element()
+    };
+    // Design G08: "Linked devices" with the primary "Link a new device" at its
+    // head (no approval contract yet: disabled with the reason), the rows,
+    // then the sync section.
+    let linked = SettingItem::render(move |_, _, cx: &mut App| {
+        let rows = render_list(cx);
+        super::design::section("devices-linked", SharedString::default(), cx)
+            .child(
+                h_flex()
+                    .w_full()
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(gpui_kit::rems(palette(cx).size_subheading / 15.0))
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .child(tr("settings.devices.linked")),
+                    )
+                    .child(crate::gate::gated(
+                        crate::style::primary_button("settings-link-device", cx)
+                            .label(tr("settings_ui.link_device")),
+                        Some(presentation::contract_reason(
+                            ramflux_desktop_sdk::business::ContractGap::DevicePairingApproval,
+                        )),
+                    )),
+            )
+            .child(rows)
+            .into_any_element()
     });
     let sync = SettingItem::render(move |_, _, cx: &mut App| {
         let export = sink.clone();
         let import = sink.clone();
-        h_flex()
+        let buttons = h_flex()
             .flex_wrap()
             .gap_2()
             .child(crate::gate::gated(
                 Button::new("sync-export")
-                    .small()
                     .design_secondary(cx)
                     .label(tr("settings.devices.export"))
                     .on_click(move |_, window, cx| {
@@ -209,7 +270,6 @@ pub(crate) fn page(
             ))
             .child(crate::gate::gated(
                 Button::new("sync-import")
-                    .small()
                     .design_secondary(cx)
                     .label(tr("settings.devices.import"))
                     .on_click(move |_, window, cx| {
@@ -231,35 +291,12 @@ pub(crate) fn page(
                         );
                     }),
                 import_reason.clone(),
-            ))
+            ));
+        super::design::section("devices-sync", tr("settings.devices.sync"), cx)
+            .child(super::design::help(tr("settings.devices.sync_help"), cx))
+            .child(buttons)
             .into_any_element()
     });
     SettingPage::new(tr("settings.section.devices"))
-        .group(SettingGroup::new().item(list))
-        .group(SettingGroup::new().title(tr("settings.devices.sync")).item(sync))
-        .group(SettingGroup::new().title(tr("settings_ui.link_device")).item(SettingItem::render(
-            |_, _, cx: &mut App| {
-                v_flex()
-                    .gap_2()
-                    .child(crate::gate::gated(
-                        Button::new("settings-link-device")
-                            .small()
-                            .design_secondary(cx)
-                            .label(tr("settings_ui.link_device")),
-                        Some(presentation::contract_reason(
-                            ramflux_desktop_sdk::business::ContractGap::DevicePairingApproval,
-                        )),
-                    ))
-                    .child(presentation::notice(
-                        "device-pairing-unavailable",
-                        tr("settings_ui.pairing_review"),
-                        presentation::contract_reason(
-                            ramflux_desktop_sdk::business::ContractGap::DevicePairingApproval,
-                        ),
-                        catalog::StateKind::Empty,
-                        cx,
-                    ))
-                    .into_any_element()
-            },
-        )))
+        .group(SettingGroup::new().item(linked).item(sync))
 }

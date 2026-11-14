@@ -190,12 +190,27 @@ settings:
     last_seen:
       en: "Last seen %{time}"
       zh-CN: "最后在线 %{time}"
+    linked:
+      en: "Linked devices"
+      zh-CN: "已关联设备"
+    this_chip:
+      en: "Current"
+      zh-CN: "当前"
+    unverified_chip:
+      en: "Unverified origin"
+      zh-CN: "来源未验证"
+    revoked_chip:
+      en: "Revoked"
+      zh-CN: "已撤销"
+    sync_help:
+      en: "Export a sync bundle to another of your devices, or import one another device made."
+      zh-CN: "导出同步包到自己的设备，或导入其他设备创建的同步包。"
     revoke:
-      en: "Revoke…"
-      zh-CN: "撤销…"
+      en: "Revoke device"
+      zh-CN: "撤销设备"
     sync:
-      en: "Sync with your other devices"
-      zh-CN: "与其他设备同步"
+      en: "Sync this account's devices"
+      zh-CN: "同步当前账号设备"
     export:
       en: "Export sync bundle"
       zh-CN: "导出同步包"
@@ -203,6 +218,21 @@ settings:
       en: "Import sync bundle"
       zh-CN: "导入同步包"
   nodes:
+    backup_title:
+      en: "Backup nodes"
+      zh-CN: "备用节点"
+    fingerprint:
+      en: "Fingerprint"
+      zh-CN: "指纹"
+    endpoints:
+      en: "Endpoints"
+      zh-CN: "端点"
+    health:
+      en: "Health"
+      zh-CN: "健康状态"
+    bound_title:
+      en: "The default node cannot be removed"
+      zh-CN: "无法移除默认节点"
     description:
       en: "Nodes are kept by this device. An account stays on the node it was created on."
       zh-CN: "节点信息保存在此设备上。账号始终位于创建时所在的节点。"
@@ -240,8 +270,8 @@ settings:
       en: "Not reachable"
       zh-CN: "不可达"
     probe:
-      en: "Probe"
-      zh-CN: "探测"
+      en: "Check connection"
+      zh-CN: "检测连接"
     make_default:
       en: "Make default"
       zh-CN: "设为默认"
@@ -252,8 +282,8 @@ settings:
       en: "Enable for new accounts"
       zh-CN: "对新账号启用"
     remove:
-      en: "Remove"
-      zh-CN: "移除"
+      en: "Remove node"
+      zh-CN: "移除节点"
     bound:
       en: "An account uses this node, so it cannot be removed"
       zh-CN: "有账号正在使用此节点，无法移除"
@@ -280,6 +310,9 @@ settings:
       en: "Not checked"
       zh-CN: "未检查"
   diagnostics:
+    dev_panel:
+      en: "Show or hide the developer panel"
+      zh-CN: "显示或隐藏开发面板"
     explain:
       en: "This is what the export contains. Keys, tokens, nonces, names and message text are never included."
       zh-CN: "以下为导出内容。密钥、令牌、随机数、姓名和消息正文绝不会包含在内。"

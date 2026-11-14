@@ -138,7 +138,7 @@ impl AgentRoster {
 
 /// Where things stand with `agent`: a task of theirs waits for the user,
 /// else the private conversation exists, else none yet.
-fn status(store: &Store, agent: &ParticipantId) -> SharedString {
+pub(crate) fn status(store: &Store, agent: &ParticipantId) -> SharedString {
     let waiting = store.tasks().any(|t| {
         &t.assignee == agent && matches!(t.state, TaskState::NeedsMe | TaskState::Proposed)
     });
@@ -161,7 +161,7 @@ fn status(store: &Store, agent: &ParticipantId) -> SharedString {
 }
 
 impl Render for AgentRoster {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = ramflux_desktop_navigation::palette(cx);
         let entries = self.entries(cx);
         let listed = {
@@ -180,7 +180,7 @@ impl Render for AgentRoster {
                 cx,
             )
         });
-        let active = self.search.active;
+        let active = self.search.cursor(window, cx);
         let rem = |px: f32| gpui_kit::rems(px / 15.0);
         v_flex()
             .id("agent-roster")
@@ -231,7 +231,9 @@ impl Render for AgentRoster {
                             .rounded(gpui_kit::px(palette.radius_sm))
                             .selected(selected)
                             .toggled(selected)
-                            .when(ix == active, |row| row.border_1().border_color(palette.focus))
+                            .when(active == Some(ix), |row| {
+                                row.border_1().border_color(palette.focus)
+                            })
                             .accessibility_label(entry.name.clone())
                             .on_click(cx.listener(move |_, _, _, cx| {
                                 cx.emit(AgentRosterEvent::Selected(pick.clone()))

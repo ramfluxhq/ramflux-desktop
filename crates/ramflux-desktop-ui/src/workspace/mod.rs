@@ -346,11 +346,15 @@ impl Workspace {
                     this.open_conversation_with(participant.clone(), window, cx);
                 },
             ),
-            cx.subscribe_in(&strangers, window, |this, _, event: &StrangersEvent, _, cx| {
-                let StrangersEvent::Selected(_) = event;
-                this.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
-                this.list_visible = false;
-                cx.notify();
+            cx.subscribe_in(&strangers, window, |this, _, event: &StrangersEvent, window, cx| {
+                match event {
+                    StrangersEvent::Selected(_) => {
+                        this.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
+                        this.list_visible = false;
+                        cx.notify();
+                    }
+                    StrangersEvent::Back => this.navigate(WorkspaceRoute::Contacts, window, cx),
+                }
             }),
             cx.observe(&strangers, |_, _, cx| cx.notify()),
             cx.subscribe_in(&contacts, window, |this, _, event: &ContactsDockEvent, window, cx| {
@@ -945,7 +949,6 @@ impl Workspace {
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let this = cx.weak_entity();
         // The tool switcher lives in the conversation header while no tool
         // is open, and in the open panel's header otherwise (design H01).
         let open_tool = self.open_tool;
@@ -974,6 +977,14 @@ impl Render for Workspace {
             ramflux_desktop_navigation::theme::SECTION_REM
         };
         let section_detail = if show_detail { self.section_detail(window, cx) } else { None };
+        // Design B38: the banner sits under the chat header when the
+        // conversation is shown; on a section page at the foot of its pane,
+        // never in the window's drag region.
+        let banner_in_conversation = show_detail && section_detail.is_none() && blocking.is_none();
+        let status_view = self.status.clone().map(gpui_kit::AnyView::from);
+        self.conversation.update(cx, |conversation, _| {
+            conversation.set_status(status_view.clone().filter(|_| banner_in_conversation));
+        });
         let list_pane = self.section_list();
         let rail = self.navigation_rail(cx);
         h_flex()
@@ -1005,10 +1016,11 @@ impl Render for Workspace {
                         .when(!compact, |pane| pane.w(gpui_kit::rems(list_width)).flex_none())
                         // While the list stands alone (compact), the
                         // status banner heads it instead of the detail.
-                        .when(!show_detail, |pane| {
-                            pane.flex().flex_col().children(self.status.clone())
-                        })
-                        .child(list_pane),
+                        .flex()
+                        .flex_col()
+                        .child(gpui_kit::div().flex_1().min_h_0().child(list_pane))
+                        // Compact list alone: the banner at its foot.
+                        .when(!show_detail, |pane| pane.children(self.status.clone())),
                 )
             })
             .when(show_detail, |row| {
@@ -1029,53 +1041,18 @@ impl Render for Workspace {
                                     })),
                             )
                         })
-                        .children(self.status.clone().filter(|_| show_detail))
                         .children(gate.and_then(|(_, gate)| schema_gate::banner(gate)))
                         .children(self.secure_sessions_banner(cx))
                         .child(self.call_bar.clone())
                         .child(gpui_kit::div().flex_1().min_h_0().child(
                             match (blocking, section_detail) {
                                 (Some(screen), _) => screen,
-                                // A section's own page keeps the dock tools in
-                                // reach (none beside strangers, design F17).
-                                (None, Some(detail))
-                                    if self.open_tool.is_none()
-                                        && self.route != WorkspaceRoute::Strangers =>
-                                {
-                                    gpui_kit::component::v_flex()
-                                        .size_full()
-                                        .child(
-                                            gpui_kit::component::h_flex()
-                                                .id("section-tools")
-                                                .test_support()
-                                                .justify_end()
-                                                .px(gpui_kit::rems(32.0 / 15.0))
-                                                .pt_2()
-                                                // The tools act on the shown
-                                                // conversation: choosing one
-                                                // returns to it with the tool open.
-                                                .child(DockRail::new(None, {
-                                                    let this = this.clone();
-                                                    move |tool, window, cx| {
-                                                        this.update(cx, |w, cx| {
-                                                            w.navigate(
-                                                                WorkspaceRoute::Messages,
-                                                                window,
-                                                                cx,
-                                                            );
-                                                            w.open_tool(tool, window, cx);
-                                                        })
-                                                        .ok();
-                                                    }
-                                                })),
-                                        )
-                                        .child(gpui_kit::div().flex_1().min_h_0().child(detail))
-                                        .into_any_element()
-                                }
                                 (None, Some(detail)) => detail,
                                 (None, None) => self.dock_area.clone().into_any_element(),
                             },
                         ))
+                        // A section page: the banner at the foot of the pane.
+                        .when(!banner_in_conversation, |col| col.children(self.status.clone()))
                         .child(
                             gpui_kit::div()
                                 .absolute()

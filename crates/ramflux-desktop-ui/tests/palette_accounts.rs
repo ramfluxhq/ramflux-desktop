@@ -78,7 +78,19 @@ fn background_attention_is_reached_across_accounts_and_resolved(cx: &mut TestApp
     });
     assert_eq!(active, Some(AccountId::new("a-personal")));
     assert_eq!(background, 1, "the work account only reports its attention");
-    assert!(exists(cx, handle, "status-background-attention"), "the strip shows it");
+    click(cx, handle, "nav-account");
+    let spoken = in_window(cx, handle, |window, _| {
+        use gpui_kit::test::TestWindowExt as _;
+        window.find("identity-a-work").label().map(str::to_owned)
+    });
+    assert!(
+        spoken.is_some_and(|label| label.contains('1')),
+        "the identity popover names the work account's attention"
+    );
+    in_window(cx, handle, |window, cx| {
+        use gpui_kit::test::TestWindowExt as _;
+        window.press("escape", cx)
+    });
     assert!(with_store(cx, &shell, |s| s.context(&ContextId::new("c-release")).is_none()));
 
     let workspace = workspace(cx, &shell);
@@ -87,9 +99,9 @@ fn background_attention_is_reached_across_accounts_and_resolved(cx: &mut TestApp
             workspace.read(cx).conversation().read(cx).highlighted().map(ToString::to_string)
         })
     };
-    click(cx, handle, "needs-me");
+    go_to_needs_me(cx, handle);
     assert_eq!(highlighted(cx).as_deref(), Some("m-ines"), "the active account first");
-    click(cx, handle, "needs-me");
+    go_to_needs_me(cx, handle);
     let active = cx.update(|cx| store.read(cx).active_account().cloned());
     assert_eq!(active, Some(work.clone()), "the next item switched accounts");
     assert_eq!(highlighted(cx).as_deref(), Some("m-deploy"));
@@ -104,7 +116,15 @@ fn background_attention_is_reached_across_accounts_and_resolved(cx: &mut TestApp
     assert_eq!(cx.update(|cx| store.read(cx).needs_me_count(&work)), 0, "resolved");
     assert!(rows(cx, &shell).contains(&"m-deployed".to_owned()));
 
-    click(cx, handle, "needs-me");
+    go_to_needs_me(cx, handle);
     let active = cx.update(|cx| store.read(cx).active_account().cloned());
     assert_eq!(active, Some(AccountId::new("a-personal")), "back to what is left");
+}
+
+/// Go to "needs me" (the palette command and its shortcut; the status
+/// banner's button left with the board, B38).
+fn go_to_needs_me(cx: &mut TestAppContext, handle: gpui_kit::WindowHandle<gpui_kit::base::Root>) {
+    in_window(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(ramflux_desktop_ui::actions::GoToNeedsMe), cx)
+    });
 }

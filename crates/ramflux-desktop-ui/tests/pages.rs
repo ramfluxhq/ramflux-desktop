@@ -171,8 +171,10 @@ fn settings_nodes_probe_set_default_and_guard_bound_nodes(cx: &mut TestAppContex
     let (handle, shell) = open(cx, "s09_multi_account_day");
     advance(cx, 1_000);
     settings(cx, handle, &shell, SettingsSection::Nodes);
+    reveal(cx, handle, "settings-node-n-corp", "node-probe");
     click_in(cx, handle, "settings-node-n-corp", "node-probe");
     assert_eq!(last_body(cx, &shell, methods::NODE_PROBE)["node_id"], "n-corp");
+    reveal(cx, handle, "settings-node-n-corp", "node-default");
     click_in(cx, handle, "settings-node-n-corp", "node-default");
     assert_eq!(last_body(cx, &shell, methods::NODE_SET_DEFAULT)["node_id"], "n-corp");
     advance(cx, 500);
@@ -183,8 +185,10 @@ fn settings_nodes_probe_set_default_and_guard_bound_nodes(cx: &mut TestAppContex
     assert!(default, "the local echo made it the default");
     assert_eq!(health, ramflux_desktop_core::NodeHealth::Healthy, "the probe result arrived");
     let before = effects(cx, &shell).len();
+    reveal(cx, handle, "settings-node-n-harbor", "node-remove");
     click_in(cx, handle, "settings-node-n-harbor", "node-remove");
     assert_eq!(effects(cx, &shell).len(), before, "a bound node cannot be removed");
+    reveal(cx, handle, "settings-node-n-ramflux", "node-enabled");
     click_in(cx, handle, "settings-node-n-ramflux", "node-enabled");
     assert_eq!(last_body(cx, &shell, methods::NODE_SET_ENABLED)["enabled"], false);
 }
@@ -278,4 +282,44 @@ fn settings_export_backup_takes_its_passphrase_as_a_secret(cx: &mut TestAppConte
     assert!(body["path"].as_str().is_some_and(|p| p.ends_with("/personal.backup")));
     assert!(!body.to_string().contains("harbor"), "the passphrase travels beside the body");
     assert!(!inspector_text(cx, &shell).contains("harbor"));
+}
+
+/// Scrolls the nodes page until `child` of the node row `id` is on screen
+/// (the page is the board's long column of rows, G09).
+fn reveal(
+    cx: &mut TestAppContext,
+    handle: gpui_kit::WindowHandle<gpui_kit::base::Root>,
+    id: &'static str,
+    child: &'static str,
+) {
+    use gpui_kit::InputEvent as _;
+    // The wheel goes to a probe button that is on screen.
+    let scroll = |cx: &mut TestAppContext, dy: f32| {
+        in_window(cx, handle, |window, cx| {
+            let at = window.find_all("node-probe").into_iter().find(|b| b.visible());
+            if let Some(at) = at {
+                let centre = at.bounds().center();
+                let delta = gpui_kit::ScrollDelta::Pixels(gpui_kit::point(
+                    gpui_kit::px(0.),
+                    gpui_kit::px(dy),
+                ));
+                window.dispatch_event(
+                    gpui_kit::ScrollWheelEvent { position: centre, delta, ..Default::default() }
+                        .to_platform_input(),
+                    cx,
+                );
+            }
+        });
+    };
+    scroll(cx, 4_000.);
+    for _ in 0..60 {
+        let shown = in_window(cx, handle, |window, _| {
+            window.within(id).try_find(child).is_some_and(|b| b.visible())
+        });
+        if shown {
+            return;
+        }
+        scroll(cx, -150.);
+    }
+    panic!("{child} of {id} never came into view");
 }

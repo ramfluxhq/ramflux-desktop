@@ -31,6 +31,7 @@ use super::directory::{self, Search, StateKeys};
 use crate::actions::{NextConversation, PreviousConversation};
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
+use crate::style::DesignButton as _;
 use crate::workspace::docks::contacts::rows::safety_label;
 
 /// What the directory reports to the workspace.
@@ -161,8 +162,14 @@ impl ContactsDirectory {
     /// The people table shown in the detail pane while no contact is chosen
     /// (design board 07): pending strangers with their answers, then every
     /// contact with "View profile".
-    pub fn detail(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub fn detail(
+        &mut self,
+        tools: Option<AnyElement>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let palette = ramflux_desktop_navigation::palette(cx);
+        let cursor_row = self.search.cursor(window, cx);
         let store = self.store.read(cx).store();
         let entries = self.entries(store, cx);
         let list = ListState::of(store.is_listed(Listing::Contacts), entries.is_empty());
@@ -187,10 +194,17 @@ impl ContactsDirectory {
                 let name = store
                     .participant(&request.peer)
                     .map_or_else(|| request.peer.short(), |p| p.display.clone());
-                let note = request.note.as_deref().or(request.preview.as_deref()).map_or_else(
-                    || SharedString::from(request.peer.to_string()),
-                    ramflux_desktop_navigation::row::list_text,
-                );
+                // Board 07: "@handle · Identity not verified · note".
+                let unverified = store
+                    .participant(&request.peer)
+                    .is_none_or(|p| p.safety != ramflux_desktop_core::SafetyState::Verified);
+                let mut note = super::stranger_detail::handle(&request.peer);
+                if unverified {
+                    note = i18n::join(&note, &tr("sections.strangers.unverified_chip"));
+                }
+                if let Some(text) = request.note.as_deref().or(request.preview.as_deref()) {
+                    note = i18n::join(&note, &ramflux_desktop_navigation::row::list_text(text));
+                }
                 (request.id.clone(), ramflux_desktop_navigation::row::list_text(&name), note)
             })
             .collect();
@@ -225,7 +239,6 @@ impl ContactsDirectory {
             )
         };
         let add_reason = crate::gate::reason(store, methods::CONTACT_ADD);
-        let active = self.search.active;
         let rem = |px: f32| gpui_kit::rems(px / 15.0);
         let avatar = |initial: SharedString, kind: catalog::AvatarKind| {
             let agent = matches!(kind, catalog::AvatarKind::Agent);
@@ -260,7 +273,6 @@ impl ContactsDirectory {
                         let button = Button::new(SharedString::from(format!(
                             "contacts-request-{id}-{suffix}"
                         )))
-                        .small()
                         .label(tr(label))
                         .accessibility_label(tr_args(
                             &format!("{label}_for"),
@@ -277,8 +289,8 @@ impl ContactsDirectory {
                             );
                         });
                         let button = match answer {
-                            RequestAnswer::Accept => button.primary(),
-                            _ => button.ghost(),
+                            RequestAnswer::Accept => button.design_primary(cx),
+                            _ => button.ghost().h(rem(32.0)).px(rem(12.0)),
                         };
                         crate::gate::gated(button, answer_reason.clone())
                     };
@@ -312,8 +324,7 @@ impl ContactsDirectory {
                         ))
                         .child(crate::gate::gated(
                             Button::new(SharedString::from(format!("contacts-request-{id}-reply")))
-                                .small()
-                                .outline()
+                                .design_secondary(cx)
                                 .label(tr("sections.strangers.reply")),
                             Some(directory::unavailable(ContractGap::StrangerActions)),
                         ))
@@ -333,7 +344,7 @@ impl ContactsDirectory {
                 |(ix, (id, name, subtitle, kind))| {
                     let pick = id.clone();
                     // The search field's Up/Down cursor (Enter opens the profile).
-                    let cursor = ix == active;
+                    let cursor = cursor_row == Some(ix);
                     h_flex()
                         .id(SharedString::from(format!("contacts-table-{id}")))
                         .role(gpui_kit::Role::ListItem)
@@ -387,16 +398,18 @@ impl ContactsDirectory {
                 )
                 .title_size(palette.size_subheading)
                 .title_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .trailing(crate::gate::gated(
-                    Button::new("contacts-add-detail")
-                        .small()
-                        .ghost()
-                        .label(tr("sections.contacts.add"))
-                        .on_click(
-                            cx.listener(|_, _, _, cx| cx.emit(ContactsDirectoryEvent::AddContact)),
-                        ),
-                    add_reason,
-                )),
+                .trailing(
+                    h_flex().gap_3().children(tools).child(crate::gate::gated(
+                        Button::new("contacts-add-detail")
+                            .small()
+                            .ghost()
+                            .label(tr("sections.contacts.add"))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.emit(ContactsDirectoryEvent::AddContact)
+                            })),
+                        add_reason,
+                    )),
+                ),
                 false,
                 palette,
             ))

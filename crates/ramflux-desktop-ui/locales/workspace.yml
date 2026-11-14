@@ -31,8 +31,11 @@ composer:
     en: "Describe what should happen, in one sentence"
     zh-CN: "用一句话描述要完成的事"
   ask_placeholder:
-    en: "Ask %{name} to do something, in one sentence"
-    zh-CN: "用一句话请 %{name} 做一件事"
+    en: "Ask %{name} for something specific…"
+    zh-CN: "向 %{name} 提出具体请求…"
+  ask_send:
+    en: "Ask %{name}"
+    zh-CN: "请求 %{name}"
   no_agent:
     en: "No AI participant in this conversation"
     zh-CN: "此会话中没有 Agent"
@@ -455,16 +458,16 @@ dock:
         zh-CN: "没有可比对的安全码，暂时无法核实对方身份"
       accept:
         en: "Accept"
-        zh-CN: "接受"
+        zh-CN: "通过"
       accept_for:
         en: "Accept %{name}'s request"
-        zh-CN: "接受 %{name} 的请求"
+        zh-CN: "通过 %{name} 的请求"
       decline:
         en: "Decline"
-        zh-CN: "拒绝"
+        zh-CN: "不通过"
       decline_for:
         en: "Decline %{name}'s request"
-        zh-CN: "拒绝 %{name} 的请求"
+        zh-CN: "不通过 %{name} 的请求"
       block:
         en: "Block"
         zh-CN: "屏蔽"
@@ -701,6 +704,12 @@ group:
       en: "Not renamed: %{reason}"
       zh-CN: "未重命名：%{reason}"
 palette:
+  shortcut_mac:
+    en: "⌘ K"
+    zh-CN: "⌘ K"
+  shortcut_other:
+    en: "Ctrl K"
+    zh-CN: "Ctrl K"
   title:
     en: "Command palette"
     zh-CN: "命令面板"

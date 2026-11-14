@@ -16,6 +16,9 @@ pub trait DesignButton: Sized {
     fn design_secondary(self, cx: &App) -> Self;
     /// The design's primary button.
     fn design_primary(self, cx: &App) -> Self;
+    /// The design's quiet button (`Button / Quiet`): the surface fill, no
+    /// outline, the same geometry.
+    fn design_quiet(self, cx: &App) -> Self;
     /// The secondary button where no theme is at hand (a table cell): the
     /// geometry, with the outline in the theme's text colour once painted.
     fn design_secondary_compact(self) -> Self;
@@ -30,6 +33,17 @@ impl DesignButton for Button {
             .rounded(px(palette.radius_button))
             .border_color(palette.text)
             .bg(palette.surface_white)
+            .text_color(palette.text)
+            .text_size(rems(palette.size_button / 15.0))
+    }
+
+    fn design_quiet(self, cx: &App) -> Self {
+        let palette = ramflux_desktop_navigation::palette(cx);
+        self.ghost()
+            .h(rems(32.0 / 15.0))
+            .px(rems(16.0 / 15.0))
+            .rounded(px(palette.radius_button))
+            .bg(palette.surface)
             .text_color(palette.text)
             .text_size(rems(palette.size_button / 15.0))
     }

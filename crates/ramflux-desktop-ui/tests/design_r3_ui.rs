@@ -34,14 +34,16 @@ fn navigate(
 }
 
 #[gpui_kit::test]
-fn the_identity_popover_switches_accounts_and_carries_the_window_commands(cx: &mut TestAppContext) {
+fn the_identity_popover_switches_accounts_and_the_palette_has_a_visible_entry(
+    cx: &mut TestAppContext,
+) {
     let _locale = locale_guard();
     let (handle, shell) = open(cx, "s09_multi_account_day");
     advance(cx, 2_000);
     click(cx, handle, "nav-account");
     assert!(exists(cx, handle, "identity-menu"), "the avatar opens the identity popover");
     for id in ["identity-palette", "identity-theme", "identity-settings"] {
-        assert!(exists(cx, handle, id), "{id}: the title bar's commands have a pointer path");
+        assert!(!exists(cx, handle, id), "{id}: the popover is identity only (board B01)");
     }
     click(cx, handle, "identity-switch-a-work");
     let store = store_handle(cx, &shell);
@@ -50,8 +52,7 @@ fn the_identity_popover_switches_accounts_and_carries_the_window_commands(cx: &m
         Some(AccountId::new("a-work")),
         "Switch shows the other account"
     );
-    click(cx, handle, "nav-account");
-    click(cx, handle, "identity-palette");
+    click(cx, handle, "open-palette");
     assert!(cx.update(|cx| shell.read(cx).is_palette_open()), "the palette opens by pointer");
 }
 
@@ -104,22 +105,15 @@ fn the_dock_panel_switches_tools_by_its_tabs_and_closes(cx: &mut TestAppContext)
     };
     assert_eq!(open(cx), Some(DockTool::Objects));
     assert!(exists(cx, handle, "dock-panel-objects"));
-    click(cx, handle, "rail-members");
+    assert!(exists(cx, handle, "dock-rail"), "the header keeps its tools (board H01)");
+    click(cx, handle, "dock-tab-members");
     assert_eq!(open(cx), Some(DockTool::Members), "a tab switches the tool");
     click(cx, handle, "dock-close-members");
     assert_eq!(open(cx), None, "Close closes the dock");
-    // On a section page the tools return to the conversation, tool open.
+    // Boards 03/06/07: a section page has no tools; they belong to a
+    // conversation (ruling b).
     navigate(cx, handle, &shell, WorkspaceRoute::Contacts);
-    assert!(exists(cx, handle, "section-tools"));
-    click(cx, handle, "rail-contacts");
-    assert_eq!(open(cx), Some(DockTool::Contacts));
-    assert_eq!(
-        {
-            let w = workspace(cx, &shell);
-            cx.update(|cx| w.read(cx).route())
-        },
-        WorkspaceRoute::Messages
-    );
+    assert!(!exists(cx, handle, "dock-rail"), "no tool row on a section page");
 }
 
 #[gpui_kit::test]

@@ -48,6 +48,19 @@ pub(crate) struct DirectoryRow {
     pub selected: bool,
     /// Batch selection: `Some(checked)` draws a checkbox.
     pub checked: Option<bool>,
+    /// The request card shape (board F17): handle, warning chip and the
+    /// message preview under the name; `None` draws the plain list row.
+    pub card: Option<RowCard>,
+}
+
+/// The extra lines of a request card row.
+pub(crate) struct RowCard {
+    /// The handle under the name.
+    pub handle: SharedString,
+    /// The warning chip, when the identity is not verified.
+    pub chip: Option<SharedString>,
+    /// The note or first message, one line with an ellipsis.
+    pub body: SharedString,
 }
 
 /// The retained search field and keyboard cursor of a directory.
@@ -68,6 +81,12 @@ impl Search {
     /// The input entity (subscribe to its events in the owner).
     pub fn input(&self) -> &Entity<InputState> {
         &self.input
+    }
+
+    /// The keyboard cursor's row, drawn only while the search field has
+    /// focus (Up/Down and Enter act there); elsewhere no row looks chosen.
+    pub fn cursor(&self, window: &Window, cx: &App) -> Option<usize> {
+        self.input.read(cx).focus_handle(cx).is_focused(window).then_some(self.active)
     }
 
     /// The typed query, trimmed, lowercased and bounded.
@@ -104,30 +123,56 @@ impl Search {
         div()
             .id(id)
             .test_support()
-            .child(search_input(SharedString::from(format!("{id}-input")), &self.input, label, cx))
+            .child(search_input(
+                SharedString::from(format!("{id}-input")),
+                &self.input,
+                label,
+                None,
+                cx,
+            ))
             .into_any_element()
     }
 }
 
 /// Whether any of `fields` contains `query` (already lowercased).
 /// The design's search field (`RF / Search field`): 34 px on the white
-/// surface with a strong rule, the search glyph leading.
+/// surface with a strong rule, the search glyph leading, and an optional
+/// trailing element (the palette shortcut in the message list).
 pub(crate) fn search_input(
     id: impl Into<ElementId>,
     state: &Entity<InputState>,
     label: SharedString,
+    trailing: Option<AnyElement>,
     cx: &App,
 ) -> impl IntoElement {
     let theme = palette(cx);
-    Input::new(state)
-        .id(id)
-        .small()
+    h_flex()
+        .w_full()
         .h(gpui_kit::rems(34.0 / 15.0))
-        .bg(theme.surface_white)
+        .px_2()
+        .gap_2()
+        .rounded(gpui_kit::rems(theme.radius_input / 15.0))
+        .border_1()
         .border_color(theme.line_strong)
-        .prefix(gpui_kit::component::Icon::new(gpui_kit::component::IconName::Search).small())
-        .aria_label(label)
-        .cleanable(true)
+        .bg(theme.surface_white)
+        .child(
+            gpui_kit::component::Icon::new(gpui_kit::component::IconName::Search)
+                .small()
+                .text_color(theme.secondary),
+        )
+        .child(
+            div().flex_1().min_w_0().child(
+                Input::new(state)
+                    .id(id)
+                    .small()
+                    .appearance(false)
+                    .bordered(false)
+                    .text_size(gpui_kit::rems(theme.size_secondary / 15.0))
+                    .aria_label(label)
+                    .cleanable(true),
+            ),
+        )
+        .children(trailing)
 }
 
 pub(crate) fn matches(query: &str, fields: &[&str]) -> bool {
@@ -166,8 +211,8 @@ pub(crate) struct RowList {
     pub label: SharedString,
     /// The rows in display order.
     pub rows: Vec<DirectoryRow>,
-    /// Row under the keyboard cursor.
-    pub active: usize,
+    /// Row under the keyboard cursor, while the search field has focus.
+    pub active: Option<usize>,
     /// Called with the key of a chosen row.
     pub on_pick: RowAction,
     /// Called with the key of a toggled checkbox (batch selection).
@@ -195,8 +240,8 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
             let key = row.key.clone();
             // The design's `List row / Conversation` (sections 03, 07, F17),
             // the generated row with its selection from this list's state.
-            let preview = match row.trailing {
-                Some(trailing) => crate::i18n::join(&row.subtitle, &trailing),
+            let preview = match &row.trailing {
+                Some(trailing) => crate::i18n::join(&row.subtitle, trailing),
                 None => row.subtitle.clone(),
             };
             let content = catalog::RowContent::new(row.key.clone(), row.title.clone(), preview)
@@ -206,9 +251,22 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                 .subtitle_size(theme.size_secondary)
                 .leading(catalog::avatar(
                     ramflux_desktop_navigation::row::initial(&row.title),
-                    row.avatar,
+                    visible_kind(row.avatar),
                     theme,
                 ));
+            let shape = match &row.card {
+                Some(card) => {
+                    let pick = pick.clone();
+                    let key = row.key.clone();
+                    request_card(&row, card, theme, cx)
+                        .on_click(move |_, window, cx| pick(&key, window, cx))
+                        .into_any_element()
+                }
+                None => catalog::list_row(content, false, theme, move |key, window, cx| {
+                    pick(key, window, cx)
+                })
+                .into_any_element(),
+            };
             h_flex()
                 .id(ElementId::from(format!("{id}-row-{}", row.key)))
                 .test_support()
@@ -218,7 +276,7 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                 .min_w_0()
                 .rounded(gpui_kit::px(theme.radius_sm))
                 .border_1()
-                .border_color(if ix == active {
+                .border_color(if active == Some(ix) {
                     active_border.opacity(0.5)
                 } else {
                     cx.theme().transparent
@@ -232,12 +290,7 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                             .on_click(move |_, window, cx| check(&key, window, cx)),
                     )
                 })
-                .child(div().flex_1().min_w_0().child(catalog::list_row(
-                    content,
-                    false,
-                    theme,
-                    move |key, window, cx| pick(key, window, cx),
-                )))
+                .child(div().flex_1().min_w_0().child(shape))
         }))
         .when(total > ROW_LIMIT, |list| {
             list.child(
@@ -250,6 +303,94 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
             )
         })
         .into_any_element()
+}
+
+/// The generated group avatar paints its initial in its own fill (a
+/// generator gap); the person avatar has the same fill and a readable
+/// initial, as board 03 draws it.
+fn visible_kind(kind: catalog::AvatarKind) -> catalog::AvatarKind {
+    match kind {
+        catalog::AvatarKind::Group => catalog::AvatarKind::Person,
+        kind => kind,
+    }
+}
+
+/// A request card row (board F17): avatar, name and handle with the time
+/// at the right, the warning chip, then the message on one line.
+fn request_card(
+    row: &DirectoryRow,
+    card: &RowCard,
+    theme: ramflux_desktop_navigation::generated::rf_tokens::RFTheme,
+    cx: &App,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
+    let rem = |px: f32| gpui_kit::rems(px / 15.0);
+    let warning = crate::tone::text(theme.warning, cx);
+    v_flex()
+        .id(ElementId::from(format!("request-card-{}", row.key)))
+        .w_full()
+        .gap_2()
+        .p(rem(12.0))
+        .rounded(rem(theme.radius_card))
+        .when(row.selected, |card| card.bg(theme.selected))
+        .when(!row.selected, |card| card.hover(|card| card.bg(theme.selected.opacity(0.5))))
+        .cursor_pointer()
+        .child(
+            h_flex()
+                .gap_2()
+                .child(catalog::avatar(
+                    ramflux_desktop_navigation::row::initial(&row.title),
+                    row.avatar,
+                    theme,
+                ))
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .child(
+                            div()
+                                .text_size(rem(theme.size_body))
+                                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                .truncate()
+                                .child(row.title.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(rem(theme.size_meta))
+                                .text_color(theme.secondary)
+                                .truncate()
+                                .child(card.handle.clone()),
+                        ),
+                )
+                .children(row.trailing.clone().map(|time| {
+                    div()
+                        .self_start()
+                        .text_size(rem(theme.size_meta))
+                        .text_color(theme.secondary)
+                        .child(time)
+                })),
+        )
+        .children(card.chip.clone().map(|chip| {
+            h_flex().child(
+                div()
+                    .px_2()
+                    .py(rem(2.0))
+                    .rounded(rem(theme.radius_chip))
+                    .bg(theme.warning_bg)
+                    .text_color(warning)
+                    .text_size(rem(theme.size_meta))
+                    .child(chip),
+            )
+        }))
+        .child(
+            div()
+                .w_full()
+                .text_size(rem(theme.size_secondary))
+                .text_color(theme.secondary)
+                .text_ellipsis()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .child(card.body.clone()),
+        )
 }
 
 /// The state block of a directory with no rows to show, or `None` when it

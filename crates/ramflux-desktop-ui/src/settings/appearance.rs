@@ -225,7 +225,8 @@ fn body(cx: &App) -> impl IntoElement {
                 .w_full()
                 .h_auto()
                 .p(rem(12.0))
-                .selected(selected)
+                // Board G13: the chosen theme is marked by its radio on the
+                // white list, not by a selected fill.
                 .toggled(selected)
                 .accessibility_label(name.clone())
                 .on_click(move |_, _, cx| {

@@ -138,7 +138,12 @@ impl TasksArea {
 
     /// The detail pane: the category's header and its task cards, then the
     /// conversations whose task history is not loaded.
-    pub fn detail(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub fn detail(
+        &mut self,
+        tools: Option<AnyElement>,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let palette = ramflux_desktop_navigation::palette(cx);
         let rem = |px: f32| gpui_kit::rems(px / 15.0);
         let category = self.category;
@@ -201,17 +206,20 @@ impl TasksArea {
                 )
                 .title_size(palette.size_subheading)
                 .title_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .trailing(div().when(category != TaskCategory::All, |slot| {
-                    slot.child(
-                        gpui_kit::component::button::Button::new("tasks-view-all")
-                            .ghost()
-                            .small()
-                            .label(tr("sections.tasks.view_all"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_category(TaskCategory::All, cx)
-                            })),
-                    )
-                })),
+                .trailing(h_flex().gap_3().children(tools).when(
+                    category != TaskCategory::All,
+                    |slot| {
+                        slot.child(
+                            gpui_kit::component::button::Button::new("tasks-view-all")
+                                .ghost()
+                                .small()
+                                .label(tr("sections.tasks.view_all"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.set_category(TaskCategory::All, cx)
+                                })),
+                        )
+                    },
+                )),
                 false,
                 palette,
             ))
@@ -397,7 +405,7 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
                     gpui_kit::component::button::Button::new(SharedString::from(format!(
                         "task-open-{id}"
                     )))
-                    .design_secondary(cx)
+                    .design_quiet(cx)
                     .label(tr(if task.state == TaskState::NeedsMe {
                         "sections.tasks.handle"
                     } else {
@@ -412,12 +420,9 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
                         gpui_kit::component::button::Button::new(SharedString::from(format!(
                             "task-cancel-{id}"
                         )))
-                        .design_secondary(cx)
-                        .label(tr(if proposal {
-                            "sections.tasks.decline"
-                        } else {
-                            "sections.tasks.cancel"
-                        }))
+                        .design_quiet(cx)
+                        // Board 06: "Cancel task" for a proposal as for a task.
+                        .label(tr("sections.tasks.cancel"))
                         .on_click(move |_, window, cx| {
                             sink.emit(UiEventKind::CancelPressed, window, cx)
                         }),
@@ -448,7 +453,20 @@ impl Render for TasksArea {
             .px_3()
             .pt(gpui_kit::rems(24.0 / 15.0))
             .gap_4()
-            .child(directory::header(tr("navigation.tasks"), div(), cx))
+            // Board 06: the heading's "+"; a task is asked for in a
+            // conversation, so here it says where.
+            .child(directory::header(
+                tr("navigation.tasks"),
+                crate::gate::gated(
+                    gpui_kit::component::button::Button::new("tasks-new")
+                        .small()
+                        .ghost()
+                        .icon(gpui_kit::assets::IconName::Plus)
+                        .accessibility_label(tr("sections.tasks.new")),
+                    Some(tr("sections.tasks.new_help")),
+                ),
+                cx,
+            ))
             .child(self.search.field("tasks-search", tr("sections.tasks.search"), cx))
             // Task history loads per conversation: said here, on the route.
             .child(

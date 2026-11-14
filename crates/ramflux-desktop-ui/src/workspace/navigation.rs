@@ -132,14 +132,14 @@ impl Workspace {
         match self.route {
             // Design board 07: the people table until a contact is chosen.
             WorkspaceRoute::Contacts if self.contact_profile.read(cx).participant().is_none() => {
-                Some(self.contact_directory.update(cx, |list, cx| list.detail(window, cx)))
+                Some(self.contact_directory.update(cx, |list, cx| list.detail(None, window, cx)))
             }
             WorkspaceRoute::Contacts => Some(self.contact_profile.clone().into_any_element()),
             WorkspaceRoute::Strangers => {
                 Some(self.strangers.update(cx, |area, cx| area.detail(window, cx)))
             }
             WorkspaceRoute::Tasks => {
-                Some(self.tasks_area.update(cx, |area, cx| area.detail(window, cx)))
+                Some(self.tasks_area.update(cx, |area, cx| area.detail(None, window, cx)))
             }
             WorkspaceRoute::Agents if self.agent_roster.read(cx).selected().is_none() => {
                 Some(super::sections::directory::placeholder(
@@ -320,8 +320,7 @@ impl Workspace {
             )
             .child({
                 // Design B01: the avatar opens the identity popover (switch
-                // account, lock the current one), with the window commands
-                // the title bar used to carry under it.
+                // account, lock the current one).
                 let store = self.store.downgrade();
                 let sink = crate::root::IntentRoot::sink(&self.root);
                 gpui_kit::component::popover::Popover::new("identity-popover")
@@ -367,9 +366,8 @@ fn rail_label(
 }
 
 /// The identity popover (design B01): every account of this window with
-/// its kind and state, "Current" on the shown one and "Switch" on the
-/// others; "Lock the current account"; then the window commands (palette,
-/// theme, settings, and the developer panel in debug builds).
+/// its kind and state (and what needs the user there), "Current" on the
+/// shown one and "Switch" on the others, then "Lock the current account".
 fn identity_popover(
     store: &gpui_kit::WeakEntity<crate::app::StoreHandle>,
     sink: &crate::bubble::EventSink,
@@ -407,14 +405,6 @@ fn identity_popover(
             .map(|a| a.id.clone());
         (rows, lockable)
     };
-    let command = |id: &'static str, key: &'static str, action: Box<dyn gpui_kit::Action>| {
-        Button::new(id).ghost().w_full().justify_start().small().label(tr(key)).on_click(
-            cx.listener(move |_, _, window, cx| {
-                window.dispatch_action(action.boxed_clone(), cx);
-                cx.emit(DismissEvent);
-            }),
-        )
-    };
     v_flex()
         .id("identity-menu")
         .test_support()
@@ -440,8 +430,18 @@ fn identity_popover(
         .children(rows.into_iter().map(|(id, name, detail, current, count)| {
             let target = id.clone();
             let store = store.clone();
+            let spoken = if count > 0 {
+                crate::i18n::join(
+                    &ramflux_desktop_navigation::row::list_text(&name),
+                    &crate::i18n::tr_args("status.needs_me", &[("count", &count.to_string())]),
+                )
+            } else {
+                ramflux_desktop_navigation::row::list_text(&name)
+            };
             h_flex()
                 .id(gpui_kit::SharedString::from(format!("identity-{id}")))
+                .test_support()
+                .aria_label(spoken)
                 .gap_3()
                 .px_1()
                 .py_2()
@@ -521,21 +521,6 @@ fn identity_popover(
                         cx.emit(DismissEvent);
                     })),
             )
-        })
-        .child(div().h(gpui_kit::px(1.)).my_1().bg(palette.line))
-        .child(command("identity-palette", "status.palette", Box::new(crate::actions::OpenPalette)))
-        .child(command(
-            "identity-theme",
-            "status.toggle_theme",
-            Box::new(crate::actions::ToggleTheme),
-        ))
-        .child(command("identity-settings", "status.settings", Box::new(OpenSettings)))
-        .when(cfg!(debug_assertions), |menu| {
-            menu.child(command(
-                "identity-dev-panel",
-                "status.dev_panel",
-                Box::new(crate::actions::ToggleDevPanel),
-            ))
         })
         .into_any_element()
 }

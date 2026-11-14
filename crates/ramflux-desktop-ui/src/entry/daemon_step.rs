@@ -16,9 +16,8 @@ use std::path::Path;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, IntoElement, SharedString, div};
 use ramflux_desktop_sdk::local::{DaemonBinary, LaunchError};
@@ -83,18 +82,45 @@ impl EntryPage {
         let binary = launcher.binary();
         let data_dir = launcher.data_dir();
         let log = launcher.daemon_log();
+        // Design A01: the state on a tip bar, then the socket as a field.
+        let palette = ramflux_desktop_navigation::palette(cx);
         let header = v_flex()
-            .gap_1()
+            .gap(gpui_kit::rems(24.0 / 15.0))
             .child(
-                div()
-                    .text_sm()
-                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                    .child(tr("entry.daemon.none")),
+                v_flex()
+                    .id("entry-daemon-state")
+                    .gap_1()
+                    .p_4()
+                    .rounded(gpui_kit::rems(palette.radius_md / 15.0))
+                    .bg(palette.surface)
+                    .child(
+                        div()
+                            .text_size(gpui_kit::rems(palette.size_body / 15.0))
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .child(tr("entry.daemon.none")),
+                    )
+                    .child(
+                        div()
+                            .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
+                            .text_color(palette.secondary)
+                            .child(tr("entry.daemon.request_only")),
+                    ),
             )
-            .child(muted_line(
-                "entry-daemon-socket",
-                tr_args("entry.daemon.none_help", &[("path", &shown(&socket))]),
-                false,
+            .child(crate::settings::presentation::field(
+                tr("entry.daemon.socket"),
+                div()
+                    .id("entry-daemon-socket")
+                    .test_support()
+                    .aria_label(tr_args("entry.daemon.none_help", &[("path", &shown(&socket))]))
+                    .w_full()
+                    .px_3()
+                    .py_2()
+                    .rounded(gpui_kit::rems(palette.radius_input / 15.0))
+                    .border_1()
+                    .border_color(palette.line_strong)
+                    .bg(palette.surface_white)
+                    .text_size(gpui_kit::rems(palette.size_body / 15.0))
+                    .child(shown(&socket)),
                 cx,
             ));
         let body = match &state {
@@ -190,22 +216,18 @@ impl EntryPage {
                 h_flex()
                     .gap_2()
                     .child(
-                        Button::new("entry-daemon-start")
-                            .primary()
-                            .icon(IconName::Play)
+                        crate::style::secondary_button("entry-daemon-settings", cx)
+                            .label(tr("entry.daemon.settings"))
+                            .on_click(|_, window, cx| {
+                                window.dispatch_action(Box::new(OpenDiagnosticsSettings), cx);
+                            }),
+                    )
+                    .child(
+                        crate::style::primary_button("entry-daemon-start", cx)
                             .label(tr(start_label))
                             .disabled(missing)
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(StartLocalDaemon), cx);
-                            }),
-                    )
-                    .child(
-                        Button::new("entry-daemon-settings")
-                            .ghost()
-                            .icon(IconName::Settings)
-                            .label(tr("entry.daemon.settings"))
-                            .on_click(|_, window, cx| {
-                                window.dispatch_action(Box::new(OpenDiagnosticsSettings), cx);
                             }),
                     ),
             )

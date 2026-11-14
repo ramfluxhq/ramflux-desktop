@@ -20,7 +20,7 @@ use super::DockTool;
 
 /// Width of the right dock when nothing is persisted. A physical layout seed
 /// for the dock engine, which sizes docks in pixels; users resize freely.
-pub const DEFAULT_DOCK_WIDTH: f32 = 420.;
+pub const DEFAULT_DOCK_WIDTH: f32 = 480.;
 
 /// Schema of the persisted layout. Bump it when the panels or their
 /// arrangement change incompatibly; older dock trees are then ignored.

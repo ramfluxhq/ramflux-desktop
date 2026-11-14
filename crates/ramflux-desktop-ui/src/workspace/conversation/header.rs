@@ -150,9 +150,19 @@ pub fn render(
     let dot = || fact("·".into());
     // Design `RF / Chat header`: the title over one context line, then the
     // conversation's commands at the right; pinning lives in "More".
+    // Board 04: an agent's private conversation reads "role · status"
+    // where a group reads its member count.
+    let agent_line = peer.as_ref().filter(|_| peer_agent).map(|p| {
+        crate::i18n::join(
+            &tr("sections.agents.role"),
+            &crate::workspace::sections::agents::status(store, &p.id),
+        )
+    });
+    let members = if agent_line.is_some() { 0 } else { members };
     let context_line = h_flex()
         .gap_1()
         .min_w_0()
+        .children(agent_line.map(|line| fact(line).id("header-agent-status").test_support()))
         .when(members > 0, |line| {
             line.child(fact(tr_args("conversation.members", &[("count", &members.to_string())])))
         })

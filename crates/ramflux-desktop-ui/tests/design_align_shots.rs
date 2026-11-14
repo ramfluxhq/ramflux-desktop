@@ -37,7 +37,6 @@ mod shots {
     use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
     use ramflux_desktop_ui::actions::{ClosePalette, OpenPalette};
-    use ramflux_desktop_ui::i18n;
     use ramflux_desktop_ui::settings::SettingsSection;
     use ramflux_desktop_ui::workspace::WorkspaceRoute;
 
@@ -53,6 +52,45 @@ mod shots {
 
     impl Run {
         fn open(scenario: &str, out: &Path) -> Self {
+            let name = scenario.to_owned();
+            Self::open_with(out, move |window, cx| Shell::with_scenario(&name, false, window, cx))
+        }
+
+        /// The first-run shell over a local service that is not running
+        /// (no socket yet) with a service program set: the start offer.
+        fn open_entry(out: &Path) -> Self {
+            use ramflux_desktop_ui::launch::LaunchOptions;
+            use ramflux_desktop_ui::shell::{ShellOptions, SourceChoice};
+            // A short socket path, as the board shows one.
+            let dir = PathBuf::from("/tmp").join(format!("rf-shots-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).expect("dir");
+            let program = std::env::current_exe().expect("a program path");
+            Self::open_with(out, move |window, cx| {
+                let options = ShellOptions {
+                    source: SourceChoice::Rfd(ramflux_desktop_sdk::SdkConfig::new(
+                        dir.join("rfd.sock"),
+                    )),
+                    launch: LaunchOptions {
+                        store: ramflux_desktop_sdk::local::LaunchStore::at(
+                            dir.join("desktop-settings.json"),
+                        ),
+                        bundled: Some(program),
+                        log_dir: Some(dir.join("logs")),
+                        owned: ramflux_desktop_sdk::local::OwnedDaemonFile::at(
+                            dir.join("owned-daemon.json"),
+                        ),
+                        ..LaunchOptions::in_memory()
+                    },
+                    ..ShellOptions::for_scenario("", true)
+                };
+                Shell::with_options(options, window, cx)
+            })
+        }
+
+        fn open_with(
+            out: &Path,
+            make: impl FnOnce(&mut Window, &mut gpui_kit::Context<Shell>) -> Shell + 'static,
+        ) -> Self {
             let mut cx = HeadlessAppContext::with_platform(
                 gpui_kit::platform::current_platform(true).text_system(),
                 Arc::new(Assets),
@@ -64,7 +102,6 @@ mod shots {
                 ramflux_desktop_ui::assets::load_fonts(cx).expect("bundled fonts");
                 Theme::change(ThemeMode::Light, None, cx);
             });
-            let name = scenario.to_owned();
             let (handle, shell) = cx
                 .update(|cx| {
                     let bounds =
@@ -77,9 +114,7 @@ mod shots {
                             ..Default::default()
                         },
                         cx,
-                        move |window, cx| {
-                            cx.new(|cx| Shell::with_scenario(&name, false, window, cx))
-                        },
+                        move |window, cx| cx.new(|cx| make(window, cx)),
                     )
                 })
                 .expect("offscreen window");
@@ -151,13 +186,23 @@ mod shots {
             assert!(!dev, "screenshots are taken with the developer panel closed");
             for (locale, lang) in [("zh-CN", "zh"), ("en", "en")] {
                 for (mode, suffix) in [(ThemeMode::Light, "light"), (ThemeMode::Dark, "dark")] {
-                    self.cx.update(|cx| {
-                        i18n::select_locale(locale, cx);
-                        Theme::change(mode, None, cx);
-                        cx.refresh_windows();
-                    });
+                    // Through the preferences, as the Appearance page sets
+                    // them, so its controls show the painted state (G13).
+                    self.cx.update(|cx| apply(locale, mode, cx));
                     if let Some(prepare) = prepare {
                         self.window(|window, cx| prepare(window, cx));
+                    } else {
+                        // No focus ring or hover the board does not draw:
+                        // the pointer rests on the rail's empty middle.
+                        self.window(|window, cx| {
+                            window.blur(cx);
+                            let rest = if window.try_find("navigation-rail").is_some() {
+                                "navigation-rail"
+                            } else {
+                                "entry-header"
+                            };
+                            window.hover(rest, cx);
+                        });
                     }
                     self.window(|_, _| {});
                     for id in landmarks {
@@ -178,11 +223,7 @@ mod shots {
                     }
                 }
             }
-            self.cx.update(|cx| {
-                i18n::select_locale(i18n::DEFAULT_LOCALE, cx);
-                Theme::change(ThemeMode::Light, None, cx);
-                cx.refresh_windows();
-            });
+            self.cx.update(|cx| apply("zh-CN", ThemeMode::Light, cx));
             self.cx.run_until_parked();
         }
 
@@ -191,20 +232,47 @@ mod shots {
         }
     }
 
+    /// Picks `locale` and the `mode` theme the way the Appearance page does.
+    fn apply(locale: &'static str, mode: ThemeMode, cx: &mut gpui_kit::App) {
+        use ramflux_desktop_navigation::theme;
+        use ramflux_desktop_ui::preferences::{self, LanguageChoice, ThemeChoice};
+        theme::select_mode(mode, cx);
+        if let Some(info) = theme::active(cx) {
+            preferences::set_theme(ThemeChoice::Named(info.id), cx);
+        }
+        preferences::set_language(LanguageChoice::Locale(locale), cx);
+        cx.refresh_windows();
+    }
+
     /// s02 with a pending stranger, so the strangers boards have content.
     fn with_stranger() -> ramflux_desktop_test::Scenario {
         let mut scenario = load_fixture("s02_daily").expect("fixture");
+        let peer = ParticipantId::new("guzhou@node.example.org");
+        let stranger = ramflux_desktop_core::Participant {
+            id: peer.clone(),
+            kind: ramflux_desktop_core::ParticipantKind::Human,
+            display: "Gu Zhou".to_owned(),
+            safety: ramflux_desktop_core::SafetyState::Unverified,
+            contact: false,
+            safety_number: Some("73051186442090573312".into()),
+            link: ramflux_desktop_core::ContactLink::None,
+            reachable: None,
+            kind_claim: ramflux_desktop_core::KindClaim::None,
+            name_warnings: ramflux_desktop_core::NameWarnings::default(),
+            root_source: None,
+        };
         let request = ContactRequest {
             id: "req-guzhou".into(),
-            peer: ParticipantId::new("p-guzhou"),
+            peer,
             direction: RequestDirection::Incoming,
             state: RequestState::Pending,
-            note: Some("Hello, could you share last week's review notes?".into()),
+            note: None,
             safety_number: Some("73051186442090573312".into()),
             held_messages: 1,
-            preview: None,
+            preview: Some("Hello, could you share last week's review notes?".into()),
             expires_at: None,
         };
+        scenario.timeline.push((9, DomainEvent::ParticipantUpserted(stranger)));
         scenario.timeline.push((10, DomainEvent::ContactRequestUpserted(request)));
         scenario.timeline.sort_by_key(|(at, _)| *at);
         scenario
@@ -247,10 +315,13 @@ mod shots {
         // Board 04: the Agents section, the private conversation with Orbit.
         run.route(WorkspaceRoute::Agents);
         run.window(|window, cx| window.click("agent-p-orbit", cx));
+        // The board's task request: help line, "Ask Orbit", the placeholder.
+        run.window(|window, cx| window.click("composer-mode", cx));
         run.shot(
             "04_agent_conversation",
             &["agent-roster", "conversation-agent-profile", "composer-receiver"],
         );
+        run.window(|window, cx| window.click("composer-mode", cx));
         // Board 03 / C05: groups.
         run.route(WorkspaceRoute::Groups);
         run.shot("03_groups", &["groups-search-input"]);
@@ -263,7 +334,10 @@ mod shots {
         let area = run.cx.update(|cx| workspace.read(cx).strangers().clone());
         run.cx.update(|cx| area.update(cx, |a, cx| a.select(Some("req-guzhou".into()), cx)));
         run.cx.run_until_parked();
-        run.shot("f17_strangers", &["strangers-area", "stranger-accept"]);
+        run.shot(
+            "f17_strangers",
+            &["strangers-area", "stranger-header", "stranger-unverified", "stranger-accept"],
+        );
         // Boards G01, G13 (and the other settings sections).
         run.route(WorkspaceRoute::Messages);
         for (name, section, landmark) in [
@@ -308,8 +382,12 @@ mod shots {
         tasks.shot("06_tasks", &["tasks-area", "tasks-category-needs_me", "task-card-t-launch"]);
 
         // Board A01: first run, the local service step.
-        let mut entry = Run::open("s01_first_launch", &out);
-        entry.advance(100);
-        entry.shot("a01_entry", &["entry-header", "entry-steps"]);
+        let mut entry = Run::open_entry(&out);
+        for _ in 0..10 {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            entry.cx.advance_clock(std::time::Duration::from_millis(100));
+            entry.cx.run_until_parked();
+        }
+        entry.shot("a01_entry", &["entry-header", "entry-steps", "entry-daemon-start"]);
     }
 }

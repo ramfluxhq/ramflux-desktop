@@ -27,8 +27,14 @@ entry:
       en: "Ramflux connects to the background service on this device."
       zh-CN: "Ramflux 会连接到本机的后台服务。"
     none:
-      en: "No local daemon is answering"
-      zh-CN: "没有本地服务响应"
+      en: "Not connected to the local service"
+      zh-CN: "未连接到本地服务"
+    request_only:
+      en: "Ramflux starts the local service only when you ask it to."
+      zh-CN: "Ramflux 只会在你请求后启动本地服务。"
+    socket:
+      en: "Socket"
+      zh-CN: "Socket"
     none_help:
       en: "Ramflux Desktop connects as soon as a daemon answers at %{path}. Start one here, or start it yourself with rf daemon start."
       zh-CN: "只要 %{path} 上有本地服务响应，Ramflux Desktop 就会立即连接。可以在这里启动，也可以自行运行 rf daemon start。"
@@ -39,8 +45,8 @@ entry:
       en: "Try again"
       zh-CN: "重试"
     settings:
-      en: "Daemon settings…"
-      zh-CN: "本地服务设置…"
+      en: "Launch settings"
+      zh-CN: "启动设置"
     runs:
       en: "Program: %{path}"
       zh-CN: "程序：%{path}"

@@ -164,7 +164,7 @@ impl GroupDirectory {
 }
 
 impl Render for GroupDirectory {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let store = self.store.read(cx).store();
         let entries = self.entries(store, cx);
         let list = ListState::of(store.is_listed(Listing::Contexts), entries.is_empty());
@@ -222,6 +222,7 @@ impl Render for GroupDirectory {
                     None => members,
                 };
                 DirectoryRow {
+                    card: None,
                     key: entry.id.to_string().into(),
                     title: ramflux_desktop_navigation::row::list_text(&entry.title),
                     subtitle,
@@ -263,7 +264,7 @@ impl Render for GroupDirectory {
                     id: "groups-list",
                     label: tr("sections.groups.list"),
                     rows,
-                    active: self.search.active,
+                    active: self.search.cursor(window, cx),
                     on_pick: pick,
                     on_check: None,
                 },

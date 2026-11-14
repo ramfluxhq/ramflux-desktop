@@ -29,7 +29,10 @@ pub(crate) fn section(
         .pb(rem(20.0))
         .border_b_1()
         .border_color(palette.line)
-        .child(div().text_size(rem(palette.size_subheading)).font_semibold().child(title))
+        .when(!title.is_empty(), |section| {
+            section
+                .child(div().text_size(rem(palette.size_subheading)).font_semibold().child(title))
+        })
 }
 
 /// A two-line row (title over detail) with a trailing element, on a rule.

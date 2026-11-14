@@ -190,7 +190,23 @@ pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Settin
     if let Some(sync) = super::sync::group(context, cx) {
         page = page.group(sync);
     }
-    page.group(about)
+    let page = page.group(about);
+    // Debug builds: the developer panel opens from here (its old title-bar
+    // button has no place on the boards).
+    if cfg!(debug_assertions) {
+        page.group(SettingGroup::new().title(tr("status.dev_panel")).item(SettingItem::render(
+            |_, _, cx: &mut App| {
+                crate::style::secondary_button("diagnostics-dev-panel", cx)
+                    .label(tr("settings.diagnostics.dev_panel"))
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::actions::ToggleDevPanel), cx)
+                    })
+                    .into_any_element()
+            },
+        )))
+    } else {
+        page
+    }
 }
 
 #[cfg(test)]
