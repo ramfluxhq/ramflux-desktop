@@ -416,7 +416,6 @@ impl Render for EntryPage {
                 .gap_6()
                 .px_6()
                 // The shell already keeps the 52 px drag region above (macOS).
-                .when(!cfg!(target_os = "macos"), |col| col.pt_12())
                 .pb_12()
                 // Design A01: the product name, then the page title in the
                 // page size over a one-line description.

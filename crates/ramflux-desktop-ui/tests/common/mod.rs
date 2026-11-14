@@ -156,9 +156,33 @@ pub fn in_window<R>(
     result
 }
 
-/// Clicks an element by id.
+/// Clicks an element by id. A control below the fold of the entry page
+/// (its column scrolls; how far depends on the platform's title bar and
+/// text metrics) is scrolled into view first, as a user would.
 pub fn click(cx: &mut TestAppContext, handle: WindowHandle<Root>, id: &'static str) {
+    reveal_on_entry(cx, handle, id);
     in_window(cx, handle, |window, cx| window.click(id, cx));
+}
+
+fn reveal_on_entry(cx: &mut TestAppContext, handle: WindowHandle<Root>, id: &'static str) {
+    for _ in 0..40 {
+        let hidden = in_window(cx, handle, |window, _| {
+            let found = window.find_all(id);
+            found.len() == 1
+                && !found[0].visible()
+                && window.try_find("entry").is_some_and(|entry| entry.visible())
+        });
+        if !hidden {
+            return;
+        }
+        in_window(cx, handle, |window, cx| {
+            let delta = gpui_kit::ScrollDelta::Pixels(gpui_kit::point(
+                gpui_kit::px(0.),
+                gpui_kit::px(-120.),
+            ));
+            window.scroll("entry", delta, cx);
+        });
+    }
 }
 
 /// Clicks an element by id inside the element `scope`.
