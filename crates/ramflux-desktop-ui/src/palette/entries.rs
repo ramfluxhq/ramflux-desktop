@@ -63,7 +63,7 @@ pub struct Entry {
     /// Extra search terms.
     pub keywords: Vec<String>,
     /// Leading icon.
-    pub icon: IconName,
+    pub icon: gpui_kit::component::Icon,
     /// What choosing it does.
     pub choice: PaletteChoice,
 }
@@ -77,8 +77,12 @@ pub struct Group {
     pub entries: Vec<Entry>,
 }
 
-fn entry(label: impl Into<SharedString>, icon: IconName, choice: PaletteChoice) -> Entry {
-    Entry { label: label.into(), keywords: Vec::new(), icon, choice }
+fn entry(
+    label: impl Into<SharedString>,
+    icon: impl Into<gpui_kit::component::Icon>,
+    choice: PaletteChoice,
+) -> Entry {
+    Entry { label: label.into(), keywords: Vec::new(), icon: icon.into(), choice }
 }
 
 /// Builds the palette groups for `store`, with actions on `current`.

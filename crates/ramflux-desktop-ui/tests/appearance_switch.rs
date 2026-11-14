@@ -18,6 +18,7 @@ use common::*;
 use gpui_kit::component::{ActiveTheme as _, ThemeMode};
 use gpui_kit::test::TestEventExt as _;
 use gpui_kit::test::TestQueryExt as _;
+use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{Hsla, MouseButton, TestAppContext, WindowAppearance};
 use ramflux_desktop_navigation::theme;
 use ramflux_desktop_sdk::local::{AppearanceSettings, AppearanceStore};
@@ -56,11 +57,6 @@ fn tokens(cx: &mut TestAppContext) -> (Hsla, Hsla, Hsla, Hsla) {
     })
 }
 
-/// The visible label of the theme dropdown showing `value`.
-fn theme_field(value: &str) -> String {
-    format!("{}: {value}", tr("settings.theme"))
-}
-
 /// The visible label of the language dropdown showing `value`.
 fn language_field(value: &str) -> String {
     format!("{}: {value}", tr("settings.language"))
@@ -82,9 +78,8 @@ fn theme_and_language_switch_in_the_open_window_and_follow_the_system(cx: &mut T
     let light = tokens(cx);
     assert!(!cx.update(|cx| cx.theme().is_dark()), "tests start light");
 
-    // Theme: Light -> Dark from the dropdown, at once.
-    click_label(cx, handle, &theme_field(&tr("theme.name.light")));
-    click_label(cx, handle, &tr("theme.name.dark"));
+    // Mode: Light -> Dark from the Mode control, at once.
+    click(cx, handle, "appearance-mode-dark");
     let dark = tokens(cx);
     assert!(cx.update(|cx| cx.theme().is_dark()), "the dark set is active without a restart");
     assert_ne!(dark.0, light.0, "Kit background follows the token set");
@@ -92,7 +87,13 @@ fn theme_and_language_switch_in_the_open_window_and_follow_the_system(cx: &mut T
     assert_ne!(dark.2, light.2, "RF rail follows the token set");
     assert_ne!(dark.3, light.3, "the generated palette follows the token set");
     assert_eq!(cx.update(|cx| preferences::theme_choice(cx)), ThemeChoice::parse("dark"));
-    assert!(shows(cx, handle, &theme_field(&tr("theme.name.dark"))), "the picker shows it");
+    assert!(
+        in_window(cx, handle, |w, _| {
+            let mode = w.find("appearance-mode-dark");
+            mode.selected() == Some(true) || mode.checked() == Some(true)
+        }),
+        "the Mode control shows it"
+    );
 
     // Language: Chinese -> English, the visible text changes at once.
     let chinese_title = tr("settings.section.appearance");
@@ -102,7 +103,7 @@ fn theme_and_language_switch_in_the_open_window_and_follow_the_system(cx: &mut T
     assert_eq!(i18n::locale(), "en", "English is active without a restart");
     assert_ne!(tr("settings.section.appearance"), chinese_title);
     assert!(shows(cx, handle, &language_field("English")), "the field reads in English now");
-    assert!(shows(cx, handle, &theme_field("Dark")), "every label is English now");
+    assert!(shows(cx, handle, "Mode: Dark"), "every label is English now");
 
     // Follow system: the language is the system's; the theme follows the
     // operating system's appearance both ways.
@@ -110,8 +111,7 @@ fn theme_and_language_switch_in_the_open_window_and_follow_the_system(cx: &mut T
     click_label(cx, handle, &tr("locale.system"));
     assert_eq!(cx.update(|cx| preferences::language_choice(cx)), LanguageChoice::System);
     assert_eq!(i18n::locale(), i18n::system_locale(), "the system's language is used");
-    click_label(cx, handle, &theme_field(&tr("theme.name.dark")));
-    click_label(cx, handle, &tr("settings.theme_system"));
+    click(cx, handle, "appearance-mode-system");
     assert_eq!(cx.update(|cx| preferences::theme_choice(cx)), ThemeChoice::System);
     cx.update(|cx| preferences::appearance_changed(WindowAppearance::Dark, cx));
     cx.run_until_parked();

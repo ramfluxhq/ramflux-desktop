@@ -164,8 +164,12 @@ pub fn render(
         .when_some(text.filter(|t| !t.is_empty()), |col, text| {
             if let Some(selection) = selection.filter(|_| payload.spans.is_empty()) {
                 col.child(
-                    div().id("message-text").test_support().min_w_0().child(
+                    // Kit insets a multi-line editor by its size's padding
+                    // (4 px across, none down at the smallest size): the
+                    // negative margin lines the text up with the sender.
+                    div().id("message-text").test_support().min_w_0().mx(gpui_kit::px(-4.)).child(
                         gpui_kit::component::input::Textarea::new(selection)
+                            .xsmall()
                             .text_size(body_size)
                             .w_full()
                             .readonly(true)

@@ -26,8 +26,8 @@ settings:
       en: "Diagnostics"
       zh-CN: "诊断"
     appearance:
-      en: "Appearance and language"
-      zh-CN: "外观与语言"
+      en: "Appearance"
+      zh-CN: "外观"
   theme:
     en: "Theme"
     zh-CN: "主题"
@@ -41,33 +41,48 @@ settings:
     en: "Interface language"
     zh-CN: "界面语言"
   appearance:
+    field:
+      en: "%{label}: %{value}"
+      zh-CN: "%{label}: %{value}"
+    title:
+      en: "Appearance and language"
+      zh-CN: "外观与语言"
     local_only:
       en: "These settings only affect this device."
       zh-CN: "这些设置只影响本机。"
     display:
       en: "Display"
       zh-CN: "显示"
-    dark:
-      en: "Dark theme"
-      zh-CN: "深色主题"
-    state_on:
-      en: "On"
-      zh-CN: "开启"
-    state_off:
-      en: "Off"
-      zh-CN: "关闭"
-    dark_system_on:
-      en: "On · follows the system"
-      zh-CN: "开启 · 跟随系统"
-    dark_system_off:
-      en: "Off · follows the system"
-      zh-CN: "关闭 · 跟随系统"
-    turn_on:
-      en: "Turn on"
-      zh-CN: "开启"
-    turn_off:
-      en: "Turn off"
-      zh-CN: "关闭"
+    mode:
+      en: "Mode"
+      zh-CN: "模式"
+    mode_light:
+      en: "Light"
+      zh-CN: "浅色"
+    mode_dark:
+      en: "Dark"
+      zh-CN: "深色"
+    mode_system:
+      en: "Follow system"
+      zh-CN: "跟随系统"
+    mode_help_system:
+      en: "Follow system: switches between light and dark with the system. Now %{current}."
+      zh-CN: "跟随系统：随系统的浅色或深色自动切换。当前为%{current}。"
+    mode_help_light:
+      en: "Always light, whatever the system uses."
+      zh-CN: "始终使用浅色，不随系统变化。"
+    mode_help_dark:
+      en: "Always dark, whatever the system uses."
+      zh-CN: "始终使用深色，不随系统变化。"
+    default:
+      en: "Default"
+      zh-CN: "默认"
+    theme_help:
+      en: "A theme is a set of colours with a light and a dark variant. More themes are listed here as they are added."
+      zh-CN: "主题是一组配色，每个主题都有浅色和深色。更多主题加入后会列在这里。"
+    language_help:
+      en: "Only the interface text changes. Messages and account names stay as they are."
+      zh-CN: "只影响界面文字。消息和账号名称保持原样。"
     preview:
       en: "Preview"
       zh-CN: "预览"
@@ -112,20 +127,20 @@ settings:
       en: "Lock account"
       zh-CN: "锁定账号"
     export:
-      en: "Export backup…"
-      zh-CN: "导出备份…"
+      en: "Choose a location and export"
+      zh-CN: "选择位置并导出"
     backup_title:
-      en: "Key backup"
-      zh-CN: "密钥备份"
+      en: "Export account key backup"
+      zh-CN: "导出账号密钥备份"
     backup_passphrase:
       en: "Backup passphrase"
       zh-CN: "备份口令"
     backup_help:
-      en: "Keys and contacts only, without messages or files; to keep everything, use Backup. The file is encrypted with this passphrase."
-      zh-CN: "仅含密钥和联系人，不含消息和文件；要保留全部内容，请使用“备份”。文件用此口令加密。"
+      en: "Encrypted with a separate backup passphrase; the file holds sensitive identity material. Keys and contacts only: to keep everything, use Backup and restore."
+      zh-CN: "使用独立的备份口令加密导出；导出的文件包含敏感身份信息。仅含密钥和联系人，要保留全部内容请使用“备份与恢复”。"
     rotate_title:
       en: "Change passphrase"
-      zh-CN: "更改口令"
+      zh-CN: "更换口令"
     current:
       en: "Current passphrase"
       zh-CN: "当前口令"
@@ -134,7 +149,31 @@ settings:
       zh-CN: "新口令"
     rotate:
       en: "Change passphrase"
-      zh-CN: "更改口令"
+      zh-CN: "更换口令"
+    current_title:
+      en: "Current account"
+      zh-CN: "当前账号"
+    current_chip:
+      en: "Current"
+      zh-CN: "当前"
+    unlocked:
+      en: "Unlocked"
+      zh-CN: "已解锁"
+    locked:
+      en: "Locked"
+      zh-CN: "已锁定"
+    default_node:
+      en: "Default node"
+      zh-CN: "默认节点"
+    node_device:
+      en: "%{node} · Device %{device}"
+      zh-CN: "%{node} · 设备 %{device}"
+    no_node:
+      en: "No node yet"
+      zh-CN: "尚未关联节点"
+    no_device:
+      en: "not registered"
+      zh-CN: "未登记"
   devices:
     none:
       en: "No devices"

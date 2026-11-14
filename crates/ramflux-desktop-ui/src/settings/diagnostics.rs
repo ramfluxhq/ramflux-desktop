@@ -26,6 +26,7 @@ use crate::app::RendererErrors;
 use crate::file_dialog::{self, StartDir};
 use crate::i18n::{tr, tr_args};
 use crate::moments::surface::registry;
+use crate::style::DesignButton as _;
 
 /// File name suggested for the diagnostics export.
 pub const DIAGNOSTICS_FILE_NAME: &str = "ramflux-diagnostics.txt";
@@ -159,7 +160,7 @@ pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Settin
                 h_flex().child(
                     Button::new("diagnostics-export")
                         .small()
-                        .outline()
+                        .design_secondary(cx)
                         .label(tr("settings.diagnostics.export"))
                         .on_click(move |_, window, cx| {
                             let sink = sink.clone();

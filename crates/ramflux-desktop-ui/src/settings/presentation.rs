@@ -24,7 +24,14 @@ pub(crate) fn field(label: SharedString, editor: impl IntoElement, cx: &App) -> 
     gpui_kit::component::v_flex()
         .gap_2()
         .min_w_0()
-        .child(div().text_sm().text_color(cx.theme().muted_foreground).child(label))
+        // Design: a 13 px medium label above the editor.
+        .child(
+            div()
+                .text_size(gpui_kit::rems(palette(cx).size_secondary / 15.0))
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .text_color(palette(cx).text)
+                .child(label),
+        )
         .child(editor)
         .into_any_element()
 }
@@ -44,6 +51,10 @@ pub(super) fn notice(
         .min_w_0()
         .w_full()
         .whitespace_normal()
+        // Design `RF / Tip bar`: the notice sits on the surface fill.
+        .p_3()
+        .rounded(gpui_kit::rems(palette(cx).radius_md / 15.0))
+        .bg(palette(cx).surface)
         .child(catalog::state_block(
             "settings-state".into(),
             title,

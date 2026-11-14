@@ -103,6 +103,10 @@ impl Composer {
         });
         let subscriptions = vec![
             cx.subscribe_in(&input, window, |this, _, event, window, cx| {
+                // The send button turns primary once there is text.
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
                 if matches!(event, InputEvent::PressEnter { secondary: false, shift: false }) {
                     let composing = this.input.update(cx, |input, cx| {
                         let marked =
@@ -323,6 +327,18 @@ impl Composer {
         }
     }
 
+    /// Whether a member's kind is unknown (it may be an agent, so the
+    /// receiver line stays to say why a task cannot be asked of it).
+    fn has_unknown_member(&self, cx: &App) -> bool {
+        let store = self.store.read(cx).store();
+        let me = selectors::self_participant(store);
+        self.context.as_ref().is_some_and(|c| {
+            selectors::participants(store, c)
+                .into_iter()
+                .any(|p| Some(&p.id) != me.as_ref() && p.kind == ParticipantKind::Unknown)
+        })
+    }
+
     /// The AI participant a request without a mention goes to.
     pub fn addressee(&self, cx: &App) -> Option<Agent> {
         let agents = self.agents(cx);
@@ -450,36 +466,79 @@ impl Render for Composer {
             ComposerMode::Message => "composer.send",
             ComposerMode::Task => "composer.start",
         });
+        // Design 04: where the conversation has an agent, a receiver line
+        // above the field names it and switches between a plain message
+        // and a task request (which still waits for an explicit start).
+        let has_text = !self.input.read(cx).value().trim().is_empty() || self.staged.is_some();
+        let agents = self.agents(cx);
+        let receiver =
+            ((!agents.is_empty() || self.has_unknown_member(cx)) && !in_draft).then(|| {
+                let name = self
+                    .picked
+                    .as_ref()
+                    .and_then(|id| agents.iter().find(|a| &a.id == id))
+                    .or(agents.first())
+                    .map(|a| a.name.clone())
+                    .unwrap_or_default();
+                let task = self.mode == ComposerMode::Task;
+                v_flex()
+                    .id("composer-receiver")
+                    .test_support()
+                    .gap_1()
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
+                            .child(
+                                div().text_color(palette.secondary).child(tr("composer.receiver")),
+                            )
+                            .child(div().child(name))
+                            .child(
+                                Button::new("composer-mode")
+                                    .outline()
+                                    .xsmall()
+                                    .border_color(palette.text)
+                                    .selected(task)
+                                    .toggled(task)
+                                    .label(tr(if task {
+                                        "composer.mode_task"
+                                    } else {
+                                        "composer.mode_message"
+                                    }))
+                                    .accessibility_label(tr("composer.task_mode"))
+                                    .tooltip(
+                                        task_reason
+                                            .clone()
+                                            .unwrap_or_else(|| tr("composer.task_mode")),
+                                    )
+                                    .disabled(!enabled || (task_reason.is_some() && !task))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        let next = match this.mode {
+                                            ComposerMode::Message => ComposerMode::Task,
+                                            ComposerMode::Task => ComposerMode::Message,
+                                        };
+                                        this.set_mode(next, window, cx);
+                                    })),
+                            ),
+                    )
+                    .when(task, |line| {
+                        line.child(
+                            div()
+                                .text_size(gpui_kit::rems(palette.size_meta / 15.0))
+                                .text_color(palette.secondary)
+                                .child(tr("composer.task_help")),
+                        )
+                    })
+            });
         let row = h_flex()
             .items_center()
             .w_full()
             .gap_2()
             .child(
-                Button::new("composer-mode")
-                    .ghost()
-                    .small()
-                    .selected(self.mode == ComposerMode::Task)
-                    .icon(IconName::LayoutDashboard)
-                    .accessibility_label(tr("composer.task_mode"))
-                    .tooltip(task_reason.clone().unwrap_or_else(|| tr("composer.task_mode")))
-                    .disabled(
-                        !enabled
-                            || in_draft
-                            || (task_reason.is_some() && self.mode == ComposerMode::Message),
-                    )
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        let next = match this.mode {
-                            ComposerMode::Message => ComposerMode::Task,
-                            ComposerMode::Task => ComposerMode::Message,
-                        };
-                        this.set_mode(next, window, cx);
-                    })),
-            )
-            .child(
                 Button::new("composer-attach")
                     .ghost()
                     .small()
-                    .icon(IconName::File)
+                    .icon(gpui_kit::assets::IconName::Paperclip)
                     .accessibility_label(tr("composer.attach.label"))
                     .tooltip(attach_reason.clone().unwrap_or_else(|| tr("composer.attach.label")))
                     .disabled(
@@ -502,6 +561,10 @@ impl Render for Composer {
             .child(
                 Button::new("composer-send")
                     .primary()
+                    // Design: a quiet surface button until there is text.
+                    .when(!has_text, |button| {
+                        button.ghost().bg(palette.surface).text_color(palette.control)
+                    })
                     .small()
                     .icon(IconName::ArrowUp)
                     .rounded(gpui_kit::px(palette.radius_xl))
@@ -514,29 +577,28 @@ impl Render for Composer {
         // 8 px above and 16 px below.
         v_flex()
             .id("composer")
+            .test_support()
             .w_full()
             .max_w(gpui_kit::rems(palette.column_max / 15.0))
             .mx_auto()
             .gap_1()
-            .px_3()
             .pt_2()
             .pb(gpui_kit::rems(16.0 / 15.0))
-            // Design `Composer / Default`. Built here rather than with the
-            // generated shell, whose empty mode/quote slots each add a gap
-            // above the editor.
-            .child(
-                v_flex()
-                    .id("conversation:composer")
-                    .w_full()
-                    .gap_2()
-                    .p_2()
-                    .rounded(gpui_kit::rems(palette.radius_lg / 15.0))
-                    .border_1()
-                    .border_color(palette.input_border)
-                    .bg(palette.input)
-                    .children(chip)
-                    .child(row),
-            )
+            .children(receiver)
+            // Design `Composer / Default`: the generated shell (no empty slot
+            // adds space since PEN-GEN-05), the staged file above the editor.
+            .child({
+                let slots = ramflux_desktop_navigation::generated::catalog::ComposerSlots::new(
+                    "conversation".into(),
+                    row,
+                    div(),
+                );
+                let slots = match chip {
+                    Some(chip) => slots.attachment(chip),
+                    None => slots,
+                };
+                ramflux_desktop_navigation::generated::catalog::composer_shell(slots, palette)
+            })
             .when_some(reason.filter(|_| enabled), |col, reason| {
                 col.child(
                     div()

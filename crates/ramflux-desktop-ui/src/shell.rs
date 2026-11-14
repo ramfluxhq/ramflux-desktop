@@ -102,6 +102,8 @@ pub struct Shell {
     store: Entity<StoreHandle>,
     root: Entity<IntentRoot>,
     status: Entity<StatusStrip>,
+    /// A press in the window drag region waits for a move (macOS).
+    drag_pending: std::rc::Rc<std::cell::Cell<bool>>,
     entry: Entity<EntryPage>,
     workspace: Entity<Workspace>,
     settings: Entity<SettingsPage>,
@@ -260,6 +262,7 @@ impl Shell {
             store,
             root,
             status,
+            drag_pending: std::rc::Rc::default(),
             entry,
             workspace,
             settings,
@@ -573,6 +576,9 @@ impl Shell {
     }
 }
 
+/// Height of the macOS window drag region at the top of every board.
+pub const WINDOW_DRAG_HEIGHT: f32 = 52.0;
+
 impl Render for Shell {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The status banner sits at the top of the content: above the entry
@@ -655,12 +661,51 @@ impl Render for Shell {
                     this.settings_section(-1, cx)
                 }),
             )
+            .relative()
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            // Window chrome only (drag region, platform window controls):
-            // the design draws no title bar content.
-            .child(gpui_kit::component::TitleBar::new())
+            // The design's faces: Hanken Grotesk for Latin, Noto Sans SC for
+            // CJK (both bundled, see `assets::load_fonts`).
+            .font(crate::assets::design_font(gpui_kit::FontWeight::NORMAL))
+            // Window chrome (design 02 and every board): on macOS no title
+            // bar, a 52 px drag region under the content and the traffic
+            // lights over the rail; elsewhere Kit's title bar carries the
+            // platform window controls.
+            .when(!cfg!(target_os = "macos"), |root| {
+                root.child(gpui_kit::component::TitleBar::new())
+            })
+            .when(cfg!(target_os = "macos"), |root| {
+                root.child(
+                    div()
+                        .id("window-drag-region")
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .h(gpui_kit::rems(WINDOW_DRAG_HEIGHT / 15.0))
+                        .window_control_area(gpui_kit::WindowControlArea::Drag)
+                        // A press then a move drags the window (as Kit's title
+                        // bar does); a plain click reaches the control above.
+                        .on_mouse_down(gpui_kit::MouseButton::Left, {
+                            let pending = self.drag_pending.clone();
+                            move |_, _, _| pending.set(true)
+                        })
+                        .on_mouse_up(gpui_kit::MouseButton::Left, {
+                            let pending = self.drag_pending.clone();
+                            move |_, _, _| pending.set(false)
+                        })
+                        .on_mouse_move({
+                            let pending = self.drag_pending.clone();
+                            move |event, window, _| {
+                                if pending.get() && event.pressed_button.is_some() {
+                                    pending.set(false);
+                                    window.start_window_move();
+                                }
+                            }
+                        }),
+                )
+            })
             .child(
                 h_flex()
                     .flex_1()

@@ -10,10 +10,10 @@ use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _,
+    ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _,
     VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
 };
 use gpui_kit::prelude::*;
@@ -100,6 +100,9 @@ impl ContextStack {
         // The placeholder follows a language switch like every other field.
         let query = i18n::localized_input("navigation.search", window, cx, |input| input);
         let subscriptions = vec![
+            // Rows keep translated text (previews of empty conversations,
+            // the task lines): a language switch builds them again.
+            crate::i18n::on_locale_switch(cx, |this, cx| this.refresh(cx)),
             cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, window, cx| {
                 if let StoreEvent::Changed(changes) = event {
                     if changes.is_reset() {
@@ -158,10 +161,11 @@ impl ContextStack {
 
     fn update_rows(&mut self, changes: &ChangeSet, cx: &mut Context<Self>) {
         if self.unread_only {
-            // The unread view is small and its membership follows every
-            // read change, so it is rebuilt.
+            // The unread view's membership follows every read change, so its
+            // rows are rebuilt (the search index is updated, not reset).
             let store = self.store.read(cx).store();
-            self.search.reset(store);
+            self.search.prune(store);
+            self.search.apply(store, changes);
             self.refresh(cx);
             return;
         }
@@ -235,7 +239,6 @@ impl ContextStack {
         cx.notify();
     }
 
-    /// Selects a navigation section and resets its local scroll/keyboard cursor.
     /// Shows every conversation, or only those with unread messages.
     pub fn set_unread_only(&mut self, unread_only: bool, cx: &mut Context<Self>) {
         if self.unread_only != unread_only {
@@ -245,8 +248,12 @@ impl ContextStack {
         }
     }
 
+    /// Selects a navigation section and resets its local scroll/keyboard cursor.
     pub fn set_filter(&mut self, filter: ListFilter, cx: &mut Context<Self>) {
         self.filter = filter;
+        // A section starts with every conversation (the Unread chip is the
+        // message list's own choice).
+        self.unread_only = false;
         self.active = 0;
         self.refresh(cx);
         self.scroll.scroll_to_item(0, ScrollStrategy::Top);
@@ -435,7 +442,8 @@ impl Render for ContextStack {
                     )
             });
         let palette = ramflux_desktop_navigation::palette(cx);
-        let row_height = window.rem_size() * theme::ROW_REM;
+        // Design board 02: 64 px rows 16 px apart.
+        let row_height = window.rem_size() * theme::ROW_REM + window.rem_size() * (16.0 / 15.0);
         if self.row_height != row_height {
             self.row_height = row_height;
             self.sizes = Rc::new(vec![size(px(0.), row_height); self.rows.len()]);
@@ -454,25 +462,35 @@ impl Render for ContextStack {
                         content.attention = entry.needs_me;
                         content.kind = entry.kind;
                         Some(
-                            Button::new(domain_id("stack", &id))
-                                .ghost()
-                                .w_full()
-                                .h(gpui_kit::rems(theme::ROW_REM))
-                                .px_3()
-                                .rounded(gpui_kit::px(
-                                    ramflux_desktop_navigation::palette(cx).radius_sm,
-                                ))
-                                .selected(selected)
-                                .accessibility_label(accessible_name(entry))
-                                .when(
-                                    ix == this.active
-                                        && this.query.read(cx).focus_handle(cx).is_focused(window),
-                                    |button| button.border_1().border_color(cx.theme().ring),
+                            div()
+                                .pb(gpui_kit::rems(16.0 / 15.0))
+                                .child(
+                                    Button::new(domain_id("stack", &id))
+                                        .ghost()
+                                        .w_full()
+                                        .h(gpui_kit::rems(theme::ROW_REM))
+                                        .px_3()
+                                        .rounded(gpui_kit::px(
+                                            ramflux_desktop_navigation::palette(cx).radius_sm,
+                                        ))
+                                        .selected(selected)
+                                        .accessibility_label(accessible_name(entry))
+                                        .when(
+                                            ix == this.active
+                                                && this
+                                                    .query
+                                                    .read(cx)
+                                                    .focus_handle(cx)
+                                                    .is_focused(window),
+                                            |button| {
+                                                button.border_1().border_color(cx.theme().ring)
+                                            },
+                                        )
+                                        .on_click(cx.listener(move |_, _, _, cx| {
+                                            cx.emit(ContextStackEvent::Selected(id.clone()))
+                                        }))
+                                        .child(content.content(cx)),
                                 )
-                                .on_click(cx.listener(move |_, _, _, cx| {
-                                    cx.emit(ContextStackEvent::Selected(id.clone()))
-                                }))
-                                .child(content.content(cx))
                                 .into_any_element(),
                         )
                     })
@@ -517,17 +535,19 @@ impl Render for ContextStack {
                     )
                     .child(new_menu),
             )
-            .child(
-                Input::new(&self.query)
-                    .id("conversation-search")
-                    .small()
-                    .prefix(Icon::new(IconName::Search)),
-            )
+            .child(super::sections::directory::search_input(
+                "conversation-search",
+                &self.query,
+                tr("navigation.search"),
+                cx,
+            ))
             .when(self.filter == ListFilter::Messages, |pane| {
                 let chip = |id: &'static str, key: &'static str, on: bool, unread: bool| {
                     Button::new(id)
                         .ghost()
                         .xsmall()
+                        .h(gpui_kit::rems(28.0 / 15.0))
+                        .px(gpui_kit::rems(10.0 / 15.0))
                         .rounded(gpui_kit::px(palette.radius_chip))
                         .selected(on)
                         .toggled(on)
@@ -539,6 +559,7 @@ impl Render for ContextStack {
                 pane.child(
                     h_flex()
                         .id("stack-filters")
+                        .test_support()
                         .gap_1()
                         .child(chip(
                             "stack-filter-all",

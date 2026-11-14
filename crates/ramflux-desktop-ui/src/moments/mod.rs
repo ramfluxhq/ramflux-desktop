@@ -466,6 +466,62 @@ impl RenderOnce for MomentView {
         }
         let compact = is_compact(&moment.kind);
         let focused = state.focus.as_ref().is_some_and(|f| f.is_focused(window));
+        // A file transfer sits in the conversation like a message (design
+        // 02 / H07): the sender's avatar beside the block, own files on the
+        // right.
+        if matches!(moment.kind, MomentKind::ObjectTransfer(_)) {
+            let palette = ramflux_desktop_navigation::palette(cx);
+            let initial = ramflux_desktop_navigation::row::initial(&row.author);
+            return v_flex()
+                .id(domain_id("moment", &moment.id))
+                .role(Role::ListItem)
+                .aria_label(accessible_label(&row))
+                .aria_selected(state.highlighted)
+                .test_support()
+                .when_some(state.focus.as_ref(), |el, focus| el.track_focus(focus))
+                .w_full()
+                .min_w_0()
+                .gap_1()
+                .when_some(row.day_header.clone(), |col, day| col.child(day_header(day, cx)))
+                .child(
+                    h_flex()
+                        .w_full()
+                        .min_w_0()
+                        .items_start()
+                        .gap_2()
+                        .when(row.outbound, |line| line.justify_end())
+                        .when(!row.outbound, |line| {
+                            line.child(
+                                div()
+                                    .id("transfer-avatar")
+                                    .flex_none()
+                                    .size(gpui_kit::rems(32.0 / 15.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(gpui_kit::rems(palette.radius_full / 15.0))
+                                    .bg(palette.avatar_person)
+                                    .text_color(palette.on_avatar_person)
+                                    .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
+                                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                    .child(initial),
+                            )
+                        })
+                        .child(
+                            v_flex()
+                                .min_w_0()
+                                .max_w(gpui_kit::rems(448.0 / 15.0))
+                                .w_full()
+                                .gap_1()
+                                .rounded(cx.theme().radius)
+                                .when(state.highlighted, |r| r.bg(cx.theme().muted))
+                                .when(focused, |r| r.focus_ring_style(window, cx))
+                                .child(header(&row, cx))
+                                .child(body),
+                        ),
+                )
+                .into_any_element();
+        }
         v_flex()
             .id(domain_id("moment", &moment.id))
             .role(Role::ListItem)

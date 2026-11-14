@@ -104,6 +104,8 @@ pub struct Workspace {
     contact_directory: Entity<ContactsDirectory>,
     contact_profile: Entity<ContactProfile>,
     strangers: Entity<StrangersArea>,
+    tasks_area: Entity<sections::tasks::TasksArea>,
+    agent_roster: Entity<sections::agents::AgentRoster>,
     /// A group was chosen in the group directory since it was opened.
     group_shown: bool,
     open_tool: Option<DockTool>,
@@ -113,7 +115,6 @@ pub struct Workspace {
     route: WorkspaceRoute,
     list_visible: bool,
     focus_handle: FocusHandle,
-    agents_focus: FocusHandle,
     /// The status banner shown at the top of the content column.
     status: Option<Entity<status_strip::StatusStrip>>,
     _subscriptions: Vec<Subscription>,
@@ -158,6 +159,10 @@ impl Workspace {
             cx.new(|cx| ContactsDirectory::new(store.clone(), sink.clone(), window, cx));
         let contact_profile = cx.new(|cx| ContactProfile::new(store.clone(), sink.clone(), cx));
         let strangers = cx.new(|cx| StrangersArea::new(store.clone(), sink.clone(), window, cx));
+        let tasks_area =
+            cx.new(|cx| sections::tasks::TasksArea::new(store.clone(), sink.clone(), window, cx));
+        let agent_roster =
+            cx.new(|cx| sections::agents::AgentRoster::new(store.clone(), window, cx));
         let contents: [(DockTool, gpui_kit::AnyView); 5] = [
             (DockTool::Objects, objects.clone().into()),
             (DockTool::Contacts, contacts.clone().into()),
@@ -259,6 +264,45 @@ impl Workspace {
                 }
             }),
             cx.subscribe_in(
+                &tasks_area,
+                window,
+                |this, _, event: &sections::tasks::TasksEvent, window, cx| {
+                    let sections::tasks::TasksEvent::Open(context, moment) = event else {
+                        // A chosen category shows its tasks (in place of the
+                        // list at compact widths).
+                        this.list_visible = false;
+                        cx.notify();
+                        return;
+                    };
+                    this.navigate(WorkspaceRoute::Messages, window, cx);
+                    this.select_context(Some(context.clone()), window, cx);
+                    if let Some(moment) = moment {
+                        this.conversation.update(cx, |field, cx| field.focus_moment(moment, cx));
+                    } else {
+                        this.composer.update(cx, |composer, cx| composer.focus(window, cx));
+                    }
+                    this.list_visible = false;
+                    cx.notify();
+                },
+            ),
+            cx.subscribe_in(
+                &agent_roster,
+                window,
+                |this, _, event: &sections::agents::AgentRosterEvent, window, cx| match event {
+                    sections::agents::AgentRosterEvent::Selected(agent) => {
+                        this.agent_roster
+                            .update(cx, |roster, cx| roster.set_selected(Some(agent.clone()), cx));
+                        this.open_conversation_with(agent.clone(), window, cx);
+                        this.list_visible = false;
+                        cx.notify();
+                    }
+                    sections::agents::AgentRosterEvent::Manage => {
+                        window.dispatch_action(Box::new(crate::actions::OpenAgentsSettings), cx);
+                    }
+                    sections::agents::AgentRosterEvent::NewGroup => this.open_new_group(window, cx),
+                },
+            ),
+            cx.subscribe_in(
                 &contact_directory,
                 window,
                 |this, _, event: &ContactsDirectoryEvent, window, cx| match event {
@@ -281,6 +325,8 @@ impl Workspace {
                         this.contact_directory.update(cx, |list, cx| list.set_selected(None, cx));
                         this.contact_profile
                             .update(cx, |profile, cx| profile.set_participant(None, cx));
+                        // Compact widths show the table in place of the list.
+                        this.list_visible = false;
                         cx.notify();
                     }
                     ContactsDirectoryEvent::Groups => {
@@ -406,6 +452,8 @@ impl Workspace {
             contact_directory,
             contact_profile,
             strangers,
+            tasks_area,
+            agent_roster,
             group_shown: false,
             open_tool: None,
             prefs,
@@ -414,7 +462,6 @@ impl Workspace {
             route: WorkspaceRoute::Messages,
             list_visible: true,
             focus_handle: cx.focus_handle(),
-            agents_focus: cx.focus_handle().tab_stop(true),
             status: None,
             _subscriptions: subscriptions,
         };
@@ -476,6 +523,16 @@ impl Workspace {
     /// its content column.
     pub fn set_status(&mut self, status: Entity<StatusStrip>) {
         self.status = Some(status);
+    }
+
+    /// The tasks area (tasks route).
+    pub fn tasks_area(&self) -> &Entity<sections::tasks::TasksArea> {
+        &self.tasks_area
+    }
+
+    /// The agent roster (agents route).
+    pub fn agent_roster(&self) -> &Entity<sections::agents::AgentRoster> {
+        &self.agent_roster
     }
 
     /// The strangers area (strangers route).
@@ -742,6 +799,10 @@ impl Workspace {
             }
         });
         self.open_tool = Some(tool);
+        // Shown before the next paint (a pinned tool restored at launch too).
+        for slot in &self.tools {
+            slot.panel.update(cx, |panel, _| panel.set_shown(slot.tool == tool));
+        }
         cx.notify();
     }
 
@@ -884,6 +945,7 @@ impl Workspace {
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let this = cx.weak_entity();
         // The tool switcher lives in the conversation header while no tool
         // is open, and in the open panel's header otherwise (design H01).
         let open_tool = self.open_tool;
@@ -974,6 +1036,42 @@ impl Render for Workspace {
                         .child(gpui_kit::div().flex_1().min_h_0().child(
                             match (blocking, section_detail) {
                                 (Some(screen), _) => screen,
+                                // A section's own page keeps the dock tools in
+                                // reach (none beside strangers, design F17).
+                                (None, Some(detail))
+                                    if self.open_tool.is_none()
+                                        && self.route != WorkspaceRoute::Strangers =>
+                                {
+                                    gpui_kit::component::v_flex()
+                                        .size_full()
+                                        .child(
+                                            gpui_kit::component::h_flex()
+                                                .id("section-tools")
+                                                .test_support()
+                                                .justify_end()
+                                                .px(gpui_kit::rems(32.0 / 15.0))
+                                                .pt_2()
+                                                // The tools act on the shown
+                                                // conversation: choosing one
+                                                // returns to it with the tool open.
+                                                .child(DockRail::new(None, {
+                                                    let this = this.clone();
+                                                    move |tool, window, cx| {
+                                                        this.update(cx, |w, cx| {
+                                                            w.navigate(
+                                                                WorkspaceRoute::Messages,
+                                                                window,
+                                                                cx,
+                                                            );
+                                                            w.open_tool(tool, window, cx);
+                                                        })
+                                                        .ok();
+                                                    }
+                                                })),
+                                        )
+                                        .child(gpui_kit::div().flex_1().min_h_0().child(detail))
+                                        .into_any_element()
+                                }
                                 (None, Some(detail)) => detail,
                                 (None, None) => self.dock_area.clone().into_any_element(),
                             },

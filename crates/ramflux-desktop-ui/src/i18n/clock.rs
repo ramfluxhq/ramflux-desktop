@@ -65,9 +65,12 @@ pub fn day_label(at: Timestamp, now: Timestamp) -> SharedString {
     let (Some(day), Some(today)) = (local_day(at), local_day(now)) else {
         return SharedString::default();
     };
+    // Design `RF / Date separator`: the relative day with its month and
+    // day ("Today · Nov 10").
+    let short = local(at).map_or_else(String::new, |t| formatted(&t, "format.month_day"));
     match (today - day).num_days() {
-        0 => tr("clock.today"),
-        1 => tr("clock.yesterday"),
+        0 => tr_args("clock.relative_day", &[("day", &tr("clock.today")), ("date", &short)]),
+        1 => tr_args("clock.relative_day", &[("day", &tr("clock.yesterday")), ("date", &short)]),
         _ => tr_args("clock.date", &[("date", &date(at))]),
     }
 }
@@ -148,8 +151,11 @@ mod tests {
     #[test]
     fn day_labels_are_relative_to_now() {
         let now = Timestamp(1_790_812_800_000);
-        assert_eq!(day_label(now, now), tr("clock.today"));
-        assert_eq!(day_label(Timestamp(now.millis() - 86_400_000), now), tr("clock.yesterday"));
+        assert!(day_label(now, now).starts_with(tr("clock.today").as_ref()));
+        assert!(
+            day_label(Timestamp(now.millis() - 86_400_000), now)
+                .starts_with(tr("clock.yesterday").as_ref())
+        );
         let older = day_label(Timestamp(now.millis() - 5 * 86_400_000), now);
         assert!(older.contains("2026"), "an older day shows its date: {older}");
     }

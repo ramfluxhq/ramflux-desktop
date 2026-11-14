@@ -13,8 +13,6 @@
 use std::rc::Rc;
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::Selectable as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _, h_flex, v_flex};
@@ -102,16 +100,36 @@ impl Search {
     }
 
     /// The field element.
-    pub fn field(&self, id: &'static str, label: SharedString) -> AnyElement {
+    pub fn field(&self, id: &'static str, label: SharedString, cx: &App) -> AnyElement {
         div()
             .id(id)
             .test_support()
-            .child(Input::new(&self.input).small().aria_label(label).cleanable(true))
+            .child(search_input(SharedString::from(format!("{id}-input")), &self.input, label, cx))
             .into_any_element()
     }
 }
 
 /// Whether any of `fields` contains `query` (already lowercased).
+/// The design's search field (`RF / Search field`): 34 px on the white
+/// surface with a strong rule, the search glyph leading.
+pub(crate) fn search_input(
+    id: impl Into<ElementId>,
+    state: &Entity<InputState>,
+    label: SharedString,
+    cx: &App,
+) -> impl IntoElement {
+    let theme = palette(cx);
+    Input::new(state)
+        .id(id)
+        .small()
+        .h(gpui_kit::rems(34.0 / 15.0))
+        .bg(theme.surface_white)
+        .border_color(theme.line_strong)
+        .prefix(gpui_kit::component::Icon::new(gpui_kit::component::IconName::Search).small())
+        .aria_label(label)
+        .cleanable(true)
+}
+
 pub(crate) fn matches(query: &str, fields: &[&str]) -> bool {
     query.is_empty() || fields.iter().any(|field| field.to_lowercase().contains(query))
 }
@@ -175,20 +193,22 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
             let pick = on_pick.clone();
             let check = on_check.clone();
             let key = row.key.clone();
-            // The design's `List row / Conversation` (sections 03, 07, F17):
-            // the generated list row paints every row selected and does not
-            // fill the pane, so the handwritten row content is used here.
-            let mut content =
-                ramflux_desktop_navigation::row::Row::new(row.title.clone(), row.subtitle.clone());
-            content.kind = match row.avatar {
-                catalog::AvatarKind::Agent => ramflux_desktop_navigation::row::AvatarKind::Agent,
-                catalog::AvatarKind::Person | catalog::AvatarKind::Group => {
-                    ramflux_desktop_navigation::row::AvatarKind::Person
-                }
+            // The design's `List row / Conversation` (sections 03, 07, F17),
+            // the generated row with its selection from this list's state.
+            let preview = match row.trailing {
+                Some(trailing) => crate::i18n::join(&row.subtitle, &trailing),
+                None => row.subtitle.clone(),
             };
-            if let Some(trailing) = row.trailing {
-                content.time = trailing;
-            }
+            let content = catalog::RowContent::new(row.key.clone(), row.title.clone(), preview)
+                .selected(row.selected)
+                .title_size(theme.size_body)
+                .title_weight(gpui_kit::FontWeight::MEDIUM)
+                .subtitle_size(theme.size_secondary)
+                .leading(catalog::avatar(
+                    ramflux_desktop_navigation::row::initial(&row.title),
+                    row.avatar,
+                    theme,
+                ));
             h_flex()
                 .id(ElementId::from(format!("{id}-row-{}", row.key)))
                 .test_support()
@@ -212,19 +232,12 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                             .on_click(move |_, window, cx| check(&key, window, cx)),
                     )
                 })
-                .child(
-                    Button::new(ElementId::from(format!("{}:list-row", row.key)))
-                        .ghost()
-                        .flex_1()
-                        .min_w_0()
-                        .h(gpui_kit::rems(ramflux_desktop_navigation::theme::ROW_REM))
-                        .px_3()
-                        .rounded(gpui_kit::px(theme.radius_sm))
-                        .selected(row.selected)
-                        .accessibility_label(row.title.clone())
-                        .on_click(move |_, window, cx| pick(&key, window, cx))
-                        .child(content.content(cx)),
-                )
+                .child(div().flex_1().min_w_0().child(catalog::list_row(
+                    content,
+                    false,
+                    theme,
+                    move |key, window, cx| pick(key, window, cx),
+                )))
         }))
         .when(total > ROW_LIMIT, |list| {
             list.child(

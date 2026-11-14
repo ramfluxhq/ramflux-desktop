@@ -4,9 +4,10 @@
 //! The objects dock: every transfer in a table (name, direction, progress,
 //! state) with the actions its state allows (pull, save, retry).
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::table::{Column, DataTable, TableDelegate, TableState};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::table::{Column, TableDelegate, TableState};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div, px,
@@ -20,6 +21,7 @@ use crate::bubble::EventSink;
 use crate::i18n::{self, tr};
 use crate::ids::domain_id;
 use crate::moments::save_with_dialog;
+use crate::style::DesignButton as _;
 
 const COLUMNS: [(&str, &str, f32); 5] = [
     ("name", "dock.objects.name", 128.),
@@ -72,20 +74,20 @@ impl TableDelegate for ObjectsDelegate {
                 })
                 .child(i18n::transfer(&object.transfer))
                 .into_any_element(),
-            _ => actions(object, &self.sink),
+            _ => actions(object, &self.sink, cx.theme().foreground),
         }
     }
 }
 
-fn actions(object: &Object, sink: &EventSink) -> AnyElement {
+fn actions(object: &Object, sink: &EventSink, border: gpui_kit::Hsla) -> AnyElement {
     let action = match (&object.transfer, object.direction) {
         (TransferState::Queued, Direction::Inbound) => {
             Some(("pull", "moment.object.pull", ObjectAction::Pull))
         }
         (TransferState::Complete, Direction::Inbound) if object.saved_to.is_none() => {
             return Button::new(domain_id("objects-save", &object.id))
-                .xsmall()
-                .outline()
+                .design_secondary_compact()
+                .border_color(border)
                 .label(tr("moment.object.save"))
                 .on_click(save_with_dialog(sink, object))
                 .into_any_element();
@@ -101,8 +103,8 @@ fn actions(object: &Object, sink: &EventSink) -> AnyElement {
     let sink = sink.clone();
     let object_id = object.id.clone();
     Button::new(domain_id(&format!("objects-{key}"), &object.id))
-        .xsmall()
-        .outline()
+        .design_secondary_compact()
+        .border_color(border)
         .label(tr(label))
         .on_click(move |_, window, cx| {
             sink.emit(
@@ -165,6 +167,81 @@ impl Render for ObjectsDock {
         let store = self.store.read(cx).store();
         let empty = selectors::objects(store).is_empty();
         let state = crate::list_state::of(store, Listing::Objects, empty);
+        let palette = ramflux_desktop_navigation::palette(cx);
+        let rem = |px: f32| gpui_kit::rems(px / 15.0);
+        let sink = self.table.read(cx).delegate().sink.clone();
+        let rows = self.table.read(cx).delegate().rows.clone();
+        // Design H01: what each column means, then one card per file — its
+        // name, direction and size, progress, its state and the one action
+        // it allows.
+        let cards = rows.iter().map(|object| {
+            let measured = matches!(object.transfer, TransferState::Transferring { .. });
+            let failed = matches!(object.transfer, TransferState::Failed { .. });
+            let state_text = i18n::transfer(&object.transfer);
+            v_flex()
+                .id(domain_id("objects-card", &object.id))
+                .gap_2()
+                .py_3()
+                .border_b_1()
+                .border_color(palette.line)
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(rem(palette.size_body))
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .child(object.label()),
+                )
+                .child(
+                    h_flex()
+                        .gap_3()
+                        .child(
+                            v_flex()
+                                .flex_1()
+                                .min_w_0()
+                                .child(div().text_size(rem(palette.size_body)).child(i18n::join(
+                                    &i18n::direction(object.direction),
+                                    &i18n::size(object.size),
+                                )))
+                                .child(
+                                    div()
+                                        .text_size(rem(palette.size_meta))
+                                        .text_color(if failed {
+                                            palette.danger
+                                        } else {
+                                            palette.secondary
+                                        })
+                                        .child(i18n::join(
+                                            &i18n::percent(f64::from(object.progress())),
+                                            &state_text,
+                                        )),
+                                ),
+                        )
+                        .when(failed || measured, |row| {
+                            row.child(
+                                div()
+                                    .px_2()
+                                    .py(rem(4.0))
+                                    .rounded(rem(palette.radius_chip))
+                                    .bg(palette.surface)
+                                    .text_size(rem(palette.size_meta))
+                                    .child(state_text.clone()),
+                            )
+                        })
+                        .child(actions(object, &sink, palette.text)),
+                )
+                .when(measured, |card| {
+                    // Lossy by design: the bar is only displayed.
+                    #[allow(clippy::cast_precision_loss)]
+                    let percent = object.progress() * 100.0;
+                    card.child(
+                        gpui_kit::component::progress::Progress::new(domain_id(
+                            "objects-progress",
+                            &object.id,
+                        ))
+                        .value(percent),
+                    )
+                })
+        });
         v_flex()
             .id("dock-objects")
             .size_full()
@@ -177,11 +254,27 @@ impl Render for ObjectsDock {
             ))
             .when(!empty, |col| {
                 col.child(
-                    h_flex()
+                    v_flex()
+                        .id("objects-cards")
+                        .test_support()
                         .flex_1()
                         .min_h_0()
-                        .p_2()
-                        .child(DataTable::new(&self.table).stripe(true).bordered(true).small()),
+                        .overflow_y_scroll()
+                        .px(rem(20.0))
+                        .child(
+                            div()
+                                .text_size(rem(palette.size_meta))
+                                .text_color(palette.secondary)
+                                .child(
+                                    COLUMNS
+                                        .iter()
+                                        .skip(1)
+                                        .fold(tr(COLUMNS[0].1), |line, (_, key, _)| {
+                                            i18n::join(&line, &tr(key))
+                                        }),
+                                ),
+                        )
+                        .children(cards),
                 )
             })
     }

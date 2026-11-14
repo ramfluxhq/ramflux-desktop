@@ -24,10 +24,11 @@
 //!   local daemon, version and log locations (local preference).
 //! - [`appearance`]: theme and language (local preference).
 
-pub mod account;
+mod account;
 pub mod agents;
 pub mod appearance;
 pub mod backup;
+pub(crate) mod design;
 pub mod devices;
 pub mod diagnostics;
 mod errors;
@@ -356,34 +357,43 @@ impl Render for SettingsPage {
             .flex_shrink_0()
             .border_color(palette.line)
             .bg(palette.nav)
-            .children(SettingsSection::ALL.into_iter().map(|section| {
-                Button::new(SharedString::from(format!("settings-section-{}", section.key())))
-                    .ghost()
-                    .when(!compact, |button| {
-                        button
-                            .w_full()
-                            .justify_start()
-                            .px_3()
-                            .h(gpui_kit::rems(40.0 / 15.0))
-                            .rounded(gpui_kit::px(palette.radius_sm))
-                            .text_size(gpui_kit::rems(palette.size_body / 15.0))
-                    })
-                    .when(compact, |button| button.small())
-                    .selected(self.section == section)
-                    // The current section is exposed to assistive technology,
-                    // not only drawn as selected.
-                    .toggled(self.section == section)
-                    .accessibility_label(tr(&format!("settings.section.{}", section.key())))
-                    .child(
-                        div()
-                            .flex_1()
-                            .when(compact, |label| label.flex_none())
-                            .child(tr(&format!("settings.section.{}", section.key()))),
-                    )
-                    // Focus stays on the pressed button, so keyboard users keep
-                    // their ring and Tab position.
-                    .on_click(cx.listener(move |this, _, _, cx| this.show(section, cx)))
-            }));
+            // Agents live in their own section of the rail (design 04 / D01);
+            // their management page opens from there, not from this list.
+            .children(
+                SettingsSection::ALL.into_iter().filter(|s| *s != SettingsSection::Agents).map(
+                    |section| {
+                        Button::new(SharedString::from(format!(
+                            "settings-section-{}",
+                            section.key()
+                        )))
+                        .ghost()
+                        .when(!compact, |button| {
+                            button
+                                .w_full()
+                                .justify_start()
+                                .px_3()
+                                .h(gpui_kit::rems(40.0 / 15.0))
+                                .rounded(gpui_kit::px(palette.radius_sm))
+                                .text_size(gpui_kit::rems(palette.size_body / 15.0))
+                        })
+                        .when(compact, |button| button.small())
+                        .selected(self.section == section)
+                        // The current section is exposed to assistive technology,
+                        // not only drawn as selected.
+                        .toggled(self.section == section)
+                        .accessibility_label(tr(&format!("settings.section.{}", section.key())))
+                        .child(
+                            div()
+                                .flex_1()
+                                .when(compact, |label| label.flex_none())
+                                .child(tr(&format!("settings.section.{}", section.key()))),
+                        )
+                        // Focus stays on the pressed button, so keyboard users keep
+                        // their ring and Tab position.
+                        .on_click(cx.listener(move |this, _, _, cx| this.show(section, cx)))
+                    },
+                ),
+            );
         v_flex()
             .id("settings")
             .test_support()
@@ -426,22 +436,22 @@ impl Render for SettingsPage {
                                     .id("settings-header")
                                     .test_support()
                                     .w_full()
-                                    .min_h(gpui_kit::rems(88.0 / 15.0))
-                                    .px(gpui_kit::rems(32.0 / 15.0))
-                                    .border_b_1()
-                                    .border_color(palette.line)
+                                    // The generated page header (88 px, 32 px
+                                    // inset, rule) with the board's 24 px title.
                                     .child(
-                                        div()
-                                            .id("settings-page-title")
-                                            .flex_1()
-                                            .text_size(gpui_kit::rems(palette.size_page / 15.0))
-                                            .font_semibold()
-                                            .child(tr(&format!(
-                                                "settings.section.{}",
-                                                self.section.key()
-                                            ))),
-                                    )
-                                    .child(close),
+                                        ramflux_desktop_navigation::generated::catalog::page_header_content(
+                                            ramflux_desktop_navigation::generated::catalog::RowContent::new(
+                                                "settings-page".into(),
+                                                page_title(self.section),
+                                                SharedString::default(),
+                                            )
+                                            .title_size(palette.size_page)
+                                            .title_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                            .trailing(close),
+                                            false,
+                                            palette,
+                                        ),
+                                    ),
                             )
                             .child(
                                 div()
@@ -483,10 +493,19 @@ impl Render for SettingsPage {
                             ),
                     ),
             )
-            .children(strip.map(|strip| div().flex_shrink_0().pb_2().child(strip)))
+            .children(strip.map(|strip| div().flex_shrink_0().child(strip)))
             // An overlay over the whole window: Tab stays inside it. The trap
             // tracks the page's focus handle and keeps the "settings" id.
             .focus_trap("settings", &self.focus_handle)
+    }
+}
+
+/// The page title of a section: its list label, except where the design
+/// names the page more fully (Appearance → "Appearance and language").
+fn page_title(section: SettingsSection) -> SharedString {
+    match section {
+        SettingsSection::Appearance => tr("settings.appearance.title"),
+        other => tr(&format!("settings.section.{}", other.key())),
     }
 }
 

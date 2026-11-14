@@ -72,6 +72,142 @@ sections:
     my_role:
       en: "Your role: %{role}"
       zh-CN: "当前角色：%{role}"
+  agents:
+    search:
+      en: "Search"
+      zh-CN: "搜索"
+    add:
+      en: "Create an agent"
+      zh-CN: "新建 Agent"
+    role:
+      en: "Agent"
+      zh-CN: "Agent"
+    task_waiting:
+      en: "A task waits for you"
+      zh-CN: "有任务待你确认"
+    private:
+      en: "Private conversation"
+      zh-CN: "私人会话"
+    private_empty:
+      en: "No messages yet"
+      zh-CN: "还没有消息"
+    no_conversation:
+      en: "No conversation yet"
+      zh-CN: "还没有会话"
+    empty:
+      en: "No agents yet"
+      zh-CN: "还没有 Agent"
+    empty_help:
+      en: "Agents you add as contacts, or create, are listed here."
+      zh-CN: "添加为联系人或新建的 Agent 会列在这里。"
+    choose:
+      en: "Choose an agent"
+      zh-CN: "选择一个 Agent"
+    choose_help:
+      en: "Your private conversation with it opens here."
+      zh-CN: "你与它的私人会话会在这里打开。"
+    new_group:
+      en: "Start a multi-agent conversation"
+      zh-CN: "发起多 Agent 会话"
+  tasks:
+    search:
+      en: "Search"
+      zh-CN: "搜索"
+    needs_me:
+      en: "Needs me"
+      zh-CN: "需要我"
+    all:
+      en: "All tasks"
+      zh-CN: "全部任务"
+    running:
+      en: "In progress"
+      zh-CN: "进行中"
+    done:
+      en: "Finished"
+      zh-CN: "已完成"
+    count:
+      one:
+        en: "%{count} task"
+        zh-CN: "%{count} 项"
+      other:
+        en: "%{count} tasks"
+        zh-CN: "%{count} 项"
+    count_waiting:
+      one:
+        en: "%{count} waiting for you"
+        zh-CN: "%{count} 项待确认"
+      other:
+        en: "%{count} waiting for you"
+        zh-CN: "%{count} 项待确认"
+    help:
+      needs_me:
+        en: "Confirm the goal and scope before it starts"
+        zh-CN: "确认目标和范围后再启动"
+      all:
+        en: "Every task in the loaded history"
+        zh-CN: "已载入历史中的全部任务"
+      running:
+        en: "Started and not finished yet"
+        zh-CN: "已启动、尚未完成"
+      done:
+        en: "Done, failed or cancelled"
+        zh-CN: "已完成、失败或已取消"
+    empty:
+      needs_me:
+        en: "Nothing waits for you."
+        zh-CN: "没有需要你处理的任务。"
+      all:
+        en: "No tasks in the loaded history."
+        zh-CN: "已载入的历史中没有任务。"
+      running:
+        en: "No task is in progress."
+        zh-CN: "没有进行中的任务。"
+      done:
+        en: "No finished tasks yet."
+        zh-CN: "还没有已完成的任务。"
+    view_all:
+      en: "View all"
+      zh-CN: "查看全部"
+    steps:
+      one:
+        en: "%{count} step"
+        zh-CN: "%{count} 个步骤"
+      other:
+        en: "%{count} steps"
+        zh-CN: "%{count} 个步骤"
+    no_steps:
+      en: "No steps yet"
+      zh-CN: "还没有步骤"
+    assignee:
+      en: "Assignee"
+      zh-CN: "负责人"
+    source:
+      en: "Source"
+      zh-CN: "来源"
+    state:
+      en: "Task state"
+      zh-CN: "任务状态"
+    scope:
+      en: "This time's scope"
+      zh-CN: "本次范围"
+    scope_unavailable:
+      en: "The local service does not send a task's scope yet; open the conversation to read the request."
+      zh-CN: "本地服务尚未提供任务范围；请打开会话查看请求原文。"
+    start:
+      en: "Confirm and start"
+      zh-CN: "确认并启动"
+    handle:
+      en: "Handle"
+      zh-CN: "去处理"
+    details:
+      en: "View details"
+      zh-CN: "查看详情"
+    cancel:
+      en: "Cancel task"
+      zh-CN: "取消任务"
+    decline:
+      en: "Decline"
+      zh-CN: "不启动"
   contacts:
     title:
       en: "Contacts · %{count}"

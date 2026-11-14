@@ -60,6 +60,9 @@ fn main() {
     application().with_assets(ramflux_desktop_ui::AppAssets).run(move |cx| {
         init(cx);
         ramflux_desktop_ui::init(cx);
+        if let Err(err) = ramflux_desktop_ui::assets::load_fonts(cx) {
+            app_log::warn(&format!("cannot load the bundled fonts: {err}"));
+        }
         // Theme and language as chosen on this device (unset: the system's).
         ramflux_desktop_ui::preferences::install(AppearanceStore::default_location(), cx);
         cx.on_window_closed(|cx, _| cx.quit()).detach();

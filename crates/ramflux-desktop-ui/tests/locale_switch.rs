@@ -61,12 +61,18 @@ fn placeholders(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<SharedStr
     })
 }
 
-/// The day headers shown in the conversation.
+/// The relative-day words of the day headers shown in the conversation
+/// (a header reads "Today · Nov 10": the word before the separator).
 fn day_headers(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<String> {
     let workspace = workspace(cx, shell);
     cx.update(|cx| {
         let conversation = workspace.read(cx).conversation().read(cx);
-        conversation.day_headers().into_iter().flatten().collect()
+        conversation
+            .day_headers()
+            .into_iter()
+            .flatten()
+            .map(|h| h.split(" · ").next().unwrap_or_default().to_owned())
+            .collect()
     })
 }
 
@@ -107,7 +113,7 @@ fn window_strings_follow_a_language_switch_both_ways(cx: &mut TestAppContext) {
     cx.run_until_parked();
     pick_language(cx, handle, "en");
     let english = expected();
-    assert_eq!(english[0].as_ref(), "Write a message");
+    assert_eq!(english[0].as_ref(), "Write a message…");
     assert_ne!(english, chinese);
     assert_eq!(placeholders(cx, &shell), english, "switched to English without a restart");
     assert_eq!(day_headers(cx, &shell), ["Yesterday", "Today"], "rows are built again");

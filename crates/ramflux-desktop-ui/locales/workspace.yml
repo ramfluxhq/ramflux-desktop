@@ -1,11 +1,23 @@
 _version: 2
 composer:
+  receiver:
+    en: "To"
+    zh-CN: "接收者"
+  mode_message:
+    en: "Message"
+    zh-CN: "普通消息"
+  mode_task:
+    en: "Task request"
+    zh-CN: "任务请求"
+  task_help:
+    en: "Creates a task that waits for your confirmation; you still start it yourself."
+    zh-CN: "将创建待确认任务，仍需你明确启动。"
   label:
     en: "Message"
     zh-CN: "消息"
   placeholder:
-    en: "Write a message"
-    zh-CN: "输入消息"
+    en: "Write a message…"
+    zh-CN: "输入消息…"
   send:
     en: "Send"
     zh-CN: "发送"
@@ -59,6 +71,9 @@ composer:
       en: "Files can be attached once the conversation has started"
       zh-CN: "会话开始后才能附加文件"
 conversation:
+  agent_profile:
+    en: "View profile"
+    zh-CN: "查看档案"
   title:
     en: "Conversation"
     zh-CN: "对话"
@@ -216,10 +231,10 @@ dock:
       zh-CN: "成员"
     approvals:
       en: "Approvals"
-      zh-CN: "审批与授权"
+      zh-CN: "审批"
     evidence:
       en: "Evidence"
-      zh-CN: "记录"
+      zh-CN: "证据"
   pin:
     en: "Pin"
     zh-CN: "固定"
@@ -927,6 +942,12 @@ schema:
       zh-CN: "创建新账号"
 
 navigation:
+  edit:
+    en: "Edit"
+    zh-CN: "编辑"
+  edit_unavailable:
+    en: "Editing the navigation is not available in this version"
+    zh-CN: "此版本暂不支持编辑导航"
   tasks_none_loaded:
     en: "No tasks in loaded history"
     zh-CN: "已载入的历史中没有任务"

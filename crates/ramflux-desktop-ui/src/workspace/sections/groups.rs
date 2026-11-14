@@ -256,7 +256,7 @@ impl Render for GroupDirectory {
                 h_flex().child(create),
                 cx,
             ))
-            .child(self.search.field("groups-search", tr("sections.groups.search")))
+            .child(self.search.field("groups-search", tr("sections.groups.search"), cx))
             .children(state)
             .child(directory::rows(
                 directory::RowList {

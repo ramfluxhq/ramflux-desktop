@@ -116,13 +116,15 @@ impl DockTool {
     }
 
     /// Rail icon.
-    pub fn icon(self) -> IconName {
+    pub fn icon(self) -> gpui_kit::assets::IconName {
+        use gpui_kit::assets::IconName as Catalog;
+        // Design H01–H05: folder, user, users, circle-check, scroll-text.
         match self {
-            Self::Objects => IconName::Folder,
-            Self::Contacts => IconName::User,
-            Self::Members => IconName::Building2,
-            Self::Approvals => IconName::CircleCheck,
-            Self::Evidence => IconName::Eye,
+            Self::Objects => Catalog::Folder,
+            Self::Contacts => Catalog::User,
+            Self::Members => Catalog::Users,
+            Self::Approvals => Catalog::CircleCheck,
+            Self::Evidence => Catalog::ScrollText,
         }
     }
 }
@@ -342,6 +344,7 @@ impl RenderOnce for DockRail {
         });
         h_flex()
             .id("dock-rail")
+            .test_support()
             .role(Role::Toolbar)
             .aria_label(tr("dock.tools"))
             .flex_shrink_0()

@@ -33,8 +33,9 @@ mod parts;
 mod recovery;
 
 use gpui_kit::TestSupportExt as _;
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme as _, StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window, div, rems};
 use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
@@ -419,12 +420,21 @@ impl Render for EntryPage {
                     let palette = ramflux_desktop_navigation::palette(cx);
                     v_flex()
                         .id("entry-header")
+                        .test_support()
                         .gap_4()
                         .child(
                             div()
                                 .text_size(rems(palette.size_title / 15.0))
                                 .font_semibold()
                                 .child(tr("app.name")),
+                        )
+                        // The brand signature (design A01, `RF / Signature`).
+                        .child(
+                            gpui_kit::svg()
+                                .path(crate::assets::SIGNATURE)
+                                .w(rems(160.0 / 15.0))
+                                .h(rems(40.0 / 15.0))
+                                .text_color(palette.text),
                         )
                         .child(
                             div()
@@ -442,42 +452,49 @@ impl Render for EntryPage {
                 // Design A01: the three steps as chips, the current one filled.
                 .child({
                     let palette = ramflux_desktop_navigation::palette(cx);
-                    h_flex().id("entry-steps").role(gpui_kit::Role::List).gap_2().children(
-                        ["entry.step.daemon", "entry.step.node", "entry.step.account"]
-                            .into_iter()
-                            .enumerate()
-                            .map(|(ix, key)| {
-                                let current = ix == selected;
-                                let label = tr_args(
-                                    "entry.step.numbered",
-                                    &[
-                                        ("number", &(ix + 1).to_string()),
-                                        ("step", tr(key).as_ref()),
-                                    ],
-                                );
-                                div()
-                                    .id(gpui_kit::SharedString::from(format!("entry-step-{ix}")))
-                                    .role(gpui_kit::Role::ListItem)
-                                    .aria_label(label.clone())
-                                    .aria_selected(current)
-                                    .test_support()
-                                    .px_3()
-                                    .py(rems(6.0 / 15.0))
-                                    .rounded(rems(palette.radius_button / 15.0))
-                                    .border_1()
-                                    .text_size(rems(palette.size_button / 15.0))
-                                    .font_medium()
-                                    .when(current, |chip| {
-                                        chip.bg(palette.primary)
-                                            .border_color(palette.primary)
-                                            .text_color(palette.on_primary)
-                                    })
-                                    .when(!current, |chip| {
-                                        chip.border_color(palette.text).text_color(palette.text)
-                                    })
-                                    .child(label)
-                            }),
-                    )
+                    h_flex()
+                        .id("entry-steps")
+                        .test_support()
+                        .role(gpui_kit::Role::List)
+                        .gap_2()
+                        .children(
+                            ["entry.step.daemon", "entry.step.node", "entry.step.account"]
+                                .into_iter()
+                                .enumerate()
+                                .map(|(ix, key)| {
+                                    let current = ix == selected;
+                                    let label = tr_args(
+                                        "entry.step.numbered",
+                                        &[
+                                            ("number", &(ix + 1).to_string()),
+                                            ("step", tr(key).as_ref()),
+                                        ],
+                                    );
+                                    div()
+                                        .id(gpui_kit::SharedString::from(format!(
+                                            "entry-step-{ix}"
+                                        )))
+                                        .role(gpui_kit::Role::ListItem)
+                                        .aria_label(label.clone())
+                                        .aria_selected(current)
+                                        .test_support()
+                                        .px_3()
+                                        .py(rems(6.0 / 15.0))
+                                        .rounded(rems(palette.radius_button / 15.0))
+                                        .border_1()
+                                        .text_size(rems(palette.size_button / 15.0))
+                                        .font_medium()
+                                        .when(current, |chip| {
+                                            chip.bg(palette.primary)
+                                                .border_color(palette.primary)
+                                                .text_color(palette.on_primary)
+                                        })
+                                        .when(!current, |chip| {
+                                            chip.border_color(palette.text).text_color(palette.text)
+                                        })
+                                        .child(label)
+                                }),
+                        )
                 })
                 .child(content),
         );
@@ -485,16 +502,57 @@ impl Render for EntryPage {
         // footer that reserves its own height (it never shrinks), separated
         // by a rule, so the scrolling content ends above it and is never
         // drawn underneath.
-        v_flex().size_full().bg(cx.theme().background).child(scroll).children(strip.map(|strip| {
-            div()
-                .id("entry-confirm-footer")
-                .test_support()
-                .flex_shrink_0()
-                .w_full()
-                .border_t_1()
-                .border_color(cx.theme().border)
-                .bg(cx.theme().background)
-                .child(div().mx_auto().w_full().max_w(rems(38.)).pb_3().child(strip))
-        }))
+        // The window commands the title bar used to carry (settings and the
+        // theme), quietly at the top right: entry has no rail.
+        let commands = h_flex()
+            .id("entry-commands")
+            .test_support()
+            .absolute()
+            .top(rems(12.0 / 15.0))
+            .right(rems(16.0 / 15.0))
+            .gap_1()
+            .child(
+                gpui_kit::component::button::Button::new("entry-settings")
+                    .ghost()
+                    .small()
+                    .icon(gpui_kit::component::IconName::Settings)
+                    .accessibility_label(tr("status.settings"))
+                    .tooltip(tr("status.settings"))
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::actions::OpenSettings), cx)
+                    }),
+            )
+            .child(
+                gpui_kit::component::button::Button::new("entry-theme")
+                    .ghost()
+                    .small()
+                    .icon(if cx.theme().is_dark() {
+                        gpui_kit::component::IconName::Sun
+                    } else {
+                        gpui_kit::component::IconName::Moon
+                    })
+                    .accessibility_label(tr("status.toggle_theme"))
+                    .tooltip(tr("status.toggle_theme"))
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::actions::ToggleTheme), cx)
+                    }),
+            );
+        v_flex()
+            .relative()
+            .size_full()
+            .bg(cx.theme().background)
+            .child(scroll)
+            .child(commands)
+            .children(strip.map(|strip| {
+                div()
+                    .id("entry-confirm-footer")
+                    .test_support()
+                    .flex_shrink_0()
+                    .w_full()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().background)
+                    .child(div().mx_auto().w_full().max_w(rems(38.)).pb_3().child(strip))
+            }))
     }
 }

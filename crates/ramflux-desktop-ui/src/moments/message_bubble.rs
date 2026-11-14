@@ -79,6 +79,9 @@ pub(crate) fn render(
     // with the same font and size rather than stretching every short reply.
     let body_width = row.body.as_ref().filter(|_| state.message_text.is_some()).map(|body| {
         let style = window.text_style();
+        // Measured in the face the body paints with (the window's text style
+        // is not the shell's while rendering).
+        let font = crate::assets::design_font(gpui_kit::FontWeight::NORMAL);
         // Bodies use the design's body size (15 px on a 15 px rem).
         let size = window.rem_size() * (theme.size_body / 15.0);
         let mut width = gpui_kit::px(0.0);
@@ -100,7 +103,7 @@ pub(crate) fn render(
             let line: gpui_kit::SharedString = line.to_owned().into();
             let run = gpui_kit::TextRun {
                 len: line.len(),
-                font: style.font(),
+                font: font.clone(),
                 color: style.color,
                 background_color: None,
                 underline: None,
@@ -116,7 +119,7 @@ pub(crate) fn render(
         let time: gpui_kit::SharedString = i18n::time_of_day(row.moment.at).into();
         let run = gpui_kit::TextRun {
             len: time.len(),
-            font: style.font(),
+            font: font.clone(),
             color: style.color,
             background_color: None,
             underline: None,
@@ -128,6 +131,8 @@ pub(crate) fn render(
             .width;
         // Shell padding plus a small caret/glyph rounding allowance. Metadata
         // and attachment/quote content retain their own intrinsic minimum.
+        // The selectable body keeps Kit's 4 px editor inset on each side.
+        width += window.rem_size() * (8.0 / 15.0);
         // An own message also shows its receipt icon (12 px and a 4 px gap).
         let receipt =
             if row.outbound { window.rem_size() * (16.0 / 15.0) } else { gpui_kit::px(0.) };
@@ -264,9 +269,13 @@ pub(crate) fn render(
         }
     });
     let focused = state.focus.as_ref().is_some_and(|f| f.is_focused(window));
+    let menu_shown = focused
+        || state.highlighted
+        || state.menu_focus.as_ref().is_some_and(|f| f.is_focused(window));
     let failed = row.outbound && matches!(payload.receipt, Receipt::Failed { .. });
     v_flex()
         .id(domain_id("moment", &row.moment.id))
+        .group("moment-row")
         .role(Role::ListItem)
         .aria_label(super::accessible_label(row))
         .aria_selected(state.highlighted)
@@ -274,7 +283,6 @@ pub(crate) fn render(
         .when_some(state.focus.as_ref(), |col, focus| col.track_focus(focus))
         .w_full()
         .min_w_0()
-        .px_3()
         .gap_1()
         .when_some(row.day_header.clone(), |col, day| col.child(super::day_header(day, cx)))
         .child(
@@ -326,21 +334,29 @@ pub(crate) fn render(
                         .child(shell)
                         .children(receipt_line(payload, row, sink, cx)),
                 )
-                .child(menu),
+                // Design 02: the message actions appear on hover or focus.
+                .child(
+                    div()
+                        .when(!menu_shown, |slot| {
+                            slot.opacity(0.).group_hover("moment-row", |style| style.opacity(1.))
+                        })
+                        .child(menu),
+                ),
         )
         .into_any_element()
 }
 
 /// The receipt beside the time of an own message (design `B23`): a clock
-/// while sending, one check when sent, a filled check when delivered or read.
+/// while sending, one check when sent, a double check when delivered or read.
 /// A failure or a wait for the node is told under the bubble instead.
 fn receipt_meta(payload: &MessagePayload, outbound: bool) -> Option<impl IntoElement> {
+    use gpui_kit::assets::IconName as Catalog;
     let icon = match payload.receipt {
         _ if !outbound => return None,
         Receipt::Failed { .. } | Receipt::WaitingForNode { .. } => return None,
-        Receipt::Sending => IconName::Loader,
-        Receipt::Sent => IconName::Check,
-        Receipt::Delivered | Receipt::Read => IconName::CircleCheck,
+        Receipt::Sending => Catalog::Clock,
+        Receipt::Sent => Catalog::Check,
+        Receipt::Delivered | Receipt::Read => Catalog::CheckCheck,
     };
     Some(
         div()

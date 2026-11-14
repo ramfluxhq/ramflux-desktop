@@ -25,6 +25,7 @@ use ramflux_desktop_core::{
 use super::text::{self, count};
 use super::{BackupPanel, running};
 use crate::i18n::{self, tr, tr_args};
+use crate::style::DesignButton as _;
 
 fn muted(text: SharedString, cx: &App) -> AnyElement {
     div().text_sm().text_color(cx.theme().muted_foreground).child(text).into_any_element()
@@ -140,11 +141,11 @@ impl BackupPanel {
                 BackupJobKind::Backup => "settings.backup.job.cancel_backup",
                 BackupJobKind::Restore => "settings.backup.job.cancel_restore",
             };
-            Button::new("backup-job-cancel").small().outline().label(tr(key)).on_click(cx.listener(
-                move |this, _, window, cx| {
+            Button::new("backup-job-cancel").small().design_secondary(cx).label(tr(key)).on_click(
+                cx.listener(move |this, _, window, cx| {
                     this.cancel(id.clone(), window, cx);
-                },
-            ))
+                }),
+            )
         });
         v_flex()
             .id("backup-job")
@@ -244,7 +245,7 @@ impl BackupPanel {
                     .child(
                         Button::new("restore-discard")
                             .small()
-                            .outline()
+                            .design_secondary(cx)
                             .label(tr("common.cancel"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.cancel(discard.clone(), window, cx);
@@ -326,7 +327,7 @@ impl BackupPanel {
                         h_flex().child(
                             Button::new("backup-allow-missing")
                                 .small()
-                                .outline()
+                                .design_secondary(cx)
                                 .label(tr("settings.backup.missing.allow"))
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.allow_missing(&job, files, window, cx);
@@ -352,7 +353,7 @@ impl BackupPanel {
             h_flex().gap_2().children(retry).child(
                 Button::new("backup-job-close")
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .label(tr(if failed { "common.close" } else { "settings.backup.close" }))
                     .on_click(cx.listener(move |this, _, _, cx| this.dismiss(close.clone(), cx))),
             ),

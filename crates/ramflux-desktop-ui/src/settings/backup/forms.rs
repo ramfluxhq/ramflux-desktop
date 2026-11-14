@@ -19,6 +19,7 @@ use super::text::{self, Strength, count};
 use super::{BackupPanel, Form};
 use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
+use crate::style::DesignButton as _;
 
 /// A labelled field.
 fn field(label: SharedString, body: impl IntoElement, cx: &App) -> AnyElement {
@@ -121,7 +122,7 @@ impl BackupPanel {
                     .child(
                         Button::new("backup-choose-location")
                             .small()
-                            .outline()
+                            .design_secondary(cx)
                             .label(tr("settings.backup.choose"))
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 let panel = cx.entity();
@@ -197,7 +198,7 @@ impl BackupPanel {
                     .child(
                         Button::new("backup-form-cancel")
                             .small()
-                            .outline()
+                            .design_secondary(cx)
                             .label(tr("common.cancel"))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.close_form(window, cx)),
@@ -251,7 +252,7 @@ impl BackupPanel {
                     .child(
                         Button::new("restore-choose-file")
                             .small()
-                            .outline()
+                            .design_secondary(cx)
                             .label(tr("settings.backup.choose"))
                             .on_click(cx.listener(|_, _, window, cx| {
                                 let panel = cx.entity();
@@ -285,7 +286,7 @@ impl BackupPanel {
                     .children((!self.standalone).then(|| {
                         Button::new("restore-form-cancel")
                             .small()
-                            .outline()
+                            .design_secondary(cx)
                             .label(tr("common.cancel"))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.close_form(window, cx)),

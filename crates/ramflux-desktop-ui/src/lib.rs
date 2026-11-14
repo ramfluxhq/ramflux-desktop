@@ -52,6 +52,7 @@ pub mod root;
 pub mod route;
 pub mod settings;
 pub mod shell;
+pub mod style;
 pub mod tone;
 pub mod workspace;
 

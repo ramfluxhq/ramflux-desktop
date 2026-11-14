@@ -32,6 +32,7 @@ use crate::entry::daemon_failure_text;
 use crate::file_dialog;
 use crate::i18n::{tr, tr_args};
 use crate::launch::{DaemonLauncher, LaunchState, version};
+use crate::style::DesignButton as _;
 
 /// The path inputs of the local setup, owned by the settings page.
 pub struct LaunchInputs {
@@ -122,8 +123,11 @@ fn path_field(
 ) -> AnyElement {
     let browse = browse.map(|(button_id, folder)| {
         let input = input.clone();
-        Button::new(button_id).small().outline().label(tr("settings.launch.browse")).on_click(
-            move |_, window, cx| {
+        Button::new(button_id)
+            .small()
+            .design_secondary_compact()
+            .label(tr("settings.launch.browse"))
+            .on_click(move |_, window, cx| {
                 let input = input.clone();
                 let fill = move |path: String, window: &mut Window, cx: &mut App| {
                     input.update(cx, |input, cx| input.set_value(path, window, cx));
@@ -134,8 +138,7 @@ fn path_field(
                 } else {
                     file_dialog::open_file(prompt, window, cx, fill);
                 }
-            },
-        )
+            })
     });
     v_flex()
         .gap_1()
@@ -279,7 +282,7 @@ fn daemon_group(context: &SectionContext, cx: &App) -> SettingGroup {
                     .child(
                         Button::new("launch-daemon-start")
                             .small()
-                            .outline()
+                            .design_secondary(cx)
                             .label(tr("entry.daemon.start"))
                             .disabled(!can_start)
                             .on_click(|_, window, cx| {
@@ -290,7 +293,7 @@ fn daemon_group(context: &SectionContext, cx: &App) -> SettingGroup {
                         row.child(
                             Button::new("launch-daemon-stop")
                                 .small()
-                                .outline()
+                                .design_secondary(cx)
                                 .label(tr("settings.launch.stop"))
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(StopLocalDaemon), cx);

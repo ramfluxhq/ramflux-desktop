@@ -13,6 +13,7 @@
 
 mod entries;
 
+use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::command::{Command, CommandGroup, CommandItem, CommandState};
 use gpui_kit::component::{
@@ -25,7 +26,7 @@ use ramflux_desktop_core::{AccountId, ContextId, Scope, UiEventKind};
 use crate::actions::{ClosePalette, PALETTE_CONTEXT};
 use crate::app::StoreHandle;
 use crate::bubble::EventSink;
-use crate::i18n::{tr, tr_args};
+use crate::i18n::tr;
 
 pub use entries::{Entry, Group, PaletteChoice};
 
@@ -44,6 +45,7 @@ pub struct CommandPalette {
     sink: EventSink,
     state: Entity<CommandState>,
     groups: Vec<Group>,
+    _locale: gpui_kit::Subscription,
     current: Option<ContextId>,
 }
 
@@ -58,12 +60,19 @@ impl CommandPalette {
         cx: &mut Context<Self>,
     ) -> Self {
         let state = cx.new(|cx| CommandState::new(window, cx));
+        // The entries are translated text built when the palette opens: a
+        // language switch builds them again.
+        let locale = crate::i18n::on_locale_switch(cx, |this, cx| {
+            this.refresh(cx);
+            cx.notify();
+        });
         Self {
             store,
             sink: sink.scoped(Scope::Panel("palette".into())),
             state,
             groups: Vec::new(),
             current: None,
+            _locale: locale,
         }
     }
 
@@ -153,18 +162,18 @@ impl Render for CommandPalette {
         let cancel = cx.weak_entity();
         // Design B09: each result names the thing, what choosing it does,
         // and the verb as an outline chip (the whole row is the target).
-        let groups = self.groups.iter().map(|group| {
+        let selected = self.state.read(cx).selected_index().map(|path| (path.section, path.row));
+        let groups = self.groups.iter().enumerate().map(|(section, group)| {
             let kind = group.label.clone();
-            CommandGroup::new().label(group.label.clone()).items(group.entries.iter().map(|e| {
+            CommandGroup::new().items(group.entries.iter().enumerate().map(move |(row, e)| {
                 let (label, kind) = (e.label.clone(), kind.clone());
                 let verb = verb(&e.choice);
-                CommandItem::new()
-                    .label(e.label.clone())
-                    .icon(e.icon.clone())
-                    .keywords(e.keywords.clone())
-                    .child(move |_, cx| {
-                        result_row(label.clone(), kind.clone(), verb, cx).into_any_element()
-                    })
+                let on = selected == Some((section, row));
+                CommandItem::new().label(e.label.clone()).keywords(e.keywords.clone()).child(
+                    move |_, cx| {
+                        result_row(label.clone(), kind.clone(), verb, on, cx).into_any_element()
+                    },
+                )
             }))
         });
         let mut command = Command::new(&self.state);
@@ -192,20 +201,12 @@ impl Render for CommandPalette {
             .on_cancel(move |_, cx| {
                 cancel.update(cx, |_, cx| cx.emit(PaletteEvent::Close)).ok();
             })
-            .footer(|state, _, cx| {
+            .footer(|_, _, cx| {
+                let palette = ramflux_desktop_navigation::palette(cx);
                 h_flex()
-                    .gap_3()
-                    .px_3()
-                    .py_2()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(tr_args(
-                        "palette.matches",
-                        &[("count", &state.matched_count().to_string())],
-                    ))
-                    .child(div().flex_1())
+                    .pt_3()
+                    .text_size(rems(palette.size_secondary / 15.0))
+                    .text_color(palette.secondary)
                     .child(tr("palette.hint"))
             });
         let palette = ramflux_desktop_navigation::palette(cx);
@@ -227,6 +228,7 @@ impl Render for CommandPalette {
             .child(
                 v_flex()
                     .id("palette")
+                    .test_support()
                     .role(gpui_kit::Role::Dialog)
                     .aria_label(tr("palette.title"))
                     .w(rems(608.0 / 15.0))
@@ -266,14 +268,7 @@ impl Render for CommandPalette {
                             .font_medium()
                             .child(tr("palette.search")),
                     )
-                    .child(
-                        div()
-                            .border_1()
-                            .border_color(palette.input_border)
-                            .rounded(rems(palette.radius_input / 15.0))
-                            .bg(palette.input)
-                            .child(command),
-                    ),
+                    .child(command),
             )
     }
 }
@@ -294,13 +289,18 @@ fn result_row(
     label: gpui_kit::SharedString,
     kind: gpui_kit::SharedString,
     verb: &'static str,
+    selected: bool,
     cx: &App,
 ) -> impl IntoElement {
     let palette = ramflux_desktop_navigation::palette(cx);
+    // Design B09: rows on a rule; the chosen row's verb is the filled
+    // (primary) button, the others outline.
     h_flex()
         .w_full()
         .gap_3()
-        .py_1()
+        .py_3()
+        .border_b_1()
+        .border_color(palette.line)
         .child(
             v_flex()
                 .flex_1()
@@ -327,7 +327,8 @@ fn result_row(
                 .py(gpui_kit::px(2.))
                 .rounded(rems(palette.radius_button / 15.0))
                 .border_1()
-                .border_color(palette.text)
+                .border_color(if selected { palette.primary } else { palette.text })
+                .when(selected, |chip| chip.bg(palette.primary).text_color(palette.on_primary))
                 .text_size(rems(palette.size_button / 15.0))
                 .child(tr(verb)),
         )

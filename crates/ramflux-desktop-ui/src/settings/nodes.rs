@@ -20,6 +20,7 @@ use super::{SectionContext, SettingsSection, note};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
+use crate::style::DesignButton as _;
 
 /// A node with whether an account is bound to it.
 #[derive(Clone)]
@@ -86,9 +87,15 @@ fn action(
 ) -> Button {
     let sink = sink.clone();
     let node_id = node.clone();
-    Button::new(id).xsmall().outline().label(label).on_click(move |_, window, cx| {
-        sink.emit(UiEventKind::NodeActionPressed { node_id: node_id.clone(), action }, window, cx);
-    })
+    Button::new(id).xsmall().design_secondary_compact().label(label).on_click(
+        move |_, window, cx| {
+            sink.emit(
+                UiEventKind::NodeActionPressed { node_id: node_id.clone(), action },
+                window,
+                cx,
+            );
+        },
+    )
 }
 
 fn node_row(row: &Row, sink: &EventSink, cx: &App) -> AnyElement {

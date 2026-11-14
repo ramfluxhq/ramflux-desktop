@@ -6,18 +6,16 @@
 //! chosen path), and passphrase rotation (two masked inputs handed to the
 //! root as secrets). Masked inputs are cleared the moment they are taken.
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Sizable as _, h_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{App, Entity, SharedString, Window};
+use gpui_kit::{App, Entity, SharedString, TestSupportExt as _, Window, div};
 use ramflux_desktop_core::{Account, IntentKind, LockState, SecretInput, UiEventKind};
 
-use super::{SectionContext, SettingsSection, note};
+use super::{SectionContext, SettingsSection, design, note};
 use crate::file_dialog::{self, StartDir};
-use crate::i18n::{self, tr};
+use crate::i18n::{self, tr, tr_args};
 
 /// The masked inputs of the account section, owned by the settings page.
 pub struct AccountInputs {
@@ -54,68 +52,61 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
         ramflux_desktop_core::methods::ACCOUNT_BACKUP_EXPORT,
     );
     let backup_typed = !inputs.backup.read(cx).value().is_empty();
-    let summary = {
+    // Design G01: the current account (its row with a "Current" chip, the
+    // default node and device, Lock), the key backup export and the
+    // passphrase change, each a section of the 760 px column.
+    let current = {
         let account = account.clone();
-        SettingItem::render(move |_, _, cx: &mut App| match &account {
-            Some(a) => v_flex()
-                .gap_3()
-                .min_w_0()
-                .child(ramflux_desktop_navigation::generated::catalog::identity_row(
-                    ramflux_desktop_navigation::generated::catalog::RowContent::new(
-                        a.id.to_string().into(),
-                        ramflux_desktop_navigation::row::list_text(&a.label),
-                        i18n::account_kind(a.kind),
-                    )
-                    .leading(
-                        ramflux_desktop_navigation::generated::catalog::avatar(
-                            ramflux_desktop_navigation::row::initial(&a.label),
-                            ramflux_desktop_navigation::generated::catalog::AvatarKind::Person,
-                            ramflux_desktop_navigation::palette(cx),
-                        ),
+        let sink = sink.clone();
+        SettingItem::render(move |_, _, cx: &mut App| {
+            let section =
+                design::section("account-current", tr("settings.account.current_title"), cx);
+            let Some(a) = account.clone() else {
+                return section.child(note("settings.account.none", cx)).into_any_element();
+            };
+            let state = tr(match a.lock_state {
+                LockState::Unlocked => "settings.account.unlocked",
+                _ => "settings.account.locked",
+            });
+            let node = a
+                .node_id
+                .as_ref()
+                .map_or_else(|| tr("settings.account.no_node"), |id| id.to_string().into());
+            let device = a
+                .device_id
+                .clone()
+                .map_or_else(|| tr("settings.account.no_device"), SharedString::from);
+            let lock_id = a.id.clone();
+            let lock = sink.clone();
+            section
+                .child(design::row(
+                    ramflux_desktop_navigation::row::list_text(&a.label),
+                    i18n::join(&i18n::account_kind(a.kind), &state),
+                    Some(design::chip(tr("settings.account.current_chip"), cx)),
+                    cx,
+                ))
+                .child(design::row(
+                    tr("settings.account.default_node"),
+                    tr_args(
+                        "settings.account.node_device",
+                        &[("node", node.as_ref()), ("device", device.as_ref())],
                     ),
-                    ramflux_desktop_navigation::palette(cx),
+                    None,
+                    cx,
                 ))
                 .child(
-                    DescriptionList::new()
-                        .columns(1)
-                        .item(tr("settings.account.label"), SharedString::from(a.label.clone()), 1)
-                        .item(tr("settings.account.kind"), i18n::account_kind(a.kind), 1)
-                        .item(
-                            tr("settings.account.node"),
-                            SharedString::from(
-                                a.node_id.as_ref().map_or_else(String::new, ToString::to_string),
-                            ),
-                            1,
-                        )
-                        .item(
-                            tr("settings.account.device"),
-                            SharedString::from(a.device_id.clone().unwrap_or_default()),
-                            1,
-                        ),
+                    h_flex().child(
+                        crate::style::secondary_button("settings-lock", cx)
+                            .label(tr("settings.account.lock"))
+                            .on_click(move |_, window, cx| {
+                                lock.emit(
+                                    UiEventKind::LockPressed { account_id: lock_id.clone() },
+                                    window,
+                                    cx,
+                                )
+                            }),
+                    ),
                 )
-                .into_any_element(),
-            None => note("settings.account.none", cx),
-        })
-    };
-    let actions = {
-        let account = account.clone();
-        SettingItem::render(move |_, _, _: &mut App| {
-            let Some(account) = account.clone() else { return h_flex().into_any_element() };
-            let lock_id = account.id.clone();
-            Button::new("settings-lock")
-                .small()
-                .outline()
-                .label(tr("settings.account.lock"))
-                .on_click({
-                    let lock = sink.clone();
-                    move |_, window, cx| {
-                        lock.emit(
-                            UiEventKind::LockPressed { account_id: lock_id.clone() },
-                            window,
-                            cx,
-                        )
-                    }
-                })
                 .into_any_element()
         })
     };
@@ -130,20 +121,20 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
             let reason = export_reason
                 .clone()
                 .or_else(|| (!backup_typed).then(|| tr("settings.account.backup_help")));
-            v_flex()
-                .gap_2()
-                .child(
+            design::section("account-backup", tr("settings.account.backup_title"), cx)
+                .child(design::help(tr("settings.account.backup_help"), cx))
+                .child(super::presentation::field(
+                    tr("settings.account.backup_passphrase"),
                     Input::new(&input)
                         .id("backup-passphrase")
                         .aria_label(tr("settings.account.backup_passphrase"))
-                        .mask_toggle(),
-                )
-                .child(note("settings.account.backup_help", cx))
+                        .mask_toggle()
+                        .large(),
+                    cx,
+                ))
                 .child(
                     h_flex().child(crate::gate::gated(
-                        Button::new("settings-export-backup")
-                            .small()
-                            .outline()
+                        crate::style::secondary_button("settings-export-backup", cx)
                             .label(tr("settings.account.export"))
                             .on_click(move |_, window, cx| {
                                 // Taken (and the input cleared) now; the secret
@@ -179,28 +170,31 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
         let next = inputs.next.clone();
         let root = context.root.clone();
         let account = account.map(|a| a.id);
-        SettingItem::render(move |_, _, _: &mut App| {
+        SettingItem::render(move |_, _, cx: &mut App| {
             let (current, next, root, account) =
                 (current.clone(), next.clone(), root.clone(), account.clone());
-            v_flex()
-                .gap_2()
-                .child(
+            design::section("account-rotate", tr("settings.account.rotate_title"), cx)
+                .child(super::presentation::field(
+                    tr("settings.account.current"),
                     Input::new(&current)
                         .id("rotate-current")
                         .aria_label(tr("settings.account.current"))
-                        .mask_toggle(),
-                )
-                .child(
+                        .mask_toggle()
+                        .large(),
+                    cx,
+                ))
+                .child(super::presentation::field(
+                    tr("settings.account.next"),
                     Input::new(&next)
                         .id("rotate-next")
                         .aria_label(tr("settings.account.next"))
-                        .mask_toggle(),
-                )
+                        .mask_toggle()
+                        .large(),
+                    cx,
+                ))
                 .child(
                     h_flex().child(
-                        Button::new("settings-rotate")
-                            .small()
-                            .primary()
+                        crate::style::primary_button("settings-rotate", cx)
                             .label(tr("settings.account.rotate"))
                             .on_click(move |_, window, cx| {
                                 let old = take(&current, window, cx);
@@ -220,20 +214,29 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                 .into_any_element()
         })
     };
+    // The open-account switch (G25) has no backend contract yet: one
+    // section with the typed reason, its heading said once.
     let privacy = SettingItem::render(|_, _, cx: &mut App| {
-        super::presentation::notice(
-            "account-privacy-unavailable",
-            tr("settings_ui.privacy"),
-            super::presentation::contract_reason(
-                ramflux_desktop_sdk::business::ContractGap::AccountPrivacy,
-            ),
-            ramflux_desktop_navigation::generated::catalog::StateKind::Empty,
-            cx,
-        )
+        design::section("account-privacy", tr("settings_ui.privacy"), cx)
+            .child(
+                div()
+                    .id("account-privacy-unavailable")
+                    .test_support()
+                    .role(gpui_kit::Role::Status)
+                    .p_3()
+                    .rounded(gpui_kit::rems(
+                        ramflux_desktop_navigation::palette(cx).radius_md / 15.0,
+                    ))
+                    .bg(ramflux_desktop_navigation::palette(cx).surface)
+                    .child(design::help(
+                        super::presentation::contract_reason(
+                            ramflux_desktop_sdk::business::ContractGap::AccountPrivacy,
+                        ),
+                        cx,
+                    )),
+            )
+            .into_any_element()
     });
     SettingPage::new(tr("settings.section.account"))
-        .group(SettingGroup::new().item(summary).item(actions))
-        .group(SettingGroup::new().title(tr("settings.account.backup_title")).item(backup))
-        .group(SettingGroup::new().title(tr("settings.account.rotate_title")).item(rotation))
-        .group(SettingGroup::new().title(tr("settings_ui.privacy")).item(privacy))
+        .group(SettingGroup::new().item(current).item(backup).item(rotation).item(privacy))
 }

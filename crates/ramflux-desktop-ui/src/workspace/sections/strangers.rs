@@ -390,7 +390,7 @@ impl Render for StrangersArea {
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_batch(cx))),
                 cx,
             ))
-            .child(self.search.field("strangers-search", tr("sections.strangers.search")))
+            .child(self.search.field("strangers-search", tr("sections.strangers.search"), cx))
             .children(read_error)
             .children(empty)
             .child(directory::rows(

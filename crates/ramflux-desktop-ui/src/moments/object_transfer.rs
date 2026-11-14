@@ -27,6 +27,7 @@ use super::{RowRefs, RowState};
 use crate::bubble::EventSink;
 use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
+use crate::style::DesignButton as _;
 
 /// Renders an object transfer body.
 pub fn render(
@@ -98,7 +99,7 @@ pub fn render(
                 actions = actions.child(
                     Button::new("object-save")
                         .small()
-                        .outline()
+                        .design_secondary(cx)
                         .label(tr("moment.object.save"))
                         .on_click(save_with_dialog(&action_sink, &object)),
                 );
@@ -108,7 +109,7 @@ pub fn render(
             actions = actions.child(
                 Button::new("object-retry")
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .icon(IconName::RotateCw)
                     .label(tr("moment.object.retry"))
                     .on_click(emit(ObjectAction::Retry)),

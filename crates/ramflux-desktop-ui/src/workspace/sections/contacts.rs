@@ -225,6 +225,7 @@ impl ContactsDirectory {
             )
         };
         let add_reason = crate::gate::reason(store, methods::CONTACT_ADD);
+        let active = self.search.active;
         let rem = |px: f32| gpui_kit::rems(px / 15.0);
         let avatar = |initial: SharedString, kind: catalog::AvatarKind| {
             let agent = matches!(kind, catalog::AvatarKind::Agent);
@@ -328,14 +329,20 @@ impl ContactsDirectory {
             .test_support()
             .role(gpui_kit::Role::List)
             .aria_label(tr("sections.contacts.list"))
-            .children(rows.into_iter().take(directory::ROW_LIMIT).map(
-                |(id, name, subtitle, kind)| {
+            .children(rows.into_iter().take(directory::ROW_LIMIT).enumerate().map(
+                |(ix, (id, name, subtitle, kind))| {
                     let pick = id.clone();
+                    // The search field's Up/Down cursor (Enter opens the profile).
+                    let cursor = ix == active;
                     h_flex()
                         .id(SharedString::from(format!("contacts-table-{id}")))
                         .role(gpui_kit::Role::ListItem)
+                        .aria_selected(cursor)
                         .test_support()
                         .gap_4()
+                        .px_2()
+                        .rounded(rem(palette.radius_sm))
+                        .when(cursor, |row| row.bg(palette.selected))
                         .py(rem(20.0))
                         .border_b_1()
                         .border_color(palette.line)
@@ -371,39 +378,28 @@ impl ContactsDirectory {
             .id("contacts-people")
             .test_support()
             .size_full()
-            .child(
-                h_flex()
-                    .min_h(rem(88.0))
-                    .px(rem(32.0))
-                    .border_b_1()
-                    .border_color(palette.line)
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .child(
-                                div()
-                                    .text_size(rem(palette.size_subheading))
-                                    .font_semibold()
-                                    .child(tr("sections.contacts.people")),
-                            )
-                            .child(
-                                div()
-                                    .text_size(rem(palette.size_secondary))
-                                    .text_color(palette.secondary)
-                                    .child(tr("sections.contacts.people_help")),
-                            ),
-                    )
-                    .child(crate::gate::gated(
-                        Button::new("contacts-add-detail")
-                            .small()
-                            .ghost()
-                            .label(tr("sections.contacts.add"))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.emit(ContactsDirectoryEvent::AddContact)
-                            })),
-                        add_reason,
-                    )),
-            )
+            // The generated page header with the board's semibold title.
+            .child(catalog::page_header_content(
+                catalog::RowContent::new(
+                    "contacts-people-header".into(),
+                    tr("sections.contacts.people"),
+                    tr("sections.contacts.people_help"),
+                )
+                .title_size(palette.size_subheading)
+                .title_weight(gpui_kit::FontWeight::SEMIBOLD)
+                .trailing(crate::gate::gated(
+                    Button::new("contacts-add-detail")
+                        .small()
+                        .ghost()
+                        .label(tr("sections.contacts.add"))
+                        .on_click(
+                            cx.listener(|_, _, _, cx| cx.emit(ContactsDirectoryEvent::AddContact)),
+                        ),
+                    add_reason,
+                )),
+                false,
+                palette,
+            ))
             .child(
                 v_flex()
                     .id("contacts-people-body")
@@ -498,7 +494,7 @@ impl Render for ContactsDirectory {
             .pt(gpui_kit::rems(24.0 / 15.0))
             .gap_4()
             .child(directory::header(tr("navigation.contacts"), h_flex().child(add), cx))
-            .child(self.search.field("contacts-search", tr("sections.contacts.search")))
+            .child(self.search.field("contacts-search", tr("sections.contacts.search"), cx))
             .child(
                 v_flex()
                     .gap_1()

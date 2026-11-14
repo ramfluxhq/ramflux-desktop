@@ -292,7 +292,8 @@ fn a_conversation_without_an_ai_participant_has_nobody_to_ask(cx: &mut TestAppCo
     let (handle, shell) = open(cx, "s02_daily");
     advance(cx, 3_000);
     show_context(cx, handle, &shell, "c-lena");
-    click(cx, handle, "composer-mode");
+    // Design 02: with nobody to ask there is no task request to switch to.
+    assert!(!exists(cx, handle, "composer-mode"), "no receiver line without an agent");
     let ws = workspace(cx, &shell);
     let mode = cx.update(|cx| ws.read(cx).composer().read(cx).mode());
     assert_eq!(mode, ComposerMode::Message);

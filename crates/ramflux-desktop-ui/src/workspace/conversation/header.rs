@@ -88,6 +88,7 @@ pub fn render(
         let palette = ramflux_desktop_navigation::palette(cx);
         return h_flex()
             .id("conversation-header")
+            .test_support()
             .gap_3()
             .px(gpui_kit::rems(32.0 / 15.0))
             .py(gpui_kit::rems(20.0 / 15.0))
@@ -128,6 +129,8 @@ pub fn render(
     let is_group = context.kind == ContextKind::Group;
     let Renaming { field, start } = renaming;
     let palette = ramflux_desktop_navigation::palette(cx);
+    let peer_agent =
+        peer.as_ref().is_some_and(|p| p.kind == ramflux_desktop_core::ParticipantKind::Agent);
     let title = field.unwrap_or_else(|| {
         div()
             .id("conversation-title")
@@ -168,9 +171,37 @@ pub fn render(
         .w_full()
         .gap_3()
         .px(gpui_kit::rems(32.0 / 15.0))
-        .py(gpui_kit::rems(20.0 / 15.0))
-        .min_h(gpui_kit::rems(88.0 / 15.0))
+        // Design `RF / Chat header`: 88 px, contents centred.
+        .h(gpui_kit::rems(88.0 / 15.0))
+        .items_center()
+        // An agent's private conversation (design 04): its avatar leads
+        // and "View profile" opens its management page.
+        .when(peer_agent, |row| {
+            row.child(
+                div()
+                    .flex_none()
+                    .size(gpui_kit::rems(40.0 / 15.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(gpui_kit::rems(10.0 / 15.0))
+                    .bg(palette.agent_av)
+                    .text_color(palette.on_agent_av)
+                    .child(ramflux_desktop_navigation::row::initial(&selectors::context_title(
+                        store, context,
+                    ))),
+            )
+        })
         .child(v_flex().flex_1().min_w_0().gap(gpui_kit::px(2.)).child(title).child(context_line))
+        .when(peer_agent, |row| {
+            row.child(
+                crate::style::secondary_button("conversation-agent-profile", cx)
+                    .label(tr("conversation.agent_profile"))
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::actions::OpenAgentsSettings), cx)
+                    }),
+            )
+        })
         .when(context.kind == ContextKind::Direct, |row| {
             row.child(call_button(store, context, &sink, &call_ack))
         })
@@ -257,6 +288,7 @@ pub fn render(
     });
     v_flex()
         .id("conversation-header")
+        .test_support()
         .w_full()
         .border_b_1()
         .border_color(palette.line)

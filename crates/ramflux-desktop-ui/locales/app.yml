@@ -17,6 +17,10 @@ locale:
     en: "Follow system"
     zh-CN: "跟随系统"
 theme:
+  family:
+    ramflux:
+      en: "Warm neutral"
+      zh-CN: "暖中性"
   name:
     light:
       en: "Light"
@@ -59,6 +63,9 @@ format:
   date:
     en: "%b %-d, %Y"
     zh-CN: "%Y年%-m月%-d日"
+  month_day:
+    en: "%b %-d"
+    zh-CN: "%-m月%-d日"
   date_time:
     en: "%b %-d, %Y, %-I:%M %p"
     zh-CN: "%Y年%-m月%-d日 %H:%M"
@@ -135,6 +142,18 @@ status:
     current:
       en: "Current identity"
       zh-CN: "当前身份"
+    switch:
+      en: "Switch"
+      zh-CN: "切换"
+    local_detail:
+      en: "Account on this device"
+      zh-CN: "本机账号"
+    info:
+      en: "Each identity is a separate account with its own contacts and conversations. Switching changes what this window shows; nothing is merged."
+      zh-CN: "每个身份是一个独立账号，有各自的联系人和会话。切换只改变此窗口显示的内容，不会合并数据。"
+    current_named:
+      en: "Current identity: %{name}"
+      zh-CN: "当前身份：%{name}"
     lock:
       en: "Lock current account"
       zh-CN: "锁定当前账号"
@@ -510,6 +529,9 @@ audit:
     en: "proposed by %{who}, %{confirmed}"
     zh-CN: "由%{who}提出，%{confirmed}"
 clock:
+  relative_day:
+    en: "%{day} · %{date}"
+    zh-CN: "%{day} · %{date}"
   today:
     en: "Today"
     zh-CN: "今天"

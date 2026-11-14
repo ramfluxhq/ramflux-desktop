@@ -18,6 +18,7 @@ use super::{SectionContext, SettingsSection, presentation};
 use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
+use crate::style::DesignButton as _;
 
 /// File name suggested for an exported sync bundle.
 pub const SYNC_FILE_NAME: &str = "ramflux-device-sync.bundle";
@@ -113,7 +114,7 @@ pub(crate) fn page(
                     let device_id = device.id.clone();
                     Button::new("revoke")
                         .xsmall()
-                        .outline()
+                        .design_secondary(cx)
                         .label(tr("settings.devices.revoke"))
                         .on_click(move |_, window, cx| {
                             sink.emit(
@@ -174,7 +175,7 @@ pub(crate) fn page(
             }))
             .into_any_element()
     });
-    let sync = SettingItem::render(move |_, _, _: &mut App| {
+    let sync = SettingItem::render(move |_, _, cx: &mut App| {
         let export = sink.clone();
         let import = sink.clone();
         h_flex()
@@ -183,7 +184,7 @@ pub(crate) fn page(
             .child(crate::gate::gated(
                 Button::new("sync-export")
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .label(tr("settings.devices.export"))
                     .on_click(move |_, window, cx| {
                         let export = export.clone();
@@ -209,7 +210,7 @@ pub(crate) fn page(
             .child(crate::gate::gated(
                 Button::new("sync-import")
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .label(tr("settings.devices.import"))
                     .on_click(move |_, window, cx| {
                         let import = import.clone();
@@ -243,7 +244,7 @@ pub(crate) fn page(
                     .child(crate::gate::gated(
                         Button::new("settings-link-device")
                             .small()
-                            .outline()
+                            .design_secondary(cx)
                             .label(tr("settings_ui.link_device")),
                         Some(presentation::contract_reason(
                             ramflux_desktop_sdk::business::ContractGap::DevicePairingApproval,

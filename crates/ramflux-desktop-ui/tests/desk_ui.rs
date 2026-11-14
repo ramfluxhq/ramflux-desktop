@@ -99,20 +99,28 @@ fn rail_routes_to_existing_features_and_settings_restores_focus(cx: &mut TestApp
         "opening strangers cannot imply acceptance"
     );
     click(cx, handle, "nav-agents");
-    assert!(
-        cx.update(|cx| shell.read(cx).is_settings_open()),
-        "Agents must open its existing feature"
+    assert_eq!(
+        cx.update(|cx| workspace.read(cx).route()),
+        WorkspaceRoute::Agents,
+        "Agents is a section of the rail (design 04)"
     );
+    assert!(exists(cx, handle, "agent-roster"), "Agents lists the roster");
+    // Its management page opens from the roster's add command.
+    click(cx, handle, "agents-add");
     assert_eq!(
         cx.update(|cx| shell.read(cx).settings().read(cx).section()),
         SettingsSection::Agents,
-        "Agents cannot open an unrelated settings section"
+        "the add command opens the agents' page, not an unrelated section"
     );
     in_window(cx, handle, |window, cx| window.press("escape", cx));
     assert!(!cx.update(|cx| shell.read(cx).is_settings_open()), "Escape must dismiss settings");
     assert!(
-        in_window(cx, handle, |window, _| window.find("nav-agents").focused() == Some(true)),
-        "dismissal must restore focus to the rail trigger"
+        in_window(cx, handle, |window, _| {
+            ["agents-add", "agents-search-input"]
+                .iter()
+                .any(|id| window.try_find(*id).and_then(|e| e.focused()) == Some(true))
+        }),
+        "dismissal must restore focus to where it was in the roster"
     );
 }
 
@@ -311,11 +319,13 @@ fn bounded_previews_tasks_unknown_history_and_compact_return_are_visible(cx: &mu
         exists(cx, handle, "tasks-history-notice"),
         "the route must disclose incomplete task history"
     );
+    // Compact: choosing a category shows its tasks in place of the list.
+    click(cx, handle, "tasks-category-all");
     assert!(
-        exists(cx, handle, "stack-unloaded-task"),
+        exists(cx, handle, "tasks-context-unloaded-task"),
         "unloaded task contexts cannot silently disappear"
     );
-    click(cx, handle, "stack-unloaded-task");
+    click(cx, handle, "tasks-context-unloaded-task");
     in_window(cx, handle, |w, cx| w.press("secondary-[", cx));
     assert!(
         exists(cx, handle, "conversation-search"),
@@ -348,8 +358,9 @@ fn body_search_reuses_normalized_source_documents_and_tasks_describe_loaded_hist
         w.press("backspace", cx);
     });
     click(cx, handle, "nav-tasks");
+    click(cx, handle, "tasks-category-all");
     in_window(cx, handle, |w, _| {
-        let row = w.find("stack-c-lena");
+        let row = w.find("tasks-context-c-lena");
         assert!(
             row.label().is_some_and(|label| label
                 .contains(&*ramflux_desktop_ui::i18n::tr("navigation.tasks_none_loaded"))),

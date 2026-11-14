@@ -11,7 +11,6 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::menu::PopupMenuItem;
 use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, tooltip::Tooltip};
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -20,7 +19,7 @@ use gpui_kit::{
 use ramflux_desktop_core::{LockState, NodeHealth, SchemaGate, SourceStatus, Store};
 
 use crate::actions::GoToNeedsMe;
-use crate::app::{LOCAL_ACCOUNT, StoreEvent, StoreHandle};
+use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
 
 /// Below this window width (logical px) the strip shows only the chips that
@@ -179,40 +178,6 @@ fn schema_line(handle: &StoreHandle, cx: &App) -> Option<Field> {
         color: (!gate.is_open()).then(|| cx.theme().warning),
         attention: !gate.is_open(),
     })
-}
-
-/// The accounts this window can show, for the rail's identity menu (design
-/// B01): each with its label, kind and "needs me" count; the current one is
-/// checked, choosing another switches stores (nothing reloads).
-pub(crate) fn account_menu(
-    menu: gpui_kit::component::menu::PopupMenu,
-    store: &gpui_kit::WeakEntity<StoreHandle>,
-    cx: &App,
-) -> gpui_kit::component::menu::PopupMenu {
-    let Some(handle) = store.upgrade() else { return menu };
-    let handle = handle.read(cx);
-    let active = handle.active_account().cloned();
-    let mut menu = menu.label(tr("status.account.current"));
-    for id in handle.accounts() {
-        let name = match handle.account_label(id) {
-            Some(name) => name,
-            None if id.as_str() == LOCAL_ACCOUNT => tr("status.account.local").to_string(),
-            None => id.to_string(),
-        };
-        let count = handle.needs_me_count(id);
-        let text = if count > 0 {
-            tr_args("status.account.with_count", &[("name", &name), ("count", &count.to_string())])
-        } else {
-            SharedString::from(name)
-        };
-        let (store, target) = (store.clone(), id.clone());
-        menu = menu.item(PopupMenuItem::new(text).checked(active.as_ref() == Some(id)).on_click(
-            move |_, _, cx| {
-                store.update(cx, |store, cx| store.set_active_account(&target, cx)).ok();
-            },
-        ));
-    }
-    menu
 }
 
 impl Render for StatusStrip {

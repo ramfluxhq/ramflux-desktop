@@ -14,12 +14,14 @@
 //! - [`strangers`]: incoming requests from non-contacts (F17, F21): reply
 //!   is not acceptance, batch decisions, block.
 
+pub mod agents;
 pub(crate) mod contact_profile;
 pub mod contacts;
 pub(crate) mod directory;
 pub mod groups;
 pub(crate) mod stranger_detail;
 pub mod strangers;
+pub mod tasks;
 
 pub use contacts::{ContactsDirectory, ContactsDirectoryEvent};
 pub use groups::{GroupDirectory, GroupDirectoryEvent};

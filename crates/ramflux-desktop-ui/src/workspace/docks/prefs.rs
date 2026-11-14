@@ -124,7 +124,8 @@ mod tests {
         assert_eq!(store.load(), DockPrefs::default());
         let prefs = DockPrefs {
             pinned: Some(DockTool::Approvals),
-            width: 412.,
+            // Design H01–H05: the dock is 480 px wide.
+            width: 480.,
             layout: Some(DockAreaState { version: Some(2), ..Default::default() }),
             ..DockPrefs::default()
         };

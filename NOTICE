@@ -9,3 +9,17 @@ ramfluxhq/ramflux repository.
 
 This product includes GPUI Kit (https://github.com/longbridge/gpui-kit) and
 GPUI, licensed under the Apache License, Version 2.0.
+
+This product bundles the following fonts, each licensed under the SIL Open
+Font License, Version 1.1 (full texts in the licenses/ directory):
+
+- Hanken Grotesk, Copyright 2021 The Hanken Grotesk Project
+  Authors (https://github.com/marcologous/hanken-grotesk).
+  License: licenses/OFL-HankenGrotesk.txt
+- Noto Sans SC (official SC subset), Copyright 2014-2021 Adobe
+  (http://www.adobe.com/), with Reserved Font Name 'Source'.
+  License: licenses/OFL-NotoSansSC.txt
+
+Both are shipped as static Regular (400), Medium (500) and SemiBold (600)
+instances made with fontTools from the upstream variable fonts; the glyphs
+are unmodified.

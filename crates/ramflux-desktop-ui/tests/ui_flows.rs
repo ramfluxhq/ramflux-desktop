@@ -74,7 +74,7 @@ fn s02_day_headers_group_history_by_local_day(cx: &mut TestAppContext) {
     let today = ramflux_desktop_ui::i18n::tr("clock.today").to_string();
     assert!(headers.first().cloned().flatten().is_some(), "the first row opens a day");
     assert_eq!(
-        headers.iter().flatten().filter(|h| **h == today).count(),
+        headers.iter().flatten().filter(|h| h.starts_with(today.as_str())).count(),
         1,
         "one today header: {headers:?}"
     );
