@@ -448,6 +448,9 @@ settings:
     version:
       en: "Version"
       zh-CN: "版本"
+    version_value:
+      en: "Version %{version} (build %{build})"
+      zh-CN: "版本 %{version}（构建 %{build}）"
     app_log:
       en: "App log"
       zh-CN: "应用日志"

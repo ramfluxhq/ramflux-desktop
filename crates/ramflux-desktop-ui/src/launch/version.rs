@@ -22,6 +22,12 @@ pub fn short(rev: &str) -> &str {
     rev.get(..7).unwrap_or(rev)
 }
 
+/// The settings row value, localized: `Version 0.2.0 (build abc1234)` in the active language.
+pub fn display() -> gpui_kit::SharedString {
+    let build = BUILD_REV.map_or("-", short);
+    crate::i18n::tr_args("settings.launch.version_value", &[("version", APP_VERSION), ("build", build)])
+}
+
 /// One line: `Ramflux Desktop 0.1.0 (build abc1234), product fd3b184,
 /// GPUI Kit 0.8.0`.
 pub fn summary() -> String {

@@ -7,6 +7,17 @@ Versioning.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-16
+
+First release under the shared Ramflux product version (all repos move together).
+Changes since 0.1.0, at a high level:
+
+- Settings, Diagnostics shows "Version 0.2.0 (build <commit>)" in the chosen language; every build now records its commit automatically.
+- Refreshed account, device and backup settings.
+- Tracks the generation-1 messaging of the product: the new message format, contact safety numbers and edit-conflict detection.
+
+Details:
+
 ### Added
 
 - Appearance: a theme picker (Light, Dark, Follow system) and a language

@@ -314,7 +314,7 @@ fn about_group(context: &SectionContext, cx: &App) -> SettingGroup {
         path.map_or_else(|| none.clone(), |p| SharedString::from(shown(&p)))
     };
     let rows = [
-        ("settings.launch.version", SharedString::from(version::summary())),
+        ("settings.launch.version", version::display()),
         ("settings.launch.app_log", path_text(app_log::path())),
         ("settings.launch.daemon_log", path_text(launcher.daemon_log())),
         ("settings.launch.settings_file", path_text(launcher.settings_file())),
