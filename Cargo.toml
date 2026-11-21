@@ -12,7 +12,7 @@ members = [
 default-members = ["apps/ramflux-desktop"]
 
 [workspace.package]
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 rust-version = "1.99.0"
 license = "AGPL-3.0-or-later"
