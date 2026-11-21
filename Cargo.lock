@@ -6537,7 +6537,7 @@ dependencies = [
 
 [[package]]
 name = "ramflux-desktop"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "gpui-kit",
  "ramflux-desktop-sdk",
@@ -6546,7 +6546,7 @@ dependencies = [
 
 [[package]]
 name = "ramflux-desktop-core"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -6557,7 +6557,7 @@ dependencies = [
 
 [[package]]
 name = "ramflux-desktop-media"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -6575,7 +6575,7 @@ dependencies = [
 
 [[package]]
 name = "ramflux-desktop-navigation"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "gpui-kit",
  "serde",
@@ -6584,7 +6584,7 @@ dependencies = [
 
 [[package]]
 name = "ramflux-desktop-sdk"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "ramflux-crypto",
  "ramflux-desktop-core",
@@ -6601,7 +6601,7 @@ dependencies = [
 
 [[package]]
 name = "ramflux-desktop-test"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "ramflux-crypto",
  "ramflux-desktop-core",
@@ -6615,7 +6615,7 @@ dependencies = [
 
 [[package]]
 name = "ramflux-desktop-ui"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "chrono",
  "gpui-kit",
