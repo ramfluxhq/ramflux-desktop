@@ -118,6 +118,10 @@ pub(crate) fn render(
                 break;
             }
         }
+        // A file or image keeps its own width (its row and 4:3 box).
+        if !payload.media.is_empty() {
+            width = width.max(gpui_kit::px(super::message::MEDIA_WIDTH_PX));
+        }
         // The time sits at the end of the body line (design `RF / Bubble`):
         // reserve its width and the 8 px gap before it.
         let time: gpui_kit::SharedString = i18n::time_of_day(row.moment.at).into();

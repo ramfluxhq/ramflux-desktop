@@ -269,6 +269,11 @@ pub enum IntentKind {
         /// Object.
         object_id: ObjectId,
     },
+    /// Cancel a transfer on its way.
+    CancelTransfer {
+        /// Object.
+        object_id: ObjectId,
+    },
 
     // Governance and approvals.
     /// Create a group: its conversation (under a fresh id chosen by the

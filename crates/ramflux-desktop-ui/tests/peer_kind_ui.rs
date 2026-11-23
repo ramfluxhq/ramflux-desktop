@@ -114,11 +114,11 @@ fn contacts_say_how_far_a_kind_is_proven_and_warn_on_a_confusable_name(cx: &mut 
         "{warning}"
     );
     assert!(label_in(cx, &world, "contacts-principal-cy", "contact-name-warning").is_none());
-    // A stale verification: said so, with Verify again.
+    // A stale verification: said as a status; the number stays advanced.
     assert_eq!(
         label_in(cx, &world, "contacts-principal-cy", "contact-safety").as_deref(),
-        None,
-        "the safety line is text, not a labeled control"
+        Some(ramflux_desktop_ui::i18n::tr("dock.contacts.identity_changed").as_ref()),
+        "the safety line is a status, never a request to compare"
     );
     let cy = with_store(cx, &world.shell, |s| {
         s.participant(&ParticipantId::new("principal-cy")).cloned()
@@ -128,7 +128,7 @@ fn contacts_say_how_far_a_kind_is_proven_and_warn_on_a_confusable_name(cx: &mut 
     assert!(cy.safety.needs_attention(), "sticky until verified again");
     assert_eq!(
         label_in(cx, &world, "contacts-principal-cy", "verify").as_deref(),
-        Some(tr_args("dock.contacts.verify_again_for", &[("name", "Cy")]).as_ref())
+        Some(tr_args("dock.contacts.advanced_safety_for", &[("name", "Cy")]).as_ref())
     );
     // Nothing reported about Zed: the safe default, no mark, no warning.
     let zed = with_store(cx, &world.shell, |s| {

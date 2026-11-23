@@ -25,6 +25,7 @@ use serde_json::Value;
 
 use super::conversation::message_moment_id;
 use super::{Translated, Translator, list, text};
+use crate::plan::fetch::Fetch;
 
 /// The contract every read-model page carries.
 pub(crate) const READ_MODEL_SCHEMA: &str = "ramflux.message.read_model.v1";
@@ -36,23 +37,101 @@ impl Translator {
         self.plaintext.insert(&MomentId::new(message_id), body.to_owned());
     }
 
-    /// One read-model page of a known context. A page of another schema is
-    /// not read.
+    /// One read-model page of a known context (its newest page, or an
+    /// older one). A page of another schema is not read. The page's
+    /// snapshot becomes the conversation's change cursor; its `next_before`
+    /// is where older history continues (the newest page sets it only
+    /// while no older page was read).
     pub(super) fn messages(
+        &mut self,
+        context: &ContextId,
+        fetch: &Fetch,
+        value: &Value,
+        now: Timestamp,
+    ) -> Translated {
+        let older = matches!(fetch, Fetch::MessagesBefore(..));
+        if older {
+            self.older_reading.remove(context);
+        }
+        if !self.contexts.contains_key(context) || text(value, "schema") != READ_MODEL_SCHEMA {
+            return Translated::default();
+        }
+        if let Some(snapshot) = value["snapshot_sequence"].as_u64() {
+            let cursor = self.read_cursors.entry(context.clone()).or_insert(snapshot);
+            *cursor = (*cursor).max(snapshot);
+        }
+        let next = match &value["next_before"] {
+            Value::Null => None,
+            before => Some(before.to_string()),
+        };
+        if older || !self.older.contains_key(context) {
+            self.older.insert(context.clone(), next);
+        }
+        // Oldest first, so moments are added in the order they were written.
+        let rows: Vec<Value> = list(value, "messages").iter().rev().cloned().collect();
+        Translated { events: self.message_rows(context, &rows, now), follow: Vec::new() }
+    }
+
+    /// The rows of a known context changed after its cursor, oldest change
+    /// first; the cursor moves to `next_after`, and while `more` remains
+    /// the next changes are read.
+    pub(super) fn message_changes(
         &mut self,
         context: &ContextId,
         value: &Value,
         now: Timestamp,
     ) -> Translated {
-        let Some(kind) = self.contexts.get(context).map(|c| c.kind) else {
-            return Translated::default();
-        };
-        if text(value, "schema") != READ_MODEL_SCHEMA {
+        if !self.contexts.contains_key(context) || text(value, "schema") != READ_MODEL_SCHEMA {
             return Translated::default();
         }
+        let rows: Vec<Value> = list(value, "changes").to_vec();
+        let events = self.message_rows(context, &rows, now);
+        let mut follow = Vec::new();
+        if let Some(after) = value["next_after"].as_u64() {
+            let cursor = self.read_cursors.entry(context.clone()).or_insert(after);
+            *cursor = (*cursor).max(after);
+            if value["more"].as_bool().unwrap_or(false) {
+                follow.push(Fetch::MessageChanges(context.clone(), *cursor));
+            }
+        }
+        Translated { events, follow }
+    }
+
+    /// The read of the page older than what is shown of `context`, unless
+    /// its beginning was read, no page was read yet, or one is on its way.
+    pub fn older_read(&mut self, context: &ContextId) -> Option<Fetch> {
+        let before = self.older.get(context)?.clone()?;
+        self.older_reading
+            .insert(context.clone())
+            .then(|| Fetch::MessagesBefore(context.clone(), before))
+    }
+
+    /// The older page of `context` could not be read: it may be asked for
+    /// again.
+    pub fn older_failed(&mut self, context: &ContextId) {
+        self.older_reading.remove(context);
+    }
+
+    /// The change cursor of `context` is no longer usable (pruned, or
+    /// ahead of the journal): its newest page is read again.
+    pub fn forget_read_cursor(&mut self, context: &ContextId) {
+        self.read_cursors.remove(context);
+        self.older.remove(context);
+        self.older_reading.remove(context);
+    }
+
+    /// Projects read-model rows (oldest first) of a known context.
+    fn message_rows(
+        &mut self,
+        context: &ContextId,
+        rows: &[Value],
+        now: Timestamp,
+    ) -> Vec<DomainEvent> {
+        let Some(kind) = self.contexts.get(context).map(|c| c.kind) else {
+            return Vec::new();
+        };
         let mut events = Vec::new();
-        // Oldest first, so moments are added in the order they were written.
-        for row in list(value, "messages").iter().rev() {
+        for row in rows {
             let state = text(row, "state");
             if text(row, "id").is_empty() {
                 continue;
@@ -74,10 +153,11 @@ impl Translator {
             if kind == ContextKind::Direct && state == "content" {
                 self.note_received(context, row);
             }
-            let moment = self.message_moment(context, row, now);
+            let (moment, objects) = self.message_moment(context, row, now);
+            events.extend(objects);
             events.extend(self.report_moment(moment));
         }
-        Translated { events, follow: Vec::new() }
+        events
     }
 
     /// Notes a listed direct message from a peer, for its delivery receipt:
@@ -150,11 +230,22 @@ impl Translator {
         Some(event)
     }
 
-    fn message_moment(&self, context: &ContextId, row: &Value, now: Timestamp) -> Moment {
+    fn message_moment(
+        &mut self,
+        context: &ContextId,
+        row: &Value,
+        now: Timestamp,
+    ) -> (Moment, Vec<DomainEvent>) {
         // A message this device sent keeps the moment it was shown as.
-        let daemon_id = text(row, "id");
-        let message = self.local_id(daemon_id);
+        let daemon_id = text(row, "id").to_owned();
+        let message = self.local_id(&daemon_id).to_owned();
         let own = row["is_own"].as_bool().unwrap_or(false);
+        let (media, objects) = if text(row, "state") == "content" {
+            self.row_media(&message, &daemon_id, own, row)
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let message = message.as_str();
         let origin = if own { self.own_origin() } else { self.origin(author_device(row)) };
         let kind = match text(row, "state") {
             "tombstone" => {
@@ -171,9 +262,7 @@ impl Translator {
                 MomentKind::Message(MessagePayload {
                     text: body,
                     receipt: if own { receipt(row) } else { Receipt::default() },
-                    attachment: self
-                        .attachment_of(message)
-                        .or_else(|| self.attachment_of(daemon_id)),
+                    media,
                     ..Default::default()
                 })
             }
@@ -188,7 +277,7 @@ impl Translator {
                 }),
             }),
         };
-        Moment {
+        let moment = Moment {
             order: None,
             id: message_moment_id(context, message),
             context_id: context.clone(),
@@ -196,7 +285,8 @@ impl Translator {
             at: row["hlc_ms"].as_u64().map_or(now, |ms| Timestamp(ms.try_into().unwrap_or(0))),
             kind,
             lifecycle: Lifecycle::Done,
-        }
+        };
+        (moment, objects)
     }
 }
 

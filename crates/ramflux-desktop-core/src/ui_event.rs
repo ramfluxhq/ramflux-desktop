@@ -51,6 +51,8 @@ pub enum ObjectAction {
     },
     /// Retry a failed transfer.
     Retry,
+    /// Cancel a transfer on its way.
+    Cancel,
 }
 
 /// A settings action on a node.

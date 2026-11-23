@@ -94,22 +94,22 @@ mod tests {
     #[test]
     fn pages_complete_on_a_null_cursor_and_strays_are_dropped() {
         let mut pages = Pages::default();
-        let first = json!({ "objects": [{ "id": "a" }, { "id": "b" }], "next_cursor": "c1" });
+        let first = json!({ "identities": [{ "id": "a" }, { "id": "b" }], "next_cursor": "c1" });
         assert_eq!(
-            pages.page(Paged::Objects, None, &first),
-            Paging::More(Fetch::Page(Paged::Objects, Some("c1".to_owned())))
+            pages.page(Paged::Identities, None, &first),
+            Paging::More(Fetch::Page(Paged::Identities, Some("c1".to_owned())))
         );
         // A short page with a cursor (the response budget) is followed too.
-        let budget = json!({ "objects": [{ "id": "c" }], "next_cursor": "c2" });
-        assert!(matches!(pages.page(Paged::Objects, Some("c1"), &budget), Paging::More(_)));
-        let last = json!({ "objects": [{ "id": "d" }], "next_cursor": null });
-        let Paging::Complete(rows) = pages.page(Paged::Objects, Some("c2"), &last) else {
+        let budget = json!({ "identities": [{ "id": "c" }], "next_cursor": "c2" });
+        assert!(matches!(pages.page(Paged::Identities, Some("c1"), &budget), Paging::More(_)));
+        let last = json!({ "identities": [{ "id": "d" }], "next_cursor": null });
+        let Paging::Complete(rows) = pages.page(Paged::Identities, Some("c2"), &last) else {
             panic!("complete expected");
         };
         let ids: Vec<&str> = rows.iter().filter_map(row_id).collect();
         assert_eq!(ids, ["a", "b", "c", "d"]);
         // A later page of a listing that already completed is dropped.
-        assert_eq!(pages.page(Paged::Objects, Some("c2"), &last), Paging::Dropped);
+        assert_eq!(pages.page(Paged::Identities, Some("c2"), &last), Paging::Dropped);
     }
 
     #[test]

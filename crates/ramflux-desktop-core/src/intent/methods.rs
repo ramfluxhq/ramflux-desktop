@@ -19,6 +19,8 @@ pub const OBJECT_PULL: &str = "object.get";
 pub const OBJECT_SAVE: &str = "object.save";
 /// Resume a failed or paused transfer.
 pub const OBJECT_RETRY: &str = "object.transfer.resume";
+/// Cancel a transfer that is on its way.
+pub const OBJECT_CANCEL: &str = "object.transfer.cancel";
 /// Invoke a surface action.
 pub const SURFACE_ACTION: &str = "surface.action";
 /// Ask the author of an out-of-sync surface for its current state.

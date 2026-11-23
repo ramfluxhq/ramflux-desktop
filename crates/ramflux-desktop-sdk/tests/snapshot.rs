@@ -8,10 +8,9 @@ mod common;
 
 use common::*;
 use ramflux_desktop_core::{
-    AccountId, ContextId, ContextKind, Direction, DomainEvent, GrantId, GrantState, Lifecycle,
-    ListState, Listing, LockState, MomentId, MomentKind, NodeId, ObjectId, ParticipantId,
-    ParticipantKind, PinSource, Receipt, Role, SafetyState, Source as _, SourceStatus,
-    StandingApprovalId, TransferState, methods, selectors,
+    AccountId, ContextId, ContextKind, DomainEvent, GrantId, GrantState, Lifecycle, ListState,
+    Listing, LockState, MomentId, MomentKind, NodeId, ParticipantId, ParticipantKind, PinSource,
+    Receipt, Role, SafetyState, Source as _, SourceStatus, StandingApprovalId, methods, selectors,
 };
 
 #[test]
@@ -174,15 +173,6 @@ fn the_account_scope_maps_the_directories_messages_and_grants() {
     assert!(store.moment(&MomentId::new("approval:appr-2")).is_none(), "stays in the dock only");
     assert!(store.standing_approval(&StandingApprovalId::new("sa-1")).is_some());
     assert_eq!(store.devices().count(), 2);
-
-    let notes = store.object(&ObjectId::new("attachment:m1:0")).cloned().expect("object");
-    assert_eq!((notes.name.as_deref(), notes.size), (Some("notes.txt"), Some(12)));
-    assert_eq!((notes.direction, &notes.transfer), (Direction::Inbound, &TransferState::Complete));
-    let sent = store.object(&ObjectId::new("attachment:m2:0")).cloned().expect("sent object");
-    assert_eq!((sent.name, sent.size), (None, None), "unknown name and size stay unknown");
-    assert_eq!(sent.direction, Direction::Outbound);
-    assert_eq!(sent.transfer, TransferState::Failed { reason: "paused".to_owned() });
-    assert!(store.object(&ObjectId::new("legacy-object")).is_none(), "no observed direction");
 
     let servers = &store.integrations().mcp_servers;
     let files = servers.iter().find(|s| s.name == "files").expect("files");

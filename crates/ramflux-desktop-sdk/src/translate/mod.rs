@@ -55,7 +55,7 @@ mod identity;
 mod interventions;
 mod messages;
 pub(crate) mod node_failures;
-mod objects;
+pub(crate) mod objects;
 mod outgoing;
 pub mod pages;
 pub mod reason;
@@ -167,7 +167,20 @@ pub struct Translator {
     interventions: BTreeMap<GrantId, interventions::Placement>,
     standing: BTreeMap<StandingApprovalId, StandingApproval>,
     objects: BTreeMap<ObjectId, Object>,
-    sent_attachments: BTreeMap<String, ObjectId>,
+    /// The journal sequence each read conversation was read up to (the
+    /// read model's change cursor).
+    read_cursors: BTreeMap<ContextId, u64>,
+    /// Where each conversation's older history continues (`next_before`
+    /// as JSON text); `None` once its beginning was read.
+    older: BTreeMap<ContextId, Option<String>>,
+    /// Conversations whose older page is being read.
+    older_reading: BTreeSet<ContextId>,
+    /// What is known about each attachment (to send again or download).
+    media: BTreeMap<ObjectId, crate::plan::media::MediaRef>,
+    /// The private copy of each downloaded (or sent) attachment.
+    media_files: BTreeMap<ObjectId, std::path::PathBuf>,
+    /// Where this account's downloaded files are kept.
+    media_folder: Option<std::path::PathBuf>,
     /// The id this device gave a message it sent, by the id the daemon
     /// answered with (the read model lists the message under the daemon's
     /// id, the shown moment keeps this device's).
@@ -180,7 +193,6 @@ pub struct Translator {
     /// Names this device gave group conversations that the directory does
     /// not list yet; group calls carry them meanwhile.
     renames: BTreeMap<ContextId, String>,
-    message_objects: BTreeMap<String, ObjectId>,
     /// Surfaces reported, by the daemon's scoped `surface_ref`.
     surfaces: BTreeMap<String, surfaces::KnownSurface>,
     /// Tasks reported, by desktop task id.
@@ -275,12 +287,16 @@ impl Translator {
             interventions: BTreeMap::new(),
             standing: BTreeMap::new(),
             objects: BTreeMap::new(),
-            sent_attachments: BTreeMap::new(),
+            read_cursors: BTreeMap::new(),
+            older: BTreeMap::new(),
+            older_reading: BTreeSet::new(),
+            media: BTreeMap::new(),
+            media_files: BTreeMap::new(),
+            media_folder: None,
             local_ids: BTreeMap::new(),
             sending: BTreeSet::new(),
             started: BTreeSet::new(),
             renames: BTreeMap::new(),
-            message_objects: BTreeMap::new(),
             surfaces: BTreeMap::new(),
             tasks: BTreeMap::new(),
             requested_grants: BTreeMap::new(),
@@ -383,9 +399,18 @@ impl Translator {
 
     /// The reads that refresh one context's messages, with its surfaces
     /// and tasks.
+    /// The read that brings a conversation's messages up to date: once a
+    /// page was read, only what changed after its cursor.
+    fn message_read(&self, context: &ContextId) -> Fetch {
+        match self.read_cursors.get(context) {
+            Some(after) => Fetch::MessageChanges(context.clone(), *after),
+            None => Fetch::Messages(context.clone()),
+        }
+    }
+
     fn messages_read(&self, context: &ContextId) -> Vec<Fetch> {
         vec![
-            Fetch::Messages(context.clone()),
+            self.message_read(context),
             Self::surfaces_read(context),
             Fetch::Tasks(context.clone(), None),
         ]
@@ -406,14 +431,15 @@ impl Translator {
             Fetch::NodeList => Listing::Nodes,
             Fetch::AccountList => Listing::Accounts,
             // Contexts are conversations and groups: listed once both are.
+            // Attachments are the files their messages carry, read with the
+            // messages (no directory of their own).
             Fetch::Page(Paged::Conversations | Paged::Groups, _)
                 if complete(Paged::Conversations) && complete(Paged::Groups) =>
             {
-                Listing::Contexts
+                return self.listed(&[Listing::Contexts, Listing::Objects]);
             }
             Fetch::ContactList => Listing::Contacts,
             Fetch::Page(Paged::Approvals, _) if complete(Paged::Approvals) => Listing::Approvals,
-            Fetch::Page(Paged::Objects, _) if complete(Paged::Objects) => Listing::Objects,
             Fetch::BackupJobs => Listing::BackupJobs,
             _ => return None,
         };
@@ -450,7 +476,10 @@ impl Translator {
             Fetch::Calls => self.call_list(value),
             Fetch::ContactRequests => Translated::events(self.contact_request_list(value)),
             Fetch::BackupJobs => self.backup_job_list(value),
-            Fetch::Messages(context) => self.messages(context, value, now),
+            Fetch::Messages(context) | Fetch::MessagesBefore(context, _) => {
+                self.messages(context, fetch, value, now)
+            }
+            Fetch::MessageChanges(context, _) => self.message_changes(context, value, now),
             Fetch::Surfaces(context, _) => {
                 Translated { events: Vec::new(), follow: self.surface_list(context, value) }
             }
@@ -481,7 +510,6 @@ impl Translator {
                 translated.events.extend(self.all_rename_moments());
                 translated
             }
-            Paged::Objects => Translated::events(self.object_listing(rows)),
             Paged::Approvals => Translated::events(self.approval_list(rows, now)),
             Paged::McpServers => Translated::events(self.mcp_servers(rows)),
         }
@@ -534,7 +562,12 @@ impl Translator {
         contexts
             .into_iter()
             .filter(|id| self.contexts.contains_key(id))
-            .flat_map(|id| self.messages_read(&id))
+            .flat_map(|id| {
+                // Bodies come again with a page, not with the changes.
+                let mut reads = self.messages_read(&id);
+                reads[0] = Fetch::Messages(id);
+                reads
+            })
             .collect()
     }
 
@@ -597,6 +630,14 @@ impl Known for Translator {
 
     fn task(&self, task_id: &str) -> Option<&crate::plan::task::TaskTarget> {
         self.task_target(task_id)
+    }
+
+    fn media(&self, object: &ObjectId) -> Option<&crate::plan::media::MediaRef> {
+        self.media.get(object)
+    }
+
+    fn media_file(&self, object: &ObjectId) -> Option<&std::path::Path> {
+        self.media_files.get(object).map(std::path::PathBuf::as_path)
     }
 }
 

@@ -227,6 +227,12 @@ impl AccountSession {
         self.source_mut().request_bodies(&fresh);
     }
 
+    /// The view reached the oldest message shown of `context`: asks the
+    /// source for the older page.
+    pub fn request_older(&mut self, context: &ramflux_desktop_core::ContextId) {
+        self.source_mut().request_older(context);
+    }
+
     /// Asks the source for a call's media session (for the media engine).
     pub fn request_call_media(&mut self, call: &ramflux_desktop_core::CallId) {
         self.source_mut().request_call_media(call);

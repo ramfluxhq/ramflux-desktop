@@ -5,7 +5,8 @@
 //! Previews borrow the body cache, so lock/reset cannot leave a retained copy.
 
 use crate::{
-    Context, ContextId, ContextKind, LockState, MomentKind, Receipt, Store, Timestamp, selectors,
+    Context, ContextId, ContextKind, ContextPreview, LockState, MomentKind, Receipt, Store,
+    Timestamp, selectors,
 };
 
 /// Maximum number of rows returned in one page.
@@ -167,8 +168,17 @@ pub fn row<'a>(
 ) -> ConversationRow<'a> {
     let latest = store.context_moments(&context.id).next_back();
     let newer_unloaded = activity.is_some_and(|at| latest.is_none_or(|moment| at > moment.at));
-    let preview = if newer_unloaded {
-        Preview::Unavailable
+    let preview = if newer_unloaded || latest.is_none() {
+        // What the source's directory says of the latest message, while its
+        // history is not loaded.
+        match &context.preview {
+            Some(ContextPreview::Text(text)) if !text.is_empty() => Preview::Text(text),
+            Some(ContextPreview::Attachment) => Preview::Attachment,
+            Some(ContextPreview::Activity) => Preview::Activity,
+            Some(_) => Preview::Unavailable,
+            None if newer_unloaded => Preview::Unavailable,
+            None => Preview::Empty,
+        }
     } else {
         match latest.map(|m| &m.kind) {
             Some(MomentKind::Message(p)) if p.tombstone => Preview::Deleted,

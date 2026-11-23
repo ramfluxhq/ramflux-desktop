@@ -40,6 +40,7 @@ fn context() -> Context {
         roles: std::collections::BTreeMap::new(),
         epoch: None,
         last_activity: None,
+        preview: None,
     }
 }
 

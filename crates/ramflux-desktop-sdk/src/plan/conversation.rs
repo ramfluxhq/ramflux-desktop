@@ -112,7 +112,6 @@ pub(super) fn start(acct: Option<&str>, body: &Value, known: &impl Known) -> Pla
         target,
         text: text(body, "text"),
         federation: None,
-        attachments: Vec::new(),
     });
     match request {
         Ok(mut request) => {

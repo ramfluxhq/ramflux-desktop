@@ -20,6 +20,8 @@ mod effects;
 mod gate;
 mod jobs;
 mod live;
+mod media;
+pub(crate) use media::file_safe;
 mod scope;
 #[cfg(feature = "test-support")]
 pub use scope::GateProbe;
@@ -80,6 +82,8 @@ pub(crate) enum Command {
     Focus { scope: Scope, context: Option<ContextId> },
     /// A view needs these messages' bodies again in `scope`.
     Bodies { scope: Scope, moments: Vec<MomentId> },
+    /// A view reached the oldest message shown of `context` in `scope`.
+    Older { scope: Scope, context: ContextId },
     /// The media engine needs a call's media session in `scope`.
     CallMedia {
         scope: Scope,
@@ -226,6 +230,11 @@ async fn serve(
             Command::Bodies { scope, moments } => {
                 if let Some(tx) = scopes.get(&scope) {
                     let _ = tx.send(scope::ScopeCommand::Bodies(moments));
+                }
+            }
+            Command::Older { scope, context } => {
+                if let Some(tx) = scopes.get(&scope) {
+                    let _ = tx.send(scope::ScopeCommand::Older(context));
                 }
             }
             Command::CallMedia { scope, call_id, reply } => match scopes.get(&scope) {

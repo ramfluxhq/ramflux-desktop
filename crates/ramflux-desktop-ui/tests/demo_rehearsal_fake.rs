@@ -139,10 +139,8 @@ fn every_step_passes_on_a_node_that_behaves(cx: &mut TestAppContext) {
         "the receiver's fallback until the daemon routes first messages is stated: {}",
         notes(5)
     );
-    assert!(notes(6).contains("attach button (file dialog answered)"), "{}", notes(6));
-    assert!(notes(6).contains("staged: rehearsal-"), "{}", notes(6));
+    assert!(notes(6).contains("no prepared-media API"), "{}", notes(6));
     assert!(notes(5).contains("Delivered"), "{}", notes(5));
-    assert!(notes(6).contains("attachment not fetched"), "{}", notes(6));
     assert!(notes(8).contains("locked again"), "{}", notes(8));
     assert!(notes(8).contains("history kept"), "{}", notes(8));
 }

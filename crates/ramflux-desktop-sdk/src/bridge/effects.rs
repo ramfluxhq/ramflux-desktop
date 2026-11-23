@@ -7,9 +7,9 @@
 //! spawned futures on the scope's connection and the answer comes back to
 //! the task, which translates it. A plan of several requests runs them in
 //! order and stops at the first failure, reporting how many were applied.
-//! An object read (`Plan::Open`) writes the bytes where the user chose and
-//! wipes them; only the path reaches the translator. Request bodies (which
-//! may carry an attachment's bytes) are wiped after sending. A node lookup
+//! Attachment jobs run step by step on their own (see `media`). A safety
+//! verification reads the compared snapshot first and verifies exactly it.
+//! Request bodies are wiped after sending. A node lookup
 //! that macOS Local Network privacy may have blocked is repeated a moment
 //! later (see [`node_lookup`]).
 
@@ -96,15 +96,9 @@ impl Task {
             return;
         }
         let planned = plan(self.scope.account(), effect, &self.translator);
-        let (method, mut body) = (planned.method, planned.body);
+        let (method, body) = (planned.method, planned.body);
         self.translator.decision_sent(&method, &body);
         self.translator.rename_sent(&method, &body);
-        if method == ramflux_desktop_core::methods::ATTACH_OBJECT
-            && let Plan::Call { request, .. } = &planned.plan
-        {
-            let events = self.translator.attachment_sending(&request.body, &mut body, now());
-            self.emit(events);
-        }
         let operation = match planned.plan {
             Plan::Call { request, refresh } if method == methods::SEND_MESSAGE => {
                 if let Some(id) = body["retry_moment"].as_str() {
@@ -137,6 +131,7 @@ impl Task {
             Plan::Refuse { code, message } => {
                 self.emit(vec![DomainEvent::EffectFailed(EffectFailure { method, code, message })]);
             }
+            Plan::Media(job) => self.media(job),
             other => {
                 let client = self.client.clone();
                 let job_link = self.job_link.clone();
@@ -296,11 +291,9 @@ async fn perform(
             (result, refresh)
         }
         Plan::Calls { requests, refresh } => (in_order(client, requests).await, refresh),
-        Plan::Open { request, save_to } => {
-            (open(client, &request, save_to.as_deref()).await, Vec::new())
-        }
+        Plan::Verify { lookup, refresh } => (verify(client, lookup).await, refresh),
         Plan::Diagnostics { path } => (write_diagnostics(client, &path).await, Vec::new()),
-        Plan::Local | Plan::Refuse { .. } => (Ok(Value::Null), Vec::new()),
+        Plan::Local | Plan::Refuse { .. } | Plan::Media(_) => (Ok(Value::Null), Vec::new()),
     }
 }
 
@@ -383,35 +376,25 @@ async fn in_order(client: &BusClient, requests: Vec<BusRequest>) -> Result<Value
     Ok(last)
 }
 
-/// `object.get`, then the bytes written to `save_to` (when set) and wiped.
-async fn open(
-    client: &BusClient,
-    request: &BusRequest,
-    save_to: Option<&str>,
-) -> Result<Value, BusError> {
-    let object = request.body["object_id"].clone();
-    let mut answer = client.call(request).await?;
-    let written = match (save_to, answer["plaintext_base64"].as_str()) {
-        (Some(path), Some(encoded)) => {
-            let bytes = ramflux_protocol::decode_base64url(encoded)
-                .map(zeroize::Zeroizing::new)
-                .map_err(|error| file_error(&error.to_string()));
-            bytes.and_then(|bytes| {
-                std::fs::write(path, bytes.as_slice()).map_err(|e| file_error(&e.to_string()))
-            })
-        }
-        (Some(_), None) => Err(file_error("the daemon returned no object bytes")),
-        (None, _) => Ok(()),
+/// `contact.safety_number`, then `contact.verify` with the compared
+/// snapshot it answered (`expected`), under a fresh retry key.
+async fn verify(client: &BusClient, lookup: BusRequest) -> Result<Value, BusError> {
+    let safety = client.call(&lookup).await?;
+    let Some(expected) = safety.get("expected").filter(|e| e.is_object()).cloned() else {
+        return Err(BusError::daemon(
+            "expected_safety_required",
+            "the daemon answered no safety snapshot to compare",
+        ));
     };
-    if let Some(Value::String(encoded)) = answer.get_mut("plaintext_base64") {
-        zeroize::Zeroize::zeroize(encoded);
-    }
-    wipe(answer);
-    written.map(|()| json!({ "object_id": object, "saved_to": save_to }))
-}
-
-fn file_error(reason: &str) -> BusError {
-    BusError::daemon("io", keyed(key::FILE, &[("reason", reason)]))
+    let key = idempotency::fresh_key().map_err(|e| BusError::daemon("random", e))?;
+    let request = BusRequest::new(
+        lookup.account.as_deref(),
+        "contact",
+        "contact.verify",
+        json!({ "expected": expected }),
+    )
+    .with_operation_id(key);
+    client.call(&request).await
 }
 
 async fn write_diagnostics(client: &BusClient, path: &str) -> Result<Value, BusError> {

@@ -259,6 +259,10 @@ impl Source for SdkSource {
         }
     }
 
+    fn request_older(&mut self, context: &ContextId) {
+        self.bridge.send(Command::Older { scope: self.scope.clone(), context: context.clone() });
+    }
+
     fn request_call_media(&mut self, call: &CallId) {
         self.bridge.send(Command::CallMedia {
             scope: self.scope.clone(),

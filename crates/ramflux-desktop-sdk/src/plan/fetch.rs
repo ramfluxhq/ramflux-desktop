@@ -26,8 +26,6 @@ pub enum Paged {
     Conversations,
     /// `group.list`.
     Groups,
-    /// `object.directory`.
-    Objects,
     /// `mcp.approval.list`.
     Approvals,
     /// `mcp.server.list`.
@@ -41,7 +39,6 @@ impl Paged {
             Self::Identities => ("contact", "identity.directory", "identities"),
             Self::Conversations => ("message", "conversation.directory", "conversations"),
             Self::Groups => ("group", "group.list", "groups"),
-            Self::Objects => ("object", "object.directory", "objects"),
             Self::Approvals => ("mcp", "mcp.approval.list", "approvals"),
             Self::McpServers => ("mcp", "mcp.server.list", "server_details"),
         }
@@ -77,6 +74,11 @@ pub enum Fetch {
     /// `message.read` (the read model's newest page) of one conversation,
     /// direct or group.
     Messages(ContextId),
+    /// `message.read` of the page older than `before` (the `next_before`
+    /// event identity of the last page, as JSON text).
+    MessagesBefore(ContextId, String),
+    /// `message.read` of the rows changed after journal sequence `after`.
+    MessageChanges(ContextId, u64),
     /// `surface.list` of one conversation; `None` asks for the first page.
     Surfaces(ContextId, Option<String>),
     /// `surface.get` of one surface, by the daemon's scoped `surface_ref`.
@@ -143,6 +145,24 @@ impl Fetch {
                 "message.read",
                 json!({ "conversation_id": context, "read_model": true, "limit": PAGE_LIMIT }),
             ),
+            Self::MessagesBefore(context, before) => BusRequest::new(
+                account,
+                "message",
+                "message.read",
+                json!({
+                    "conversation_id": context,
+                    "read_model": true,
+                    "limit": PAGE_LIMIT,
+                    "before_order_key": serde_json::from_str::<serde_json::Value>(before)
+                        .unwrap_or_default(),
+                }),
+            ),
+            Self::MessageChanges(context, after) => BusRequest::new(
+                account,
+                "message",
+                "message.read",
+                json!({ "conversation_id": context, "after_sequence": after, "limit": PAGE_LIMIT }),
+            ),
             Self::Surfaces(context, cursor) => BusRequest::new(
                 account,
                 "surface",
@@ -196,7 +216,6 @@ impl Fetch {
             Self::StandingApprovals,
             Self::McpTools,
             Self::first(Paged::McpServers),
-            Self::first(Paged::Objects),
         ]
     }
 }

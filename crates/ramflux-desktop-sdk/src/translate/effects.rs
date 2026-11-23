@@ -5,7 +5,7 @@
 
 use ramflux_desktop_core::{
     AccountId, AccountKind, Actor, AuditEntry, ContextId, Disappearing, DomainEvent, GrantId,
-    GrantState, LockState, NodeId, ObjectId, ParticipantId, Timestamp, methods,
+    GrantState, LockState, NodeId, ParticipantId, Timestamp, methods,
 };
 use serde_json::Value;
 
@@ -151,7 +151,6 @@ impl Translator {
                 .into_iter()
                 .collect(),
             methods::CONVERSATION_START => self.conversation_started(body, answer),
-            methods::ATTACH_OBJECT => self.attachment_sent(body, answer),
             methods::SEND_MESSAGE => {
                 if let Some(id) = answer["message_id"].as_str() {
                     self.remember_sent(id, text(body, "text"));
@@ -161,10 +160,6 @@ impl Translator {
             methods::SURFACE_ACTION | methods::SURFACE_REQUEST_RESYNC => {
                 self.surface_effect_done(method, body, answer)
             }
-            methods::OBJECT_SAVE => match answer["saved_to"].as_str() {
-                Some(path) => self.object_saved(&ObjectId::new(text(body, "object_id")), path),
-                None => Vec::new(),
-            },
             _ => Vec::new(),
         }
     }

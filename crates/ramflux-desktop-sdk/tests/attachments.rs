@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Receiving messages never depends on attachments: the pull asks the
-//! daemon not to download them, a failing pull never stops the read of the
-//! stored messages, and an object appears when the object directory lists
-//! it, without touching the conversation.
+//! Receiving messages never depends on attachments: a failing pull never
+//! stops the read of the stored messages (after the first page, only the
+//! rows changed after its cursor are read).
 
 mod common;
 
@@ -13,7 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use common::*;
 use ramflux_desktop_core::{
-    AccountId, ContextId, DomainEvent, MomentId, ObjectId, Source as _, SourceStatus, TransferState,
+    AccountId, ContextId, DomainEvent, MomentId, Source as _, SourceStatus,
 };
 use serde_json::{Value, json};
 
@@ -36,7 +35,7 @@ fn a_failing_pull_never_holds_back_the_conversation() {
     let path = socket_path("pullfail");
     let pulls = Arc::new(AtomicUsize::new(0));
     let counter = pulls.clone();
-    let fake = FakeBus::start(&path, move |method, _, _| match method {
+    let fake = FakeBus::start(&path, move |method, _, body| match method {
         // As a receive that tried to download an attachment and failed.
         "message.receive" => {
             counter.fetch_add(1, Ordering::SeqCst);
@@ -44,6 +43,14 @@ fn a_failing_pull_never_holds_back_the_conversation() {
                 "ValidationFailed",
                 "local bus error: relay object download failed".to_owned(),
             )
+        }
+        "message.read" if body.get("after_sequence").is_some() => {
+            let page = messages(counter.fetch_add(1, Ordering::SeqCst) >= 2);
+            let changes: Vec<Value> =
+                page["messages"].as_array().into_iter().flatten().take(1).cloned().collect();
+            Reply::Ok(json!({ "schema": page["schema"], "conversation_id": "dm-ana",
+                              "changes": changes, "next_after": 3, "more": false,
+                              "snapshot_sequence": 3 }))
         }
         "message.read" => Reply::Ok(messages(counter.fetch_add(1, Ordering::SeqCst) >= 2)),
         _ => fixture(method),
@@ -77,40 +84,5 @@ fn a_failing_pull_never_holds_back_the_conversation() {
         "desktop never pulls from the node"
     );
     assert!(seen.iter().filter(|s| s.method == "message.read").count() >= 2);
-    fake.shutdown();
-}
-
-#[test]
-fn an_object_appears_when_the_directory_lists_it_without_touching_the_conversation() {
-    let path = socket_path("objlater");
-    let polls = Arc::new(AtomicUsize::new(0));
-    let counter = polls.clone();
-    let fake = FakeBus::start(&path, move |method, _, _| match method {
-        "object.directory" => {
-            let mut frame = frames()[method].clone();
-            if counter.fetch_add(1, Ordering::SeqCst) < 2 {
-                frame["objects"]
-                    .as_array_mut()
-                    .expect("rows")
-                    .retain(|r| r["id"] != "attachment:m1:0");
-            }
-            Reply::Ok(frame)
-        }
-        _ => fixture(method),
-    });
-    fake.enable_stream();
-    let hub = hub(&path);
-    let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
-    account.source.focus(Some(&ContextId::new("dm-ana")));
-    account.until("messages", |s, _| s.moment(&MomentId::new("msg:dm-ana:m1")).is_some());
-    let object = ObjectId::new("attachment:m1:0");
-    account.until("stream", |_, _| fake.streaming("acct-main"));
-    account.settle(50);
-    fake.publish("acct-main", "object.changed", json!({"id":"attachment:m1:0"}));
-    account.until("the object, listed later", |s, _| {
-        s.object(&object).is_some_and(|o| o.transfer == TransferState::Complete)
-    });
-    assert!(account.store.rejections().is_empty(), "{:?}", account.store.rejections());
-    assert!(account.store.failures().is_empty());
     fake.shutdown();
 }

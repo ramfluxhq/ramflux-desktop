@@ -120,6 +120,7 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::PullObject { .. } => "PullObject",
         IntentKind::SaveObject { .. } => "SaveObject",
         IntentKind::RetryTransfer { .. } => "RetryTransfer",
+        IntentKind::CancelTransfer { .. } => "CancelTransfer",
         IntentKind::Governance { .. } => "Governance",
         IntentKind::RevokeGrant { .. } => "RevokeGrant",
         IntentKind::RevokeStandingApproval { .. } => "RevokeStandingApproval",
