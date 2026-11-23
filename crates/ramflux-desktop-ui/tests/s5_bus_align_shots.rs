@@ -9,7 +9,7 @@ fn main() {
 }
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn main() {
-    panic!("headless renderer required for bus alignment screenshots");
+    println!("bus alignment shots: skipped; GPUI has no headless renderer on this platform");
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -131,9 +131,10 @@ mod shots {
         }
     }
     pub fn run() {
-        let out = std::env::var_os("RAMFLUX_SHOTS_DIR")
-            .map(PathBuf::from)
-            .expect("RAMFLUX_SHOTS_DIR required");
+        let Some(out) = std::env::var_os("RAMFLUX_SHOTS_DIR").map(PathBuf::from) else {
+            println!("bus alignment shots: skipped; set RAMFLUX_SHOTS_DIR to the output directory");
+            return;
+        };
         let locale = std::env::var("RAMFLUX_SHOTS_LOCALE").unwrap_or_else(|_| "en".into());
         assert!(matches!(locale.as_str(), "en" | "zh-CN"));
         std::fs::create_dir_all(&out).expect("output directory");
