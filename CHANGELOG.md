@@ -7,6 +7,37 @@ Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- The first-run test for a daemon left behind by a crash no longer fails
+  intermittently ("missing ElementId launch-socket"): it waits until the
+  daemon's listings have routed the window before it opens Settings, so a
+  late listing can no longer close Settings while the test scrolls it.
+- The SDK calls tests wait on the bridge's completion notification instead of
+  sampling every 15 ms, and no longer expect an exact number of `call.list`
+  reads, which a recovery epoch on a loaded machine can exceed.
+
+### Changed
+
+- Production code may not unwrap, expect, panic or take `std::sync` locks:
+  workspace lints (`unsafe_code` forbidden, `dbg!` and `todo!` denied) and a
+  deny in each crate root enforce it; a conventions test keeps every crate
+  wired. The media rebind tag takes its HMAC key without a fallible call.
+- The remaining `std::sync::Mutex` uses in production code (source wake,
+  media engine and playback queue, app log, bus trace) are `parking_lot`
+  locks.
+- The demo scenarios, the mock source and the developer panel are behind the
+  `demo` cargo feature (on by default for development and tests).
+  `scripts/package-macos.sh` builds without it, so a packaged app carries no
+  mock data and always runs on a daemon.
+- CI checks the release configuration (no `demo` feature, no
+  `ramflux-desktop-test` dependency), the licence header of every source
+  file, and the DCO sign-off of the commits a pull request adds (earlier
+  history is left as it is).
+- README, data contract and demo checklist describe the current crates and
+  layers; the demo checklist records where the daemon log and unlock findings
+  stand.
+
 ## [0.2.6] - 2026-11-23
 
 - Align release metadata with product version 0.2.6.

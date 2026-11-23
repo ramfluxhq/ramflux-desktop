@@ -11,10 +11,13 @@ crates live in `ramfluxhq/ramflux` and are consumed as Git dependencies.
 ## Layout
 
 ```text
-apps/ramflux-desktop          application entrypoint
-crates/ramflux-desktop-core   models and local bus bridge (no GPUI types)
-crates/ramflux-desktop-ui     GPUI Kit views, panels, theme
-crates/ramflux-desktop-test   mock local bus and fixtures
+apps/ramflux-desktop                application entrypoint (source choice, logging, window)
+crates/ramflux-desktop-core         pure model: Store, events, intents, policy, selectors (no GPUI, async or SDK)
+crates/ramflux-desktop-sdk          bus bridge: the only tokio runtime, event streams, planners, translators, local files, daemon process
+crates/ramflux-desktop-ui           GPUI Kit views, shell, entry, workspace, settings, i18n, app glue (src/app)
+crates/ramflux-desktop-navigation   theme registry, palette, row text helpers, generated catalog
+crates/ramflux-desktop-media        voice call engine (Opus, SFrame, jitter buffer, relay, audio devices)
+crates/ramflux-desktop-test         demo scenarios and mock source; fake daemon and live-daemon helpers for tests
 ```
 
 ## Requirements
@@ -30,8 +33,23 @@ installation guide.
 cargo fmt --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
-cargo run
+cargo run                          # debug: plays the demo scenarios
+cargo run -- --source rfd          # on the local daemon
 ```
+
+Production code may not unwrap, expect, panic or take `std::sync` locks; the
+workspace lints and each crate root enforce it (tests may). See the comment
+on `[workspace.lints]` in `Cargo.toml`.
+
+### Demo scenarios
+
+The scripted scenarios (`fixtures/scenarios`), the mock source that plays
+them and the developer panel are behind the `demo` cargo feature. It is on by
+default for development and tests, so `cargo run` and `cargo test` work as
+before. Release packaging leaves it out: `scripts/package-macos.sh` builds
+with `cargo build --release --locked -p ramflux-desktop --no-default-features`,
+so a packaged app has no mock data and always runs on a daemon. CI checks that
+configuration and that it does not depend on `ramflux-desktop-test`.
 
 Live tests against a real `rf daemon` (no node needed) are ignored by
 default. Install `rf` from the product revision pinned in `Cargo.lock`, then:

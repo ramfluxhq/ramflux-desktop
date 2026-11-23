@@ -10,9 +10,10 @@ extended. The UI does not fall back to the SDK's current shape.
 
 ```text
 ramflux-desktop-ui    views: render selector output, emit UiEvent, hold view-local state only
-ramflux-desktop-app   GPUI glue: owns the Store, maps UiEvent -> Intent, hands Effects to a Source
+  src/app/            GPUI glue: owns the Store, maps UiEvent -> Intent, hands Effects to a Source
 ramflux-desktop-core  pure Rust: model, events, Store, selectors, intent policy, Source trait
-Source                MockSource (scenarios) or an SDK-backed source
+Source                SdkSource (ramflux-desktop-sdk, over the daemon's local bus) or
+                      MockSource (ramflux-desktop-test, scenarios; feature `demo` only)
 ```
 
 Data flows in one direction:
@@ -25,7 +26,7 @@ UiEvent -> Intent -> Effect -> Source -> EventEnvelope -> Store -> selectors -> 
 |---|---|
 | R1 | `Store::apply` is the only writer. It applies `EventEnvelope`s and nothing else. |
 | R2 | The flow above is one-way. Intent handling never mutates the store. |
-| R3 | Core has no GPUI, async runtime, or SDK dependency (only `serde`, `serde_json`, `thiserror`). |
+| R3 | Core has no GPUI, async runtime, or SDK dependency (only `serde`, `serde_json`, `thiserror`, `zeroize`, `unicode-normalization` and `parking_lot`). |
 | R4 | View-local state (expanded, hover, scroll) never enters the store. |
 | R5 | Optimistic UI uses only a `Pending` moment, which a later event confirms or rolls back. |
 | R6 | Humans and agents share one pipeline. Every `Intent` records who proposed it (`proposed_by: Actor`) and, after a confirmation, that the human confirmed it (`confirmed_by`). |
