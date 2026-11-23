@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Span Brain
+#
+# Maintainer: Span Brain <placeholder: set before the first AUR submission>
+#
+# Prebuilt Ramflux Desktop from the GitHub release archives built by
+# .github/workflows/release-linux.yml (scripts/package-linux.sh). Before a
+# submission: set pkgver to the released version, copy both checksums from
+# that release's SHA256SUMS, regenerate .SRCINFO with
+# `makepkg --printsrcinfo > .SRCINFO`, and run `namcap` on the PKGBUILD and
+# the built package. `depends` must match what `ldd` and `namcap` report for
+# the released binary (see docs/linux.md, "Package dependencies").
+
+pkgname=ramflux-desktop-bin
+_pkgname=ramflux-desktop
+pkgver=0.2.6
+pkgrel=1
+pkgdesc="Desktop client of Ramflux: end-to-end encrypted messaging and agents"
+arch=('x86_64' 'aarch64')
+url="https://github.com/ramfluxhq/ramflux-desktop"
+license=('AGPL-3.0-or-later')
+depends=(
+  'alsa-lib'
+  'fontconfig'
+  'freetype2'
+  'gcc-libs'
+  'glibc'
+  'hicolor-icon-theme'
+  'libxcb'
+  'libxkbcommon'
+  'libxkbcommon-x11'
+  'vulkan-icd-loader'
+  'wayland'
+)
+optdepends=(
+  'ramflux-cli-bin: the rf daemon the desktop connects to, and rf-tui'
+  'gnome-keyring: Secret Service for keys, once the daemon uses it'
+  'xdg-desktop-portal: native file dialogs and light/dark following'
+  'vulkan-driver: GPU rendering (otherwise a GLES fallback is tried)'
+)
+provides=("${_pkgname}")
+conflicts=("${_pkgname}")
+# The release binary is already stripped; the archive carries no debug info.
+options=('!strip' '!debug')
+source_x86_64=("${url}/releases/download/v${pkgver}/${_pkgname}-${pkgver}-linux-x86_64.tar.gz")
+source_aarch64=("${url}/releases/download/v${pkgver}/${_pkgname}-${pkgver}-linux-aarch64.tar.gz")
+# From the release's SHA256SUMS; makepkg refuses the placeholders on purpose.
+sha256sums_x86_64=('REPLACE_WITH_SHA256_OF_THE_X86_64_ARCHIVE')
+sha256sums_aarch64=('REPLACE_WITH_SHA256_OF_THE_AARCH64_ARCHIVE')
+
+package() {
+  cd "${srcdir}/${_pkgname}-${pkgver}-linux-${CARCH}"
+  install -Dm755 usr/bin/ramflux-desktop "${pkgdir}/usr/bin/ramflux-desktop"
+  install -Dm644 usr/share/applications/org.ramflux.desktop.desktop \
+    "${pkgdir}/usr/share/applications/org.ramflux.desktop.desktop"
+  install -Dm644 usr/share/metainfo/org.ramflux.desktop.metainfo.xml \
+    "${pkgdir}/usr/share/metainfo/org.ramflux.desktop.metainfo.xml"
+  local icon
+  for icon in usr/share/icons/hicolor/*/apps/org.ramflux.desktop.*; do
+    install -Dm644 "${icon}" "${pkgdir}/${icon}"
+  done
+  local notice
+  for notice in usr/share/licenses/${_pkgname}/* usr/share/licenses/${_pkgname}/licenses/*; do
+    [[ -f "${notice}" ]] || continue
+    install -Dm644 "${notice}" \
+      "${pkgdir}/usr/share/licenses/${pkgname}/${notice#usr/share/licenses/${_pkgname}/}"
+  done
+}
