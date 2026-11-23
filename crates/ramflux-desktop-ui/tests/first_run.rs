@@ -19,6 +19,8 @@ mod harness;
 mod stand_in;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use common::*;
@@ -248,6 +250,26 @@ fn visible(
     in_window(cx, handle, |window, _| window.try_find(id).is_some_and(|e| e.visible()))
 }
 
+/// Waits until the daemon is attached and the shell has settled on the
+/// page its listings route to. Settings is an overlay that closes on any
+/// route change away from the workspace, and the account and node listings
+/// land after `Connected`: opening Settings before they did lets a late
+/// listing close it under the test (see
+/// `a_daemon_left_behind_by_a_slow_daemon_is_offered_and_stopped_gracefully`).
+/// The sync group of Diagnostics is shown once the account's sync status is
+/// known, so waiting for it too keeps the page's group list fixed.
+fn wait_settled(cx: &mut TestAppContext, shell: &Entity<Shell>) {
+    wait(cx, "attached and listed", |cx| {
+        let settled = with_store(cx, shell, |s| {
+            s.source_status() == SourceStatus::Connected
+                && s.accounts().next().is_some()
+                && s.nodes().next().is_some()
+                && s.sync_status().is_some()
+        });
+        settled && page(cx, shell) == Page::Workspace
+    });
+}
+
 /// Opens Settings › Diagnostics and scrolls to the local daemon group.
 fn open_diagnostics(
     cx: &mut TestAppContext,
@@ -259,45 +281,90 @@ fn open_diagnostics(
     });
     advance(cx, 50);
     for _ in 0..12 {
+        assert!(cx.update(|cx| shell.read(cx).is_settings_open()), "settings stays open");
         if visible(cx, handle, "launch-daemon-status") {
             return;
         }
         // The wheel lands on the anchor's center. An anchor scrolled mostly
         // under the page header still counts as visible while its center is
         // outside the list, so the lowest anchor shown is the one scrolled at.
+        // The anchor is chosen and scrolled in one frame: no task runs in
+        // between, so it cannot leave the tree before the wheel lands.
         let anchors = ["diagnostics-preview", "renderer-profile", "launch-socket", "launch-save"];
-        let anchor = in_window(cx, handle, |window, _| {
+        let scrolled = in_window(cx, handle, |window, cx| {
             let bottom = window.viewport_size().height;
-            anchors.into_iter().rev().find(|id| {
+            let anchor = anchors.into_iter().rev().find(|id| {
                 window.try_find(*id).is_some_and(|e| e.visible() && e.bounds().center().y < bottom)
-            })
+            });
+            if let Some(anchor) = anchor {
+                let delta = ScrollDelta::Pixels(point(px(0.), px(-300.)));
+                window.scroll(anchor, delta, cx);
+            }
+            anchor.is_some()
         });
-        let Some(anchor) = anchor else { return };
-        in_window(cx, handle, |window, cx| {
-            let delta = ScrollDelta::Pixels(point(px(0.), px(-300.)));
-            window.scroll(anchor, delta, cx);
-        });
+        if !scrolled {
+            return;
+        }
         advance(cx, 50);
     }
 }
 
 fn answering_daemon(socket: &Path) -> FakeBus {
+    answering_daemon_gated(socket, Arc::new(AtomicBool::new(true)))
+}
+
+/// A daemon that answers `node.list` and `account.list` only once `open`
+/// is set: a daemon that is attached (`Connected`) but slow to list, as on
+/// a loaded machine, deterministically.
+fn answering_daemon_gated(socket: &Path, open: Arc<AtomicBool>) -> FakeBus {
     let frames = daemon_frames();
-    FakeBus::start(socket, move |method, _, _| match method {
-        "daemon.stop" => Reply::Ok(serde_json::json!({ "stopping": true })),
-        _ => Reply::Ok(frames.get(method).cloned().unwrap_or_else(|| serde_json::json!({}))),
+    FakeBus::start(socket, move |method, _, _| {
+        if matches!(method, "node.list" | "account.list") {
+            let limit = std::time::Instant::now() + common::WAIT_LIMIT;
+            while !open.load(Ordering::SeqCst) && std::time::Instant::now() < limit {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        match method {
+            "daemon.stop" => Reply::Ok(serde_json::json!({ "stopping": true })),
+            _ => Reply::Ok(frames.get(method).cloned().unwrap_or_else(|| serde_json::json!({}))),
+        }
     })
 }
 
 fn a_daemon_left_behind_by_a_crash_is_offered_and_stopped_gracefully(cx: &mut TestAppContext) {
-    let fx = Fixture::new("left");
+    left_behind_daemon_is_offered_and_stopped_gracefully(cx, "left", false);
+}
+
+/// The same with listings that land well after the daemon is attached: the
+/// interleaving behind the old intermittent "missing ElementId
+/// launch-socket", where a late listing changed the route and closed
+/// Settings between two frames of the scroll.
+fn a_daemon_left_behind_by_a_slow_daemon_is_offered_and_stopped_gracefully(
+    cx: &mut TestAppContext,
+) {
+    left_behind_daemon_is_offered_and_stopped_gracefully(cx, "left-slow", true);
+}
+
+fn left_behind_daemon_is_offered_and_stopped_gracefully(
+    cx: &mut TestAppContext,
+    name: &str,
+    slow_listing: bool,
+) {
+    let fx = Fixture::new(name);
     fx.owned().record(&OwnedDaemon { pid: 4242, socket: fx.socket() });
-    let fake = answering_daemon(&fx.socket());
+    let listing = Arc::new(AtomicBool::new(!slow_listing));
+    let fake = answering_daemon_gated(&fx.socket(), listing.clone());
     let (handle, shell) = open_with(cx, fx.options(None, LaunchStore::in_memory()));
     let launcher = launcher(cx, &shell);
     wait(cx, "attached", |cx| {
         with_store(cx, &shell, |s| s.source_status() == SourceStatus::Connected)
     });
+    if slow_listing {
+        assert_ne!(page(cx, &shell), Page::Workspace, "attached, not listed yet");
+        listing.store(true, Ordering::SeqCst);
+    }
+    wait_settled(cx, &shell);
     assert_eq!(cx.update(|cx| launcher.read(cx).left_behind(cx)), Some(4242));
     assert!(cx.update(|cx| launcher.read(cx).can_stop(cx)), "Stop is offered");
     open_diagnostics(cx, handle, &shell);
@@ -320,9 +387,7 @@ fn a_daemon_the_user_started_is_never_offered_for_stopping(cx: &mut TestAppConte
     let fake = answering_daemon(&fx.socket());
     let (handle, shell) = open_with(cx, fx.options(None, LaunchStore::in_memory()));
     let launcher = launcher(cx, &shell);
-    wait(cx, "attached", |cx| {
-        with_store(cx, &shell, |s| s.source_status() == SourceStatus::Connected)
-    });
+    wait_settled(cx, &shell);
     assert_eq!(cx.update(|cx| launcher.read(cx).left_behind(cx)), None);
     assert!(!cx.update(|cx| launcher.read(cx).can_stop(cx)));
     open_diagnostics(cx, handle, &shell);
@@ -353,6 +418,10 @@ const TESTS: &[harness::Test] = &[
     (
         "a_daemon_left_behind_by_a_crash_is_offered_and_stopped_gracefully",
         a_daemon_left_behind_by_a_crash_is_offered_and_stopped_gracefully,
+    ),
+    (
+        "a_daemon_left_behind_by_a_slow_daemon_is_offered_and_stopped_gracefully",
+        a_daemon_left_behind_by_a_slow_daemon_is_offered_and_stopped_gracefully,
     ),
     (
         "a_daemon_the_user_started_is_never_offered_for_stopping",
