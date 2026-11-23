@@ -5,12 +5,10 @@
 //! contacts dock with messages both ways, and an attachment sent with the
 //! composer's attach button.
 
-use ramflux_desktop_core::{
-    ContactLink, ContextId, Direction, ParticipantId, SafetyState, TransferState,
-};
+use ramflux_desktop_core::{ContactLink, ContextId, ParticipantId, SafetyState};
 
 use super::setup::short;
-use super::{Demo, probe};
+use super::{Demo, files, probe};
 use crate::rehearsal::daemon::DemoDaemon;
 use crate::rehearsal::host::Host;
 use crate::rehearsal::steps::Notes;
@@ -104,7 +102,7 @@ pub fn contacts<H: Host, D: DemoDaemon>(
 /// Shows side `ix`'s own contact card in its contacts dock and returns the
 /// card as the desktop shows it (its link when the card text spans lines,
 /// which one field cannot hold).
-fn shown_card<H: Host, D: DemoDaemon>(
+pub(super) fn shown_card<H: Host, D: DemoDaemon>(
     demo: &mut Demo<'_, H, D>,
     ix: usize,
     notes: &mut Notes,
@@ -334,153 +332,73 @@ fn see<H: Host, D: DemoDaemon>(
     .map(drop)
 }
 
-/// Step 6: Alice attaches a file with the composer's attach button: the
-/// file is checked and staged, then sent. While it travels her message
-/// shows it as transferring; then her objects list it as sent and Bob sees
-/// the message. Bob's copy is reported as it is: the daemon does not fetch a
-/// received attachment yet, so nothing is shown as available.
+/// Step 6: files both ways: Alice sends Bob a file and Bob sends Alice an
+/// image, each with the composer's attach button (prepared media: the file
+/// is streamed into the daemon, then sent); each receiver presses Download
+/// on the received file and the downloaded bytes must be the ones sent.
+/// The fake daemon has no prepared-media API: there the step says so.
 pub fn attachment<H: Host, D: DemoDaemon>(
     demo: &mut Demo<'_, H, D>,
     notes: &mut Notes,
 ) -> Result<(), String> {
+    if demo.config.limits.fetch.is_none() {
+        notes.add("not run: the fake daemon has no prepared-media API (attachment.prepare.*)");
+        return Ok(());
+    }
     let context = demo.conversation.clone();
-    let limit = demo.config.limits.answer;
-    let name = format!("rehearsal-{}.txt", demo.config.run_id);
-    let path = demo.work.join(&name);
-    let bytes: Vec<u8> =
-        (0..8192_u32).map(|i| b"ramflux demo attachment\n"[i as usize % 24]).collect();
-    std::fs::write(&path, &bytes).map_err(|e| format!("cannot write the attachment: {e}"))?;
-    let before = demo.read(1, |s| s.context_moment_count(&context))?;
-    let desk = demo.sides[0].desk()?;
-    desk.show_context(demo.host, &context)?;
-    let chosen = desk.attach_file(demo.host, &path)?;
-    if !desk.exists(demo.host, "composer-attachment") {
-        return Err("the chosen file is not staged in the composer".to_owned());
-    }
-    if let Some(detail) = desk.label(demo.host, "composer-attachment") {
-        notes.add(format!("staged: {detail}"));
-    }
-    demo.shots(0, "06_attach_staged", notes)?;
-    let desk = demo.sides[0].desk()?;
-    desk.click(demo.host, None, "composer-send")?;
-    notes.add(format!("attached with the composer's attach button ({chosen})"));
-    let wanted = name.clone();
-    demo.wait(0, limit, "the sent attachment", |desk, host| {
-        desk.store(host, |s| {
-            s.objects().any(|o| {
-                o.direction == Direction::Outbound
-                    && o.name.as_deref() == Some(wanted.as_str())
-                    && !matches!(o.transfer, TransferState::Transferring { .. })
-            })
-        })
-    })?;
-    let sent = demo.read(0, |s| {
-        s.objects()
-            .find(|o| {
-                o.direction == Direction::Outbound && o.name.as_deref() == Some(name.as_str())
-            })
-            .map(|o| (o.transfer.clone(), o.size))
-    })?;
-    if let Some((TransferState::Failed { reason }, _)) = &sent {
-        return Err(format!("Alice's attachment failed: {reason}"));
-    }
-    notes.add(format!("Alice: {name} listed as sent ({sent:?})"));
-    demo.wait(1, limit, "the attachment's message", |desk, host| {
-        desk.store(host, |s| s.context_moment_count(&context) > before)
-    })?;
-    notes.add("Bob: the message arrived");
-    if let Some(fetch) = limits_fetch(demo) {
-        received(demo, &name, &bytes, fetch, notes)?;
-    } else {
-        let received = demo.read(1, |s| {
-            s.objects()
-                .filter(|o| o.direction == Direction::Inbound)
-                .map(|o| o.transfer.clone())
-                .collect::<Vec<_>>()
-        })?;
-        if received.contains(&TransferState::Complete) {
-            notes.add("Bob: an incoming object is listed as available; compare its bytes by hand");
-        } else {
+    let run = demo.config.run_id.clone();
+    let (file, file_bytes) =
+        files::text_file(&demo.work, &format!("rehearsal-{run}.txt"), 700 * 1024)?;
+    let (image, image_bytes) = files::image_file(&demo.work, &format!("rehearsal-{run}.png"))?;
+    for (from, to, path, bytes) in [(0, 1, &file, &file_bytes), (1, 0, &image, &image_bytes)] {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_owned();
+        if let Err(error) = files::send_file(demo, from, &context, path, notes) {
+            if !error.contains("backend.media.no_home") {
+                return Err(error);
+            }
+            // The honest "not sent": no home node is pinned for the
+            // contact (added by answering a request). The sender adds the
+            // contact's card, as the row offers, and retries.
             notes.add(format!(
-                "Bob: attachment not fetched ({} incoming objects listed; the daemon cannot \
-                 fetch a received attachment yet)",
-                received.len()
+                "{}: {name} not sent, shown with its reason ({error})",
+                demo.sides[from].name
+            ));
+            demo.shots(from, "06_not_sent_no_home", notes)?;
+            let card = shown_card(demo, to, notes)?;
+            let desk = demo.sides[from].desk()?;
+            if !desk.exists(demo.host, "contact-add-id") {
+                desk.click(demo.host, None, "rail-contacts")?;
+            }
+            desk.type_into(demo.host, "contact-add-id", &card)?;
+            desk.click(demo.host, None, "contact-add")?;
+            let mut note = None;
+            let pause = std::time::Instant::now();
+            while pause.elapsed() < std::time::Duration::from_secs(5) {
+                demo.host.tick();
+                note = demo.sides[from].desk()?.label(demo.host, "contact-add-note");
+            }
+            notes.add(format!(
+                "{} added {}'s contact card to pin the home node; the form said: {note:?}",
+                demo.sides[from].name, demo.sides[to].name
+            ));
+            files::retry_file(demo, from, &context, &name, notes)?;
+        }
+        demo.shots(from, &format!("06_sent_{}", if from == 0 { "file" } else { "image" }), notes)?;
+        let got = files::receive_file(demo, to, &context, &name, notes)?;
+        if &got != bytes {
+            return Err(format!(
+                "{name}: {} downloaded {} bytes that differ from the {} sent",
+                demo.sides[to].name,
+                got.len(),
+                bytes.len()
             ));
         }
+        notes.add(format!("{}: {name} identical to what was sent", demo.sides[to].name));
+        demo.shots(
+            to,
+            &format!("06_received_{}", if from == 0 { "file" } else { "image" }),
+            notes,
+        )?;
     }
-    demo.shots(0, "06_attachment", notes)?;
-    demo.shots(1, "06_attachment", notes)?;
-    Ok(())
-}
-
-fn limits_fetch<H: Host, D: DemoDaemon>(demo: &Demo<'_, H, D>) -> Option<std::time::Duration> {
-    demo.config.limits.fetch
-}
-
-/// Live: Bob's desktop must list the attachment as received (its daemon
-/// fetched it), and the bytes must be the ones Alice sent: read from where
-/// the desktop says it was saved, else fetched with `rf object get` from
-/// Bob's daemon (noted).
-fn received<H: Host, D: DemoDaemon>(
-    demo: &mut Demo<'_, H, D>,
-    name: &str,
-    sent: &[u8],
-    limit: std::time::Duration,
-    notes: &mut Notes,
-) -> Result<(), String> {
-    let inbound = |s: &ramflux_desktop_core::Store| {
-        s.objects()
-            .filter(|o| o.direction == Direction::Inbound)
-            .map(|o| {
-                (o.id.to_string(), o.name.clone(), o.size, o.transfer.clone(), o.saved_to.clone())
-            })
-            .collect::<Vec<_>>()
-    };
-    let waited = demo.wait(1, limit, "the received attachment", |desk, host| {
-        desk.store(host, |s| {
-            s.objects()
-                .any(|o| o.direction == Direction::Inbound && o.transfer == TransferState::Complete)
-        })
-    });
-    let listed = demo.read(1, inbound)?;
-    notes.add(format!("Bob: incoming objects {listed:?}"));
-    if waited.is_err() {
-        return Err(format!(
-            "Bob's desktop never listed the attachment as received within {limit:?}: {listed:?}"
-        ));
-    }
-    let Some((id, _, _, _, saved)) =
-        listed.iter().find(|o| o.3 == TransferState::Complete).cloned()
-    else {
-        return Err("no complete incoming object".to_owned());
-    };
-    let got = if let Some(path) = saved.as_deref().filter(|p| std::path::Path::new(p).exists()) {
-        notes.add(format!("Bob: read the attachment from where the desktop saved it ({path})"));
-        std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?
-    } else {
-        let bob = demo.sides[1].facts()?.account.clone();
-        let out = demo.work.join(format!("received-{name}"));
-        let out_text = out.display().to_string();
-        let answer = demo.sides[1].daemon.cli(&[
-            "object",
-            "get",
-            &format!("--account={bob}"),
-            &format!("--object={id}"),
-            &out_text,
-        ])?;
-        notes.add(format!(
-            "Bob: no saved path shown; bytes read with rf object get from Bob's daemon ({})",
-            answer.get("status").or_else(|| answer.get("state")).cloned().unwrap_or_default()
-        ));
-        std::fs::read(&out).map_err(|e| format!("cannot read {}: {e}", out.display()))?
-    };
-    if got != sent {
-        return Err(format!(
-            "Bob's attachment {id} differs from what Alice sent ({} bytes vs {})",
-            got.len(),
-            sent.len()
-        ));
-    }
-    notes.add(format!("Bob: attachment {id} received, {} bytes identical", got.len()));
     Ok(())
 }

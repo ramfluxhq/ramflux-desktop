@@ -16,8 +16,13 @@
 //! RAMFLUX_DEMO_NODE_KEY=<the node public key, or its fingerprint> \
 //! RAMFLUX_RF_BIN=/path/to/bin/rf \
 //! RAMFLUX_DEMO_SHOTS_DIR=/some/dir \
+//! RAMFLUX_DEMO_PEERS=/path/to/peers.json \
 //!   cargo test -p ramflux-desktop-ui --test demo_rehearsal
 //! ```
+//!
+//! With `RAMFLUX_DEMO_PEERS` (the node's list of command-line test peers)
+//! the run continues with Alice's desktop and those peers (steps 20 to 24,
+//! see `rehearsal::flow::peers`).
 //!
 //! Accounts created on the node are demo data and stay there; nothing on
 //! the node is removed. The daemons and their folders are removed at the
@@ -113,6 +118,10 @@ mod live {
         for daemon in [&alice, &bob] {
             println!("daemon dir {}", daemon.dir().display());
         }
+        // A desktop closed after its daemon can write its settings there
+        // again: both folders are removed once everything is dropped.
+        let daemon_dirs: Vec<PathBuf> =
+            [&alice, &bob].iter().map(|d| d.dir().to_path_buf()).collect();
         let mut cx = HeadlessAppContext::with_platform(
             gpui_kit::platform::current_platform(true).text_system(),
             Arc::new(Assets),
@@ -132,7 +141,14 @@ mod live {
             Side::new("b", "Bob", bob).labelled(format!("rehearsal-bob-{run}")),
             work.0.clone(),
         );
-        let steps = flow::run_live(&mut demo);
+        let peers = flow::peers::Peer::from_env().unwrap_or_else(|e| panic!("peers: {e}"));
+        if peers.is_none() {
+            println!(
+                "node peer steps: skipped; set {} to the node's peers.json",
+                flow::peers::PEERS_ENV
+            );
+        }
+        let steps = flow::run_live(&mut demo, peers);
         let table = steps.markdown();
         println!("\n{table}");
         std::fs::write(dir.join("steps.md"), &table).expect("write the step table");
@@ -141,6 +157,9 @@ mod live {
         drop(cx);
         drop(taps);
         drop(work);
+        for dir in daemon_dirs {
+            let _ = std::fs::remove_dir_all(dir);
+        }
         assert!(steps.all_passed(), "the rehearsal did not pass every step");
     }
 }

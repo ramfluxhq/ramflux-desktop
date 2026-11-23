@@ -124,6 +124,16 @@ impl Desk {
         .flatten()
     }
 
+    /// The accessible label of the element `id` inside the element `scope`.
+    pub fn label_in(&self, host: &mut impl Host, scope: &str, id: &str) -> Option<String> {
+        let (scope, id) = (scope.to_owned(), id.to_owned());
+        host.window(self.handle.into(), move |window, _| {
+            window.within(scope).try_find(id).and_then(|e| e.label().map(str::to_owned))
+        })
+        .ok()
+        .flatten()
+    }
+
     /// Clicks the element `id` (inside the element `scope`, when given).
     pub fn click(&self, host: &mut impl Host, scope: Option<&str>, id: &str) -> Result<(), String> {
         self.scroll_into_view(host, scope, id)?;
@@ -176,6 +186,19 @@ impl Desk {
                 return Ok(());
             }
         }
+        Ok(())
+    }
+
+    /// Scrolls the shown conversation to its oldest loaded message, as a
+    /// reader dragging the scrollbar to the top.
+    pub fn scroll_conversation_to_top(&self, host: &mut impl Host) -> Result<(), String> {
+        let field = host.app(|cx| self.shell.read(cx).workspace().read(cx).conversation().clone());
+        host.window(self.handle.into(), move |_, cx| {
+            let scroller = field.read(cx).scroller().clone();
+            scroller.update(cx, |state, cx| {
+                let _ = state.scroll_to_item(0, cx);
+            });
+        })?;
         Ok(())
     }
 

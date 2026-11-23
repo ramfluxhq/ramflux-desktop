@@ -23,7 +23,9 @@
 
 pub mod call;
 mod evidence;
+mod files;
 mod group;
+pub mod peers;
 mod probe;
 mod reopen;
 mod resume;
@@ -238,7 +240,10 @@ pub fn run<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
 /// node adds (8: Bob's desktop quits and reopens and resumes from its
 /// stream cursor; 9: what the frame taps saw, polling off), then Alice's
 /// lock and daemon restart as step 10.
-pub fn run_live<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
+pub fn run_live<H: Host, D: DemoDaemon>(
+    demo: &mut Demo<'_, H, D>,
+    peers: Option<Vec<peers::Peer>>,
+) -> Steps {
     let mut steps = Steps::default();
     steps.run(1, "Two desktops attach to two daemons", &[], |n| setup::start(demo, n));
     steps.run(2, "Add the node by URL, check its key, confirm with one tap", &[1], |n| {
@@ -262,6 +267,30 @@ pub fn run_live<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
     steps.run(10, "Lock and unlock Alice; restart her daemon; history kept", &[5], |n| {
         resume::lock_and_restart(demo, n)
     });
+    if let Some(peers) = peers {
+        let mut run = peers::PeerRun { peers, conversation: None };
+        steps.run(20, "Add node peers from their contact cards; trust state shown", &[3], |n| {
+            peers::contacts(demo, &mut run, n)
+        });
+        steps.run(21, "Direct messages both ways with a node peer, live", &[20], |n| {
+            peers::messages(demo, &mut run, n)
+        });
+        steps.run(22, "An image and a file each way with a node peer", &[21], |n| {
+            peers::files_both_ways(demo, &mut run, n)
+        });
+        steps.run(
+            23,
+            "A group with both node peers from the desktop; messages both ways",
+            &[20],
+            |n| peers::group(demo, &mut run, n),
+        );
+        steps.run(24, "Settings account and devices pages with real data", &[3], |n| {
+            peers::settings(demo, n)
+        });
+        steps.run(25, "History: older messages paged on scroll after a reopen", &[21], |n| {
+            peers::history(demo, &mut run, n)
+        });
+    }
     steps
 }
 
