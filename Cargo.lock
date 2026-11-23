@@ -6622,6 +6622,8 @@ version = "0.2.6"
 dependencies = [
  "chrono",
  "gpui-kit",
+ "notify-rust",
+ "parking_lot",
  "qrcodegen",
  "ramflux-desktop-core",
  "ramflux-desktop-media",

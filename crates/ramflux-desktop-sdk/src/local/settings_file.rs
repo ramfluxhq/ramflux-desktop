@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use super::appearance::AppearanceSettings;
 use super::launch::LaunchSettings;
+use super::notifications::NotificationSettings;
 
 /// Schema of the settings file. Bump it on an incompatible change; new
 /// optional fields with defaults do not need a bump.
@@ -45,6 +46,9 @@ pub struct DesktopSettings {
     /// Theme and language choices of this device.
     #[serde(default, skip_serializing_if = "AppearanceSettings::is_empty")]
     pub appearance: AppearanceSettings,
+    /// How much operating-system notifications reveal on this device.
+    #[serde(default, skip_serializing_if = "NotificationSettings::is_empty")]
+    pub notifications: NotificationSettings,
     /// The last event-stream entry applied, per daemon socket and account
     /// (a sequence number, not content).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

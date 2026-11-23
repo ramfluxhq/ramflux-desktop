@@ -40,9 +40,11 @@ cargo install --git https://github.com/ramfluxhq/ramflux --rev <pinned rev> --lo
 
 ## 2. Start the daemon
 
-A packaged build always uses the local daemon and attaches to the socket of
-the reference CLI, `/tmp/ramflux/rfd.sock`. The app never starts a daemon by
-itself. Pick one:
+A packaged build always uses the local daemon and attaches to the platform's
+default socket: on macOS the socket of the reference CLI,
+`/tmp/ramflux/rfd.sock`; on Linux `$XDG_RUNTIME_DIR/ramflux/rfd.sock`, or the
+reference CLI's socket when a daemon already listens there (see
+[linux.md](linux.md)). The app never starts a daemon by itself. Pick one:
 
 - **Already running:** start it yourself, `rf daemon start` (add
   `--socket PATH --data-root DIR` to choose both). The app attaches as soon as
@@ -68,9 +70,9 @@ stops it.
 | Setting | Default | Applies |
 |---|---|---|
 | Use the local daemon (off: demo scenarios; only in builds with the `demo` feature) | on in release builds | next app start |
-| Daemon socket | `/tmp/ramflux/rfd.sock` | next app start |
+| Daemon socket | macOS `/tmp/ramflux/rfd.sock`; Linux `$XDG_RUNTIME_DIR/ramflux/rfd.sock` | next app start |
 | Daemon program (`rf`) | the one shipped in the app, else none | next daemon start |
-| Daemon data folder | `~/Library/Application Support/Ramflux Desktop/rfd-data` | next daemon start |
+| Daemon data folder | macOS `~/Library/Application Support/Ramflux Desktop/rfd-data`; Linux `$XDG_DATA_HOME/ramflux-desktop/rfd-data` | next daemon start |
 
 The same section shows the daemon state, the version (app, product revision,
 GPUI Kit), the log and settings file locations, the redacted diagnostics export

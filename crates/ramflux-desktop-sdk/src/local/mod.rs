@@ -7,7 +7,13 @@
 //!
 //! Everything here is plain `std`; no async runtime is involved.
 //!
-//! - [`paths`]: state, log and default data directories; the bundled daemon.
+//! - [`identity`]: the application id and names used by the platform.
+//! - [`platform_dirs`]: the operating system's per-user directories.
+//! - [`paths`]: settings, log and default data directories, the default
+//!   socket; the bundled daemon.
+//! - [`data_migration`]: the one-time copy of daemon data to the XDG data
+//!   directory.
+//! - [`notifications`]: how much operating-system notifications reveal.
 //! - [`settings_file`]: the versioned desktop settings file.
 //! - [`launch`]: source, socket, daemon binary and data directory choices.
 //! - [`appearance`]: theme and language choices of this device.
@@ -19,13 +25,18 @@
 pub mod app_log;
 pub mod appearance;
 pub mod daemon_process;
+pub mod data_migration;
+pub mod identity;
 pub mod launch;
+pub mod notifications;
 pub mod owned_daemon;
 pub mod paths;
+pub mod platform_dirs;
 pub mod settings_file;
 
 pub use appearance::{AppearanceSettings, AppearanceStore, FOLLOW_SYSTEM};
 pub use daemon_process::{DaemonCommand, DaemonProcess, LaunchError};
 pub use launch::{DaemonBinary, LaunchSettings, LaunchStore, SourceKind};
+pub use notifications::{NotificationSettings, NotificationStore, PreviewLevel};
 pub use owned_daemon::{OwnedDaemon, OwnedDaemonFile};
 pub use settings_file::{DesktopSettings, SETTINGS_SCHEMA, SettingsError};

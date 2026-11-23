@@ -330,8 +330,8 @@ fn file_name(name: &str) -> String {
 
 /// The default location: the file name in the owner's home folder.
 fn home_location(file: &str) -> String {
-    match std::env::var_os("HOME") {
-        Some(home) => std::path::Path::new(&home).join(file).to_string_lossy().into_owned(),
+    match ramflux_desktop_sdk::local::paths::home_dir() {
+        Some(home) => home.join(file).to_string_lossy().into_owned(),
         None => file.to_owned(),
     }
 }
