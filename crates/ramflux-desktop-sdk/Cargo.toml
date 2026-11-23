@@ -14,6 +14,7 @@ bus-trace = []
 test-support = ["tokio/test-util"]
 
 [dependencies]
+parking_lot.workspace = true
 ramflux-crypto.workspace = true
 ramflux-protocol.workspace = true
 ramflux-desktop-core.workspace = true

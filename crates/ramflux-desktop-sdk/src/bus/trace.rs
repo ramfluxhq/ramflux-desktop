@@ -54,8 +54,10 @@ mod enabled {
     use super::*;
     use std::collections::{BTreeMap, VecDeque};
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::OnceLock;
     use std::time::Instant;
+
+    use parking_lot::Mutex;
 
     struct Ring {
         start: Instant,
@@ -81,7 +83,7 @@ mod enabled {
     }
 
     pub(super) fn record(socket: &Path, connection: &str, frame: &LocalBusFrame) {
-        let Ok(mut ring) = ring().lock() else { return };
+        let mut ring = ring().lock();
         let frame_class = match frame.method.as_str() {
             "subscription.open"
                 if frame
@@ -116,7 +118,7 @@ mod enabled {
 
     fn export_snapshot(path: &Path, sequence: u64, entries: &[Entry]) {
         static WRITTEN: OnceLock<Mutex<BTreeMap<PathBuf, u64>>> = OnceLock::new();
-        let Ok(mut written) = WRITTEN.get_or_init(Mutex::default).lock() else { return };
+        let mut written = WRITTEN.get_or_init(Mutex::default).lock();
         if written.get(path).is_some_and(|previous| *previous >= sequence) {
             return;
         }
@@ -165,7 +167,7 @@ mod enabled {
     }
 
     pub(super) fn after(socket: &Path, sequence: u64) -> Vec<(u64, Entry)> {
-        let Ok(ring) = ring().lock() else { return Vec::new() };
+        let ring = ring().lock();
         ring.entries
             .iter()
             .filter(|(seq, endpoint, _)| *seq > sequence && endpoint == socket)

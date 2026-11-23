@@ -23,10 +23,12 @@
 //! reports the counters and [`Engine::quality`] what the user is told.
 
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+
+use parking_lot::{Mutex, MutexGuard};
 
 use crate::codec::{Decoder, FRAME_MS, FRAME_SAMPLES, Frame};
 use crate::jitter::{JitterBuffer, JitterStats, Playout};
@@ -235,7 +237,7 @@ impl Engine {
 
     /// The counters so far.
     pub fn stats(&self) -> EngineStats {
-        let shared = self.shared.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let shared = self.shared.lock();
         let mut stats = shared.stats;
         stats.since_last_packet_ms = shared
             .last_packet
@@ -287,8 +289,8 @@ fn spawn(name: &str, f: impl FnOnce() + Send + 'static) -> std::io::Result<JoinH
     std::thread::Builder::new().name(name.to_owned()).spawn(f)
 }
 
-fn lock(shared: &Mutex<Shared>) -> std::sync::MutexGuard<'_, Shared> {
-    shared.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+fn lock(shared: &Mutex<Shared>) -> MutexGuard<'_, Shared> {
+    shared.lock()
 }
 
 struct SendLoop {
@@ -380,8 +382,7 @@ impl ReceiveLoop {
             match self.inbound.open(&buffer[..len]) {
                 Ok(received) => {
                     let arrival = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(0);
-                    let mut jitter =
-                        self.jitter.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let mut jitter = self.jitter.lock();
                     if peer_ssrc.replace(received.header.ssrc) != Some(received.header.ssrc) {
                         *jitter = JitterBuffer::new();
                     }
@@ -421,8 +422,7 @@ impl PlayoutLoop {
             }
             deadline += frame_time;
             let (playout, jitter_stats) = {
-                let mut jitter =
-                    self.jitter.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                let mut jitter = self.jitter.lock();
                 (jitter.pop(), jitter.stats())
             };
             let (frame, outcome) = match playout {

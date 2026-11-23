@@ -17,8 +17,10 @@
 use std::fs::File;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use parking_lot::Mutex;
 
 /// File name of the application log.
 pub const LOG_FILE: &str = "desktop.log";
@@ -103,7 +105,7 @@ pub fn write(level: &str, message: &str) {
     let line = format!("{} {level} {}", timestamp(), redact(message));
     eprintln!("{line}");
     let Some(log) = LOG.get() else { return };
-    let Ok(mut file) = log.file.lock() else { return };
+    let mut file = log.file.lock();
     let too_big =
         file.as_ref().and_then(|f| f.metadata().ok()).is_some_and(|m| m.len() > MAX_LOG_BYTES);
     if too_big {

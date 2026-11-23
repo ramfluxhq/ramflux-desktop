@@ -6548,6 +6548,7 @@ dependencies = [
 name = "ramflux-desktop-core"
 version = "0.2.6"
 dependencies = [
+ "parking_lot",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -6566,6 +6567,7 @@ dependencies = [
  "hkdf 0.13.0",
  "hmac 0.13.0",
  "opus",
+ "parking_lot",
  "ramflux-crypto",
  "ramflux-protocol",
  "sha2 0.11.1",
@@ -6586,6 +6588,7 @@ dependencies = [
 name = "ramflux-desktop-sdk"
 version = "0.2.6"
 dependencies = [
+ "parking_lot",
  "ramflux-crypto",
  "ramflux-desktop-core",
  "ramflux-desktop-test",
