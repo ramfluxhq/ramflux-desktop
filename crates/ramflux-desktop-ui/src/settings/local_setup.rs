@@ -239,7 +239,11 @@ fn setup_group(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Set
                 .into_any_element()
         })
     };
-    SettingGroup::new().title(tr("settings.launch.title")).item(source).item(paths)
+    let group = SettingGroup::new().title(tr("settings.launch.title"));
+    // Without the demo scenarios (release packaging) the daemon is the only
+    // source, so there is nothing to switch.
+    let group = if cfg!(feature = "demo") { group.item(source) } else { group };
+    group.item(paths)
 }
 
 fn daemon_status(context: &SectionContext, cx: &App) -> SharedString {

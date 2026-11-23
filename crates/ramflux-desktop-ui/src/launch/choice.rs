@@ -10,6 +10,10 @@
 //!
 //! A socket given on the command line or in the environment without a
 //! source there means the daemon.
+//!
+//! A build without the `demo` feature (release packaging) has no scenarios:
+//! a saved or default choice of them means the daemon, and asking for them
+//! on the command line or in the environment is an error.
 
 use ramflux_desktop_sdk::SdkConfig;
 use ramflux_desktop_sdk::local::{LaunchSettings, SourceKind};
@@ -68,6 +72,13 @@ pub fn resolve(overrides: &Overrides, settings: &LaunchSettings) -> Result<Sourc
             .ok_or_else(|| format!("unknown source: {name} (use mock or rfd)"))?,
         None if overrides.socket.is_some() => SourceKind::Rfd,
         None => settings.source_or_default(),
+    };
+    let kind = match kind {
+        SourceKind::Mock if !cfg!(feature = "demo") && overrides.source.is_some() => {
+            return Err("this build has no demo scenarios (use rfd)".to_owned());
+        }
+        SourceKind::Mock if !cfg!(feature = "demo") => SourceKind::Rfd,
+        kind => kind,
     };
     Ok(match kind {
         SourceKind::Mock => SourceChoice::Mock,

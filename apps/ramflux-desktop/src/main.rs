@@ -10,7 +10,9 @@
 //! The source comes from the flags, then `RAMFLUX_DESKTOP_SOURCE` and
 //! `RAMFLUX_DESKTOP_SOCKET`, then the launch settings saved in Settings ›
 //! Diagnostics, then the build: the bundled scenarios in debug builds, the
-//! local daemon at the reference CLI's socket in release builds.
+//! local daemon at the reference CLI's socket in release builds. Without the
+//! `demo` feature (release packaging) there are no scenarios: `mock` is
+//! refused and the daemon is the only source.
 //!
 //! The desktop attaches to a daemon that is already running. It never
 //! starts one by itself; the entry page offers "Start local daemon".

@@ -16,6 +16,7 @@ use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, div,
 };
 use ramflux_desktop_sdk::{SdkConfig, SdkHub};
+#[cfg(feature = "demo")]
 use ramflux_desktop_test::load_fixture;
 
 use crate::actions::{
@@ -26,6 +27,7 @@ use crate::actions::{
     ToggleEvidenceDock, ToggleMembersDock, ToggleObjectsDock, TogglePinContext, ToggleTheme,
 };
 use crate::app::{StoreEvent, StoreHandle};
+#[cfg(feature = "demo")]
 use crate::dev::DevPanel;
 use crate::entry::EntryPage;
 use crate::launch::{DaemonLauncher, LaunchOptions};
@@ -54,10 +56,14 @@ pub enum SourceChoice {
 }
 
 impl SourceChoice {
-    /// The default: scenarios in debug builds, the daemon at its default
-    /// socket in release builds.
+    /// The default: scenarios in debug builds with the `demo` feature, the
+    /// daemon at its default socket otherwise.
     pub fn default_for_build() -> Self {
-        if cfg!(debug_assertions) { Self::Mock } else { Self::Rfd(SdkConfig::default()) }
+        if cfg!(all(debug_assertions, feature = "demo")) {
+            Self::Mock
+        } else {
+            Self::Rfd(SdkConfig::default())
+        }
     }
 }
 
@@ -109,6 +115,7 @@ pub struct Shell {
     settings: Entity<SettingsPage>,
     palette: Entity<CommandPalette>,
     launcher: Entity<DaemonLauncher>,
+    #[cfg(feature = "demo")]
     dev: Option<Entity<DevPanel>>,
     dev_visible: bool,
     settings_open: bool,
@@ -189,11 +196,18 @@ impl Shell {
             let mut store = StoreHandle::new();
             store.set_wall_clock_anchor(options.wall_clock);
             match &options.source {
+                #[cfg(feature = "demo")]
                 SourceChoice::Mock => {
                     if let Ok(scenario) = load_fixture(&options.scenario) {
                         store.load_scenario(&scenario, cx);
                     }
                 }
+                // Not reached: without the scenarios the launch choice
+                // resolves to the daemon.
+                #[cfg(not(feature = "demo"))]
+                SourceChoice::Mock => ramflux_desktop_sdk::local::app_log::warn(
+                    "this build has no demo scenarios; nothing to show",
+                ),
                 SourceChoice::Rfd(config) => match SdkHub::start(config.clone()) {
                     Ok(hub) => store.attach_live(hub, cx),
                     // Without a bridge the entry page keeps waiting for the daemon.
@@ -221,6 +235,7 @@ impl Shell {
             .new(|cx| SettingsPage::new(store.clone(), root.clone(), launcher.clone(), window, cx));
         let palette =
             cx.new(|cx| CommandPalette::new(store.clone(), IntentRoot::sink(&root), window, cx));
+        #[cfg(feature = "demo")]
         let dev = cfg!(debug_assertions)
             .then(|| cx.new(|cx| DevPanel::new(store.clone(), workspace.downgrade(), cx)));
         let subscriptions = vec![
@@ -268,6 +283,7 @@ impl Shell {
             settings,
             palette,
             launcher,
+            #[cfg(feature = "demo")]
             dev,
             dev_visible: false,
             settings_open: false,
@@ -316,7 +332,8 @@ impl Shell {
         &self.launcher
     }
 
-    /// The developer panel, in debug builds.
+    /// The developer panel, in debug builds with the `demo` feature.
+    #[cfg(feature = "demo")]
     pub fn dev_panel(&self) -> Option<&Entity<DevPanel>> {
         self.dev.as_ref()
     }
@@ -329,6 +346,14 @@ impl Shell {
     /// Whether the developer panel is showing.
     pub fn is_dev_panel_visible(&self) -> bool {
         self.dev_visible
+    }
+
+    /// The developer panel when it is showing.
+    fn dev_panel_shown(&self) -> Option<gpui_kit::AnyView> {
+        #[cfg(feature = "demo")]
+        return self.dev.clone().filter(|_| self.dev_visible).map(Into::into);
+        #[cfg(not(feature = "demo"))]
+        None
     }
 
     /// Whether the settings overlay is showing.
@@ -391,10 +416,13 @@ impl Shell {
     }
 
     fn toggle_dev_panel(&mut self, _: &ToggleDevPanel, _: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(feature = "demo")]
         if self.dev.is_some() {
             self.dev_visible = !self.dev_visible;
             cx.notify();
         }
+        #[cfg(not(feature = "demo"))]
+        let _ = cx;
     }
 
     fn go_to_needs_me(&mut self, _: &GoToNeedsMe, window: &mut Window, cx: &mut Context<Self>) {
@@ -746,9 +774,7 @@ impl Render for Shell {
                             })
                             .when(self.palette_open, |area| area.child(self.palette.clone())),
                     )
-                    .when_some(self.dev.clone().filter(|_| self.dev_visible), |row, dev| {
-                        row.child(dev)
-                    }),
+                    .when_some(self.dev_panel_shown(), |row, dev| row.child(dev)),
             )
     }
 }

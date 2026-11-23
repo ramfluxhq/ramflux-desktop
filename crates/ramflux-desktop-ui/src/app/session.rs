@@ -23,6 +23,7 @@ use ramflux_desktop_core::{
     ContextId, Effect, EventEnvelope, Intent, IntentError, MomentId, Source, Store, Timestamp,
     handle_intent,
 };
+#[cfg(feature = "demo")]
 use ramflux_desktop_test::{MockSource, Scenario};
 
 use super::changes::ChangeSet;
@@ -54,7 +55,8 @@ pub enum DispatchOutcome {
 
 /// What feeds a session.
 enum Backing {
-    /// A scenario-playing mock with its own clock.
+    /// A scenario-playing mock with its own clock (feature `demo`).
+    #[cfg(feature = "demo")]
     Mock { scenario: String, source: Box<MockSource> },
     /// A live source on the wall clock.
     Live { label: String, source: Box<dyn Source> },
@@ -91,11 +93,13 @@ impl std::fmt::Debug for AccountSession {
 
 impl AccountSession {
     /// Creates a session at offset 0 with nothing applied.
+    #[cfg(feature = "demo")]
     pub fn new(scenario: &Scenario) -> Self {
         Self::with_epoch(scenario, scenario.epoch)
     }
 
     /// Creates a session whose offset 0 is `epoch` instead of the scenario's own.
+    #[cfg(feature = "demo")]
     pub fn with_epoch(scenario: &Scenario, epoch: Timestamp) -> Self {
         Self::start(Backing::Mock {
             scenario: scenario.name.clone(),
@@ -147,6 +151,7 @@ impl AccountSession {
     }
 
     /// The renderer profile the mock source received (`None` when live).
+    #[cfg(feature = "demo")]
     pub fn negotiated_profile(&self) -> Option<&ramflux_desktop_core::RendererProfile> {
         self.mock().and_then(MockSource::negotiated_profile)
     }
@@ -159,6 +164,7 @@ impl AccountSession {
     /// Name of the scenario this session plays, or the live source's label.
     pub fn scenario_name(&self) -> &str {
         match &self.backing {
+            #[cfg(feature = "demo")]
             Backing::Mock { scenario, .. } => scenario,
             Backing::Live { label, .. } => label,
         }
@@ -167,6 +173,7 @@ impl AccountSession {
     /// The scenario-playing source, when this session has one: tests and the
     /// developer panel choose what the mock daemon does next (a refusal, a
     /// lost connection, an account that can be recovered).
+    #[cfg(feature = "demo")]
     pub fn mock_mut(&mut self) -> Option<&mut MockSource> {
         match &mut self.backing {
             Backing::Mock { source, .. } => Some(source),
@@ -174,6 +181,7 @@ impl AccountSession {
         }
     }
 
+    #[cfg(feature = "demo")]
     fn mock(&self) -> Option<&MockSource> {
         match &self.backing {
             Backing::Mock { source, .. } => Some(source),
@@ -181,8 +189,17 @@ impl AccountSession {
         }
     }
 
+    /// Offset 0 of a scenario's clock (the inspector's times); 0 when live.
+    fn epoch(&self) -> Timestamp {
+        #[cfg(feature = "demo")]
+        return self.mock().map_or(Timestamp(0), MockSource::epoch);
+        #[cfg(not(feature = "demo"))]
+        Timestamp(0)
+    }
+
     fn source_mut(&mut self) -> &mut dyn Source {
         match &mut self.backing {
+            #[cfg(feature = "demo")]
             Backing::Mock { source, .. } => source.as_mut(),
             Backing::Live { source, .. } => source.as_mut(),
         }
@@ -241,8 +258,12 @@ impl AccountSession {
 
     /// Time of the session clock: scenario time, or the wall clock when live.
     pub fn now(&self) -> Timestamp {
-        match self.mock() {
-            Some(source) => source.epoch().saturating_add_ms(self.clock_ms),
+        #[cfg(feature = "demo")]
+        let scenario = self.mock().map(|source| source.epoch().saturating_add_ms(self.clock_ms));
+        #[cfg(not(feature = "demo"))]
+        let scenario = None;
+        match scenario {
+            Some(now) => now,
             None => self
                 .live_epoch
                 .saturating_add_ms(
@@ -290,21 +311,25 @@ impl AccountSession {
     }
 
     /// Offset of the next scheduled event, if any (scenarios only).
+    #[cfg(feature = "demo")]
     pub fn next_due(&self) -> Option<u64> {
         self.mock().and_then(MockSource::next_due)
     }
 
     /// Number of effects a mock source received (0 when live).
+    #[cfg(feature = "demo")]
     pub fn submitted_effects(&self) -> usize {
         self.mock().map_or(0, |source| source.effects().len())
     }
 
     /// Labels of every effect a mock source received, oldest first.
+    #[cfg(feature = "demo")]
     pub fn effect_labels(&self) -> impl Iterator<Item = &str> {
         self.mock().into_iter().flat_map(|s| s.effects().iter().map(|r| r.label.as_str()))
     }
 
     /// Every effect a mock source received with its (secret-free) body, oldest first.
+    #[cfg(feature = "demo")]
     pub fn effects(&self) -> impl Iterator<Item = (&str, &ramflux_desktop_core::JsonValue)> {
         self.mock()
             .into_iter()
@@ -337,6 +362,7 @@ impl AccountSession {
 
     /// Applies exactly the next scheduled envelope, paused or not, moving the
     /// clock to it when it lies ahead.
+    #[cfg(feature = "demo")]
     pub fn step(&mut self) -> Applied {
         let mut applied = Applied::default();
         let Backing::Mock { source, .. } = &mut self.backing else { return applied };
@@ -350,6 +376,7 @@ impl AccountSession {
 
     /// Resets the store and replays everything scheduled up to `ms`,
     /// including responses to effects submitted before the seek.
+    #[cfg(feature = "demo")]
     pub fn seek(&mut self, ms: u64) -> Applied {
         let Backing::Mock { source, .. } = &mut self.backing else { return Applied::default() };
         source.rewind();
@@ -445,7 +472,7 @@ impl AccountSession {
         let result = self.store.apply(env);
         applied.records.push(InspectorEntry::Envelope {
             seq: env.seq,
-            at_ms: env.at.saturating_since(self.mock().map_or(Timestamp(0), MockSource::epoch)),
+            at_ms: env.at.saturating_since(self.epoch()),
             event: event_name(&env.event),
             error: result.as_ref().err().map(ToString::to_string),
         });

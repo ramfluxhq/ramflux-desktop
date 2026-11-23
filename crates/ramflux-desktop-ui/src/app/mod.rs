@@ -31,9 +31,9 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, EventEmitter, Task};
 use ramflux_desktop_core::{
-    AccountId, AttentionItem, CallState, ContextId, DomainEvent, Intent, MomentId, Store,
-    Timestamp, selectors,
+    AccountId, AttentionItem, CallState, ContextId, Intent, MomentId, Store, Timestamp, selectors,
 };
+#[cfg(feature = "demo")]
 use ramflux_desktop_test::{Scenario, load_fixture};
 
 pub use call_audio::{
@@ -145,6 +145,7 @@ impl StoreHandle {
         self.wall_clock = enabled;
     }
 
+    #[cfg(feature = "demo")]
     fn new_session(&self, scenario: &Scenario) -> AccountSession {
         if self.wall_clock {
             AccountSession::with_epoch(scenario, wall_clock_now())
@@ -156,6 +157,7 @@ impl StoreHandle {
     /// Plays `scenario` as the active account and its companions as
     /// background accounts. Every other session is dropped: a scenario is a
     /// whole world.
+    #[cfg(feature = "demo")]
     pub fn load_scenario(&mut self, scenario: &Scenario, cx: &mut Context<Self>) {
         let account = scenario_account(scenario);
         self.live = None;
@@ -174,6 +176,7 @@ impl StoreHandle {
     }
 
     /// Adds `scenario` as a background account under `account`.
+    #[cfg(feature = "demo")]
     pub fn add_background_account(
         &mut self,
         account: AccountId,
@@ -217,6 +220,7 @@ impl StoreHandle {
 
     /// The rendered session's scenario-playing source, if it has one (see
     /// [`AccountSession::mock_mut`]).
+    #[cfg(feature = "demo")]
     pub fn mock_mut(&mut self) -> Option<&mut ramflux_desktop_test::MockSource> {
         let id = self.active.clone();
         match id {
@@ -466,6 +470,7 @@ impl StoreHandle {
     }
 
     /// Applies exactly the next scheduled envelope of the active session.
+    #[cfg(feature = "demo")]
     pub fn step(&mut self, cx: &mut Context<Self>) {
         if let Some(applied) = self.active_session_mut().map(AccountSession::step) {
             self.publish(applied, cx);
@@ -473,6 +478,7 @@ impl StoreHandle {
     }
 
     /// Resets the active store and replays its scenario up to `ms`.
+    #[cfg(feature = "demo")]
     pub fn seek(&mut self, ms: u64, cx: &mut Context<Self>) {
         if let Some(applied) = self.active_session_mut().map(|s| s.seek(ms)) {
             self.publish(applied, cx);
@@ -562,13 +568,14 @@ pub(crate) fn wall_clock_now() -> Timestamp {
 
 /// The account a mock scenario plays: the first account it declares, or the
 /// [`LOCAL_ACCOUNT`] slot.
+#[cfg(feature = "demo")]
 pub fn scenario_account(scenario: &Scenario) -> AccountId {
     let timeline = scenario.timeline.iter().map(|(_, event)| event);
     let responses = scenario.responses.iter().flat_map(|rule| rule.emit.iter().map(|(_, e)| e));
     timeline
         .chain(responses)
         .find_map(|event| match event {
-            DomainEvent::AccountUpdated(account) => Some(account.id.clone()),
+            ramflux_desktop_core::DomainEvent::AccountUpdated(account) => Some(account.id.clone()),
             _ => None,
         })
         .unwrap_or_else(|| AccountId::new(LOCAL_ACCOUNT))

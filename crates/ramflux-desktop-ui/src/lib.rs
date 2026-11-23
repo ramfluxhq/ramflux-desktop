@@ -41,6 +41,7 @@ pub mod app;
 pub mod assets;
 pub mod bubble;
 pub mod confirm;
+#[cfg(feature = "demo")]
 pub mod dev;
 pub mod entry;
 pub mod file_dialog;

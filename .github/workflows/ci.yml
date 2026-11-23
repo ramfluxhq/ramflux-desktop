@@ -93,6 +93,21 @@ jobs:
           CARGO_NET_OFFLINE: "true"
         run: scripts/check-shot-programs.sh
 
+      # Release packaging builds without the default `demo` feature
+      # (scripts/package-macos.sh): keep that configuration compiling, and
+      # keep the mock crate out of it.
+      - name: Release configuration (no demo scenarios)
+        timeout-minutes: 10
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: |
+          cargo clippy --locked -p ramflux-desktop --no-default-features -- -D warnings
+          if cargo tree --locked -p ramflux-desktop --no-default-features -e normal --prefix none \
+            | grep -q '^ramflux-desktop-test '; then
+            echo "the release configuration depends on ramflux-desktop-test"
+            exit 1
+          fi
+
   test:
     # The workspace suite is repeated twice on separate runners to catch
     # flaky tests; any failing repeat fails the workflow.

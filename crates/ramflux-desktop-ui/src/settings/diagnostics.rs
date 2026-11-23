@@ -191,9 +191,9 @@ pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Settin
         page = page.group(sync);
     }
     let page = page.group(about);
-    // Debug builds: the developer panel opens from here (its old title-bar
-    // button has no place on the boards).
-    if cfg!(debug_assertions) {
+    // Debug builds with the demo scenarios: the developer panel opens from
+    // here (its old title-bar button has no place on the boards).
+    if cfg!(all(debug_assertions, feature = "demo")) {
         page.group(SettingGroup::new().title(tr("status.dev_panel")).item(SettingItem::render(
             |_, _, cx: &mut App| {
                 crate::style::secondary_button("diagnostics-dev-panel", cx)
