@@ -13,6 +13,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, div};
 use ramflux_desktop_core::GrantFailure;
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use crate::i18n::tr;
 
@@ -33,9 +34,9 @@ pub fn reason(failure: GrantFailure) -> SharedString {
 pub fn render(failure: GrantFailure, cx: &App) -> AnyElement {
     h_flex()
         .id("grant-failure")
-        .gap_2()
+        .gap(space(2.))
         .items_start()
-        .p_2()
+        .p(space(2.))
         .border_1()
         .border_color(cx.theme().danger)
         .rounded(cx.theme().radius)
@@ -43,12 +44,17 @@ pub fn render(failure: GrantFailure, cx: &App) -> AnyElement {
         .child(
             v_flex()
                 .min_w_0()
-                .gap_1()
-                .child(div().text_sm().font_medium().child(tr("grant.failure.title")))
-                .child(div().text_xs().child(reason(failure)))
+                .gap(space(1.))
                 .child(
                     div()
-                        .text_xs()
+                        .text_size(text_secondary())
+                        .font_medium()
+                        .child(tr("grant.failure.title")),
+                )
+                .child(div().text_size(text_caption()).child(reason(failure)))
+                .child(
+                    div()
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(tr("grant.failure.next")),
                 ),

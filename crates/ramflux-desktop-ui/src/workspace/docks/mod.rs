@@ -24,6 +24,7 @@ pub mod members;
 pub mod objects;
 pub mod prefs;
 
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::rc::Rc;
 
 use crate::style::DesignButton as _;
@@ -236,11 +237,11 @@ impl Render for DockToolPanel {
                 v_flex()
                     .px(gpui_kit::rems(20.0 / 15.0))
                     .pt(gpui_kit::rems(20.0 / 15.0))
-                    .pb_3()
-                    .gap_3()
+                    .pb(space(3.))
+                    .gap(space(3.))
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .child(
                                 div()
                                     .flex_1()
@@ -348,7 +349,7 @@ impl RenderOnce for DockRail {
             .aria_label(tr("dock.tools"))
             .flex_shrink_0()
             .flex_wrap()
-            .gap_1()
+            .gap(space(1.))
             .children(buttons)
     }
 }
@@ -356,9 +357,9 @@ impl RenderOnce for DockRail {
 /// A small muted line for empty dock sections.
 pub(crate) fn empty_line(key: &str, cx: &App) -> gpui_kit::AnyElement {
     div()
-        .px_3()
-        .py_2()
-        .text_sm()
+        .px(space(3.))
+        .py(space(2.))
+        .text_size(text_secondary())
         .text_color(cx.theme().muted_foreground)
         .child(tr(key))
         .into_any_element()
@@ -367,10 +368,10 @@ pub(crate) fn empty_line(key: &str, cx: &App) -> gpui_kit::AnyElement {
 /// A section title inside a dock.
 pub(crate) fn section(key: &str, cx: &App) -> gpui_kit::AnyElement {
     div()
-        .px_3()
-        .pt_3()
-        .pb_1()
-        .text_xs()
+        .px(space(3.))
+        .pt(space(3.))
+        .pb(space(1.))
+        .text_size(text_caption())
         .font_semibold()
         .text_color(cx.theme().muted_foreground)
         .child(tr(key))

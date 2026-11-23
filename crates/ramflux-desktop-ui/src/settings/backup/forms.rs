@@ -15,6 +15,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{BackupJobKind, BackupPhase, methods};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 
 use super::text::{self, Strength, count};
 use super::{BackupPanel, Form};
@@ -41,7 +42,11 @@ fn chosen(path: Option<&String>, none: &str, cx: &App) -> AnyElement {
 }
 
 fn muted(key: &str, cx: &App) -> AnyElement {
-    div().text_sm().text_color(cx.theme().muted_foreground).child(tr(key)).into_any_element()
+    div()
+        .text_size(text_secondary())
+        .text_color(cx.theme().muted_foreground)
+        .child(tr(key))
+        .into_any_element()
 }
 
 impl BackupPanel {
@@ -83,10 +88,13 @@ impl BackupPanel {
                     )
                 });
             return v_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(muted("settings.backup.create_help", cx))
                 .children(last.map(|last| {
-                    div().text_sm().text_color(cx.theme().muted_foreground).child(last)
+                    div()
+                        .text_size(text_secondary())
+                        .text_color(cx.theme().muted_foreground)
+                        .child(last)
                 }))
                 .child(
                     h_flex().child(crate::gate::gated(
@@ -113,12 +121,12 @@ impl BackupPanel {
             format!("ramflux-backup-{}.rfbackup", chrono::Local::now().format("%Y-%m-%d"));
         let ready = self.backup_ready(cx) && reason.is_none();
         v_flex()
-            .gap_3()
+            .gap(space(3.))
             .child(field(
                 tr("settings.backup.location"),
                 h_flex()
                     .flex_wrap()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(chosen(self.location.as_ref(), "settings.backup.no_location", cx))
                     .child(
                         Button::new("backup-choose-location")
@@ -146,7 +154,7 @@ impl BackupPanel {
                     .role(Role::Alert)
                     .aria_label(tr("settings.backup.location_exists"))
                     .test_support()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().danger)
                     .child(tr("settings.backup.location_exists"))
             }))
@@ -162,8 +170,8 @@ impl BackupPanel {
             ))
             .child(
                 v_flex()
-                    .gap_1()
-                    .text_sm()
+                    .gap(space(1.))
+                    .text_size(text_secondary())
                     .children((!typed.is_empty()).then(|| {
                         div()
                             .id("backup-strength")
@@ -195,7 +203,7 @@ impl BackupPanel {
             .child(
                 h_flex()
                     .flex_wrap()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("backup-form-cancel")
                             .small()
@@ -224,7 +232,7 @@ impl BackupPanel {
         let reason = self.reason(methods::RESTORE_VERIFY, cx);
         if self.form != Some(Form::Restore) {
             return v_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(muted("settings.backup.restore_help", cx))
                 .child(
                     h_flex().child(crate::gate::gated(
@@ -243,12 +251,12 @@ impl BackupPanel {
             && !self.restore_secret.read(cx).value().is_empty()
             && reason.is_none();
         v_flex()
-            .gap_3()
+            .gap(space(3.))
             .child(field(
                 tr("settings.backup.file"),
                 h_flex()
                     .flex_wrap()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(chosen(self.file.as_ref(), "settings.backup.no_file", cx))
                     .child(
                         Button::new("restore-choose-file")
@@ -283,7 +291,7 @@ impl BackupPanel {
             .child(
                 h_flex()
                     .flex_wrap()
-                    .gap_2()
+                    .gap(space(2.))
                     .children((!self.standalone).then(|| {
                         Button::new("restore-form-cancel")
                             .small()

@@ -37,6 +37,7 @@ use ramflux_desktop_core::{AccountId, IntentKind};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::generated::catalog;
 use ramflux_desktop_navigation::palette;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary, text_subheading};
 use ramflux_desktop_sdk::business::ContractGap;
 
 use super::AgentsPanel;
@@ -244,16 +245,16 @@ impl AgentsPanel {
             .role(Role::List)
             .aria_label(tr("agent_wizard.steps"))
             .flex_wrap()
-            .gap_2()
+            .gap(space(2.))
             .children(WizardStep::ALL.into_iter().map(|each| {
                 let current = each == step;
                 div()
                     .id(ElementId::from(format!("agent-wizard-step-{}", each.index() + 1)))
                     .role(Role::ListItem)
                     .aria_selected(current)
-                    .text_xs()
-                    .px_2()
-                    .py_1()
+                    .text_size(text_caption())
+                    .px(space(2.))
+                    .py(space(1.))
                     .rounded(cx.theme().radius)
                     .border_1()
                     .border_color(if current { theme.primary } else { theme.line })
@@ -279,7 +280,7 @@ impl AgentsPanel {
         let nav = h_flex()
             .id("agent-wizard-nav")
             .test_support()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 Button::new("agent-wizard-cancel")
                     .small()
@@ -316,9 +317,9 @@ impl AgentsPanel {
             .test_support()
             .role(Role::Group)
             .aria_label(tr("agent_wizard.title"))
-            .gap_3()
+            .gap(space(3.))
             .min_w_0()
-            .child(div().text_lg().child(tr("agent_wizard.title")))
+            .child(div().text_size(text_subheading()).child(tr("agent_wizard.title")))
             .child(steps)
             .child(div().font_weight(gpui_kit::FontWeight::MEDIUM).child(tr(step.key())))
             .child(body)
@@ -344,10 +345,10 @@ impl AgentsPanel {
 
     fn basics(&mut self, cx: &mut Context<Self>) -> AnyElement {
         v_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 div()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().muted_foreground)
                     .whitespace_normal()
                     .child(tr("agent_wizard.basics_help")),
@@ -364,9 +365,9 @@ impl AgentsPanel {
         let offers = self.runtime_offers();
         let chosen = self.wizard.as_ref().map(|w| w.draft.runtime.clone()).unwrap_or_default();
         let theme = palette(cx);
-        let mut col = v_flex().gap_2().child(
+        let mut col = v_flex().gap(space(2.)).child(
             div()
-                .text_sm()
+                .text_size(text_secondary())
                 .text_color(cx.theme().muted_foreground)
                 .whitespace_normal()
                 .child(tr("agent_wizard.runtime_help")),
@@ -415,7 +416,7 @@ impl AgentsPanel {
         )
         .child(
             div()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(cx.theme().muted_foreground)
                 .whitespace_normal()
                 .child(tr("agent_wizard.bind_later_help")),
@@ -443,9 +444,9 @@ impl AgentsPanel {
         } else {
             "agent_wizard.conversations_help"
         };
-        let mut col = v_flex().gap_2().child(
+        let mut col = v_flex().gap(space(2.)).child(
             div()
-                .text_sm()
+                .text_size(text_secondary())
                 .text_color(cx.theme().muted_foreground)
                 .whitespace_normal()
                 .child(tr(help)),
@@ -455,7 +456,7 @@ impl AgentsPanel {
                 div()
                     .id(if tools { "agent-wizard-no-tools" } else { "agent-wizard-no-scopes" })
                     .test_support()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .whitespace_normal()
                     .child(tr(if wizard.draft.runtime.is_empty() {
                         "agent_wizard.nothing_unbound"
@@ -521,18 +522,23 @@ impl AgentsPanel {
         v_flex()
             .id("agent-wizard-review")
             .test_support()
-            .gap_2()
+            .gap(space(2.))
             .children(facts.into_iter().map(|(id, label, value)| {
                 v_flex()
                     .id(id)
                     .test_support()
-                    .gap_1()
-                    .child(div().text_xs().text_color(cx.theme().muted_foreground).child(label))
-                    .child(div().text_sm().whitespace_normal().child(value))
+                    .gap(space(1.))
+                    .child(
+                        div()
+                            .text_size(text_caption())
+                            .text_color(cx.theme().muted_foreground)
+                            .child(label),
+                    )
+                    .child(div().text_size(text_secondary()).whitespace_normal().child(value))
             }))
             .child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .whitespace_normal()
                     .child(tr("agent_wizard.review_help")),

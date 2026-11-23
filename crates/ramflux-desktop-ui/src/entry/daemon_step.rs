@@ -12,6 +12,7 @@
 //!
 //! Playing scenarios, the step only shows the wait.
 
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::path::Path;
 
 use gpui_kit::TestSupportExt as _;
@@ -60,7 +61,7 @@ pub fn failure_text(failure: &LaunchFailure) -> SharedString {
 fn muted_line(id: &'static str, text: SharedString, mono: bool, cx: &App) -> AnyElement {
     div()
         .id(id)
-        .text_xs()
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .when(mono, |line| line.font_family(cx.theme().mono_font_family.clone()))
         .child(text)
@@ -90,8 +91,8 @@ impl EntryPage {
             .child(
                 v_flex()
                     .id("entry-daemon-state")
-                    .gap_1()
-                    .p_4()
+                    .gap(space(1.))
+                    .p(space(4.))
                     .rounded(gpui_kit::rems(palette.radius_md / 15.0))
                     .bg(palette.surface)
                     .child(
@@ -114,8 +115,8 @@ impl EntryPage {
                     .test_support()
                     .aria_label(tr_args("entry.daemon.none_help", &[("path", &shown(&socket))]))
                     .w_full()
-                    .px_3()
-                    .py_2()
+                    .px(space(3.))
+                    .py(space(2.))
                     .rounded(gpui_kit::rems(palette.radius_input / 15.0))
                     .border_1()
                     .border_color(palette.line_strong)
@@ -135,18 +136,21 @@ impl EntryPage {
                 };
                 h_flex()
                     .id("entry-daemon-starting")
-                    .gap_3()
+                    .gap(space(3.))
                     .child(Spinner::new())
-                    .child(v_flex().gap_1().child(div().text_sm().child(tr(key))).children(
-                        log.map(|log| {
-                            muted_line(
-                                "entry-daemon-log",
-                                tr_args("entry.daemon.output", &[("path", &shown(&log))]),
-                                true,
-                                cx,
-                            )
-                        }),
-                    ))
+                    .child(
+                        v_flex()
+                            .gap(space(1.))
+                            .child(div().text_size(text_secondary()).child(tr(key)))
+                            .children(log.map(|log| {
+                                muted_line(
+                                    "entry-daemon-log",
+                                    tr_args("entry.daemon.output", &[("path", &shown(&log))]),
+                                    true,
+                                    cx,
+                                )
+                            })),
+                    )
                     .test_support()
                     .into_any_element()
             }
@@ -156,7 +160,7 @@ impl EntryPage {
         };
         v_flex()
             .id("entry-daemon")
-            .gap_4()
+            .gap(space(4.))
             .child(header)
             .child(body)
             .test_support()
@@ -193,7 +197,7 @@ impl EntryPage {
         let start_label =
             if failure.is_some() { "entry.daemon.retry" } else { "entry.daemon.start" };
         let paths = v_flex()
-            .gap_1()
+            .gap(space(1.))
             .children(binary.path().map(|path| {
                 muted_line(
                     "entry-daemon-binary",
@@ -211,11 +215,11 @@ impl EntryPage {
                 )
             }));
         v_flex()
-            .gap_3()
+            .gap(space(3.))
             .children(alert)
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         crate::style::secondary_button("entry-daemon-settings", cx)
                             .label(tr("entry.daemon.settings"))
@@ -246,15 +250,18 @@ impl EntryPage {
     fn render_daemon_wait(&self, cx: &App) -> AnyElement {
         h_flex()
             .id("entry-daemon")
-            .gap_3()
+            .gap(space(3.))
             .child(Spinner::new())
             .child(
-                v_flex().gap_1().child(div().text_sm().child(tr("entry.daemon.waiting"))).child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(tr("entry.daemon.help")),
-                ),
+                v_flex()
+                    .gap(space(1.))
+                    .child(div().text_size(text_secondary()).child(tr("entry.daemon.waiting")))
+                    .child(
+                        div()
+                            .text_size(text_caption())
+                            .text_color(cx.theme().muted_foreground)
+                            .child(tr("entry.daemon.help")),
+                    ),
             )
             .test_support()
             .into_any_element()

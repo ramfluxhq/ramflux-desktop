@@ -27,6 +27,7 @@ use gpui_kit::{
     Render, Role, Window, div,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 mod request;
 
@@ -159,11 +160,11 @@ impl Render for ConfirmStrip {
             .on_action(cx.listener(Self::on_cancel_action))
             .on_key_down(cx.listener(Self::on_key_down))
             .flex_shrink_0()
-            .mx_3()
-            .mt_2()
-            .gap_3()
-            .px_3()
-            .py_2()
+            .mx(space(3.))
+            .mt(space(2.))
+            .gap(space(3.))
+            .px(space(3.))
+            .py(space(2.))
             .border_1()
             .border_color(accent)
             .rounded(cx.theme().radius_lg)
@@ -173,17 +174,17 @@ impl Render for ConfirmStrip {
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .gap_1()
+                    .gap(space(1.))
                     .child(
                         div()
-                            .text_sm()
+                            .text_size(text_secondary())
                             .text_color(cx.theme().foreground)
                             .child(request.summary().clone()),
                     )
                     .when_some(request.detail().cloned(), |col, detail| {
                         col.child(
                             div()
-                                .text_xs()
+                                .text_size(text_caption())
                                 .font_family(cx.theme().mono_font_family.clone())
                                 .text_color(cx.theme().muted_foreground)
                                 .child(detail),
@@ -191,8 +192,8 @@ impl Render for ConfirmStrip {
                     })
                     .child(
                         h_flex()
-                            .gap_2()
-                            .text_xs()
+                            .gap(space(2.))
+                            .text_size(text_caption())
                             .child(div().text_color(accent).child(tr_args(
                                 "confirm.risk",
                                 &[("risk", &i18n::risk(request.risk()))],
@@ -212,14 +213,14 @@ impl Render for ConfirmStrip {
                     .test_support()
                     .track_focus(&self.cancel_focus)
                     .h_8()
-                    .px_3()
+                    .px(space(3.))
                     .flex()
                     .items_center()
-                    .gap_1()
+                    .gap(space(1.))
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().foreground)
                     .cursor_pointer()
                     .when(cancel_focused, |control| control.focus_ring_style(window, cx))
@@ -241,14 +242,14 @@ impl Render for ConfirmStrip {
                     .test_support()
                     .track_focus(&self.focus_handle)
                     .h_8()
-                    .px_3()
+                    .px(space(3.))
                     .flex()
                     .items_center()
                     .border_1()
                     .border_color(accent)
                     .rounded(cx.theme().radius)
                     .bg(accent.opacity(0.15))
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().foreground)
                     .cursor_pointer()
                     .when(focused, |control| control.focus_ring_style(window, cx))

@@ -13,6 +13,7 @@
 //! file changed) comes back as a failed `object.send` and is shown here.
 //! All of this is view-local state.
 
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::path::Path;
 
 use gpui_kit::TestSupportExt as _;
@@ -163,20 +164,20 @@ pub fn chip(
         .role(Role::Status)
         .aria_label(crate::i18n::labeled(name, &detail))
         .test_support()
-        .gap_2()
-        .px_2()
-        .py_1()
+        .gap(space(2.))
+        .px(space(2.))
+        .py(space(1.))
         .border_1()
         .border_color(if error { danger } else { theme.border })
         .rounded(theme.radius)
         .child(Icon::new(IconName::File).small().text_color(muted))
-        .child(div().text_sm().min_w_0().truncate().child(name.to_owned()))
+        .child(div().text_size(text_secondary()).min_w_0().truncate().child(name.to_owned()))
         .child(
             div()
                 .id("composer-attachment-detail")
                 .flex_1()
                 .min_w_0()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(if error { danger } else { muted })
                 .child(detail)
                 .test_support(),

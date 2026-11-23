@@ -16,6 +16,7 @@ use ramflux_desktop_core::{
     Direction, Listing, Object, ObjectAction, TransferState, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::space;
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
@@ -181,8 +182,8 @@ impl Render for ObjectsDock {
             let state_text = i18n::transfer(&object.transfer);
             v_flex()
                 .id(domain_id("objects-card", &object.id))
-                .gap_2()
-                .py_3()
+                .gap(space(2.))
+                .py(space(3.))
                 .border_b_1()
                 .border_color(palette.line)
                 .child(
@@ -194,7 +195,7 @@ impl Render for ObjectsDock {
                 )
                 .child(
                     h_flex()
-                        .gap_3()
+                        .gap(space(3.))
                         .child(
                             v_flex()
                                 .flex_1()
@@ -220,7 +221,7 @@ impl Render for ObjectsDock {
                         .when(failed || measured, |row| {
                             row.child(
                                 div()
-                                    .px_2()
+                                    .px(space(2.))
                                     .py(rem(4.0))
                                     .rounded(rem(palette.radius_chip))
                                     .bg(palette.surface)

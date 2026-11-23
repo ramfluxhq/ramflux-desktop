@@ -39,6 +39,7 @@ use ramflux_desktop_core::{
     UiEventKind, check_create_group, check_start_conversation, methods, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
@@ -318,8 +319,8 @@ impl Render for NewGroup {
             let id = contact.id.clone();
             h_flex()
                 .id(domain_id("new-group-row", &contact.id))
-                .gap_2()
-                .py_1()
+                .gap(space(2.))
+                .py(space(1.))
                 .child(
                     Checkbox::new(domain_id("new-group-member", &contact.id))
                         .label(contact.display.clone())
@@ -330,9 +331,11 @@ impl Render for NewGroup {
                         })),
                 )
                 .child(div().flex_1())
-                .child(div().text_xs().text_color(muted).child(reason.unwrap_or_else(|| {
-                    crate::workspace::docks::contacts::rows::safety_label(contact.safety)
-                })))
+                .child(div().text_size(text_caption()).text_color(muted).child(
+                    reason.unwrap_or_else(|| {
+                        crate::workspace::docks::contacts::rows::safety_label(contact.safety)
+                    }),
+                ))
         });
         let creating = matches!(self.phase, Phase::Creating { .. });
         let waiting = self.awaiting_acknowledgement(store);
@@ -380,9 +383,9 @@ impl Render for NewGroup {
             .child(
                 h_flex()
                     .id("new-group-header")
-                    .gap_2()
-                    .px_4()
-                    .py_3()
+                    .gap(space(2.))
+                    .px(space(4.))
+                    .py(space(3.))
                     .border_b_1()
                     .border_color(border)
                     .child(Icon::new(IconName::User).small())
@@ -399,32 +402,35 @@ impl Render for NewGroup {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .gap_4()
-                    .px_4()
-                    .py_4()
+                    .gap(space(4.))
+                    .px(space(4.))
+                    .py(space(4.))
                     .child(
                         v_flex()
-                            .gap_1()
-                            .child(div().text_sm().child(tr("group.new.name")))
+                            .gap(space(1.))
+                            .child(div().text_size(text_secondary()).child(tr("group.new.name")))
                             .child(
                                 Input::new(&self.name)
                                     .id("new-group-name")
                                     .aria_label(tr("group.new.name")),
                             )
                             .child(
-                                div().text_xs().text_color(muted).child(tr("group.new.name_help")),
+                                div()
+                                    .text_size(text_caption())
+                                    .text_color(muted)
+                                    .child(tr("group.new.name_help")),
                             ),
                     )
                     .child(
                         v_flex()
-                            .gap_1()
-                            .child(div().text_sm().child(tr("group.new.members")))
+                            .gap(space(1.))
+                            .child(div().text_size(text_secondary()).child(tr("group.new.members")))
                             .when(contacts.is_empty(), |col| {
                                 col.child(
                                     div()
                                         .id("new-group-no-contacts")
                                         .test_support()
-                                        .text_xs()
+                                        .text_size(text_caption())
                                         .text_color(muted)
                                         .child(tr("group.new.no_contacts")),
                                 )
@@ -438,13 +444,13 @@ impl Render for NewGroup {
                             .role(Role::Status)
                             .aria_label(text.clone())
                             .test_support()
-                            .text_sm()
+                            .text_size(text_secondary())
                             .text_color(color)
                             .child(text)
                     }))
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .child(div().flex_1())
                             .child(
                                 Button::new("new-group-cancel")

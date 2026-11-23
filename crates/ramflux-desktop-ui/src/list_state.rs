@@ -16,6 +16,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ElementId, Role, SharedString, div};
 use ramflux_desktop_core::{ListState, Listing, Store};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 
 use crate::i18n::tr;
 
@@ -44,10 +45,10 @@ pub fn placeholder(
             .role(Role::Status)
             .aria_label(label.clone())
             .test_support()
-            .gap_2()
-            .px_3()
-            .py_2()
-            .text_sm()
+            .gap(space(2.))
+            .px(space(3.))
+            .py(space(2.))
+            .text_size(text_secondary())
             .text_color(cx.theme().muted_foreground)
             .when(loading, |row| row.child(Spinner::new().small()))
             .child(div().child(label))

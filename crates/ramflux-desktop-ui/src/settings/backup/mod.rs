@@ -22,6 +22,7 @@ mod forms;
 mod job;
 pub mod text;
 
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 use std::collections::BTreeSet;
 
 use gpui_kit::component::input::{InputEvent, InputState};
@@ -506,8 +507,8 @@ impl gpui_kit::Render for BackupPanel {
         match job {
             Some(heading) => v_flex()
                 .id("backup-standalone")
-                .gap_2()
-                .child(gpui_kit::div().text_sm().font_semibold().child(heading))
+                .gap(space(2.))
+                .child(gpui_kit::div().text_size(text_secondary()).font_semibold().child(heading))
                 .child(self.render_job(window, cx)),
             None => v_flex().id("backup-standalone").child(self.render_restore(window, cx)),
         }

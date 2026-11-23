@@ -35,6 +35,7 @@ mod status;
 
 pub use status::{SurfaceStatus, verdict};
 
+use ramflux_desktop_navigation::scale::{REM_PX, space, text_caption, text_secondary};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
@@ -128,13 +129,13 @@ impl RenderOnce for SurfaceBody {
             .id("surface")
             .relative()
             .w_full()
-            .gap_2()
-            .p_3()
+            .gap(space(2.))
+            .p(space(3.))
             .border_1()
             // RF card chrome from the generated tokens; the host draws it,
             // the card content never styles its own frame.
             .border_color(ramflux_desktop_navigation::palette(cx).line)
-            .rounded(gpui_kit::rems(ramflux_desktop_navigation::palette(cx).radius_md / 16.0))
+            .rounded(gpui_kit::rems(ramflux_desktop_navigation::palette(cx).radius_md / REM_PX))
             .bg(ramflux_desktop_navigation::palette(cx).incoming)
             .when(self.review_again, |col| col.child(status::review_again(cx)));
         if let Some(limit) = self.status.verdict.over_limit {
@@ -153,7 +154,7 @@ impl RenderOnce for SurfaceBody {
                 .child(
                     div()
                         .id("surface-closed-text")
-                        .text_sm()
+                        .text_size(text_secondary())
                         .text_color(cx.theme().foreground)
                         .child(fallback.clone())
                         .test_support(),
@@ -267,8 +268,8 @@ impl SurfaceBody {
 pub fn writing_mark(cx: &App) -> AnyElement {
     h_flex()
         .id("surface-streaming")
-        .gap_1()
-        .text_xs()
+        .gap(space(1.))
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(IconName::LoaderCircle).xsmall())
         .child(tr("surface.streaming"))
@@ -288,7 +289,7 @@ pub fn updated_mark(posted: Timestamp, updated: Timestamp, cx: &App) -> Option<A
     (updated > posted && time != i18n::time_of_day(posted)).then(|| {
         div()
             .id("surface-updated")
-            .text_xs()
+            .text_size(text_caption())
             .text_color(cx.theme().muted_foreground)
             .child(tr_args("surface.updated", &[("time", &time)]))
             .test_support()
@@ -301,7 +302,7 @@ pub fn updated_mark(posted: Timestamp, updated: Timestamp, cx: &App) -> Option<A
 fn waiting_line(cx: &App) -> AnyElement {
     div()
         .id("block-waiting")
-        .text_sm()
+        .text_size(text_secondary())
         .text_color(cx.theme().muted_foreground)
         .child(tr("surface.waiting"))
         .test_support()
@@ -404,10 +405,13 @@ impl ActionRow<'_> {
         });
         v_flex()
             .id(id)
-            .gap_1()
-            .child(h_flex().flex_wrap().gap_2().children(buttons))
+            .gap(space(1.))
+            .child(h_flex().flex_wrap().gap(space(2.)).children(buttons))
             .children(reasons.into_iter().map(|reason| {
-                div().text_xs().text_color(cx.theme().muted_foreground).child(reason)
+                div()
+                    .text_size(text_caption())
+                    .text_color(cx.theme().muted_foreground)
+                    .child(reason)
             }))
             .into_any_element()
     }

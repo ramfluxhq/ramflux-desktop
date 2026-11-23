@@ -17,13 +17,18 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Role, SharedString, Window, div};
 use ramflux_desktop_core::{Account, AgentExportPhase, Networking};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::AgentsPanel;
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 
 fn muted(text: SharedString, cx: &App) -> AnyElement {
-    div().text_sm().text_color(cx.theme().muted_foreground).child(text).into_any_element()
+    div()
+        .text_size(text_secondary())
+        .text_color(cx.theme().muted_foreground)
+        .child(text)
+        .into_any_element()
 }
 
 /// A muted note a reader hears and the tests read.
@@ -58,7 +63,7 @@ impl AgentsPanel {
         }
         let reason = self.create_reason(cx);
         v_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(note("agent-intro", "agent.settings.intro", cx))
             .children(reason.clone().map(|reason| {
                 div()
@@ -104,7 +109,7 @@ impl AgentsPanel {
             .role(Role::List)
             .aria_label(tr("agent.settings.list_title"))
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .children(agents.iter().map(|agent| self.agent_row(agent, window, cx)))
             .into_any_element()
     }
@@ -150,9 +155,9 @@ impl AgentsPanel {
             .role(Role::ListItem)
             .aria_label(label)
             .test_support()
-            .gap_3()
-            .px_3()
-            .py_2()
+            .gap(space(3.))
+            .px(space(3.))
+            .py(space(2.))
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
@@ -160,14 +165,19 @@ impl AgentsPanel {
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .child(div().text_sm().font_semibold().child(agent.label.clone()))
+                    .child(
+                        div()
+                            .text_size(text_secondary())
+                            .font_semibold()
+                            .child(agent.label.clone()),
+                    )
                     .child(
                         div()
                             .id(domain_id("agent-detail", &id))
                             .role(Role::Status)
                             .aria_label(detail.clone())
                             .test_support()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().muted_foreground)
                             .child(detail),
                     )
@@ -177,13 +187,13 @@ impl AgentsPanel {
                             .role(Role::Status)
                             .aria_label(tr("agent.row.not_unlocked"))
                             .test_support()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().muted_foreground)
                             .child(tr("agent.row.not_unlocked")),
                     ),
             )
             .child(
-                h_flex().gap_2().items_center().child(state).child(crate::gate::gated(
+                h_flex().gap(space(2.)).items_center().child(state).child(crate::gate::gated(
                     Button::new(domain_id("agent-export", &id))
                         .small()
                         .outline()
@@ -202,7 +212,7 @@ impl AgentsPanel {
                 )),
             );
         v_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(row)
             .children(open.then(|| self.export_form(agent, exported, window, cx)))
             .into_any_element()
@@ -231,7 +241,7 @@ impl AgentsPanel {
                         .test_support()
                         .child(
                             v_flex()
-                                .gap_1()
+                                .gap(space(1.))
                                 .child(Alert::success("agent-export-done", done).small())
                                 .child(note(
                                     "agent-export-done-next",
@@ -259,30 +269,30 @@ impl AgentsPanel {
         v_flex()
             .id("agent-export-form")
             .test_support()
-            .gap_2()
-            .p_3()
+            .gap(space(2.))
+            .p(space(3.))
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .child(
                 div()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .font_semibold()
                     .child(tr_args("agent.export.title", &[("name", &agent.label)])),
             )
             .child(note("agent-export-once", "agent.export.once", cx))
             .child(
                 v_flex()
-                    .gap_1()
+                    .gap(space(1.))
                     .child(
                         div()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().muted_foreground)
                             .child(tr("agent.export.where")),
                     )
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .child(
                                 div().flex_1().min_w_0().child(
                                     Input::new(&self.location)
@@ -311,9 +321,9 @@ impl AgentsPanel {
                     .test_support()
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .items_center()
-                            .text_sm()
+                            .text_size(text_secondary())
                             .text_color(cx.theme().muted_foreground)
                             .child(Spinner::new().small())
                             .child(tr("agent.export.working")),
@@ -322,7 +332,7 @@ impl AgentsPanel {
             .children(result)
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("agent-export-submit")
                             .small()

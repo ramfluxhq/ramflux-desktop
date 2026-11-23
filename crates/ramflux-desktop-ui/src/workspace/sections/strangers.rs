@@ -16,6 +16,7 @@
 //! request leaves; a stale or expired row refuses the whole batch. Block
 //! keeps its own confirmation, so it is offered for one request at a time.
 
+use ramflux_desktop_navigation::scale::{space, text_caption};
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
@@ -233,21 +234,20 @@ impl StrangersArea {
             .test_support()
             .role(Role::Toolbar)
             .aria_label(tr("sections.strangers.batch"))
-            .gap_2()
-            .px_3()
-            .py_2()
+            .gap(space(2.))
+            .px(space(3.))
+            .py(space(2.))
             .border_t_1()
             .border_color(cx.theme().border)
             .child(
-                div().text_xs().text_color(cx.theme().muted_foreground).child(tr_args(
-                    "sections.strangers.selected",
-                    &[("count", &count.to_string())],
-                )),
+                div().text_size(text_caption()).text_color(cx.theme().muted_foreground).child(
+                    tr_args("sections.strangers.selected", &[("count", &count.to_string())]),
+                ),
             )
             .child(
                 h_flex()
                     .flex_wrap()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("strangers-batch-decline")
                             .small()
@@ -289,7 +289,7 @@ impl StrangersArea {
                     .test_support()
                     .role(Role::Alert)
                     .aria_label(notice.clone())
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(theme.danger)
                     .whitespace_normal()
                     .child(notice)
@@ -390,13 +390,13 @@ impl Render for StrangersArea {
             .bg(ramflux_desktop_navigation::palette(cx).nav)
             .border_end_1()
             .border_color(ramflux_desktop_navigation::palette(cx).line)
-            .px_3()
+            .px(space(3.))
             .pt(gpui_kit::rems(24.0 / 15.0))
-            .gap_4()
+            .gap(space(4.))
             // Board F17: back chevron, Strangers, Batch at the right.
             .child(
                 h_flex()
-                    .gap_1()
+                    .gap(space(1.))
                     .child(
                         Button::new("strangers-back")
                             .small()
@@ -440,17 +440,24 @@ impl Render for StrangersArea {
             ))
             .when(batch, |area| area.child(self.batch_bar(cx)))
             .child(
-                v_flex().border_t_1().border_color(cx.theme().border).py_1().child(policy).child(
-                    h_flex().px_3().py_1().gap_2().child(crate::gate::gated(
-                        Button::new("strangers-open-account")
-                            .xsmall()
-                            .outline()
-                            .label(tr("sections.strangers.open_account")),
-                        Some(directory::unavailable(
-                            ramflux_desktop_sdk::business::ContractGap::AccountPrivacy,
-                        )),
-                    )),
-                ),
+                v_flex()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .py(space(1.))
+                    .child(policy)
+                    .child(
+                        h_flex().px(space(3.)).py(space(1.)).gap(space(2.)).child(
+                            crate::gate::gated(
+                                Button::new("strangers-open-account")
+                                    .xsmall()
+                                    .outline()
+                                    .label(tr("sections.strangers.open_account")),
+                                Some(directory::unavailable(
+                                    ramflux_desktop_sdk::business::ContractGap::AccountPrivacy,
+                                )),
+                            ),
+                        ),
+                    ),
             )
     }
 }

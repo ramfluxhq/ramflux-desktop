@@ -31,6 +31,7 @@ use gpui_kit::{Context, Entity, EventEmitter, IntoElement, Render, Subscription,
 use ramflux_desktop_core::{
     Listing, LockState, Participant, ParticipantId, Store, UiEventKind, methods, selectors,
 };
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use super::section;
 use crate::app::{StoreEvent, StoreHandle};
@@ -343,9 +344,9 @@ impl Render for ContactsDock {
                         div()
                             .id("contacts-requests-local")
                             .test_support()
-                            .px_3()
-                            .pb_1()
-                            .text_xs()
+                            .px(space(3.))
+                            .pb(space(1.))
+                            .text_size(text_caption())
                             .text_color(muted)
                             .child(crate::i18n::tr("dock.contacts.requests_local")),
                     )

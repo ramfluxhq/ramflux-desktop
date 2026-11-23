@@ -17,6 +17,7 @@ mod selection;
 mod view_state;
 
 use ramflux_desktop_navigation::direction::DirectionalExt as _;
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 use std::rc::Rc;
 
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
@@ -618,7 +619,7 @@ impl Render for Conversation {
             ramflux_desktop_navigation::direction::h_flex()
                 .justify_row_end()
                 .px(gpui_kit::rems(32.0 / 15.0))
-                .pt_3()
+                .pt(space(3.))
                 .child(switcher())
         });
         let header = header::render(
@@ -648,7 +649,7 @@ impl Render for Conversation {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().muted_foreground)
                     .map(|area| match placeholder {
                         Some(placeholder) => area.child(placeholder),
@@ -719,7 +720,7 @@ impl Render for Conversation {
                     },
                 )
                 .with_jump_button_label(tr("conversation.jump_latest"))
-                .with_row_style(StyleRefinement::default().pb_3())
+                .with_row_style(StyleRefinement::default().pb(space(3.)))
                 .flex_1()
                 .min_h_0()
                 .into_any_element()

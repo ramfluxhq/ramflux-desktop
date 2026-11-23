@@ -53,6 +53,7 @@ use gpui_kit::{
 };
 use ramflux_desktop_core::Scope;
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use crate::actions::{CloseSettings, SETTINGS_CONTEXT};
 use crate::app::{StoreEvent, StoreHandle};
@@ -336,20 +337,20 @@ impl Render for SettingsPage {
             .id("settings-navigation")
             .test_support()
             .flex()
-            .gap_1()
-            .when(compact, |nav| nav.flex_row_start().flex_wrap().p_2().border_b_1())
+            .gap(space(1.))
+            .when(compact, |nav| nav.flex_row_start().flex_wrap().p(space(2.)).border_b_1())
             .when(!compact, |nav| {
                 nav.flex_col()
                     .w(gpui_kit::rems(ramflux_desktop_navigation::theme::SECTION_REM))
-                    .px_3()
+                    .px(space(3.))
                     .pt(gpui_kit::rems(24.0 / 15.0))
                     .border_end_1()
                     .child(
                         div()
                             .id("settings-title")
                             .flex()
-                            .px_2()
-                            .pb_3()
+                            .px(space(2.))
+                            .pb(space(3.))
                             .text_size(gpui_kit::rems(palette.size_page / 15.0))
                             .font_semibold()
                             .child(tr("settings.title")),
@@ -372,7 +373,7 @@ impl Render for SettingsPage {
                             button
                                 .w_full()
                                 .justify_row_start()
-                                .px_3()
+                                .px(space(3.))
                                 .h(gpui_kit::rems(40.0 / 15.0))
                                 .rounded(gpui_kit::px(palette.radius_sm))
                                 .text_size(gpui_kit::rems(palette.size_body / 15.0))
@@ -517,5 +518,9 @@ pub(crate) fn note(key: &str, cx: &App) -> gpui_kit::AnyElement {
 
 /// A muted note line of already translated text.
 pub(crate) fn note_text(text: SharedString, cx: &App) -> gpui_kit::AnyElement {
-    div().text_xs().text_color(cx.theme().muted_foreground).child(text).into_any_element()
+    div()
+        .text_size(text_caption())
+        .text_color(cx.theme().muted_foreground)
+        .child(text)
+        .into_any_element()
 }

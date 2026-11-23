@@ -21,6 +21,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ClickEvent, Role, SharedString, Window, div};
 use ramflux_desktop_core::{ContactCard, Store, methods};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use crate::i18n::{self, tr, tr_args};
 
@@ -173,10 +174,10 @@ pub fn render(state: &MyCard, store: &Store, handlers: Handlers, cx: &App) -> An
                 tr("dock.contacts.card.qr"),
             );
             v_flex()
-                .gap_2()
+                .gap(space(2.))
                 .children(qr.map(|qr| {
                     div()
-                        .p_2()
+                        .p(space(2.))
                         .rounded(cx.theme().radius)
                         .border_1()
                         .border_color(cx.theme().border)
@@ -187,7 +188,7 @@ pub fn render(state: &MyCard, store: &Store, handlers: Handlers, cx: &App) -> An
                         .id("contact-card-text")
                         .aria_label(SharedString::from(card.text.clone()))
                         .test_support()
-                        .text_xs()
+                        .text_size(text_caption())
                         .font_family(cx.theme().mono_font_family.clone())
                         .text_color(muted)
                         .line_clamp(3)
@@ -195,7 +196,7 @@ pub fn render(state: &MyCard, store: &Store, handlers: Handlers, cx: &App) -> An
                 )
                 .child(
                     h_flex()
-                        .gap_2()
+                        .gap(space(2.))
                         .flex_wrap()
                         .child(copy_button(
                             "contact-card-copy",
@@ -221,10 +222,12 @@ pub fn render(state: &MyCard, store: &Store, handlers: Handlers, cx: &App) -> An
     };
     v_flex()
         .id("contact-card")
-        .gap_2()
-        .px_3()
-        .pb_2()
-        .child(div().text_xs().text_color(muted).child(tr("dock.contacts.card.help")))
+        .gap(space(2.))
+        .px(space(3.))
+        .pb(space(2.))
+        .child(
+            div().text_size(text_caption()).text_color(muted).child(tr("dock.contacts.card.help")),
+        )
         .child(body)
         .into_any_element()
 }
@@ -235,7 +238,7 @@ fn status(id: &'static str, text: SharedString, color: gpui_kit::Hsla) -> AnyEle
         .role(Role::Status)
         .aria_label(text.clone())
         .test_support()
-        .text_xs()
+        .text_size(text_caption())
         .text_color(color)
         .child(text)
         .into_any_element()

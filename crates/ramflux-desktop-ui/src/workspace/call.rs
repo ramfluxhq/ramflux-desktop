@@ -18,6 +18,7 @@
 //! Both views read the store and the store handle's audio view; they emit
 //! call UI events through the root sink and never change the store.
 
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::time::Duration;
 
 use gpui_kit::TestSupportExt as _;
@@ -118,8 +119,8 @@ impl Render for IncomingCall {
             .role(Role::Alert)
             .aria_label(tr_args("call.incoming.a11y", &[("name", &name)]))
             .w_80()
-            .gap_3()
-            .p_4()
+            .gap(space(3.))
+            .p(space(4.))
             .bg(cx.theme().popover)
             .text_color(cx.theme().popover_foreground)
             .border_1()
@@ -128,14 +129,14 @@ impl Render for IncomingCall {
             .shadow_lg()
             .child(
                 h_flex()
-                    .gap_3()
+                    .gap(space(3.))
                     .child(Icon::new(IconName::PhoneIncoming).text_color(cx.theme().success))
                     .child(
                         v_flex()
                             .min_w_0()
                             .child(
                                 div()
-                                    .text_xs()
+                                    .text_size(text_caption())
                                     .text_color(cx.theme().muted_foreground)
                                     .child(tr("moment.call.incoming")),
                             )
@@ -152,7 +153,7 @@ impl Render for IncomingCall {
             .when(more > 0, |card| {
                 card.child(
                     div()
-                        .text_xs()
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(tr_args("call.incoming.more", &[("count", &more.to_string())])),
                 )
@@ -160,7 +161,7 @@ impl Render for IncomingCall {
             .child(
                 h_flex()
                     .justify_row_end()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("incoming-decline")
                             .small()
@@ -346,9 +347,9 @@ impl CallBar {
             .aria_label(tr_args("call_ui.failed_a11y", &[("name", &name), ("detail", &tr(detail))]))
             .test_support()
             .w_full()
-            .gap_3()
-            .px_4()
-            .py_2()
+            .gap(space(3.))
+            .px(space(4.))
+            .py(space(2.))
             .bg(cx.theme().danger.opacity(0.08))
             .border_b_1()
             .border_color(cx.theme().border)
@@ -359,7 +360,10 @@ impl CallBar {
                     .min_w_0()
                     .child(div().font_semibold().child(tr("call_ui.failed")))
                     .child(
-                        div().text_sm().text_color(cx.theme().muted_foreground).child(tr(detail)),
+                        div()
+                            .text_size(text_secondary())
+                            .text_color(cx.theme().muted_foreground)
+                            .child(tr(detail)),
                     ),
             )
             .child(crate::gate::gated(
@@ -418,10 +422,10 @@ impl Render for CallBar {
         let warn = |text: SharedString, action: Option<gpui_kit::AnyElement>, cx: &App| {
             h_flex()
                 .id("call-bar-warning")
-                .gap_2()
-                .px_4()
-                .py_1()
-                .text_sm()
+                .gap(space(2.))
+                .px(space(4.))
+                .py(space(1.))
+                .text_size(text_secondary())
                 .bg(cx.theme().warning.opacity(0.12))
                 .child(Icon::new(IconName::TriangleAlert).small().text_color(cx.theme().warning))
                 .child(div().flex_1().min_w_0().child(text))
@@ -430,9 +434,9 @@ impl Render for CallBar {
         };
         let row = h_flex()
             .w_full()
-            .gap_3()
-            .px_4()
-            .py_2()
+            .gap(space(3.))
+            .px(space(4.))
+            .py(space(2.))
             .child(Icon::new(IconName::PhoneCall).small().text_color(cx.theme().success))
             .child(
                 div()
@@ -445,7 +449,7 @@ impl Render for CallBar {
             .when(ringing, |row| {
                 row.child(
                     div()
-                        .text_xs()
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(tr("call_ui.waiting")),
                 )
@@ -454,7 +458,7 @@ impl Render for CallBar {
                 div()
                     .id("call-bar-status")
                     .aria_label(status.clone())
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().muted_foreground)
                     .child(status)
                     .test_support(),
@@ -464,8 +468,8 @@ impl Render for CallBar {
                     h_flex()
                         .id("call-bar-quality")
                         .aria_label(tr(key))
-                        .gap_1()
-                        .text_xs()
+                        .gap(space(1.))
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(Icon::new(icon).xsmall())
                         .child(tr(key))
@@ -476,7 +480,7 @@ impl Render for CallBar {
             .when(headset_hint, |row| {
                 row.child(
                     div()
-                        .text_xs()
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(tr("call.headset")),
                 )

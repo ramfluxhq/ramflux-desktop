@@ -27,6 +27,7 @@ use ramflux_desktop_core::{
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::generated::catalog;
 use ramflux_desktop_navigation::palette;
+use ramflux_desktop_navigation::scale::{design_px, space, text_caption, text_secondary};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
@@ -98,14 +99,14 @@ impl ContactProfile {
         let mut block = v_flex()
             .id("contact-safety")
             .test_support()
-            .gap_2()
-            .p_3()
+            .gap(space(2.))
+            .p(space(3.))
             .rounded(cx.theme().radius_lg)
             .border_1()
             .border_color(if danger { cx.theme().danger } else { cx.theme().border })
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(Icon::new(IconName::ShieldCheck).small())
                     .child(div().font_medium().child(tr("sections.contact.safety_number")))
                     .child(div().flex_1())
@@ -113,7 +114,7 @@ impl ContactProfile {
                         div()
                             .id("contact-safety-state")
                             .test_support()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(if danger {
                                 cx.theme().danger
                             } else {
@@ -127,7 +128,7 @@ impl ContactProfile {
                     .id("contact-safety-number")
                     .test_support()
                     .font_family(cx.theme().mono_font_family.clone())
-                    .text_sm()
+                    .text_size(text_secondary())
                     .whitespace_normal()
                     .child(grouped.clone().unwrap_or_else(|| tr("sections.contact.no_number"))),
             );
@@ -159,13 +160,13 @@ impl ContactProfile {
                         .test_support()
                         .role(Role::Status)
                         .aria_label(help.clone())
-                        .text_xs()
+                        .text_size(text_caption())
                         .whitespace_normal()
                         .child(help),
                 )
                 .child(
                     h_flex()
-                        .gap_2()
+                        .gap(space(2.))
                         .child(crate::gate::gated(
                             Button::new("contact-numbers-match")
                                 .small()
@@ -342,18 +343,18 @@ impl Render for ContactProfile {
                     super::contacts::avatar_kind(contact.kind),
                     theme,
                 ),
-                h_flex().gap_2().flex_wrap().child(message).child(call),
+                h_flex().gap(space(2.)).flex_wrap().child(message).child(call),
                 theme,
             )))
             .child(
                 v_flex()
-                    .gap_4()
-                    .p_4()
-                    .max_w(gpui_kit::rems(theme.column_max / 16.0))
+                    .gap(space(4.))
+                    .p(space(4.))
+                    .max_w(design_px(theme.column_max))
                     .children(crate::identity::name_warning("contact-name-warning", &contact, cx))
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .flex_wrap()
                             .children(crate::identity::kind_mark(
                                 "contact-kind",
@@ -364,7 +365,7 @@ impl Render for ContactProfile {
                                 div()
                                     .id("contact-trust")
                                     .test_support()
-                                    .text_xs()
+                                    .text_size(text_caption())
                                     .text_color(cx.theme().muted_foreground)
                                     .child(line)
                             })),
@@ -374,12 +375,12 @@ impl Render for ContactProfile {
                         v_flex()
                             .id("contact-shared")
                             .test_support()
-                            .gap_1()
+                            .gap(space(1.))
                             .child(div().font_medium().child(tr("sections.contact.shared")))
                             .when(shared.is_empty(), |col| {
                                 col.child(
                                     div()
-                                        .text_sm()
+                                        .text_size(text_secondary())
                                         .text_color(cx.theme().muted_foreground)
                                         .child(tr("sections.contact.shared_none")),
                                 )
@@ -387,7 +388,7 @@ impl Render for ContactProfile {
                             .children(shared.into_iter().map(|(context, title)| {
                                 div()
                                     .id(crate::ids::domain_id("contact-shared", &context))
-                                    .text_sm()
+                                    .text_size(text_secondary())
                                     .child(ramflux_desktop_navigation::row::list_text(&title))
                             })),
                     )
@@ -395,17 +396,17 @@ impl Render for ContactProfile {
                         v_flex()
                             .id("contact-danger")
                             .test_support()
-                            .gap_2()
+                            .gap(space(2.))
                             .child(
                                 div()
-                                    .text_xs()
+                                    .text_size(text_caption())
                                     .text_color(cx.theme().muted_foreground)
                                     .whitespace_normal()
                                     .child(tr("sections.contact.danger_help")),
                             )
                             .child(
                                 h_flex()
-                                    .gap_2()
+                                    .gap(space(2.))
                                     .child(action(
                                         "contact-block",
                                         ContactAction::Block,

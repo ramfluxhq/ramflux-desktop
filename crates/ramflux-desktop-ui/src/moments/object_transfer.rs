@@ -23,6 +23,7 @@ use ramflux_desktop_core::{
     BlockId, Direction, ObjectAction, ObjectTransferPayload, Scope, TransferState, UiEventKind,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::{RowRefs, RowState};
 use crate::bubble::EventSink;
@@ -42,7 +43,7 @@ pub fn render(
     let Some(object) = refs.objects.get(&payload.object_id).cloned() else {
         return v_flex()
             .id("object-transfer")
-            .text_sm()
+            .text_size(text_secondary())
             .text_color(muted)
             .child(tr_args("moment.object.missing", &[("id", payload.object_id.as_str())]));
     };
@@ -63,7 +64,7 @@ pub fn render(
     };
     let preview_sink = sink.scoped(Scope::Block(BlockId::new("object-preview")));
     let expanded = state.expanded;
-    let mut actions = h_flex().gap_2();
+    let mut actions = h_flex().gap(space(2.));
     match &object.transfer {
         TransferState::Queued if object.direction == Direction::Inbound => {
             actions = actions.child(
@@ -143,13 +144,13 @@ pub fn render(
         .id("object-transfer")
         .w_full()
         .max_w(gpui_kit::rems(448.0 / 15.0))
-        .gap_2()
-        .p_2()
+        .gap(space(2.))
+        .p(space(2.))
         .bg(palette.incoming)
         .rounded(gpui_kit::rems(palette.radius_bubble / 15.0))
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     div()
                         .flex_none()
@@ -203,7 +204,7 @@ pub fn render(
         .when_some(object.saved_to.clone(), |col, path| {
             col.child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(muted)
                     .child(tr_args("moment.object.saved_to", &[("path", &path)])),
             )
@@ -213,10 +214,10 @@ pub fn render(
                 col.child(
                     div()
                         .id("object-preview-text")
-                        .p_2()
+                        .p(space(2.))
                         .rounded(cx.theme().radius)
                         .bg(cx.theme().muted)
-                        .text_sm()
+                        .text_size(text_secondary())
                         .child(preview)
                         .test_support(),
                 )

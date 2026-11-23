@@ -10,6 +10,7 @@
 //! conversations, offline (cached groups stay listed), failed (a group read
 //! failed after the last success), and no groups yet.
 
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::rc::Rc;
 
 use gpui_kit::TestSupportExt as _;
@@ -187,9 +188,9 @@ impl Render for GroupDirectory {
                 div()
                     .id("groups-no-match")
                     .test_support()
-                    .px_3()
-                    .py_2()
-                    .text_sm()
+                    .px(space(3.))
+                    .py(space(2.))
+                    .text_size(text_secondary())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("sections.no_match"))
                     .into_any_element(),
@@ -250,9 +251,9 @@ impl Render for GroupDirectory {
             .bg(ramflux_desktop_navigation::palette(cx).nav)
             .border_end_1()
             .border_color(ramflux_desktop_navigation::palette(cx).line)
-            .px_3()
+            .px(space(3.))
             .pt(gpui_kit::rems(24.0 / 15.0))
-            .gap_4()
+            .gap(space(4.))
             .child(directory::header(
                 tr_args("sections.groups.title", &[("count", &count.to_string())]),
                 h_flex().child(create),
@@ -273,9 +274,9 @@ impl Render for GroupDirectory {
             ))
             .child(
                 div()
-                    .px_3()
-                    .py_2()
-                    .text_xs()
+                    .px(space(3.))
+                    .py(space(2.))
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("sections.groups.joined_only")),
             )

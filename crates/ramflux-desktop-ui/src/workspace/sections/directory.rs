@@ -10,6 +10,7 @@
 //! never positions. Search is local over what the store already holds and
 //! is bounded; it is not a server search.
 
+use ramflux_desktop_navigation::scale::{space, text_caption};
 use std::rc::Rc;
 
 use gpui_kit::TestSupportExt as _;
@@ -150,8 +151,8 @@ pub(crate) fn search_input(
     h_flex()
         .w_full()
         .h(gpui_kit::rems(34.0 / 15.0))
-        .px_2()
-        .gap_2()
+        .px(space(2.))
+        .gap(space(2.))
         .rounded(gpui_kit::rems(theme.radius_input / 15.0))
         .border_1()
         .border_color(theme.line_strong)
@@ -186,7 +187,7 @@ pub(crate) fn header(title: SharedString, trailing: impl IntoElement, cx: &App) 
     // the title size with its add command at the right.
     let theme = palette(cx);
     h_flex()
-        .px_2()
+        .px(space(2.))
         .min_h(gpui_kit::rems(28.0 / 15.0))
         .child(
             div()
@@ -234,7 +235,7 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
         .flex_1()
         .min_h_0()
         .overflow_y_scroll()
-        .gap_1()
+        .gap(space(1.))
         .children(rows.into_iter().take(ROW_LIMIT).enumerate().map(|(ix, row)| {
             let pick = on_pick.clone();
             let check = on_check.clone();
@@ -273,7 +274,7 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                 .test_support()
                 .role(Role::ListItem)
                 .aria_selected(row.selected)
-                .gap_1()
+                .gap(space(1.))
                 .min_w_0()
                 .rounded(gpui_kit::px(theme.radius_sm))
                 .border_1()
@@ -296,9 +297,9 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
         .when(total > ROW_LIMIT, |list| {
             list.child(
                 div()
-                    .px_3()
-                    .py_2()
-                    .text_xs()
+                    .px(space(3.))
+                    .py(space(2.))
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("sections.refine")),
             )
@@ -329,7 +330,7 @@ fn request_card(
     v_flex()
         .id(ElementId::from(format!("request-card-{}", row.key)))
         .w_full()
-        .gap_2()
+        .gap(space(2.))
         .p(rem(12.0))
         .rounded(rem(theme.radius_card))
         .when(row.selected, |card| card.bg(theme.selected))
@@ -337,7 +338,7 @@ fn request_card(
         .cursor_pointer()
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(catalog::avatar(
                     ramflux_desktop_navigation::row::initial(&row.title),
                     row.avatar,
@@ -373,7 +374,7 @@ fn request_card(
         .children(card.chip.clone().map(|chip| {
             h_flex().child(
                 div()
-                    .px_2()
+                    .px(space(2.))
                     .py(rem(2.0))
                     .rounded(rem(theme.radius_chip))
                     .bg(theme.warning_bg)
@@ -432,7 +433,7 @@ pub(crate) fn state(spec: StateSpec, cx: &App) -> Option<AnyElement> {
             .test_support()
             .role(if kind == catalog::StateKind::Error { Role::Alert } else { Role::Status })
             .aria_label(crate::i18n::sentences(&title, &description))
-            .p_3()
+            .p(space(3.))
             .whitespace_normal()
             .child(catalog::state_block(
                 SharedString::from(id),
@@ -471,7 +472,7 @@ pub(crate) fn placeholder(
         .size_full()
         .items_center()
         .justify_center()
-        .p_6()
+        .p(space(6.))
         // A block child takes the column's width, so the text wraps at the
         // column and not at its longest word.
         .child(div().w_full().max_w(gpui_kit::rems(360.0 / 15.0)).child(catalog::state_block(

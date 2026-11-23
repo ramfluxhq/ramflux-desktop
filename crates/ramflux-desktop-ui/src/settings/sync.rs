@@ -11,6 +11,7 @@ use gpui_kit::component::v_flex;
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Role, SharedString, div};
 use ramflux_desktop_core::{DaemonSyncState, SyncMode, SyncStatus};
+use ramflux_desktop_navigation::scale::space;
 
 use super::SectionContext;
 use crate::i18n::{date_time, tr, tr_args};
@@ -69,7 +70,7 @@ pub fn group(context: &SectionContext, cx: &App) -> Option<SettingGroup> {
             list.item(tr(key), value.clone(), 1)
         });
         v_flex()
-            .gap_3()
+            .gap(space(3.))
             .child(
                 div()
                     .id("diagnostics-sync")

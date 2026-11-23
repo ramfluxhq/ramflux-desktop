@@ -15,6 +15,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Hsla, SharedString, div};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::collections::BTreeSet;
 
 use ramflux_desktop_core::conformance::{LimitKind, SurfaceVerdict, check_surface};
@@ -115,9 +116,9 @@ fn notice(
 ) -> AnyElement {
     h_flex()
         .id(id)
-        .gap_2()
+        .gap(space(2.))
         .items_start()
-        .p_2()
+        .p(space(2.))
         .border_1()
         .border_color(color)
         .rounded(cx.theme().radius)
@@ -125,9 +126,14 @@ fn notice(
         .child(
             v_flex()
                 .min_w_0()
-                .gap_1()
-                .child(div().text_sm().font_medium().child(title))
-                .child(div().text_xs().text_color(cx.theme().muted_foreground).child(text)),
+                .gap(space(1.))
+                .child(div().text_size(text_secondary()).font_medium().child(title))
+                .child(
+                    div()
+                        .text_size(text_caption())
+                        .text_color(cx.theme().muted_foreground)
+                        .child(text),
+                ),
         )
         .test_support()
         .into_any_element()
@@ -194,9 +200,9 @@ pub fn out_of_sync(update: Option<&UpdateRequest>, sink: &EventSink, cx: &App) -
         });
     h_flex()
         .id("surface-out-of-sync")
-        .gap_2()
+        .gap(space(2.))
         .items_start()
-        .p_2()
+        .p(space(2.))
         .border_1()
         .border_color(color)
         .rounded(cx.theme().radius)
@@ -205,20 +211,25 @@ pub fn out_of_sync(update: Option<&UpdateRequest>, sink: &EventSink, cx: &App) -
             v_flex()
                 .flex_1()
                 .min_w_0()
-                .gap_1()
-                .child(div().text_sm().font_medium().child(tr("surface.out_of_sync.title")))
+                .gap(space(1.))
                 .child(
                     div()
-                        .text_xs()
+                        .text_size(text_secondary())
+                        .font_medium()
+                        .child(tr("surface.out_of_sync.title")),
+                )
+                .child(
+                    div()
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(tr("surface.out_of_sync.text")),
                 )
-                .child(h_flex().pt_1().child(request))
+                .child(h_flex().pt(space(1.)).child(request))
                 .when_some(answer, |col, answer| {
                     col.child(
                         div()
                             .id("surface-update-answer")
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().muted_foreground)
                             .child(answer)
                             .test_support(),
@@ -246,8 +257,8 @@ pub fn review_again(cx: &App) -> AnyElement {
 pub fn closed(cx: &App) -> AnyElement {
     h_flex()
         .id("surface-closed")
-        .gap_1()
-        .text_xs()
+        .gap(space(1.))
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(IconName::Check).xsmall())
         .child(tr("surface.closed"))
@@ -259,13 +270,13 @@ pub fn closed(cx: &App) -> AnyElement {
 pub fn redacted(cx: &App) -> AnyElement {
     h_flex()
         .id("block-redacted")
-        .gap_1()
-        .p_2()
+        .gap(space(1.))
+        .p(space(2.))
         .border_1()
         .border_dashed()
         .border_color(cx.theme().border)
         .rounded(cx.theme().radius)
-        .text_xs()
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(IconName::EyeOff).xsmall())
         .child(tr("surface.redacted"))

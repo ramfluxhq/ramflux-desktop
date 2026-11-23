@@ -26,6 +26,7 @@ pub mod new_group;
 pub mod sections;
 mod status_strip;
 
+use ramflux_desktop_navigation::scale::space;
 use std::sync::Arc;
 
 use gpui_kit::TestSupportExt as _;
@@ -934,8 +935,8 @@ impl Workspace {
             gpui_kit::div()
                 .id("secure-sessions-banner")
                 .test_support()
-                .px_3()
-                .pt_3()
+                .px(space(3.))
+                .pt(space(3.))
                 .child(
                     Alert::warning(
                         "secure-sessions-alert",

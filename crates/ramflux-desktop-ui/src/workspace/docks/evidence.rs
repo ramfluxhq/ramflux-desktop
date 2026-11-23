@@ -12,6 +12,7 @@ use gpui_kit::{
     AnyElement, Context, Entity, IntoElement, Render, SharedString, Subscription, Window, div,
 };
 use ramflux_desktop_core::{ContextId, LockState, MomentKind, Node, Store, selectors};
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use super::{empty_line, section};
 use crate::app::{StoreEvent, StoreHandle};
@@ -135,19 +136,19 @@ impl Render for EvidenceDock {
         let epoch = context.epoch.map_or_else(|| tr("status.none"), |e| text(e.to_string()));
         body.child(section("dock.evidence.grants", cx))
             .when(grants.is_empty(), |col| col.child(empty_line("dock.approvals.none", cx)))
-            .children(grants.into_iter().map(|g| div().px_3().py_1().child(g)))
+            .children(grants.into_iter().map(|g| div().px(space(3.)).py(space(1.)).child(g)))
             .child(section("dock.evidence.franking", cx))
             .when(franking.is_empty(), |col| col.child(empty_line("dock.approvals.none", cx)))
             .children(franking.into_iter().map(|(at, value)| {
                 v_flex()
-                    .px_3()
-                    .py_1()
-                    .text_xs()
+                    .px(space(3.))
+                    .py(space(1.))
+                    .text_size(text_caption())
                     .child(div().text_color(cx.theme().muted_foreground).child(at))
                     .child(div().font_family(cx.theme().mono_font_family.clone()).child(value))
             }))
             .child(section("dock.evidence.group", cx))
-            .child(div().px_3().py_1().child(
+            .child(div().px(space(3.)).py(space(1.)).child(
                 DescriptionList::new().columns(1).item(tr("dock.evidence.epoch"), epoch, 1).item(
                     tr("dock.evidence.devices"),
                     text(devices.to_string()),
@@ -155,7 +156,10 @@ impl Render for EvidenceDock {
                 ),
             ))
             .child(section("dock.evidence.node", cx))
-            .children(home_node(store).map(|node| div().px_3().py_1().child(node_fields(node))))
+            .children(
+                home_node(store)
+                    .map(|node| div().px(space(3.)).py(space(1.)).child(node_fields(node))),
+            )
             .when(home_node(store).is_none(), |col| {
                 col.child(empty_line("dock.evidence.no_node", cx))
             })

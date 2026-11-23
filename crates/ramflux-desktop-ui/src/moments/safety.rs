@@ -14,6 +14,7 @@ use ramflux_desktop_core::{
     BlockId, Lifecycle, SafetyChangeKind, SafetyChangePayload, Scope, UiEventKind,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::RowRefs;
 use crate::bubble::EventSink;
@@ -31,8 +32,8 @@ pub fn render(
     if payload.change == SafetyChangeKind::Verified {
         return h_flex()
             .id("safety-record")
-            .gap_2()
-            .text_sm()
+            .gap(space(2.))
+            .text_size(text_secondary())
             .text_color(cx.theme().muted_foreground)
             .child(Icon::new(IconName::CircleCheck).small().text_color(cx.theme().success))
             .child(tr_args("moment.safety.verified", &[("name", &name)]))
@@ -49,28 +50,33 @@ pub fn render(
     let color = if open { cx.theme().danger } else { cx.theme().border };
     v_flex()
         .id("safety-banner")
-        .gap_2()
-        .p_3()
+        .gap(space(2.))
+        .p(space(3.))
         .border_1()
         .border_color(color)
         .rounded(cx.theme().radius_lg)
         .bg(cx.theme().group_box)
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(Icon::new(IconName::TriangleAlert).small().text_color(color))
-                .child(div().text_sm().font_medium().child(tr_args(key, &[("name", &name)]))),
+                .child(
+                    div()
+                        .text_size(text_secondary())
+                        .font_medium()
+                        .child(tr_args(key, &[("name", &name)])),
+                ),
         )
         .child(
             div()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(cx.theme().muted_foreground)
                 .child(tr("moment.safety.explain")),
         )
         .when_some(number, |col, number| {
             col.child(
                 div()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .font_family(cx.theme().mono_font_family.clone())
                     .text_ltr()
                     .child(crate::i18n::bidi::ltr(&number)),
@@ -91,7 +97,7 @@ pub fn render(
                 .into_any_element()
         } else {
             div()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(cx.theme().muted_foreground)
                 .child(tr("moment.safety.resolved"))
                 .into_any_element()

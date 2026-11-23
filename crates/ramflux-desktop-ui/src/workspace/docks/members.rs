@@ -23,6 +23,7 @@ use ramflux_desktop_core::{
     ContextId, ContextKind, GovernanceOp, Participant, Role, Scope, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::{empty_line, section};
 use crate::app::{StoreEvent, StoreHandle};
@@ -137,22 +138,22 @@ fn member_row(
     v_flex()
         .id(domain_id("member", &member.id))
         .test_support()
-        .px_3()
-        .py_1()
-        .gap_1()
+        .px(space(3.))
+        .py(space(1.))
+        .gap(space(1.))
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     h_flex()
                         .flex_1()
                         .min_w_0()
-                        .gap_2()
+                        .gap(space(2.))
                         .child(
                             div()
                                 .min_w_0()
                                 .truncate()
-                                .text_sm()
+                                .text_size(text_secondary())
                                 .font_medium()
                                 .child(member.display.clone()),
                         )
@@ -160,7 +161,7 @@ fn member_row(
                             row.child(
                                 div()
                                     .flex_none()
-                                    .text_xs()
+                                    .text_size(text_caption())
                                     .text_color(cx.theme().muted_foreground)
                                     .child(member.id.short()),
                             )
@@ -171,12 +172,15 @@ fn member_row(
                     row.children(crate::identity::kind_mark("member-kind", member.kind_claim, cx))
                 })
                 .child(
-                    div().text_xs().text_color(cx.theme().muted_foreground).child(i18n::role(role)),
+                    div()
+                        .text_size(text_caption())
+                        .text_color(cx.theme().muted_foreground)
+                        .child(i18n::role(role)),
                 )
                 .when(member.safety.needs_attention() && !member.safety.is_stale(), |row| {
                     row.child(
                         div()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().danger)
                             .child(i18n::safety(member.safety)),
                     )
@@ -238,14 +242,14 @@ impl Render for MembersDock {
         let profile = v_flex()
             .id("group-profile")
             .test_support()
-            .gap_1()
-            .px_3()
-            .py_2()
+            .gap(space(1.))
+            .px(space(3.))
+            .py(space(2.))
             .border_b_1()
             .border_color(cx.theme().border)
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(ramflux_desktop_navigation::generated::catalog::avatar(
                         ramflux_desktop_navigation::row::initial(&title),
                         ramflux_desktop_navigation::generated::catalog::AvatarKind::Group,
@@ -263,12 +267,15 @@ impl Render for MembersDock {
                                     .font_semibold()
                                     .child(ramflux_desktop_navigation::row::list_text(&title)),
                             )
-                            .child(div().text_xs().text_color(cx.theme().muted_foreground).child(
-                                tr_args(
-                                    "sections.groups.members",
-                                    &[("count", &members.len().to_string())],
-                                ),
-                            )),
+                            .child(
+                                div()
+                                    .text_size(text_caption())
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(tr_args(
+                                        "sections.groups.members",
+                                        &[("count", &members.len().to_string())],
+                                    )),
+                            ),
                     )
                     .child(
                         Button::new("group-rename")
@@ -283,7 +290,7 @@ impl Render for MembersDock {
             )
             .child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .whitespace_normal()
                     .child(tr("sections.groups.local_name")),
@@ -292,7 +299,7 @@ impl Render for MembersDock {
                 div()
                     .id("group-profile-role")
                     .test_support()
-                    .text_xs()
+                    .text_size(text_caption())
                     .child(tr_args("sections.groups.my_role", &[("role", &i18n::role(role))]))
             }));
         v_flex()
@@ -380,13 +387,13 @@ fn candidate_row(
     v_flex()
         .id(domain_id("member-add", &candidate.id))
         .test_support()
-        .gap_1()
-        .px_3()
-        .py_1()
+        .gap(space(1.))
+        .px(space(3.))
+        .py(space(1.))
         .child(
             h_flex()
-                .gap_2()
-                .child(div().flex_1().text_sm().child(candidate.display.clone()))
+                .gap(space(2.))
+                .child(div().flex_1().text_size(text_secondary()).child(candidate.display.clone()))
                 .children(refused.clone().map(|text| {
                     // The same safety icon as the stale note: colour alone
                     // never carries a refusal.
@@ -395,8 +402,8 @@ fn candidate_row(
                         .aria_label(text.clone())
                         .test_support()
                         .flex_none()
-                        .gap_1()
-                        .text_xs()
+                        .gap(space(1.))
+                        .text_size(text_caption())
                         .text_color(crate::tone::text(cx.theme().danger, cx))
                         .child(
                             gpui_kit::component::Icon::new(gpui_kit::assets::IconName::ShieldAlert)

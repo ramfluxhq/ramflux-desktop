@@ -23,6 +23,7 @@ use ramflux_desktop_core::{
     UiEventKind,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, forward_icon, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 /// Block id of the reference to the owning task step.
 pub const TASK_REFERENCE_BLOCK: &str = "task-reference";
@@ -108,32 +109,32 @@ impl RenderOnce for InterventionBody {
         let expanded = self.expanded;
         let failed = self.grant.as_ref().is_some_and(|g| g.failure.is_some());
         v_flex()
-            .gap_2()
-            .p_3()
+            .gap(space(2.))
+            .p(space(3.))
             .border_1()
             .border_color(if open || failed { risk_color } else { cx.theme().border })
             .rounded(cx.theme().radius_lg)
             .bg(cx.theme().group_box)
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .items_start()
                     .child(Icon::new(IconName::TriangleAlert).small().text_color(risk_color))
                     .child(
                         v_flex()
                             .flex_1()
                             .min_w_0()
-                            .gap_1()
+                            .gap(space(1.))
                             .child(
                                 div()
-                                    .text_sm()
+                                    .text_size(text_secondary())
                                     .text_color(cx.theme().foreground)
                                     .child(self.payload.summary.clone()),
                             )
                             .child(
                                 h_flex()
-                                    .gap_2()
-                                    .text_xs()
+                                    .gap(space(2.))
+                                    .text_size(text_caption())
                                     .child(div().text_color(risk_color).child(i18n::tr_args(
                                         "moment.intervention.risk",
                                         &[("risk", &i18n::risk(self.payload.risk))],
@@ -233,7 +234,7 @@ fn resolution(grant: Option<&Grant>, lifecycle: Lifecycle, cx: &App) -> impl Int
             _ => "moment.intervention.closed",
         },
     };
-    div().text_xs().text_color(cx.theme().muted_foreground).child(tr(key))
+    div().text_size(text_caption()).text_color(cx.theme().muted_foreground).child(tr(key))
 }
 
 /// Who proposed the request and, once decided with a confirmation, that the
@@ -244,8 +245,8 @@ fn audit_line(proposer: &SharedString, audit: Option<&AuditEntry>, cx: &App) -> 
     });
     h_flex()
         .id("intervention-audit")
-        .gap_2()
-        .text_xs()
+        .gap(space(2.))
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(tr_args("moment.intervention.proposed_by", &[("name", proposer)]))
         .when_some(confirmed, |row, confirmed| row.child(confirmed))
@@ -263,8 +264,8 @@ pub fn task_reference(owner: Option<&OwningStep>, sink: &EventSink, cx: &App) ->
     let target = owner.moment_id.clone();
     h_flex()
         .id("intervention-task-reference")
-        .gap_2()
-        .text_xs()
+        .gap(space(2.))
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(IconName::LayoutDashboard).xsmall())
         .child(div().flex_1().min_w_0().truncate().child(tr_args(

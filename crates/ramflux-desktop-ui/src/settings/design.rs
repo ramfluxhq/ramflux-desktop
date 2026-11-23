@@ -10,6 +10,7 @@ use gpui_kit::component::{StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ElementId, IntoElement, SharedString, div, rems};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::space;
 
 fn rem(px: f32) -> gpui_kit::Rems {
     rems(px / 15.0)
@@ -26,7 +27,7 @@ pub(crate) fn section(
         .id(id)
         .test_support()
         .w_full()
-        .gap_3()
+        .gap(space(3.))
         .pb(rem(20.0))
         .border_b_1()
         .border_color(palette.line)
@@ -46,15 +47,15 @@ pub(crate) fn row(
     let palette = ramflux_desktop_navigation::palette(cx);
     h_flex()
         .w_full()
-        .gap_4()
-        .py_3()
+        .gap(space(4.))
+        .py(space(3.))
         .border_b_1()
         .border_color(palette.line)
         .child(
             v_flex()
                 .flex_1()
                 .min_w_0()
-                .gap_1()
+                .gap(space(1.))
                 .child(div().text_size(rem(palette.size_body)).font_medium().child(title))
                 .child(
                     div()
@@ -70,7 +71,7 @@ pub(crate) fn row(
 pub(crate) fn chip(text: SharedString, cx: &App) -> AnyElement {
     let palette = ramflux_desktop_navigation::palette(cx);
     div()
-        .px_2()
+        .px(space(2.))
         .py(rem(4.0))
         .rounded(rem(palette.radius_chip))
         .bg(palette.surface)

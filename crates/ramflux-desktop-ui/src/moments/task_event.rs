@@ -14,6 +14,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{StepId, TaskEventKind, TaskEventPayload};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use super::MomentRow;
 use crate::i18n::{self, tr, tr_args};
@@ -83,8 +84,8 @@ pub fn render(payload: &TaskEventPayload, row: &MomentRow, cx: &App) -> impl Int
     h_flex()
         .id("task-event")
         .aria_label(text.clone())
-        .gap_2()
-        .text_xs()
+        .gap(space(2.))
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(icon).xsmall())
         .child(div().min_w_0().child(text))

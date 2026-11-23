@@ -22,6 +22,7 @@ use ramflux_desktop_core::{
     AttachmentCheck, BackupFailure, BackupJob, BackupJobKind, BackupPhase, BackupProgress,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 
 use super::text::{self, count};
 use super::{BackupPanel, running};
@@ -29,7 +30,11 @@ use crate::i18n::{self, tr, tr_args};
 use crate::style::DesignButton as _;
 
 fn muted(text: SharedString, cx: &App) -> AnyElement {
-    div().text_sm().text_color(cx.theme().muted_foreground).child(text).into_any_element()
+    div()
+        .text_size(text_secondary())
+        .text_color(cx.theme().muted_foreground)
+        .child(text)
+        .into_any_element()
 }
 
 /// "1.2 GiB of 3.4 GiB · 5,120 of 13,983 items", as far as totals are known.
@@ -151,7 +156,7 @@ impl BackupPanel {
         v_flex()
             .id("backup-job")
             .test_support()
-            .gap_2()
+            .gap(space(2.))
             .child(ramflux_desktop_navigation::generated::catalog::section_header(
                 doing,
                 div().children(percent.map(|p| {
@@ -221,7 +226,7 @@ impl BackupPanel {
         v_flex()
             .id("backup-review")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(list)
             .children((unavailable > 0).then(|| {
                 let note = tr_args(
@@ -242,7 +247,7 @@ impl BackupPanel {
             .child(
                 h_flex()
                     .flex_wrap()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("restore-discard")
                             .small()
@@ -266,7 +271,7 @@ impl BackupPanel {
     }
 
     fn render_result(&self, job: &BackupJob, cx: &mut Context<Self>) -> AnyElement {
-        let mut body = v_flex().id("backup-result").test_support().gap_3();
+        let mut body = v_flex().id("backup-result").test_support().gap(space(3.));
         match (job.kind, job.phase) {
             (BackupJobKind::Backup, BackupPhase::Done) => {
                 let size = job.summary.as_ref().map_or(0, |s| s.file_bytes);
@@ -292,8 +297,12 @@ impl BackupPanel {
                         v_flex()
                             .id("restore-kept-newer")
                             .test_support()
-                            .gap_1()
-                            .child(div().text_sm().child(tr("settings.backup.done.kept_newer")))
+                            .gap(space(1.))
+                            .child(
+                                div()
+                                    .text_size(text_secondary())
+                                    .child(tr("settings.backup.done.kept_newer")),
+                            )
                             .child(text::counts(
                                 DescriptionList::new().columns(1),
                                 &report.kept_newer,
@@ -351,7 +360,7 @@ impl BackupPanel {
                 .on_click(cx.listener(move |this, _, window, cx| this.retry(&job, window, cx)))
         });
         body.child(
-            h_flex().gap_2().children(retry).child(
+            h_flex().gap(space(2.)).children(retry).child(
                 Button::new("backup-job-close")
                     .small()
                     .design_secondary(cx)

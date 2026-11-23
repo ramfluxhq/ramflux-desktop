@@ -31,6 +31,7 @@ use ramflux_desktop_core::{
     check_start_conversation, methods,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
@@ -309,9 +310,9 @@ impl Render for NewConversation {
             .child(
                 h_flex()
                     .id("new-conversation-header")
-                    .gap_2()
-                    .px_4()
-                    .py_3()
+                    .gap(space(2.))
+                    .px(space(4.))
+                    .py(space(3.))
                     .border_b_1()
                     .border_color(border)
                     .child(Icon::new(IconName::User).small())
@@ -323,22 +324,23 @@ impl Render for NewConversation {
                             .font_weight(gpui_kit::FontWeight::MEDIUM)
                             .child(title),
                     )
-                    .children(
-                        safety.map(|p| {
-                            div().text_xs().text_color(muted).child(i18n::safety(p.safety))
-                        }),
-                    ),
+                    .children(safety.map(|p| {
+                        div()
+                            .text_size(text_caption())
+                            .text_color(muted)
+                            .child(i18n::safety(p.safety))
+                    })),
             )
             .child(
                 v_flex()
                     .flex_1()
                     .items_center()
                     .justify_center()
-                    .gap_2()
-                    .px_6()
+                    .gap(space(2.))
+                    .px(space(6.))
                     .child(
                         div()
-                            .text_sm()
+                            .text_size(text_secondary())
                             .text_color(muted)
                             .text_center()
                             .child(tr("conversation.new.hint")),
@@ -350,7 +352,7 @@ impl Render for NewConversation {
                             .role(Role::Status)
                             .aria_label(text.clone())
                             .test_support()
-                            .text_sm()
+                            .text_size(text_secondary())
                             .text_center()
                             .text_color(if failed { danger } else { muted })
                             .child(text)

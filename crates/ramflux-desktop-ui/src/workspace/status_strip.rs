@@ -17,6 +17,7 @@ use gpui_kit::{
 };
 use ramflux_desktop_core::{LockState, NodeHealth, SchemaGate, SourceStatus, Store};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::space;
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
@@ -213,7 +214,7 @@ impl Render for StatusStrip {
                     .when(is_failure, |chip| chip.role(gpui_kit::Role::Status).flex_1())
                     .when(!is_failure, |chip| chip.flex_none())
                     .test_support()
-                    .gap_1()
+                    .gap(space(1.))
                     .min_w_0()
                     .overflow_hidden()
                     .child(
@@ -254,12 +255,12 @@ impl Render for StatusStrip {
             .test_support()
             .w_full()
             .min_w_0()
-            .gap_3()
+            .gap(space(3.))
             .overflow_hidden()
             .when(shown, |strip| {
                 strip
                     .min_h(gpui_kit::rems(34.0 / 15.0))
-                    .px_4()
+                    .px(space(4.))
                     .bg(palette.surface)
                     .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
                     .child(gpui_kit::component::Icon::new(IconName::Info).small().text_color(muted))

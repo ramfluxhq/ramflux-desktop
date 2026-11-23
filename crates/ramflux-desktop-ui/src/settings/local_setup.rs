@@ -12,6 +12,7 @@
 //! application starts; program and data folder apply to the next start of
 //! a local daemon.
 
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::path::{Path, PathBuf};
 
 use gpui_kit::TestSupportExt as _;
@@ -103,13 +104,13 @@ impl LaunchInputs {
 }
 
 fn label(key: &str) -> impl IntoElement {
-    div().text_sm().child(tr(key))
+    div().text_size(text_secondary()).child(tr(key))
 }
 
 fn muted(id: &'static str, text: SharedString, cx: &App) -> AnyElement {
     div()
         .id(id)
-        .text_xs()
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(text)
         .test_support()
@@ -142,11 +143,11 @@ fn path_field(
             })
     });
     v_flex()
-        .gap_1()
+        .gap(space(1.))
         .child(label(key))
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(div().flex_1().min_w_0().child(Input::new(input).id(id).aria_label(tr(key))))
                 .children(browse),
         )
@@ -166,7 +167,7 @@ fn setup_group(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Set
         SettingItem::render(move |_, _, cx: &mut App| {
             let launcher = launcher.clone();
             v_flex()
-                .gap_1()
+                .gap(space(1.))
                 .child(
                     Switch::new("launch-source")
                         .label(tr("settings.launch.use_daemon"))
@@ -195,7 +196,7 @@ fn setup_group(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Set
                 Some(Err(error)) => Some(
                     div()
                         .id("launch-save-error")
-                        .text_xs()
+                        .text_size(text_caption())
                         .text_color(cx.theme().danger)
                         .child(tr_args("settings.launch.save_failed", &[("error", error)]))
                         .test_support()
@@ -205,7 +206,7 @@ fn setup_group(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Set
             };
             let launcher = launcher.clone();
             v_flex()
-                .gap_3()
+                .gap(space(3.))
                 .child(path_field("launch-socket", "settings.launch.socket", &inputs.socket, None))
                 .child(path_field(
                     "launch-binary",
@@ -221,7 +222,7 @@ fn setup_group(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Set
                 ))
                 .child(
                     h_flex()
-                        .gap_3()
+                        .gap(space(3.))
                         .items_center()
                         .child(
                             Button::new("launch-save")
@@ -279,11 +280,17 @@ fn daemon_group(context: &SectionContext, cx: &App) -> SettingGroup {
     let can_stop = launcher.can_stop(cx);
     let item = SettingItem::render(move |_, _, cx: &mut App| {
         v_flex()
-            .gap_2()
-            .child(div().id("launch-daemon-status").text_sm().child(status.clone()).test_support())
+            .gap(space(2.))
+            .child(
+                div()
+                    .id("launch-daemon-status")
+                    .text_size(text_secondary())
+                    .child(status.clone())
+                    .test_support(),
+            )
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("launch-daemon-start")
                             .small()

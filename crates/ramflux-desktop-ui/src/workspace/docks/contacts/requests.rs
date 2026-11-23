@@ -35,6 +35,7 @@ use ramflux_desktop_core::{
     methods, selectors,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use crate::bubble::EventSink;
 use crate::i18n::{tr, tr_args};
@@ -86,19 +87,19 @@ pub fn pending_row(
     v_flex()
         .id(domain_id("contacts-request", &request.peer))
         .test_support()
-        .px_3()
-        .py_1()
-        .gap_1()
+        .px(space(3.))
+        .py(space(1.))
+        .gap(space(1.))
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(Icon::new(IconName::CircleUser).small().text_color(cx.theme().warning))
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
                         .truncate()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .font_medium()
                         .child(tr_args("dock.contacts.request.asks", &[("name", &name)])),
                 )
@@ -117,7 +118,7 @@ pub fn pending_row(
                     .id("request-note")
                     .aria_label(note.clone())
                     .test_support()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .child(note),
             )
         })
@@ -140,7 +141,7 @@ pub fn pending_row(
                     .id("request-held")
                     .aria_label(held.clone())
                     .test_support()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(muted)
                     .child(held),
             )
@@ -149,7 +150,7 @@ pub fn pending_row(
             div()
                 .id("request-safety")
                 .test_support()
-                .text_xs()
+                .text_size(text_caption())
                 .font_family(cx.theme().mono_font_family.clone())
                 .text_color(muted)
                 .child(match &request.safety_number {
@@ -159,7 +160,7 @@ pub fn pending_row(
         )
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .justify_row_end()
                 .child(answer("request-block", RequestAnswer::Block))
                 .child(answer("request-decline", RequestAnswer::Decline))
@@ -178,9 +179,9 @@ pub fn read_error(store: &Store, cx: &App) -> Option<AnyElement> {
             .id("contacts-requests-error")
             .aria_label(text.clone())
             .test_support()
-            .px_3()
-            .pb_1()
-            .text_xs()
+            .px(space(3.))
+            .pb(space(1.))
+            .text_size(text_caption())
             .text_color(cx.theme().warning)
             .child(text)
             .into_any_element(),
@@ -216,9 +217,9 @@ pub fn floors_notice(store: &Store, sink: &EventSink, cx: &App) -> Option<AnyEle
         v_flex()
             .id("contacts-floors")
             .test_support()
-            .px_3()
-            .pb_1()
-            .gap_1()
+            .px(space(3.))
+            .pb(space(1.))
+            .gap(space(1.))
             // A status region: it appears while the user is elsewhere.
             .child(
                 div()
@@ -226,7 +227,7 @@ pub fn floors_notice(store: &Store, sink: &EventSink, cx: &App) -> Option<AnyEle
                     .role(gpui_kit::Role::Status)
                     .aria_label(text.clone())
                     .test_support()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().warning)
                     .child(text),
             )
@@ -250,9 +251,9 @@ pub fn policy_switch(store: &Store, sink: &EventSink, cx: &App) -> AnyElement {
     let auto = store.request_policy() == Some(RequestPolicy::AutoAccept);
     let sink = sink.clone();
     v_flex()
-        .px_3()
-        .py_1()
-        .gap_1()
+        .px(space(3.))
+        .py(space(1.))
+        .gap(space(1.))
         .child(
             Switch::new("contacts-auto-accept")
                 .label(tr("dock.contacts.request.auto_accept"))
@@ -270,7 +271,7 @@ pub fn policy_switch(store: &Store, sink: &EventSink, cx: &App) -> AnyElement {
             div()
                 .id("contacts-auto-accept-help")
                 .test_support()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(cx.theme().muted_foreground)
                 .child(reason.unwrap_or_else(|| {
                     tr(if auto {

@@ -15,6 +15,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{Context, IntoElement, Role, SharedString, Window, div};
 use ramflux_desktop_core::{ListState, Listing, Node, UiEventKind, methods};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::{EntryPage, NodeCard};
 use crate::i18n::tr;
@@ -64,10 +65,10 @@ impl EntryPage {
         let rows = known.into_iter().map(move |node| {
             h_flex()
                 .id(crate::ids::domain_id("node-row", &node.id))
-                .gap_2()
-                .text_sm()
+                .gap(space(2.))
+                .text_size(text_secondary())
                 .child(div().child(node.id.to_string()))
-                .child(div().text_xs().text_color(muted).child(crate::i18n::join(
+                .child(div().text_size(text_caption()).text_color(muted).child(crate::i18n::join(
                     &crate::i18n::pin_source(node.pin_source),
                     &crate::i18n::node_health(node.health),
                 )))
@@ -80,12 +81,12 @@ impl EntryPage {
         });
         v_flex()
             .id("entry-node")
-            .gap_3()
+            .gap(space(3.))
             .when_some(daemon, |step, daemon| {
                 step.child(
                     div()
                         .id("entry-daemon-info")
-                        .text_xs()
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(daemon)
                         .test_support(),
@@ -93,7 +94,7 @@ impl EntryPage {
             })
             .child(
                 div()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("entry.node.intro")),
             )
@@ -104,9 +105,9 @@ impl EntryPage {
                         .role(Role::Status)
                         .aria_label(tr("entry.node.waiting"))
                         .test_support()
-                        .gap_3()
+                        .gap(space(3.))
                         .child(Spinner::new())
-                        .child(div().text_sm().child(tr("entry.node.waiting"))),
+                        .child(div().text_size(text_secondary()).child(tr("entry.node.waiting"))),
                 )
             })
             .when(state == ListState::Empty, |step| {
@@ -116,24 +117,24 @@ impl EntryPage {
                         .role(Role::Status)
                         .aria_label(tr("entry.node.none"))
                         .test_support()
-                        .gap_3()
-                        .p_3()
+                        .gap(space(3.))
+                        .p(space(3.))
                         .border_1()
                         .border_color(cx.theme().border)
                         .rounded(cx.theme().radius_lg)
                         .child(Icon::new(IconName::Info).text_color(cx.theme().muted_foreground))
-                        .child(div().text_sm().child(tr("entry.node.none"))),
+                        .child(div().text_size(text_secondary()).child(tr("entry.node.none"))),
                 )
             })
             .children(cards)
             .child(
                 v_flex()
-                    .gap_2()
-                    .pt_2()
-                    .child(div().text_sm().child(tr("entry.node.add_title")))
+                    .gap(space(2.))
+                    .pt(space(2.))
+                    .child(div().text_size(text_secondary()).child(tr("entry.node.add_title")))
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .child(
                                 Input::new(&self.inputs.node_url)
                                     .id("node-url")
@@ -154,7 +155,7 @@ impl EntryPage {
                     )
                     .child(
                         div()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().muted_foreground)
                             .child(tr("entry.node.add_help")),
                     )
@@ -171,7 +172,10 @@ impl EntryPage {
                     })),
             )
             .when(usable, |step| {
-                step.child(div().pt_2().text_sm().child(tr("entry.node.known"))).children(rows)
+                step.child(
+                    div().pt(space(2.)).text_size(text_secondary()).child(tr("entry.node.known")),
+                )
+                .children(rows)
             })
             .when(usable && !pending && self.review_nodes, |step| {
                 step.child(

@@ -16,6 +16,9 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{BlockId, JsonValue};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{
+    space, text_body, text_caption, text_secondary, text_subheading,
+};
 
 use crate::i18n::{self, tr};
 use crate::ids::domain_id;
@@ -33,7 +36,13 @@ fn strings(value: &JsonValue) -> Option<Vec<String>> {
 /// Plain text.
 pub fn text(data: &JsonValue, cx: &App) -> Option<AnyElement> {
     let text = str_field(data, "text")?.to_owned();
-    Some(div().text_sm().text_color(cx.theme().foreground).child(text).into_any_element())
+    Some(
+        div()
+            .text_size(text_secondary())
+            .text_color(cx.theme().foreground)
+            .child(text)
+            .into_any_element(),
+    )
 }
 
 /// Markdown rendered without scripts. A streaming block re-renders as text
@@ -42,7 +51,7 @@ pub fn markdown(id: &BlockId, data: &JsonValue, cx: &App) -> Option<AnyElement> 
     let source = str_field(data, "text")?.to_owned();
     Some(
         div()
-            .text_sm()
+            .text_size(text_secondary())
             .text_color(cx.theme().foreground)
             .child(TextView::markdown(domain_id("markdown", id), source))
             .into_any_element(),
@@ -54,7 +63,7 @@ pub fn heading(data: &JsonValue, cx: &App) -> Option<AnyElement> {
     let text = str_field(data, "text")?.to_owned();
     Some(
         div()
-            .text_base()
+            .text_size(text_body())
             .font_semibold()
             .text_color(cx.theme().foreground)
             .child(text)
@@ -81,15 +90,23 @@ pub fn metric(data: &JsonValue, cx: &App) -> Option<AnyElement> {
     let delta = str_field(data, "delta").map(str::to_owned);
     Some(
         v_flex()
-            .child(div().text_xs().text_color(cx.theme().muted_foreground).child(label))
+            .child(
+                div()
+                    .text_size(text_caption())
+                    .text_color(cx.theme().muted_foreground)
+                    .child(label),
+            )
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .items_baseline()
-                    .child(div().text_lg().font_semibold().child(value))
+                    .child(div().text_size(text_subheading()).font_semibold().child(value))
                     .when_some(delta, |row, delta| {
                         row.child(
-                            div().text_xs().text_color(cx.theme().muted_foreground).child(delta),
+                            div()
+                                .text_size(text_caption())
+                                .text_color(cx.theme().muted_foreground)
+                                .child(delta),
                         )
                     }),
             )
@@ -102,11 +119,11 @@ pub fn list(data: &JsonValue, cx: &App) -> Option<AnyElement> {
     let items = strings(data.get("items")?)?;
     Some(
         v_flex()
-            .gap_1()
-            .text_sm()
+            .gap(space(1.))
+            .text_size(text_secondary())
             .children(items.into_iter().map(|item| {
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .items_start()
                     .child(div().text_color(cx.theme().muted_foreground).child("•"))
                     .child(div().min_w_0().child(item))
@@ -128,8 +145,8 @@ pub fn table(data: &JsonValue, cx: &App) -> Option<AnyElement> {
         div()
             .flex_1()
             .min_w_0()
-            .px_2()
-            .py_1()
+            .px(space(2.))
+            .py(space(1.))
             .truncate()
             .when(header, |c| c.font_medium().text_color(cx.theme().muted_foreground))
             .child(text)
@@ -142,7 +159,7 @@ pub fn table(data: &JsonValue, cx: &App) -> Option<AnyElement> {
     Some(
         v_flex()
             .w_full()
-            .text_sm()
+            .text_size(text_secondary())
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
@@ -162,9 +179,9 @@ pub fn file_preview(data: &JsonValue, cx: &App) -> Option<AnyElement> {
     let excerpt = str_field(data, "excerpt").map(str::to_owned);
     Some(
         h_flex()
-            .gap_3()
+            .gap(space(3.))
             .items_start()
-            .p_2()
+            .p(space(2.))
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
@@ -172,15 +189,15 @@ pub fn file_preview(data: &JsonValue, cx: &App) -> Option<AnyElement> {
             .child(
                 v_flex()
                     .min_w_0()
-                    .gap_1()
+                    .gap(space(1.))
                     .child(
                         h_flex()
-                            .gap_2()
-                            .child(div().text_sm().font_medium().child(name))
+                            .gap(space(2.))
+                            .child(div().text_size(text_secondary()).font_medium().child(name))
                             .when_some(size, |row, size| {
                                 row.child(
                                     div()
-                                        .text_xs()
+                                        .text_size(text_caption())
                                         .text_color(cx.theme().muted_foreground)
                                         .child(size),
                                 )
@@ -188,7 +205,10 @@ pub fn file_preview(data: &JsonValue, cx: &App) -> Option<AnyElement> {
                     )
                     .when_some(excerpt, |col, excerpt| {
                         col.child(
-                            div().text_xs().text_color(cx.theme().muted_foreground).child(excerpt),
+                            div()
+                                .text_size(text_caption())
+                                .text_color(cx.theme().muted_foreground)
+                                .child(excerpt),
                         )
                     }),
             )
@@ -200,16 +220,16 @@ pub fn file_preview(data: &JsonValue, cx: &App) -> Option<AnyElement> {
 pub fn fallback(text: &SharedString, cx: &App) -> AnyElement {
     v_flex()
         .id("block-fallback")
-        .gap_1()
-        .p_2()
+        .gap(space(1.))
+        .p(space(2.))
         .border_1()
         .border_dashed()
         .border_color(cx.theme().border)
         .rounded(cx.theme().radius)
         .child(
             h_flex()
-                .gap_1()
-                .text_xs()
+                .gap(space(1.))
+                .text_size(text_caption())
                 .text_color(cx.theme().muted_foreground)
                 .child(Icon::new(IconName::EyeOff).xsmall())
                 .child(tr("surface.fallback")),
@@ -219,7 +239,7 @@ pub fn fallback(text: &SharedString, cx: &App) -> AnyElement {
                 .id("block-fallback-text")
                 .aria_label(text.clone())
                 .test_support()
-                .text_sm()
+                .text_size(text_secondary())
                 .text_color(cx.theme().foreground)
                 .child(text.clone()),
         )

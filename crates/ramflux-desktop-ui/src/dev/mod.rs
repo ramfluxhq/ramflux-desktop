@@ -20,6 +20,7 @@ use gpui_kit::{
 };
 use ramflux_desktop_core::{GrantFilter, GrantId, IntentKind, ParticipantKind, Store, selectors};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use ramflux_desktop_test::{SCENARIO_NAMES, load_fixture};
 
 use crate::app::{InspectorEntry, StoreEvent, StoreHandle, UiOutcome};
@@ -81,8 +82,12 @@ impl DevPanel {
     }
 
     fn section(title: SharedString, cx: &App) -> gpui_kit::Div {
-        v_flex().gap_2().child(
-            div().text_xs().font_semibold().text_color(cx.theme().muted_foreground).child(title),
+        v_flex().gap(space(2.)).child(
+            div()
+                .text_size(text_caption())
+                .font_semibold()
+                .text_color(cx.theme().muted_foreground)
+                .child(title),
         )
     }
 
@@ -97,7 +102,8 @@ impl DevPanel {
                 .tooltip(name)
                 .on_click(cx.listener(move |this, _, _, cx| this.load(name, cx)))
         });
-        Self::section(tr("dev.scenario"), cx).child(h_flex().flex_wrap().gap_1().children(buttons))
+        Self::section(tr("dev.scenario"), cx)
+            .child(h_flex().flex_wrap().gap(space(1.)).children(buttons))
     }
 
     fn render_timeline(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -113,8 +119,8 @@ impl DevPanel {
         Self::section(tr("dev.timeline"), cx)
             .child(
                 h_flex()
-                    .gap_3()
-                    .text_sm()
+                    .gap(space(3.))
+                    .text_size(text_secondary())
                     .font_family(cx.theme().mono_font_family.clone())
                     .child(div().id("dev-clock").child(clock_line))
                     .child(div().text_color(cx.theme().muted_foreground).child(next_line)),
@@ -122,7 +128,7 @@ impl DevPanel {
             .child(
                 h_flex()
                     .flex_wrap()
-                    .gap_1()
+                    .gap(space(1.))
                     .child(
                         Button::new("dev-pause")
                             .xsmall()
@@ -210,8 +216,8 @@ impl DevPanel {
         Self::section(tr("dev.inspector"), cx).child(
             v_flex()
                 .id("dev-inspector")
-                .gap_0p5()
-                .text_xs()
+                .gap(space(0.5))
+                .text_size(text_caption())
                 .font_family(cx.theme().mono_font_family.clone())
                 .children(rows),
         )
@@ -264,12 +270,12 @@ impl Render for DevPanel {
             .w_96()
             .flex_shrink_0()
             .overflow_y_scroll()
-            .gap_4()
-            .p_3()
+            .gap(space(4.))
+            .p(space(3.))
             .border_start_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().sidebar)
-            .child(div().text_sm().font_semibold().child(tr("dev.title")))
+            .child(div().text_size(text_secondary()).font_semibold().child(tr("dev.title")))
             .child(self.render_scenarios(active, cx))
             .child(self.render_timeline(cx))
             .child(self.render_agent(cx))

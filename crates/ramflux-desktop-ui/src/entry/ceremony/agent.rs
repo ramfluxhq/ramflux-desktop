@@ -17,6 +17,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, Role, Window, div};
 use ramflux_desktop_core::{AccountId, CeremonyAccount, Networking};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 
 use super::{CeremonyPanel, Pending};
 use crate::entry::parts::{announced, muted};
@@ -61,12 +62,12 @@ impl CeremonyPanel {
         v_flex()
             .id("ceremony-name")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading("agent.create.title", window, cx))
             .child(muted(tr("agent.create.help"), cx))
             .child(custodian)
             .child(
-                v_flex().gap_1().child(muted(tr("agent.create.label"), cx)).child(
+                v_flex().gap(space(1.)).child(muted(tr("agent.create.label"), cx)).child(
                     Input::new(&self.name)
                         .id("ceremony-name-input")
                         .aria_label(tr("agent.create.label")),
@@ -74,7 +75,7 @@ impl CeremonyPanel {
             )
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         self.sending(
                             Button::new("ceremony-continue")
@@ -103,7 +104,7 @@ impl CeremonyPanel {
         v_flex()
             .id("ceremony-creating")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading("agent.creating.title", window, cx))
             .child(
                 div()
@@ -113,9 +114,9 @@ impl CeremonyPanel {
                     .test_support()
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .items_center()
-                            .text_sm()
+                            .text_size(text_secondary())
                             .text_color(cx.theme().muted_foreground)
                             .child(Spinner::new().small())
                             .child(tr("agent.creating.text")),
@@ -148,7 +149,7 @@ impl CeremonyPanel {
         v_flex()
             .id("ceremony-done")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading("agent.done.title", window, cx))
             .child(announced(
                 "ceremony-state",

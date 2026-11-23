@@ -26,6 +26,7 @@ use ramflux_desktop_core::{
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::generated::catalog;
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 use ramflux_desktop_sdk::business::ContractGap;
 
 use super::directory::{self, Search, StateKeys};
@@ -214,8 +215,8 @@ impl ContactsDirectory {
                 div()
                     .id("contacts-no-match")
                     .test_support()
-                    .py_2()
-                    .text_sm()
+                    .py(space(2.))
+                    .text_size(text_secondary())
                     .text_color(palette.secondary)
                     .child(tr("sections.no_match"))
                     .into_any_element(),
@@ -255,14 +256,15 @@ impl ContactsDirectory {
                 .font_semibold()
                 .child(initial)
         };
-        let section_title =
-            |text: SharedString| div().pt_2().text_size(rem(palette.size_subheading)).child(text);
+        let section_title = |text: SharedString| {
+            div().pt(space(2.)).text_size(rem(palette.size_subheading)).child(text)
+        };
         let answer_reason = crate::workspace::docks::contacts::requests::reason(store);
         let strangers = (!requests.is_empty()).then(|| {
             v_flex()
                 .id("contacts-strangers-table")
                 .test_support()
-                .gap_3()
+                .gap(space(3.))
                 .child(section_title(tr_args(
                     "sections.contacts.strangers_count",
                     &[("count", &requests.len().to_string())],
@@ -297,7 +299,7 @@ impl ContactsDirectory {
                     };
                     h_flex()
                         .id(SharedString::from(format!("contacts-request-{id}")))
-                        .gap_4()
+                        .gap(space(4.))
                         .p(rem(20.0))
                         .rounded(rem(palette.radius_card))
                         .bg(palette.nav)
@@ -351,8 +353,8 @@ impl ContactsDirectory {
                         .role(gpui_kit::Role::ListItem)
                         .aria_selected(cursor)
                         .test_support()
-                        .gap_4()
-                        .px_2()
+                        .gap(space(4.))
+                        .px(space(2.))
                         .rounded(rem(palette.radius_sm))
                         .when(cursor, |row| row.bg(palette.selected))
                         .py(rem(20.0))
@@ -400,7 +402,7 @@ impl ContactsDirectory {
                 .title_size(palette.size_subheading)
                 .title_weight(gpui_kit::FontWeight::SEMIBOLD)
                 .trailing(
-                    h_flex().gap_3().children(tools).child(crate::gate::gated(
+                    h_flex().gap(space(3.)).children(tools).child(crate::gate::gated(
                         Button::new("contacts-add-detail")
                             .small()
                             .ghost()
@@ -422,7 +424,7 @@ impl ContactsDirectory {
                     .overflow_y_scroll()
                     .px(rem(32.0))
                     .py(rem(24.0))
-                    .gap_4()
+                    .gap(space(4.))
                     .children(strangers)
                     .child(section_title(tr("sections.contacts.all")))
                     .children(state)
@@ -470,7 +472,7 @@ impl Render for ContactsDirectory {
                 .ghost()
                 .w_full()
                 .h(gpui_kit::rems(ramflux_desktop_navigation::theme::ROW_REM))
-                .px_3()
+                .px(space(3.))
                 .rounded(gpui_kit::px(palette.radius_sm))
                 .selected(selected)
                 .toggled(selected)
@@ -504,14 +506,14 @@ impl Render for ContactsDirectory {
             .bg(palette.nav)
             .border_end_1()
             .border_color(palette.line)
-            .px_3()
+            .px(space(3.))
             .pt(gpui_kit::rems(24.0 / 15.0))
-            .gap_4()
+            .gap(space(4.))
             .child(directory::header(tr("navigation.contacts"), h_flex().child(add), cx))
             .child(self.search.field("contacts-search", tr("sections.contacts.search"), cx))
             .child(
                 v_flex()
-                    .gap_1()
+                    .gap(space(1.))
                     .child(category(
                         "contacts-people-entry",
                         "sections.contacts.people",

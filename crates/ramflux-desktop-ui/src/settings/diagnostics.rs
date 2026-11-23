@@ -20,6 +20,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, div};
 use ramflux_desktop_core::{RendererProfile, Store, UiEventKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use super::local_setup::{self, LaunchInputs};
 use super::{SectionContext, SettingsSection};
@@ -106,10 +107,10 @@ pub fn renderer_summary(profile: &RendererProfile, errors: Option<&RendererError
 fn mono_box(id: &'static str, text: String, cx: &App) -> gpui_kit::AnyElement {
     div()
         .id(id)
-        .p_2()
+        .p(space(2.))
         .rounded(cx.theme().radius)
         .bg(cx.theme().muted)
-        .text_xs()
+        .text_size(text_caption())
         .font_family(cx.theme().mono_font_family.clone())
         // Diagnostics read left to right in every interface direction.
         .text_ltr()
@@ -125,15 +126,15 @@ fn renderer_group(context: &SectionContext, cx: &App) -> SettingGroup {
     let text = renderer_summary(registry::profile(), errors);
     let item = SettingItem::render(move |_, _, cx: &mut App| {
         v_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("settings.diagnostics.renderer_explain")),
             )
             .child(mono_box("renderer-profile", text.clone(), cx))
-            .child(div().id("renderer-error-count").text_xs().child(tr_args(
+            .child(div().id("renderer-error-count").text_size(text_caption()).child(tr_args(
                 "settings.diagnostics.renderer_errors",
                 &[("count", &total.to_string())],
             )))
@@ -151,10 +152,10 @@ pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Settin
     let item = SettingItem::render(move |_, _, cx: &mut App| {
         let sink = sink.clone();
         v_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("settings.diagnostics.explain")),
             )
