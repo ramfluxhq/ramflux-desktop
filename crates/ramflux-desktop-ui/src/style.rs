@@ -36,7 +36,7 @@ use gpui_kit::component::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, ElementId, Hsla, SharedString, div, px};
-use ramflux_desktop_navigation::scale::{design_px, space};
+use ramflux_desktop_navigation::scale::{DesignText as _, design_px, space, style as text_style};
 
 /// The design's button kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,10 +51,6 @@ pub enum ButtonKind {
 
 /// The design height of a button.
 const HEIGHT_PX: f32 = 32.0;
-
-/// The label's line box: the label's ink on the boards sits 10–22 px down
-/// a 32 px button, which a 20 px line centred in the button reproduces.
-const LABEL_LINE_PX: f32 = 20.0;
 
 struct Colours {
     fill: Hsla,
@@ -176,11 +172,9 @@ impl DesignButton for Button {
     fn design_label(self, label: impl Into<SharedString>) -> Self {
         let label = label.into();
         self.accessibility_label(label.clone()).child(
-            div()
-                .text_size(design_px(button_text_px()))
-                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                .line_height(design_px(LABEL_LINE_PX))
-                .child(label),
+            // The button text style: 14 px medium on its 20 px line, centred
+            // in the 32 px button (the boards' label ink sits 10–22 px down).
+            div().design_text(text_style::button()).child(label),
         )
     }
 
@@ -189,11 +183,6 @@ impl DesignButton for Button {
         self.disabled(disabled)
             .when(disabled, |b| b.bg(p.surface).text_color(p.control).border_color(p.surface))
     }
-}
-
-/// `rf-size-button`.
-fn button_text_px() -> f32 {
-    ramflux_desktop_navigation::generated::rf_tokens::RFTheme::light().size_button
 }
 
 /// A design primary button.
