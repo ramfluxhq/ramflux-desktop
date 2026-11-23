@@ -34,7 +34,7 @@ mod task_event;
 mod task_progress;
 mod task_status;
 
-use ramflux_desktop_navigation::scale::{space, text_caption};
+use ramflux_desktop_navigation::scale::{DesignText as _, space, style, text_caption};
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -606,17 +606,21 @@ pub fn accessible_label(row: &MomentRow) -> SharedString {
 
 /// A day header: its rules share the row content's inset (`px_2`), so they
 /// end where the cards below end.
+/// The date separator's line.
+const DAY_LINE_PX: f32 = 16.0;
+
 fn day_header(day: SharedString, cx: &App) -> impl IntoElement {
     // Design `RF / Date separator`: a centred chip on the surface colour.
     let palette = ramflux_desktop_navigation::palette(cx);
-    h_flex().w_full().justify_center().pt(space(2.)).child(
+    // 20 px high (12 px text on a 16 px line), 12 px above the first
+    // bubble of the day (the row's 4 px gap and 8 px here).
+    h_flex().w_full().justify_center().pt(space(2.)).pb(space(2.)).child(
         div()
             .px(space(2.))
-            .py(gpui_kit::px(2.))
+            .py(space(0.5))
             .rounded(gpui_kit::rems(palette.radius_chip / 15.0))
             .bg(palette.surface)
-            .text_size(gpui_kit::rems(palette.size_meta / 15.0))
-            .font_medium()
+            .design_text(style::meta().line(DAY_LINE_PX))
             .text_color(palette.secondary)
             .child(day),
     )

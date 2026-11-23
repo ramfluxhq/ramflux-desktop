@@ -6,17 +6,20 @@
 use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, ThemeStyled as _, v_flex,
+    ActiveTheme as _, Icon, IconName, Sizable as _, ThemeStyled as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, Role, TestSupportExt as _, Window, div, rems};
 use ramflux_desktop_core::projection::messages::Mutation;
 use ramflux_desktop_core::{MessagePayload, MomentKind, ParticipantKind, Receipt, UiEventKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex, h_flex_in};
-use ramflux_desktop_navigation::scale::{REM_PX, design_px, space, text_caption};
-use ramflux_desktop_navigation::{generated::catalog, palette};
+use ramflux_desktop_navigation::palette;
+use ramflux_desktop_navigation::scale::{
+    DesignText as _, REM_PX, design_px, space, style, text_caption,
+};
 
 use super::{MomentRow, RowState};
+use crate::message_shell::{BubbleKind, message_shell};
 use crate::{
     bubble::EventSink,
     i18n::{self, tr},
@@ -143,11 +146,11 @@ pub(crate) fn render(
     let agent =
         row.refs.people.get(&row.moment.origin).is_some_and(|p| p.kind == ParticipantKind::Agent);
     let kind = if row.outbound {
-        catalog::BubbleKind::Own
+        BubbleKind::Own
     } else if state.joined {
-        catalog::BubbleKind::Joined
+        BubbleKind::Joined
     } else {
-        catalog::BubbleKind::Peer
+        BubbleKind::Peer
     };
     let sender = if agent {
         crate::i18n::join(
@@ -168,8 +171,7 @@ pub(crate) fn render(
                     .id("message-sender")
                     .test_support()
                     .aria_label(sender.clone())
-                    .text_size(rems(theme.size_secondary / 15.0))
-                    .font_semibold()
+                    .design_text(style::secondary().weight(gpui_kit::FontWeight::SEMIBOLD))
                     .child(sender),
             )
         })
@@ -205,8 +207,7 @@ pub(crate) fn render(
                     h_flex()
                         .flex_none()
                         .gap(space(1.))
-                        .pb(gpui_kit::px(2.))
-                        .text_size(rems(theme.size_caption / 15.0))
+                        .design_text(style::caption())
                         .text_color(if row.outbound {
                             theme.outgoing_meta
                         } else {
@@ -216,9 +217,11 @@ pub(crate) fn render(
                         .children(receipt_meta(payload, row.outbound)),
                 ),
         );
-    let shell = catalog::message_bubble(
-        catalog::MessageContent::new(row.moment.id.to_string().into(), kind, content),
-        theme,
+    let shell = message_shell(
+        gpui_kit::ElementId::Name(format!("{}:bubble", row.moment.id).into()),
+        kind,
+        content,
+        cx,
     );
     let copy = sink.clone();
     let copy_enabled = !payload.tombstone && row.body.is_some();
@@ -302,16 +305,12 @@ pub(crate) fn render(
                             .test_support()
                             .aria_label(ramflux_desktop_navigation::row::initial(&row.author))
                             .flex_none()
-                            .w(design_px(40.0))
+                            .w(design_px(crate::message_shell::AVATAR_PX))
                             .when(!state.joined, |avatar| {
-                                avatar.child(catalog::avatar(
+                                avatar.child(crate::message_shell::message_avatar(
                                     ramflux_desktop_navigation::row::initial(&row.author),
-                                    if agent {
-                                        catalog::AvatarKind::Agent
-                                    } else {
-                                        catalog::AvatarKind::Person
-                                    },
-                                    theme,
+                                    agent,
+                                    cx,
                                 ))
                             }),
                     )

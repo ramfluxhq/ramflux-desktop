@@ -7,7 +7,7 @@
 //!
 //! Where the application exposes the component (`style::primary_button`,
 //! the catalog's `avatar`, `badge`, `trust_banner`, `page_header_content`,
-//! `message_bubble`, `state_block`, the navigation `Row`, design checkbox and radio, Kit
+//! `message_shell`, `state_block`, the navigation `Row`, design checkbox and radio, Kit
 //! switches), the capture calls that code. Where the application builds it
 //! inline in a crate-private view, the capture repeats that inline styling
 //! and says from where (`replica of <file>`), so W1/W2 can measure it; the
@@ -32,6 +32,7 @@ use ramflux_desktop_navigation::palette;
 use ramflux_desktop_navigation::scale::space;
 use ramflux_desktop_ui::AppAssets as Assets;
 use ramflux_desktop_ui::controls::{DesignCheckbox, radio_indicator};
+use ramflux_desktop_ui::message_shell::{BubbleKind, message_avatar, message_shell};
 use ramflux_desktop_ui::status::{Tone, status_chip, tip_bar};
 use ramflux_desktop_ui::style::DesignButton as _;
 
@@ -108,34 +109,54 @@ fn row_replica(
 }
 
 fn bubble(
-    kind: kit::BubbleKind,
+    kind: BubbleKind,
     sender: Option<SharedString>,
     text: SharedString,
     time: &'static str,
     cx: &App,
 ) -> AnyElement {
     // content: replica of crates/ramflux-desktop-ui/src/moments/message_bubble.rs
+    // (`render`) and moments/message.rs (the body in the message style)
+    use ramflux_desktop_navigation::scale::{DesignText as _, style};
     let p = palette(cx);
-    let own = matches!(kind, kit::BubbleKind::Own);
+    let own = matches!(kind, BubbleKind::Own);
     let meta = if own { p.outgoing_meta } else { p.incoming_meta };
     let content = div()
         .flex()
         .flex_col()
-        .gap_1()
+        .min_w_0()
+        .gap(space(1.))
         .when_some(sender, |c, s| {
-            c.child(div().text_size(rem(p.size_secondary)).font_semibold().child(s))
+            c.child(
+                div()
+                    .design_text(style::secondary().weight(gpui_kit::FontWeight::SEMIBOLD))
+                    .child(s),
+            )
         })
         .child(
             div()
                 .flex()
                 .flex_row()
+                .w_full()
+                .min_w_0()
                 .items_end()
-                .gap_2()
-                .child(div().text_size(rem(p.size_body)).child(text))
-                .child(div().text_size(rem(p.size_caption)).text_color(meta).child(time))
-                .when(own, |r| r.child(Icon::new(IconName::CheckCheck).xsmall().text_color(meta))),
+                .gap(space(2.))
+                .child(div().flex_1().min_w_0().design_text(style::body().line(24.0)).child(text))
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .flex_none()
+                        .gap(space(1.))
+                        .design_text(style::caption())
+                        .text_color(meta)
+                        .child(time)
+                        .when(own, |r| {
+                            r.child(Icon::new(IconName::CheckCheck).xsmall().text_color(meta))
+                        }),
+                ),
         );
-    kit::message_bubble(kit::MessageContent::new("m".into(), kind, content), p).into_any_element()
+    message_shell("m", kind, content, cx).into_any_element()
 }
 
 fn tip(tone: Tone, title: SharedString, cx: &App) -> AnyElement {
@@ -212,33 +233,27 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "bubble-peer",
-            how: R("catalog::message_bubble + moments/message_bubble.rs content", |_, cx, _| {
-                bubble(kit::BubbleKind::Peer, None, t("kit10"), "14:32", cx)
+            how: R("message_shell + moments/message_bubble.rs content", |_, cx, _| {
+                bubble(BubbleKind::Peer, None, t("kit10"), "14:32", cx)
             }),
         },
         Component {
             slug: "bubble-own",
-            how: R("catalog::message_bubble + moments/message_bubble.rs content", |_, cx, _| {
-                bubble(kit::BubbleKind::Own, None, t("kit11"), "14:33", cx)
+            how: R("message_shell + moments/message_bubble.rs content", |_, cx, _| {
+                bubble(BubbleKind::Own, None, t("kit11"), "14:33", cx)
             }),
         },
         Component {
             slug: "bubble-group",
             how: R(
-                "catalog::message_bubble + moments/message_bubble.rs content (avatar not included)",
+                "message_shell, message_avatar + moments/message_bubble.rs content",
                 |_, cx, _| {
                     div()
                         .flex()
                         .flex_row()
-                        .gap_2()
-                        .child(kit::avatar(t("kit04"), kit::AvatarKind::Person, palette(cx)))
-                        .child(bubble(
-                            kit::BubbleKind::Peer,
-                            Some(t("kit12")),
-                            t("kit10"),
-                            "14:32",
-                            cx,
-                        ))
+                        .gap(space(2.))
+                        .child(message_avatar(t("kit04"), false, cx))
+                        .child(bubble(BubbleKind::Peer, Some(t("kit12")), t("kit10"), "14:32", cx))
                         .into_any_element()
                 },
             ),
@@ -554,6 +569,7 @@ pub fn components() -> Vec<Component> {
         Component {
             slug: "date-separator",
             how: R("moments/mod.rs `day_header`", |_, cx, _| {
+                use ramflux_desktop_navigation::scale::{DesignText as _, style};
                 let p = palette(cx);
                 div()
                     .flex()
@@ -562,12 +578,11 @@ pub fn components() -> Vec<Component> {
                     .justify_center()
                     .child(
                         div()
-                            .px_2()
-                            .py(px(2.))
+                            .px(space(2.))
+                            .py(space(0.5))
                             .rounded(rem(p.radius_chip))
                             .bg(p.surface)
-                            .text_size(rem(p.size_meta))
-                            .font_medium()
+                            .design_text(style::meta().line(16.0))
                             .text_color(p.secondary)
                             .child(t("kit29")),
                     )
