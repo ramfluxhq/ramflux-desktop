@@ -60,9 +60,10 @@ fn daemon(
         &path,
         move |method, _, _| match method {
             "daemon.status" => Reply::Ok(if offered.load(Ordering::SeqCst) {
-                json!({ "accounts": 0, "socket_path": "/tmp/rfd.sock", "born_v3_creation": true })
+                json!({ "accounts": 0, "socket_path": "/tmp/rfd.sock", "born_v3_creation": true,
+                        "schema_generation": 1 })
             } else {
-                json!({ "accounts": 0, "socket_path": "/tmp/rfd.sock" })
+                json!({ "accounts": 0, "socket_path": "/tmp/rfd.sock", "schema_generation": 1 })
             }),
             "account.list" => Reply::Ok(json!({ "accounts": [], "account_details": [] })),
             _ => fixture(method),

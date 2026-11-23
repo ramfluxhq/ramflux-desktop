@@ -15,6 +15,8 @@ fn fixture(name: &str) -> (Task, Inbox, mpsc::Receiver<super::super::Delivery>, 
     let path = socket_path(name);
     let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({"message_id":"m"})));
     let mut config = SdkConfig::new(path);
+    // These daemons report no schema generation (the gate is opened by hand).
+    config.schema_support = crate::config::SchemaSupport::Legacy;
     config.settings_path = None;
     config.backup_api = false;
     let (tx, rx) = mpsc::channel();

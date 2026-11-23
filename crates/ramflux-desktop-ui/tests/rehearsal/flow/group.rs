@@ -56,8 +56,13 @@ pub fn group<H: Host, D: DemoDaemon>(
     if shown.title != name {
         return Err(format!("the group is shown as {:?}, not {name:?}", shown.title));
     }
-    if !shown.participants.contains(&ParticipantId::new(&bob.principal)) {
-        return Err(format!("Bob is not a member of the new group: {:?}", shown.participants));
+    let bob_id = ParticipantId::new(&bob.principal);
+    let joined = demo.wait(0, limits.answer, "Bob listed as a member", |desk, host| {
+        desk.store(host, |s| s.context(&context).is_some_and(|c| c.participants.contains(&bob_id)))
+    });
+    if joined.is_err() {
+        let listed = demo.read(0, |s| s.context(&context).map(|c| c.participants.clone()))?;
+        return Err(format!("Bob is not a member of the new group: {listed:?}"));
     }
     notes.add(format!(
         "Alice made the group with the New group form (name {name:?}, Bob {} ticked); \

@@ -126,6 +126,7 @@ impl Desk {
 
     /// Clicks the element `id` (inside the element `scope`, when given).
     pub fn click(&self, host: &mut impl Host, scope: Option<&str>, id: &str) -> Result<(), String> {
+        self.scroll_into_view(host, scope, id)?;
         let (scope, id) = (scope.map(str::to_owned), id.to_owned());
         let found = host.window(self.handle.into(), move |window, cx| {
             let present = match &scope {
@@ -141,6 +142,41 @@ impl Desk {
             present
         })?;
         if found { Ok(()) } else { Err(format!("desktop {}: no control to click", self.tag)) }
+    }
+
+    /// Scrolls the nearest visible container of `id` until `id` is drawn
+    /// inside the window, as a person scrolls to a button below the fold
+    /// (a real node's card is taller than the window).
+    fn scroll_into_view(
+        &self,
+        host: &mut impl Host,
+        scope: Option<&str>,
+        id: &str,
+    ) -> Result<(), String> {
+        for _ in 0..20 {
+            let (scope, id) = (scope.map(str::to_owned), id.to_owned());
+            let hidden = host.window(self.handle.into(), move |window, cx| {
+                let target = match &scope {
+                    Some(scope) => window.within(scope.clone()).try_find(id.clone()),
+                    None => window.try_find(id.clone()),
+                };
+                let target = target.filter(|t| !t.visible())?;
+                let container = target.path().iter().rev().skip(1).find(|ancestor| {
+                    matches!(ancestor, gpui_kit::ElementId::Name(_))
+                        && window.try_find((*ancestor).clone()).is_some_and(|a| a.visible())
+                })?;
+                let delta = gpui_kit::ScrollDelta::Pixels(gpui_kit::point(
+                    gpui_kit::px(0.),
+                    gpui_kit::px(-300.),
+                ));
+                window.scroll(container.clone(), delta, cx);
+                Some(())
+            })?;
+            if hidden.is_none() {
+                return Ok(());
+            }
+        }
+        Ok(())
     }
 
     /// Clicks the painted element labeled `label` (a menu item).

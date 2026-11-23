@@ -74,7 +74,7 @@ fn blocking_screens_and_the_status_line_follow_the_gate(cx: &mut TestAppContext)
     let rows: [Row; 4] = [
         (
             "older",
-            SchemaSupport::V1Candidate,
+            SchemaSupport::V1,
             Generation::Absent,
             SchemaGate::OlderDaemon,
             "schema.older_daemon.title",
