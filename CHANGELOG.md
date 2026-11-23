@@ -27,6 +27,32 @@ Versioning.
   set, unused keys, placeholder mismatches, a per-locale coverage report
   (`docs/i18n-coverage.md`) and a guard against physical edges in views.
 
+- Linux identity: the window carries the application id
+  `org.ramflux.desktop` (Wayland `app_id`, X11 `WM_CLASS`), the same id as
+  the new desktop entry, hicolor icons (the macOS placeholder icon) and
+  AppStream metainfo in `packaging/linux/`, checked by
+  `scripts/validate-linux-metadata.sh` in CI and by a unit test against the
+  macOS bundle id.
+- One platform-directories module for every path: XDG config, data, state,
+  cache and runtime directories on Linux (unset, empty or relative variables
+  ignored), the macOS Library folders unchanged, and the conventional
+  Windows locations named for later work.
+- Linux release build: `scripts/package-linux.sh` produces
+  `ramflux-desktop-<version>-linux-<arch>.tar.gz` and `SHA256SUMS`
+  (release profile without demo scenarios, stripped with the build id kept,
+  remapped build paths, file times from `SOURCE_DATE_EPOCH`); the
+  `Linux release build` workflow builds x86_64 and aarch64 on Ubuntu 22.04
+  from version tags or on demand, uploads artefacts and adds keyless build
+  provenance on tags, and publishes nothing.
+- `packaging/aur/ramflux-desktop-bin` (PKGBUILD and `.SRCINFO`) for x86_64
+  and aarch64, not submitted.
+- Operating-system notifications on Linux through the freedesktop interface
+  with the `desktop-entry` hint, `transient` on any card that shows a name or
+  text, urgency, one card per conversation and a click that opens the
+  conversation; a per-device preview level (sender and text, sender only by
+  default, nothing). Triggers and the Settings control come later.
+- `docs/linux.md` and `docs/linux-verification.md`.
+
 ### Fixed
 
 - The first-run test for a daemon left behind by a crash no longer fails
@@ -39,6 +65,15 @@ Versioning.
 
 ### Changed
 
+- On Linux a started daemon's default data folder is
+  `$XDG_DATA_HOME/ramflux-desktop/rfd-data`; data under the settings folder
+  from older builds is copied there once (under the daemon's lock, verified
+  byte for byte, then switched; the old folder is never deleted).
+- On Linux the default daemon socket is `$XDG_RUNTIME_DIR/ramflux/rfd.sock`
+  (folder created 0700), unless a daemon already listens on the reference
+  CLI's `/tmp/ramflux/rfd.sock`.
+- On Linux the window draws no title bar of its own when the compositor
+  decorates it or tiles it on every edge.
 - Production code may not unwrap, expect, panic or take `std::sync` locks:
   workspace lints (`unsafe_code` forbidden, `dbg!` and `todo!` denied) and a
   deny in each crate root enforce it; a conventions test keeps every crate
