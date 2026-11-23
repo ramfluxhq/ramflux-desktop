@@ -214,6 +214,34 @@ impl<'h, H: Host, D: DemoDaemon> Demo<'h, H, D> {
     }
 }
 
+/// After step `number`: when it failed, says where each desktop was (page,
+/// shown conversation, open form or settings) and takes screenshots of
+/// both, named `fail_<number>`.
+fn after_step<H: Host, D: DemoDaemon>(steps: &mut Steps, demo: &mut Demo<'_, H, D>, number: u8) {
+    if !steps.failed(number) {
+        return;
+    }
+    let mut states = Vec::new();
+    let mut notes = Notes::default();
+    for ix in 0..2 {
+        let Some(desk) = demo.sides[ix].desk.as_ref() else {
+            states.push(format!("desktop {}: closed", demo.sides[ix].tag));
+            continue;
+        };
+        let page = desk.page(demo.host);
+        let context = desk.current_context(demo.host);
+        let draft = desk.draft_open(demo.host);
+        let composer = desk.exists(demo.host, "composer-input");
+        states.push(format!(
+            "desktop {}: page {page:?}, conversation {:?}, draft {draft}, composer {composer}",
+            demo.sides[ix].tag,
+            context.map(|c| c.to_string())
+        ));
+        let _ = demo.shots(ix, &format!("fail_{number}"), &mut notes);
+    }
+    steps.amend_failure(number, &states.join("; "), notes.take());
+}
+
 /// Runs every step and returns the table.
 pub fn run<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
     let mut steps = Steps::default();
@@ -246,50 +274,66 @@ pub fn run_live<H: Host, D: DemoDaemon>(
 ) -> Steps {
     let mut steps = Steps::default();
     steps.run(1, "Two desktops attach to two daemons", &[], |n| setup::start(demo, n));
+    after_step(&mut steps, demo, 1);
     steps.run(2, "Add the node by URL, check its key, confirm with one tap", &[1], |n| {
         setup::node(demo, n)
     });
+    after_step(&mut steps, demo, 2);
     steps.run(3, "Create Alice and Bob on the node", &[2], |n| setup::accounts(demo, n));
+    after_step(&mut steps, demo, 3);
     steps.run(4, "Add each other as contacts; verify safety numbers", &[3], |n| {
         talk::contacts(demo, n)
     });
+    after_step(&mut steps, demo, 4);
     steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
-    steps.run(6, "Alice sends Bob an attachment", &[5], |n| talk::attachment(demo, n));
+    after_step(&mut steps, demo, 5);
+    steps.run(6, "Files both ways between the desktops", &[5], |n| talk::attachment(demo, n));
+    after_step(&mut steps, demo, 6);
     steps.run(7, "A new group with both from the desktop; messages both ways", &[4], |n| {
         group::group(demo, n)
     });
+    after_step(&mut steps, demo, 7);
     steps.run(8, "Bob's desktop quits and reopens; resumes from its cursor", &[5], |n| {
         reopen::reopen(demo, n)
     });
+    after_step(&mut steps, demo, 8);
     steps.run(9, "Live receive on the event stream, polling off (frame taps)", &[5], |n| {
         evidence::stream(demo, n)
     });
+    after_step(&mut steps, demo, 9);
     steps.run(10, "Lock and unlock Alice; restart her daemon; history kept", &[5], |n| {
         resume::lock_and_restart(demo, n)
     });
+    after_step(&mut steps, demo, 10);
     if let Some(peers) = peers {
         let mut run = peers::PeerRun { peers, conversation: None };
         steps.run(20, "Add node peers from their contact cards; trust state shown", &[3], |n| {
             peers::contacts(demo, &mut run, n)
         });
+        after_step(&mut steps, demo, 20);
         steps.run(21, "Direct messages both ways with a node peer, live", &[20], |n| {
             peers::messages(demo, &mut run, n)
         });
+        after_step(&mut steps, demo, 21);
         steps.run(22, "An image and a file each way with a node peer", &[21], |n| {
             peers::files_both_ways(demo, &mut run, n)
         });
+        after_step(&mut steps, demo, 22);
         steps.run(
             23,
             "A group with both node peers from the desktop; messages both ways",
             &[20],
             |n| peers::group(demo, &mut run, n),
         );
+        after_step(&mut steps, demo, 23);
         steps.run(24, "Settings account and devices pages with real data", &[3], |n| {
             peers::settings(demo, n)
         });
+        after_step(&mut steps, demo, 24);
         steps.run(25, "History: older messages paged on scroll after a reopen", &[21], |n| {
             peers::history(demo, &mut run, n)
         });
+        after_step(&mut steps, demo, 25);
     }
     steps
 }
