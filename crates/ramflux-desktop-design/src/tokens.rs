@@ -241,9 +241,11 @@ fn apply_token_set(palette: &mut BTreeMap<String, ValueOrText>, set: &serde_json
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Finding {
     /// Failing: `mismatch`, `missing-in-code`, `kit-value-not-in-design`,
-    /// `type-size-not-in-design`, `literal-colour-not-in-design`.
+    /// `type-size-not-in-design`, `literal-colour-not-in-design`,
+    /// `spacing-utility` (a rem-based Kit spacing step outside
+    /// `navigation::scale`), `rem-divisor`.
     /// Informational: `legacy-not-in-code`, `code-only-token`,
-    /// `spacing-utility`, `literal-colour`, `rem-divisor`.
+    /// `literal-colour`.
     pub kind: String,
     pub token: String,
     pub mode: String,
@@ -264,6 +266,8 @@ impl Finding {
                 | "kit-value-not-in-design"
                 | "type-size-not-in-design"
                 | "literal-colour-not-in-design"
+                | "spacing-utility"
+                | "rem-divisor"
         )
     }
 }
@@ -752,7 +756,7 @@ pub fn markdown(report: &TokenReport) -> String {
         out.push_str(&format!("| {kind} | {} |\n", report.count(kind)));
     }
     out.push_str(&format!(
-        "\nFailing findings (value mismatch, missing in code, Kit or utility or literal value the design does not define): {}\n\n",
+        "\nFailing findings (value mismatch, missing in code, Kit or utility or literal value the design does not define, rem-based spacing utility, rem divisor): {}\n\n",
         report.mismatches()
     ));
     out.push_str(
@@ -823,5 +827,37 @@ mod tests {
         // 88 rf-* variables in two modes.
         assert_eq!(report.compared, 176);
         assert_eq!(report.count("legacy-not-in-code"), 12);
+    }
+
+    /// The guard of wave W1: UI code sizes spacing and type only through
+    /// `ramflux_desktop_navigation::scale` (no rem-based Kit spacing or type
+    /// utility, no division of design pixels by 16), and every token value
+    /// equals the design.
+    #[test]
+    fn the_ui_uses_only_the_design_scale() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let report = check(&root).unwrap();
+        let failing: Vec<&Finding> = report.findings.iter().filter(|f| f.is_mismatch()).collect();
+        assert!(failing.is_empty(), "use ramflux_desktop_navigation::scale instead: {failing:#?}");
+    }
+
+    #[test]
+    fn a_raw_utility_is_a_failing_finding() {
+        let mut counts = BTreeMap::new();
+        utility_calls("div().gap_2().text_sm()", &mut counts);
+        assert_eq!(counts.len(), 2);
+        let finding = |kind: &str| Finding {
+            kind: kind.into(),
+            token: String::new(),
+            mode: String::new(),
+            design: String::new(),
+            code: String::new(),
+            source: String::new(),
+            uses: 1,
+        };
+        assert!(finding("spacing-utility").is_mismatch());
+        assert!(finding("type-size-not-in-design").is_mismatch());
+        assert!(finding("rem-divisor").is_mismatch());
+        assert!(!finding("legacy-not-in-code").is_mismatch());
     }
 }

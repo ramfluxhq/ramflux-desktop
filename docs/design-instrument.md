@@ -230,10 +230,14 @@ renders today and the design value it should take (4 px grid; nearest design
 type size), and every `/ 16.0` rem divisor.
 
 Failing findings: value mismatches, design tokens missing in code, Kit values
-and type sizes and literal colours the design does not define.
-Informational: the 12 legacy `pilot-*` variables, code-only geometry tokens,
-spacing utilities (the design defines no spacing scale besides `rf-gap`), rem
-divisors. `design/pencil/variables.json` is the variable dump of the design
+and type sizes and literal colours the design does not define, rem-based Kit
+spacing utilities and `/ 16.0` rem divisors. UI code sizes spacing and type
+through `ramflux_desktop_navigation::scale` (`space(n)` = n × 4 px,
+`text_caption()` … `text_subheading()` from the `rf-size-*` variables,
+`design_px(px)` for any other design length). Informational: the 12 legacy
+`pilot-*` variables and the code-only geometry tokens. `tokens --check` runs
+in the lint CI job and as the design crate's test
+`the_ui_uses_only_the_design_scale`. `design/pencil/variables.json` is the variable dump of the design
 file (Pencil, read-only); refresh it when the design file changes.
 
 ## Adding a board
@@ -256,9 +260,8 @@ Not added yet; the comparison needs the reference images and the macOS
 renderer.
 
 1. Light (Linux, seconds after the crate builds): the instrument's unit tests
-   already run in `cargo test --workspace`. `rf-design tokens --check` becomes
-   a blocking step once the three Kit type utilities are replaced (it fails
-   today on `text_xs`, `text_sm`, `text_lg`).
+   run in `cargo test --workspace`; `rf-design tokens --check` is a blocking
+   step of the lint job.
 2. Heavy (macOS, about 3 minutes of capture plus a debug build): fetch the
    reference set from a pinned artefact or release asset (never the design
    file), `refs verify --priority`, capture the priority set with `TZ=UTC`,
