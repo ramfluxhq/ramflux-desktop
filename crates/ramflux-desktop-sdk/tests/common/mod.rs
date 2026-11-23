@@ -8,8 +8,13 @@
 pub mod fake_bus;
 pub mod task_world;
 
+use std::future::Future as _;
+use std::pin::pin;
+use std::sync::Arc;
+use std::task::{Context, Wake, Waker};
 use std::time::{Duration, Instant};
 
+use ramflux_desktop_core::source::SourceWake;
 use ramflux_desktop_core::{EventEnvelope, Source, Store, Timestamp};
 use ramflux_desktop_sdk::{Deadlines, SdkConfig, SdkHub, SdkSource};
 
@@ -32,16 +37,60 @@ pub fn fixture(method: &str) -> Reply {
     Reply::Ok(frames().get(method).cloned().unwrap_or_else(|| serde_json::json!({})))
 }
 
+/// How long a condition-based wait may take before the test fails. It only
+/// bounds a failure; no test asserts speed.
+pub const WAIT_LIMIT: Duration = Duration::from_secs(30);
+
+/// The longest a woken wait sleeps without a completion before it checks its
+/// condition again (for conditions on the fake daemon's side, which no
+/// completion announces).
+const WAKE_SLICE: Duration = Duration::from_millis(100);
+
+/// Unparks the waiting test thread when the source announces a completion.
+struct Unpark(std::thread::Thread);
+
+impl Wake for Unpark {
+    fn wake(self: Arc<Self>) {
+        self.0.unpark();
+    }
+}
+
+/// Blocks the current thread until `wake` announces a completion (one sent
+/// before the call counts) or `slice` passes.
+pub fn wait_for_wake(wake: &SourceWake, slice: Duration) {
+    let waker = Waker::from(Arc::new(Unpark(std::thread::current())));
+    let mut cx = Context::from_waker(&waker);
+    if pin!(wake.notified()).poll(&mut cx).is_pending() {
+        std::thread::park_timeout(slice);
+    }
+}
+
 /// A store fed by one source, with every envelope kept.
 pub struct Fed {
     pub source: SdkSource,
     pub store: Store,
     pub envelopes: Vec<EventEnvelope>,
+    /// The hub's completion notification: waits block on it instead of
+    /// sleeping between pumps.
+    pub wake: Option<SourceWake>,
 }
 
 impl Fed {
     pub fn new(source: SdkSource) -> Self {
-        Self { source, store: Store::new(), envelopes: Vec::new() }
+        Self { source, store: Store::new(), envelopes: Vec::new(), wake: None }
+    }
+
+    /// A store fed by `source`, woken by its hub's completions.
+    pub fn woken(source: SdkSource, wake: SourceWake) -> Self {
+        Self { wake: Some(wake), ..Self::new(source) }
+    }
+
+    /// Waits for the next completion (or a short pause without a wake).
+    pub fn idle(&self) {
+        match &self.wake {
+            Some(wake) => wait_for_wake(wake, WAKE_SLICE),
+            None => std::thread::sleep(Duration::from_millis(15)),
+        }
     }
 
     /// Applies what has arrived.
@@ -54,8 +103,9 @@ impl Fed {
 
     /// Pumps until `done` holds. The wall-clock limit only bounds a failure
     /// (a busy machine just takes longer); nothing is asserted about speed.
+    /// With a wake, the loop is driven by the source's completions.
     pub fn until(&mut self, what: &str, done: impl Fn(&Store, &[EventEnvelope]) -> bool) {
-        let deadline = Instant::now() + Duration::from_secs(30);
+        let deadline = Instant::now() + WAIT_LIMIT;
         loop {
             self.pump();
             if done(&self.store, &self.envelopes) {
@@ -76,7 +126,7 @@ impl Fed {
                     .map(|e| format!("{}:{:?}", e.seq, e.event))
                     .collect::<Vec<_>>()
             );
-            std::thread::sleep(Duration::from_millis(15));
+            self.idle();
         }
     }
 
