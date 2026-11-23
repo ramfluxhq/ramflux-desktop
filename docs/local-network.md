@@ -1,10 +1,10 @@
 # macOS Local Network privacy and the local daemon
 
 Since macOS 15, a program may reach hosts on the local network (for example a
-node at `http://192.168.31.136:59482`) only after the user allows it in
+node at `http://192.168.1.20:59482`) only after the user allows it in
 System Settings › Privacy & Security › Local Network. This note records how
 the desktop and the daemon it starts fit those rules, what went wrong in
-DESK-F19, and how to test it. The reference is Apple's
+an earlier build, and how to test it. The reference is Apple's
 [TN3179: Understanding local network privacy](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
 
 ## Who asks, and for whom
@@ -37,7 +37,7 @@ bundle id and a second executable spawned the same way, connected to the LAN
 node from the helper as well as from the main executable once the app was
 allowed.
 
-## What went wrong (DESK-F19)
+## What went wrong in an earlier build
 
 macOS keeps the allowed app as a rule with the Mach-O UUIDs of its main
 executable (TN3179, "Build-time considerations"), and policies are installed
@@ -88,14 +88,14 @@ new code identity.
 
 ## Manual test (owner, on the Mac)
 
-Requires the app built from this branch with `rf` bundled, and the LAN node
+Requires the app built from the current source with `rf` bundled, and the LAN node
 running.
 
 1. Quit Ramflux Desktop. Replace `~/Applications/Ramflux Desktop.app` with the
    new build. Do not touch System Settings.
 2. Open the app. On the first screen press **启动本地守护进程** (Start local
    daemon) and wait for it to answer.
-3. On the node step enter `http://192.168.31.136:59482` and press **Look up**.
+3. On the node step enter `http://192.168.1.20:59482` and press **Look up**.
    - Expected: after up to a few seconds the node card appears (fingerprint,
      endpoints). No error. This is the case that failed before: the first
      lookup after installing a new build.

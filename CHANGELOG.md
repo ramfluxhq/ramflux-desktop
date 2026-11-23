@@ -45,6 +45,10 @@ Versioning.
 
 ### Changed
 
+- Clean-up of public documentation: the manuals no longer carry internal task
+  identifiers or round labels, `docs/demo.md` is a getting-started guide, and
+  the example node address in the local network manual and the tests is a
+  generic private one.
 - Production code may not unwrap, expect, panic or take `std::sync` locks:
   workspace lints (`unsafe_code` forbidden, `dbg!` and `todo!` denied) and a
   deny in each crate root enforce it; a conventions test keeps every crate

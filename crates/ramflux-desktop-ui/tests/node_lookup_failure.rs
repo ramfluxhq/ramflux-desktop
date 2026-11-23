@@ -118,7 +118,7 @@ fn a_lookup_blocked_once_by_local_network_privacy_goes_through_on_the_repeat(
 ) {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    let url = "http://192.168.31.136:59482";
+    let url = "http://192.168.1.20:59482";
     let adds = Arc::new(AtomicUsize::new(0));
     let seen = adds.clone();
     let path = socket_path("lan-repeat");
@@ -134,8 +134,8 @@ fn a_lookup_blocked_once_by_local_network_privacy_goes_through_on_the_repeat(
         "node.add" => Reply::Ok(json!({ "node": {
             "node_id": "node-lan", "discovery_url": url, "node_public_key": "key",
             "pin_source": "tofu",
-            "gateway": { "quic_addr": "192.168.31.136:7443", "tcp_addr": "", "server_name": "lan" },
-            "relay": { "quic_addr": "192.168.31.136:7543", "server_name": "lan" },
+            "gateway": { "quic_addr": "192.168.1.20:7443", "tcp_addr": "", "server_name": "lan" },
+            "relay": { "quic_addr": "192.168.1.20:7543", "server_name": "lan" },
             "prekey_http_url": "", "signaling_turn_addr": "", "protocol_versions": ["ramflux.v1"],
             "client_capabilities": ["gateway", "relay", "prekey"],
             "discovered_at": 1_790_000_000_u64, "expires_at": 1_890_000_000_u64,

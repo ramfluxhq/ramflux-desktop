@@ -65,8 +65,8 @@ removes the directory afterwards.
 ## macOS app and demo
 
 `scripts/package-macos.sh` builds `dist/Ramflux Desktop.app` (an ad hoc signed
-development build). `docs/demo.md` walks through a demo on a real daemon and
-node, and lists what the desktop supports today.
+development build). `docs/demo.md` is a getting-started guide for running on a real
+daemon and node.
 
 ## Keyboard
 

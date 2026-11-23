@@ -47,7 +47,7 @@ The store keeps each entity in its own collection, keyed by id:
 | Entity | Key fields |
 |---|---|
 | `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state`, `self_participant_id` (the participant that is this account; outbound moments and receipts key on it, never guessed) |
-| `Node` | NODE-01 profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
+| `Node` | node profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
 | `Device` | account, label, `this_device`, `revoked`, `last_seen` |
 | `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `safety` (`SafetyState`: Unverified, Verified, KeyChanged, Forked, VerificationStale = verified before the authority changed, verify again), `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported), `reachable` (`Some(true)` when this account holds a verified device to send to, `None` when not reported), `kind_claim` (`KindClaim`: None = nothing reported, the safe default; Asserted(`PeerKind` Human / HeadlessAi / Bot) = only the participant's own claim; Verified(kind) = a root-signed public profile states it), `name_warnings` (`NameWarnings`: `mixed_script`, `confusable_with` another principal; advisory only), `root_source` (`RootSource`: Lookup = provisional name lookup, Card = pinned by their card, Verified = safety numbers compared; `None` when not reported) |
 | `ContactCard` | This account's own card as the backend exported it: `text`, optional `link` (`Store::own_contact_card`, from `DomainEvent::OwnContactCardUpdated`) |
@@ -464,10 +464,10 @@ controls:
 | `s12_surface_limits` | A surface over the action limit, a stream over the delta limit |
 | `s13_born_v3` | A fresh device whose daemon offers account creation with a recovery phrase (after two seconds); the mock source answers the ceremony |
 
-## Voice calls (DESK-F16, on CALL-01)
+## Voice calls
 
 One-to-one voice calls in direct conversations, on the daemon's call API
-(CALL-01, product f55c7e0; the fake daemon `ramflux-desktop-test`
+(product revision f55c7e0; the fake daemon `ramflux-desktop-test`
 `fake_calls` follows it). Each account snapshot reads `call.list`: a daemon
 that answers it has the call API, and the call methods are declared
 supported. Until then, with a daemon without it, or with calls turned off
@@ -497,7 +497,7 @@ the peer not in a changed key state nor unreachable; one call at a time),
 `HangUpCall` (not ended): methods `call.invite`, `call.answer`,
 `call.reject`, `call.hangup`. Agents never take part in calls.
 
-**Daemon API (CALL-01 r2).** `call.invite {conversation_id}`,
+**Daemon API.** `call.invite {conversation_id}`,
 `call.answer|reject|hangup {call_id}`, each answering with the call row;
 event `call.changed` with the call row: `call_id`, `conversation_id`,
 `peer_id`, `direction` (`outgoing`/`incoming`), `state`
@@ -543,7 +543,7 @@ headset-only, and the in-call bar says so. On macOS the bundle carries
 `NSMicrophoneUsageDescription`; a denied microphone delivers silence, which
 the engine reports and the bar explains with a shortcut to System Settings.
 
-**CALL-01 r2 secret handoff and consent.** Each participant receives only its own
+**Secret handoff and consent.** Each participant receives only its own
 relay token and rebind key over its authenticated gateway → daemon → media-engine
 channel. Neither secret travels through the peer. The caller sends a public lease
 offer; the callee signs consent binding call ID, both root-qualified endpoints,
@@ -561,7 +561,7 @@ reply. A fresh call is required. Daemon restart, or device/key change, ends the 
 with `end_reason: failed`; live endpoint handoff/rekey is deferred. Tokens, rebind
 keys and media keys must never enter public state, events, timeline rows or logs.
 
-**CALL-01 r2 NAT rebinding contract (media-engine implementation required).**
+**NAT rebinding contract (media-engine implementation required).**
 Ordinary media stays source-address pinned, with no per-packet MAC. Keepalives are
 empty token-framed payloads every five seconds and do not renew authorization.
 The connected media socket accepts a raw challenge only from its configured relay:
@@ -598,14 +598,13 @@ of byte values 0..31, decoded lease ID 0..15, side 1 and cookie 32..63, expected
 and `07d911fa05814f8c69af12f9420b5aee` for IPv6 `[2001:db8::1234]:54321`.
 These are public test vectors, not deployment keys.
 
-## Contact requests (DESK-F21, on CONTACT-02)
+## Contact requests
 
 Adding a contact sends the peer a request; until the peer accepts, messages
 from the requester are held by the peer's daemon (a "message request") and
 delivered into the conversation on accept, dropped on decline or block.
-Aligned with the CONTACT-02 contract as merged on product main (pinned
-`6158459`, `docs/contact_cards.md` "Contact consent and message requests",
-r4). The fake daemon (`ramflux-desktop-test` `fake_contact_requests`)
+Aligned with the contract as merged on product main (pinned `6158459`,
+`docs/contact_cards.md` "Contact consent and message requests"). The fake daemon (`ramflux-desktop-test` `fake_contact_requests`)
 follows the same contract.
 
 **Store.** A `ContactRequest` (daemon `id`, `peer`, `RequestDirection`
@@ -636,7 +635,7 @@ explicitly. UI events: `ContactRequestAnswered { request_id, answer }`,
 `ContactRequestPolicySwitched { auto_accept }`; Send again on a contact row
 emits `AddContactRequested`.
 
-**Daemon API (CONTACT-02, product main).**
+**Daemon API (product main).**
 
 - `contact.add {principal_id}` (and `contact.card.import`) sends the request;
   the answer's `contact` row and every `contact.list` row carry
@@ -689,8 +688,8 @@ emits `AddContactRequested`.
   another decision on a closed request is `ValidationFailed` /
   `request_closed`, an unknown id `request_not_found`
   (`backend.contact.request_closed` / `request_not_found`). While the
-  daemon's contact request capacity is exhausted (`ContactRequestCapacity`,
-  r3) it refuses with the bus's untyped `Unavailable`; for a decision or the
+  daemon's contact request capacity is exhausted (`ContactRequestCapacity`)
+  it refuses with the bus's untyped `Unavailable`; for a decision or the
   setting the desktop says nothing changed and to try again later
   (`backend.contact.request_unavailable`), keeps the request, and does not
   retry on its own. Accept delivers the
@@ -705,7 +704,7 @@ emits `AddContactRequested`.
   state of this account's own requests (for the cooldown explanation).
 - `contact.requests.policy.get {}` / `contact.requests.policy.set
   {contact_requests}` → `{contact_requests}`.
-- Fences (r3/r4, daemon side; nothing for the desktop to send): a decline or
+- Fences (daemon side; nothing for the desktop to send): a decline or
   block fences the peer's requests and pair controls; `contact.unblock`
   clears the fence; adding a peer whose request this account declined, or
   accepting one, clears this side's decline fence and admits the peer's
@@ -790,7 +789,7 @@ history metadata use the event's relation role when reporting
 A corrupt cached profile makes that actor unverified without failing unrelated
 rows. These pre-1.0 field semantics require coordinated client/server releases.
 
-## Full backup and restore (DESK-F22, on BACKUP-01)
+## Full backup and restore
 
 Owner requirement: a full backup has no count limits and holds everything
 (all messages, groups, contacts and every attachment); a restore verifies
@@ -1028,10 +1027,10 @@ refused by the daemon, and `account.secure_sessions.changed` announces
 ("Re-establishing secure sessions…") until the daemon says `ready`; a send
 that fails meanwhile shows the daemon's reason in the status strip.
 
-## Verified peer kinds (DESK-F23, on KIND-01)
+## Verified peer kinds
 
 How the desktop reads the section above, aligned with product main
-`eae12fb` (KIND-01 merged: `docs/identity_profiles.md`,
+`eae12fb` (`docs/identity_profiles.md`,
 `client/identity_authority/profile_read.rs`, `bus/read_model/rows.rs`,
 `client/contact_resolution.rs`, `client/task/read.rs`). The fake daemon
 (`ramflux-desktop-test` `fake_profiles`) joins the same fields.
@@ -1097,12 +1096,12 @@ permission.
 
 Screenshots: `peer_kind_shots` (run explicitly).
 
-## Account creation with a recovery phrase (DESK-V3-01, on ID-02-IMPL-1)
+## Account creation with a recovery phrase
 
 Built contract-first on the mock source against the five ceremony methods
 (begin, show-once, hidden-challenge, confirm, cancel; the product's
 `docs/root_key_custody.md` is normative for the ceremony rules), and wired to
-the real SDK source in DESK-V3-02 (see "Wiring to the SDK source" below, from
+the real SDK source (see "Wiring to the SDK source" below, from
 the product's `docs/local_bus_account_creation.md`). The sections up to there
 describe the screens and the store, which both sources share.
 
@@ -1111,8 +1110,8 @@ reports `CapabilitiesUpdated` with it true. `unsupported` has no say in it:
 a daemon that lists nothing unsupported still does not offer the ceremony.
 The entry page's account step shows "Create account with recovery phrase"
 in place of the passphrase form while it is true: a daemon that offers the
-phrase has no other way to create an account (final contract, ID-02-IMPL-3
-decision r1: `account.create` takes no seeds and starts the ceremony; the
+phrase has no other way to create an account (final contract:
+`account.create` takes no seeds and starts the ceremony; the
 steps run on the same local-bus connection; cancel or a lost connection
 erases it; unlock still uses the account passphrase). An older daemon keeps
 the passphrase form. Policy refuses `BeginCeremony` without it
@@ -1204,7 +1203,7 @@ deadline ends the ceremony (`Invalid`, `Expired`) and erases the phrase,
 confirm consumes the ceremony whatever the outcome. Fixture `s13_born_v3`
 reports the capability after two seconds.
 
-**Pending requests (r2).** Every control that sends a request (continue,
+**Pending requests.** Every control that sends a request (continue,
 show, "I wrote them down", confirm, cancel) is off and busy from its press
 until the daemon answers (a newer ceremony revision, or a newer failed
 effect, or a refused intent); the methods refuse a second send as well. While
@@ -1212,18 +1211,18 @@ the hide is awaited the screen shows a neutral "choosing three words" line
 (status, not alert); "no longer available" is for a phrase that was never
 received after the daemon answered.
 
-**Networking state on the account (r2).** `Account.networking` (`Live`,
+**Networking state on the account.** `Account.networking` (`Live`,
 `Pending`; default `Live`) is the account list's state. The mock adds the
 account (unlocked, `Pending`) with the ceremony's result. The done screen
 stays in view until closed even though the account is listed, then the
 workspace shows a persistent "networking pending" banner and the account
 rows of the entry page a tag, for as long as the list says `Pending`.
 
-**Keyboard and window (r2, r3).** Focus moves when a screen first appears,
+**Keyboard and window.** Focus moves when a screen first appears,
 and never to a button that cannot be undone: to the input to type in; to the
 word list when the 24 words appear (a labelled list read in order; "I wrote
 them down" is reached by Tab only, so a stray Enter or Space hides
-nothing); to the pending line while three words are chosen; otherwise (DESK-V3-02)
+nothing); to the pending line while three words are chosen; otherwise
 to the screen's heading, or to its error when the screen is only an error. Escape asks "Cancel this setup?", moves focus to the question
 and gives it back to where it was on "Keep going" (Escape again dismisses;
 the Cancel buttons cancel at once). Back or Escape while the begin request is
@@ -1236,7 +1235,7 @@ minimum size (`MIN_WINDOW_SIZE`, 640 x 480) and the narrow-width test opens at
 it. A pending request ends on its own answer or the failure of its own
 method, not on another effect failing.
 
-**More limits (r2).** The grid's per-frame copies of each word (the cell
+**More limits.** The grid's per-frame copies of each word (the cell
 text and its accessibility label, about two per word per frame while drawn;
 the countdown redraws every second) are plain strings in the freed heap and
 are not zeroized. The cell label "Word N: <word>" is published to the platform
@@ -1244,7 +1243,7 @@ accessibility tree, which any process with accessibility permission can read,
 not only a screen reader. Both match what is on screen; they are accepted and
 documented, not removed.
 
-**Passphrase copies (r3).** The typed passphrase and its repeat live in GPUI
+**Passphrase copies.** The typed passphrase and its repeat live in GPUI
 Kit input buffers. The panel reads each once per frame of the passphrase
 step (`InputState::value()` materializes a new string; the panel borrows it
 for the strength rating, the mismatch and the button state, no further
@@ -1257,13 +1256,12 @@ strings outside the panel's control and are not zeroized; the inputs are
 cleared with `set_value("")` as soon as the secret is sent, cancelled or
 expired.
 
-## Wiring to the SDK source (DESK-V3-02 r1, on ID-02-IMPL-3)
+## Wiring to the SDK source
 
 Product source of truth: `docs/local_bus_account_creation.md` of the product
-revision the workspace is pinned to (`Cargo.toml`; on this branch the
-ID-02-IMPL-3 r5 checkpoint, to be replaced by the merged revision before
-this merges). The nine additions the DESK-V3-01 contract asked for, and what
-the desktop does with each:
+revision the workspace is pinned to (`Cargo.toml`). The nine
+additions the account-creation contract above asked for, and what the desktop
+does with each:
 
 1. **Capability read.** `daemon.status.born_v3_creation`; absent means false.
    `ramflux_desktop_sdk::capabilities::Found::born_v3` carries it into
@@ -1377,7 +1375,7 @@ are cleared at once; cancel, expiry, failure, close and the window closing
 clear them too. Escape cancels (nothing is ever displayed that needs
 protecting). One window-close handler serves both panels.
 
-**Focus and names (DESK-V3-02).** Initial focus never lands on a button: the
+**Focus and names.** Initial focus never lands on a button: the
 intro and the done screens focus their heading, the check screen the
 fingerprint input, the checking screen its status line, an ended recovery its
 error. The same holds for the creation ceremony: the ready and done screens
@@ -1385,7 +1383,7 @@ focus the heading, an ended ceremony and the "phrase is gone" error their
 alert. Every focus target is a named node (heading, list, status or alert)
 and draws the theme's focus ring while focused (`focus_ring_style`).
 
-**Abandoned begin (DESK-V3-02, from review r3 L-1).** A begin the user backed
+**Abandoned begin.** A begin the user backed
 out of while it was in flight is tracked apart from the panel's pending
 request (`entry::abandon::Abandon`). It ends whichever way the answer
 arrives: a ceremony (cancelled once, then the cancel's answer), a refusal that
@@ -1393,7 +1391,7 @@ is a ceremony update, a failure of the begin itself with no update at all, or a
 failure of the cancel (the ceremony that still runs is then shown with its own
 Cancel). A reopen of the panel in between changes none of that.
 
-## DESK-V3-02 r2: the account connects to a node
+## The account connects to a node
 
 Verified against the product at the pinned revision (`bus/creation_confirm.rs`
 -> `Supervisor::activate_native` -> `native_account::unlock` ->
@@ -1454,7 +1452,7 @@ counts the buffer only if all were zero (`bridge::custody::erase_and_check`,
 with a test that the check can fail). Typed secrets move into their buffers
 (`SecretInput::into_zeroizing`), so there is no second copy.
 
-## AI participants an owner custodies (DESK-AGENT-01, on AGENT-V3-01)
+## AI participants an owner custodies
 
 An AI participant is a headless AI account created and custodied by a
 person's account of the same daemon. The desktop offers its creation and the
