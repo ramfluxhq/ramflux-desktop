@@ -20,6 +20,10 @@
 //! `board_capture` example.
 
 #![forbid(unsafe_code)]
+#![cfg_attr(
+    not(test),
+    deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
+)]
 
 pub mod classify;
 pub mod compare;
