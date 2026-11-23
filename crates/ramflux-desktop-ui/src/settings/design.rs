@@ -6,9 +6,10 @@
 //! an optional trailing chip or control, and a labelled field.
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::{StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ElementId, IntoElement, SharedString, div, rems};
+use ramflux_desktop_navigation::direction::h_flex;
 
 fn rem(px: f32) -> gpui_kit::Rems {
     rems(px / 15.0)

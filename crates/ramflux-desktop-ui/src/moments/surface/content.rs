@@ -11,10 +11,11 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::text::TextView;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{BlockId, JsonValue};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::i18n::{self, tr};
 use crate::ids::domain_id;

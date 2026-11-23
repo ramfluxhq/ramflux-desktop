@@ -16,12 +16,11 @@ mod entries;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::command::{Command, CommandGroup, CommandItem, CommandState};
-use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, h_flex, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, EventEmitter, IntoElement, Render, Window, div, rems};
 use ramflux_desktop_core::{AccountId, ContextId, Scope, UiEventKind};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::actions::{ClosePalette, PALETTE_CONTEXT};
 use crate::app::StoreHandle;

@@ -28,12 +28,13 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, ElementId, Role, SharedString, Window, div};
 use ramflux_desktop_core::projection::wizard::{AgentDraft, DraftError, RuntimeOffer};
 use ramflux_desktop_core::{AccountId, IntentKind};
+use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::generated::catalog;
 use ramflux_desktop_navigation::palette;
 use ramflux_desktop_sdk::business::ContractGap;

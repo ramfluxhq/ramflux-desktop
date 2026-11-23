@@ -31,9 +31,7 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Sizable as _, h_flex, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
@@ -41,6 +39,7 @@ use ramflux_desktop_core::{
     MAX_CONTACT_CARD_LEN, ParticipantId, Store, check_add_contact, check_add_contact_card,
     classify_contact_input, methods, selectors,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::app::ChangeSet;
 use crate::i18n::{self, tr, tr_args};

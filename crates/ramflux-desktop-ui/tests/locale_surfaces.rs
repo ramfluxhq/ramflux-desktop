@@ -29,7 +29,7 @@ fn cjk(text: &str) -> bool {
 /// Language names are written in their own language (the Chinese name
 /// of Chinese is shown in every locale): they are not interface text.
 fn endonym(text: &str) -> bool {
-    text.ends_with(i18n::tr("locale.chinese").as_ref())
+    text.ends_with(i18n::tr("locale.name.zh_cn").as_ref())
 }
 
 /// Every named text of the window that still holds CJK.

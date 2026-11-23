@@ -31,14 +31,13 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
-use gpui_kit::component::{
-    ActiveTheme as _, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, IconName, Selectable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyView, App, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
     Role, SharedString, Window, div,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 use serde::{Deserialize, Serialize};
 
 use crate::actions::{

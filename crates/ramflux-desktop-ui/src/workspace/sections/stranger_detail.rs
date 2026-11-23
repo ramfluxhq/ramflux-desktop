@@ -15,10 +15,11 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, Role, SharedString, Window, div};
 use ramflux_desktop_core::{RequestAnswer, UiEventKind};
+use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::generated::catalog;
 use ramflux_desktop_navigation::palette;
 use ramflux_desktop_sdk::business::ContractGap;

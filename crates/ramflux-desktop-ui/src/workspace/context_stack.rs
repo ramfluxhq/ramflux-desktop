@@ -14,7 +14,7 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{
     ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _,
-    VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
+    VirtualListScrollHandle, v_flex, v_virtual_list,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -28,6 +28,7 @@ use ramflux_desktop_core::{
     ContactLink, ContextId, ContextKind, Listing, MomentKind, ParticipantId, ParticipantKind,
     Store, selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::{
     row::{AvatarKind, Row},
     theme,
@@ -511,7 +512,7 @@ impl Render for ContextStack {
                 this.move_cursor(false, window, cx)
             }))
             .bg(palette.nav)
-            .border_r_1()
+            .border_end_1()
             .border_color(palette.line)
             .px_3()
             .pt(gpui_kit::rems(24.0 / 15.0))

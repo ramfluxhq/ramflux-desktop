@@ -16,12 +16,13 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::progress::Progress;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
 use ramflux_desktop_core::{
     BlockId, Direction, ObjectAction, ObjectTransferPayload, Scope, TransferState, UiEventKind,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 
 use super::{RowRefs, RowState};
 use crate::bubble::EventSink;

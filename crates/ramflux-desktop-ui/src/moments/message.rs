@@ -12,11 +12,12 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{MediaState, MediaView, MessagePayload, TransferState, UiEventKind};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use super::{MomentRow, RowState, message_text};
 use crate::bubble::EventSink;
@@ -51,7 +52,12 @@ pub fn render(
         let name = object
             .and_then(|o| o.name.as_deref())
             .filter(|name| !name.trim().is_empty())
-            .map_or_else(|| tr("moment.message.attachment"), |name| name.to_owned().into());
+            // A file name never carries directional controls (a spoofed
+            // extension); it is shown as it reads.
+            .map_or_else(
+                || tr("moment.message.attachment"),
+                |name| crate::i18n::bidi::strip_controls(name).into_owned().into(),
+            );
         let moving =
             object.is_some_and(|o| matches!(o.transfer, TransferState::Transferring { .. }));
         let failed = object.is_some_and(|o| matches!(o.transfer, TransferState::Failed { .. }));
@@ -157,6 +163,8 @@ pub fn render(
     v_flex()
         .id("message-body")
         .gap_1()
+        // A message reads in its own direction, whatever the interface's.
+        .text_start_in(super::body_direction(row))
         .text_size(body_size)
         .text_color(foreground)
         .children(forwarded)

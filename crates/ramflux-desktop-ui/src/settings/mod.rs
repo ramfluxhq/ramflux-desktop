@@ -44,7 +44,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::Settings;
 use gpui_kit::component::{
-    ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
+    ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -52,6 +52,7 @@ use gpui_kit::{
     Window, div,
 };
 use ramflux_desktop_core::Scope;
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use crate::actions::{CloseSettings, SETTINGS_CONTEXT};
 use crate::app::{StoreEvent, StoreHandle};
@@ -336,13 +337,13 @@ impl Render for SettingsPage {
             .test_support()
             .flex()
             .gap_1()
-            .when(compact, |nav| nav.flex_row().flex_wrap().p_2().border_b_1())
+            .when(compact, |nav| nav.flex_row_start().flex_wrap().p_2().border_b_1())
             .when(!compact, |nav| {
                 nav.flex_col()
                     .w(gpui_kit::rems(ramflux_desktop_navigation::theme::SECTION_REM))
                     .px_3()
                     .pt(gpui_kit::rems(24.0 / 15.0))
-                    .border_r_1()
+                    .border_end_1()
                     .child(
                         div()
                             .id("settings-title")
@@ -370,7 +371,7 @@ impl Render for SettingsPage {
                         .when(!compact, |button| {
                             button
                                 .w_full()
-                                .justify_start()
+                                .justify_row_start()
                                 .px_3()
                                 .h(gpui_kit::rems(40.0 / 15.0))
                                 .rounded(gpui_kit::px(palette.radius_sm))
@@ -485,7 +486,7 @@ impl Render for SettingsPage {
                                             .absolute()
                                             .top_0()
                                             .bottom_0()
-                                            .left(gpui_kit::px(column_pad - 2.0))
+                                            .inset_start(gpui_kit::px(column_pad - 2.0))
                                             .w(gpui_kit::px(6.0))
                                             .bg(palette.bg)
                                             .occlude(),

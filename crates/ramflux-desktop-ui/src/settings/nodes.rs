@@ -9,12 +9,11 @@
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Sizable as _, h_flex, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, div};
 use ramflux_desktop_core::{Node, NodeAction, NodeId, ProbeOutcome, UiEventKind};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use super::{SectionContext, SettingsSection, note};
 use crate::bubble::EventSink;
@@ -228,7 +227,8 @@ fn node_section(row: &Row, sink: &EventSink, compact: Option<()>, cx: &App) -> A
                     .bg(palette.surface_white)
                     .font_family(cx.theme().mono_font_family.clone())
                     .text_size(gpui_kit::rems(palette.size_body / 15.0))
-                    .child(node.fingerprint.clone().unwrap_or_default()),
+                    .text_ltr()
+                    .child(i18n::bidi::ltr(&node.fingerprint.clone().unwrap_or_default())),
                 cx,
             ))
         })

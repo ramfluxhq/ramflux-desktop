@@ -11,7 +11,7 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputEvent;
-use gpui_kit::component::{Selectable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Selectable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, EventEmitter, IntoElement, Render, SharedString, Subscription, Window,
@@ -20,6 +20,7 @@ use gpui_kit::{
 use ramflux_desktop_core::{
     ContextKind, MomentKind, ParticipantId, ParticipantKind, Store, TaskState, selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use super::directory::{self, Search};
 use crate::actions::{NextConversation, PreviousConversation};
@@ -191,7 +192,7 @@ impl Render for AgentRoster {
             .size_full()
             .min_w_0()
             .bg(palette.nav)
-            .border_r_1()
+            .border_end_1()
             .border_color(palette.line)
             .px_3()
             .pt(rem(24.0))

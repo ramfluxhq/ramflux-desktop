@@ -12,10 +12,11 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, Role, Window, div};
 use ramflux_desktop_core::{AccountId, CeremonyAccount, Networking};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use super::{CeremonyPanel, Pending};
 use crate::entry::parts::{announced, muted};

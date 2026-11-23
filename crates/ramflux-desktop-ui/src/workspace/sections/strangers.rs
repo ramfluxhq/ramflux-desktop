@@ -20,11 +20,10 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputEvent;
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -35,6 +34,7 @@ use ramflux_desktop_core::projection::requests::{BatchError, prepare_batch};
 use ramflux_desktop_core::{
     ContactRequest, RequestAnswer, Scope, Store, Timestamp, UiEventKind, selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, back_icon, h_flex};
 use ramflux_desktop_navigation::generated::catalog;
 
 use super::directory::{self, DirectoryRow, Search};
@@ -388,7 +388,7 @@ impl Render for StrangersArea {
             .size_full()
             .min_w_0()
             .bg(ramflux_desktop_navigation::palette(cx).nav)
-            .border_r_1()
+            .border_end_1()
             .border_color(ramflux_desktop_navigation::palette(cx).line)
             .px_3()
             .pt(gpui_kit::rems(24.0 / 15.0))
@@ -401,7 +401,7 @@ impl Render for StrangersArea {
                         Button::new("strangers-back")
                             .small()
                             .ghost()
-                            .icon(IconName::ChevronLeft)
+                            .icon(back_icon())
                             .accessibility_label(tr("sections.strangers.back"))
                             .tooltip(tr("sections.strangers.back"))
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(StrangersEvent::Back))),

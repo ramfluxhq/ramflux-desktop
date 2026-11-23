@@ -10,10 +10,11 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Hsla, SharedString, div};
+use ramflux_desktop_navigation::direction::h_flex;
 use std::collections::BTreeSet;
 
 use ramflux_desktop_core::conformance::{LimitKind, SurfaceVerdict, check_surface};

@@ -3,8 +3,9 @@
 
 //! Stateless two-line conversation content; a Kit Button owns row interaction.
 
+use crate::direction::h_flex;
 use crate::theme;
-use gpui_kit::component::{StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div, rems};
 

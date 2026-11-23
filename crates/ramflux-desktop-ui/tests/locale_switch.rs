@@ -36,8 +36,8 @@ fn click_label(cx: &mut TestAppContext, handle: Handle, label: &str) {
 /// Picks `locale` (the code) in the language dropdown of the open
 /// Appearance section.
 fn pick_language(cx: &mut TestAppContext, handle: Handle, locale: &str) {
-    let current = if i18n::locale() == "en" { "locale.english" } else { "locale.chinese" };
-    let target = if locale == "en" { "locale.english" } else { "locale.chinese" };
+    let current = if i18n::locale() == "en" { "locale.name.en" } else { "locale.name.zh_cn" };
+    let target = if locale == "en" { "locale.name.en" } else { "locale.name.zh_cn" };
     click_label(cx, handle, &format!("{}: {}", tr("settings.language"), tr(current)));
     click_label(cx, handle, &tr(target));
     assert_eq!(i18n::locale(), locale, "the dropdown selected {locale}");

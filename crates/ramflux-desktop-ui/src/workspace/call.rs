@@ -25,7 +25,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, Selectable as _, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Icon, Selectable as _, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -35,6 +35,7 @@ use ramflux_desktop_core::{
     Call, CallState, ContextId, IntentError, Store, UiEventKind, check_start_call, methods,
     selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use crate::app::{CallAudioView, CallQuality, StoreEvent, StoreHandle, wall_clock_now};
 use crate::bubble::EventSink;
@@ -158,7 +159,7 @@ impl Render for IncomingCall {
             })
             .child(
                 h_flex()
-                    .justify_end()
+                    .justify_row_end()
                     .gap_2()
                     .child(
                         Button::new("incoming-decline")

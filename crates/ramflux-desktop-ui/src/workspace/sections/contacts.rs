@@ -14,7 +14,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputEvent;
-use gpui_kit::component::{Selectable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Selectable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement, Render, SharedString,
@@ -24,6 +24,7 @@ use ramflux_desktop_core::{
     ListState, Listing, Participant, ParticipantId, ParticipantKind, RequestAnswer, Store,
     UiEventKind, methods, selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::generated::catalog;
 use ramflux_desktop_sdk::business::ContractGap;
 
@@ -501,7 +502,7 @@ impl Render for ContactsDirectory {
             .size_full()
             .min_w_0()
             .bg(palette.nav)
-            .border_r_1()
+            .border_end_1()
             .border_color(palette.line)
             .px_3()
             .pt(gpui_kit::rems(24.0 / 15.0))

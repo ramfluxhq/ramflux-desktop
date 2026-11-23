@@ -12,10 +12,11 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Role, SharedString, Window, div};
 use ramflux_desktop_core::{Account, AgentExportPhase, Networking};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use super::AgentsPanel;
 use crate::i18n::{self, tr, tr_args};

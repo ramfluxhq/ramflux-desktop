@@ -12,13 +12,14 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, IntoElement, Render, SharedString, Subscription, WeakEntity, Window, div,
 };
 use ramflux_desktop_core::{GrantFilter, GrantId, IntentKind, ParticipantKind, Store, selectors};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_test::{SCENARIO_NAMES, load_fixture};
 
 use crate::app::{InspectorEntry, StoreEvent, StoreHandle, UiOutcome};
@@ -265,7 +266,7 @@ impl Render for DevPanel {
             .overflow_y_scroll()
             .gap_4()
             .p_3()
-            .border_l_1()
+            .border_start_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().sidebar)
             .child(div().text_sm().font_semibold().child(tr("dev.title")))

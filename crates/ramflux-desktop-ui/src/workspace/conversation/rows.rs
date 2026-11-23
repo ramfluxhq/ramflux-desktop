@@ -176,7 +176,7 @@ impl Rows {
                 touched.push(ix);
             }
         }
-        let mut last_day = rows.last().and_then(|r| i18n::clock::local_day(r.moment.at));
+        let mut last_day = rows.last().and_then(|r| i18n::format::local_day(r.moment.at));
         let appended = added.len();
         for moment in added {
             let row = day_row(store, moment, me.as_ref(), &audit, now, &mut last_day);
@@ -248,7 +248,7 @@ fn day_row(
 ) -> MomentRow {
     let mut row = MomentRow::build_with(store, moment, me, audit);
     countdown(&mut row, now);
-    let day = i18n::clock::local_day(moment.at);
+    let day = i18n::format::local_day(moment.at);
     if day != *last_day {
         row.day_header = Some(i18n::day_label(moment.at, now));
         *last_day = day;

@@ -10,11 +10,12 @@
 //! palette or a menu. The shell also tells the intent root which page hosts
 //! the confirm strip.
 
-use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, div,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_sdk::{SdkConfig, SdkHub};
 #[cfg(feature = "demo")]
 use ramflux_desktop_test::load_fixture;
@@ -701,6 +702,9 @@ impl Render for Shell {
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
+            // Text starts at the start edge of the interface's direction;
+            // identifiers and messages set their own alignment.
+            .text_start()
             // The design's faces: Hanken Grotesk for Latin, Noto Sans SC for
             // CJK (both bundled, see `assets::load_fonts`).
             .font(crate::assets::design_font(gpui_kit::FontWeight::NORMAL))
@@ -717,8 +721,8 @@ impl Render for Shell {
                         .id("window-drag-region")
                         .absolute()
                         .top_0()
-                        .left_0()
-                        .right_0()
+                        .inset_start(gpui_kit::px(0.))
+                        .inset_end(gpui_kit::px(0.))
                         .h(gpui_kit::rems(WINDOW_DRAG_HEIGHT / 15.0))
                         .window_control_area(gpui_kit::WindowControlArea::Drag)
                         // A press then a move drags the window (as Kit's title
@@ -762,13 +766,15 @@ impl Render for Shell {
                                         .absolute()
                                         .top_0()
                                         .bottom_0()
-                                        .right_0()
+                                        .inset_end(gpui_kit::px(0.))
                                         .when(self.page == Page::Workspace, |frame| {
-                                            frame.left(gpui_kit::rems(
+                                            frame.inset_start(gpui_kit::rems(
                                                 ramflux_desktop_navigation::theme::RAIL_REM,
                                             ))
                                         })
-                                        .when(self.page != Page::Workspace, |frame| frame.left_0())
+                                        .when(self.page != Page::Workspace, |frame| {
+                                            frame.inset_start(gpui_kit::px(0.))
+                                        })
                                         .child(self.settings.clone()),
                                 )
                             })

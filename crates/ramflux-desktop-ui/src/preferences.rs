@@ -65,10 +65,9 @@ impl LanguageChoice {
     /// Reads a stored or picked value; an unknown locale follows the
     /// system.
     pub fn parse(value: &str) -> Self {
-        i18n::LOCALES
-            .iter()
-            .find(|(code, _)| *code == value)
-            .map_or(Self::System, |(code, _)| Self::Locale(code))
+        i18n::locales()
+            .find(|locale| locale.tag == value)
+            .map_or(Self::System, |l| Self::Locale(l.tag))
     }
 
     /// The locale this choice selects now.
@@ -120,7 +119,7 @@ fn install_with(
 ) {
     cx.set_global(Preferences { store, theme, language, unsaved: None });
     apply_theme(cx);
-    rust_i18n::set_locale(language_choice(cx).locale());
+    i18n::set_locale(language_choice(cx).locale());
 }
 
 /// The theme choice in effect.
@@ -222,6 +221,6 @@ mod tests {
     fn a_fixed_language_is_its_locale() {
         assert_eq!(LanguageChoice::Locale("en").locale(), "en");
         let system = LanguageChoice::System.locale();
-        assert!(i18n::LOCALES.iter().any(|(code, _)| *code == system), "always a shipped locale");
+        assert!(i18n::locales().any(|l| l.tag == system), "always a shipped locale");
     }
 }

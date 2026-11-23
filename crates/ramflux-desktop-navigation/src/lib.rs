@@ -10,6 +10,7 @@
     deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
 )]
 
+pub mod direction;
 pub mod geometry;
 pub mod row;
 pub mod theme;

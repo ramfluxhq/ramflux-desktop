@@ -42,13 +42,14 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::ThemeStyled as _;
 use gpui_kit::component::diff::DiffState;
 use gpui_kit::component::input::InputState;
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, FocusHandle, IntoElement, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
     Actor, AuditEntry, BlockId, BlockKind, Call, Grant, GrantId, Lifecycle, Moment, MomentId,
     MomentKind, Object, ObjectId, Participant, ParticipantId, Store, Task, selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use crate::bubble::EventSink;
 use crate::i18n;
@@ -489,7 +490,7 @@ impl RenderOnce for MomentView {
                         .min_w_0()
                         .items_start()
                         .gap_2()
-                        .when(row.outbound, |line| line.justify_end())
+                        .when(row.outbound, |line| line.justify_row_end())
                         .when(!row.outbound, |line| {
                             line.child(
                                 div()
@@ -551,6 +552,16 @@ impl RenderOnce for MomentView {
 }
 
 /// Whether a row is one compact line with no header of its own.
+/// The direction a message's body reads in: its own (the first strong
+/// letter, skipping mentions, links and code), or the interface's when the
+/// body has no letters or is not loaded.
+fn body_direction(row: &MomentRow) -> ramflux_desktop_navigation::direction::LayoutDirection {
+    row.body
+        .as_deref()
+        .and_then(crate::i18n::bidi::content_direction)
+        .unwrap_or_else(ramflux_desktop_navigation::direction::layout_direction)
+}
+
 fn is_compact(kind: &MomentKind) -> bool {
     match kind {
         MomentKind::TaskEvent(_) | MomentKind::NameChange(_) | MomentKind::GroupRename(_) => true,

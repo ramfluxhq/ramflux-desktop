@@ -6,12 +6,13 @@
 //! chosen path), and passphrase rotation (two masked inputs handed to the
 //! root as secrets). Masked inputs are cleared the moment they are taken.
 
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{Sizable as _, h_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, SharedString, TestSupportExt as _, Window, div};
 use ramflux_desktop_core::{Account, IntentKind, LockState, SecretInput, UiEventKind};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use super::{SectionContext, SettingsSection, design, note};
 use crate::file_dialog::{self, StartDir};

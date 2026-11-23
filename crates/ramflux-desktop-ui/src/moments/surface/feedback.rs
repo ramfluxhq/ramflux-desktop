@@ -6,10 +6,11 @@
 
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::progress::Progress;
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, div};
 use ramflux_desktop_core::{BlockId, BlockKind, JsonValue};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use crate::ids::domain_id;
 
@@ -55,6 +56,8 @@ pub fn log_stream(data: &JsonValue, cx: &App) -> Option<AnyElement> {
             .text_xs()
             .font_family(cx.theme().mono_font_family.clone())
             .text_color(cx.theme().foreground)
+            // A log reads left to right in every interface direction.
+            .text_ltr()
             .children(lines.into_iter().skip(skip).map(|line| div().child(line)))
             .into_any_element(),
     )

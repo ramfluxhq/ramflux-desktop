@@ -16,7 +16,7 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputEvent;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, EventEmitter, IntoElement, Render, SharedString, Subscription, Window,
@@ -25,6 +25,7 @@ use gpui_kit::{
 use ramflux_desktop_core::{
     ContextId, ContextKind, ListState, Listing, Role, Store, methods, selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::generated::catalog;
 
 use super::directory::{self, DirectoryRow, Search, StateKeys};
@@ -247,7 +248,7 @@ impl Render for GroupDirectory {
             .size_full()
             .min_w_0()
             .bg(ramflux_desktop_navigation::palette(cx).nav)
-            .border_r_1()
+            .border_end_1()
             .border_color(ramflux_desktop_navigation::palette(cx).line)
             .px_3()
             .pt(gpui_kit::rems(24.0 / 15.0))

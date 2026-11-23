@@ -7,7 +7,7 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::table::{Column, TableDelegate, TableState};
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div, px,
@@ -15,6 +15,7 @@ use gpui_kit::{
 use ramflux_desktop_core::{
     Direction, Listing, Object, ObjectAction, TransferState, UiEventKind, selectors,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;

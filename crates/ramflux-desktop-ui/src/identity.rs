@@ -29,10 +29,11 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::clipboard::Clipboard;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ClickEvent, ElementId, SharedString, Window, div};
 use ramflux_desktop_core::{KindClaim, Participant, ParticipantId, PeerKind, SafetyState};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use crate::i18n::{self, tr, tr_args};
 
@@ -192,7 +193,8 @@ pub fn principal_id(id: impl Into<ElementId>, principal: &ParticipantId, cx: &Ap
                 .min_w_0()
                 .font_family(cx.theme().mono_font_family.clone())
                 .text_color(cx.theme().muted_foreground)
-                .child(full.clone())
+                .text_ltr()
+                .child(SharedString::from(i18n::bidi::ltr(&full)))
                 .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx)),
         )
         .child(
@@ -384,7 +386,7 @@ pub fn stale_ack(
         .child(
             h_flex()
                 .gap_2()
-                .justify_end()
+                .justify_row_end()
                 .child(
                     Button::new("stale-verify")
                         .small()

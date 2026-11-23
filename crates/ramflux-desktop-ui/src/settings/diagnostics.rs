@@ -15,10 +15,11 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, div};
 use ramflux_desktop_core::{RendererProfile, Store, UiEventKind};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use super::local_setup::{self, LaunchInputs};
 use super::{SectionContext, SettingsSection};
@@ -110,6 +111,8 @@ fn mono_box(id: &'static str, text: String, cx: &App) -> gpui_kit::AnyElement {
         .bg(cx.theme().muted)
         .text_xs()
         .font_family(cx.theme().mono_font_family.clone())
+        // Diagnostics read left to right in every interface direction.
+        .text_ltr()
         .children(text.lines().map(|line| div().child(line.to_owned())))
         .test_support()
         .into_any_element()

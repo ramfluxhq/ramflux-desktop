@@ -10,14 +10,15 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::component::{
-    ActiveTheme as _, Selectable as _, Sizable as _, StyledExt as _, ThemeMode, h_flex, v_flex,
+    ActiveTheme as _, Selectable as _, Sizable as _, StyledExt as _, ThemeMode, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div, rems};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::theme::{self, ThemeInfo};
 use ramflux_desktop_sdk::local::FOLLOW_SYSTEM;
 
-use crate::i18n::{LOCALES, tr, tr_args};
+use crate::i18n::{locales, tr, tr_args};
 
 use crate::preferences::{self, LanguageChoice, ThemeChoice};
 
@@ -293,10 +294,9 @@ fn body(cx: &App) -> impl IntoElement {
     // Interface language: the whole field opens the list.
     let current_language = match preferences::language_choice(cx) {
         LanguageChoice::System => tr("locale.system"),
-        LanguageChoice::Locale(code) => LOCALES
-            .iter()
-            .find(|(c, _)| *c == code)
-            .map_or_else(|| tr("locale.system"), |(_, key)| tr(key)),
+        LanguageChoice::Locale(code) => locales()
+            .find(|locale| locale.tag == code)
+            .map_or_else(|| tr("locale.system"), |locale| tr(locale.name_key)),
     };
     let language = v_flex()
         .gap_2()
@@ -307,7 +307,7 @@ fn body(cx: &App) -> impl IntoElement {
                 .w_full()
                 .h(rem(40.0))
                 .px_3()
-                .justify_start()
+                .justify_row_start()
                 .rounded(gpui_kit::px(palette.radius_input))
                 .accessibility_label(tr_args(
                     "settings.appearance.field",
@@ -361,7 +361,9 @@ fn body(cx: &App) -> impl IntoElement {
 /// The language options: follow the system, then every shipped locale.
 fn language_options() -> Vec<(SharedString, SharedString)> {
     let mut options = vec![(SharedString::new_static(FOLLOW_SYSTEM), tr("locale.system"))];
-    options.extend(LOCALES.iter().map(|(code, key)| (SharedString::new_static(code), tr(key))));
+    options.extend(
+        locales().map(|locale| (SharedString::new_static(locale.tag), tr(locale.name_key))),
+    );
     options
 }
 

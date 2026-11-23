@@ -20,7 +20,7 @@
 //! is view-local; nothing in it reaches the store.
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     Context, Entity, EventEmitter, IntoElement, Render, Role, SharedString, Subscription, Window,
@@ -30,6 +30,7 @@ use ramflux_desktop_core::{
     ContactLink, ContextId, IntentError, ParticipantId, Scope, Store, UiEventKind,
     check_start_conversation, methods,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
