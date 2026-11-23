@@ -18,6 +18,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{MediaState, MediaView, MessagePayload, TransferState, UiEventKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::{MomentRow, RowState, message_text};
 use crate::bubble::EventSink;
@@ -39,13 +40,18 @@ pub fn render(
     let foreground = if outbound { palette.outgoing_text } else { cx.theme().foreground };
     let muted = if outbound { palette.outgoing_meta } else { cx.theme().muted_foreground };
     if payload.tombstone {
-        return v_flex().id("message-body").text_sm().italic().text_color(muted).child(
-            div()
-                .id("message-deleted")
-                .aria_label(tr("moment.message.deleted"))
-                .child(tr("moment.message.deleted"))
-                .test_support(),
-        );
+        return v_flex()
+            .id("message-body")
+            .text_size(text_secondary())
+            .italic()
+            .text_color(muted)
+            .child(
+                div()
+                    .id("message-deleted")
+                    .aria_label(tr("moment.message.deleted"))
+                    .child(tr("moment.message.deleted"))
+                    .test_support(),
+            );
     }
     let attachment = payload.attachment.as_ref().map(|id| {
         let object = refs.objects.get(id);
@@ -153,7 +159,7 @@ pub fn render(
         div()
             .id("message-forward")
             .aria_label(label.clone())
-            .text_xs()
+            .text_size(text_caption())
             .italic()
             .text_color(muted)
             .child(label)
@@ -162,7 +168,7 @@ pub fn render(
     let body_size = gpui_kit::rems(ramflux_desktop_navigation::palette(cx).size_body / 15.0);
     v_flex()
         .id("message-body")
-        .gap_1()
+        .gap(space(1.))
         // A message reads in its own direction, whatever the interface's.
         .text_start_in(super::body_direction(row))
         .text_size(body_size)
@@ -208,40 +214,46 @@ pub fn render(
                 div()
                     .id("message-edited")
                     .aria_label(tr("moment.message.edited"))
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(muted)
                     .child(tr("moment.message.edited"))
                     .test_support(),
             )
         })
         .when(!payload.reactions.is_empty(), |col| {
-            col.child(h_flex().id("message-reactions").test_support().flex_wrap().gap_1().children(
-                payload.reactions.iter().map(|chip| {
-                    let count = chip.count.to_string();
-                    let key = if chip.mine {
-                        "moment.message.reaction_mine"
-                    } else {
-                        "moment.message.reaction"
-                    };
-                    let label = i18n::tr_args(key, &[("token", &chip.token), ("count", &count)]);
-                    div()
-                        .id(SharedString::from(format!("message-reaction-{}", chip.token)))
-                        .aria_label(label.clone())
-                        .px_2()
-                        .border_1()
-                        .border_color(if chip.mine {
-                            cx.theme().primary
+            col.child(
+                h_flex()
+                    .id("message-reactions")
+                    .test_support()
+                    .flex_wrap()
+                    .gap(space(1.))
+                    .children(payload.reactions.iter().map(|chip| {
+                        let count = chip.count.to_string();
+                        let key = if chip.mine {
+                            "moment.message.reaction_mine"
                         } else {
-                            cx.theme().border
-                        })
-                        .bg(if chip.mine { cx.theme().muted } else { cx.theme().background })
-                        .rounded(cx.theme().radius)
-                        .text_xs()
-                        .text_color(cx.theme().foreground)
-                        .child(label)
-                        .test_support()
-                }),
-            ))
+                            "moment.message.reaction"
+                        };
+                        let label =
+                            i18n::tr_args(key, &[("token", &chip.token), ("count", &count)]);
+                        div()
+                            .id(SharedString::from(format!("message-reaction-{}", chip.token)))
+                            .aria_label(label.clone())
+                            .px(space(2.))
+                            .border_1()
+                            .border_color(if chip.mine {
+                                cx.theme().primary
+                            } else {
+                                cx.theme().border
+                            })
+                            .bg(if chip.mine { cx.theme().muted } else { cx.theme().background })
+                            .rounded(cx.theme().radius)
+                            .text_size(text_caption())
+                            .text_color(cx.theme().foreground)
+                            .child(label)
+                            .test_support()
+                    })),
+            )
         })
         .children(payload.media.iter().enumerate().map(|(index, row)| media_row(index, row, cx)))
 }
@@ -280,7 +292,7 @@ fn media_row(index: usize, row: &MediaView, cx: &App) -> impl IntoElement {
     v_flex()
         .id(SharedString::from(format!("message-media-{index}")))
         .aria_label(label)
-        .gap_1()
+        .gap(space(1.))
         .children(thumbnail)
         .child(file_row(name, detail.into(), false, div(), cx))
         .test_support()
@@ -304,8 +316,8 @@ fn file_row(
     h_flex()
         .w_full()
         .min_w_0()
-        .gap_2()
-        .p_2()
+        .gap(space(2.))
+        .p(space(2.))
         .rounded(gpui_kit::rems(palette.radius_md / 15.0))
         .bg(background)
         .child(

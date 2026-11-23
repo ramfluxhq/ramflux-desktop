@@ -13,6 +13,7 @@
 pub mod direction;
 pub mod geometry;
 pub mod row;
+pub mod scale;
 pub mod theme;
 
 /// Imported presentation catalog; client code owns state and authority.

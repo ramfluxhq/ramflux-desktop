@@ -29,6 +29,7 @@ use ramflux_desktop_core::{
     Store, selectors,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use ramflux_desktop_navigation::{
     row::{AvatarKind, Row},
     theme,
@@ -470,7 +471,7 @@ impl Render for ContextStack {
                                         .ghost()
                                         .w_full()
                                         .h(gpui_kit::rems(theme::ROW_REM))
-                                        .px_3()
+                                        .px(space(3.))
                                         .rounded(gpui_kit::px(
                                             ramflux_desktop_navigation::palette(cx).radius_sm,
                                         ))
@@ -514,14 +515,14 @@ impl Render for ContextStack {
             .bg(palette.nav)
             .border_end_1()
             .border_color(palette.line)
-            .px_3()
+            .px(space(3.))
             .pt(gpui_kit::rems(24.0 / 15.0))
-            .gap_4()
+            .gap(space(4.))
             // Design board 02: the list title with its add command, the
             // search field, then the strangers entry as the first row.
             .child(
                 h_flex()
-                    .px_2()
+                    .px(space(2.))
                     .h(gpui_kit::rems(28.0 / 15.0))
                     .child(
                         div()
@@ -579,7 +580,7 @@ impl Render for ContextStack {
                     h_flex()
                         .id("stack-filters")
                         .test_support()
-                        .gap_1()
+                        .gap(space(1.))
                         .child(chip(
                             "stack-filter-all",
                             "stack.filter.all",
@@ -610,7 +611,7 @@ impl Render for ContextStack {
                         .ghost()
                         .w_full()
                         .h(gpui_kit::rems(theme::ROW_REM))
-                        .px_3()
+                        .px(space(3.))
                         .rounded(gpui_kit::px(palette.radius_sm))
                         .accessibility_label(tr_args(
                             "navigation.strangers_count",
@@ -626,9 +627,9 @@ impl Render for ContextStack {
                         .id("tasks-history-notice")
                         .role(gpui_kit::Role::Status)
                         .test_support()
-                        .px_3()
-                        .pb_2()
-                        .text_xs()
+                        .px(space(3.))
+                        .pb(space(2.))
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(tr("navigation.tasks_history_notice")),
                 )
@@ -641,9 +642,9 @@ impl Render for ContextStack {
                         .test_support()
                         .role(gpui_kit::Role::Status)
                         .aria_label(tr("navigation.query_error"))
-                        .px_3()
-                        .pb_2()
-                        .text_sm()
+                        .px(space(3.))
+                        .pb(space(2.))
+                        .text_size(text_secondary())
                         .text_color(cx.theme().danger)
                         .child(tr("navigation.query_error")),
                 )

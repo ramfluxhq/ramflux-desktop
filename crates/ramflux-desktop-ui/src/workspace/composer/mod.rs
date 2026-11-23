@@ -39,6 +39,7 @@ use gpui_kit::{
 };
 use ramflux_desktop_core::{ContextId, ParticipantId, ParticipantKind, UiEventKind, selectors};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use assignee::Agent;
 
@@ -514,10 +515,10 @@ impl Render for Composer {
             v_flex()
                 .id("composer-receiver")
                 .test_support()
-                .gap_1()
+                .gap(space(1.))
                 .child(
                     h_flex()
-                        .gap_2()
+                        .gap(space(2.))
                         .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
                         .child(div().text_color(palette.secondary).child(tr("composer.receiver")))
                         .child(div().child(name))
@@ -559,7 +560,7 @@ impl Render for Composer {
         let row = h_flex()
             .items_center()
             .w_full()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 Button::new("composer-attach")
                     .ghost()
@@ -609,8 +610,8 @@ impl Render for Composer {
             .w_full()
             .max_w(gpui_kit::rems(palette.column_max / 15.0))
             .mx_auto()
-            .gap_1()
-            .pt_2()
+            .gap(space(1.))
+            .pt(space(2.))
             .pb(gpui_kit::rems(16.0 / 15.0))
             .children(receiver)
             // Design `Composer / Default`: the generated shell (no empty slot
@@ -631,7 +632,7 @@ impl Render for Composer {
                 col.child(
                     div()
                         .id("composer-unavailable")
-                        .text_xs()
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(reason)
                         .test_support(),

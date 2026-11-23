@@ -24,6 +24,7 @@ use ramflux_desktop_core::{
     SecretInput, Store, UiEventKind, methods,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use unicode_segmentation::UnicodeSegmentation as _;
 use unicode_width::UnicodeWidthStr;
 
@@ -136,14 +137,14 @@ impl EntryPage {
             v_flex()
                 .id("entry-restore-finishing")
                 .test_support()
-                .gap_3()
+                .gap(space(3.))
                 .children(held.then(|| self.full_restore.clone()))
                 .child(
                     h_flex()
                         .id("entry-restore-finishing-line")
-                        .gap_2()
+                        .gap(space(2.))
                         .items_center()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .text_color(cx.theme().muted_foreground)
                         .child(Spinner::new().small())
                         .child(tr("entry.restore.finishing")),
@@ -184,13 +185,13 @@ impl EntryPage {
                 )
             });
             v_flex()
-                .gap_4()
+                .gap(space(4.))
                 .children(shown.is_some().then(|| self.full_restore.clone()))
                 .children(open_account)
                 .child(self.render_unlock(&accounts, cx))
                 .into_any_element()
         };
-        v_flex().id("entry-account").gap_3().child(body)
+        v_flex().id("entry-account").gap(space(3.)).child(body)
     }
 
     /// A freshly opened account session that has not answered: a neutral
@@ -201,9 +202,9 @@ impl EntryPage {
             return h_flex()
                 .id("entry-session-loading")
                 .test_support()
-                .gap_2()
+                .gap(space(2.))
                 .items_center()
-                .text_sm()
+                .text_size(text_secondary())
                 .text_color(cx.theme().muted_foreground)
                 .child(Spinner::new().small())
                 .child(tr("entry.account.loading"))
@@ -226,7 +227,7 @@ impl EntryPage {
         v_flex()
             .id("entry-session-failed")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child({
                 let text = tr_args("entry.account.load_failed", &[("name", &name)]);
                 div()
@@ -240,7 +241,7 @@ impl EntryPage {
             })
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("entry-session-retry")
                             .primary()
@@ -288,9 +289,9 @@ impl EntryPage {
             );
             h_flex()
                 .id(domain_id("account", &account.id))
-                .gap_3()
-                .px_3()
-                .py_2()
+                .gap(space(3.))
+                .px(space(3.))
+                .py(space(2.))
                 .border_1()
                 .border_color(cx.theme().border)
                 .rounded(cx.theme().radius)
@@ -298,22 +299,27 @@ impl EntryPage {
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .child(div().text_sm().font_semibold().child(account.label.clone()))
-                        .child(div().text_xs().text_color(muted).child(detail))
+                        .child(
+                            div()
+                                .text_size(text_secondary())
+                                .font_semibold()
+                                .child(account.label.clone()),
+                        )
+                        .child(div().text_size(text_caption()).text_color(muted).child(detail))
                         .children((account.kind == AccountKind::HeadlessAi).then(|| {
                             div()
                                 .id(domain_id("account-agent", &account.id))
                                 .role(gpui_kit::Role::Status)
                                 .aria_label(tr("agent.entry.not_unlocked"))
                                 .test_support()
-                                .text_xs()
+                                .text_size(text_caption())
                                 .text_color(muted)
                                 .child(tr("agent.entry.not_unlocked"))
                         })),
                 )
                 .child(
                     h_flex()
-                        .gap_2()
+                        .gap(space(2.))
                         .items_center()
                         .children(recoverable.then(|| {
                             let id = account.id.clone();
@@ -337,7 +343,7 @@ impl EntryPage {
                                 .test_support()
                                 .child(Tag::warning().small().child(tr("networking.pending")))
                         }))
-                        .child(div().text_xs().text_color(muted).child(tr(
+                        .child(div().text_size(text_caption()).text_color(muted).child(tr(
                             match account.lock_state {
                                 LockState::Locked => "entry.account.locked",
                                 LockState::Unlocked => "entry.account.unlocked",
@@ -346,7 +352,7 @@ impl EntryPage {
                 )
         });
         v_flex()
-            .gap_3()
+            .gap(space(3.))
             .children(rows)
             .child(
                 Input::new(&self.inputs.passphrase)
@@ -382,7 +388,7 @@ impl EntryPage {
     ) -> AnyElement {
         h_flex()
             .id(id)
-            .gap_1()
+            .gap(space(1.))
             .children(options.iter().enumerate().map(|(ix, (value, label))| {
                 let value = *value;
                 Button::new(domain_id(id, &ix))
@@ -431,20 +437,20 @@ impl EntryPage {
             AccountPath::Restore => self.render_restore(cx),
         };
         v_flex()
-            .gap_3()
+            .gap(space(3.))
             .child(self.segment("entry-path", &paths, self.path, |this, path| this.path = path, cx))
             .when(self.path != AccountPath::Restore, |col| {
                 col.child(
                     v_flex()
-                        .gap_1()
+                        .gap(space(1.))
                         .child(
                             div()
-                                .text_xs()
+                                .text_size(text_caption())
                                 .text_color(cx.theme().muted_foreground)
                                 .child(tr("entry.node.label")),
                         )
                         .child(
-                            h_flex().flex_wrap().gap_1().children(node_buttons).child(
+                            h_flex().flex_wrap().gap(space(1.)).children(node_buttons).child(
                                 Button::new("entry-review-nodes")
                                     .ghost()
                                     .small()
@@ -492,7 +498,7 @@ impl EntryPage {
         }
         let kind = self.segment("entry-kind", &kinds, self.kind, |this, kind| this.kind = kind, cx);
         v_flex()
-            .gap_3()
+            .gap(space(3.))
             .child(kind)
             .child(Self::field(
                 "entry.create.label",
@@ -525,10 +531,10 @@ impl EntryPage {
         v_flex()
             .id("account-create-phrase-entry")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(
                 div()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("ceremony.entry.help")),
             )
@@ -553,10 +559,10 @@ impl EntryPage {
 
     fn render_join(&self, cx: &mut Context<Self>) -> AnyElement {
         v_flex()
-            .gap_3()
+            .gap(space(3.))
             .child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("entry.join.help")),
             )
@@ -574,7 +580,7 @@ impl EntryPage {
                     ramflux_desktop_core::methods::DEVICE_ACTIVATE,
                 );
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(crate::gate::gated(
                         Button::new("account-join")
                             .primary()
@@ -586,7 +592,7 @@ impl EntryPage {
                         row.child(
                             div()
                                 .id("account-join-unavailable")
-                                .text_xs()
+                                .text_size(text_caption())
                                 .text_color(cx.theme().muted_foreground)
                                 .child(reason)
                                 .test_support(),
@@ -628,21 +634,31 @@ impl EntryPage {
         let muted = cx.theme().muted_foreground;
         if kind == RestoreKind::Full {
             return v_flex()
-                .gap_3()
+                .gap(space(3.))
                 .child(choice)
-                .child(div().text_sm().text_color(muted).child(tr("entry.restore.full_help")))
+                .child(
+                    div()
+                        .text_size(text_secondary())
+                        .text_color(muted)
+                        .child(tr("entry.restore.full_help")),
+                )
                 .child(
                     div().id("entry-full-restore").test_support().child(self.full_restore.clone()),
                 )
                 .into_any_element();
         }
         v_flex()
-            .gap_3()
+            .gap(space(3.))
             .child(choice)
-            .child(div().text_sm().text_color(muted).child(tr("entry.restore.key_help")))
+            .child(
+                div()
+                    .text_size(text_secondary())
+                    .text_color(muted)
+                    .child(tr("entry.restore.key_help")),
+            )
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .items_end()
                     .child(div().flex_1().min_w_0().child(Self::field(
                         "entry.restore.path",

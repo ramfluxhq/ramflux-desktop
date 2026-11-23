@@ -12,6 +12,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, IntoElement, ParentElement, Role, SharedString, Styled, Window, div,
 };
+use ramflux_desktop_navigation::scale::text_secondary;
 
 use crate::i18n::tr;
 
@@ -38,7 +39,11 @@ pub(super) fn warning(id: &'static str, key: &str) -> AnyElement {
 }
 
 pub(super) fn muted(text: SharedString, cx: &App) -> AnyElement {
-    div().text_sm().text_color(cx.theme().muted_foreground).child(text).into_any_element()
+    div()
+        .text_size(text_secondary())
+        .text_color(cx.theme().muted_foreground)
+        .child(text)
+        .into_any_element()
 }
 
 /// Draws the framework's focus ring around `element` while `focused`.

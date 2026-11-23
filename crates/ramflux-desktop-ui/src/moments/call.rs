@@ -15,6 +15,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, Hsla, IntoElement, SharedString, div};
 use ramflux_desktop_core::{Call, CallDirection, CallOutcome, CallState};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 
 use super::RowRefs;
 use crate::bubble::EventSink;
@@ -100,8 +101,8 @@ pub fn render(
     h_flex()
         .id("call-record")
         .aria_label(spoken)
-        .gap_2()
-        .text_sm()
+        .gap(space(2.))
+        .text_size(text_secondary())
         .child(Icon::new(icon).small().text_color(color))
         .child(
             div()

@@ -21,6 +21,7 @@ use ramflux_desktop_core::{
     ContextKind, MomentKind, ParticipantId, ParticipantKind, Store, TaskState, selectors,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::space;
 
 use super::directory::{self, Search};
 use crate::actions::{NextConversation, PreviousConversation};
@@ -194,10 +195,10 @@ impl Render for AgentRoster {
             .bg(palette.nav)
             .border_end_1()
             .border_color(palette.line)
-            .px_3()
+            .px(space(3.))
             .pt(rem(24.0))
             .pb(rem(20.0))
-            .gap_4()
+            .gap(space(4.))
             .child(directory::header(
                 tr("navigation.agents"),
                 Button::new("agents-add")
@@ -219,7 +220,7 @@ impl Render for AgentRoster {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .gap_4()
+                    .gap(space(4.))
                     .children(entries.into_iter().enumerate().map(|(ix, entry)| {
                         let selected = self.selected.as_ref() == Some(&entry.id);
                         let pick = entry.id.clone();
@@ -227,8 +228,8 @@ impl Render for AgentRoster {
                             .ghost()
                             .w_full()
                             .h_auto()
-                            .px_3()
-                            .py_3()
+                            .px(space(3.))
+                            .py(space(3.))
                             .rounded(gpui_kit::px(palette.radius_sm))
                             .selected(selected)
                             .toggled(selected)
@@ -242,7 +243,7 @@ impl Render for AgentRoster {
                             .child(
                                 h_flex()
                                     .w_full()
-                                    .gap_3()
+                                    .gap(space(3.))
                                     .child(
                                         div()
                                             .flex_none()

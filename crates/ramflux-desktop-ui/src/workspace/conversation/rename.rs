@@ -19,6 +19,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ClickEvent, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{ContextId, IntentError, Store, check_group_title, methods};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use crate::i18n::{self, tr, tr_args};
 
@@ -112,10 +113,10 @@ pub fn render(
         .id("conversation-rename")
         .flex_1()
         .min_w_0()
-        .gap_1()
+        .gap(space(1.))
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     Input::new(&rename.input)
                         .id("conversation-rename-input")
@@ -145,7 +146,7 @@ pub fn render(
                 .role(Role::Status)
                 .aria_label(line.clone())
                 .test_support()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(color)
                 .child(line),
         )

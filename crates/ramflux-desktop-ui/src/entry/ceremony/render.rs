@@ -23,6 +23,7 @@ use ramflux_desktop_core::{
     PHRASE_WORDS,
 };
 use ramflux_desktop_navigation::direction::{h_flex, h_flex_ltr};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary, text_subheading};
 
 use super::{CeremonyPanel, Hint, Pending, Screen};
 use crate::actions::CEREMONY_CONTEXT;
@@ -51,9 +52,9 @@ impl CeremonyPanel {
                 .aria_label(text.clone())
                 .track_focus(&self.heading_focus)
                 .test_support()
-                .px_1()
+                .px(space(1.))
                 .rounded(cx.theme().radius)
-                .text_lg()
+                .text_size(text_subheading())
                 .font_semibold()
                 .child(text),
             focused,
@@ -81,7 +82,7 @@ impl CeremonyPanel {
                 .aria_label(text.clone())
                 .track_focus(&self.alert_focus)
                 .test_support()
-                .p_1()
+                .p(space(1.))
                 .rounded(cx.theme().radius)
                 .child(Alert::error(SharedString::from(format!("{id}-alert")), text).small()),
             self.alert_focus.is_focused(window),
@@ -126,7 +127,7 @@ impl CeremonyPanel {
         v_flex()
             .id("ceremony-name")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading("ceremony.title", window, cx))
             .child(muted(tr("ceremony.name.help"), cx))
             .child(match &self.node {
@@ -141,13 +142,13 @@ impl CeremonyPanel {
                     Role::Alert,
                     tr("ceremony.name.no_node"),
                     div()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .text_color(cx.theme().danger)
                         .child(tr("ceremony.name.no_node")),
                 ),
             })
             .child(
-                v_flex().gap_1().child(muted(tr("ceremony.name.label"), cx)).child(
+                v_flex().gap(space(1.)).child(muted(tr("ceremony.name.label"), cx)).child(
                     Input::new(&self.name)
                         .id("ceremony-name-input")
                         .aria_label(tr("ceremony.name.label")),
@@ -155,7 +156,7 @@ impl CeremonyPanel {
             )
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         self.sending(
                             Button::new("ceremony-continue")
@@ -191,14 +192,14 @@ impl CeremonyPanel {
         v_flex()
             .id("ceremony-ready")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading("ceremony.ready.title", window, cx))
             // One block: what to do and what not to do, before any word.
             .child(warning("ceremony-ready-warning", "ceremony.ready.warning"))
             .child(self.countdown(ceremony, cx))
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         self.sending(
                             Button::new("ceremony-show")
@@ -240,9 +241,9 @@ impl CeremonyPanel {
                     .w(rems(CELL_MIN_REMS))
                     .flex_grow(1.0)
                     .flex_shrink_0()
-                    .gap_2()
-                    .px_2()
-                    .py_1()
+                    .gap(space(2.))
+                    .px(space(2.))
+                    .py(space(1.))
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
@@ -251,7 +252,7 @@ impl CeremonyPanel {
                             .w(rems(1.5))
                             .flex_shrink_0()
                             .text_align(gpui_kit::TextAlign::Right)
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(muted_color)
                             .child(number.to_string()),
                     )
@@ -272,10 +273,10 @@ impl CeremonyPanel {
                 .aria_label(tr("ceremony.show.grid"))
                 .test_support()
                 // Room for the ring: it sits outside the edge.
-                .p_1()
+                .p(space(1.))
                 .rounded(cx.theme().radius)
                 .flex_wrap()
-                .gap_2()
+                .gap(space(2.))
                 .children(cells),
             self.grid_focus.is_focused(window),
             window,
@@ -290,11 +291,11 @@ impl CeremonyPanel {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let screen = v_flex().id("ceremony-phrase").test_support().gap_3().child(self.heading(
-            "ceremony.show.title",
-            window,
-            cx,
-        ));
+        let screen = v_flex()
+            .id("ceremony-phrase")
+            .test_support()
+            .gap(space(3.))
+            .child(self.heading("ceremony.show.title", window, cx));
         if !self.held.holds_phrase() {
             // The hide was sent: the daemon is choosing the words. Nothing
             // is wrong, so nothing alerts.
@@ -320,7 +321,7 @@ impl CeremonyPanel {
             .when(covered, |screen| {
                 screen.child(
                     h_flex()
-                        .gap_2()
+                        .gap(space(2.))
                         .items_center()
                         .child(announced(
                             "ceremony-covered",
@@ -347,7 +348,7 @@ impl CeremonyPanel {
             .child(self.countdown(ceremony, cx))
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         self.sending(
                             Button::new("ceremony-hide")
@@ -367,7 +368,7 @@ impl CeremonyPanel {
         v_flex()
             .id("ceremony-hiding")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading("ceremony.show.title", window, cx))
             .child(ringed(
                 div()
@@ -376,13 +377,13 @@ impl CeremonyPanel {
                     .aria_label(tr("ceremony.hiding"))
                     .track_focus(&self.status_focus)
                     .test_support()
-                    .p_1()
+                    .p(space(1.))
                     .rounded(cx.theme().radius)
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .items_center()
-                            .text_sm()
+                            .text_size(text_secondary())
                             .text_color(cx.theme().muted_foreground)
                             .child(Spinner::new().small())
                             .child(tr("ceremony.hiding")),
@@ -405,14 +406,14 @@ impl CeremonyPanel {
                     ["ceremony-hint-1", "ceremony-hint-2", "ceremony-hint-3"][index],
                     Role::Status,
                     text.clone(),
-                    div().text_sm().text_color(muted_color).child(text),
+                    div().text_size(text_secondary()).text_color(muted_color).child(text),
                 )
             }
             Hint::Suggest(candidates) => h_flex()
                 .id(["ceremony-suggest-1", "ceremony-suggest-2", "ceremony-suggest-3"][index])
                 .test_support()
                 .flex_wrap()
-                .gap_1()
+                .gap(space(1.))
                 .children(candidates.into_iter().map(|word| {
                     Button::new(SharedString::from(format!(
                         "ceremony-suggest-{}-{word}",
@@ -447,7 +448,7 @@ impl CeremonyPanel {
                 let label = tr_args("ceremony.confirm.word", &[("number", &position.to_string())]);
                 let typed = self.words[index].read(cx).value().to_string();
                 v_flex()
-                    .gap_1()
+                    .gap(space(1.))
                     .child(muted(label.clone(), cx))
                     .child(Input::new(&self.words[index]).id(WORD_IDS[index]).aria_label(label))
                     .child(self.hint(index, &typed, cx))
@@ -457,14 +458,14 @@ impl CeremonyPanel {
         v_flex()
             .id("ceremony-confirm")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading("ceremony.confirm.title", window, cx))
             .child(warning("ceremony-confirm-once", "ceremony.confirm.once"))
             .children(fields)
             .child(self.countdown(ceremony, cx))
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("ceremony-next")
                             .primary()
@@ -505,14 +506,14 @@ impl CeremonyPanel {
                      input: &gpui_kit::Entity<gpui_kit::component::input::InputState>,
                      id: &'static str| {
             v_flex()
-                .gap_1()
+                .gap(space(1.))
                 .child(muted(tr(key), cx))
                 .child(Input::new(input).id(id).aria_label(tr(key)).mask_toggle())
         };
         v_flex()
             .id("ceremony-passphrase")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading("ceremony.passphrase.title", window, cx))
             .child(muted(tr("ceremony.passphrase.help"), cx))
             .child(field(
@@ -523,8 +524,8 @@ impl CeremonyPanel {
             .child(field("ceremony.passphrase.repeat", &self.repeat, "ceremony-passphrase-repeat"))
             .child(
                 v_flex()
-                    .gap_1()
-                    .text_sm()
+                    .gap(space(1.))
+                    .text_size(text_secondary())
                     .children((!typed.is_empty()).then(|| {
                         announced(
                             "ceremony-strength",
@@ -547,7 +548,7 @@ impl CeremonyPanel {
             .child(self.countdown(ceremony, cx))
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         self.sending(
                             Button::new("ceremony-confirm-submit")
@@ -593,7 +594,7 @@ impl CeremonyPanel {
         v_flex()
             .id("ceremony-done")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading("ceremony.done.title", window, cx))
             .child(announced(
                 "ceremony-state",
@@ -632,11 +633,11 @@ impl CeremonyPanel {
         v_flex()
             .id("ceremony-ended")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.focusable_failure("ceremony-ended-text", key, window, cx))
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("ceremony-restart")
                             .primary()
@@ -664,8 +665,8 @@ impl CeremonyPanel {
                 .role(Role::Status)
                 .aria_label(tr("ceremony.cancel_question"))
                 .test_support()
-                .gap_2()
-                .p_3()
+                .gap(space(2.))
+                .p(space(3.))
                 .border_1()
                 .border_color(cx.theme().border)
                 .rounded(cx.theme().radius),
@@ -673,10 +674,10 @@ impl CeremonyPanel {
             window,
             cx,
         )
-        .child(div().text_sm().child(tr("ceremony.cancel_question")))
+        .child(div().text_size(text_secondary()).child(tr("ceremony.cancel_question")))
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     Button::new("ceremony-cancel-yes")
                         .danger()
@@ -742,7 +743,7 @@ fn failure_line(index: usize, key: &str, cx: &App) -> AnyElement {
         ["ceremony-hint-1", "ceremony-hint-2", "ceremony-hint-3"][index],
         Role::Alert,
         text.clone(),
-        div().text_sm().text_color(cx.theme().danger).child(text),
+        div().text_size(text_secondary()).text_color(cx.theme().danger).child(text),
     )
 }
 
@@ -811,7 +812,7 @@ impl Render for CeremonyPanel {
             .on_action(cx.listener(Self::on_escape))
             .test_support()
             .w_full()
-            .gap_3()
+            .gap(space(3.))
             .children(question)
             .child(body)
     }

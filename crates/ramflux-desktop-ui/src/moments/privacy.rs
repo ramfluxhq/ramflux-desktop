@@ -12,6 +12,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
 use ramflux_desktop_core::{BlockId, Lifecycle, PrivacyRevealPayload, Scope, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::RowRefs;
 use crate::bubble::EventSink;
@@ -33,7 +34,7 @@ pub fn render(
     let body = match revealed {
         Some((_, content)) => div()
             .id("privacy-content")
-            .text_sm()
+            .text_size(text_secondary())
             .font_family(cx.theme().mono_font_family.clone())
             // The only place revealed text is read; it is shown, never copied out.
             .child(content.expose().to_owned())
@@ -41,7 +42,7 @@ pub fn render(
             .into_any_element(),
         None => div()
             .id("privacy-mask")
-            .text_sm()
+            .text_size(text_secondary())
             .font_family(cx.theme().mono_font_family.clone())
             .text_color(cx.theme().muted_foreground)
             .child(MASK)
@@ -57,26 +58,28 @@ pub fn render(
     let can_reveal = revealed.is_none() && !lifecycle.is_terminal();
     v_flex()
         .id("privacy-reveal")
-        .gap_2()
-        .p_3()
+        .gap(space(2.))
+        .p(space(3.))
         .border_1()
         .border_color(cx.theme().border)
         .rounded(cx.theme().radius_lg)
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     Icon::new(if revealed.is_some() { IconName::Eye } else { IconName::EyeOff })
                         .small()
                         .text_color(cx.theme().muted_foreground),
                 )
-                .child(div().text_sm().font_medium().child(payload.label.clone())),
+                .child(
+                    div().text_size(text_secondary()).font_medium().child(payload.label.clone()),
+                ),
         )
         .child(body)
         .when(can_reveal, |col| {
             col.child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("privacy-reveal-button")
                             .small()
@@ -88,7 +91,7 @@ pub fn render(
                     )
                     .child(
                         div()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().muted_foreground)
                             .child(tr("moment.privacy.audited")),
                     ),
@@ -98,7 +101,7 @@ pub fn render(
             col.child(
                 div()
                     .id("privacy-audit")
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(audit)
                     .test_support(),

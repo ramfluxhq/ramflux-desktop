@@ -34,6 +34,7 @@ mod task_event;
 mod task_progress;
 mod task_status;
 
+use ramflux_desktop_navigation::scale::{space, text_caption};
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -482,14 +483,14 @@ impl RenderOnce for MomentView {
                 .when_some(state.focus.as_ref(), |el, focus| el.track_focus(focus))
                 .w_full()
                 .min_w_0()
-                .gap_1()
+                .gap(space(1.))
                 .when_some(row.day_header.clone(), |col, day| col.child(day_header(day, cx)))
                 .child(
                     h_flex()
                         .w_full()
                         .min_w_0()
                         .items_start()
-                        .gap_2()
+                        .gap(space(2.))
                         .when(row.outbound, |line| line.justify_row_end())
                         .when(!row.outbound, |line| {
                             line.child(
@@ -513,7 +514,7 @@ impl RenderOnce for MomentView {
                                 .min_w_0()
                                 .max_w(gpui_kit::rems(448.0 / 15.0))
                                 .w_full()
-                                .gap_1()
+                                .gap(space(1.))
                                 .rounded(cx.theme().radius)
                                 .when(state.highlighted, |r| r.bg(cx.theme().muted))
                                 .when(focused, |r| r.focus_ring_style(window, cx))
@@ -532,15 +533,15 @@ impl RenderOnce for MomentView {
             .when_some(state.focus.as_ref(), |el, focus| el.track_focus(focus))
             .w_full()
             .min_w_0()
-            .gap_1()
+            .gap(space(1.))
             .when_some(row.day_header.clone(), |col, day| col.child(day_header(day, cx)))
             .child(
                 v_flex()
                     .w_full()
                     .min_w_0()
-                    .gap_1()
-                    .px_2()
-                    .py_1()
+                    .gap(space(1.))
+                    .px(space(2.))
+                    .py(space(1.))
                     .rounded(cx.theme().radius)
                     .when(state.highlighted, |r| r.bg(cx.theme().muted))
                     .when(focused, |r| r.focus_ring_style(window, cx))
@@ -608,9 +609,9 @@ pub fn accessible_label(row: &MomentRow) -> SharedString {
 fn day_header(day: SharedString, cx: &App) -> impl IntoElement {
     // Design `RF / Date separator`: a centred chip on the surface colour.
     let palette = ramflux_desktop_navigation::palette(cx);
-    h_flex().w_full().justify_center().pt_2().child(
+    h_flex().w_full().justify_center().pt(space(2.)).child(
         div()
-            .px_2()
+            .px(space(2.))
             .py(gpui_kit::px(2.))
             .rounded(gpui_kit::rems(palette.radius_chip / 15.0))
             .bg(palette.surface)
@@ -662,8 +663,8 @@ fn header(row: &MomentRow, cx: &App) -> impl IntoElement {
     let (label, tone) = state_label(row);
     let marker = tone.map(|tone| (label, crate::tone::text(tone.color(cx), cx)));
     h_flex()
-        .gap_2()
-        .text_xs()
+        .gap(space(2.))
+        .text_size(text_caption())
         .child(div().font_semibold().text_color(cx.theme().foreground).child(row.author.clone()))
         // A name that could pass for another's: a visible word, the full
         // id and an explanation, next to the name (never a mark on the

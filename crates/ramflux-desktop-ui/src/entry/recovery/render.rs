@@ -23,6 +23,7 @@ use ramflux_desktop_core::{
     check_phrase,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_body, text_secondary, text_subheading};
 
 use super::{RecoveryPanel, RecoveryPending, Screen};
 use crate::actions::RECOVERY_CONTEXT;
@@ -59,9 +60,9 @@ impl RecoveryPanel {
                 .aria_label(text.clone())
                 .track_focus(&self.heading_focus)
                 .test_support()
-                .px_1()
+                .px(space(1.))
                 .rounded(cx.theme().radius)
-                .text_lg()
+                .text_size(text_subheading())
                 .font_semibold()
                 .child(text),
             self.heading_focus.is_focused(window),
@@ -99,7 +100,7 @@ impl RecoveryPanel {
         v_flex()
             .id("recovery-intro")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading(tr_args("recovery.intro.title", &[("name", &name)]), window, cx))
             .child(warning("recovery-warning", "recovery.intro.warning"))
             .child(announced(
@@ -114,9 +115,9 @@ impl RecoveryPanel {
                     Role::Status,
                     tr("recovery.intro.pending"),
                     h_flex()
-                        .gap_2()
+                        .gap(space(2.))
                         .items_center()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .text_color(cx.theme().muted_foreground)
                         .child(Spinner::new().small())
                         .child(tr("recovery.intro.pending")),
@@ -124,7 +125,7 @@ impl RecoveryPanel {
             }))
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("recovery-continue")
                             .primary()
@@ -154,7 +155,7 @@ impl RecoveryPanel {
                 Role::Status,
                 tr("recovery.fingerprint.match"),
                 div()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().success)
                     .child(tr("recovery.fingerprint.match")),
             ))
@@ -164,7 +165,7 @@ impl RecoveryPanel {
                 Role::Alert,
                 tr("recovery.fingerprint.mismatch"),
                 div()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .text_color(cx.theme().danger)
                     .child(tr("recovery.fingerprint.mismatch")),
             ))
@@ -182,14 +183,17 @@ impl RecoveryPanel {
                 "recovery-phrase-state",
                 Role::Alert,
                 text.clone(),
-                div().text_sm().text_color(cx.theme().danger).child(text),
+                div().text_size(text_secondary()).text_color(cx.theme().danger).child(text),
             ))
         } else if check.tokens > PHRASE_WORDS {
             Some(announced(
                 "recovery-phrase-state",
                 Role::Alert,
                 tr("recovery.phrase.too_many"),
-                div().text_sm().text_color(cx.theme().danger).child(tr("recovery.phrase.too_many")),
+                div()
+                    .text_size(text_secondary())
+                    .text_color(cx.theme().danger)
+                    .child(tr("recovery.phrase.too_many")),
             ))
         } else {
             let text = if check.complete() {
@@ -201,7 +205,7 @@ impl RecoveryPanel {
         };
         let field = |label: &'static str, input: &gpui_kit::Entity<_>, id: &'static str, masked| {
             let input = Input::new(input).id(id).aria_label(tr(label));
-            v_flex().gap_1().child(muted(tr(label), cx)).child(if masked {
+            v_flex().gap(space(1.)).child(muted(tr(label), cx)).child(if masked {
                 input.mask_toggle()
             } else {
                 input
@@ -210,7 +214,7 @@ impl RecoveryPanel {
         v_flex()
             .id("recovery-check")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading(tr("recovery.check.title"), window, cx))
             .child(announced(
                 "recovery-fingerprint-help",
@@ -223,13 +227,13 @@ impl RecoveryPanel {
                 Role::Status,
                 shown_label,
                 div()
-                    .px_3()
-                    .py_2()
+                    .px(space(3.))
+                    .py(space(2.))
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .font_family(cx.theme().mono_font_family.clone())
-                    .text_base()
+                    .text_size(text_body())
                     .child(shown),
             ))
             .child(field(
@@ -251,7 +255,7 @@ impl RecoveryPanel {
             .child(self.countdown(record, cx))
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("recovery-submit")
                             .primary()
@@ -270,7 +274,7 @@ impl RecoveryPanel {
         v_flex()
             .id("recovery-checking")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading(tr("recovery.check.title"), window, cx))
             .child(ringed(
                 div()
@@ -279,13 +283,13 @@ impl RecoveryPanel {
                     .aria_label(tr("recovery.confirming"))
                     .track_focus(&self.status_focus)
                     .test_support()
-                    .p_1()
+                    .p(space(1.))
                     .rounded(cx.theme().radius)
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .items_center()
-                            .text_sm()
+                            .text_size(text_secondary())
                             .text_color(cx.theme().muted_foreground)
                             .child(Spinner::new().small())
                             .child(tr("recovery.confirming")),
@@ -313,7 +317,7 @@ impl RecoveryPanel {
         v_flex()
             .id("recovery-done")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(self.heading(tr("recovery.done.title"), window, cx))
             .child(announced(
                 "recovery-state",
@@ -353,7 +357,7 @@ impl RecoveryPanel {
         v_flex()
             .id("recovery-ended")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .child(ringed(
                 div()
                     .id("recovery-ended-text")
@@ -361,7 +365,7 @@ impl RecoveryPanel {
                     .aria_label(text.clone())
                     .track_focus(&self.alert_focus)
                     .test_support()
-                    .p_1()
+                    .p(space(1.))
                     .rounded(cx.theme().radius)
                     .child(Alert::error("recovery-ended-alert", text).small()),
                 self.alert_focus.is_focused(window),
@@ -370,7 +374,7 @@ impl RecoveryPanel {
             ))
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("recovery-restart")
                             .primary()
@@ -450,7 +454,7 @@ impl Render for RecoveryPanel {
             .test_support()
             .w_full()
             .max_w(rems(40.))
-            .gap_3()
+            .gap(space(3.))
             .child(body)
     }
 }

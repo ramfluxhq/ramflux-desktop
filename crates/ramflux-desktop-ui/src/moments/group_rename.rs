@@ -12,6 +12,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
 use ramflux_desktop_core::GroupRenamePayload;
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use super::MomentRow;
 use crate::i18n::{self, tr_args};
@@ -28,8 +29,8 @@ pub fn render(payload: &GroupRenamePayload, row: &MomentRow, cx: &App) -> impl I
         .id("group-rename")
         .aria_label(text.clone())
         .flex_wrap()
-        .gap_2()
-        .text_xs()
+        .gap(space(2.))
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(gpui_kit::assets::IconName::Users).xsmall())
         .child(div().min_w_0().text_color(cx.theme().foreground).child(text))

@@ -4,6 +4,7 @@
 //! Stateless two-line conversation content; a Kit Button owns row interaction.
 
 use crate::direction::h_flex;
+use crate::scale::space;
 use crate::theme;
 use gpui_kit::component::{StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
@@ -75,7 +76,7 @@ impl Row {
         h_flex()
             .w_full()
             .min_w_0()
-            .gap_3()
+            .gap(space(3.))
             .child(
                 div()
                     .flex_none()
@@ -100,7 +101,7 @@ impl Row {
                     .min_w_0()
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .child(
                                 div()
                                     .flex_1()
@@ -121,7 +122,7 @@ impl Row {
                     )
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .child(
                                 div()
                                     .flex_1()

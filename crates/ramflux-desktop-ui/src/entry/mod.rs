@@ -40,6 +40,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window, div, rems};
 use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::space;
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
@@ -414,10 +415,10 @@ impl Render for EntryPage {
                 .mx_auto()
                 .w_full()
                 .max_w(rems(656.0 / 15.0))
-                .gap_6()
-                .px_6()
+                .gap(space(6.))
+                .px(space(6.))
                 // The shell already keeps the 52 px drag region above (macOS).
-                .pb_12()
+                .pb(space(12.))
                 // Design A01: the product name, then the page title in the
                 // page size over a one-line description.
                 .child({
@@ -425,7 +426,7 @@ impl Render for EntryPage {
                     v_flex()
                         .id("entry-header")
                         .test_support()
-                        .gap_4()
+                        .gap(space(4.))
                         .child(
                             div()
                                 .text_size(rems(palette.size_title / 15.0))
@@ -460,7 +461,7 @@ impl Render for EntryPage {
                         .id("entry-steps")
                         .test_support()
                         .role(gpui_kit::Role::List)
-                        .gap_2()
+                        .gap(space(2.))
                         .children(
                             ["entry.step.daemon", "entry.step.node", "entry.step.account"]
                                 .into_iter()
@@ -482,7 +483,7 @@ impl Render for EntryPage {
                                         .aria_label(label.clone())
                                         .aria_selected(current)
                                         .test_support()
-                                        .px_3()
+                                        .px(space(3.))
                                         .py(rems(6.0 / 15.0))
                                         .rounded(rems(palette.radius_button / 15.0))
                                         .border_1()
@@ -514,7 +515,7 @@ impl Render for EntryPage {
             .absolute()
             .top(rems(12.0 / 15.0))
             .inset_end(rems(16.0 / 15.0))
-            .gap_1()
+            .gap(space(1.))
             .child(
                 gpui_kit::component::button::Button::new("entry-settings")
                     .ghost()
@@ -556,7 +557,7 @@ impl Render for EntryPage {
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
-                    .child(div().mx_auto().w_full().max_w(rems(38.)).pb_3().child(strip))
+                    .child(div().mx_auto().w_full().max_w(rems(38.)).pb(space(3.)).child(strip))
             }))
     }
 }

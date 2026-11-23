@@ -19,6 +19,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{GrantId, GrantState, JsonValue, SurfaceAction, UiEventKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::{ActionRow, BlockContext};
 use crate::i18n::{self, tr, tr_args};
@@ -34,10 +35,15 @@ pub fn form(data: &JsonValue, cx: &App) -> Option<AnyElement> {
     let text = str_field(data, "text").map(str::to_owned);
     Some(
         v_flex()
-            .gap_1()
-            .child(div().text_sm().font_semibold().child(title))
+            .gap(space(1.))
+            .child(div().text_size(text_secondary()).font_semibold().child(title))
             .when_some(text, |col, text| {
-                col.child(div().text_xs().text_color(cx.theme().muted_foreground).child(text))
+                col.child(
+                    div()
+                        .text_size(text_caption())
+                        .text_color(cx.theme().muted_foreground)
+                        .child(text),
+                )
             })
             .into_any_element(),
     )
@@ -50,8 +56,13 @@ pub fn input(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Option<A
     let input = context.input?;
     Some(
         v_flex()
-            .gap_1()
-            .child(div().text_xs().text_color(cx.theme().muted_foreground).child(label.clone()))
+            .gap(space(1.))
+            .child(
+                div()
+                    .text_size(text_caption())
+                    .text_color(cx.theme().muted_foreground)
+                    .child(label.clone()),
+            )
             .child(Input::new(input).id(domain_id("field", &name)).aria_label(label).small())
             .into_any_element(),
     )
@@ -99,9 +110,14 @@ pub fn select(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Option<
     });
     Some(
         v_flex()
-            .gap_1()
-            .child(div().text_xs().text_color(cx.theme().muted_foreground).child(label))
-            .child(h_flex().flex_wrap().gap_1().children(buttons))
+            .gap(space(1.))
+            .child(
+                div()
+                    .text_size(text_caption())
+                    .text_color(cx.theme().muted_foreground)
+                    .child(label),
+            )
+            .child(h_flex().flex_wrap().gap(space(1.)).children(buttons))
             .into_any_element(),
     )
 }
@@ -136,7 +152,7 @@ pub fn approval(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Optio
             "moment.intervention.approve"
         });
         h_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(Button::new("approve").primary().small().label(approve_label).on_click(
                 move |_, window, cx| approve_sink.emit(UiEventKind::ApprovePressed, window, cx),
             ))
@@ -152,15 +168,15 @@ pub fn approval(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Optio
             .into_any_element()
     } else {
         div()
-            .text_xs()
+            .text_size(text_caption())
             .text_color(cx.theme().muted_foreground)
             .child(i18n::grant_state(grant.state))
             .into_any_element()
     };
     Some(
         v_flex()
-            .gap_2()
-            .p_2()
+            .gap(space(2.))
+            .p(space(2.))
             .border_1()
             .border_color(if grant.state == GrantState::Pending {
                 risk_color
@@ -170,26 +186,30 @@ pub fn approval(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Optio
             .rounded(cx.theme().radius)
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .items_start()
                     .child(Icon::new(IconName::TriangleAlert).small().text_color(risk_color))
                     .child(
-                        v_flex().min_w_0().gap_1().child(div().text_sm().child(summary)).child(
-                            h_flex()
-                                .gap_2()
-                                .text_xs()
-                                .child(div().text_color(risk_color).child(tr_args(
-                                    "moment.intervention.risk",
-                                    &[("risk", &i18n::risk(grant.risk))],
-                                )))
-                                .child(
-                                    div()
-                                        .font_family(cx.theme().mono_font_family.clone())
-                                        .text_color(cx.theme().muted_foreground)
-                                        .text_ltr()
-                                        .child(i18n::bidi::ltr(&grant.scope)),
-                                ),
-                        ),
+                        v_flex()
+                            .min_w_0()
+                            .gap(space(1.))
+                            .child(div().text_size(text_secondary()).child(summary))
+                            .child(
+                                h_flex()
+                                    .gap(space(2.))
+                                    .text_size(text_caption())
+                                    .child(div().text_color(risk_color).child(tr_args(
+                                        "moment.intervention.risk",
+                                        &[("risk", &i18n::risk(grant.risk))],
+                                    )))
+                                    .child(
+                                        div()
+                                            .font_family(cx.theme().mono_font_family.clone())
+                                            .text_color(cx.theme().muted_foreground)
+                                            .text_ltr()
+                                            .child(i18n::bidi::ltr(&grant.scope)),
+                                    ),
+                            ),
                     ),
             )
             .child(decision)

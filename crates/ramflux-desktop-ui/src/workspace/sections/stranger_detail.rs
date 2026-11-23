@@ -22,6 +22,7 @@ use ramflux_desktop_core::{RequestAnswer, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::generated::catalog;
 use ramflux_desktop_navigation::palette;
+use ramflux_desktop_navigation::scale::space;
 use ramflux_desktop_sdk::business::ContractGap;
 
 use super::directory;
@@ -117,7 +118,7 @@ impl StrangersArea {
             .flex_none()
             .h(rem(88.0))
             .px(rem(32.0))
-            .gap_3()
+            .gap(space(3.))
             .border_b_1()
             .border_color(theme.line)
             .child(catalog::avatar(
@@ -129,10 +130,10 @@ impl StrangersArea {
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .gap_1()
+                    .gap(space(1.))
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(space(2.))
                             .child(
                                 div()
                                     .text_size(rem(theme.size_subheading))
@@ -156,7 +157,7 @@ impl StrangersArea {
             )
             .child(
                 h_flex()
-                    .gap_1()
+                    .gap(space(1.))
                     .child(answer(
                         "stranger-block",
                         RequestAnswer::Block,
@@ -166,7 +167,7 @@ impl StrangersArea {
             );
         let banner_fact = |label: SharedString, value: SharedString| {
             v_flex()
-                .gap_1()
+                .gap(space(1.))
                 .child(
                     div().text_size(rem(theme.size_meta)).text_color(theme.secondary).child(label),
                 )
@@ -188,7 +189,7 @@ impl StrangersArea {
                 .test_support()
                 .items_start()
                 .max_w(rem(560.0))
-                .gap_3()
+                .gap(space(3.))
                 .p(rem(12.0))
                 .rounded(rem(theme.radius_card))
                 .bg(theme.warning_bg)
@@ -197,7 +198,7 @@ impl StrangersArea {
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .gap_2()
+                        .gap(space(2.))
                         .child(div().text_size(rem(theme.size_secondary)).font_semibold().child(
                             if unverified {
                                 tr("sections.strangers.unverified")
@@ -239,7 +240,7 @@ impl StrangersArea {
             .px(rem(32.0))
             .child(
                 column(v_flex())
-                    .gap_3()
+                    .gap(space(3.))
                     .child(banner)
                     .children(participant.as_ref().and_then(|p| {
                         crate::identity::name_warning("stranger-name-warning", p, cx)
@@ -298,7 +299,7 @@ impl StrangersArea {
             .border_color(theme.line)
             .child(
                 column(h_flex())
-                    .gap_3()
+                    .gap(space(3.))
                     .child(
                         div()
                             .flex_1()
@@ -312,7 +313,7 @@ impl StrangersArea {
                         h_flex()
                             .id("stranger-actions")
                             .test_support()
-                            .gap_2()
+                            .gap(space(2.))
                             .child(answer(
                                 "stranger-decline",
                                 RequestAnswer::Decline,
@@ -373,7 +374,7 @@ pub(crate) fn warning_chip(id: &'static str, text: SharedString, cx: &gpui_kit::
         .id(id)
         .test_support()
         .flex_none()
-        .px_2()
+        .px(space(2.))
         .py(rem(2.0))
         .rounded(rem(theme.radius_chip))
         .bg(theme.warning_bg)

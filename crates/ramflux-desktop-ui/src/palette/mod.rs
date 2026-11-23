@@ -21,6 +21,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, EventEmitter, IntoElement, Render, Window, div, rems};
 use ramflux_desktop_core::{AccountId, ContextId, Scope, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 
 use crate::actions::{ClosePalette, PALETTE_CONTEXT};
 use crate::app::StoreHandle;
@@ -186,9 +187,9 @@ impl Render for CommandPalette {
             .empty(|_, _, cx| {
                 v_flex()
                     .items_center()
-                    .gap_2()
-                    .py_4()
-                    .text_sm()
+                    .gap(space(2.))
+                    .py(space(4.))
+                    .text_size(text_secondary())
                     .text_color(cx.theme().muted_foreground)
                     .child(Icon::new(IconName::Search))
                     .child(tr("palette.empty"))
@@ -203,7 +204,7 @@ impl Render for CommandPalette {
             .footer(|_, _, cx| {
                 let palette = ramflux_desktop_navigation::palette(cx);
                 h_flex()
-                    .pt_3()
+                    .pt(space(3.))
                     .text_size(rems(palette.size_secondary / 15.0))
                     .text_color(palette.secondary)
                     .child(tr("palette.hint"))
@@ -233,7 +234,7 @@ impl Render for CommandPalette {
                     .w(rems(608.0 / 15.0))
                     .max_w_full()
                     .h_auto()
-                    .gap_4()
+                    .gap(space(4.))
                     .p(rems(24.0 / 15.0))
                     .bg(palette.overlay)
                     .border_1()
@@ -296,8 +297,8 @@ fn result_row(
     // (primary) button, the others outline.
     h_flex()
         .w_full()
-        .gap_3()
-        .py_3()
+        .gap(space(3.))
+        .py(space(3.))
         .border_b_1()
         .border_color(palette.line)
         .child(
@@ -322,7 +323,7 @@ fn result_row(
         .child(
             div()
                 .flex_none()
-                .px_2()
+                .px(space(2.))
                 .py(gpui_kit::px(2.))
                 .rounded(rems(palette.radius_button / 15.0))
                 .border_1()

@@ -16,6 +16,7 @@ use ramflux_desktop_core::{
     StandingApproval, Store, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::{empty_line, section};
 use crate::app::{StoreEvent, StoreHandle};
@@ -49,8 +50,8 @@ impl ApprovalsDock {
 
 fn grant_line(grant: &Grant, cx: &App) -> AnyElement {
     h_flex()
-        .gap_2()
-        .text_xs()
+        .gap(space(2.))
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(i18n::risk(grant.risk))
         .child(
@@ -90,7 +91,7 @@ fn pending_row(store: &Store, grant: &Grant, sink: &EventSink, cx: &App) -> AnyE
         };
         let deny = scoped.clone();
         h_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 Button::new("approve")
                     .xsmall()
@@ -117,10 +118,10 @@ fn pending_row(store: &Store, grant: &Grant, sink: &EventSink, cx: &App) -> AnyE
     let decide = if failure.is_some() { None } else { decide };
     v_flex()
         .id(domain_id("approvals-pending", &grant.id))
-        .gap_1()
-        .px_3()
-        .py_1()
-        .child(div().text_sm().font_medium().child(summary))
+        .gap(space(1.))
+        .px(space(3.))
+        .py(space(1.))
+        .child(div().text_size(text_secondary()).font_medium().child(summary))
         .child(grant_line(grant, cx))
         .children(failure)
         .children(decide)
@@ -143,22 +144,22 @@ fn grant_row(grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement {
     });
     h_flex()
         .id(domain_id("approvals-grant", &grant.id))
-        .gap_2()
-        .px_3()
-        .py_1()
+        .gap(space(2.))
+        .px(space(3.))
+        .py(space(1.))
         .child(
             v_flex()
                 .flex_1()
                 .min_w_0()
                 .child(
                     div()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .font_family(cx.theme().mono_font_family.clone())
                         .child(grant.scope.clone()),
                 )
                 .child(
                     div()
-                        .text_xs()
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(i18n::grant_state(grant.state)),
                 )
@@ -166,7 +167,7 @@ fn grant_row(grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement {
                     col.child(
                         div()
                             .id("grant-failure-note")
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().danger)
                             .child(crate::moments::grant_failure::reason(failure)),
                     )
@@ -196,21 +197,21 @@ fn standing_row(approval: &StandingApproval, sink: &EventSink, cx: &App) -> AnyE
     );
     h_flex()
         .id(domain_id("approvals-standing", &approval.id))
-        .gap_2()
-        .px_3()
-        .py_1()
+        .gap(space(2.))
+        .px(space(3.))
+        .py(space(1.))
         .child(
             v_flex()
                 .flex_1()
                 .min_w_0()
                 .child(
                     div()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .font_family(cx.theme().mono_font_family.clone())
                         .child(approval.scope.clone()),
                 )
                 .child(
-                    div().text_xs().text_color(cx.theme().muted_foreground).child(
+                    div().text_size(text_caption()).text_color(cx.theme().muted_foreground).child(
                         if approval.revoked { tr("dock.approvals.revoked") } else { detail },
                     ),
                 ),
@@ -229,10 +230,10 @@ fn audit_row(store: &Store, entry: &AuditEntry, cx: &App) -> AnyElement {
     let confirmed =
         if entry.human_confirmed { tr("audit.confirmed") } else { tr("audit.not_confirmed") };
     h_flex()
-        .gap_2()
-        .px_3()
-        .py_1()
-        .text_xs()
+        .gap(space(2.))
+        .px(space(3.))
+        .py(space(1.))
+        .text_size(text_caption())
         .child(div().text_color(cx.theme().muted_foreground).child(i18n::date_time(entry.at)))
         .child(
             div()

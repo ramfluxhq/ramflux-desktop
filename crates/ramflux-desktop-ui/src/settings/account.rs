@@ -13,6 +13,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, SharedString, TestSupportExt as _, Window, div};
 use ramflux_desktop_core::{Account, IntentKind, LockState, SecretInput, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::space;
 
 use super::{SectionContext, SettingsSection, design, note};
 use crate::file_dialog::{self, StartDir};
@@ -224,7 +225,7 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                     .id("account-privacy-unavailable")
                     .test_support()
                     .role(gpui_kit::Role::Status)
-                    .p_3()
+                    .p(space(3.))
                     .rounded(gpui_kit::rems(
                         ramflux_desktop_navigation::palette(cx).radius_md / 15.0,
                     ))

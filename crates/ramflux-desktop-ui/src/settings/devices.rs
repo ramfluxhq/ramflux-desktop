@@ -13,6 +13,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, SharedString, div};
 use ramflux_desktop_core::{Device, Listing, SourceStatus, SyncDirection, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::space;
 use ramflux_desktop_navigation::{generated::catalog, palette};
 
 use super::{SectionContext, SettingsSection, presentation};
@@ -146,7 +147,7 @@ pub(crate) fn page(
                 } else {
                     None
                 };
-                let action = h_flex().gap_2().children(chip).children(
+                let action = h_flex().gap(space(2.)).children(chip).children(
                     revoke.map(|button| crate::gate::gated(button, revoke_reason.clone())),
                 );
                 // This SDK version provides no authenticated platform/origin
@@ -187,7 +188,7 @@ pub(crate) fn page(
                                             &tr("settings_ui.origin_unknown"),
                                             &tr("settings_ui.origin_warning"),
                                         ))
-                                        .pb_3()
+                                        .pb(space(3.))
                                         .border_b_1()
                                         .border_color(palette(cx).line)
                                         .child(
@@ -243,7 +244,7 @@ pub(crate) fn page(
         let import = sink.clone();
         let buttons = h_flex()
             .flex_wrap()
-            .gap_2()
+            .gap(space(2.))
             .child(crate::gate::gated(
                 Button::new("sync-export")
                     .design_secondary(cx)

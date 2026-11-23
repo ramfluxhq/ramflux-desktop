@@ -12,6 +12,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, div};
 use ramflux_desktop_core::Integrations;
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::{SectionContext, note};
 use crate::i18n::tr;
@@ -27,23 +28,25 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
         }
         v_flex()
             .id("settings-mcp")
-            .gap_2()
+            .gap(space(2.))
             .children(servers.iter().map(|server| {
                 h_flex()
                     .id(domain_id("mcp", &server.name))
-                    .gap_2()
-                    .child(div().text_sm().font_medium().child(server.name.clone()))
+                    .gap(space(2.))
+                    .child(
+                        div().text_size(text_secondary()).font_medium().child(server.name.clone()),
+                    )
                     .child(
                         div()
                             .flex_1()
                             .min_w_0()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().muted_foreground)
                             .child(crate::i18n::list(&server.tools)),
                     )
                     .child(
                         div()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(match server.healthy {
                                 Some(true) => cx.theme().success,
                                 Some(false) => cx.theme().danger,
@@ -65,15 +68,15 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
         }
         v_flex()
             .id("settings-a2i")
-            .gap_1()
+            .gap(space(1.))
             .children(pending.iter().map(|item| {
                 h_flex()
-                    .gap_2()
-                    .text_sm()
+                    .gap(space(2.))
+                    .text_size(text_secondary())
                     .child(
                         div()
                             .font_family(cx.theme().mono_font_family.clone())
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_ltr()
                             .child(crate::i18n::bidi::ltr(&item.id)),
                     )

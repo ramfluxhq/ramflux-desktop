@@ -11,6 +11,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
 use ramflux_desktop_core::{BlockId, ContactRequestPayload, Lifecycle, Scope, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::RowRefs;
 use crate::bubble::EventSink;
@@ -29,7 +30,7 @@ pub fn render(
     let reject_sink = answer_sink.clone();
     let footer = match lifecycle {
         Lifecycle::NeedsMe => h_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 Button::new("contact-accept")
                     .small()
@@ -58,8 +59,8 @@ pub fn render(
     };
     v_flex()
         .id("contact-request")
-        .gap_2()
-        .p_3()
+        .gap(space(2.))
+        .p(space(3.))
         .border_1()
         .border_color(if lifecycle == Lifecycle::NeedsMe {
             cx.theme().warning
@@ -69,25 +70,32 @@ pub fn render(
         .rounded(cx.theme().radius_lg)
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     Icon::new(IconName::CircleUser).small().text_color(cx.theme().muted_foreground),
                 )
                 .child(
                     div()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .font_medium()
                         .child(tr_args("moment.contact.request", &[("name", &name)])),
                 ),
         )
         .when(!payload.note.is_empty(), |col| {
             col.child(
-                div().text_sm().text_color(cx.theme().muted_foreground).child(payload.note.clone()),
+                div()
+                    .text_size(text_secondary())
+                    .text_color(cx.theme().muted_foreground)
+                    .child(payload.note.clone()),
             )
         })
         .child(footer)
 }
 
 fn status(text: gpui_kit::SharedString, cx: &App) -> gpui_kit::AnyElement {
-    div().text_xs().text_color(cx.theme().muted_foreground).child(text).into_any_element()
+    div()
+        .text_size(text_caption())
+        .text_color(cx.theme().muted_foreground)
+        .child(text)
+        .into_any_element()
 }

@@ -21,6 +21,7 @@ use ramflux_desktop_core::{
     Context, ContextKind, Participant, Scope, Store, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_secondary};
 
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
@@ -90,7 +91,7 @@ pub fn render(
         return h_flex()
             .id("conversation-header")
             .test_support()
-            .gap_3()
+            .gap(space(3.))
             .px(gpui_kit::rems(32.0 / 15.0))
             .py(gpui_kit::rems(20.0 / 15.0))
             .min_h(gpui_kit::rems(88.0 / 15.0))
@@ -161,7 +162,7 @@ pub fn render(
     });
     let members = if agent_line.is_some() { 0 } else { members };
     let context_line = h_flex()
-        .gap_1()
+        .gap(space(1.))
         .min_w_0()
         .children(agent_line.map(|line| fact(line).id("header-agent-status").test_support()))
         .when(members > 0, |line| {
@@ -180,7 +181,7 @@ pub fn render(
         });
     let row = h_flex()
         .w_full()
-        .gap_3()
+        .gap(space(3.))
         .px(gpui_kit::rems(32.0 / 15.0))
         // Design `RF / Chat header`: 88 px, contents centred.
         .h(gpui_kit::rems(88.0 / 15.0))
@@ -290,9 +291,9 @@ pub fn render(
                 .id("header-identity")
                 .w_full()
                 .flex_wrap()
-                .gap_3()
-                .px_4()
-                .pb_2()
+                .gap(space(3.))
+                .px(space(4.))
+                .pb(space(2.))
                 .children(kind)
                 .children(warning)
         })
@@ -335,8 +336,8 @@ fn call_ack_strip(
     let participant_id = peer.id.clone();
     Some(
         div()
-            .px_4()
-            .pb_2()
+            .px(space(4.))
+            .pb(space(2.))
             .child(crate::identity::stale_ack(
                 "call-stale-ack",
                 prompt,
@@ -403,11 +404,11 @@ fn safety_banner(participant: &Participant, sink: &EventSink, cx: &App) -> AnyEl
     h_flex()
         .id(domain_id("safety-banner", &participant.id))
         .aria_label(text.clone())
-        .gap_2()
-        .px_4()
-        .py_2()
+        .gap(space(2.))
+        .px(space(4.))
+        .py(space(2.))
         .bg(color.opacity(0.12))
-        .text_sm()
+        .text_size(text_secondary())
         .child(Icon::new(icon).small().text_color(crate::tone::text(color, cx)))
         .child(div().flex_1().min_w_0().child(text))
         .child(

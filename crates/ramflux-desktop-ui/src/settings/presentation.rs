@@ -8,6 +8,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, ElementId, IntoElement, Role, SharedString, TestSupportExt as _, div,
 };
+use ramflux_desktop_navigation::scale::{space, text_caption};
 use ramflux_desktop_navigation::{generated::catalog, palette};
 
 pub(super) fn contract_reason(gap: ramflux_desktop_sdk::business::ContractGap) -> SharedString {
@@ -22,7 +23,7 @@ pub(super) fn contract_reason(gap: ramflux_desktop_sdk::business::ContractGap) -
 pub(crate) fn field(label: SharedString, editor: impl IntoElement, cx: &App) -> AnyElement {
     // Keep the host's masked editor, IDs and one-shot secret handoff intact.
     gpui_kit::component::v_flex()
-        .gap_2()
+        .gap(space(2.))
         .min_w_0()
         // Design: a 13 px medium label above the editor.
         .child(
@@ -52,7 +53,7 @@ pub(super) fn notice(
         .w_full()
         .whitespace_normal()
         // Design `RF / Tip bar`: the notice sits on the surface fill.
-        .p_3()
+        .p(space(3.))
         .rounded(gpui_kit::rems(palette(cx).radius_md / 15.0))
         .bg(palette(cx).surface)
         .child(catalog::state_block(
@@ -77,9 +78,9 @@ pub(super) fn compact_warning(
         .test_support()
         .role(Role::Status)
         .aria_label(title.clone())
-        .gap_2()
+        .gap(space(2.))
         .min_w_0()
-        .text_xs()
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(IconName::TriangleAlert).xsmall().text_color(cx.theme().warning))
         .child(div().min_w_0().truncate().child(title))

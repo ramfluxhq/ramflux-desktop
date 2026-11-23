@@ -15,6 +15,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div, rems};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::space;
 use ramflux_desktop_navigation::theme::{self, ThemeInfo};
 use ramflux_desktop_sdk::local::FOLLOW_SYSTEM;
 
@@ -173,7 +174,7 @@ fn body(cx: &App) -> impl IntoElement {
         Some(ThemeMode::Light) => tr("settings.appearance.mode_help_light"),
     };
     let mode = v_flex()
-        .gap_2()
+        .gap(space(2.))
         .child(label("settings.appearance.mode"))
         .child(
             h_flex()
@@ -240,7 +241,7 @@ fn body(cx: &App) -> impl IntoElement {
                 .child(
                     h_flex()
                         .w_full()
-                        .gap_3()
+                        .gap(space(3.))
                         .child(
                             div()
                                 .size(rem(18.0))
@@ -263,7 +264,7 @@ fn body(cx: &App) -> impl IntoElement {
                         .when(ix == 0, |row| {
                             row.child(
                                 div()
-                                    .px_2()
+                                    .px(space(2.))
                                     .py(rem(4.0))
                                     .rounded(rem(palette.radius_chip))
                                     .bg(palette.surface)
@@ -272,7 +273,7 @@ fn body(cx: &App) -> impl IntoElement {
                             )
                         })
                         .child(div().flex_1())
-                        .child(h_flex().gap_1().children(
+                        .child(h_flex().gap(space(1.)).children(
                             [palette.bg, palette.selected, palette.outgoing, palette.text].map(
                                 |color| {
                                     div()
@@ -287,7 +288,7 @@ fn body(cx: &App) -> impl IntoElement {
                 )
         }));
     let theme = v_flex()
-        .gap_2()
+        .gap(space(2.))
         .child(label("settings.theme"))
         .child(list)
         .child(helper(tr("settings.appearance.theme_help")));
@@ -299,14 +300,14 @@ fn body(cx: &App) -> impl IntoElement {
             .map_or_else(|| tr("locale.system"), |locale| tr(locale.name_key)),
     };
     let language = v_flex()
-        .gap_2()
+        .gap(space(2.))
         .child(label("settings.language"))
         .child(
             Button::new("appearance-language")
                 .outline()
                 .w_full()
                 .h(rem(40.0))
-                .px_3()
+                .px(space(3.))
                 .justify_row_start()
                 .rounded(gpui_kit::px(palette.radius_input))
                 .accessibility_label(tr_args(
@@ -355,7 +356,7 @@ fn body(cx: &App) -> impl IntoElement {
                 .child(language)
                 .children(unsaved),
         )
-        .child(section("appearance-preview").gap_3().children(preview(cx)))
+        .child(section("appearance-preview").gap(space(3.)).children(preview(cx)))
 }
 
 /// The language options: follow the system, then every shipped locale.
@@ -390,7 +391,7 @@ fn preview(cx: &App) -> Vec<gpui_kit::AnyElement> {
         h_flex()
             .child(
                 div()
-                    .px_2()
+                    .px(space(2.))
                     .py(rem(4.0))
                     .rounded(rem(palette.radius_chip))
                     .bg(palette.surface)
@@ -399,7 +400,7 @@ fn preview(cx: &App) -> Vec<gpui_kit::AnyElement> {
             )
             .into_any_element(),
         h_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 crate::style::primary_button("appearance-preview-primary", cx)
                     .label(tr("settings.appearance.preview_primary")),

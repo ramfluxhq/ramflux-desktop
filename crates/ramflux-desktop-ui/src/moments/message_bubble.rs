@@ -13,6 +13,7 @@ use gpui_kit::{AnyElement, App, IntoElement, Role, TestSupportExt as _, Window, 
 use ramflux_desktop_core::projection::messages::Mutation;
 use ramflux_desktop_core::{MessagePayload, MomentKind, ParticipantKind, Receipt, UiEventKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex, h_flex_in};
+use ramflux_desktop_navigation::scale::{REM_PX, design_px, space, text_caption};
 use ramflux_desktop_navigation::{generated::catalog, palette};
 
 use super::{MomentRow, RowState};
@@ -110,7 +111,7 @@ pub(crate) fn render(
                 strikethrough: None,
             };
             width = width.max(window.text_system().shape_line(line, size, &[run], None).width);
-            if width >= window.rem_size() * (theme.bubble_max / 16.0) {
+            if width >= window.rem_size() * (theme.bubble_max / REM_PX) {
                 break;
             }
         }
@@ -160,7 +161,7 @@ pub(crate) fn render(
     let show_author = !state.joined || row.author_warning.is_some();
     let content = v_flex()
         .min_w_0()
-        .gap_1()
+        .gap(space(1.))
         .when(show_author && !row.outbound, |col| {
             col.child(
                 div()
@@ -186,7 +187,7 @@ pub(crate) fn render(
                 div()
                     .id("row-state")
                     .test_support()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(crate::tone::text(tone.color(cx), cx))
                     .child(lifecycle),
             )
@@ -198,12 +199,12 @@ pub(crate) fn render(
                 .w_full()
                 .min_w_0()
                 .items_end()
-                .gap_2()
+                .gap(space(2.))
                 .child(div().flex_1().min_w_0().child(body))
                 .child(
                     h_flex()
                         .flex_none()
-                        .gap_1()
+                        .gap(space(1.))
                         .pb(gpui_kit::px(2.))
                         .text_size(rems(theme.size_caption / 15.0))
                         .text_color(if row.outbound {
@@ -230,7 +231,7 @@ pub(crate) fn render(
         .items_center()
         .justify_center()
         .flex_none()
-        .size(rems(24.0 / 16.0))
+        .size(design_px(24.0))
         .rounded(cx.theme().radius)
         .border_1()
         .border_color(cx.theme().transparent)
@@ -285,14 +286,14 @@ pub(crate) fn render(
         .when_some(state.focus.as_ref(), |col, focus| col.track_focus(focus))
         .w_full()
         .min_w_0()
-        .gap_1()
+        .gap(space(1.))
         .when_some(row.day_header.clone(), |col, day| col.child(super::day_header(day, cx)))
         .child(
             h_flex()
                 .w_full()
                 .min_w_0()
                 .items_start()
-                .gap_2()
+                .gap(space(2.))
                 .when(row.outbound, |line| line.justify_row_end())
                 .when(!row.outbound, |line| {
                     line.child(
@@ -301,7 +302,7 @@ pub(crate) fn render(
                             .test_support()
                             .aria_label(ramflux_desktop_navigation::row::initial(&row.author))
                             .flex_none()
-                            .w(rems(40.0 / 16.0))
+                            .w(design_px(40.0))
                             .when(!state.joined, |avatar| {
                                 avatar.child(catalog::avatar(
                                     ramflux_desktop_navigation::row::initial(&row.author),
@@ -320,12 +321,12 @@ pub(crate) fn render(
                         .id("message-bubble")
                         .test_support()
                         .min_w_0()
-                        .max_w(rems(theme.bubble_max / 16.0))
+                        .max_w(design_px(theme.bubble_max))
                         .when_some(body_width, |bubble, width| bubble.w(width))
                         .when(state.highlighted, |col| {
                             col.border_2()
                                 .border_color(cx.theme().ring)
-                                .rounded(rems(theme.radius_bubble / 16.0))
+                                .rounded(design_px(theme.radius_bubble))
                         })
                         .when(focused, |col| col.focus_ring_style(window, cx))
                         .when(failed, |col| {
@@ -390,8 +391,8 @@ fn receipt_line(
             .id("message-receipt")
             .aria_label(i18n::receipt(payload.receipt))
             .test_support()
-            .pt_1()
-            .gap_1()
+            .pt(space(1.))
+            .gap(space(1.))
             .text_size(rems(theme.size_meta / 15.0))
             .text_color(color)
             .when(failed, |line| line.child(Icon::new(IconName::CircleAlert).xsmall()))

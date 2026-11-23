@@ -40,6 +40,7 @@ use ramflux_desktop_core::{
     classify_contact_input, methods, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use crate::app::ChangeSet;
 use crate::i18n::{self, tr, tr_args};
@@ -437,7 +438,7 @@ where
             .role(Role::Status)
             .aria_label(text.clone())
             .test_support()
-            .text_xs()
+            .text_size(text_caption())
             .text_color(color)
             .child(text)
     });
@@ -445,7 +446,7 @@ where
         let RootHandlers { replace, keep } = on_root;
         h_flex()
             .id("contact-root-confirm")
-            .gap_2()
+            .gap(space(2.))
             .child(
                 Button::new("contact-root-replace")
                     .xsmall()
@@ -464,12 +465,12 @@ where
     let hint = form.kind_hint(cx);
     v_flex()
         .id("contact-add")
-        .gap_1()
-        .px_3()
-        .pb_2()
+        .gap(space(1.))
+        .px(space(3.))
+        .pb(space(2.))
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     Input::new(form.input())
                         .id("contact-add-id")
@@ -484,7 +485,7 @@ where
                 .id("contact-add-kind")
                 .aria_label(hint.clone())
                 .test_support()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(cx.theme().muted_foreground)
                 .child(hint),
         )

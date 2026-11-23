@@ -15,6 +15,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Hsla, SharedString, div};
 use ramflux_desktop_core::{BlockId, Scope, TaskAnswer, TaskRefusal, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use crate::bubble::EventSink;
 
@@ -30,9 +31,9 @@ fn notice(
 ) -> AnyElement {
     h_flex()
         .id(id)
-        .gap_2()
+        .gap(space(2.))
         .items_start()
-        .p_2()
+        .p(space(2.))
         .border_1()
         .border_color(color)
         .rounded(cx.theme().radius)
@@ -40,9 +41,14 @@ fn notice(
         .child(
             v_flex()
                 .min_w_0()
-                .gap_1()
-                .child(div().text_sm().font_medium().child(title))
-                .child(div().text_xs().text_color(cx.theme().muted_foreground).child(text)),
+                .gap(space(1.))
+                .child(div().text_size(text_secondary()).font_medium().child(title))
+                .child(
+                    div()
+                        .text_size(text_caption())
+                        .text_color(cx.theme().muted_foreground)
+                        .child(text),
+                ),
         )
         .test_support()
         .into_any_element()
@@ -51,8 +57,8 @@ fn notice(
 fn quiet(id: &'static str, icon: IconName, text: SharedString, cx: &App) -> AnyElement {
     h_flex()
         .id(id)
-        .gap_1()
-        .text_xs()
+        .gap(space(1.))
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(icon).xsmall())
         .child(div().min_w_0().child(text))
@@ -102,9 +108,9 @@ fn undelivered(
     });
     h_flex()
         .id("task-answer")
-        .gap_2()
+        .gap(space(2.))
         .items_start()
-        .p_2()
+        .p(space(2.))
         .border_1()
         .border_color(color)
         .rounded(cx.theme().radius)
@@ -113,16 +119,16 @@ fn undelivered(
             v_flex()
                 .flex_1()
                 .min_w_0()
-                .gap_1()
+                .gap(space(1.))
                 .child(
-                    div().text_sm().font_medium().child(tr_args(
+                    div().text_size(text_secondary()).font_medium().child(tr_args(
                         "moment.task.answer.undelivered.title",
                         &[("name", assignee)],
                     )),
                 )
                 .child(
                     div()
-                        .text_xs()
+                        .text_size(text_caption())
                         .text_color(cx.theme().muted_foreground)
                         .child(tr_args(text, &[("name", assignee)])),
                 ),

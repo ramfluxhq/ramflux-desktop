@@ -14,6 +14,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, Window};
 use ramflux_desktop_core::{Node, NodeAction, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::space;
 
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr};
@@ -56,7 +57,7 @@ impl RenderOnce for NodeCard {
             let node_id = node.id.clone();
             let decline_id = node.id.clone();
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     Button::new("node-confirm")
                         .primary()
@@ -89,8 +90,8 @@ impl RenderOnce for NodeCard {
         });
         v_flex()
             .id(domain_id("node", &node.id))
-            .gap_3()
-            .p_4()
+            .gap(space(3.))
+            .p(space(4.))
             .border_1()
             .border_color(if pending && tofu { cx.theme().warning } else { cx.theme().border })
             .rounded(cx.theme().radius_lg)

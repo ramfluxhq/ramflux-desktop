@@ -11,6 +11,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
 use ramflux_desktop_core::{BlockId, HandoffPayload, Lifecycle, Scope, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::RowRefs;
 use crate::bubble::EventSink;
@@ -29,7 +30,7 @@ pub fn render(
     let decline = answer.clone();
     let footer = match (lifecycle, &payload.to_device) {
         (Lifecycle::NeedsMe, _) => h_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 Button::new("handoff-accept")
                     .small()
@@ -50,20 +51,20 @@ pub fn render(
             )
             .into_any_element(),
         (_, Some(target)) => div()
-            .text_xs()
+            .text_size(text_caption())
             .text_color(cx.theme().muted_foreground)
             .child(tr_args("moment.handoff.accepted", &[("device", &refs.name(target))]))
             .into_any_element(),
         _ => div()
-            .text_xs()
+            .text_size(text_caption())
             .text_color(cx.theme().muted_foreground)
             .child(tr("moment.handoff.declined"))
             .into_any_element(),
     };
     v_flex()
         .id("handoff")
-        .gap_2()
-        .p_3()
+        .gap(space(2.))
+        .p(space(3.))
         .border_1()
         .border_color(if lifecycle == Lifecycle::NeedsMe {
             cx.theme().warning
@@ -73,19 +74,22 @@ pub fn render(
         .rounded(cx.theme().radius_lg)
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     Icon::new(IconName::HardDrive).small().text_color(cx.theme().muted_foreground),
                 )
                 .child(
                     div()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .font_medium()
                         .child(tr_args("moment.handoff.offer", &[("device", &from)])),
                 ),
         )
         .child(
-            div().text_sm().text_color(cx.theme().muted_foreground).child(payload.summary.clone()),
+            div()
+                .text_size(text_secondary())
+                .text_color(cx.theme().muted_foreground)
+                .child(payload.summary.clone()),
         )
         .child(footer)
 }

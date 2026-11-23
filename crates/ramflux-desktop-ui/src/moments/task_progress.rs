@@ -38,6 +38,7 @@ use ramflux_desktop_core::{
     TaskStep, UiEventKind,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, forward_icon, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::{RowRefs, RowState};
 use crate::bubble::EventSink;
@@ -50,7 +51,7 @@ pub fn render(refs: &RowRefs, sink: &EventSink, state: &RowState, cx: &App) -> i
     let Some(task) = refs.task.clone() else {
         return v_flex()
             .id("task-progress")
-            .text_sm()
+            .text_size(text_secondary())
             .text_color(cx.theme().muted_foreground)
             .child(tr("moment.task.missing"));
     };
@@ -77,8 +78,8 @@ pub fn render(refs: &RowRefs, sink: &EventSink, state: &RowState, cx: &App) -> i
     let stalled = task.flags.stalled && !task.state.is_terminal();
     v_flex()
         .id("task-progress")
-        .gap_2()
-        .p_3()
+        .gap(space(2.))
+        .p(space(3.))
         .border_1()
         .border_color(if attention { cx.theme().warning } else { cx.theme().border })
         .rounded(cx.theme().radius_lg)
@@ -87,7 +88,7 @@ pub fn render(refs: &RowRefs, sink: &EventSink, state: &RowState, cx: &App) -> i
         .when(proposal, |col| {
             col.child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr_args("moment.task.proposal_hint", &[("name", &assignee)])),
             )
@@ -133,8 +134,8 @@ fn ending(task: &Task, refs: &RowRefs, cx: &App) -> Option<AnyElement> {
         h_flex()
             .id("task-ending")
             .aria_label(text.clone())
-            .gap_2()
-            .text_sm()
+            .gap(space(2.))
+            .text_size(text_secondary())
             .child(Icon::new(icon).small().text_color(color))
             .child(div().flex_1().min_w_0().child(text))
             .test_support()
@@ -145,18 +146,18 @@ fn ending(task: &Task, refs: &RowRefs, cx: &App) -> Option<AnyElement> {
 fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
     let state_color = state_color(task.state, cx);
     h_flex()
-        .gap_2()
+        .gap(space(2.))
         .child(Icon::new(IconName::Bot).small().text_color(cx.theme().muted_foreground))
         .child(
             v_flex()
                 .flex_1()
                 .min_w_0()
-                .child(div().text_sm().font_medium().child(task.title.clone()))
+                .child(div().text_size(text_secondary()).font_medium().child(task.title.clone()))
                 .child(
                     h_flex()
                         .id("task-state")
-                        .gap_1()
-                        .text_xs()
+                        .gap(space(1.))
+                        .text_size(text_caption())
                         .child(
                             div().text_color(cx.theme().muted_foreground).child(assignee.clone()),
                         )
@@ -177,13 +178,17 @@ fn header(task: &Task, assignee: &SharedString, cx: &App) -> impl IntoElement {
                 ),
         )
         .when(!matches!(task.state, TaskState::Proposed | TaskState::Cancelled), |row| {
-            row.child(div().text_xs().text_color(cx.theme().muted_foreground).child(tr_args(
-                "moment.task.count",
-                &[
-                    ("done", &task.finished_steps().to_string()),
-                    ("total", &task.steps.len().to_string()),
-                ],
-            )))
+            row.child(
+                div().text_size(text_caption()).text_color(cx.theme().muted_foreground).child(
+                    tr_args(
+                        "moment.task.count",
+                        &[
+                            ("done", &task.finished_steps().to_string()),
+                            ("total", &task.steps.len().to_string()),
+                        ],
+                    ),
+                ),
+            )
         })
 }
 
@@ -218,7 +223,7 @@ fn footer(
     let start = sink.scoped(Scope::Block(BlockId::new("start")));
     h_flex()
         .id("task-footer")
-        .gap_2()
+        .gap(space(2.))
         .when(proposal && mine, |row| {
             row.child(
                 Button::new("task-start")
@@ -261,7 +266,7 @@ fn footer(
         .when(!mine && proposal, |row| {
             row.child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr("moment.task.not_yours")),
             )
@@ -270,7 +275,7 @@ fn footer(
             row.child(
                 div()
                     .id("task-asked-by")
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr_args("moment.task.asked_by", &[("name", requester)]))
                     .test_support(),
@@ -324,8 +329,8 @@ fn result(
     Some(
         h_flex()
             .id("task-result")
-            .gap_2()
-            .text_sm()
+            .gap(space(2.))
+            .text_size(text_secondary())
             .child(Icon::new(icon).small().text_color(color))
             .child(div().flex_1().min_w_0().child(text))
             .children(show)
@@ -366,16 +371,16 @@ fn step_row(
     });
     v_flex()
         .id(domain_id("step", &step.id))
-        .gap_1()
+        .gap(space(1.))
         .child(
             h_flex()
-                .gap_2()
-                .text_sm()
+                .gap(space(2.))
+                .text_size(text_secondary())
                 .child(Icon::new(icon).xsmall().text_color(color))
                 .child(div().flex_1().min_w_0().child(step.label.clone()))
                 .child(
                     div()
-                        .text_xs()
+                        .text_size(text_caption())
                         .text_color(card_text(color, cx))
                         .child(i18n::step_state(step.state)),
                 ),
@@ -390,7 +395,7 @@ fn not_mine(requester: &SharedString, cx: &App) -> AnyElement {
     div()
         .id("step-not-mine")
         .margin_start(gpui_kit::rems(1.25))
-        .text_xs()
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(tr_args("moment.task.decided_by", &[("name", requester)]))
         .test_support()
@@ -400,7 +405,7 @@ fn not_mine(requester: &SharedString, cx: &App) -> AnyElement {
 fn missing_place(cx: &App) -> AnyElement {
     div()
         .margin_start(gpui_kit::rems(1.25))
-        .text_xs()
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(tr("moment.task.place_missing"))
         .into_any_element()
@@ -424,8 +429,8 @@ fn pointer(
     h_flex()
         .id("step-pointer")
         .margin_start(gpui_kit::rems(1.25))
-        .gap_2()
-        .text_xs()
+        .gap(space(2.))
+        .text_size(text_caption())
         .text_color(card_text(cx.theme().warning, cx))
         .child(div().flex_1().min_w_0().child(tr_args(key, &[("name", assignee)])))
         .when_some(surface, |row, target| {
@@ -454,15 +459,15 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
     v_flex()
         .id("step-decision")
         .margin_start(gpui_kit::rems(1.25))
-        .gap_2()
-        .p_2()
+        .gap(space(2.))
+        .p(space(2.))
         .border_1()
         .border_color(cx.theme().warning)
         .rounded(cx.theme().radius)
         .child(
             h_flex()
-                .gap_2()
-                .text_xs()
+                .gap(space(2.))
+                .text_size(text_caption())
                 .child(div().text_color(card_text(cx.theme().warning, cx)).child(tr_args(
                     "moment.intervention.risk",
                     &[("risk", &i18n::risk(grant.risk))],
@@ -478,7 +483,7 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
         .child(match grant.failure {
             Some(failure) => super::grant_failure::render(failure, cx),
             None if open => h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     Button::new("step-approve")
                         .primary()
@@ -503,7 +508,7 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
                 )
                 .into_any_element(),
             None => div()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(cx.theme().muted_foreground)
                 .child(i18n::grant_state(grant.state))
                 .into_any_element(),

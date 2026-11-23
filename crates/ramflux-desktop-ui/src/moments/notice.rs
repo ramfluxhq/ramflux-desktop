@@ -9,6 +9,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
 use ramflux_desktop_core::{FallbackPayload, SystemLevel, SystemPayload};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use crate::i18n::{self, tr};
 
@@ -23,8 +24,8 @@ pub fn system(payload: &SystemPayload, cx: &App) -> impl IntoElement {
     h_flex()
         .id("system-note")
         .aria_label(text.clone())
-        .gap_2()
-        .text_sm()
+        .gap(space(2.))
+        .text_size(text_secondary())
         .child(Icon::new(icon).small().text_color(color))
         .child(
             div().text_color(crate::tone::text(color, cx)).child(i18n::system_level(payload.level)),
@@ -39,15 +40,15 @@ pub fn fallback(payload: &FallbackPayload, cx: &App) -> impl IntoElement {
     v_flex()
         .id("fallback-notice")
         .aria_label(reason.clone())
-        .gap_1()
-        .text_sm()
+        .gap(space(1.))
+        .text_size(text_secondary())
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .text_color(cx.theme().muted_foreground)
                 .child(Icon::new(IconName::EyeOff).small())
                 .child(tr("moment.fallback.title"))
-                .child(div().text_xs().child(reason)),
+                .child(div().text_size(text_caption()).child(reason)),
         )
         .child(div().text_color(cx.theme().foreground).child(payload.text.clone()))
         .test_support()

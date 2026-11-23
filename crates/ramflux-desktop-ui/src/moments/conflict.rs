@@ -17,6 +17,7 @@ use ramflux_desktop_core::{
     BlockId, ConflictPayload, ConflictResolution, ConflictSide, Lifecycle, Scope, UiEventKind,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use super::{RowRefs, RowState};
 use crate::bubble::EventSink;
@@ -78,18 +79,18 @@ pub fn render(
         v_flex()
             .flex_1()
             .min_w_0()
-            .gap_1()
-            .p_2()
+            .gap(space(1.))
+            .p(space(2.))
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr_args(label, &[("version", &side.version)])),
             )
-            .child(div().text_sm().child(side.summary.clone()))
+            .child(div().text_size(text_secondary()).child(side.summary.clone()))
     };
     let choices = [
         ("conflict-keep-local", "moment.conflict.keep_local", ConflictResolution::KeepLocal),
@@ -111,32 +112,32 @@ pub fn render(
     });
     v_flex()
         .id("conflict")
-        .gap_2()
-        .p_3()
+        .gap(space(2.))
+        .p(space(3.))
         .border_1()
         .border_color(if open { cx.theme().warning } else { cx.theme().border })
         .rounded(cx.theme().radius_lg)
         .bg(cx.theme().group_box)
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(Icon::new(IconName::Replace).small().text_color(cx.theme().warning))
                 .child(
                     div()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .font_medium()
                         .child(tr_args("moment.conflict.title", &[("name", &name)])),
                 ),
         )
         .child(
             div()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(cx.theme().muted_foreground)
                 .child(tr("moment.conflict.explain")),
         )
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .items_stretch()
                 .child(side("moment.conflict.local", &payload.local))
                 .child(side("moment.conflict.remote", &payload.remote)),
@@ -155,10 +156,10 @@ pub fn render(
             )
         })
         .child(if open {
-            h_flex().flex_wrap().gap_2().children(buttons).into_any_element()
+            h_flex().flex_wrap().gap(space(2.)).children(buttons).into_any_element()
         } else {
             div()
-                .text_xs()
+                .text_size(text_caption())
                 .text_color(cx.theme().muted_foreground)
                 .child(chosen.unwrap_or_else(|| tr("moment.conflict.closed")))
                 .into_any_element()

@@ -14,6 +14,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, div};
 use ramflux_desktop_core::{Node, NodeAction, NodeId, ProbeOutcome, UiEventKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::space;
 
 use super::{SectionContext, SettingsSection, note};
 use crate::bubble::EventSink;
@@ -52,7 +53,7 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
             rows.iter().partition(|row| row.node.is_default);
         v_flex()
             .id("settings-nodes")
-            .gap_6()
+            .gap(space(6.))
             .child(
                 div()
                     .id("settings-nodes-info")
@@ -76,7 +77,7 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
 
 /// The backup nodes: one section, a row and its actions per node.
 fn node_group(rows: &[&Row], sink: &EventSink, cx: &App) -> AnyElement {
-    let mut section = v_flex().gap_3();
+    let mut section = v_flex().gap(space(3.));
     for row in rows {
         section = section.child(node_section(row, sink, Some(()), cx));
     }
@@ -140,7 +141,8 @@ fn node_section(row: &Row, sink: &EventSink, compact: Option<()>, cx: &App) -> A
         chips.push(tr("node.pending"));
     }
     chips.push(i18n::pin_source(node.pin_source));
-    let chip_row = h_flex().gap_2().children(chips.into_iter().map(|c| super::design::chip(c, cx)));
+    let chip_row =
+        h_flex().gap(space(2.)).children(chips.into_iter().map(|c| super::design::chip(c, cx)));
     let remove = Button::new("node-remove")
         .ghost()
         .h(gpui_kit::rems(32.0 / 15.0))
@@ -166,7 +168,7 @@ fn node_section(row: &Row, sink: &EventSink, compact: Option<()>, cx: &App) -> A
         });
     let actions = h_flex()
         .flex_wrap()
-        .gap_2()
+        .gap(space(2.))
         .child(action(
             sink,
             "node-probe",
@@ -211,7 +213,7 @@ fn node_section(row: &Row, sink: &EventSink, compact: Option<()>, cx: &App) -> A
     };
     let body = v_flex()
         .id(domain_id("settings-node", &node.id))
-        .gap_3()
+        .gap(space(3.))
         .w_full()
         .child(chip_row)
         .when(compact.is_none(), |col| {
@@ -219,8 +221,8 @@ fn node_section(row: &Row, sink: &EventSink, compact: Option<()>, cx: &App) -> A
                 tr("settings.nodes.fingerprint"),
                 div()
                     .w_full()
-                    .px_3()
-                    .py_2()
+                    .px(space(3.))
+                    .py(space(2.))
                     .rounded(gpui_kit::rems(palette.radius_input / 15.0))
                     .border_1()
                     .border_color(palette.line_strong)
@@ -248,8 +250,8 @@ fn node_section(row: &Row, sink: &EventSink, compact: Option<()>, cx: &App) -> A
             col.child(
                 v_flex()
                     .id("settings-node-bound")
-                    .gap_1()
-                    .p_4()
+                    .gap(space(1.))
+                    .p(space(4.))
                     .rounded(gpui_kit::rems(palette.radius_md / 15.0))
                     .bg(palette.surface)
                     .child(
@@ -263,7 +265,7 @@ fn node_section(row: &Row, sink: &EventSink, compact: Option<()>, cx: &App) -> A
         });
     match compact {
         Some(()) => v_flex()
-            .gap_2()
+            .gap(space(2.))
             .child(
                 div()
                     .text_size(gpui_kit::rems(palette.size_body / 15.0))

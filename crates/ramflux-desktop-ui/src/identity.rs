@@ -34,6 +34,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ClickEvent, ElementId, SharedString, Window, div};
 use ramflux_desktop_core::{KindClaim, Participant, ParticipantId, PeerKind, SafetyState};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use crate::i18n::{self, tr, tr_args};
 
@@ -82,8 +83,8 @@ pub fn kind_mark(id: impl Into<ElementId>, claim: KindClaim, cx: &App) -> Option
             .aria_label(text.clone())
             .test_support()
             .flex_none()
-            .gap_1()
-            .text_xs()
+            .gap(space(1.))
+            .text_size(text_caption())
             .text_color(color)
             .child(Icon::new(kind_icon(kind)).xsmall())
             .child(text)
@@ -108,8 +109,8 @@ pub fn kind_mismatch_mark(id: ElementId, kind: PeerKind, cx: &App) -> AnyElement
         .aria_label(text.clone())
         .test_support()
         .flex_none()
-        .gap_1()
-        .text_xs()
+        .gap(space(1.))
+        .text_size(text_caption())
         .text_color(cx.theme().warning)
         .child(Icon::new(kind_icon(kind)).xsmall())
         .child(text)
@@ -129,8 +130,8 @@ fn kind_unverified_mark(id: ElementId, kind: PeerKind, cx: &App) -> AnyElement {
         .aria_label(text.clone())
         .test_support()
         .flex_none()
-        .gap_1()
-        .text_xs()
+        .gap(space(1.))
+        .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
         .child(Icon::new(kind_icon(kind)).xsmall())
         .child(text)
@@ -166,7 +167,7 @@ pub fn actor_kind_mark(
             .id(id)
             .aria_label(text.clone())
             .test_support()
-            .text_xs()
+            .text_size(text_caption())
             .text_color(cx.theme().muted_foreground)
             .child(text)
             .into_any_element()
@@ -183,8 +184,8 @@ pub fn principal_id(id: impl Into<ElementId>, principal: &ParticipantId, cx: &Ap
         .id(id.clone())
         .test_support()
         .min_w_0()
-        .gap_1()
-        .text_xs()
+        .gap(space(1.))
+        .text_size(text_caption())
         .child(
             div()
                 .id("principal-id-text")
@@ -253,8 +254,8 @@ pub fn name_warning(
             .aria_label(warning.text.clone())
             .test_support()
             .flex_wrap()
-            .gap_1()
-            .text_xs()
+            .gap(space(1.))
+            .text_size(text_caption())
             .text_color(color)
             .child(Icon::new(gpui_kit::assets::IconName::TriangleAlert).xsmall())
             .child(
@@ -291,12 +292,12 @@ pub fn author_warning(
         .aria_label(warning.text.clone())
         .test_support()
         .flex_wrap()
-        .gap_1()
+        .gap(space(1.))
         .text_color(crate::tone::text(cx.theme().warning, cx))
         .child(
             h_flex()
                 .id("author-warning-word")
-                .gap_1()
+                .gap(space(1.))
                 .child(Icon::new(gpui_kit::assets::IconName::TriangleAlert).xsmall())
                 .child(word)
                 .tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx)),
@@ -317,8 +318,8 @@ pub fn stale_note(id: impl Into<ElementId>, safety: SafetyState, cx: &App) -> Op
             .aria_label(text.clone())
             .test_support()
             .flex_none()
-            .gap_1()
-            .text_xs()
+            .gap(space(1.))
+            .text_size(text_caption())
             .text_color(crate::tone::text(cx.theme().warning, cx))
             .child(Icon::new(gpui_kit::assets::IconName::ShieldAlert).xsmall())
             .child(tr("safety.verification_stale"))
@@ -371,21 +372,21 @@ pub fn stale_ack(
         .role(gpui_kit::Role::Status)
         .aria_label(prompt.clone())
         .test_support()
-        .gap_2()
-        .p_2()
+        .gap(space(2.))
+        .p(space(2.))
         .rounded(cx.theme().radius)
         .border_1()
         .border_color(cx.theme().warning)
         .child(
             h_flex()
-                .gap_2()
-                .text_sm()
+                .gap(space(2.))
+                .text_size(text_secondary())
                 .child(Icon::new(gpui_kit::assets::IconName::ShieldAlert).small().text_color(color))
                 .child(div().flex_1().min_w_0().child(prompt)),
         )
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .justify_row_end()
                 .child(
                     Button::new("stale-verify")

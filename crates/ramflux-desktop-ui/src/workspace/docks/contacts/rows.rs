@@ -39,6 +39,7 @@ use ramflux_desktop_core::{
     SafetyState, Scope, Store, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
@@ -152,11 +153,11 @@ pub fn request_row(request: &Request, sink: &EventSink, cx: &App) -> AnyElement 
     h_flex()
         .id(row_id)
         .test_support()
-        .gap_2()
-        .px_3()
-        .py_1()
+        .gap(space(2.))
+        .px(space(3.))
+        .py(space(1.))
         .child(Icon::new(IconName::CircleUser).small().text_color(cx.theme().warning))
-        .child(div().flex_1().min_w_0().text_sm().child(from.display.clone()))
+        .child(div().flex_1().min_w_0().text_size(text_secondary()).child(from.display.clone()))
         .child(accept)
         .child(reject)
         .into_any_element()
@@ -263,18 +264,18 @@ pub fn contact_row(
     v_flex()
         .id(domain_id("contacts", &contact.id))
         .test_support()
-        .px_3()
-        .py_1()
-        .gap_1()
+        .px(space(3.))
+        .py(space(1.))
+        .gap(space(1.))
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
                         .truncate()
-                        .text_sm()
+                        .text_size(text_secondary())
                         .font_medium()
                         .child(contact.display.clone()),
                 )
@@ -287,8 +288,8 @@ pub fn contact_row(
         .child(
             h_flex()
                 .flex_wrap()
-                .gap_x_1()
-                .text_xs()
+                .gap_x(space(1.))
+                .text_size(text_caption())
                 .child(
                     div()
                         .id("contact-safety")
@@ -347,7 +348,7 @@ pub fn contact_row(
             });
             col.child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         div()
                             .id("contact-request")
@@ -355,7 +356,7 @@ pub fn contact_row(
                             .test_support()
                             .flex_1()
                             .min_w_0()
-                            .text_xs()
+                            .text_size(text_caption())
                             .text_color(cx.theme().muted_foreground)
                             .child(request.note),
                     )
@@ -374,7 +375,7 @@ pub fn contact_row(
                     .id("contact-root")
                     .aria_label(label.clone())
                     .test_support()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(color)
                     .child(label),
             )
@@ -382,7 +383,7 @@ pub fn contact_row(
         .when_some(contact.safety_number.clone(), |col, number| {
             col.child(
                 div()
-                    .text_xs()
+                    .text_size(text_caption())
                     .font_family(cx.theme().mono_font_family.clone())
                     .text_color(cx.theme().muted_foreground)
                     .child(tr_args("dock.contacts.safety_number", &[("number", &number)])),
@@ -422,8 +423,8 @@ fn comparison(
     });
     v_flex()
         .id("contact-verify")
-        .gap_1()
-        .p_2()
+        .gap(space(1.))
+        .p(space(2.))
         .rounded(cx.theme().radius)
         .border_1()
         .border_color(cx.theme().border)
@@ -433,7 +434,7 @@ fn comparison(
                 .role(gpui_kit::Role::Status)
                 .aria_label(help.clone())
                 .test_support()
-                .text_xs()
+                .text_size(text_caption())
                 .child(help),
         )
         .when_some(number, |col, number| {
@@ -441,14 +442,14 @@ fn comparison(
                 div()
                     .id("contact-verify-number")
                     .test_support()
-                    .text_sm()
+                    .text_size(text_secondary())
                     .font_family(cx.theme().mono_font_family.clone())
                     .child(number),
             )
         })
         .child(
             h_flex()
-                .gap_2()
+                .gap(space(2.))
                 .child(crate::gate::gated(
                     Button::new("verify-confirm")
                         .xsmall()
@@ -490,11 +491,11 @@ pub fn blocked_row(contact: &Participant, sink: &EventSink, cx: &App) -> AnyElem
     h_flex()
         .id(domain_id("contacts-blocked", &contact.id))
         .test_support()
-        .gap_2()
-        .px_3()
-        .py_1()
+        .gap(space(2.))
+        .px(space(3.))
+        .py(space(1.))
         .child(Icon::new(IconName::CircleX).small().text_color(cx.theme().muted_foreground))
-        .child(div().flex_1().min_w_0().text_sm().child(contact.display.clone()))
+        .child(div().flex_1().min_w_0().text_size(text_secondary()).child(contact.display.clone()))
         .child(
             Button::new("unblock")
                 .xsmall()

@@ -14,6 +14,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, IntoElement, TestSupportExt as _, Window, div, rems};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::space;
 use ramflux_desktop_navigation::theme;
 
 /// Navigation selects projections/features, never a source or an account writer.
@@ -245,8 +246,8 @@ impl Workspace {
             .w(rems(theme::RAIL_REM))
             .flex_none()
             .items_center()
-            .gap_3()
-            .px_2()
+            .gap(space(3.))
+            .px(space(2.))
             .pt(rems(20.0 / 15.0))
             .pb(rems(20.0 / 15.0))
             .bg(theme::colors(cx).rail)
@@ -361,7 +362,7 @@ fn rail_label(
 ) -> impl IntoElement {
     v_flex()
         .items_center()
-        .gap_1()
+        .gap(space(1.))
         .child(Icon::new(icon).with_size(gpui_kit::px(20.)))
         .child(div().text_size(rems(palette.size_caption / 15.0)).child(tr(key)))
 }
@@ -410,11 +411,11 @@ fn identity_popover(
         .id("identity-menu")
         .test_support()
         .w(rem(300.0))
-        .gap_1()
+        .gap(space(1.))
         .child(
             h_flex()
-                .px_1()
-                .pb_1()
+                .px(space(1.))
+                .pb(space(1.))
                 .text_size(rem(palette.size_secondary))
                 .text_color(palette.secondary)
                 .child(div().flex_1().child(tr("status.account.current")))
@@ -443,9 +444,9 @@ fn identity_popover(
                 .id(gpui_kit::SharedString::from(format!("identity-{id}")))
                 .test_support()
                 .aria_label(spoken)
-                .gap_3()
-                .px_1()
-                .py_2()
+                .gap(space(3.))
+                .px(space(1.))
+                .py(space(2.))
                 .border_b_1()
                 .border_color(palette.line)
                 .child(
@@ -478,7 +479,7 @@ fn identity_popover(
                 .when(current, |row| {
                     row.child(
                         div()
-                            .px_2()
+                            .px(space(2.))
                             .py(rem(4.0))
                             .rounded(rem(palette.radius_chip))
                             .bg(palette.surface)

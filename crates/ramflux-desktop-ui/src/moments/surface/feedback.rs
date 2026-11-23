@@ -11,6 +11,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, div};
 use ramflux_desktop_core::{BlockId, BlockKind, JsonValue};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use crate::ids::domain_id;
 
@@ -26,11 +27,11 @@ pub fn progress(id: &BlockId, data: &JsonValue, cx: &App) -> Option<AnyElement> 
     let percent = (value.clamp(0.0, 1.0) * 100.0) as f32;
     Some(
         v_flex()
-            .gap_1()
+            .gap(space(1.))
             .child(
                 h_flex()
                     .justify_between()
-                    .text_xs()
+                    .text_size(text_caption())
                     .text_color(cx.theme().muted_foreground)
                     .child(label.clone())
                     .child(crate::i18n::percent(value)),
@@ -50,10 +51,10 @@ pub fn log_stream(data: &JsonValue, cx: &App) -> Option<AnyElement> {
     let skip = lines.len().saturating_sub(LOG_LINES);
     Some(
         v_flex()
-            .p_2()
+            .p(space(2.))
             .rounded(cx.theme().radius)
             .bg(cx.theme().muted)
-            .text_xs()
+            .text_size(text_caption())
             .font_family(cx.theme().mono_font_family.clone())
             .text_color(cx.theme().foreground)
             // A log reads left to right in every interface direction.

@@ -19,6 +19,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, WeakEntity, div};
 use ramflux_desktop_core::{AccountId, LockState, SchemaGate};
 use ramflux_desktop_navigation::direction::h_flex;
+use ramflux_desktop_navigation::scale::{space, text_secondary, text_subheading};
 
 use crate::actions::OpenSettings;
 use crate::app::StoreHandle;
@@ -65,8 +66,8 @@ pub(super) fn banner(gate: SchemaGate) -> Option<AnyElement> {
             .id("schema-banner")
             .aria_label(tr(key(gate, "line")))
             .test_support()
-            .px_3()
-            .pt_3()
+            .px(space(3.))
+            .pt(space(3.))
             .child(Alert::info("schema-banner-alert", tr(key(gate, "line"))).small())
             .into_any_element()
     })
@@ -89,14 +90,14 @@ pub(super) fn blocking(
         .size_full()
         .items_center()
         .justify_center()
-        .gap_3()
-        .p_6()
+        .gap(space(3.))
+        .p(space(6.))
         .child(
             div()
                 .id("schema-block-title")
                 .aria_label(title.clone())
                 .test_support()
-                .text_lg()
+                .text_size(text_subheading())
                 .text_color(cx.theme().foreground)
                 .child(title),
         )
@@ -105,14 +106,14 @@ pub(super) fn blocking(
                 .id("schema-block-body")
                 .aria_label(body.clone())
                 .test_support()
-                .text_sm()
+                .text_size(text_secondary())
                 .text_color(cx.theme().muted_foreground)
                 .child(body),
         )
         .when(reset, |col| {
             col.child(
                 h_flex()
-                    .gap_2()
+                    .gap(space(2.))
                     .child(
                         Button::new("schema-switch-account")
                             .outline()

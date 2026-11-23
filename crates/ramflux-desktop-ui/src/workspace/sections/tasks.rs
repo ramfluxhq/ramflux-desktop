@@ -22,6 +22,7 @@ use ramflux_desktop_core::{
     Actor, ContextId, MomentId, MomentKind, Scope, Store, Task, TaskState, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
+use ramflux_desktop_navigation::scale::space;
 
 use super::directory::{self, Search};
 use crate::app::{StoreEvent, StoreHandle};
@@ -207,7 +208,7 @@ impl TasksArea {
                 )
                 .title_size(palette.size_subheading)
                 .title_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .trailing(h_flex().gap_3().children(tools).when(
+                .trailing(h_flex().gap(space(3.)).children(tools).when(
                     category != TaskCategory::All,
                     |slot| {
                         slot.child(
@@ -232,19 +233,19 @@ impl TasksArea {
                     .overflow_y_scroll()
                     .px(rem(32.0))
                     .py(rem(32.0))
-                    .gap_4()
+                    .gap(space(4.))
                     .children(empty)
                     .children(cards)
                     .when(!unknown.is_empty(), |body| {
                         body.child(
                             div()
-                                .pt_2()
+                                .pt(space(2.))
                                 .text_size(rem(palette.size_secondary))
                                 .text_color(palette.secondary)
                                 .child(tr("navigation.tasks_history_notice")),
                         )
                         .child(
-                            v_flex().id("tasks-unloaded").gap_1().children(
+                            v_flex().id("tasks-unloaded").gap(space(1.)).children(
                                 unknown.into_iter().map(|(id, title, state)| {
                                     let open = id.clone();
                                     gpui_kit::component::button::Button::new(SharedString::from(
@@ -253,7 +254,7 @@ impl TasksArea {
                                     .ghost()
                                     .w_full()
                                     .h_auto()
-                                    .py_2()
+                                    .py(space(2.))
                                     .accessibility_label(i18n::join(&title, &state))
                                     .on_click(cx.listener(move |_, _, _, cx| {
                                         cx.emit(TasksEvent::Open(open.clone(), None))
@@ -261,7 +262,7 @@ impl TasksArea {
                                     .child(
                                         h_flex()
                                             .w_full()
-                                            .gap_3()
+                                            .gap(space(3.))
                                             .child(
                                                 div()
                                                     .flex_1()
@@ -324,7 +325,7 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
         .map(|s| SharedString::from(s.label.clone()));
     let fact = |label: &str, value: SharedString| {
         h_flex()
-            .gap_1()
+            .gap(space(1.))
             .text_size(rem(palette.size_secondary))
             .child(div().text_color(palette.secondary).child(tr(label)))
             .child(div().child(value))
@@ -340,7 +341,7 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
         .w_full()
         .max_w(rem(760.0))
         .p(rem(20.0))
-        .gap_3()
+        .gap(space(3.))
         .rounded(rem(palette.radius_card))
         .border_1()
         .border_color(palette.line)
@@ -358,7 +359,7 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
         .child(
             h_flex().child(
                 div()
-                    .px_2()
+                    .px(space(2.))
                     .py(rem(4.0))
                     .rounded(rem(palette.radius_chip))
                     .bg(palette.surface)
@@ -369,7 +370,7 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
         .child(
             h_flex()
                 .gap(rem(32.0))
-                .pb_3()
+                .pb(space(3.))
                 .border_b_1()
                 .border_color(palette.line)
                 .child(fact("sections.tasks.assignee", assignee.into()))
@@ -389,7 +390,7 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
         )
         .child(
             h_flex()
-                .gap_3()
+                .gap(space(3.))
                 .when_some(task_sink.clone().filter(|_| proposal && mine), |row, sink| {
                     row.child(
                         gpui_kit::component::button::Button::new(SharedString::from(format!(
@@ -451,9 +452,9 @@ impl Render for TasksArea {
             .bg(palette.nav)
             .border_end_1()
             .border_color(palette.line)
-            .px_3()
+            .px(space(3.))
             .pt(gpui_kit::rems(24.0 / 15.0))
-            .gap_4()
+            .gap(space(4.))
             // Board 06: the heading's "+"; a task is asked for in a
             // conversation, so here it says where.
             .child(directory::header(
@@ -475,12 +476,12 @@ impl Render for TasksArea {
                     .id("tasks-history-notice")
                     .test_support()
                     .role(gpui_kit::Role::Status)
-                    .px_2()
+                    .px(space(2.))
                     .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
                     .text_color(palette.secondary)
                     .child(tr("navigation.tasks_history_notice")),
             )
-            .child(v_flex().gap_1().children(counts.into_iter().map(|(category, count)| {
+            .child(v_flex().gap(space(1.)).children(counts.into_iter().map(|(category, count)| {
                 let selected = self.category == category;
                 let detail = if category == TaskCategory::NeedsMe {
                     tr_args("sections.tasks.count_waiting", &[("count", &count.to_string())])
@@ -494,7 +495,7 @@ impl Render for TasksArea {
                 .ghost()
                 .w_full()
                 .h(gpui_kit::rems(ramflux_desktop_navigation::theme::ROW_REM))
-                .px_3()
+                .px(space(3.))
                 .rounded(gpui_kit::px(palette.radius_sm))
                 .selected(selected)
                 .toggled(selected)
