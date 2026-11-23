@@ -20,12 +20,13 @@
 use crate::actions::{CONFIRM_CONTEXT, CancelConfirmation};
 use crate::i18n::{self, tr, tr_args};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, ThemeStyled as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, ThemeStyled as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent,
     Render, Role, Window, div,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 
 mod request;
 

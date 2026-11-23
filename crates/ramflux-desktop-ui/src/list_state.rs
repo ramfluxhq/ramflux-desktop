@@ -11,10 +11,11 @@
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ElementId, Role, SharedString, div};
 use ramflux_desktop_core::{ListState, Listing, Store};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::i18n::tr;
 

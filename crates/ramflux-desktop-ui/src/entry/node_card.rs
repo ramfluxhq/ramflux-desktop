@@ -9,10 +9,11 @@
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::description_list::DescriptionList;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, Window};
 use ramflux_desktop_core::{Node, NodeAction, UiEventKind};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr};

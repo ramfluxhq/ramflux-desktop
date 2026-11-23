@@ -7,12 +7,13 @@
 
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
 use ramflux_desktop_core::{
     BlockId, Lifecycle, SafetyChangeKind, SafetyChangePayload, Scope, UiEventKind,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use super::RowRefs;
 use crate::bubble::EventSink;
@@ -68,7 +69,11 @@ pub fn render(
         )
         .when_some(number, |col, number| {
             col.child(
-                div().text_sm().font_family(cx.theme().mono_font_family.clone()).child(number),
+                div()
+                    .text_sm()
+                    .font_family(cx.theme().mono_font_family.clone())
+                    .text_ltr()
+                    .child(crate::i18n::bidi::ltr(&number)),
             )
         })
         .child(if open {

@@ -42,7 +42,7 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, IntoElement, SharedString, Window, div};
@@ -51,6 +51,7 @@ use ramflux_desktop_core::{
     AgentSurfacePayload, Block, BlockId, BlockKind, Grant, GrantId, Scope, SurfaceAction,
     SurfaceHash, Timestamp, UiEventKind,
 };
+use ramflux_desktop_navigation::direction::{forward_icon, h_flex};
 
 use super::{RowRefs, RowState};
 use crate::bubble::EventSink;
@@ -312,7 +313,7 @@ fn disclosure(expanded: bool, label: SharedString, sink: EventSink) -> AnyElemen
     Button::new("surface-disclosure")
         .ghost()
         .xsmall()
-        .icon(if expanded { IconName::ChevronDown } else { IconName::ChevronRight })
+        .icon(if expanded { IconName::ChevronDown } else { forward_icon() })
         .label(label)
         .on_click(move |_, window, cx| {
             sink.emit(UiEventKind::ExpandToggled { expanded: !expanded }, window, cx);

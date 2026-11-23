@@ -29,7 +29,7 @@ fn decoded(frame: &str) -> BusError {
 #[test]
 fn custody_vault_reasons_map_and_render() {
     for locale in ["en", "zh-CN"] {
-        rust_i18n::set_locale(locale);
+        ramflux_desktop_ui::i18n::set_locale(locale);
         for row in &ROWS {
             let name = format!("{} {locale}", row.reason_code);
             let error = decoded(row.frame);
@@ -96,7 +96,7 @@ fn custody_vault_reasons_map_and_render() {
 
     // Negatives: nothing is invented. An untyped vault refusal keeps its old
     // meaning; an unknown reason, or one on another code, is no vault reason.
-    rust_i18n::set_locale("en");
+    ramflux_desktop_ui::i18n::set_locale("en");
     assert_eq!(
         ceremony_refusal(&SdkError::CustodyVaultUnavailable),
         Some(CeremonyFailure::VaultUnavailable)

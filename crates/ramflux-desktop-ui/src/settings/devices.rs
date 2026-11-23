@@ -8,10 +8,11 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{h_flex, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::*;
 use gpui_kit::{App, SharedString, div};
 use ramflux_desktop_core::{Device, Listing, SourceStatus, SyncDirection, UiEventKind};
+use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::{generated::catalog, palette};
 
 use super::{SectionContext, SettingsSection, presentation};

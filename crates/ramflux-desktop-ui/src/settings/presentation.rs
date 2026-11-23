@@ -72,7 +72,7 @@ pub(super) fn compact_warning(
     title: SharedString,
     cx: &App,
 ) -> AnyElement {
-    gpui_kit::component::h_flex()
+    ramflux_desktop_navigation::direction::h_flex()
         .id(id)
         .test_support()
         .role(Role::Status)

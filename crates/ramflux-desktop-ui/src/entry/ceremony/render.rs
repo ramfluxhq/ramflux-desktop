@@ -13,7 +13,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, IntoElement, Render, Role, SharedString, Styled, Window, div, rems,
@@ -22,6 +22,7 @@ use ramflux_desktop_core::{
     CHALLENGE_WORDS, Ceremony, CeremonyAccount, CeremonyFailure, CeremonyPhase, Networking,
     PHRASE_WORDS,
 };
+use ramflux_desktop_navigation::direction::{h_flex, h_flex_ltr};
 
 use super::{CeremonyPanel, Hint, Pending, Screen};
 use crate::actions::CEREMONY_CONTEXT;
@@ -230,7 +231,8 @@ impl CeremonyPanel {
                         tr_args("ceremony.show.cell_hidden", &[("number", &number.to_string())])
                     }
                 };
-                h_flex()
+                // The phrase reads left to right in every locale.
+                h_flex_ltr()
                     .id(SharedString::from(format!("ceremony-word-cell-{number}")))
                     .role(Role::ListItem)
                     .aria_label(label)
@@ -248,7 +250,7 @@ impl CeremonyPanel {
                         div()
                             .w(rems(1.5))
                             .flex_shrink_0()
-                            .text_right()
+                            .text_align(gpui_kit::TextAlign::Right)
                             .text_xs()
                             .text_color(muted_color)
                             .child(number.to_string()),
@@ -263,7 +265,7 @@ impl CeremonyPanel {
             })
             .collect();
         ringed(
-            h_flex()
+            h_flex_ltr()
                 .id("ceremony-grid")
                 .track_focus(&self.grid_focus)
                 .role(Role::List)

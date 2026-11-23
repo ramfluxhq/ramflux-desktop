@@ -6,13 +6,13 @@
 use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, ThemeStyled as _, h_flex,
-    v_flex,
+    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, ThemeStyled as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, Role, TestSupportExt as _, Window, div, rems};
 use ramflux_desktop_core::projection::messages::Mutation;
 use ramflux_desktop_core::{MessagePayload, MomentKind, ParticipantKind, Receipt, UiEventKind};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex, h_flex_in};
 use ramflux_desktop_navigation::{generated::catalog, palette};
 
 use super::{MomentRow, RowState};
@@ -192,7 +192,9 @@ pub(crate) fn render(
             )
         })
         .child(
-            h_flex()
+            // The body and its time follow the message's own direction, not
+            // the interface's.
+            h_flex_in(super::body_direction(row))
                 .w_full()
                 .min_w_0()
                 .items_end()
@@ -291,7 +293,7 @@ pub(crate) fn render(
                 .min_w_0()
                 .items_start()
                 .gap_2()
-                .when(row.outbound, |line| line.justify_end())
+                .when(row.outbound, |line| line.justify_row_end())
                 .when(!row.outbound, |line| {
                     line.child(
                         div()

@@ -15,12 +15,13 @@ use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::progress::Progress;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
     AttachmentCheck, BackupFailure, BackupJob, BackupJobKind, BackupPhase, BackupProgress,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 
 use super::text::{self, count};
 use super::{BackupPanel, running};

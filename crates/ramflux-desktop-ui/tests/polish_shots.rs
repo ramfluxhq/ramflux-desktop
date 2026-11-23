@@ -3,7 +3,8 @@
 
 //! Offscreen screenshots of the conversation view for a design review, at
 //! 1280×800 and 1920×1080, in Simplified Chinese and English, light and
-//! dark, with the developer panel closed: a day of messages (scenario
+//! dark, plus the long (`en-XA`) and right-to-left (`ar-XB`) pseudo-locales
+//! in developer builds, with the developer panel closed: a day of messages (scenario
 //! s02), and an AI participant's task that needs the user and then is done
 //! (scenario s10).
 //!
@@ -126,12 +127,14 @@ mod shots {
             })
         }
 
-        /// Saves `name` in Chinese and English, light and dark; the locale
-        /// is switched while the window is open.
+        /// Saves `name` in Chinese and English (and the pseudo-locales),
+        /// light and dark; the locale is switched while the window is open.
         fn shot(&mut self, name: &str) {
             let dev = self.cx.update(|cx| self.shell.read(cx).is_dev_panel_visible());
             assert!(!dev, "screenshots are taken with the developer panel closed");
-            for (locale, lang) in [("zh-CN", "zh"), ("en", "en")] {
+            let pseudo = i18n::locale::pseudo_enabled();
+            let locales = [("zh-CN", "zh"), ("en", "en"), ("en-XA", "xa"), ("ar-XB", "xb")];
+            for (locale, lang) in locales.into_iter().filter(|(l, _)| pseudo || !l.contains('X')) {
                 for (mode, suffix) in [(ThemeMode::Light, "light"), (ThemeMode::Dark, "dark")] {
                     self.cx.update(|cx| {
                         i18n::select_locale(locale, cx);

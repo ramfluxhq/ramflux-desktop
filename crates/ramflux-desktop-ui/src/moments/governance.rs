@@ -6,10 +6,11 @@
 //! live in the members dock.
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
 use ramflux_desktop_core::{GovernanceAction, GovernancePayload};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use super::MomentRow;
 use crate::i18n::{self, tr_args};

@@ -39,7 +39,7 @@ fn focus_row(
 #[gpui_kit::test]
 fn own_peer_joined_agent_quote_attachment_and_reactions_use_source_facts(cx: &mut TestAppContext) {
     let _locale = locale_guard();
-    rust_i18n::set_locale("en");
+    ramflux_desktop_ui::i18n::set_locale("en");
     let (handle, shell) = open(cx, "s02_daily");
     load(cx, &shell);
     show_context(cx, handle, &shell, "c-lena");
@@ -92,7 +92,7 @@ fn own_peer_joined_agent_quote_attachment_and_reactions_use_source_facts(cx: &mu
 #[gpui_kit::test]
 fn native_selection_and_message_menu_copy_literal_text_without_mutating(cx: &mut TestAppContext) {
     let _locale = locale_guard();
-    rust_i18n::set_locale("en");
+    ramflux_desktop_ui::i18n::set_locale("en");
     let (handle, shell) = open(cx, "s02_daily");
     load(cx, &shell);
     show_context(cx, handle, &shell, "c-lena");
@@ -178,7 +178,7 @@ fn native_selection_and_message_menu_copy_literal_text_without_mutating(cx: &mut
 #[gpui_kit::test]
 fn one_multiline_composer_preserves_drafts_and_enter_send_policy(cx: &mut TestAppContext) {
     let _locale = locale_guard();
-    rust_i18n::set_locale("en");
+    ramflux_desktop_ui::i18n::set_locale("en");
     let (handle, shell) = open(cx, "s02_daily");
     advance(cx, 1000);
     show_context(cx, handle, &shell, "c-lena");
@@ -217,7 +217,7 @@ fn long_literal_bodies_fit_reading_width_in_both_themes_and_all_shell_widths(
     cx: &mut TestAppContext,
 ) {
     let _locale = locale_guard();
-    rust_i18n::set_locale("en");
+    ramflux_desktop_ui::i18n::set_locale("en");
     const PARAGRAPHS: usize = 12;
     for width in [640., 800., 1024., 1440.] {
         for mode in [ThemeMode::Light, ThemeMode::Dark] {

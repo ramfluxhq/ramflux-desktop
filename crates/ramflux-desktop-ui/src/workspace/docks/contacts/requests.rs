@@ -26,7 +26,7 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, div};
@@ -34,6 +34,7 @@ use ramflux_desktop_core::{
     ContactRequest, Participant, RequestAnswer, RequestPolicy, RequestState, Store, UiEventKind,
     methods, selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use crate::bubble::EventSink;
 use crate::i18n::{tr, tr_args};
@@ -159,7 +160,7 @@ pub fn pending_row(
         .child(
             h_flex()
                 .gap_2()
-                .justify_end()
+                .justify_row_end()
                 .child(answer("request-block", RequestAnswer::Block))
                 .child(answer("request-decline", RequestAnswer::Decline))
                 .child(answer("request-accept", RequestAnswer::Accept)),
@@ -237,7 +238,7 @@ pub fn floors_notice(store: &Store, sink: &EventSink, cx: &App) -> Option<AnyEle
                     .on_click(move |_, window, cx| {
                         sink.emit(UiEventKind::ClearRequestFloorsPressed, window, cx);
                     });
-                col.child(h_flex().justify_end().child(crate::gate::gated(button, reason)))
+                col.child(h_flex().justify_row_end().child(crate::gate::gated(button, reason)))
             })
             .into_any_element(),
     )

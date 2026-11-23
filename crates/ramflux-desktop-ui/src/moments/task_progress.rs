@@ -29,7 +29,7 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::progress::Progress;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Hsla, IntoElement, SharedString, div};
 use ramflux_desktop_core::selectors::TaskEndingKind;
@@ -37,6 +37,7 @@ use ramflux_desktop_core::{
     Actor, BlockId, Grant, GrantState, MomentId, NeedsMe, Scope, StepState, Task, TaskState,
     TaskStep, UiEventKind,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, forward_icon, h_flex};
 
 use super::{RowRefs, RowState};
 use crate::bubble::EventSink;
@@ -234,7 +235,7 @@ fn footer(
                 Button::new("task-steps")
                     .ghost()
                     .xsmall()
-                    .icon(if expanded { IconName::ChevronDown } else { IconName::ChevronRight })
+                    .icon(if expanded { IconName::ChevronDown } else { forward_icon() })
                     .label(tr(if expanded {
                         "moment.task.hide_steps"
                     } else {
@@ -388,7 +389,7 @@ fn step_row(
 fn not_mine(requester: &SharedString, cx: &App) -> AnyElement {
     div()
         .id("step-not-mine")
-        .ml_5()
+        .margin_start(gpui_kit::rems(1.25))
         .text_xs()
         .text_color(cx.theme().muted_foreground)
         .child(tr_args("moment.task.decided_by", &[("name", requester)]))
@@ -398,7 +399,7 @@ fn not_mine(requester: &SharedString, cx: &App) -> AnyElement {
 
 fn missing_place(cx: &App) -> AnyElement {
     div()
-        .ml_5()
+        .margin_start(gpui_kit::rems(1.25))
         .text_xs()
         .text_color(cx.theme().muted_foreground)
         .child(tr("moment.task.place_missing"))
@@ -422,7 +423,7 @@ fn pointer(
     let sink = sink.scoped(Scope::Block(step_block_id(ix)));
     h_flex()
         .id("step-pointer")
-        .ml_5()
+        .margin_start(gpui_kit::rems(1.25))
         .gap_2()
         .text_xs()
         .text_color(card_text(cx.theme().warning, cx))
@@ -452,7 +453,7 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
     let open = grant.state == GrantState::Pending && grant.failure.is_none();
     v_flex()
         .id("step-decision")
-        .ml_5()
+        .margin_start(gpui_kit::rems(1.25))
         .gap_2()
         .p_2()
         .border_1()
@@ -470,7 +471,8 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
                     div()
                         .font_family(cx.theme().mono_font_family.clone())
                         .text_color(cx.theme().muted_foreground)
-                        .child(grant.scope.clone()),
+                        .text_ltr()
+                        .child(i18n::bidi::ltr(&grant.scope)),
                 ),
         )
         .child(match grant.failure {

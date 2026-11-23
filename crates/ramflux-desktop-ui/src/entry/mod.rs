@@ -35,10 +35,11 @@ mod recovery;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window, div, rems};
 use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
@@ -512,7 +513,7 @@ impl Render for EntryPage {
             .test_support()
             .absolute()
             .top(rems(12.0 / 15.0))
-            .right(rems(16.0 / 15.0))
+            .inset_end(rems(16.0 / 15.0))
             .gap_1()
             .child(
                 gpui_kit::component::button::Button::new("entry-settings")

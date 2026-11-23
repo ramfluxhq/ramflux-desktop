@@ -12,7 +12,7 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::input::InputEvent;
-use gpui_kit::component::{Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{Selectable as _, Sizable as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement, Render, SharedString,
@@ -21,6 +21,7 @@ use gpui_kit::{
 use ramflux_desktop_core::{
     Actor, ContextId, MomentId, MomentKind, Scope, Store, Task, TaskState, UiEventKind, selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use super::directory::{self, Search};
 use crate::app::{StoreEvent, StoreHandle};
@@ -448,7 +449,7 @@ impl Render for TasksArea {
             .size_full()
             .min_w_0()
             .bg(palette.nav)
-            .border_r_1()
+            .border_end_1()
             .border_color(palette.line)
             .px_3()
             .pt(gpui_kit::rems(24.0 / 15.0))

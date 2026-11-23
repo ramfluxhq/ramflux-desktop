@@ -14,10 +14,11 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, WeakEntity, div};
 use ramflux_desktop_core::{AccountId, LockState, SchemaGate};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::actions::OpenSettings;
 use crate::app::StoreHandle;

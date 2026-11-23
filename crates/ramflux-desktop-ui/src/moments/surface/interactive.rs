@@ -13,11 +13,12 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{GrantId, GrantState, JsonValue, SurfaceAction, UiEventKind};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use super::{ActionRow, BlockContext};
 use crate::i18n::{self, tr, tr_args};
@@ -185,7 +186,8 @@ pub fn approval(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Optio
                                     div()
                                         .font_family(cx.theme().mono_font_family.clone())
                                         .text_color(cx.theme().muted_foreground)
-                                        .child(grant.scope.clone()),
+                                        .text_ltr()
+                                        .child(i18n::bidi::ltr(&grant.scope)),
                                 ),
                         ),
                     ),

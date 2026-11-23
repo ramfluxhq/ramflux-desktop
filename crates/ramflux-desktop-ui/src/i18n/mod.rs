@@ -3,59 +3,107 @@
 
 //! Interface strings and locale-aware labels.
 //!
-//! Every user-facing string comes from the files in `locales/` (`zh-CN`
-//! default, `en` provided). Code and comments never contain translated text;
-//! keys describe stable intent.
+//! Every user-facing string comes from the catalogues in `locales/`, one
+//! flat JSON file per locale (`en.json` is the source). Code and comments
+//! never contain translated text; keys describe stable intent. The build
+//! compiles the catalogues into static tables and fails when a key written
+//! in the code is missing from the English catalogue (`build.rs`).
 //!
+//! - [`locale`]: the shipped locales, system-tag resolution, the fallback
+//!   chain (locale, language, English) and the current locale.
+//! - [`plural`]: CLDR plural categories for every shipped language.
+//! - [`bidi`]: isolation of untrusted text, left-to-right identifiers and
+//!   the direction of a message.
+//! - [`pseudo`]: the long and right-to-left pseudo-locales.
+//! - [`format`]: dates, times, relative times, numbers, sizes and list
+//!   joins in the patterns of the current locale.
 //! - [`labels`]: names of contract enums (lifecycle, risk, roles, states).
-//! - [`clock`]: local wall-clock times, day headers, relative times and
-//!   sizes, in the patterns of the current locale.
-//! - [`format`]: numbers, plurals and composed labels.
 //!
 //! A message whose text depends on a count is a plural message: its key
-//! has one child per CLDR plural category (`one`, `other`), and
-//! [`tr_args`] picks the child for the `count` argument (or `total`). Count
-//! arguments are formatted as numbers of the current locale.
+//! has one child per CLDR plural category its language uses (`one`, `few`,
+//! `other`, …), and [`tr_args`] picks the child for the `count` argument (or
+//! `total`). A locale serves a plural message only when it has every
+//! category its language needs; otherwise the next locale of the chain
+//! serves it whole. Count arguments are formatted as numbers of the locale.
+//! Every other argument is isolated when the interface reads right to left
+//! or the argument holds right-to-left text or directional controls.
 
-pub mod clock;
+pub mod bidi;
+mod catalog;
 pub mod format;
 pub mod labels;
+pub mod locale;
+pub mod plural;
+pub mod pseudo;
+
+use std::borrow::Cow;
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::{App, AppContext as _, Context, Entity, Global, SharedString, Subscription, Window};
 use ramflux_desktop_core::{EffectFailure, Store};
+use ramflux_desktop_navigation::direction;
 
-pub use clock::{bytes, date_time, day_label, offset, relative, same_day, size, time_of_day};
-pub use format::{clause, clauses, join, join_all, labeled, list, number, percent, sentences};
+pub use format::{
+    bytes, clause, clauses, date_time, day_label, join, join_all, labeled, list, number, offset,
+    percent, relative, same_day, sentences, size, time_of_day,
+};
 pub use labels::*;
+pub use locale::Locale;
 
 /// Locale used when nothing else is selected and the system's language is
 /// not known (tests, screenshots).
 pub const DEFAULT_LOCALE: &str = "zh-CN";
 
-/// Supported locales and the key of each locale's own name.
-pub const LOCALES: [(&str, &str); 2] = [("zh-CN", "locale.chinese"), ("en", "locale.english")];
+/// Every locale this build lets the user pick, in picker order (the
+/// pseudo-locales only in developer builds).
+pub fn locales() -> impl Iterator<Item = &'static Locale> {
+    locale::selectable()
+}
 
-/// The locale of the shipped ones that serves a language tag (`zh-Hans-CN`,
-/// `en_US.UTF-8`): any Chinese tag gets `zh-CN`, everything else English.
+/// The shipped locale serving a language tag (`zh-Hans-CN`, `en_US.UTF-8`).
 pub fn resolve_locale(tag: &str) -> &'static str {
-    let language = tag.split(['-', '_', '.']).next().unwrap_or_default();
-    if language.eq_ignore_ascii_case("zh") { "zh-CN" } else { "en" }
+    locale::resolve(tag).tag
 }
 
 /// The shipped locale serving the operating system's preferred language.
 pub fn system_locale() -> &'static str {
-    sys_locale::get_locale().as_deref().map_or("en", resolve_locale)
+    sys_locale::get_locale().as_deref().map_or(locale::SOURCE, resolve_locale)
 }
 
-/// The text of `key` in the current locale (or its fallback), if any.
-fn lookup(key: &str) -> Option<String> {
-    crate::_rust_i18n_try_translate(&locale(), key).map(std::borrow::Cow::into_owned)
+/// The text of `key` in catalogue `tag`: for a count, the plural form when
+/// `tag` has every category of its language (else the plain key).
+fn in_catalogue(tag: &str, key: &str, count: Option<u64>) -> Option<&'static str> {
+    let form =
+        |category: plural::Category| catalog::get(tag, &format!("{key}.{}", category.name()));
+    let plural = count.and_then(|n| {
+        let complete = plural::categories(tag).iter().all(|c| form(*c).is_some());
+        complete.then(|| form(plural::category(tag, n))).flatten()
+    });
+    match count {
+        Some(_) => plural.or_else(|| catalog::get(tag, key)),
+        None => catalog::get(tag, key).or_else(|| form(plural::Category::Other)),
+    }
 }
 
-/// Looks up a translated string for the current locale.
+/// The text of `key` in the current locale or the first locale of its
+/// fallback chain that has it, as the current locale shows it.
+fn resolve(key: &str, count: Option<u64>) -> Option<Cow<'static, str>> {
+    let current = locale::current();
+    let text = locale::chain(current).into_iter().find_map(|tag| in_catalogue(tag, key, count))?;
+    Some(match current.pseudo {
+        Some(pseudo) => Cow::Owned(pseudo::transform(pseudo, key, text)),
+        None => Cow::Borrowed(text),
+    })
+}
+
+/// Looks up a translated string for the current locale. A key no catalogue
+/// has (a bug the catalogue checks catch) shows as itself.
 pub fn tr(key: &str) -> SharedString {
-    SharedString::from(rust_i18n::t!(key).into_owned())
+    match resolve(key, None) {
+        Some(Cow::Borrowed(text)) => SharedString::new_static(text),
+        Some(Cow::Owned(text)) => SharedString::from(text),
+        None => SharedString::from(key.to_owned()),
+    }
 }
 
 /// Arguments that are counts: formatted as numbers of the locale.
@@ -65,24 +113,23 @@ const COUNT_ARGS: [&str; 4] = ["count", "total", "done", "bad"];
 ///
 /// When `key` is a plural message, the child for the `count` argument (else
 /// `total`) is used. Count arguments that are whole numbers are written as
-/// numbers of the current locale.
+/// numbers of the current locale; other arguments are isolated where their
+/// direction could reorder the message (see [`bidi::argument`]).
 pub fn tr_args(key: &str, args: &[(&str, &str)]) -> SharedString {
     let operand = ["count", "total"]
         .iter()
         .find_map(|name| args.iter().find(|(n, _)| n == name))
         .and_then(|(_, value)| parse_count(value));
-    let plural = operand.and_then(|n| {
-        lookup(&format!("{key}.{}", format::category(n)))
-            .or_else(|| lookup(&format!("{key}.other")))
-    });
-    let mut text = plural
-        .or_else(|| lookup(key))
-        .or_else(|| lookup(&format!("{key}.other")))
-        .unwrap_or_else(|| rust_i18n::t!(key).into_owned());
+    let mut text = resolve(key, operand).map_or_else(|| key.to_owned(), Cow::into_owned);
+    let interface = direction::layout_direction();
     for (name, value) in args {
+        let placeholder = format!("%{{{name}}}");
+        if !text.contains(&placeholder) {
+            continue;
+        }
         let count = COUNT_ARGS.contains(name).then(|| parse_count(value)).flatten();
         let value = count.map_or_else(|| (*value).to_owned(), format::number);
-        text = text.replace(&format!("%{{{name}}}"), &value);
+        text = text.replace(&placeholder, &bidi::argument(&value, interface));
     }
     SharedString::from(text)
 }
@@ -101,9 +148,23 @@ pub fn tr_count(key: &str, n: u64) -> SharedString {
     tr_args(key, &[("count", &n.to_string())])
 }
 
-/// The current locale.
+/// The current locale's tag.
 pub fn locale() -> String {
-    rust_i18n::locale().to_string()
+    locale::current().tag.to_owned()
+}
+
+/// The current locale.
+pub fn current_locale() -> &'static Locale {
+    locale::current()
+}
+
+/// Makes `tag` the current locale without telling any view: the layout
+/// direction and GPUI Kit's own strings follow. For startup and tests;
+/// a running interface uses [`select_locale`].
+pub fn set_locale(tag: &str) {
+    let locale = locale::set_current(tag);
+    direction::set_layout_direction(locale.direction);
+    gpui_kit::component::set_locale(locale.kit);
 }
 
 /// Marks a locale switch: views observe it to translate again what they
@@ -113,9 +174,9 @@ struct LocaleSwitch;
 impl Global for LocaleSwitch {}
 
 /// Selects a locale, tells the views keeping translated state, and redraws
-/// every window.
+/// every window. The switch applies at once; no restart is needed.
 pub fn select_locale(locale: &str, cx: &mut App) {
-    rust_i18n::set_locale(locale);
+    set_locale(locale);
     cx.set_global(LocaleSwitch);
     cx.refresh_windows();
 }
@@ -233,4 +294,44 @@ pub fn failure(failure: &EffectFailure) -> SharedString {
         "backend.failure.value",
         &[("action", &action_name(&failure.method)), ("reason", &reason)],
     )
+}
+
+/// What a catalogue holds, for the coverage report and the checks.
+pub mod coverage {
+    /// Every key of the source catalogue that has text, sorted.
+    pub fn source_keys() -> Vec<&'static str> {
+        super::catalog::entries(super::locale::SOURCE).iter().map(|(key, _)| *key).collect()
+    }
+
+    /// The translated keys of catalogue `tag`, sorted.
+    pub fn translated(tag: &str) -> Vec<&'static str> {
+        super::catalog::entries(tag).iter().map(|(key, _)| *key).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_catalogue_serves_a_plural_message_only_with_every_category() {
+        let key = "sections.groups.members";
+        assert_eq!(in_catalogue("en", key, Some(1)), Some("%{count} member"));
+        assert_eq!(in_catalogue("en", key, Some(0)), Some("%{count} members"));
+        assert_eq!(in_catalogue("en", key, None), Some("%{count} members"), "no count: `other`");
+        let chinese = in_catalogue("zh-CN", key, Some(1));
+        assert!(chinese.is_some() && chinese == in_catalogue("zh-CN", key, Some(7)));
+        // Not translated yet: the next locale of the chain serves it.
+        assert_eq!(in_catalogue("ru", key, Some(3)), None);
+        assert_eq!(in_catalogue("ar", key, Some(2)), None);
+        assert_eq!(in_catalogue("ar", "common.cancel", None), None);
+        assert_eq!(in_catalogue("en", "no.such.key", None), None);
+    }
+
+    #[test]
+    fn locale_data_is_set_where_it_differs_from_english() {
+        assert_eq!(in_catalogue("de", "format.number.group", None), Some("."));
+        assert_eq!(in_catalogue("hi", "format.number.group_sizes", None), Some("3,2"));
+        assert_eq!(in_catalogue("tr", "format.percent", None), Some("%%{value}"));
+    }
 }

@@ -15,13 +15,14 @@
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::description_list::DescriptionList;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{
     AuditEntry, BlockId, Grant, GrantState, InterventionPayload, Lifecycle, Risk, Scope,
     UiEventKind,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, forward_icon, h_flex};
 
 /// Block id of the reference to the owning task step.
 pub const TASK_REFERENCE_BLOCK: &str = "task-reference";
@@ -142,7 +143,8 @@ impl RenderOnce for InterventionBody {
                                             div()
                                                 .font_family(cx.theme().mono_font_family.clone())
                                                 .text_color(cx.theme().muted_foreground)
-                                                .child(grant.scope.clone()),
+                                                .text_ltr()
+                                                .child(i18n::bidi::ltr(&grant.scope)),
                                         )
                                     }),
                             ),
@@ -151,11 +153,7 @@ impl RenderOnce for InterventionBody {
                         Button::new("details")
                             .ghost()
                             .xsmall()
-                            .icon(if expanded {
-                                IconName::ChevronDown
-                            } else {
-                                IconName::ChevronRight
-                            })
+                            .icon(if expanded { IconName::ChevronDown } else { forward_icon() })
                             .label(tr("moment.intervention.details"))
                             .on_click(move |_, window, cx| {
                                 details_sink.emit(

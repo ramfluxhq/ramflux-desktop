@@ -13,7 +13,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, IntoElement, Render, Role, SharedString, Window, div, rems,
@@ -22,6 +22,7 @@ use ramflux_desktop_core::{
     CeremonyAccount, CeremonyFailure, Networking, PHRASE_WORDS, RecoveryCeremony, RecoveryPhase,
     check_phrase,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 
 use super::{RecoveryPanel, RecoveryPending, Screen};
 use crate::actions::RECOVERY_CONTEXT;

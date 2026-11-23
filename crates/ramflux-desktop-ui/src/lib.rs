@@ -34,8 +34,6 @@
     deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
 )]
 
-rust_i18n::i18n!("locales", fallback = "en");
-
 pub mod actions;
 pub mod app;
 pub mod assets;

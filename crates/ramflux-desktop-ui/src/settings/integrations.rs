@@ -7,10 +7,11 @@
 
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, div};
 use ramflux_desktop_core::Integrations;
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use super::{SectionContext, note};
 use crate::i18n::tr;
@@ -73,7 +74,8 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                         div()
                             .font_family(cx.theme().mono_font_family.clone())
                             .text_xs()
-                            .child(item.id.clone()),
+                            .text_ltr()
+                            .child(crate::i18n::bidi::ltr(&item.id)),
                     )
                     .child(div().child(item.summary.clone()))
             }))

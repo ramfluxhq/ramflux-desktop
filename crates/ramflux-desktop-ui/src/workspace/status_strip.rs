@@ -10,12 +10,13 @@
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, tooltip::Tooltip};
+use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, tooltip::Tooltip};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, Hsla, IntoElement, Render, SharedString, Subscription, Window, div,
 };
 use ramflux_desktop_core::{LockState, NodeHealth, SchemaGate, SourceStatus, Store};
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};

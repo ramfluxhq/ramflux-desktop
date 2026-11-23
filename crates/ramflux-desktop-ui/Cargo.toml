@@ -28,7 +28,6 @@ ramflux-desktop-sdk.workspace = true
 ramflux-desktop-media.workspace = true
 # The scenario-playing mock source of the demo scenarios (feature `demo`).
 ramflux-desktop-test = { workspace = true, optional = true }
-rust-i18n.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sys-locale.workspace = true
@@ -38,6 +37,10 @@ unicode-width.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # QR code of the user's own contact card (MIT, no dependencies).
 qrcodegen = "1.8"
+
+[build-dependencies]
+# Reads the string catalogues (locales/*.json) into static tables.
+serde_json.workspace = true
 
 [dev-dependencies]
 ramflux-desktop-sdk = { workspace = true, features = ["test-support"] }

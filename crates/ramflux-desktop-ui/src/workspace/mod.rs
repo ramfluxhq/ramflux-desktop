@@ -35,7 +35,7 @@ use gpui_kit::component::dock::{
     BasePanelView, DockArea, DockEvent, DockLayout, DockPlacement, DockSkin, DockToggleEvent,
     panel_handle,
 };
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, px,
@@ -43,6 +43,7 @@ use gpui_kit::{
 use ramflux_desktop_core::{
     ContextId, ContextKind, IntentKind, ParticipantId, Scope, methods, selectors,
 };
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
 use crate::app::{AccountAttention, StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
@@ -1057,7 +1058,7 @@ impl Render for Workspace {
                             gpui_kit::div()
                                 .absolute()
                                 .top_3()
-                                .right_3()
+                                .inset_end(gpui_kit::rems(0.75))
                                 .child(self.incoming_call.clone()),
                         ),
                 )

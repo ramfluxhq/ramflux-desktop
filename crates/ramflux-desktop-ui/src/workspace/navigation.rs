@@ -9,10 +9,11 @@ use crate::i18n::tr;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{
-    Disableable as _, Icon, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
+    Disableable as _, Icon, Selectable as _, Sizable as _, StyledExt as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, IntoElement, TestSupportExt as _, Window, div, rems};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::theme;
 
 /// Navigation selects projections/features, never a source or an account writer.
@@ -507,7 +508,7 @@ fn identity_popover(
                 Button::new("identity-lock")
                     .ghost()
                     .w_full()
-                    .justify_start()
+                    .justify_row_start()
                     .small()
                     .label(tr("status.account.lock"))
                     .on_click(cx.listener(move |_, _, window, cx| {

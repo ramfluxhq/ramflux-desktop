@@ -15,7 +15,7 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div};
@@ -23,6 +23,7 @@ use ramflux_desktop_core::{
     Account, AccountId, AccountKind, BackupPhase, IntentKind, LockState, Networking, NodeId,
     SecretInput, Store, UiEventKind, methods,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 use unicode_segmentation::UnicodeSegmentation as _;
 use unicode_width::UnicodeWidthStr;
 

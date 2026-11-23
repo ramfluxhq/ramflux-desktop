@@ -8,10 +8,11 @@
 //! else's, and the time the daemon recorded it.
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
 use ramflux_desktop_core::NameChangePayload;
+use ramflux_desktop_navigation::direction::h_flex;
 
 use super::MomentRow;
 use crate::i18n::{self, tr_args};

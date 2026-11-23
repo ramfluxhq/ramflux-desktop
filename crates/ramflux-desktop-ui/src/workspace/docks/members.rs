@@ -16,12 +16,13 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div};
 use ramflux_desktop_core::{
     ContextId, ContextKind, GovernanceOp, Participant, Role, Scope, UiEventKind, selectors,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 
 use super::{empty_line, section};
 use crate::app::{StoreEvent, StoreHandle};

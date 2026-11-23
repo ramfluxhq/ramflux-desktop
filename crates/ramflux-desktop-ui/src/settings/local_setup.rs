@@ -20,10 +20,11 @@ use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, SharedString, Window, div};
 use ramflux_desktop_core::SourceStatus;
+use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_sdk::local::{LaunchSettings, SourceKind, app_log};
 
 use super::SectionContext;

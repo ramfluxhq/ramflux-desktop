@@ -16,6 +16,7 @@ mod rows;
 mod selection;
 mod view_state;
 
+use ramflux_desktop_navigation::direction::DirectionalExt as _;
 use std::rc::Rc;
 
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
@@ -614,8 +615,8 @@ impl Render for Conversation {
         // A new conversation or group form has no header: the switcher sits
         // in a row of its own above it.
         let tools_row = (self.open_tool.is_none() && in_form).then(|| {
-            gpui_kit::component::h_flex()
-                .justify_end()
+            ramflux_desktop_navigation::direction::h_flex()
+                .justify_row_end()
                 .px(gpui_kit::rems(32.0 / 15.0))
                 .pt_3()
                 .child(switcher())

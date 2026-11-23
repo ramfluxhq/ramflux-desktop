@@ -27,7 +27,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -38,6 +38,7 @@ use ramflux_desktop_core::{
     ContactLink, ContextId, GroupProblem, IntentError, Participant, ParticipantId, Scope, Store,
     UiEventKind, check_create_group, check_start_conversation, methods, selectors,
 };
+use ramflux_desktop_navigation::direction::h_flex;
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;

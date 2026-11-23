@@ -97,9 +97,9 @@ fn theme_and_language_switch_in_the_open_window_and_follow_the_system(cx: &mut T
 
     // Language: Chinese -> English, the visible text changes at once.
     let chinese_title = tr("settings.section.appearance");
-    assert!(shows(cx, handle, &language_field(&tr("locale.chinese"))));
-    click_label(cx, handle, &language_field(&tr("locale.chinese")));
-    click_label(cx, handle, &tr("locale.english"));
+    assert!(shows(cx, handle, &language_field(&tr("locale.name.zh_cn"))));
+    click_label(cx, handle, &language_field(&tr("locale.name.zh_cn")));
+    click_label(cx, handle, &tr("locale.name.en"));
     assert_eq!(i18n::locale(), "en", "English is active without a restart");
     assert_ne!(tr("settings.section.appearance"), chinese_title);
     assert!(shows(cx, handle, &language_field("English")), "the field reads in English now");
