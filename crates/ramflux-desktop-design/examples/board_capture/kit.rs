@@ -32,6 +32,8 @@ use ramflux_desktop_navigation::generated::catalog as kit;
 use ramflux_desktop_navigation::palette;
 use ramflux_desktop_ui::AppAssets as Assets;
 
+use crate::text::t;
+
 /// One component of the kit boards.
 pub struct Component {
     pub slug: &'static str,
@@ -70,8 +72,8 @@ fn board_background(board: &str) -> Hsla {
 }
 
 fn row_replica(
-    title: &'static str,
-    detail: &'static str,
+    title: SharedString,
+    detail: SharedString,
     trailing: AnyElement,
     cx: &App,
 ) -> AnyElement {
@@ -102,7 +104,7 @@ fn row_replica(
         .into_any_element()
 }
 
-fn chip_replica(text: &'static str, cx: &App) -> AnyElement {
+fn chip_replica(text: SharedString, cx: &App) -> AnyElement {
     // replica of crates/ramflux-desktop-ui/src/settings/design.rs `chip`
     let p = palette(cx);
     div()
@@ -115,7 +117,7 @@ fn chip_replica(text: &'static str, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn quiet_danger(label: &'static str, cx: &App) -> AnyElement {
+fn quiet_danger(label: SharedString, cx: &App) -> AnyElement {
     // replica of crates/ramflux-desktop-ui/src/settings/devices.rs revoke button
     let p = palette(cx);
     Button::new("revoke")
@@ -130,8 +132,8 @@ fn quiet_danger(label: &'static str, cx: &App) -> AnyElement {
 
 fn bubble(
     kind: kit::BubbleKind,
-    sender: Option<&'static str>,
-    text: &'static str,
+    sender: Option<SharedString>,
+    text: SharedString,
     time: &'static str,
     cx: &App,
 ) -> AnyElement {
@@ -159,21 +161,14 @@ fn bubble(
     kit::message_bubble(kit::MessageContent::new("m".into(), kind, content), p).into_any_element()
 }
 
-fn tip(kind: kit::StateKind, title: &'static str, cx: &App) -> AnyElement {
+fn tip(kind: kit::StateKind, title: SharedString, cx: &App) -> AnyElement {
     // replica of crates/ramflux-desktop-ui/src/settings/presentation.rs `notice`
     let p = palette(cx);
     div()
         .p_3()
         .rounded(rem(p.radius_md))
         .bg(p.surface)
-        .child(kit::state_block(
-            "tip".into(),
-            title.into(),
-            SharedString::default(),
-            kind,
-            div(),
-            p,
-        ))
+        .child(kit::state_block("tip".into(), title, SharedString::default(), kind, div(), p))
         .into_any_element()
 }
 
@@ -185,14 +180,14 @@ pub fn components() -> Vec<Component> {
             slug: "button-primary",
             how: A("style::primary_button", |_, cx, _| {
                 ramflux_desktop_ui::style::primary_button("b", cx)
-                    .label("主要操作")
+                    .label(t("kit09"))
                     .into_any_element()
             }),
         },
         Component {
             slug: "status-neutral",
             how: A("catalog::badge", |_, cx, _| {
-                kit::badge("等待确认".into(), palette(cx)).into_any_element()
+                kit::badge(t("kit01"), palette(cx)).into_any_element()
             }),
         },
         Component {
@@ -211,10 +206,7 @@ pub fn components() -> Vec<Component> {
             slug: "list-row-conversation",
             how: R("workspace/context_stack.rs list row (Button + navigation Row)", |_, cx, _| {
                 let p = palette(cx);
-                let mut row = ramflux_desktop_navigation::row::Row::new(
-                    "产品设计".into(),
-                    "已整理好界面拆分建议".into(),
-                );
+                let mut row = ramflux_desktop_navigation::row::Row::new(t("kit02"), t("kit03"));
                 row.time = "09:44".into();
                 Button::new("row")
                     .ghost()
@@ -249,19 +241,13 @@ pub fn components() -> Vec<Component> {
         Component {
             slug: "bubble-peer",
             how: R("catalog::message_bubble + moments/message_bubble.rs content", |_, cx, _| {
-                bubble(
-                    kit::BubbleKind::Peer,
-                    None,
-                    "新版资料我整理好了，你有空时看一下。",
-                    "14:32",
-                    cx,
-                )
+                bubble(kit::BubbleKind::Peer, None, t("kit10"), "14:32", cx)
             }),
         },
         Component {
             slug: "bubble-own",
             how: R("catalog::message_bubble + moments/message_bubble.rs content", |_, cx, _| {
-                bubble(kit::BubbleKind::Own, None, "收到，我会把问题逐项回复。", "14:33", cx)
+                bubble(kit::BubbleKind::Own, None, t("kit11"), "14:33", cx)
             }),
         },
         Component {
@@ -273,11 +259,11 @@ pub fn components() -> Vec<Component> {
                         .flex()
                         .flex_row()
                         .gap_2()
-                        .child(kit::avatar("林".into(), kit::AvatarKind::Person, palette(cx)))
+                        .child(kit::avatar(t("kit04"), kit::AvatarKind::Person, palette(cx)))
                         .child(bubble(
                             kit::BubbleKind::Peer,
-                            Some("林悦"),
-                            "新版资料我整理好了，你有空时看一下。",
+                            Some(t("kit12")),
+                            t("kit10"),
                             "14:32",
                             cx,
                         ))
@@ -310,7 +296,7 @@ pub fn components() -> Vec<Component> {
                                     .items_center()
                                     .gap_1()
                                     .child(Icon::new(IconName::MessageSquare).with_size(px(20.)))
-                                    .child(div().text_size(rem(p.size_caption)).child("消息")),
+                                    .child(div().text_size(rem(p.size_caption)).child(t("kit13"))),
                             ),
                     )
                     .into_any_element()
@@ -320,7 +306,7 @@ pub fn components() -> Vec<Component> {
             slug: "button-secondary",
             how: A("style::secondary_button", |_, cx, _| {
                 ramflux_desktop_ui::style::secondary_button("b", cx)
-                    .label("次要操作")
+                    .label(t("kit14"))
                     .into_any_element()
             }),
         },
@@ -328,7 +314,7 @@ pub fn components() -> Vec<Component> {
             slug: "button-disabled",
             how: A("style::primary_button disabled", |_, cx, _| {
                 ramflux_desktop_ui::style::primary_button("b", cx)
-                    .label("不可用")
+                    .label(t("kit15"))
                     .disabled(true)
                     .into_any_element()
             }),
@@ -336,12 +322,12 @@ pub fn components() -> Vec<Component> {
         Component {
             slug: "button-danger",
             how: R("Button::danger as used in call.rs, contact_profile.rs", |_, _, _| {
-                Button::new("b").danger().label("危险操作").into_any_element()
+                Button::new("b").danger().label(t("kit16")).into_any_element()
             }),
         },
         Component {
             slug: "button-danger-quiet",
-            how: R("settings/devices.rs revoke button", |_, cx, _| quiet_danger("撤销设备", cx)),
+            how: R("settings/devices.rs revoke button", |_, cx, _| quiet_danger(t("kit17"), cx)),
         },
         Component { slug: "button-text", how: S("no text button in the application") },
         Component {
@@ -417,7 +403,7 @@ pub fn components() -> Vec<Component> {
             slug: "segmented",
             how: R("settings/appearance.rs mode segments", |_, cx, _| {
                 let p = palette(cx);
-                let seg = |id: &'static str, label: &'static str, on: bool| {
+                let seg = |id: &'static str, label: SharedString, on: bool| {
                     Button::new(id)
                         .ghost()
                         .small()
@@ -436,8 +422,8 @@ pub fn components() -> Vec<Component> {
                     .gap(px(2.))
                     .rounded(rem(p.radius_sm))
                     .bg(p.surface)
-                    .child(seg("a", "选项一", true))
-                    .child(seg("b", "选项二", false))
+                    .child(seg("a", t("kit18"), true))
+                    .child(seg("b", t("kit19"), false))
                     .into_any_element()
             }),
         },
@@ -491,8 +477,8 @@ pub fn components() -> Vec<Component> {
             how: A("catalog::trust_banner", |_, cx, _| {
                 kit::trust_banner(
                     kit::NoticeContent::new(
-                        "网页会话不受节点运营方的防护".into(),
-                        "该节点的运营方可以读取这台网页设备上的密钥和消息明文。".into(),
+                        t("kit05"),
+                        t("kit06"),
                         Icon::new(IconName::TriangleAlert),
                         div(),
                     ),
@@ -507,8 +493,8 @@ pub fn components() -> Vec<Component> {
             how: A("catalog::trust_banner danger", |_, cx, _| {
                 kit::trust_banner(
                     kit::NoticeContent::new(
-                        "网页会话不受节点运营方的防护".into(),
-                        "该节点的运营方可以读取这台网页设备上的密钥和消息明文。".into(),
+                        t("kit05"),
+                        t("kit06"),
                         Icon::new(IconName::ShieldAlert),
                         div(),
                     ),
@@ -521,7 +507,7 @@ pub fn components() -> Vec<Component> {
         Component {
             slug: "tip-bar-default",
             how: R("settings/presentation.rs notice (state_block Offline)", |_, cx, _| {
-                tip(kit::StateKind::Offline, "当前离线 · 消息将在恢复连接后发送", cx)
+                tip(kit::StateKind::Offline, t("kit20"), cx)
             }),
         },
         Component {
@@ -531,13 +517,13 @@ pub fn components() -> Vec<Component> {
         Component {
             slug: "tip-bar-warning",
             how: R("settings/presentation.rs notice (state_block Loading)", |_, cx, _| {
-                tip(kit::StateKind::Loading, "正在重新连接…", cx)
+                tip(kit::StateKind::Loading, t("kit21"), cx)
             }),
         },
         Component {
             slug: "tip-bar-danger",
             how: R("settings/presentation.rs notice (state_block Error)", |_, cx, _| {
-                tip(kit::StateKind::Error, "未能保存，请重试", cx)
+                tip(kit::StateKind::Error, t("kit22"), cx)
             }),
         },
         Component {
@@ -551,15 +537,10 @@ pub fn components() -> Vec<Component> {
                     .flex()
                     .flex_row()
                     .gap_2()
-                    .child(chip_replica("网页", cx))
-                    .child(quiet_danger("撤销设备", cx))
+                    .child(chip_replica(t("kit23"), cx))
+                    .child(quiet_danger(t("kit17"), cx))
                     .into_any_element();
-                row_replica(
-                    "Chrome · macOS",
-                    "chat.example.org · 此节点的运营方可以读取这台设备上的消息。",
-                    trailing,
-                    cx,
-                )
+                row_replica("Chrome · macOS".into(), t("kit24"), trailing, cx)
             }),
         },
         Component {
@@ -578,10 +559,10 @@ pub fn components() -> Vec<Component> {
             slug: "setting-row",
             how: R("settings/design.rs `row`", |_, cx, _| {
                 row_replica(
-                    "设置项",
-                    "当前值",
+                    t("kit25"),
+                    t("kit26"),
                     ramflux_desktop_ui::style::secondary_button("c", cx)
-                        .label("更改")
+                        .label(t("kit27"))
                         .into_any_element(),
                     cx,
                 )
@@ -616,10 +597,9 @@ pub fn components() -> Vec<Component> {
             how: A("catalog::page_header_content", |_, cx, _| {
                 let p = palette(cx);
                 kit::page_header_content(
-                    kit::RowContent::new("ph".into(), "页面标题".into(), "页面说明".into())
-                        .trailing(
-                            ramflux_desktop_ui::style::secondary_button("a", cx).label("操作"),
-                        ),
+                    kit::RowContent::new("ph".into(), t("kit07"), t("kit08")).trailing(
+                        ramflux_desktop_ui::style::secondary_button("a", cx).label(t("kit28")),
+                    ),
                     false,
                     p,
                 )
@@ -644,7 +624,7 @@ pub fn components() -> Vec<Component> {
                             .text_size(rem(p.size_meta))
                             .font_medium()
                             .text_color(p.secondary)
-                            .child("今天 · 11月10日"),
+                            .child(t("kit29")),
                     )
                     .into_any_element()
             }),
@@ -700,7 +680,7 @@ pub fn capture(board: &str, w: u32, h: u32, render: Render) -> Result<image::Rgb
             },
             cx,
             move |window, cx| {
-                let search = cx.new(|cx| InputState::new(window, cx).placeholder("搜索"));
+                let search = cx.new(|cx| InputState::new(window, cx).placeholder(t("kit30")));
                 cx.new(|_| KitView { background, render, inputs: Inputs { search } })
             },
         )

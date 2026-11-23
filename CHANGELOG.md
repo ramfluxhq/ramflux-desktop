@@ -30,6 +30,9 @@ Versioning.
   manifest and verification, headless board captures over the mock source,
   pixel comparison with reviewed per-board deviations, token check by value
   against the design variables (`docs/design-instrument.md`).
+- Design instrument wave W0: zh-CN board fixtures, attribution of
+  deviations by measurement, kit component captures, the W1 work list.
+- The call bar counts a call's duration on the session clock.
 
 ### Fixed
 

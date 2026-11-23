@@ -11,7 +11,7 @@
 //! Content comes from `fixtures/board_zh.ron`, which reproduces the boards'
 //! names, messages, times, counts, files and devices in Simplified Chinese;
 //! the chrome copy is the application's own catalogue. Entry boards use the
-//! mock ceremony and recovery with the boards' account name 个人.
+//! mock ceremony and recovery with the boards' account name (`account_personal`).
 
 use ramflux_desktop_core::{
     Account, AccountId, AccountKind, Call, CallDirection, CallEndReason, CallId, CallState,
@@ -26,6 +26,7 @@ use ramflux_desktop_ui::settings::SettingsSection;
 use ramflux_desktop_ui::workspace::WorkspaceRoute;
 
 use crate::harness::{Run, Start, Step};
+use crate::text::t;
 
 const PASSPHRASE: &str = "river stone lantern";
 /// The epoch of the board fixture (2026-11-10T10:00Z).
@@ -108,7 +109,14 @@ fn account(id: &str, label: &str, lock_state: LockState) -> Account {
 fn empty_account(listed: bool) -> Scenario {
     let mut timeline = vec![
         (0, DomainEvent::SourceStatusChanged(SourceStatus::Connected)),
-        (0, DomainEvent::AccountUpdated(account("a-personal", "个人", LockState::Unlocked))),
+        (
+            0,
+            DomainEvent::AccountUpdated(account(
+                "a-personal",
+                &t("account_personal"),
+                LockState::Unlocked,
+            )),
+        ),
     ];
     if listed {
         timeline.push((
@@ -176,7 +184,7 @@ fn daily(run: &mut Run) -> Step {
     Ok(())
 }
 
-/// The message boards' world with 产品设计 open.
+/// The message boards' world with the product conversation (c-product) open.
 fn daily_product(run: &mut Run) -> Step {
     run.play(&messages_world()?, 1_000);
     run.show("c-product")
@@ -199,15 +207,20 @@ fn strangers_selected(run: &mut Run) -> Step {
     Ok(())
 }
 
-/// B11: from the 产品设计 conversation the board shows, the contacts tool,
-/// comparing 周宁's safety number (the app compares in the tool's row; it
+/// B11: from the product conversation (c-product) the board shows, the
+/// contacts tool comparing p-zhou's safety number (the app compares in the tool's row; it
 /// has no modal dialog).
 fn safety_compare(run: &mut Run) -> Step {
     let mut s = messages_world()?;
     push(
         &mut s,
         900,
-        participant("p-zhou", "周宁", SafetyState::Unverified, Some("0421 1830 5502 7681 9904")),
+        participant(
+            "p-zhou",
+            &t("name_zhou"),
+            SafetyState::Unverified,
+            Some("0421 1830 5502 7681 9904"),
+        ),
     );
     run.play(&s, 1_000);
     run.show("c-product")?;
@@ -283,7 +296,7 @@ fn ceremony(run: &mut Run) -> Step {
 
 fn ceremony_ready(run: &mut Run) -> Step {
     ceremony(run)?;
-    run.type_into("ceremony-name-input", "个人")?;
+    run.type_into("ceremony-name-input", &t("account_personal"))?;
     run.click("ceremony-continue")?;
     run.tick(300);
     Ok(())
@@ -324,8 +337,15 @@ fn ceremony_done(run: &mut Run) -> Step {
 fn recovery_world(run: &mut Run) -> Step {
     run.tick(2_600);
     run.mock(|m| {
-        m.ceremony_mut().recovery_mut().allow("acct-r", "个人", PASSPHRASE);
-        m.inject(0, DomainEvent::AccountUpdated(account("acct-r", "个人", LockState::Locked)));
+        m.ceremony_mut().recovery_mut().allow("acct-r", &t("account_personal"), PASSPHRASE);
+        m.inject(
+            0,
+            DomainEvent::AccountUpdated(account(
+                "acct-r",
+                &t("account_personal"),
+                LockState::Locked,
+            )),
+        );
     })?;
     run.tick(300);
     Ok(())
@@ -425,13 +445,13 @@ pub fn plan(key: &str) -> Option<Plan> {
         // Shell and messages.
         "02" | "I24" => capture!(
             S02,
-            "board_zh, 产品设计 open",
+            "board_zh, c-product open",
             ["navigation-rail", "stack-filters", "conversation-header", "composer"],
             daily_product
         ),
         "02L" => capture!(
             S02,
-            "empty account 个人 before its listings: list loading",
+            "empty account (account_personal) before its listings: list loading",
             ["stack-list-state"],
             |run| {
                 run.play(&empty_account(false), 100);
@@ -440,7 +460,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "B01" => capture!(
             S02,
-            "board_zh 产品设计, identity popover open",
+            "board_zh c-product, identity popover open",
             ["identity-menu"],
             |run| {
                 daily_product(run)?;
@@ -450,14 +470,14 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "B04" | "I34" => capture!(
             S02,
-            "board_zh 产品设计, conversation menu open (the app has a menu, no settings panel)",
+            "board_zh c-product, conversation menu open (the app has a menu, no settings panel)",
             ["conversation-header"],
             conversation_menu,
             keep
         ),
         "B09" => capture!(
             S02,
-            "board_zh 产品设计, command palette open",
+            "board_zh c-product, command palette open",
             ["palette"],
             |run| {
                 daily_product(run)?;
@@ -467,7 +487,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "B10" => capture!(
             S02,
-            "board_zh, 周宁's key changed, conversation with 周宁 open",
+            "board_zh, p-zhou's key changed, conversation with p-zhou open",
             [],
             |run| {
                 let mut s = messages_world()?;
@@ -476,7 +496,7 @@ pub fn plan(key: &str) -> Option<Plan> {
                     900,
                     participant(
                         "p-zhou",
-                        "周宁",
+                        &t("name_zhou"),
                         SafetyState::KeyChanged,
                         Some("0421 1830 5502 7681 9031"),
                     ),
@@ -487,13 +507,13 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "B11" | "I31" => capture!(
             S02,
-            "board_zh 产品设计, contacts tool comparing 周宁's safety number (the app compares in the tool row, no dialog)",
+            "board_zh c-product, contacts tool comparing p-zhou's safety number (the app compares in the tool row, no dialog)",
             ["verify-confirm"],
             safety_compare
         ),
         "B38" => capture!(
             S02,
-            "board_zh 产品设计, source disconnected (offline banner; no queued-messages UI)",
+            "board_zh c-product, source disconnected (offline banner; no queued-messages UI)",
             ["status-strip"],
             |run| {
                 let mut s = messages_world()?;
@@ -504,7 +524,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "B32" => capture!(
             S02,
-            "board_zh 产品设计 (the board's 周宁 and Nova thread with a quote and a reaction is not in the fixture)",
+            "board_zh c-product (the board's p-zhou and Nova thread with a quote and a reaction is not in the fixture)",
             ["conversation-header"],
             daily_product
         ),
@@ -532,14 +552,14 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "A03" => capture!(
             BORN,
-            "s13 entry with the locked account 个人 (passphrase era; six-digit code not in code)",
+            "s13 entry with the locked account (account_personal) (passphrase era; six-digit code not in code)",
             [],
             recovery_world
         ),
         "A04" => capture!(BORN, "s13 create account, name step", ["ceremony-name-input"], ceremony),
         "A05" => capture!(
             BORN,
-            "s13 create account 个人, ready to save the phrase",
+            "s13 create account (account_personal), ready to save the phrase",
             ["ceremony-show"],
             ceremony_ready
         ),
@@ -559,7 +579,12 @@ pub fn plan(key: &str) -> Option<Plan> {
             ceremony_done
         ),
         "A10" => {
-            capture!(BORN, "s13 recover account 个人, intro", ["recovery-continue"], recovery_intro)
+            capture!(
+                BORN,
+                "s13 recover account (account_personal), intro",
+                ["recovery-continue"],
+                recovery_intro
+            )
         }
         "A12" => capture!(BORN, "s13 recover account, done", [], recovery_done),
         "A16" => capture!(
@@ -581,14 +606,14 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         // Groups.
         "C01" => {
-            capture!(S02, "board_zh new group form over 产品设计", ["new-group-name"], |run| {
+            capture!(S02, "board_zh new group form over c-product", ["new-group-name"], |run| {
                 daily_product(run)?;
                 run.workspace(|w, window, cx| w.open_new_group(window, cx))
             })
         }
         "C02" => capture!(
             S02,
-            "board_zh groups, 产品设计 with its member panel",
+            "board_zh groups, c-product with its member panel",
             ["group-profile"],
             |run| {
                 daily(run)?;
@@ -635,7 +660,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "D01" => capture!(
             S02,
-            "board_zh Agents roster (Nova, Atlas, Mira, 研究搭档), nothing selected",
+            "board_zh Agents roster (Nova, Atlas, Mira, research agent), nothing selected",
             ["agent-roster"],
             |run| {
                 daily(run)?;
@@ -713,7 +738,7 @@ pub fn plan(key: &str) -> Option<Plan> {
             }
         ),
         "F04" => {
-            capture!(S02, "board_zh contact profile of 周宁", ["contact-safety-number"], |run| {
+            capture!(S02, "board_zh contact profile of p-zhou", ["contact-safety-number"], |run| {
                 daily(run)?;
                 run.route(WorkspaceRoute::Contacts)?;
                 run.click("contacts-view-p-zhou")
@@ -721,7 +746,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         }
         "F17" | "I26" => capture!(
             S02,
-            "board_zh strangers, 陈遥 selected",
+            "board_zh strangers, chenyao selected",
             ["strangers-area", "stranger-header"],
             strangers_selected
         ),
@@ -780,7 +805,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         }
         "G08" | "I30" => capture!(
             S02,
-            "board_zh settings, devices (MacBook Pro, iPhone, Chrome · macOS, 旧笔记本)",
+            "board_zh settings, devices (MacBook Pro, iPhone, Chrome · macOS, old laptop)",
             ["settings-header"],
             |run| settings_board(run, SettingsSection::Devices)
         ),
@@ -847,7 +872,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         // Docks and calls.
         "H01" => {
-            capture!(S02, "board_zh 产品设计, files tool open", ["dock-panel-objects"], |run| {
+            capture!(S02, "board_zh c-product, files tool open", ["dock-panel-objects"], |run| {
                 daily_product(run)?;
                 run.click("rail-objects")
             })
@@ -859,7 +884,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         }),
         "K01" => capture!(
             S02,
-            "board_zh direct conversation with 周宁, call button",
+            "board_zh direct conversation with p-zhou, call button",
             ["conversation-call"],
             |run| {
                 run.play(&messages_world()?, 1_000);
@@ -868,13 +893,13 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "K06" => capture!(
             S02,
-            "board_zh 周宁, an active outgoing call (injected; duration on the session clock)",
+            "board_zh p-zhou, an active outgoing call (injected; duration on the session clock)",
             ["call-bar"],
             |run| direct_call(run, call(CallState::Active, true))
         ),
         "K40" => capture!(
             S02,
-            "board_zh 周宁 offline, call button hovered",
+            "board_zh p-zhou offline, call button hovered",
             [],
             |run| {
                 direct_call(run, DomainEvent::SourceStatusChanged(SourceStatus::Disconnected))?;
@@ -884,7 +909,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "K41" => capture!(
             S02,
-            "board_zh 周宁, an outgoing call that failed (injected)",
+            "board_zh p-zhou, an outgoing call that failed (injected)",
             ["call-failed"],
             |run| direct_call(run, call(CallState::Ended(CallEndReason::Failed), false))
         ),

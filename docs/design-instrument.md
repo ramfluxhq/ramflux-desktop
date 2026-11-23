@@ -57,7 +57,12 @@ TZ=UTC cargo run -p ramflux-desktop-design --example board_capture -- --out /tmp
   scenario clock or the test dispatcher's clock (fixture epoch
   2026-10-01T00:00Z), and `TZ=UTC` for day labels (the program cannot set it
   itself; it records the value). Re-running gives byte-identical images; the
-  call bar counts on the session clock (scenario time on the mock).
+  call bar counts on the session clock (scenario time on the mock). The
+  exception is loading states (02L, F28, G27): their spinners animate on
+  real time, so a few pixels inside the already recorded spinner region
+  change from run to run; `--check` stays green.
+- Board copy lives in `examples/board_capture/fixtures/board_text.toml` and
+  `board_zh.ron`: Rust sources carry no CJK text (`ui/tests/locales.rs`).
 - Theme and locale are applied the way the Appearance page does; the default
   is the board's own theme and language (zh-CN for almost every board, en for
   I12 and I33).
