@@ -12,13 +12,14 @@
 //!
 //! Playing scenarios, the step only shows the wait.
 
+use crate::style::DesignButton as _;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::path::Path;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, IntoElement, SharedString, div};
 use ramflux_desktop_navigation::direction::h_flex;
@@ -230,7 +231,7 @@ impl EntryPage {
                     .child(
                         crate::style::primary_button("entry-daemon-start", cx)
                             .label(tr(start_label))
-                            .disabled(missing)
+                            .design_disabled(missing, cx)
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(StartLocalDaemon), cx);
                             }),

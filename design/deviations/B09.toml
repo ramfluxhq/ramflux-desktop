@@ -775,13 +775,13 @@ h = 16
 
 [[deviation]]
 id = "r60"
-class = "layout"
-reason = "geometry differs (ink box board 1297.0,855.0 10.0x10.0, app 1301.5,853.5 8.0x8.0)"
-decision = "unreviewed"
-reviewer = ""
+class = "missing"
+reason = "drawn on the board, absent in the app at 1296,854 12x12"
+decision = "fix"
+reviewer = "rf-design classify"
 
 [deviation.region]
 x = 1296
-y = 853
-w = 14
-h = 13
+y = 854
+w = 12
+h = 12

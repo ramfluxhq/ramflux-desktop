@@ -321,15 +321,15 @@ h = 40
 [[deviation]]
 id = "r25"
 class = "structure"
-reason = "screen structure differs over 419,90 957x254 (board bg #171716 ink #BFBFBF, capture bg #171716 ink #B3B2B0)"
+reason = "screen structure differs over 419,90 1002x298 (board bg #171716 ink #BEBEBE, capture bg #171716 ink #B8B7B5)"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 419
 y = 90
-w = 957
-h = 254
+w = 1002
+h = 298
 
 [[deviation]]
 id = "r26"
@@ -515,84 +515,6 @@ h = 60
 
 [[deviation]]
 id = "r40"
-class = "missing"
-reason = "drawn on the board, absent in the app at 1399,320 10x7"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1399
-y = 320
-w = 10
-h = 7
-
-[[deviation]]
-id = "r41"
-class = "missing"
-reason = "drawn on the board, absent in the app at 1339,354 82x34"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1339
-y = 354
-w = 82
-h = 34
-
-[[deviation]]
-id = "r42"
-class = "layout"
-reason = "element moved further than its region (ink within 24 px) at 1020,356 48x11"
-decision = "unreviewed"
-reviewer = ""
-
-[deviation.region]
-x = 1020
-y = 356
-w = 48
-h = 11
-
-[[deviation]]
-id = "r43"
-class = "extra"
-reason = "drawn by the app, not on the board at 454,368 25x9"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 454
-y = 368
-w = 25
-h = 9
-
-[[deviation]]
-id = "r44"
-class = "extra"
-reason = "drawn by the app, not on the board at 488,368 27x9"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 488
-y = 368
-w = 27
-h = 9
-
-[[deviation]]
-id = "r45"
-class = "missing"
-reason = "drawn on the board, absent in the app at 1022,375 49x12"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1022
-y = 375
-w = 49
-h = 12
-
-[[deviation]]
-id = "r46"
 class = "rasterisation"
 reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 23.0,376.0 21.5x34.5, app 23.0,376.0 21.5x34.0)"
 decision = "accepted"
@@ -605,7 +527,7 @@ w = 22
 h = 35
 
 [[deviation]]
-id = "r47"
+id = "r41"
 class = "layout"
 reason = "geometry differs (ink box board 132.0,377.5 64.5x12.5, app 136.0,397.0 59.5x43.5)"
 decision = "unreviewed"
@@ -618,20 +540,7 @@ w = 65
 h = 64
 
 [[deviation]]
-id = "r48"
-class = "extra"
-reason = "drawn by the app, not on the board at 467,399 13x12"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 467
-y = 399
-w = 13
-h = 12
-
-[[deviation]]
-id = "r49"
+id = "r42"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1339,401 82x34"
 decision = "fix"
@@ -644,59 +553,7 @@ w = 82
 h = 34
 
 [[deviation]]
-id = "r50"
-class = "extra"
-reason = "drawn by the app, not on the board at 488,402 13x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 488
-y = 402
-w = 13
-h = 13
-
-[[deviation]]
-id = "r51"
-class = "extra"
-reason = "drawn by the app, not on the board at 509,402 62x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 509
-y = 402
-w = 62
-h = 13
-
-[[deviation]]
-id = "r52"
-class = "extra"
-reason = "drawn by the app, not on the board at 580,402 102x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 580
-y = 402
-w = 102
-h = 13
-
-[[deviation]]
-id = "r53"
-class = "extra"
-reason = "drawn by the app, not on the board at 1267,402 34x11"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1267
-y = 402
-w = 34
-h = 11
-
-[[deviation]]
-id = "r54"
+id = "r43"
 class = "extra"
 reason = "drawn by the app, not on the board at 92,403 32x32"
 decision = "fix"
@@ -709,7 +566,20 @@ w = 32
 h = 32
 
 [[deviation]]
-id = "r55"
+id = "r44"
+class = "extra"
+reason = "drawn by the app, not on the board at 467,409 13x11"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 467
+y = 409
+w = 13
+h = 11
+
+[[deviation]]
+id = "r45"
 class = "layout"
 reason = "element moved further than its region (ink within 24 px) at 1314,410 16x16"
 decision = "unreviewed"
@@ -722,7 +592,59 @@ w = 16
 h = 16
 
 [[deviation]]
-id = "r56"
+id = "r46"
+class = "extra"
+reason = "drawn by the app, not on the board at 1267,411 34x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1267
+y = 411
+w = 34
+h = 12
+
+[[deviation]]
+id = "r47"
+class = "extra"
+reason = "drawn by the app, not on the board at 488,412 13x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 488
+y = 412
+w = 13
+h = 13
+
+[[deviation]]
+id = "r48"
+class = "extra"
+reason = "drawn by the app, not on the board at 509,412 62x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 509
+y = 412
+w = 62
+h = 13
+
+[[deviation]]
+id = "r49"
+class = "extra"
+reason = "drawn by the app, not on the board at 580,412 102x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 580
+y = 412
+w = 102
+h = 13
+
+[[deviation]]
+id = "r50"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1020,412 65x13"
 decision = "fix"
@@ -735,46 +657,46 @@ w = 65
 h = 13
 
 [[deviation]]
-id = "r57"
+id = "r51"
 class = "extra"
-reason = "drawn by the app, not on the board at 488,427 26x11"
+reason = "drawn by the app, not on the board at 488,436 26x12"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 488
-y = 427
+y = 436
 w = 26
-h = 11
+h = 12
 
 [[deviation]]
-id = "r58"
+id = "r52"
 class = "extra"
-reason = "drawn by the app, not on the board at 522,427 9x11"
+reason = "drawn by the app, not on the board at 522,436 9x12"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 522
-y = 427
+y = 436
 w = 9
-h = 11
+h = 12
 
 [[deviation]]
-id = "r59"
+id = "r53"
 class = "extra"
-reason = "drawn by the app, not on the board at 541,427 67x9"
+reason = "drawn by the app, not on the board at 541,436 67x10"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 541
-y = 427
+y = 436
 w = 67
-h = 9
+h = 10
 
 [[deviation]]
-id = "r60"
+id = "r54"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1021,442 77x12"
 decision = "fix"
@@ -787,20 +709,20 @@ w = 77
 h = 12
 
 [[deviation]]
-id = "r61"
+id = "r55"
 class = "extra"
-reason = "drawn by the app, not on the board at 468,453 32x11"
+reason = "drawn by the app, not on the board at 468,462 32x12"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 468
-y = 453
+y = 462
 w = 32
-h = 11
+h = 12
 
 [[deviation]]
-id = "r62"
+id = "r56"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1020,473 78x12"
 decision = "fix"
@@ -813,20 +735,20 @@ w = 78
 h = 12
 
 [[deviation]]
-id = "r63"
+id = "r57"
 class = "extra"
-reason = "drawn by the app, not on the board at 468,479 63x11"
+reason = "drawn by the app, not on the board at 468,488 63x11"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 468
-y = 479
+y = 488
 w = 63
 h = 11
 
 [[deviation]]
-id = "r64"
+id = "r58"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1020,496 65x12"
 decision = "fix"
@@ -839,7 +761,7 @@ w = 65
 h = 12
 
 [[deviation]]
-id = "r65"
+id = "r59"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1104,496 52x12"
 decision = "fix"
@@ -852,7 +774,7 @@ w = 52
 h = 12
 
 [[deviation]]
-id = "r66"
+id = "r60"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1093,500 3x4"
 decision = "fix"
@@ -865,7 +787,7 @@ w = 3
 h = 4
 
 [[deviation]]
-id = "r67"
+id = "r61"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1021,527 51x12"
 decision = "fix"
@@ -878,33 +800,33 @@ w = 51
 h = 12
 
 [[deviation]]
-id = "r68"
+id = "r62"
 class = "extra"
-reason = "drawn by the app, not on the board at 454,531 25x9"
+reason = "drawn by the app, not on the board at 454,541 25x8"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 454
-y = 531
+y = 541
 w = 25
-h = 9
+h = 8
 
 [[deviation]]
-id = "r69"
+id = "r63"
 class = "extra"
-reason = "drawn by the app, not on the board at 488,531 27x9"
+reason = "drawn by the app, not on the board at 488,541 27x8"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 488
-y = 531
+y = 541
 w = 27
-h = 9
+h = 8
 
 [[deviation]]
-id = "r70"
+id = "r64"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1020,550 104x12"
 decision = "fix"
@@ -917,105 +839,105 @@ w = 104
 h = 12
 
 [[deviation]]
-id = "r71"
+id = "r65"
 class = "extra"
-reason = "drawn by the app, not on the board at 467,562 13x12"
+reason = "drawn by the app, not on the board at 467,572 13x11"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 467
-y = 562
+y = 572
 w = 13
-h = 12
+h = 11
 
 [[deviation]]
-id = "r72"
+id = "r66"
 class = "extra"
-reason = "drawn by the app, not on the board at 488,565 157x15"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 488
-y = 565
-w = 157
-h = 15
-
-[[deviation]]
-id = "r73"
-class = "extra"
-reason = "drawn by the app, not on the board at 1267,565 34x11"
+reason = "drawn by the app, not on the board at 1267,574 34x12"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 1267
-y = 565
+y = 574
 w = 34
-h = 11
+h = 12
 
 [[deviation]]
-id = "r74"
+id = "r67"
 class = "extra"
-reason = "drawn by the app, not on the board at 488,590 26x11"
+reason = "drawn by the app, not on the board at 488,575 157x14"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 488
-y = 590
-w = 26
-h = 11
+y = 575
+w = 157
+h = 14
 
 [[deviation]]
-id = "r75"
+id = "r68"
 class = "extra"
-reason = "drawn by the app, not on the board at 522,590 9x11"
+reason = "drawn by the app, not on the board at 488,599 26x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 488
+y = 599
+w = 26
+h = 12
+
+[[deviation]]
+id = "r69"
+class = "extra"
+reason = "drawn by the app, not on the board at 522,599 9x12"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 522
-y = 590
+y = 599
 w = 9
-h = 11
+h = 12
 
 [[deviation]]
-id = "r76"
+id = "r70"
 class = "extra"
-reason = "drawn by the app, not on the board at 541,590 68x9"
+reason = "drawn by the app, not on the board at 541,599 68x10"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 541
-y = 590
+y = 599
 w = 68
-h = 9
+h = 10
 
 [[deviation]]
-id = "r77"
+id = "r71"
 class = "extra"
-reason = "drawn by the app, not on the board at 468,616 32x11"
+reason = "drawn by the app, not on the board at 468,625 32x11"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 468
-y = 616
+y = 625
 w = 32
 h = 11
 
 [[deviation]]
-id = "r78"
+id = "r72"
 class = "extra"
-reason = "drawn by the app, not on the board at 468,642 63x11"
+reason = "drawn by the app, not on the board at 468,651 63x11"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 468
-y = 642
+y = 651
 w = 63
 h = 11

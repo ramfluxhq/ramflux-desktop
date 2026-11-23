@@ -5,14 +5,15 @@
 //! button (or the creation ceremony in its place), and the list of AI
 //! participants with their export forms.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Role, SharedString, Window, div};
 use ramflux_desktop_core::{Account, AgentExportPhase, Networking};
@@ -77,12 +78,13 @@ impl AgentsPanel {
                 h_flex().child(crate::gate::gated(
                     Button::new("agent-create")
                         .small()
-                        .primary()
-                        .label(tr("agent.settings.create"))
+                        .design_primary(cx)
+                        .design_label(tr("agent.settings.create"))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.begin_wizard(window, cx);
                         })),
                     reason,
+                    cx,
                 )),
             )
             .into_any_element()
@@ -196,8 +198,8 @@ impl AgentsPanel {
                 h_flex().gap(space(2.)).items_center().child(state).child(crate::gate::gated(
                     Button::new(domain_id("agent-export", &id))
                         .small()
-                        .outline()
-                        .label(tr("agent.export.button"))
+                        .design_secondary(cx)
+                        .design_label(tr("agent.export.button"))
                         .accessibility_label(tr_args(
                             "agent.export.title",
                             &[("name", &agent.label)],
@@ -209,6 +211,7 @@ impl AgentsPanel {
                             })
                         }),
                     reason,
+                    cx,
                 )),
             );
         v_flex()
@@ -304,9 +307,9 @@ impl AgentsPanel {
                             .child(
                                 Button::new("agent-export-choose")
                                     .small()
-                                    .outline()
-                                    .label(tr("agent.export.choose"))
-                                    .disabled(sending || exported)
+                                    .design_secondary(cx)
+                                    .design_label(tr("agent.export.choose"))
+                                    .design_disabled(sending || exported, cx)
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.choose_location(window, cx);
                                     })),
@@ -336,17 +339,17 @@ impl AgentsPanel {
                     .child(
                         Button::new("agent-export-submit")
                             .small()
-                            .primary()
-                            .label(tr("agent.export.submit"))
+                            .design_primary(cx)
+                            .design_label(tr("agent.export.submit"))
                             .loading(sending)
-                            .disabled(sending || exported || !typed)
+                            .design_disabled(sending || exported || !typed, cx)
                             .on_click(cx.listener(|this, _, window, cx| this.export(window, cx))),
                     )
                     .child(
                         Button::new("agent-export-close")
                             .small()
-                            .outline()
-                            .label(tr("agent.export.close"))
+                            .design_secondary(cx)
+                            .design_label(tr("agent.export.close"))
                             .on_click(cx.listener(|this, _, _, cx| this.close_export(cx))),
                     ),
             )

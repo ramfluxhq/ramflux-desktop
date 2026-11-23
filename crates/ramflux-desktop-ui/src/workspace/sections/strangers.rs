@@ -16,6 +16,7 @@
 //! request leaves; a stale or expired row refuses the whole batch. Block
 //! keeps its own confirmation, so it is offered for one request at a time.
 
+use crate::style::DesignButton as _;
 use ramflux_desktop_navigation::scale::{space, text_caption};
 use std::collections::BTreeSet;
 use std::rc::Rc;
@@ -251,9 +252,9 @@ impl StrangersArea {
                     .child(
                         Button::new("strangers-batch-decline")
                             .small()
-                            .outline()
-                            .label(tr("sections.strangers.decline"))
-                            .disabled(none)
+                            .design_secondary(cx)
+                            .design_label(tr("sections.strangers.decline"))
+                            .design_disabled(none, cx)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.answer_checked(RequestAnswer::Decline, window, cx)
                             })),
@@ -261,9 +262,9 @@ impl StrangersArea {
                     .child(
                         Button::new("strangers-batch-accept")
                             .small()
-                            .primary()
-                            .label(tr("sections.strangers.accept"))
-                            .disabled(none)
+                            .design_primary(cx)
+                            .design_label(tr("sections.strangers.accept"))
+                            .design_disabled(none, cx)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.answer_checked(RequestAnswer::Accept, window, cx)
                             })),
@@ -271,8 +272,8 @@ impl StrangersArea {
                     .child({
                         let button = Button::new("strangers-batch-block")
                             .small()
-                            .danger()
-                            .label(tr("sections.strangers.block"))
+                            .design_danger(cx)
+                            .design_label(tr("sections.strangers.block"))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.answer_checked(RequestAnswer::Block, window, cx)
                             }));
@@ -450,11 +451,12 @@ impl Render for StrangersArea {
                             crate::gate::gated(
                                 Button::new("strangers-open-account")
                                     .xsmall()
-                                    .outline()
-                                    .label(tr("sections.strangers.open_account")),
+                                    .design_secondary(cx)
+                                    .design_label(tr("sections.strangers.open_account")),
                                 Some(directory::unavailable(
                                     ramflux_desktop_sdk::business::ContractGap::AccountPrivacy,
                                 )),
+                                cx,
                             ),
                         ),
                     ),

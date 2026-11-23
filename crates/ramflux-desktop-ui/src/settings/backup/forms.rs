@@ -8,9 +8,9 @@
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{BackupJobKind, BackupPhase, methods};
@@ -105,6 +105,7 @@ impl BackupPanel {
                                 this.open(Form::Backup, window, cx);
                             })),
                         reason,
+                        cx,
                     )),
                 )
                 .into_any_element();
@@ -132,7 +133,7 @@ impl BackupPanel {
                         Button::new("backup-choose-location")
                             .small()
                             .design_secondary(cx)
-                            .label(tr("settings.backup.choose"))
+                            .design_label(tr("settings.backup.choose"))
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 let panel = cx.entity();
                                 file_dialog::save_as(
@@ -208,7 +209,7 @@ impl BackupPanel {
                         Button::new("backup-form-cancel")
                             .small()
                             .design_secondary(cx)
-                            .label(tr("common.cancel"))
+                            .design_label(tr("common.cancel"))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.close_form(window, cx)),
                             ),
@@ -216,13 +217,14 @@ impl BackupPanel {
                     .child(crate::gate::gated(
                         Button::new("backup-start")
                             .small()
-                            .primary()
-                            .label(tr("settings.backup.start"))
-                            .disabled(!ready)
+                            .design_primary(cx)
+                            .design_label(tr("settings.backup.start"))
+                            .design_disabled(!ready, cx)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.start_backup(window, cx);
                             })),
                         reason,
+                        cx,
                     )),
             )
             .into_any_element()
@@ -243,6 +245,7 @@ impl BackupPanel {
                                 this.open(Form::Restore, window, cx);
                             })),
                         reason,
+                        cx,
                     )),
                 )
                 .into_any_element();
@@ -262,7 +265,7 @@ impl BackupPanel {
                         Button::new("restore-choose-file")
                             .small()
                             .design_secondary(cx)
-                            .label(tr("settings.backup.choose"))
+                            .design_label(tr("settings.backup.choose"))
                             .on_click(cx.listener(|_, _, window, cx| {
                                 let panel = cx.entity();
                                 file_dialog::open_file(
@@ -296,7 +299,7 @@ impl BackupPanel {
                         Button::new("restore-form-cancel")
                             .small()
                             .design_secondary(cx)
-                            .label(tr("common.cancel"))
+                            .design_label(tr("common.cancel"))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.close_form(window, cx)),
                             )
@@ -304,13 +307,14 @@ impl BackupPanel {
                     .child(crate::gate::gated(
                         Button::new("restore-verify")
                             .small()
-                            .primary()
-                            .label(tr("settings.backup.verify"))
-                            .disabled(!ready)
+                            .design_primary(cx)
+                            .design_label(tr("settings.backup.verify"))
+                            .design_disabled(!ready, cx)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.start_restore(window, cx);
                             })),
                         reason,
+                        cx,
                     )),
             )
             .into_any_element()

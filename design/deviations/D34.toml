@@ -593,136 +593,110 @@ h = 4
 
 [[deviation]]
 id = "r46"
-class = "extra"
-reason = "drawn by the app, not on the board at 860,446 52x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 860
-y = 446
-w = 52
-h = 13
-
-[[deviation]]
-id = "r47"
 class = "layout"
-reason = "element moved further than its region (ink within 24 px) at 596,451 60x15"
-decision = "unreviewed"
-reviewer = ""
-
-[deviation.region]
-x = 596
-y = 451
-w = 60
-h = 15
-
-[[deviation]]
-id = "r48"
-class = "layout"
-reason = "geometry differs (ink box board 596.5,474.0 155.5x12.5, app 506.5,475.5 236.0x12.0)"
+reason = "geometry differs (ink box board 596.5,451.0 155.5x35.5, app 506.0,441.5 760.0x55.5)"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
 x = 506
-y = 474
-w = 246
-h = 14
+y = 441
+w = 760
+h = 56
 
 [[deviation]]
-id = "r49"
+id = "r47"
 class = "extra"
-reason = "drawn by the app, not on the board at 1211,502 55x23"
+reason = "drawn by the app, not on the board at 1122,511 69x33"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
-x = 1211
-y = 502
-w = 55
-h = 23
+x = 1122
+y = 511
+w = 69
+h = 33
 
 [[deviation]]
-id = "r50"
+id = "r48"
 class = "extra"
-reason = "drawn by the app, not on the board at 514,507 25x13"
+reason = "drawn by the app, not on the board at 1199,511 67x33"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1199
+y = 511
+w = 67
+h = 33
+
+[[deviation]]
+id = "r49"
+class = "extra"
+reason = "drawn by the app, not on the board at 514,521 25x13"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 514
-y = 507
+y = 521
 w = 25
 h = 13
 
 [[deviation]]
-id = "r51"
+id = "r50"
 class = "extra"
-reason = "drawn by the app, not on the board at 1155,507 39x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1155
-y = 507
-w = 39
-h = 13
-
-[[deviation]]
-id = "r52"
-class = "extra"
-reason = "drawn by the app, not on the board at 506,556 73x17"
+reason = "drawn by the app, not on the board at 506,575 73x17"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 506
-y = 556
+y = 575
 w = 73
 h = 17
 
 [[deviation]]
-id = "r53"
+id = "r51"
 class = "extra"
-reason = "drawn by the app, not on the board at 506,592 94x14"
+reason = "drawn by the app, not on the board at 506,611 94x14"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 506
-y = 592
+y = 611
 w = 94
 h = 14
 
 [[deviation]]
-id = "r54"
+id = "r52"
 class = "extra"
-reason = "drawn by the app, not on the board at 608,592 56x13"
+reason = "drawn by the app, not on the board at 608,611 56x13"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 608
-y = 592
+y = 611
 w = 56
 h = 13
 
 [[deviation]]
-id = "r55"
+id = "r53"
 class = "extra"
-reason = "drawn by the app, not on the board at 673,592 115x13"
+reason = "drawn by the app, not on the board at 673,611 115x13"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 673
-y = 592
+y = 611
 w = 115
 h = 13
 
 [[deviation]]
-id = "r56"
+id = "r54"
 class = "layout"
 reason = "geometry differs (ink box board 23.5,751.0 21.0x36.5, app 23.0,732.0 21.0x34.5)"
 decision = "unreviewed"
@@ -735,7 +709,7 @@ w = 22
 h = 56
 
 [[deviation]]
-id = "r57"
+id = "r55"
 class = "spacing"
 reason = "same element moved by +0.0,-10.0 px (ink box board 25.5,808.5 17.0x19.0, app 25.5,798.5 17.0x19.0)"
 decision = "fix"
@@ -748,7 +722,7 @@ w = 18
 h = 30
 
 [[deviation]]
-id = "r58"
+id = "r56"
 class = "missing"
 reason = "drawn on the board, absent in the app at 79,843 142x34"
 decision = "fix"
@@ -761,7 +735,7 @@ w = 142
 h = 34
 
 [[deviation]]
-id = "r59"
+id = "r57"
 class = "missing"
 reason = "drawn on the board, absent in the app at 1267,851 141x34"
 decision = "fix"
@@ -774,7 +748,7 @@ w = 141
 h = 34
 
 [[deviation]]
-id = "r60"
+id = "r58"
 class = "type"
 reason = "text height -3.0 px: type scale (ink box board 26.0,852.0 15.0x15.5, app 27.0,853.5 13.0x12.5)"
 decision = "fix"

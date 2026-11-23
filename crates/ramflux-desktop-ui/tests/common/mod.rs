@@ -166,10 +166,13 @@ pub fn click(cx: &mut TestAppContext, handle: WindowHandle<Root>, id: &'static s
 
 fn reveal_on_entry(cx: &mut TestAppContext, handle: WindowHandle<Root>, id: &'static str) {
     for _ in 0..40 {
+        // Hidden also when only a sliver shows at the window's bottom edge:
+        // a click lands on the control's centre, which must be on screen.
         let hidden = in_window(cx, handle, |window, _| {
             let found = window.find_all(id);
+            let bottom = window.viewport_size().height;
             found.len() == 1
-                && !found[0].visible()
+                && (!found[0].visible() || found[0].bounds().bottom() > bottom)
                 && window.try_find("entry").is_some_and(|entry| entry.visible())
         });
         if !hidden {

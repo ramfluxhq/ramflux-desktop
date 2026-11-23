@@ -447,16 +447,3 @@ x = 26
 y = 852
 w = 15
 h = 16
-
-[[deviation]]
-id = "r35"
-class = "extra"
-reason = "drawn by the app, not on the board at 1301,853 9x9"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1301
-y = 853
-w = 9
-h = 9

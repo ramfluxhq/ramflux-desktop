@@ -6,8 +6,9 @@
 //! grant can be revoked with a confirmation), standing approvals (revocable with a
 //! confirmation) and the read-only audit trail.
 
+use crate::style::DesignButton as _;
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div};
@@ -95,8 +96,8 @@ fn pending_row(store: &Store, grant: &Grant, sink: &EventSink, cx: &App) -> AnyE
             .child(
                 Button::new("approve")
                     .xsmall()
-                    .primary()
-                    .label(tr(if grant.risk.requires_confirmation() {
+                    .design_primary(cx)
+                    .design_label(tr(if grant.risk.requires_confirmation() {
                         "moment.intervention.approve_ask"
                     } else {
                         "moment.intervention.approve"
@@ -108,8 +109,8 @@ fn pending_row(store: &Store, grant: &Grant, sink: &EventSink, cx: &App) -> AnyE
             .child(
                 Button::new("deny")
                     .xsmall()
-                    .outline()
-                    .label(tr("moment.intervention.deny"))
+                    .design_secondary(cx)
+                    .design_label(tr("moment.intervention.deny"))
                     .on_click(move |_, window, cx| deny.emit(UiEventKind::DenyPressed, window, cx)),
             )
     });
@@ -132,15 +133,17 @@ fn grant_row(grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement {
     let revoke = (grant.state == GrantState::Approved).then(|| {
         let sink = sink.clone();
         let grant_id = grant.id.clone();
-        Button::new("revoke").xsmall().outline().label(tr("dock.approvals.revoke")).on_click(
-            move |_, window, cx| {
+        Button::new("revoke")
+            .xsmall()
+            .design_secondary(cx)
+            .design_label(tr("dock.approvals.revoke"))
+            .on_click(move |_, window, cx| {
                 sink.emit(
                     UiEventKind::RevokeGrantPressed { grant_id: grant_id.clone() },
                     window,
                     cx,
                 )
-            },
-        )
+            })
     });
     h_flex()
         .id(domain_id("approvals-grant", &grant.id))
@@ -181,15 +184,17 @@ fn standing_row(approval: &StandingApproval, sink: &EventSink, cx: &App) -> AnyE
     let revoke = (!approval.revoked).then(|| {
         let sink = sink.clone();
         let approval_id = approval.id.clone();
-        Button::new("revoke").xsmall().outline().label(tr("dock.approvals.revoke")).on_click(
-            move |_, window, cx| {
+        Button::new("revoke")
+            .xsmall()
+            .design_secondary(cx)
+            .design_label(tr("dock.approvals.revoke"))
+            .on_click(move |_, window, cx| {
                 sink.emit(
                     UiEventKind::RevokeStandingPressed { approval_id: approval_id.clone() },
                     window,
                     cx,
                 );
-            },
-        )
+            })
     });
     let detail = tr_args(
         "dock.approvals.standing_detail",

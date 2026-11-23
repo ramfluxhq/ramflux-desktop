@@ -12,7 +12,7 @@
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
@@ -147,11 +147,13 @@ impl BackupPanel {
                 BackupJobKind::Backup => "settings.backup.job.cancel_backup",
                 BackupJobKind::Restore => "settings.backup.job.cancel_restore",
             };
-            Button::new("backup-job-cancel").small().design_secondary(cx).label(tr(key)).on_click(
-                cx.listener(move |this, _, window, cx| {
+            Button::new("backup-job-cancel")
+                .small()
+                .design_secondary(cx)
+                .design_label(tr(key))
+                .on_click(cx.listener(move |this, _, window, cx| {
                     this.cancel(id.clone(), window, cx);
-                }),
-            )
+                }))
         });
         v_flex()
             .id("backup-job")
@@ -252,7 +254,7 @@ impl BackupPanel {
                         Button::new("restore-discard")
                             .small()
                             .design_secondary(cx)
-                            .label(tr("common.cancel"))
+                            .design_label(tr("common.cancel"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.cancel(discard.clone(), window, cx);
                             })),
@@ -260,8 +262,8 @@ impl BackupPanel {
                     .child(
                         Button::new("restore-install")
                             .small()
-                            .primary()
-                            .label(tr("settings.backup.verified.install"))
+                            .design_primary(cx)
+                            .design_label(tr("settings.backup.verified.install"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.install(install.clone(), window, cx);
                             })),
@@ -338,7 +340,7 @@ impl BackupPanel {
                             Button::new("backup-allow-missing")
                                 .small()
                                 .design_secondary(cx)
-                                .label(tr("settings.backup.missing.allow"))
+                                .design_label(tr("settings.backup.missing.allow"))
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.allow_missing(&job, files, window, cx);
                                 })),
@@ -364,7 +366,7 @@ impl BackupPanel {
                 Button::new("backup-job-close")
                     .small()
                     .design_secondary(cx)
-                    .label(tr(if failed { "common.close" } else { "settings.backup.close" }))
+                    .design_label(tr(if failed { "common.close" } else { "settings.backup.close" }))
                     .on_click(cx.listener(move |this, _, _, cx| this.dismiss(close.clone(), cx))),
             ),
         )

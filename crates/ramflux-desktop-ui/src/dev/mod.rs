@@ -8,12 +8,11 @@
 //! inspector. Everything goes through [`StoreHandle`]; the panel never writes
 //! the store itself.
 
+use crate::style::DesignButton as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::description_list::DescriptionList;
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, IconName, Selectable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, IntoElement, Render, SharedString, Subscription, WeakEntity, Window, div,
@@ -96,9 +95,9 @@ impl DevPanel {
             let short = name.split('_').next().unwrap_or(name).to_owned();
             Button::new(SharedString::from(format!("dev-scenario-{name}")))
                 .xsmall()
-                .outline()
+                .design_secondary(cx)
                 .selected(active == Some(name))
-                .label(short)
+                .design_label(short)
                 .tooltip(name)
                 .on_click(cx.listener(move |this, _, _, cx| this.load(name, cx)))
         });
@@ -132,9 +131,9 @@ impl DevPanel {
                     .child(
                         Button::new("dev-pause")
                             .xsmall()
-                            .outline()
+                            .design_secondary(cx)
                             .icon(if paused { IconName::Play } else { IconName::Pause })
-                            .label(tr(if paused { "dev.resume" } else { "dev.pause" }))
+                            .design_label(tr(if paused { "dev.resume" } else { "dev.pause" }))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.store.update(cx, |store, cx| store.set_paused(!paused, cx));
                             })),
@@ -142,9 +141,9 @@ impl DevPanel {
                     .child(
                         Button::new("dev-step")
                             .xsmall()
-                            .outline()
-                            .label(tr("dev.step"))
-                            .disabled(next.is_none())
+                            .design_secondary(cx)
+                            .design_label(tr("dev.step"))
+                            .design_disabled(next.is_none(), cx)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.store.update(cx, |store, cx| store.step(cx));
                             })),
@@ -152,22 +151,24 @@ impl DevPanel {
                     .child(
                         Button::new("dev-restart")
                             .xsmall()
-                            .outline()
-                            .label(tr("dev.restart"))
+                            .design_secondary(cx)
+                            .design_label(tr("dev.restart"))
                             .on_click(cx.listener(|this, _, _, cx| this.seek(0, cx))),
                     )
                     .child(
-                        Button::new("dev-back").xsmall().outline().label(tr("dev.back")).on_click(
-                            cx.listener(move |this, _, _, cx| {
+                        Button::new("dev-back")
+                            .xsmall()
+                            .design_secondary(cx)
+                            .design_label(tr("dev.back"))
+                            .on_click(cx.listener(move |this, _, _, cx| {
                                 this.seek(clock.saturating_sub(SEEK_STEP_MS), cx);
-                            }),
-                        ),
+                            })),
                     )
                     .child(
                         Button::new("dev-forward")
                             .xsmall()
-                            .outline()
-                            .label(tr("dev.forward"))
+                            .design_secondary(cx)
+                            .design_label(tr("dev.forward"))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.seek(clock.saturating_add(SEEK_STEP_MS), cx);
                             })),
@@ -180,9 +181,9 @@ impl DevPanel {
         Self::section(tr("dev.agent"), cx).child(
             Button::new("dev-agent-approve")
                 .xsmall()
-                .outline()
-                .label(tr("dev.agent_approve"))
-                .disabled(!available)
+                .design_secondary(cx)
+                .design_label(tr("dev.agent_approve"))
+                .design_disabled(!available, cx)
                 .on_click(cx.listener(|this, _, window, cx| this.agent_approve(window, cx))),
         )
     }

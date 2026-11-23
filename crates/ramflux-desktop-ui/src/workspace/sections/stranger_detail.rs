@@ -86,13 +86,14 @@ impl StrangersArea {
                     button.small().ghost().icon(IconName::Ban).tooltip(tr(label))
                 }
             };
-            crate::gate::gated(button, reason.clone())
+            crate::gate::gated(button, reason.clone(), cx)
         };
         let reply = crate::gate::gated(
             Button::new("stranger-reply")
                 .design_secondary(cx)
-                .label(tr("sections.strangers.reply")),
+                .design_label(tr("sections.strangers.reply")),
             Some(directory::unavailable(ContractGap::StrangerActions)),
+            cx,
         );
         let report = crate::gate::gated(
             Button::new("stranger-report")
@@ -102,6 +103,7 @@ impl StrangersArea {
                 .tooltip(tr("sections.strangers.report"))
                 .accessibility_label(tr("sections.strangers.report")),
             Some(directory::unavailable(ContractGap::StrangerActions)),
+            cx,
         );
         let unverified = participant
             .as_ref()

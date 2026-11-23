@@ -397,7 +397,7 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
                             "task-start-{id}"
                         )))
                         .design_primary(cx)
-                        .label(tr("sections.tasks.start"))
+                        .design_label(tr("sections.tasks.start"))
                         .on_click(move |_, window, cx| {
                             sink.emit(UiEventKind::ProposalAccepted, window, cx)
                         }),
@@ -408,7 +408,7 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
                         "task-open-{id}"
                     )))
                     .design_quiet(cx)
-                    .label(tr(if task.state == TaskState::NeedsMe {
+                    .design_label(tr(if task.state == TaskState::NeedsMe {
                         "sections.tasks.handle"
                     } else {
                         "sections.tasks.details"
@@ -424,7 +424,7 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
                         )))
                         .design_quiet(cx)
                         // Board 06: "Cancel task" for a proposal as for a task.
-                        .label(tr("sections.tasks.cancel"))
+                        .design_label(tr("sections.tasks.cancel"))
                         .on_click(move |_, window, cx| {
                             sink.emit(UiEventKind::CancelPressed, window, cx)
                         }),
@@ -466,6 +466,7 @@ impl Render for TasksArea {
                         .icon(gpui_kit::assets::IconName::Plus)
                         .accessibility_label(tr("sections.tasks.new")),
                     Some(tr("sections.tasks.new_help")),
+                    cx,
                 ),
                 cx,
             ))

@@ -6,8 +6,9 @@
 //! trusted on first use carries a sticky warning. A discovered node offers
 //! Confirm (audited; a trust-on-first-use pin needs a confirmation) and Not now.
 
+use crate::style::DesignButton as _;
 use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
@@ -60,9 +61,9 @@ impl RenderOnce for NodeCard {
                 .gap(space(2.))
                 .child(
                     Button::new("node-confirm")
-                        .primary()
+                        .design_primary(cx)
                         .small()
-                        .label(tr(if tofu { "node.trust" } else { "node.confirm" }))
+                        .design_label(tr(if tofu { "node.trust" } else { "node.confirm" }))
                         .on_click(move |_, window, cx| {
                             confirm.emit(
                                 UiEventKind::ConfirmNodePressed { node_id: node_id.clone() },
@@ -73,9 +74,9 @@ impl RenderOnce for NodeCard {
                 )
                 .child(
                     Button::new("node-decline")
-                        .outline()
+                        .design_secondary(cx)
                         .small()
-                        .label(tr("node.decline"))
+                        .design_label(tr("node.decline"))
                         .on_click(move |_, window, cx| {
                             sink.emit(
                                 UiEventKind::NodeActionPressed {

@@ -162,6 +162,7 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                                 );
                             }),
                         reason,
+                        cx,
                     )),
                 )
                 .into_any_element()

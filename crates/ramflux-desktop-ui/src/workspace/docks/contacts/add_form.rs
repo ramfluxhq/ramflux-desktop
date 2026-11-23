@@ -28,6 +28,7 @@
 //! need the account's home node: without one, the form says so and sends
 //! nothing.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
@@ -409,10 +410,10 @@ where
     let Controls { disabled, card_disabled, on_add, on_import, on_root } = controls;
     let button = Button::new("contact-add")
         .small()
-        .outline()
+        .design_secondary(cx)
         .icon(IconName::Plus)
-        .label(tr("dock.contacts.add.submit"))
-        .disabled(form.is_pending())
+        .design_label(tr("dock.contacts.add.submit"))
+        .design_disabled(form.is_pending(), cx)
         .on_click(on_add);
     let import = Button::new("contact-import")
         .xsmall()
@@ -450,8 +451,8 @@ where
             .child(
                 Button::new("contact-root-replace")
                     .xsmall()
-                    .outline()
-                    .label(tr("dock.contacts.add.root_replace"))
+                    .design_secondary(cx)
+                    .design_label(tr("dock.contacts.add.root_replace"))
                     .on_click(replace),
             )
             .child(
@@ -478,7 +479,7 @@ where
                         .small()
                         .flex_1(),
                 )
-                .child(crate::gate::gated(button, disabled.clone())),
+                .child(crate::gate::gated(button, disabled.clone(), cx)),
         )
         .child(
             div()
@@ -491,6 +492,6 @@ where
         )
         .children(note)
         .children(confirm)
-        .child(h_flex().child(crate::gate::gated(import, disabled.or(card_disabled))))
+        .child(h_flex().child(crate::gate::gated(import, disabled.or(card_disabled), cx)))
         .into_any_element()
 }

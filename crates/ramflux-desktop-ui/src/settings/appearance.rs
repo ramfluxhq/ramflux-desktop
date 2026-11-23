@@ -5,6 +5,7 @@
 //! intent: nothing here reaches the store or the source. Each choice
 //! applies at once and is saved on this device (see [`crate::preferences`]).
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::DropdownMenu as _;
@@ -304,7 +305,7 @@ fn body(cx: &App) -> impl IntoElement {
         .child(label("settings.language"))
         .child(
             Button::new("appearance-language")
-                .outline()
+                .design_secondary(cx)
                 .w_full()
                 .h(rem(40.0))
                 .px(space(3.))

@@ -18,6 +18,7 @@
 //! Both views read the store and the store handle's audio view; they emit
 //! call UI events through the root sink and never change the store.
 
+use crate::style::DesignButton as _;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::time::Duration;
 
@@ -165,9 +166,9 @@ impl Render for IncomingCall {
                     .child(
                         Button::new("incoming-decline")
                             .small()
-                            .danger()
+                            .design_danger(cx)
                             .icon(IconName::PhoneOff)
-                            .label(tr("call.decline"))
+                            .design_label(tr("call.decline"))
                             .on_click(move |_, window, cx| {
                                 decline.emit(
                                     UiEventKind::CallAnswered {
@@ -369,13 +370,14 @@ impl CallBar {
             .child(crate::gate::gated(
                 Button::new("call-again")
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .icon(IconName::Phone)
-                    .label(tr("call_ui.again"))
+                    .design_label(tr("call_ui.again"))
                     .on_click(move |_, window, cx| {
                         sink.emit(UiEventKind::CallStartRequested, window, cx);
                     }),
                 again_reason,
+                cx,
             ))
             .child(
                 Button::new("call-failed-dismiss")
@@ -488,10 +490,10 @@ impl Render for CallBar {
             .child(
                 Button::new("call-mute")
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .selected(muted)
                     .icon(if muted { IconName::MicOff } else { IconName::Mic })
-                    .label(tr(if muted { "call.unmute" } else { "call.mute" }))
+                    .design_label(tr(if muted { "call.unmute" } else { "call.mute" }))
                     .on_click(move |_, _, cx| {
                         store_entity.update(cx, |store, cx| store.set_call_muted(!muted, cx));
                     }),
@@ -499,9 +501,9 @@ impl Render for CallBar {
             .child(
                 Button::new("call-hang-up")
                     .small()
-                    .danger()
+                    .design_danger(cx)
                     .icon(IconName::PhoneOff)
-                    .label(tr(if ringing { "call.cancel" } else { "call.hang_up" }))
+                    .design_label(tr(if ringing { "call.cancel" } else { "call.hang_up" }))
                     .on_click(move |_, window, cx| {
                         hang_up.emit(
                             UiEventKind::CallHangUpPressed { call_id: call_id.clone() },
@@ -514,8 +516,8 @@ impl Render for CallBar {
             let open = cfg!(target_os = "macos").then(|| {
                 Button::new("call-open-settings")
                     .small()
-                    .outline()
-                    .label(tr("call.microphone.open_settings"))
+                    .design_secondary(cx)
+                    .design_label(tr("call.microphone.open_settings"))
                     .on_click(|_, _, cx| cx.open_url(MICROPHONE_SETTINGS))
                     .into_any_element()
             });

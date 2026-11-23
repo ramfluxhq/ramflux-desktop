@@ -529,31 +529,18 @@ h = 15
 [[deviation]]
 id = "r41"
 class = "layout"
-reason = "geometry differs (ink box board 518.5,479.0 71.0x14.5, app 519.5,477.0 59.0x15.0)"
+reason = "geometry differs (ink box board 518.5,479.0 71.0x14.5, app 506.0,465.0 760.0x40.0)"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
-x = 518
-y = 477
-w = 72
-h = 17
+x = 505
+y = 464
+w = 762
+h = 42
 
 [[deviation]]
 id = "r42"
-class = "extra"
-reason = "drawn by the app, not on the board at 1242,482 9x6"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1242
-y = 482
-w = 9
-h = 6
-
-[[deviation]]
-id = "r43"
 class = "token"
 reason = "same geometry, colour differs (board bg #171716 ink #888888, capture bg #171716 ink #888888; ink box board 508.0,517.0 34.0x12.0, app 508.0,517.0 34.0x12.5)"
 decision = "fix"
@@ -566,7 +553,7 @@ w = 34
 h = 13
 
 [[deviation]]
-id = "r44"
+id = "r43"
 class = "token"
 reason = "same geometry, colour differs (board bg #171716 ink #838383, capture bg #171716 ink #848484; ink box board 611.0,517.0 133.0x12.0, app 611.0,517.0 133.0x12.5)"
 decision = "fix"
@@ -579,7 +566,7 @@ w = 133
 h = 13
 
 [[deviation]]
-id = "r45"
+id = "r44"
 class = "token"
 reason = "same geometry, colour differs (board bg #171716 ink #8D8D8C, capture bg #171716 ink #868686; ink box board 581.0,518.0 15.0x11.0, app 581.0,518.0 15.5x11.5)"
 decision = "fix"
@@ -592,7 +579,7 @@ w = 16
 h = 12
 
 [[deviation]]
-id = "r46"
+id = "r45"
 class = "token"
 reason = "same geometry, colour differs (board bg #171716 ink #888888, capture bg #171716 ink #888887; ink box board 549.0,520.0 20.0x9.0, app 549.0,520.0 20.0x9.0)"
 decision = "fix"
@@ -605,7 +592,7 @@ w = 20
 h = 9
 
 [[deviation]]
-id = "r47"
+id = "r46"
 class = "spacing"
 reason = "same element moved by +0.0,+2.5 px (ink box board 506.5,581.5 33.0x16.0, app 506.5,584.0 33.0x16.5)"
 decision = "fix"
@@ -618,7 +605,7 @@ w = 34
 h = 20
 
 [[deviation]]
-id = "r48"
+id = "r47"
 class = "spacing"
 reason = "same element moved by +0.0,+6.0 px (ink box board 507.0,620.5 103.5x23.0, app 507.0,626.5 104.5x23.0)"
 decision = "fix"
@@ -631,7 +618,7 @@ w = 105
 h = 30
 
 [[deviation]]
-id = "r49"
+id = "r48"
 class = "spacing"
 reason = "same element moved by -0.5,+5.5 px (ink box board 627.5,620.5 118.0x23.0, app 627.0,626.0 118.5x23.0)"
 decision = "fix"
@@ -644,7 +631,7 @@ w = 119
 h = 30
 
 [[deviation]]
-id = "r50"
+id = "r49"
 class = "spacing"
 reason = "same element moved by +0.0,+8.0 px (ink box board 506.5,666.0 34.5x14.5, app 506.5,674.0 35.5x14.5)"
 decision = "fix"
@@ -657,7 +644,7 @@ w = 36
 h = 23
 
 [[deviation]]
-id = "r51"
+id = "r50"
 class = "spacing"
 reason = "same element moved by +0.0,+8.0 px (ink box board 551.0,666.0 260.5x14.5, app 551.0,674.0 261.0x15.0)"
 decision = "fix"
@@ -670,7 +657,7 @@ w = 261
 h = 23
 
 [[deviation]]
-id = "r52"
+id = "r51"
 class = "layout"
 reason = "geometry differs (ink box board 506.0,703.5 168.5x62.0, app 506.0,713.5 164.0x64.0)"
 decision = "unreviewed"
@@ -683,7 +670,7 @@ w = 169
 h = 75
 
 [[deviation]]
-id = "r53"
+id = "r52"
 class = "token"
 reason = "same geometry, colour differs (board bg #0D0D0C ink #BBBBBA, capture bg #0D0D0C ink #50504F; ink box board 24.0,871.0 20.0x29.0, app 23.0,872.0 21.0x28.0)"
 decision = "fix"

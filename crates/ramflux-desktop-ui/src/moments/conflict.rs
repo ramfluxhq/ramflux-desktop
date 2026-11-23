@@ -6,6 +6,7 @@
 //! (read-only `Diff`, state owned by the conversation field), and the three
 //! resolutions while the conflict is open.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
@@ -99,9 +100,11 @@ pub fn render(
     ];
     let buttons = choices.into_iter().map(|(id, key, resolution)| {
         let sink = choice_sink.clone();
-        Button::new(id).small().outline().label(tr(key)).on_click(move |_, window, cx| {
-            sink.emit(UiEventKind::ConflictResolved { resolution }, window, cx);
-        })
+        Button::new(id).small().design_secondary(cx).design_label(tr(key)).on_click(
+            move |_, window, cx| {
+                sink.emit(UiEventKind::ConflictResolved { resolution }, window, cx);
+            },
+        )
     });
     let chosen = payload.resolution.map(|resolution| {
         tr(match resolution {

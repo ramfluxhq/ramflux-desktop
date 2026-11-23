@@ -27,6 +27,7 @@
 //! only "The numbers match" marks the contact verified. Without a number
 //! to compare there is nothing to confirm.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -224,14 +225,15 @@ pub fn contact_row(
         crate::gate::gated(
             Button::new("message")
                 .xsmall()
-                .outline()
-                .label(tr("dock.contacts.message"))
+                .design_secondary(cx)
+                .design_label(tr("dock.contacts.message"))
                 .accessibility_label(tr_args(
                     "dock.contacts.message_to",
                     &[("name", &contact.display)],
                 ))
                 .on_click(on_message),
             unreachable,
+            cx,
         )
     });
     let color = match contact.safety {
@@ -245,8 +247,8 @@ pub fn contact_row(
         crate::gate::gated(
             Button::new("verify")
                 .xsmall()
-                .outline()
-                .label(identity::verify_label(contact.safety))
+                .design_secondary(cx)
+                .design_label(identity::verify_label(contact.safety))
                 .accessibility_label(tr_args(
                     if contact.safety.is_stale() {
                         "dock.contacts.verify_again_for"
@@ -257,6 +259,7 @@ pub fn contact_row(
                 ))
                 .on_click(start),
             verify_reason.clone(),
+            cx,
         )
     });
     let comparison = (unverified && open)
@@ -453,10 +456,11 @@ fn comparison(
                 .child(crate::gate::gated(
                     Button::new("verify-confirm")
                         .xsmall()
-                        .primary()
-                        .label(tr("dock.contacts.verify.confirm"))
+                        .design_primary(cx)
+                        .design_label(tr("dock.contacts.verify.confirm"))
                         .on_click(confirm),
                     blocked,
+                    cx,
                 ))
                 .child(
                     Button::new("verify-cancel")
@@ -499,8 +503,8 @@ pub fn blocked_row(contact: &Participant, sink: &EventSink, cx: &App) -> AnyElem
         .child(
             Button::new("unblock")
                 .xsmall()
-                .outline()
-                .label(action_label(ContactAction::Unblock))
+                .design_secondary(cx)
+                .design_label(action_label(ContactAction::Unblock))
                 .on_click(action_handler(sink, &contact.id, ContactAction::Unblock)),
         )
         .child(

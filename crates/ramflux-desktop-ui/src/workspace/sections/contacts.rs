@@ -295,7 +295,7 @@ impl ContactsDirectory {
                             RequestAnswer::Accept => button.design_primary(cx),
                             _ => button.ghost().h(rem(32.0)).px(rem(12.0)),
                         };
-                        crate::gate::gated(button, answer_reason.clone())
+                        crate::gate::gated(button, answer_reason.clone(), cx)
                     };
                     h_flex()
                         .id(SharedString::from(format!("contacts-request-{id}")))
@@ -328,8 +328,9 @@ impl ContactsDirectory {
                         .child(crate::gate::gated(
                             Button::new(SharedString::from(format!("contacts-request-{id}-reply")))
                                 .design_secondary(cx)
-                                .label(tr("sections.strangers.reply")),
+                                .design_label(tr("sections.strangers.reply")),
                             Some(directory::unavailable(ContractGap::StrangerActions)),
+                            cx,
                         ))
                         .child(answer(
                             "accept",
@@ -411,6 +412,7 @@ impl ContactsDirectory {
                                 cx.emit(ContactsDirectoryEvent::AddContact)
                             })),
                         add_reason,
+                        cx,
                     )),
                 ),
                 false,
@@ -461,6 +463,7 @@ impl Render for ContactsDirectory {
                 .tooltip(tr("sections.contacts.add"))
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(ContactsDirectoryEvent::AddContact))),
             add_reason,
+            cx,
         );
         let category = |id: &'static str,
                         key: &'static str,

@@ -7,6 +7,7 @@
 //! Retry, or why nothing was done). Each
 //! one says its meaning in words; color only supports it.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
@@ -101,9 +102,9 @@ fn undelivered(
     let retry = retry.map(|sink| {
         let sink = sink.scoped(Scope::Block(BlockId::new("retry")));
         Button::new("task-retry-decision")
-            .outline()
+            .design_secondary(cx)
             .small()
-            .label(tr("moment.task.answer.undelivered.retry"))
+            .design_label(tr("moment.task.answer.undelivered.retry"))
             .on_click(move |_, window, cx| sink.emit(UiEventKind::RetryDecisionPressed, window, cx))
     });
     h_flex()

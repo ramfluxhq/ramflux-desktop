@@ -6,7 +6,7 @@
 //! and import.
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::*;
@@ -115,12 +115,8 @@ pub(crate) fn page(
                     let device_id = device.id.clone();
                     // Design G08: a quiet danger button.
                     Button::new("revoke")
-                        .ghost()
-                        .h(gpui_kit::rems(32.0 / 15.0))
-                        .px(gpui_kit::rems(12.0 / 15.0))
-                        .bg(palette(cx).danger_bg)
-                        .text_color(palette(cx).danger)
-                        .label(tr("settings.devices.revoke"))
+                        .design_danger_quiet(cx)
+                        .design_label(tr("settings.devices.revoke"))
                         .on_click(move |_, window, cx| {
                             sink.emit(
                                 UiEventKind::RevokeDevicePressed { device_id: device_id.clone() },
@@ -148,7 +144,7 @@ pub(crate) fn page(
                     None
                 };
                 let action = h_flex().gap(space(2.)).children(chip).children(
-                    revoke.map(|button| crate::gate::gated(button, revoke_reason.clone())),
+                    revoke.map(|button| crate::gate::gated(button, revoke_reason.clone(), cx)),
                 );
                 // This SDK version provides no authenticated platform/origin
                 // facts. Never infer native custody from a label or local flag.
@@ -234,6 +230,7 @@ pub(crate) fn page(
                         Some(presentation::contract_reason(
                             ramflux_desktop_sdk::business::ContractGap::DevicePairingApproval,
                         )),
+                        cx,
                     )),
             )
             .child(rows)
@@ -248,7 +245,7 @@ pub(crate) fn page(
             .child(crate::gate::gated(
                 Button::new("sync-export")
                     .design_secondary(cx)
-                    .label(tr("settings.devices.export"))
+                    .design_label(tr("settings.devices.export"))
                     .on_click(move |_, window, cx| {
                         let export = export.clone();
                         file_dialog::save_as(
@@ -269,11 +266,12 @@ pub(crate) fn page(
                         );
                     }),
                 export_reason.clone(),
+                cx,
             ))
             .child(crate::gate::gated(
                 Button::new("sync-import")
                     .design_secondary(cx)
-                    .label(tr("settings.devices.import"))
+                    .design_label(tr("settings.devices.import"))
                     .on_click(move |_, window, cx| {
                         let import = import.clone();
                         file_dialog::open_file(
@@ -293,6 +291,7 @@ pub(crate) fn page(
                         );
                     }),
                 import_reason.clone(),
+                cx,
             ));
         super::design::section("devices-sync", tr("settings.devices.sync"), cx)
             .child(super::design::help(tr("settings.devices.sync_help"), cx))

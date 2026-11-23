@@ -253,7 +253,11 @@ impl Render for DockToolPanel {
                                 Button::new(SharedString::from(format!("dock-pin-{}", tool.key())))
                                     .design_secondary(cx)
                                     .selected(pinned)
-                                    .label(tr(if pinned { "dock.unpin" } else { "dock.pin" }))
+                                    .design_label(tr(if pinned {
+                                        "dock.unpin"
+                                    } else {
+                                        "dock.pin"
+                                    }))
                                     .on_click(cx.listener(move |_, _, _, cx| {
                                         cx.emit(DockToolEvent::PinToggled(tool));
                                     })),

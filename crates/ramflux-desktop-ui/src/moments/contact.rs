@@ -4,8 +4,9 @@
 //! Contact request moments: who asks, their note, and Accept / Reject while
 //! the request is open.
 
+use crate::style::DesignButton as _;
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
@@ -34,8 +35,8 @@ pub fn render(
             .child(
                 Button::new("contact-accept")
                     .small()
-                    .primary()
-                    .label(tr("moment.contact.accept"))
+                    .design_primary(cx)
+                    .design_label(tr("moment.contact.accept"))
                     .on_click(move |_, window, cx| {
                         answer_sink.emit(UiEventKind::ContactAnswered { accept: true }, window, cx);
                     }),
@@ -43,8 +44,8 @@ pub fn render(
             .child(
                 Button::new("contact-reject")
                     .small()
-                    .outline()
-                    .label(tr("moment.contact.reject"))
+                    .design_secondary(cx)
+                    .design_label(tr("moment.contact.reject"))
                     .on_click(move |_, window, cx| {
                         reject_sink.emit(
                             UiEventKind::ContactAnswered { accept: false },

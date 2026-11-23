@@ -6,6 +6,7 @@
 //! role (status or alert) whose name is its text, so assistive technology
 //! and the tests read the same words the screen shows.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::alert::Alert;
@@ -95,10 +96,10 @@ impl CeremonyPanel {
     pub(super) fn cancel_button(&self, key: &str, cx: &mut Context<Self>) -> Button {
         let waiting = self.pending == Some(Pending::Cancel);
         Button::new("ceremony-cancel")
-            .outline()
-            .label(tr(key))
+            .design_secondary(cx)
+            .design_label(tr(key))
             .loading(waiting)
-            .disabled(waiting)
+            .design_disabled(waiting, cx)
             .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx)))
     }
 
@@ -160,8 +161,8 @@ impl CeremonyPanel {
                     .child(
                         self.sending(
                             Button::new("ceremony-continue")
-                                .primary()
-                                .label(tr("ceremony.continue"))
+                                .design_primary(cx)
+                                .design_label(tr("ceremony.continue"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.begin(window, cx);
                                 })),
@@ -203,8 +204,8 @@ impl CeremonyPanel {
                     .child(
                         self.sending(
                             Button::new("ceremony-show")
-                                .primary()
-                                .label(tr("ceremony.ready.show"))
+                                .design_primary(cx)
+                                .design_label(tr("ceremony.ready.show"))
                                 .on_click(cx.listener(|this, _, window, cx| this.show(window, cx))),
                             Pending::Show,
                         ),
@@ -331,8 +332,8 @@ impl CeremonyPanel {
                         ))
                         .child(
                             Button::new("ceremony-reveal")
-                                .outline()
-                                .label(tr("ceremony.show.reveal"))
+                                .design_secondary(cx)
+                                .design_label(tr("ceremony.show.reveal"))
                                 .on_click(
                                     cx.listener(|this, _, window, cx| this.reveal(window, cx)),
                                 ),
@@ -352,8 +353,8 @@ impl CeremonyPanel {
                     .child(
                         self.sending(
                             Button::new("ceremony-hide")
-                                .primary()
-                                .label(tr("ceremony.show.done"))
+                                .design_primary(cx)
+                                .design_label(tr("ceremony.show.done"))
                                 .on_click(cx.listener(|this, _, window, cx| this.hide(window, cx))),
                             Pending::Hide,
                         ),
@@ -468,13 +469,13 @@ impl CeremonyPanel {
                     .gap(space(2.))
                     .child(
                         Button::new("ceremony-next")
-                            .primary()
-                            .label(tr(if self.agent {
+                            .design_primary(cx)
+                            .design_label(tr(if self.agent {
                                 "agent.create.submit"
                             } else {
                                 "ceremony.confirm.next"
                             }))
-                            .disabled(!ready)
+                            .design_disabled(!ready, cx)
                             .on_click(cx.listener(|this, _, window, cx| this.next(window, cx))),
                     )
                     .child(self.cancel_button("ceremony.cancel", cx)),
@@ -552,8 +553,8 @@ impl CeremonyPanel {
                     .child(
                         self.sending(
                             Button::new("ceremony-confirm-submit")
-                                .primary()
-                                .label(tr("ceremony.passphrase.submit"))
+                                .design_primary(cx)
+                                .design_label(tr("ceremony.passphrase.submit"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.confirm(window, cx);
                                 })),
@@ -615,8 +616,8 @@ impl CeremonyPanel {
             .child(
                 h_flex().child(
                     Button::new("ceremony-done-close")
-                        .primary()
-                        .label(tr("ceremony.done.close"))
+                        .design_primary(cx)
+                        .design_label(tr("ceremony.done.close"))
                         .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
                 ),
             )
@@ -640,16 +641,16 @@ impl CeremonyPanel {
                     .gap(space(2.))
                     .child(
                         Button::new("ceremony-restart")
-                            .primary()
-                            .label(tr("ceremony.restart"))
+                            .design_primary(cx)
+                            .design_label(tr("ceremony.restart"))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.start_over(window, cx)),
                             ),
                     )
                     .child(
                         Button::new("ceremony-close")
-                            .outline()
-                            .label(tr("ceremony.close"))
+                            .design_secondary(cx)
+                            .design_label(tr("ceremony.close"))
                             .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
                     ),
             )
@@ -680,14 +681,14 @@ impl CeremonyPanel {
                 .gap(space(2.))
                 .child(
                     Button::new("ceremony-cancel-yes")
-                        .danger()
-                        .label(tr("ceremony.cancel_yes"))
+                        .design_danger(cx)
+                        .design_label(tr("ceremony.cancel_yes"))
                         .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx))),
                 )
                 .child(
                     Button::new("ceremony-cancel-no")
-                        .outline()
-                        .label(tr("ceremony.cancel_no"))
+                        .design_secondary(cx)
+                        .design_label(tr("ceremony.cancel_no"))
                         .on_click(cx.listener(|this, _, window, cx| this.keep_going(window, cx))),
                 ),
         )

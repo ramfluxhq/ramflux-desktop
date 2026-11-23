@@ -10,6 +10,7 @@
 //! to compare it with, and only "The numbers match" emits the verification.
 //! A changed or forked key shows a sticky danger banner until resolved.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::StyledExt as _;
@@ -170,8 +171,8 @@ impl ContactProfile {
                         .child(crate::gate::gated(
                             Button::new("contact-numbers-match")
                                 .small()
-                                .primary()
-                                .label(tr("dock.contacts.verify.confirm"))
+                                .design_primary(cx)
+                                .design_label(tr("dock.contacts.verify.confirm"))
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.comparing = false;
                                     this.emit(
@@ -184,6 +185,7 @@ impl ContactProfile {
                                     cx.notify();
                                 })),
                             blocked,
+                            cx,
                         ))
                         .child(
                             Button::new("contact-compare-cancel")
@@ -201,8 +203,8 @@ impl ContactProfile {
                 h_flex().child(
                     Button::new("contact-compare")
                         .small()
-                        .outline()
-                        .label(crate::identity::verify_label(contact.safety))
+                        .design_secondary(cx)
+                        .design_label(crate::identity::verify_label(contact.safety))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.comparing = true;
                             cx.notify();
@@ -280,38 +282,42 @@ impl Render for ContactProfile {
         let message = crate::gate::gated(
             Button::new("contact-message")
                 .small()
-                .primary()
+                .design_primary(cx)
                 .icon(IconName::MessageSquare)
-                .label(tr("dock.contacts.message"))
+                .design_label(tr("dock.contacts.message"))
                 .on_click(cx.listener(move |_, _, _, cx| {
                     cx.emit(ContactProfileEvent::Message(message_id.clone()));
                 })),
             unreachable,
+            cx,
         );
         let call_sink = direct.map(|context| self.sink.scoped(Scope::Context(context)));
         let call = crate::gate::gated(
             Button::new("contact-call")
                 .small()
-                .outline()
+                .design_secondary(cx)
                 .icon(IconName::Phone)
-                .label(tr("sections.contact.call"))
+                .design_label(tr("sections.contact.call"))
                 .on_click(move |_, window, cx| {
                     if let Some(sink) = &call_sink {
                         sink.emit(UiEventKind::CallStartRequested, window, cx);
                     }
                 }),
             call_reason,
+            cx,
         );
+        let gate_palette = ramflux_desktop_navigation::palette(cx);
+        let danger_quiet =
+            crate::style::DesignStyle::new(crate::style::ButtonKind::DangerQuiet, cx);
         let action =
             |button_id: &'static str, action: ContactAction, reason: Option<SharedString>| {
                 let sink = self.sink.clone();
                 let participant_id = id.clone();
-                crate::gate::gated(
+                crate::gate::gated_in(
                     Button::new(button_id)
                         .small()
-                        .outline()
-                        .danger()
-                        .label(action_label(action))
+                        .design_style(&danger_quiet)
+                        .design_label(action_label(action))
                         .on_click(move |_, window, cx| {
                             sink.emit(
                                 UiEventKind::ContactActionPressed {
@@ -323,6 +329,7 @@ impl Render for ContactProfile {
                             );
                         }),
                     reason,
+                    &gate_palette,
                 )
             };
         let safety = self.safety_block(&contact, cx);

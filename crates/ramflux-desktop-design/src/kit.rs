@@ -69,6 +69,11 @@ pub struct KitResult {
     pub diff_ratio: f64,
     pub ssim: f64,
     pub regions: usize,
+    /// Regions left after the lead's acceptance rules (window chrome, pure
+    /// glyph rasterisation); zero means within tolerance.
+    pub open_regions: usize,
+    /// Class of each open region (`crate::classify`).
+    pub open_classes: Vec<String>,
     pub largest: Vec<Rect>,
     pub three_up: Option<String>,
 }
@@ -101,6 +106,8 @@ pub fn run(
             diff_ratio: 0.0,
             ssim: 0.0,
             regions: 0,
+            open_regions: 0,
+            open_classes: Vec::new(),
             largest: Vec::new(),
             three_up: None,
         };
@@ -126,6 +133,18 @@ pub fn run(
             result.diff_ratio = c.ratio();
             result.ssim = c.ssim;
             result.regions = c.regions.len();
+            // The structure rule (a region over 15 % of a screen) is a
+            // screen rule; a component is measured against a board-sized
+            // area so its regions get their geometric classes.
+            let area = 1440 * 900;
+            for g in &c.regions {
+                let m = crate::classify::measure(&reference, &capture, g.rect, 1);
+                let at = crate::classify::classify(&m, g.rect, area);
+                if at.decision != crate::deviations::Decision::Accepted {
+                    result.open_regions += 1;
+                    result.open_classes.push(at.class.to_owned());
+                }
+            }
             result.largest = c.regions.iter().take(3).map(|g| g.rect).collect();
             let mut heat = compare::heat_map(&capture, &c);
             for g in &c.regions {
@@ -155,11 +174,16 @@ pub fn markdown(results: &[KitResult]) -> String {
         compared.len(),
         results.len() - compared.len()
     ));
-    out.push_str("| # | Component | Board | Source | Diff | SSIM | Regions | Largest | Three-up |\n|---|---|---|---|---|---|---|---|---|\n");
+    let within = compared.iter().filter(|r| r.open_regions == 0).count();
+    out.push_str(&format!(
+        "Within tolerance (no region left after the chrome and rasterisation rules): {within} of {}.\n\n",
+        compared.len()
+    ));
+    out.push_str("| # | Component | Board | Source | Diff | SSIM | Regions | Open (classes) | Largest | Three-up |\n|---|---|---|---|---|---|---|---|---|---|\n");
     for (i, r) in compared.iter().enumerate() {
         let largest: Vec<String> = r.largest.iter().map(|g| format!("`{g}`")).collect();
         out.push_str(&format!(
-            "| {} | {} | {} | {} | {:.1}% | {:.3} | {} | {} | [png]({}) |\n",
+            "| {} | {} | {} | {} | {:.1}% | {:.3} | {} | {} {} | {} | [png]({}) |\n",
             i + 1,
             r.name,
             r.board,
@@ -167,6 +191,12 @@ pub fn markdown(results: &[KitResult]) -> String {
             r.diff_ratio * 100.0,
             r.ssim,
             r.regions,
+            r.open_regions,
+            if r.open_classes.is_empty() {
+                String::new()
+            } else {
+                format!("({})", r.open_classes.join(", "))
+            },
             largest.join(" "),
             r.three_up.clone().unwrap_or_default()
         ));

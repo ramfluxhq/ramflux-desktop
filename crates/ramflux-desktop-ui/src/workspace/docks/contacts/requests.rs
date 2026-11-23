@@ -21,6 +21,7 @@
 //! is said so; the requests already known stay answerable, and the next
 //! poll reads them again.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -78,11 +79,11 @@ pub fn pending_row(
                 );
             });
         let button = match answer {
-            RequestAnswer::Accept => button.primary(),
-            RequestAnswer::Decline => button.outline(),
+            RequestAnswer::Accept => button.design_primary(cx),
+            RequestAnswer::Decline => button.design_secondary(cx),
             RequestAnswer::Block => button.ghost(),
         };
-        crate::gate::gated(button, reason.cloned())
+        crate::gate::gated(button, reason.cloned(), cx)
     };
     v_flex()
         .id(domain_id("contacts-request", &request.peer))
@@ -234,12 +235,12 @@ pub fn floors_notice(store: &Store, sink: &EventSink, cx: &App) -> Option<AnyEle
             .when(floors.clearable > 0, |col| {
                 let button = Button::new("contacts-floors-clear")
                     .xsmall()
-                    .outline()
-                    .label(tr_args("dock.contacts.floors.clear", &args))
+                    .design_secondary(cx)
+                    .design_label(tr_args("dock.contacts.floors.clear", &args))
                     .on_click(move |_, window, cx| {
                         sink.emit(UiEventKind::ClearRequestFloorsPressed, window, cx);
                     });
-                col.child(h_flex().justify_row_end().child(crate::gate::gated(button, reason)))
+                col.child(h_flex().justify_row_end().child(crate::gate::gated(button, reason, cx)))
             })
             .into_any_element(),
     )

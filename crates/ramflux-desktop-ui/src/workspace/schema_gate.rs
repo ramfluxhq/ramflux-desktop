@@ -11,10 +11,11 @@
 //! screen offers only a new account or another account: nothing on it
 //! deletes, converts or retries.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, WeakEntity, div};
 use ramflux_desktop_core::{AccountId, LockState, SchemaGate};
@@ -116,9 +117,9 @@ pub(super) fn blocking(
                     .gap(space(2.))
                     .child(
                         Button::new("schema-switch-account")
-                            .outline()
-                            .label(tr("schema.reset.switch"))
-                            .disabled(other_account.is_none())
+                            .design_secondary(cx)
+                            .design_label(tr("schema.reset.switch"))
+                            .design_disabled(other_account.is_none(), cx)
                             .on_click(move |_, _, cx| {
                                 if let Some(target) = &other_account {
                                     store
@@ -131,8 +132,8 @@ pub(super) fn blocking(
                     )
                     .child(
                         Button::new("schema-create-account")
-                            .outline()
-                            .label(tr("schema.reset.create"))
+                            .design_secondary(cx)
+                            .design_label(tr("schema.reset.create"))
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(OpenSettings), cx);
                             }),

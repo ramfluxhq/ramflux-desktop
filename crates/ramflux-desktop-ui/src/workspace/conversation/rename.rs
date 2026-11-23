@@ -11,10 +11,11 @@
 //! daemon's reason when the rename fails. The name is this account's; the
 //! help line says only the user sees it.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ClickEvent, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{ContextId, IntentError, Store, check_group_title, methods};
@@ -127,9 +128,9 @@ pub fn render(
                 .child(
                     Button::new("conversation-rename-save")
                         .small()
-                        .primary()
-                        .label(tr("group.rename.save"))
-                        .disabled(saving)
+                        .design_primary(cx)
+                        .design_label(tr("group.rename.save"))
+                        .design_disabled(saving, cx)
                         .on_click(on_save),
                 )
                 .child(

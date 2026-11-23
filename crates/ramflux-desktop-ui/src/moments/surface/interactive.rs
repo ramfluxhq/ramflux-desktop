@@ -9,8 +9,9 @@
 //! (rule B3). An approval block decides the grant it names through the same
 //! policy as an intervention (high risk opens the confirm strip).
 
+use crate::style::DesignButton as _;
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, v_flex,
@@ -101,9 +102,9 @@ pub fn select(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Option<
         let is_selected = value == selected;
         Button::new(domain_id("option", &value))
             .small()
-            .outline()
+            .design_secondary(cx)
             .selected(is_selected)
-            .label(text)
+            .design_label(text)
             .on_click(move |_, window, cx| {
                 sink.emit(UiEventKind::FieldChanged { value: value.clone() }, window, cx);
             })
@@ -153,14 +154,20 @@ pub fn approval(data: &JsonValue, context: &BlockContext<'_>, cx: &App) -> Optio
         });
         h_flex()
             .gap(space(2.))
-            .child(Button::new("approve").primary().small().label(approve_label).on_click(
-                move |_, window, cx| approve_sink.emit(UiEventKind::ApprovePressed, window, cx),
-            ))
+            .child(
+                Button::new("approve")
+                    .design_primary(cx)
+                    .small()
+                    .design_label(approve_label)
+                    .on_click(move |_, window, cx| {
+                        approve_sink.emit(UiEventKind::ApprovePressed, window, cx)
+                    }),
+            )
             .child(
                 Button::new("deny")
-                    .outline()
+                    .design_secondary(cx)
                     .small()
-                    .label(tr("moment.intervention.deny"))
+                    .design_label(tr("moment.intervention.deny"))
                     .on_click(move |_, window, cx| {
                         deny_sink.emit(UiEventKind::DenyPressed, window, cx)
                     }),

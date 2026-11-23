@@ -22,8 +22,9 @@
 //! The name is the one this account keeps for the group; other members name
 //! it themselves, which the form says. The form is view-local.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{
@@ -454,15 +455,18 @@ impl Render for NewGroup {
                             .child(div().flex_1())
                             .child(
                                 Button::new("new-group-cancel")
-                                    .outline()
-                                    .label(tr("group.new.cancel"))
+                                    .design_secondary(cx)
+                                    .design_label(tr("group.new.cancel"))
                                     .on_click(cx.listener(|this, _, _, cx| this.cancel(cx))),
                             )
                             .child(
                                 Button::new("new-group-create")
-                                    .primary()
-                                    .label(tr("group.new.create"))
-                                    .disabled(creating || waiting || self.context_id.is_none())
+                                    .design_primary(cx)
+                                    .design_label(tr("group.new.create"))
+                                    .design_disabled(
+                                        creating || waiting || self.context_id.is_none(),
+                                        cx,
+                                    )
                                     .on_click(
                                         cx.listener(|this, _, window, cx| this.create(window, cx)),
                                     ),

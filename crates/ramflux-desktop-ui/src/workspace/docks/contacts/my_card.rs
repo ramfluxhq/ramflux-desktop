@@ -14,6 +14,7 @@
 //! A card names the account's home node: without one the section says so
 //! instead of offering a card.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, v_flex};
@@ -135,7 +136,7 @@ fn copy_button(
         .xsmall()
         .outline()
         .icon(if done { IconName::Check } else { IconName::Copy })
-        .label(tr(label))
+        .design_label(tr(label))
         .on_click(move |_, window, cx| copy(part, text.clone(), window, cx))
 }
 
@@ -148,9 +149,9 @@ pub fn render(state: &MyCard, store: &Store, handlers: Handlers, cx: &App) -> An
             .child(
                 Button::new("contact-card-show")
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .icon(IconName::CircleUser)
-                    .label(tr("dock.contacts.card.show"))
+                    .design_label(tr("dock.contacts.card.show"))
                     .on_click(show),
             )
             .into_any_element(),
