@@ -118,12 +118,18 @@ pub fn fingerprint_matches(expected: &str, shown: &str) -> bool {
     !shown.is_empty() && (shown == fingerprint_of(expected) || shown.eq_ignore_ascii_case(expected))
 }
 
-/// A fresh random passphrase for a demo account (never printed).
+/// A fresh random six-digit account code for a demo account (never
+/// printed), one the daemon admits (not all one digit, not a straight run).
 pub fn passphrase() -> String {
     use std::io::Read as _;
-    let mut bytes = [0_u8; 18];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut bytes))
-        .expect("system randomness");
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    loop {
+        let mut bytes = [0_u8; 6];
+        std::fs::File::open("/dev/urandom")
+            .and_then(|mut f| f.read_exact(&mut bytes))
+            .expect("system randomness");
+        let code: String = bytes.iter().map(|b| char::from(b'0' + b % 10)).collect();
+        if ramflux_desktop_core::check_account_code(&code).is_ok() {
+            return code;
+        }
+    }
 }

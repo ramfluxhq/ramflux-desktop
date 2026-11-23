@@ -16,7 +16,7 @@ use ramflux_desktop_core::{
 use ramflux_desktop_test::mock_recovery::DEMO_ANCHOR;
 use ramflux_desktop_ui::i18n::{tr, tr_args};
 
-const PASSPHRASE: &str = "river stone lantern";
+const PASSPHRASE: &str = "482915";
 
 #[gpui_kit::test]
 fn the_screens_speak_chinese_when_the_interface_does(cx: &mut TestAppContext) {

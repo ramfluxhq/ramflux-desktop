@@ -28,7 +28,7 @@ use ramflux_desktop_ui::route::{EntryStep, Page};
 
 type Handle = WindowHandle<gpui_kit::base::Root>;
 
-const PASSPHRASE: &str = "river stone lantern";
+const PASSPHRASE: &str = "482915";
 const ID: &str = "acct-r";
 
 fn account(id: &str, kind: AccountKind, lock_state: LockState) -> DomainEvent {

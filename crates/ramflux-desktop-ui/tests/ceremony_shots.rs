@@ -49,7 +49,7 @@ mod shots {
     use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
 
-    const PASSPHRASE: &str = "river stone lantern";
+    const PASSPHRASE: &str = "482915";
 
     struct Run {
         cx: HeadlessAppContext,

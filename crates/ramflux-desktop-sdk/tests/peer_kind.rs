@@ -9,7 +9,7 @@ mod common;
 
 use ramflux_desktop_core::{
     AccountId, ContextId, DomainEvent, KindClaim, MomentKind, Participant, ParticipantId,
-    ParticipantKind, PeerKind, SafetyState, TaskEventKind, Timestamp,
+    ParticipantKind, PeerKind, SafetyState, Timestamp,
 };
 use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};

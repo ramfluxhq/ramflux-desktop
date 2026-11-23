@@ -59,7 +59,7 @@ fn a_row_inserted_by_order_key_lands_between_its_neighbours(cx: &mut gpui_kit::T
     // A service row with a clock between the two arrives last.
     let pin = service_update(
         identity(DM, &[3; 4], "dev-ana", 150, 150),
-        ServiceAction::ServicePinChanged,
+        ServiceAction::ServicePinAdded,
         &[],
         None,
     );

@@ -292,7 +292,7 @@ mod shots {
         run.until("the job API at daemon scope", |r| {
             r.store(|s| s.unsupported_reason(methods::RESTORE_VERIFY).is_none())
         });
-        run.click("entry-path-2");
+        run.click("entry-path-1");
         let panel = run.cx.update(|cx| run.shell.read(cx).entry().read(cx).full_restore().clone());
         run.cx.update(|cx| {
             panel.update(cx, |panel, cx| {

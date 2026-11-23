@@ -28,7 +28,7 @@ use ramflux_desktop_ui::route::{EntryStep, Page};
 
 type Handle = WindowHandle<gpui_kit::base::Root>;
 
-const PASSPHRASE: &str = "river stone lantern";
+const PASSPHRASE: &str = "482915";
 
 /// A fresh device whose daemon offers the phrase, over `custody`.
 fn fresh_device(

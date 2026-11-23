@@ -548,41 +548,39 @@ impl World {
                 else {
                     return Reply::Error("ValidationFailed", "unknown group or member".to_owned());
                 };
+                // The group's name is shared: the new member sees it too.
+                if let Some(name) = group.titles.values().next().cloned() {
+                    group.titles.insert(principal.clone(), name);
+                }
                 group.members.push((device, principal));
                 json!({ "added": true })
             }
-            "group.send" | "group.receive" => {
+            "group.send" => {
                 self.clock += 1;
                 let at = self.clock;
                 let Some(group) = self.groups.get_mut(&text(body, "group_id")) else {
                     return Reply::Error("ValidationFailed", "unknown group".to_owned());
                 };
-                // Each daemon records the name its own group calls carry.
-                group.titles.insert(me.principal.clone(), body["title"].clone());
-                if method == "group.send" {
-                    let message = text(body, "message_id");
-                    group.messages.push((
-                        message.clone(),
-                        me.device.clone(),
-                        decoded(body["plaintext_body_base64"].as_str().unwrap_or_default()),
-                        at,
-                    ));
-                    json!({ "message_id": message })
-                } else {
-                    let messages: Vec<Value> = group
-                        .messages
-                        .iter()
-                        .map(|(m, sender, text, at)| rows::message(m, sender, text, *at, false))
-                        .collect();
-                    // The daemon decrypts what it received for this member.
-                    let decrypted: Vec<Value> = group
-                        .messages
-                        .iter()
-                        .filter(|(_, sender, _, _)| sender != &me.device)
-                        .map(|(m, _, text, _)| json!({ "message_id": m, "body_utf8": text }))
-                        .collect();
-                    json!({ "messages": messages, "decrypted_messages": decrypted })
+                let message = text(body, "message_id");
+                group.messages.push((
+                    message.clone(),
+                    me.device.clone(),
+                    decoded(body["plaintext_body_base64"].as_str().unwrap_or_default()),
+                    at,
+                ));
+                json!({ "message_id": message })
+            }
+            // The shared group name: every member sees it.
+            "group.name.set" => {
+                let Some(group) = self.groups.get_mut(&text(body, "group_id")) else {
+                    return Reply::Error("ValidationFailed", "unknown group".to_owned());
+                };
+                let principals: Vec<String> =
+                    group.members.iter().map(|(_, p)| p.clone()).collect();
+                for principal in principals {
+                    group.titles.insert(principal, body["name"].clone());
                 }
+                json!({ "name": body["name"] })
             }
             "contact.verify" => {
                 let commitment = text(body, "contact_identity_commitment");
@@ -592,13 +590,26 @@ impl World {
             "message.submit" => return self.submit(side, id, body),
             "message.receive" => self.receive(side, id, &text(body, "conversation_id")),
             "message.receipt.delivered" => return self.receipt_delivered(body),
-            "message.list" => {
-                let messages = me
-                    .conversations
-                    .get(&text(body, "conversation_id"))
-                    .map(|c| c.messages.clone())
-                    .unwrap_or_default();
-                json!({ "messages": messages })
+            // The read model of a direct or group conversation.
+            "message.read" => {
+                let conversation = text(body, "conversation_id");
+                let records: Vec<Value> = match me.conversations.get(&conversation) {
+                    Some(direct) => direct.messages.clone(),
+                    None => self
+                        .groups
+                        .values()
+                        .find(|g| g.conversation == conversation)
+                        .map(|g| {
+                            g.messages
+                                .iter()
+                                .map(|(m, sender, text, at)| {
+                                    rows::message(m, sender, text, *at, false)
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                };
+                ramflux_desktop_test::fake_read_model::page(&conversation, &records, &me.device)
             }
             _ => json!({}),
         })
@@ -675,8 +686,8 @@ impl World {
                 .messages
                 .push(rows::message(
                     &held.envelope,
-                    // A received row names its sender by principal.
-                    &held.from.principal,
+                    // The read model names the author device.
+                    &held.from.device,
                     &held.text,
                     held.at,
                     false,

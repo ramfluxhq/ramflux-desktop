@@ -188,7 +188,7 @@ fn a_fingerprint_matches_its_key_or_itself_and_nothing_else() {
 #[test]
 fn passphrases_are_fresh() {
     let (one, two) = (passphrase(), passphrase());
-    assert_eq!(one.len(), 36);
+    assert_eq!(one.len(), 6);
     assert_ne!(one, two);
 }
 

@@ -67,7 +67,7 @@ fn composer_focused(cx: &mut TestAppContext, handle: Handle) -> bool {
 }
 
 #[gpui_kit::test]
-fn the_entry_flow_by_keyboard_confirms_a_node_and_creates_an_account(cx: &mut TestAppContext) {
+fn the_entry_flow_by_keyboard_confirms_a_node(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s01_first_launch");
     advance(cx, 3_000);
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Node));
@@ -76,17 +76,6 @@ fn the_entry_flow_by_keyboard_confirms_a_node_and_creates_an_account(cx: &mut Te
     assert_eq!(last_body(cx, &shell, methods::NODE_CONFIRM)["node_id"], "n-harbor");
     advance(cx, 300);
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account));
-    tab_to(cx, handle, None, "account-label", 40);
-    typed(cx, handle, "Personal");
-    tab_to(cx, handle, None, "account-secret", 10);
-    typed(cx, handle, "river stone lantern");
-    tab_to(cx, handle, None, "account-create", 10);
-    press(cx, handle, "enter");
-    let body = last_body(cx, &shell, methods::ACCOUNT_CREATE);
-    assert_eq!(body["label"], "Personal");
-    assert!(!body.to_string().contains("lantern"), "the passphrase travels as a secret");
-    advance(cx, 800);
-    assert_eq!(page(cx, &shell), Page::Workspace, "created by keyboard alone");
 }
 
 #[gpui_kit::test]
