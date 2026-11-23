@@ -22,7 +22,7 @@ h = 21
 [[deviation]]
 id = "r02"
 class = "spacing"
-reason = "same element moved by +0.5,-4.5 px (ink box board 466.5,29.5 47.0x11.0, app 467.0,25.0 48.0x11.5)"
+reason = "same element moved by +1.0,-4.0 px (ink box board 466.5,29.5 47.0x11.0, app 467.5,25.5 47.0x11.5)"
 decision = "fix"
 reviewer = "rf-design classify"
 

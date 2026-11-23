@@ -52,17 +52,17 @@ pub(super) fn notice(
         .min_w_0()
         .w_full()
         .whitespace_normal()
-        // Design `RF / Tip bar`: the notice sits on the surface fill.
-        .p(space(3.))
-        .rounded(gpui_kit::rems(palette(cx).radius_md / 15.0))
-        .bg(palette(cx).surface)
-        .child(catalog::state_block(
-            "settings-state".into(),
-            title,
-            description,
-            kind,
-            div(),
-            palette(cx),
+        // Design `RF / Tip bar`: the tone's icon and one line of text
+        // (title, then description), danger for an error.
+        .child(crate::status::tip_bar(
+            if kind == catalog::StateKind::Error {
+                crate::status::Tone::Danger
+            } else {
+                crate::status::Tone::Neutral
+            },
+            (kind == catalog::StateKind::Loading).then_some(IconName::LoaderCircle),
+            crate::i18n::sentences(&title, &description),
+            cx,
         ))
         .into_any_element()
 }

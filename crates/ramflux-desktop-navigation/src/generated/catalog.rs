@@ -176,7 +176,6 @@ pub fn chip(id: SharedString, label: SharedString, selected: bool, disabled: boo
     Button::new(element_id(&id, "chip")).ghost().disabled(disabled).child(frame(styles::chip_default(theme, false)).border_1()
         .border_color(if selected { theme.primary } else { theme.line }).child(label)).on_click(move |_, window, cx| on_action(&id, window, cx))
 }
-pub fn badge(label: SharedString, theme: RFTheme) -> impl IntoElement { frame(styles::badge_default(theme, false)).child(label) }
 
 pub struct NoticeContent { title: SharedString, description: SharedString, icon: AnyElement, action: AnyElement }
 impl NoticeContent {

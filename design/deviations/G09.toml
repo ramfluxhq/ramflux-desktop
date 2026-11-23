@@ -165,7 +165,7 @@ h = 28
 [[deviation]]
 id = "r13"
 class = "layout"
-reason = "geometry differs (ink box board 514.5,208.5 47.0x11.5, app 514.0,198.5 60.0x11.5)"
+reason = "geometry differs (ink box board 514.5,208.5 47.0x11.5, app 514.5,198.0 59.5x11.0)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -230,7 +230,7 @@ h = 10
 [[deviation]]
 id = "r18"
 class = "layout"
-reason = "geometry differs (ink box board 506.5,242.0 155.0x48.5, app 506.5,234.0 358.5x51.0)"
+reason = "geometry differs (ink box board 506.5,242.0 155.0x48.5, app 506.5,234.0 358.5x48.5)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -333,8 +333,8 @@ h = 36
 
 [[deviation]]
 id = "r26"
-class = "spacing"
-reason = "same element moved by +0.0,-4.5 px (ink box board 506.5,335.0 29.0x14.5, app 506.5,330.5 29.0x14.0)"
+class = "type"
+reason = "text height -2.5 px: type scale (ink box board 506.5,335.0 29.0x14.5, app 506.5,330.0 29.0x12.0)"
 decision = "fix"
 reviewer = "rf-design classify"
 
@@ -359,10 +359,10 @@ h = 20
 
 [[deviation]]
 id = "r28"
-class = "layout"
-reason = "geometry differs (ink box board 506.5,362.0 148.5x12.0, app 506.5,359.5 188.0x12.5)"
-decision = "unreviewed"
-reviewer = ""
+class = "type"
+reason = "text height -1.5 px: type scale (ink box board 506.5,362.0 148.5x12.0, app 506.5,359.0 188.0x10.5)"
+decision = "fix"
+reviewer = "rf-design classify"
 
 [deviation.region]
 x = 506
@@ -398,8 +398,8 @@ h = 15
 
 [[deviation]]
 id = "r31"
-class = "spacing"
-reason = "same element moved by +0.0,-1.5 px (ink box board 507.0,418.5 28.5x14.0, app 507.0,417.0 28.5x14.0)"
+class = "type"
+reason = "text height -2.5 px: type scale (ink box board 507.0,418.5 28.5x14.0, app 507.0,417.0 28.5x11.5)"
 decision = "fix"
 reviewer = "rf-design classify"
 
@@ -424,10 +424,10 @@ h = 12
 
 [[deviation]]
 id = "r33"
-class = "copy"
-reason = "same start and height, width 37% off: text differs? (ink box board 506.5,444.0 79.5x12.0, app 507.0,444.5 50.0x12.5)"
-decision = "unreviewed"
-reviewer = ""
+class = "type"
+reason = "text height -1.5 px: type scale (ink box board 506.5,444.0 79.5x12.0, app 507.0,444.0 50.0x10.5)"
+decision = "fix"
+reviewer = "rf-design classify"
 
 [deviation.region]
 x = 506
@@ -437,10 +437,10 @@ h = 13
 
 [[deviation]]
 id = "r34"
-class = "spacing"
-reason = "same element moved by +0.0,+2.5 px (ink box board 507.0,501.0 28.5x14.5, app 507.0,503.5 28.5x14.5)"
-decision = "fix"
-reviewer = "rf-design classify"
+class = "rasterisation"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 507.0,501.0 28.5x14.5, app 507.0,501.0 28.5x14.5)"
+decision = "accepted"
+reviewer = "lead"
 
 [deviation.region]
 x = 507
@@ -451,7 +451,7 @@ h = 17
 [[deviation]]
 id = "r35"
 class = "layout"
-reason = "geometry differs (ink box board 506.5,527.0 38.0x12.0, app 507.0,531.0 50.0x12.5)"
+reason = "geometry differs (ink box board 506.5,527.0 38.0x12.0, app 507.0,528.5 50.0x12.5)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -464,7 +464,7 @@ h = 17
 [[deviation]]
 id = "r36"
 class = "layout"
-reason = "geometry differs (ink box board 505.5,565.5 229.0x33.0, app 506.0,590.0 59.5x14.0)"
+reason = "geometry differs (ink box board 505.5,565.5 229.0x33.0, app 506.0,587.5 59.5x14.0)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -477,7 +477,7 @@ h = 40
 [[deviation]]
 id = "r37"
 class = "layout"
-reason = "geometry differs (ink box board 522.5,632.0 119.0x14.5, app 506.5,617.5 24.5x12.5)"
+reason = "geometry differs (ink box board 522.5,632.0 119.0x14.5, app 506.5,617.0 24.5x10.5)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -490,7 +490,7 @@ h = 30
 [[deviation]]
 id = "r38"
 class = "layout"
-reason = "geometry differs (ink box board 522.5,658.0 180.0x12.5, app 506.0,659.5 158.5x32.0)"
+reason = "geometry differs (ink box board 522.5,658.0 180.0x12.5, app 506.0,658.0 158.5x31.0)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -516,7 +516,7 @@ h = 12
 [[deviation]]
 id = "r40"
 class = "layout"
-reason = "geometry differs (ink box board 506.5,738.5 67.0x16.0, app 522.5,724.5 133.0x40.5)"
+reason = "geometry differs (ink box board 506.5,738.5 67.0x16.0, app 522.5,724.0 133.0x38.5)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -581,7 +581,7 @@ h = 12
 [[deviation]]
 id = "r45"
 class = "layout"
-reason = "geometry differs (ink box board 505.5,852.5 128.0x33.0, app 506.5,835.0 67.0x52.5)"
+reason = "geometry differs (ink box board 505.5,852.5 128.0x33.0, app 506.5,835.0 67.0x50.0)"
 decision = "unreviewed"
 reviewer = ""
 
