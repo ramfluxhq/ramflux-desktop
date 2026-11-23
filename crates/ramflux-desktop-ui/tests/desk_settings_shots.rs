@@ -11,10 +11,10 @@ use ramflux_desktop_ui::{AppAssets, Shell, settings::SettingsSection};
 use std::{error::Error, path::PathBuf, sync::Arc};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let out = PathBuf::from(
-        std::env::var_os("RAMFLUX_SHOTS_DIR")
-            .ok_or("RAMFLUX_SHOTS_DIR must name the output directory")?,
-    );
+    let Some(out) = std::env::var_os("RAMFLUX_SHOTS_DIR").map(PathBuf::from) else {
+        println!("desk settings shots: skipped; set RAMFLUX_SHOTS_DIR to the output directory");
+        return Ok(());
+    };
     std::fs::create_dir_all(&out)?;
     for width in [640., 800., 1024., 1440.] {
         for (label, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
