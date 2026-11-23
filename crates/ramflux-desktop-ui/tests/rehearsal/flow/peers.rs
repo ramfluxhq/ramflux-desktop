@@ -620,12 +620,20 @@ pub fn history<H: Host, D: DemoDaemon>(
     let options = (demo.options)(&demo.sides[0].daemon.socket());
     demo.sides[0].desk =
         Some(crate::rehearsal::desk::Desk::open(demo.host, demo.sides[0].tag, options));
-    demo.wait(0, demo.config.limits.answer, "the reopened desktop", |desk, host| {
-        let page = desk.page(host);
-        page == ramflux_desktop_ui::route::Page::Workspace
-            || matches!(page, ramflux_desktop_ui::route::Page::Entry(_))
+    // Right after it opens the desktop shows the entry page until its
+    // daemon answered: wait for the workspace, or for the unlock screen of
+    // a locked account (only then is there a code to type).
+    let first = demo.sides[0].desk()?.page(demo.host);
+    demo.wait(0, demo.config.limits.answer, "the workspace or the unlock screen", |desk, host| {
+        desk.page(host) == ramflux_desktop_ui::route::Page::Workspace
+            || (desk.store(host, |s| {
+                probe::account(s)
+                    .is_some_and(|a| a.lock_state == ramflux_desktop_core::LockState::Locked)
+            }) && desk.exists(host, "passphrase"))
     })?;
-    if demo.sides[0].desk()?.page(demo.host) != ramflux_desktop_ui::route::Page::Workspace {
+    let page = demo.sides[0].desk()?.page(demo.host);
+    notes.add(format!("reopened: first page {first:?}, then {page:?}"));
+    if page != ramflux_desktop_ui::route::Page::Workspace {
         let secret = demo.sides[0].passphrase.clone();
         let desk = demo.sides[0].desk()?;
         desk.type_into(demo.host, "passphrase", &secret)?;

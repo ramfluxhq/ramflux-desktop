@@ -42,6 +42,11 @@ impl Notes {
     pub fn add(&mut self, note: impl Into<String>) {
         self.0.push(note.into());
     }
+
+    /// Takes the notes made so far.
+    pub fn take(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.0)
+    }
 }
 
 /// The steps run so far.
@@ -81,6 +86,24 @@ impl Steps {
             notes: notes.0,
         });
         passed
+    }
+
+    /// Adds `context` to the failure of step `number` (where the desktops
+    /// were when it failed), and a note.
+    pub fn amend_failure(&mut self, number: u8, context: &str, notes: Vec<String>) {
+        if let Some(row) = self.rows.iter_mut().rev().find(|r| r.number == number) {
+            if let Outcome::Fail(why) = &mut row.outcome {
+                why.push_str(" [");
+                why.push_str(context);
+                why.push(']');
+            }
+            row.notes.extend(notes);
+        }
+    }
+
+    /// Whether step `number` ran and failed.
+    pub fn failed(&self, number: u8) -> bool {
+        self.rows.iter().any(|r| r.number == number && matches!(r.outcome, Outcome::Fail(_)))
     }
 
     /// Whether step `number` ran and passed.
