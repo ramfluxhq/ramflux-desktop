@@ -37,6 +37,21 @@ pub enum Start {
     /// A fixture scenario with its clock running on the test dispatcher
     /// (`Shell::with_scenario(_, true)`); time moves with [`Run::tick`].
     Live(&'static str),
+    /// The first-run entry over a local daemon socket that does not exist
+    /// yet, with this program as the daemon to start; started that way it
+    /// exits at once (see [`run_as_failing_daemon`]).
+    EntryFailingDaemon,
+}
+
+/// When the launcher started this program as the local daemon
+/// (`--socket <socket> daemon start …`), it fails the way a daemon that
+/// cannot bind its socket does, for board A16. Returns otherwise.
+pub fn run_as_failing_daemon() {
+    let mut args = std::env::args_os().skip(1);
+    if args.next().is_some_and(|a| a == "--socket") {
+        eprintln!("cannot bind socket");
+        std::process::exit(3);
+    }
 }
 
 pub struct Run {
@@ -74,7 +89,9 @@ impl Run {
         let (name, live) = match start {
             Start::Scenario(name) => (name, false),
             Start::Live(name) => (name, true),
+            Start::EntryFailingDaemon => ("", false),
         };
+        let entry = matches!(start, Start::EntryFailingDaemon).then(entry_options).transpose()?;
         let opened = cx.update(|cx| {
             let bounds = Bounds {
                 origin: Point::default(),
@@ -88,7 +105,12 @@ impl Run {
                     ..Default::default()
                 },
                 cx,
-                move |window, cx| cx.new(|cx| Shell::with_scenario(name, live, window, cx)),
+                move |window, cx| {
+                    cx.new(|cx| match entry {
+                        Some(options) => Shell::with_options(options, window, cx),
+                        None => Shell::with_scenario(name, live, window, cx),
+                    })
+                },
             )
         });
         let (handle, shell) = opened.map_err(|e| format!("offscreen window: {e}"))?;
@@ -207,6 +229,20 @@ impl Run {
         self.window(move |window, cx| window.click(id, cx))
     }
 
+    /// Ticks the dispatcher (and lets real time pass for child processes)
+    /// until `done` holds, at most `limit_ms` of wall-clock time.
+    pub fn until(&mut self, limit_ms: u64, mut done: impl FnMut(&mut Self) -> bool) -> Step {
+        let started = std::time::Instant::now();
+        while !done(self) {
+            if started.elapsed() > Duration::from_millis(limit_ms) {
+                return Err(format!("condition not reached within {limit_ms} ms"));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+            self.tick(100);
+        }
+        Ok(())
+    }
+
     /// Hovers `id` when it is painted.
     pub fn hover(&mut self, id: &'static str) -> Step {
         if !self.has(id) {
@@ -290,4 +326,29 @@ impl Run {
         self.window(|_, _| {})?;
         self.cx.capture_screenshot(self.handle.into()).map_err(|e| format!("render: {e}"))
     }
+}
+
+/// The first-run shell over a local socket that does not exist yet, with
+/// this program as the bundled daemon (a short socket path, as the board
+/// shows one).
+fn entry_options() -> Result<ramflux_desktop_ui::shell::ShellOptions, String> {
+    use ramflux_desktop_ui::launch::LaunchOptions;
+    use ramflux_desktop_ui::shell::{ShellOptions, SourceChoice};
+    // A fixed path, because the entry shows it: the capture stays the same
+    // from run to run. Left-overs of an earlier run are removed first.
+    let dir = std::path::PathBuf::from("/tmp/rf-board");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let program = std::env::current_exe().map_err(|e| format!("this program: {e}"))?;
+    Ok(ShellOptions {
+        source: SourceChoice::Rfd(ramflux_desktop_sdk::SdkConfig::new(dir.join("rfd.sock"))),
+        launch: LaunchOptions {
+            store: ramflux_desktop_sdk::local::LaunchStore::at(dir.join("desktop-settings.json")),
+            bundled: Some(program),
+            log_dir: Some(dir.join("logs")),
+            owned: ramflux_desktop_sdk::local::OwnedDaemonFile::at(dir.join("owned-daemon.json")),
+            ..LaunchOptions::in_memory()
+        },
+        ..ShellOptions::for_scenario("", true)
+    })
 }

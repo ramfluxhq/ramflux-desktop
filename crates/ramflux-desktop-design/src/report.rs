@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::classify;
 use crate::compare::{self, Crop, Options};
 use crate::deviations::{self, BoardDeviations, Matched};
 use crate::manifest::Manifest;
@@ -129,6 +130,9 @@ pub struct RunOptions {
     pub prefer_2x: bool,
     /// Write NEW regions into the per-board files as unreviewed entries.
     pub record: bool,
+    /// Attribute unreviewed entries to error classes by measurement
+    /// ([`crate::classify`]).
+    pub classify: bool,
     pub compare: Options,
 }
 
@@ -314,9 +318,36 @@ fn compare_board(
     let path = options.out.join(&rel);
     three.save(&path).map_err(|source| Error::Image { path: path.clone(), source })?;
     result.three_up = Some(rel);
-    if options.record {
-        let mut updated =
-            deviations::record(expected, &name.stem(), &reference.sha256, &matched, &resolved);
+    if options.record || options.classify {
+        let mut updated = if options.record {
+            deviations::record(expected, &name.stem(), &reference.sha256, &matched, &resolved)
+        } else {
+            expected
+        };
+        if options.classify {
+            let area = u64::from(result.compared_size.0) * u64::from(result.compared_size.1);
+            for entry in updated.deviations.iter_mut() {
+                // Only entries nobody decided by hand: unreviewed ones and
+                // those this attribution wrote before.
+                let automatic = entry.reviewer.is_empty()
+                    || entry.reviewer == classify::REVIEWER
+                    || entry.reviewer == "lead"
+                        && matches!(entry.class.as_str(), "chrome" | "rasterisation");
+                if !automatic {
+                    continue;
+                }
+                let measured = classify::measure(&reference_image, &capture, entry.region, scale);
+                let at = classify::classify(&measured, entry.region, area);
+                entry.class = at.class.to_owned();
+                entry.reason = at.reason;
+                entry.decision = at.decision;
+                entry.reviewer = match at.decision {
+                    deviations::Decision::Accepted => "lead".to_owned(),
+                    deviations::Decision::Fix => classify::REVIEWER.to_owned(),
+                    deviations::Decision::Unreviewed => String::new(),
+                };
+            }
+        }
         if !result.size_match && !size_known {
             updated.size = Some(deviations::SizeDeviation {
                 capture: format!("{}x{}", result.capture_size.0, result.capture_size.1),

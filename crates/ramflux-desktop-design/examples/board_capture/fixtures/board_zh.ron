@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Span Brain
+//
+// Board content in Simplified Chinese for the board captures (tooling only;
+// never part of the application). It reproduces what the desktop design
+// boards draw: the account 林澈 with the identities 个人 and 工作, the
+// conversation list of board 02 (产品设计, 研究搭档, 周宁, 发布协调,
+// 每周计划), the 产品设计 conversation of 02/B01/B04/B09/B38/H01, the
+// contacts and strangers of 07/F17, the agents Nova, Atlas and Mira of
+// 04/D01/D40 with Nova's three approval cards, the task of 06/E01/E05, the
+// files of the H01 dock and the devices of G08.
+//
+// Epoch: 2026-11-10 10:00 UTC (captures run with TZ=UTC). Moment offsets are
+// signed offsets from the epoch: 09:41 is -1140000. The board's list shows
+// 周宁 "昨天", 发布协调 "周一" and 每周计划 "11/08"; with 11-10 as today
+// the first two both fall on yesterday.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "board_zh",
+    description: "Board content of the desktop design (zh-CN)",
+    epoch: 1794304800000,
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
+        (0, NodeUpserted(id: "n-ramflux", endpoints: ["quic://bootstrap.ramflux.org:443"],
+            fingerprint: "SHA256:9a1c 0e44 7b2d 51f0 c3a8 66e1 2d90 b7f4", pin_source: Bootstrap, health: Healthy,
+            capabilities: ["gateway", "relay", "prekey"], builtin: true, is_default: true)),
+        (0, NodeUpserted(id: "n-studio", endpoints: ["quic://studio.example.org:7443"],
+            fingerprint: "SHA256:4b9e 77c1 0a3f d2e8 91c6 5f04 aa2d 6e19", pin_source: Manual, health: Healthy,
+            capabilities: ["gateway", "relay", "prekey", "objects"])),
+        (0, AccountUpdated(id: "a-personal", label: "个人", node_id: "n-ramflux", device_id: "dev-mbp",
+            lock_state: Unlocked, self_participant_id: "p-me")),
+        (0, AccountUpdated(id: "a-work", label: "工作", node_id: "n-studio", lock_state: Unlocked)),
+        (0, DeviceUpserted(id: "dev-mbp", account_id: "a-personal", label: "MacBook Pro", this_device: true, last_seen: 1794304800000)),
+        (0, DeviceUpserted(id: "dev-iphone", account_id: "a-personal", label: "iPhone", last_seen: 1794300120000)),
+        (0, DeviceUpserted(id: "dev-chrome", account_id: "a-personal", label: "Chrome · macOS", last_seen: 1794297600000)),
+        (0, DeviceUpserted(id: "dev-old", account_id: "a-personal", label: "旧笔记本", revoked: true, last_seen: 1791705600000)),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "林澈")),
+        (0, ParticipantUpserted(id: "p-zhou", kind: Human, display: "周宁", safety: Verified, contact: true,
+            safety_number: "0421 1830 5502 7681 9904")),
+        (0, ParticipantUpserted(id: "p-shen", kind: Human, display: "沈安", safety: Verified, contact: true)),
+        (0, ParticipantUpserted(id: "p-chen", kind: Human, display: "陈遥", contact: true)),
+        (0, ParticipantUpserted(id: "p-mira-chen", kind: Human, display: "Mira Chen", contact: true)),
+        (0, ParticipantUpserted(id: "p-nova", kind: Agent, display: "Nova", contact: true)),
+        (0, ParticipantUpserted(id: "p-atlas", kind: Agent, display: "Atlas", contact: true)),
+        (0, ParticipantUpserted(id: "p-mira", kind: Agent, display: "Mira", contact: true)),
+        (0, ParticipantUpserted(id: "p-research", kind: Agent, display: "研究搭档", contact: true)),
+        // Strangers: three people who are not contacts yet.
+        (0, ParticipantUpserted(id: "chenyao@ramflux.org", kind: Human, display: "陈遥", safety: Unverified,
+            safety_number: "5530 1928 7742 0619 3385")),
+        (0, ParticipantUpserted(id: "lihe@ramflux.org", kind: Human, display: "李禾", safety: Unverified)),
+        (0, ParticipantUpserted(id: "wuqi@ramflux.org", kind: Human, display: "吴琪", safety: Unverified)),
+        (5, ContactRequestUpserted(id: "req-chenyao", peer: "chenyao@ramflux.org", direction: Incoming, state: Pending,
+            safety_number: "5530 1928 7742 0619 3385", held_messages: 1, preview: "希望与你讨论项目协作")),
+        (5, ContactRequestUpserted(id: "req-lihe", peer: "lihe@ramflux.org", direction: Incoming, state: Pending,
+            held_messages: 1, preview: "你好，我是设计周的同事")),
+        (5, ContactRequestUpserted(id: "req-wuqi", peer: "wuqi@ramflux.org", direction: Incoming, state: Pending,
+            held_messages: 0, preview: "想请教桌面端的发布安排")),
+        // Files of the H01 dock.
+        (0, ObjectUpserted(id: "o-demo", name: "Ramflux-Desktop-GUI-Demo.html", size: 186000, direction: Inbound,
+            transfer: Complete, preview: "HTML 原型 · 可在本地查看")),
+        (0, ObjectUpserted(id: "o-layout", name: "layout-review.pdf", size: 131072, direction: Inbound, transfer: Queued)),
+        (0, ObjectUpserted(id: "o-notes", name: "component-notes.md", size: 65536, direction: Inbound,
+            transfer: Transferring(transferred: 32768))),
+        (0, ObjectUpserted(id: "o-summary", name: "review-summary.txt", size: 8192, direction: Inbound, transfer: Complete)),
+        (0, ObjectUpserted(id: "o-draft", name: "design-draft.pdf", size: 319488, direction: Outbound,
+            transfer: Failed(reason: "连接中断"))),
+        // The conversation list of board 02.
+        (10, ContextUpserted(id: "c-product", kind: Group, title: "产品设计", participants: ["p-me", "p-zhou"],
+            roles: {"p-me": Owner, "p-zhou": Member})),
+        (10, ContextUpserted(id: "c-research", kind: Direct, title: "研究搭档", participants: ["p-me", "p-research"])),
+        (10, ContextUpserted(id: "c-zhou", kind: Direct, title: "周宁", participants: ["p-me", "p-zhou"])),
+        (10, ContextUpserted(id: "c-release", kind: Group, title: "发布协调", participants: ["p-me", "p-zhou", "p-shen"], unread: 3)),
+        (10, ContextUpserted(id: "c-weekly", kind: Direct, title: "每周计划", participants: ["p-me", "p-shen"])),
+        (10, ContextUpserted(id: "c-nova", kind: Direct, title: "Nova", participants: ["p-me", "p-nova"])),
+        (20, MomentAdded(id: "m-weekly", context_id: "c-weekly", origin: "p-me", at: -172800000,
+            kind: Message(text: "草稿：本周优先完成桌面端的核心路径。", receipt: Read), lifecycle: Done)),
+        (20, MomentAdded(id: "m-release", context_id: "c-release", origin: "p-shen", at: -86400000,
+            kind: Message(text: "3 条未读消息"), lifecycle: Done)),
+        (20, MomentAdded(id: "m-zhou-y", context_id: "c-zhou", origin: "p-zhou", at: -57600000,
+            kind: Message(text: "收到，稍后一起看"), lifecycle: Done)),
+        (20, MomentAdded(id: "m-research", context_id: "c-research", origin: "p-research", at: -2400000,
+            kind: Message(text: "已整理好参考资料"), lifecycle: Done)),
+        (30, MomentAdded(id: "m-p1", context_id: "c-product", origin: "p-zhou", at: -1140000,
+            kind: Message(text: "我们先把桌面主界面的信息层级梳理一下。消息、Agent 和任务应该共享同一套导航。"), lifecycle: Done)),
+        (30, MomentAdded(id: "m-p2", context_id: "c-product", origin: "p-me", at: -1020000,
+            kind: Message(text: "同意。左侧负责定位，中间选择会话，右侧专注当前内容。先把核心路径走通。", receipt: Read), lifecycle: Done)),
+        (30, MomentAdded(id: "m-p3", context_id: "c-product", origin: "p-zhou", at: -960000,
+            kind: Message(text: "我整理了原型，我们可以从消息主界面和 Agent 创建流程开始。", attachment: "o-demo"), lifecycle: Done)),
+        // Board 06/E01/E05: a task Nova proposes, waiting for the user.
+        (40, TaskUpserted(
+            id: "t-reference",
+            context_id: "c-research",
+            requester: Human,
+            assignee: "p-nova",
+            title: "整理桌面协作产品的参考资料",
+            steps: [
+                (id: "collect", label: "收集清单", state: Pending),
+                (id: "compare", label: "比较 3 个方案，输出来源、优缺点和不确定性", state: Pending),
+                (id: "report", label: "整理结果回到当前会话", state: Pending),
+            ],
+            state: Proposed,
+            version: 1,
+        )),
+        (40, MomentAdded(id: "m-task", context_id: "c-research", origin: "p-nova", at: -600000,
+            kind: TaskProgress(task_id: "t-reference"), lifecycle: Pending)),
+        // Board D40: Nova's approval cards (pending, allowed, denied).
+        (50, MomentAdded(id: "m-nova-ask", context_id: "c-nova", origin: "p-me", at: -1500000,
+            kind: Message(text: "请长期帮我整理研究资料、比较方案，并清楚标记来源和不确定性。", receipt: Read), lifecycle: Done)),
+        (50, GrantRequested(id: "g-read", scope: "tool.files.read", risk: Low, args_hash: "sha256:1a2b3c4d5e6f")),
+        (50, GrantRequested(id: "g-write", scope: "tool.files.write", risk: Medium, args_hash: "sha256:2b3c4d5e6f70")),
+        (50, GrantRequested(id: "g-web", scope: "tool.web.fetch", risk: Medium, args_hash: "sha256:3c4d5e6f7081")),
+        (55, GrantResolved(grant_id: "g-write", state: Approved)),
+        (55, GrantResolved(grant_id: "g-web", state: Denied)),
+        (60, MomentAdded(id: "m-g-read", context_id: "c-nova", origin: "p-nova", at: -1400000,
+            kind: Intervention(grant_id: "g-read", risk: Low, summary: "读取「研究资料」文件夹"), lifecycle: NeedsMe)),
+        (60, MomentAdded(id: "m-g-write", context_id: "c-nova", origin: "p-nova", at: -1300000,
+            kind: Intervention(grant_id: "g-write", risk: Medium, summary: "在「研究资料」中创建 比较表.md"), lifecycle: Done)),
+        (60, MomentAdded(id: "m-g-web", context_id: "c-nova", origin: "p-nova", at: -1200000,
+            kind: Intervention(grant_id: "g-web", risk: Medium, summary: "访问 example.org 获取报价"), lifecycle: Done)),
+    ],
+    responses: [],
+    companions: [],
+)

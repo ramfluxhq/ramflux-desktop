@@ -8,20 +8,19 @@
 //! Dark proofs and the English boards reuse the recipe of the screen they
 //! prove; the theme and locale come from the board (or the matrix).
 //!
-//! Fixture content is the mock's demo data (mostly English names and
-//! messages), not the copy drawn on the boards; the chrome copy is the
-//! application's own zh-CN or en catalogue. Copy differences inside content
-//! areas are therefore expected and are classed `fixture` when reviewed.
+//! Content comes from `fixtures/board_zh.ron`, which reproduces the boards'
+//! names, messages, times, counts, files and devices in Simplified Chinese;
+//! the chrome copy is the application's own catalogue. Entry boards use the
+//! mock ceremony and recovery with the boards' account name 个人.
 
 use ramflux_desktop_core::{
     Account, AccountId, AccountKind, Call, CallDirection, CallEndReason, CallId, CallState,
-    Capabilities, ContactRequest, ContextId, DomainEvent, EffectFailure, FailureCode, Listing,
-    LockState, Networking, ParticipantId, RequestDirection, RequestState, SecureSessions,
-    SourceStatus, Timestamp,
+    Capabilities, ContextId, DomainEvent, EffectFailure, FailureCode, Listing, LockState,
+    Networking, ParticipantId, SafetyState, SecureSessions, SourceStatus, Timestamp,
 };
+use ramflux_desktop_test::Scenario;
 use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
 use ramflux_desktop_test::mock_recovery::{DEMO_ANCHOR, demo_phrase};
-use ramflux_desktop_test::{Scenario, load_fixture};
 use ramflux_desktop_ui::actions::OpenPalette;
 use ramflux_desktop_ui::settings::SettingsSection;
 use ramflux_desktop_ui::workspace::WorkspaceRoute;
@@ -29,8 +28,8 @@ use ramflux_desktop_ui::workspace::WorkspaceRoute;
 use crate::harness::{Run, Start, Step};
 
 const PASSPHRASE: &str = "river stone lantern";
-/// The epoch of the default fixtures (2026-10-01T00:00Z).
-const EPOCH_MS: i64 = 1_790_812_800_000;
+/// The epoch of the board fixture (2026-11-10T10:00Z).
+const EPOCH_MS: i64 = 1_794_304_800_000;
 
 /// How a board is captured.
 pub struct Recipe {
@@ -51,8 +50,17 @@ pub enum Plan {
     Skip(&'static str),
 }
 
-fn scenario(name: &str) -> Result<Scenario, String> {
-    load_fixture(name).map_err(|e| format!("fixture {name}: {e}"))
+/// The board content in Simplified Chinese (`fixtures/board_zh.ron`).
+fn board() -> Result<Scenario, String> {
+    Scenario::from_ron(include_str!("fixtures/board_zh.ron"))
+        .map_err(|e| format!("fixture board_zh: {e}"))
+}
+
+/// The board content without the events `drop` matches.
+fn board_without(drop: impl Fn(&DomainEvent) -> bool) -> Result<Scenario, String> {
+    let mut s = board()?;
+    s.timeline.retain(|(_, e)| !drop(e));
+    Ok(s)
 }
 
 fn push(scenario: &mut Scenario, at: u64, event: DomainEvent) {
@@ -60,37 +68,20 @@ fn push(scenario: &mut Scenario, at: u64, event: DomainEvent) {
     scenario.timeline.sort_by_key(|(t, _)| *t);
 }
 
-/// s02 with a pending stranger, so the strangers boards have content.
-fn with_stranger() -> Result<Scenario, String> {
-    let mut scenario = scenario("s02_daily")?;
-    let peer = ParticipantId::new("guzhou@node.example.org");
-    let stranger = ramflux_desktop_core::Participant {
-        id: peer.clone(),
+fn participant(id: &str, display: &str, safety: SafetyState, number: Option<&str>) -> DomainEvent {
+    DomainEvent::ParticipantUpserted(ramflux_desktop_core::Participant {
+        id: ParticipantId::new(id),
         kind: ramflux_desktop_core::ParticipantKind::Human,
-        display: "Gu Zhou".to_owned(),
-        safety: ramflux_desktop_core::SafetyState::Unverified,
-        contact: false,
-        safety_number: Some("73051186442090573312".into()),
+        display: display.to_owned(),
+        safety,
+        contact: true,
+        safety_number: number.map(str::to_owned),
         link: ramflux_desktop_core::ContactLink::None,
         reachable: None,
         kind_claim: ramflux_desktop_core::KindClaim::None,
         name_warnings: ramflux_desktop_core::NameWarnings::default(),
         root_source: None,
-    };
-    let request = ContactRequest {
-        id: "req-guzhou".into(),
-        peer,
-        direction: RequestDirection::Incoming,
-        state: RequestState::Pending,
-        note: None,
-        safety_number: Some("73051186442090573312".into()),
-        held_messages: 1,
-        preview: Some("Hello, could you share last week's review notes?".into()),
-        expires_at: None,
-    };
-    push(&mut scenario, 9, DomainEvent::ParticipantUpserted(stranger));
-    push(&mut scenario, 10, DomainEvent::ContactRequestUpserted(request));
-    Ok(scenario)
+    })
 }
 
 fn account(id: &str, label: &str, lock_state: LockState) -> Account {
@@ -117,7 +108,7 @@ fn account(id: &str, label: &str, lock_state: LockState) -> Account {
 fn empty_account(listed: bool) -> Scenario {
     let mut timeline = vec![
         (0, DomainEvent::SourceStatusChanged(SourceStatus::Connected)),
-        (0, DomainEvent::AccountUpdated(account("a-empty", "Empty", LockState::Unlocked))),
+        (0, DomainEvent::AccountUpdated(account("a-personal", "个人", LockState::Unlocked))),
     ];
     if listed {
         timeline.push((
@@ -149,38 +140,52 @@ fn failure(method: &str) -> DomainEvent {
 }
 
 fn call(state: CallState, answered: bool) -> DomainEvent {
-    let started = Timestamp(EPOCH_MS + 3_000);
     DomainEvent::CallUpserted(Call {
         id: CallId::new("call-board"),
-        context_id: ContextId::new("c-lena"),
-        peer: ParticipantId::new("p-lena"),
+        context_id: ContextId::new("c-zhou"),
+        peer: ParticipantId::new("p-zhou"),
         caller: ParticipantId::new("p-me"),
         direction: CallDirection::Outgoing,
         state,
         version: 1,
-        started_at: started,
-        answered_at: answered.then_some(Timestamp(EPOCH_MS + 5_000)),
-        ended_at: state.is_ended().then_some(Timestamp(EPOCH_MS + 9_000)),
+        started_at: Timestamp(EPOCH_MS + 1_000),
+        answered_at: answered.then_some(Timestamp(EPOCH_MS + 2_000)),
+        ended_at: state.is_ended().then_some(Timestamp(EPOCH_MS + 3_000)),
         order: None,
+    })
+}
+
+/// The board world as the message boards (02, B01, …) draw it: no pending
+/// strangers and no conversation with Nova in the list.
+fn messages_world() -> Result<Scenario, String> {
+    board_without(|e| match e {
+        DomainEvent::ContactRequestUpserted(_)
+        | DomainEvent::GrantRequested(_)
+        | DomainEvent::GrantResolved { .. } => true,
+        DomainEvent::ContextUpserted(c) => c.id.as_str() == "c-nova",
+        DomainEvent::MomentAdded(m) => m.context_id.as_str() == "c-nova",
+        _ => false,
     })
 }
 
 // ---- shared step sequences ----
 
+/// The full board world (contacts, strangers, agents, tasks).
 fn daily(run: &mut Run) -> Step {
-    run.play(&with_stranger()?, 3_000);
+    run.play(&board()?, 1_000);
     Ok(())
 }
 
-fn daily_team(run: &mut Run) -> Step {
-    daily(run)?;
-    run.show("c-team")
+/// The message boards' world with 产品设计 open.
+fn daily_product(run: &mut Run) -> Step {
+    run.play(&messages_world()?, 1_000);
+    run.show("c-product")
 }
 
 fn agent_conversation(run: &mut Run) -> Step {
     daily(run)?;
     run.route(WorkspaceRoute::Agents)?;
-    run.click("agent-p-orbit")?;
+    run.click("agent-p-nova")?;
     run.click("composer-mode")
 }
 
@@ -189,60 +194,53 @@ fn strangers_selected(run: &mut Run) -> Step {
     run.route(WorkspaceRoute::Strangers)?;
     let workspace = run.cx.update(|cx| run.shell.read(cx).workspace().clone());
     let area = run.cx.update(|cx| workspace.read(cx).strangers().clone());
-    run.cx.update(|cx| area.update(cx, |a, cx| a.select(Some("req-guzhou".into()), cx)));
+    run.cx.update(|cx| area.update(cx, |a, cx| a.select(Some("req-chenyao".into()), cx)));
     run.cx.run_until_parked();
     Ok(())
 }
 
+/// B11: from the 产品设计 conversation the board shows, the contacts tool,
+/// comparing 周宁's safety number (the app compares in the tool's row; it
+/// has no modal dialog).
 fn safety_compare(run: &mut Run) -> Step {
-    run.play(&scenario("s04_safety")?, 1_000);
-    run.route(WorkspaceRoute::Contacts)?;
+    let mut s = messages_world()?;
+    push(
+        &mut s,
+        900,
+        participant("p-zhou", "周宁", SafetyState::Unverified, Some("0421 1830 5502 7681 9904")),
+    );
+    run.play(&s, 1_000);
+    run.show("c-product")?;
+    run.click("rail-contacts")?;
+    // The row's compare button is below the fold of the tool: start the
+    // comparison the way that button does.
     let workspace = run.cx.update(|cx| run.shell.read(cx).workspace().clone());
-    let profile = run.cx.update(|cx| workspace.read(cx).contact_profile().clone());
-    run.cx.update(|cx| {
-        profile.update(cx, |p, cx| p.set_participant(Some(ParticipantId::new("p-mira")), cx))
-    });
+    let dock = run.cx.update(|cx| workspace.read(cx).contacts_dock().clone());
+    run.cx.update(|cx| dock.update(cx, |d, cx| d.start_verify(ParticipantId::new("p-zhou"), cx)));
     run.cx.run_until_parked();
-    run.click("contact-compare")
+    Ok(())
 }
 
 fn conversation_menu(run: &mut Run) -> Step {
-    daily_team(run)?;
+    daily_product(run)?;
     run.click("conversation-more")
 }
 
-fn settings_in(run: &mut Run, fixture: &str, ms: u64, section: SettingsSection) -> Step {
-    run.play(&scenario(fixture)?, ms);
+fn settings_board(run: &mut Run, section: SettingsSection) -> Step {
+    daily(run)?;
     run.settings(section);
     Ok(())
 }
 
-fn appearance(run: &mut Run) -> Step {
-    settings_in(run, "s02_daily", 3_000, SettingsSection::Appearance)
-}
-
-fn devices(run: &mut Run) -> Step {
-    settings_in(run, "s03_intervention", 1_000, SettingsSection::Devices)
-}
-
-fn account_settings(run: &mut Run) -> Step {
-    settings_in(run, "s02_daily", 3_000, SettingsSection::Account)
-}
-
 fn tasks(run: &mut Run) -> Step {
-    run.play(&scenario("s10_ai_participant")?, 200);
-    run.show("c-launch")?;
-    run.type_into("composer-input", "@Orbit can you check the launch checklist?")?;
-    run.click("composer-send")?;
-    run.advance(1_100);
+    daily(run)?;
     run.route(WorkspaceRoute::Tasks)
 }
 
-/// s09 without devices; devices listed at 2 s, offline at 3 s, back and a
-/// failed `device.list` at 4 s (desk_settings.rs).
+/// The board world without devices; devices listed at 2 s, offline at 3 s,
+/// back with a failed `device.list` at 4 s (desk_settings.rs).
 fn device_states(run: &mut Run, ms: u64) -> Step {
-    let mut s = scenario("s09_multi_account_day")?;
-    s.timeline.retain(|(_, e)| !matches!(e, DomainEvent::DeviceUpserted(_)));
+    let mut s = board_without(|e| matches!(e, DomainEvent::DeviceUpserted(_)))?;
     push(&mut s, 2_000, DomainEvent::ListingsLoaded(vec![Listing::Devices]));
     push(&mut s, 3_000, DomainEvent::SourceStatusChanged(SourceStatus::Disconnected));
     push(&mut s, 4_000, DomainEvent::SourceStatusChanged(SourceStatus::Connected));
@@ -272,6 +270,10 @@ fn section_state(run: &mut Run, route: WorkspaceRoute, state: &str, method: &str
     Ok(())
 }
 
+fn no_requests() -> Result<Scenario, String> {
+    board_without(|e| matches!(e, DomainEvent::ContactRequestUpserted(_)))
+}
+
 fn ceremony(run: &mut Run) -> Step {
     run.tick(2_600);
     run.click("account-create-phrase")?;
@@ -281,7 +283,7 @@ fn ceremony(run: &mut Run) -> Step {
 
 fn ceremony_ready(run: &mut Run) -> Step {
     ceremony(run)?;
-    run.type_into("ceremony-name-input", "Alex")?;
+    run.type_into("ceremony-name-input", "个人")?;
     run.click("ceremony-continue")?;
     run.tick(300);
     Ok(())
@@ -322,8 +324,8 @@ fn ceremony_done(run: &mut Run) -> Step {
 fn recovery_world(run: &mut Run) -> Step {
     run.tick(2_600);
     run.mock(|m| {
-        m.ceremony_mut().recovery_mut().allow("acct-r", "Alex", PASSPHRASE);
-        m.inject(0, DomainEvent::AccountUpdated(account("acct-r", "Alex", LockState::Locked)));
+        m.ceremony_mut().recovery_mut().allow("acct-r", "个人", PASSPHRASE);
+        m.inject(0, DomainEvent::AccountUpdated(account("acct-r", "个人", LockState::Locked)));
     })?;
     run.tick(300);
     Ok(())
@@ -356,7 +358,7 @@ fn recovery_done(run: &mut Run) -> Step {
 }
 
 fn wizard(run: &mut Run, next: usize, create: bool) -> Step {
-    let mut s = with_stranger()?;
+    let mut s = board()?;
     push(
         &mut s,
         5,
@@ -365,7 +367,7 @@ fn wizard(run: &mut Run, next: usize, create: bool) -> Step {
             ..Default::default()
         }),
     );
-    run.play(&s, 3_000);
+    run.play(&s, 1_000);
     run.settings(SettingsSection::Agents);
     run.click("agent-create")?;
     if next > 0 {
@@ -382,10 +384,26 @@ fn wizard(run: &mut Run, next: usize, create: bool) -> Step {
 }
 
 fn direct_call(run: &mut Run, event: DomainEvent) -> Step {
-    daily(run)?;
-    run.show("c-lena")?;
+    run.play(&messages_world()?, 1_000);
+    run.show("c-zhou")?;
     run.inject(0, event)?;
     run.advance(100);
+    Ok(())
+}
+
+/// A16: the local daemon is started and exits at once.
+fn daemon_failed(run: &mut Run) -> Step {
+    run.tick(1_000);
+    run.click("entry-daemon-start")?;
+    run.until(20_000, |run| {
+        run.cx.update(|cx| {
+            matches!(
+                run.shell.read(cx).launcher().read(cx).state(),
+                ramflux_desktop_ui::launch::LaunchState::Failed(_)
+            )
+        })
+    })?;
+    run.tick(200);
     Ok(())
 }
 
@@ -407,13 +425,13 @@ pub fn plan(key: &str) -> Option<Plan> {
         // Shell and messages.
         "02" | "I24" => capture!(
             S02,
-            "s02_daily + stranger, Design team open",
+            "board_zh, 产品设计 open",
             ["navigation-rail", "stack-filters", "conversation-header", "composer"],
-            daily_team
+            daily_product
         ),
         "02L" => capture!(
             S02,
-            "empty account before its listings: list loading",
+            "empty account 个人 before its listings: list loading",
             ["stack-list-state"],
             |run| {
                 run.play(&empty_account(false), 100);
@@ -421,66 +439,74 @@ pub fn plan(key: &str) -> Option<Plan> {
             }
         ),
         "B01" => capture!(
-            Start::Scenario("s09_multi_account_day"),
-            "s09 two accounts, identity popover open",
+            S02,
+            "board_zh 产品设计, identity popover open",
             ["identity-menu"],
             |run| {
-                run.advance(2_000);
+                daily_product(run)?;
                 run.click("nav-account")
             },
             keep
         ),
         "B04" | "I34" => capture!(
             S02,
-            "s02 Design team, conversation menu open (no settings panel in code)",
+            "board_zh 产品设计, conversation menu open (the app has a menu, no settings panel)",
             ["conversation-header"],
             conversation_menu,
             keep
         ),
         "B09" => capture!(
             S02,
-            "s02 Design team, command palette open",
+            "board_zh 产品设计, command palette open",
             ["palette"],
             |run| {
-                daily_team(run)?;
+                daily_product(run)?;
                 run.dispatch(Box::new(OpenPalette))
             },
             keep
         ),
         "B10" => capture!(
-            Start::Scenario("s04_safety"),
-            "s04 key change of Mira, conversation open",
-            ["safety-banner-p-mira"],
+            S02,
+            "board_zh, 周宁's key changed, conversation with 周宁 open",
+            [],
             |run| {
-                run.advance(1_000);
-                run.show("c-mira")
+                let mut s = messages_world()?;
+                push(
+                    &mut s,
+                    900,
+                    participant(
+                        "p-zhou",
+                        "周宁",
+                        SafetyState::KeyChanged,
+                        Some("0421 1830 5502 7681 9031"),
+                    ),
+                );
+                run.play(&s, 1_000);
+                run.show("c-zhou")
             }
         ),
         "B11" | "I31" => capture!(
-            Start::Scenario("s04_safety"),
-            "s04 contact profile of Mira, safety number compare",
-            ["contact-compare-cancel"],
+            S02,
+            "board_zh 产品设计, contacts tool comparing 周宁's safety number (the app compares in the tool row, no dialog)",
+            ["verify-confirm"],
             safety_compare
         ),
         "B38" => capture!(
             S02,
-            "s02 Design team, source disconnected (offline banner; no queued-messages UI)",
+            "board_zh 产品设计, source disconnected (offline banner; no queued-messages UI)",
             ["status-strip"],
             |run| {
-                let mut s = with_stranger()?;
-                push(&mut s, 3_100, DomainEvent::SourceStatusChanged(SourceStatus::Disconnected));
-                run.play(&s, 3_200);
-                run.show("c-team")
+                let mut s = messages_world()?;
+                push(&mut s, 900, DomainEvent::SourceStatusChanged(SourceStatus::Disconnected));
+                run.play(&s, 1_000);
+                run.show("c-product")
             }
         ),
         "B32" => capture!(
-            Start::Scenario("s10_ai_participant"),
-            "s10 launch conversation with a human and an agent",
+            S02,
+            "board_zh 产品设计 (the board's 周宁 and Nova thread with a quote and a reaction is not in the fixture)",
             ["conversation-header"],
-            |run| {
-                run.advance(1_500);
-                run.show("c-launch")
-            }
+            daily_product
         ),
         "B39" | "B40" | "B41" => {
             Plan::Skip("absent: no search states in code (local filter and palette only)")
@@ -506,14 +532,14 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "A03" => capture!(
             BORN,
-            "s13 entry with a locked recoverable account (passphrase era; six-digit code not in code)",
+            "s13 entry with the locked account 个人 (passphrase era; six-digit code not in code)",
             [],
             recovery_world
         ),
         "A04" => capture!(BORN, "s13 create account, name step", ["ceremony-name-input"], ceremony),
         "A05" => capture!(
             BORN,
-            "s13 create account, ready to save the phrase",
+            "s13 create account 个人, ready to save the phrase",
             ["ceremony-show"],
             ceremony_ready
         ),
@@ -533,11 +559,14 @@ pub fn plan(key: &str) -> Option<Plan> {
             ceremony_done
         ),
         "A10" => {
-            capture!(BORN, "s13 recover account, intro", ["recovery-continue"], recovery_intro)
+            capture!(BORN, "s13 recover account 个人, intro", ["recovery-continue"], recovery_intro)
         }
         "A12" => capture!(BORN, "s13 recover account, done", [], recovery_done),
-        "A16" => Plan::Skip(
-            "needs a daemon process that fails to start (first_run_shots stand-in); no mock recipe",
+        "A16" => capture!(
+            Start::EntryFailingDaemon,
+            "first run: the started local daemon exits at once (this program as a failing stand-in)",
+            ["entry-daemon-failed"],
+            daemon_failed
         ),
         "A26" => capture!(
             Start::Scenario("s01_first_launch"),
@@ -551,24 +580,20 @@ pub fn plan(key: &str) -> Option<Plan> {
             }
         ),
         // Groups.
-        "C01" => capture!(S02, "s02 new group form", ["new-group-name"], |run| {
-            daily_team(run)?;
-            run.workspace(|w, window, cx| w.open_new_group(window, cx))
-        }),
+        "C01" => {
+            capture!(S02, "board_zh new group form over 产品设计", ["new-group-name"], |run| {
+                daily_product(run)?;
+                run.workspace(|w, window, cx| w.open_new_group(window, cx))
+            })
+        }
         "C02" => capture!(
-            Start::Scenario("s05_group_governance"),
-            "s05 group directory, first group with its member panel",
+            S02,
+            "board_zh groups, 产品设计 with its member panel",
             ["group-profile"],
             |run| {
-                run.advance(1_000);
+                daily(run)?;
                 run.route(WorkspaceRoute::Groups)?;
-                let workspace = run.cx.update(|cx| run.shell.read(cx).workspace().clone());
-                let ids = run.cx.update(|cx| {
-                    let groups = workspace.read(cx).group_directory().clone();
-                    groups.read(cx).entry_ids(cx)
-                });
-                let first = ids.into_iter().next().ok_or("no group in s05")?;
-                run.workspace(move |w, window, cx| w.show_group(first, window, cx))
+                run.workspace(|w, window, cx| w.show_group(ContextId::new("c-product"), window, cx))
             }
         ),
         "C32" => {
@@ -604,14 +629,19 @@ pub fn plan(key: &str) -> Option<Plan> {
         // Agents.
         "04" | "I27" => capture!(
             S02,
-            "s02 Agents, conversation with Orbit, request mode",
+            "board_zh Agents, conversation with Nova, request mode",
             ["agent-roster", "conversation-agent-profile", "composer-receiver"],
             agent_conversation
         ),
-        "D01" => capture!(S02, "s02 Agents roster, nothing selected", ["agent-roster"], |run| {
-            daily(run)?;
-            run.route(WorkspaceRoute::Agents)
-        }),
+        "D01" => capture!(
+            S02,
+            "board_zh Agents roster (Nova, Atlas, Mira, 研究搭档), nothing selected",
+            ["agent-roster"],
+            |run| {
+                daily(run)?;
+                run.route(WorkspaceRoute::Agents)
+            }
+        ),
         "D33" => capture!(
             S02,
             "new agent wizard, basics (born_v3_creation capability injected)",
@@ -639,12 +669,13 @@ pub fn plan(key: &str) -> Option<Plan> {
             |run| wizard(run, 4, true)
         ),
         "D40" => capture!(
-            Start::Scenario("s03_intervention"),
-            "s03 ops conversation with an approval moment",
-            ["moment-m-approve"],
+            S02,
+            "board_zh Agents, Nova with three approval cards (pending, allowed, denied)",
+            ["moment-m-g-read"],
             |run| {
-                run.advance(1_000);
-                run.show("c-ops")
+                daily(run)?;
+                run.route(WorkspaceRoute::Agents)?;
+                run.click("agent-p-nova")
             }
         ),
         "D41" | "D42" | "D43" => {
@@ -652,66 +683,70 @@ pub fn plan(key: &str) -> Option<Plan> {
         }
         // Tasks.
         "06" => capture!(
-            Start::Scenario("s10_ai_participant"),
-            "s10 task proposal waiting for the user",
+            S02,
+            "board_zh tasks: Nova's proposal waiting for the user",
             ["tasks-area"],
             tasks
         ),
-        "E01" => capture!(
-            Start::Scenario("s10_ai_participant"),
-            "s10 tasks, All filter",
-            ["tasks-area"],
-            |run| {
+        "E01" => capture!(S02, "board_zh tasks, All filter", ["tasks-area"], |run| {
+            tasks(run)?;
+            run.click("tasks-category-all")
+        }),
+        "E05" => {
+            capture!(S02, "board_zh tasks, the reference task selected", ["tasks-detail"], |run| {
                 tasks(run)?;
-                run.click("tasks-category-all")
-            }
-        ),
-        "E05" => capture!(
-            Start::Scenario("s10_ai_participant"),
-            "s10 tasks, launch task selected",
-            ["tasks-detail"],
-            |run| {
-                tasks(run)?;
-                run.click("task-card-t-launch")
-            }
-        ),
+                run.click("task-card-t-reference")
+            })
+        }
         // Contacts.
-        "07" => capture!(S02, "s02 + stranger, contacts section", ["contacts-table"], |run| {
+        "07" => capture!(S02, "board_zh contacts section", ["contacts-table"], |run| {
             daily(run)?;
             run.route(WorkspaceRoute::Contacts)
         }),
-        "F02" => {
-            capture!(S02, "s02 add contact form in the contacts tool", ["contact-add-id"], |run| {
-                daily_team(run)?;
+        "F02" => capture!(
+            S02,
+            "board_zh add contact form in the contacts tool (the app has no dialog)",
+            ["contact-add-id"],
+            |run| {
+                daily_product(run)?;
                 run.workspace(|w, window, cx| w.open_add_contact(window, cx))
+            }
+        ),
+        "F04" => {
+            capture!(S02, "board_zh contact profile of 周宁", ["contact-safety-number"], |run| {
+                daily(run)?;
+                run.route(WorkspaceRoute::Contacts)?;
+                run.click("contacts-view-p-zhou")
             })
         }
-        "F04" => capture!(S02, "s02 contact profile of Lena", ["contact-safety-number"], |run| {
-            daily(run)?;
-            run.route(WorkspaceRoute::Contacts)?;
-            run.click("contacts-view-p-lena")
-        }),
         "F17" | "I26" => capture!(
             S02,
-            "s02 strangers, Gu Zhou selected",
+            "board_zh strangers, 陈遥 selected",
             ["strangers-area", "stranger-header"],
             strangers_selected
         ),
-        "F18" => {
-            capture!(S02, "s02 without requests, strangers empty", ["strangers-empty"], |run| {
-                run.advance(3_000);
+        "F18" => capture!(
+            S02,
+            "board_zh without requests, strangers empty",
+            ["strangers-empty"],
+            |run| {
+                run.play(&no_requests()?, 1_000);
                 run.route(WorkspaceRoute::Strangers)
-            })
-        }
+            }
+        ),
         "F25" | "F26" => Plan::Skip("absent: the strangers area has no loading or offline state"),
         "F27" => capture!(
             S02,
-            "s02 contact requests read failed, strangers",
+            "board_zh without requests, request read failed, strangers",
             ["strangers-empty"],
             |run| {
-                run.advance(3_000);
-                run.inject(0, DomainEvent::ContactRequestsReadFailed("connection reset".into()))?;
-                run.advance(100);
+                let mut s = no_requests()?;
+                push(
+                    &mut s,
+                    900,
+                    DomainEvent::ContactRequestsReadFailed("connection reset".into()),
+                );
+                run.play(&s, 1_000);
                 run.route(WorkspaceRoute::Strangers)
             }
         ),
@@ -725,70 +760,75 @@ pub fn plan(key: &str) -> Option<Plan> {
             section_state(run, WorkspaceRoute::Contacts, "failed", "contact.list")
         }),
         // Settings.
-        "G01" => capture!(S02, "s02 settings, account", ["account-current"], account_settings),
+        "G01" => {
+            capture!(S02, "board_zh settings, account", ["account-current"], |run| settings_board(
+                run,
+                SettingsSection::Account
+            ))
+        }
         "G25" | "I29" => capture!(
             S02,
-            "s02 settings, account: privacy gated (placeholder, ContractGap::AccountPrivacy)",
+            "board_zh settings, account: privacy gated (placeholder, ContractGap::AccountPrivacy)",
             ["account-privacy-unavailable"],
-            account_settings
+            |run| settings_board(run, SettingsSection::Account)
         ),
-        "G02" => capture!(
-            Start::Scenario("s09_multi_account_day"),
-            "s09 settings, backup",
-            ["settings-header"],
-            |run| settings_in(run, "s09_multi_account_day", 1_000, SettingsSection::Backup)
-        ),
+        "G02" => {
+            capture!(S02, "board_zh settings, backup", ["settings-header"], |run| settings_board(
+                run,
+                SettingsSection::Backup
+            ))
+        }
         "G08" | "I30" => capture!(
-            Start::Scenario("s03_intervention"),
-            "s03 settings, devices",
+            S02,
+            "board_zh settings, devices (MacBook Pro, iPhone, Chrome · macOS, 旧笔记本)",
             ["settings-header"],
-            devices
+            |run| settings_board(run, SettingsSection::Devices)
         ),
         "G24" => capture!(
-            Start::Scenario("s03_intervention"),
-            "s03 settings, devices: link gated (placeholder; the approval dialog has no screen)",
+            S02,
+            "board_zh settings, devices: link gated (placeholder; the approval dialog has no screen)",
             ["settings-link-device"],
-            devices
+            |run| settings_board(run, SettingsSection::Devices)
         ),
-        "G09" => capture!(
-            Start::Scenario("s09_multi_account_day"),
-            "s09 settings, nodes",
-            ["settings-header"],
-            |run| settings_in(run, "s09_multi_account_day", 2_000, SettingsSection::Nodes)
-        ),
+        "G09" => {
+            capture!(S02, "board_zh settings, nodes", ["settings-header"], |run| settings_board(
+                run,
+                SettingsSection::Nodes
+            ))
+        }
         "G11" => capture!(
             S02,
-            "s02 settings, diagnostics (sync rows need the fake daemon)",
+            "board_zh settings, diagnostics (sync rows need the fake daemon)",
             ["settings-header"],
-            |run| settings_in(run, "s02_daily", 3_000, SettingsSection::Diagnostics)
+            |run| settings_board(run, SettingsSection::Diagnostics)
         ),
-        "G13" | "I12" | "I32" | "I33" => {
-            capture!(S02, "s02 settings, appearance and language", ["appearance-mode"], appearance)
-        }
+        "G13" | "I12" | "I32" | "I33" => capture!(
+            S02,
+            "board_zh settings, appearance and language",
+            ["appearance-mode"],
+            |run| settings_board(run, SettingsSection::Appearance)
+        ),
         "G27" => capture!(
-            Start::Scenario("s09_multi_account_day"),
-            "s09 without devices, device list loading",
+            S02,
+            "board_zh without devices, device list loading",
             ["settings-devices-state"],
             |run| device_states(run, 0)
         ),
-        "G28" => capture!(
-            Start::Scenario("s09_multi_account_day"),
-            "s09 without devices, offline",
-            ["settings-offline"],
-            |run| device_states(run, 2_500)
-        ),
+        "G28" => capture!(S02, "board_zh without devices, offline", ["settings-offline"], |run| {
+            device_states(run, 2_500)
+        }),
         "G29" => capture!(
-            Start::Scenario("s09_multi_account_day"),
-            "s09 without devices, device.list failed",
+            S02,
+            "board_zh without devices, device.list failed",
             ["settings-last-error"],
             |run| device_states(run, 3_500)
         ),
         "G30" => capture!(
             S02,
-            "s02 settings account, source disconnected",
+            "board_zh settings account, source disconnected",
             ["settings-offline"],
             |run| {
-                account_settings(run)?;
+                settings_board(run, SettingsSection::Account)?;
                 run.inject(0, DomainEvent::SourceStatusChanged(SourceStatus::Disconnected))?;
                 run.advance(100);
                 Ok(())
@@ -796,47 +836,45 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "G31" => capture!(
             S02,
-            "s02 settings account, a failed account request",
+            "board_zh settings account, a failed account request",
             ["settings-last-error"],
             |run| {
-                account_settings(run)?;
+                settings_board(run, SettingsSection::Account)?;
                 run.inject(0, failure("account.passphrase.rotate"))?;
                 run.advance(100);
                 Ok(())
             }
         ),
         // Docks and calls.
-        "H01" => capture!(S02, "s02 Design team, files tool open", ["dock-panel-objects"], |run| {
-            daily_team(run)?;
-            run.click("rail-objects")
-        }),
-        "H04" => capture!(
-            Start::Scenario("s03_intervention"),
-            "s03 ops conversation, approvals tool open",
-            [],
-            |run| {
-                run.advance(1_000);
-                run.show("c-ops")?;
-                run.click("rail-approvals")
-            }
-        ),
-        "K01" => capture!(
-            S02,
-            "s02 direct conversation with Lena, call button",
-            ["conversation-call"],
-            |run| {
-                daily(run)?;
-                run.show("c-lena")
-            }
-        ),
-        "K06" => {
-            capture!(S02, "s02 Lena, an active outgoing call (injected)", ["call-bar"], |run| {
-                direct_call(run, call(CallState::Active, true))
+        "H01" => {
+            capture!(S02, "board_zh 产品设计, files tool open", ["dock-panel-objects"], |run| {
+                daily_product(run)?;
+                run.click("rail-objects")
             })
         }
+        "H04" => capture!(S02, "board_zh conversation with Nova, approvals tool open", [], |run| {
+            daily(run)?;
+            run.show("c-nova")?;
+            run.click("rail-approvals")
+        }),
+        "K01" => capture!(
+            S02,
+            "board_zh direct conversation with 周宁, call button",
+            ["conversation-call"],
+            |run| {
+                run.play(&messages_world()?, 1_000);
+                run.show("c-zhou")
+            }
+        ),
+        "K06" => capture!(
+            S02,
+            "board_zh 周宁, an active outgoing call (injected; duration on the session clock)",
+            ["call-bar"],
+            |run| direct_call(run, call(CallState::Active, true))
+        ),
         "K40" => capture!(
             S02,
-            "s02 Lena offline, call button hovered",
+            "board_zh 周宁 offline, call button hovered",
             [],
             |run| {
                 direct_call(run, DomainEvent::SourceStatusChanged(SourceStatus::Disconnected))?;
@@ -846,7 +884,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "K41" => capture!(
             S02,
-            "s02 Lena, an outgoing call that failed (injected)",
+            "board_zh 周宁, an outgoing call that failed (injected)",
             ["call-failed"],
             |run| direct_call(run, call(CallState::Ended(CallEndReason::Failed), false))
         ),
