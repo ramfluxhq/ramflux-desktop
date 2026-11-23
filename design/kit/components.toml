@@ -1,0 +1,397 @@
+# Kit components on the component boards (00B, 00D, B19b), with their
+# rectangles in design pixels, measured on the 1x references exported from
+# the design file (outline strokes and shadows outside the rectangle are
+# not included). Read by `rf-design kit`; captured by the board_capture
+# example with --kit.
+
+[[component]]
+slug = "button-primary"
+name = "Button / Primary"
+board = "00B"
+rect = { x = 32, y = 90, w = 80, h = 32 }
+text = "主要操作"
+
+[[component]]
+slug = "status-neutral"
+name = "Status / Neutral"
+board = "00B"
+rect = { x = 136, y = 90, w = 65, h = 25 }
+text = "等待确认"
+
+[[component]]
+slug = "avatar-identity"
+name = "Avatar / Identity"
+board = "00B"
+rect = { x = 225, y = 90, w = 40, h = 40 }
+text = "A"
+
+[[component]]
+slug = "avatar-agent"
+name = "Avatar / Agent"
+board = "00B"
+rect = { x = 289, y = 90, w = 40, h = 40 }
+text = "N"
+
+[[component]]
+slug = "list-row-conversation"
+name = "List row / Conversation"
+board = "00B"
+rect = { x = 32, y = 154, w = 240, h = 64 }
+text = "产品设计 / 已整理好界面拆分建议"
+
+[[component]]
+slug = "composer-default"
+name = "Composer / Default"
+board = "00B"
+rect = { x = 296, y = 154, w = 560, h = 48 }
+text = "输入消息…"
+
+[[component]]
+slug = "menu-item-hover"
+name = "RF / Menu item (hover)"
+board = "00B"
+rect = { x = 512, y = 242, w = 212, h = 38 }
+text = "悬停 / 选中"
+
+[[component]]
+slug = "menu"
+name = "RF / Menu"
+board = "00B"
+rect = { x = 268, y = 242, w = 220, h = 207 }
+text = "回复 复制 转发 置顶 删除"
+
+[[component]]
+slug = "info-popover"
+name = "RF / Info popover"
+board = "00B"
+rect = { x = 748, y = 242, w = 300, h = 34 }
+text = "完整说明"
+
+[[component]]
+slug = "bubble-peer"
+name = "RF / Bubble / Peer"
+board = "00B"
+rect = { x = 32, y = 473, w = 360, h = 40 }
+text = "新版资料我整理好了，你有空时看一下。 14:32"
+
+[[component]]
+slug = "bubble-own"
+name = "RF / Bubble / Own"
+board = "00B"
+rect = { x = 416, y = 473, w = 360, h = 40 }
+text = "收到，我会把问题逐项回复。 14:33"
+
+[[component]]
+slug = "bubble-group"
+name = "RF / Bubble / Group"
+board = "00B"
+rect = { x = 800, y = 473, w = 400, h = 62 }
+text = "林悦 / 新版资料我整理好了，你有空时看一下。 14:32"
+
+[[component]]
+slug = "navigation-item"
+name = "Navigation / Desktop"
+board = "00B"
+rect = { x = 32, y = 560, w = 68, h = 112 }
+text = "消息"
+
+[[component]]
+slug = "button-secondary"
+name = "Button / Secondary"
+board = "00D"
+rect = { x = 24, y = 70, w = 80, h = 32 }
+text = "次要操作"
+
+[[component]]
+slug = "button-disabled"
+name = "Button / Disabled"
+board = "00D"
+rect = { x = 24, y = 114, w = 66, h = 32 }
+text = "不可用"
+
+[[component]]
+slug = "button-danger"
+name = "Button / Danger"
+board = "00D"
+rect = { x = 24, y = 158, w = 80, h = 32 }
+text = "危险操作"
+
+[[component]]
+slug = "button-danger-quiet"
+name = "Button / Danger / Quiet"
+board = "00D"
+rect = { x = 24, y = 202, w = 80, h = 32 }
+text = "撤销设备"
+
+[[component]]
+slug = "button-text"
+name = "Button / Text"
+board = "00D"
+rect = { x = 24, y = 246, w = 80, h = 32 }
+text = "文字按钮"
+
+[[component]]
+slug = "icon-button"
+name = "RF / Icon button"
+board = "00D"
+rect = { x = 24, y = 290, w = 32, h = 32 }
+text = "…"
+
+[[component]]
+slug = "info-button"
+name = "RF / Info button"
+board = "00D"
+rect = { x = 70, y = 290, w = 24, h = 24 }
+text = "(i)"
+
+[[component]]
+slug = "checkbox-on"
+name = "RF / Checkbox on"
+board = "00D"
+rect = { x = 24, y = 340, w = 18, h = 18 }
+text = ""
+
+[[component]]
+slug = "checkbox-off"
+name = "RF / Checkbox off"
+board = "00D"
+rect = { x = 54, y = 340, w = 18, h = 18 }
+text = ""
+
+[[component]]
+slug = "checkbox-disabled"
+name = "RF / Checkbox disabled"
+board = "00D"
+rect = { x = 84, y = 340, w = 18, h = 18 }
+text = ""
+
+[[component]]
+slug = "radio-on"
+name = "RF / Radio on"
+board = "00D"
+rect = { x = 24, y = 372, w = 18, h = 18 }
+text = ""
+
+[[component]]
+slug = "radio-off"
+name = "RF / Radio off"
+board = "00D"
+rect = { x = 54, y = 372, w = 18, h = 18 }
+text = ""
+
+[[component]]
+slug = "switch-on"
+name = "RF / Switch on"
+board = "00D"
+rect = { x = 24, y = 404, w = 36, h = 20 }
+text = ""
+
+[[component]]
+slug = "switch-off"
+name = "RF / Switch off"
+board = "00D"
+rect = { x = 70, y = 404, w = 36, h = 20 }
+text = ""
+
+[[component]]
+slug = "segmented"
+name = "RF / Segmented"
+board = "00D"
+rect = { x = 24, y = 440, w = 240, h = 32 }
+text = "选项一 | 选项二"
+
+[[component]]
+slug = "text-field"
+name = "RF / Text field"
+board = "00D"
+rect = { x = 24, y = 490, w = 320, h = 61 }
+text = "标签 / 输入内容"
+
+[[component]]
+slug = "search-field"
+name = "RF / Search field"
+board = "00D"
+rect = { x = 24, y = 580, w = 240, h = 34 }
+text = "搜索"
+
+[[component]]
+slug = "search-field-labeled"
+name = "RF / Search field / Labeled"
+board = "00D"
+rect = { x = 2980, y = 410, w = 320, h = 61 }
+text = "搜索"
+
+[[component]]
+slug = "dialog"
+name = "RF / Dialog"
+board = "00D"
+rect = { x = 400, y = 70, w = 480, h = 160 }
+text = "对话框标题"
+
+[[component]]
+slug = "dialog-destructive"
+name = "RF / Dialog / Destructive"
+board = "00D"
+rect = { x = 400, y = 300, w = 480, h = 182 }
+text = "移除 Nova?"
+
+[[component]]
+slug = "security-warning-default"
+name = "RF / Security warning"
+board = "00D"
+rect = { x = 400, y = 520, w = 480, h = 65 }
+text = "网页会话不受节点运营方的防护"
+
+[[component]]
+slug = "security-warning-danger"
+name = "RF / Security warning (danger)"
+board = "00D"
+rect = { x = 400, y = 620, w = 480, h = 65 }
+text = "网页会话不受节点运营方的防护"
+
+[[component]]
+slug = "tip-bar-default"
+name = "RF / Tip bar"
+board = "00D"
+rect = { x = 920, y = 70, w = 480, h = 34 }
+text = "当前离线 · 消息将在恢复连接后发送"
+
+[[component]]
+slug = "tip-bar-success"
+name = "RF / Tip bar (success)"
+board = "00D"
+rect = { x = 920, y = 120, w = 480, h = 34 }
+text = "已保存"
+
+[[component]]
+slug = "tip-bar-warning"
+name = "RF / Tip bar (warning)"
+board = "00D"
+rect = { x = 920, y = 170, w = 480, h = 34 }
+text = "正在重新连接…"
+
+[[component]]
+slug = "tip-bar-danger"
+name = "RF / Tip bar (danger)"
+board = "00D"
+rect = { x = 920, y = 220, w = 480, h = 34 }
+text = "未能保存，请重试"
+
+[[component]]
+slug = "origin-display"
+name = "RF / Origin display"
+board = "00D"
+rect = { x = 920, y = 280, w = 480, h = 86 }
+text = "正在关联的来源"
+
+[[component]]
+slug = "device-row"
+name = "RF / Device row"
+board = "00D"
+rect = { x = 920, y = 400, w = 760, h = 68 }
+text = "Chrome · macOS"
+
+[[component]]
+slug = "approval-card"
+name = "RF / Approval card"
+board = "00D"
+rect = { x = 1740, y = 70, w = 560, h = 214 }
+text = "读取「研究资料」文件夹"
+
+[[component]]
+slug = "comment-row"
+name = "RF / Comment row"
+board = "00D"
+rect = { x = 1740, y = 400, w = 560, h = 92 }
+text = "周宁"
+
+[[component]]
+slug = "post-card"
+name = "RF / Post card"
+board = "00D"
+rect = { x = 1740, y = 540, w = 560, h = 138 }
+text = "帖子标题"
+
+[[component]]
+slug = "menu-item-compact"
+name = "RF / Menu item / Compact"
+board = "00D"
+rect = { x = 2360, y = 70, w = 200, h = 32 }
+text = "菜单项"
+
+[[component]]
+slug = "setting-row"
+name = "RF / Setting row"
+board = "00D"
+rect = { x = 2360, y = 120, w = 560, h = 66 }
+text = "设置项 / 当前值 / 更改"
+
+[[component]]
+slug = "step-item"
+name = "RF / Step item"
+board = "00D"
+rect = { x = 2360, y = 220, w = 200, h = 36 }
+text = "1 步骤"
+
+[[component]]
+slug = "brand-mark"
+name = "RF / Brand mark"
+board = "00D"
+rect = { x = 2360, y = 280, w = 28, h = 28 }
+text = "rf"
+
+[[component]]
+slug = "avatar-group"
+name = "Avatar / Group"
+board = "00D"
+rect = { x = 2420, y = 280, w = 40, h = 40 }
+text = ""
+
+[[component]]
+slug = "stage"
+name = "RF / Stage"
+board = "00D"
+rect = { x = 2360, y = 340, w = 240, h = 135 }
+text = "视频舞台 · 恒暗"
+
+[[component]]
+slug = "chat-header"
+name = "RF / Chat header"
+board = "00D"
+rect = { x = 2980, y = 70, w = 1108, h = 88 }
+text = "周宁 / 你、周宁 · 私人会话"
+
+[[component]]
+slug = "chat-header-channel"
+name = "RF / Chat header / Channel"
+board = "00D"
+rect = { x = 2980, y = 190, w = 1108, h = 84 }
+text = "# 产品设计"
+
+[[component]]
+slug = "page-header"
+name = "RF / Page header"
+board = "00D"
+rect = { x = 2980, y = 300, w = 1108, h = 88 }
+text = "页面标题 / 页面说明 / 操作"
+
+[[component]]
+slug = "date-separator"
+name = "RF / Date separator"
+board = "B19b"
+rect = { x = 24, y = 24, w = 832, h = 20 }
+text = "今天 · 11 月 10 日"
+
+[[component]]
+slug = "unread-divider"
+name = "RF / Unread divider"
+board = "B19b"
+rect = { x = 24, y = 60, w = 832, h = 40 }
+text = "以下为未读消息"
+
+[[component]]
+slug = "jump-to-latest"
+name = "RF / Jump to latest"
+board = "B19b"
+rect = { x = 24, y = 116, w = 111, h = 32 }
+text = "↓ 3 条新消息"

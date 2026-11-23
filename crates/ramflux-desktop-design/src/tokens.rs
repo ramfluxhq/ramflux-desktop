@@ -349,6 +349,119 @@ fn utility_calls(text: &str, counts: &mut BTreeMap<String, usize>) {
     }
 }
 
+/// The design value a Kit utility should take: spacing steps on the
+/// design's 4 px grid (one step = 4 px, the scale the utilities follow at a
+/// 16 px rem), type steps at the nearest design type size to what renders
+/// today (so the change is the smallest visible one).
+fn design_value(name: &str, rem: f64, type_sizes: &[(String, f64)]) -> (f64, String) {
+    if let Some((_, r)) = TEXT_STEPS.iter().find(|(t, _)| *t == name) {
+        let now = r * rem;
+        let best = type_sizes
+            .iter()
+            .min_by(|a, b| (a.1 - now).abs().total_cmp(&(b.1 - now).abs()))
+            .map_or((now, String::new()), |(n, v)| (*v, n.clone()));
+        return best;
+    }
+    let step = name.rsplit('_').next().and_then(spacing_step).unwrap_or(0.0);
+    (step * 16.0, String::from("4 px grid"))
+}
+
+/// The W1 work list: every Kit spacing and type utility and every `/ 16.0`
+/// rem divisor in production UI code, grouped by file, with the value it
+/// renders at today and the design value it should take.
+pub fn worklist(root: &Path) -> Result<String> {
+    let variables: Variables = crate::read_json(&root.join(VARIABLES_PATH))?;
+    let type_sizes: Vec<(String, f64)> = variables
+        .variables
+        .iter()
+        .filter(|v| v.name.starts_with("rf-size-") && !v.name.contains("mobile"))
+        .filter_map(|v| v.light.as_f64().map(|n| (v.name.clone(), n)))
+        .collect();
+    let rem = {
+        let theme: serde_json::Value = crate::read_json(&root.join(KIT_THEMES[0].1))?;
+        theme["font.size"].as_f64().unwrap_or(15.0)
+    };
+    let mut files = Vec::new();
+    for dir in UI_SOURCES {
+        rust_files(&root.join(dir), &mut files)?;
+    }
+    files.sort();
+    let mut out = String::from("# W1 work list: Kit utilities and rem divisors\n\n");
+    out.push_str(&format!(
+        "Production code of `crates/ramflux-desktop-ui/src` and `crates/ramflux-desktop-navigation/src` (generated files and inline test modules excluded). Kit rem = {} px. Spacing steps render at step × {:.2} px today and should take step × 4 px (the design's 4 px grid; `rf-gap` 16). Type steps take the nearest design type size to what they render today.\n\n",
+        format_number(rem),
+        rem / 4.0
+    ));
+    let mut totals: BTreeMap<String, (usize, String)> = BTreeMap::new();
+    let mut body = String::new();
+    let mut divisor_lines = Vec::new();
+    for file in &files {
+        if file.components().any(|c| c.as_os_str() == "generated") {
+            continue;
+        }
+        let text = crate::read_text(file)?;
+        let rel = file.strip_prefix(root).unwrap_or(file).display().to_string();
+        let mut rows = Vec::new();
+        for (index, line) in text.lines().enumerate() {
+            if line.trim() == "#[cfg(test)]" {
+                break;
+            }
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            let mut counts = BTreeMap::new();
+            utility_calls(line, &mut counts);
+            for (name, n) in counts {
+                let current = TEXT_STEPS
+                    .iter()
+                    .find(|(t, _)| *t == name)
+                    .map(|(_, r)| r * rem)
+                    .or_else(|| name.rsplit('_').next().and_then(spacing_step).map(|s| s * rem))
+                    .unwrap_or(0.0);
+                if current == 0.0 {
+                    continue;
+                }
+                let (target, token) = design_value(&name, rem, &type_sizes);
+                let entry = totals.entry(name.clone()).or_insert((0, String::new()));
+                entry.0 += n;
+                entry.1 =
+                    format!("{} → {} px ({token})", format_number(current), format_number(target));
+                rows.push(format!(
+                    "| {} | `.{name}()`{} | {} | {} px ({token}) |",
+                    index + 1,
+                    if n > 1 { format!(" ×{n}") } else { String::new() },
+                    format_number(current),
+                    format_number(target)
+                ));
+            }
+            if line.contains("/ 16.0") {
+                divisor_lines.push(format!(
+                    "| `{rel}:{}` | `{}` |",
+                    index + 1,
+                    line.trim().replace('|', "/")
+                ));
+            }
+        }
+        if !rows.is_empty() {
+            body.push_str(&format!("### `{rel}` ({} sites)\n\n| Line | Call | Now (px) | Design |\n|---|---|---|---|\n", rows.len()));
+            body.push_str(&rows.join("\n"));
+            body.push_str("\n\n");
+        }
+    }
+    out.push_str("## Summary by utility\n\n| Utility | Uses | Now → design |\n|---|---|---|\n");
+    for (name, (n, change)) in &totals {
+        out.push_str(&format!("| `.{name}()` | {n} | {change} |\n"));
+    }
+    out.push_str(&format!(
+        "\n## rem divisors (`/ 16.0` where the rem is {} px)\n\n| Site | Code |\n|---|---|\n",
+        format_number(rem)
+    ));
+    out.push_str(&divisor_lines.join("\n"));
+    out.push_str("\n\n## Sites by file\n\n");
+    out.push_str(&body);
+    Ok(out)
+}
+
 /// Runs the token check over the repository at `root`.
 pub fn check(root: &Path) -> Result<TokenReport> {
     let variables: Variables = crate::read_json(&root.join(VARIABLES_PATH))?;

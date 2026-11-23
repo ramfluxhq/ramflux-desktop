@@ -23,12 +23,16 @@ USAGE:
       Check the local reference set (RAMFLUX_DESIGN_REFS) against the manifest.
   rf-design compare --captures <dir> --out <dir> [--refs <dir>] [--boards K1,K2]
                     [--deviations <dir>] [--no-2x] [--threshold N]
-                    [--check] [--review] [--record]
+                    [--check] [--review] [--record] [--classify]
       Compare captures with the references (default: the priority set).
       --check   exit 1 on NEW deviations only (CI)
       --review  also write review.md listing what needs a decision
       --record  write NEW regions into the per-board files as unreviewed
-  rf-design tokens [--out <dir>] [--check]
+      --classify  attribute unreviewed entries to classes by measurement
+                (accepts only window chrome and glyph rasterisation)
+  rf-design kit --captures <dir> --out <dir> [--refs <dir>]
+      Compare the kit component captures with the component boards.
+  rf-design tokens [--out <dir>] [--check] [--worklist <file>]
       Compare the code's design tokens with design/pencil/variables.json.
 
 Common: --root <repository> (default: the nearest ancestor with design/boards).
@@ -172,6 +176,7 @@ fn run(mut args: Args) -> Result<ExitCode> {
             let check = args.flag("--check");
             let review = args.flag("--review");
             let record = args.flag("--record");
+            let classify = args.flag("--classify");
             args.finish()?;
             let root = find_root(root_arg)?;
             let manifest = Manifest::load(&root)?;
@@ -185,6 +190,7 @@ fn run(mut args: Args) -> Result<ExitCode> {
                 boards,
                 prefer_2x,
                 record,
+                classify,
                 compare,
             };
             let result = report::run(&manifest, &options)?;
@@ -206,12 +212,38 @@ fn run(mut args: Args) -> Result<ExitCode> {
             }
             Ok(if check && result.fails_check() { ExitCode::from(1) } else { ExitCode::SUCCESS })
         }
+        "kit" => {
+            let captures = args
+                .path("--captures")?
+                .ok_or_else(|| Error::Invalid("kit needs --captures".into()))?;
+            let out =
+                args.path("--out")?.ok_or_else(|| Error::Invalid("kit needs --out".into()))?;
+            let refs = args.path("--refs")?;
+            args.finish()?;
+            let root = find_root(root_arg)?;
+            let manifest = Manifest::load(&root)?;
+            let refs = manifest::refs_dir(refs.as_deref())?;
+            let results =
+                ramflux_desktop_design::kit::run(&root, &manifest, &refs, &captures, &out)?;
+            let compared = results.iter().filter(|r| r.three_up.is_some()).count();
+            println!(
+                "{} components, {compared} compared; report {}",
+                results.len(),
+                out.join("kit.md").display()
+            );
+            Ok(ExitCode::SUCCESS)
+        }
         "tokens" => {
             let out = args.path("--out")?;
             let check = args.flag("--check");
+            let worklist = args.path("--worklist")?;
             args.finish()?;
             let root = find_root(root_arg)?;
             let report = tokens::check(&root)?;
+            if let Some(path) = worklist {
+                ramflux_desktop_design::write_text(&path, &tokens::worklist(&root)?)?;
+                println!("wrote {}", path.display());
+            }
             let text = tokens::markdown(&report);
             if let Some(out) = out {
                 ramflux_desktop_design::write_json(&out.join("tokens.json"), &report)?;

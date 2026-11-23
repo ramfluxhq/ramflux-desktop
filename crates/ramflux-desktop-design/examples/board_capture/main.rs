@@ -17,6 +17,7 @@
 //! language and frame size (taller canvases are captured 900 high).
 
 mod harness;
+mod kit;
 mod recipes;
 
 use std::panic::AssertUnwindSafe;
@@ -31,6 +32,7 @@ use recipes::Plan;
 
 struct Options {
     out: PathBuf,
+    kit: bool,
     boards: Vec<String>,
     themes: Option<Vec<String>>,
     locales: Option<Vec<String>>,
@@ -50,8 +52,14 @@ fn parse(args: &[String]) -> Result<Options, String> {
     let mut themes = None;
     let mut locales = None;
     let mut sizes = vec![WindowSize::Board];
+    let mut kit = false;
     let mut i = 0;
     while i < args.len() {
+        if args[i] == "--kit" {
+            kit = true;
+            i += 1;
+            continue;
+        }
         let value = args.get(i + 1).cloned().ok_or(format!("{} needs a value", args[i]))?;
         match args[i].as_str() {
             "--out" => out = Some(PathBuf::from(value)),
@@ -69,7 +77,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         i += 2;
     }
     let out = out.ok_or("pass --out <dir> or set RAMFLUX_CAPTURE_DIR")?;
-    Ok(Options { out, boards, themes, locales, sizes })
+    Ok(Options { out, kit, boards, themes, locales, sizes })
 }
 
 fn repo_root() -> PathBuf {
@@ -77,12 +85,16 @@ fn repo_root() -> PathBuf {
 }
 
 fn main() -> ExitCode {
+    harness::run_as_failing_daemon();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("{}", include_str!("usage.txt"));
         return ExitCode::SUCCESS;
     }
-    match run(&args) {
+    let outcome = run(&args);
+    // The first-run entry's socket directory (board A16).
+    let _ = std::fs::remove_dir_all("/tmp/rf-board");
+    match outcome {
         Ok(0) => ExitCode::SUCCESS,
         Ok(_) => ExitCode::from(1),
         Err(e) => {
@@ -94,6 +106,9 @@ fn main() -> ExitCode {
 
 fn run(args: &[String]) -> Result<usize, String> {
     let options = parse(args)?;
+    if options.kit {
+        return capture_kit(&options.out);
+    }
     let manifest = Manifest::load(&repo_root()).map_err(|e| e.to_string())?;
     let keys: Vec<String> = if options.boards.iter().any(|b| b == "priority") {
         manifest.priority_keys().into_iter().map(str::to_owned).collect()
@@ -226,4 +241,57 @@ fn capture_one(out: &Path, name: &CaptureName) -> CaptureRecord {
             skipped(name, format!("recipe panicked: {message} ({})", recipe.note), "failed")
         }
     }
+}
+
+/// Captures every kit component alone (`--kit`).
+fn capture_kit(out: &Path) -> Result<usize, String> {
+    use ramflux_desktop_design::kit::{KitRecord, capture_name, load};
+    std::fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
+    let listed = load(&repo_root()).map_err(|e| e.to_string())?;
+    let mut records = Vec::new();
+    let mut failed = 0;
+    for component in kit::components() {
+        let Some(entry) = listed.iter().find(|c| c.slug == component.slug) else {
+            return Err(format!(
+                "kit component {} is not in design/kit/components.toml",
+                component.slug
+            ));
+        };
+        let (source, note, render) = match component.how {
+            kit::How::App(note, render) => ("app", note, Some(render)),
+            kit::How::Replica(note, render) => ("replica", note, Some(render)),
+            kit::How::Skip(reason) => ("skipped", reason, None),
+        };
+        let mut record = KitRecord {
+            slug: component.slug.to_owned(),
+            source: source.to_owned(),
+            note: note.to_owned(),
+        };
+        if let Some(render) = render {
+            let path = out.join(capture_name(component.slug));
+            let attempt = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                kit::capture(&entry.board, entry.rect.w, entry.rect.h, render)
+            }));
+            match attempt {
+                Ok(Ok(image)) => {
+                    image.save(&path).map_err(|e| format!("{}: {e}", path.display()))?
+                }
+                Ok(Err(error)) => {
+                    failed += 1;
+                    record.source = "skipped".into();
+                    record.note = format!("capture failed: {error}");
+                }
+                Err(_) => {
+                    failed += 1;
+                    record.source = "skipped".into();
+                    record.note = "capture panicked".into();
+                }
+            }
+        }
+        println!("{:8} {} {}", record.source, record.slug, record.note);
+        records.push(record);
+    }
+    ramflux_desktop_design::write_json(&out.join("kit.json"), &records)
+        .map_err(|e| e.to_string())?;
+    Ok(failed)
 }

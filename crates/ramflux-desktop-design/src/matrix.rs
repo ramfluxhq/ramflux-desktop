@@ -11,9 +11,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Window height used for boards drawn taller than a window (1040 and 1120
-/// canvases): the capture is 1440x900 and only the top 900 px of the
-/// reference are compared (lead decision for the first baseline).
+/// Boards drawn taller than a window (1040 and 1120 canvases) are captured
+/// at their full height, so bottom-anchored elements sit where the board
+/// draws them, and only their top 900 px are compared (lead decision).
 pub const TALL_BOARD_WINDOW_HEIGHT: u32 = 900;
 
 /// Themes of the matrix.
@@ -27,8 +27,7 @@ pub const LOCALES: [&str; 4] = ["zh-CN", "en", "en-XA", "ar-XB"];
 /// A window size of the matrix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindowSize {
-    /// The board's own frame width with its height capped at
-    /// [`TALL_BOARD_WINDOW_HEIGHT`] when the board is a taller canvas.
+    /// The board's own frame size.
     Board,
     /// A fixed logical size.
     Fixed(u32, u32),
@@ -48,7 +47,7 @@ impl WindowSize {
     /// The logical window size for a board frame.
     pub fn resolve(self, frame_width: u32, frame_height: u32) -> (u32, u32) {
         match self {
-            Self::Board => (frame_width, frame_height.min(TALL_BOARD_WINDOW_HEIGHT)),
+            Self::Board => (frame_width, frame_height),
             Self::Fixed(w, h) => (w, h),
         }
     }
@@ -157,7 +156,7 @@ mod tests {
     #[test]
     fn names_round_trip() {
         let name = board_capture("A01", "zh-CN", "light", (1440, 1040));
-        assert_eq!(name.file_name(), "A01__zh-CN__light__1440x900.png");
+        assert_eq!(name.file_name(), "A01__zh-CN__light__1440x1040.png");
         assert_eq!(CaptureName::parse(&name.file_name()), Some(name));
         assert_eq!(CaptureName::parse("A01__zh-CN__light"), None);
         assert_eq!(CaptureName::parse("A01__zh-CN__light__1x2__x"), None);
@@ -166,7 +165,7 @@ mod tests {
     #[test]
     fn sizes_resolve_and_parse() {
         assert_eq!(WindowSize::Board.resolve(800, 900), (800, 900));
-        assert_eq!(WindowSize::Board.resolve(1440, 1120), (1440, 900));
+        assert_eq!(WindowSize::Board.resolve(1440, 1120), (1440, 1120));
         assert_eq!(WindowSize::parse("1024x768"), Some(WindowSize::Fixed(1024, 768)));
         assert_eq!(WindowSize::parse("board"), Some(WindowSize::Board));
         assert_eq!(WindowSize::parse("wide"), None);

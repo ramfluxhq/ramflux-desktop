@@ -10,6 +10,8 @@
 //! - [`compare`]: pixel comparison of a capture with its reference, regions,
 //!   a perceptual score and the three-up image.
 //! - [`deviations`]: the per-board reviewed expected-deviation files.
+//! - [`classify`]: attribution of deviation regions to error classes.
+//! - [`kit`]: kit components compared one by one with the component boards.
 //! - [`report`]: the machine-readable result and the Markdown report.
 //! - [`tokens`]: the design tokens of the code compared by value with the
 //!   design variables.
@@ -19,8 +21,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod classify;
 pub mod compare;
 pub mod deviations;
+pub mod kit;
 pub mod manifest;
 pub mod matrix;
 pub mod report;

@@ -5,8 +5,8 @@
 //!
 //! 1. Both images are brought to the same scale (a 2x capture is compared
 //!    with the 2x reference when one exists, otherwise box-averaged to 1x)
-//!    and aligned at the top-left corner. A reference taller than the
-//!    capture is compared over the capture's height (`top-900`).
+//!    and aligned at the top-left corner. Boards drawn taller than a window
+//!    are compared over their top 900 design px (`crop: top`).
 //! 2. A pixel differs when its largest channel difference exceeds the
 //!    threshold (32/255) and the other image has no pixel within the
 //!    threshold in its neighbourhood (one design pixel), in both directions.
@@ -37,11 +37,21 @@ pub struct Options {
     pub merge_gap: u32,
     /// A region larger than this in either direction is a deviation.
     pub min_extent: u32,
+    /// Only the top this many design pixels are compared (boards drawn
+    /// taller than a window: lead decision for the baselines).
+    pub max_height: Option<u32>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { threshold: 32, neighbourhood: 1, cell: 4, merge_gap: 8, min_extent: 2 }
+        Self {
+            threshold: 32,
+            neighbourhood: 1,
+            cell: 4,
+            merge_gap: 8,
+            min_extent: 2,
+            max_height: Some(crate::matrix::TALL_BOARD_WINDOW_HEIGHT),
+        }
     }
 }
 
@@ -261,13 +271,14 @@ pub fn compare(
 ) -> Comparison {
     let scale = scale.max(1);
     let width = reference.width().min(capture.width());
-    let height = reference.height().min(capture.height());
-    let crop = if reference.dimensions() == capture.dimensions() {
-        Crop::Full
-    } else if reference.width() == capture.width() && reference.height() > capture.height() {
+    let full = reference.height().min(capture.height());
+    let height = options.max_height.map_or(full, |max| full.min(max * scale));
+    let crop = if reference.width() != capture.width() || reference.height() < capture.height() {
+        Crop::Mismatch
+    } else if height < reference.height() {
         Crop::Top
     } else {
-        Crop::Mismatch
+        Crop::Full
     };
     let radius = (options.neighbourhood * scale) as i64;
     let threshold = options.threshold;
@@ -641,6 +652,11 @@ mod tests {
         assert_eq!((c.width, c.height), (50, 60));
         let narrow = RgbaImage::from_pixel(40, 60, Rgba([255, 255, 255, 255]));
         assert_eq!(compare(&tall, &narrow, 1, Options::default()).crop, Crop::Mismatch);
+        // A capture at the full board height is compared over the top part.
+        let options = Options { max_height: Some(70), ..Options::default() };
+        let c = compare(&tall, &tall.clone(), 1, options);
+        assert_eq!((c.crop, c.height), (Crop::Top, 70));
+        assert_eq!(compare(&short, &tall, 1, Options::default()).crop, Crop::Mismatch);
     }
 
     #[test]
