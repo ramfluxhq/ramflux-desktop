@@ -191,7 +191,7 @@ h = 12
 [[deviation]]
 id = "r15"
 class = "structure"
-reason = "screen structure differs over 446,132 872x329 (board bg #FCFBF9 ink #505050, capture bg #FCFBF9 ink #554A3A)"
+reason = "screen structure differs over 446,132 872x329 (board bg #FCFBF9 ink #505050, capture bg #FCFBF9 ink #574B3B)"
 decision = "fix"
 reviewer = "rf-design classify"
 

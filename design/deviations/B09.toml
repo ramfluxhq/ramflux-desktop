@@ -217,7 +217,7 @@ h = 9
 [[deviation]]
 id = "r17"
 class = "layout"
-reason = "geometry differs (ink box board 836.0,117.0 98.5x11.0, app 843.5,110.5 82.5x11.5)"
+reason = "geometry differs (ink box board 836.0,117.0 98.5x11.0, app 840.0,110.0 89.5x10.5)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -269,7 +269,7 @@ h = 13
 [[deviation]]
 id = "r21"
 class = "layout"
-reason = "geometry differs (ink box board 416.0,154.5 910.0x157.5, app 416.0,145.0 878.0x167.0)"
+reason = "geometry differs (ink box board 416.0,154.5 910.0x157.5, app 416.0,147.5 878.0x164.5)"
 decision = "unreviewed"
 reviewer = ""
 

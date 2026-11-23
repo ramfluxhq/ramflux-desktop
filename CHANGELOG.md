@@ -65,6 +65,13 @@ Versioning.
   ending in an ellipsis when long (the tooltip has the name). The rail's
   section items scroll in a short window, so Edit, Settings and the account
   stay reachable at the 640 x 480 minimum.
+- Design message bubbles: a hand-written bubble shell (8 px above and
+  below, 12 px across, the bubble radius) replaces the generated catalog
+  bubble, whose empty quote, attachment and footer slots made every bubble
+  12 px taller; message text on its 24 px line, the time in the caption
+  style at the end of the last line, the sender in 13 px semibold, 32 px
+  avatars, and the date separator at 20 px, 12 px above the day's first
+  bubble.
 
 ### Fixed
 

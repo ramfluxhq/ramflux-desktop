@@ -224,13 +224,11 @@ impl StrangersArea {
                         ),
                 );
         let bubble = |id: &'static str, text: SharedString| {
-            h_flex().child(catalog::message_bubble(
-                catalog::MessageContent::new(
-                    id.into(),
-                    catalog::BubbleKind::Peer,
-                    div().whitespace_normal().child(text),
-                ),
-                theme,
+            h_flex().child(crate::message_shell::message_shell(
+                gpui_kit::ElementId::Name(format!("{id}:bubble").into()),
+                crate::message_shell::BubbleKind::Peer,
+                div().whitespace_normal().child(text),
+                cx,
             ))
         };
         let body = v_flex()

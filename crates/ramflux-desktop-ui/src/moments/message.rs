@@ -18,7 +18,9 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
 use ramflux_desktop_core::{MediaState, MediaView, MessagePayload, TransferState, UiEventKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
-use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
+use ramflux_desktop_navigation::scale::{
+    DesignText as _, TextStyle, design_px, space, style, text_caption, text_secondary,
+};
 
 use super::{MomentRow, RowState, message_text};
 use crate::bubble::EventSink;
@@ -171,7 +173,8 @@ pub fn render(
         .gap(space(1.))
         // A message reads in its own direction, whatever the interface's.
         .text_start_in(super::body_direction(row))
-        .text_size(body_size)
+        // Message text: 15 px on the boards' 24 px message line.
+        .design_text(message_style())
         .text_color(foreground)
         .children(forwarded)
         .children(reply)
@@ -185,6 +188,7 @@ pub fn render(
                         gpui_kit::component::input::Textarea::new(selection)
                             .xsmall()
                             .text_size(body_size)
+                            .line_height(design_px(message_style().line))
                             .w_full()
                             .readonly(true)
                             .appearance(false)
@@ -378,6 +382,15 @@ fn image_format(bytes: &[u8]) -> Option<gpui_kit::ImageFormat> {
         None
     }
 }
+
+/// The message text style (boards 00B, 02, H04): the body size on a 24 px
+/// line, with the 8 px bubble inset a one-line bubble is 40 px high.
+pub(crate) fn message_style() -> TextStyle {
+    style::body().line(MESSAGE_LINE_PX)
+}
+
+/// The message line of the boards.
+const MESSAGE_LINE_PX: f32 = 24.0;
 
 #[cfg(test)]
 mod tests {

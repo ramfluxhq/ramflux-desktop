@@ -10,8 +10,6 @@ pub enum ButtonKind { Primary, Secondary, Danger, Disabled }
 #[derive(Clone, Copy)]
 pub enum AvatarKind { Person, Agent, Group }
 #[derive(Clone, Copy, PartialEq)]
-pub enum BubbleKind { Peer, Own, Joined }
-#[derive(Clone, Copy, PartialEq)]
 pub enum StateKind { Empty, Loading, Offline, Error }
 
 fn frame(style: RFComponentStyle) -> Div {
@@ -78,25 +76,6 @@ pub fn settings_row(model: RowContent, disabled: bool, theme: RFTheme,
     let id = model.id.clone();
     Button::new(element_id(&id, "settings-row")).ghost().h_auto().p_0().w_full().disabled(disabled)
         .child(row_content(model, styles::settings_row_default(theme, false), theme)).on_click(move |_, window, cx| on_action(&id, window, cx))
-}
-
-pub struct MessageContent {
-    id: SharedString, kind: BubbleKind, sender: SharedString, content: AnyElement, quote: AnyElement, attachment: AnyElement, footer: AnyElement,
-}
-impl MessageContent {
-    pub fn new(id: SharedString, kind: BubbleKind, content: impl IntoElement) -> Self {
-        Self { id, kind, sender: "".into(), content: content.into_any_element(), quote: div().into_any_element(), attachment: div().into_any_element(), footer: div().into_any_element() }
-    }
-    pub fn sender(mut self, value: SharedString) -> Self { self.sender = value; self }
-    pub fn quote(mut self, value: impl IntoElement) -> Self { self.quote = value.into_any_element(); self }
-    pub fn attachment(mut self, value: impl IntoElement) -> Self { self.attachment = value.into_any_element(); self }
-    pub fn footer(mut self, value: impl IntoElement) -> Self { self.footer = value.into_any_element(); self }
-}
-pub fn message_bubble(model: MessageContent, theme: RFTheme) -> impl IntoElement {
-    let style = match model.kind { BubbleKind::Peer => styles::message_bubble_peer(theme, false), BubbleKind::Own => styles::message_bubble_own(theme, false), BubbleKind::Joined => styles::message_bubble_joined(theme, false) };
-    frame(style).id(element_id(&model.id, "bubble"))
-        .when(model.kind == BubbleKind::Peer && !model.sender.is_empty(), |bubble| bubble.child(model.sender))
-        .child(model.quote).child(model.attachment).child(model.content).child(model.footer)
 }
 
 pub struct ActionButton {

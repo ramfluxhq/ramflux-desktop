@@ -915,3 +915,68 @@ x = 25
 y = 230
 w = 4
 h = 12
+
+[[deviation]]
+id = "r71"
+class = "extra"
+reason = "drawn by the app, not on the board at 498,210 26x14"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 498
+y = 210
+w = 26
+h = 14
+
+[[deviation]]
+id = "r72"
+class = "extra"
+reason = "drawn by the app, not on the board at 498,235 35x16"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 498
+y = 235
+w = 35
+h = 16
+
+[[deviation]]
+id = "r73"
+class = "extra"
+reason = "drawn by the app, not on the board at 543,235 75x15"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 543
+y = 235
+w = 75
+h = 15
+
+[[deviation]]
+id = "r74"
+class = "extra"
+reason = "drawn by the app, not on the board at 640,242 27x10"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 640
+y = 242
+w = 27
+h = 10
+
+[[deviation]]
+id = "r75"
+class = "extra"
+reason = "drawn by the app, not on the board at 839,286 91x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 839
+y = 286
+w = 91
+h = 12
