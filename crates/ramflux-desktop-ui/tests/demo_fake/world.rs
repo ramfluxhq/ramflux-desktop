@@ -583,8 +583,11 @@ impl World {
                 }
                 json!({ "name": body["name"] })
             }
+            "contact.safety_number" => json!({
+                "expected": { "contact_identity_commitment": text(body, "contact_identity_commitment") }
+            }),
             "contact.verify" => {
-                let commitment = text(body, "contact_identity_commitment");
+                let commitment = text(&body["expected"], "contact_identity_commitment");
                 self.account(side, id).expect("account").verified.insert(commitment);
                 json!({})
             }

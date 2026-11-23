@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use common::*;
 use ramflux_desktop_core::{
     AccountId, ContextId, DomainEvent, Effect, FailureCode, GrantId, Lifecycle, Listing, MomentId,
-    ObjectId, Receipt, Source as _, methods,
+    Receipt, Source as _, methods,
 };
 use serde_json::{Value, json};
 
@@ -88,25 +88,6 @@ fn pages_are_followed_by_cursor_and_listed_only_when_complete() {
     // removed and re-added on the way.
     assert!(!account.names().iter().any(|n| n == "ContextRemoved"), "{:?}", account.names());
     assert!(account.store.rejections().is_empty(), "{:?}", account.store.rejections());
-    fake.shutdown();
-}
-
-#[test]
-fn an_oversized_row_fails_the_listing_instead_of_truncating_it() {
-    let path = socket_path("budget");
-    let fake = FakeBus::start(&path, |method, _, _| match method {
-        "object.directory" => Reply::Error(
-            "ValidationFailed",
-            "local bus error: directory row exceeds response budget".to_owned(),
-        ),
-        _ => fixture(method),
-    });
-    let hub = hub(&path);
-    let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
-    account.until("contexts", |s, _| s.is_listed(Listing::Contexts));
-    account.settle(300);
-    assert!(!account.store.is_listed(Listing::Objects), "objects are not claimed empty");
-    assert!(account.store.object(&ObjectId::new("attachment:m1:0")).is_none());
     fake.shutdown();
 }
 
@@ -274,41 +255,6 @@ fn a_direct_message_goes_out_over_the_listed_route() {
 }
 
 #[test]
-fn a_saved_object_is_written_where_chosen_and_its_bytes_go_nowhere_else() {
-    let path = socket_path("save");
-    let fake = FakeBus::start(&path, |method, _, body| match method {
-        "object.get" => Reply::Ok(json!({
-            "object_id": body["object_id"],
-            "plaintext_base64": ramflux_protocol::encode_base64url(b"secret notes"),
-        })),
-        _ => fixture(method),
-    });
-    let dir = std::env::temp_dir().join(format!("rf-save-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("dir");
-    let target = dir.join("notes.txt");
-    let hub = hub(&path);
-    let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
-    let object = ObjectId::new("attachment:m1:0");
-    account.until("object", |s, _| s.object(&object).is_some());
-    account.source.submit(call(
-        methods::OBJECT_SAVE,
-        json!({ "object_id": "attachment:m1:0", "path": target.to_string_lossy() }),
-    ));
-    account.until("saved", |s, _| s.object(&object).is_some_and(|o| o.saved_to.is_some()));
-    assert_eq!(std::fs::read(&target).expect("written"), b"secret notes");
-    let get = fake.seen().into_iter().find(|s| s.method == "object.get").expect("get");
-    assert!(get.operation_id.is_none(), "no receipt keeps the bytes");
-    assert!(
-        account.envelopes.iter().all(|e| !format!("{:?}", e.event).contains("secret notes")
-            && !format!("{:?}", e.event)
-                .contains(&ramflux_protocol::encode_base64url(b"secret notes"))),
-        "the bytes never become an event"
-    );
-    let _ = std::fs::remove_dir_all(dir);
-    fake.shutdown();
-}
-
-#[test]
 fn adding_a_member_on_several_devices_reports_how_far_it_got() {
     let path = socket_path("adds");
     let adds = Arc::new(AtomicUsize::new(0));
@@ -359,8 +305,13 @@ fn verifying_a_contact_reads_the_identity_directory_again() {
     let path = socket_path("verify");
     let verified = Arc::new(AtomicUsize::new(0));
     let flag = verified.clone();
-    let fake = FakeBus::start(&path, move |method, _, _| match method {
-        "contact.verify" => {
+    let fake = FakeBus::start(&path, move |method, _, body| match method {
+        // The compared snapshot first; the verification names exactly it.
+        "contact.safety_number" => Reply::Ok(json!({
+            "contact_identity_commitment": "cm-ana", "verification_state": "unverified",
+            "expected": { "contact_identity_commitment": "cm-ana", "safety_number_hash": "h" }
+        })),
+        "contact.verify" if body["expected"]["safety_number_hash"] == "h" => {
             flag.store(1, Ordering::SeqCst);
             Reply::Ok(
                 json!({ "contact_identity_commitment": "cm-ana", "verification_state": "verified",
@@ -388,6 +339,9 @@ fn verifying_a_contact_reads_the_identity_directory_again() {
         })
     });
     let verify = fake.seen().into_iter().find(|s| s.method == "contact.verify").expect("verify");
-    assert_eq!(verify.body, json!({ "contact_identity_commitment": "cm-ana" }));
+    assert_eq!(
+        verify.body,
+        json!({ "expected": { "contact_identity_commitment": "cm-ana", "safety_number_hash": "h" } })
+    );
     fake.shutdown();
 }

@@ -189,6 +189,8 @@ fn dock_selectors_filter_and_order() {
     feed.ok(
         5,
         DomainEvent::ObjectUpserted(Object {
+            mime: None,
+            local_path: None,
             id: ObjectId::new("o-1"),
             name: Some("notes.txt".to_owned()),
             size: Some(12),

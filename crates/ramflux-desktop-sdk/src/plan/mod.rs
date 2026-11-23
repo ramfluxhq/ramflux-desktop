@@ -16,8 +16,8 @@
 //! - [`contact`]: contact effects and the links they name, and verification.
 //! - [`contact_card`]: adding a contact from a card, exporting this account's.
 //! - [`conversation`]: starting a direct conversation (its first message).
-//! - [`message`]: direct and group sends, attachments.
-//! - [`object`]: opening, saving and resuming objects.
+//! - [`message`]: direct and group sends.
+//! - [`media`]: attachments: send, download, save, retry and cancel.
 //! - [`group`]: membership, roles and invitations.
 //! - [`surface`]: surface actions and update requests.
 //! - [`group_create`]: creating and renaming a group.
@@ -36,13 +36,14 @@ pub mod conversation;
 pub mod fetch;
 pub mod group;
 pub mod group_create;
+pub mod media;
 pub mod message;
-pub mod object;
 pub mod surface;
 pub mod task;
 
 use ramflux_desktop_core::{
-    AccountId, ContextId, ContextKind, Effect, FailureCode, PinSource, SecretInput, methods,
+    AccountId, ContextId, ContextKind, Effect, FailureCode, ObjectId, PinSource, SecretInput,
+    methods,
 };
 use serde_json::{Value, json};
 
@@ -88,6 +89,16 @@ pub trait Known {
         let _ = task_id;
         None
     }
+    /// What is known about an attachment.
+    fn media(&self, object: &ObjectId) -> Option<&media::MediaRef> {
+        let _ = object;
+        None
+    }
+    /// The private copy of a downloaded (or sent) attachment.
+    fn media_file(&self, object: &ObjectId) -> Option<&std::path::Path> {
+        let _ = object;
+        None
+    }
 }
 
 /// How to perform one effect.
@@ -108,13 +119,15 @@ pub enum Plan {
         /// Reads after the last one, or after a failure.
         refresh: Vec<Fetch>,
     },
-    /// `object.get`: the object's bytes, written to `save_to` when set and
-    /// dropped (wiped) otherwise. They never reach the translator.
-    Open {
-        /// The request.
-        request: BusRequest,
-        /// Where the user chose to save it.
-        save_to: Option<String>,
+    /// An attachment job, run step by step (see [`media`]).
+    Media(media::Job),
+    /// `contact.verify`: first `lookup` (`contact.safety_number`), then the
+    /// verification of the compared snapshot it answers (`expected`).
+    Verify {
+        /// The safety number read.
+        lookup: BusRequest,
+        /// Reads after the verification.
+        refresh: Vec<Fetch>,
     },
     /// A desktop-local preference; the translator echoes it.
     Local,
@@ -360,10 +373,11 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         },
         methods::SEND_MESSAGE => message::send(acct, body, known),
         methods::CONVERSATION_START => conversation::start(acct, body, known),
-        methods::ATTACH_OBJECT => message::attach(acct, body, known),
-        methods::OBJECT_PULL | methods::OBJECT_SAVE | methods::OBJECT_RETRY => {
-            object::object_call(acct, method, body, known)
-        }
+        methods::ATTACH_OBJECT => media::send(body, known),
+        methods::OBJECT_PULL
+        | methods::OBJECT_SAVE
+        | methods::OBJECT_RETRY
+        | methods::OBJECT_CANCEL => media::object_call(method, body, known),
         methods::GROUP_KICK
         | methods::GROUP_REMOVE_MEMBER
         | methods::GROUP_SET_ROLE

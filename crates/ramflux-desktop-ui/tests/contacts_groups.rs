@@ -154,8 +154,8 @@ fn a_principal_id_is_added_unverified_and_a_conversation_starts_at_once(cx: &mut
     wait(cx, "the field cleared", |cx| note(cx, &shell).is_none());
     assert_eq!(
         label_in(cx, handle, "contacts-principal-kai", "contact-safety").as_deref(),
-        None,
-        "the safety line is text, not a labeled control"
+        Some(tr("dock.contacts.unverified").as_ref()),
+        "the safety line is a status, never a request to compare"
     );
     assert!(has_label(cx, handle, &tr("dock.contacts.reachable")));
     // A name lookup's kind is only claimed: the mark says so.
@@ -499,7 +499,7 @@ fn a_looked_up_identity_is_provisional_until_a_card_replaces_it_after_confirmati
             .is_some_and(|p| p.root_source == Some(RootSource::Verified))
     });
     assert_eq!(
-        seen(&state, "contact.verify")[0]["contact_identity_commitment"],
+        seen(&state, "contact.verify")[0]["expected"]["contact_identity_commitment"],
         "cm-other-principal-kai"
     );
     fake.shutdown();

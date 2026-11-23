@@ -32,6 +32,11 @@ pub trait Source {
     /// ignore it, and the view keeps its placeholder.
     fn request_bodies(&mut self, _moments: &[MomentId]) {}
 
+    /// A view reached the oldest message shown of `context`. A source that
+    /// pages history delivers the older page (as `MomentAdded`); others
+    /// ignore it.
+    fn request_older(&mut self, _context: &ContextId) {}
+
     /// What the renderer can show (capability negotiation). Given once when
     /// the source is attached; a source that talks to surface producers
     /// sends it on, others keep or ignore it.

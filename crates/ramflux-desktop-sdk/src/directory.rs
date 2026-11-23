@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use ramflux_desktop_core::{ContextId, ContextKind, Direction, ObjectId};
+use ramflux_desktop_core::{ContextId, ContextKind};
 use serde_json::Value;
 
 /// A non-empty string field, or `None`.
@@ -38,8 +38,6 @@ pub struct Directory {
     pub identities: BTreeMap<String, Identity>,
     /// Groups by group id.
     pub groups: BTreeMap<String, Group>,
-    /// Objects by id.
-    pub objects: BTreeMap<ObjectId, Direction>,
 }
 
 /// One conversation row.

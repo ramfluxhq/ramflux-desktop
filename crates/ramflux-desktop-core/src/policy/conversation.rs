@@ -102,6 +102,10 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             let failed = matches!(object.transfer, TransferState::Failed { .. });
             transfer(failed, object_id, "be retried", methods::OBJECT_RETRY)
         }),
+        IntentKind::CancelTransfer { object_id } => object(p, object_id).and_then(|object| {
+            let moving = matches!(object.transfer, TransferState::Transferring { .. });
+            transfer(moving, object_id, "be cancelled", methods::OBJECT_CANCEL)
+        }),
         _ => return None,
     })
 }

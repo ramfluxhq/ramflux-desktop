@@ -152,7 +152,7 @@ fn every_topic_calls_for_its_reads_and_nothing_is_polled() {
     let polled: Vec<String> = world.fake.seen().into_iter().skip(quiet).map(|s| s.method).collect();
     assert!(polled.is_empty(), "nothing is polled while the stream is live: {polled:?}");
 
-    let cases: [(&str, Value, &[&str]); 11] = [
+    let cases: [(&str, Value, &[&str]); 9] = [
         ("conversation.changed", json!({ "id": "dm-ana" }), &["conversation.directory"]),
         (
             "message.received",
@@ -178,8 +178,6 @@ fn every_topic_calls_for_its_reads_and_nothing_is_polled() {
             &["contact.list", "identity.directory"],
         ),
         ("safety.changed", json!({ "id": "principal-ana" }), &["identity.directory"]),
-        ("object.changed", json!({ "id": "attachment:m1:0" }), &["object.directory"]),
-        ("object.transfer.progress", json!({ "id": "attachment:m1:0" }), &["object.directory"]),
         ("mcp.approval.request", json!({ "approval_id": "appr-9" }), &["mcp.approval.list"]),
         ("message.unrouted", json!({ "envelope_id": "e" }), &["conversation.directory"]),
     ];
@@ -247,14 +245,14 @@ fn duplicate_and_out_of_order_entries_change_nothing() {
     let after = world.mark();
     // The same entry again, and an older one: both are below the cursor.
     world.fake.deliver_raw(ACCOUNT, Some(seq), "conversation.changed", &json!({ "id": "dm-ana" }));
-    world.fake.deliver_raw(ACCOUNT, Some(seq - 1), "object.changed", &json!({ "id": "o" }));
+    world.fake.deliver_raw(ACCOUNT, Some(seq - 1), "group.changed", &json!({ "id": "o" }));
     account.settle(400);
     let reads: Vec<String> = world.fake.seen().into_iter().skip(after).map(|s| s.method).collect();
     assert!(reads.is_empty(), "duplicates call for no reads: {reads:?}");
     // A newer entry still applies.
     let mark = world.mark();
-    world.fake.deliver_raw(ACCOUNT, Some(seq + 5), "object.changed", &json!({ "id": "o" }));
-    wait_for(&world, &mut account, mark, "object.directory");
+    world.fake.deliver_raw(ACCOUNT, Some(seq + 5), "group.changed", &json!({ "id": "o" }));
+    wait_for(&world, &mut account, mark, "group.list");
     drop(account);
     world.fake.shutdown();
 }
@@ -264,13 +262,13 @@ fn a_cursor_below_the_floor_reloads_and_follows_from_the_head() {
     let (world, path) = World::start("floor", true);
     let settings = settings_file("floor");
     for _ in 0..3 {
-        world.fake.publish(ACCOUNT, "object.changed", json!({ "id": "o" }));
+        world.fake.publish(ACCOUNT, "group.changed", json!({ "id": "o" }));
     }
     ramflux_desktop_sdk::cursor::CursorStore::new(Some(settings.clone()), path.to_string_lossy())
         .save(&AccountId::new(ACCOUNT), 1);
     // Entries 1..5 are gone; the daemon keeps 6 onwards.
     world.fake.prune_below(ACCOUNT, 6);
-    world.fake.publish(ACCOUNT, "object.changed", json!({ "id": "o" }));
+    world.fake.publish(ACCOUNT, "group.changed", json!({ "id": "o" }));
     world.listed.store(true, Ordering::SeqCst);
     let mut account = streaming(&world, config_with(&path, Some(settings.clone())));
     let subscribes = world.subscribes();
@@ -293,8 +291,8 @@ fn a_stopped_stream_resumes_from_the_cursor_and_misses_nothing() {
         let (world, path) = World::start(if lagged { "lag" } else { "close" }, true);
         let mut account = streaming(&world, config(&path));
         let mark = world.mark();
-        let seq = world.fake.publish(ACCOUNT, "object.changed", json!({ "id": "o" }));
-        wait_for(&world, &mut account, mark, "object.directory");
+        let seq = world.fake.publish(ACCOUNT, "group.changed", json!({ "id": "o" }));
+        wait_for(&world, &mut account, mark, "group.list");
         world.fake.end_streams(ACCOUNT, lagged);
         // Published while the stream is down: replayed on resume.
         world.listed.store(true, Ordering::SeqCst);
@@ -317,8 +315,8 @@ fn a_lock_stops_the_stream_and_the_next_source_resumes_from_the_cursor() {
     let config = config_with(&path, Some(settings.clone()));
     let mut account = streaming(&world, config.clone());
     let mark = world.mark();
-    world.fake.publish(ACCOUNT, "object.changed", json!({ "id": "o" }));
-    wait_for(&world, &mut account, mark, "object.directory");
+    world.fake.publish(ACCOUNT, "group.changed", json!({ "id": "o" }));
+    wait_for(&world, &mut account, mark, "group.list");
     world.locked.store(true, Ordering::SeqCst);
     let locked = world.fake.publish(
         ACCOUNT,
@@ -358,7 +356,7 @@ fn a_replayed_lock_of_an_account_unlocked_since_does_not_lock_it() {
     // the daemon's `locked` entry; after the unlock the new source resumes
     // from the older cursor and is replayed that entry (then `unlocked`).
     let (world, path) = World::start("relock", true);
-    let before = world.fake.publish(ACCOUNT, "object.changed", json!({ "id": "o" }));
+    let before = world.fake.publish(ACCOUNT, "group.changed", json!({ "id": "o" }));
     world.fake.publish(
         ACCOUNT,
         "account.state",
@@ -383,8 +381,8 @@ fn a_replayed_lock_of_an_account_unlocked_since_does_not_lock_it() {
     );
     // The stream stays open: a later change still arrives.
     let mark = world.mark();
-    world.fake.publish(ACCOUNT, "object.changed", json!({ "id": "o" }));
-    wait_for(&world, &mut account, mark, "object.directory");
+    world.fake.publish(ACCOUNT, "group.changed", json!({ "id": "o" }));
+    wait_for(&world, &mut account, mark, "group.list");
     drop(account);
     world.fake.shutdown();
     let _ = std::fs::remove_dir_all(settings.parent().expect("dir"));

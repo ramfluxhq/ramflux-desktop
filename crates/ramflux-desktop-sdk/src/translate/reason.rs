@@ -25,14 +25,25 @@ pub mod key {
     pub const NOT_A_MEMBER_DEVICE: &str = "backend.gap.no_member_device";
     /// The identity commitment of the contact is not listed.
     pub const NO_COMMITMENT: &str = "backend.gap.no_commitment";
-    /// The account's node relay is not known.
-    pub const NO_RELAY: &str = "backend.gap.no_relay";
     /// This account's own ids are not known yet.
     pub const NO_SELF: &str = "backend.gap.no_self";
     /// The object's direction is not known.
     pub const NO_DIRECTION: &str = "backend.gap.no_direction";
-    /// An attachment over the one-frame limit (`limit`).
+    /// An attachment over the desktop's send limit (`limit`, bytes).
     pub const ATTACHMENT_TOO_LARGE: &str = "backend.failure.attachment_too_large";
+    /// A file could not be sent: no home node is pinned for the contact
+    /// (a contact added by id only); exchanging contact cards pins it.
+    pub const MEDIA_NO_HOME: &str = "backend.media.no_home";
+    /// The file's access window ended; it can no longer be downloaded.
+    pub const MEDIA_EXPIRED: &str = "backend.media.expired";
+    /// The sender deleted the file.
+    pub const MEDIA_DELETED: &str = "backend.media.deleted";
+    /// The transfer was cancelled here.
+    pub const MEDIA_CANCELLED: &str = "backend.media.cancelled";
+    /// The recipient's app is too old for this file.
+    pub const MEDIA_PEER_UPGRADE: &str = "backend.media.peer_upgrade";
+    /// The daemon refused the file with another code (`code`).
+    pub const MEDIA_REFUSED: &str = "backend.media.refused";
     /// The file could not be read or written (`reason`).
     pub const FILE: &str = "backend.failure.file";
     /// A group send reached no one: `members` could not be resolved.
@@ -245,7 +256,7 @@ pub mod key {
     pub const VAULT_MODE_MISMATCH: &str = "backend.failure.vault_mode_mismatch";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 95] = [
+    pub const ALL: [&str; 100] = [
         AGENT_EXPORT_NO_LOCATION,
         AGENT_EXPORT_NOT_OWNER_SESSION,
         AGENT_EXPORT_OWNER_LOCKED,
@@ -281,10 +292,15 @@ pub mod key {
         NO_MEMBER_ROUTE,
         NOT_A_MEMBER_DEVICE,
         NO_COMMITMENT,
-        NO_RELAY,
         NO_SELF,
         NO_DIRECTION,
         ATTACHMENT_TOO_LARGE,
+        MEDIA_NO_HOME,
+        MEDIA_EXPIRED,
+        MEDIA_DELETED,
+        MEDIA_CANCELLED,
+        MEDIA_PEER_UPGRADE,
+        MEDIA_REFUSED,
         FILE,
         GROUP_ROUTES_UNRESOLVED,
         LOCAL_NETWORK,

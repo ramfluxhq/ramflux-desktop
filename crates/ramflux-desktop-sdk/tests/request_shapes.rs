@@ -74,7 +74,7 @@ fn planned(effect: Effect) -> Plan {
 
 fn request(effect: Effect) -> BusRequest {
     match planned(effect) {
-        Plan::Call { request, .. } | Plan::Open { request, .. } => request,
+        Plan::Call { request, .. } | Plan::Verify { lookup: request, .. } => request,
         other => panic!("expected a call, got {other:?}"),
     }
 }
@@ -238,7 +238,6 @@ fn reads_and_pulls_are_the_sdk_requests_without_retry_keys() {
         Paged::Identities,
         Paged::Conversations,
         Paged::Groups,
-        Paged::Objects,
         Paged::Approvals,
         Paged::McpServers,
     ] {

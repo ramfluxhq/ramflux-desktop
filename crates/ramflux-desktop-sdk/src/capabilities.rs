@@ -28,8 +28,6 @@ pub mod reason {
     pub const REVEAL: &str = "backend.gap.reveal";
     /// The daemon has no spaces (long-lived shared contexts).
     pub const SPACES: &str = "backend.gap.spaces";
-    /// Group messages carry no attachments on the bus.
-    pub const GROUP_ATTACHMENTS: &str = "backend.gap.group_attachments";
     /// A contact request is federated only and needs a federation route to
     /// the contact's node, which no directory lists.
     pub const CONTACT_ROUTE: &str = "backend.gap.contact_route";
@@ -100,10 +98,6 @@ pub fn unsupported() -> BTreeMap<String, &'static str> {
     .collect();
     table.insert(methods::in_context(methods::SEND_MESSAGE, ContextKind::Space), reason::SPACES);
     table.insert(methods::in_context(methods::ATTACH_OBJECT, ContextKind::Space), reason::SPACES);
-    table.insert(
-        methods::in_context(methods::ATTACH_OBJECT, ContextKind::Group),
-        reason::GROUP_ATTACHMENTS,
-    );
     table
 }
 

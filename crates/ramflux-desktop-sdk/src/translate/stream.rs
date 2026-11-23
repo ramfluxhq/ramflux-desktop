@@ -172,7 +172,6 @@ impl Translator {
             "contact.changed" | "safety.changed" => {
                 vec![Fetch::ContactList, Fetch::first(Paged::Identities)]
             }
-            "object.changed" | "object.transfer.progress" => vec![Fetch::first(Paged::Objects)],
             "mcp.approval.request" | "mcp.approval.granted" | "mcp.approval.denied" => {
                 vec![Fetch::first(Paged::Approvals), Fetch::Grants]
             }

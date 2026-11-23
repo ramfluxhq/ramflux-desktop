@@ -11,12 +11,11 @@
 mod common;
 
 use ramflux_desktop_core::{AccountId, ContextId, ContextKind, Effect, FailureCode, methods};
-use ramflux_desktop_sdk::bus::{BusRequest, wipe};
+use ramflux_desktop_sdk::bus::BusRequest;
 use ramflux_desktop_sdk::directory::Directory;
 use ramflux_desktop_sdk::plan::{Known, Plan, plan};
 use ramflux_sdk::{
     LocalBusContactSafetyRequest, LocalBusGroupMemberAddRequest, LocalBusMessageSubmitRequest,
-    LocalBusObjectGetRequest, LocalBusObjectTransferResumeRequest,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -53,7 +52,7 @@ fn planned(method: &str, body: Value) -> Plan {
 
 fn one(plan: Plan) -> BusRequest {
     match plan {
-        Plan::Call { request, .. } | Plan::Open { request, .. } => request,
+        Plan::Call { request, .. } | Plan::Verify { lookup: request, .. } => request,
         other => panic!("one request expected, got {other:?}"),
     }
 }
@@ -138,82 +137,15 @@ fn a_conversation_without_a_route_is_refused_with_the_reason() {
 }
 
 #[test]
-fn an_attachment_rides_on_the_direct_message_through_the_node_relay() {
-    let dir = std::env::temp_dir().join(format!("rf-attach-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("dir");
-    let file = dir.join("notes.txt");
-    std::fs::write(&file, b"attached bytes").expect("file");
-    let body = json!({ "context_id": "dm-ana", "path": file.to_string_lossy() });
-    let request = one(planned(methods::ATTACH_OBJECT, body));
-    let submit: LocalBusMessageSubmitRequest = typed(&request, &["attachments"]);
-    let attachment = &submit.attachments[0];
-    assert_eq!(attachment.object_id, format!("attachment:{}:0", submit.message_id));
-    assert_eq!(attachment.plaintext_base64, ramflux_protocol::encode_base64url(b"attached bytes"));
-    assert_eq!(attachment.relay_endpoint, "quic://harbor.example.org:7543", "the node's relay");
-    assert_eq!(attachment.relay_service_key_base64, None, "no service key is sent");
-    let wire = request.wire_body();
-    let sent = wire["attachments"][0].as_object().expect("attachment").clone();
-    let back = serde_json::to_value(attachment).expect("json");
-    for (field, value) in &sent {
-        if field == "name" {
-            assert_eq!(value, "notes.txt", "the documented file name");
-        } else {
-            assert_eq!(back.get(field), Some(value), "attachment {field} is not the SDK's");
-        }
-    }
-    wipe(wire);
-    // Over the one-frame limit: refused before reading it into a frame.
-    let big = dir.join("big.bin");
-    let limit = ramflux_sdk::MAX_LOCAL_BUS_ONE_SHOT_OBJECT_BYTES;
-    std::fs::write(&big, vec![0_u8; limit + 1]).expect("big file");
-    let reason = refused(planned(
-        methods::ATTACH_OBJECT,
-        json!({ "context_id": "dm-ana", "path": big.to_string_lossy() }),
-    ));
-    assert_eq!(reason, format!(r#"backend.failure.attachment_too_large {{"limit":"{limit}"}}"#));
-    let group = refused(planned(
-        methods::ATTACH_OBJECT,
-        json!({ "context_id": "thread-team", "path": file.to_string_lossy() }),
-    ));
-    assert_eq!(group, "backend.gap.group_attachments");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
 fn verification_names_the_contact_commitment_from_the_identity_directory() {
     let request =
         one(planned(methods::SAFETY_VERIFY, json!({ "participant_id": "principal-ana" })));
-    assert_eq!(request.method, "contact.verify");
+    assert_eq!(request.method, "contact.safety_number", "the compared snapshot is read first");
     let verify: LocalBusContactSafetyRequest = typed(&request, &[]);
     assert_eq!(verify.contact_identity_commitment, "cm-ana");
     let unknown =
         refused(planned(methods::SAFETY_VERIFY, json!({ "participant_id": "principal-zed" })));
     assert_eq!(unknown, "backend.gap.no_commitment");
-}
-
-#[test]
-fn objects_are_opened_saved_and_resumed_by_their_directory_ids() {
-    let pull = planned(methods::OBJECT_PULL, json!({ "object_id": "attachment:m1:0" }));
-    let Plan::Open { request, save_to: None } = pull else { panic!("an object read") };
-    assert!(request.operation_id.is_none(), "an object read keeps no receipt of the bytes");
-    let get: LocalBusObjectGetRequest = typed(&request, &[]);
-    assert_eq!(get.object_id, "attachment:m1:0");
-    assert!(
-        get.relay_endpoint.is_none() && !get.relay_ack,
-        "no endpoint: the daemon picks the node relay or the stored copy"
-    );
-    let save =
-        planned(methods::OBJECT_SAVE, json!({ "object_id": "attachment:m1:0", "path": "/d/n" }));
-    assert!(matches!(save, Plan::Open { save_to: Some(ref path), .. } if path == "/d/n"));
-    let resume = one(planned(methods::OBJECT_RETRY, json!({ "object_id": "attachment:m2:0" })));
-    assert!(resume.operation_id.is_some());
-    let resumed: LocalBusObjectTransferResumeRequest = typed(&resume, &[]);
-    assert_eq!(resumed.direction, "upload", "an outgoing object resumes its upload");
-    assert_eq!(resumed.relay_endpoint.as_deref(), Some("quic://harbor.example.org:7543"));
-    let incoming = one(planned(methods::OBJECT_RETRY, json!({ "object_id": "attachment:m1:0" })));
-    assert_eq!(incoming.wire_body()["direction"], "download");
-    let unknown = refused(planned(methods::OBJECT_RETRY, json!({ "object_id": "legacy-object" })));
-    assert_eq!(unknown, "backend.gap.no_direction");
 }
 
 #[test]

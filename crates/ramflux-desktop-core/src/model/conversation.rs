@@ -323,6 +323,24 @@ pub struct Context {
     /// Current sender-key epoch of a group or space.
     #[serde(default)]
     pub epoch: Option<u64>,
+    /// The latest message as the source's directory summarises it, shown
+    /// while the conversation's history is not loaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<ContextPreview>,
+}
+
+/// The latest message of a conversation as the source's directory
+/// summarises it (bounded plain text, or only what kind it is).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ContextPreview {
+    /// Plain text.
+    Text(String),
+    /// A message carrying files.
+    Attachment,
+    /// A service, call, task or other non-message event.
+    Activity,
+    /// Something this build cannot show.
+    Unsupported,
 }
 
 impl Context {

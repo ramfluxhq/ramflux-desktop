@@ -64,6 +64,8 @@ pub(crate) enum ScopeCommand {
     Focus(Option<ContextId>),
     /// A view needs these messages' bodies again.
     Bodies(Vec<MomentId>),
+    /// A view reached the oldest message shown of a context.
+    Older(ContextId),
     /// An object fetch failed, through the media test seam.
     #[cfg(feature = "test-support")]
     MediaFailed(String, crate::bus::BusError),
@@ -166,6 +168,8 @@ pub(super) enum Internal {
     },
     /// What a creation or recovery step came to.
     Custody(super::custody::Outcome),
+    /// What a running attachment job reported.
+    Media(super::media::Note),
 }
 
 impl Internal {
@@ -185,7 +189,8 @@ impl Internal {
             | Self::SendDone { .. }
             | Self::EffectDone { .. }
             | Self::ReceiptDone { .. }
-            | Self::Custody(_) => None,
+            | Self::Custody(_)
+            | Self::Media(_) => None,
         }
     }
 }
@@ -287,6 +292,8 @@ pub(super) struct Task {
     /// The request connection reported down and has not reported live since.
     pub(super) transport_disconnected: bool,
     pub(super) ceremonies: Ceremonies,
+    /// The running attachment jobs.
+    pub(super) media_jobs: super::media::MediaJobs,
 }
 
 /// Sends one read; a listing's first page gets the next listing number
@@ -347,6 +354,9 @@ pub(super) fn build(
     let pins = PinStore::new(config.settings_path.clone());
     let mut translator = Translator::new(scope.clone(), socket.clone());
     translator.set_inline_thumbnails(config.inline_thumbnails);
+    if let Some(account) = scope.account() {
+        translator.set_media_folder(super::media::media_folder(&config, account.as_str()));
+    }
     if let Some(recorded) = scope.account().and_then(|account| pins.load(account)) {
         translator.set_pins(recorded);
     }
@@ -412,6 +422,7 @@ pub(super) fn build(
         jobs_open_at: None,
         accounts_live: false,
         custody: super::custody::Custody::new(),
+        media_jobs: super::media::MediaJobs::default(),
         sends: BTreeMap::new(),
         networking_revision: 0,
         transport_disconnected: false,
@@ -1196,6 +1207,7 @@ impl Task {
                 }
             }
             Internal::Custody(outcome) => self.on_custody(outcome),
+            Internal::Media(note) => self.on_media(note),
         }
         if !matches!(self.link, Link::Locked | Link::Lost) {
             let slots = MAX_READS.saturating_sub(self.read_recovery.running.len());
@@ -1330,6 +1342,18 @@ impl Task {
 
     /// Translates one read; returns whether it produced events.
     fn on_read(&mut self, fetch: &Fetch, result: Result<Value, BusError>) -> bool {
+        // A change cursor the daemon refuses (pruned, or ahead of its
+        // journal) is dropped and the newest page read again; an older page
+        // that failed may be asked for again.
+        if let (Fetch::MessageChanges(context, _), Err(BusError::Daemon { .. })) = (fetch, &result)
+        {
+            self.translator.forget_read_cursor(context);
+            self.spawn_fetches(vec![Fetch::Messages(context.clone())]);
+            return false;
+        }
+        if let (Fetch::MessagesBefore(context, _), Err(_)) = (fetch, &result) {
+            self.translator.older_failed(context);
+        }
         // An account made by an older development build cannot be opened:
         // nothing is retried and nothing is written to it.
         if let Err(BusError::Daemon { code, .. }) = &result
@@ -1511,6 +1535,13 @@ impl Task {
             ScopeCommand::Bodies(moments) => {
                 let reads = self.translator.request_bodies(&moments);
                 self.spawn_fetches(reads);
+            }
+            ScopeCommand::Older(context) => {
+                if self.link == Link::Live
+                    && let Some(read) = self.translator.older_read(&context)
+                {
+                    self.spawn_fetches(vec![read]);
+                }
             }
             #[cfg(feature = "test-support")]
             ScopeCommand::MediaFailed(object_id, failure) => {

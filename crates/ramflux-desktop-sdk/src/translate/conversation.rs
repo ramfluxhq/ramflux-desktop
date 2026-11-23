@@ -18,13 +18,13 @@
 use std::collections::BTreeMap;
 
 use ramflux_desktop_core::{
-    Context, ContextId, ContextKind, DomainEvent, MomentId, ParticipantId, Role, Timestamp, methods,
+    Context, ContextId, ContextKind, ContextPreview, DomainEvent, MomentId, ParticipantId, Role,
+    Timestamp, methods,
 };
 use serde_json::Value;
 
 use super::{Translated, Translator, text};
 use crate::directory::{Conversation, Group, field};
-use crate::plan::fetch::Fetch;
 
 /// Moment id of a stored message.
 pub(crate) fn message_moment_id(context: &ContextId, message: &str) -> MomentId {
@@ -125,7 +125,7 @@ impl Translator {
             if kind != ContextKind::Group
                 && (self.pins.contains(&id) || self.focus.as_ref() == Some(&id))
             {
-                out.follow.push(Fetch::Messages(id.clone()));
+                out.follow.push(self.message_read(&id));
             }
             listed.push(id);
         }
@@ -179,7 +179,15 @@ impl Translator {
             }
         }
         let known = self.contexts.get(id);
+        let preview = match row["preview"]["kind"].as_str() {
+            Some("text") => Some(ContextPreview::Text(text(&row["preview"], "text").to_owned())),
+            Some("attachment") => Some(ContextPreview::Attachment),
+            Some("system") => Some(ContextPreview::Activity),
+            Some(_) => Some(ContextPreview::Unsupported),
+            None => None,
+        };
         let context = Context {
+            preview,
             last_activity: conversation.last_activity,
             id: id.clone(),
             kind,
