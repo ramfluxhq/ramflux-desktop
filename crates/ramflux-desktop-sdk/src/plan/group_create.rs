@@ -20,11 +20,10 @@
 //! conversation directory are read afterwards, so the group shows as a
 //! conversation.
 //!
-//! Renaming a group conversation is the group read (`group.receive`) of
-//! that conversation carrying the new name: the daemon records the name
-//! from it. The name is this account's; other members keep their own.
+//! Renaming a group conversation sets the group's shared name
+//! (`group.name.set`): every member sees it.
 
-use ramflux_desktop_core::{ContextId, methods};
+use ramflux_desktop_core::ContextId;
 use ramflux_sdk::LocalBusGroupCreateRequest;
 use serde_json::{Value, json};
 
@@ -68,7 +67,7 @@ pub(super) fn create(acct: Option<&str>, body: &Value, known: &impl Known) -> Pl
     let mut requests = vec![BusRequest::new(acct, "group", "group.create", create)];
     let members = body["members"].as_array().map(Vec::as_slice).unwrap_or_default();
     for member in members.iter().filter_map(Value::as_str) {
-        match invitations(directory, &group, device, member, methods::GROUP_ADD_MEMBER, "member") {
+        match invitations(directory, &group, member, "member") {
             Ok(adds) if !adds.is_empty() => requests.extend(
                 adds.into_iter().map(|add| BusRequest::new(acct, "group", "group.member.add", add)),
             ),
@@ -94,10 +93,13 @@ pub(super) fn rename(acct: Option<&str>, body: &Value, known: &impl Known) -> Pl
     let Some(group) = known.directory().and_then(|d| d.group_of(&context)) else {
         return refuse(key::NO_GROUP_LINK);
     };
-    let read = Fetch::GroupReceive {
-        context: context.clone(),
-        group: group.to_owned(),
-        title: Some(title.to_owned()),
-    };
-    Plan::Call { request: read.request(acct), refresh: vec![Fetch::first(Paged::Conversations)] }
+    Plan::Call {
+        request: BusRequest::new(
+            acct,
+            "group",
+            "group.name.set",
+            json!({ "group_id": group, "name": title }),
+        ),
+        refresh: vec![Fetch::first(Paged::Groups), Fetch::first(Paged::Conversations)],
+    }
 }

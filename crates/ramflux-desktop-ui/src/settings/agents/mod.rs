@@ -1,20 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Settings · AI participants (DESK-AGENT-01): creating a headless AI
-//! account the open account custodies, the list of those accounts, and
-//! exporting an AI participant's one-shot credentials for the agent host.
+//! Settings · AI participants: the new-Agent wizard (whose Create is
+//! unavailable until this build runs `agent.create` with the person's
+//! approval on their phone), the list of AI accounts the open account
+//! custodies, and exporting an AI participant's one-shot credentials for
+//! the agent host.
 //!
 //! What is shown comes from the store (the accounts the daemon lists, their
 //! kind and, where known, their custodian; the last export of each); this
 //! panel holds only what the owner is looking at and typing (view-local):
-//! whether the creation ceremony is open, which AI participant's export
-//! form is open and the location typed in it.
+//! the wizard, which AI participant's export form is open and the location
+//! typed in it.
 //!
-//! The creation is the account ceremony's own screens
-//! ([`crate::entry::ceremony::CeremonyPanel`] given a custodian): the
-//! recovery phrase is shown once, covered and erased exactly as there, and
-//! nothing here ever holds it. The export asks the daemon to write the
+//! The export asks the daemon to write the
 //! bundle; this panel never sees the credentials, only whether the file was
 //! written and where.
 //!
@@ -29,14 +28,13 @@ pub mod wizard;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::{App, AppContext as _, Context, Entity, Subscription, Window};
+use gpui_kit::{App, Context, Entity, Subscription, Window};
 use ramflux_desktop_core::{
     Account, AccountId, AccountKind, AgentCustodyProblem, AgentExport, AgentExportPhase,
     AgentExportRefusal, Intent, IntentKind, check_agent_custodian, check_agent_export,
 };
 
 use crate::app::{StoreEvent, StoreHandle};
-use crate::entry::{CeremonyEvent, CeremonyPanel};
 use crate::i18n::tr;
 use crate::root::IntentRoot;
 
@@ -73,10 +71,7 @@ impl Awaiting {
 pub struct AgentsPanel {
     store: Entity<StoreHandle>,
     root: Entity<IntentRoot>,
-    ceremony: Entity<CeremonyPanel>,
-    /// The creation ceremony is open in place of the introduction.
-    creating: bool,
-    /// The new-Agent wizard, open before the ceremony.
+    /// The new-Agent wizard.
     wizard: Option<wizard::Wizard>,
     /// The wizard's name field (retained across steps).
     wizard_name: Entity<InputState>,
@@ -99,9 +94,6 @@ impl AgentsPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let owner = store.read(cx).active_account().cloned();
-        let ceremony =
-            cx.new(|cx| CeremonyPanel::for_agent(store.clone(), root.clone(), owner, window, cx));
         let location =
             crate::i18n::localized_input("agent.export.where", window, cx, |input| input);
         let wizard_name =
@@ -115,13 +107,6 @@ impl AgentsPanel {
                     cx.notify();
                 }
             }),
-            cx.observe(&ceremony, |_, _, cx| cx.notify()),
-            cx.subscribe(&ceremony, |this, _, event: &CeremonyEvent, cx| {
-                if matches!(event, CeremonyEvent::Closed) {
-                    this.creating = false;
-                    cx.notify();
-                }
-            }),
             cx.subscribe(&location, |_, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     cx.notify();
@@ -131,8 +116,6 @@ impl AgentsPanel {
         Self {
             store,
             root,
-            ceremony,
-            creating: false,
             wizard: None,
             wizard_name,
             location,
@@ -143,19 +126,9 @@ impl AgentsPanel {
         }
     }
 
-    /// The creation ceremony's panel.
-    pub fn ceremony(&self) -> &Entity<CeremonyPanel> {
-        &self.ceremony
-    }
-
     /// The location input of the export form.
     pub fn location_input(&self) -> &Entity<InputState> {
         &self.location
-    }
-
-    /// Whether the creation ceremony is open.
-    pub fn is_creating(&self) -> bool {
-        self.creating
     }
 
     /// The AI participant whose export form is open.
@@ -202,17 +175,6 @@ impl AgentsPanel {
         if self.awaiting.as_ref().is_some_and(|awaiting| awaiting.answered(store)) {
             self.awaiting = None;
         }
-    }
-
-    /// Opens the creation ceremony for the open account.
-    pub fn begin_creating(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let owner = self.owner(cx);
-        self.ceremony.update(cx, |ceremony, cx| {
-            ceremony.set_custodian(owner, cx);
-            ceremony.open(window, cx);
-        });
-        self.creating = true;
-        cx.notify();
     }
 
     /// Opens the export form of `agent`, with a location to start from in

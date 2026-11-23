@@ -445,10 +445,6 @@ fn read_model_requests() -> Vec<ramflux_desktop_sdk::bus::BusRequest> {
             methods::GROUP_ADD_MEMBER,
             json!({ "context_id": "dm-ana", "participant_id": "principal-ana", "role": "Member" }),
         ),
-        (
-            methods::GROUP_CREATE_INVITE,
-            json!({ "context_id": "dm-ana", "participant_id": "principal-ana", "role": "Member" }),
-        ),
     ] {
         let effect = Effect::Call { method: method.to_owned(), body };
         match plan(Some(&account), effect, &known).plan {
@@ -472,7 +468,7 @@ fn every_directory_and_action_frame_reaches_the_account_router_of_the_real_daemo
         ramflux_desktop_sdk::Deadlines::standard(),
     );
     let requests = read_model_requests();
-    assert_eq!(requests.len(), 12);
+    assert_eq!(requests.len(), 11);
     for request in &requests {
         let answer = runtime.block_on(client.call(request));
         println!("{} {}: {answer:?}", request.method, request.body);

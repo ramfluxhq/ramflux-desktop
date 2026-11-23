@@ -3,8 +3,7 @@
 
 //! The translator's view of call rows and media sessions: each sequence
 //! number is reported once, a row for a conversation not listed yet waits
-//! for the listing it asks for, a malformed row is dropped, `call.list` and
-//! the call records of `message.list` are the same rows, the daemon's end
+//! for the listing it asks for, a malformed row is dropped, the daemon's end
 //! reasons are read as such, and a media session is read with its secrets
 //! wiped from the answer.
 
@@ -113,7 +112,7 @@ fn malformed_rows_are_dropped() {
 }
 
 #[test]
-fn listed_calls_and_call_records_are_the_same_rows() {
+fn listed_calls_are_call_rows() {
     let mut translator = translator();
     let listed = translator.fetched(
         &Fetch::Calls,
@@ -121,18 +120,6 @@ fn listed_calls_and_call_records_are_the_same_rows() {
         Timestamp(0),
     );
     assert_eq!(calls(&listed.events), [(CallState::IncomingRinging, 2)]);
-    let mut ended = row("dm-ana", "ended", 3);
-    ended["end_reason"] = json!("missed");
-    ended["ended_at"] = json!(1_790_000_045);
-    let messages = json!({ "messages": [{
-        "id": "call-1", "message_id": "call-1", "conversation_id": "dm-ana", "kind": "call",
-        "created_at": 1_790_000_000, "call": ended, "duration_seconds": null, "missed": true,
-    }] });
-    let read =
-        translator.fetched(&Fetch::Messages(ContextId::new("dm-ana")), &messages, Timestamp(0));
-    assert_eq!(calls(&read.events), [(CallState::Ended(CallEndReason::Missed), 3)]);
-    // Never a message moment of its own.
-    assert!(!read.events.iter().any(|e| matches!(e, DomainEvent::MomentAdded(_))));
 }
 
 #[test]

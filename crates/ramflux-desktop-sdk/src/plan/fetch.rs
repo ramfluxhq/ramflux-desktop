@@ -74,7 +74,8 @@ pub enum Fetch {
     StandingApprovals,
     /// `mcp.tool.list`.
     McpTools,
-    /// `message.list` of one direct context.
+    /// `message.read` (the read model's newest page) of one conversation,
+    /// direct or group.
     Messages(ContextId),
     /// `surface.list` of one conversation; `None` asks for the first page.
     Surfaces(ContextId, Option<String>),
@@ -95,19 +96,6 @@ pub enum Fetch {
     /// and recent). Its answer also tells whether the daemon has the full
     /// backup API.
     BackupJobs,
-    /// `group.receive` for one group conversation (pull from the node);
-    /// answers with the conversation's stored messages.
-    GroupReceive {
-        /// The conversation (the context).
-        context: ContextId,
-        /// The group it belongs to, as the conversation directory links it.
-        group: String,
-        /// The name this account keeps for the conversation. The daemon
-        /// records the name from every group call that names the
-        /// conversation and clears it when the call carries none, so each
-        /// call carries it.
-        title: Option<String>,
-    },
 }
 
 impl Fetch {
@@ -152,8 +140,8 @@ impl Fetch {
             Self::Messages(context) => BusRequest::new(
                 account,
                 "message",
-                "message.list",
-                json!({ "conversation_id": context }),
+                "message.read",
+                json!({ "conversation_id": context, "read_model": true, "limit": PAGE_LIMIT }),
             ),
             Self::Surfaces(context, cursor) => BusRequest::new(
                 account,
@@ -183,14 +171,6 @@ impl Fetch {
                 "task.get",
                 json!({ "conversation_id": context, "task_id": task }),
             ),
-            Self::GroupReceive { context, group, title } => {
-                let mut body =
-                    json!({ "group_id": group, "conversation_id": context, "limit": 100 });
-                if let Some(title) = title {
-                    body["title"] = json!(title);
-                }
-                BusRequest::new(account, "group", "group.receive", body)
-            }
         }
     }
 

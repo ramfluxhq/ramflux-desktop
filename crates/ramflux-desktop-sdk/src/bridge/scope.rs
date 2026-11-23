@@ -48,7 +48,6 @@ use crate::bus::BusError;
 use crate::bus::client::BusClient;
 use crate::bus::jobs::{JobLink, JobStreamed};
 use crate::bus::stream::Streamed;
-use crate::bus::subscription::Pushed;
 use crate::capabilities;
 use crate::config::SdkConfig;
 use crate::cursor::CursorStore;
@@ -211,9 +210,6 @@ pub(super) struct Task {
     pub(super) streamed: mpsc::UnboundedSender<Streamed>,
     pub(super) cursors: CursorStore,
     pub(super) sync: SyncState,
-    /// Legacy push translation retained for compatibility tests; no production
-    /// sender starts it. Remove with the legacy subscription API in a follow-up.
-    pub(super) push_task: Option<tokio::task::AbortHandle>,
     pub(super) link: Link,
     pub(super) daemon_refresh: Option<mpsc::UnboundedSender<super::DaemonNotice>>,
     /// Per-fetch bounded recovery and cancellable reads.
@@ -316,7 +312,6 @@ async fn read(
 pub(super) struct Inbox {
     pub(super) internal: mpsc::UnboundedReceiver<Internal>,
     pub(super) connection_states: mpsc::UnboundedReceiver<crate::bus::client::ConnectionState>,
-    pub(super) pushed: mpsc::UnboundedReceiver<Pushed>,
     pub(super) streamed: mpsc::UnboundedReceiver<Streamed>,
     pub(super) jobs: mpsc::UnboundedReceiver<JobStreamed>,
 }
@@ -331,9 +326,6 @@ pub(super) fn build(
     let outbox = outbox.into();
     let (internal, internal_rx) = mpsc::unbounded_channel();
     let (connection_states, connection_rx) = mpsc::unbounded_channel();
-    // Legacy push is intentionally dormant: no sender/task is retained.
-    // Account event streams own delivery; remove this compatibility branch in a follow-up.
-    let (_pushed, pushed_rx) = mpsc::unbounded_channel();
     let (streamed, streamed_rx) = mpsc::unbounded_channel();
     let (jobs_out, jobs_rx) = mpsc::unbounded_channel::<JobStreamed>();
     let socket = config.socket_path.to_string_lossy().into_owned();
@@ -403,7 +395,6 @@ pub(super) fn build(
         streamed,
         cursors,
         sync: SyncState::new(cursor),
-        push_task: None,
         link: Link::Attaching,
         daemon_refresh: None,
         read_recovery: super::read_recovery::ReadRecovery::default(),
@@ -431,7 +422,6 @@ pub(super) fn build(
         Inbox {
             internal: internal_rx,
             connection_states: connection_rx,
-            pushed: pushed_rx,
             streamed: streamed_rx,
             jobs: jobs_rx,
         },
@@ -452,7 +442,6 @@ pub(crate) async fn run(
     let Inbox {
         internal: mut internal_rx,
         connection_states: mut connection_rx,
-        pushed: mut pushed_rx,
         streamed: mut streamed_rx,
         jobs: mut jobs_rx,
     } = inbox;
@@ -469,7 +458,6 @@ pub(crate) async fn run(
             },
             Some(internal) = internal_rx.recv() => task.internal(internal),
             Some(status) = connection_rx.recv() => task.connection_changed(status),
-            Some(pushed) = pushed_rx.recv() => task.on_pushed(pushed),
             Some(jobs) = jobs_rx.recv() => task.on_jobs(jobs),
             Some(streamed) = streamed_rx.recv() => {
                 task.on_streamed(streamed);
@@ -490,7 +478,6 @@ impl Drop for Task {
         self.cancel_reads();
         self.save_cursor(true);
         self.sync.stop();
-        self.stop_push_subscription();
     }
 }
 
@@ -1014,21 +1001,12 @@ impl Task {
         self.snapshot_task = Some(handle);
     }
 
-    /// Stops the push subscription (the stream took over, or the scope
-    /// ends).
-    pub(super) fn stop_push_subscription(&mut self) {
-        if let Some(task) = self.push_task.take() {
-            task.abort();
-        }
-    }
-
     pub(super) fn lost(&mut self) {
         self.cancel_reads();
         if self.link != Link::Lost {
             self.emit(vec![DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)]);
         }
         self.link = Link::Lost;
-        self.stop_push_subscription();
         self.sync.stop();
         if self.sync.mode == ramflux_desktop_core::SyncMode::Stream {
             self.sync.mode = ramflux_desktop_core::SyncMode::Connecting;
@@ -1042,7 +1020,6 @@ impl Task {
         self.cancel_reads();
         self.gate_retry_at = None;
         self.link = Link::Locked;
-        self.stop_push_subscription();
         self.sync.stop();
         self.save_cursor(true);
         let events = self.translator.own_account_locked();
@@ -1364,9 +1341,6 @@ impl Task {
             return false;
         }
         if let Err(error) = &result
-            // Network receives retain their refusal handling; bounded local-read
-            // recovery must not turn a refused pull into a failed user effect.
-            && !matches!(fetch, Fetch::GroupReceive { .. })
             && !error.is_connection_lost()
             && !error.is_unknown_method()
             && !(matches!(fetch, Fetch::BackupJobs)
@@ -1478,34 +1452,6 @@ impl Task {
             // A refused read (for example a receive while the node is
             // unreachable) changes nothing; a later event or action can retry.
             Err(_) => false,
-        }
-    }
-
-    fn on_pushed(&mut self, pushed: Pushed) {
-        match pushed {
-            Pushed::Opened => {
-                self.refresh_daemon();
-                if let Some(id) = self.scope.account().cloned() {
-                    self.spawn_fetches(vec![Fetch::AccountStatus(id)]);
-                }
-            }
-            Pushed::Event { topic, body } if topic == "account.networking.changed" => {
-                self.networking_event(&body);
-            }
-            Pushed::Event { topic, body }
-                if crate::translate::contact_requests::TOPICS.contains(&topic.as_str()) =>
-            {
-                let translated = self.translator.contact_request_event(&topic, &body);
-                self.spawn_fetches(translated.follow);
-                self.emit(translated.events);
-            }
-            Pushed::Event { topic, body } => {
-                let events = self.translator.pushed(&topic, &body, now());
-                self.emit(events);
-            }
-            Pushed::Lost(_) => {
-                self.push_task = None;
-            }
         }
     }
 

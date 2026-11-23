@@ -277,20 +277,16 @@ fn a_member_without_a_verified_device_stops_the_creation_before_anything_is_sent
 }
 
 #[test]
-fn a_rename_is_the_group_read_carrying_the_new_name_until_the_directory_lists_it() {
+fn a_rename_sets_the_group_name_and_is_kept_until_the_directory_lists_it() {
     let rename = json!({ "context_id": "thread-team", "title": "Crew" });
     let Plan::Call { request, refresh } =
         planned(call(methods::CONTEXT_RENAME, rename.clone()), &fake())
     else {
         panic!("a call");
     };
-    assert_eq!(request.method, "group.receive");
-    let body = request.wire_body();
-    assert_eq!(
-        (body["group_id"].as_str(), body["conversation_id"].as_str(), body["title"].as_str()),
-        (Some("g-team"), Some("thread-team"), Some("Crew"))
-    );
-    assert_eq!(refresh, vec![Fetch::first(Paged::Conversations)]);
+    assert_eq!(request.method, "group.name.set");
+    assert_eq!(request.wire_body(), json!({ "group_id": "g-team", "name": "Crew" }));
+    assert_eq!(refresh, vec![Fetch::first(Paged::Groups), Fetch::first(Paged::Conversations)]);
     let direct = json!({ "context_id": "dm-ana", "title": "Ana" });
     let Plan::Refuse { message, .. } = planned(call(methods::CONTEXT_RENAME, direct), &fake())
     else {
@@ -298,8 +294,8 @@ fn a_rename_is_the_group_read_carrying_the_new_name_until_the_directory_lists_it
     };
     assert_eq!(message, "backend.gap.no_group_link");
 
-    // While the rename is on its way, group calls carry the new name; once
-    // the directory lists it, the directory's name is used again.
+    // While the rename is on its way the new name is kept; once the
+    // directory lists it, the directory's name is used again.
     let mut t = translator();
     let rows = common::frames()["conversation.directory"].clone();
     let groups = common::frames()["group.list"].clone();

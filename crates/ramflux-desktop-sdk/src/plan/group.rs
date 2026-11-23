@@ -7,22 +7,20 @@
 //! devices. The group is the one the conversation names in
 //! `conversation.directory` (never the conversation id itself).
 //!
-//! - Remove, kick, ban, set role: one request per member device of the
+//! - Remove, kick, set role: one request per member device of the
 //!   participant in the group (`group.list` member routes), acting as this
 //!   device.
-//! - Add (`group.member.add`) and invite (`group.invite.create`): one
-//!   request per verified device of the participant (`identity.directory`:
-//!   signing key and delivery target), with the participant's commitment,
-//!   so the member can read the group. A participant without a verified
-//!   device is refused with that reason. An invitation expires after
-//!   [`INVITE_TTL_SECS`].
+//! - Add (`group.member.add`): one request per verified device of the
+//!   participant (`identity.directory`: signing key and delivery target),
+//!   with the participant's commitment, so the member can read the group.
+//!   A participant without a verified device is refused with that reason.
 //!
 //! Several requests run in order and stop at the first failure.
 
 use ramflux_desktop_core::{ContextId, Role, methods};
 use ramflux_sdk::{
-    LocalBusGroupInviteCreateRequest, LocalBusGroupMemberAddRequest, LocalBusGroupMemberBanRequest,
-    LocalBusGroupMemberKickRequest, LocalBusGroupMemberRemoveRequest, LocalBusGroupRoleSetRequest,
+    LocalBusGroupMemberAddRequest, LocalBusGroupMemberKickRequest,
+    LocalBusGroupMemberRemoveRequest, LocalBusGroupRoleSetRequest,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -32,9 +30,6 @@ use super::{Known, Plan, refuse, refuse_invalid, text};
 use crate::bus::BusRequest;
 use crate::directory::Directory;
 use crate::translate::reason::key;
-
-/// How long an invitation stays valid, in seconds (seven days).
-pub const INVITE_TTL_SECS: i64 = 7 * 24 * 60 * 60;
 
 fn role_name(body: &Value) -> Option<&'static str> {
     match serde_json::from_value::<Role>(body["role"].clone()).ok()? {
@@ -61,9 +56,9 @@ pub(super) fn governance(
     let Some(actor) = known.self_device().map(str::to_owned) else { return refuse(key::NO_SELF) };
     let role = role_name(body);
     let requests = match method {
-        methods::GROUP_ADD_MEMBER | methods::GROUP_CREATE_INVITE => {
+        methods::GROUP_ADD_MEMBER => {
             let Some(role) = role else { return refuse_invalid("unknown role") };
-            invitations(directory, &group, &actor, participant, method, role)
+            invitations(directory, &group, participant, role)
         }
         _ => members(directory, &group, &actor, participant, method, role),
     };
@@ -74,9 +69,7 @@ pub(super) fn governance(
     };
     let daemon = match method {
         methods::GROUP_ADD_MEMBER => "group.member.add",
-        methods::GROUP_CREATE_INVITE => "group.invite.create",
         methods::GROUP_KICK => "group.member.kick",
-        methods::GROUP_BAN => "group.member.ban",
         methods::GROUP_REMOVE_MEMBER => "group.member.remove",
         _ => "group.role.set",
     };
@@ -111,7 +104,7 @@ fn body(value: impl Serialize) -> Result<Value, Why> {
     serde_json::to_value(value).map_err(|error| Why::Invalid(error.to_string()))
 }
 
-/// Remove, kick, ban or set the role of each member device.
+/// Remove, kick or set the role of each member device.
 fn members(
     directory: &Directory,
     group: &str,
@@ -127,12 +120,6 @@ fn members(
             let (group_id, actor_id) = (group.to_owned(), actor.to_owned());
             match method {
                 methods::GROUP_KICK => body(LocalBusGroupMemberKickRequest {
-                    group_id,
-                    actor_id,
-                    member_id: member,
-                    reason: None,
-                }),
-                methods::GROUP_BAN => body(LocalBusGroupMemberBanRequest {
                     group_id,
                     actor_id,
                     member_id: member,
@@ -155,13 +142,11 @@ fn members(
         .collect()
 }
 
-/// Add or invite each verified device of the participant.
+/// Add each verified device of the participant.
 pub(super) fn invitations(
     directory: &Directory,
     group: &str,
-    actor: &str,
     participant: &str,
-    method: &str,
     role: &str,
 ) -> Result<Vec<Value>, Why> {
     let Some(identity) = directory.identities.get(participant) else {
@@ -171,39 +156,20 @@ pub(super) fn invitations(
     if devices.is_empty() || identity.commitment.is_none() {
         return Err(Why::Reason(key::NO_MEMBER_ROUTE));
     }
-    let expires_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
-        .saturating_add(INVITE_TTL_SECS);
     devices
         .into_iter()
         .map(|device| {
             let key = device.signing_key.clone().unwrap_or_default();
             let target = device.target.clone().unwrap_or_default();
-            if method == methods::GROUP_ADD_MEMBER {
-                body(LocalBusGroupMemberAddRequest {
-                    group_id: group.to_owned(),
-                    member_id: device.device_id.clone(),
-                    role: role.to_owned(),
-                    member_signing_public_key: Some(key),
-                    member_principal_commitment: identity.commitment.clone(),
-                    target_delivery_id: Some(target),
-                    federation: None,
-                })
-            } else {
-                body(LocalBusGroupInviteCreateRequest {
-                    group_id: group.to_owned(),
-                    actor_id: actor.to_owned(),
-                    invitee_id: device.device_id.clone(),
-                    invitee_signing_public_key: key,
-                    invitee_principal_commitment: identity.commitment.clone(),
-                    target_delivery_id: target,
-                    role: role.to_owned(),
-                    expires_at,
-                    reason: None,
-                    federation: None,
-                })
-            }
+            body(LocalBusGroupMemberAddRequest {
+                group_id: group.to_owned(),
+                member_id: device.device_id.clone(),
+                role: role.to_owned(),
+                member_signing_public_key: Some(key),
+                member_principal_commitment: identity.commitment.clone(),
+                target_delivery_id: Some(target),
+                federation: None,
+            })
         })
         .collect()
 }

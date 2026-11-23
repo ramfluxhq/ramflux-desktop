@@ -170,11 +170,12 @@ fn events_add_each_message_once_and_update_receipts() {
     let polls = Arc::new(AtomicUsize::new(0));
     let counter = polls.clone();
     let fake = FakeBus::start(&path, move |method, _, _| match method {
-        "message.list" => {
+        "message.read" => {
             let n = counter.fetch_add(1, Ordering::SeqCst);
-            let mut frame = frames()["message.list"].clone();
+            let mut frame = frames()["message.read"].clone();
             if n >= 3 {
-                frame["messages"][1]["receipts"][0]["state"] = json!("read");
+                // Newest first: m2 is this device's.
+                frame["messages"][0]["receipts"][0]["state"] = json!("read");
             }
             Reply::Ok(frame)
         }

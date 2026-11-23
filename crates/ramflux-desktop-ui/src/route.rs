@@ -59,45 +59,9 @@ pub fn page_for(store: &Store) -> Page {
 
 #[cfg(test)]
 mod tests {
-    use ramflux_desktop_core::{
-        AccountId, AccountKind, Intent, IntentKind, NodeId, PinSource, SecretInput,
-    };
     use ramflux_desktop_test::{ScenarioPlayer, load_fixture};
 
     use super::*;
-
-    #[test]
-    fn s01_walks_every_entry_step_then_opens_the_workspace_and_locks_back() {
-        let mut p = ScenarioPlayer::new(&load_fixture("s01_first_launch").expect("s01"));
-        p.advance(1);
-        assert_eq!(page_for(p.store()), Page::Entry(EntryStep::Daemon));
-        p.advance(2_500);
-        assert_eq!(page_for(p.store()), Page::Entry(EntryStep::Node), "the invite node waits");
-        let confirm = IntentKind::ConfirmNode {
-            node_id: NodeId::new("n-harbor"),
-            pin_source: PinSource::Invite,
-        };
-        p.dispatch(Intent::human(confirm)).expect("invite pins need no confirmation");
-        p.advance(200);
-        assert_eq!(page_for(p.store()), Page::Entry(EntryStep::Account));
-        let create = IntentKind::CreateAccount {
-            kind: AccountKind::HumanInteractive,
-            label: "Personal".into(),
-            node_id: NodeId::new("n-harbor"),
-            secret: SecretInput::new("river stone lantern"),
-        };
-        p.dispatch(Intent::human(create)).expect("create");
-        p.advance(500);
-        assert_eq!(page_for(p.store()), Page::Workspace);
-        let lock = IntentKind::LockAccount { account_id: AccountId::new("a-main") };
-        p.dispatch(Intent::human(lock)).expect("lock");
-        p.advance(100);
-        assert_eq!(
-            page_for(p.store()),
-            Page::Entry(EntryStep::Account),
-            "locking returns to entry"
-        );
-    }
 
     #[test]
     fn implicit_account_scenarios_open_the_workspace_and_stay_there() {

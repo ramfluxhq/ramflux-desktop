@@ -36,15 +36,13 @@ pub mod conversation;
 pub mod fetch;
 pub mod group;
 pub mod group_create;
-pub mod identity;
 pub mod message;
 pub mod object;
 pub mod surface;
 pub mod task;
 
 use ramflux_desktop_core::{
-    AccountId, AccountKind, ContextId, ContextKind, Effect, FailureCode, NodeId, PinSource,
-    SecretInput, methods,
+    AccountId, ContextId, ContextKind, Effect, FailureCode, PinSource, SecretInput, methods,
 };
 use serde_json::{Value, json};
 
@@ -88,13 +86,6 @@ pub trait Known {
     /// Where a reported task lives, by its desktop id.
     fn task(&self, task_id: &str) -> Option<&task::TaskTarget> {
         let _ = task_id;
-        None
-    }
-    /// The task step (the daemon's task id and the step id) that an
-    /// action on `surface_ref` answers, if a task this account asked for
-    /// waits on that surface.
-    fn surface_task_binding(&self, surface_ref: &str) -> Option<(String, String)> {
-        let _ = surface_ref;
         None
     }
 }
@@ -259,18 +250,6 @@ fn map(
             ),
             None => refuse_invalid("missing passphrase"),
         },
-        methods::ACCOUNT_CREATE => {
-            let kind =
-                serde_json::from_value::<AccountKind>(body["kind"].clone()).unwrap_or_default();
-            let Some(secret) = secrets.pop() else { return refuse_invalid("missing passphrase") };
-            let node = NodeId::new(text(body, "node_id"));
-            match identity::create_request(kind, text(body, "label"), &node, secret) {
-                Ok((_, request)) => {
-                    Plan::Call { request, refresh: vec![Fetch::AccountList, Fetch::NodeList] }
-                }
-                Err(message) => refuse_invalid(&message),
-            }
-        }
         methods::ACCOUNT_BACKUP_IMPORT => match secrets.pop() {
             Some(secret) => call(
                 BusRequest::new(
@@ -386,13 +365,10 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
             object::object_call(acct, method, body, known)
         }
         methods::GROUP_KICK
-        | methods::GROUP_BAN
         | methods::GROUP_REMOVE_MEMBER
         | methods::GROUP_SET_ROLE
-        | methods::GROUP_ADD_MEMBER
-        | methods::GROUP_CREATE_INVITE => group::governance(acct, method, body, known),
+        | methods::GROUP_ADD_MEMBER => group::governance(acct, method, body, known),
         methods::SAFETY_VERIFY => contact::verify(acct, body, known),
-        methods::SURFACE_ACTION => surface::action(acct, body, known),
         methods::SURFACE_REQUEST_RESYNC => surface::request_resync(acct, body, known),
         methods::CONTACT_CARD_IMPORT => contact_card::import(acct, body),
         methods::CONTACT_CARD_EXPORT => contact_card::export(acct),

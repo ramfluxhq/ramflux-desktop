@@ -38,7 +38,7 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window, div, rems};
-use ramflux_desktop_core::{AccountId, AccountKind, NodeId, Scope};
+use ramflux_desktop_core::{AccountId, NodeId, Scope};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::scale::space;
 
@@ -60,8 +60,6 @@ pub use recovery::{RecoveryEvent, RecoveryPanel, RecoveryPending};
 pub enum AccountPath {
     /// Create a new identity.
     Create,
-    /// Join an existing identity as a new device.
-    Join,
     /// Restore from an encrypted backup.
     Restore,
 }
@@ -80,10 +78,6 @@ pub enum RestoreKind {
 struct Inputs {
     passphrase: Entity<InputState>,
     node_url: Entity<InputState>,
-    label: Entity<InputState>,
-    new_secret: Entity<InputState>,
-    device_label: Entity<InputState>,
-    code: Entity<InputState>,
     backup_path: Entity<InputState>,
     backup_secret: Entity<InputState>,
 }
@@ -99,10 +93,6 @@ impl Inputs {
         Self {
             passphrase: masked("entry.account.passphrase", window, cx),
             node_url: plain("entry.node.url_placeholder", window, cx),
-            label: plain("entry.create.label_placeholder", window, cx),
-            new_secret: masked("entry.create.passphrase", window, cx),
-            device_label: plain("entry.join.device_placeholder", window, cx),
-            code: masked("entry.join.code", window, cx),
             backup_path: plain("entry.restore.path_placeholder", window, cx),
             backup_secret: masked("entry.restore.passphrase", window, cx),
         }
@@ -146,7 +136,6 @@ pub struct EntryPage {
     /// own action on an account.
     recovery: Entity<RecoveryPanel>,
     recovery_open: bool,
-    kind: AccountKind,
     node: Option<NodeId>,
     review_nodes: bool,
     submitted: Option<AccountId>,
@@ -232,7 +221,6 @@ impl EntryPage {
             ceremony_open: false,
             recovery,
             recovery_open: false,
-            kind: AccountKind::HumanInteractive,
             node: None,
             review_nodes: false,
             submitted: None,
@@ -356,13 +344,8 @@ impl EntryPage {
     }
 
     /// Every masked secret input, for tests that check secrets are cleared.
-    pub fn secret_inputs(&self) -> [&Entity<InputState>; 4] {
-        [
-            &self.inputs.passphrase,
-            &self.inputs.new_secret,
-            &self.inputs.code,
-            &self.inputs.backup_secret,
-        ]
+    pub fn secret_inputs(&self) -> [&Entity<InputState>; 2] {
+        [&self.inputs.passphrase, &self.inputs.backup_secret]
     }
 
     /// The step shown: the store's step, or the node step while the user

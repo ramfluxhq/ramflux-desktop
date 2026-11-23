@@ -177,7 +177,6 @@ pub fn ceremony_ended(failure: CeremonyFailure) -> SharedString {
 #[must_use]
 pub fn ceremony_ended_key(failure: CeremonyFailure) -> &'static str {
     match failure {
-        CeremonyFailure::CustodianRefused => "agent.ended.custodian_refused",
         CeremonyFailure::Disabled => "ceremony.ended.disabled",
         CeremonyFailure::ConfirmationFailed => "ceremony.ended.mismatch",
         CeremonyFailure::VaultUnavailable => "ceremony.ended.vault",
@@ -222,7 +221,7 @@ pub fn recovery_ended_key(failure: CeremonyFailure) -> &'static str {
         },
         CeremonyFailure::Expired => "recovery.ended.expired",
         // A recovery never has a custodian: a ceremony of another kind.
-        CeremonyFailure::Invalid | CeremonyFailure::CustodianRefused => "recovery.ended.invalid",
+        CeremonyFailure::Invalid => "recovery.ended.invalid",
     }
 }
 

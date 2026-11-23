@@ -98,11 +98,9 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
             let target = op.target().map(|id| display_name(store, id)).unwrap_or_default();
             let key = match op {
                 GovernanceOp::Kick { .. } => "confirm.governance.kick",
-                GovernanceOp::Ban { .. } => "confirm.governance.ban",
                 GovernanceOp::SetRole { .. } => "confirm.governance.set_role",
                 GovernanceOp::AddMember { .. } => "confirm.governance.add_member",
                 GovernanceOp::RemoveMember { .. } => "confirm.governance.remove_member",
-                GovernanceOp::CreateInvite { .. } => "confirm.governance.create_invite",
             };
             (tr_args(key, &[("member", &target), ("group", &group)]), None, op.risk())
         }

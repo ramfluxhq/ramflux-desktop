@@ -186,7 +186,6 @@ pub fn handle_intent(
 fn take_secrets(kind: IntentKind) -> Vec<SecretInput> {
     match kind {
         IntentKind::Unlock { secret, .. }
-        | IntentKind::CreateAccount { secret, .. }
         | IntentKind::RestoreBackup { secret, .. }
         | IntentKind::ExportBackup { secret, .. }
         | IntentKind::CreateBackup { secret, .. }
@@ -196,9 +195,7 @@ fn take_secrets(kind: IntentKind) -> Vec<SecretInput> {
             secrets.push(passphrase);
             secrets
         }
-        IntentKind::ConfirmAgentCeremony { words } => words,
         IntentKind::ConfirmRecovery { phrase, passphrase, .. } => vec![phrase, passphrase],
-        IntentKind::ActivateDevice { code, .. } => vec![code],
         IntentKind::RotatePassphrase { current, next, .. } => vec![current, next],
         _ => Vec::new(),
     }

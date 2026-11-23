@@ -32,19 +32,10 @@
 //! and are not zeroized. They stop being refreshed the frame the words stop
 //! being drawn.
 //!
-//! The same screens create an AI participant (DESK-AGENT-01) when the panel
-//! is given a custodian ([`CeremonyPanel::for_agent`]): the owner's own
-//! unlocked account asks the daemon to prepare an account for an AI, and
-//! the phrase is shown to the owner exactly as above, once, with the same
-//! covering and erasing. Two steps differ: the screens ask for no node
-//! (the account connects through its custodian's daemon) and for no
-//! passphrase (the daemon makes the AI's data passphrase and the owner
-//! never sees it, so the three words are the only confirmation). The
-//! panel never stores the phrase in either mode.
+//! The panel never stores the phrase.
 //!
 //! - `render`: the screens.
 
-mod agent;
 mod render;
 
 use gpui_kit::component::input::{InputEvent, InputState};
@@ -52,8 +43,8 @@ use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable as _, Subscription, Window,
 };
 use ramflux_desktop_core::{
-    AccountId, AgentCustodyProblem, Ceremony, CeremonyPhase, IntentKind, NodeId, RecoveryPhrase,
-    SecretInput, Timestamp, WordInput, check_agent_custodian, methods, resolve_word,
+    Ceremony, CeremonyPhase, IntentKind, NodeId, RecoveryPhrase, SecretInput, Timestamp, WordInput,
+    check_account_code, methods, resolve_word,
 };
 
 use crate::actions::CeremonyEscape;
@@ -61,7 +52,6 @@ use crate::app::{StoreEvent, StoreHandle};
 use crate::entry::abandon::{Abandon, Arrival, Next};
 use crate::i18n;
 use crate::root::IntentRoot;
-use crate::settings::backup::text::Strength;
 
 /// What the panel tells the entry page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,8 +157,6 @@ pub(crate) enum Screen {
     PhraseMissing,
     Hiding,
     Words,
-    /// An AI participant's confirmation was sent: the daemon is creating it.
-    Creating,
     Passphrase,
     Done,
     Ended,
@@ -222,10 +210,6 @@ pub struct CeremonyPanel {
     left_running: Option<String>,
     /// Where focus was before the cancel question took it.
     restore_focus: Option<FocusHandle>,
-    /// The panel creates an AI participant (see the module's notes).
-    agent: bool,
-    /// The owner's account that would custody it.
-    custodian: Option<AccountId>,
     /// The whole second last drawn in the countdown.
     seen_second: Option<u64>,
     focus: FocusHandle,
@@ -321,8 +305,6 @@ impl CeremonyPanel {
             abandon: None,
             left_running: None,
             restore_focus: None,
-            agent: false,
-            custodian: None,
             seen_second: None,
             focus: cx.focus_handle(),
             grid_focus: cx.focus_handle(),
@@ -334,45 +316,6 @@ impl CeremonyPanel {
             focused_screen: None,
             _subscriptions: subscriptions,
         }
-    }
-
-    /// A panel that creates an AI participant for `custodian`, the owner's
-    /// unlocked account (see the module's notes).
-    pub fn for_agent(
-        store: Entity<StoreHandle>,
-        root: Entity<IntentRoot>,
-        custodian: Option<AccountId>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let mut panel = Self::new(store, root, window, cx);
-        panel.agent = true;
-        panel.custodian = custodian;
-        panel
-    }
-
-    /// Whether the panel creates an AI participant.
-    pub fn is_agent(&self) -> bool {
-        self.agent
-    }
-
-    /// The owner's account the next AI participant is created for (the
-    /// account that is open when the ceremony begins).
-    pub fn set_custodian(&mut self, custodian: Option<AccountId>, cx: &mut Context<Self>) {
-        if self.custodian != custodian {
-            self.custodian = custodian;
-            cx.notify();
-        }
-    }
-
-    /// Why the owner's account cannot custody an AI participant now, as the
-    /// daemon's accounts stand (`None`: it can).
-    pub fn custody_problem(&self, cx: &App) -> Option<AgentCustodyProblem> {
-        if !self.agent {
-            return None;
-        }
-        let Some(custodian) = &self.custodian else { return Some(AgentCustodyProblem::Unknown) };
-        check_agent_custodian(self.store.read(cx).entry_store(), custodian).err()
     }
 
     /// What the screen holds of the recovery phrase.
@@ -592,10 +535,8 @@ impl CeremonyPanel {
         let ceremony = self.ceremony(cx);
         match ceremony.as_ref().map(|c| &c.phase) {
             Some(CeremonyPhase::PhraseReady) => {
-                // The phrase is given out once, to the panel of the
-                // ceremony that made it.
-                let mine = self.store.read(cx).agent_ceremony() == self.agent;
-                if !self.held.taken && mine {
+                // The phrase is given out once.
+                if !self.held.taken {
                     self.held.phrase =
                         self.store.update(cx, |handle, _| handle.take_recovery_phrase());
                     self.held.taken = self.held.phrase.is_some();
@@ -700,21 +641,6 @@ impl CeremonyPanel {
         if label.is_empty() || self.pending.is_some() || self.abandon.is_some() {
             return;
         }
-        if self.agent {
-            // An AI participant: its custodian's session asks, and the node
-            // is the custodian's own. Nothing begins for an account that
-            // cannot custody (the screen says why).
-            let Some(custodian) = self.custodian.clone() else { return };
-            if self.custody_problem(cx).is_some() {
-                return;
-            }
-            self.held = Held::new();
-            self.expired = false;
-            self.seen_second = None;
-            let kind = IntentKind::BeginAgentCeremony { label, custodian_id: custodian };
-            self.submit(kind, Pending::Begin, window, cx);
-            return;
-        }
         // Without a node the account could never connect: nothing begins.
         let Some(node) = self.node.clone() else { return };
         self.held = Held::new();
@@ -791,16 +717,6 @@ impl CeremonyPanel {
         if self.typed.is_some() || self.pending.is_some() {
             return;
         }
-        if self.agent {
-            // An AI participant takes no passphrase: the three words are
-            // the confirmation, sent once, and the inputs are cleared.
-            let words = resolved.iter().map(|word| SecretInput::new(*word)).collect();
-            for input in &self.words {
-                input.update(cx, |input, cx| input.set_value("", window, cx));
-            }
-            self.submit(IntentKind::ConfirmAgentCeremony { words }, Pending::Confirm, window, cx);
-            return;
-        }
         self.typed = Some(resolved.iter().map(|word| SecretInput::new(*word)).collect());
         for input in &self.words {
             input.update(cx, |input, cx| input.set_value("", window, cx));
@@ -808,10 +724,11 @@ impl CeremonyPanel {
         cx.notify();
     }
 
-    /// The passphrase is acceptable: strong enough and typed twice.
+    /// The account code is acceptable: six digits the daemon admits, typed
+    /// twice.
     pub fn can_confirm(&self, cx: &App) -> bool {
         let typed = self.passphrase.read(cx).value();
-        Strength::of(&typed) != Strength::TooShort && typed == self.repeat.read(cx).value()
+        check_account_code(&typed).is_ok() && typed == self.repeat.read(cx).value()
     }
 
     /// Sends the words and the passphrase (the one attempt) and clears
@@ -824,7 +741,7 @@ impl CeremonyPanel {
         // secret all use these two), then the one `String` that becomes the
         // `SecretInput`: three transient copies, the last zeroized with it.
         let typed = self.passphrase.read(cx).value();
-        if Strength::of(&typed) == Strength::TooShort || typed != self.repeat.read(cx).value() {
+        if check_account_code(&typed).is_err() || typed != self.repeat.read(cx).value() {
             return;
         }
         let passphrase = SecretInput::new(typed.to_string());

@@ -24,28 +24,6 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
-        IntentKind::CreateAccount { kind, label, node_id, secret } => {
-            p.human_only("create an account").and_then(|()| {
-                usable_node(p, node_id)?;
-                non_empty(label, "account label")?;
-                secret_present(secret, "passphrase")?;
-                Ok(Decision::SecretCall(
-                    methods::ACCOUNT_CREATE,
-                    json!({ "kind": kind, "label": label, "node_id": node_id }),
-                ))
-            })
-        }
-        IntentKind::ActivateDevice { node_id, device_label, code } => {
-            p.human_only("activate a device").and_then(|()| {
-                usable_node(p, node_id)?;
-                non_empty(device_label, "device label")?;
-                secret_present(code, "activation code")?;
-                Ok(Decision::SecretCall(
-                    methods::DEVICE_ACTIVATE,
-                    json!({ "node_id": node_id, "device_label": device_label }),
-                ))
-            })
-        }
         IntentKind::RestoreBackup { path, secret } => {
             p.human_only("restore a backup").and_then(|()| {
                 non_empty(path, "backup path")?;
@@ -120,7 +98,6 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 non_empty(path, "sync path")?;
                 let method = match direction {
                     SyncDirection::Export => methods::DEVICE_SYNC_EXPORT,
-                    SyncDirection::Import => methods::DEVICE_SYNC_IMPORT,
                 };
                 Ok(Decision::Call(method, json!({ "path": path })))
             })
@@ -171,11 +148,6 @@ fn account(p: &Policy<'_>, id: &AccountId) -> Result<(), IntentError> {
 
 fn node<'a>(p: &Policy<'a>, id: &NodeId) -> Result<&'a Node, IntentError> {
     p.store.node(id).ok_or_else(|| IntentError::UnknownNode(id.clone()))
-}
-
-/// A node new accounts may bind to: confirmed (pinned).
-fn usable_node(p: &Policy<'_>, id: &NodeId) -> Result<(), IntentError> {
-    if node(p, id)?.confirmed { Ok(()) } else { Err(IntentError::NodeNotConfirmed(id.clone())) }
 }
 
 fn bound(p: &Policy<'_>, id: &NodeId) -> bool {

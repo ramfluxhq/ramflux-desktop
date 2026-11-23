@@ -166,17 +166,14 @@ impl<const N: usize> Drop for Secrets<N> {
 
 /// One step of a ceremony, as the scope's task sends it.
 pub(super) enum Step {
-    /// `account.create`: open the connection and begin. With a custodian it
-    /// is an AI participant's ceremony (`account.create.begin` as the
-    /// custodian's attended session, see the module's notes).
-    Begin { label: String, custodian: Option<String> },
+    /// `account.create`: open the connection and begin a person's account.
+    Begin { label: String },
     /// `account.create.show_once`.
     Show,
     /// `account.create.hidden_challenge`.
     Hide,
-    /// `account.create.confirm`: the three words, then the passphrase (an AI
-    /// participant's ceremony: the three words only, the daemon makes the
-    /// data passphrase).
+    /// `account.create.confirm`: the three words, then the six-digit account
+    /// code.
     Confirm { secrets: Vec<SecretInput> },
     /// `account.create.cancel`.
     Cancel,
@@ -201,10 +198,7 @@ impl Step {
             // Begin is `account.create` without a secret; the one-shot
             // create (which carries the passphrase) is another call.
             Effect::Call { method, body } if method == methods::CUSTODY_BEGIN => {
-                // Only an AI participant's begin names a custodian.
-                let custodian = (text(&body, "principal_kind") == "headless_ai")
-                    .then(|| text(&body, "custodian_account"));
-                Ok(Self::Begin { label: text(&body, "display_name"), custodian })
+                Ok(Self::Begin { label: text(&body, "display_name") })
             }
             Effect::Call { method, .. } if method == methods::CUSTODY_SHOW_ONCE => Ok(Self::Show),
             Effect::Call { method, .. } if method == methods::CUSTODY_HIDDEN_CHALLENGE => {
@@ -310,8 +304,6 @@ struct Meta {
     ceremony_id: String,
     label: String,
     expires_at: Timestamp,
-    /// The custodian of an AI participant's ceremony.
-    custodian: Option<String>,
 }
 
 /// The public facts of a running recovery.
@@ -437,12 +429,7 @@ fn end(session: &mut Session, failure: CeremonyFailure) -> Vec<DomainEvent> {
 /// A refused begin: a failure with no ceremony behind it.
 fn refused_creation(label: &str, failure: CeremonyFailure) -> DomainEvent {
     creation(
-        &Meta {
-            ceremony_id: String::new(),
-            label: label.to_owned(),
-            expires_at: Timestamp(0),
-            custodian: None,
-        },
+        &Meta { ceremony_id: String::new(), label: label.to_owned(), expires_at: Timestamp(0) },
         CeremonyPhase::Failed(failure),
     )
 }
@@ -477,9 +464,7 @@ fn broke(method: &str, error: &SdkError, session: &mut Session) -> Outcome {
 async fn run(step: Step, session: &mut Session, context: &Context) -> Outcome {
     let method = step.method();
     let outcome = match step {
-        Step::Begin { label, custodian } => {
-            begin(&label, custodian.as_deref(), session, context).await
-        }
+        Step::Begin { label } => begin(&label, session, context).await,
         Step::Show => show(session, context).await,
         Step::Hide => hide(session).await,
         Step::Confirm { secrets } => confirm(secrets, session, context).await,
@@ -500,12 +485,7 @@ async fn run(step: Step, session: &mut Session, context: &Context) -> Outcome {
     })
 }
 
-async fn begin(
-    label: &str,
-    custodian: Option<&str>,
-    session: &mut Session,
-    context: &Context,
-) -> Option<Outcome> {
+async fn begin(label: &str, session: &mut Session, context: &Context) -> Option<Outcome> {
     // One ceremony at a time: a running one is let go of (its connection
     // closes) before the next begins.
     *session = Session::Idle;
@@ -519,30 +499,16 @@ async fn begin(
             )]));
         }
     };
-    // An AI participant's ceremony is begun as its custodian's session: the
-    // frame names the custodian, and the daemon checks it is an unlocked,
-    // connected person's account of this daemon.
-    let begun = match custodian {
-        Some(custodian) => client.begin_headless(label, custodian).await,
-        None => client.begin(label, ramflux_protocol::PrincipalKind::Human).await,
-    };
-    match begun {
+    match client.begin(label, ramflux_protocol::PrincipalKind::Human).await {
         Ok(pending) => {
             let meta = Meta {
                 ceremony_id: pending.ceremony_id,
                 label: label.to_owned(),
                 expires_at: now().saturating_add_ms(pending.expires_in_ms),
-                custodian: custodian.map(str::to_owned),
             };
             let event = creation(&meta, CeremonyPhase::Prepared);
             *session = Session::Creation { client, meta };
             Some(Outcome::events(vec![event]))
-        }
-        // The client reports every refusal of a custodian's begin (not the
-        // owner's session, a locked, pending or non-person custodian, a
-        // daemon that does not know it) as `CustodySetupInvalid`.
-        Err(SdkError::CustodySetupInvalid) if custodian.is_some() => {
-            Some(Outcome::events(vec![refused_creation(label, CeremonyFailure::CustodianRefused)]))
         }
         Err(error) => Some(Outcome::events(match refusal(&error) {
             Some(failure) => vec![refused_creation(label, failure)],
@@ -596,35 +562,23 @@ async fn confirm(
     context: &Context,
 ) -> Option<Outcome> {
     let Session::Creation { client, meta } = session else { return None };
-    // A person's account takes the three words and a passphrase; an AI
-    // participant's takes the words only (the daemon makes its passphrase).
-    let result = if meta.custodian.is_some() {
-        let Ok([first, second, third]) = <[SecretInput; 3]>::try_from(secrets) else {
-            return Some(broke(methods::CUSTODY_CONFIRM, &SdkError::CustodySetupInvalid, session));
-        };
-        let words = Secrets::new([first, second, third], &context.audit);
-        let result = client.confirm_headless(&words.buffers).await;
-        drop(words);
-        result
-    } else {
-        let Ok([first, second, third, passphrase]) = <[SecretInput; 4]>::try_from(secrets) else {
-            return Some(broke(methods::CUSTODY_CONFIRM, &SdkError::CustodySetupInvalid, session));
-        };
-        let words = Secrets::new([first, second, third], &context.audit);
-        let passphrase = Secrets::new([passphrase], &context.audit);
-        let result = client.confirm(&words.buffers, &passphrase.buffers[0]).await;
-        drop((words, passphrase));
-        result
+    // The three words, then the six-digit account code (sent in the
+    // daemon's `passphrase` field).
+    let Ok([first, second, third, code]) = <[SecretInput; 4]>::try_from(secrets) else {
+        return Some(broke(methods::CUSTODY_CONFIRM, &SdkError::CustodySetupInvalid, session));
     };
+    let words = Secrets::new([first, second, third], &context.audit);
+    let code = Secrets::new([code], &context.audit);
+    let result = client.confirm(&words.buffers, &code.buffers[0]).await;
+    drop((words, code));
     match result {
         Ok(created) => {
-            let agent = meta.custodian.is_some();
             let account = NativeAccount {
                 id: AccountId::new(created.account_id),
                 display_name: created.display_name,
                 networking: networking(created.networking),
-                kind: if agent { AccountKind::HeadlessAi } else { AccountKind::HumanInteractive },
-                custodian: meta.custodian.as_deref().map(AccountId::new),
+                kind: AccountKind::HumanInteractive,
+                custodian: None,
             };
             let done = CeremonyAccount {
                 local_account_id: account.id.to_string(),

@@ -232,9 +232,7 @@ impl StoreHandle {
 fn is_ceremony(kind: &IntentKind) -> bool {
     matches!(
         kind,
-        IntentKind::BeginAgentCeremony { .. }
-            | IntentKind::ConfirmAgentCeremony { .. }
-            | IntentKind::ExportAgentCredentials { .. }
+        IntentKind::ExportAgentCredentials { .. }
             | IntentKind::BeginCeremony { .. }
             | IntentKind::ShowRecoveryPhrase
             | IntentKind::HideRecoveryPhrase

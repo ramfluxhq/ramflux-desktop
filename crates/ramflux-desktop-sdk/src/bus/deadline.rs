@@ -34,11 +34,8 @@ pub enum Weight {
 }
 
 /// Methods that reach a node, or derive keys from a passphrase.
-const NETWORK: [&str; 31] = [
+const NETWORK: [&str; 28] = [
     "account.create",
-    // The owner-attended creation of an AI participant: the daemon
-    // verifies the custodian and registers the new account with its node.
-    "account.create.begin",
     "account.backup.import",
     "account.backup.export",
     "account.backup.create",
@@ -54,13 +51,11 @@ const NETWORK: [&str; 31] = [
     "device.revoke",
     "message.receive",
     "group.send",
-    "group.receive",
+    "group.name.set",
     "group.member.kick",
-    "group.member.ban",
     "group.member.remove",
     "group.role.set",
     "group.member.add",
-    "group.invite.create",
     "message.submit",
     "contact.verify",
     "object.get",
@@ -86,7 +81,7 @@ const READS: [&str; 19] = [
     "mcp.approval.list",
     "grant.list",
     "grant.list_standing_approvals",
-    "message.list",
+    "message.read",
     "object.list",
     "mcp.tool.list",
     "mcp.server.list",
@@ -192,9 +187,8 @@ mod tests {
         assert_eq!(deadlines.budget("contact.block"), deadlines.local);
         assert_eq!(deadlines.budget("group.send"), deadlines.network);
         assert_eq!(deadlines.budget("daemon.stop"), deadlines.stop);
-        // The AI participant's creation and credential export wait like the
-        // account ceremonies they belong to (a vault may ask the person).
-        assert_eq!(deadlines.budget("account.create.begin"), deadlines.network);
+        // The AI participant's credential export waits like the account
+        // ceremonies (a vault may ask the person).
         assert_eq!(deadlines.budget("account.export_agent_credentials"), deadlines.network);
         assert!(deadlines.read < deadlines.network);
     }

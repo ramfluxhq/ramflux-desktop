@@ -16,8 +16,9 @@ use ramflux_desktop_core::{Capabilities, ContextKind, methods};
 
 /// Reason keys, one per gap.
 pub mod reason {
-    /// Reporting renderer errors to a surface's author has no daemon
-    /// counterpart (K2 carries surfaces, not renderer reports).
+    /// Cards are drawn and acted on through the shared card runtime
+    /// (`card.session.*`), which this build does not embed yet; reporting
+    /// renderer errors has no daemon counterpart either.
     pub const SURFACES: &str = "backend.gap.surfaces";
     /// Handoff (K7).
     pub const HANDOFF: &str = "backend.gap.handoff";
@@ -32,8 +33,6 @@ pub mod reason {
     /// A contact request is federated only and needs a federation route to
     /// the contact's node, which no directory lists.
     pub const CONTACT_ROUTE: &str = "backend.gap.contact_route";
-    /// Joining by activation code has no daemon counterpart.
-    pub const ACTIVATION: &str = "backend.gap.activation";
     /// Device sync needs a relay route and a target device.
     pub const DEVICE_SYNC: &str = "backend.gap.device_sync";
     /// Voice calls need the daemon's call API (CALL-01).
@@ -88,14 +87,13 @@ pub const BACKUP_METHODS: [&str; 4] = [
 pub fn unsupported() -> BTreeMap<String, &'static str> {
     let mut table: BTreeMap<String, &'static str> = [
         (methods::RENDERER_ERROR, reason::SURFACES),
+        (methods::SURFACE_ACTION, reason::SURFACES),
         (methods::HANDOFF_ACCEPT, reason::HANDOFF),
         (methods::HANDOFF_DECLINE, reason::HANDOFF),
         (methods::CONFLICT_RESOLVE, reason::CONFLICTS),
         (methods::PRIVACY_REVEAL, reason::REVEAL),
         (methods::CONTACT_REQUEST, reason::CONTACT_ROUTE),
-        (methods::DEVICE_ACTIVATE, reason::ACTIVATION),
         (methods::DEVICE_SYNC_EXPORT, reason::DEVICE_SYNC),
-        (methods::DEVICE_SYNC_IMPORT, reason::DEVICE_SYNC),
     ]
     .into_iter()
     .map(|(method, why)| (method.to_owned(), why))

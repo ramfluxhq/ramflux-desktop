@@ -181,7 +181,9 @@ async fn networking_changed_event_updates_header_without_status_read() {
     });
     assert_eq!(latest(&delivered).networking, Networking::Live);
     assert!(fake.seen().is_empty(), "events never trigger status reads");
-    task.on_pushed(Pushed::Event {
+    task.on_streamed(Streamed::Event {
+        seq: Some(3),
+        at: None,
         topic: "account.networking.changed".into(),
         body: event("networking_pending"),
     });
@@ -287,22 +289,6 @@ async fn daemon_list_and_lifecycle_merge_preserves_account_session() {
         assert_eq!(store.account(&id).expect("account").networking_session, Some(expected));
         assert_eq!(store.account(&id).expect("account").networking, expected);
     }
-}
-
-#[tokio::test]
-async fn push_gap_reopen_recovers_networking_snapshot() {
-    let path = socket_path("network-push-gap");
-    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(pending_status()));
-    let (mut task, mut inbox, delivered) = task();
-    task.client = BusClient::new(path, Duration::from_secs(2), task.config.deadlines);
-    task.networking_event(&event("live"));
-    assert_eq!(latest(&delivered).networking, Networking::Live);
-    task.on_pushed(Pushed::Lost(BusError::Timeout));
-    assert!(fake.seen().is_empty());
-    task.on_pushed(Pushed::Opened);
-    answer(&mut task, &mut inbox).await;
-    assert_eq!(latest(&delivered).networking, Networking::Pending);
-    assert_eq!(fake.seen().iter().filter(|r| r.method == "account.status").count(), 1);
 }
 
 #[tokio::test]

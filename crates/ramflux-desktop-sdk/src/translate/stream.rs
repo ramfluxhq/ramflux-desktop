@@ -15,7 +15,7 @@
 //! account locked) and `sync.status` (its background sync, shown in
 //! diagnostics).
 
-use ramflux_desktop_core::{ContextId, ContextKind, DaemonSyncState, Timestamp};
+use ramflux_desktop_core::{ContextId, DaemonSyncState, Timestamp};
 use serde_json::Value;
 
 use super::{Translator, seconds, text};
@@ -47,6 +47,17 @@ pub const STATE_TOPICS: [&str; 2] = ["account.state", "sync.status"];
 /// The voice call topic (CALL-01 §6), subscribed only to a daemon with the
 /// call API; its body is the call row, read directly.
 pub const CALL_TOPIC: &str = "call.changed";
+
+/// Approval and tool topics the stream carries as pushed events (their
+/// bodies are translated directly, besides the reads they call for).
+pub const PUSHED_TOPICS: [&str; 6] = [
+    "mcp.approval.request",
+    "mcp.approval.granted",
+    "mcp.approval.denied",
+    "mcp.tool.started",
+    "ramflux.a2ui.action_submitted",
+    "ramflux.a2ui.action_result",
+];
 
 /// Every topic the desktop subscribes to on the stream. Not subscribed:
 /// `node.health` (it names no node), tool starts and the older A2UI records
@@ -148,11 +159,8 @@ impl Translator {
             "conversation.changed" => vec![conversations],
             "message.received" | "message.updated" | "group.message.received" => {
                 match (context, kind) {
-                    (Some(context), Some(kind)) => {
-                        let mut reads = self.messages_read(&context, kind);
-                        if kind == ContextKind::Group && reads.is_empty() {
-                            reads.push(Fetch::first(Paged::Groups));
-                        }
+                    (Some(context), Some(_)) => {
+                        let mut reads = self.messages_read(&context);
                         reads.push(conversations);
                         reads
                     }
@@ -201,7 +209,7 @@ impl Translator {
     /// The reads that show the watched contexts' stored messages (no pull
     /// from the node: the daemon receives by itself).
     pub fn watched_reads(&self) -> Vec<Fetch> {
-        self.watched().into_iter().flat_map(|(id, kind)| self.messages_read(&id, kind)).collect()
+        self.watched().into_iter().flat_map(|(id, _)| self.messages_read(&id)).collect()
     }
 
     /// Recover watched conversations and already loaded tasks and surfaces.
@@ -218,7 +226,7 @@ impl Translator {
 
     /// The read that shows one context's stored messages, if it is known.
     pub fn context_reads(&self, context: &ContextId) -> Vec<Fetch> {
-        self.contexts.get(context).map(|c| self.messages_read(context, c.kind)).unwrap_or_default()
+        if self.contexts.contains_key(context) { self.messages_read(context) } else { Vec::new() }
     }
 }
 
@@ -250,7 +258,6 @@ mod tests {
         assert_eq!(translator.contexts.len(), 50);
         assert_eq!(reads.len(), 6, "three reads per watched conversation only");
         assert_eq!(reads.iter().filter(|r| matches!(r, Fetch::Messages(_))).count(), 2);
-        assert!(!reads.iter().any(|r| matches!(r, Fetch::GroupReceive { .. })));
         translator.set_focus(None);
         translator.set_pins(Vec::new());
         assert!(

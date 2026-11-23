@@ -40,12 +40,16 @@ fn file(name: &str, len: usize) -> std::path::PathBuf {
 type Sent = Arc<Mutex<Option<(String, String)>>>;
 
 fn listed_messages(sent: &Sent) -> Value {
-    let mut frame = frames()["message.list"].clone();
+    let mut frame = frames()["message.read"].clone();
     if let Some((message, _)) = sent.lock().expect("sent").clone() {
-        frame["messages"].as_array_mut().expect("messages").push(json!({
+        let record = json!({
             "conversation_id": "dm-ana", "message_id": message, "sender_id": "device-me",
             "encrypted_body": [], "deleted": false, "created_at": 1_790_000_300, "receipts": [],
-        }));
+        });
+        frame["messages"]
+            .as_array_mut()
+            .expect("messages")
+            .insert(0, ramflux_desktop_test::fake_read_model::row(&record, "device-me"));
     }
     frame
 }
@@ -87,7 +91,7 @@ fn an_attachment_shows_its_transfer_then_its_message() {
             *record.lock().expect("sent") = Some((message.clone(), object.to_owned()));
             Reply::Ok(json!({ "message_id": message }))
         }
-        "message.list" => Reply::Ok(listed_messages(&record)),
+        "message.read" => Reply::Ok(listed_messages(&record)),
         "object.directory" => Reply::Ok(listed_objects(&record)),
         _ => fixture(method),
     });

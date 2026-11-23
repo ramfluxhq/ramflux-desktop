@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Policy for AI participants an owner custodies (DESK-AGENT-01): creating
-//! one in an attended ceremony and exporting its one-shot credentials.
+//! Policy for AI participants an owner custodies: exporting an agent's
+//! one-shot credentials. (Creating one is the core's `agent.create` with
+//! the person's approval on their phone, not run by this build.)
 //!
-//! Both are human only and run on the owner's own account: an unlocked,
+//! Export is human only and run on the owner's own account: an unlocked,
 //! connected person's account of the daemon. The daemon enforces the same
 //! rules (it is the authority); the policy keeps the desktop from sending a
 //! request it knows is refused, and from spending the single confirmation
@@ -16,13 +17,10 @@ use serde_json::json;
 use super::{Decision, IntentError, Policy};
 use crate::ids::AccountId;
 use crate::intent::{IntentKind, methods};
-use crate::model::{
-    AccountKind, AgentCustodyProblem, AgentExportRefusal, CHALLENGE_WORDS, CeremonyPhase,
-    LockState, Networking,
-};
+use crate::model::{AccountKind, AgentCustodyProblem, AgentExportRefusal, LockState, Networking};
 use crate::store::Store;
 
-const WHAT: &str = "create an AI participant or export its credentials";
+const WHAT: &str = "export an AI participant's credentials";
 
 /// Why `custodian` cannot custody a new AI participant, if it cannot: it
 /// must be an unlocked, connected person's account the daemon lists.
@@ -87,41 +85,6 @@ pub fn check_agent_export(
 /// Decides AI participant kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
     Some(match kind {
-        IntentKind::BeginAgentCeremony { label, custodian_id } => {
-            p.human_only(WHAT).and_then(|()| {
-                if !p.store.offers_born_v3_creation() {
-                    return Err(IntentError::CeremonyNotOffered);
-                }
-                if label.trim().is_empty() {
-                    return Err(IntentError::Empty("AI participant name"));
-                }
-                check_agent_custodian(p.store, custodian_id).map_err(IntentError::AgentCustody)?;
-                if p.store.ceremony().is_some_and(|ceremony| ceremony.is_active()) {
-                    return Err(IntentError::CeremonyPhase);
-                }
-                Ok(Decision::Call(
-                    methods::CUSTODY_BEGIN,
-                    json!({
-                        "display_name": label.trim(),
-                        "principal_kind": "headless_ai",
-                        "custodian_account": custodian_id,
-                    }),
-                ))
-            })
-        }
-        IntentKind::ConfirmAgentCeremony { words } => p.human_only(WHAT).and_then(|()| {
-            let asked = matches!(
-                p.store.ceremony().map(|c| &c.phase),
-                Some(CeremonyPhase::Challenged { .. })
-            );
-            if !asked {
-                return Err(IntentError::CeremonyPhase);
-            }
-            if words.len() != CHALLENGE_WORDS || words.iter().any(|word| word.is_empty()) {
-                return Err(IntentError::CeremonyWords);
-            }
-            Ok(Decision::SecretCall(methods::CUSTODY_CONFIRM, json!({})))
-        }),
         IntentKind::ExportAgentCredentials { owner_id, account_id, path } => {
             p.human_only(WHAT).and_then(|()| {
                 if !p.store.offers_born_v3_creation() {

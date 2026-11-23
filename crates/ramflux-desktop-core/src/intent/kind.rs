@@ -12,20 +12,18 @@ use crate::ids::{
     AccountId, BackupJobId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
     ParticipantId, StandingApprovalId, SurfaceId, TaskId,
 };
-use crate::model::{AccountKind, ConflictResolution, PinSource, RequestAnswer, RequestPolicy};
+use crate::model::{ConflictResolution, PinSource, RequestAnswer, RequestPolicy};
 
 /// Direction of an own-device sync transfer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SyncDirection {
     /// Write a sync bundle for another device.
     Export,
-    /// Read a sync bundle from another device.
-    Import,
 }
 
 /// Every intent kind.
 ///
-/// Kinds that carry a [`SecretInput`] (unlock, create, activate, restore,
+/// Kinds that carry a [`SecretInput`] (unlock, restore,
 /// backup export, full backup and restore verification, passphrase rotation) are excluded from serde: serializing them is an error
 /// and they cannot be deserialized.
 #[derive(Debug, Serialize, Deserialize)]
@@ -318,28 +316,6 @@ pub enum IntentKind {
         /// One-shot secret.
         secret: SecretInput,
     },
-    /// Create an account bound to a confirmed node. Not serializable.
-    #[serde(skip)]
-    CreateAccount {
-        /// Interactive or headless.
-        kind: AccountKind,
-        /// Display label.
-        label: String,
-        /// Home node.
-        node_id: NodeId,
-        /// New passphrase.
-        secret: SecretInput,
-    },
-    /// Join an existing identity as a new device. Not serializable.
-    #[serde(skip)]
-    ActivateDevice {
-        /// Home node of the identity.
-        node_id: NodeId,
-        /// Label of this device.
-        device_label: String,
-        /// Activation code shown on an existing device.
-        code: SecretInput,
-    },
     /// Restore an account from an encrypted backup. Not serializable.
     #[serde(skip)]
     RestoreBackup {
@@ -448,25 +424,6 @@ pub enum IntentKind {
     },
     /// Cancel the running ceremony; the daemon erases the phrase.
     CancelCeremony,
-    /// Begin creating an AI participant (a headless AI account) that the
-    /// owner's account `custodian_id` custodies. The same ceremony follows
-    /// (the phrase is shown once to the owner), but the daemon makes the
-    /// account's data passphrase itself and the confirmation takes the three
-    /// words only. Only when the daemon offers born-v3 creation and
-    /// `custodian_id` is an unlocked, connected person's account.
-    BeginAgentCeremony {
-        /// The name of the AI participant.
-        label: String,
-        /// The owner's account, which becomes its custodian.
-        custodian_id: AccountId,
-    },
-    /// Type three words back to create the AI participant: the one attempt,
-    /// sent once as `{words}`; no passphrase is taken. Not serializable.
-    #[serde(skip)]
-    ConfirmAgentCeremony {
-        /// The three words, resolved to list words, in the order asked.
-        words: Vec<SecretInput>,
-    },
     /// Write the one-shot credentials bundle of an AI participant the
     /// owner custodies to a location the owner chose. The daemon creates
     /// the file readable by its owner only, refuses to replace one, and

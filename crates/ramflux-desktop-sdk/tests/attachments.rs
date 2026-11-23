@@ -19,13 +19,14 @@ use serde_json::{Value, json};
 
 /// The fixture's messages of `dm-ana`, plus `m3` once `later` is set.
 fn messages(later: bool) -> Value {
-    let mut frame = frames()["message.list"].clone();
+    let mut frame = frames()["message.read"].clone();
     if later {
-        let mut m3 = frame["messages"][0].clone();
-        m3["message_id"] = json!("m3");
-        m3["encrypted_body"] = json!([108, 97, 116, 101, 114]);
-        m3["created_at"] = json!(1_790_000_120);
-        frame["messages"].as_array_mut().expect("messages").push(m3);
+        // Newest first: m2 (mine), then m1 (Ana's).
+        let mut m3 = frame["messages"][1].clone();
+        m3["id"] = json!("m3");
+        m3["text"] = json!("later");
+        m3["hlc_ms"] = json!(1_790_000_120_000_u64);
+        frame["messages"].as_array_mut().expect("messages").insert(0, m3);
     }
     frame
 }
@@ -44,7 +45,7 @@ fn a_failing_pull_never_holds_back_the_conversation() {
                 "local bus error: relay object download failed".to_owned(),
             )
         }
-        "message.list" => Reply::Ok(messages(counter.fetch_add(1, Ordering::SeqCst) >= 2)),
+        "message.read" => Reply::Ok(messages(counter.fetch_add(1, Ordering::SeqCst) >= 2)),
         _ => fixture(method),
     });
     fake.enable_stream();
@@ -75,7 +76,7 @@ fn a_failing_pull_never_holds_back_the_conversation() {
         !seen.iter().any(|s| s.method == "message.receive"),
         "desktop never pulls from the node"
     );
-    assert!(seen.iter().filter(|s| s.method == "message.list").count() >= 2);
+    assert!(seen.iter().filter(|s| s.method == "message.read").count() >= 2);
     fake.shutdown();
 }
 

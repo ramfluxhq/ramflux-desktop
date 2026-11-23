@@ -18,13 +18,12 @@ use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
 use ramflux_desktop_sdk::plan::{Known, Plan, plan};
 use ramflux_sdk::{
     LocalBusAccountBackupExportRequest, LocalBusAccountBackupImportRequest,
-    LocalBusAccountCreateRequest, LocalBusAccountPassphraseRotateRequest,
-    LocalBusAccountUnlockRequest, LocalBusConversationDisappearingSetRequest,
-    LocalBusConversationMuteRequest, LocalBusConversationRequest, LocalBusDeviceRevokeRequest,
-    LocalBusGrantRevokeRequest, LocalBusGrantStandingApprovalRevokeRequest,
-    LocalBusGroupMemberBanRequest, LocalBusGroupMemberKickRequest,
-    LocalBusGroupMemberRemoveRequest, LocalBusGroupReceiveRequest, LocalBusGroupRoleSetRequest,
-    LocalBusGroupSendRequest, LocalBusMcpApprovalDecisionRequest, NodePinSource,
+    LocalBusAccountPassphraseRotateRequest, LocalBusAccountUnlockRequest,
+    LocalBusConversationDisappearingSetRequest, LocalBusConversationMuteRequest,
+    LocalBusDeviceRevokeRequest, LocalBusGrantRevokeRequest,
+    LocalBusGrantStandingApprovalRevokeRequest, LocalBusGroupMemberKickRequest,
+    LocalBusGroupMemberRemoveRequest, LocalBusGroupRoleSetRequest, LocalBusGroupSendRequest,
+    LocalBusMcpApprovalDecisionRequest, NodePinSource,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -120,19 +119,6 @@ fn mutation<T: DeserializeOwned + Serialize>(effect: Effect) -> T {
 
 #[test]
 fn account_frames_are_the_sdk_account_requests() {
-    let created = keyed(secret(
-        methods::ACCOUNT_CREATE,
-        json!({ "kind": "HumanInteractive", "label": "Me", "node_id": "n-harbor" }),
-        &["pw"],
-    ));
-    let create: LocalBusAccountCreateRequest = parses_with(&created, &["label", "kind"]);
-    let wire = created.wire_body();
-    assert_eq!((wire["label"].as_str(), wire["kind"].as_str()), (Some("Me"), Some("human")));
-    ramflux_desktop_sdk::bus::wipe(wire);
-    assert_eq!(create.node_id.as_deref(), Some("n-harbor"));
-    assert_eq!(create.account_secret, "pw");
-    assert_eq!(create.client_mode, ramflux_sdk::LocalBusClientMode::AttendedCli);
-    assert_ne!(create.root_seed, create.device_seed);
     let unlock: LocalBusAccountUnlockRequest =
         mutation(secret(methods::ACCOUNT_UNLOCK, json!({ "account_id": "acct-x" }), &["pw"]));
     assert_eq!(unlock.passphrase, "pw");
@@ -224,7 +210,6 @@ fn grant_conversation_device_and_group_frames_are_the_sdk_requests() {
         ("device-bo", "device-me"),
         "the participant's member device"
     );
-    let _: LocalBusGroupMemberBanRequest = mutation(call(methods::GROUP_BAN, member.clone()));
     let _: LocalBusGroupMemberRemoveRequest =
         mutation(call(methods::GROUP_REMOVE_MEMBER, member.clone()));
     let mut role = member;
@@ -236,18 +221,15 @@ fn grant_conversation_device_and_group_frames_are_the_sdk_requests() {
 #[test]
 fn reads_and_pulls_are_the_sdk_requests_without_retry_keys() {
     let context = ContextId::new("dm-ana");
-    let group = group_receive().request(Some("acct-main"));
-    let received: LocalBusGroupReceiveRequest = parses_with(&group, &["title"]);
-    assert_eq!(group.wire_body()["title"], "Team");
-    assert_eq!(
-        (received.group_id.as_str(), received.conversation_id.as_str()),
-        ("g-team", "thread-team")
-    );
     let list = Fetch::Messages(context).request(Some("acct-main"));
-    let _: LocalBusConversationRequest = parses(&list);
+    assert_eq!(list.method, "message.read");
+    assert_eq!(
+        list.wire_body(),
+        json!({ "conversation_id": "dm-ana", "read_model": true, "limit": 100 })
+    );
     for fetch in Fetch::account_snapshot(&AccountId::new("acct-main"))
         .into_iter()
-        .chain([receive_of("dm-ana"), group_receive()])
+        .chain([receive_of("dm-ana")])
     {
         assert!(fetch.request(Some("acct-main")).operation_id.is_none(), "{fetch:?}");
     }
@@ -265,14 +247,6 @@ fn reads_and_pulls_are_the_sdk_requests_without_retry_keys() {
         let next = Fetch::Page(paged, Some("c-1".to_owned())).request(Some("acct-main"));
         assert_eq!(next.wire_body(), json!({ "limit": 100, "cursor": "c-1" }));
         assert_eq!(next.account.as_deref(), Some("acct-main"));
-    }
-}
-
-fn group_receive() -> Fetch {
-    Fetch::GroupReceive {
-        context: ContextId::new("thread-team"),
-        group: "g-team".to_owned(),
-        title: Some("Team".to_owned()),
     }
 }
 

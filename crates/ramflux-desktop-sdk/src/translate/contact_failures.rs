@@ -38,7 +38,7 @@ const CONTACT_METHODS: [&str; 6] = [
     methods::CONTACT_CARD_EXPORT,
     methods::CONTACT_ACCEPT,
     methods::SAFETY_VERIFY,
-    methods::ACCOUNT_CREATE,
+    methods::CUSTODY_BEGIN,
 ];
 
 /// The key of a typed contact or registration reason.
@@ -160,7 +160,7 @@ mod tests {
             assert_eq!(t.failure_message(add, &refused(Some(reason), None)), expected);
         }
         let taken = refused(Some("device_id_taken"), None);
-        assert_eq!(t.failure_message(methods::ACCOUNT_CREATE, &taken), key::DEVICE_ID_TAKEN);
+        assert_eq!(t.failure_message(methods::CUSTODY_BEGIN, &taken), key::DEVICE_ID_TAKEN);
         let untyped = refused(None, None);
         assert_eq!(t.failure_message(add, &untyped), "refused");
         let unavailable = BusError::daemon("Unavailable", "contact lookup unavailable: dns");

@@ -14,7 +14,6 @@
 //! - `state`: what the projection remembers between updates.
 //! - `message`: a message and its scalar-offset spans, reply and forward.
 //! - `service`: group service events (membership, rename, key change).
-//! - `surface`: kind 9 surfaces, the catalog gate and action/receipt binding.
 
 pub mod call;
 #[cfg(feature = "test-support")]
@@ -25,7 +24,6 @@ mod message;
 mod mutation;
 mod service;
 pub(crate) mod state;
-pub mod surface;
 
 use ramflux_desktop_core::{
     ContextId, DomainEvent, FallbackPayload, Lifecycle, Moment, MomentId, MomentKind, OrderKey,
@@ -50,7 +48,6 @@ pub fn project(translator: &mut Translator, update: &MessageUpdate) -> Vec<Domai
                     .collect()
             }
             Some(ContentValue::Service(service)) => service::project(translator, identity, service),
-            Some(ContentValue::Surface(surface)) => surface::project(translator, identity, surface),
             Some(ContentValue::Call(call)) => call::project(translator, identity, call),
             Some(ContentValue::Edit(edit)) => {
                 mutation::edit(translator, identity, edit).into_iter().collect()

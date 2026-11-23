@@ -14,11 +14,12 @@
 //! 5. Review: every choice, then Create.
 //!
 //! The draft starts with no runtime and no permissions and only ever holds
-//! what the host offered. Create asks the core for the identity intent:
-//! an identity-only draft continues into the existing custody ceremony
-//! (recovery phrase shown once, D38's result there); a draft with any
-//! runtime, tool or scope is refused as unavailable by the core, shown with
-//! the typed reason, and kept as it is. Nothing chosen is ever dropped.
+//! what the host offered. Create asks the core to review the draft against
+//! current facts. Creating an agent is the core's `agent.create`, approved
+//! by the person on their phone (`agent.operation.get`,
+//! `agent.creation.decide`), which this build does not run yet: every
+//! valid draft is refused with the typed unavailable reason and kept as it
+//! is. Nothing chosen is ever dropped.
 //!
 //! This version of the local service reports no runtime catalog, so the
 //! runtime step shows the typed unavailable reason and offers Bind later.
@@ -31,8 +32,8 @@ use gpui_kit::component::input::Input;
 use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, ElementId, Role, SharedString, Window, div};
+use ramflux_desktop_core::AccountId;
 use ramflux_desktop_core::projection::wizard::{AgentDraft, DraftError, RuntimeOffer};
-use ramflux_desktop_core::{AccountId, IntentKind};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::generated::catalog;
 use ramflux_desktop_navigation::palette;
@@ -104,6 +105,9 @@ fn refusal_text(error: DraftError) -> SharedString {
     match error {
         DraftError::ConfigurationUnavailable => {
             crate::workspace::sections::directory::unavailable(ContractGap::AgentConfiguration)
+        }
+        DraftError::CreationUnavailable => {
+            crate::workspace::sections::directory::unavailable(ContractGap::AgentCreation)
         }
         DraftError::Custody(problem) => i18n::agent_custody_problem(Some(problem)),
         DraftError::Field => tr("agent_wizard.refusal.field"),
@@ -196,36 +200,16 @@ impl AgentsPanel {
         cx.notify();
     }
 
-    /// Create: asks the core for the identity intent against current facts.
-    /// An identity-only draft continues into the custody ceremony with its
-    /// name; anything the backend cannot carry is refused and kept.
-    pub fn create_from_wizard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Create: asks the core to review the draft against current facts;
+    /// the refusal (validation, or creation unavailable) is shown and the
+    /// draft kept.
+    pub fn create_from_wizard(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.sync_name(cx);
         let offers = self.runtime_offers();
         let Some(wizard) = self.wizard.as_ref() else { return };
-        let result = wizard.draft.begin_identity(self.store.read(cx).entry_store(), &offers);
-        match result {
-            Ok(IntentKind::BeginAgentCeremony { label, custodian_id }) => {
-                self.wizard = None;
-                self.ceremony.update(cx, |ceremony, cx| {
-                    ceremony.set_custodian(Some(custodian_id), cx);
-                    ceremony.open(window, cx);
-                    ceremony
-                        .name_input()
-                        .update(cx, |input, cx| input.set_value(label, window, cx));
-                });
-                self.creating = true;
-            }
-            Ok(_) => {
-                if let Some(wizard) = self.wizard.as_mut() {
-                    wizard.refusal = Some(DraftError::ConfigurationUnavailable);
-                }
-            }
-            Err(error) => {
-                if let Some(wizard) = self.wizard.as_mut() {
-                    wizard.refusal = Some(error);
-                }
-            }
+        let result = wizard.draft.review(self.store.read(cx).entry_store(), &offers);
+        if let (Err(error), Some(wizard)) = (result, self.wizard.as_mut()) {
+            wizard.refusal = Some(error);
         }
         cx.notify();
     }

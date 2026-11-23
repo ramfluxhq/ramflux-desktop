@@ -53,12 +53,9 @@ impl AgentsPanel {
         self.owner_problem(cx).map(|problem| i18n::agent_custody_problem(Some(problem)))
     }
 
-    /// The introduction and the create button; the ceremony in their place
+    /// The introduction and the create button; the wizard in their place
     /// while it is open.
     pub(super) fn render_create(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.creating {
-            return self.ceremony.clone().into_any_element();
-        }
         if self.wizard.is_some() {
             return self.render_wizard(cx);
         }

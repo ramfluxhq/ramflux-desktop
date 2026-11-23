@@ -213,32 +213,6 @@ fn confirming_a_tofu_node_needs_confirmation_and_is_human_only() {
 }
 
 #[test]
-fn account_creation_needs_a_confirmed_node_and_keeps_the_secret_out_of_the_body() {
-    let store = store();
-    let create = |node: &str| IntentKind::CreateAccount {
-        kind: AccountKind::HeadlessAi,
-        label: "Night shift".into(),
-        node_id: NodeId::new(node),
-        secret: SecretInput::new("lantern river"),
-    };
-    assert_eq!(
-        decide(&store, Intent::human(create("n-tofu"))).err(),
-        Some(IntentError::NodeNotConfirmed(NodeId::new("n-tofu")))
-    );
-    let Ok(Effect::SecretCall { method, body, secrets }) =
-        decide(&store, Intent::human(create("n-home")))
-    else {
-        panic!("expected a secret call");
-    };
-    assert_eq!(method, methods::ACCOUNT_CREATE);
-    assert_eq!(body["kind"], "HeadlessAi");
-    assert!(!body.to_string().contains("lantern"));
-    assert_eq!(secrets.len(), 1);
-    let by_agent = Intent::agent(ParticipantId::new("p-agent"), create("n-home"));
-    assert!(matches!(decide(&store, by_agent), Err(IntentError::AgentForbidden(_))));
-}
-
-#[test]
 fn backup_export_carries_its_passphrase_as_a_secret_and_is_human_only() {
     let store = store();
     let export = |passphrase: &str| IntentKind::ExportBackup {

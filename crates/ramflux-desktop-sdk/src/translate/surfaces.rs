@@ -34,17 +34,15 @@
 //! capability). Every snapshot carries the blocks the daemon reports final.
 //!
 //! Times: the daemon's `posted_at` (the author's signed posting time) dates
-//! the surface moment; for a surface without one, the earliest surface
-//! message in the conversation's message list, else the time it was first
+//! the surface moment; for a surface without one, the time it was first
 //! seen. `updated_at` is reported after each change. Both are the author's
 //! clock, for display only.
 //!
 //! A surface the daemon no longer holds (`surface.changed` with `removed`,
 //! then a read that finds nothing) is removed.
 //!
-//! Surface messages in a conversation's message list carry the surface's
-//! fallback for terminal clients; here they are not messages (the surface
-//! moment is).
+//! Surface rows of a conversation's read model are not messages (the
+//! surface moment is).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -57,7 +55,7 @@ use serde_json::Value;
 
 use super::{Translator, list, seconds, text};
 use crate::plan::fetch::Fetch;
-use crate::surface::{SurfaceTarget, catalog};
+use crate::surface::SurfaceTarget;
 
 /// What the source last reported about one surface.
 #[derive(Debug, Clone)]
@@ -102,23 +100,6 @@ fn streams_of(value: &Value) -> Streams {
 /// The surface moment of `surface_ref` in `context`.
 pub(crate) fn surface_moment_id(context: &ContextId, surface_ref: &str) -> MomentId {
     MomentId::new(format!("surface:{context}:{surface_ref}"))
-}
-
-/// The carrier prefix of a surface message's stored body (never shown).
-const CARRIER_PREFIX: &[u8] = b"ramflux.surface.v2\n";
-
-/// Whether a stored message row is a surface message.
-pub(crate) fn is_surface_row(record: &Value) -> bool {
-    if text(record, "content_type") == "surface" {
-        return true;
-    }
-    record["encrypted_body"].as_array().is_some_and(|bytes| {
-        bytes.len() >= CARRIER_PREFIX.len()
-            && bytes
-                .iter()
-                .zip(CARRIER_PREFIX)
-                .all(|(byte, expected)| byte.as_u64() == Some(u64::from(*expected)))
-    })
 }
 
 fn streamable(kind: BlockKind) -> bool {
@@ -280,33 +261,6 @@ impl Translator {
         Fetch::Surfaces(context.clone(), None)
     }
 
-    /// Notes the surface messages of a message list: when each surface was
-    /// posted, and whether a surface not shown yet calls for a read.
-    pub(super) fn surface_rows(&mut self, context: &ContextId, rows: &[&Value]) -> Vec<Fetch> {
-        let mut unknown = false;
-        for row in rows {
-            let id = text(row, "surface_id");
-            let sender = text(row, "sender_id");
-            let author = self.directory.principal_of_device(sender).map(str::to_owned);
-            let author = if self.self_device.as_deref() == Some(sender) {
-                self.directory.self_principal.clone()
-            } else {
-                author
-            };
-            if let (false, Some(at)) = (id.is_empty(), seconds(&row["created_at"])) {
-                let key = (context.clone(), id.to_owned(), author.clone().unwrap_or_default());
-                let first = self.surface_times.entry(key).or_insert(at);
-                *first = (*first).min(at);
-            }
-            unknown |= !self.surfaces.values().any(|s| {
-                &s.context == context
-                    && s.target.surface_id == id
-                    && author.as_deref().is_none_or(|a| a == s.target.author_principal_id)
-            });
-        }
-        if unknown { vec![Self::surfaces_read(context)] } else { Vec::new() }
-    }
-
     /// A page of `surface.list`: the surfaces whose metadata differs from
     /// what was reported are read, and the next page.
     pub(super) fn surface_list(&self, context: &ContextId, value: &Value) -> Vec<Fetch> {
@@ -366,7 +320,7 @@ impl Translator {
             return Vec::new();
         }
         let surface = SurfaceId::new(&view.reference);
-        let mut payload = catalog::payload_of(&view.snapshot, surface.clone());
+        let mut payload = payload_of(&view.snapshot, surface.clone());
         if payload.fallback_text.trim().is_empty() {
             // The protocol requires a fallback; never show an empty card.
             payload.fallback_text = view.target.surface_id.clone();
@@ -389,14 +343,7 @@ impl Translator {
                 } else {
                     BTreeSet::new()
                 };
-                let at = view.posted_at.or_else(|| {
-                    self.surface_times.iter().find_map(|((c, id, author), at)| {
-                        (c == &context
-                            && id == &view.target.surface_id
-                            && author == &view.target.author_principal_id)
-                            .then_some(*at)
-                    })
-                });
+                let at = view.posted_at;
                 (Some(self.snapshot(&view, &context, &payload, &writing, at)), writing)
             }
         };
@@ -637,12 +584,22 @@ mod tests {
         let reordered = payload(vec![text("c", "3"), text("a", "1")]);
         assert_eq!(patch_ops(&old, &reordered), None);
     }
+}
 
-    #[test]
-    fn carrier_rows_are_surface_rows() {
-        let bytes: Vec<Value> = b"ramflux.surface.v2\n{}".iter().map(|b| json!(b)).collect();
-        assert!(is_surface_row(&json!({ "encrypted_body": bytes })));
-        assert!(is_surface_row(&json!({ "content_type": "surface" })));
-        assert!(!is_surface_row(&json!({ "encrypted_body": [104, 105] })));
+/// A card snapshot as the desktop payload of surface `surface` (the scoped
+/// id the desktop keys it by): the author's fallback text only. Card
+/// components are drawn by the shared card runtime, which this build does
+/// not embed, so no block and no action is read from them.
+fn payload_of(snapshot: &Value, surface: SurfaceId) -> AgentSurfacePayload {
+    AgentSurfacePayload {
+        surface_id: surface,
+        fallback_text: snapshot
+            .get("fallbackText")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        blocks: Vec::new(),
+        actions: Vec::new(),
+        streaming: false,
     }
 }

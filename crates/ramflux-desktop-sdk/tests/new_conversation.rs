@@ -156,11 +156,12 @@ fn conversations(started: bool) -> Value {
 }
 
 fn new_messages() -> Value {
-    json!({ "messages": [{
+    let record = json!({
         "conversation_id": NEW, "message_id": "desk-msg-first", "sender_id": "device-me",
         "encrypted_body": b"Hello Ana".to_vec(), "deleted": false, "created_at": 1_790_000_200,
         "receipts": [],
-    }], "rejected": [] })
+    });
+    ramflux_desktop_test::fake_read_model::page(NEW, &[record], "device-me")
 }
 
 #[test]
@@ -174,7 +175,7 @@ fn a_started_conversation_is_shown_with_its_first_message() {
             Reply::Ok(json!({ "message_id": "desk-msg-first", "envelope_id": "e" }))
         }
         "conversation.directory" => Reply::Ok(conversations(flag.load(Ordering::SeqCst))),
-        "message.list" if body["conversation_id"] == NEW => Reply::Ok(new_messages()),
+        "message.read" if body["conversation_id"] == NEW => Reply::Ok(new_messages()),
         _ => fixture(method),
     });
     let hub = hub(&path);
@@ -237,7 +238,7 @@ fn a_listing_read_before_the_start_and_answered_last_removes_nothing() {
                 Reply::Ok(frame)
             }
         }
-        "message.list" if body["conversation_id"] == NEW => Reply::Ok(new_messages()),
+        "message.read" if body["conversation_id"] == NEW => Reply::Ok(new_messages()),
         _ => fixture(method),
     });
     fake.enable_stream();

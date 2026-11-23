@@ -492,21 +492,18 @@ const INVENTORY: &[(&str, bool)] = &[
     ("grant.revoke", false),
     ("grant.revoke_standing_approval", false),
     ("group.create", true),
-    ("group.invite.create", true),
     ("group.list", true),
     ("group.member.add", true),
-    ("group.member.ban", true),
     ("group.member.kick", true),
     ("group.member.remove", true),
     ("group.name.set", true),
-    ("group.receive", true),
     ("group.role.set", true),
     ("group.send", true),
     ("identity.directory", false),
     ("mcp.approval.list", false),
     ("mcp.server.list", false),
     ("mcp.tool.list", false),
-    ("message.list", true),
+    ("message.read", true),
     ("message.receipt.delivered", true),
     ("message.submit", true),
     ("node.add", false),
@@ -547,7 +544,6 @@ fn every_planned_wire_operation_is_classified() {
         include_str!("../plan/fetch.rs"),
         include_str!("../plan/group.rs"),
         include_str!("../plan/group_create.rs"),
-        include_str!("../plan/identity.rs"),
         include_str!("../plan/message.rs"),
         include_str!("../plan/mod.rs"),
         include_str!("../plan/object.rs"),
@@ -1347,18 +1343,6 @@ async fn a_changed_status_in_the_same_epoch_blocks_at_once_and_late_results_are_
     assert_eq!(verdict(&task), SchemaGate::UpdateApp);
     assert_eq!(task.translator.plaintext_len(), 0, "translator caches are dropped");
     assert_eq!(gates(&delivered), [(SchemaGate::UpdateApp, Some(1))]);
-    // A group receive that was in flight completes late: not translated.
-    let late = Fetch::GroupReceive {
-        context: ramflux_desktop_core::ContextId::new("c-1"),
-        group: "g-1".to_owned(),
-        title: None,
-    };
-    task.internal(task.fetched_now((
-        late.clone(),
-        None,
-        Ok(json!({ "decrypted_messages": [{ "message_id": "m-late", "body_utf8": "late" }] })),
-    )));
-    assert_eq!(task.translator.plaintext_len(), 0, "a late result does not repopulate");
     // Message-class effects are refused; nothing reaches the daemon.
     task.effect(Effect::Call {
         method: "message.send".to_owned(),
@@ -1372,7 +1356,7 @@ async fn a_changed_status_in_the_same_epoch_blocks_at_once_and_late_results_are_
     task.spawn_fetches(vec![Fetch::Messages(ramflux_desktop_core::ContextId::new("c-1"))]);
     settle(&mut task, &mut inbox).await;
     assert_eq!(
-        fake.seen()[before..].iter().filter(|r| r.method == "message.list").count(),
+        fake.seen()[before..].iter().filter(|r| r.method == "message.read").count(),
         0,
         "blocked reads are dropped"
     );
@@ -1472,9 +1456,8 @@ async fn an_older_epochs_single_read_completing_after_reopening_is_not_translate
     attach(&mut task, &mut inbox).await;
     pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
     settle(&mut task, &mut inbox).await;
-    let old_epoch = task.gate.epoch();
-    // A group receive is outstanding when the connection changes: a new
-    // epoch begins, closes on an incompatible status, and reopens.
+    // The connection changes: a new epoch begins, closes on an incompatible
+    // status, and reopens.
     *shared.status.lock().expect("status") = Status::Field(json!(2));
     // A new epoch on the same connection (the status is read again).
     task.recover_connection();
@@ -1486,25 +1469,6 @@ async fn an_older_epochs_single_read_completing_after_reopening_is_not_translate
     settle(&mut task, &mut inbox).await;
     assert_eq!(task.pending_markers, 0, "the epoch marker has been seen");
     assert_eq!(task.translator.plaintext_len(), 0);
-    // The old epoch's receive completes only now.
-    let late = Fetch::GroupReceive {
-        context: ramflux_desktop_core::ContextId::new("c-1"),
-        group: "g-1".to_owned(),
-        title: None,
-    };
-    task.internal(Internal::FetchedAt {
-        stamp: Stamp { epoch: old_epoch, attempt: task.read_attempt },
-        read: (
-            late,
-            None,
-            Ok(json!({ "decrypted_messages": [{ "message_id": "m-old", "body_utf8": "old" }] })),
-        ),
-    });
-    assert_eq!(
-        task.translator.plaintext_len(),
-        0,
-        "an older epoch's result is dropped untranslated"
-    );
     fake.shutdown();
 }
 
@@ -1659,7 +1623,7 @@ async fn a_subscription_resync_reads_the_prerequisites_before_the_messages() {
         .filter(|m| m != "task.start")
         .collect();
     let identities = order.iter().position(|m| m == "identity.directory").expect("identities");
-    let messages = order.iter().position(|m| m == "message.list").expect("the held focus read");
+    let messages = order.iter().position(|m| m == "message.read").expect("the held focus read");
     assert!(identities < messages, "identities first: {order:?}");
     assert_eq!(task.guard_violations, 0, "no message read left the ordered pipeline");
     fake.shutdown();

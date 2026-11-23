@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The account step: unlock an existing account, or create an account, join
-//! an identity as a new device, or restore a backup on a confirmed node.
+//! The account step: unlock an existing account (six-digit account code),
+//! or create an account with its recovery phrase, or restore a backup on a
+//! confirmed node.
 //!
 //! Each form hands its secret to the intent root as a `SecretInput` and
 //! clears the masked input at once.
@@ -80,28 +81,6 @@ impl EntryPage {
         let Some(account_id) = account.filter(|_| !secret.is_empty()) else { return };
         self.submitted = Some(account_id.clone());
         self.submit_secret(IntentKind::Unlock { account_id, secret }, window, cx);
-    }
-
-    /// Creates an account on the target node.
-    pub fn create(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let node = self.target_node(self.store.read(cx).store());
-        let label = text(&self.inputs.label, cx);
-        let secret = take_secret(&self.inputs.new_secret, window, cx);
-        let Some(node_id) = node else { return };
-        self.submit_secret(
-            IntentKind::CreateAccount { kind: self.kind, label, node_id, secret },
-            window,
-            cx,
-        );
-    }
-
-    /// Joins an existing identity as a new device.
-    pub fn join(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let node = self.target_node(self.store.read(cx).store());
-        let device_label = text(&self.inputs.device_label, cx);
-        let code = take_secret(&self.inputs.code, window, cx);
-        let Some(node_id) = node else { return };
-        self.submit_secret(IntentKind::ActivateDevice { node_id, device_label, code }, window, cx);
     }
 
     /// Restores an account from a backup file.
@@ -427,12 +406,10 @@ impl EntryPage {
             .collect();
         let paths = [
             (AccountPath::Create, tr("entry.path.create")),
-            (AccountPath::Join, tr("entry.path.join")),
             (AccountPath::Restore, tr("entry.path.restore")),
         ];
         let form = match self.path {
-            AccountPath::Create => self.render_create(cx),
-            AccountPath::Join => self.render_join(cx),
+            AccountPath::Create => self.render_phrase_entry(cx),
             AccountPath::Restore => self.render_restore(cx),
         };
         v_flex()
@@ -483,49 +460,7 @@ impl EntryPage {
         .into_any_element()
     }
 
-    fn render_create(&self, cx: &mut Context<Self>) -> AnyElement {
-        let kinds = [
-            (AccountKind::HumanInteractive, i18n::account_kind(AccountKind::HumanInteractive)),
-            (AccountKind::HeadlessAi, i18n::account_kind(AccountKind::HeadlessAi)),
-        ];
-        // A daemon that offers the recovery phrase has no other way to
-        // create an account: the phrase is the primary path, and it makes
-        // a person's account only (no kind to choose). An older daemon
-        // keeps the passphrase form.
-        if self.store.read(cx).store().offers_born_v3_creation() {
-            return self.render_phrase_entry(cx);
-        }
-        let kind = self.segment("entry-kind", &kinds, self.kind, |this, kind| this.kind = kind, cx);
-        v_flex()
-            .gap(space(3.))
-            .child(kind)
-            .child(Self::field(
-                "entry.create.label",
-                &self.inputs.label,
-                "account-label",
-                false,
-                cx,
-            ))
-            .child(Self::field(
-                "entry.create.passphrase",
-                &self.inputs.new_secret,
-                "account-secret",
-                true,
-                cx,
-            ))
-            .child(
-                h_flex().child(
-                    Button::new("account-create")
-                        .design_primary(cx)
-                        .design_label(tr("entry.create.submit"))
-                        .on_click(cx.listener(|this, _, window, cx| this.create(window, cx))),
-                ),
-            )
-            .into_any_element()
-    }
-
-    /// "Create account with recovery phrase": the creation path of a daemon
-    /// that offers it (it replaces the passphrase form).
+    /// "Create account with recovery phrase": the only creation path.
     fn render_phrase_entry(&self, cx: &mut Context<Self>) -> AnyElement {
         v_flex()
             .id("account-create-phrase-entry")
@@ -553,52 +488,6 @@ impl EntryPage {
                         })),
                 ),
             )
-            .into_any_element()
-    }
-
-    fn render_join(&self, cx: &mut Context<Self>) -> AnyElement {
-        v_flex()
-            .gap(space(3.))
-            .child(
-                div()
-                    .text_size(text_caption())
-                    .text_color(cx.theme().muted_foreground)
-                    .child(tr("entry.join.help")),
-            )
-            .child(Self::field(
-                "entry.join.device",
-                &self.inputs.device_label,
-                "device-label",
-                false,
-                cx,
-            ))
-            .child(Self::field("entry.join.code", &self.inputs.code, "activation-code", true, cx))
-            .child({
-                let reason = crate::gate::reason(
-                    self.store.read(cx).store(),
-                    ramflux_desktop_core::methods::DEVICE_ACTIVATE,
-                );
-                h_flex()
-                    .gap(space(2.))
-                    .child(crate::gate::gated(
-                        Button::new("account-join")
-                            .design_primary(cx)
-                            .design_label(tr("entry.join.submit"))
-                            .on_click(cx.listener(|this, _, window, cx| this.join(window, cx))),
-                        reason.clone(),
-                        cx,
-                    ))
-                    .when_some(reason, |row, reason| {
-                        row.child(
-                            div()
-                                .id("account-join-unavailable")
-                                .text_size(text_caption())
-                                .text_color(cx.theme().muted_foreground)
-                                .child(reason)
-                                .test_support(),
-                        )
-                    })
-            })
             .into_any_element()
     }
 

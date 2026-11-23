@@ -15,8 +15,8 @@ use ramflux_desktop_sdk::bus::{BusRequest, wipe};
 use ramflux_desktop_sdk::directory::Directory;
 use ramflux_desktop_sdk::plan::{Known, Plan, plan};
 use ramflux_sdk::{
-    LocalBusContactSafetyRequest, LocalBusGroupInviteCreateRequest, LocalBusGroupMemberAddRequest,
-    LocalBusMessageSubmitRequest, LocalBusObjectGetRequest, LocalBusObjectTransferResumeRequest,
+    LocalBusContactSafetyRequest, LocalBusGroupMemberAddRequest, LocalBusMessageSubmitRequest,
+    LocalBusObjectGetRequest, LocalBusObjectTransferResumeRequest,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -236,22 +236,6 @@ fn members_are_added_and_invited_per_verified_device() {
         })
         .collect();
     assert_eq!(devices, ["device-cy-1", "device-cy-2"]);
-    let invite = one(planned(
-        methods::GROUP_CREATE_INVITE,
-        json!({ "context_id": "thread-team", "participant_id": "principal-ana", "role": "Member" }),
-    ));
-    let created: LocalBusGroupInviteCreateRequest = typed(&invite, &[]);
-    assert_eq!(
-        (
-            created.invitee_id.as_str(),
-            created.actor_id.as_str(),
-            created.target_delivery_id.as_str()
-        ),
-        ("device-ana", "device-me", "target-ana")
-    );
-    assert_eq!(created.invitee_signing_public_key, "key-ana");
-    assert_eq!(created.invitee_principal_commitment.as_deref(), Some("cm-ana"));
-    assert!(created.expires_at > 1_700_000_000);
     let unknown = refused(planned(
         methods::GROUP_ADD_MEMBER,
         json!({ "context_id": "thread-team", "participant_id": "principal-zed", "role": "Member" }),

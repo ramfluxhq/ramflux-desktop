@@ -145,7 +145,7 @@ impl Task {
         topics.extend(crate::translate::contact_requests::TOPICS);
         topics.push(crate::translate::account::SECURE_SESSIONS_TOPIC);
         topics.push("account.networking.changed");
-        for topic in crate::bus::subscription::PUSHED_TOPICS {
+        for topic in crate::translate::stream::PUSHED_TOPICS {
             if !topics.contains(&topic) {
                 topics.push(topic);
             }
@@ -268,7 +268,7 @@ impl Task {
                 let changed = self.translator.secure_sessions_changed(body);
                 self.emit(changed);
             }
-            topic if crate::bus::subscription::PUSHED_TOPICS.contains(&topic) => {
+            topic if crate::translate::stream::PUSHED_TOPICS.contains(&topic) => {
                 // Decisions must resolve an existing approval directly: a later
                 // pending-only listing cannot recover a granted/denied decision.
                 if topic != "mcp.approval.request" || body.get("server_id").is_some() {

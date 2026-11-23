@@ -21,7 +21,6 @@ pub mod deadline;
 pub mod idempotency;
 pub mod jobs;
 pub mod stream;
-pub mod subscription;
 pub mod trace;
 
 use ramflux_desktop_core::{SecretInput, VaultReason};
@@ -437,6 +436,10 @@ pub fn vault_reason_of(reason: ramflux_sdk::custody::CustodyVaultReason) -> Vaul
         R::Busy => VaultReason::Busy,
         R::PrimaryUnavailable => VaultReason::PrimaryUnavailable,
         R::ModeMismatch => VaultReason::ModeMismatch,
+        // Agent custody keys only: the desktop holds no primary for them.
+        R::KeyUnavailable => VaultReason::PrimaryUnavailable,
+        // No Secret Service reachable (Linux): there is no vault to use.
+        R::Unavailable => VaultReason::Missing,
     }
 }
 

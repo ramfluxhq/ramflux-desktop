@@ -21,7 +21,7 @@
 //! it from the read alone. Each receipt resolves at most one step, once.
 
 use ramflux_desktop_core::{Actor, NeedsMe, StepState, TaskId, methods};
-use ramflux_protocol::A2uiSurfaceAction;
+use ramflux_protocol::SurfaceAction;
 use serde_json::{Value, json};
 
 use super::{Translator, list, text};
@@ -89,7 +89,7 @@ impl Translator {
             let Some(action) = row["wire_base64"]
                 .as_str()
                 .and_then(|w| ramflux_protocol::decode_base64url(w).ok())
-                .and_then(|bytes| A2uiSurfaceAction::from_wire_bytes(&bytes).ok())
+                .and_then(|bytes| SurfaceAction::from_wire_bytes(&bytes).ok())
             else {
                 continue;
             };

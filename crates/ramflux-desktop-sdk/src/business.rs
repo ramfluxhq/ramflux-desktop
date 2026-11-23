@@ -62,6 +62,9 @@ pub enum Area {
 pub enum ContractGap {
     /// Agent runtime/tool/scope catalog and configuration operations.
     AgentConfiguration,
+    /// Creating an agent with the person's approval on their phone
+    /// (`agent.create`, `agent.operation.get`, `agent.creation.decide`).
+    AgentCreation,
     /// Authenticated browser platform and exact origin in the device directory.
     WebDeviceFacts,
     /// Approving a new device with authenticated pairing review facts.
