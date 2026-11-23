@@ -116,6 +116,11 @@ impl Task {
             return;
         }
         let Some(send) = self.sends.remove(id) else { return };
+        if let Ok(answer) = &result
+            && let Some(daemon) = answer["message_id"].as_str()
+        {
+            self.translator.sent_as(id, daemon);
+        }
         let receipt =
             if result.is_ok() { Receipt::Sent } else { Receipt::Failed { retryable: false } };
         let events = self.translator.outgoing_message(&send.body, id, receipt, send.at);

@@ -151,7 +151,7 @@ impl Translator {
                 .into_iter()
                 .collect(),
             methods::CONVERSATION_START => self.conversation_started(body, answer),
-            methods::ATTACH_OBJECT => self.attachment_sent(body),
+            methods::ATTACH_OBJECT => self.attachment_sent(body, answer),
             methods::SEND_MESSAGE => {
                 if let Some(id) = answer["message_id"].as_str() {
                     self.remember_sent(id, text(body, "text"));

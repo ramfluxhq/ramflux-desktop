@@ -7,6 +7,21 @@ Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- Core pinned to e39111de (the core's next head). Conversations are read
+  from the message read model (`message.read`), group names are shared
+  (`group.name.set`), the schema gate opens storage generation 1, and
+  account creation and unlock ask for the six-digit account code. Agent
+  surfaces show their fallback text until the card runtime is embedded.
+
+### Removed
+
+- Group invite and ban actions, joining by activation code, device sync
+  import, the one-shot passphrase account form, the AI participant custody
+  ceremony (agent creation is shown as unavailable), task event lines read
+  from message text and the dormant `subscription.open` push path.
+
 ### Added
 
 - Localisation: one JSON catalogue per locale (`locales/<tag>.json`) replaces

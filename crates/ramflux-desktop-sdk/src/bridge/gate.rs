@@ -7,7 +7,7 @@
 //! The daemon's `schema_generation` (from `daemon.status`) and this build's
 //! [`SchemaSupport`] give the verdict:
 //!
-//! | status | Legacy | V1 |
+//! | status | Legacy (tests) | V1 (this build) |
 //! |---|---|---|
 //! | in flight (new epoch) | held | held |
 //! | error or timeout | held, retried | held, retried |
@@ -66,14 +66,14 @@ pub(super) fn verdict(status: Status, support: SchemaSupport) -> SchemaGate {
         Status::Failed => SchemaGate::Failed,
         Status::Unknown => SchemaGate::Unsupported,
         Status::Absent | Status::Known(0) => match support {
-            SchemaSupport::Legacy => SchemaGate::Open,
             #[cfg(feature = "test-support")]
-            SchemaSupport::V1Candidate => SchemaGate::OlderDaemon,
+            SchemaSupport::Legacy => SchemaGate::Open,
+            SchemaSupport::V1 => SchemaGate::OlderDaemon,
         },
         Status::Known(1) => match support {
-            SchemaSupport::Legacy => SchemaGate::UpdateApp,
             #[cfg(feature = "test-support")]
-            SchemaSupport::V1Candidate => SchemaGate::Open,
+            SchemaSupport::Legacy => SchemaGate::UpdateApp,
+            SchemaSupport::V1 => SchemaGate::Open,
         },
         Status::Known(_) => SchemaGate::Unsupported,
     }

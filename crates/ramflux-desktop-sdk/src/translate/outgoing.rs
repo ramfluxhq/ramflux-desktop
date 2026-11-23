@@ -34,6 +34,7 @@ use crate::directory::field;
 /// and object again when the answer arrives.
 const SENDING_MOMENT: &str = "sending_moment";
 const SENDING_OBJECT: &str = "sending_object";
+const SENDING_MESSAGE: &str = "sending_message";
 
 /// Bytes encoded by an unpadded (or padded) base64 string.
 fn decoded_len(encoded: &str) -> u64 {
@@ -52,6 +53,11 @@ impl Translator {
     ) -> Vec<DomainEvent> {
         let context = ContextId::new(text(body, "context_id"));
         self.remember_sent(message, text(body, "text"));
+        if matches!(receipt, Receipt::Sending | Receipt::WaitingForNode { .. }) {
+            self.sending.insert(message.to_owned());
+        } else {
+            self.sending.remove(message);
+        }
         let moment = Moment {
             order: None,
             id: message_moment_id(&context, message),
@@ -150,6 +156,7 @@ impl Translator {
         if let Value::Object(map) = body {
             map.insert(SENDING_MOMENT.to_owned(), json!(id));
             map.insert(SENDING_OBJECT.to_owned(), json!(object_id));
+            map.insert(SENDING_MESSAGE.to_owned(), json!(message));
         }
         let origin = self.own_origin();
         let mut events = self.put_object(object);
@@ -167,7 +174,10 @@ impl Translator {
 
     /// The daemon accepted an attachment's message: the message is done
     /// (the object's state comes from the object directory next).
-    pub(super) fn attachment_sent(&mut self, body: &Value) -> Vec<DomainEvent> {
+    pub(super) fn attachment_sent(&mut self, body: &Value, answer: &Value) -> Vec<DomainEvent> {
+        if let Some(daemon) = answer["message_id"].as_str() {
+            self.sent_as(text(body, SENDING_MESSAGE), daemon);
+        }
         let id = MomentId::new(text(body, SENDING_MOMENT));
         if id.as_str().is_empty() {
             return Vec::new();
@@ -198,6 +208,19 @@ impl Translator {
             kind: None,
         });
         events
+    }
+
+    /// The daemon answered a message this device sent (`local`) with its
+    /// own id (`daemon`): the read model's row of `daemon` is that moment.
+    pub(crate) fn sent_as(&mut self, local: &str, daemon: &str) {
+        if !local.is_empty() && !daemon.is_empty() && local != daemon {
+            self.local_ids.insert(daemon.to_owned(), local.to_owned());
+        }
+    }
+
+    /// The id this device gave a message it sent, else `message` itself.
+    pub(super) fn local_id<'a>(&'a self, message: &'a str) -> &'a str {
+        self.local_ids.get(message).map_or(message, String::as_str)
     }
 
     /// The object a stored message carries: one this device sent with it,
