@@ -301,7 +301,8 @@ impl World {
         let open = daemon.accounts.iter().filter(|a| a.open).count();
         Some(Reply::Ok(match method {
             "daemon.status" => {
-                json!({ "accounts": open, "socket_path": "fake", "born_v3_creation": true })
+                json!({ "accounts": open, "socket_path": "fake", "born_v3_creation": true,
+                        "schema_generation": 1 })
             }
             "account.create" if body.get("node_id").is_none() => {
                 daemon.ceremony = Some((text(body, "display_name"), 0));

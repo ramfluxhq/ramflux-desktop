@@ -407,7 +407,7 @@ async fn schema_gate_state_machine_blocks_message_traffic() {
 #[tokio::test]
 async fn schema_gate_table_per_generation_and_support() {
     #[cfg(feature = "test-support")]
-    let supports = [SchemaSupport::Legacy, SchemaSupport::V1Candidate];
+    let supports = [SchemaSupport::Legacy, SchemaSupport::V1];
     #[cfg(not(feature = "test-support"))]
     let supports = [SchemaSupport::Legacy];
     let rows: [(&str, Status); 6] = [

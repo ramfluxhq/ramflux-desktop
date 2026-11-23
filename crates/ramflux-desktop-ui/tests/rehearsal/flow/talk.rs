@@ -33,9 +33,25 @@ pub fn contacts<H: Host, D: DemoDaemon>(
         if !desk.exists(demo.host, "contact-add-id") {
             desk.click(demo.host, None, "rail-contacts")?;
         }
-        desk.type_into(demo.host, "contact-add-id", &text)?;
-        let trust = desk.label(demo.host, "contact-add-kind").unwrap_or_default();
-        desk.click(demo.host, None, "contact-add")?;
+        // The card Alice imported asks Bob: the daemon holds her request, and
+        // Bob answers it (adding her by id is refused while it waits).
+        let request = format!("contacts-request-{id}");
+        let asked = !by_card
+            && demo
+                .wait(me, demo.config.limits.discover, "the contact request", |desk, host| {
+                    desk.exists(host, &request)
+                })
+                .is_ok();
+        let desk = demo.sides[me].desk()?;
+        let trust = if asked {
+            desk.click(demo.host, Some(&request), "request-accept")?;
+            "accepted the request".to_owned()
+        } else {
+            desk.type_into(demo.host, "contact-add-id", &text)?;
+            let trust = desk.label(demo.host, "contact-add-kind").unwrap_or_default();
+            desk.click(demo.host, None, "contact-add")?;
+            trust
+        };
         let row = format!("contacts-{id}");
         let participant = ParticipantId::new(&id);
         let limit = demo.config.limits.answer;
@@ -259,8 +275,15 @@ fn start<H: Host, D: DemoDaemon>(
         desk.click(demo.host, None, "rail-contacts")?;
     }
     desk.click(demo.host, Some(&row), "message")?;
+    // Accepting the request made the direct conversation already: Message
+    // opens it; otherwise it opens a new-conversation draft.
     if !desk.draft_open(demo.host) {
-        return Err("Message on the contact opened no new-conversation draft".to_owned());
+        let Some(existing) = desk.current_context(demo.host) else {
+            return Err("Message on the contact opened neither a conversation nor a draft".into());
+        };
+        notes.add(format!("Message opened the conversation {}", existing.as_str()));
+        demo.conversation = existing;
+        return send(demo, 0, text);
     }
     demo.shots(0, "05_new_conversation", notes)?;
     let desk = demo.sides[0].desk()?;

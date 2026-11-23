@@ -10,6 +10,8 @@ use serde_json::json;
 
 fn task(path: &std::path::Path, scope: Scope) -> (Task, Inbox, std_mpsc::Receiver<Delivery>) {
     let mut config = SdkConfig::new(path);
+    // These daemons report no schema generation (the gate is opened by hand).
+    config.schema_support = crate::config::SchemaSupport::Legacy;
     config.call_api = false;
     config.backup_api = true;
     let (out, delivered) = std_mpsc::channel();

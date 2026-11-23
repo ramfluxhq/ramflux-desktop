@@ -70,7 +70,9 @@ fn exercise(name: &str, refuse_first: bool) {
         let body = frames.get(method).cloned().unwrap_or_else(|| json!({}));
         Reply::Ok(body)
     });
-    let config = SdkConfig::new(&path);
+    let mut config = SdkConfig::new(&path);
+    // This daemon reports no schema generation.
+    config.schema_support = crate::config::SchemaSupport::Legacy;
     let hub = SdkHub::start(config).expect("bridge");
     let mut source = hub.daemon_source();
     let mut store = Store::new();

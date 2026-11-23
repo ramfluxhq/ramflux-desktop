@@ -44,7 +44,8 @@ fn world(name: &str, custody: &Arc<FakeCustody>) -> (FakeBus, SdkHub, Fed) {
         &path,
         |method, _, _| match method {
             "daemon.status" => Reply::Ok(
-                json!({ "accounts": 1, "socket_path": "/tmp/rfd.sock", "born_v3_creation": true }),
+                json!({ "accounts": 1, "socket_path": "/tmp/rfd.sock", "born_v3_creation": true,
+                        "schema_generation": 1 }),
             ),
             _ => fixture(method),
         },

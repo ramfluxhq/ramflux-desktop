@@ -12,15 +12,20 @@ use serde_json::Value;
 use super::Latch;
 
 /// What `daemon.status` reports.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub enum Generation {
     /// No `schema_generation` field (a daemon older than p00).
-    #[default]
     Absent,
-    /// This JSON value.
+    /// This JSON value (the current daemon reports 1).
     Is(Value),
     /// The read fails.
     Fails,
+}
+
+impl Default for Generation {
+    fn default() -> Self {
+        Self::Is(Value::from(1))
+    }
 }
 
 /// The fake daemon's schema behaviour.
@@ -59,8 +64,14 @@ impl Schema {
 
     /// Adds the reported generation to a `daemon.status` answer.
     pub(crate) fn patch(&self, frame: &mut Value) {
-        if let Generation::Is(value) = &*self.generation.lock().expect("generation") {
-            frame["schema_generation"] = value.clone();
+        match &*self.generation.lock().expect("generation") {
+            Generation::Is(value) => frame["schema_generation"] = value.clone(),
+            Generation::Absent => {
+                if let Some(map) = frame.as_object_mut() {
+                    map.remove("schema_generation");
+                }
+            }
+            Generation::Fails => {}
         }
     }
 }

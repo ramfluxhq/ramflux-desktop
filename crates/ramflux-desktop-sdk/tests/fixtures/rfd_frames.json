@@ -50,7 +50,8 @@
   },
   "daemon.status": {
     "accounts": 1,
-    "socket_path": "/tmp/ramflux-f2/rfd.sock"
+    "socket_path": "/tmp/ramflux-f2/rfd.sock",
+    "schema_generation": 1
   },
   "node.list": {
     "default_node_id": "n-harbor",

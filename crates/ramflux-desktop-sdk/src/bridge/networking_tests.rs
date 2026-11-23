@@ -10,6 +10,8 @@ use serde_json::json;
 
 fn task() -> (Task, Inbox, std_mpsc::Receiver<Delivery>) {
     let mut config = SdkConfig::new("network-test.sock");
+    // These daemons report no schema generation (the gate is opened by hand).
+    config.schema_support = crate::config::SchemaSupport::Legacy;
     config.settings_path = None;
     config.call_api = false;
     config.backup_api = false;
