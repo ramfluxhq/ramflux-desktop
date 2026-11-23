@@ -609,7 +609,7 @@ impl Shell {
 pub const WINDOW_DRAG_HEIGHT: f32 = 52.0;
 
 impl Render for Shell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The status banner sits at the top of the content: above the entry
         // page here, inside the workspace's content column there.
         let content = match self.page {
@@ -711,8 +711,9 @@ impl Render for Shell {
             // Window chrome (design 02 and every board): on macOS no title
             // bar, a 52 px drag region under the content and the traffic
             // lights over the rail; elsewhere Kit's title bar carries the
-            // platform window controls.
-            .when(!cfg!(target_os = "macos"), |root| {
+            // platform window controls, unless the compositor decorates or
+            // tiles the window (`chrome`).
+            .when(!cfg!(target_os = "macos") && crate::chrome::draws_title_bar(window), |root| {
                 root.child(gpui_kit::component::TitleBar::new())
             })
             .when(cfg!(target_os = "macos"), |root| {

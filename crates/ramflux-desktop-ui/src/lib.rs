@@ -25,6 +25,8 @@
 //! - [`list_state`]: loading and empty placeholders of lists.
 //! - [`qr`]: QR codes of the user's own contact card.
 //! - [`preferences`]: the per-device theme and language choices.
+//! - [`notify`]: operating-system notifications with preview privacy.
+//! - [`chrome`]: whether the window draws its own title bar.
 
 #![forbid(unsafe_code)]
 // Production code: no unwrap, expect, panic or `std::sync` locks (see the
@@ -38,6 +40,7 @@ pub mod actions;
 pub mod app;
 pub mod assets;
 pub mod bubble;
+pub mod chrome;
 pub mod confirm;
 #[cfg(feature = "demo")]
 pub mod dev;
@@ -50,6 +53,7 @@ mod ids;
 pub mod launch;
 pub mod list_state;
 pub mod moments;
+pub mod notify;
 pub mod palette;
 pub mod preferences;
 pub mod qr;

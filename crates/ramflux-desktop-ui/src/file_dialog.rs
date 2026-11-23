@@ -27,7 +27,7 @@ pub enum StartDir {
 impl StartDir {
     /// The folder, falling back to the home folder and then the current one.
     pub fn path(self) -> PathBuf {
-        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+        let home = ramflux_desktop_sdk::local::paths::home_dir().unwrap_or_default();
         let dir = match self {
             Self::Home => home.clone(),
             Self::Documents => home.join("Documents"),
