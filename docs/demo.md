@@ -1,10 +1,10 @@
-# Demo checklist: Ramflux Desktop on macOS
+# Getting started: Ramflux Desktop on macOS
 
-A walk through the desktop client on a real local daemon and a real node:
-build the app, start the daemon, add a node, create an account, add a contact
-and send a message. Each step says what the desktop does today and what still
-waits for daemon support. Nothing in this list is simulated; controls the
-daemon cannot serve yet are shown disabled with the reason.
+How to run the desktop client on a real local daemon and a real node: build
+the app, start the daemon, add a node, create an account, add a contact and
+send a message. Where a step depends on something the daemon does not offer
+yet, this guide says so. Nothing in it is simulated; controls the daemon
+cannot serve yet are shown disabled with the reason.
 
 ## 1. Build the app
 
@@ -28,7 +28,7 @@ signature only lets the bundle run on the machine that built it.
 app's privacy permissions attached to it across builds; `--out DIR` writes the
 bundle somewhere other than `dist/`.
 
-Not done yet (later release work): Developer ID signing with the hardened
+Not included in the packaged app: Developer ID signing with the hardened
 runtime, notarization and stapling, a DMG, and auto-update.
 
 `rf` is the reference CLI and daemon from `ramfluxhq/ramflux`. Install it from
@@ -106,15 +106,15 @@ permission.
 On the node step type the node's discovery URL and press **Look up**. The
 node's signed record is checked before anything is saved; the card shows its
 endpoints, fingerprint and expiry. A node that is not from an invitation is
-trusted on first use, which needs a confirmation. Supported today.
+trusted on first use, which needs a confirmation.
 
 ## 6. Create an account
 
 On the account step choose **Create account**, name it, set a passphrase and
 create. The workspace opens once the daemon reports the account unlocked.
 Unlock, lock, passphrase change and restore from a backup file are supported.
-Joining as a new device with an activation code is not available from the
-daemon yet (shown disabled).
+Joining as a new device with an activation code is not available yet
+(shown disabled).
 
 ## 7. Add a contact
 
@@ -162,7 +162,7 @@ example after a message).
 
 ## 8. Send a message or an attachment
 
-| What | Today |
+| What | Behaviour |
 |---|---|
 | Message in a group | Supported. The daemon resolves every member's route first; if a member cannot be reached nothing is sent, and the failure names who. Incoming messages arrive through the daemon's event stream; a daemon without the stream is polled instead (1.5 s, slowing to 12 s when quiet), and Settings › Diagnostics shows which. |
 | Direct message | Supported in a conversation the daemon lists a route for (recorded once a message was exchanged with the contact's verified device). Without one the send fails with that reason; start the conversation with `rf dm send`. |
@@ -188,16 +188,15 @@ inherits (an empty value included). Values of secret-looking fields, long opaque
 blocks are redacted before they are written. Account keys and messages stay in
 the daemon's data folder; deleting the app bundle does not remove them.
 
-## Daemon log and unlock: where two earlier findings stand
+## Daemon log and unlock: two closed findings
 
-Two findings from the November unlock audit (filed as DESK-DAEMON-LOG-01 and
-DESK-UNLOCK-UX-01, then frozen) are closed here; what is left of them moves
-to the work packages named below.
+Two findings from the November unlock audit are closed here; what is left of
+each is listed under "Remains".
 
 | Finding | Done | Remains |
 |---|---|---|
-| The daemon the app starts wrote an empty `rfd.log` (its log filter was off without `RUST_LOG`) | The app starts it with `RUST_LOG=warn,ramflux_sdk=info` unless `RUST_LOG` is inherited (`set_child_log` in `crates/ramflux-desktop-sdk/src/local/daemon_process.rs`). `rfd.log` is rotated at 1 MiB, 3 kept, each time the daemon starts. | Rotation while a long-running daemon keeps writing (the file grows until the next start), and the log of a daemon the user started, which the app never sees. Daemon supervision package (X2). |
-| Unlock was resent with the same retry key after a 60 s deadline, and networking state was polled through `account.status` every 2 to 30 s | Unlock is a local operation with its own 10 s budget (`Weight::Unlock` in `crates/ramflux-desktop-sdk/src/bus/deadline.rs`), and the passphrase is handed to one request per attempt. Networking state comes from the journaled `account.networking.changed` topic on the event stream (`crates/ramflux-desktop-sdk/src/bridge/live.rs`), not a poll; `account.status` is read for the initial state and after a reconnect. | Confirm against the six-digit unlock on current core that a timed-out unlock is never sent again by itself, and show the outcome from the account list rather than the request (account flows package, B1). |
+| The daemon the app starts wrote an empty `rfd.log` (its log filter was off without `RUST_LOG`) | The app starts it with `RUST_LOG=warn,ramflux_sdk=info` unless `RUST_LOG` is inherited (`set_child_log` in `crates/ramflux-desktop-sdk/src/local/daemon_process.rs`). `rfd.log` is rotated at 1 MiB, 3 kept, each time the daemon starts. | Rotation while a long-running daemon keeps writing (the file grows until the next start), and the log of a daemon the user started, which the app never sees. Supervising the daemon more closely is planned separately. |
+| Unlock was resent with the same retry key after a 60 s deadline, and networking state was polled through `account.status` every 2 to 30 s | Unlock is a local operation with its own 10 s budget (`Weight::Unlock` in `crates/ramflux-desktop-sdk/src/bus/deadline.rs`), and the passphrase is handed to one request per attempt. Networking state comes from the journaled `account.networking.changed` topic on the event stream (`crates/ramflux-desktop-sdk/src/bridge/live.rs`), not a poll; `account.status` is read for the initial state and after a reconnect. | Confirm against the six-digit unlock on current core that a timed-out unlock is never sent again by itself, and show the outcome from the account list rather than the request. |
 
 ## Reset
 

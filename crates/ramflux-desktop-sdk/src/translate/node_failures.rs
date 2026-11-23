@@ -102,7 +102,7 @@ mod tests {
     fn only_a_blocked_looking_failure_on_macos_is_worth_repeating() {
         let unreachable = "client record fetch failed: io error: HostUnreachable (os error 65)";
         let lan = "local bus error: error sending request for url \
-                   (http://192.168.31.136:59482/.well-known/ramflux/client)";
+                   (http://192.168.1.20:59482/.well-known/ramflux/client)";
         let internet = "error sending request for url (https://node.example.org/x)";
         let macos = cfg!(target_os = "macos");
         assert_eq!(may_be_local_network_block(lan), macos);
