@@ -284,6 +284,39 @@ fn settings_export_backup_takes_its_passphrase_as_a_secret(cx: &mut TestAppConte
     assert!(!inspector_text(cx, &shell).contains("harbor"));
 }
 
+/// A long nodes page scrolls to its last node: with many backup nodes every
+/// node's actions can be brought on screen and used (the page's scroll range
+/// covers all of its content, whatever its length).
+#[gpui_kit::test]
+fn settings_nodes_long_page_reaches_its_last_node(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s09_multi_account_day");
+    advance(cx, 1_000);
+    let store = store_handle(cx, &shell);
+    cx.update(|cx| {
+        store.update(cx, |h, _| {
+            let mock = h.mock_mut().expect("a mock source");
+            for n in 0..8 {
+                let node: ramflux_desktop_core::Node = serde_json::from_value(serde_json::json!({
+                    "id": format!("n-extra-{n}"),
+                    "endpoints": [format!("quic://extra-{n}.example.net:7443")],
+                    "fingerprint": "SHA256:0c55 a1e9 37f2 8b06 d4c1 9e7a 52b3 f810",
+                    "pin_source": "Manual",
+                    "capabilities": ["gateway", "relay"],
+                }))
+                .expect("node");
+                mock.inject(0, ramflux_desktop_core::DomainEvent::NodeUpserted(node));
+            }
+        })
+    });
+    advance(cx, 100);
+    settings(cx, handle, &shell, SettingsSection::Nodes);
+    for id in ["settings-node-n-extra-0", "settings-node-n-extra-7"] {
+        reveal(cx, handle, id, "node-enabled");
+    }
+    click_in(cx, handle, "settings-node-n-extra-7", "node-enabled");
+    assert_eq!(last_body(cx, &shell, methods::NODE_SET_ENABLED)["enabled"], false);
+}
+
 /// Scrolls the nodes page until `child` of the node row `id` is on screen
 /// (the page is the board's long column of rows, G09).
 fn reveal(
@@ -293,28 +326,40 @@ fn reveal(
     child: &'static str,
 ) {
     use gpui_kit::InputEvent as _;
-    // The wheel goes to a probe button that is on screen.
+    // The wheel goes where a person scrolls: the middle of the page area
+    // between the page header and the window's bottom. (Aiming at a probe
+    // button that is only partly on screen put the wheel under the page
+    // header, which does not scroll, whenever such a button sat across the
+    // header's edge.)
     let scroll = |cx: &mut TestAppContext, dy: f32| {
         in_window(cx, handle, |window, cx| {
-            let at = window.find_all("node-probe").into_iter().find(|b| b.visible());
-            if let Some(at) = at {
-                let centre = at.bounds().center();
-                let delta = gpui_kit::ScrollDelta::Pixels(gpui_kit::point(
-                    gpui_kit::px(0.),
-                    gpui_kit::px(dy),
-                ));
-                window.dispatch_event(
-                    gpui_kit::ScrollWheelEvent { position: centre, delta, ..Default::default() }
-                        .to_platform_input(),
-                    cx,
-                );
-            }
+            let Some(header) = window.try_find("settings-header").map(|h| h.bounds()) else {
+                return;
+            };
+            let bottom = window.viewport_size().height;
+            let position = gpui_kit::point(header.center().x, (header.bottom() + bottom) / 2.);
+            let delta =
+                gpui_kit::ScrollDelta::Pixels(gpui_kit::point(gpui_kit::px(0.), gpui_kit::px(dy)));
+            window.dispatch_event(
+                gpui_kit::ScrollWheelEvent { position, delta, ..Default::default() }
+                    .to_platform_input(),
+                cx,
+            );
         });
     };
     scroll(cx, 4_000.);
     for _ in 0..60 {
+        // Wholly inside the page area (below the page header, above the
+        // window's bottom), so a click on its centre reaches it.
         let shown = in_window(cx, handle, |window, _| {
-            window.within(id).try_find(child).is_some_and(|b| b.visible())
+            let Some(header) = window.try_find("settings-header").map(|h| h.bounds()) else {
+                return false;
+            };
+            let bottom = window.viewport_size().height;
+            window.within(id).try_find(child).is_some_and(|b| {
+                let b = b.bounds();
+                b.top() >= header.bottom() && b.bottom() <= bottom
+            })
         });
         if shown {
             return;
