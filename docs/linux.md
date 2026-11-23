@@ -80,9 +80,11 @@ packaging files against it. Hyprland window rules match it:
 o.window("org.ramflux.desktop", { ... })
 ```
 
-The icons in `packaging/linux/icons/` are the same placeholder the macOS
-package builds (the Lucide "orbit" glyph on a dark tile, ISC licence) until
-the final icon arrives from design; there is no symbolic variant yet.
+The icons in `packaging/linux/icons/` are the Ramflux mark ("Flux Current",
+from the project website) on a paper-coloured tile: PNGs from 16 to 512 px, a
+scalable SVG and a symbolic SVG. They are generated, with the macOS `.icns`
+and the Windows `.ico`, from the two sources in `packaging/brand/` by
+`scripts/generate-icons.sh`; edit the sources, not the generated files.
 
 `scripts/validate-linux-metadata.sh` checks the desktop entry with
 `desktop-file-validate`, the metainfo with `appstreamcli validate --strict`,
@@ -254,7 +256,6 @@ the owner's release-key decision; the workflow marks the place.
 
 - Not built or run on Linux by the author of this support: everything in
   [linux-verification.md](linux-verification.md) is open.
-- Placeholder icon; no symbolic icon.
 - Notification triggers and the privacy control in Settings are not wired.
 - Clicking a notification on Wayland relies on the compositor accepting the
   window activation; GPUI requests it without the server's activation token.

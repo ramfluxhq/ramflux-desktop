@@ -7,6 +7,7 @@ demo scenarios, and its desktop integration files:
 usr/bin/ramflux-desktop
 usr/share/applications/org.ramflux.desktop.desktop
 usr/share/icons/hicolor/<size>/apps/org.ramflux.desktop.{png,svg}
+usr/share/icons/hicolor/symbolic/apps/org.ramflux.desktop-symbolic.svg
 usr/share/metainfo/org.ramflux.desktop.metainfo.xml
 usr/share/licenses/ramflux-desktop/
 ```
@@ -43,5 +44,5 @@ More: `docs/linux.md` in the source repository,
 
 ## Licence
 
-AGPL-3.0-or-later; see `usr/share/licenses/ramflux-desktop/`. The placeholder
-icon uses the Lucide "orbit" glyph (ISC licence, `LICENSE-LUCIDE`).
+AGPL-3.0-or-later; see `usr/share/licenses/ramflux-desktop/`. The icon is the
+Ramflux mark from <https://ramflux.org>.

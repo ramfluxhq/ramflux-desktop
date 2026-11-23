@@ -75,6 +75,11 @@ Versioning.
   identifiers or round labels, `docs/demo.md` is a getting-started guide, and
   the example node address in the local network manual and the tests is a
   generic private one.
+- The application icon is the Ramflux mark ("Flux Current") from the project
+  website on every packaging path, replacing the placeholder glyph: Linux
+  hicolor PNGs from 16 to 512 px plus scalable and symbolic SVGs, the macOS
+  `.icns`, and a Windows `.ico`. All are generated from
+  `packaging/brand/*.svg` by `scripts/generate-icons.sh`.
 - On Linux a started daemon's default data folder is
   `$XDG_DATA_HOME/ramflux-desktop/rfd-data`; data under the settings folder
   from older builds is copied there once (under the daemon's lock, verified

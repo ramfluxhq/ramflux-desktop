@@ -64,10 +64,16 @@ mod tests {
             "Linux package id"
         );
         let icons = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packaging/linux/icons");
-        for size in ["48x48", "64x64", "128x128", "256x256", "512x512"] {
+        for size in ["16x16", "24x24", "32x32", "48x48", "64x64", "128x128", "256x256", "512x512"] {
             let icon = icons.join(format!("hicolor/{size}/apps/{APP_ID}.png"));
             assert!(icon.is_file(), "missing {}", icon.display());
         }
         assert!(icons.join(format!("hicolor/scalable/apps/{APP_ID}.svg")).is_file());
+        assert!(icons.join(format!("hicolor/symbolic/apps/{APP_ID}-symbolic.svg")).is_file());
+        let packaging = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packaging");
+        assert!(packaging.join("macos/AppIcon.icns").is_file());
+        assert!(packaging.join("windows/ramflux.ico").is_file());
+        assert!(packaging.join("brand/ramflux-mark.svg").is_file());
+        assert!(packaging.join("brand/ramflux-mark-symbolic.svg").is_file());
     }
 }
