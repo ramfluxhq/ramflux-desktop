@@ -17,7 +17,9 @@ scripts/package-macos.sh --rf /path/rf   # also ship an rf binary in the app
 open "dist/Ramflux Desktop.app"
 ```
 
-The script builds a release binary (`cargo build --release --locked`), writes
+The script builds a release binary without the demo scenarios
+(`cargo build --release --locked --no-default-features`; see "Demo scenarios"
+in the README), writes
 `Info.plist` (bundle id `org.ramflux.desktop`, version from `Cargo.toml`), a
 placeholder icon and the license notices, and signs the bundle ad hoc. An ad hoc
 signature only lets the bundle run on the machine that built it.
@@ -38,7 +40,7 @@ cargo install --git https://github.com/ramfluxhq/ramflux --rev <pinned rev> --lo
 
 ## 2. Start the daemon
 
-A release build uses the local daemon by default and attaches to the socket of
+A packaged build always uses the local daemon and attaches to the socket of
 the reference CLI, `/tmp/ramflux/rfd.sock`. The app never starts a daemon by
 itself. Pick one:
 
@@ -65,7 +67,7 @@ stops it.
 
 | Setting | Default | Applies |
 |---|---|---|
-| Use the local daemon (off: demo scenarios) | on in release builds | next app start |
+| Use the local daemon (off: demo scenarios; only in builds with the `demo` feature) | on in release builds | next app start |
 | Daemon socket | `/tmp/ramflux/rfd.sock` | next app start |
 | Daemon program (`rf`) | the one shipped in the app, else none | next daemon start |
 | Daemon data folder | `~/Library/Application Support/Ramflux Desktop/rfd-data` | next daemon start |
@@ -76,7 +78,8 @@ and the renderer profile.
 
 Command line and environment override the saved choices for one run:
 `--source mock|rfd`, `--socket PATH`, `RAMFLUX_DESKTOP_SOURCE`,
-`RAMFLUX_DESKTOP_SOCKET`.
+`RAMFLUX_DESKTOP_SOCKET`. `mock` exists only in builds with the `demo`
+feature; a packaged build refuses it.
 
 ## 4. Allow Local Network access (macOS)
 
@@ -175,13 +178,26 @@ example after a message).
 | Settings (launch choices, pinned contexts) | `~/Library/Application Support/Ramflux Desktop/desktop-settings.json` |
 | Dock layout | `~/Library/Application Support/Ramflux Desktop/dock-layout.json` |
 | App log (redacted, rotated at 1 MiB, 3 kept) | `~/Library/Logs/Ramflux Desktop/desktop.log` |
-| Output of a daemon the app started | `~/Library/Logs/Ramflux Desktop/rfd.log` |
+| Output of a daemon the app started (rotated at 1 MiB, 3 kept, when the daemon starts) | `~/Library/Logs/Ramflux Desktop/rfd.log` |
 | Data of a daemon the app started | the daemon data folder above |
 
 The app log holds only the app's own events (start, source, daemon start and
-exit, failures). Values of secret-looking fields, long opaque tokens and PEM
+exit, failures). A daemon the app starts logs at `warn,ramflux_sdk=info`
+unless the app itself was started with `RUST_LOG`, which the daemon then
+inherits (an empty value included). Values of secret-looking fields, long opaque tokens and PEM
 blocks are redacted before they are written. Account keys and messages stay in
 the daemon's data folder; deleting the app bundle does not remove them.
+
+## Daemon log and unlock: where two earlier findings stand
+
+Two findings from the November unlock audit (filed as DESK-DAEMON-LOG-01 and
+DESK-UNLOCK-UX-01, then frozen) are closed here; what is left of them moves
+to the work packages named below.
+
+| Finding | Done | Remains |
+|---|---|---|
+| The daemon the app starts wrote an empty `rfd.log` (its log filter was off without `RUST_LOG`) | The app starts it with `RUST_LOG=warn,ramflux_sdk=info` unless `RUST_LOG` is inherited (`set_child_log` in `crates/ramflux-desktop-sdk/src/local/daemon_process.rs`). `rfd.log` is rotated at 1 MiB, 3 kept, each time the daemon starts. | Rotation while a long-running daemon keeps writing (the file grows until the next start), and the log of a daemon the user started, which the app never sees. Daemon supervision package (X2). |
+| Unlock was resent with the same retry key after a 60 s deadline, and networking state was polled through `account.status` every 2 to 30 s | Unlock is a local operation with its own 10 s budget (`Weight::Unlock` in `crates/ramflux-desktop-sdk/src/bus/deadline.rs`), and the passphrase is handed to one request per attempt. Networking state comes from the journaled `account.networking.changed` topic on the event stream (`crates/ramflux-desktop-sdk/src/bridge/live.rs`), not a poll; `account.status` is read for the initial state and after a reconnect. | Confirm against the six-digit unlock on current core that a timed-out unlock is never sent again by itself, and show the outcome from the account list rather than the request (account flows package, B1). |
 
 ## Reset
 
