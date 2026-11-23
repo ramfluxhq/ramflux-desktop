@@ -23,8 +23,9 @@
 //! divides design pixels by 16.
 
 use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use gpui_kit::{FontWeight, Rems, Styled};
+use gpui_kit::{Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, Rems, Styled};
 
 use crate::generated::rf_tokens::RFTheme;
 
@@ -47,7 +48,7 @@ pub fn space(steps: f32) -> Rems {
     design_px(steps * STEP_PX)
 }
 
-/// The unthemed type sizes of the design variables.
+/// The unthemed type sizes and faces of the design variables.
 static SIZES: LazyLock<RFTheme> = LazyLock::new(RFTheme::light);
 
 /// `rf-size-caption` (11 px).
@@ -159,12 +160,46 @@ pub mod style {
     }
 }
 
+/// Whether the interface language is set in the CJK face.
+static CJK_INTERFACE: AtomicBool = AtomicBool::new(false);
+
+/// Sets the script of the interface language for [`text_font`]: the host
+/// calls it when the locale changes (Chinese, Japanese and Korean are CJK).
+pub fn set_cjk_interface(cjk: bool) {
+    CJK_INTERFACE.store(cjk, Ordering::Relaxed);
+}
+
+/// The face of a design text style at `weight`.
+///
+/// The boards set CJK copy in `rf-font` (Noto Sans SC, its own Latin
+/// glyphs included) and Latin copy in `rf-font-latin` (Hanken Grotesk). The
+/// face also sets the line's metrics: CJK text on a Hanken Grotesk line sits
+/// about 0.09 em higher than on the boards (ascent 1.0 em against Noto Sans
+/// SC's 1.16 em). So in a CJK interface a text style takes `rf-font` first,
+/// otherwise `rf-font-latin` with `rf-font` for the glyphs it lacks.
+#[must_use]
+pub fn text_font(weight: FontWeight) -> Font {
+    let (family, fallback) = if CJK_INTERFACE.load(Ordering::Relaxed) {
+        (SIZES.font, SIZES.font_latin)
+    } else {
+        (SIZES.font_latin, SIZES.font)
+    };
+    Font {
+        family: family.into(),
+        features: FontFeatures::default(),
+        fallbacks: Some(FontFallbacks::from_fonts(vec![fallback.to_owned()])),
+        weight,
+        style: FontStyle::Normal,
+    }
+}
+
 /// Applies a [`TextStyle`] to an element.
 pub trait DesignText: Styled + Sized {
-    /// Size, weight and line height of `style`.
+    /// Face ([`text_font`]), size, weight and line height of `style`.
     #[must_use]
     fn design_text(self, style: TextStyle) -> Self {
-        self.text_size(design_px(style.size))
+        self.font(text_font(style.weight))
+            .text_size(design_px(style.size))
             .font_weight(style.weight)
             .line_height(design_px(style.line))
     }

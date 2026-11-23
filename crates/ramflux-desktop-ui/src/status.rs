@@ -21,9 +21,7 @@ use gpui_kit::component::{Icon, IconName};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Div, Hsla, SharedString, div};
 use ramflux_desktop_navigation::direction::h_flex;
-use ramflux_desktop_navigation::scale::{design_px, space, style};
-
-use crate::assets::DesignType as _;
+use ramflux_desktop_navigation::scale::{DesignText as _, design_px, space, style};
 
 /// The tone of a chip or tip bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +61,7 @@ pub fn status_chip(tone: Tone, text: impl Into<SharedString>, cx: &App) -> Div {
         .rounded(design_px(p.radius_chip))
         .bg(fill)
         .text_color(ink)
-        .design_type(style::meta())
+        .design_text(style::meta())
         .child(text.into())
 }
 
@@ -104,7 +102,7 @@ pub fn tip_bar(tone: Tone, icon: Option<IconName>, text: impl Into<SharedString>
                 .min_w_0()
                 .whitespace_normal()
                 .text_color(p.text)
-                .design_type(style::secondary())
+                .design_text(style::secondary())
                 .child(text.into()),
         )
 }
