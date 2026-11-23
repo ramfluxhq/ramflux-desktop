@@ -165,7 +165,7 @@ h = 58
 [[deviation]]
 id = "r13"
 class = "layout"
-reason = "geometry differs (ink box board 416.5,431.0 109.5x51.5, app 416.0,417.0 292.5x90.5)"
+reason = "geometry differs (ink box board 416.5,431.0 109.5x51.5, app 416.0,417.0 301.5x90.5)"
 decision = "unreviewed"
 reviewer = ""
 

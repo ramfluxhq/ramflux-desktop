@@ -1071,3 +1071,16 @@ x = 980
 y = 761
 w = 165
 h = 70
+
+[[deviation]]
+id = "r83"
+class = "extra"
+reason = "drawn by the app, not on the board at 1359,317 69x33"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1359
+y = 317
+w = 69
+h = 33

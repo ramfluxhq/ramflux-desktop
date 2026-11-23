@@ -9,7 +9,7 @@ reference_sha256 = "c463d87351507e6586e9d91835ddda8f9380300dd4901cb22646bd8fbc02
 [[deviation]]
 id = "r01"
 class = "structure"
-reason = "screen structure differs over 0,0 1440x900 (board bg #B0AFAE ink #F3F3F3, capture bg #FCFBF9 ink #575757)"
+reason = "screen structure differs over 0,0 1440x900 (board bg #B0AFAE ink #F3F3F3, capture bg #FCFBF9 ink #585757)"
 decision = "fix"
 reviewer = "rf-design classify"
 

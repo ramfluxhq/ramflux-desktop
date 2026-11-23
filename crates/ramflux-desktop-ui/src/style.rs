@@ -36,7 +36,9 @@ use gpui_kit::component::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, ElementId, Hsla, SharedString, div, px};
-use ramflux_desktop_navigation::scale::{DesignText as _, design_px, space, style as text_style};
+use ramflux_desktop_navigation::scale::{design_px, space, style as text_style};
+
+use crate::assets::DesignType as _;
 
 /// The design's button kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -174,7 +176,7 @@ impl DesignButton for Button {
         self.accessibility_label(label.clone()).child(
             // The button text style: 14 px medium on its 20 px line, centred
             // in the 32 px button (the boards' label ink sits 10–22 px down).
-            div().design_text(text_style::button()).child(label),
+            div().design_type(text_style::button()).child(label),
         )
     }
 

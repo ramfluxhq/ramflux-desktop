@@ -399,7 +399,7 @@ h = 35
 [[deviation]]
 id = "r31"
 class = "spacing"
-reason = "same element moved by -2.0,+5.0 px (ink box board 506.5,376.0 55.0x13.5, app 504.5,381.0 55.0x13.5)"
+reason = "same element moved by -2.0,+6.0 px (ink box board 506.5,376.0 55.0x13.5, app 504.5,382.0 55.0x13.0)"
 decision = "fix"
 reviewer = "rf-design classify"
 
@@ -412,7 +412,7 @@ h = 19
 [[deviation]]
 id = "r32"
 class = "spacing"
-reason = "same element moved by -9.0,+5.0 px (ink box board 606.5,376.0 55.0x13.5, app 597.5,381.0 55.0x13.5)"
+reason = "same element moved by -9.0,+6.0 px (ink box board 606.5,376.0 55.0x13.5, app 597.5,382.0 55.0x13.0)"
 decision = "fix"
 reviewer = "rf-design classify"
 
