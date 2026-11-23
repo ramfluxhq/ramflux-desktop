@@ -371,17 +371,8 @@ fn group_digits(number: &str) -> String {
 
 /// The warning chip ("Not a contact", "Identity not verified").
 pub(crate) fn warning_chip(id: &'static str, text: SharedString, cx: &gpui_kit::App) -> AnyElement {
-    let theme = palette(cx);
-    div()
+    crate::status::status_chip(crate::status::Tone::Warning, text, cx)
         .id(id)
         .test_support()
-        .flex_none()
-        .px(space(2.))
-        .py(rem(2.0))
-        .rounded(rem(theme.radius_chip))
-        .bg(theme.warning_bg)
-        .text_color(crate::tone::text(theme.warning, cx))
-        .text_size(rem(theme.size_meta))
-        .child(text)
         .into_any_element()
 }

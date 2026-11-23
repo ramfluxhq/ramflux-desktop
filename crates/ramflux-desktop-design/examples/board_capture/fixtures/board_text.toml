@@ -36,3 +36,5 @@ kit30 = "搜索"
 name_zhou = "周宁"
 account_personal = "个人"
 kit31 = "文字按钮"
+# Tip bar (success), board 00D.
+kit32 = "已保存"

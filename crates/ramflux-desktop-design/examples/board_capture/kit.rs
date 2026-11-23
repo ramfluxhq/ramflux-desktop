@@ -31,6 +31,7 @@ use ramflux_desktop_navigation::generated::catalog as kit;
 use ramflux_desktop_navigation::palette;
 use ramflux_desktop_ui::AppAssets as Assets;
 use ramflux_desktop_ui::controls::{DesignCheckbox, radio_indicator};
+use ramflux_desktop_ui::status::{Tone, status_chip, tip_bar};
 use ramflux_desktop_ui::style::DesignButton as _;
 
 use crate::text::t;
@@ -105,19 +106,6 @@ fn row_replica(
         .into_any_element()
 }
 
-fn chip_replica(text: SharedString, cx: &App) -> AnyElement {
-    // replica of crates/ramflux-desktop-ui/src/settings/design.rs `chip`
-    let p = palette(cx);
-    div()
-        .px_2()
-        .py(rem(4.0))
-        .rounded(rem(p.radius_chip))
-        .bg(p.surface)
-        .text_size(rem(p.size_meta))
-        .child(text)
-        .into_any_element()
-}
-
 fn bubble(
     kind: kit::BubbleKind,
     sender: Option<SharedString>,
@@ -149,15 +137,8 @@ fn bubble(
     kit::message_bubble(kit::MessageContent::new("m".into(), kind, content), p).into_any_element()
 }
 
-fn tip(kind: kit::StateKind, title: SharedString, cx: &App) -> AnyElement {
-    // replica of crates/ramflux-desktop-ui/src/settings/presentation.rs `notice`
-    let p = palette(cx);
-    div()
-        .p_3()
-        .rounded(rem(p.radius_md))
-        .bg(p.surface)
-        .child(kit::state_block("tip".into(), title, SharedString::default(), kind, div(), p))
-        .into_any_element()
+fn tip(tone: Tone, title: SharedString, cx: &App) -> AnyElement {
+    div().w(rem(480.0)).child(tip_bar(tone, None, title, cx)).into_any_element()
 }
 
 /// Every component of the kit boards, in board order.
@@ -174,8 +155,8 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "status-neutral",
-            how: A("catalog::badge", |_, cx, _| {
-                kit::badge(t("kit01"), palette(cx)).into_any_element()
+            how: A("status::status_chip Neutral", |_, cx, _| {
+                status_chip(Tone::Neutral, t("kit01"), cx).into_any_element()
             }),
         },
         Component {
@@ -485,25 +466,19 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "tip-bar-default",
-            how: R("settings/presentation.rs notice (state_block Offline)", |_, cx, _| {
-                tip(kit::StateKind::Offline, t("kit20"), cx)
-            }),
+            how: A("status::tip_bar Neutral", |_, cx, _| tip(Tone::Neutral, t("kit20"), cx)),
         },
         Component {
             slug: "tip-bar-success",
-            how: S("no success notice in the application (StateKind has no success)"),
+            how: A("status::tip_bar Success", |_, cx, _| tip(Tone::Success, t("kit32"), cx)),
         },
         Component {
             slug: "tip-bar-warning",
-            how: R("settings/presentation.rs notice (state_block Loading)", |_, cx, _| {
-                tip(kit::StateKind::Loading, t("kit21"), cx)
-            }),
+            how: A("status::tip_bar Warning", |_, cx, _| tip(Tone::Warning, t("kit21"), cx)),
         },
         Component {
             slug: "tip-bar-danger",
-            how: R("settings/presentation.rs notice (state_block Error)", |_, cx, _| {
-                tip(kit::StateKind::Error, t("kit22"), cx)
-            }),
+            how: A("status::tip_bar Danger", |_, cx, _| tip(Tone::Danger, t("kit22"), cx)),
         },
         Component {
             slug: "origin-display",
@@ -516,7 +491,7 @@ pub fn components() -> Vec<Component> {
                     .flex()
                     .flex_row()
                     .gap_2()
-                    .child(chip_replica(t("kit23"), cx))
+                    .child(status_chip(Tone::Warning, t("kit23"), cx))
                     .child(Button::new("revoke").design_danger_quiet(cx).design_label(t("kit17")))
                     .into_any_element();
                 row_replica("Chrome · macOS".into(), t("kit24"), trailing, cx)

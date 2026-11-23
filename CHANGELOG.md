@@ -56,6 +56,10 @@ Versioning.
   in Chinese, Japanese and Korean (the boards' `rf-font`, whose line metrics
   place CJK text 0.09 em lower than Hanken Grotesk's), Hanken Grotesk first
   otherwise.
+- Design status chips and tip bars (boards 00B, 00D): chips in the neutral,
+  success, warning and danger tones at 25 px; tip bars at 34 px with the
+  tone's icon and one line of text. Settings notices are tip bars; the
+  generated catalog `badge` is removed (one source).
 
 ### Fixed
 

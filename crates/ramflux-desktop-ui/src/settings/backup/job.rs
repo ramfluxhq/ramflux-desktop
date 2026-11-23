@@ -162,9 +162,10 @@ impl BackupPanel {
             .child(ramflux_desktop_navigation::generated::catalog::section_header(
                 doing,
                 div().children(percent.map(|p| {
-                    ramflux_desktop_navigation::generated::catalog::badge(
+                    crate::status::status_chip(
+                        crate::status::Tone::Neutral,
                         i18n::percent(f64::from(p) / 100.0),
-                        ramflux_desktop_navigation::palette(cx),
+                        cx,
                     )
                 })),
                 ramflux_desktop_navigation::palette(cx),

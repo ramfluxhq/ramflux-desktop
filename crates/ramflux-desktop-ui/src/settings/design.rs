@@ -67,17 +67,9 @@ pub(crate) fn row(
         .children(trailing)
 }
 
-/// A small status chip ("Current", "Default").
+/// A small status chip ("Current", "Default"): design `Status / Neutral`.
 pub(crate) fn chip(text: SharedString, cx: &App) -> AnyElement {
-    let palette = ramflux_desktop_navigation::palette(cx);
-    div()
-        .px(space(2.))
-        .py(rem(4.0))
-        .rounded(rem(palette.radius_chip))
-        .bg(palette.surface)
-        .text_size(rem(palette.size_meta))
-        .child(text)
-        .into_any_element()
+    crate::status::status_chip(crate::status::Tone::Neutral, text, cx).into_any_element()
 }
 
 /// One line of secondary text.
