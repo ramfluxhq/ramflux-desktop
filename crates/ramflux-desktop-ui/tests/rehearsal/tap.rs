@@ -148,7 +148,7 @@ fn summary(n: usize, dir: &str, body: &[u8]) -> Value {
         line["reason_code"] = error["reason_code"].clone();
         line["message"] = error["message"].clone();
     }
-    if dir == "down" && matches!(method, "message.list" | "message.receive" | "conversation.start")
+    if dir == "down" && matches!(method, "message.read" | "message.receive" | "conversation.start")
     {
         // Counts only: how many rows and whether their text was readable.
         let rows = frame["body"]["messages"].as_array().cloned().unwrap_or_default();
@@ -157,8 +157,8 @@ fn summary(n: usize, dir: &str, body: &[u8]) -> Value {
             rows.iter().filter(|r| r["body_utf8"].is_string() || r["text"].is_string()).count()
         );
         // Ids only (no text): which id each stored row carries.
-        line["message_ids"] = rows.iter().map(|r| r["message_id"].clone()).collect();
-        line["sender_ids"] = rows.iter().map(|r| r["sender_id"].clone()).collect();
+        line["message_ids"] = rows.iter().map(|r| r["id"].clone()).collect();
+        line["sender_ids"] = rows.iter().map(|r| r["author"]["device_id"].clone()).collect();
     }
     if method == "message.submit" {
         // Ids only: the ids the desktop chose and the ones the daemon answers.

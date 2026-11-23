@@ -77,7 +77,7 @@ fn typed_renderer_unknown_unicode_delete_and_transient(cx: &mut gpui_kit::TestAp
     // A pin is a visible Service row, in the same stream.
     let mut pin = service_update(
         identity("dm-ana", &[3; 4], "dev-ana", 300, 3),
-        ServiceAction::ServicePinChanged,
+        ServiceAction::ServicePinAdded,
         &[],
         None,
     );

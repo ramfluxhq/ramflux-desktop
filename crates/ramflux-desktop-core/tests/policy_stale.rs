@@ -148,10 +148,8 @@ fn with_garden() -> Store {
 #[test]
 fn adding_to_an_existing_group_allows_a_stale_verification() {
     let store = with_garden();
-    for kind in [add("p-stale")] {
-        let effects = human(&store, kind).expect("allowed");
-        assert!(!effects.is_empty());
-    }
+    let effects = human(&store, add("p-stale")).expect("allowed");
+    assert!(!effects.is_empty());
 }
 
 #[test]

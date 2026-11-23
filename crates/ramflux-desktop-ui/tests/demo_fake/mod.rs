@@ -56,10 +56,11 @@ impl FakeDaemon {
         let (world, side) = (self.world.clone(), self.side);
         let (window, read) = (self.restart_window.clone(), self.history_read.clone());
         self.bus = Some(FakeBus::start(&self.path, move |method, account, body| {
-            if window.load(Ordering::SeqCst) && matches!(method, "message.list" | "group.receive") {
+            if window.load(Ordering::SeqCst) && method == "message.read" {
                 read.store(true, Ordering::SeqCst);
+                let conversation = body["conversation_id"].as_str().unwrap_or_default();
                 return ramflux_desktop_test::fake_bus::Reply::Ok(
-                    json!({"messages":[],"next_cursor":null}),
+                    ramflux_desktop_test::fake_read_model::page(conversation, &[], ""),
                 );
             }
             let mut world = world.lock().expect("world");

@@ -17,8 +17,7 @@
 //!
 //! A successful `message.submit` adds its conversation (and attachment) to
 //! the directories, as the daemon records them; `fail_submit` makes it fail.
-//! Agent surfaces are held on the protocol's state machine (`surfaces`),
-//! voice calls by the call fake (`calls`), full backup and restore jobs by
+//! Voice calls are held by the call fake (`calls`), full backup and restore jobs by
 //! the backup fake (`backup`).
 //!
 //! With `tasks` set, the daemon also holds conversation tasks (on the
@@ -27,7 +26,6 @@
 
 #![allow(dead_code)]
 
-pub mod author;
 pub mod schema;
 
 use std::collections::BTreeMap;
@@ -112,8 +110,6 @@ pub struct State {
     pub submit_delay: Duration,
     /// While set, submissions wait to answer (the test releases them).
     pub submit_held: Arc<AtomicBool>,
-    /// Agent surfaces the daemon holds.
-    pub surfaces: Arc<ramflux_desktop_test::fake_surfaces::FakeSurfaces>,
     /// Conversation tasks the daemon holds.
     pub tasks: Option<ramflux_desktop_test::fake_tasks::FakeTasks>,
     /// Pending approvals listed instead of the fixture's, when any.
@@ -324,10 +320,9 @@ pub fn start_with_custody(
     let fake = FakeBus::start_with(
         &path,
         move |method, account, body| {
-            let (surfaces, tasks, calls, requests, backup, account_jobs, account_reads, schema) = {
+            let (tasks, calls, requests, backup, account_jobs, account_reads, schema) = {
                 let state = state.lock().expect("state");
                 (
-                    state.surfaces.clone(),
                     state.tasks.clone(),
                     state.calls.clone(),
                     state.requests.clone(),
@@ -361,9 +356,6 @@ pub fn start_with_custody(
                 return reply;
             }
             if let Some(reply) = backup.handle(method, account, body) {
-                return reply;
-            }
-            if let Some(reply) = surfaces.handle(method, body) {
                 return reply;
             }
             if let Some(reply) = calls.handle(method, account, body) {
@@ -492,29 +484,24 @@ pub fn start_with_custody(
                         .extend(state.objects.iter().cloned());
                     frame
                 }
-                "message.list" => {
+                // The read model of a conversation: the fixture's rows of
+                // `dm-ana`, then what submissions and tasks added (newest
+                // first).
+                "message.read" => {
                     let conversation = body["conversation_id"].as_str().unwrap_or_default();
                     let mut frame = fixture();
+                    frame["conversation_id"] = json!(conversation);
                     if conversation != "dm-ana" {
                         frame["messages"] = json!([]);
                     }
-                    let extra = state.messages.get(conversation).cloned().unwrap_or_default();
-                    frame["messages"].as_array_mut().expect("rows").extend(extra);
+                    let mut extra = state.messages.get(conversation).cloned().unwrap_or_default();
                     if let Some(tasks) = &tasks {
-                        frame["messages"]
-                            .as_array_mut()
-                            .expect("rows")
-                            .extend(tasks.messages(conversation));
+                        extra.extend(tasks.messages(conversation));
                     }
-                    frame
-                }
-                // A group's task messages come with its receive, as the
-                // daemon lists them.
-                "group.receive" => {
-                    let conversation = body["conversation_id"].as_str().unwrap_or_default();
-                    let mut frame = fixture();
-                    if let Some(tasks) = &tasks {
-                        frame["messages"] = json!(tasks.messages(conversation));
+                    let rows = frame["messages"].as_array_mut().expect("rows");
+                    for record in extra {
+                        let row = ramflux_desktop_test::fake_read_model::row(&record, "device-me");
+                        rows.insert(0, row);
                     }
                     frame
                 }

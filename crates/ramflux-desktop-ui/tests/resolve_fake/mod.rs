@@ -22,10 +22,9 @@
 //! - `contact.card.export` answers this account's card and link.
 //! - `group.create` records the group with its creator, conversation and
 //!   name; `group.member.add` adds a member device; `group.list` and
-//!   `conversation.directory` list them. Like the daemon, every group call
-//!   that names a conversation records the name it carries and clears it
-//!   when it carries none. `group.send` stores the message; `group.receive`
-//!   answers the stored ones.
+//!   `conversation.directory` list them. `group.name.set` sets the shared
+//!   name. `group.send` stores the message; `message.read` answers the
+//!   stored ones as the read model.
 //! - `message.submit` starts a direct conversation with a resolved contact.
 
 #![allow(dead_code)]
@@ -302,22 +301,24 @@ fn handle(state: &mut State, all: &BTreeMap<String, Value>, method: &str, body: 
             let rows: Vec<Value> = state.groups.iter().map(|(id, g)| group_row(id, g)).collect();
             json!({ "groups": rows, "next_cursor": null })
         }
-        "group.send" | "group.receive" => {
+        "group.send" => {
             let Some(group) = state.groups.get_mut(&text(body, "group_id")) else {
                 return Reply::Error("ValidationFailed", "no such group".to_owned());
             };
-            // The daemon records the name every group call carries.
-            group.title = body.get("title").cloned().unwrap_or(Value::Null);
-            if method == "group.send" {
-                group.messages.push(json!({
-                    "conversation_id": group.conversation, "message_id": body["message_id"],
-                    "sender_id": "device-me", "encrypted_body": decoded(body).as_bytes(),
-                    "deleted": false, "created_at": 1_790_000_600, "receipts": [],
-                }));
-                json!({ "message_id": body["message_id"] })
-            } else {
-                json!({ "messages": group.messages, "decrypted_messages": [] })
-            }
+            group.messages.push(json!({
+                "conversation_id": group.conversation, "message_id": body["message_id"],
+                "sender_id": "device-me", "encrypted_body": decoded(body).as_bytes(),
+                "deleted": false, "created_at": 1_790_000_600, "receipts": [],
+            }));
+            json!({ "message_id": body["message_id"] })
+        }
+        // The shared group name.
+        "group.name.set" => {
+            let Some(group) = state.groups.get_mut(&text(body, "group_id")) else {
+                return Reply::Error("ValidationFailed", "no such group".to_owned());
+            };
+            group.title = body.get("name").cloned().unwrap_or(Value::Null);
+            json!({ "name": group.title })
         }
         "conversation.directory" => {
             let mut frame = fixture();
@@ -354,7 +355,16 @@ fn handle(state: &mut State, all: &BTreeMap<String, Value>, method: &str, body: 
             state.direct.entry(conversation).or_insert((peer, body["title"].clone()));
             json!({ "message_id": body["message_id"], "accepted": true })
         }
-        "message.list" => json!({ "messages": [] }),
+        "message.read" => {
+            let conversation = text(body, "conversation_id");
+            let records = state
+                .groups
+                .values()
+                .find(|g| g.conversation == conversation)
+                .map(|g| g.messages.clone())
+                .unwrap_or_default();
+            ramflux_desktop_test::fake_read_model::page(&conversation, &records, "device-me")
+        }
         "group.members" => json!({}),
         _ => fixture(),
     })

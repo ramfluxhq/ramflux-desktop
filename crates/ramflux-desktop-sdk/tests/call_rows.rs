@@ -10,9 +10,7 @@
 mod common;
 
 use common::*;
-use ramflux_desktop_core::{
-    AccountId, CallEndReason, CallId, CallState, ContextId, DomainEvent, Timestamp,
-};
+use ramflux_desktop_core::{AccountId, CallEndReason, CallId, CallState, DomainEvent, Timestamp};
 use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
 use ramflux_desktop_sdk::translate::Translator;
 use ramflux_desktop_sdk::translate::calls::call_media;

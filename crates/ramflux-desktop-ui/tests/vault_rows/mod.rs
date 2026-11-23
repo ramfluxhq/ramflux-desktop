@@ -308,8 +308,8 @@ pub const ROWS: [Row; 9] = [
             zh: "\u{8bbe}\u{7f6e}\u{56e0}\u{67d0}\u{4e00}\u{6b65}\u{88ab}\u{62d2}\u{7edd}\u{800c}\u{65e0}\u{6cd5}\u{7ee7}\u{7eed}\u{ff0c}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}",
         },
         recovery: Text {
-            en: r#"The recovery could not be completed. Check the account passphrase and start over. Nothing was changed."#,
-            zh: "\u{65e0}\u{6cd5}\u{5b8c}\u{6210}\u{6062}\u{590d}\u{3002}\u{8bf7}\u{68c0}\u{67e5}\u{8d26}\u{53f7}\u{53e3}\u{4ee4}\u{540e}\u{91cd}\u{65b0}\u{5f00}\u{59cb}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
+            en: r#"The recovery could not be completed. Check the account code and start over. Nothing was changed."#,
+            zh: "\u{65e0}\u{6cd5}\u{5b8c}\u{6210}\u{6062}\u{590d}\u{3002}\u{8bf7}\u{68c0}\u{67e5}\u{8d26}\u{53f7}\u{5bc6}\u{7801}\u{540e}\u{91cd}\u{65b0}\u{5f00}\u{59cb}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
         },
         bus: Text {
             en: r#"This device's key vault does not support what was asked."#,

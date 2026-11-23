@@ -57,7 +57,7 @@ fn settings(
 }
 
 #[gpui_kit::test]
-fn entry_adds_a_tofu_node_with_confirmation_then_creates_an_account(cx: &mut TestAppContext) {
+fn entry_adds_a_tofu_node_with_confirmation(cx: &mut TestAppContext) {
     let (handle, shell) = harbor_confirmed(cx);
     click(cx, handle, "entry-review-nodes");
     type_into(cx, handle, "node-url", "https://studio.example.org");
@@ -91,44 +91,12 @@ fn entry_adds_a_tofu_node_with_confirmation_then_creates_an_account(cx: &mut Tes
         .node(&NodeId::new("n-studio"))
         .is_some_and(|n| n.confirmed)));
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account));
-    click(cx, handle, "entry-continue");
-    click(cx, handle, "entry-node-choice-n-studio");
-    click(cx, handle, "entry-kind-1");
-    type_into(cx, handle, "account-label", "Night shift");
-    type_into(cx, handle, "account-secret", "river stone lantern");
-    click(cx, handle, "account-create");
-    let body = last_body(cx, &shell, methods::ACCOUNT_CREATE);
-    assert_eq!(body["node_id"], "n-studio");
-    assert_eq!(body["kind"], "HeadlessAi");
-    assert_eq!(body["label"], "Night shift");
-    assert!(!body.to_string().contains("river"), "the secret travels beside the body");
-    assert!(secrets_cleared(cx, &shell), "the secret leaves the input on submit");
-    assert!(!inspector_text(cx, &shell).contains("river"));
-    advance(cx, 500);
-    assert_eq!(page(cx, &shell), Page::Workspace);
-}
-
-#[gpui_kit::test]
-fn entry_joins_as_a_new_device(cx: &mut TestAppContext) {
-    let (handle, shell) = harbor_confirmed(cx);
-    click(cx, handle, "entry-path-1");
-    click(cx, handle, "entry-node-choice-n-harbor");
-    type_into(cx, handle, "device-label", "Studio laptop");
-    type_into(cx, handle, "activation-code", "4421-9087");
-    click(cx, handle, "account-join");
-    let body = last_body(cx, &shell, methods::DEVICE_ACTIVATE);
-    assert_eq!(body["node_id"], "n-harbor");
-    assert_eq!(body["device_label"], "Studio laptop");
-    assert!(secrets_cleared(cx, &shell));
-    advance(cx, 600);
-    assert_eq!(page(cx, &shell), Page::Workspace);
-    assert_eq!(with_store(cx, &shell, |s| s.devices().count()), 2);
 }
 
 #[gpui_kit::test]
 fn entry_restores_a_backup_then_locks_and_unlocks(cx: &mut TestAppContext) {
     let (handle, shell) = harbor_confirmed(cx);
-    click(cx, handle, "entry-path-2");
+    click(cx, handle, "entry-path-1");
     // The scenario daemon has the full backup job API, so the full restore
     // is offered first; this is the key backup (legacy import).
     assert!(exists(cx, handle, "entry-full-restore"));

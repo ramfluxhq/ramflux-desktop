@@ -448,7 +448,7 @@ fn a_fresh_device_restores_a_full_backup_from_the_entry_page(cx: &mut TestAppCon
             s.unsupported_reason(ramflux_desktop_core::methods::RESTORE_VERIFY).is_none()
         })
     });
-    click(cx, handle, "entry-path-2");
+    click(cx, handle, "entry-path-1");
     assert!(exists(cx, handle, "entry-full-restore"), "a full backup is the default");
     let panel = entry_panel(cx, &shell);
     click(cx, handle, "restore-choose-file");
@@ -543,7 +543,7 @@ fn restoring(cx: &mut TestAppContext, name: &str) -> Restoring {
             s.unsupported_reason(ramflux_desktop_core::methods::RESTORE_VERIFY).is_none()
         })
     });
-    click(cx, handle, "entry-path-2");
+    click(cx, handle, "entry-path-1");
     let panel = entry_panel(cx, &shell);
     click(cx, handle, "restore-choose-file");
     cx.simulate_path_prompt_response(|_| Some(vec!["/b/personal.rfbackup".into()]));
@@ -960,7 +960,7 @@ fn a_daemon_without_the_job_api_offers_the_key_backup_first(cx: &mut TestAppCont
     }
     wait(cx, "the account step", |cx| page(cx, &shell) == Page::Entry(EntryStep::Account));
     advance(cx, 300);
-    click(cx, handle, "entry-path-2");
+    click(cx, handle, "entry-path-1");
     assert!(!exists(cx, handle, "entry-full-restore"), "the key backup is the default");
     assert!(exists(cx, handle, "backup-browse"));
     // The full restore can still be chosen; its Check is gated.

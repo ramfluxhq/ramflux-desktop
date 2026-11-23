@@ -107,7 +107,7 @@ fn v1_message_service_projection_and_order() {
     // A pin names its target message; it sits in the stream by its clock.
     let mut pin = service_update(
         identity(CONTEXT, &id_of(4), "dev-bo", 250, 2),
-        ServiceAction::ServicePinChanged,
+        ServiceAction::ServicePinAdded,
         &[],
         None,
     );
@@ -186,7 +186,7 @@ fn service_actions_project_to_their_rows() {
     // No target message: the same neutral row (pin versus unpin is not defined).
     let untargeted = one(&service_update(
         identity(CONTEXT, &id_of(6), "dev-ana", 12, 6),
-        ServiceAction::ServicePinChanged,
+        ServiceAction::ServicePinAdded,
         &[],
         None,
     ));

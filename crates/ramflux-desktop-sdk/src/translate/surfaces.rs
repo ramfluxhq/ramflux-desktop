@@ -519,6 +519,24 @@ fn touches(ops: &[SurfacePatchOp], writing: &BTreeSet<BlockId>) -> bool {
     })
 }
 
+/// A card snapshot as the desktop payload of surface `surface` (the scoped
+/// id the desktop keys it by): the author's fallback text only. Card
+/// components are drawn by the shared card runtime, which this build does
+/// not embed, so no block and no action is read from them.
+fn payload_of(snapshot: &Value, surface: SurfaceId) -> AgentSurfacePayload {
+    AgentSurfacePayload {
+        surface_id: surface,
+        fallback_text: snapshot
+            .get("fallbackText")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        blocks: Vec::new(),
+        actions: Vec::new(),
+        streaming: false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ramflux_desktop_core::{Block, BlockKind, SurfaceAction};
@@ -583,23 +601,5 @@ mod tests {
         );
         let reordered = payload(vec![text("c", "3"), text("a", "1")]);
         assert_eq!(patch_ops(&old, &reordered), None);
-    }
-}
-
-/// A card snapshot as the desktop payload of surface `surface` (the scoped
-/// id the desktop keys it by): the author's fallback text only. Card
-/// components are drawn by the shared card runtime, which this build does
-/// not embed, so no block and no action is read from them.
-fn payload_of(snapshot: &Value, surface: SurfaceId) -> AgentSurfacePayload {
-    AgentSurfacePayload {
-        surface_id: surface,
-        fallback_text: snapshot
-            .get("fallbackText")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned(),
-        blocks: Vec::new(),
-        actions: Vec::new(),
-        streaming: false,
     }
 }

@@ -370,7 +370,7 @@ fn a_new_group_is_created_with_its_members_named_and_renamed(cx: &mut TestAppCon
     assert_eq!((context.kind, context.title.as_str()), (ContextKind::Group, "Weekend trip"));
     assert!(context.participants.contains(&ParticipantId::new("principal-kai")));
 
-    // Messages flow; every group call carries the name, so it stays.
+    // Messages flow; the group keeps its name.
     type_into(cx, handle, "composer-input", "Who brings the tent?");
     click(cx, handle, "composer-send");
     wait(cx, "the group message", |cx| {
@@ -379,8 +379,6 @@ fn a_new_group_is_created_with_its_members_named_and_renamed(cx: &mut TestAppCon
     for _ in 0..10 {
         advance(cx, 100);
     }
-    assert!(seen(&state, "group.send").iter().all(|b| b["title"] == "Weekend trip"));
-    assert!(seen(&state, "group.receive").iter().all(|b| b["title"] == "Weekend trip"));
     assert_eq!(
         with_store(cx, &shell, |s| s.context(&id).map(|c| c.title.clone())).as_deref(),
         Some("Weekend trip")

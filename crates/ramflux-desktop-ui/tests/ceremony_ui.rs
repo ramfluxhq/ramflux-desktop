@@ -24,7 +24,6 @@ use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::entry::{CeremonyPanel, Pending};
 use ramflux_desktop_ui::i18n::{tr, tr_args};
 use ramflux_desktop_ui::route::{EntryStep, Page};
-use ramflux_desktop_ui::settings::backup::text::Strength;
 
 type Handle = WindowHandle<gpui_kit::base::Root>;
 
@@ -136,7 +135,7 @@ fn type_passphrase(
     type_into(cx, handle, "ceremony-passphrase-repeat", second);
 }
 
-const PASSPHRASE: &str = "river stone lantern";
+const PASSPHRASE: &str = "482915";
 
 /// The three right words, then the passphrase step.
 fn to_passphrase(cx: &mut TestAppContext, handle: Handle) {
@@ -165,12 +164,7 @@ fn disabled(cx: &mut TestAppContext, handle: Handle, id: &'static str) -> Option
 #[gpui_kit::test]
 fn the_entry_is_there_only_when_the_daemon_offers_the_ceremony(cx: &mut TestAppContext) {
     let (handle, shell) = account_step(cx);
-    assert!(exists(cx, handle, "account-create"), "an older daemon keeps the passphrase form");
     let ai = ramflux_desktop_ui::i18n::account_kind(ramflux_desktop_core::AccountKind::HeadlessAi);
-    assert!(has_label(cx, handle, &ai), "the kind is chosen on such a daemon");
-    assert!(!exists(cx, handle, "account-create-phrase"), "not offered yet: no entry");
-    assert!(!has_label(cx, handle, &tr("ceremony.entry.button")));
-    assert!(!with_store(cx, &shell, |s| s.offers_born_v3_creation()));
 
     advance(cx, 2_000);
     assert!(with_store(cx, &shell, |s| s.offers_born_v3_creation()));
@@ -612,7 +606,7 @@ fn waiting_for_the_hide_answer_is_neutral_not_an_error(cx: &mut TestAppContext) 
 }
 
 #[gpui_kit::test]
-fn the_passphrase_follows_the_backup_passphrase_rules(cx: &mut TestAppContext) {
+fn the_account_code_follows_the_daemons_rule(cx: &mut TestAppContext) {
     let (handle, shell) = offered(cx);
     challenged(cx, handle);
     to_passphrase(cx, handle);
@@ -620,18 +614,18 @@ fn the_passphrase_follows_the_backup_passphrase_rules(cx: &mut TestAppContext) {
     assert_eq!(disabled(cx, handle, "ceremony-confirm-submit"), Some(true), "nothing typed");
 
     type_passphrase(cx, handle, &shell, "short", "short");
-    let hint = Strength::of("short").hint().to_string();
-    assert!(has_label(cx, handle, &hint), "the strength is said: {hint}");
-    assert_eq!(disabled(cx, handle, "ceremony-confirm-submit"), Some(true), "too short");
+    let hint = tr("ceremony.code.not_six_digits").to_string();
+    assert!(has_label(cx, handle, &hint), "the rule is said: {hint}");
+    assert_eq!(disabled(cx, handle, "ceremony-confirm-submit"), Some(true), "not six digits");
 
-    type_passphrase(cx, handle, &shell, "river stone lantern", "river stone lanter");
-    assert!(has_label(cx, handle, &tr("settings.backup.mismatch")), "a mismatch is named");
+    type_passphrase(cx, handle, &shell, PASSPHRASE, "482916");
+    assert!(has_label(cx, handle, &tr("ceremony.code.mismatch")), "a mismatch is named");
     assert_eq!(disabled(cx, handle, "ceremony-confirm-submit"), Some(true));
     // Nothing was sent meanwhile.
     assert_eq!(count(cx, &shell, "account.create.confirm"), 0);
 
-    type_passphrase(cx, handle, &shell, "river stone lantern", "river stone lantern");
-    assert!(!has_label(cx, handle, &tr("settings.backup.mismatch")));
+    type_passphrase(cx, handle, &shell, PASSPHRASE, PASSPHRASE);
+    assert!(!has_label(cx, handle, &tr("ceremony.code.mismatch")));
     assert_ne!(disabled(cx, handle, "ceremony-confirm-submit"), Some(true));
 }
 
