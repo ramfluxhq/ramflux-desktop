@@ -1,0 +1,13 @@
+# Expected deviations of design board D42. Format and rules:
+# crates/ramflux-desktop-design/src/deviations.rs and docs/design-instrument.md.
+# decision: unreviewed | accepted | fix. Never widen a region to hide a new difference.
+
+board = "D42"
+capture = "D42__zh-CN__light__1440x900"
+reference_sha256 = "e76765d331926dd7abf983c67c32d034e84423b1950926dab089777519e45ad9"
+deviation = []
+
+[no_capture]
+reason = "UNREVIEWED (absent: the agent roster has no loading, offline or failed state)"
+decision = "unreviewed"
+reviewer = ""

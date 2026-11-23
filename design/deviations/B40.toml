@@ -1,0 +1,13 @@
+# Expected deviations of design board B40. Format and rules:
+# crates/ramflux-desktop-design/src/deviations.rs and docs/design-instrument.md.
+# decision: unreviewed | accepted | fix. Never widen a region to hide a new difference.
+
+board = "B40"
+capture = "B40__zh-CN__light__1440x900"
+reference_sha256 = "e66f4140ed1d7d13b5d9dd39902e96b78fc7d2c433687dfc31b0b309f570f935"
+deviation = []
+
+[no_capture]
+reason = "UNREVIEWED (absent: no search states in code (local filter and palette only))"
+decision = "unreviewed"
+reviewer = ""

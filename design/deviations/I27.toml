@@ -1,0 +1,995 @@
+# Expected deviations of design board I27. Format and rules:
+# crates/ramflux-desktop-design/src/deviations.rs and docs/design-instrument.md.
+# decision: unreviewed | accepted | fix. Never widen a region to hide a new difference.
+
+board = "I27"
+capture = "I27__zh-CN__dark__1440x1120"
+reference_sha256 = "784091c3c153352120badcff6a603dd640601f1c65556d9f692944689d77b373"
+
+[[deviation]]
+id = "r01"
+class = "chrome"
+reason = "macOS window traffic lights drawn on the board, absent from headless captures"
+decision = "accepted"
+reviewer = "lead"
+
+[deviation.region]
+x = 8
+y = 20
+w = 12
+h = 12
+
+[[deviation]]
+id = "r02"
+class = "chrome"
+reason = "macOS window traffic lights drawn on the board, absent from headless captures"
+decision = "accepted"
+reviewer = "lead"
+
+[deviation.region]
+x = 28
+y = 20
+w = 12
+h = 12
+
+[[deviation]]
+id = "r03"
+class = "chrome"
+reason = "macOS window traffic lights drawn on the board, absent from headless captures"
+decision = "accepted"
+reviewer = "lead"
+
+[deviation.region]
+x = 48
+y = 20
+w = 12
+h = 12
+
+[[deviation]]
+id = "r04"
+class = "spacing"
+reason = "same element moved by -1.0,-2.5 px (ink box board 417.0,28.0 37.5x12.5, app 416.0,25.5 37.5x13.0)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 416
+y = 25
+w = 39
+h = 16
+
+[[deviation]]
+id = "r05"
+class = "layout"
+reason = "geometry differs (ink box board 1020.5,25.0 67.0x16.0, app 1088.5,28.0 79.0x32.0)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1020
+y = 25
+w = 148
+h = 35
+
+[[deviation]]
+id = "r06"
+class = "layout"
+reason = "geometry differs (ink box board 1398.0,26.0 12.0x12.0, app 1391.5,43.0 10.0x2.0)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1391
+y = 26
+w = 19
+h = 19
+
+[[deviation]]
+id = "r07"
+class = "missing"
+reason = "drawn on the board, absent in the app at 699,27 82x34"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 699
+y = 27
+w = 82
+h = 34
+
+[[deviation]]
+id = "r08"
+class = "spacing"
+reason = "same element moved by -1.5,+1.5 px (ink box board 88.0,31.0 61.5x18.5, app 86.5,32.5 61.5x19.0)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 86
+y = 31
+w = 64
+h = 21
+
+[[deviation]]
+id = "r09"
+class = "type"
+reason = "text height -3.0 px: type scale (ink box board 297.0,32.0 12.0x12.0, app 296.5,35.5 9.0x9.0)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 296
+y = 32
+w = 13
+h = 13
+
+[[deviation]]
+id = "r10"
+class = "layout"
+reason = "geometry differs (ink box board 373.0,33.0 22.0x22.0, app 379.5,38.0 8.0x11.0)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 373
+y = 33
+w = 22
+h = 22
+
+[[deviation]]
+id = "r11"
+class = "missing"
+reason = "drawn on the board, absent in the app at 906,34 20x20"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 906
+y = 34
+w = 20
+h = 20
+
+[[deviation]]
+id = "r12"
+class = "missing"
+reason = "drawn on the board, absent in the app at 798,35 20x17"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 798
+y = 35
+w = 20
+h = 17
+
+[[deviation]]
+id = "r13"
+class = "missing"
+reason = "drawn on the board, absent in the app at 837,35 14x18"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 837
+y = 35
+w = 14
+h = 18
+
+[[deviation]]
+id = "r14"
+class = "missing"
+reason = "drawn on the board, absent in the app at 870,35 20x18"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 870
+y = 35
+w = 20
+h = 18
+
+[[deviation]]
+id = "r15"
+class = "missing"
+reason = "drawn on the board, absent in the app at 942,35 20x18"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 942
+y = 35
+w = 20
+h = 18
+
+[[deviation]]
+id = "r16"
+class = "extra"
+reason = "drawn by the app, not on the board at 1186,37 43x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1186
+y = 37
+w = 43
+h = 13
+
+[[deviation]]
+id = "r17"
+class = "extra"
+reason = "drawn by the app, not on the board at 1253,38 12x11"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1253
+y = 38
+w = 12
+h = 11
+
+[[deviation]]
+id = "r18"
+class = "extra"
+reason = "drawn by the app, not on the board at 1280,38 10x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1280
+y = 38
+w = 10
+h = 12
+
+[[deviation]]
+id = "r19"
+class = "extra"
+reason = "drawn by the app, not on the board at 1305,38 12x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1305
+y = 38
+w = 12
+h = 12
+
+[[deviation]]
+id = "r20"
+class = "extra"
+reason = "drawn by the app, not on the board at 1331,38 12x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1331
+y = 38
+w = 12
+h = 12
+
+[[deviation]]
+id = "r21"
+class = "extra"
+reason = "drawn by the app, not on the board at 1357,38 12x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1357
+y = 38
+w = 12
+h = 12
+
+[[deviation]]
+id = "r22"
+class = "rasterisation"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 28.0,52.0 12.5x17.0, app 28.0,52.0 13.0x16.5)"
+decision = "accepted"
+reviewer = "lead"
+
+[deviation.region]
+x = 28
+y = 52
+w = 13
+h = 17
+
+[[deviation]]
+id = "r23"
+class = "type"
+reason = "text height +2.0 px: type scale (ink box board 416.5,52.0 160.5x12.0, app 415.0,52.0 135.5x14.0)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 415
+y = 52
+w = 163
+h = 14
+
+[[deviation]]
+id = "r24"
+class = "spacing"
+reason = "same element moved by -0.5,+4.0 px (ink box board 79.5,67.5 240.5x35.0, app 79.0,71.5 241.0x34.0)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 79
+y = 67
+w = 241
+h = 39
+
+[[deviation]]
+id = "r25"
+class = "structure"
+reason = "screen structure differs over 419,90 957x247 (board bg #171716 ink #BFBFBF, capture bg #171716 ink #B3B2B0)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 419
+y = 90
+w = 957
+h = 247
+
+[[deviation]]
+id = "r26"
+class = "layout"
+reason = "geometry differs (ink box board 23.5,97.0 21.0x36.5, app 23.0,96.0 21.5x34.5)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 23
+y = 96
+w = 22
+h = 38
+
+[[deviation]]
+id = "r27"
+class = "layout"
+reason = "geometry differs (ink box board 132.5,134.5 76.0x53.5, app 133.0,135.0 55.0x41.5)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 132
+y = 134
+w = 77
+h = 54
+
+[[deviation]]
+id = "r28"
+class = "spacing"
+reason = "same element moved by -2.0,-5.0 px (ink box board 92.0,144.0 32.0x32.0, app 90.0,139.0 32.0x32.0)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 90
+y = 139
+w = 34
+h = 37
+
+[[deviation]]
+id = "r29"
+class = "layout"
+reason = "geometry differs (ink box board 23.0,162.0 21.5x35.5, app 22.5,160.0 22.0x33.5)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 22
+y = 160
+w = 23
+h = 38
+
+[[deviation]]
+id = "r30"
+class = "layout"
+reason = "geometry differs (ink box board 132.0,234.5 47.5x34.5, app 133.0,219.0 55.0x41.5)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 132
+y = 219
+w = 56
+h = 50
+
+[[deviation]]
+id = "r31"
+class = "spacing"
+reason = "same element moved by -2.0,-21.0 px (ink box board 92.0,244.0 32.0x32.0, app 90.0,223.0 32.0x32.0)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 90
+y = 223
+w = 34
+h = 53
+
+[[deviation]]
+id = "r32"
+class = "layout"
+reason = "geometry differs (ink box board 16.5,227.0 34.5x36.5, app 17.0,224.0 33.5x34.0)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 16
+y = 224
+w = 35
+h = 40
+
+[[deviation]]
+id = "r33"
+class = "layout"
+reason = "element moved further than its region (ink within 24 px) at 132,277 77x11"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 132
+y = 277
+w = 77
+h = 11
+
+[[deviation]]
+id = "r34"
+class = "layout"
+reason = "geometry differs (ink box board 133.0,334.5 28.0x10.5, app 133.0,303.0 77.0x41.5)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 133
+y = 303
+w = 77
+h = 42
+
+[[deviation]]
+id = "r35"
+class = "layout"
+reason = "geometry differs (ink box board 18.0,310.0 32.0x36.5, app 17.0,305.0 33.0x35.0)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 17
+y = 305
+w = 33
+h = 42
+
+[[deviation]]
+id = "r36"
+class = "spacing"
+reason = "same element moved by -2.0,-37.0 px (ink box board 92.0,344.0 32.0x32.0, app 90.0,307.0 32.0x32.0)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 90
+y = 307
+w = 34
+h = 69
+
+[[deviation]]
+id = "r37"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1399,320 10x7"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1399
+y = 320
+w = 10
+h = 7
+
+[[deviation]]
+id = "r38"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1339,354 82x34"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1339
+y = 354
+w = 82
+h = 34
+
+[[deviation]]
+id = "r39"
+class = "layout"
+reason = "element moved further than its region (ink within 24 px) at 1020,356 48x11"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1020
+y = 356
+w = 48
+h = 11
+
+[[deviation]]
+id = "r40"
+class = "layout"
+reason = "element moved further than its region (ink within 24 px) at 132,358 48x11"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 132
+y = 358
+w = 48
+h = 11
+
+[[deviation]]
+id = "r41"
+class = "extra"
+reason = "drawn by the app, not on the board at 454,359 25x10"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 454
+y = 359
+w = 25
+h = 10
+
+[[deviation]]
+id = "r42"
+class = "extra"
+reason = "drawn by the app, not on the board at 487,360 28x8"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 487
+y = 360
+w = 28
+h = 8
+
+[[deviation]]
+id = "r43"
+class = "layout"
+reason = "geometry differs (ink box board 23.0,375.0 21.5x35.5, app 22.5,369.0 22.0x34.0)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 22
+y = 369
+w = 23
+h = 42
+
+[[deviation]]
+id = "r44"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1022,375 49x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1022
+y = 375
+w = 49
+h = 12
+
+[[deviation]]
+id = "r45"
+class = "layout"
+reason = "geometry differs (ink box board 132.0,377.5 64.5x12.5, app 133.0,385.0 59.5x43.5)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 132
+y = 377
+w = 65
+h = 52
+
+[[deviation]]
+id = "r46"
+class = "extra"
+reason = "drawn by the app, not on the board at 466,389 12x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 466
+y = 389
+w = 12
+h = 12
+
+[[deviation]]
+id = "r47"
+class = "extra"
+reason = "drawn by the app, not on the board at 90,391 32x32"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 90
+y = 391
+w = 32
+h = 32
+
+[[deviation]]
+id = "r48"
+class = "extra"
+reason = "drawn by the app, not on the board at 486,392 13x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 486
+y = 392
+w = 13
+h = 13
+
+[[deviation]]
+id = "r49"
+class = "extra"
+reason = "drawn by the app, not on the board at 507,392 63x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 507
+y = 392
+w = 63
+h = 13
+
+[[deviation]]
+id = "r50"
+class = "extra"
+reason = "drawn by the app, not on the board at 579,392 102x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 579
+y = 392
+w = 102
+h = 13
+
+[[deviation]]
+id = "r51"
+class = "extra"
+reason = "drawn by the app, not on the board at 1269,392 34x11"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1269
+y = 392
+w = 34
+h = 11
+
+[[deviation]]
+id = "r52"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1339,401 82x34"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1339
+y = 401
+w = 82
+h = 34
+
+[[deviation]]
+id = "r53"
+class = "layout"
+reason = "element moved further than its region (ink within 24 px) at 1314,410 16x16"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1314
+y = 410
+w = 16
+h = 16
+
+[[deviation]]
+id = "r54"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1020,412 65x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1020
+y = 412
+w = 65
+h = 13
+
+[[deviation]]
+id = "r55"
+class = "extra"
+reason = "drawn by the app, not on the board at 486,416 26x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 486
+y = 416
+w = 26
+h = 12
+
+[[deviation]]
+id = "r56"
+class = "extra"
+reason = "drawn by the app, not on the board at 520,416 10x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 520
+y = 416
+w = 10
+h = 12
+
+[[deviation]]
+id = "r57"
+class = "extra"
+reason = "drawn by the app, not on the board at 539,416 69x10"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 539
+y = 416
+w = 69
+h = 10
+
+[[deviation]]
+id = "r58"
+class = "extra"
+reason = "drawn by the app, not on the board at 466,442 33x11"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 466
+y = 442
+w = 33
+h = 11
+
+[[deviation]]
+id = "r59"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1021,442 77x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1021
+y = 442
+w = 77
+h = 12
+
+[[deviation]]
+id = "r60"
+class = "extra"
+reason = "drawn by the app, not on the board at 466,467 65x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 466
+y = 467
+w = 65
+h = 12
+
+[[deviation]]
+id = "r61"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1020,473 78x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1020
+y = 473
+w = 78
+h = 12
+
+[[deviation]]
+id = "r62"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1020,496 65x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1020
+y = 496
+w = 65
+h = 12
+
+[[deviation]]
+id = "r63"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1104,496 52x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1104
+y = 496
+w = 52
+h = 12
+
+[[deviation]]
+id = "r64"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1093,500 3x4"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1093
+y = 500
+w = 3
+h = 4
+
+[[deviation]]
+id = "r65"
+class = "extra"
+reason = "drawn by the app, not on the board at 454,516 25x10"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 454
+y = 516
+w = 25
+h = 10
+
+[[deviation]]
+id = "r66"
+class = "extra"
+reason = "drawn by the app, not on the board at 487,517 28x8"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 487
+y = 517
+w = 28
+h = 8
+
+[[deviation]]
+id = "r67"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1021,527 51x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1021
+y = 527
+w = 51
+h = 12
+
+[[deviation]]
+id = "r68"
+class = "extra"
+reason = "drawn by the app, not on the board at 466,546 12x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 466
+y = 546
+w = 12
+h = 12
+
+[[deviation]]
+id = "r69"
+class = "extra"
+reason = "drawn by the app, not on the board at 486,549 158x15"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 486
+y = 549
+w = 158
+h = 15
+
+[[deviation]]
+id = "r70"
+class = "extra"
+reason = "drawn by the app, not on the board at 1269,549 34x11"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1269
+y = 549
+w = 34
+h = 11
+
+[[deviation]]
+id = "r71"
+class = "missing"
+reason = "drawn on the board, absent in the app at 1020,550 104x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 1020
+y = 550
+w = 104
+h = 12
+
+[[deviation]]
+id = "r72"
+class = "extra"
+reason = "drawn by the app, not on the board at 486,573 26x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 486
+y = 573
+w = 26
+h = 12
+
+[[deviation]]
+id = "r73"
+class = "extra"
+reason = "drawn by the app, not on the board at 520,573 10x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 520
+y = 573
+w = 10
+h = 12
+
+[[deviation]]
+id = "r74"
+class = "extra"
+reason = "drawn by the app, not on the board at 539,573 70x10"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 539
+y = 573
+w = 70
+h = 10
+
+[[deviation]]
+id = "r75"
+class = "extra"
+reason = "drawn by the app, not on the board at 466,599 33x11"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 466
+y = 599
+w = 33
+h = 11
+
+[[deviation]]
+id = "r76"
+class = "extra"
+reason = "drawn by the app, not on the board at 466,624 65x12"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 466
+y = 624
+w = 65
+h = 12
