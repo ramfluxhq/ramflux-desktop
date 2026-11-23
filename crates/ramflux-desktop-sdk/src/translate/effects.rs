@@ -87,20 +87,6 @@ impl Translator {
                 let id = AccountId::new(text(answer, "local_account_id"));
                 self.opened_account(&id, answer, None)
             }
-            methods::ACCOUNT_CREATE => {
-                let id = AccountId::new(text(answer, "local_account_id"));
-                let kind = serde_json::from_value(body["kind"].clone()).unwrap_or_default();
-                let mut events = self.opened_account(&id, answer, Some(kind));
-                let mut account = self.account_record(&id);
-                account.node_id = Some(node_id());
-                // The daemon keeps the label in the account manifest.
-                let label = text(body, "label").trim();
-                if !label.is_empty() {
-                    label.clone_into(&mut account.label);
-                }
-                events.extend(self.put_account(account));
-                events
-            }
             methods::ACCOUNT_LOCK => {
                 let id = AccountId::new(text(body, "account_id"));
                 self.set_lock(&id, LockState::Locked)

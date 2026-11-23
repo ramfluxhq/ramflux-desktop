@@ -20,8 +20,8 @@ use gpui_kit::{
     AnyElement, App, Context, IntoElement, Render, Role, SharedString, Styled, Window, div, rems,
 };
 use ramflux_desktop_core::{
-    CHALLENGE_WORDS, Ceremony, CeremonyAccount, CeremonyFailure, CeremonyPhase, Networking,
-    PHRASE_WORDS,
+    AccountCodeProblem, CHALLENGE_WORDS, Ceremony, CeremonyAccount, CeremonyFailure, CeremonyPhase,
+    Networking, PHRASE_WORDS, check_account_code,
 };
 use ramflux_desktop_navigation::direction::{h_flex, h_flex_ltr};
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary, text_subheading};
@@ -30,7 +30,6 @@ use super::{CeremonyPanel, Hint, Pending, Screen};
 use crate::actions::CEREMONY_CONTEXT;
 use crate::entry::parts::{announced, clock, muted, ringed, warning};
 use crate::i18n::{tr, tr_args};
-use crate::settings::backup::text::Strength;
 
 /// The ids of the three word inputs.
 const WORD_IDS: [&str; CHALLENGE_WORDS] = ["ceremony-word-1", "ceremony-word-2", "ceremony-word-3"];
@@ -470,11 +469,7 @@ impl CeremonyPanel {
                     .child(
                         Button::new("ceremony-next")
                             .design_primary(cx)
-                            .design_label(tr(if self.agent {
-                                "agent.create.submit"
-                            } else {
-                                "ceremony.confirm.next"
-                            }))
+                            .design_label(tr("ceremony.confirm.next"))
                             .design_disabled(!ready, cx)
                             .on_click(cx.listener(|this, _, window, cx| this.next(window, cx))),
                     )
@@ -496,13 +491,16 @@ impl CeremonyPanel {
         // copies them again.
         let typed = self.passphrase.read(cx).value();
         let repeated = self.repeat.read(cx).value();
-        let strength = Strength::of(&typed);
+        let problem = check_account_code(&typed).err();
         let mismatch = !repeated.is_empty() && repeated != typed;
-        let ready = strength != Strength::TooShort && repeated == typed;
-        let hint_color = match strength {
-            Strength::TooShort | Strength::Weak => cx.theme().warning,
-            Strength::Fair | Strength::Strong => cx.theme().muted_foreground,
+        let ready = problem.is_none() && repeated == typed;
+        let hint = match problem {
+            Some(AccountCodeProblem::NotSixDigits) => tr("ceremony.code.not_six_digits"),
+            Some(AccountCodeProblem::Trivial) => tr("ceremony.code.trivial"),
+            None => tr("ceremony.code.ok"),
         };
+        let hint_color =
+            if problem.is_some() { cx.theme().warning } else { cx.theme().muted_foreground };
         let field = |key: &'static str,
                      input: &gpui_kit::Entity<gpui_kit::component::input::InputState>,
                      id: &'static str| {
@@ -531,18 +529,16 @@ impl CeremonyPanel {
                         announced(
                             "ceremony-strength",
                             Role::Status,
-                            strength.hint(),
-                            div().text_color(hint_color).child(strength.hint()),
+                            hint.clone(),
+                            div().text_color(hint_color).child(hint.clone()),
                         )
                     }))
                     .children(mismatch.then(|| {
                         announced(
                             "ceremony-mismatch",
                             Role::Alert,
-                            tr("settings.backup.mismatch"),
-                            div()
-                                .text_color(cx.theme().danger)
-                                .child(tr("settings.backup.mismatch")),
+                            tr("ceremony.code.mismatch"),
+                            div().text_color(cx.theme().danger).child(tr("ceremony.code.mismatch")),
                         )
                     })),
             )
@@ -723,7 +719,7 @@ impl CeremonyPanel {
                         // The screens with nothing to type into or read in
                         // order: the heading says where the reader is; a
                         // failure says itself.
-                        (None, Screen::Ready | Screen::Creating | Screen::Done) => {
+                        (None, Screen::Ready | Screen::Done) => {
                             window.focus(&panel.heading_focus, cx);
                         }
                         (None, Screen::PhraseMissing | Screen::Ended) => {
@@ -762,7 +758,6 @@ impl Render for CeremonyPanel {
             Some(_) if self.expired => {
                 (Screen::Ended, self.ended_screen("ceremony.ended.expired", window, cx))
             }
-            None if self.agent => (Screen::Name, self.agent_name_screen(window, cx)),
             None => (Screen::Name, self.name_screen(window, cx)),
             Some(ceremony) => match ceremony.phase.clone() {
                 CeremonyPhase::Prepared => {
@@ -778,19 +773,11 @@ impl Render for CeremonyPanel {
                     };
                     (screen, self.phrase_screen(&ceremony, window, cx))
                 }
-                CeremonyPhase::Challenged { .. }
-                    if self.agent && self.pending == Some(Pending::Confirm) =>
-                {
-                    (Screen::Creating, self.creating_screen(window, cx))
-                }
                 CeremonyPhase::Challenged { positions } if self.typed.is_none() => {
                     (Screen::Words, self.words_screen(&ceremony, positions, window, cx))
                 }
                 CeremonyPhase::Challenged { .. } => {
                     (Screen::Passphrase, self.passphrase_screen(&ceremony, window, cx))
-                }
-                CeremonyPhase::Created(account) if self.agent => {
-                    (Screen::Done, self.agent_done_screen(&account, window, cx))
                 }
                 CeremonyPhase::Created(account) => {
                     (Screen::Done, self.done_screen(&account, window, cx))

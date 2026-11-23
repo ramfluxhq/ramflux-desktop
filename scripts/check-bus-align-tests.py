@@ -93,13 +93,11 @@ def main():
         "a_proposal_is_shown_once_and_accepted_with_the_version_seen")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--lib"],
         "app::session::tests::live_now_follows_injected_monotonic_time")
-    required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "tasks_contract"],
-        "a_pending_resolution_is_read_back_after_a_restart_and_says_when_it_waits_too_long")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--lib", "--features", "bus-trace"],
         "bus::trace::retention_tests::ring_export_is_bounded_and_contains_only_send_metadata")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "custody"],
         "a_pending_account_follows_networking_events_without_status_polling")
-    # Unlock/entry-listing race guard; SDK tasks_contract owns the de-focused gap proof.
+    # Unlock/entry-listing race guard.
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-ui", "--test", "demo_rehearsal_fake"],
         "every_step_passes_on_a_node_that_behaves")
     for features in ([], ["--features", "bus-trace"]):

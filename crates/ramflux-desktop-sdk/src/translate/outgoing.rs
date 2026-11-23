@@ -207,7 +207,7 @@ impl Translator {
     }
 
     /// This account as the origin of what it sends.
-    fn own_origin(&self) -> ParticipantId {
+    pub(super) fn own_origin(&self) -> ParticipantId {
         let own = self.directory.self_principal.as_deref().or(self.self_device.as_deref());
         ParticipantId::new(own.unwrap_or_default())
     }

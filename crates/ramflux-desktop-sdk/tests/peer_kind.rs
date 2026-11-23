@@ -217,7 +217,7 @@ fn an_authenticated_rename_is_a_name_change_in_every_context_of_the_principal() 
 }
 
 #[test]
-fn task_actors_and_event_lines_carry_the_verified_kind() {
+fn task_actors_carry_the_verified_kind() {
     let mut t = translator();
     let view = json!({
         "id": "t-1", "task_id": "t-1", "conversation_id": "thread-team", "version": 2,
@@ -248,43 +248,6 @@ fn task_actors_and_event_lines_carry_the_verified_kind() {
     let requester = task.actors.requester.expect("requester");
     assert_eq!((requester.kind, requester.kind_verified), (Some(PeerKind::Human), false));
     assert!(task.actors.acceptor.is_none(), "nobody accepted yet");
-
-    // The event line shows the row's flag; a sibling copy without the
-    // fields is read from its text.
-    let rendering = |unverified: &str| {
-        format!(
-            "Signed event signer=\"device:device-bo\" kind=\"accept\" content=\"Task t-1 accepted{unverified}\""
-        )
-    };
-    let messages = json!({ "messages": [
-        { "conversation_id": "thread-team", "message_id": "m-acc-1", "sender_id": "device-bo",
-          "content_type": "task", "task_id": "t-1", "actor_kind_verified": true,
-          "body_utf8": rendering(""), "deleted": false, "created_at": 1_790_000_100, "receipts": [] },
-        { "conversation_id": "thread-team", "message_id": "m-acc-2", "sender_id": "principal-me",
-          "body_utf8": rendering(" (actor kind unverified)"), "deleted": false,
-          "created_at": 1_790_000_200, "receipts": [] },
-    ] });
-    let events =
-        t.fetched(&Fetch::Messages(ContextId::new("thread-team")), &messages, Timestamp(3)).events;
-    let lines: Vec<_> = events
-        .iter()
-        .filter_map(|e| match e {
-            DomainEvent::MomentAdded(m) => match &m.kind {
-                MomentKind::TaskEvent(p) => {
-                    Some((m.id.as_str().to_owned(), p.event.clone(), p.actor_kind_verified))
-                }
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
-    assert_eq!(lines.len(), 2, "{events:?}");
-    assert!(lines.iter().any(|(id, event, verified)| id.contains("m-acc-1")
-        && *event == TaskEventKind::Accepted
-        && *verified));
-    assert!(lines.iter().any(|(id, event, verified)| id.contains("m-acc-2")
-        && *event == TaskEventKind::Accepted
-        && !*verified));
 }
 
 #[test]

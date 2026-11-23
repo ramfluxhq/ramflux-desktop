@@ -243,6 +243,7 @@ pub(super) struct SubmitParts<'a> {
 pub(super) fn submit_request(parts: SubmitParts<'_>) -> Result<Value, serde_json::Error> {
     let names: Vec<Option<String>> = parts.attachments.iter().map(|(_, n)| n.clone()).collect();
     let submit = LocalBusMessageSubmitRequest {
+        content: None,
         conversation_id: parts.conversation.to_string(),
         message_id: parts.message_id,
         envelope_id: parts.envelope_id,
@@ -279,6 +280,7 @@ fn group_send(acct: Option<&str>, context: &ContextId, message: &str, known: &im
         Err(error) => return refuse_invalid(&error),
     };
     let send = LocalBusGroupSendRequest {
+        content: None,
         group_id: group.to_owned(),
         conversation_id: context.to_string(),
         message_id,
@@ -291,21 +293,11 @@ fn group_send(acct: Option<&str>, context: &ContextId, message: &str, known: &im
         federation: None,
         ttl: None,
     };
-    let title = known.kept_title(context).map(str::to_owned);
     match serde_json::to_value(send) {
-        Ok(mut body) => {
-            if let Some(title) = &title {
-                body["title"] = json!(title);
-            }
-            Plan::Call {
-                request: BusRequest::new(acct, "group", "group.send", body),
-                refresh: vec![Fetch::GroupReceive {
-                    context: context.clone(),
-                    group: group.to_owned(),
-                    title,
-                }],
-            }
-        }
+        Ok(body) => Plan::Call {
+            request: BusRequest::new(acct, "group", "group.send", body),
+            refresh: vec![Fetch::Messages(context.clone())],
+        },
         Err(error) => refuse_invalid(&error.to_string()),
     }
 }

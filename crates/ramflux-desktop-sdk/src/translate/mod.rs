@@ -65,7 +65,6 @@ mod surface_answers;
 mod surfaces;
 pub mod task_answers;
 mod task_decisions;
-mod task_events;
 pub mod tasks;
 pub mod v1;
 
@@ -178,11 +177,6 @@ pub struct Translator {
     message_objects: BTreeMap<String, ObjectId>,
     /// Surfaces reported, by the daemon's scoped `surface_ref`.
     surfaces: BTreeMap<String, surfaces::KnownSurface>,
-    /// When each surface was posted (conversation, surface id, author), from
-    /// its first message.
-    surface_times: BTreeMap<(ContextId, String, String), Timestamp>,
-    /// v1 surfaces and their pending actions (dormant projection).
-    v1_surfaces: v1::surface::Book,
     /// Tasks reported, by desktop task id.
     tasks: BTreeMap<ramflux_desktop_core::TaskId, tasks::KnownTask>,
     /// The approval (desktop grant) that requested each daemon grant id.
@@ -280,8 +274,6 @@ impl Translator {
             renames: BTreeMap::new(),
             message_objects: BTreeMap::new(),
             surfaces: BTreeMap::new(),
-            surface_times: BTreeMap::new(),
-            v1_surfaces: v1::surface::Book::default(),
             tasks: BTreeMap::new(),
             requested_grants: BTreeMap::new(),
             review_again: BTreeSet::new(),
@@ -381,34 +373,14 @@ impl Translator {
             .collect()
     }
 
-    /// The read that refreshes one context's messages: a group conversation
-    /// is received through the group the directory links it to (none when
-    /// no group is linked).
-    fn messages_read(&self, context: &ContextId, kind: ContextKind) -> Vec<Fetch> {
-        let mut reads = self.message_reads(context, kind);
-        if !reads.is_empty() {
-            // The conversation's surfaces come with its messages.
-            reads.push(Self::surfaces_read(context));
-            // The conversation's tasks come with its messages.
-            reads.push(Fetch::Tasks(context.clone(), None));
-        }
-        reads
-    }
-
-    fn message_reads(&self, context: &ContextId, kind: ContextKind) -> Vec<Fetch> {
-        match kind {
-            ContextKind::Group => self
-                .directory
-                .group_of(context)
-                .map(|group| Fetch::GroupReceive {
-                    context: context.clone(),
-                    group: group.to_owned(),
-                    title: self.kept_title(context).map(str::to_owned),
-                })
-                .into_iter()
-                .collect(),
-            _ => vec![Fetch::Messages(context.clone())],
-        }
+    /// The reads that refresh one context's messages, with its surfaces
+    /// and tasks.
+    fn messages_read(&self, context: &ContextId) -> Vec<Fetch> {
+        vec![
+            Fetch::Messages(context.clone()),
+            Self::surfaces_read(context),
+            Fetch::Tasks(context.clone(), None),
+        ]
     }
 
     /// Translates one read.
@@ -471,10 +443,6 @@ impl Translator {
             Fetch::ContactRequests => Translated::events(self.contact_request_list(value)),
             Fetch::BackupJobs => self.backup_job_list(value),
             Fetch::Messages(context) => self.messages(context, value, now),
-            Fetch::GroupReceive { context, .. } => {
-                self.remember_plaintext(value);
-                self.messages(context, value, now)
-            }
             Fetch::Surfaces(context, _) => {
                 Translated { events: Vec::new(), follow: self.surface_list(context, value) }
             }
@@ -533,7 +501,6 @@ impl Translator {
         self.plaintext.clear();
         self.v1.drop_text();
         self.media_refused.clear();
-        self.v1_surfaces.clear();
         self.v1_calls.clear();
         self.set_lock(&id, ramflux_desktop_core::LockState::Locked)
     }
@@ -558,8 +525,8 @@ impl Translator {
         }
         contexts
             .into_iter()
-            .filter_map(|id| self.contexts.get(&id).map(|c| (id.clone(), c.kind)))
-            .flat_map(|(id, kind)| self.messages_read(&id, kind))
+            .filter(|id| self.contexts.contains_key(id))
+            .flat_map(|id| self.messages_read(&id))
             .collect()
     }
 
@@ -622,10 +589,6 @@ impl Known for Translator {
 
     fn task(&self, task_id: &str) -> Option<&crate::plan::task::TaskTarget> {
         self.task_target(task_id)
-    }
-
-    fn surface_task_binding(&self, surface_ref: &str) -> Option<(String, String)> {
-        self.surface_step(surface_ref)
     }
 }
 

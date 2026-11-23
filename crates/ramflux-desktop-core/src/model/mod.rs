@@ -30,6 +30,7 @@
 //!   media session that never enters the store.
 
 mod account;
+mod account_code;
 mod actor;
 mod agent;
 mod backend;
@@ -57,6 +58,7 @@ pub use account::{
     NetworkingReasonKind, Node, NodeHealth, NodeProbe, PinSource, ProbeOutcome,
     RegistrationRefusal, SecureSessions,
 };
+pub use account_code::{ACCOUNT_CODE_DIGITS, AccountCodeProblem, check_account_code};
 pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation};
 pub use agent::{AgentCustodyProblem, AgentExport, AgentExportPhase, AgentExportRefusal};
 pub use backend::{

@@ -90,12 +90,8 @@ pub const GROUP_ADD_MEMBER: &str = "group.add_member";
 pub const GROUP_REMOVE_MEMBER: &str = "group.remove_member";
 /// Kick a group member.
 pub const GROUP_KICK: &str = "group.kick";
-/// Ban a participant from a group.
-pub const GROUP_BAN: &str = "group.ban";
 /// Change a member's role.
 pub const GROUP_SET_ROLE: &str = "group.set_role";
-/// Create a group invitation.
-pub const GROUP_CREATE_INVITE: &str = "group.create_invite";
 /// Place a voice call in a direct conversation (CALL-01 §6 `call.invite`).
 pub const CALL_INVITE: &str = "call.invite";
 /// Answer a ringing call.
@@ -112,8 +108,6 @@ pub const HANDOFF_DECLINE: &str = "handoff.decline";
 pub const ACCOUNT_UNLOCK: &str = "account.unlock";
 /// Lock an account.
 pub const ACCOUNT_LOCK: &str = "account.lock";
-/// Create an account (carries a secret).
-pub const ACCOUNT_CREATE: &str = "account.create";
 /// Rotate an account passphrase (carries secrets).
 pub const ACCOUNT_ROTATE_PASSPHRASE: &str = "account.passphrase.rotate";
 /// Export an encrypted account backup (carries a secret).
@@ -129,8 +123,7 @@ pub const RESTORE_INSTALL: &str = "restore.install";
 /// Cancel a running backup, or a restore before it installs.
 pub const BACKUP_CANCEL: &str = "backup.cancel";
 /// Start creating an account: takes no seeds, answers `{ceremony: pending,
-/// ceremony_id}`. The same string as [`ACCOUNT_CREATE`], told apart by
-/// carrying no secret (the one-shot create is gone once a daemon offers this).
+/// ceremony_id}`.
 pub const CUSTODY_BEGIN: &str = "account.create";
 /// Hand the recovery phrase out, once.
 pub const CUSTODY_SHOW_ONCE: &str = "account.create.show_once";
@@ -150,14 +143,10 @@ pub const RECOVER_BEGIN: &str = "account.recover.begin";
 pub const RECOVER_CONFIRM: &str = "account.recover.confirm";
 /// Cancel the recovery.
 pub const RECOVER_CANCEL: &str = "account.recover.cancel";
-/// Join an existing identity as a new device (carries a secret).
-pub const DEVICE_ACTIVATE: &str = "device.activate";
 /// Revoke a device.
 pub const DEVICE_REVOKE: &str = "device.revoke";
 /// Export own-device sync data.
 pub const DEVICE_SYNC_EXPORT: &str = "device.sync.export";
-/// Import own-device sync data.
-pub const DEVICE_SYNC_IMPORT: &str = "device.sync.import";
 /// Discover a node from a URL (returns a summary awaiting confirmation).
 pub const NODE_ADD: &str = "node.add";
 /// Confirm and pin a discovered node.

@@ -3,9 +3,7 @@
 
 //! Trace coverage is compared against frames actually received by the fake daemon.
 use super::*;
-use crate::bus::{
-    BusRequest, client::BusClient, deadline::Deadlines, jobs::JobLink, stream, subscription,
-};
+use crate::bus::{BusRequest, client::BusClient, deadline::Deadlines, jobs::JobLink, stream};
 use ramflux_desktop_test::fake_bus::{FakeBus, Reply, socket_path};
 use serde_json::json;
 use std::time::Duration;
@@ -47,13 +45,6 @@ async fn trace_accounts_for_ordinary_stream_and_job_sends() {
         .await;
     });
     assert!(matches!(events.recv().await, Some(stream::Streamed::Opened { .. })));
-    let (out, mut pushed) = mpsc::unbounded_channel();
-    let socket = path.clone();
-    let push = tokio::spawn(async move {
-        subscription::run(&socket, "acct-main".into(), Duration::from_secs(2), deadlines, out)
-            .await;
-    });
-    assert_eq!(pushed.recv().await, Some(subscription::Pushed::Opened));
     let (out, mut job_events) = mpsc::unbounded_channel();
     let jobs = JobLink::new(path.clone(), Duration::from_secs(2), deadlines, out);
     jobs.ensure().await.expect("job subscription");
@@ -84,7 +75,7 @@ async fn trace_accounts_for_ordinary_stream_and_job_sends() {
     let entries = after(&path, 0);
     let seen = fake.seen();
     assert_eq!(entries.len(), seen.len(), "every actual frame appears exactly once");
-    assert_eq!(entries.len(), 9);
+    assert_eq!(entries.len(), 8);
     for method in [
         "daemon.status",
         "node.probe",
@@ -103,7 +94,6 @@ async fn trace_accounts_for_ordinary_stream_and_job_sends() {
         ("ordinary", "control", 1),
         ("ordinary", "data", 2),
         ("stream", "subscription", 1),
-        ("push", "subscription", 1),
         ("job", "subscription", 1),
         ("job", "data", 1),
         ("attended", "setup", 1),
@@ -128,6 +118,5 @@ async fn trace_accounts_for_ordinary_stream_and_job_sends() {
         assert_eq!(json.as_object().expect("entry").len(), 6);
     }
     stream.abort();
-    push.abort();
     jobs.close().await;
 }

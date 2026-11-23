@@ -78,7 +78,7 @@ impl Member {
     }
 
     fn public(&self) -> String {
-        ramflux_crypto::public_key_base64url_from_seed(self.seed)
+        ramflux_crypto::public_key_base64url_from_seed(&self.seed)
     }
 
     fn sign(&self, conversation: &str, body: TaskEventBody) -> Result<TaskEvent, Refused> {

@@ -15,34 +15,17 @@ use std::time::Duration;
 
 use common::*;
 use ramflux_desktop_core::{
-    AccountId, AccountKind, AgentExportPhase, AgentExportRefusal, CeremonyFailure, CeremonyPhase,
-    Effect, FailureCode, Networking, SecretInput, Source, methods,
+    AccountId, AccountKind, AgentExportPhase, AgentExportRefusal, Effect, FailureCode, Source,
+    methods,
 };
 use ramflux_desktop_sdk::SdkHub;
 use ramflux_desktop_test::fake_custody::FakeCustody;
-use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
 use serde_json::json;
 
 const OWNER: &str = "acct-owner";
 
 fn call(method: &str, body: serde_json::Value) -> Effect {
     Effect::Call { method: method.to_owned(), body }
-}
-
-fn begin(label: &str, custodian: &str) -> Effect {
-    call(
-        methods::CUSTODY_BEGIN,
-        json!({ "display_name": label, "principal_kind": "headless_ai",
-                "custodian_account": custodian }),
-    )
-}
-
-fn words() -> Vec<SecretInput> {
-    DEMO_POSITIONS.iter().map(|p| SecretInput::new(demo_word(usize::from(*p)))).collect()
-}
-
-fn confirm(secrets: Vec<SecretInput>) -> Effect {
-    Effect::SecretCall { method: methods::CUSTODY_CONFIRM.to_owned(), body: json!({}), secrets }
 }
 
 fn export(owner: &str, agent: &str, path: &str) -> Effect {
@@ -73,26 +56,13 @@ fn world(name: &str, custody: &Arc<FakeCustody>) -> (FakeBus, SdkHub, Fed) {
     (fake, hub, fed)
 }
 
-fn phase(fed: &Fed) -> Option<CeremonyPhase> {
-    fed.store.ceremony().map(|c| c.phase.clone())
-}
-
-fn created(fed: &mut Fed) -> String {
-    fed.source.submit(begin("Ledger", OWNER));
-    fed.until("prepared", |s, _| s.ceremony().is_some_and(|c| c.phase == CeremonyPhase::Prepared));
-    fed.source.submit(call(methods::CUSTODY_SHOW_ONCE, json!({})));
-    fed.until("shown", |s, _| s.ceremony().is_some_and(|c| c.phase == CeremonyPhase::PhraseReady));
-    assert!(fed.source.take_recovery_phrase().is_some());
-    fed.source.submit(call(methods::CUSTODY_HIDDEN_CHALLENGE, json!({})));
-    fed.until("asked", |s, _| {
-        s.ceremony().is_some_and(|c| matches!(c.phase, CeremonyPhase::Challenged { .. }))
-    });
-    fed.source.submit(confirm(words()));
-    fed.until("created", |s, _| {
-        s.ceremony().is_some_and(|c| matches!(c.phase, CeremonyPhase::Created(_)))
-    });
-    let Some(CeremonyPhase::Created(made)) = phase(fed) else { panic!("created") };
-    made.local_account_id
+/// An AI participant the owner custodies, as the daemon lists it.
+fn created(custody: &FakeCustody, hub: &SdkHub, fed: Fed) -> (String, Fed) {
+    custody.add_agent("acct-ledger", "Ledger", OWNER);
+    drop(fed);
+    let mut fed = Fed::new(hub.daemon_source());
+    fed.until("agent listed", |s, _| s.account(&AccountId::new("acct-ledger")).is_some());
+    ("acct-ledger".to_owned(), fed)
 }
 
 fn bundle_dir(name: &str) -> std::path::PathBuf {
@@ -102,92 +72,10 @@ fn bundle_dir(name: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn an_ai_participant_is_created_as_its_custodians_session_with_the_three_words_only() {
-    let custody = Arc::new(FakeCustody::new());
-    let (fake, hub, mut fed) = world("agent-create", &custody);
-    let id = created(&mut fed);
-    // The begin named the custodian and was sent as that account's session.
-    let sent = fake.seen().into_iter().find(|s| s.method == "account.create.begin").expect("begin");
-    assert_eq!(sent.account.as_deref(), Some(OWNER));
-    assert_eq!(
-        sent.body,
-        json!({ "display_name": "Ledger", "principal_kind": "headless_ai",
-                "custodian_account": OWNER })
-    );
-    // The confirm carried the words and no passphrase.
-    assert_eq!(custody.last_confirm_fields(), vec!["words".to_owned()]);
-    // One connection for the whole ceremony, shared with nothing else.
-    let connection = custody.connections_of("account.create.begin");
-    assert_eq!(connection.len(), 1);
-    assert_eq!(custody.connections_of("account.create.confirm"), connection);
-    // The account is an AI participant its creator custodies.
-    let account = fed.store.account(&AccountId::new(&id)).expect("listed");
-    assert_eq!(account.kind, AccountKind::HeadlessAi);
-    assert_eq!(account.networking, Networking::Live);
-    assert_eq!(fed.store.custodian_of(&account.id), Some(&AccountId::new(OWNER)));
-    // The phrase was handed over once and every typed secret was erased.
-    let audit = hub.phrase_audit();
-    assert_eq!((audit.issued(), audit.taken(), audit.outstanding()), (1, 1, 0));
-    assert_eq!((audit.secrets(), audit.secrets_wiped()), (3, 3));
-    // No secret is in any event.
-    let all = format!("{:?}", fed.envelopes);
-    assert!(!all.contains(demo_word(3)) && !all.contains("daemon-made"), "no secret in events");
-    fake.shutdown();
-}
-
-#[test]
-fn the_daemons_refusals_of_a_custodian_end_the_ceremony_as_a_typed_refusal() {
-    // The custodian is locked, pending, not a person, not the session, or
-    // not known: the begin is refused whatever the cause.
-    type Arrange = fn(&FakeCustody);
-    let cases: [(&str, Arrange); 4] = [
-        ("locked", |c| c.set_locked(OWNER, true)),
-        ("pending", |c| c.set_networking_of(OWNER, false)),
-        ("agent", |c| c.add_agent("acct-bot", "Bot", OWNER)),
-        ("unknown", |_| {}),
-    ];
-    for (name, arrange) in cases {
-        let custody = Arc::new(FakeCustody::new());
-        let (fake, _hub, mut fed) = world(&format!("agent-refuse-{name}"), &custody);
-        arrange(&custody);
-        let custodian = match name {
-            "agent" => "acct-bot",
-            "unknown" => "acct-nobody",
-            _ => OWNER,
-        };
-        fed.source.submit(begin("Ledger", custodian));
-        fed.until(name, |s, _| s.ceremony().is_some());
-        assert_eq!(
-            phase(&fed),
-            Some(CeremonyPhase::Failed(CeremonyFailure::CustodianRefused)),
-            "{name}"
-        );
-        assert!(fed.store.ceremony().is_some_and(|c| c.ceremony_id.is_empty()), "no ceremony");
-        assert_eq!(custody.running(), 0, "{name}: nothing is left running");
-        fake.shutdown();
-    }
-}
-
-#[test]
-fn the_ceremony_is_begun_as_the_session_of_the_account_that_custodies() {
-    // Whatever person's account custodies, the begin is that account's own
-    // session (the daemon refuses a frame that names another).
-    let custody = Arc::new(FakeCustody::new());
-    let (fake, _hub, mut fed) = world("agent-session", &custody);
-    custody.add_account("acct-other", "Other", "x", false);
-    fed.source.submit(begin("Ledger", "acct-other"));
-    fed.until("prepared", |s, _| s.ceremony().is_some());
-    assert_eq!(phase(&fed), Some(CeremonyPhase::Prepared));
-    let sent = fake.seen().into_iter().find(|s| s.method == "account.create.begin").expect("begin");
-    assert_eq!(sent.account.as_deref(), Some("acct-other"));
-    fake.shutdown();
-}
-
-#[test]
 fn the_credentials_are_exported_once_on_an_attended_connection_to_a_private_file() {
     let custody = Arc::new(FakeCustody::new());
-    let (fake, _hub, mut fed) = world("agent-export", &custody);
-    let id = created(&mut fed);
+    let (fake, hub, fed) = world("agent-export", &custody);
+    let (id, mut fed) = created(&custody, &hub, fed);
     let dir = bundle_dir("export");
     let path = dir.join("ledger.bundle");
     let path_text = path.to_string_lossy().into_owned();
@@ -344,7 +232,7 @@ fn a_daemon_that_reports_the_custodian_is_believed_and_the_listing_shows_kind_an
 #[test]
 fn the_two_methods_wait_like_the_account_ceremonies_they_belong_to() {
     let deadlines = ramflux_desktop_sdk::Deadlines::standard();
-    for method in ["account.create.begin", "account.export_agent_credentials", "account.create"] {
+    for method in ["account.export_agent_credentials", "account.create"] {
         assert_eq!(deadlines.budget(method), deadlines.network, "{method}");
     }
 }

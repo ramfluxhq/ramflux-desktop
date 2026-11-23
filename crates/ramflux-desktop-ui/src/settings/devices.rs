@@ -57,13 +57,10 @@ pub(crate) fn page(
     let revoke_reason = crate::gate::reason(store, ramflux_desktop_core::methods::DEVICE_REVOKE);
     let sink = context.sink(SettingsSection::Devices);
     let list_sink = sink.clone();
-    let (export_reason, import_reason) = {
-        let store = context.store.read(cx).store();
-        (
-            crate::gate::reason(store, ramflux_desktop_core::methods::DEVICE_SYNC_EXPORT),
-            crate::gate::reason(store, ramflux_desktop_core::methods::DEVICE_SYNC_IMPORT),
-        )
-    };
+    let export_reason = crate::gate::reason(
+        context.store.read(cx).store(),
+        ramflux_desktop_core::methods::DEVICE_SYNC_EXPORT,
+    );
     let render_list = move |cx: &mut App| -> gpui_kit::AnyElement {
         if devices.is_empty() {
             let (title, description, kind) = if let Some(reason) = failure.as_ref() {
@@ -238,61 +235,32 @@ pub(crate) fn page(
     });
     let sync = SettingItem::render(move |_, _, cx: &mut App| {
         let export = sink.clone();
-        let import = sink.clone();
-        let buttons = h_flex()
-            .flex_wrap()
-            .gap(space(2.))
-            .child(crate::gate::gated(
-                Button::new("sync-export")
-                    .design_secondary(cx)
-                    .design_label(tr("settings.devices.export"))
-                    .on_click(move |_, window, cx| {
-                        let export = export.clone();
-                        file_dialog::save_as(
-                            StartDir::Documents,
-                            SYNC_FILE_NAME,
-                            window,
-                            cx,
-                            move |path, window, cx| {
-                                export.emit(
-                                    UiEventKind::DeviceSyncRequested {
-                                        direction: SyncDirection::Export,
-                                        path,
-                                    },
-                                    window,
-                                    cx,
-                                );
-                            },
-                        );
-                    }),
-                export_reason.clone(),
-                cx,
-            ))
-            .child(crate::gate::gated(
-                Button::new("sync-import")
-                    .design_secondary(cx)
-                    .design_label(tr("settings.devices.import"))
-                    .on_click(move |_, window, cx| {
-                        let import = import.clone();
-                        file_dialog::open_file(
-                            tr("settings.devices.import"),
-                            window,
-                            cx,
-                            move |path, window, cx| {
-                                import.emit(
-                                    UiEventKind::DeviceSyncRequested {
-                                        direction: SyncDirection::Import,
-                                        path,
-                                    },
-                                    window,
-                                    cx,
-                                );
-                            },
-                        );
-                    }),
-                import_reason.clone(),
-                cx,
-            ));
+        let buttons = h_flex().flex_wrap().gap(space(2.)).child(crate::gate::gated(
+            Button::new("sync-export")
+                .design_secondary(cx)
+                .design_label(tr("settings.devices.export"))
+                .on_click(move |_, window, cx| {
+                    let export = export.clone();
+                    file_dialog::save_as(
+                        StartDir::Documents,
+                        SYNC_FILE_NAME,
+                        window,
+                        cx,
+                        move |path, window, cx| {
+                            export.emit(
+                                UiEventKind::DeviceSyncRequested {
+                                    direction: SyncDirection::Export,
+                                    path,
+                                },
+                                window,
+                                cx,
+                            );
+                        },
+                    );
+                }),
+            export_reason.clone(),
+            cx,
+        ));
         super::design::section("devices-sync", tr("settings.devices.sync"), cx)
             .child(super::design::help(tr("settings.devices.sync_help"), cx))
             .child(buttons)

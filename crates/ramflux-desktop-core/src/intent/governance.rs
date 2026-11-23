@@ -29,11 +29,6 @@ pub enum GovernanceOp {
         /// Member to remove.
         participant_id: ParticipantId,
     },
-    /// Remove and block a participant from rejoining.
-    Ban {
-        /// Participant to ban.
-        participant_id: ParticipantId,
-    },
     /// Change a member's role.
     SetRole {
         /// Member.
@@ -41,23 +36,16 @@ pub enum GovernanceOp {
         /// New role.
         role: Role,
     },
-    /// Invite a known participant, who joins by accepting.
-    CreateInvite {
-        /// Participant to invite.
-        participant_id: ParticipantId,
-        /// Role granted on joining.
-        role: Role,
-    },
 }
 
 impl GovernanceOp {
-    /// Policy risk of the operation. `Kick`, `Ban` and `SetRole` are high risk
+    /// Policy risk of the operation. `Kick` and `SetRole` are high risk
     /// and need human confirmation.
     pub const fn risk(&self) -> Risk {
         match self {
-            Self::Kick { .. } | Self::Ban { .. } | Self::SetRole { .. } => Risk::High,
+            Self::Kick { .. } | Self::SetRole { .. } => Risk::High,
             Self::RemoveMember { .. } => Risk::Medium,
-            Self::AddMember { .. } | Self::CreateInvite { .. } => Risk::Low,
+            Self::AddMember { .. } => Risk::Low,
         }
     }
 
@@ -67,9 +55,7 @@ impl GovernanceOp {
             Self::AddMember { .. } => methods::GROUP_ADD_MEMBER,
             Self::RemoveMember { .. } => methods::GROUP_REMOVE_MEMBER,
             Self::Kick { .. } => methods::GROUP_KICK,
-            Self::Ban { .. } => methods::GROUP_BAN,
             Self::SetRole { .. } => methods::GROUP_SET_ROLE,
-            Self::CreateInvite { .. } => methods::GROUP_CREATE_INVITE,
         }
     }
 
@@ -79,19 +65,15 @@ impl GovernanceOp {
             Self::AddMember { participant_id, .. }
             | Self::RemoveMember { participant_id }
             | Self::Kick { participant_id }
-            | Self::Ban { participant_id }
-            | Self::SetRole { participant_id, .. }
-            | Self::CreateInvite { participant_id, .. } => Some(participant_id),
+            | Self::SetRole { participant_id, .. } => Some(participant_id),
         }
     }
 
     /// Role carried by the operation, if any.
     pub const fn role(&self) -> Option<Role> {
         match self {
-            Self::AddMember { role, .. }
-            | Self::SetRole { role, .. }
-            | Self::CreateInvite { role, .. } => Some(*role),
-            Self::RemoveMember { .. } | Self::Kick { .. } | Self::Ban { .. } => None,
+            Self::AddMember { role, .. } | Self::SetRole { role, .. } => Some(*role),
+            Self::RemoveMember { .. } | Self::Kick { .. } => None,
         }
     }
 }

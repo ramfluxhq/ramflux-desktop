@@ -158,12 +158,12 @@ fn every_topic_calls_for_its_reads_and_nothing_is_polled() {
             "message.received",
             json!({ "message": { "id": "m3", "conversation_id": "dm-ana" },
                     "conversation": { "id": "dm-ana" } }),
-            &["message.list", "conversation.directory"],
+            &["message.read", "conversation.directory"],
         ),
         (
             "message.updated",
             json!({ "message_id": "m2", "conversation_id": "dm-ana" }),
-            &["message.list"],
+            &["message.read"],
         ),
         (
             "group.message.received",

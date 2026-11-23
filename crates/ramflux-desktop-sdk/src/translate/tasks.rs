@@ -480,26 +480,6 @@ impl Translator {
             .then(|| Fetch::Task(ContextId::new(conversation), task.to_owned()))
     }
 
-    /// The reads of the tasks that task message rows name and the desktop
-    /// does not show yet (a row carries its `task_id`).
-    pub(super) fn task_rows(&self, context: &ContextId, rows: &[&Value]) -> Vec<Fetch> {
-        let mut reads: Vec<Fetch> = Vec::new();
-        for row in rows {
-            let task_id = text(row, "task_id");
-            let read = Fetch::Task(context.clone(), task_id.to_owned());
-            let id = task_key(context.as_str(), task_id);
-            // A pruned task's messages may still be listed: it is not read.
-            if !task_id.is_empty()
-                && !self.tasks.contains_key(&id)
-                && !self.removed_tasks.contains(&id)
-                && !reads.contains(&read)
-            {
-                reads.push(read);
-            }
-        }
-        reads
-    }
-
     /// Where a reported task lives.
     pub(crate) fn task_target(&self, id: &str) -> Option<&TaskTarget> {
         self.tasks.get(&TaskId::new(id)).map(|k| &k.target)

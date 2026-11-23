@@ -15,7 +15,6 @@ use ramflux_desktop_core::{
     AccountId, ContextId, Intent, IntentKind, Store, Task, TaskId, Timestamp, handle_intent,
 };
 use ramflux_desktop_test::fake_bus::Seen;
-use ramflux_desktop_test::fake_surfaces::FakeSurfaces;
 use ramflux_desktop_test::fake_tasks::{FakeTasks, Member};
 use serde_json::{Value, json};
 
@@ -29,12 +28,11 @@ pub fn key(conversation: &str, task: &str) -> TaskId {
     ramflux_desktop_sdk::translate::tasks::task_key(conversation, task)
 }
 
-/// The daemon: the fixture, tasks, the assignee's surfaces, and the
+/// The daemon: the fixture, tasks, and the
 /// approvals the test adds.
 pub struct World {
     pub fake: FakeBus,
     pub tasks: FakeTasks,
-    pub surfaces: Arc<FakeSurfaces>,
     pub approvals: Arc<Mutex<Vec<Value>>>,
     /// Approvals listed only in `grant.list` (a task assignee's approval
     /// that reached this requester, as the daemon lists it).
@@ -66,12 +64,10 @@ impl World {
         );
         tasks.add_member(Member::human("principal-ana", "device-ana", 11));
         let approvals: Arc<Mutex<Vec<Value>>> = Arc::default();
-        let surfaces = Arc::new(FakeSurfaces::default());
-        surfaces.acting_as("principal-me");
         let remote: Arc<Mutex<Vec<Value>>> = Arc::default();
-        let (t, a, s, r) = (tasks.clone(), approvals.clone(), surfaces.clone(), remote.clone());
+        let (t, a, r) = (tasks.clone(), approvals.clone(), remote.clone());
         let fake = FakeBus::start(&path, move |method, _, body| {
-            if let Some(reply) = t.handle(method, body).or_else(|| s.handle(method, body)) {
+            if let Some(reply) = t.handle(method, body) {
                 return reply;
             }
             match method {
@@ -103,14 +99,20 @@ impl World {
                     Reply::Ok(json!({ "grant_id": format!("grant_{id}"), "approval_id": id,
                                       "decision_id": decision_id(&id) }))
                 }
-                "message.list" | "group.receive" => {
+                "message.read" => {
                     let conversation = body["conversation_id"].as_str().unwrap_or_default();
-                    let mut frame = frames()["message.list"].clone();
+                    let mut frame = frames()["message.read"].clone();
+                    frame["conversation_id"] = json!(conversation);
                     if conversation != "dm-ana" {
                         frame["messages"] = json!([]);
                     }
                     let rows = frame["messages"].as_array_mut().expect("rows");
-                    rows.extend(t.messages(conversation));
+                    for record in t.messages(conversation) {
+                        rows.insert(
+                            0,
+                            ramflux_desktop_test::fake_read_model::row(&record, "device-me"),
+                        );
+                    }
                     Reply::Ok(frame)
                 }
                 _ => fixture(method),
@@ -118,7 +120,7 @@ impl World {
         });
         fake.enable_stream();
         tasks.announce_to(fake.publisher(), ACCOUNT);
-        (Self { fake, tasks, surfaces, approvals, remote }, path)
+        (Self { fake, tasks, approvals, remote }, path)
     }
 
     pub fn since(&self, mark: usize, method: &str) -> Vec<Seen> {

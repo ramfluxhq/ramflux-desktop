@@ -122,16 +122,6 @@ fn add(participant: &str) -> IntentKind {
     }
 }
 
-fn invite(participant: &str) -> IntentKind {
-    IntentKind::Governance {
-        context_id: ContextId::new("c-garden"),
-        op: GovernanceOp::CreateInvite {
-            participant_id: ParticipantId::new(participant),
-            role: Role::Member,
-        },
-    }
-}
-
 fn with_garden() -> Store {
     let mut feed = Feed::new();
     feed.ok(
@@ -158,7 +148,7 @@ fn with_garden() -> Store {
 #[test]
 fn adding_to_an_existing_group_allows_a_stale_verification() {
     let store = with_garden();
-    for kind in [add("p-stale"), invite("p-stale")] {
+    for kind in [add("p-stale")] {
         let effects = human(&store, kind).expect("allowed");
         assert!(!effects.is_empty());
     }
@@ -170,6 +160,5 @@ fn adding_to_an_existing_group_refuses_a_key_change_or_fork() {
     for who in ["p-changed", "p-forked"] {
         let unresolved = IntentError::SafetyUnresolved(ParticipantId::new(who));
         assert_eq!(human(&store, add(who)).unwrap_err(), unresolved);
-        assert_eq!(human(&store, invite(who)).unwrap_err(), unresolved);
     }
 }

@@ -47,9 +47,8 @@ pub(super) fn project(
                 })
             })
             .collect(),
-        // The schema defines only "pin changed", not pin versus unpin: one
-        // neutral row, whatever the target.
-        Ok(ServiceAction::ServicePinChanged) => {
+        // A pin added or removed: one neutral row, whatever the target.
+        Ok(ServiceAction::ServicePinAdded | ServiceAction::ServicePinRemoved) => {
             let args = serde_json::json!({ "actor": translator.display_of(&origin) });
             vec![MomentKind::System(SystemPayload {
                 level: SystemLevel::Info,

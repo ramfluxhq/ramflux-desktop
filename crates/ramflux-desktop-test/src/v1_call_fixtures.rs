@@ -116,6 +116,8 @@ impl CallSpec {
             created_at,
             body: Some(body),
             signature: "SECRET-SIGNATURE".to_owned(),
+            call_ref: None,
+            call_start: None,
         };
         MessageUpdate {
             account_id: crate::v1_fixtures::ACCOUNT.to_owned(),

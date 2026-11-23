@@ -92,16 +92,6 @@ fn entry_and_node_methods_map_to_daemon_requests() {
         (m.as_str(), a.as_deref(), b),
         ("account.unlock", Some("acct-x"), json!({ "passphrase": "pw" }))
     );
-    let (m, a, b, _) = mapped(secret(
-        methods::ACCOUNT_CREATE,
-        json!({ "kind": "HeadlessAi", "label": "Bot", "node_id": "n-harbor" }),
-        &["pw"],
-    ));
-    assert_eq!((m.as_str(), a), ("account.create", None));
-    assert_eq!(b["client_mode"], "headless_ai");
-    assert_eq!(b["node_id"], "n-harbor");
-    assert_eq!(b["account_secret"], "pw");
-    assert_eq!(b["device_seed"].as_array().map(Vec::len), Some(32));
     let (m, _, b, _) =
         mapped(secret(methods::ACCOUNT_BACKUP_IMPORT, json!({ "path": "/b" }), &["pw"]));
     assert_eq!(
@@ -191,14 +181,7 @@ fn account_methods_map_to_daemon_requests() {
         (json!("g-team"), json!("thread-team"), json!("device-me"))
     );
     assert_eq!(b["plaintext_body_base64"], "aGk");
-    assert_eq!(
-        r,
-        vec![Fetch::GroupReceive {
-            context: ContextId::new("thread-team"),
-            group: "g-team".to_owned(),
-            title: b["title"].as_str().map(str::to_owned),
-        }]
-    );
+    assert_eq!(r, vec![Fetch::Messages(ContextId::new("thread-team"))]);
     let (m, _, b, r) =
         mapped(call(methods::SEND_MESSAGE, json!({ "context_id": "dm-ana", "text": "hi" })));
     assert_eq!(
@@ -211,7 +194,6 @@ fn account_methods_map_to_daemon_requests() {
     );
     for (method, daemon) in [
         (methods::GROUP_KICK, "group.member.kick"),
-        (methods::GROUP_BAN, "group.member.ban"),
         (methods::GROUP_REMOVE_MEMBER, "group.member.remove"),
     ] {
         let (m, _, b, _) = mapped(call(

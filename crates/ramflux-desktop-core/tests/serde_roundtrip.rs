@@ -153,25 +153,21 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::ShowRecoveryPhrase => "ShowRecoveryPhrase",
         IntentKind::HideRecoveryPhrase => "HideRecoveryPhrase",
         IntentKind::CancelCeremony => "CancelCeremony",
-        IntentKind::BeginAgentCeremony { .. } => "BeginAgentCeremony",
         IntentKind::ExportAgentCredentials { .. } => "ExportAgentCredentials",
         IntentKind::BeginRecovery { .. } => "BeginRecovery",
         IntentKind::CancelRecovery => "CancelRecovery",
         IntentKind::Unlock { .. }
-        | IntentKind::CreateAccount { .. }
-        | IntentKind::ActivateDevice { .. }
         | IntentKind::RestoreBackup { .. }
         | IntentKind::ExportBackup { .. }
         | IntentKind::CreateBackup { .. }
         | IntentKind::VerifyRestore { .. }
         | IntentKind::ConfirmCeremony { .. }
-        | IntentKind::ConfirmAgentCeremony { .. }
         | IntentKind::ConfirmRecovery { .. }
         | IntentKind::RotatePassphrase { .. } => "secret",
     }
 }
-/// Serializable intent variants (all but the eleven secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 62;
+/// Serializable intent variants (all but the eight secret-carrying kinds).
+const SERIALIZABLE_INTENT_VARIANTS: usize = 61;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -877,10 +873,6 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::ShowRecoveryPhrase,
         IntentKind::HideRecoveryPhrase,
         IntentKind::CancelCeremony,
-        IntentKind::BeginAgentCeremony {
-            label: "Ledger".into(),
-            custodian_id: AccountId::new("a-1"),
-        },
         IntentKind::ExportAgentCredentials {
             owner_id: AccountId::new("a-1"),
             account_id: AccountId::new("a-bot"),
@@ -961,7 +953,7 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::LockPressed { account_id: AccountId::new("a-1") },
         UiEventKind::RevokeDevicePressed { device_id: DeviceId::new("dev-2") },
         UiEventKind::DeviceSyncRequested {
-            direction: SyncDirection::Import,
+            direction: SyncDirection::Export,
             path: "/tmp/s".into(),
         },
         UiEventKind::DiagnosticsExportRequested { path: "/tmp/d".into() },
@@ -1030,17 +1022,6 @@ fn secret_intents_refuse_to_serialize() {
     let secret = || SecretInput::new("correct horse");
     let kinds = [
         IntentKind::Unlock { account_id: AccountId::new("a-1"), secret: secret() },
-        IntentKind::CreateAccount {
-            kind: AccountKind::HumanInteractive,
-            label: "Me".into(),
-            node_id: NodeId::new("n-1"),
-            secret: secret(),
-        },
-        IntentKind::ActivateDevice {
-            node_id: NodeId::new("n-1"),
-            device_label: "Laptop".into(),
-            code: secret(),
-        },
         IntentKind::RestoreBackup { path: "/tmp/b".into(), secret: secret() },
         IntentKind::ExportBackup {
             account_id: AccountId::new("a-1"),

@@ -158,8 +158,14 @@ async fn read_retry_cancels_on_lock_or_detach_and_coalesces() {
         task.tick();
         assert_eq!(fake.seen().len(), baseline + 2);
         // A new event can rearm, and concurrent event refreshes coalesce.
-        task.on_pushed(Pushed::Event { topic: "contact.requested".into(), body: json!({}) });
-        task.on_pushed(Pushed::Event { topic: "contact.requested".into(), body: json!({}) });
+        for seq in [1, 2] {
+            task.on_streamed(crate::bus::stream::Streamed::Event {
+                seq: Some(seq),
+                at: None,
+                topic: "contact.requested".into(),
+                body: json!({}),
+            });
+        }
         assert_eq!(task.read_recovery.running.len(), 1);
         answer(&mut task, &mut inbox).await;
         assert_eq!(fake.seen().len(), baseline + 3);

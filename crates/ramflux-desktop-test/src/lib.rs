@@ -14,8 +14,7 @@
 //!   step, advance, and seek for tests and the developer panel.
 //! - [`scale`]: generated large scenarios for scale tests.
 //! - `fake_bus` (feature `fake-bus`): a fake daemon local bus for adapter tests,
-//!   with its event journal in `fake_journal`, its agent surfaces (on the
-//!   protocol's state machine) in `fake_surfaces`, conversation tasks
+//!   with its event journal in `fake_journal`, conversation tasks
 //!   (on the protocol's state machine) in `fake_tasks`, its voice calls
 //!   (the CALL-01 bus API) in `fake_calls`, its contact requests
 //!   (CONTACT-02, contract-first) in `fake_contact_requests`, and full
@@ -61,9 +60,7 @@ pub mod fake_journal;
 #[cfg(feature = "fake-bus")]
 #[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_profiles;
-#[cfg(feature = "fake-bus")]
-#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
-pub mod fake_surfaces;
+pub mod fake_read_model;
 #[cfg(feature = "fake-bus")]
 #[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_tasks;

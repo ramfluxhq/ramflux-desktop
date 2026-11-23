@@ -133,7 +133,6 @@ fn member_row(
                 }))
                 .separator()
                 .item(target(GovernanceOp::Kick { participant_id: id.clone() }))
-                .item(target(GovernanceOp::Ban { participant_id: id.clone() }))
             })
     });
     v_flex()
@@ -198,10 +197,8 @@ fn label(op: &GovernanceOp) -> gpui_kit::SharedString {
         GovernanceOp::SetRole { role: Role::Admin, .. } => tr("dock.members.make_admin"),
         GovernanceOp::SetRole { .. } => tr("dock.members.make_member"),
         GovernanceOp::Kick { .. } => tr("dock.members.kick"),
-        GovernanceOp::Ban { .. } => tr("dock.members.ban"),
         GovernanceOp::RemoveMember { .. } => tr("dock.members.remove"),
         GovernanceOp::AddMember { .. } => tr("dock.members.add"),
-        GovernanceOp::CreateInvite { .. } => tr("dock.members.invite"),
     }
 }
 
@@ -210,8 +207,6 @@ impl Render for MembersDock {
         let store = self.store.read(cx).store();
         let add_reason =
             crate::gate::reason(store, ramflux_desktop_core::methods::GROUP_ADD_MEMBER);
-        let invite_reason =
-            crate::gate::reason(store, ramflux_desktop_core::methods::GROUP_CREATE_INVITE);
         let context = self.context_id.as_ref().and_then(|id| store.context(id)).cloned();
         let Some(context) = context.filter(|c| c.kind != ContextKind::Direct) else {
             return v_flex()
@@ -314,20 +309,13 @@ impl Render for MembersDock {
             }))
             .child(section("dock.members.grow", cx))
             .children(candidates.into_iter().map(|candidate| {
-                let ops = [
-                    GovernanceOp::AddMember {
-                        participant_id: candidate.id.clone(),
-                        role: Role::Member,
-                    },
-                    GovernanceOp::CreateInvite {
-                        participant_id: candidate.id.clone(),
-                        role: Role::Member,
-                    },
-                ];
-                let [add, invite] = ops;
+                let add = GovernanceOp::AddMember {
+                    participant_id: candidate.id.clone(),
+                    role: Role::Member,
+                };
                 candidate_row(
                     &candidate,
-                    [(add, add_reason.clone()), (invite, invite_reason.clone())],
+                    (add, add_reason.clone()),
                     self.asking.as_ref(),
                     &sink,
                     cx,
@@ -357,12 +345,11 @@ fn on_press(
     }
 }
 
-/// One contact that could join: Add and Invite. A key change or fork
-/// disables both with the reason; a stale verification asks first.
+/// One contact that could join: Add. A key change or fork disables it
+/// with the reason; a stale verification asks first.
 fn candidate_row(
     candidate: &Participant,
-    [(add, add_reason), (invite, invite_reason)]: [(GovernanceOp, Option<gpui_kit::SharedString>);
-        2],
+    (add, add_reason): (GovernanceOp, Option<gpui_kit::SharedString>),
     asking: Option<&GovernanceOp>,
     sink: &EventSink,
     cx: &Context<MembersDock>,
@@ -370,15 +357,9 @@ fn candidate_row(
     let safety = candidate.safety;
     let refused = safety.refuses_contact().then(|| i18n::safety(safety));
     let reason = |backend: Option<gpui_kit::SharedString>| refused.clone().or(backend);
-    let question =
-        asking.filter(|op| op.target() == Some(&candidate.id) && safety.is_stale()).map(|op| {
-            let key = if matches!(op, GovernanceOp::CreateInvite { .. }) {
-                "identity.ack.invite"
-            } else {
-                "identity.ack.add"
-            };
-            (op.clone(), tr_args(key, &[("name", &candidate.display)]))
-        });
+    let question = asking
+        .filter(|op| op.target() == Some(&candidate.id) && safety.is_stale())
+        .map(|op| (op.clone(), tr_args("identity.ack.add", &[("name", &candidate.display)])));
     let verify = {
         let (sink, id) = (sink.clone(), candidate.id.clone());
         move |_: &gpui_kit::ClickEvent, window: &mut Window, cx: &mut App| {
@@ -420,15 +401,6 @@ fn candidate_row(
                         .design_label(tr("dock.members.add"))
                         .on_click(on_press(safety, add, sink, cx)),
                     reason(add_reason),
-                    cx,
-                ))
-                .child(crate::gate::gated(
-                    Button::new("invite")
-                        .xsmall()
-                        .ghost()
-                        .label(tr("dock.members.invite"))
-                        .on_click(on_press(safety, invite, sink, cx)),
-                    reason(invite_reason),
                     cx,
                 )),
         )

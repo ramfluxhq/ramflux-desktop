@@ -70,8 +70,6 @@ pub struct MockCeremony {
     refusal: Option<CeremonyFailure>,
     /// The recovery of an account that lives on this device.
     recovery: crate::mock_recovery::MockRecovery,
-    /// The custodian of the AI participant being created, when it is one.
-    custodian: Option<String>,
     /// The credential exports of AI participants.
     agents: crate::mock_agents::MockAgents,
 }
@@ -99,7 +97,6 @@ impl MockCeremony {
             failing: Vec::new(),
             refusal: None,
             recovery: crate::mock_recovery::MockRecovery::default(),
-            custodian: None,
             agents: crate::mock_agents::MockAgents::default(),
         }
     }
@@ -222,26 +219,10 @@ impl MockCeremony {
             .and_then(ramflux_desktop_core::JsonValue::as_str)
             .unwrap_or_default()
             .to_owned();
-        let custodian = effect
-            .body()
-            .filter(|body| {
-                body.get("principal_kind").and_then(|k| k.as_str()) == Some("headless_ai")
-            })
-            .map(|body| {
-                body.get("custodian_account")
-                    .and_then(ramflux_desktop_core::JsonValue::as_str)
-                    .unwrap_or_default()
-                    .to_owned()
-            });
         if self.step != Step::Idle || label.is_empty() {
             // One ceremony at a time; the running one is erased.
             return self.end(CeremonyPhase::Failed(CeremonyFailure::Invalid));
         }
-        // An AI participant needs a custodian the daemon accepts.
-        if custodian.as_deref().is_some_and(str::is_empty) {
-            return self.end(CeremonyPhase::Failed(CeremonyFailure::CustodianRefused));
-        }
-        self.custodian = custodian;
         self.began += 1;
         self.step = Step::Prepared;
         self.ceremony_id = format!("ceremony-mock-{}", self.began);
@@ -265,13 +246,9 @@ impl MockCeremony {
         // One attempt, whatever the outcome: the ceremony is consumed.
         // The passphrase travels with the words (`{words, passphrase}`): a
         // confirm without one is refused as not valid.
-        // An AI participant's confirm carries the three words and no
-        // passphrase (the daemon makes its own); an account's carries both.
-        let agent = self.custodian.clone();
-        let ([first, second, third], passphrase) = match (secrets.as_slice(), &agent) {
-            ([first, second, third], Some(_)) => ([first, second, third], None),
-            ([first, second, third, passphrase], None) if !passphrase.is_empty() => {
-                ([first, second, third], Some(passphrase))
+        let ([first, second, third], passphrase) = match secrets.as_slice() {
+            [first, second, third, passphrase] if !passphrase.is_empty() => {
+                ([first, second, third], passphrase)
             }
             _ => return self.end(CeremonyPhase::Failed(CeremonyFailure::Invalid)),
         };
@@ -285,10 +262,8 @@ impl MockCeremony {
         if !matches {
             return self.end(CeremonyPhase::Failed(CeremonyFailure::ConfirmationFailed));
         }
-        let id = format!("acct-{}-{}", if agent.is_some() { "agent" } else { "v3" }, self.began);
-        if let Some(passphrase) = passphrase {
-            self.passphrases.insert(id.clone(), Zeroizing::new(passphrase.expose().to_owned()));
-        }
+        let id = format!("acct-v3-{}", self.began);
+        self.passphrases.insert(id.clone(), Zeroizing::new(passphrase.expose().to_owned()));
         let account = CeremonyAccount {
             local_account_id: id.clone(),
             display_name: self.label.clone(),
@@ -299,11 +274,7 @@ impl MockCeremony {
         let listed = DomainEvent::AccountUpdated(Account {
             id: AccountId::new(id),
             label: self.label.clone(),
-            kind: if agent.is_some() {
-                AccountKind::HeadlessAi
-            } else {
-                AccountKind::HumanInteractive
-            },
+            kind: AccountKind::HumanInteractive,
             node_id: None,
             device_id: Some("dev-mock".to_owned()),
             lock_state: LockState::Unlocked,
@@ -317,12 +288,6 @@ impl MockCeremony {
             networking: self.networking,
         });
         let mut events = vec![listed];
-        if let Some(custodian) = agent {
-            events.push(DomainEvent::CustodianKnown {
-                agent: AccountId::new(&account.local_account_id),
-                custodian: AccountId::new(custodian),
-            });
-        }
         events.extend(self.end(CeremonyPhase::Created(account)));
         events
     }
@@ -354,7 +319,6 @@ impl MockCeremony {
     /// Ends the ceremony with `phase`, erasing the phrase.
     fn end(&mut self, phase: CeremonyPhase) -> Vec<DomainEvent> {
         self.parked = None;
-        self.custodian = None;
         let refused_begin = self.step == Step::Idle;
         self.step = Step::Idle;
         let mut events = self.record(phase);
@@ -425,17 +389,6 @@ mod tests {
         let distinct: std::collections::BTreeSet<&str> = phrase.words().collect();
         assert_eq!(distinct.len(), 24);
         assert_eq!(phrase.word(3), Some(demo_word(3)));
-    }
-
-    #[test]
-    fn the_one_shot_create_with_a_passphrase_is_not_ours() {
-        let mut mock = MockCeremony::default();
-        let legacy = Effect::SecretCall {
-            method: methods::ACCOUNT_CREATE.to_owned(),
-            body: json!({ "label": "Alex" }),
-            secrets: vec![SecretInput::new("river stone lantern")],
-        };
-        assert!(mock.answer(&legacy, 0, EPOCH).is_none());
     }
 
     #[test]

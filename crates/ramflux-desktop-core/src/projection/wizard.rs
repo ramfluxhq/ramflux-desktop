@@ -4,7 +4,7 @@
 //! Agent configuration review against an explicit host-provided catalog.
 //! This validates a draft; it never creates credentials or grants authority.
 
-use crate::{AccountId, AgentCustodyProblem, IntentKind, Store, check_agent_custodian};
+use crate::{AccountId, AgentCustodyProblem, Store, check_agent_custodian};
 use std::collections::BTreeSet;
 
 /// Maximum number of tools/scopes in one local configuration draft.
@@ -98,25 +98,22 @@ impl AgentDraft {
         Ok(())
     }
 
-    /// Returns the existing identity-creation intent after current-state review.
-    /// Configured drafts are unavailable until the backend can carry every selection.
+    /// Reviews the draft for Create against current facts. Creating an
+    /// agent is the core's `agent.create` with the person's approval on
+    /// their phone, which this build does not run yet, so a valid draft is
+    /// refused as unavailable and kept as it is.
     ///
     /// # Errors
-    /// Returns validation errors or [`DraftError::ConfigurationUnavailable`]; no
-    /// runtime/tool/scope selection is silently discarded.
-    pub fn begin_identity(
-        &self,
-        store: &Store,
-        offers: &[RuntimeOffer],
-    ) -> Result<IntentKind, DraftError> {
+    /// Returns validation errors, [`DraftError::ConfigurationUnavailable`]
+    /// for a draft with a runtime, tool or scope, and
+    /// [`DraftError::CreationUnavailable`] otherwise; no selection is
+    /// silently discarded.
+    pub fn review(&self, store: &Store, offers: &[RuntimeOffer]) -> Result<(), DraftError> {
         self.validate(store, offers)?;
         if !self.runtime.is_empty() || !self.tools.is_empty() || !self.scopes.is_empty() {
             return Err(DraftError::ConfigurationUnavailable);
         }
-        Ok(IntentKind::BeginAgentCeremony {
-            label: self.name.trim().to_owned(),
-            custodian_id: self.owner.clone(),
-        })
+        Err(DraftError::CreationUnavailable)
     }
 }
 
@@ -130,6 +127,10 @@ pub enum DraftError {
     /// The backend cannot apply runtime/tools/scopes; the draft must be retained.
     #[error("agent configuration is unavailable in the backend")]
     ConfigurationUnavailable,
+    /// Creating an agent (with the person's approval on their phone) is not
+    /// available in this build.
+    #[error("agent creation is unavailable in this build")]
+    CreationUnavailable,
     /// Owner is no longer eligible.
     #[error("agent custodian is unavailable: {0:?}")]
     Custody(AgentCustodyProblem),
@@ -171,9 +172,10 @@ mod tests {
             Ok(()),
             "identity-only review must validate current custody without inventing a runtime"
         );
-        assert!(
-            matches!(draft.begin_identity(&store,&[]),Ok(IntentKind::BeginAgentCeremony{label,custodian_id}) if label=="Research helper" && custodian_id==draft.owner),
-            "identity-only creation carries every selected field"
+        assert_eq!(
+            draft.review(&store, &[]),
+            Err(DraftError::CreationUnavailable),
+            "creation is refused as unavailable, never begun through another path"
         );
         let offers = vec![RuntimeOffer::new(
             "host".into(),
@@ -187,19 +189,15 @@ mod tests {
             Ok(()),
             "the configured draft is structurally valid against the offered catalog"
         );
-        assert!(
-            matches!(
-                draft.begin_identity(&store, &offers),
-                Err(DraftError::ConfigurationUnavailable)
-            ),
+        assert_eq!(
+            draft.review(&store, &offers),
+            Err(DraftError::ConfigurationUnavailable),
             "creation must preserve configured drafts rather than drop their permissions"
         );
         draft.tools.clear();
-        assert!(
-            matches!(
-                draft.begin_identity(&store, &offers),
-                Err(DraftError::ConfigurationUnavailable)
-            ),
+        assert_eq!(
+            draft.review(&store, &offers),
+            Err(DraftError::ConfigurationUnavailable),
             "even a runtime-only choice cannot be silently discarded"
         );
         let mut account = store.account(&draft.owner).cloned().expect("test: known owner");

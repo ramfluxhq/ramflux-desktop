@@ -493,6 +493,7 @@ pub(crate) fn unavailable(gap: ramflux_desktop_sdk::business::ContractGap) -> Sh
     tr(match gap {
         ContractGap::StrangerActions => "sections.unavailable.stranger_actions",
         ContractGap::AgentConfiguration => "sections.unavailable.agent_configuration",
+        ContractGap::AgentCreation => "sections.unavailable.agent_creation",
         ContractGap::AccountPrivacy => "settings_ui.privacy_unavailable",
         ContractGap::DevicePairingApproval => "settings_ui.pairing_unavailable",
         ContractGap::WebDeviceFacts => "settings_ui.source_unavailable",
