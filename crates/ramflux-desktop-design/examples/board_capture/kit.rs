@@ -29,6 +29,7 @@ use gpui_kit::{
 };
 use ramflux_desktop_navigation::generated::catalog as kit;
 use ramflux_desktop_navigation::palette;
+use ramflux_desktop_navigation::scale::space;
 use ramflux_desktop_ui::AppAssets as Assets;
 use ramflux_desktop_ui::controls::{DesignCheckbox, radio_indicator};
 use ramflux_desktop_ui::status::{Tone, status_chip, tip_bar};
@@ -175,14 +176,16 @@ pub fn components() -> Vec<Component> {
             slug: "list-row-conversation",
             how: R("workspace/context_stack.rs list row (Button + navigation Row)", |_, cx, _| {
                 let p = palette(cx);
-                let mut row = ramflux_desktop_navigation::row::Row::new(t("kit02"), t("kit03"));
-                row.time = "09:44".into();
+                // The component shows no time; the application's row always
+                // has its avatar.
+                let row = ramflux_desktop_navigation::row::Row::new(t("kit02"), t("kit03"));
                 Button::new("row")
                     .ghost()
                     .w_full()
                     .h(rems(ramflux_desktop_navigation::theme::ROW_REM))
-                    .px_3()
-                    .rounded(px(p.radius_sm))
+                    .px(space(3.))
+                    .rounded(px(p.radius_md))
+                    .selected(true)
                     .child(row.content(cx))
                     .into_any_element()
             }),
@@ -242,32 +245,20 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "navigation-item",
-            how: R("workspace/navigation.rs rail item", |_, cx, _| {
-                let p = palette(cx);
+            how: A("workspace::rail_item", |_, cx, _| {
+                // The component (00B) is 68 wide with a "68px" caption above
+                // the 52 px item, on no fill.
                 div()
                     .w(rem(68.0))
-                    .px_2()
-                    .py(rem(20.0))
-                    .bg(ramflux_desktop_navigation::theme::colors(cx).rail)
-                    .child(
-                        Button::new("nav")
-                            .ghost()
-                            .small()
-                            .p_0()
-                            .w_full()
-                            .h(rem(52.0))
-                            .rounded(px(p.radius_sm))
-                            .selected(true)
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .items_center()
-                                    .gap_1()
-                                    .child(Icon::new(IconName::MessageSquare).with_size(px(20.)))
-                                    .child(div().text_size(rem(p.size_caption)).child(t("kit13"))),
-                            ),
-                    )
+                    .px(rem(8.0))
+                    .pt(rem(32.0))
+                    .child(ramflux_desktop_ui::workspace::rail_item(
+                        "nav",
+                        "navigation.messages",
+                        IconName::MessagesSquare,
+                        true,
+                        cx,
+                    ))
                     .into_any_element()
             }),
         },

@@ -4,11 +4,11 @@
 //! Stateless two-line conversation content; a Kit Button owns row interaction.
 
 use crate::direction::h_flex;
-use crate::scale::space;
+use crate::scale::{DesignText as _, space, style};
 use crate::theme;
 use gpui_kit::component::{StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{App, IntoElement, SharedString, div, rems};
+use gpui_kit::{App, FontWeight, IntoElement, SharedString, div, rems};
 
 /// Avatar shape is a source identity-kind fact, never a trust assertion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,15 +107,14 @@ impl Row {
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
-                                    .text_size(rem(palette.size_body))
-                                    .font_medium()
+                                    .design_text(style::body().weight(FontWeight::MEDIUM))
                                     .text_color(palette.text)
                                     .child(self.title),
                             )
                             .child(
                                 div()
                                     .flex_none()
-                                    .text_size(rem(palette.size_caption))
+                                    .design_text(style::caption())
                                     .text_color(palette.secondary)
                                     .child(self.time),
                             ),
@@ -128,7 +127,7 @@ impl Row {
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
-                                    .text_size(rem(palette.size_secondary))
+                                    .design_text(style::secondary())
                                     .text_color(palette.secondary)
                                     .child(self.preview),
                             )

@@ -22,7 +22,7 @@ h = 17
 [[deviation]]
 id = "r02"
 class = "layout"
-reason = "geometry differs (ink box board 32.0,39.5 349.5x156.0, app 22.5,24.0 381.5x173.0)"
+reason = "geometry differs (ink box board 32.0,39.5 349.5x156.0, app 23.0,24.0 381.0x173.0)"
 decision = "unreviewed"
 reviewer = ""
 

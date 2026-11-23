@@ -60,6 +60,11 @@ Versioning.
   success, warning and danger tones at 25 px; tip bars at 34 px with the
   tone's icon and one line of text. Settings notices are tip bars; the
   generated catalog `badge` is removed (one source).
+- Design list row and rail item: md radius, the list row's title, time and
+  preview in the design text styles, rail captions in the caption style
+  ending in an ellipsis when long (the tooltip has the name). The rail's
+  section items scroll in a short window, so Edit, Settings and the account
+  stay reachable at the 640 x 480 minimum.
 
 ### Fixed
 

@@ -368,3 +368,24 @@ fn body_search_reuses_normalized_source_documents_and_tasks_describe_loaded_hist
         );
     });
 }
+
+/// At the minimum window size the rail's bottom items (Edit, Settings, the
+/// account) are wholly inside the window; the section items above them
+/// scroll instead of pushing them out.
+#[gpui_kit::test]
+fn the_rail_bottom_items_stay_inside_the_minimum_window(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
+    let options = ramflux_desktop_ui::shell::ShellOptions::for_scenario("s02_daily", true);
+    let (handle, _shell) = open_at(cx, options, 640., 480.);
+    advance(cx, 300);
+    for id in ["nav-edit", "nav-settings", "nav-account", "nav-messages"] {
+        let (bounds, window) =
+            in_window(cx, handle, move |w, _| (w.find(id).bounds(), w.viewport_size()));
+        assert!(
+            bounds.origin.y >= gpui_kit::px(0.) && bounds.bottom() <= window.height,
+            "{id} is inside the 480 px window: {bounds:?}"
+        );
+    }
+    click(cx, handle, "nav-settings");
+    assert!(exists(cx, handle, "settings"), "Settings opens from the minimum window");
+}

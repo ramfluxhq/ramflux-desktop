@@ -14,7 +14,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, IntoElement, TestSupportExt as _, Window, div, rems};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
-use ramflux_desktop_navigation::scale::space;
+use ramflux_desktop_navigation::scale::{DesignText as _, design_px, space, style as text_style};
 use ramflux_desktop_navigation::theme;
 
 /// Navigation selects projections/features, never a source or an account writer.
@@ -204,25 +204,15 @@ impl Workspace {
         let settings_open = self.root.read(cx).host() == crate::root::ConfirmHost::Settings;
         let item = |id: &'static str, key: &'static str, icon: IconName, route: WorkspaceRoute| {
             let shown = !settings_open && self.is_route_shown(route);
-            Button::new(id)
-                .ghost()
-                .small()
-                .p_0()
-                .w_full()
-                .h(rems(52.0 / 15.0))
-                .rounded(gpui_kit::px(palette.radius_sm))
-                .selected(shown)
-                .toggled(shown)
-                .accessibility_label(tr(key))
-                .tooltip(tr(key))
-                .on_click(cx.listener(move |this, _, window, cx| {
+            rail_item(id, key, icon, shown, cx).toggled(shown).on_click(cx.listener(
+                move |this, _, window, cx| {
                     // A section chosen from the rail replaces settings.
                     if settings_open {
                         window.dispatch_action(Box::new(crate::actions::CloseSettings), cx);
                     }
                     this.navigate(route, window, cx)
-                }))
-                .child(rail_label(icon, key, palette))
+                },
+            ))
         };
         let agents = item("nav-agents", "navigation.agents", IconName::Bot, WorkspaceRoute::Agents);
         let account = self.store.read(cx);
@@ -264,47 +254,56 @@ impl Workspace {
                     .font_semibold()
                     .child(tr("app.mark")),
             )
-            .child(item(
-                "nav-messages",
-                "navigation.messages",
-                IconName::MessagesSquare,
-                WorkspaceRoute::Messages,
-            ))
-            .child(item("nav-groups", "navigation.groups", IconName::Users, WorkspaceRoute::Groups))
-            .child(agents)
+            // The section items scroll when the window is too short for the
+            // whole rail, so Edit, Settings and the account stay reachable.
             .child(
-                div()
-                    .id("navigation-divider")
-                    .py(rems(4.0 / 15.0))
-                    .child(div().w(rems(24.0 / 15.0)).h(gpui_kit::px(1.)).bg(palette.line)),
+                v_flex()
+                    .id("navigation-rail-items")
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .items_center()
+                    .gap(space(3.))
+                    .overflow_y_scroll()
+                    .child(item(
+                        "nav-messages",
+                        "navigation.messages",
+                        IconName::MessagesSquare,
+                        WorkspaceRoute::Messages,
+                    ))
+                    .child(item(
+                        "nav-groups",
+                        "navigation.groups",
+                        IconName::Users,
+                        WorkspaceRoute::Groups,
+                    ))
+                    .child(agents)
+                    .child(
+                        div()
+                            .id("navigation-divider")
+                            .py(rems(4.0 / 15.0))
+                            .child(div().w(rems(24.0 / 15.0)).h(gpui_kit::px(1.)).bg(palette.line)),
+                    )
+                    .child(item(
+                        "nav-contacts",
+                        "navigation.contacts",
+                        IconName::Contact,
+                        WorkspaceRoute::Contacts,
+                    ))
+                    .child(item(
+                        "nav-tasks",
+                        "navigation.tasks",
+                        IconName::SquareCheck,
+                        WorkspaceRoute::Tasks,
+                    )),
             )
-            .child(item(
-                "nav-contacts",
-                "navigation.contacts",
-                IconName::Contact,
-                WorkspaceRoute::Contacts,
-            ))
-            .child(item(
-                "nav-tasks",
-                "navigation.tasks",
-                IconName::SquareCheck,
-                WorkspaceRoute::Tasks,
-            ))
-            .child(div().flex_1())
             // Design I01 "Edit navigation": customising the rail is not built
             // yet; the item says so instead of doing nothing.
             .child(
-                Button::new("nav-edit")
-                    .ghost()
-                    .small()
-                    .p_0()
-                    .w_full()
-                    .h(rems(52.0 / 15.0))
-                    .rounded(gpui_kit::px(palette.radius_sm))
+                rail_item("nav-edit", "navigation.edit", IconName::Pencil, false, cx)
                     .disabled(true)
                     .accessibility_label(tr("navigation.edit_unavailable"))
-                    .tooltip(tr("navigation.edit_unavailable"))
-                    .child(rail_label(IconName::Pencil, "navigation.edit", palette)),
+                    .tooltip(tr("navigation.edit_unavailable")),
             )
             .child(
                 Button::new("nav-settings")
@@ -354,18 +353,53 @@ impl Workspace {
     }
 }
 
-/// A rail item's content: the 20 px icon over its caption.
-fn rail_label(
-    icon: IconName,
+/// A rail item (design `Navigation item`, boards 00B and 02): a 52 px
+/// square at the md radius, the 20 px icon over its caption in the caption
+/// style, `rf-selected` when it is the shown section. A caption longer than
+/// the item ends in an ellipsis; the item's tooltip carries the whole name
+/// (the design has no rule for long captions).
+pub fn rail_item(
+    id: &'static str,
     key: &'static str,
-    palette: ramflux_desktop_navigation::generated::rf_tokens::RFTheme,
-) -> impl IntoElement {
-    v_flex()
-        .items_center()
-        .gap(space(1.))
-        .child(Icon::new(icon).with_size(gpui_kit::px(20.)))
-        .child(div().text_size(rems(palette.size_caption / 15.0)).child(tr(key)))
+    icon: IconName,
+    selected: bool,
+    cx: &gpui_kit::App,
+) -> Button {
+    let palette = ramflux_desktop_navigation::palette(cx);
+    Button::new(id)
+        .ghost()
+        .small()
+        .p_0()
+        .w_full()
+        .h(design_px(RAIL_ITEM_PX))
+        .rounded(gpui_kit::px(palette.radius_md))
+        .selected(selected)
+        .accessibility_label(tr(key))
+        .tooltip(tr(key))
+        .child(
+            v_flex()
+                .w_full()
+                .min_w_0()
+                .items_center()
+                .gap(space(1.))
+                .child(Icon::new(icon).with_size(gpui_kit::px(RAIL_ICON_PX)))
+                .child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .px(space(0.5))
+                        .text_center()
+                        .truncate()
+                        .design_text(text_style::caption())
+                        .child(tr(key)),
+                ),
+        )
 }
+
+/// A rail item's side.
+const RAIL_ITEM_PX: f32 = 52.0;
+/// A rail item's icon.
+const RAIL_ICON_PX: f32 = 20.0;
 
 /// The identity popover (design B01): every account of this window with
 /// its kind and state (and what needs the user there), "Current" on the

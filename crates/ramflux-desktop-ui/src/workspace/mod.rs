@@ -58,7 +58,7 @@ pub use context_stack::{ContextStack, ContextStackEvent};
 pub use conversation::{Conversation, TIMERS, timer_label};
 pub use docks::prefs::{DockPrefs, LAYOUT_SCHEMA, PrefsStore};
 pub use docks::{DockRail, DockTool, DockToolEvent, DockToolPanel};
-pub use navigation::WorkspaceRoute;
+pub use navigation::{WorkspaceRoute, rail_item};
 pub use new_conversation::{NewConversation, NewConversationEvent};
 pub use new_group::{NewGroup, NewGroupEvent};
 pub use status_strip::StatusStrip;
