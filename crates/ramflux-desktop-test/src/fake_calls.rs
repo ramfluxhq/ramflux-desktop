@@ -265,6 +265,11 @@ impl FakeCalls {
         self.available.store(available, std::sync::atomic::Ordering::SeqCst);
     }
 
+    /// Whether the daemon has the call API.
+    pub fn available(&self) -> bool {
+        self.available.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// Answers a call request; `None` for any other method.
     pub fn handle(&self, method: &str, account: Option<&str>, body: &Value) -> Option<Reply> {
         if !method.starts_with("call.") {

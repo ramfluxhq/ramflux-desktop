@@ -16,6 +16,12 @@ Versioning.
 - The SDK calls tests wait on the bridge's completion notification instead of
   sampling every 15 ms, and no longer expect an exact number of `call.list`
   reads, which a recovery epoch on a loaded machine can exceed.
+- The SDK calls tests no longer time out waiting for "head recovery calls":
+  when the stream opens while the snapshot's `call.list` still waits for the
+  schema gate, the head recovery joins that read, so only one `call.list` is
+  sent. The tests waited for two. They now wait for a calls read after the
+  stream subscription, answered, and a regression test forces the joined read
+  through a new fake-bus answer hold.
 
 ### Changed
 

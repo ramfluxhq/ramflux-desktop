@@ -157,6 +157,56 @@ impl Hold {
     }
 }
 
+/// Holds back answers to chosen requests, each until released, in order.
+#[derive(Default)]
+struct AnswerHold {
+    /// The methods whose next request is held, each with its hold.
+    armed: Mutex<Vec<(String, Arc<Hold>)>>,
+    /// Every hold not yet released, oldest first.
+    holds: Mutex<std::collections::VecDeque<Arc<Hold>>>,
+}
+
+impl AnswerHold {
+    /// The hold of the request of `method` that just arrived, if it is the
+    /// one held (decided in arrival order, on the connection's reading
+    /// thread).
+    fn claim(&self, method: &str) -> Option<Arc<Hold>> {
+        let mut armed = self.armed.lock().expect("answer hold");
+        let at = armed.iter().position(|(held, _)| held == method)?;
+        Some(armed.remove(at).1)
+    }
+
+    fn arm(&self, method: &str) {
+        let hold = Arc::new(Hold::default());
+        hold.arm();
+        self.holds.lock().expect("answer hold").push_back(hold.clone());
+        self.armed.lock().expect("answer hold").push((method.to_owned(), hold));
+    }
+
+    /// Whether the oldest hold has a request waiting.
+    fn waiting(&self) -> bool {
+        self.holds
+            .lock()
+            .expect("answer hold")
+            .front()
+            .is_some_and(|hold| hold.waiting.load(Ordering::SeqCst))
+    }
+
+    /// Releases the oldest hold.
+    fn release(&self) {
+        if let Some(hold) = self.holds.lock().expect("answer hold").pop_front() {
+            hold.release();
+        }
+    }
+
+    fn release_all(&self) {
+        self.armed.lock().expect("answer hold").clear();
+        for hold in self.holds.lock().expect("answer hold").drain(..) {
+            hold.release();
+        }
+    }
+}
+
 /// The fake daemon. Dropping it does not stop it; call [`FakeBus::shutdown`].
 pub struct FakeBus {
     path: PathBuf,
@@ -171,6 +221,8 @@ pub struct FakeBus {
     hold: Arc<Hold>,
     /// Holds back the answer of one job request.
     request_hold: Arc<Hold>,
+    /// Holds back the answer of one request of a chosen method.
+    answer_hold: Arc<AnswerHold>,
     /// The daemon's creation and recovery ceremonies.
     custody: Arc<FakeCustody>,
 }
@@ -191,6 +243,7 @@ struct Shared {
     hold: Arc<Hold>,
     /// Holds back the answer of one job request.
     request_hold: Arc<Hold>,
+    answer_hold: Arc<AnswerHold>,
     custody: Arc<FakeCustody>,
 }
 
@@ -224,6 +277,7 @@ impl FakeBus {
         let account_hold = Arc::new(Hold::default());
         let hold = Arc::new(Hold::default());
         let request_hold = Arc::new(Hold::default());
+        let answer_hold = Arc::new(AnswerHold::default());
         let shared = Arc::new(Shared {
             handler,
             seen: seen.clone(),
@@ -236,6 +290,7 @@ impl FakeBus {
             account_hold: account_hold.clone(),
             hold: hold.clone(),
             request_hold: request_hold.clone(),
+            answer_hold: answer_hold.clone(),
             custody: custody.clone(),
         });
         let (s, st) = (stop.clone(), streams.clone());
@@ -268,6 +323,7 @@ impl FakeBus {
             account_hold,
             hold,
             request_hold,
+            answer_hold,
             custody,
         }
     }
@@ -315,6 +371,25 @@ impl FakeBus {
     /// Loses the connection the held job request was sent on.
     pub fn drop_held_job_request(&self) {
         self.request_hold.release();
+    }
+
+    /// The next request of `method` to arrive (in the order its connection
+    /// delivers requests) is received (it shows in [`FakeBus::seen`]) but
+    /// not answered until [`FakeBus::release_held_answer`]. Holds are
+    /// released in the order they were made.
+    pub fn hold_next_answer(&self, method: &str) {
+        self.answer_hold.arm(method);
+    }
+
+    /// Whether the oldest unreleased hold has its request waiting.
+    pub fn answer_held(&self) -> bool {
+        self.answer_hold.waiting()
+    }
+
+    /// Answers the request of the oldest unreleased hold (at once if it
+    /// has not arrived yet).
+    pub fn release_held_answer(&self) {
+        self.answer_hold.release();
     }
 
     /// The daemon ends the job streams with `stream.lagged` but leaves
@@ -454,6 +529,7 @@ impl FakeBus {
         self.account_hold.release();
         self.hold.release();
         self.request_hold.release();
+        self.answer_hold.release_all();
         for stream in self.streams.lock().expect("streams").drain(..) {
             let _ = stream.shutdown(std::net::Shutdown::Both);
         }
@@ -480,9 +556,13 @@ fn serve(mut stream: UnixStream, connection: usize, shared: &Arc<Shared>) {
         // Recorded as it arrives, before it is answered on its own thread:
         // `seen` keeps the order of the connection.
         let receipt = record(&request, connection, shared);
+        let held = shared.answer_hold.claim(request["method"].as_str().unwrap_or_default());
         let (shared, writer) = (shared.clone(), writer.clone());
         let Ok(subscriber) = stream.try_clone() else { break };
         thread::spawn(move || {
+            if let Some(hold) = held {
+                hold.pass();
+            }
             answer(&request, connection, receipt, &shared, &writer, subscriber);
         });
     }

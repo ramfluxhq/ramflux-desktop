@@ -66,6 +66,15 @@ impl World {
         self.fake.seen().into_iter().filter(|s| s.method == method).map(|s| s.body).collect()
     }
 
+    /// Whether the calls were read after the account's stream subscription
+    /// arrived: the head recovery, which reads once the stream is open.
+    fn calls_read_at_head(&self) -> bool {
+        let seen = self.fake.seen();
+        seen.iter()
+            .position(|s| s.method == "bus.subscribe" && s.account.as_deref() == Some(ACCOUNT))
+            .is_some_and(|at| seen[at..].iter().any(|s| s.method == "call.list"))
+    }
+
     fn stop(self) {
         if let Ok(fake) = Arc::try_unwrap(self.fake) {
             fake.shutdown();
@@ -76,23 +85,41 @@ impl World {
 /// An account source on `world`, live on the stream (or polling with the
 /// push subscription open).
 fn live(world: &World, call_api: bool, stream: bool) -> Fed {
+    let mut account = attach(world, call_api);
+    until_live(world, &mut account, call_api, stream);
+    account
+}
+
+/// An account source on `world`, not waited for.
+fn attach(world: &World, call_api: bool) -> Fed {
     let hub = ramflux_desktop_sdk::SdkHub::start(world.config(call_api)).expect("bridge");
-    let mut account = Fed::woken(hub.account_source(AccountId::new(ACCOUNT)), hub.wake());
+    Fed::woken(hub.account_source(AccountId::new(ACCOUNT)), hub.wake())
+}
+
+/// Waits until `account` is live on the stream (or polling).
+fn until_live(world: &World, account: &mut Fed, call_api: bool, stream: bool) {
     let mode = if stream { SyncMode::Stream } else { SyncMode::Off };
     account.until("the account is live", |s, _| {
         s.context(&ContextId::new(DM)).is_some()
             && s.sync_status().is_some_and(|sync| sync.mode == mode)
     });
     if stream {
-        // The attach snapshot and the head recovery each read the calls; a
-        // recovery epoch (a reconnect on a loaded machine) reads them again.
-        // An exact count, sampled between pumps, could be stepped over.
+        // The head recovery reads the calls once the stream is open. It is
+        // not always a read of its own: while the snapshot's calls read
+        // still waits for the schema gate, the recovery joins it, and that
+        // one read is sent after the stream opened. So what is waited for
+        // is a calls read after the subscription, never a number of reads,
+        // and, from a daemon with the call API, an answer that declared the
+        // calls supported (that one read may still be on its way back).
         if call_api {
-            account.until("head recovery calls", |_, _| world.requests("call.list").len() >= 2);
+            let available = world.calls.available();
+            account.until("head recovery calls", |s, _| {
+                world.calls_read_at_head()
+                    && (!available || s.unsupported_reason(methods::CALL_INVITE).is_none())
+            });
         }
         assert!(world.fake.streaming(ACCOUNT));
     }
-    account
 }
 
 fn dispatch(account: &mut Fed, kind: IntentKind) {
@@ -236,6 +263,39 @@ fn an_incoming_call_rings_here_and_is_answered_or_declined() {
     world.stop();
 }
 
+/// The head recovery after the stream opened finds the snapshot's calls
+/// read still waiting for the schema gate: it joins that read instead of
+/// adding a second one, and the one read, sent after the stream opened, is
+/// the head recovery. The gate's schema read (the first `daemon.status`) is
+/// answered only once that recovery has started (its `node.list`). That one
+/// read is the first answer to say the daemon has the call API, so until it
+/// is back the calls are not yet supported. A call that rang before the
+/// stream's head is still listed.
+#[test]
+fn a_head_recovery_that_joins_the_waiting_calls_read_reads_them_once() {
+    let world = World::start("joined", true);
+    let ringing = CallId::new(world.calls.incoming(ACCOUNT, DM));
+    world.fake.hold_next_answer("daemon.status");
+    world.fake.hold_next_answer("call.list");
+    let mut account = attach(&world, true);
+    account.until("the head recovery started", |_, _| world.requests("node.list").len() >= 2);
+    assert!(world.fake.answer_held(), "the schema read waits");
+    world.fake.release_held_answer();
+    account.until("the calls read sent", |_, _| world.fake.answer_held());
+    assert!(world.calls_read_at_head());
+    account.pump();
+    assert!(account.store.unsupported_reason(methods::CALL_INVITE).is_some(), "not answered yet");
+    world.fake.release_held_answer();
+    until_live(&world, &mut account, true, true);
+    assert!(account.store.unsupported_reason(methods::CALL_INVITE).is_none());
+    account.until("listed and ringing", |s, _| {
+        s.call(&ringing).is_some_and(|c| c.state == CallState::IncomingRinging)
+    });
+    assert_eq!(world.requests("call.list").len(), 1, "one calls read, joined");
+    assert!(account.store.failures().is_empty(), "{:?}", account.store.failures());
+    world.stop();
+}
+
 #[test]
 fn timeout_busy_and_answered_elsewhere_end_calls_with_their_reason() {
     let world = World::start("endings", true);
@@ -315,7 +375,7 @@ fn calls_come_back_with_a_reload() {
     feed.until("listed and ringing", |s, _| {
         s.call(&id).is_some_and(|c| c.state == CallState::IncomingRinging)
     });
-    assert!(world.requests("call.list").len() >= 2, "attach and head-recovery snapshots");
+    assert!(world.calls_read_at_head(), "the head-recovery snapshot");
     // A call record in the conversation's messages is the same call.
     world.calls.peer_hangs_up(&ringing);
     feed.until("missed", state_is(CallState::Ended(CallEndReason::Missed)));
@@ -333,7 +393,7 @@ fn a_daemon_without_the_call_api_has_calls_unsupported() {
     let world = World::start("old-daemon", true);
     world.calls.set_available(false);
     let mut account = live(&world, true, true);
-    assert!(world.requests("call.list").len() >= 2, "attach and head-recovery snapshots");
+    assert!(world.calls_read_at_head(), "the head-recovery snapshot");
     account.until("calls declared unsupported", |s, _| {
         s.unsupported_reason(methods::CALL_INVITE)
             == Some(ramflux_desktop_sdk::capabilities::reason::CALLS)
