@@ -22,14 +22,14 @@ h = 26
 [[deviation]]
 id = "r02"
 class = "spacing"
-reason = "same element moved by -1.5,-3.5 px (ink box board 88.5,36.0 46.5x22.5, app 87.0,32.5 46.5x22.5)"
+reason = "same element moved by +0.0,-3.5 px (ink box board 88.5,36.0 46.5x22.5, app 88.5,32.5 46.5x22.5)"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
-x = 87
+x = 88
 y = 32
-w = 48
+w = 47
 h = 27
 
 [[deviation]]
@@ -48,137 +48,150 @@ h = 12
 [[deviation]]
 id = "r04"
 class = "rasterisation"
-reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 28.0,52.0 12.5x17.0, app 28.0,51.5 13.0x17.0)"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 28.0,52.0 12.5x17.0, app 28.0,52.5 13.0x17.0)"
 decision = "accepted"
 reviewer = "lead"
 
 [deviation.region]
 x = 28
-y = 51
+y = 52
 w = 13
 h = 18
 
 [[deviation]]
 id = "r05"
 class = "layout"
-reason = "geometry differs (ink box board 100.5,89.5 28.5x14.0, app 90.5,91.0 25.5x12.5)"
+reason = "geometry differs (ink box board 100.5,89.5 28.5x14.0, app 92.5,92.5 25.5x12.5)"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
-x = 90
+x = 92
 y = 89
-w = 39
-h = 15
+w = 37
+h = 16
 
 [[deviation]]
 id = "r06"
-class = "layout"
-reason = "geometry differs (ink box board 23.5,97.0 21.0x36.5, app 23.0,96.0 21.0x34.5)"
-decision = "unreviewed"
-reviewer = ""
+class = "rasterisation"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 25.0,97.0 18.0x17.0, app 25.0,97.5 18.0x16.5)"
+decision = "accepted"
+reviewer = "lead"
 
 [deviation.region]
-x = 23
-y = 96
-w = 22
-h = 38
+x = 25
+y = 97
+w = 18
+h = 17
 
 [[deviation]]
 id = "r07"
 class = "layout"
-reason = "geometry differs (ink box board 506.5,121.0 101.5x51.5, app 506.5,105.0 227.0x77.5)"
+reason = "geometry differs (ink box board 506.5,121.0 101.5x51.5, app 506.5,105.0 224.5x78.0)"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
 x = 506
 y = 105
-w = 228
+w = 225
 h = 78
 
 [[deviation]]
 id = "r08"
+class = "rasterisation"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 23.5,123.0 20.5x10.5, app 23.0,122.0 21.0x10.5)"
+decision = "accepted"
+reviewer = "lead"
+
+[deviation.region]
+x = 23
+y = 122
+w = 21
+h = 12
+
+[[deviation]]
+id = "r09"
 class = "layout"
-reason = "geometry differs (ink box board 100.5,141.0 74.0x14.5, app 90.5,134.5 64.5x12.5)"
+reason = "geometry differs (ink box board 100.5,141.0 74.0x14.5, app 92.5,136.5 64.5x12.5)"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
-x = 90
-y = 134
-w = 85
-h = 22
-
-[[deviation]]
-id = "r09"
-class = "extra"
-reason = "drawn by the app, not on the board at 742,140 58x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 742
-y = 140
-w = 58
-h = 13
+x = 92
+y = 136
+w = 83
+h = 20
 
 [[deviation]]
 id = "r10"
 class = "extra"
-reason = "drawn by the app, not on the board at 808,140 31x13"
+reason = "drawn by the app, not on the board at 740,140 57x13"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
-x = 808
+x = 740
 y = 140
-w = 31
+w = 57
 h = 13
 
 [[deviation]]
 id = "r11"
 class = "extra"
-reason = "drawn by the app, not on the board at 847,140 84x13"
+reason = "drawn by the app, not on the board at 805,140 31x13"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
-x = 847
+x = 805
 y = 140
-w = 84
+w = 31
 h = 13
 
 [[deviation]]
 id = "r12"
-class = "layout"
-reason = "geometry differs (ink box board 23.0,162.0 21.5x35.5, app 22.5,160.0 21.5x33.5)"
-decision = "unreviewed"
-reviewer = ""
+class = "extra"
+reason = "drawn by the app, not on the board at 844,140 83x13"
+decision = "fix"
+reviewer = "rf-design classify"
 
 [deviation.region]
-x = 22
-y = 160
-w = 23
-h = 38
+x = 844
+y = 140
+w = 83
+h = 13
 
 [[deviation]]
 id = "r13"
-class = "layout"
-reason = "geometry differs (ink box board 100.5,193.0 29.0x14.5, app 90.5,178.0 25.5x12.5)"
-decision = "unreviewed"
-reviewer = ""
+class = "rasterisation"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 23.0,162.0 21.5x35.5, app 23.0,162.5 21.0x34.0)"
+decision = "accepted"
+reviewer = "lead"
 
 [deviation.region]
-x = 90
-y = 178
-w = 40
-h = 30
+x = 23
+y = 162
+w = 22
+h = 36
 
 [[deviation]]
 id = "r14"
 class = "layout"
-reason = "geometry differs (ink box board 506.5,207.0 136.5x38.5, app 506.5,219.5 29.0x14.0)"
+reason = "geometry differs (ink box board 100.5,193.0 29.0x14.5, app 92.5,180.5 25.5x12.5)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 92
+y = 180
+w = 38
+h = 28
+
+[[deviation]]
+id = "r15"
+class = "layout"
+reason = "geometry differs (ink box board 506.5,207.0 136.5x38.5, app 506.5,220.0 29.0x14.0)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -189,33 +202,33 @@ w = 137
 h = 39
 
 [[deviation]]
-id = "r15"
+id = "r16"
 class = "layout"
-reason = "element moved further than its region (ink within 24 px) at 90,221 26x13"
+reason = "element moved further than its region (ink within 24 px) at 92,224 26x13"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
-x = 90
-y = 221
+x = 92
+y = 224
 w = 26
 h = 13
 
 [[deviation]]
-id = "r16"
-class = "layout"
-reason = "geometry differs (ink box board 16.5,227.0 34.5x36.5, app 17.0,224.0 33.0x34.0)"
-decision = "unreviewed"
-reviewer = ""
+id = "r17"
+class = "rasterisation"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 39.0,231.0 3.0x10.0, app 39.0,231.0 3.0x10.0)"
+decision = "accepted"
+reviewer = "lead"
 
 [deviation.region]
-x = 16
-y = 224
-w = 35
-h = 40
+x = 39
+y = 231
+w = 3
+h = 10
 
 [[deviation]]
-id = "r17"
+id = "r18"
 class = "layout"
 reason = "element moved further than its region (ink within 24 px) at 663,233 62x12"
 decision = "unreviewed"
@@ -228,7 +241,7 @@ w = 62
 h = 12
 
 [[deviation]]
-id = "r18"
+id = "r19"
 class = "layout"
 reason = "element moved further than its region (ink within 24 px) at 745,233 49x12"
 decision = "unreviewed"
@@ -241,7 +254,7 @@ w = 49
 h = 12
 
 [[deviation]]
-id = "r19"
+id = "r20"
 class = "layout"
 reason = "element moved further than its region (ink within 24 px) at 813,233 48x12"
 decision = "unreviewed"
@@ -254,7 +267,20 @@ w = 48
 h = 12
 
 [[deviation]]
-id = "r20"
+id = "r21"
+class = "rasterisation"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 25.0,235.0 4.0x7.0, app 25.0,235.0 4.0x7.5)"
+decision = "accepted"
+reviewer = "lead"
+
+[deviation.region]
+x = 25
+y = 235
+w = 4
+h = 8
+
+[[deviation]]
+id = "r22"
 class = "layout"
 reason = "element moved further than its region (ink within 24 px) at 651,237 3x4"
 decision = "unreviewed"
@@ -267,7 +293,7 @@ w = 3
 h = 4
 
 [[deviation]]
-id = "r21"
+id = "r23"
 class = "layout"
 reason = "element moved further than its region (ink within 24 px) at 733,237 4x4"
 decision = "unreviewed"
@@ -280,7 +306,7 @@ w = 4
 h = 4
 
 [[deviation]]
-id = "r22"
+id = "r24"
 class = "layout"
 reason = "element moved further than its region (ink within 24 px) at 801,237 4x4"
 decision = "unreviewed"
@@ -293,98 +319,124 @@ w = 4
 h = 4
 
 [[deviation]]
-id = "r23"
+id = "r25"
 class = "layout"
-reason = "geometry differs (ink box board 100.5,245.0 29.0x14.5, app 90.5,265.0 25.5x12.5)"
+reason = "element moved further than its region (ink within 24 px) at 100,245 30x15"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
-x = 90
+x = 100
 y = 245
-w = 40
-h = 33
+w = 30
+h = 15
 
 [[deviation]]
-id = "r24"
+id = "r26"
+class = "spacing"
+reason = "same element moved by +0.0,-0.5 px (ink box board 18.0,252.0 33.0x11.5, app 18.0,251.5 32.0x10.5)"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 18
+y = 251
+w = 33
+h = 13
+
+[[deviation]]
+id = "r27"
 class = "layout"
-reason = "geometry differs (ink box board 506.0,272.0 80.0x32.0, app 506.5,255.0 147.5x42.0)"
+reason = "geometry differs (ink box board 506.0,272.0 80.0x32.0, app 506.5,255.5 146.0x42.5)"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
 x = 506
 y = 255
-w = 148
+w = 147
 h = 49
-
-[[deviation]]
-id = "r25"
-class = "layout"
-reason = "element moved further than its region (ink within 24 px) at 664,255 148x13"
-decision = "unreviewed"
-reviewer = ""
-
-[deviation.region]
-x = 664
-y = 255
-w = 148
-h = 13
-
-[[deviation]]
-id = "r26"
-class = "extra"
-reason = "drawn by the app, not on the board at 822,255 136x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 822
-y = 255
-w = 136
-h = 13
-
-[[deviation]]
-id = "r27"
-class = "layout"
-reason = "geometry differs (ink box board 100.5,297.0 29.0x14.5, app 90.5,308.5 25.5x12.5)"
-decision = "unreviewed"
-reviewer = ""
-
-[deviation.region]
-x = 90
-y = 297
-w = 40
-h = 24
 
 [[deviation]]
 id = "r28"
 class = "layout"
-reason = "geometry differs (ink box board 18.0,310.0 32.0x36.5, app 17.5,305.0 32.0x35.0)"
+reason = "element moved further than its region (ink within 24 px) at 662,255 147x13"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
-x = 17
-y = 305
-w = 33
-h = 42
+x = 662
+y = 255
+w = 147
+h = 13
 
 [[deviation]]
 id = "r29"
+class = "extra"
+reason = "drawn by the app, not on the board at 819,255 134x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 819
+y = 255
+w = 134
+h = 13
+
+[[deviation]]
+id = "r30"
 class = "layout"
-reason = "geometry differs (ink box board 100.5,349.0 29.0x14.5, app 90.5,352.0 25.5x12.5)"
+reason = "element moved further than its region (ink within 24 px) at 92,268 26x13"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
-x = 90
-y = 349
-w = 40
-h = 16
+x = 92
+y = 268
+w = 26
+h = 13
 
 [[deviation]]
-id = "r30"
+id = "r31"
+class = "layout"
+reason = "geometry differs (ink box board 100.5,297.0 29.0x14.5, app 92.5,312.5 25.5x12.5)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 92
+y = 297
+w = 38
+h = 28
+
+[[deviation]]
+id = "r32"
+class = "rasterisation"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 18.0,311.0 32.0x35.5, app 17.5,311.0 32.0x35.0)"
+decision = "accepted"
+reviewer = "lead"
+
+[deviation.region]
+x = 17
+y = 311
+w = 33
+h = 36
+
+[[deviation]]
+id = "r33"
+class = "layout"
+reason = "geometry differs (ink box board 100.5,349.0 29.0x14.5, app 92.5,356.5 25.5x12.5)"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 92
+y = 349
+w = 38
+h = 20
+
+[[deviation]]
+id = "r34"
 class = "missing"
 reason = "drawn on the board, absent in the app at 506,353 102x17"
 decision = "fix"
@@ -397,20 +449,20 @@ w = 102
 h = 17
 
 [[deviation]]
-id = "r31"
-class = "layout"
-reason = "geometry differs (ink box board 23.0,375.0 21.5x35.5, app 22.5,369.0 21.5x34.0)"
-decision = "unreviewed"
-reviewer = ""
+id = "r35"
+class = "rasterisation"
+reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 23.0,376.0 21.0x34.5, app 23.0,376.0 21.0x34.0)"
+decision = "accepted"
+reviewer = "lead"
 
 [deviation.region]
-x = 22
-y = 369
-w = 23
-h = 42
+x = 23
+y = 376
+w = 21
+h = 35
 
 [[deviation]]
-id = "r32"
+id = "r36"
 class = "missing"
 reason = "drawn on the board, absent in the app at 506,389 109x13"
 decision = "fix"
@@ -423,7 +475,7 @@ w = 109
 h = 13
 
 [[deviation]]
-id = "r33"
+id = "r37"
 class = "missing"
 reason = "drawn on the board, absent in the app at 623,389 70x13"
 decision = "fix"
@@ -436,7 +488,7 @@ w = 70
 h = 13
 
 [[deviation]]
-id = "r34"
+id = "r38"
 class = "missing"
 reason = "drawn on the board, absent in the app at 701,389 174x12"
 decision = "fix"
@@ -449,7 +501,7 @@ w = 174
 h = 12
 
 [[deviation]]
-id = "r35"
+id = "r39"
 class = "missing"
 reason = "drawn on the board, absent in the app at 100,401 30x15"
 decision = "fix"
@@ -462,7 +514,7 @@ w = 30
 h = 15
 
 [[deviation]]
-id = "r36"
+id = "r40"
 class = "missing"
 reason = "drawn on the board, absent in the app at 505,415 124x34"
 decision = "fix"
@@ -475,14 +527,14 @@ w = 124
 h = 34
 
 [[deviation]]
-id = "r37"
-class = "type"
-reason = "text height -3.5 px: type scale (ink box board 24.0,871.0 20.0x29.0, app 24.0,874.5 19.5x25.5)"
+id = "r41"
+class = "token"
+reason = "same geometry, colour differs (board bg #EDECE8 ink #444443, capture bg #EDECE8 ink #A7A7A4; ink box board 24.0,871.0 20.0x29.0, app 23.0,872.0 20.5x28.0)"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
-x = 24
+x = 23
 y = 871
-w = 20
+w = 21
 h = 29
