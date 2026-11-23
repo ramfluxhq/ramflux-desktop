@@ -181,6 +181,7 @@ impl Render for GroupDirectory {
                 .tooltip(tr("sections.groups.create"))
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(GroupDirectoryEvent::Create))),
             create_reason,
+            cx,
         );
         let count = entries.len();
         let state = if filtered && list != ListState::Loading && entries.is_empty() {

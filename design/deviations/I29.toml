@@ -555,15 +555,15 @@ h = 9
 [[deviation]]
 id = "r43"
 class = "extra"
-reason = "drawn by the app, not on the board at 506,538 118x32"
+reason = "drawn by the app, not on the board at 519,547 91x13"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
-x = 506
-y = 538
-w = 118
-h = 32
+x = 519
+y = 547
+w = 91
+h = 13
 
 [[deviation]]
 id = "r44"

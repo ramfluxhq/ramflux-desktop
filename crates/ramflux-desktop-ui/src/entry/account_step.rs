@@ -7,6 +7,7 @@
 //! Each form hands its secret to the intent root as a `SecretInput` and
 //! clears the masked input at once.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::alert::Alert;
@@ -14,9 +15,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, IconName, Selectable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{
@@ -176,8 +175,8 @@ impl EntryPage {
                 let id = job.id.clone();
                 h_flex().child(
                     Button::new("entry-open-account")
-                        .primary()
-                        .label(tr("entry.restore.open_account"))
+                        .design_primary(cx)
+                        .design_label(tr("entry.restore.open_account"))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             let id = id.clone();
                             this.full_restore.update(cx, |panel, cx| panel.dismiss(id, cx));
@@ -244,14 +243,14 @@ impl EntryPage {
                     .gap(space(2.))
                     .child(
                         Button::new("entry-session-retry")
-                            .primary()
-                            .label(tr("entry.account.retry"))
+                            .design_primary(cx)
+                            .design_label(tr("entry.account.retry"))
                             .on_click(cx.listener(|this, _, _, cx| this.retry_session(cx))),
                     )
                     .children(account.map(|account_id| {
                         let lock = LockLabel::new(&name);
                         Button::new("entry-session-lock")
-                            .outline()
+                            .design_secondary(cx)
                             // The visible text is the clipped one; swapping it
                             // for `lock.full` would let the button grow unbounded.
                             .label(lock.visible)
@@ -364,15 +363,15 @@ impl EntryPage {
             .child(
                 h_flex().child(
                     Button::new("unlock")
-                        .primary()
+                        .design_primary(cx)
                         .icon(IconName::Check)
-                        .label(tr(if unlocking {
+                        .design_label(tr(if unlocking {
                             "entry.account.unlocking"
                         } else {
                             "entry.account.unlock"
                         }))
                         .loading(unlocking)
-                        .disabled(unlocking || nothing_to_unlock)
+                        .design_disabled(unlocking || nothing_to_unlock, cx)
                         .on_click(cx.listener(|this, _, window, cx| this.unlock(window, cx))),
                 ),
             )
@@ -393,9 +392,9 @@ impl EntryPage {
                 let value = *value;
                 Button::new(domain_id(id, &ix))
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .selected(value == selected)
-                    .label(label.clone())
+                    .design_label(label.clone())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         set(this, value);
                         cx.notify();
@@ -417,9 +416,9 @@ impl EntryPage {
                 let chosen = Some(&id) == target.as_ref();
                 Button::new(domain_id("entry-node-choice", &id))
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .selected(chosen)
-                    .label(label)
+                    .design_label(label)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.node = Some(id.clone());
                         cx.notify();
@@ -517,8 +516,8 @@ impl EntryPage {
             .child(
                 h_flex().child(
                     Button::new("account-create")
-                        .primary()
-                        .label(tr("entry.create.submit"))
+                        .design_primary(cx)
+                        .design_label(tr("entry.create.submit"))
                         .on_click(cx.listener(|this, _, window, cx| this.create(window, cx))),
                 ),
             )
@@ -541,8 +540,8 @@ impl EntryPage {
             .child(
                 h_flex().child(
                     Button::new("account-create-phrase")
-                        .primary()
-                        .label(tr("ceremony.entry.button"))
+                        .design_primary(cx)
+                        .design_label(tr("ceremony.entry.button"))
                         .on_click(cx.listener(|this, _, window, cx| {
                             let node = this.target_node(this.store.read(cx).store());
                             this.ceremony.update(cx, |panel, cx| {
@@ -583,10 +582,11 @@ impl EntryPage {
                     .gap(space(2.))
                     .child(crate::gate::gated(
                         Button::new("account-join")
-                            .primary()
-                            .label(tr("entry.join.submit"))
+                            .design_primary(cx)
+                            .design_label(tr("entry.join.submit"))
                             .on_click(cx.listener(|this, _, window, cx| this.join(window, cx))),
                         reason.clone(),
+                        cx,
                     ))
                     .when_some(reason, |row, reason| {
                         row.child(
@@ -669,8 +669,8 @@ impl EntryPage {
                     )))
                     .child(
                         Button::new("backup-browse")
-                            .outline()
-                            .label(tr("entry.restore.browse"))
+                            .design_secondary(cx)
+                            .design_label(tr("entry.restore.browse"))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.browse_backup(window, cx);
                             })),
@@ -686,8 +686,8 @@ impl EntryPage {
             .child(
                 h_flex().child(
                     Button::new("account-restore")
-                        .primary()
-                        .label(tr("entry.restore.submit"))
+                        .design_primary(cx)
+                        .design_label(tr("entry.restore.submit"))
                         .on_click(cx.listener(|this, _, window, cx| this.restore(window, cx))),
                 ),
             )

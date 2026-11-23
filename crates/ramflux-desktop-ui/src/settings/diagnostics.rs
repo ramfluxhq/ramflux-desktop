@@ -165,7 +165,7 @@ pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Settin
                     Button::new("diagnostics-export")
                         .small()
                         .design_secondary(cx)
-                        .label(tr("settings.diagnostics.export"))
+                        .design_label(tr("settings.diagnostics.export"))
                         .on_click(move |_, window, cx| {
                             let sink = sink.clone();
                             file_dialog::save_as(

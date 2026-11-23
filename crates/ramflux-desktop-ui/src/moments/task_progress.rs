@@ -25,6 +25,7 @@
 //! answer to the user's last request are shown in the card
 //! (`task_status`).
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -227,9 +228,9 @@ fn footer(
         .when(proposal && mine, |row| {
             row.child(
                 Button::new("task-start")
-                    .primary()
+                    .design_primary(cx)
                     .small()
-                    .label(tr("moment.task.start"))
+                    .design_label(tr("moment.task.start"))
                     .on_click(move |_, window, cx| {
                         start.emit(UiEventKind::ProposalAccepted, window, cx)
                     }),
@@ -261,7 +262,11 @@ fn footer(
                 Button::new("task-cancel").label(tr(label)).on_click(move |_, window, cx| {
                     cancel.emit(UiEventKind::CancelPressed, window, cx);
                 });
-            row.child(if proposal { button.outline().small() } else { button.ghost().xsmall() })
+            row.child(if proposal {
+                button.design_secondary(cx).small()
+            } else {
+                button.ghost().xsmall()
+            })
         })
         .when(!mine && proposal, |row| {
             row.child(
@@ -486,9 +491,9 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
                 .gap(space(2.))
                 .child(
                     Button::new("step-approve")
-                        .primary()
+                        .design_primary(cx)
                         .small()
-                        .label(tr(if grant.risk.requires_confirmation() {
+                        .design_label(tr(if grant.risk.requires_confirmation() {
                             "moment.intervention.approve_ask"
                         } else {
                             "moment.intervention.approve"
@@ -499,9 +504,9 @@ fn decision(ix: usize, grant: &Grant, sink: &EventSink, cx: &App) -> AnyElement 
                 )
                 .child(
                     Button::new("step-deny")
-                        .outline()
+                        .design_secondary(cx)
                         .small()
-                        .label(tr("moment.intervention.deny"))
+                        .design_label(tr("moment.intervention.deny"))
                         .on_click(move |_, window, cx| {
                             deny_sink.emit(UiEventKind::DenyPressed, window, cx)
                         }),

@@ -4,8 +4,9 @@
 //! Handoff moments: another device offers to continue the context here.
 //! Accept or Decline while open; afterwards the target device is named.
 
+use crate::style::DesignButton as _;
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
@@ -34,8 +35,8 @@ pub fn render(
             .child(
                 Button::new("handoff-accept")
                     .small()
-                    .primary()
-                    .label(tr("moment.handoff.accept"))
+                    .design_primary(cx)
+                    .design_label(tr("moment.handoff.accept"))
                     .on_click(move |_, window, cx| {
                         answer.emit(UiEventKind::HandoffAnswered { accept: true }, window, cx)
                     }),
@@ -43,8 +44,8 @@ pub fn render(
             .child(
                 Button::new("handoff-decline")
                     .small()
-                    .outline()
-                    .label(tr("moment.handoff.decline"))
+                    .design_secondary(cx)
+                    .design_label(tr("moment.handoff.decline"))
                     .on_click(move |_, window, cx| {
                         decline.emit(UiEventKind::HandoffAnswered { accept: false }, window, cx)
                     }),

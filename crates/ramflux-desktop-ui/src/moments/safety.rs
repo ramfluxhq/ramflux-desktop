@@ -5,8 +5,9 @@
 //! unresolved, with the safety number to compare and a Verify action; a
 //! quiet record once verified.
 
+use crate::style::DesignButton as _;
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, div};
@@ -85,8 +86,8 @@ pub fn render(
         .child(if open {
             Button::new("verify-safety")
                 .small()
-                .primary()
-                .label(tr("moment.safety.verify"))
+                .design_primary(cx)
+                .design_label(tr("moment.safety.verify"))
                 .on_click(move |_, window, cx| {
                     verify_sink.emit(
                         UiEventKind::VerifySafetyPressed { participant_id: participant_id.clone() },

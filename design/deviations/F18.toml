@@ -164,6 +164,19 @@ h = 36
 
 [[deviation]]
 id = "r13"
+class = "extra"
+reason = "drawn by the app, not on the board at 136,372 120x15"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 136
+y = 372
+w = 120
+h = 15
+
+[[deviation]]
+id = "r14"
 class = "rasterisation"
 reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 23.0,376.0 21.0x34.5, app 23.0,376.0 21.0x34.0)"
 decision = "accepted"
@@ -176,20 +189,20 @@ w = 21
 h = 35
 
 [[deviation]]
-id = "r14"
+id = "r15"
 class = "extra"
-reason = "drawn by the app, not on the board at 136,379 120x14"
+reason = "drawn by the app, not on the board at 136,397 30x14"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 136
-y = 379
-w = 120
+y = 397
+w = 30
 h = 14
 
 [[deviation]]
-id = "r15"
+id = "r16"
 class = "layout"
 reason = "element moved further than its region (ink within 24 px) at 867,398 38x35"
 decision = "unreviewed"
@@ -200,19 +213,6 @@ x = 867
 y = 398
 w = 38
 h = 35
-
-[[deviation]]
-id = "r16"
-class = "extra"
-reason = "drawn by the app, not on the board at 136,403 30x15"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 136
-y = 403
-w = 30
-h = 15
 
 [[deviation]]
 id = "r17"
@@ -230,13 +230,13 @@ h = 14
 [[deviation]]
 id = "r18"
 class = "extra"
-reason = "drawn by the app, not on the board at 136,436 119x15"
+reason = "drawn by the app, not on the board at 136,429 119x15"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 136
-y = 436
+y = 429
 w = 119
 h = 15
 
@@ -256,39 +256,39 @@ h = 60
 [[deviation]]
 id = "r20"
 class = "extra"
-reason = "drawn by the app, not on the board at 136,460 34x16"
+reason = "drawn by the app, not on the board at 136,454 34x15"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 136
-y = 460
+y = 454
 w = 34
-h = 16
+h = 15
 
 [[deviation]]
 id = "r21"
 class = "extra"
-reason = "drawn by the app, not on the board at 181,460 75x15"
+reason = "drawn by the app, not on the board at 181,454 75x14"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 181
-y = 460
+y = 454
 w = 75
-h = 15
+h = 14
 
 [[deviation]]
 id = "r22"
 class = "extra"
-reason = "drawn by the app, not on the board at 136,485 66x15"
+reason = "drawn by the app, not on the board at 136,478 66x15"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 136
-y = 485
+y = 478
 w = 66
 h = 15
 
@@ -307,6 +307,19 @@ h = 56
 
 [[deviation]]
 id = "r24"
+class = "extra"
+reason = "drawn by the app, not on the board at 137,795 116x13"
+decision = "fix"
+reviewer = "rf-design classify"
+
+[deviation.region]
+x = 137
+y = 795
+w = 116
+h = 13
+
+[[deviation]]
+id = "r25"
 class = "spacing"
 reason = "same element moved by +0.0,-10.0 px (ink box board 25.5,808.5 17.0x19.0, app 25.5,798.5 17.0x19.0)"
 decision = "fix"
@@ -319,41 +332,28 @@ w = 18
 h = 30
 
 [[deviation]]
-id = "r25"
-class = "extra"
-reason = "drawn by the app, not on the board at 137,809 116x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 137
-y = 809
-w = 116
-h = 13
-
-[[deviation]]
 id = "r26"
 class = "extra"
-reason = "drawn by the app, not on the board at 92,833 179x29"
+reason = "drawn by the app, not on the board at 92,819 179x30"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 92
-y = 833
+y = 819
 w = 179
-h = 29
+h = 30
 
 [[deviation]]
 id = "r27"
 class = "extra"
-reason = "drawn by the app, not on the board at 279,833 22x11"
+reason = "drawn by the app, not on the board at 279,819 22x11"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 279
-y = 833
+y = 819
 w = 22
 h = 11
 
@@ -373,12 +373,12 @@ h = 16
 [[deviation]]
 id = "r29"
 class = "extra"
-reason = "drawn by the app, not on the board at 97,877 44x11"
+reason = "drawn by the app, not on the board at 105,869 56x14"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
-x = 97
-y = 877
-w = 44
-h = 11
+x = 105
+y = 869
+w = 56
+h = 14

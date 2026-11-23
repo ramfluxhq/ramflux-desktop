@@ -567,45 +567,19 @@ h = 13
 
 [[deviation]]
 id = "r44"
-class = "rasterisation"
-reason = "glyph rasterisation only: position and metrics within 1 px (ink box board 519.0,479.5 45.5x13.5, app 520.0,479.0 45.5x14.0)"
-decision = "accepted"
-reviewer = "lead"
-
-[deviation.region]
-x = 519
-y = 479
-w = 47
-h = 14
-
-[[deviation]]
-id = "r45"
 class = "layout"
-reason = "element moved further than its region (ink within 24 px) at 573,482 5x6"
+reason = "geometry differs (ink box board 519.0,479.5 59.0x14.0, app 506.0,465.0 760.0x40.0)"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
-x = 573
-y = 482
-w = 5
-h = 6
+x = 505
+y = 464
+w = 762
+h = 42
 
 [[deviation]]
-id = "r46"
-class = "extra"
-reason = "drawn by the app, not on the board at 1242,482 9x6"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1242
-y = 482
-w = 9
-h = 6
-
-[[deviation]]
-id = "r47"
+id = "r45"
 class = "type"
 reason = "same start and height, width -6.5 px: type size or weight (ink box board 506.0,518.0 465.0x12.0, app 506.5,518.5 458.5x12.5)"
 decision = "fix"
@@ -618,7 +592,7 @@ w = 465
 h = 14
 
 [[deviation]]
-id = "r48"
+id = "r46"
 class = "spacing"
 reason = "same element moved by +0.0,+4.0 px (ink box board 507.0,582.0 59.0x12.5, app 507.0,586.0 59.0x13.0)"
 decision = "fix"
@@ -631,7 +605,7 @@ w = 59
 h = 17
 
 [[deviation]]
-id = "r49"
+id = "r47"
 class = "spacing"
 reason = "same element moved by +0.0,+7.5 px (ink box board 506.0,622.0 288.0x22.0, app 506.0,629.5 288.0x22.0)"
 decision = "fix"
@@ -644,7 +618,7 @@ w = 288
 h = 30
 
 [[deviation]]
-id = "r50"
+id = "r48"
 class = "spacing"
 reason = "same element moved by +0.0,+9.5 px (ink box board 507.0,666.5 464.0x14.0, app 507.0,676.0 464.5x14.5)"
 decision = "fix"
@@ -657,7 +631,7 @@ w = 465
 h = 25
 
 [[deviation]]
-id = "r51"
+id = "r49"
 class = "layout"
 reason = "geometry differs (ink box board 506.0,704.5 258.5x61.0, app 506.0,715.0 247.0x62.5)"
 decision = "unreviewed"
@@ -670,7 +644,7 @@ w = 259
 h = 74
 
 [[deviation]]
-id = "r52"
+id = "r50"
 class = "layout"
 reason = "geometry differs (ink box board 30.0,891.0 13.5x9.0, app 25.0,872.0 18.0x28.0)"
 decision = "unreviewed"

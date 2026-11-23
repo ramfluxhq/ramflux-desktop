@@ -35,6 +35,7 @@ mod status;
 
 pub use status::{SurfaceStatus, verdict};
 
+use crate::style::DesignButton as _;
 use ramflux_desktop_navigation::scale::{REM_PX, space, text_caption, text_secondary};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -42,9 +43,7 @@ use std::rc::Rc;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputState;
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::conformance::BlockIssue;
@@ -386,9 +385,9 @@ impl ActionRow<'_> {
                 self.blocked.cloned().or_else(|| action.disabled_reason.clone().map(Into::into));
             Button::new(domain_id("action", &action.id))
                 .small()
-                .outline()
-                .label(label)
-                .disabled(reason.is_some())
+                .design_secondary(cx)
+                .design_label(label)
+                .design_disabled(reason.is_some(), cx)
                 .when_some(reason, |b, reason| b.tooltip(reason))
                 .on_click(move |_, window, cx| {
                     sink.emit(

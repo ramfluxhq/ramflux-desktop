@@ -27,6 +27,7 @@ pub mod assignee;
 pub mod attachment;
 mod drafts;
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
@@ -524,12 +525,12 @@ impl Render for Composer {
                         .child(div().child(name))
                         .child(
                             Button::new("composer-mode")
-                                .outline()
+                                .design_secondary(cx)
                                 .xsmall()
                                 .border_color(palette.text)
                                 .selected(task)
                                 .toggled(task)
-                                .label(tr(if task {
+                                .design_label(tr(if task {
                                     "composer.mode_task"
                                 } else {
                                     "composer.mode_message"
@@ -538,7 +539,7 @@ impl Render for Composer {
                                 .tooltip(
                                     task_reason.clone().unwrap_or_else(|| tr("composer.task_mode")),
                                 )
-                                .disabled(!enabled || (task_reason.is_some() && !task))
+                                .design_disabled(!enabled || (task_reason.is_some() && !task), cx)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     let next = match this.mode {
                                         ComposerMode::Message => ComposerMode::Task,
@@ -588,18 +589,18 @@ impl Render for Composer {
             )
             .child(
                 Button::new("composer-send")
-                    .primary()
+                    .design_primary(cx)
                     // Design: a quiet surface button until there is text.
                     .when(!has_text, |button| {
                         button.ghost().bg(palette.surface).text_color(palette.control)
                     })
                     .small()
                     .icon(IconName::ArrowUp)
-                    .when(ask_name.is_some(), |button| button.label(send_label.clone()))
+                    .when(ask_name.is_some(), |button| button.design_label(send_label.clone()))
                     .rounded(gpui_kit::px(palette.radius_xl))
                     .accessibility_label(send_label.clone())
                     .tooltip(send_label)
-                    .disabled(!can_send)
+                    .design_disabled(!can_send, cx)
                     .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
             );
         // Design board 02: the composer region is the 880 px reading column,

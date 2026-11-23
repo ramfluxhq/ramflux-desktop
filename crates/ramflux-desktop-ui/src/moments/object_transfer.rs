@@ -70,9 +70,9 @@ pub fn render(
             actions = actions.child(
                 Button::new("object-pull")
                     .small()
-                    .primary()
+                    .design_primary(cx)
                     .icon(IconName::ArrowDown)
-                    .label(tr("moment.object.pull"))
+                    .design_label(tr("moment.object.pull"))
                     .on_click(emit(ObjectAction::Pull)),
             );
         }
@@ -102,7 +102,7 @@ pub fn render(
                     Button::new("object-save")
                         .small()
                         .design_secondary(cx)
-                        .label(tr("moment.object.save"))
+                        .design_label(tr("moment.object.save"))
                         .on_click(save_with_dialog(&action_sink, &object)),
                 );
             }
@@ -113,7 +113,7 @@ pub fn render(
                     .small()
                     .design_secondary(cx)
                     .icon(IconName::RotateCw)
-                    .label(tr("moment.object.retry"))
+                    .design_label(tr("moment.object.retry"))
                     .on_click(emit(ObjectAction::Retry)),
             );
         }

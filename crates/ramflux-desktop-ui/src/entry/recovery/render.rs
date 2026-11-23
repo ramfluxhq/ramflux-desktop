@@ -6,14 +6,15 @@
 //! role (status or alert) whose name is its text, so assistive technology
 //! and the tests read the same words the screen shows.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, IntoElement, Render, Role, SharedString, Window, div, rems,
@@ -75,10 +76,10 @@ impl RecoveryPanel {
     fn cancel_button(&self, cx: &mut Context<Self>) -> Button {
         let waiting = self.pending == Some(RecoveryPending::Cancel);
         Button::new("recovery-cancel")
-            .outline()
-            .label(tr("recovery.cancel"))
+            .design_secondary(cx)
+            .design_label(tr("recovery.cancel"))
             .loading(waiting)
-            .disabled(waiting || self.pending == Some(RecoveryPending::Confirm))
+            .design_disabled(waiting || self.pending == Some(RecoveryPending::Confirm), cx)
             .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx)))
     }
 
@@ -128,10 +129,10 @@ impl RecoveryPanel {
                     .gap(space(2.))
                     .child(
                         Button::new("recovery-continue")
-                            .primary()
-                            .label(tr("recovery.continue"))
+                            .design_primary(cx)
+                            .design_label(tr("recovery.continue"))
                             .loading(waiting)
-                            .disabled(self.pending.is_some() || self.abandon.is_some())
+                            .design_disabled(self.pending.is_some() || self.abandon.is_some(), cx)
                             .on_click(cx.listener(|this, _, window, cx| this.start(window, cx))),
                     )
                     .child(self.cancel_button(cx)),
@@ -258,9 +259,9 @@ impl RecoveryPanel {
                     .gap(space(2.))
                     .child(
                         Button::new("recovery-submit")
-                            .primary()
-                            .label(tr("recovery.submit"))
-                            .disabled(!self.can_recover(cx))
+                            .design_primary(cx)
+                            .design_label(tr("recovery.submit"))
+                            .design_disabled(!self.can_recover(cx), cx)
                             .on_click(cx.listener(|this, _, window, cx| this.recover(window, cx))),
                     )
                     .child(self.cancel_button(cx)),
@@ -338,8 +339,8 @@ impl RecoveryPanel {
             .child(
                 h_flex().child(
                     Button::new("recovery-done-close")
-                        .primary()
-                        .label(tr("recovery.done.close"))
+                        .design_primary(cx)
+                        .design_label(tr("recovery.done.close"))
                         .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
                 ),
             )
@@ -377,16 +378,16 @@ impl RecoveryPanel {
                     .gap(space(2.))
                     .child(
                         Button::new("recovery-restart")
-                            .primary()
-                            .label(tr("recovery.restart"))
+                            .design_primary(cx)
+                            .design_label(tr("recovery.restart"))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.start_over(window, cx)),
                             ),
                     )
                     .child(
                         Button::new("recovery-close")
-                            .outline()
-                            .label(tr("recovery.close"))
+                            .design_secondary(cx)
+                            .design_label(tr("recovery.close"))
                             .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
                     ),
             )

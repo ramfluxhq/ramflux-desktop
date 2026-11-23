@@ -16,12 +16,12 @@ use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::path::{Path, PathBuf};
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::description_list::DescriptionList;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, SharedString, Window, div};
 use ramflux_desktop_core::SourceStatus;
@@ -128,7 +128,7 @@ fn path_field(
         Button::new(button_id)
             .small()
             .design_secondary_compact()
-            .label(tr("settings.launch.browse"))
+            .design_label(tr("settings.launch.browse"))
             .on_click(move |_, window, cx| {
                 let input = input.clone();
                 let fill = move |path: String, window: &mut Window, cx: &mut App| {
@@ -227,8 +227,8 @@ fn setup_group(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Set
                         .child(
                             Button::new("launch-save")
                                 .small()
-                                .primary()
-                                .label(tr("settings.launch.save"))
+                                .design_primary(cx)
+                                .design_label(tr("settings.launch.save"))
                                 .on_click(move |_, _, cx| {
                                     let current = launcher.read(cx).settings().clone();
                                     let next = inputs.read(&current, cx);
@@ -295,8 +295,8 @@ fn daemon_group(context: &SectionContext, cx: &App) -> SettingGroup {
                         Button::new("launch-daemon-start")
                             .small()
                             .design_secondary(cx)
-                            .label(tr("entry.daemon.start"))
-                            .disabled(!can_start)
+                            .design_label(tr("entry.daemon.start"))
+                            .design_disabled(!can_start, cx)
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(StartLocalDaemon), cx);
                             }),
@@ -306,7 +306,7 @@ fn daemon_group(context: &SectionContext, cx: &App) -> SettingGroup {
                             Button::new("launch-daemon-stop")
                                 .small()
                                 .design_secondary(cx)
-                                .label(tr("settings.launch.stop"))
+                                .design_label(tr("settings.launch.stop"))
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(StopLocalDaemon), cx);
                                 }),

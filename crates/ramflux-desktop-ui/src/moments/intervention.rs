@@ -12,6 +12,7 @@
 //! (one moment, one place) and this moment collapses to a one-line
 //! reference ([`task_reference`]) that brings the task step into view.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::description_list::DescriptionList;
@@ -209,12 +210,14 @@ fn decision(sink: EventSink, risk: Risk, cx: &App) -> impl IntoElement {
         "moment.intervention.approve"
     });
     div().id("approval-controls").test_support().child(catalog::approval_controls(
-        Button::new("deny").outline().small().label(tr("moment.intervention.deny")).on_click(
-            move |_, window, cx| {
+        Button::new("deny")
+            .design_secondary(cx)
+            .small()
+            .design_label(tr("moment.intervention.deny"))
+            .on_click(move |_, window, cx| {
                 sink.emit(UiEventKind::DenyPressed, window, cx);
-            },
-        ),
-        Button::new("approve").primary().small().label(approve_label).on_click(
+            }),
+        Button::new("approve").design_primary(cx).small().design_label(approve_label).on_click(
             move |_, window, cx| {
                 approve_sink.emit(UiEventKind::ApprovePressed, window, cx);
             },

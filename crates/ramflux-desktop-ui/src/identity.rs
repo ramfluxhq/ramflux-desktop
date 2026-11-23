@@ -25,6 +25,7 @@
 //!
 //! Nothing here is communicated by color alone: every mark has text.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::clipboard::Clipboard;
@@ -391,8 +392,8 @@ pub fn stale_ack(
                 .child(
                     Button::new("stale-verify")
                         .small()
-                        .outline()
-                        .label(tr("identity.safety.verify_again"))
+                        .design_secondary(cx)
+                        .design_label(tr("identity.safety.verify_again"))
                         .on_click(verify),
                 )
                 .child(

@@ -6,6 +6,7 @@
 //! review, a display-blocked block). They state what happened and what the user can do, in plain
 //! words; protocol detail stays in the developer inspector.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
@@ -190,8 +191,8 @@ pub fn out_of_sync(update: Option<&UpdateRequest>, sink: &EventSink, cx: &App) -
     let sink = sink.clone();
     let request = Button::new("surface-request-update")
         .small()
-        .outline()
-        .label(tr("surface.out_of_sync.request"))
+        .design_secondary(cx)
+        .design_label(tr("surface.out_of_sync.request"))
         // Asked once; the author answers with its current state, which
         // ends this state. A refusal can be asked again.
         .disabled(sent)

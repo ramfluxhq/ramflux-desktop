@@ -6,9 +6,10 @@
 //! account, and the result. The screens in between (get ready, the words,
 //! the three words asked) are the account ceremony's own.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tag::Tag;
@@ -79,8 +80,8 @@ impl CeremonyPanel {
                     .child(
                         self.sending(
                             Button::new("ceremony-continue")
-                                .primary()
-                                .label(tr("ceremony.continue"))
+                                .design_primary(cx)
+                                .design_label(tr("ceremony.continue"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.begin(window, cx);
                                 })),
@@ -176,8 +177,8 @@ impl CeremonyPanel {
             .child(
                 h_flex().child(
                     Button::new("ceremony-done-close")
-                        .primary()
-                        .label(tr("ceremony.done.close"))
+                        .design_primary(cx)
+                        .design_label(tr("ceremony.done.close"))
                         .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
                 ),
             )

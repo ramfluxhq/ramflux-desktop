@@ -12,6 +12,7 @@
 //! and one whose verification went stale first asks, inline, to verify
 //! again or continue; nothing is requested before Continue.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -415,10 +416,11 @@ fn candidate_row(
                 .child(crate::gate::gated(
                     Button::new("add")
                         .xsmall()
-                        .outline()
-                        .label(tr("dock.members.add"))
+                        .design_secondary(cx)
+                        .design_label(tr("dock.members.add"))
                         .on_click(on_press(safety, add, sink, cx)),
                     reason(add_reason),
+                    cx,
                 ))
                 .child(crate::gate::gated(
                     Button::new("invite")
@@ -427,6 +429,7 @@ fn candidate_row(
                         .label(tr("dock.members.invite"))
                         .on_click(on_press(safety, invite, sink, cx)),
                     reason(invite_reason),
+                    cx,
                 )),
         )
         .children(question.map(|(op, prompt)| {

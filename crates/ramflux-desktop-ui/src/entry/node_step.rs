@@ -5,9 +5,10 @@
 //! cards, the add-node form, then the nodes already confirmed as compact
 //! rows. The confirm strip for trust-on-first-use pins is the page's footer.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
@@ -143,9 +144,9 @@ impl EntryPage {
                             )
                             .child(
                                 Button::new("node-add")
-                                    .outline()
+                                    .design_secondary(cx)
                                     .icon(IconName::Search)
-                                    .label(tr("entry.node.add"))
+                                    .design_label(tr("entry.node.add"))
                                     .on_click(
                                         cx.listener(|this, _, window, cx| {
                                             this.add_node(window, cx)
@@ -180,9 +181,9 @@ impl EntryPage {
             .when(usable && !pending && self.review_nodes, |step| {
                 step.child(
                     Button::new("entry-continue")
-                        .primary()
+                        .design_primary(cx)
                         .small()
-                        .label(tr("entry.node.continue"))
+                        .design_label(tr("entry.node.continue"))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.review_nodes = false;
                             cx.notify();

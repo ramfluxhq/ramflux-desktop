@@ -737,25 +737,25 @@ h = 46
 [[deviation]]
 id = "r57"
 class = "layout"
-reason = "geometry differs (ink box board 416.5,785.0 79.5x11.0, app 416.0,774.5 72.0x30.0)"
+reason = "geometry differs (ink box board 416.5,785.0 79.5x11.0, app 416.0,774.5 81.0x32.0)"
 decision = "unreviewed"
 reviewer = ""
 
 [deviation.region]
 x = 416
 y = 774
-w = 80
-h = 31
+w = 81
+h = 33
 
 [[deviation]]
 id = "r58"
-class = "extra"
-reason = "drawn by the app, not on the board at 507,783 25x13"
-decision = "fix"
-reviewer = "rf-design classify"
+class = "layout"
+reason = "element moved further than its region (ink within 24 px) at 505,774 55x33"
+decision = "unreviewed"
+reviewer = ""
 
 [deviation.region]
-x = 507
-y = 783
-w = 25
-h = 13
+x = 505
+y = 774
+w = 55
+h = 33

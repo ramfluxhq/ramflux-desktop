@@ -4,6 +4,7 @@
 //! Privacy reveal moments: the content stays masked until the human reveals
 //! it with a confirmation; the reveal is recorded in an audit note line.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
@@ -83,8 +84,8 @@ pub fn render(
                     .child(
                         Button::new("privacy-reveal-button")
                             .small()
-                            .outline()
-                            .label(tr("moment.privacy.reveal"))
+                            .design_secondary(cx)
+                            .design_label(tr("moment.privacy.reveal"))
                             .on_click(move |_, window, cx| {
                                 reveal_sink.emit(UiEventKind::RevealPressed, window, cx);
                             }),

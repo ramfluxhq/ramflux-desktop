@@ -90,7 +90,7 @@ fn actions(object: &Object, sink: &EventSink, border: gpui_kit::Hsla) -> AnyElem
             return Button::new(domain_id("objects-save", &object.id))
                 .design_secondary_compact()
                 .border_color(border)
-                .label(tr("moment.object.save"))
+                .design_label(tr("moment.object.save"))
                 .on_click(save_with_dialog(sink, object))
                 .into_any_element();
         }
@@ -107,7 +107,7 @@ fn actions(object: &Object, sink: &EventSink, border: gpui_kit::Hsla) -> AnyElem
     Button::new(domain_id(&format!("objects-{key}"), &object.id))
         .design_secondary_compact()
         .border_color(border)
-        .label(tr(label))
+        .design_label(tr(label))
         .on_click(move |_, window, cx| {
             sink.emit(
                 UiEventKind::ObjectActionPressed {

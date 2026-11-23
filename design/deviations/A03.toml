@@ -126,7 +126,7 @@ h = 5
 [[deviation]]
 id = "r10"
 class = "layout"
-reason = "geometry differs (ink box board 415.5,422.5 140.5x33.0, app 416.0,428.5 68.5x63.5)"
+reason = "geometry differs (ink box board 415.5,422.5 140.5x33.0, app 416.0,428.5 75.5x65.5)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -134,7 +134,7 @@ reviewer = ""
 x = 415
 y = 422
 w = 141
-h = 70
+h = 72
 
 [[deviation]]
 id = "r11"

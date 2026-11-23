@@ -7,9 +7,9 @@
 //! is usable), and remove (disabled with a reason while an account is bound).
 
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, div};
 use ramflux_desktop_core::{Node, NodeAction, NodeId, ProbeOutcome, UiEventKind};
@@ -117,7 +117,7 @@ fn action(
 ) -> Button {
     let sink = sink.clone();
     let node_id = node.clone();
-    Button::new(id).design_secondary(cx).label(label).on_click(move |_, window, cx| {
+    Button::new(id).design_secondary(cx).design_label(label).on_click(move |_, window, cx| {
         sink.emit(UiEventKind::NodeActionPressed { node_id: node_id.clone(), action }, window, cx);
     })
 }
@@ -144,13 +144,9 @@ fn node_section(row: &Row, sink: &EventSink, compact: Option<()>, cx: &App) -> A
     let chip_row =
         h_flex().gap(space(2.)).children(chips.into_iter().map(|c| super::design::chip(c, cx)));
     let remove = Button::new("node-remove")
-        .ghost()
-        .h(gpui_kit::rems(32.0 / 15.0))
-        .px(gpui_kit::rems(12.0 / 15.0))
-        .bg(palette.danger_bg)
-        .text_color(palette.danger)
-        .label(tr("settings.nodes.remove"))
-        .disabled(row.bound)
+        .design_danger_quiet(cx)
+        .design_label(tr("settings.nodes.remove"))
+        .design_disabled(row.bound, cx)
         .when(row.bound, |b| b.tooltip(tr("settings.nodes.bound")))
         .on_click({
             let sink = sink.clone();

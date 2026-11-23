@@ -8,6 +8,7 @@
 //! command palette; Rename… for a group), and a sticky safety banner while
 //! any member's key change is unresolved or a verification went stale.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -414,8 +415,8 @@ fn safety_banner(participant: &Participant, sink: &EventSink, cx: &App) -> AnyEl
         .child(
             Button::new(domain_id("banner-verify", &participant.id))
                 .small()
-                .outline()
-                .label(crate::identity::verify_label(participant.safety))
+                .design_secondary(cx)
+                .design_label(crate::identity::verify_label(participant.safety))
                 .on_click(move |_, window, cx| {
                     sink.emit(
                         UiEventKind::VerifySafetyPressed { participant_id: participant_id.clone() },

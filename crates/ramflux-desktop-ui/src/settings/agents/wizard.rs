@@ -23,13 +23,12 @@
 //! This version of the local service reports no runtime catalog, so the
 //! runtime step shows the typed unavailable reason and offers Bind later.
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::Input;
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, ElementId, Role, SharedString, Window, div};
 use ramflux_desktop_core::projection::wizard::{AgentDraft, DraftError, RuntimeOffer};
@@ -292,24 +291,24 @@ impl AgentsPanel {
             .child(
                 Button::new("agent-wizard-back")
                     .small()
-                    .outline()
-                    .label(tr("agent_wizard.back"))
-                    .disabled(first)
+                    .design_secondary(cx)
+                    .design_label(tr("agent_wizard.back"))
+                    .design_disabled(first, cx)
                     .on_click(cx.listener(|this, _, _, cx| this.wizard_step(-1, cx))),
             )
             .child(if last {
                 Button::new("agent-wizard-create")
                     .small()
-                    .primary()
-                    .label(tr("agent_wizard.create"))
+                    .design_primary(cx)
+                    .design_label(tr("agent_wizard.create"))
                     .on_click(
                         cx.listener(|this, _, window, cx| this.create_from_wizard(window, cx)),
                     )
             } else {
                 Button::new("agent-wizard-next")
                     .small()
-                    .primary()
-                    .label(tr("agent_wizard.next"))
+                    .design_primary(cx)
+                    .design_label(tr("agent_wizard.next"))
                     .on_click(cx.listener(|this, _, _, cx| this.wizard_step(1, cx)))
             });
         v_flex()
@@ -396,10 +395,10 @@ impl AgentsPanel {
             col = col.child(
                 Button::new(ElementId::from(format!("agent-wizard-runtime-{}", offer.id)))
                     .small()
-                    .outline()
+                    .design_secondary(cx)
                     .selected(chosen == offer.id)
                     .toggled(chosen == offer.id)
-                    .label(SharedString::from(offer.id.clone()))
+                    .design_label(SharedString::from(offer.id.clone()))
                     .on_click(
                         cx.listener(move |this, _, _, cx| this.choose_runtime(id.clone(), cx)),
                     ),
@@ -408,10 +407,10 @@ impl AgentsPanel {
         col.child(
             Button::new("agent-wizard-bind-later")
                 .small()
-                .outline()
+                .design_secondary(cx)
                 .selected(chosen.is_empty())
                 .toggled(chosen.is_empty())
-                .label(tr("agent_wizard.bind_later"))
+                .design_label(tr("agent_wizard.bind_later"))
                 .on_click(cx.listener(|this, _, _, cx| this.choose_runtime(String::new(), cx))),
         )
         .child(

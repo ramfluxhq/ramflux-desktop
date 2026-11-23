@@ -243,25 +243,25 @@ h = 4
 [[deviation]]
 id = "r19"
 class = "extra"
-reason = "drawn by the app, not on the board at 416,516 46x31"
+reason = "drawn by the app, not on the board at 416,516 53x33"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
 x = 416
 y = 516
-w = 46
-h = 31
+w = 53
+h = 33
 
 [[deviation]]
 id = "r20"
 class = "extra"
-reason = "drawn by the app, not on the board at 481,525 25x13"
+reason = "drawn by the app, not on the board at 477,516 55x33"
 decision = "fix"
 reviewer = "rf-design classify"
 
 [deviation.region]
-x = 481
-y = 525
-w = 25
-h = 13
+x = 477
+y = 516
+w = 55
+h = 33

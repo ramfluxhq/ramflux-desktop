@@ -31,6 +31,7 @@ use gpui_kit::{
 use ramflux_desktop_navigation::generated::catalog as kit;
 use ramflux_desktop_navigation::palette;
 use ramflux_desktop_ui::AppAssets as Assets;
+use ramflux_desktop_ui::style::DesignButton as _;
 
 use crate::text::t;
 
@@ -117,19 +118,6 @@ fn chip_replica(text: SharedString, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn quiet_danger(label: SharedString, cx: &App) -> AnyElement {
-    // replica of crates/ramflux-desktop-ui/src/settings/devices.rs revoke button
-    let p = palette(cx);
-    Button::new("revoke")
-        .ghost()
-        .h(rem(32.0))
-        .px(rem(12.0))
-        .bg(p.danger_bg)
-        .text_color(p.danger)
-        .label(label)
-        .into_any_element()
-}
-
 fn bubble(
     kind: kit::BubbleKind,
     sender: Option<SharedString>,
@@ -180,7 +168,7 @@ pub fn components() -> Vec<Component> {
             slug: "button-primary",
             how: A("style::primary_button", |_, cx, _| {
                 ramflux_desktop_ui::style::primary_button("b", cx)
-                    .label(t("kit09"))
+                    .design_label(t("kit09"))
                     .into_any_element()
             }),
         },
@@ -306,30 +294,37 @@ pub fn components() -> Vec<Component> {
             slug: "button-secondary",
             how: A("style::secondary_button", |_, cx, _| {
                 ramflux_desktop_ui::style::secondary_button("b", cx)
-                    .label(t("kit14"))
+                    .design_label(t("kit14"))
                     .into_any_element()
             }),
         },
         Component {
             slug: "button-disabled",
-            how: A("style::primary_button disabled", |_, cx, _| {
+            how: A("style::primary_button design_disabled", |_, cx, _| {
                 ramflux_desktop_ui::style::primary_button("b", cx)
-                    .label(t("kit15"))
-                    .disabled(true)
+                    .design_label(t("kit15"))
+                    .design_disabled(true, cx)
                     .into_any_element()
             }),
         },
         Component {
             slug: "button-danger",
-            how: R("Button::danger as used in call.rs, contact_profile.rs", |_, _, _| {
-                Button::new("b").danger().label(t("kit16")).into_any_element()
+            how: A("style::DesignButton::design_danger", |_, cx, _| {
+                Button::new("b").design_danger(cx).design_label(t("kit16")).into_any_element()
             }),
         },
         Component {
             slug: "button-danger-quiet",
-            how: R("settings/devices.rs revoke button", |_, cx, _| quiet_danger(t("kit17"), cx)),
+            how: A("style::DesignButton::design_danger_quiet", |_, cx, _| {
+                Button::new("b").design_danger_quiet(cx).design_label(t("kit17")).into_any_element()
+            }),
         },
-        Component { slug: "button-text", how: S("no text button in the application") },
+        Component {
+            slug: "button-text",
+            how: A("style::DesignButton::design_text", |_, cx, _| {
+                Button::new("b").design_text(cx).design_label(t("kit31")).into_any_element()
+            }),
+        },
         Component {
             slug: "icon-button",
             how: R("conversation/header.rs ellipsis button", |_, _, _| {
@@ -538,7 +533,7 @@ pub fn components() -> Vec<Component> {
                     .flex_row()
                     .gap_2()
                     .child(chip_replica(t("kit23"), cx))
-                    .child(quiet_danger(t("kit17"), cx))
+                    .child(Button::new("revoke").design_danger_quiet(cx).design_label(t("kit17")))
                     .into_any_element();
                 row_replica("Chrome · macOS".into(), t("kit24"), trailing, cx)
             }),
@@ -639,6 +634,10 @@ pub fn components() -> Vec<Component> {
 
 struct KitView {
     background: Hsla,
+    /// The component's design size; the window is larger so the pointer
+    /// can rest outside the component (no hover state).
+    width: f32,
+    height: f32,
     render: Render,
     inputs: Inputs,
 }
@@ -650,7 +649,20 @@ impl gpui_kit::Render for KitView {
         cx: &mut gpui_kit::Context<Self>,
     ) -> impl IntoElement {
         let element = (self.render)(window, cx, &self.inputs);
-        div().size_full().bg(self.background).flex().flex_col().items_start().child(element)
+        // The shell's interface font (Hanken Grotesk with Noto Sans SC).
+        div()
+            .size_full()
+            .font(ramflux_desktop_ui::assets::design_font(gpui_kit::FontWeight::NORMAL))
+            .bg(self.background)
+            .child(
+                div()
+                    .w(px(self.width))
+                    .h(px(self.height))
+                    .flex()
+                    .flex_col()
+                    .items_start()
+                    .child(element),
+            )
     }
 }
 
@@ -670,7 +682,10 @@ pub fn capture(board: &str, w: u32, h: u32, render: Render) -> Result<image::Rgb
     fonts.map_err(|e| format!("bundled fonts: {e}"))?;
     let background = board_background(board);
     let opened = cx.update(|cx| {
-        let bounds = Bounds { origin: Point::default(), size: size(px(w as f32), px(h as f32)) };
+        let bounds = Bounds {
+            origin: Point::default(),
+            size: size(px((w + MARGIN) as f32), px((h + MARGIN) as f32)),
+        };
         gpui_kit::open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -681,13 +696,36 @@ pub fn capture(board: &str, w: u32, h: u32, render: Render) -> Result<image::Rgb
             cx,
             move |window, cx| {
                 let search = cx.new(|cx| InputState::new(window, cx).placeholder(t("kit30")));
-                cx.new(|_| KitView { background, render, inputs: Inputs { search } })
+                cx.new(|_| KitView {
+                    background,
+                    width: w as f32,
+                    height: h as f32,
+                    render,
+                    inputs: Inputs { search },
+                })
             },
         )
     });
     let (handle, _view) = opened.map_err(|e| format!("offscreen window: {e}"))?;
     cx.run_until_parked();
+    // The pointer rests in the margin, outside the component.
+    cx.update_window(handle, |_, window, cx| {
+        use gpui_kit::InputEvent as _;
+        window.render_frame(cx);
+        let rest = gpui_kit::point(px((w + MARGIN / 2) as f32), px((h + MARGIN / 2) as f32));
+        window.dispatch_event(
+            gpui_kit::MouseMoveEvent { position: rest, ..Default::default() }.to_platform_input(),
+            cx,
+        );
+    })
+    .map_err(|e| format!("window: {e}"))?;
+    cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| window.render_frame(cx))
         .map_err(|e| format!("window: {e}"))?;
-    cx.capture_screenshot(handle).map_err(|e| format!("render: {e}"))
+    let image = cx.capture_screenshot(handle).map_err(|e| format!("render: {e}"))?;
+    let scale = image.width() / (w + MARGIN).max(1);
+    Ok(image::imageops::crop_imm(&image, 0, 0, w * scale, h * scale).to_image())
 }
+
+/// Extra window space around a component for the resting pointer.
+const MARGIN: u32 = 16;
