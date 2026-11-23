@@ -1,0 +1,711 @@
+{
+ "source": "Pencil MCP GetVariables on Ramflux-Desktop-Design.pen, read-only, 2026-11-23 (transcribed from reference/design/DESKTOP-ARTBOARD-INDEX.md section 6)",
+ "design_file_sha256": "8c6e77dfcaf4ab80dc5f1327bb53d0c05a2cdb723854476587d50b36eb42cb5b",
+ "theme_axis": "mode",
+ "modes": [
+  "light",
+  "dark"
+ ],
+ "variables": [
+  {
+   "name": "rf-bg",
+   "type": "color",
+   "themed": true,
+   "light": "#FCFBF9",
+   "dark": "#171716"
+  },
+  {
+   "name": "rf-nav",
+   "type": "color",
+   "themed": true,
+   "light": "#F5F4F1",
+   "dark": "#121211"
+  },
+  {
+   "name": "rf-rail",
+   "type": "color",
+   "themed": true,
+   "light": "#EDECE8",
+   "dark": "#0D0D0C"
+  },
+  {
+   "name": "rf-rail-active",
+   "type": "color",
+   "themed": true,
+   "light": "#E2E1DE",
+   "dark": "#222221"
+  },
+  {
+   "name": "rf-surface",
+   "type": "color",
+   "themed": true,
+   "light": "#EFEFEF",
+   "dark": "#212121"
+  },
+  {
+   "name": "rf-surface-white",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#1E1E1E"
+  },
+  {
+   "name": "rf-selected",
+   "type": "color",
+   "themed": true,
+   "light": "#E6E5E2",
+   "dark": "#222221"
+  },
+  {
+   "name": "rf-overlay",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#1E1E1E"
+  },
+  {
+   "name": "rf-overlay-border",
+   "type": "color",
+   "themed": true,
+   "light": "#E2E2E2",
+   "dark": "#303030"
+  },
+  {
+   "name": "rf-input",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#1C1C1C"
+  },
+  {
+   "name": "rf-input-border",
+   "type": "color",
+   "themed": true,
+   "light": "#E0E0E0",
+   "dark": "#2C2C2C"
+  },
+  {
+   "name": "rf-text",
+   "type": "color",
+   "themed": true,
+   "light": "#161616",
+   "dark": "#EBEBEB"
+  },
+  {
+   "name": "rf-secondary",
+   "type": "color",
+   "themed": true,
+   "light": "#585858",
+   "dark": "#9E9E9E"
+  },
+  {
+   "name": "rf-control",
+   "type": "color",
+   "themed": true,
+   "light": "#8E8E8E",
+   "dark": "#7A7A7A"
+  },
+  {
+   "name": "rf-focus",
+   "type": "color",
+   "themed": true,
+   "light": "#222224",
+   "dark": "#C8C8C8"
+  },
+  {
+   "name": "rf-line",
+   "type": "color",
+   "themed": true,
+   "light": "#E6E6E6",
+   "dark": "#262626"
+  },
+  {
+   "name": "rf-line-soft",
+   "type": "color",
+   "themed": true,
+   "light": "#EFEFEF",
+   "dark": "#1E1E1E"
+  },
+  {
+   "name": "rf-line-strong",
+   "type": "color",
+   "themed": true,
+   "light": "#D4D4D4",
+   "dark": "#3A3A3A"
+  },
+  {
+   "name": "rf-line-nav",
+   "type": "color",
+   "themed": true,
+   "light": "#E2E2E1",
+   "dark": "#1E1E1E"
+  },
+  {
+   "name": "rf-primary",
+   "type": "color",
+   "themed": true,
+   "light": "#222224",
+   "dark": "#EBEBEB"
+  },
+  {
+   "name": "rf-on-primary",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#121211"
+  },
+  {
+   "name": "rf-accent",
+   "type": "color",
+   "themed": true,
+   "light": "#161616",
+   "dark": "#EBEBEB"
+  },
+  {
+   "name": "rf-on-accent",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#121211"
+  },
+  {
+   "name": "rf-badge",
+   "type": "color",
+   "themed": true,
+   "light": "#222224",
+   "dark": "#EBEBEB"
+  },
+  {
+   "name": "rf-on-badge",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#121211"
+  },
+  {
+   "name": "rf-tooltip",
+   "type": "color",
+   "themed": true,
+   "light": "#222224",
+   "dark": "#EBEBEB"
+  },
+  {
+   "name": "rf-on-tooltip",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#121211"
+  },
+  {
+   "name": "rf-incoming",
+   "type": "color",
+   "themed": true,
+   "light": "#EFEFEF",
+   "dark": "#242424"
+  },
+  {
+   "name": "rf-incoming-meta",
+   "type": "color",
+   "themed": true,
+   "light": "#5C5C5C",
+   "dark": "#A2A2A2"
+  },
+  {
+   "name": "rf-incoming-quote",
+   "type": "color",
+   "themed": true,
+   "light": "#E3E3E3",
+   "dark": "#2E2E2E"
+  },
+  {
+   "name": "rf-outgoing",
+   "type": "color",
+   "themed": true,
+   "light": "#222224",
+   "dark": "#3A3A3C"
+  },
+  {
+   "name": "rf-outgoing-text",
+   "type": "color",
+   "themed": true,
+   "light": "#F6F6F6",
+   "dark": "#F7F7F7"
+  },
+  {
+   "name": "rf-outgoing-meta",
+   "type": "color",
+   "themed": true,
+   "light": "#ABABAB",
+   "dark": "#C4C4C4"
+  },
+  {
+   "name": "rf-outgoing-quote",
+   "type": "color",
+   "themed": true,
+   "light": "#343436",
+   "dark": "#4A4A4C"
+  },
+  {
+   "name": "rf-agent-av",
+   "type": "color",
+   "themed": true,
+   "light": "#222224",
+   "dark": "#EBEBEB"
+  },
+  {
+   "name": "rf-on-agent-av",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#121211"
+  },
+  {
+   "name": "rf-avatar-person",
+   "type": "color",
+   "themed": true,
+   "light": "#E7E7E7",
+   "dark": "#2A2A2A"
+  },
+  {
+   "name": "rf-on-avatar-person",
+   "type": "color",
+   "themed": true,
+   "light": "#161616",
+   "dark": "#EBEBEB"
+  },
+  {
+   "name": "rf-success",
+   "type": "color",
+   "themed": true,
+   "light": "#2E7D32",
+   "dark": "#5FD27A"
+  },
+  {
+   "name": "rf-success-bg",
+   "type": "color",
+   "themed": true,
+   "light": "#E8F2E9",
+   "dark": "#14251A"
+  },
+  {
+   "name": "rf-on-success",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#121211"
+  },
+  {
+   "name": "rf-warning",
+   "type": "color",
+   "themed": true,
+   "light": "#9A5800",
+   "dark": "#F2B94B"
+  },
+  {
+   "name": "rf-warning-bg",
+   "type": "color",
+   "themed": true,
+   "light": "#FBF0DE",
+   "dark": "#2B2210"
+  },
+  {
+   "name": "rf-danger",
+   "type": "color",
+   "themed": true,
+   "light": "#C62828",
+   "dark": "#FF6B6B"
+  },
+  {
+   "name": "rf-danger-bg",
+   "type": "color",
+   "themed": true,
+   "light": "#FCEBEB",
+   "dark": "#2E1818"
+  },
+  {
+   "name": "rf-on-danger",
+   "type": "color",
+   "themed": true,
+   "light": "#FFFFFF",
+   "dark": "#121211"
+  },
+  {
+   "name": "rf-scrim",
+   "type": "color",
+   "themed": true,
+   "light": "#0000004D",
+   "dark": "#0000008C"
+  },
+  {
+   "name": "rf-shadow",
+   "type": "color",
+   "themed": true,
+   "light": "#0000001F",
+   "dark": "#0000007A"
+  },
+  {
+   "name": "rf-chart-1",
+   "type": "color",
+   "themed": true,
+   "light": "#2A78D6",
+   "dark": "#3987E5"
+  },
+  {
+   "name": "rf-chart-2",
+   "type": "color",
+   "themed": true,
+   "light": "#EB6834",
+   "dark": "#D95926"
+  },
+  {
+   "name": "pilot-bg",
+   "type": "color",
+   "themed": false,
+   "light": "#FCFBF9",
+   "dark": "#FCFBF9"
+  },
+  {
+   "name": "pilot-nav",
+   "type": "color",
+   "themed": false,
+   "light": "#F5F4F1",
+   "dark": "#F5F4F1"
+  },
+  {
+   "name": "pilot-surface",
+   "type": "color",
+   "themed": false,
+   "light": "#EFEFEF",
+   "dark": "#EFEFEF"
+  },
+  {
+   "name": "pilot-selected",
+   "type": "color",
+   "themed": false,
+   "light": "#E6E5E2",
+   "dark": "#E6E5E2"
+  },
+  {
+   "name": "pilot-text",
+   "type": "color",
+   "themed": false,
+   "light": "#161616",
+   "dark": "#161616"
+  },
+  {
+   "name": "pilot-secondary",
+   "type": "color",
+   "themed": false,
+   "light": "#585858",
+   "dark": "#585858"
+  },
+  {
+   "name": "pilot-line",
+   "type": "color",
+   "themed": false,
+   "light": "#E6E6E6",
+   "dark": "#E6E6E6"
+  },
+  {
+   "name": "pilot-primary",
+   "type": "color",
+   "themed": false,
+   "light": "#222224",
+   "dark": "#222224"
+  },
+  {
+   "name": "pilot-onPrimary",
+   "type": "color",
+   "themed": false,
+   "light": "#FFFFFF",
+   "dark": "#FFFFFF"
+  },
+  {
+   "name": "pilot-incoming",
+   "type": "color",
+   "themed": false,
+   "light": "#EFEFEF",
+   "dark": "#EFEFEF"
+  },
+  {
+   "name": "pilot-outgoing",
+   "type": "color",
+   "themed": false,
+   "light": "#EFEFEF",
+   "dark": "#EFEFEF"
+  },
+  {
+   "name": "pilot-control",
+   "type": "color",
+   "themed": false,
+   "light": "#8E8E8E",
+   "dark": "#8E8E8E"
+  },
+  {
+   "name": "rf-font",
+   "type": "string",
+   "themed": false,
+   "light": "Noto Sans SC",
+   "dark": "Noto Sans SC"
+  },
+  {
+   "name": "rf-font-latin",
+   "type": "string",
+   "themed": false,
+   "light": "Hanken Grotesk",
+   "dark": "Hanken Grotesk"
+  },
+  {
+   "name": "rf-font-serif",
+   "type": "string",
+   "themed": false,
+   "light": "Hanken Grotesk",
+   "dark": "Hanken Grotesk"
+  },
+  {
+   "name": "rf-font-mono",
+   "type": "string",
+   "themed": false,
+   "light": "JetBrains Mono",
+   "dark": "JetBrains Mono"
+  },
+  {
+   "name": "rf-gap",
+   "type": "number",
+   "themed": false,
+   "light": 16.0,
+   "dark": 16.0
+  },
+  {
+   "name": "rf-size-caption",
+   "type": "number",
+   "themed": false,
+   "light": 11.0,
+   "dark": 11.0
+  },
+  {
+   "name": "rf-size-meta",
+   "type": "number",
+   "themed": false,
+   "light": 12.0,
+   "dark": 12.0
+  },
+  {
+   "name": "rf-size-secondary",
+   "type": "number",
+   "themed": false,
+   "light": 13.0,
+   "dark": 13.0
+  },
+  {
+   "name": "rf-size-button",
+   "type": "number",
+   "themed": false,
+   "light": 14.0,
+   "dark": 14.0
+  },
+  {
+   "name": "rf-size-body",
+   "type": "number",
+   "themed": false,
+   "light": 15.0,
+   "dark": 15.0
+  },
+  {
+   "name": "rf-size-subheading",
+   "type": "number",
+   "themed": false,
+   "light": 17.0,
+   "dark": 17.0
+  },
+  {
+   "name": "rf-size-title",
+   "type": "number",
+   "themed": false,
+   "light": 20.0,
+   "dark": 20.0
+  },
+  {
+   "name": "rf-size-page",
+   "type": "number",
+   "themed": false,
+   "light": 24.0,
+   "dark": 24.0
+  },
+  {
+   "name": "rf-size-metric",
+   "type": "number",
+   "themed": false,
+   "light": 32.0,
+   "dark": 32.0
+  },
+  {
+   "name": "rf-size-mobile-caption",
+   "type": "number",
+   "themed": false,
+   "light": 11.0,
+   "dark": 11.0
+  },
+  {
+   "name": "rf-size-mobile-body",
+   "type": "number",
+   "themed": false,
+   "light": 17.0,
+   "dark": 17.0
+  },
+  {
+   "name": "rf-size-mobile-large-title",
+   "type": "number",
+   "themed": false,
+   "light": 32.0,
+   "dark": 32.0
+  },
+  {
+   "name": "rf-radius-xs",
+   "type": "number",
+   "themed": false,
+   "light": 4.0,
+   "dark": 4.0
+  },
+  {
+   "name": "rf-radius-sm",
+   "type": "number",
+   "themed": false,
+   "light": 6.0,
+   "dark": 6.0
+  },
+  {
+   "name": "rf-radius-md",
+   "type": "number",
+   "themed": false,
+   "light": 8.0,
+   "dark": 8.0
+  },
+  {
+   "name": "rf-radius-lg",
+   "type": "number",
+   "themed": false,
+   "light": 12.0,
+   "dark": 12.0
+  },
+  {
+   "name": "rf-radius-xl",
+   "type": "number",
+   "themed": false,
+   "light": 16.0,
+   "dark": 16.0
+  },
+  {
+   "name": "rf-radius-full",
+   "type": "number",
+   "themed": false,
+   "light": 999.0,
+   "dark": 999.0
+  },
+  {
+   "name": "rf-radius-bubble",
+   "type": "number",
+   "themed": false,
+   "light": 12.0,
+   "dark": 12.0
+  },
+  {
+   "name": "rf-radius-bubble-joined",
+   "type": "number",
+   "themed": false,
+   "light": 4.0,
+   "dark": 4.0
+  },
+  {
+   "name": "rf-radius-card",
+   "type": "number",
+   "themed": false,
+   "light": 8.0,
+   "dark": 8.0
+  },
+  {
+   "name": "rf-radius-button",
+   "type": "number",
+   "themed": false,
+   "light": 4.0,
+   "dark": 4.0
+  },
+  {
+   "name": "rf-radius-input",
+   "type": "number",
+   "themed": false,
+   "light": 4.0,
+   "dark": 4.0
+  },
+  {
+   "name": "rf-radius-chip",
+   "type": "number",
+   "themed": false,
+   "light": 4.0,
+   "dark": 4.0
+  },
+  {
+   "name": "rf-radius-menu",
+   "type": "number",
+   "themed": false,
+   "light": 12.0,
+   "dark": 12.0
+  },
+  {
+   "name": "rf-radius-dialog",
+   "type": "number",
+   "themed": false,
+   "light": 12.0,
+   "dark": 12.0
+  },
+  {
+   "name": "rf-radius-sheet",
+   "type": "number",
+   "themed": false,
+   "light": 12.0,
+   "dark": 12.0
+  },
+  {
+   "name": "rf-bubble-max",
+   "type": "number",
+   "themed": false,
+   "light": 600.0,
+   "dark": 600.0
+  },
+  {
+   "name": "rf-mobile-bubble-max",
+   "type": "number",
+   "themed": false,
+   "light": 300.0,
+   "dark": 300.0
+  },
+  {
+   "name": "rf-column-max",
+   "type": "number",
+   "themed": false,
+   "light": 880.0,
+   "dark": 880.0
+  },
+  {
+   "name": "rf-composer-min",
+   "type": "number",
+   "themed": false,
+   "light": 48.0,
+   "dark": 48.0
+  },
+  {
+   "name": "rf-row-conversation",
+   "type": "number",
+   "themed": false,
+   "light": 64.0,
+   "dark": 64.0
+  },
+  {
+   "name": "rf-menu-item-height",
+   "type": "number",
+   "themed": false,
+   "light": 38.0,
+   "dark": 38.0
+  }
+ ]
+}

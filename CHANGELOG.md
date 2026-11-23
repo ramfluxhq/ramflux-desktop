@@ -26,6 +26,10 @@ Versioning.
 - Catalogue checks in `cargo test`: canonical catalogues with the source key
   set, unused keys, placeholder mismatches, a per-locale coverage report
   (`docs/i18n-coverage.md`) and a guard against physical edges in views.
+- Design instrument (`crates/ramflux-desktop-design`): board reference
+  manifest and verification, headless board captures over the mock source,
+  pixel comparison with reviewed per-board deviations, token check by value
+  against the design variables (`docs/design-instrument.md`).
 
 ### Fixed
 

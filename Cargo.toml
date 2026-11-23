@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "apps/ramflux-desktop",
     "crates/ramflux-desktop-core",
+    "crates/ramflux-desktop-design",
     "crates/ramflux-desktop-navigation",
     "crates/ramflux-desktop-media",
     "crates/ramflux-desktop-sdk",
