@@ -402,7 +402,10 @@ impl Render for CallBar {
         };
         let audio = handle.call_audio().filter(|a| a.call_id == call.id);
         let name = peer_name(store, &call);
-        let status = call_status(&call, wall_clock_now());
+        // The session clock: scenario time on the mock source (deterministic
+        // captures and tests), the live clock otherwise.
+        let now = handle.session().map_or_else(wall_clock_now, |session| session.now());
+        let status = call_status(&call, now);
         let muted = audio.as_ref().is_some_and(|a| a.muted);
         let ringing = call.state == CallState::OutgoingRinging;
         let blocked = audio.as_ref().and_then(|a| a.live).is_some_and(|l| l.microphone_blocked);
