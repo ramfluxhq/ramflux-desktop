@@ -7,7 +7,7 @@
 //!
 //! Where the application exposes the component (`style::primary_button`,
 //! the catalog's `avatar`, `badge`, `trust_banner`, `page_header_content`,
-//! `message_bubble`, `state_block`, the navigation `Row`, Kit checkboxes and
+//! `message_bubble`, `state_block`, the navigation `Row`, design checkbox and radio, Kit
 //! switches), the capture calls that code. Where the application builds it
 //! inline in a crate-private view, the capture repeats that inline styling
 //! and says from where (`replica of <file>`), so W1/W2 can measure it; the
@@ -18,10 +18,9 @@ use std::sync::Arc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{Disableable as _, Icon, Selectable as _, Sizable as _, StyledExt as _};
+use gpui_kit::component::{Icon, Selectable as _, Sizable as _, StyledExt as _};
 use gpui_kit::prelude::*;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
@@ -31,6 +30,7 @@ use gpui_kit::{
 use ramflux_desktop_navigation::generated::catalog as kit;
 use ramflux_desktop_navigation::palette;
 use ramflux_desktop_ui::AppAssets as Assets;
+use ramflux_desktop_ui::controls::{DesignCheckbox, radio_indicator};
 use ramflux_desktop_ui::style::DesignButton as _;
 
 use crate::text::t;
@@ -346,45 +346,29 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "checkbox-on",
-            how: A("Kit Checkbox", |_, _, _| Checkbox::new("c").checked(true).into_any_element()),
+            how: A("controls::DesignCheckbox", |_, _, _| {
+                DesignCheckbox::new("c").checked(true).into_any_element()
+            }),
         },
         Component {
             slug: "checkbox-off",
-            how: A("Kit Checkbox", |_, _, _| Checkbox::new("c").checked(false).into_any_element()),
+            how: A("controls::DesignCheckbox", |_, _, _| {
+                DesignCheckbox::new("c").checked(false).into_any_element()
+            }),
         },
         Component {
             slug: "checkbox-disabled",
-            how: A("Kit Checkbox", |_, _, _| {
-                Checkbox::new("c").checked(false).disabled(true).into_any_element()
+            how: A("controls::DesignCheckbox", |_, _, _| {
+                DesignCheckbox::new("c").checked(false).disabled(true).into_any_element()
             }),
         },
         Component {
             slug: "radio-on",
-            how: R("settings/appearance.rs radio", |_, cx, _| {
-                let p = palette(cx);
-                div()
-                    .size(rem(18.0))
-                    .rounded(rem(p.radius_full))
-                    .border_1()
-                    .border_color(p.primary)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(div().size(rem(8.0)).rounded_full().bg(p.primary))
-                    .into_any_element()
-            }),
+            how: A("controls::radio_indicator", |_, cx, _| radio_indicator(true, cx)),
         },
         Component {
             slug: "radio-off",
-            how: R("settings/appearance.rs radio", |_, cx, _| {
-                let p = palette(cx);
-                div()
-                    .size(rem(18.0))
-                    .rounded(rem(p.radius_full))
-                    .border_1()
-                    .border_color(p.primary)
-                    .into_any_element()
-            }),
+            how: A("controls::radio_indicator", |_, cx, _| radio_indicator(false, cx)),
         },
         Component {
             slug: "switch-on",

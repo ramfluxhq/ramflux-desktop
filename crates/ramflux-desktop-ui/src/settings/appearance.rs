@@ -243,24 +243,7 @@ fn body(cx: &App) -> impl IntoElement {
                     h_flex()
                         .w_full()
                         .gap(space(3.))
-                        .child(
-                            div()
-                                .size(rem(18.0))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded(rem(palette.radius_full))
-                                .border_1()
-                                .border_color(palette.primary)
-                                .when(selected, |radio| {
-                                    radio.child(
-                                        div()
-                                            .size(rem(8.0))
-                                            .rounded(rem(palette.radius_full))
-                                            .bg(palette.primary),
-                                    )
-                                }),
-                        )
+                        .child(crate::controls::radio_indicator(selected, cx))
                         .child(div().text_size(rem(palette.size_body)).font_medium().child(name))
                         .when(ix == 0, |row| {
                             row.child(

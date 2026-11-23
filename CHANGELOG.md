@@ -44,6 +44,10 @@ Versioning.
   stroke against the kit's inside border, same edge colour and width, outer
   geometry within 1 px, measured), and kit regions attributed with the
   board's surroundings.
+- Design checkbox and radio (board 00D): 18 px, the `rf-control` edge on
+  the input fill, the `rf-primary` fill with its check, and the disabled
+  `rf-surface` / `rf-line-strong` state; the checkbox keeps the UI kit's
+  base checkbox for role, toggle state, focus and keyboard activation.
 
 ### Fixed
 

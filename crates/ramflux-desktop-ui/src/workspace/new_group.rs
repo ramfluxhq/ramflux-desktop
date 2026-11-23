@@ -22,14 +22,12 @@
 //! The name is the one this account keeps for the group; other members name
 //! it themselves, which the form says. The form is view-local.
 
+use crate::controls::DesignCheckbox;
 use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     Context, Entity, EventEmitter, IntoElement, Render, Role, SharedString, Subscription, Window,
@@ -323,7 +321,7 @@ impl Render for NewGroup {
                 .gap(space(2.))
                 .py(space(1.))
                 .child(
-                    Checkbox::new(domain_id("new-group-member", &contact.id))
+                    DesignCheckbox::new(domain_id("new-group-member", &contact.id))
                         .label(contact.display.clone())
                         .checked(chosen)
                         .disabled(reason.is_some() && !chosen)
