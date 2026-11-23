@@ -60,6 +60,17 @@ impl Translator {
             if state == "content" && text(row, "kind") != "message" {
                 continue;
             }
+            // An own row the daemon lists before it answered the send is
+            // that send: it is shown once its id is known (the send's
+            // refresh reads it again), never as a second message.
+            let id = text(row, "id");
+            if row["is_own"].as_bool().unwrap_or(false)
+                && !self.sending.is_empty()
+                && !self.local_ids.contains_key(id)
+                && !self.moments.contains_key(&message_moment_id(context, id))
+            {
+                continue;
+            }
             if kind == ContextKind::Direct && state == "content" {
                 self.note_received(context, row);
             }
@@ -140,7 +151,9 @@ impl Translator {
     }
 
     fn message_moment(&self, context: &ContextId, row: &Value, now: Timestamp) -> Moment {
-        let message = text(row, "id");
+        // A message this device sent keeps the moment it was shown as.
+        let daemon_id = text(row, "id");
+        let message = self.local_id(daemon_id);
         let own = row["is_own"].as_bool().unwrap_or(false);
         let origin = if own { self.own_origin() } else { self.origin(author_device(row)) };
         let kind = match text(row, "state") {
@@ -158,7 +171,9 @@ impl Translator {
                 MomentKind::Message(MessagePayload {
                     text: body,
                     receipt: if own { receipt(row) } else { Receipt::default() },
-                    attachment: self.attachment_of(message),
+                    attachment: self
+                        .attachment_of(message)
+                        .or_else(|| self.attachment_of(daemon_id)),
                     ..Default::default()
                 })
             }

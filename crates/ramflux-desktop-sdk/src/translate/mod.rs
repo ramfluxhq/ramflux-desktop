@@ -168,6 +168,12 @@ pub struct Translator {
     standing: BTreeMap<StandingApprovalId, StandingApproval>,
     objects: BTreeMap<ObjectId, Object>,
     sent_attachments: BTreeMap<String, ObjectId>,
+    /// The id this device gave a message it sent, by the id the daemon
+    /// answered with (the read model lists the message under the daemon's
+    /// id, the shown moment keeps this device's).
+    local_ids: BTreeMap<String, String>,
+    /// Messages this device is sending whose daemon id is not known yet.
+    sending: BTreeSet<String>,
     /// Conversations this device started that the directory has not
     /// listed yet: a listing read before the start does not remove them.
     started: BTreeSet<ContextId>,
@@ -270,6 +276,8 @@ impl Translator {
             standing: BTreeMap::new(),
             objects: BTreeMap::new(),
             sent_attachments: BTreeMap::new(),
+            local_ids: BTreeMap::new(),
+            sending: BTreeSet::new(),
             started: BTreeSet::new(),
             renames: BTreeMap::new(),
             message_objects: BTreeMap::new(),

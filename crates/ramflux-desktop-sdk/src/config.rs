@@ -18,18 +18,17 @@ pub const DEFAULT_SOCKET: &str = "/tmp/ramflux/rfd.sock";
 /// repeat a moment later goes through.
 pub const LOCAL_NETWORK_RETRY_MS: [u16; 2] = [2_000, 4_000];
 
-/// Which message schema this build opens (S10c D1). A build reads the
-/// legacy rows until activation (c15a) switches it to the v1 path.
+/// Which message schema this build opens (S10c D1). This build reads the
+/// message read model of storage generation 1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SchemaSupport {
-    /// The legacy message path: opens a daemon at generation 0 (or one that
-    /// reports none).
-    #[default]
-    Legacy,
-    /// The v1 path, constructible only through the test seam until
-    /// activation: opens a daemon at generation 1.
+    /// Generation 0 only (a daemon that reports none, or 0); kept for the
+    /// gate's own tests, never built for the app.
     #[cfg(feature = "test-support")]
-    V1Candidate,
+    Legacy,
+    /// Generation 1: the read model (`message.read`).
+    #[default]
+    V1,
 }
 
 /// Settings of the SDK source.
@@ -98,7 +97,7 @@ impl SdkConfig {
             call_api: true,
             backup_api: true,
             inline_thumbnails: false,
-            schema_support: SchemaSupport::Legacy,
+            schema_support: SchemaSupport::V1,
         }
     }
 }
