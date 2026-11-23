@@ -21,7 +21,7 @@ The script builds a release binary without the demo scenarios
 (`cargo build --release --locked --no-default-features`; see "Demo scenarios"
 in the README), writes
 `Info.plist` (bundle id `org.ramflux.desktop`, version from `Cargo.toml`), a
-placeholder icon and the license notices, and signs the bundle ad hoc. An ad hoc
+Ramflux icon and the license notices, and signs the bundle ad hoc. An ad hoc
 signature only lets the bundle run on the machine that built it.
 `--identity NAME` signs with a code-signing identity from the keychain instead
 (an Apple Development certificate is enough for local use), which keeps the

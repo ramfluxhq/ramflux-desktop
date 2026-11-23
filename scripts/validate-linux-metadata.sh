@@ -42,10 +42,11 @@ metainfo="$DIR/$APP_ID.metainfo.xml"
 [ -f "$entry" ] || fail "missing $entry"
 [ -f "$metainfo" ] || fail "missing $metainfo"
 
-for size in 48x48 64x64 128x128 256x256 512x512; do
+for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
     [ -f "$DIR/icons/hicolor/$size/apps/$APP_ID.png" ] || fail "missing $size icon"
 done
 [ -f "$DIR/icons/hicolor/scalable/apps/$APP_ID.svg" ] || fail "missing scalable icon"
+[ -f "$DIR/icons/hicolor/symbolic/apps/$APP_ID-symbolic.svg" ] || fail "missing symbolic icon"
 
 if [ -f "$entry" ]; then
     grep -qx "StartupWMClass=$APP_ID" "$entry" || fail "StartupWMClass is not $APP_ID"

@@ -20,7 +20,7 @@
 #   README.md
 #   usr/bin/ramflux-desktop
 #   usr/share/applications/org.ramflux.desktop.desktop
-#   usr/share/icons/hicolor/{48x48,64x64,128x128,256x256,512x512,scalable}/apps/
+#   usr/share/icons/hicolor/{16x16,...,512x512,scalable,symbolic}/apps/
 #   usr/share/metainfo/org.ramflux.desktop.metainfo.xml
 #   usr/share/licenses/ramflux-desktop/
 #
@@ -120,18 +120,19 @@ install -Dm755 "$BIN" "$STAGE/usr/bin/$EXECUTABLE"
 strip --strip-all "$STAGE/usr/bin/$EXECUTABLE"
 install -Dm644 "packaging/linux/$APP_ID.desktop" "$SHARE/applications/$APP_ID.desktop"
 install -Dm644 "packaging/linux/$APP_ID.metainfo.xml" "$SHARE/metainfo/$APP_ID.metainfo.xml"
-for size in 48x48 64x64 128x128 256x256 512x512; do
+for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
     install -Dm644 "packaging/linux/icons/hicolor/$size/apps/$APP_ID.png" \
         "$SHARE/icons/hicolor/$size/apps/$APP_ID.png"
 done
 install -Dm644 "packaging/linux/icons/hicolor/scalable/apps/$APP_ID.svg" \
     "$SHARE/icons/hicolor/scalable/apps/$APP_ID.svg"
+install -Dm644 "packaging/linux/icons/hicolor/symbolic/apps/$APP_ID-symbolic.svg" \
+    "$SHARE/icons/hicolor/symbolic/apps/$APP_ID-symbolic.svg"
 for notice in LICENSE LICENSING.md NOTICE; do
     if [ -f "$notice" ]; then
         install -Dm644 "$notice" "$SHARE/licenses/$PACKAGE/$notice"
     fi
 done
-install -Dm644 packaging/linux/icons/LICENSE-LUCIDE "$SHARE/licenses/$PACKAGE/LICENSE-LUCIDE"
 if [ -d licenses ]; then
     for file in licenses/*; do
         if [ -f "$file" ]; then

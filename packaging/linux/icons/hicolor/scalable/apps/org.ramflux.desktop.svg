@@ -1,13 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Placeholder application icon until the design team delivers the final
-       one: the Lucide "orbit" glyph (ISC, see LICENSE-LUCIDE) on a rounded
-       tile, identical to the icon scripts/package-macos.sh builds. -->
-  <rect x="64" y="64" width="896" height="896" rx="200" fill="#1f2937"/>
-  <g transform="translate(212 212) scale(25)" fill="none" stroke="#f9fafb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M20.341 6.484A10 10 0 0 1 10.266 21.85"/>
-    <path d="M3.659 17.516A10 10 0 0 1 13.74 2.152"/>
-    <circle cx="12" cy="12" r="3"/>
-    <circle cx="19" cy="5" r="2"/>
-    <circle cx="5" cy="19" r="2"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Copyright (c) 2026 Span Brain -->
+<!-- Ramflux "Flux Current" mark from the project website (ramflux.org
+     favicon), on a 1024 grid: a 824 px paper tile inset 100 px (the macOS
+     icon template). The mark keeps the website's 100-unit geometry scaled by
+     8.24. scripts/generate-icons.sh crops the viewBox for the Linux icons. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="68 68 888 888">
+  <rect x="100" y="100" width="824" height="824" rx="181" fill="#faf8f3"/>
+  <g transform="translate(100 100) scale(8.24)">
+    <path d="M 18 50 C 32 26, 44 26, 50 50 C 56 74, 68 74, 82 50"
+          fill="none" stroke="#0a0a0a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="18" cy="50" r="6.4" fill="#b43a2f"/>
+    <circle cx="82" cy="50" r="6.6" fill="none" stroke="#0a0a0a" stroke-width="4"/>
   </g>
 </svg>

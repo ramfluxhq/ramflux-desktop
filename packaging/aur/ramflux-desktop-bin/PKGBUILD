@@ -56,7 +56,7 @@ package() {
   install -Dm644 usr/share/metainfo/org.ramflux.desktop.metainfo.xml \
     "${pkgdir}/usr/share/metainfo/org.ramflux.desktop.metainfo.xml"
   local icon
-  for icon in usr/share/icons/hicolor/*/apps/org.ramflux.desktop.*; do
+  for icon in usr/share/icons/hicolor/*/apps/org.ramflux.desktop{.*,-symbolic.*}; do
     install -Dm644 "${icon}" "${pkgdir}/${icon}"
   done
   local notice
