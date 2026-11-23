@@ -164,6 +164,7 @@ pub fn current_locale() -> &'static Locale {
 pub fn set_locale(tag: &str) {
     let locale = locale::set_current(tag);
     direction::set_layout_direction(locale.direction);
+    ramflux_desktop_navigation::scale::set_cjk_interface(crate::assets::cjk_interface(locale.tag));
     gpui_kit::component::set_locale(locale.kit);
 }
 
