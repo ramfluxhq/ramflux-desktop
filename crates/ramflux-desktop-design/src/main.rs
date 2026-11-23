@@ -4,6 +4,11 @@
 //! `rf-design`: board references, capture comparison, deviation review and
 //! the token check. See `docs/design-instrument.md`.
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
+)]
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 

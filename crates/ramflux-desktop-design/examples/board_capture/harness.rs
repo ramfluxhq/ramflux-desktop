@@ -62,7 +62,7 @@ pub struct Run {
 
 /// The `'static` tag of a shipped locale, if the application ships it.
 pub fn shipped_locale(tag: &str) -> Option<&'static str> {
-    ramflux_desktop_ui::i18n::LOCALES.iter().map(|(t, _)| *t).find(|t| *t == tag)
+    ramflux_desktop_ui::i18n::locales().map(|l| l.tag).find(|t| *t == tag)
 }
 
 impl Run {

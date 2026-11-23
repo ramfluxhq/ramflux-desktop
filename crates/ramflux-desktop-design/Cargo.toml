@@ -8,6 +8,9 @@ publish.workspace = true
 repository.workspace = true
 description = "Design instruments: board references, capture comparison, reviewed deviations and the token check"
 
+[lints]
+workspace = true
+
 # The library and the `rf-design` tool stay light (no GPUI), so CI can compare
 # captures without building the UI. The capture program is an example that
 # uses the UI crate through dev-dependencies only.
@@ -26,7 +29,8 @@ ramflux-desktop-core.workspace = true
 ramflux-desktop-navigation.workspace = true
 ramflux-desktop-sdk = { workspace = true, features = ["test-support"] }
 ramflux-desktop-test = { workspace = true, features = ["fake-bus", "v1-fixtures"] }
-ramflux-desktop-ui.workspace = true
+# The capture program plays the demo scenarios (feature `demo`).
+ramflux-desktop-ui = { workspace = true, features = ["demo"] }
 
 [[bin]]
 name = "rf-design"
@@ -37,9 +41,16 @@ path = "src/main.rs"
 [[example]]
 name = "board_capture"
 path = "examples/board_capture/main.rs"
+required-features = ["demo"]
 
 # Creates the macOS platform on the main thread, so it has its own main.
 [[test]]
 name = "self_compare"
 path = "tests/self_compare.rs"
 harness = false
+required-features = ["demo"]
+
+[features]
+# The capture program and the real-capture test render the demo scenarios.
+default = ["demo"]
+demo = []
