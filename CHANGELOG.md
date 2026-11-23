@@ -40,6 +40,10 @@ Versioning.
   rem divisors are fixed. `rf-design tokens --check` guards it in CI.
 - Four screenshot programs skip with a message instead of failing when
   `RAMFLUX_SHOTS_DIR` is not set.
+- Design instrument: a third accepted class, `stroke` (a centred design
+  stroke against the kit's inside border, same edge colour and width, outer
+  geometry within 1 px, measured), and kit regions attributed with the
+  board's surroundings.
 
 ### Fixed
 

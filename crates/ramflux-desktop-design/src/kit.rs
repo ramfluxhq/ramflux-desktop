@@ -11,6 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
+use image::RgbaImage;
 use serde::{Deserialize, Serialize};
 
 use crate::compare::{self, Options, Rect};
@@ -137,9 +138,19 @@ pub fn run(
             // screen rule; a component is measured against a board-sized
             // area so its regions get their geometric classes.
             let area = 1440 * 900;
+            // Regions are attributed with the board's surroundings (the
+            // outer half of a centred stroke lies outside the rectangle):
+            // the board crop grows by a margin and the capture, rendered on
+            // the board's background, is set on that background.
+            let (padded_reference, padded_capture) = padded(&board_image, &capture, r);
             for g in &c.regions {
-                let m = crate::classify::measure(&reference, &capture, g.rect, 1);
-                let at = crate::classify::classify(&m, g.rect, area);
+                let rect = Rect {
+                    x: g.rect.x + r.x - r.x.saturating_sub(PAD),
+                    y: g.rect.y + r.y - r.y.saturating_sub(PAD),
+                    ..g.rect
+                };
+                let m = crate::classify::measure(&padded_reference, &padded_capture, rect, 1);
+                let at = crate::classify::classify(&m, rect, area);
                 if at.decision != crate::deviations::Decision::Accepted {
                     result.open_regions += 1;
                     result.open_classes.push(at.class.to_owned());
@@ -176,7 +187,7 @@ pub fn markdown(results: &[KitResult]) -> String {
     ));
     let within = compared.iter().filter(|r| r.open_regions == 0).count();
     out.push_str(&format!(
-        "Within tolerance (no region left after the chrome and rasterisation rules): {within} of {}.\n\n",
+        "Within tolerance (no region left after the chrome, rasterisation and stroke rules): {within} of {}.\n\n",
         compared.len()
     ));
     out.push_str("| # | Component | Board | Source | Diff | SSIM | Regions | Open (classes) | Largest | Three-up |\n|---|---|---|---|---|---|---|---|---|---|\n");
@@ -206,6 +217,21 @@ pub fn markdown(results: &[KitResult]) -> String {
         out.push_str(&format!("| {} | {} |\n", r.name, r.note));
     }
     out
+}
+
+/// Margin around a component for attributing its regions (design px).
+const PAD: u32 = 4;
+
+/// The board around `r` grown by [`PAD`], and the capture placed at the same
+/// spot on the board's background colour there.
+fn padded(board: &RgbaImage, capture: &RgbaImage, r: Rect) -> (RgbaImage, RgbaImage) {
+    let (x, y) = (r.x.saturating_sub(PAD), r.y.saturating_sub(PAD));
+    let (w, h) = (r.w + 2 * PAD, r.h + 2 * PAD);
+    let reference = image::imageops::crop_imm(board, x, y, w, h).to_image();
+    let background = *reference.get_pixel(0, 0);
+    let mut placed = RgbaImage::from_pixel(w, h, background);
+    image::imageops::overlay(&mut placed, capture, i64::from(r.x - x), i64::from(r.y - y));
+    (reference, placed)
 }
 
 #[cfg(test)]

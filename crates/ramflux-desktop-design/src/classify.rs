@@ -12,6 +12,7 @@
 //! |---|---|---|
 //! | `chrome` | inside the top-left 72x40 corner, ink on the board only (the macOS traffic lights) | accepted (lead) |
 //! | `rasterisation` | ink boxes equal within 1 design px, ink amount within 20 %, same colours | accepted (lead) |
+//! | `stroke` | a centred design stroke against the kit's inside border: same edge colour and width, outer geometry within 1 px, differences only in the 1 px band (and glyph rasterisation inside); see [`crate::stroke`] | accepted (lead) |
 //! | `structure` | the region covers more than 15 % of the compared area | fix |
 //! | `missing` | ink on the board, none in the capture, nor within 24 px | fix |
 //! | `extra` | ink in the capture, none on the board, nor within 24 px | fix |
@@ -21,14 +22,14 @@
 //! | `copy` | same start and height, width differs by more than 25 % | unreviewed (class hint) |
 //! | `layout` | anything else | unreviewed (class hint) |
 //!
-//! Only the two lead decisions are accepted; nothing else is.
+//! Only the three lead decisions are accepted; nothing else is.
 
 use image::{Rgba, RgbaImage};
 
 use crate::compare::Rect;
 use crate::deviations::Decision;
 
-/// Reviewer recorded on entries attributed by measurement (`fix`); the two
+/// Reviewer recorded on entries attributed by measurement (`fix`); the
 /// accepted classes carry `lead`, whose decision they apply.
 pub const REVIEWER: &str = "rf-design classify";
 
@@ -50,7 +51,13 @@ pub struct Measure {
     /// element that moved further than its region is not missing.
     pub reference_nearby: u64,
     pub capture_nearby: u64,
+    /// The stroke-alignment fit, when its rule holds (including glyph
+    /// rasterisation for any difference inside the element).
+    pub stroke: Option<crate::stroke::Fit>,
 }
+
+/// The classes the lead accepted, whose entries the attribution may rewrite.
+pub const ACCEPTED: [&str; 3] = ["chrome", "rasterisation", "stroke"];
 
 /// How far around a region a moved element is looked for.
 const NEARBY: u32 = 24;
@@ -133,6 +140,19 @@ fn ink(image: &RgbaImage, rect: Rect, scale: u32, bg: Rgba<u8>) -> Ink {
 
 /// Measures `rect` (design px) in both images at `scale`.
 pub fn measure(reference: &RgbaImage, capture: &RgbaImage, rect: Rect, scale: u32) -> Measure {
+    let mut m = measure_ink(reference, capture, rect, scale);
+    m.stroke = crate::stroke::fit(reference, capture, rect, scale).filter(|fit| {
+        fit.interior.is_none_or(|inner| {
+            let at =
+                classify(&measure_ink(reference, capture, inner, scale), inner, u64::MAX / 100);
+            at.class == "rasterisation"
+        })
+    });
+    m
+}
+
+/// The ink measurements alone (no stroke fit).
+fn measure_ink(reference: &RgbaImage, capture: &RgbaImage, rect: Rect, scale: u32) -> Measure {
     let rb = background(reference, rect, scale);
     let cb = background(capture, rect, scale);
     let (ri, rn, rc) = ink(reference, rect, scale, rb);
@@ -151,6 +171,7 @@ pub fn measure(reference: &RgbaImage, capture: &RgbaImage, rect: Rect, scale: u3
         capture_colour: cc,
         reference_nearby: rnear,
         capture_nearby: cnear,
+        stroke: None,
     }
 }
 
@@ -216,6 +237,17 @@ pub fn classify(m: &Measure, rect: Rect, area: u64) -> Attribution {
         "ink box board {:.1},{:.1} {:.1}x{:.1}, app {:.1},{:.1} {:.1}x{:.1}",
         r.0, r.1, rw, rh, c.0, c.1, cw, ch
     );
+    if let Some(fit) = &m.stroke {
+        return accept(
+            "stroke",
+            format!(
+                "centred design stroke against an inside border: edge {}, coverage board {:.2} app {:.2} px ({shift})",
+                hex(fit.edge),
+                fit.board_coverage,
+                fit.capture_coverage
+            ),
+        );
+    }
     if within && (0.8..=1.25).contains(&amount) && ink_colour <= 24 && bg_colour <= 6 {
         return accept(
             "rasterisation",
@@ -336,5 +368,29 @@ mod tests {
         assert_eq!((at.class, at.decision), ("copy", Decision::Unreviewed));
         let big = Rect { x: 0, y: 0, w: 150, h: 80 };
         assert_eq!(classify(&measure(&a, &c, big, 1), big, AREA / 10).class, "structure");
+    }
+
+    #[test]
+    fn a_centred_stroke_against_an_inside_border_is_stroke_alignment() {
+        let edge = Rgba([142, 142, 142, 255]);
+        let white = Rgba([255, 255, 255, 255]);
+        // Capture: an inside 1 px border on 20..56 device px (2x).
+        let mut app = RgbaImage::from_pixel(120, 80, Rgba([252, 251, 249, 255]));
+        block(&mut app, 20, 20, 36, 36, edge);
+        block(&mut app, 22, 22, 32, 32, white);
+        // Board: the same box, its stroke centred on the outline.
+        let mut board = RgbaImage::from_pixel(120, 80, Rgba([252, 251, 249, 255]));
+        block(&mut board, 19, 19, 38, 38, edge);
+        block(&mut board, 21, 21, 34, 34, white);
+        let rect = Rect { x: 9, y: 9, w: 20, h: 20 };
+        let at = classify(&measure(&board, &app, rect, 2), rect, AREA);
+        assert_eq!((at.class, at.decision), ("stroke", Decision::Accepted), "{}", at.reason);
+        // Another edge colour is not.
+        let mut red = board.clone();
+        block(&mut red, 19, 19, 38, 38, Rgba([200, 40, 40, 255]));
+        block(&mut red, 21, 21, 34, 34, white);
+        let at = classify(&measure(&red, &app, rect, 2), rect, AREA);
+        assert_ne!(at.class, "stroke", "{}", at.reason);
+        assert_ne!(at.decision, Decision::Accepted);
     }
 }

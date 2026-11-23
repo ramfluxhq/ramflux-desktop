@@ -332,7 +332,7 @@ fn compare_board(
                 let automatic = entry.reviewer.is_empty()
                     || entry.reviewer == classify::REVIEWER
                     || entry.reviewer == "lead"
-                        && matches!(entry.class.as_str(), "chrome" | "rasterisation");
+                        && classify::ACCEPTED.contains(&entry.class.as_str());
                 if !automatic {
                     continue;
                 }
