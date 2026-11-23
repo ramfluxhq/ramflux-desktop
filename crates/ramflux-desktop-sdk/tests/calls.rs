@@ -77,15 +77,18 @@ impl World {
 /// push subscription open).
 fn live(world: &World, call_api: bool, stream: bool) -> Fed {
     let hub = ramflux_desktop_sdk::SdkHub::start(world.config(call_api)).expect("bridge");
-    let mut account = Fed::new(hub.account_source(AccountId::new(ACCOUNT)));
+    let mut account = Fed::woken(hub.account_source(AccountId::new(ACCOUNT)), hub.wake());
     let mode = if stream { SyncMode::Stream } else { SyncMode::Off };
     account.until("the account is live", |s, _| {
         s.context(&ContextId::new(DM)).is_some()
             && s.sync_status().is_some_and(|sync| sync.mode == mode)
     });
     if stream {
+        // The attach snapshot and the head recovery each read the calls; a
+        // recovery epoch (a reconnect on a loaded machine) reads them again.
+        // An exact count, sampled between pumps, could be stepped over.
         if call_api {
-            account.until("head recovery calls", |_, _| world.requests("call.list").len() == 2);
+            account.until("head recovery calls", |_, _| world.requests("call.list").len() >= 2);
         }
         assert!(world.fake.streaming(ACCOUNT));
     }
@@ -111,7 +114,7 @@ fn state_is(state: CallState) -> impl Fn(&Store, &[EventEnvelope]) -> bool {
 /// Asks the source for the media session of `call` and waits for it.
 fn media(account: &mut Fed, call: &CallId) -> Result<CallMedia, String> {
     account.source.request_call_media(call);
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + WAIT_LIMIT;
     loop {
         account.pump();
         if let Some((id, answer)) = account.source.take_call_media() {
@@ -119,7 +122,7 @@ fn media(account: &mut Fed, call: &CallId) -> Result<CallMedia, String> {
             return answer;
         }
         assert!(Instant::now() < deadline, "timed out waiting for the media session");
-        std::thread::sleep(Duration::from_millis(15));
+        account.idle();
     }
 }
 
@@ -307,12 +310,13 @@ fn calls_resume_after_a_refused_stream_recovers() {
 fn calls_come_back_with_a_reload() {
     let world = World::start("reload", true);
     let ringing = world.calls.incoming(ACCOUNT, DM);
-    let account = live(&world, true, true);
-    let call = account.store.call(&CallId::new(ringing.clone())).expect("listed");
-    assert_eq!(call.state, CallState::IncomingRinging);
-    assert_eq!(world.requests("call.list").len(), 2, "attach and head-recovery snapshots");
+    let mut feed = live(&world, true, true);
+    let id = CallId::new(ringing.clone());
+    feed.until("listed and ringing", |s, _| {
+        s.call(&id).is_some_and(|c| c.state == CallState::IncomingRinging)
+    });
+    assert!(world.requests("call.list").len() >= 2, "attach and head-recovery snapshots");
     // A call record in the conversation's messages is the same call.
-    let mut feed = account;
     world.calls.peer_hangs_up(&ringing);
     feed.until("missed", state_is(CallState::Ended(CallEndReason::Missed)));
     let records = feed
@@ -328,12 +332,12 @@ fn calls_come_back_with_a_reload() {
 fn a_daemon_without_the_call_api_has_calls_unsupported() {
     let world = World::start("old-daemon", true);
     world.calls.set_available(false);
-    let account = live(&world, true, true);
-    assert_eq!(world.requests("call.list").len(), 2, "attach and head-recovery snapshots");
-    assert_eq!(
-        account.store.unsupported_reason(methods::CALL_INVITE),
-        Some(ramflux_desktop_sdk::capabilities::reason::CALLS)
-    );
+    let mut account = live(&world, true, true);
+    assert!(world.requests("call.list").len() >= 2, "attach and head-recovery snapshots");
+    account.until("calls declared unsupported", |s, _| {
+        s.unsupported_reason(methods::CALL_INVITE)
+            == Some(ramflux_desktop_sdk::capabilities::reason::CALLS)
+    });
     world.stop();
 }
 

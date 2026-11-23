@@ -306,6 +306,7 @@ fn an_evicted_body_is_read_again_when_the_view_asks() {
         source: hub.account_source(AccountId::new("acct-main")),
         store: ramflux_desktop_core::Store::with_body_capacity(1),
         envelopes: Vec::new(),
+        wake: Some(hub.wake()),
     };
     account.source.focus(Some(&ContextId::new("dm-ana")));
     let first = MomentId::new("msg:dm-ana:m1");
