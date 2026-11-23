@@ -28,6 +28,12 @@
 //! [`session::MediaSession`] in and reads [`engine::Engine::stats`] back.
 
 #![forbid(unsafe_code)]
+// Production code: no unwrap, expect, panic or `std::sync` locks (see the
+// workspace `Cargo.toml`); tests may.
+#![cfg_attr(
+    not(test),
+    deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
+)]
 
 pub mod codec;
 pub mod device;

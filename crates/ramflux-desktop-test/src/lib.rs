@@ -29,26 +29,46 @@
 //!   pinned product revision for live tests.
 
 #![forbid(unsafe_code)]
+// Production code: no unwrap, expect, panic or `std::sync` locks (see the
+// workspace `Cargo.toml`); tests may.
+#![cfg_attr(
+    not(test),
+    deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
+)]
+
+// The fake daemon (`fake-bus`), the live daemon helpers (`live-daemon`) and
+// the v1 fixtures (`v1-fixtures`) are test code: only test targets enable
+// those features, so they may lock std mutexes, unwrap and panic like tests.
 
 #[cfg(feature = "fake-bus")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_backup;
 #[cfg(feature = "fake-bus")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_bus;
 #[cfg(feature = "fake-bus")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_calls;
 #[cfg(feature = "fake-bus")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_contact_requests;
 #[cfg(feature = "fake-bus")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_custody;
 #[cfg(feature = "fake-bus")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_journal;
 #[cfg(feature = "fake-bus")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_profiles;
 #[cfg(feature = "fake-bus")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_surfaces;
 #[cfg(feature = "fake-bus")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod fake_tasks;
 #[cfg(feature = "live-daemon")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod live_daemon;
 pub mod local_echo;
 pub mod mock_agents;
@@ -59,8 +79,10 @@ pub mod player;
 pub mod scale;
 pub mod scenario;
 #[cfg(feature = "v1-fixtures")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod v1_call_fixtures;
 #[cfg(feature = "v1-fixtures")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod v1_fixtures;
 
 pub use mock_ceremony::MockCeremony;

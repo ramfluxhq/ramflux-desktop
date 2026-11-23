@@ -26,6 +26,12 @@
 //!   actions as the protocol's action bytes.
 
 #![forbid(unsafe_code)]
+// Production code: no unwrap, expect, panic or `std::sync` locks (see the
+// workspace `Cargo.toml`); tests may.
+#![cfg_attr(
+    not(test),
+    deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
+)]
 
 pub mod bridge;
 pub mod bus;
@@ -57,5 +63,7 @@ pub const PRODUCT_REV: &str = env!("RAMFLUX_PRODUCT_REV");
 pub use source::{DaemonStop, SdkHub, SdkSource};
 pub use translate::Scope;
 
+// Test seams: only test targets enable `test-support`.
 #[cfg(feature = "test-support")]
+#[allow(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub mod test_support;

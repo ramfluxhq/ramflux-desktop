@@ -22,6 +22,12 @@
 //! See `docs/contract.md` for the full description.
 
 #![forbid(unsafe_code)]
+// Production code: no unwrap, expect, panic or `std::sync` locks (see the
+// workspace `Cargo.toml`); tests may.
+#![cfg_attr(
+    not(test),
+    deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
+)]
 
 pub mod conformance;
 pub mod event;

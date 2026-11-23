@@ -16,6 +16,13 @@
 //! starts one by itself; the entry page offers "Start local daemon".
 //! Application events go to the platform log directory, redacted.
 
+// Production code: no unwrap, expect, panic or `std::sync` locks (see the
+// workspace `Cargo.toml`); tests may.
+#![cfg_attr(
+    not(test),
+    deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
+)]
+
 use gpui_kit::component::TitleBar;
 use gpui_kit::*;
 use ramflux_desktop_sdk::local::{AppearanceStore, LaunchStore, app_log, paths};
