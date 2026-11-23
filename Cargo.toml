@@ -22,6 +22,8 @@ repository = "https://github.com/ramfluxhq/ramflux-desktop"
 [workspace.dependencies]
 # Pinned exactly: GPUI Kit ships breaking minor releases every few weeks.
 gpui-kit = "=0.8.0"
+# Locks that do not poison (the workspace rule: no `std::sync` locks).
+parking_lot = "0.12"
 ron = "0.12"
 rust-i18n = "4.2"
 serde = { version = "1", features = ["derive"] }

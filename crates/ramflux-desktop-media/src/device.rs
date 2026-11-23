@@ -21,12 +21,13 @@
 //! delivers silence, which the engine reports as a blocked microphone.
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
+use parking_lot::Mutex;
 
 use crate::codec::{FRAME_SAMPLES, Frame, SAMPLE_RATE};
 use crate::engine::{Capture, Playback};
@@ -217,7 +218,7 @@ fn fill<T: SizedSample + FromSample<f32>>(
     channels: usize,
     queue: &Mutex<VecDeque<f32>>,
 ) {
-    let Ok(mut queue) = queue.try_lock() else {
+    let Some(mut queue) = queue.try_lock() else {
         // The engine holds the queue this instant: play silence once.
         data.fill(T::EQUILIBRIUM);
         return;
@@ -429,7 +430,7 @@ impl Playback for DevicePlayback {
         let input: Vec<f32> = frame.iter().map(|s| f32::from_sample(*s)).collect();
         let mut out = Vec::with_capacity(input.len() * 2);
         self.resampler.process(&input, &mut out);
-        let mut queue = self.queue.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut queue = self.queue.lock();
         queue.extend(out);
         let excess = queue.len().saturating_sub(self.limit);
         queue.drain(..excess);

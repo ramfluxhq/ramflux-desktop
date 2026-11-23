@@ -69,7 +69,7 @@ pub trait Source {
 /// The readiness bit and waiter are protected by the same lock so a send
 /// between draining and registering cannot be lost.
 #[derive(Clone, Default)]
-pub struct SourceWake(std::sync::Arc<std::sync::Mutex<WakeState>>);
+pub struct SourceWake(std::sync::Arc<parking_lot::Mutex<WakeState>>);
 
 #[derive(Default)]
 struct WakeState {
@@ -81,7 +81,7 @@ impl SourceWake {
     /// Announces a completion after publishing it to its channel.
     pub fn notify(&self) {
         let waiter = {
-            let mut state = self.0.lock().expect("source wake lock");
+            let mut state = self.0.lock();
             state.ready = true;
             state.waiter.take()
         };
@@ -93,7 +93,7 @@ impl SourceWake {
     /// Waits for a completion, including one sent before registration.
     pub async fn notified(&self) {
         std::future::poll_fn(|cx| {
-            let mut state = self.0.lock().expect("source wake lock");
+            let mut state = self.0.lock();
             if std::mem::take(&mut state.ready) {
                 std::task::Poll::Ready(())
             } else {
