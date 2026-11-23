@@ -9,7 +9,8 @@
 #
 # Usage: scripts/package-linux.sh [--no-build] [--out DIR]
 #
-#   --no-build   package the existing target/release binary (built with
+#   --no-build   package the existing release binary in Cargo's target
+#                directory (CARGO_TARGET_DIR when set; built with
 #                `--release --locked --no-default-features`, as this script
 #                does).
 #   --out DIR    write the archive and SHA256SUMS to DIR instead of dist/.
@@ -103,7 +104,12 @@ if [ "$BUILD" -eq 1 ]; then
         RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$ROOT=/build/ramflux-desktop --remap-path-prefix=$CARGO_HOME_DIR=/cargo" \
         cargo build --release --locked -p "$EXECUTABLE" --no-default-features
 fi
-BIN="target/release/$EXECUTABLE"
+# Cargo's target directory: CARGO_TARGET_DIR (or a configured build.target-dir)
+# when set, otherwise target/ of the workspace.
+TARGET_DIR=$(cargo metadata --format-version 1 --no-deps --locked |
+    sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')
+[ -n "$TARGET_DIR" ] || TARGET_DIR="target"
+BIN="$TARGET_DIR/release/$EXECUTABLE"
 [ -x "$BIN" ] || die "missing $BIN (build first or drop --no-build)"
 
 sh scripts/validate-linux-metadata.sh
