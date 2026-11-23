@@ -52,6 +52,10 @@ Versioning.
   with its weight and line height (the interface face's natural line,
   measured on the boards), applied with `DesignText::design_text`; button
   labels use the button style.
+- Text styles take the face of the interface language: Noto Sans SC first
+  in Chinese, Japanese and Korean (the boards' `rf-font`, whose line metrics
+  place CJK text 0.09 em lower than Hanken Grotesk's), Hanken Grotesk first
+  otherwise.
 
 ### Fixed
 

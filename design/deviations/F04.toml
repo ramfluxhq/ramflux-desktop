@@ -503,7 +503,7 @@ h = 12
 [[deviation]]
 id = "r39"
 class = "layout"
-reason = "geometry differs (ink box board 376.0,357.0 15.0x15.5, app 360.5,342.0 27.0x13.5)"
+reason = "geometry differs (ink box board 376.0,357.0 15.0x15.5, app 360.0,343.0 28.0x13.5)"
 decision = "unreviewed"
 reviewer = ""
 
@@ -516,7 +516,7 @@ h = 31
 [[deviation]]
 id = "r40"
 class = "spacing"
-reason = "same element moved by +0.5,-6.0 px (ink box board 420.5,348.0 28.5x14.5, app 421.0,342.0 28.0x13.5)"
+reason = "same element moved by +0.5,-5.0 px (ink box board 420.5,348.0 28.5x14.5, app 421.0,343.0 28.0x13.5)"
 decision = "fix"
 reviewer = "rf-design classify"
 

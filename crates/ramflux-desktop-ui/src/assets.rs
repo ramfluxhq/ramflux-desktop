@@ -53,13 +53,55 @@ pub const CJK_FAMILY: &str = "Noto Sans SC";
 /// The interface font: Hanken Grotesk with Noto Sans SC for the glyphs it
 /// lacks (CJK), at `weight`.
 pub fn design_font(weight: gpui_kit::FontWeight) -> gpui_kit::Font {
+    font(LATIN_FAMILY, CJK_FAMILY, weight)
+}
+
+/// The face of a design text style at `weight`, by the script of the
+/// interface language.
+///
+/// The boards set CJK copy in `rf-font` (Noto Sans SC, its own Latin
+/// glyphs included) and Latin copy in `rf-font-latin` (Hanken Grotesk). The
+/// face also sets the line's metrics: CJK text on a Hanken Grotesk line sits
+/// about 0.09 em higher than on the boards (Hanken's ascent is 1.0 em, Noto
+/// Sans SC's 1.16 em). So in a Chinese, Japanese or Korean interface a text
+/// style takes Noto Sans SC first; in every other language Hanken Grotesk
+/// with Noto Sans SC for the CJK glyphs it lacks. (Measured: the window as
+/// a whole in Noto Sans SC moved board text that sits on GPUI's default
+/// line, so the face goes with the text styles, which set the line.)
+pub fn text_font(weight: gpui_kit::FontWeight) -> gpui_kit::Font {
+    if cjk_interface(crate::i18n::current_locale().tag) {
+        font(CJK_FAMILY, LATIN_FAMILY, weight)
+    } else {
+        design_font(weight)
+    }
+}
+
+fn font(family: &str, fallback: &str, weight: gpui_kit::FontWeight) -> gpui_kit::Font {
     gpui_kit::Font {
-        family: LATIN_FAMILY.into(),
+        family: family.to_owned().into(),
         features: gpui_kit::FontFeatures::default(),
-        fallbacks: Some(gpui_kit::FontFallbacks::from_fonts(vec![CJK_FAMILY.to_owned()])),
+        fallbacks: Some(gpui_kit::FontFallbacks::from_fonts(vec![fallback.to_owned()])),
         weight,
         style: gpui_kit::FontStyle::Normal,
     }
+}
+
+/// A design text style in its face ([`text_font`]).
+pub trait DesignType: gpui_kit::Styled + Sized {
+    /// The face, size, weight and line height of `style`.
+    #[must_use]
+    fn design_type(self, style: ramflux_desktop_navigation::scale::TextStyle) -> Self {
+        use ramflux_desktop_navigation::scale::DesignText as _;
+        self.font(text_font(style.weight)).design_text(style)
+    }
+}
+
+impl<T: gpui_kit::Styled> DesignType for T {}
+
+/// Whether an interface in `tag` is set in the CJK face.
+fn cjk_interface(tag: &str) -> bool {
+    let language = tag.split(['-', '_']).next().unwrap_or(tag);
+    matches!(language, "zh" | "ja" | "ko")
 }
 
 /// Registers the bundled design fonts with the text system: Hanken Grotesk
@@ -85,6 +127,16 @@ pub fn load_fonts(cx: &gpui_kit::App) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cjk_languages_take_the_cjk_face() {
+        for tag in ["zh-CN", "zh-TW", "ja", "ko-KR"] {
+            assert!(cjk_interface(tag), "{tag}");
+        }
+        for tag in ["en", "en-XA", "ar-XB", "de-DE", "ru"] {
+            assert!(!cjk_interface(tag), "{tag}");
+        }
+    }
 
     #[test]
     fn call_icons_and_default_icons_load() {
