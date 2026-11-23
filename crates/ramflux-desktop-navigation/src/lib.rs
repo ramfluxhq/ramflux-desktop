@@ -3,6 +3,13 @@
 
 //! Controlled RF navigation presentation; hosts own routes and business actions.
 
+// Production code: no unwrap, expect, panic or `std::sync` locks (see the
+// workspace `Cargo.toml`); tests may.
+#![cfg_attr(
+    not(test),
+    deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
+)]
+
 pub mod geometry;
 pub mod row;
 pub mod theme;

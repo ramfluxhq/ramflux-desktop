@@ -19,6 +19,21 @@ license = "AGPL-3.0-or-later"
 publish = false
 repository = "https://github.com/ramfluxhq/ramflux-desktop"
 
+# Conventions enforced in every crate (each crate opts in with
+# `[lints] workspace = true`; `crates/ramflux-desktop-test/tests/conventions.rs`
+# checks that every member does). Production code must not unwrap, expect,
+# panic or take `std::sync` locks (listed in `clippy.toml`): each crate root
+# denies those with
+# `#![cfg_attr(not(test), deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used))]`,
+# which leaves unit and integration tests free to.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+disallowed_types = "allow"
+
 [workspace.dependencies]
 # Pinned exactly: GPUI Kit ships breaking minor releases every few weeks.
 gpui-kit = "=0.8.0"

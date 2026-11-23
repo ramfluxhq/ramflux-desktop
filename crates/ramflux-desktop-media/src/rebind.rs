@@ -36,6 +36,10 @@ use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use zeroize::Zeroizing;
 
+/// SHA-256's block size: an HMAC-SHA-256 key of at most this many bytes is
+/// zero-padded to it.
+const SHA256_BLOCK: usize = 64;
+
 /// The challenge's magic.
 pub const CHALLENGE_MAGIC: &[u8; 4] = b"RFVC";
 /// The response's magic.
@@ -108,8 +112,11 @@ impl Rebind {
 
     /// The truncated tag for `cookie` and the observed `address` bytes.
     pub fn tag(&self, cookie: &[u8; COOKIE_LEN], address: &[u8]) -> [u8; TAG_LEN] {
-        let mut mac = Hmac::<Sha256>::new_from_slice(self.key.as_slice())
-            .expect("HMAC takes keys of any length");
+        // HMAC pads a key shorter than the hash block with zeros, so the
+        // padded block is the same key, taken without a fallible length check.
+        let mut block = Zeroizing::new([0_u8; SHA256_BLOCK]);
+        block[..self.key.len()].copy_from_slice(self.key.as_slice());
+        let mut mac = Hmac::<Sha256>::new(&(*block).into());
         mac.update(LABEL);
         mac.update(&self.lease_id);
         mac.update(&[self.side]);
