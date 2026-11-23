@@ -48,6 +48,10 @@ Versioning.
   the input fill, the `rf-primary` fill with its check, and the disabled
   `rf-surface` / `rf-line-strong` state; the checkbox keeps the UI kit's
   base checkbox for role, toggle state, focus and keyboard activation.
+- Design text styles in `ramflux_desktop_navigation::scale`: each type size
+  with its weight and line height (the interface face's natural line,
+  measured on the boards), applied with `DesignText::design_text`; button
+  labels use the button style.
 
 ### Fixed
 
