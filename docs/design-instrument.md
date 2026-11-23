@@ -159,7 +159,7 @@ reference_sha256 = "…"
 [[deviation]]
 id = "r01"
 region = { x = 498, y = 110, w = 828, h = 199 }
-class = "fixture"          # token, spacing, type, missing, layout, copy, generated, fixture, rasterisation
+class = "fixture"          # token, spacing, type, missing, layout, copy, generated, fixture, rasterisation, stroke
 reason = "Timeline content is the s02 demo conversation, not the board's."
 decision = "accepted"       # unreviewed | accepted | fix
 reviewer = "lead"
@@ -194,15 +194,32 @@ decision = "unreviewed"
 `--classify` attributes every entry nobody decided by hand
 (`src/classify.rs`): it measures the ink of both images inside the region
 against the local background and sets class, decision and a one-line reason
-with the measurements. Only the two lead decisions are accepted (reviewer
+with the measurements. Only the three lead decisions are accepted (reviewer
 `lead`): the macOS traffic-light corner the headless capture cannot draw
-(`chrome`), and pure glyph rasterisation where position and metrics match
-within 1 design px (`rasterisation`). Confident attributions become `fix`
+(`chrome`), pure glyph rasterisation where position and metrics match
+within 1 design px (`rasterisation`), and stroke alignment (`stroke`, see
+below). Confident attributions become `fix`
 (reviewer `rf-design classify`): `structure` (more than 15 % of the screen),
 `missing` and `extra` (ink on one side only, nothing similar within 24 px),
 `token` (same geometry, other colour), `spacing` (same size, moved), `type`
 (same start and height, other width; or a text height off by up to 6 px).
 Everything else stays `unreviewed` with a class hint (`layout`, `copy`).
+
+Stroke alignment (`src/stroke.rs`) is the 1 px edge difference left when the
+design draws a centred stroke (half outside the outline, half inside) and the
+UI kit draws an inside border. It is accepted only when all of these are
+measured: the capture's element has an edge on every side (contrast over 40
+against the background and the fill); the board's ink box, with the outer
+half of its stroke, is within 1 design px of the capture's on every side;
+across the middle 40 % of every side the board holds as much of the
+capture's edge colour as the capture does, per colour channel, within a
+quarter of a stroke (same colour token, same width); and every differing
+pixel lies in the band 1 design px either side of the outline, except inside
+the element, where the difference must itself pass the rasterisation rule.
+Another colour, a wider or missing edge, a moved or resized element, or any
+difference outside the band is not `stroke`. `rf-design kit` attributes a
+component's regions on the board crop grown by 4 px (the capture set on the
+board's background), so the outer half of a stroke is seen.
 Fixture, spacing, type-scale, colour and structure differences are never
 accepted. Entries a person decided are left alone.
 

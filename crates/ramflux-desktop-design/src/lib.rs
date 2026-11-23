@@ -11,6 +11,8 @@
 //!   a perceptual score and the three-up image.
 //! - [`deviations`]: the per-board reviewed expected-deviation files.
 //! - [`classify`]: attribution of deviation regions to error classes.
+//! - [`stroke`]: the stroke-alignment rule (centred design strokes against
+//!   the kit's inside borders).
 //! - [`kit`]: kit components compared one by one with the component boards.
 //! - [`report`]: the machine-readable result and the Markdown report.
 //! - [`tokens`]: the design tokens of the code compared by value with the
@@ -32,6 +34,7 @@ pub mod kit;
 pub mod manifest;
 pub mod matrix;
 pub mod report;
+pub mod stroke;
 pub mod tokens;
 
 use std::path::PathBuf;

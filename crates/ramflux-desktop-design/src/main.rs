@@ -34,7 +34,7 @@ USAGE:
       --review  also write review.md listing what needs a decision
       --record  write NEW regions into the per-board files as unreviewed
       --classify  attribute unreviewed entries to classes by measurement
-                (accepts only window chrome and glyph rasterisation)
+                (accepts only window chrome, glyph rasterisation and stroke alignment)
   rf-design kit --captures <dir> --out <dir> [--refs <dir>]
       Compare the kit component captures with the component boards.
   rf-design tokens [--out <dir>] [--check] [--worklist <file>]
