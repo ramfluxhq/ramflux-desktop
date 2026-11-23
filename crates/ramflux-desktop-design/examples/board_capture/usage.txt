@@ -1,0 +1,16 @@
+board_capture: render design-board screens over the mock source
+
+USAGE:
+  TZ=UTC cargo run -p ramflux-desktop-design --example board_capture -- --out <dir> [options]
+
+OPTIONS:
+  --out <dir>           output directory (or RAMFLUX_CAPTURE_DIR)
+  --boards <list>       board keys, comma separated, or `priority` (default)
+  --themes <list>       `board` (default: the board's own theme) or light,dark
+  --locales <list>      `board` (default: the board's language) or zh-CN,en,en-XA,ar-XB
+                        (a locale the application does not ship yet is skipped)
+  --sizes <list>        `board` (default: frame size, taller boards 900 high) and/or
+                        <w>x<h> sizes such as 1280x820,1024x768,800x900,640x480
+
+Writes <key>__<locale>__<theme>__<w>x<h>.png and captures.json. Exit 1 when a
+recipe failed, 2 on a usage error.

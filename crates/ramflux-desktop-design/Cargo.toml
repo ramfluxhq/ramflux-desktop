@@ -1,0 +1,45 @@
+[package]
+name = "ramflux-desktop-design"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+description = "Design instruments: board references, capture comparison, reviewed deviations and the token check"
+
+# The library and the `rf-design` tool stay light (no GPUI), so CI can compare
+# captures without building the UI. The capture program is an example that
+# uses the UI crate through dev-dependencies only.
+[dependencies]
+# PNG only; every package is already in the lock file through GPUI.
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+toml = "0.9"
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+ramflux-desktop-core.workspace = true
+ramflux-desktop-navigation.workspace = true
+ramflux-desktop-sdk = { workspace = true, features = ["test-support"] }
+ramflux-desktop-test = { workspace = true, features = ["fake-bus", "v1-fixtures"] }
+ramflux-desktop-ui.workspace = true
+
+[[bin]]
+name = "rf-design"
+path = "src/main.rs"
+
+# Renders the mapped screens over the mock source; run explicitly:
+# cargo run -p ramflux-desktop-design --example board_capture -- --help
+[[example]]
+name = "board_capture"
+path = "examples/board_capture/main.rs"
+
+# Creates the macOS platform on the main thread, so it has its own main.
+[[test]]
+name = "self_compare"
+path = "tests/self_compare.rs"
+harness = false
