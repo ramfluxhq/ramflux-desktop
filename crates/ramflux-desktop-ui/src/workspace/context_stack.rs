@@ -472,8 +472,9 @@ impl Render for ContextStack {
                                         .w_full()
                                         .h(gpui_kit::rems(theme::ROW_REM))
                                         .px(space(3.))
+                                        // Design `List row / Conversation`: md radius.
                                         .rounded(gpui_kit::px(
-                                            ramflux_desktop_navigation::palette(cx).radius_sm,
+                                            ramflux_desktop_navigation::palette(cx).radius_md,
                                         ))
                                         .selected(selected)
                                         .accessibility_label(accessible_name(entry))
@@ -612,7 +613,7 @@ impl Render for ContextStack {
                         .w_full()
                         .h(gpui_kit::rems(theme::ROW_REM))
                         .px(space(3.))
-                        .rounded(gpui_kit::px(palette.radius_sm))
+                        .rounded(gpui_kit::px(palette.radius_md))
                         .accessibility_label(tr_args(
                             "navigation.strangers_count",
                             &[("count", &request_count.to_string())],

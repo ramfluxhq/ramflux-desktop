@@ -151,7 +151,9 @@ pub fn run(
                 };
                 let m = crate::classify::measure(&padded_reference, &padded_capture, rect, 1);
                 let at = crate::classify::classify(&m, rect, area);
-                if at.decision != crate::deviations::Decision::Accepted {
+                // The traffic-light rule is for screens; a component has no
+                // window chrome.
+                if at.decision != crate::deviations::Decision::Accepted || at.class == "chrome" {
                     result.open_regions += 1;
                     result.open_classes.push(at.class.to_owned());
                 }
