@@ -19,6 +19,7 @@
 mod harness;
 mod kit;
 mod recipes;
+mod text;
 
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
