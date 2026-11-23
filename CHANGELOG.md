@@ -7,6 +7,26 @@ Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Localisation: one JSON catalogue per locale (`locales/<tag>.json`) replaces
+  the per-area two-locale YAML files; the build compiles them and fails on a
+  key used in code but missing. Fifteen launch languages are selectable
+  (English and Simplified Chinese complete, thirteen with English fallback
+  and their own number and date formats), with BCP 47 matching of the system
+  language, a locale → language → English fallback chain and CLDR plural
+  rules for every category (Arabic and Russian included).
+- Pseudo-locales `en-XA` (long, accented) and `ar-XB` (right to left) in
+  developer builds.
+- Right-to-left layout: the interface mirrors in Arabic through
+  direction-aware rows, edges and chevrons; identifiers stay left to right;
+  substituted untrusted text is bidi-isolated; message bubbles follow their
+  content's direction. GPUI Kit components that do not mirror are listed in
+  `docs/i18n.md`.
+- Catalogue checks in `cargo test`: canonical catalogues with the source key
+  set, unused keys, placeholder mismatches, a per-locale coverage report
+  (`docs/i18n-coverage.md`) and a guard against physical edges in views.
+
 ### Fixed
 
 - The first-run test for a daemon left behind by a crash no longer fails
