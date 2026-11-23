@@ -116,6 +116,14 @@ fn main() {
                 px(ramflux_desktop_ui::MIN_WINDOW_SIZE.1),
             )),
             app_id: Some(identity::APP_ID.to_owned()),
+            // The title compositors, docks and task switchers show (X11
+            // `_NET_WM_NAME`, Wayland `xdg_toplevel.set_title`); Kit's options
+            // leave it unset, which reads "Unnamed Window" on X11 window
+            // managers and an empty title on Wayland.
+            titlebar: Some(TitlebarOptions {
+                title: Some(identity::APP_NAME.into()),
+                ..TitleBar::title_bar_options()
+            }),
             ..TitleBar::window_options()
         };
         let opened = open_window(options, cx, move |window, cx| {

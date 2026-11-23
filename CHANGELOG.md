@@ -116,6 +116,9 @@ Versioning.
 
 ### Fixed
 
+- Linux: the window has a title ("Ramflux"). It had none, so X11 window
+  managers showed "Unnamed Window" and Wayland compositors, docks and task
+  switchers an empty title.
 - The first-run test for a daemon left behind by a crash no longer fails
   intermittently ("missing ElementId launch-socket"): it waits until the
   daemon's listings have routed the window before it opens Settings, so a
