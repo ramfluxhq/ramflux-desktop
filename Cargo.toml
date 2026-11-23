@@ -63,4 +63,5 @@ ramflux-desktop-navigation = { path = "crates/ramflux-desktop-navigation" }
 ramflux-desktop-media = { path = "crates/ramflux-desktop-media" }
 ramflux-desktop-sdk = { path = "crates/ramflux-desktop-sdk" }
 ramflux-desktop-test = { path = "crates/ramflux-desktop-test" }
-ramflux-desktop-ui = { path = "crates/ramflux-desktop-ui" }
+# Without its default `demo` feature: the app crate decides (feature `demo`).
+ramflux-desktop-ui = { path = "crates/ramflux-desktop-ui", default-features = false }

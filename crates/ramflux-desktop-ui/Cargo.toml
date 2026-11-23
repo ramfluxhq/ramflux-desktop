@@ -11,6 +11,11 @@ repository.workspace = true
 workspace = true
 
 [features]
+# The demo scenarios: the scenario-playing mock source, the bundled fixtures
+# and the developer panel. On for development and tests; release packaging
+# builds without it (`scripts/package-macos.sh`), so no mock data ships.
+default = ["demo"]
+demo = ["dep:ramflux-desktop-test"]
 bus-trace = ["ramflux-desktop-sdk/bus-trace"]
 
 [dependencies]
@@ -21,8 +26,8 @@ ramflux-desktop-core.workspace = true
 ramflux-desktop-sdk.workspace = true
 # The voice call media engine and the audio devices (its own threads).
 ramflux-desktop-media.workspace = true
-# The scenario-playing mock source drives the UI until the SDK source lands (F2).
-ramflux-desktop-test.workspace = true
+# The scenario-playing mock source of the demo scenarios (feature `demo`).
+ramflux-desktop-test = { workspace = true, optional = true }
 rust-i18n.workspace = true
 serde.workspace = true
 serde_json.workspace = true

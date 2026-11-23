@@ -12,7 +12,8 @@
 #   --rf PATH    also ship this `rf` binary inside the bundle (next to the
 #                desktop executable), so "Start local daemon" works without
 #                configuring a program path. RF_BIN=PATH does the same.
-#   --no-build   package the existing target/release binary.
+#   --no-build   package the existing target/release binary (build it with
+#                `--no-default-features`, as this script does).
 #   --no-sign    leave the bundle unsigned (default: ad hoc signature, which
 #                is enough to run the bundle on the machine that built it).
 #   --identity NAME
@@ -93,7 +94,10 @@ fi
 
 if [ "$BUILD" -eq 1 ]; then
     echo "building $EXECUTABLE $VERSION ($REV), release"
-    RAMFLUX_DESKTOP_BUILD_REV="$REV" cargo build --release --locked -p "$EXECUTABLE"
+    # Without the default `demo` feature: no scenarios, mock source or
+    # developer panel in the bundle; the app always runs on a daemon.
+    RAMFLUX_DESKTOP_BUILD_REV="$REV" cargo build --release --locked -p "$EXECUTABLE" \
+        --no-default-features
 fi
 BIN="target/release/$EXECUTABLE"
 [ -x "$BIN" ] || die "missing $BIN (build first or drop --no-build)"
