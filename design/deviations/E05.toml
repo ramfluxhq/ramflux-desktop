@@ -1,0 +1,20 @@
+# Expected deviations of design board E05. Format and rules:
+# crates/ramflux-desktop-design/src/deviations.rs and docs/design-instrument.md.
+# decision: unreviewed | accepted | fix. Never widen a region to hide a new difference.
+
+board = "E05"
+capture = "E05__zh-CN__light__1440x900"
+reference_sha256 = "c463d87351507e6586e9d91835ddda8f9380300dd4901cb22646bd8fbc028d47"
+
+[[deviation]]
+id = "r01"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 0
+y = 0
+w = 1440
+h = 900

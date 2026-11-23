@@ -1,0 +1,202 @@
+# Expected deviations of design board A03. Format and rules:
+# crates/ramflux-desktop-design/src/deviations.rs and docs/design-instrument.md.
+# decision: unreviewed | accepted | fix. Never widen a region to hide a new difference.
+
+board = "A03"
+capture = "A03__zh-CN__light__1440x900"
+reference_sha256 = "bbe63378cefbc7d634103146be4ffea3915bfe34424c04a591c70dff94b7a17e"
+
+[[deviation]]
+id = "r01"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 417
+y = 57
+w = 87
+h = 18
+
+[[deviation]]
+id = "r02"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 50
+y = 62
+w = 95
+h = 13
+
+[[deviation]]
+id = "r03"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 15
+y = 63
+w = 13
+h = 12
+
+[[deviation]]
+id = "r04"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 415
+y = 94
+w = 288
+h = 166
+
+[[deviation]]
+id = "r05"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1381
+y = 103
+w = 11
+h = 12
+
+[[deviation]]
+id = "r06"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1407
+y = 103
+w = 11
+h = 12
+
+[[deviation]]
+id = "r07"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 414
+y = 279
+w = 260
+h = 51
+
+[[deviation]]
+id = "r08"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 415
+y = 348
+w = 610
+h = 63
+
+[[deviation]]
+id = "r09"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 414
+y = 420
+w = 142
+h = 63
+
+[[deviation]]
+id = "r10"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1004
+y = 423
+w = 10
+h = 8
+
+[[deviation]]
+id = "r11"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 418
+y = 506
+w = 152
+h = 24
+
+[[deviation]]
+id = "r12"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 416
+y = 540
+w = 127
+h = 17
+
+[[deviation]]
+id = "r13"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 415
+y = 571
+w = 170
+h = 34
+
+[[deviation]]
+id = "r14"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 416
+y = 616
+w = 94
+h = 32
+
+[[deviation]]
+id = "r15"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 415
+y = 691
+w = 82
+h = 34

@@ -1,0 +1,13 @@
+# Expected deviations of design board A16. Format and rules:
+# crates/ramflux-desktop-design/src/deviations.rs and docs/design-instrument.md.
+# decision: unreviewed | accepted | fix. Never widen a region to hide a new difference.
+
+board = "A16"
+capture = "A16__zh-CN__light__1440x900"
+reference_sha256 = "fb90ea01cf772af8d13db0680cad7ff88f7443521a4ff6f1f08def5c1b9dd1e4"
+deviation = []
+
+[no_capture]
+reason = "UNREVIEWED (needs a daemon process that fails to start (first_run_shots stand-in); no mock recipe)"
+decision = "unreviewed"
+reviewer = ""

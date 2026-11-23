@@ -1,0 +1,813 @@
+# Expected deviations of design board G28. Format and rules:
+# crates/ramflux-desktop-design/src/deviations.rs and docs/design-instrument.md.
+# decision: unreviewed | accepted | fix. Never widen a region to hide a new difference.
+
+board = "G28"
+capture = "G28__zh-CN__light__1440x900"
+reference_sha256 = "4d39694b5fe25cc52c86704e4fa9c8e795fb909e816b7508a0a044664a1ce176"
+
+[[deviation]]
+id = "r01"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 364
+y = 34
+w = 48
+h = 23
+
+[[deviation]]
+id = "r02"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 88
+y = 36
+w = 47
+h = 23
+
+[[deviation]]
+id = "r03"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1386
+y = 38
+w = 12
+h = 12
+
+[[deviation]]
+id = "r04"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 28
+y = 51
+w = 13
+h = 18
+
+[[deviation]]
+id = "r05"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 100
+y = 73
+w = 171
+h = 31
+
+[[deviation]]
+id = "r06"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 280
+y = 73
+w = 231
+h = 15
+
+[[deviation]]
+id = "r07"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 23
+y = 96
+w = 22
+h = 38
+
+[[deviation]]
+id = "r08"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1170
+y = 112
+w = 96
+h = 32
+
+[[deviation]]
+id = "r09"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 507
+y = 121
+w = 84
+h = 17
+
+[[deviation]]
+id = "r10"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 100
+y = 141
+w = 75
+h = 15
+
+[[deviation]]
+id = "r11"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 22
+y = 160
+w = 23
+h = 38
+
+[[deviation]]
+id = "r12"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 518
+y = 163
+w = 16
+h = 15
+
+[[deviation]]
+id = "r13"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 543
+y = 165
+w = 51
+h = 13
+
+[[deviation]]
+id = "r14"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 613
+y = 165
+w = 117
+h = 13
+
+[[deviation]]
+id = "r15"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1227
+y = 165
+w = 26
+h = 12
+
+[[deviation]]
+id = "r16"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 602
+y = 170
+w = 3
+h = 3
+
+[[deviation]]
+id = "r17"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 100
+y = 193
+w = 30
+h = 15
+
+[[deviation]]
+id = "r18"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 507
+y = 217
+w = 88
+h = 12
+
+[[deviation]]
+id = "r19"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 16
+y = 224
+w = 35
+h = 40
+
+[[deviation]]
+id = "r20"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1234
+y = 229
+w = 23
+h = 12
+
+[[deviation]]
+id = "r21"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 507
+y = 241
+w = 51
+h = 12
+
+[[deviation]]
+id = "r22"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 577
+y = 241
+w = 56
+h = 12
+
+[[deviation]]
+id = "r23"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 643
+y = 241
+w = 24
+h = 12
+
+[[deviation]]
+id = "r24"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 100
+y = 245
+w = 30
+h = 15
+
+[[deviation]]
+id = "r25"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 566
+y = 245
+w = 3
+h = 4
+
+[[deviation]]
+id = "r26"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 376
+y = 293
+w = 48
+h = 24
+
+[[deviation]]
+id = "r27"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 87
+y = 294
+w = 47
+h = 23
+
+[[deviation]]
+id = "r28"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 297
+w = 45
+h = 12
+
+[[deviation]]
+id = "r29"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1392
+y = 301
+w = 9
+h = 9
+
+[[deviation]]
+id = "r30"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 17
+y = 305
+w = 33
+h = 42
+
+[[deviation]]
+id = "r31"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1198
+y = 308
+w = 56
+h = 14
+
+[[deviation]]
+id = "r32"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 321
+w = 57
+h = 12
+
+[[deviation]]
+id = "r33"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 571
+y = 321
+w = 61
+h = 12
+
+[[deviation]]
+id = "r34"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 90
+y = 349
+w = 40
+h = 17
+
+[[deviation]]
+id = "r35"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1176
+y = 365
+w = 90
+h = 37
+
+[[deviation]]
+id = "r36"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 22
+y = 369
+w = 23
+h = 42
+
+[[deviation]]
+id = "r37"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 372
+w = 114
+h = 17
+
+[[deviation]]
+id = "r38"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1138
+y = 390
+w = 23
+h = 11
+
+[[deviation]]
+id = "r39"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 90
+y = 396
+w = 65
+h = 20
+
+[[deviation]]
+id = "r40"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 401
+w = 105
+h = 15
+
+[[deviation]]
+id = "r41"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 630
+y = 401
+w = 252
+h = 12
+
+[[deviation]]
+id = "r42"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 619
+y = 405
+w = 3
+h = 4
+
+[[deviation]]
+id = "r43"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 90
+y = 440
+w = 26
+h = 13
+
+[[deviation]]
+id = "r44"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 507
+y = 445
+w = 61
+h = 26
+
+[[deviation]]
+id = "r45"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1222
+y = 469
+w = 35
+h = 12
+
+[[deviation]]
+id = "r46"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 507
+y = 481
+w = 202
+h = 15
+
+[[deviation]]
+id = "r47"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 718
+y = 481
+w = 231
+h = 15
+
+[[deviation]]
+id = "r48"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 90
+y = 483
+w = 26
+h = 13
+
+[[deviation]]
+id = "r49"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 90
+y = 527
+w = 26
+h = 13
+
+[[deviation]]
+id = "r50"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 507
+y = 557
+w = 135
+h = 17
+
+[[deviation]]
+id = "r51"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 90
+y = 570
+w = 26
+h = 13
+
+[[deviation]]
+id = "r52"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 593
+w = 148
+h = 13
+
+[[deviation]]
+id = "r53"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 662
+y = 593
+w = 174
+h = 12
+
+[[deviation]]
+id = "r54"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 90
+y = 614
+w = 26
+h = 13
+
+[[deviation]]
+id = "r55"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 505
+y = 619
+w = 198
+h = 34
+
+[[deviation]]
+id = "r56"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 507
+y = 711
+w = 135
+h = 17
+
+[[deviation]]
+id = "r57"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 23
+y = 734
+w = 21
+h = 35
+
+[[deviation]]
+id = "r58"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 748
+w = 147
+h = 14
+
+[[deviation]]
+id = "r59"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 662
+y = 748
+w = 174
+h = 13
+
+[[deviation]]
+id = "r60"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 776
+w = 192
+h = 33
+
+[[deviation]]
+id = "r61"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 25
+y = 799
+w = 18
+h = 20
+
+[[deviation]]
+id = "r62"
+class = ""
+reason = "UNREVIEWED"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 24
+y = 855
+w = 20
+h = 45
