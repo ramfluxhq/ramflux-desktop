@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.4
+Name=Ramflux
+GenericName=Encrypted Messenger
+GenericName[zh_CN]=加密通讯
+Comment=End-to-end encrypted messaging and agents
+Comment[zh_CN]=端到端加密的消息与智能体
+Exec=ramflux-desktop
+Icon=org.ramflux.desktop
+Terminal=false
+Categories=Network;InstantMessaging;Chat;
+Keywords=chat;messenger;encrypted;agent;
+Keywords[zh_CN]=聊天;通讯;加密;智能体;
+StartupNotify=true
+StartupWMClass=org.ramflux.desktop
+X-GNOME-UsesNotifications=true

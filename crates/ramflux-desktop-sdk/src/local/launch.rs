@@ -4,8 +4,10 @@
 //! Launch choices kept in the desktop settings file: the data source, the
 //! daemon socket, the daemon binary the desktop may start, and the data
 //! directory such a daemon uses. Unset choices fall back to defaults: the
-//! build's source, the reference CLI's socket, a daemon binary bundled with
-//! the application, and a data directory under the state directory.
+//! build's source, the platform's default socket ([`paths::default_socket`]:
+//! the session runtime directory on Linux, the reference CLI's socket
+//! elsewhere), a daemon binary bundled with the application, and the
+//! platform's default data directory ([`paths::default_data_dir`]).
 
 use std::path::{Path, PathBuf};
 
@@ -13,7 +15,6 @@ use serde::{Deserialize, Serialize};
 
 use super::paths;
 use super::settings_file::{self, SettingsError};
-use crate::config::DEFAULT_SOCKET;
 
 /// Where the data comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,13 +95,12 @@ impl LaunchSettings {
         self.source.unwrap_or_else(SourceKind::build_default)
     }
 
-    /// The chosen socket, else the reference CLI's default.
+    /// The chosen socket, else the platform default.
     pub fn socket_or_default(&self) -> PathBuf {
-        self.socket_path.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_SOCKET))
+        self.socket_path.clone().unwrap_or_else(paths::default_socket)
     }
 
-    /// The chosen data directory, else the default under the state
-    /// directory.
+    /// The chosen data directory, else the platform default.
     pub fn data_dir_or_default(&self) -> Option<PathBuf> {
         self.data_dir.clone().or_else(paths::default_data_dir)
     }
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn unset_choices_fall_back_to_defaults() {
         let launch = LaunchSettings::default();
-        assert_eq!(launch.socket_or_default(), PathBuf::from(DEFAULT_SOCKET));
+        assert_eq!(launch.socket_or_default(), paths::default_socket());
         assert_eq!(launch.source_or_default(), SourceKind::build_default());
         assert_eq!(launch.daemon_binary_with(None), DaemonBinary::Missing);
         let bundled = PathBuf::from("/Applications/R.app/Contents/MacOS/rf");

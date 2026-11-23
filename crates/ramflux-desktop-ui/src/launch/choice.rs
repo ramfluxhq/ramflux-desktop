@@ -4,7 +4,7 @@
 //! The data source of a window: command-line flags, then the environment
 //! (`RAMFLUX_DESKTOP_SOURCE`, `RAMFLUX_DESKTOP_SOCKET`), then the saved
 //! launch settings, then the build's default (scenarios in debug builds,
-//! the daemon at the reference CLI's socket in release builds). Whether the
+//! the daemon at the platform's default socket in release builds). Whether the
 //! source polls when the daemon offers no event stream comes from the saved
 //! launch settings.
 //!
@@ -96,7 +96,7 @@ pub fn resolve(overrides: &Overrides, settings: &LaunchSettings) -> Result<Sourc
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use ramflux_desktop_sdk::DEFAULT_SOCKET;
+    use ramflux_desktop_sdk::local::paths;
 
     use super::*;
 
@@ -142,15 +142,16 @@ mod tests {
     }
 
     #[test]
-    fn the_build_default_uses_the_reference_socket() {
+    fn the_build_default_uses_the_platform_socket() {
+        let default = paths::default_socket();
         let chosen = resolve(&Overrides::default(), &LaunchSettings::default()).expect("choice");
         if cfg!(debug_assertions) {
             assert!(matches!(chosen, SourceChoice::Mock));
         } else {
-            assert_eq!(socket(&chosen), Some(Path::new(DEFAULT_SOCKET)));
+            assert_eq!(socket(&chosen), Some(default.as_path()));
         }
         let rfd = resolve(&args(&["--source", "rfd"]), &LaunchSettings::default()).expect("rfd");
-        assert_eq!(socket(&rfd), Some(Path::new(DEFAULT_SOCKET)));
+        assert_eq!(socket(&rfd), Some(default.as_path()));
     }
 
     #[test]

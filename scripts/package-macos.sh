@@ -115,40 +115,14 @@ if [ -n "$RF" ]; then
     echo "bundled rf from $RF"
 fi
 
-# Placeholder icon: the GPUI Kit (Lucide) "orbit" glyph on a rounded tile,
-# rendered with the system tools. A missing tool only drops the icon.
+# Icon: the committed .icns generated from packaging/brand/ramflux-mark.svg
+# by scripts/generate-icons.sh. A missing file only drops the icon.
 ICON_FILE=""
-make_icon() {
-    assets=$(cargo metadata --format-version 1 --locked 2>/dev/null |
-        tr ',' '\n' | grep '"manifest_path":".*gpui-kit-assets-' | head -1 |
-        sed 's/.*"manifest_path":"\(.*\)\/Cargo.toml".*/\1/')
-    [ -n "$assets" ] || return 1
-    glyph="$assets/assets/icons/orbit.svg"
-    [ -f "$glyph" ] || return 1
-    work=$(mktemp -d "${TMPDIR:-/tmp}/rf-icon.XXXXXX")
-    inner=$(tr '\n' ' ' <"$glyph" | sed 's/^.*<svg[^>]*>//; s/<\/svg>.*$//')
-    cat >"$work/icon.svg" <<SVG
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect x="64" y="64" width="896" height="896" rx="200" fill="#1f2937"/>
-  <g transform="translate(212 212) scale(25)" fill="none" stroke="#f9fafb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">$inner</g>
-</svg>
-SVG
-    mkdir -p "$work/AppIcon.iconset"
-    for size in 16 32 128 256 512; do
-        double=$((size * 2))
-        sips -s format png -z "$size" "$size" "$work/icon.svg" \
-            --out "$work/AppIcon.iconset/icon_${size}x${size}.png" >/dev/null 2>&1 || return 1
-        sips -s format png -z "$double" "$double" "$work/icon.svg" \
-            --out "$work/AppIcon.iconset/icon_${size}x${size}@2x.png" >/dev/null 2>&1 || return 1
-    done
-    iconutil -c icns "$work/AppIcon.iconset" -o "$CONTENTS/Resources/AppIcon.icns" || return 1
-    cp "$assets/LICENSE-LUCIDE" "$CONTENTS/Resources/licenses/LICENSE-LUCIDE" 2>/dev/null || true
-    rm -rf "$work"
-}
-if make_icon; then
+if [ -f packaging/macos/AppIcon.icns ]; then
+    cp packaging/macos/AppIcon.icns "$CONTENTS/Resources/AppIcon.icns"
     ICON_FILE="<key>CFBundleIconFile</key><string>AppIcon</string>"
 else
-    echo "package-macos: warning: icon not generated; the bundle has the default icon" >&2
+    echo "package-macos: warning: packaging/macos/AppIcon.icns is missing; the bundle has the default icon" >&2
 fi
 
 for notice in LICENSE LICENSING.md NOTICE; do

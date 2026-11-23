@@ -1,19 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Where the desktop keeps its files on this machine.
+//! Where the desktop keeps its files on this machine, laid out on the
+//! platform directories of [`super::platform_dirs`].
 //!
-//! | What | macOS | Linux |
+//! | What | macOS | Linux (XDG) |
 //! |---|---|---|
-//! | settings (state) | `~/Library/Application Support/Ramflux Desktop` | `$XDG_CONFIG_HOME/ramflux-desktop` |
+//! | settings | `~/Library/Application Support/Ramflux Desktop` | `$XDG_CONFIG_HOME/ramflux-desktop` |
 //! | logs | `~/Library/Logs/Ramflux Desktop` | `$XDG_STATE_HOME/ramflux-desktop/logs` |
-//! | daemon data (default) | `<state>/rfd-data` | `<state>/rfd-data` |
+//! | daemon data (default) | `<settings>/rfd-data` | `$XDG_DATA_HOME/ramflux-desktop/rfd-data` |
+//! | daemon socket (default) | `/tmp/ramflux/rfd.sock` | `$XDG_RUNTIME_DIR/ramflux/rfd.sock` |
+//!
+//! On Linux, daemon data used to live under the settings directory
+//! (`<settings>/rfd-data`). [`super::data_migration`] copies it to the data
+//! directory once; until that copy has completed, the old folder stays the
+//! default, so a failed or skipped copy never hides the user's data.
+//!
+//! The default socket on Linux is in the session's runtime directory, never
+//! in `/tmp` while one exists. Two exceptions keep an existing setup
+//! working: a daemon already listening at the reference CLI's socket
+//! (`/tmp/ramflux/rfd.sock`, the `rf` default) is attached to when nothing
+//! listens in the runtime directory, and a runtime path too long for a Unix
+//! socket falls back to that socket. Without `$XDG_RUNTIME_DIR` the socket
+//! goes to a private folder in the state directory.
 //!
 //! `RAMFLUX_DESKTOP_STATE_DIR` and `RAMFLUX_DESKTOP_LOG_DIR` override the
-//! first two (tests, side-by-side installs). Nothing here is created; the
-//! writers create what they need.
+//! settings and log directories (tests, side-by-side installs); with the
+//! first set, daemon data stays under it as before. Nothing here is created;
+//! the writers create what they need.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use super::platform_dirs::{self, Dirs, Platform};
+use crate::config::DEFAULT_SOCKET;
 
 /// Overrides the state directory.
 pub const STATE_DIR_ENV: &str = "RAMFLUX_DESKTOP_STATE_DIR";
@@ -24,26 +43,40 @@ pub const LOG_DIR_ENV: &str = "RAMFLUX_DESKTOP_LOG_DIR";
 /// File name of the desktop settings file in the state directory.
 pub const SETTINGS_FILE: &str = "desktop-settings.json";
 
+/// Folder name of a started daemon's data root.
+pub const DATA_DIR_NAME: &str = "rfd-data";
+
+/// Folder in the runtime directory holding the local-bus socket (shared
+/// with the reference CLI's layout: `ramflux/rfd.sock`).
+pub const RUNTIME_SUBDIR: &str = "ramflux";
+
+/// File name of the local-bus socket.
+pub const SOCKET_NAME: &str = "rfd.sock";
+
+/// The longest socket path used, in bytes. A Unix socket address holds 108
+/// bytes on Linux and 104 on macOS, including the terminating zero.
+pub const MAX_SOCKET_PATH: usize = 100;
+
 /// File name of a daemon binary shipped inside the application bundle,
 /// next to the desktop executable.
-pub const BUNDLED_DAEMON: &str = "rf";
+pub const BUNDLED_DAEMON: &str = if cfg!(windows) { "rf.exe" } else { "rf" };
 
-fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+fn dirs() -> Option<Dirs> {
+    platform_dirs::current()
+}
+
+fn state_override() -> Option<PathBuf> {
+    std::env::var_os(STATE_DIR_ENV).filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
+/// The user's home folder, if known.
+pub fn home_dir() -> Option<PathBuf> {
+    platform_dirs::home(&platform_dirs::Env::from_process())
 }
 
 /// The directory of the desktop's local settings files.
 pub fn state_dir() -> Option<PathBuf> {
-    std::env::var_os(STATE_DIR_ENV).map(PathBuf::from).or_else(|| {
-        let home = home()?;
-        Some(if cfg!(target_os = "macos") {
-            home.join("Library/Application Support/Ramflux Desktop")
-        } else {
-            std::env::var_os("XDG_CONFIG_HOME")
-                .map_or_else(|| home.join(".config"), PathBuf::from)
-                .join("ramflux-desktop")
-        })
-    })
+    state_override().or_else(|| dirs().map(|d| d.config))
 }
 
 /// The desktop settings file.
@@ -54,26 +87,118 @@ pub fn settings_file() -> Option<PathBuf> {
 /// The directory of the application log (and the log of a daemon the
 /// desktop started).
 pub fn log_dir() -> Option<PathBuf> {
-    std::env::var_os(LOG_DIR_ENV).map(PathBuf::from).or_else(|| {
-        let home = home()?;
-        Some(if cfg!(target_os = "macos") {
-            home.join("Library/Logs/Ramflux Desktop")
-        } else {
-            std::env::var_os("XDG_STATE_HOME")
-                .map_or_else(|| home.join(".local/state"), PathBuf::from)
-                .join("ramflux-desktop/logs")
-        })
-    })
+    std::env::var_os(LOG_DIR_ENV)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| dirs().map(|d| d.logs))
+}
+
+/// The two candidate default data roots: where data belongs now, and where
+/// an older build put it (`None` when they are the same folder).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataDirs {
+    /// The current default.
+    pub current: PathBuf,
+    /// The pre-XDG default, to be migrated from.
+    pub legacy: Option<PathBuf>,
+}
+
+/// The default data roots for `dirs` on `platform`.
+pub fn data_dirs_for(platform: Platform, dirs: &Dirs) -> DataDirs {
+    let legacy = dirs.config.join(DATA_DIR_NAME);
+    let current = dirs.data.join(DATA_DIR_NAME);
+    match platform {
+        Platform::Xdg if current != legacy => DataDirs { current, legacy: Some(legacy) },
+        // macOS keeps data beside the settings, as before; Windows has no
+        // earlier layout.
+        _ => DataDirs { current, legacy: None },
+    }
+}
+
+/// The default data roots of this process; under the state override both
+/// are the old `<state>/rfd-data` and nothing migrates.
+pub fn data_dirs() -> Option<DataDirs> {
+    if let Some(state) = state_override() {
+        return Some(DataDirs { current: state.join(DATA_DIR_NAME), legacy: None });
+    }
+    dirs().map(|d| data_dirs_for(Platform::current(), &d))
+}
+
+/// Which data root is the default: the current one once it exists, else a
+/// legacy one that exists (its migration has not completed), else the
+/// current one.
+pub fn choose_data_dir(dirs: &DataDirs, exists: impl Fn(&Path) -> bool) -> PathBuf {
+    match &dirs.legacy {
+        Some(legacy) if !exists(&dirs.current) && exists(legacy) => legacy.clone(),
+        _ => dirs.current.clone(),
+    }
 }
 
 /// Where a daemon the desktop starts keeps its data when no other folder
-/// is set: inside the state directory, never in a temporary folder.
+/// is set; never in a temporary folder.
 pub fn default_data_dir() -> Option<PathBuf> {
-    state_dir().map(|dir| dir.join("rfd-data"))
+    data_dirs().map(|dirs| choose_data_dir(&dirs, Path::exists))
+}
+
+/// The default local-bus socket and, when the desktop is responsible for
+/// it, the private folder it must sit in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SocketChoice {
+    /// The socket path.
+    pub path: PathBuf,
+    /// The folder the desktop prepares (mode 0700) before it starts a
+    /// daemon on [`Self::path`]; `None` for the reference CLI's socket,
+    /// whose folder the daemon creates.
+    pub private_dir: Option<PathBuf>,
+}
+
+impl SocketChoice {
+    fn legacy() -> Self {
+        Self { path: PathBuf::from(DEFAULT_SOCKET), private_dir: None }
+    }
+}
+
+/// The default socket on `platform` for `dirs` (see the module comment);
+/// `exists` tells whether a socket path is present.
+pub fn choose_socket(
+    platform: Platform,
+    dirs: Option<&Dirs>,
+    exists: impl Fn(&Path) -> bool,
+) -> SocketChoice {
+    let (Platform::Xdg, Some(dirs)) = (platform, dirs) else {
+        return SocketChoice::legacy();
+    };
+    let folder = dirs
+        .runtime
+        .as_ref()
+        .map_or_else(|| dirs.state.join("run"), |runtime| runtime.join(RUNTIME_SUBDIR));
+    let path = folder.join(SOCKET_NAME);
+    if path.as_os_str().len() > MAX_SOCKET_PATH {
+        return SocketChoice::legacy();
+    }
+    if !exists(&path) && exists(Path::new(DEFAULT_SOCKET)) {
+        return SocketChoice::legacy();
+    }
+    SocketChoice { path, private_dir: Some(folder) }
+}
+
+/// The default socket of this process. Under the state override it stays
+/// the reference CLI's socket.
+pub fn default_socket_choice() -> SocketChoice {
+    if state_override().is_some() {
+        return SocketChoice::legacy();
+    }
+    choose_socket(Platform::current(), dirs().as_ref(), Path::exists)
+}
+
+/// The default socket path of this process.
+pub fn default_socket() -> PathBuf {
+    default_socket_choice().path
 }
 
 /// A daemon binary shipped next to the desktop executable (inside a
-/// packaged application), if there is one.
+/// packaged application, or `/usr/bin/rf` beside `/usr/bin/ramflux-desktop`
+/// when a package provides it), if there is one.
 pub fn bundled_daemon() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let candidate = exe.parent()?.join(BUNDLED_DAEMON);
@@ -82,15 +207,96 @@ pub fn bundled_daemon() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
+
     use super::*;
+    use crate::local::platform_dirs::{Env, resolve};
+
+    fn linux(runtime: Option<&str>) -> Dirs {
+        let env = Env {
+            home: Some(OsString::from("/home/u")),
+            runtime_dir: runtime.map(OsString::from),
+            ..Env::default()
+        };
+        resolve(Platform::Xdg, &env).expect("dirs")
+    }
 
     #[test]
-    fn the_data_dir_lives_under_the_state_dir() {
-        if let (Some(state), Some(data)) = (state_dir(), default_data_dir()) {
-            assert!(data.starts_with(state));
-        }
+    fn the_settings_file_lives_in_the_state_dir() {
         if let (Some(state), Some(file)) = (state_dir(), settings_file()) {
             assert_eq!(file.parent(), Some(state.as_path()));
         }
+    }
+
+    #[test]
+    fn linux_data_moves_from_config_to_data_home() {
+        let dirs = data_dirs_for(Platform::Xdg, &linux(None));
+        let current = PathBuf::from("/home/u/.local/share/ramflux-desktop/rfd-data");
+        let legacy = PathBuf::from("/home/u/.config/ramflux-desktop/rfd-data");
+        assert_eq!(dirs, DataDirs { current: current.clone(), legacy: Some(legacy.clone()) });
+
+        assert_eq!(choose_data_dir(&dirs, |_| false), current, "fresh install");
+        assert_eq!(choose_data_dir(&dirs, |p| p == legacy), legacy, "not migrated yet");
+        assert_eq!(choose_data_dir(&dirs, |_| true), current, "migrated");
+        assert_eq!(choose_data_dir(&dirs, |p| p == current), current);
+    }
+
+    #[test]
+    fn macos_data_stays_beside_the_settings() {
+        let env = Env { home: Some(OsString::from("/Users/u")), ..Env::default() };
+        let dirs = data_dirs_for(Platform::MacOs, &resolve(Platform::MacOs, &env).expect("d"));
+        assert_eq!(
+            dirs,
+            DataDirs {
+                current: PathBuf::from(
+                    "/Users/u/Library/Application Support/Ramflux Desktop/rfd-data"
+                ),
+                legacy: None,
+            }
+        );
+    }
+
+    #[test]
+    fn linux_socket_lives_in_the_runtime_dir() {
+        let dirs = linux(Some("/run/user/1000"));
+        let choice = choose_socket(Platform::Xdg, Some(&dirs), |_| false);
+        assert_eq!(choice.path, PathBuf::from("/run/user/1000/ramflux/rfd.sock"));
+        assert_eq!(choice.private_dir, Some(PathBuf::from("/run/user/1000/ramflux")));
+        assert!(!choice.path.starts_with("/tmp"));
+    }
+
+    #[test]
+    fn a_daemon_on_the_cli_socket_is_attached_to() {
+        let dirs = linux(Some("/run/user/1000"));
+        let legacy = |p: &Path| p == Path::new(DEFAULT_SOCKET);
+        assert_eq!(choose_socket(Platform::Xdg, Some(&dirs), legacy), SocketChoice::legacy());
+        // Both present: the runtime socket wins.
+        let both = choose_socket(Platform::Xdg, Some(&dirs), |_| true);
+        assert_eq!(both.path, PathBuf::from("/run/user/1000/ramflux/rfd.sock"));
+    }
+
+    #[test]
+    fn without_a_runtime_dir_the_socket_is_private_under_state() {
+        let choice = choose_socket(Platform::Xdg, Some(&linux(None)), |_| false);
+        assert_eq!(choice.path, PathBuf::from("/home/u/.local/state/ramflux-desktop/run/rfd.sock"));
+        assert_eq!(
+            choice.private_dir,
+            Some(PathBuf::from("/home/u/.local/state/ramflux-desktop/run"))
+        );
+    }
+
+    #[test]
+    fn a_socket_path_too_long_falls_back_to_the_cli_socket() {
+        let long = format!("/run/{}", "x".repeat(MAX_SOCKET_PATH));
+        let choice = choose_socket(Platform::Xdg, Some(&linux(Some(&long))), |_| false);
+        assert_eq!(choice, SocketChoice::legacy());
+    }
+
+    #[test]
+    fn macos_and_windows_keep_the_cli_socket() {
+        let dirs = linux(Some("/run/user/1000"));
+        assert_eq!(choose_socket(Platform::MacOs, Some(&dirs), |_| false), SocketChoice::legacy());
+        assert_eq!(choose_socket(Platform::Windows, None, |_| false), SocketChoice::legacy());
+        assert_eq!(choose_socket(Platform::Xdg, None, |_| false), SocketChoice::legacy());
     }
 }

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<component type="desktop-application">
+  <id>org.ramflux.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+
+  <name>Ramflux</name>
+  <summary>End-to-end encrypted messaging and agents</summary>
+  <summary xml:lang="zh-CN">端到端加密的消息与智能体</summary>
+
+  <developer id="org.ramflux">
+    <name>Span Brain</name>
+  </developer>
+
+  <description>
+    <p>
+      Ramflux Desktop is the desktop client of Ramflux, an end-to-end encrypted
+      messenger in which people and AI agents talk in the same conversations.
+    </p>
+    <p>
+      It connects to a Ramflux daemon running on the same computer, which
+      holds the account keys; the desktop itself never stores message
+      content or keys.
+    </p>
+    <ul>
+      <li>Direct and group conversations with delivery states</li>
+      <li>Contacts with safety numbers</li>
+      <li>Tasks and approvals for agents</li>
+      <li>Encrypted voice calls</li>
+      <li>Notifications that keep message text private</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">org.ramflux.desktop.desktop</launchable>
+  <icon type="stock">org.ramflux.desktop</icon>
+
+  <url type="homepage">https://ramflux.org</url>
+  <url type="vcs-browser">https://github.com/ramfluxhq/ramflux-desktop</url>
+  <url type="bugtracker">https://github.com/ramfluxhq/ramflux-desktop/issues</url>
+
+  <categories>
+    <category>Network</category>
+    <category>InstantMessaging</category>
+    <category>Chat</category>
+  </categories>
+
+  <keywords>
+    <keyword>chat</keyword>
+    <keyword>messenger</keyword>
+    <keyword>encrypted</keyword>
+    <keyword>agent</keyword>
+  </keywords>
+
+  <provides>
+    <binary>ramflux-desktop</binary>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">640</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">intense</content_attribute>
+    <content_attribute id="social-audio">intense</content_attribute>
+    <content_attribute id="social-contacts">intense</content_attribute>
+  </content_rating>
+
+  <releases>
+    <release version="0.2.6" date="2026-11-23">
+      <description>
+        <p>Release metadata aligned with product version 0.2.6.</p>
+      </description>
+    </release>
+    <release version="0.2.5" date="2026-11-22">
+      <description>
+        <p>Version line aligned with product 0.2.5.</p>
+      </description>
+    </release>
+    <release version="0.2.4" date="2026-11-21">
+      <description>
+        <p>Version line aligned with product 0.2.4.</p>
+      </description>
+    </release>
+    <release version="0.2.3" date="2026-11-21">
+      <description>
+        <p>Version line aligned with product 0.2.3.</p>
+      </description>
+    </release>
+    <release version="0.2.2" date="2026-11-21">
+      <description>
+        <p>Version line aligned with product 0.2.2.</p>
+      </description>
+    </release>
+    <release version="0.2.1" date="2026-11-17">
+      <description>
+        <p>Version line aligned with product 0.2.1.</p>
+      </description>
+    </release>
+    <release version="0.2.0" date="2026-11-16">
+      <description>
+        <p>First release under the shared Ramflux product version.</p>
+        <ul>
+          <li>Theme and language pickers in Settings</li>
+          <li>Locale-aware formatting of numbers, dates and sizes</li>
+          <li>Event-driven networking and send states with retry</li>
+          <li>Diagnostics show the version and build commit</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+</component>

@@ -151,6 +151,22 @@ impl LaunchOptions {
     }
 }
 
+/// Before a start on the platform's default socket, makes the folder the
+/// desktop is responsible for (under `$XDG_RUNTIME_DIR`, or its private
+/// fallback) private to the user; the daemon would otherwise create it with
+/// the process umask. Another socket's folder is the daemon's business. A
+/// failure is logged and the start goes on: the daemon reports its own error
+/// if it cannot bind.
+fn prepare_socket_dir(socket: &std::path::Path, default: &paths::SocketChoice) {
+    let Some(dir) = default.private_dir.as_deref() else { return };
+    if socket != default.path || socket.parent() != Some(dir) {
+        return;
+    }
+    if let Err(error) = ramflux_desktop_sdk::local::platform_dirs::ensure_private_dir(dir) {
+        app_log::warn(&format!("cannot prepare the socket folder: {error}"));
+    }
+}
+
 impl DaemonLauncher {
     /// A launcher for the daemon `store` watches, set up by `options`.
     pub fn new(store: Entity<StoreHandle>, options: LaunchOptions, cx: &mut Context<Self>) -> Self {
@@ -295,6 +311,7 @@ impl DaemonLauncher {
         let binary = self.binary().path().map(PathBuf::from).ok_or(LaunchError::BinaryMissing)?;
         daemon_process::check_binary(&binary)?;
         let data_dir = self.data_dir().ok_or(LaunchError::NoDataDir)?;
+        prepare_socket_dir(&socket, &paths::default_socket_choice());
         Ok(DaemonCommand { binary, socket, data_dir, log_file: self.daemon_log() })
     }
 
@@ -505,5 +522,25 @@ mod tests {
         assert!(production.store.path().is_none());
         assert_eq!(supervision_level(production.scenario_process), "WARN");
         assert_eq!(supervision_level(LaunchOptions::default().scenario_process), "WARN");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_the_default_socket_folder_is_prepared() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let root = std::env::temp_dir().join(format!("rf-sockdir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("run/ramflux");
+        let default =
+            paths::SocketChoice { path: dir.join("rfd.sock"), private_dir: Some(dir.clone()) };
+        prepare_socket_dir(&root.join("elsewhere/rfd.sock"), &default);
+        assert!(!dir.exists() && !root.join("elsewhere").exists(), "another socket is left alone");
+        prepare_socket_dir(&default.path, &default);
+        let mode = std::fs::metadata(&dir).expect("dir").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
+        let legacy = paths::SocketChoice { path: root.join("cli/rfd.sock"), private_dir: None };
+        prepare_socket_dir(&legacy.path, &legacy);
+        assert!(!root.join("cli").exists(), "the CLI socket folder is the daemon's");
+        let _ = std::fs::remove_dir_all(root);
     }
 }

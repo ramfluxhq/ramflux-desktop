@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Copyright (c) 2026 Span Brain -->
+<!-- Ramflux "Flux Current" mark from the project website (ramflux.org
+     favicon), on a 1024 grid: a 824 px paper tile inset 100 px (the macOS
+     icon template). The mark keeps the website's 100-unit geometry scaled by
+     8.24. scripts/generate-icons.sh crops the viewBox for the Linux icons. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="68 68 888 888">
+  <rect x="100" y="100" width="824" height="824" rx="181" fill="#faf8f3"/>
+  <g transform="translate(100 100) scale(8.24)">
+    <path d="M 18 50 C 32 26, 44 26, 50 50 C 56 74, 68 74, 82 50"
+          fill="none" stroke="#0a0a0a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="18" cy="50" r="6.4" fill="#b43a2f"/>
+    <circle cx="82" cy="50" r="6.6" fill="none" stroke="#0a0a0a" stroke-width="4"/>
+  </g>
+</svg>

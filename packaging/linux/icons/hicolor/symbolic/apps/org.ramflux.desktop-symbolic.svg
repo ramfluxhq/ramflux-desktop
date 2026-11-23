@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Copyright (c) 2026 Span Brain -->
+<!-- Single-colour Ramflux mark for the freedesktop symbolic icon convention:
+     no background; the curve, the filled dot and the ring share one fill
+     (#bebebe, the colour toolkits such as GTK recolour). The geometry is the
+     website mark scaled by 0.21875 onto a 16 px grid, with the strokes and
+     the dot and ring radii slightly heavier so it stays legible at 16 px.
+     The curve is masked out inside the ring so the ring stays open. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <defs>
+    <mask id="open-ring" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+      <rect width="100" height="100" fill="#fff"/>
+      <circle cx="82" cy="50" r="7.2" fill="#000"/>
+    </mask>
+  </defs>
+  <g transform="translate(-2.9375 -2.9375) scale(0.21875)" fill="#bebebe">
+    <path mask="url(#open-ring)" d="M 18 50 C 32 26, 44 26, 50 50 C 56 74, 68 74, 82 50"
+          fill="none" stroke="#bebebe" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="18" cy="50" r="7.5" stroke="none"/>
+    <circle cx="82" cy="50" r="7.2" fill="none" stroke="#bebebe" stroke-width="5.2"/>
+  </g>
+</svg>

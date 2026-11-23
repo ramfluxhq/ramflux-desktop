@@ -21,7 +21,7 @@ The script builds a release binary without the demo scenarios
 (`cargo build --release --locked --no-default-features`; see "Demo scenarios"
 in the README), writes
 `Info.plist` (bundle id `org.ramflux.desktop`, version from `Cargo.toml`), a
-placeholder icon and the license notices, and signs the bundle ad hoc. An ad hoc
+Ramflux icon and the license notices, and signs the bundle ad hoc. An ad hoc
 signature only lets the bundle run on the machine that built it.
 `--identity NAME` signs with a code-signing identity from the keychain instead
 (an Apple Development certificate is enough for local use), which keeps the
@@ -40,9 +40,11 @@ cargo install --git https://github.com/ramfluxhq/ramflux --rev <pinned rev> --lo
 
 ## 2. Start the daemon
 
-A packaged build always uses the local daemon and attaches to the socket of
-the reference CLI, `/tmp/ramflux/rfd.sock`. The app never starts a daemon by
-itself. Pick one:
+A packaged build always uses the local daemon and attaches to the platform's
+default socket: on macOS the socket of the reference CLI,
+`/tmp/ramflux/rfd.sock`; on Linux `$XDG_RUNTIME_DIR/ramflux/rfd.sock`, or the
+reference CLI's socket when a daemon already listens there (see
+[linux.md](linux.md)). The app never starts a daemon by itself. Pick one:
 
 - **Already running:** start it yourself, `rf daemon start` (add
   `--socket PATH --data-root DIR` to choose both). The app attaches as soon as
@@ -68,9 +70,9 @@ stops it.
 | Setting | Default | Applies |
 |---|---|---|
 | Use the local daemon (off: demo scenarios; only in builds with the `demo` feature) | on in release builds | next app start |
-| Daemon socket | `/tmp/ramflux/rfd.sock` | next app start |
+| Daemon socket | macOS `/tmp/ramflux/rfd.sock`; Linux `$XDG_RUNTIME_DIR/ramflux/rfd.sock` | next app start |
 | Daemon program (`rf`) | the one shipped in the app, else none | next daemon start |
-| Daemon data folder | `~/Library/Application Support/Ramflux Desktop/rfd-data` | next daemon start |
+| Daemon data folder | macOS `~/Library/Application Support/Ramflux Desktop/rfd-data`; Linux `$XDG_DATA_HOME/ramflux-desktop/rfd-data` | next daemon start |
 
 The same section shows the daemon state, the version (app, product revision,
 GPUI Kit), the log and settings file locations, the redacted diagnostics export

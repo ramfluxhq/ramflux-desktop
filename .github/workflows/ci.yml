@@ -47,6 +47,15 @@ jobs:
       - name: Licence headers
         run: scripts/check-license-headers.sh
 
+      - name: Linux desktop entry and AppStream metadata
+        timeout-minutes: 5
+        env:
+          REQUIRE_VALIDATORS: "1"
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y desktop-file-utils appstream
+          scripts/validate-linux-metadata.sh
+
       - name: Prepare APT package cache
         id: apt-cache
         run: |
