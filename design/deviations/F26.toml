@@ -1,0 +1,13 @@
+# Expected deviations of design board F26. Format and rules:
+# crates/ramflux-desktop-design/src/deviations.rs and docs/design-instrument.md.
+# decision: unreviewed | accepted | fix. Never widen a region to hide a new difference.
+
+board = "F26"
+capture = "F26__zh-CN__light__1440x900"
+reference_sha256 = "3757b0678d66f045cbd47893d7dc74649e8e8cab215a1fc907d062c78a8e207d"
+deviation = []
+
+[no_capture]
+reason = "UNREVIEWED (absent: the strangers area has no loading or offline state)"
+decision = "unreviewed"
+reviewer = ""
