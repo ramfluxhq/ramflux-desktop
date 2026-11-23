@@ -42,6 +42,9 @@ jobs:
       - name: Generated RF tokens
         run: python3 scripts/check-rf-design.py
 
+      - name: Licence headers
+        run: scripts/check-license-headers.sh
+
       - name: Prepare APT package cache
         id: apt-cache
         run: |
@@ -107,6 +110,27 @@ jobs:
             echo "the release configuration depends on ramflux-desktop-test"
             exit 1
           fi
+
+  dco:
+    # Every commit a pull request adds is signed off by its author
+    # (`git commit -s`); history before the pull request is not checked.
+    name: DCO sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Sign-off of the new commits
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: scripts/check-dco.sh "$BASE" "$HEAD"
 
   test:
     # The workspace suite is repeated twice on separate runners to catch
@@ -261,8 +285,8 @@ jobs:
         timeout-minutes: 25
         # Hosted macOS runners give no real-time scheduling guarantees, so the
         # real-time media loopback test (two_engines_talk_through_a_relay)
-        # misses its jitter deadlines there. It stays blocking in the Linux x3
-        # job and locally; only this hosted job skips it (CALL-FU-01). Every
+        # misses its jitter deadlines there. It stays blocking in the Linux
+        # test jobs (two repeats) and locally; only this hosted job skips it (CALL-FU-01). Every
         # other macOS test stays blocking. The skip is unconditional because
         # this job only ever runs on a hosted macOS runner. The skip is scoped to the media crate: custom-harness test targets in
         # other crates do not understand libtest's --skip/--exact.

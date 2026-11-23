@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Span Brain
 """Execute every bus-alignment regression introduced so far, with positive counts."""
 
 import re
