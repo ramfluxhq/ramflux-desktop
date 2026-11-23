@@ -1,9 +1,11 @@
 name: CI
 
+# Runs on the promotion to main and on main only (or by hand); next is gated by real verification.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 # One group per ref: a newer push to a feature branch cancels the older run.
