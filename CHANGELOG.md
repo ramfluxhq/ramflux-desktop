@@ -33,6 +33,13 @@ Versioning.
 - Design instrument wave W0: zh-CN board fixtures, attribution of
   deviations by measurement, kit component captures, the W1 work list.
 - The call bar counts a call's duration on the session clock.
+- Design scale (wave W1): spacing and type come from
+  `ramflux_desktop_navigation::scale` (4 px grid, `rf-size-*` type sizes)
+  instead of the Kit's rem-based utilities, which rendered 3.75/7.5/11.25 px
+  spacing and 11.25/13.125/16.875 px type at the 15 px rem; seven `/ 16`
+  rem divisors are fixed. `rf-design tokens --check` guards it in CI.
+- Four screenshot programs skip with a message instead of failing when
+  `RAMFLUX_SHOTS_DIR` is not set.
 
 ### Fixed
 

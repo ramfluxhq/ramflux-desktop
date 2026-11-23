@@ -88,6 +88,14 @@ jobs:
           CARGO_NET_OFFLINE: "true"
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      # Design tokens by value against the design variables, and the design
+      # scale guard: no rem-based Kit spacing or type utility in UI code.
+      - name: Design tokens
+        timeout-minutes: 5
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: cargo run --locked -q -p ramflux-desktop-design --bin rf-design -- tokens --check
+
       # The screenshot programs are `test = false` targets, which
       # `--all-targets` skips; lint them explicitly so they cannot rot.
       - name: Clippy (screenshot programs)
