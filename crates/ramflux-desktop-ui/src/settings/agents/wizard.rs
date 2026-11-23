@@ -23,10 +23,10 @@
 //! This version of the local service reports no runtime catalog, so the
 //! runtime step shows the typed unavailable reason and offers Bind later.
 
+use crate::controls::DesignCheckbox;
 use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
@@ -469,7 +469,7 @@ impl AgentsPanel {
             let key = item.clone();
             let prefix = if tools { "tool" } else { "scope" };
             col = col.child(
-                Checkbox::new(ElementId::from(format!("agent-wizard-{prefix}-{item}")))
+                DesignCheckbox::new(ElementId::from(format!("agent-wizard-{prefix}-{item}")))
                     .checked(checked)
                     .label(SharedString::from(item))
                     .on_click(cx.listener(move |this, _, _, cx| {

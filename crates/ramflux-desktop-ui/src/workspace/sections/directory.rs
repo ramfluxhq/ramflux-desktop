@@ -13,8 +13,8 @@
 use ramflux_desktop_navigation::scale::{space, text_caption};
 use std::rc::Rc;
 
+use crate::controls::DesignCheckbox;
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
@@ -286,7 +286,7 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                 .when_some(row.checked.zip(check), |item, (checked, check)| {
                     let key = key.clone();
                     item.child(
-                        Checkbox::new(ElementId::from(format!("{id}-check-{key}")))
+                        DesignCheckbox::new(ElementId::from(format!("{id}-check-{key}")))
                             .checked(checked)
                             .accessibility_label(row.title.clone())
                             .on_click(move |_, window, cx| check(&key, window, cx)),
