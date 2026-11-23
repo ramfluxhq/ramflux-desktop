@@ -205,6 +205,7 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                     IntentKind::SaveObject { object_id, path: path.clone() }
                 }
                 ObjectAction::Retry => IntentKind::RetryTransfer { object_id },
+                ObjectAction::Cancel => IntentKind::CancelTransfer { object_id },
             }
         }
         UiEventKind::RevokeGrantPressed { grant_id } => {

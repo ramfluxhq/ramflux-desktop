@@ -280,6 +280,14 @@ impl StoreHandle {
         }
     }
 
+    /// Asks the rendered account's source for the history older than what
+    /// a view shows of `context`.
+    pub fn request_older(&mut self, context: &ContextId) {
+        if let Some(session) = self.active_session_mut() {
+            session.request_older(context);
+        }
+    }
+
     /// The rendered account's store; an empty store before any account exists.
     pub fn store(&self) -> &Store {
         self.session().map_or(&EMPTY_STORE, AccountSession::store)

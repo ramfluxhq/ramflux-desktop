@@ -45,6 +45,7 @@ pub fn context(id: &str, pinned: bool) -> Context {
         roles: std::collections::BTreeMap::new(),
         epoch: None,
         last_activity: None,
+        preview: None,
     }
 }
 

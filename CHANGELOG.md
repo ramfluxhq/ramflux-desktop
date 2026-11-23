@@ -9,6 +9,22 @@ Versioning.
 
 ### Changed
 
+- Attachments use the core's prepared-media path: the file is streamed into
+  the daemon (`attachment.prepare.begin`, `.chunk`, `.finish`) and sent with
+  `conversation.send`, in direct and group conversations, with the bytes
+  moved shown as they go, Cancel and Retry. Received files are downloaded
+  with Download (`attachment.import.*`) into the desktop's private media
+  folder; images show inline, other files as file rows, Save copies them.
+  A refused send says why; when the contact's home node is not pinned the
+  row offers the contacts dock to exchange contact cards.
+- Trust is a status (verified, not verified, identity changed); the safety
+  number is an advanced detail. Verification reads the compared snapshot
+  (`contact.safety_number`) and sends it to `contact.verify`.
+- History: after the newest page only the rows changed after the read
+  model's cursor are read; scrolling to the oldest shown message reads the
+  older page. The conversation list shows the directory's preview while a
+  conversation's history is not loaded.
+
 - Core pinned to e39111de (the core's next head). Conversations are read
   from the message read model (`message.read`), group names are shared
   (`group.name.set`), the schema gate opens storage generation 1, and
@@ -16,6 +32,9 @@ Versioning.
   surfaces show their fallback text until the card runtime is embedded.
 
 ### Removed
+
+- The retired one-shot attachment input (`message.submit` `attachments`), the
+  object directory read and `object.get` / `object.transfer.resume`.
 
 - Group invite and ban actions, joining by activation code, device sync
   import, the one-shot passphrase account form, the AI participant custody

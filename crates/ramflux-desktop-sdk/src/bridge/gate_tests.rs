@@ -353,11 +353,7 @@ async fn schema_gate_state_machine_blocks_message_traffic() {
     assert_eq!(verdict(&task), SchemaGate::Unresolved);
     assert_eq!(
         task.gate.queued_reads(),
-        [
-            Fetch::first(Paged::Groups),
-            Fetch::first(Paged::Conversations),
-            Fetch::first(Paged::Objects)
-        ],
+        [Fetch::first(Paged::Groups), Fetch::first(Paged::Conversations)],
         "the snapshot's message reads are held in snapshot order"
     );
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "zero message-class requests");
@@ -367,7 +363,7 @@ async fn schema_gate_state_machine_blocks_message_traffic() {
     pump(&mut task, &mut inbox, |t| verdict(t) == SchemaGate::Open).await;
     settle(&mut task, &mut inbox).await;
     let sent = message_requests(&fake);
-    for method in ["group.list", "conversation.directory", "object.directory"] {
+    for method in ["group.list", "conversation.directory"] {
         assert!(sent.iter().any(|m| m == method), "{method} is sent after the release: {sent:?}");
     }
     assert_eq!(gates(&delivered), [(SchemaGate::Open, Some(0))]);
@@ -477,6 +473,7 @@ const INVENTORY: &[(&str, bool)] = &[
     ("contact.requests.list", false),
     ("contact.requests.policy.set", false),
     ("contact.unblock", false),
+    ("contact.safety_number", false),
     ("contact.verify", false),
     ("conversation.directory", true),
     ("conversation.disappearing.set", true),
@@ -546,7 +543,7 @@ fn every_planned_wire_operation_is_classified() {
         include_str!("../plan/group_create.rs"),
         include_str!("../plan/message.rs"),
         include_str!("../plan/mod.rs"),
-        include_str!("../plan/object.rs"),
+        include_str!("../plan/media.rs"),
         include_str!("../plan/surface.rs"),
         include_str!("../plan/task.rs"),
     ];
@@ -1408,8 +1405,8 @@ async fn each_account_scope_holds_its_own_queue_while_unresolved() {
     attach(&mut second, &mut second_inbox).await;
     settle(&mut first, &mut first_inbox).await;
     settle(&mut second, &mut second_inbox).await;
-    assert_eq!(first.gate.queued(), 3);
-    assert_eq!(second.gate.queued(), 3, "per-account queues");
+    assert_eq!(first.gate.queued(), 2);
+    assert_eq!(second.gate.queued(), 2, "per-account queues");
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "nothing is sent");
     fake.shutdown();
 }
@@ -1714,7 +1711,8 @@ fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
     // Message-class sites are gated at the client; reads go through
     // `spawn_reads` or `run_batch`.
     let known: &[(&str, usize, usize, usize)] = &[
-        ("effects.rs", 8, 0, 0),
+        ("effects.rs", 9, 0, 0),
+        ("media.rs", 10, 0, 0),
         ("mod.rs", 1, 0, 0),
         ("scope.rs", 3, 1, 2),
         ("sends.rs", 1, 0, 0),

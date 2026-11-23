@@ -11,10 +11,11 @@
 //! conversation with the contact, or a draft of a new one; it is disabled,
 //! with the reason, while the contact is not reachable yet.
 //!
-//! A contact row says how far the contact is trusted: its safety state
-//! (unverified until safety numbers are compared; stale once the verified
-//! authority changed, with Verify again), whether this account can reach
-//! it, and what kind of party it is, with how far that is proven (a
+//! A contact row says how far the contact is trusted, as a status the
+//! daemon reports (verified, not verified, identity changed); nobody is
+//! asked to compare anything in normal use. It also says whether this
+//! account can reach the contact, and what kind of party it is, with how
+//! far that is proven (a
 //! root-signed profile, or only the contact's own claim; see
 //! [`crate::identity`]). A name that looks like another principal's, or
 //! mixes scripts, carries a warning with the principal id beside it. The
@@ -22,10 +23,10 @@
 //! (provisional: anyone could have registered the name first), pinned by
 //! the contact's card, or compared.
 //!
-//! Verify does not mark anything at once: it opens the safety number
-//! comparison in the row, with the number and what to compare it with, and
-//! only "The numbers match" marks the contact verified. Without a number
-//! to compare there is nothing to confirm.
+//! The safety number is an advanced detail: "Safety number" opens it in
+//! the row, with what to compare it with, and only "The numbers match"
+//! marks the contact verified (the daemon verifies the exact snapshot it
+//! computed). Without a number to compare there is nothing to confirm.
 
 use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
@@ -242,19 +243,15 @@ pub fn contact_row(
         SafetyState::VerificationStale => crate::tone::text(cx.theme().warning, cx),
         SafetyState::KeyChanged | SafetyState::Forked => cx.theme().danger,
     };
-    let unverified = contact.safety != SafetyState::Verified;
-    let verify = (unverified && !open).then(|| {
+    // The advanced fallback: the safety number and its comparison.
+    let verify = (!open).then(|| {
         crate::gate::gated(
             Button::new("verify")
                 .xsmall()
-                .design_secondary(cx)
-                .design_label(identity::verify_label(contact.safety))
+                .ghost()
+                .label(tr("dock.contacts.advanced_safety"))
                 .accessibility_label(tr_args(
-                    if contact.safety.is_stale() {
-                        "dock.contacts.verify_again_for"
-                    } else {
-                        "dock.contacts.verify_for"
-                    },
+                    "dock.contacts.advanced_safety_for",
                     &[("name", &contact.display)],
                 ))
                 .on_click(start),
@@ -262,8 +259,7 @@ pub fn contact_row(
             cx,
         )
     });
-    let comparison = (unverified && open)
-        .then(|| comparison(contact, confirm, cancel, verify_reason.as_ref(), cx));
+    let comparison = open.then(|| comparison(contact, confirm, cancel, verify_reason.as_ref(), cx));
     v_flex()
         .id(domain_id("contacts", &contact.id))
         .test_support()
@@ -296,6 +292,8 @@ pub fn contact_row(
                 .child(
                     div()
                         .id("contact-safety")
+                        .role(gpui_kit::Role::Status)
+                        .aria_label(safety_label(contact.safety))
                         .test_support()
                         .text_color(color)
                         .child(safety_label(contact.safety)),
@@ -383,15 +381,6 @@ pub fn contact_row(
                     .child(label),
             )
         })
-        .when_some(contact.safety_number.clone(), |col, number| {
-            col.child(
-                div()
-                    .text_size(text_caption())
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .text_color(cx.theme().muted_foreground)
-                    .child(tr_args("dock.contacts.safety_number", &[("number", &number)])),
-            )
-        })
         .children(comparison)
         .into_any_element()
 }
@@ -473,11 +462,15 @@ fn comparison(
         .into_any_element()
 }
 
-/// The safety state as a contact row says it: an unverified contact is
-/// unverified until safety numbers are compared.
+/// The safety state as a contact row says it: a status, never a request
+/// to compare (a key change or a renewed device set reads "identity
+/// changed").
 pub fn safety_label(safety: SafetyState) -> SharedString {
     match safety {
         SafetyState::Unverified => tr("dock.contacts.unverified"),
+        SafetyState::KeyChanged | SafetyState::VerificationStale => {
+            tr("dock.contacts.identity_changed")
+        }
         other => i18n::safety(other),
     }
 }

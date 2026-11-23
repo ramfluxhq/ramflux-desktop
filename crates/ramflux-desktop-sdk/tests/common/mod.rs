@@ -172,7 +172,6 @@ pub fn directory() -> ramflux_desktop_sdk::directory::Directory {
         Fetch::first(Paged::Identities),
         Fetch::first(Paged::Groups),
         Fetch::first(Paged::Conversations),
-        Fetch::first(Paged::Objects),
     ] {
         let method = fetch.request(Some("acct-main")).method;
         let _ = translator.fetched(&fetch, &frames[&method], Timestamp(0));

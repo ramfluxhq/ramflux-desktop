@@ -253,6 +253,7 @@ mod tests {
             roles: BTreeMap::new(),
             epoch: None,
             last_activity: None,
+            preview: None,
         }
     }
 

@@ -8,6 +8,13 @@
 //! The attachment row shows the object's transfer state: a working
 //! indicator while it moves (no percentage the source did not report), and
 //! the reason when it failed.
+//!
+//! A file a message carries (a media row) is shown with its object when
+//! the source reports one: an image as the image once its bytes are here,
+//! any other file as a file row; the bytes moved while it travels; and the
+//! actions its state allows (Download, Cancel, Retry, Save). A file that
+//! was not sent says why; when the contact's home node is not pinned, the
+//! row offers the contacts dock to exchange contact cards.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -16,7 +23,10 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
-use ramflux_desktop_core::{MediaState, MediaView, MessagePayload, TransferState, UiEventKind};
+use ramflux_desktop_core::{
+    BlockId, Direction, MediaState, MediaView, MessagePayload, Object, ObjectAction, Scope,
+    TransferState, UiEventKind,
+};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::scale::{
     DesignText as _, TextStyle, design_px, space, style, text_caption, text_secondary,
@@ -25,6 +35,7 @@ use ramflux_desktop_navigation::scale::{
 use super::{MomentRow, RowState, message_text};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
+use crate::style::DesignButton as _;
 
 /// Renders a message body.
 pub fn render(
@@ -259,7 +270,217 @@ pub fn render(
                     })),
             )
         })
-        .children(payload.media.iter().enumerate().map(|(index, row)| media_row(index, row, cx)))
+        .children(payload.media.iter().enumerate().map(|(index, media)| {
+            match refs.objects.get(&media.object_id) {
+                Some(object) => media_file(index, object, outbound, sink, cx).into_any_element(),
+                None => media_row(index, media, cx).into_any_element(),
+            }
+        }))
+}
+
+/// The reason keys after which a transfer cannot be tried again.
+const FINAL_REASONS: [&str; 2] = ["backend.media.expired", "backend.media.deleted"];
+
+/// The reason key of a send the contact's missing home node refused.
+const NO_HOME_REASON: &str = "backend.media.no_home";
+
+/// The width of an inline image and of a file row, in pixels.
+pub(crate) const MEDIA_WIDTH_PX: f32 = 280.0;
+
+/// A file of a message with its object: the image once its bytes are here
+/// (for an image), the file row with its size and state, progress while it
+/// moves, the reason when it failed, and the actions its state allows.
+fn media_file(
+    index: usize,
+    object: &Object,
+    outbound: bool,
+    sink: &EventSink,
+    cx: &App,
+) -> impl IntoElement {
+    let name: SharedString = object
+        .name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        // A file name never carries directional controls (a spoofed
+        // extension); it is shown as it reads.
+        .map_or_else(
+            || tr("moment.message.attachment"),
+            |name| crate::i18n::bidi::strip_controls(name).into_owned().into(),
+        );
+    let moving = matches!(object.transfer, TransferState::Transferring { .. });
+    let measured = matches!(object.transfer, TransferState::Transferring { transferred } if transferred > 0)
+        && object.size.is_some_and(|s| s > 0);
+    let failure = match &object.transfer {
+        TransferState::Failed { reason } => Some(reason.clone()),
+        _ => None,
+    };
+    let state = match &object.transfer {
+        TransferState::Transferring { .. } if measured => i18n::join(
+            &i18n::transfer(&object.transfer),
+            &i18n::percent(f64::from(object.progress())),
+        )
+        .to_string(),
+        TransferState::Complete if outbound => tr("moment.message.media.sent").to_string(),
+        TransferState::Complete => tr("moment.message.media.downloaded").to_string(),
+        TransferState::Queued => tr("moment.message.media.not_downloaded").to_string(),
+        other => i18n::transfer(other).to_string(),
+    };
+    let detail = i18n::join(&i18n::size(object.size), &state).to_string();
+    let label = i18n::join(&name, &detail).to_string();
+    let image = (object.is_image() && matches!(object.transfer, TransferState::Complete))
+        .then(|| object.local_path.clone())
+        .flatten()
+        .map(|path| {
+            div()
+                .id(SharedString::from(format!("message-media-image-{index}")))
+                .aria_label(tr_args("moment.message.media.image", &[("name", &name)]))
+                // A fixed 4:3 box: a finished download never changes the
+                // row height, and a tiny image is still seen.
+                .w(gpui_kit::px(MEDIA_WIDTH_PX))
+                .h(gpui_kit::px(MEDIA_WIDTH_PX * 0.75))
+                .rounded(gpui_kit::rems(ramflux_desktop_navigation::palette(cx).radius_md / 15.0))
+                .overflow_hidden()
+                .child(
+                    gpui_kit::img(std::path::PathBuf::from(path))
+                        .size_full()
+                        .object_fit(gpui_kit::ObjectFit::Contain),
+                )
+                .test_support()
+        });
+    let action_sink = sink.scoped(Scope::Block(BlockId::new("object-actions")));
+    let emit = |action: ObjectAction| {
+        let sink = action_sink.clone();
+        let object_id = object.id.clone();
+        move |_: &gpui_kit::ClickEvent, window: &mut gpui_kit::Window, cx: &mut App| {
+            sink.emit(
+                UiEventKind::ObjectActionPressed {
+                    object_id: object_id.clone(),
+                    action: action.clone(),
+                },
+                window,
+                cx,
+            );
+        }
+    };
+    let mut actions = h_flex().gap(space(2.)).flex_wrap();
+    match &object.transfer {
+        TransferState::Queued if object.direction == Direction::Inbound => {
+            actions = actions.child(
+                Button::new(SharedString::from(format!("message-media-download-{index}")))
+                    .xsmall()
+                    .design_primary(cx)
+                    .icon(IconName::ArrowDown)
+                    .design_label(tr("moment.message.media.download"))
+                    .accessibility_label(tr_args(
+                        "moment.message.media.download_named",
+                        &[("name", &name)],
+                    ))
+                    .on_click(emit(ObjectAction::Pull)),
+            );
+        }
+        TransferState::Transferring { .. } => {
+            actions = actions.child(
+                Button::new(SharedString::from(format!("message-media-cancel-{index}")))
+                    .xsmall()
+                    .design_secondary(cx)
+                    .design_label(tr("moment.message.media.cancel"))
+                    .on_click(emit(ObjectAction::Cancel)),
+            );
+        }
+        TransferState::Failed { reason } if !FINAL_REASONS.contains(&reason.as_str()) => {
+            if reason == NO_HOME_REASON {
+                actions = actions.child(
+                    Button::new(SharedString::from(format!("message-media-cards-{index}")))
+                        .xsmall()
+                        .design_primary(cx)
+                        .design_label(tr("moment.message.media.exchange_cards"))
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(
+                                crate::workspace::DockTool::Contacts.toggle_action(),
+                                cx,
+                            );
+                        }),
+                );
+            }
+            actions = actions.child(
+                Button::new(SharedString::from(format!("message-media-retry-{index}")))
+                    .xsmall()
+                    .design_secondary(cx)
+                    .icon(IconName::RotateCw)
+                    .design_label(tr("moment.object.retry"))
+                    .on_click(emit(ObjectAction::Retry)),
+            );
+        }
+        TransferState::Complete if object.local_path.is_some() => {
+            actions = actions.child(
+                Button::new(SharedString::from(format!("message-media-save-{index}")))
+                    .xsmall()
+                    .design_secondary(cx)
+                    .design_label(tr("moment.object.save"))
+                    .on_click(super::object_transfer::save_with_dialog(&action_sink, object)),
+            );
+        }
+        _ => {}
+    }
+    let danger = crate::tone::text(cx.theme().danger, cx);
+    v_flex()
+        .id(SharedString::from(format!("message-media-{index}")))
+        .aria_label(label)
+        .min_w(gpui_kit::px(MEDIA_WIDTH_PX))
+        .w_full()
+        .gap(space(1.))
+        .children(image)
+        .child(file_row(
+            name.clone(),
+            detail.into(),
+            outbound,
+            h_flex()
+                .when(moving && !measured, |row| {
+                    row.child(Icon::new(IconName::LoaderCircle).xsmall())
+                })
+                .when(failure.is_some(), |row| {
+                    row.child(Icon::new(IconName::TriangleAlert).xsmall().text_color(danger))
+                }),
+            cx,
+        ))
+        .when(measured, |col| {
+            col.child(
+                gpui_kit::component::progress::Progress::new(SharedString::from(format!(
+                    "message-media-progress-{index}"
+                )))
+                .value(object.progress() * 100.0)
+                .accessibility_label(name.clone()),
+            )
+        })
+        .when_some(failure, |col, reason| {
+            let text = if outbound {
+                i18n::tr_args(
+                    "moment.message.media.not_sent",
+                    &[("reason", &i18n::backend_text(&reason))],
+                )
+            } else {
+                i18n::backend_text(&reason)
+            };
+            col.child(
+                div()
+                    .id(SharedString::from(format!("message-media-failure-{index}")))
+                    .role(gpui_kit::Role::Status)
+                    .aria_label(text.clone())
+                    .text_size(text_caption())
+                    .text_color(danger)
+                    .child(text)
+                    .test_support(),
+            )
+        })
+        .when_some(object.saved_to.clone(), |col, path| {
+            col.child(
+                div()
+                    .text_size(text_caption())
+                    .child(tr_args("moment.object.saved_to", &[("path", &path)])),
+            )
+        })
+        .child(actions)
+        .test_support()
 }
 
 /// One media row of a v1 message: the file name and facts, the thumbnail

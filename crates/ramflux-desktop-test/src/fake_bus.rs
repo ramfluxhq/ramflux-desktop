@@ -673,7 +673,8 @@ fn answer(
         Reply::Ok(json!({ "subscribed": true }))
     } else {
         shared.applied.fetch_add(1, Ordering::SeqCst);
-        let reply = (shared.handler)(&method, account.as_deref(), &body);
+        let reply =
+            changes_from_page(&method, &body, (shared.handler)(&method, account.as_deref(), &body));
         if let (Some(key), Reply::Ok(answer) | Reply::Slow(_, answer) | Reply::Lost(answer)) =
             (&operation_id, &reply)
         {
@@ -749,4 +750,25 @@ fn answer(
 /// A unique socket path in the temp dir (kept short for the Unix limit).
 pub fn socket_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("rfdt-{name}-{}.sock", std::process::id()))
+}
+
+/// A `message.read` change read (`after_sequence`) answered with a page:
+/// the page's rows as the changes (the fake has no journal, so every row
+/// counts as changed; the reader replaces rows by id).
+fn changes_from_page(method: &str, body: &Value, reply: Reply) -> Reply {
+    let after = body.get("after_sequence").and_then(Value::as_u64);
+    match (method, after, reply) {
+        ("message.read", Some(after), Reply::Ok(page))
+            if page.get("changes").is_none() && page.get("messages").is_some() =>
+        {
+            let mut rows: Vec<Value> = page["messages"].as_array().cloned().unwrap_or_default();
+            rows.reverse();
+            let head = page["snapshot_sequence"].as_u64().unwrap_or(after).max(after);
+            Reply::Ok(json!({
+                "schema": page["schema"], "conversation_id": page["conversation_id"],
+                "changes": rows, "next_after": head, "more": false, "snapshot_sequence": head,
+            }))
+        }
+        (_, _, reply) => reply,
+    }
 }

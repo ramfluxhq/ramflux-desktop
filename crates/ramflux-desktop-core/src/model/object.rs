@@ -56,12 +56,29 @@ pub struct Object {
     /// Short text preview supplied by the source (never fetched by the UI).
     #[serde(default)]
     pub preview: Option<String>,
+    /// Media type the sender declared, when known.
+    #[serde(default)]
+    pub mime: Option<String>,
+    /// The desktop's private copy of the bytes, once downloaded (or the
+    /// file this device sent). Shown inline when it is an image.
+    #[serde(default)]
+    pub local_path: Option<String>,
 }
 
 impl Object {
     /// The name to show: the reported file name, else the object id.
     pub fn label(&self) -> String {
         self.name.clone().unwrap_or_else(|| self.id.to_string())
+    }
+
+    /// Whether the declared type is a still image the desktop shows inline.
+    pub fn is_image(&self) -> bool {
+        self.mime.as_deref().is_some_and(|mime| {
+            matches!(
+                mime.to_ascii_lowercase().as_str(),
+                "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/bmp"
+            )
+        })
     }
 }
 

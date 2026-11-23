@@ -69,6 +69,9 @@ pub struct Conversation {
     /// The window's status banner, shown under the header (design B38)
     /// while this view is the workspace's detail.
     status: Option<gpui_kit::AnyView>,
+    /// The oldest row shown when older history was last asked for: asked
+    /// again only once older rows arrived (and were scrolled to).
+    older_asked: Option<MomentId>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -165,6 +168,7 @@ impl Conversation {
             context_id: None,
             rows: Rows::default(),
             scroller,
+            older_asked: None,
             view: ViewState::default(),
             highlighted: None,
             composer,
@@ -298,6 +302,17 @@ impl Conversation {
         (self.view.selection.len(), self.view.selection.created, self.view.selection.last_touched)
     }
 
+    /// The oldest row shown came into view: the source is asked for the
+    /// history before it, once per oldest row.
+    fn reached_top(&mut self, top: &MomentId, cx: &mut Context<Self>) {
+        let Some(context) = self.context_id.clone() else { return };
+        if self.older_asked.as_ref() == Some(top) {
+            return;
+        }
+        self.older_asked = Some(top.clone());
+        self.store.update(cx, |store, _| store.request_older(&context));
+    }
+
     fn ensure_visible_message(
         &mut self,
         id: &MomentId,
@@ -427,10 +442,24 @@ impl Conversation {
     /// Brings the rows up to date (patched for `changes` when possible)
     /// and tells the virtual list exactly what moved.
     fn sync_rows(&mut self, changes: Option<&ChangeSet>, cx: &mut Context<Self>) {
+        let before: Vec<MomentId> =
+            self.rows.as_slice().iter().map(|row| row.moment.id.clone()).collect();
         let update = match &self.context_id {
             Some(id) => self.rows.sync(self.store.read(cx), id, changes),
             None => self.rows.clear(),
         };
+        // A rebuild that kept every row in order only re-measures, and one
+        // that put older rows before them (a page of older history) prepends
+        // them: the reader stays where they were.
+        let kept = matches!(update, RowUpdate::Reset)
+            .then(|| {
+                let after = self.rows.as_slice();
+                let added = after.len().checked_sub(before.len())?;
+                (!before.is_empty()
+                    && after[added..].iter().map(|row| &row.moment.id).eq(before.iter()))
+                .then_some(added)
+            })
+            .flatten();
         self.view.selection.last_touched = 0;
         match &update {
             RowUpdate::Reset => self.view.selection.clear(),
@@ -449,6 +478,11 @@ impl Conversation {
         let count = self.rows.as_slice().len();
         self.scroller.update(cx, |state, cx| match update {
             RowUpdate::None => {}
+            RowUpdate::Reset if kept == Some(0) => state.remeasure(cx),
+            RowUpdate::Reset if let Some(added) = kept => {
+                let _ = state.prepend(added, cx);
+                state.remeasure(cx);
+            }
             RowUpdate::Reset => state.reset(count, cx),
             RowUpdate::Patched { changed, appended } => {
                 for ix in changed {
@@ -679,6 +713,12 @@ impl Render for Conversation {
                             return div().into_any_element();
                         };
                         let id = &row.moment.id;
+                        if ix == 0 {
+                            let (this, id) = (this.clone(), id.clone());
+                            cx.defer(move |cx| {
+                                this.update(cx, |field, cx| field.reached_top(&id, cx)).ok();
+                            });
+                        }
                         if row.is_missing_body() {
                             let (store, id) = (store.clone(), id.clone());
                             cx.defer(move |cx| {

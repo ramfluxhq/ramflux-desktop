@@ -33,6 +33,8 @@ fn node(id: &str, pin_source: PinSource, confirmed: bool) -> Node {
 
 fn object(id: &str, direction: Direction, transfer: TransferState) -> Object {
     Object {
+        mime: None,
+        local_path: None,
         id: ObjectId::new(id),
         name: Some(format!("{id}.bin")),
         size: Some(10),

@@ -82,9 +82,6 @@ impl Translator {
         message: &str,
         now: Timestamp,
     ) -> Vec<DomainEvent> {
-        if method == methods::ATTACH_OBJECT {
-            return self.attachment_failed(body, message);
-        }
         if method == methods::AGENT_EXPORT_CREDENTIALS {
             return self.export_failed(body, code, message);
         }

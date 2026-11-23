@@ -238,6 +238,9 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
             if let Some(id) = &p.attachment {
                 object(id, &mut refs);
             }
+            for media in &p.media {
+                object(&media.object_id, &mut refs);
+            }
             refs.reply_excerpt = p.reply_to.as_ref().and_then(|reply| {
                 let target = store
                     .moment(&reply.message_id)

@@ -128,6 +128,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::PullObject { .. } => "PullObject",
         IntentKind::SaveObject { .. } => "SaveObject",
         IntentKind::RetryTransfer { .. } => "RetryTransfer",
+        IntentKind::CancelTransfer { .. } => "CancelTransfer",
         IntentKind::RevokeGrant { .. } => "RevokeGrant",
         IntentKind::RevokeStandingApproval { .. } => "RevokeStandingApproval",
         IntentKind::AddNode { .. } => "AddNode",
@@ -366,6 +367,8 @@ fn all_domain_events() -> Vec<DomainEvent> {
             base_hash: Some(SurfaceHash::new("sha256:abc")),
         },
         DomainEvent::ObjectUpserted(Object {
+            mime: None,
+            local_path: None,
             id: ObjectId::new("o-1"),
             name: Some("report.pdf".to_owned()),
             size: Some(2048),

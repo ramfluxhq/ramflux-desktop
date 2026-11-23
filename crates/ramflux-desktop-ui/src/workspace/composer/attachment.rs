@@ -3,14 +3,14 @@
 
 //! The file staged in the composer: chosen, checked, then sent.
 //!
-//! A file chosen in the native picker is checked at once against what one
-//! message carries ([`ramflux_desktop_sdk::ATTACHMENT_LIMIT`], the
-//! daemon's frame budget). A file that fits waits in the composer until
+//! A file chosen in the native picker is checked at once against the most
+//! the desktop sends ([`ramflux_desktop_sdk::ATTACHMENT_LIMIT`]). A file
+//! that fits waits in the composer until
 //! Send; removing it there cancels it (nothing was sent). On Send it
 //! travels as [`ramflux_desktop_core::UiEventKind::AttachFile`] through the
 //! conversation's sink; from then on its progress shows on its message in
-//! the conversation. A refusal before anything was sent (no relay known, the
-//! file changed) comes back as a failed `object.send` and is shown here.
+//! the conversation. A refusal before anything was sent (the file changed
+//! or cannot be read) comes back as a failed `object.send` and is shown here.
 //! All of this is view-local state.
 
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
@@ -38,7 +38,7 @@ pub enum Staged {
         /// Size in bytes.
         size: u64,
     },
-    /// Larger than one message carries; never sent.
+    /// Larger than the desktop sends; never sent.
     TooLarge {
         /// File name.
         name: String,
@@ -82,7 +82,7 @@ impl Staged {
             Ok(meta) if !meta.is_file() => {
                 Self::Unreadable { name, reason: tr("composer.attach.not_a_file").to_string() }
             }
-            Ok(meta) if meta.len() > ramflux_desktop_sdk::ATTACHMENT_LIMIT as u64 => {
+            Ok(meta) if meta.len() > ramflux_desktop_sdk::ATTACHMENT_LIMIT => {
                 Self::TooLarge { name, size: meta.len() }
             }
             Ok(meta) => Self::Ready { path: path.to_owned(), name, size: meta.len() },
@@ -139,7 +139,7 @@ pub fn chip(
 ) -> AnyElement {
     let theme = cx.theme();
     let (muted, danger) = (theme.muted_foreground, theme.danger);
-    let limit = i18n::size(Some(ramflux_desktop_sdk::ATTACHMENT_LIMIT as u64));
+    let limit = i18n::size(Some(ramflux_desktop_sdk::ATTACHMENT_LIMIT));
     let (name, detail, error): (&str, SharedString, bool) = match staged {
         Staged::Ready { name, size, .. } => (name, i18n::size(Some(*size)).into(), false),
         Staged::TooLarge { name, size } => (

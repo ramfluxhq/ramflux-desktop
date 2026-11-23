@@ -123,9 +123,15 @@ pub fn reopen<H: Host, D: DemoDaemon>(
         all.extend(texts.into_iter().map(|t| (group.clone(), t)));
     }
     let wanted = all.clone();
-    demo.wait(1, limits.answer, "every message after the restart", |desk, host| {
+    let shown = demo.wait(1, limits.answer, "every message after the restart", |desk, host| {
         desk.store(host, |s| wanted.iter().all(|(c, t)| copies(s, c, t) >= 1))
-    })?;
+    });
+    if let Err(error) = shown {
+        let missing = demo.read(1, |s| {
+            all.iter().filter(|(c, t)| copies(s, c, t) == 0).cloned().collect::<Vec<_>>()
+        })?;
+        return Err(format!("{error}; not shown: {missing:?}"));
+    }
     // Give a late replay time to add a duplicate, then count.
     let settle = std::time::Instant::now();
     while settle.elapsed() < std::time::Duration::from_secs(3) {

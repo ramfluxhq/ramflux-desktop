@@ -18,7 +18,9 @@
 //!   starts with `other-root` names another root: for a contact looked up by
 //!   id it is refused with `root_replacement_confirmation_required` and both
 //!   roots, until `replace_provisional_root` names the looked-up root.
-//! - `contact.verify` marks the contact verified (`root_source: verified`).
+//! - `contact.safety_number` answers the compared snapshot (`expected`);
+//!   `contact.verify {expected}` marks that contact verified
+//!   (`root_source: verified`).
 //! - `contact.card.export` answers this account's card and link.
 //! - `group.create` records the group with its creator, conversation and
 //!   name; `group.member.add` adds a member device; `group.list` and
@@ -261,8 +263,12 @@ fn handle(state: &mut State, all: &BTreeMap<String, Value>, method: &str, body: 
             state.contacts.push((principal.clone(), root.clone(), "lookup"));
             json!({ "contact": entry(&principal, &root, "lookup") })
         }
+        "contact.safety_number" => json!({
+            "verification_state": "unverified",
+            "expected": { "contact_identity_commitment": text(body, "contact_identity_commitment") }
+        }),
         "contact.verify" => {
-            let commitment = text(body, "contact_identity_commitment");
+            let commitment = text(&body["expected"], "contact_identity_commitment");
             for contact in &mut state.contacts {
                 if contact.1 == commitment {
                     contact.2 = "verified";

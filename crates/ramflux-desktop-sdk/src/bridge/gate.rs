@@ -83,9 +83,11 @@ pub(super) fn verdict(status: Status, support: SchemaSupport) -> SchemaGate {
 pub(super) fn is_message_read(fetch: &Fetch) -> bool {
     match fetch {
         Fetch::Page(paged, _) => {
-            matches!(paged, Paged::Conversations | Paged::Groups | Paged::Objects)
+            matches!(paged, Paged::Conversations | Paged::Groups)
         }
         Fetch::Messages(_)
+        | Fetch::MessagesBefore(..)
+        | Fetch::MessageChanges(..)
         | Fetch::Surfaces(..)
         | Fetch::Surface(_)
         | Fetch::Tasks(..)

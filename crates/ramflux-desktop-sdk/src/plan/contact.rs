@@ -23,9 +23,12 @@
 //!   contact list: the contact's devices and safety state follow the link.
 //! - `contact.reject`, `contact.block`, `contact.unblock`: the link id.
 //! - `contact.remove`: the link id and the reference CLI's default scope `me`.
-//! - `safety.verify`: `contact.verify` with the contact's identity
-//!   commitment from `identity.directory`; the daemon fetches both device
-//!   sets from the node, computes the safety number and marks it verified.
+//! - `safety.verify` (the advanced fallback, never asked for in normal use):
+//!   `contact.safety_number` with the contact's identity commitment from
+//!   `identity.directory` (the daemon fetches both device sets from the node
+//!   and answers the compared snapshot), then `contact.verify {expected}`
+//!   with that snapshot, which the daemon compares again before it marks the
+//!   contact verified.
 //!
 //! A contact request (`contact.request`) is the federated form only: it
 //! needs a federation route to the contact's node, which no directory lists
@@ -182,10 +185,12 @@ pub(super) fn verify(acct: Option<&str>, body: &Value, known: &impl Known) -> Pl
         .and_then(|d| d.identities.get(text(body, "participant_id")))
         .and_then(|identity| identity.commitment.clone());
     let Some(commitment) = commitment else { return refuse(key::NO_COMMITMENT) };
-    let verify = LocalBusContactSafetyRequest { contact_identity_commitment: commitment };
-    match serde_json::to_value(verify) {
-        Ok(value) => Plan::Call {
-            request: BusRequest::new(acct, "contact", "contact.verify", value),
+    // The daemon verifies the compared snapshot (`expected`) that
+    // `contact.safety_number` answers, never a bare commitment.
+    let lookup = LocalBusContactSafetyRequest { contact_identity_commitment: commitment };
+    match serde_json::to_value(lookup) {
+        Ok(value) => Plan::Verify {
+            lookup: BusRequest::new(acct, "contact", "contact.safety_number", value),
             refresh: vec![Fetch::first(Paged::Identities)],
         },
         Err(error) => refuse_invalid(&error.to_string()),

@@ -54,7 +54,7 @@ pub mod translate;
 
 pub use config::{DEFAULT_SOCKET, Deadlines, SchemaSupport, SdkConfig};
 pub use plan::conversation::fresh_conversation_id;
-pub use plan::message::ATTACHMENT_LIMIT;
+pub use plan::media::SEND_LIMIT as ATTACHMENT_LIMIT;
 
 /// The product commit the `ramflux-sdk`, `ramflux-protocol` and
 /// `ramflux-crypto` dependencies are built from, read from `Cargo.lock` at
