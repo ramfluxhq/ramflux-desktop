@@ -161,7 +161,8 @@ pub fn render(
             &crate::workspace::sections::agents::status(store, &p.id),
         )
     });
-    let members = if agent_line.is_some() { 0 } else { members };
+    // A direct chat names no member count; only a group does.
+    let members = if agent_line.is_some() || !is_group { 0 } else { members };
     let context_line = h_flex()
         .gap(space(1.))
         .min_w_0()
