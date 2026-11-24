@@ -557,7 +557,7 @@ pub fn group<H: Host, D: DemoDaemon>(
         match seen {
             Ok(after) => notes
                 .add(format!("desktop showed peer {}'s group reply after {after:?}", peer.name)),
-            Err(error) => failures.push(error),
+            Err(error) => failures.push(format!("peer {}: {error}", peer.name)),
         }
     }
     demo.shots(0, "23_peer_group", notes)?;
