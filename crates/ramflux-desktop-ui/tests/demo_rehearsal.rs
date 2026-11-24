@@ -153,6 +153,14 @@ mod live {
         println!("\n{table}");
         std::fs::write(dir.join("steps.md"), &table).expect("write the step table");
         println!("screenshots and steps.md in {}", dir.display());
+        // The frame logs and daemon logs are evidence (timings of every
+        // request and event); kept next to the screenshots.
+        for (daemon, tag) in daemon_dirs.iter().zip(["a", "b"]) {
+            for (name, kept) in [(TAP_LOG, "tap"), ("rfd.log", "rfd")] {
+                let ext = if kept == "tap" { "jsonl" } else { "log" };
+                let _ = std::fs::copy(daemon.join(name), dir.join(format!("{kept}-{tag}.{ext}")));
+            }
+        }
         drop(demo);
         drop(cx);
         drop(taps);
