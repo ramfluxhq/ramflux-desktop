@@ -53,9 +53,9 @@ unicode-normalization = "0.1.25"
 unicode-width = "0.2"
 zeroize = "1.8"
 # The product SDK (local-bus client, request types), pinned by full commit.
-ramflux-sdk = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "31ab2296afd4fbd00404055cdf4390d997b6f339" }
-ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "31ab2296afd4fbd00404055cdf4390d997b6f339" }
-ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "31ab2296afd4fbd00404055cdf4390d997b6f339" }
+ramflux-sdk = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "5d117366773c54bcbfbf64c7a9eb5d7f02ee4f57" }
+ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "5d117366773c54bcbfbf64c7a9eb5d7f02ee4f57" }
+ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "5d117366773c54bcbfbf64c7a9eb5d7f02ee4f57" }
 # Only on the SDK bridge thread; never in GPUI tasks or core.
 tokio = { version = "1.42", default-features = false, features = ["rt", "net", "sync", "time", "macros", "io-util"] }
 ramflux-desktop-core = { path = "crates/ramflux-desktop-core" }
