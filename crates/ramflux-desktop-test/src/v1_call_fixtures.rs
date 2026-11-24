@@ -10,7 +10,7 @@ use ramflux_protocol::message::{
     CallActionFailed, CallActionHangup, CallActionInvite, CallActionReady, CallActionReject,
     CallActionRekey, CallActionRekeyAck, CallActionRinging, CallActionTimeout, CallControl,
     CallEndpoint, Content, EventIdentity, MessageUpdate, VoiceLeaseConsent, VoicePeerAllocation,
-    call_action::Value as Action, content::Value, message_update::State,
+    call, call_action::Value as Action, content::Value, message_update::State,
 };
 
 /// The key material every fixture action carries.
@@ -124,7 +124,7 @@ impl CallSpec {
             journal_sequence: identity.device_sequence,
             identity: Some(identity),
             state: Some(State::Content(Content {
-                value: Some(Value::Call(Call { control: Some(control) })),
+                value: Some(Value::Call(Call { payload: Some(call::Payload::Control(control)) })),
             })),
         }
     }

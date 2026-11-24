@@ -37,7 +37,8 @@ use ramflux_desktop_core::{
     Call, CallDirection, CallEndReason, CallId, CallState, DomainEvent, ParticipantId, Timestamp,
 };
 use ramflux_protocol::message::{
-    Call as WireCall, CallAction, CallEndpoint, EventIdentity, call_action::Value as Action,
+    Call as WireCall, CallAction, CallEndpoint, EventIdentity, call::Payload,
+    call_action::Value as Action,
 };
 
 use super::{context_of, order_of};
@@ -201,7 +202,9 @@ pub(super) fn project(
     identity: &EventIdentity,
     call: &WireCall,
 ) -> Vec<DomainEvent> {
-    let Some(control) = &call.control else { return Vec::new() };
+    // A person-level call summary (core #507) is not drawn yet; the call
+    // module on the shared media crate takes it over.
+    let Some(Payload::Control(control)) = &call.payload else { return Vec::new() };
     let (Some(caller), Some(callee), Some(sender)) = (
         endpoint(control.caller.as_ref()),
         endpoint(control.callee.as_ref()),
