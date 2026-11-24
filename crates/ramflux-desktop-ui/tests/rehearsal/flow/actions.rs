@@ -170,9 +170,19 @@ pub fn read_receipt<H: Host, D: DemoDaemon>(
     });
     let receipt = demo.read(0, |s| probe::receipt(s, &context, &text, &alice))?;
     let read = read.map_err(|e| format!("{e}: Alice's message stayed {receipt:?}"))?;
-    let label = demo.read(0, |s| moment_of(s, &context, &text))?.and_then(|id| {
-        demo.sides[0].desk().ok()?.label_in(demo.host, &format!("moment-{id}"), "message-receipt")
-    });
+    // Step 11 left Alice scrolled back at the messages she acted on; she
+    // returns to the newest one to see its receipt.
+    demo.sides[0].desk()?.scroll_conversation_to_end(demo.host)?;
+    let scope = demo.read(0, |s| moment_of(s, &context, &text))?.map(|id| format!("moment-{id}"));
+    let label = match scope {
+        Some(scope) => {
+            let _ = demo.wait(0, limits.discover, "the receipt drawn", |desk, host| {
+                desk.exists_in(host, &scope, "message-receipt")
+            });
+            demo.sides[0].desk()?.label_in(demo.host, &scope, "message-receipt")
+        }
+        None => None,
+    };
     notes.add(format!(
         "Alice's desktop shows the message read after {read:?} (receipt label {label:?})"
     ));
