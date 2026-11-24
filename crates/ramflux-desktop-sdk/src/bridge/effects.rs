@@ -191,7 +191,8 @@ impl Task {
         }
         match result {
             Ok(answer) => {
-                let events = self.translator.effect_done(method, body, &answer, now());
+                let mut events = self.translator.effect_done(method, body, &answer, now());
+                events.push(DomainEvent::EffectSucceeded { method: method.to_owned() });
                 self.emit(events);
                 self.spawn_fetches(refresh);
                 self.resolve_task_step(method, body, &answer);

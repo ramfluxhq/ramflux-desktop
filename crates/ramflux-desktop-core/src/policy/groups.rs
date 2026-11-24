@@ -127,6 +127,27 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
+        IntentKind::LeaveGroup { context_id } => p.context(context_id).and_then(|context| {
+            if context.kind != ContextKind::Group {
+                return Err(IntentError::NotAGroup(context_id.clone()));
+            }
+            Ok(p.gated(
+                crate::model::Risk::High,
+                methods::GROUP_LEAVE,
+                json!({ "context_id": context_id }),
+            ))
+        }),
+        IntentKind::AnswerGroupInvitation { group_id, accept } => {
+            if group_id.trim().is_empty() {
+                return Some(Err(IntentError::Empty("group")));
+            }
+            let method = if *accept {
+                methods::GROUP_INVITATION_ACCEPT
+            } else {
+                methods::GROUP_INVITATION_DECLINE
+            };
+            Ok(Decision::Call(method, json!({ "group_id": group_id })))
+        }
         _ => return None,
     })
 }

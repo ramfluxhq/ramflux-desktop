@@ -194,6 +194,29 @@ impl Store {
                 self.failures_total += 1;
                 changes.source_status = true;
             }
+            DomainEvent::EffectSucceeded { method } => {
+                // A node confirmed or added clears what its earlier steps
+                // reported (a probe, the first add before the key check).
+                let node = method.starts_with("node.");
+                let before = self.failures.len();
+                self.failures
+                    .retain(|f| f.method != *method && !(node && f.method.starts_with("node.")));
+                if self.failures.len() != before {
+                    changes.source_status = true;
+                }
+            }
+            DomainEvent::GroupInvitationsListed(invitations) => {
+                if self.group_invitations != *invitations {
+                    self.group_invitations.clone_from(invitations);
+                    changes.contact_requests = true;
+                }
+            }
+            DomainEvent::UsernameStatusUpdated(status) => {
+                if self.username.as_ref() != Some(status) {
+                    self.username = Some(status.clone());
+                    changes.source_status = true;
+                }
+            }
             DomainEvent::OwnContactCardUpdated(card) => {
                 if self.own_card.as_ref() != Some(card) {
                     self.own_card = Some(card.clone());

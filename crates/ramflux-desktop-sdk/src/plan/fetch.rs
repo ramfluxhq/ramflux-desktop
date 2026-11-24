@@ -98,6 +98,11 @@ pub enum Fetch {
     /// and recent). Its answer also tells whether the daemon has the full
     /// backup API.
     BackupJobs,
+    /// `group.invitations.list`: groups waiting for this account's answer.
+    GroupInvitations,
+    /// `username.status`: this account's username, or why the directory
+    /// cannot be used.
+    UsernameStatus,
 }
 
 impl Fetch {
@@ -139,6 +144,15 @@ impl Fetch {
                 BusRequest::new(account, "contact", "contact.requests.list", empty)
             }
             Self::BackupJobs => BusRequest::new(account, "account", "account.backup.jobs", empty),
+            Self::GroupInvitations => {
+                BusRequest::new(account, "group", "group.invitations.list", empty)
+            }
+            Self::UsernameStatus => BusRequest::new(
+                account,
+                "username",
+                "username.status",
+                json!({ "operation_id": null }),
+            ),
             Self::Messages(context) => BusRequest::new(
                 account,
                 "message",
@@ -216,6 +230,8 @@ impl Fetch {
             Self::StandingApprovals,
             Self::McpTools,
             Self::first(Paged::McpServers),
+            Self::GroupInvitations,
+            Self::UsernameStatus,
         ]
     }
 }

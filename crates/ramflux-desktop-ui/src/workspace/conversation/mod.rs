@@ -519,7 +519,7 @@ impl Conversation {
         let moment_id = id.clone();
         context_sink.scoped_map(
             Scope::Moment(id.clone()),
-            move |event: UiEvent, _, cx| match &event.kind {
+            move |event: UiEvent, window, cx| match &event.kind {
                 UiEventKind::CopyMessagePressed => {
                     this.update(cx, |field, cx| {
                         let store = field.store.read(cx).store();
@@ -531,6 +531,35 @@ impl Conversation {
                             cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(text.to_owned()));
                         }
                     }).ok();
+                    None
+                }
+                // Reply and Edit open in the composer; what it submits is
+                // the action (SubmitReply, SubmitEdit), scoped to the
+                // conversation.
+                UiEventKind::ReplyPressed | UiEventKind::EditPressed => {
+                    let edit = matches!(event.kind, UiEventKind::EditPressed);
+                    this.update(cx, |field, cx| {
+                        let store = field.store.read(cx).store();
+                        let Some(moment) = store.moment(&moment_id) else { return };
+                        if Some(&moment.context_id) != field.context_id.as_ref() {
+                            return;
+                        }
+                        let text = store.body(&moment_id).unwrap_or_default().to_owned();
+                        let author: gpui_kit::SharedString = store
+                            .participant(&moment.origin)
+                            .map_or_else(|| moment.origin.short(), |p| p.display.clone())
+                            .into();
+                        let excerpt = ramflux_desktop_navigation::row::list_text(&text);
+                        let target = moment_id.clone();
+                        field.composer.clone().update(cx, |composer, cx| {
+                            if edit {
+                                composer.edit(target, text, window, cx);
+                            } else {
+                                composer.reply_to(target, author, excerpt, window, cx);
+                            }
+                        });
+                    })
+                    .ok();
                     None
                 }
                 UiEventKind::ExpandToggled { expanded } => {

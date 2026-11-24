@@ -108,6 +108,8 @@ pub struct Store {
     request_policy: Option<RequestPolicy>,
     request_floors: Option<RequestFloors>,
     request_read_error: Option<String>,
+    group_invitations: Vec<crate::GroupInvitation>,
+    username: Option<crate::UsernameStatus>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
     pin_order: Vec<ContextId>,
@@ -357,6 +359,16 @@ impl Store {
     /// The incoming request with id `id`, if there is one.
     pub fn contact_request_by_id(&self, id: &str) -> Option<&ContactRequest> {
         self.contact_requests.values().find(|r| r.id == id)
+    }
+
+    /// The group invitations waiting for an answer.
+    pub fn group_invitations(&self) -> &[crate::GroupInvitation] {
+        &self.group_invitations
+    }
+
+    /// This account's username as last reported.
+    pub fn username(&self) -> Option<&crate::UsernameStatus> {
+        self.username.as_ref()
     }
 
     /// Why the contact requests could not be read just now, until they are

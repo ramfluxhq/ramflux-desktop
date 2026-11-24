@@ -42,6 +42,43 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 json!({ "context_id": context_id, "text": text }),
             ))
         }),
+        IntentKind::ReplyMessage { moment_id, text } => {
+            message_target(p, moment_id).and_then(|(moment, _)| {
+                if text.trim().is_empty() {
+                    return Err(IntentError::Empty("message text"));
+                }
+                Ok(Decision::Call(
+                    methods::MESSAGE_REPLY,
+                    json!({"context_id":moment.context_id,"moment_id":moment_id,"text":text}),
+                ))
+            })
+        }
+        IntentKind::EditMessage { moment_id, text } => {
+            message_target(p, moment_id).and_then(|(moment, payload)| {
+                if text.trim().is_empty() {
+                    return Err(IntentError::Empty("message text"));
+                }
+                if !own(p, moment) || !payload.media.is_empty() {
+                    return Err(IntentError::NotActionable(moment_id.clone()));
+                }
+                Ok(Decision::Call(
+                    methods::MESSAGE_EDIT,
+                    json!({"context_id":moment.context_id,"moment_id":moment_id,"text":text}),
+                ))
+            })
+        }
+        IntentKind::DeleteMessage { moment_id } => {
+            message_target(p, moment_id).and_then(|(moment, _)| {
+                if !own(p, moment) {
+                    return Err(IntentError::NotActionable(moment_id.clone()));
+                }
+                Ok(p.gated(
+                    crate::model::Risk::High,
+                    methods::MESSAGE_DELETE,
+                    json!({"context_id":moment.context_id,"moment_id":moment_id}),
+                ))
+            })
+        }
         IntentKind::AttachObject { context_id, path } => {
             p.context(context_id).and_then(|context| {
                 non_empty(path, "path")?;
@@ -108,6 +145,36 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
         }),
         _ => return None,
     })
+}
+
+/// A message that is shown, not deleted and already accepted by the node
+/// (an action names the message the daemon stored).
+fn message_target<'a>(
+    p: &Policy<'a>,
+    moment_id: &crate::ids::MomentId,
+) -> Result<(&'a crate::Moment, &'a crate::MessagePayload), IntentError> {
+    let moment =
+        p.store.moment(moment_id).ok_or_else(|| IntentError::UnknownMoment(moment_id.clone()))?;
+    let crate::MomentKind::Message(payload) = &moment.kind else {
+        return Err(IntentError::NotActionable(moment_id.clone()));
+    };
+    if payload.tombstone
+        || matches!(
+            payload.receipt,
+            crate::Receipt::Sending
+                | crate::Receipt::Failed { .. }
+                | crate::Receipt::WaitingForNode { .. }
+        )
+    {
+        return Err(IntentError::NotActionable(moment_id.clone()));
+    }
+    Ok((moment, payload))
+}
+
+/// Whether this account wrote `moment` (only its author edits or deletes a
+/// message for everyone).
+fn own(p: &Policy<'_>, moment: &crate::Moment) -> bool {
+    crate::selectors::self_participant(p.store).as_ref() == Some(&moment.origin)
 }
 
 fn non_empty(value: &str, what: &'static str) -> Result<(), IntentError> {

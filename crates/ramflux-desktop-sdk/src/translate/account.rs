@@ -196,6 +196,26 @@ impl Translator {
     }
 }
 
+/// A `username.status` answer: the name the binding in force names, or
+/// none (nothing claimed, or a claim still pending).
+pub(super) fn username_status(value: &Value) -> Vec<DomainEvent> {
+    let binding = &value["binding"];
+    let name = ["name", "username"]
+        .iter()
+        .find_map(|key| binding[key].as_str().or_else(|| binding["body"][key].as_str()))
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned);
+    vec![DomainEvent::UsernameStatusUpdated(ramflux_desktop_core::UsernameStatus::Known(name))]
+}
+
+/// A refused `username.status`: no username can be claimed or looked up
+/// through this daemon now, for the reason it gave.
+pub fn username_unavailable(reason: String) -> Vec<DomainEvent> {
+    vec![DomainEvent::UsernameStatusUpdated(ramflux_desktop_core::UsernameStatus::Unavailable(
+        reason,
+    ))]
+}
+
 #[cfg(test)]
 mod tests {
     use ramflux_desktop_core::Timestamp;

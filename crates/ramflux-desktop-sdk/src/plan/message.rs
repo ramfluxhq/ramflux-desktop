@@ -206,3 +206,66 @@ fn group_send(acct: Option<&str>, context: &ContextId, message: &str, known: &im
         Err(error) => refuse_invalid(&error.to_string()),
     }
 }
+
+/// What an action on a listed message names: the daemon's id of the
+/// message (base64url of its event id) and the edit revision shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessageTarget {
+    /// The daemon's message id.
+    pub daemon_id: String,
+    /// The highest applied edit revision (0 when unedited).
+    pub revision: u64,
+}
+
+/// Plans a reply, an edit or a delete for everyone: the daemon's
+/// conversation mutations, which build, sign and deliver the event to every
+/// recipient of the conversation (direct or group) themselves.
+///
+/// - `conversation.reply` `{conversation_id, message_id, text}`;
+/// - `conversation.edit` `{conversation_id, message_id, text,
+///   expected_revision}`: the revision shown, so an edit made meanwhile on
+///   another device is refused (`edit_conflict`) instead of overwritten;
+/// - `conversation.delete` `{conversation_id, message_id, scope: everyone}`.
+///
+/// The frame's retry key makes a resend the same operation.
+pub(super) fn mutate(acct: Option<&str>, method: &str, body: &Value, known: &impl Known) -> Plan {
+    let context = ContextId::new(text(body, "context_id"));
+    let moment = ramflux_desktop_core::MomentId::new(text(body, "moment_id"));
+    if known.context_kind(&context).is_none() {
+        return refuse_invalid("unknown conversation");
+    }
+    let Some(target) = known.message_target(&moment) else {
+        return refuse_invalid("the message is not listed by the daemon yet");
+    };
+    let (daemon, request) = match method {
+        methods::MESSAGE_REPLY => (
+            "conversation.reply",
+            serde_json::json!({
+                "conversation_id": context,
+                "message_id": target.daemon_id,
+                "text": text(body, "text"),
+            }),
+        ),
+        methods::MESSAGE_EDIT => (
+            "conversation.edit",
+            serde_json::json!({
+                "conversation_id": context,
+                "message_id": target.daemon_id,
+                "text": text(body, "text"),
+                "expected_revision": target.revision,
+            }),
+        ),
+        _ => (
+            "conversation.delete",
+            serde_json::json!({
+                "conversation_id": context,
+                "message_id": target.daemon_id,
+                "scope": "everyone",
+            }),
+        ),
+    };
+    Plan::Call {
+        request: BusRequest::new(acct, "message", daemon, request),
+        refresh: vec![Fetch::Messages(context), Fetch::first(Paged::Conversations)],
+    }
+}

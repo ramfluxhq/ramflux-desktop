@@ -153,6 +153,14 @@ impl Translator {
             if kind == ContextKind::Direct && state == "content" {
                 self.note_received(context, row);
             }
+            // The newest content row listed is the conversation's read mark
+            // (by its clock: a page of older history never moves it back).
+            if state == "content" {
+                let at = row["hlc_ms"].as_u64().unwrap_or(0);
+                if self.newest_listed.get(context).is_none_or(|(seen, _)| at >= *seen) {
+                    self.newest_listed.insert(context.clone(), (at, id.to_owned()));
+                }
+            }
             let (moment, objects) = self.message_moment(context, row, now);
             events.extend(objects);
             events.extend(self.report_moment(moment));
@@ -246,6 +254,19 @@ impl Translator {
             (Vec::new(), Vec::new())
         };
         let message = message.as_str();
+        let moment_id = message_moment_id(context, message);
+        if !daemon_id.is_empty() {
+            self.message_targets.insert(
+                moment_id.clone(),
+                crate::plan::message::MessageTarget {
+                    daemon_id: daemon_id.clone(),
+                    revision: row["revision"].as_u64().unwrap_or(0),
+                },
+            );
+        }
+        let reply_to = reply_target(row).map(|target| ramflux_desktop_core::ReplyRef {
+            message_id: message_moment_id(context, self.local_id(&target)),
+        });
         let origin = if own { self.own_origin() } else { self.origin(author_device(row)) };
         let kind = match text(row, "state") {
             "tombstone" => {
@@ -263,6 +284,8 @@ impl Translator {
                     text: body,
                     receipt: if own { receipt(row) } else { Receipt::default() },
                     media,
+                    revision: row["revision"].as_u64().unwrap_or(0),
+                    reply_to,
                     ..Default::default()
                 })
             }
@@ -279,7 +302,7 @@ impl Translator {
         };
         let moment = Moment {
             order: None,
-            id: message_moment_id(context, message),
+            id: moment_id,
             context_id: context.clone(),
             origin,
             at: row["hlc_ms"].as_u64().map_or(now, |ms| Timestamp(ms.try_into().unwrap_or(0))),
@@ -287,6 +310,23 @@ impl Translator {
             lifecycle: Lifecycle::Done,
         };
         (moment, objects)
+    }
+}
+
+/// The daemon id of the message a read-model row replies to (its typed
+/// content's `reply_to`), base64url like every read-model id.
+fn reply_target(row: &Value) -> Option<String> {
+    if row["content"].is_null() {
+        return None;
+    }
+    let content: ramflux_protocol::message::Content =
+        serde_json::from_value(row["content"].clone()).ok()?;
+    match content.value? {
+        ramflux_protocol::message::content::Value::Message(message) => message
+            .reply_to
+            .filter(|target| !target.id.is_empty())
+            .map(|target| ramflux_protocol::encode_base64url(&target.id)),
+        _ => None,
     }
 }
 
@@ -304,5 +344,50 @@ fn receipt(row: &Value) -> Receipt {
         Receipt::Delivered
     } else {
         Receipt::Sent
+    }
+}
+
+impl Translator {
+    /// The read receipts due: the conversation shown (focused) is marked
+    /// read through its newest listed message, once per new mark
+    /// (`message.receipt.read` `{conversation_id, message_id, reader_id}`).
+    /// The SDK routes the receipt to the author's device for a message
+    /// from a peer, and only moves the local read mark for this account's
+    /// own message (which also stops it counting as unread).
+    pub fn take_reads(&mut self) -> Vec<crate::bus::BusRequest> {
+        let (Some(context), Some(reader)) = (self.focus.clone(), self.self_device.clone()) else {
+            return Vec::new();
+        };
+        let Some((_, newest)) = self.newest_listed.get(&context).cloned() else {
+            return Vec::new();
+        };
+        if self.read_sent.get(&context) == Some(&newest) {
+            return Vec::new();
+        }
+        let Some(account) = self.scope.account().map(|a| a.to_string()) else {
+            return Vec::new();
+        };
+        self.read_sent.insert(context.clone(), newest.clone());
+        let body = serde_json::json!({
+            "conversation_id": context,
+            "message_id": newest,
+            "reader_id": reader,
+        });
+        let key = format!(
+            "desk-read-{}",
+            ramflux_protocol::hash_hex(
+                "ramflux.desktop.read",
+                format!("{context}\n{newest}").as_bytes()
+            )
+        );
+        vec![
+            crate::bus::BusRequest::new(
+                Some(account.as_str()),
+                "message",
+                "message.receipt.read",
+                body,
+            )
+            .with_operation_id(key.chars().take(64).collect()),
+        ]
     }
 }

@@ -243,10 +243,16 @@ pub fn render(
                         .separator();
                     let menu = if is_group {
                         let start = start.clone();
+                        let leave = menu_sink.clone();
                         menu.item(
                             PopupMenuItem::new(tr("group.rename.action"))
                                 .on_click(move |_, window, cx| start(window, cx)),
                         )
+                        .item(PopupMenuItem::new(tr("group.leave.action")).on_click(
+                            move |_, window, cx| {
+                                leave.emit(UiEventKind::LeaveGroupPressed, window, cx);
+                            },
+                        ))
                         .separator()
                     } else {
                         menu

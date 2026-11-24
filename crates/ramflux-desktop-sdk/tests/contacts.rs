@@ -475,7 +475,8 @@ fn a_contact_added_by_id_is_shown_by_its_short_id_and_its_kind_stays_unknown() {
     assert!(carded.named());
     assert_eq!(
         (carded.kind, carded.kind_claim),
-        (ParticipantKind::Agent, KindClaim::Asserted(PeerKind::HeadlessAi))
+        // An unproven claim draws no AI marker.
+        (ParticipantKind::Unknown, KindClaim::Asserted(PeerKind::HeadlessAi))
     );
     fake.shutdown();
 }

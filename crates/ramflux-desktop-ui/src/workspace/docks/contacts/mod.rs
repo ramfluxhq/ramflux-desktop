@@ -139,6 +139,9 @@ impl ContactsDock {
             Some(Submission::Id(participant_id)) => {
                 self.sink.emit(UiEventKind::AddContactRequested { participant_id }, window, cx);
             }
+            Some(Submission::Username(name)) => {
+                self.sink.emit(UiEventKind::AddContactByUsernameRequested { name }, window, cx);
+            }
             Some(Submission::Card(card)) => {
                 self.sink.emit(
                     UiEventKind::AddContactCardRequested { card, replace_provisional_root: None },
@@ -354,6 +357,14 @@ impl Render for ContactsDock {
             })
             .when(store.request_policy().is_some(), |col| {
                 col.child(requests::policy_switch(store, &self.sink, cx))
+            })
+            .when(!store.group_invitations().is_empty(), |col| {
+                col.child(section("dock.contacts.invitations", cx)).children(
+                    store
+                        .group_invitations()
+                        .iter()
+                        .map(|invitation| requests::invitation_row(invitation, &self.sink, cx)),
+                )
             })
             .child(section("dock.contacts.list", cx))
             .children(crate::list_state::placeholder(

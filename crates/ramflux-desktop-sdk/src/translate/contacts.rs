@@ -80,10 +80,25 @@ pub(crate) fn peer_kind(name: &str) -> Option<PeerKind> {
     }
 }
 
-/// The kind claim of a row: the kind in `field` (a name or null), proven
-/// when `kind_verified` is true. A row that names no kind claims nothing,
+/// The kind claim of a row. The SDK's signed classification
+/// (`verified_classification`: `person`, `ai_agent` or `unknown`, taken
+/// from the accepted custody record) decides when the row carries it; an
+/// `unknown` leaves only what the row asserts in `field`, unproven. A row
+/// without it: the kind in `field` (a name or null), proven when
+/// `kind_verified` is true. A row that names no kind claims nothing,
 /// whatever its flag says.
 pub(crate) fn kind_claim(row: &Value, field: &str) -> KindClaim {
+    match row["verified_classification"].as_str() {
+        Some("person") => return KindClaim::Verified(PeerKind::Human),
+        Some("ai_agent") => return KindClaim::Verified(PeerKind::HeadlessAi),
+        Some(_) => {
+            return row[field]
+                .as_str()
+                .and_then(peer_kind)
+                .map_or(KindClaim::None, KindClaim::Asserted);
+        }
+        None => {}
+    }
     match row[field].as_str().and_then(peer_kind) {
         Some(kind) if row["kind_verified"].as_bool().unwrap_or(false) => KindClaim::Verified(kind),
         Some(kind) => KindClaim::Asserted(kind),
@@ -175,7 +190,13 @@ impl Person {
             }
             (KindClaim::None, claim) | (claim, _) => claim,
         };
-        let kind = kind_claim.kind().map_or(ParticipantKind::Unknown, PeerKind::participant_kind);
+        // The AI marker (an agent) is shown only for a kind the SDK
+        // verified; a claim alone leaves a person or an unknown party.
+        let kind = match kind_claim {
+            KindClaim::Verified(kind) => kind.participant_kind(),
+            KindClaim::Asserted(PeerKind::Human) => ParticipantKind::Human,
+            KindClaim::Asserted(_) | KindClaim::None => ParticipantKind::Unknown,
+        };
         let name_warnings = if facts.warnings.any() || listed {
             facts.warnings
         } else {

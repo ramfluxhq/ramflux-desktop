@@ -92,6 +92,7 @@ pub(super) fn is_message_read(fetch: &Fetch) -> bool {
         | Fetch::Surface(_)
         | Fetch::Tasks(..)
         | Fetch::Task(..)
+        | Fetch::GroupInvitations
         | Fetch::Calls => true,
         _ => false,
     }

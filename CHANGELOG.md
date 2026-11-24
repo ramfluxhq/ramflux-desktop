@@ -7,7 +7,41 @@ Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Message actions in direct and group conversations: Reply (the composer
+  quotes the message; the bubble shows the quote), Edit (with the revision
+  the core expects; the message is marked edited), Delete for everyone
+  (confirmed on the strip) and Copy, from the message's actions button, its
+  context menu or the keyboard. They use the core's conversation mutations
+  (`conversation.reply`, `.edit`, `.delete`).
+- Read receipts: the conversation shown is marked read through its newest
+  message (`message.receipt.read`; the core routes the receipt to the
+  author's device), and own messages show Read when the peer read them.
+- Conversation names from the core (`peer_display_name` on direct rows).
+- Leave group (the conversation's menu, confirmed) and group invitations
+  from people who are not contacts: listed in the contacts dock with Join
+  and Decline (`group.invitations.list`, `group.invitation.accept` and
+  `.decline`, the `group.invitation` event).
+- Usernames: Settings › Account shows the username the directory reports
+  or why it is unavailable; Add contact accepts `@name`
+  (`username.contact.add`).
+
 ### Changed
+
+- Core pinned to 14e38cda (the core's next head).
+- The AI marker follows the core's signed classification
+  (`verified_classification`: person, AI agent, unknown); an unproven claim
+  no longer draws a party as an agent.
+
+### Fixed
+
+- A failure banner ("Last error") no longer stays after the same operation
+  succeeded (a node added after a refused attempt).
+- A contact's "waiting for … to accept" row no longer stays after the
+  request is no longer pending and the contact is accepted.
+- The unread count no longer counts this account's own messages in the
+  conversation shown (its read mark moves to the newest message).
 
 - Attachments use the core's prepared-media path: the file is streamed into
   the daemon (`attachment.prepare.begin`, `.chunk`, `.finish`) and sent with

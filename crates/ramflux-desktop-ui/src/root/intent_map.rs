@@ -48,6 +48,13 @@ fn context_intent(event: &UiEvent) -> Option<IntentKind> {
             IntentKind::RenameContext { context_id, title: title.clone() }
         }
         UiEventKind::CallStartRequested => IntentKind::StartCall { context_id },
+        UiEventKind::SubmitReply { target, text } => {
+            IntentKind::ReplyMessage { moment_id: target.clone(), text: text.clone() }
+        }
+        UiEventKind::SubmitEdit { target, text } => {
+            IntentKind::EditMessage { moment_id: target.clone(), text: text.clone() }
+        }
+        UiEventKind::LeaveGroupPressed => IntentKind::LeaveGroup { context_id },
         _ => return None,
     })
 }
@@ -58,6 +65,7 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
     let moment_id = moment.id.clone();
     Some(match &event.kind {
         UiEventKind::RetryMessagePressed => IntentKind::RetryMessage { moment_id },
+        UiEventKind::DeleteForEveryonePressed => IntentKind::DeleteMessage { moment_id },
         UiEventKind::ActionInvoked { action_id, values, surface_hash, version } => {
             let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
             IntentKind::SurfaceAction {
@@ -165,6 +173,12 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
             }
         }
         UiEventKind::ShareContactCardRequested => IntentKind::ExportContactCard,
+        UiEventKind::AddContactByUsernameRequested { name } => {
+            IntentKind::AddContactByUsername { name: name.clone() }
+        }
+        UiEventKind::GroupInvitationAnswered { group_id, accept } => {
+            IntentKind::AnswerGroupInvitation { group_id: group_id.clone(), accept: *accept }
+        }
         UiEventKind::CallAnswered { call_id, accept: true } => {
             IntentKind::AnswerCall { call_id: call_id.clone() }
         }

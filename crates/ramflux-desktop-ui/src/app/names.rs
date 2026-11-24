@@ -32,6 +32,14 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
     match event.kind {
         UiEventKind::CopyMessagePressed => "CopyMessagePressed",
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
+        UiEventKind::ReplyPressed => "ReplyPressed",
+        UiEventKind::EditPressed => "EditPressed",
+        UiEventKind::DeleteForEveryonePressed => "DeleteForEveryonePressed",
+        UiEventKind::SubmitReply { .. } => "SubmitReply",
+        UiEventKind::SubmitEdit { .. } => "SubmitEdit",
+        UiEventKind::LeaveGroupPressed => "LeaveGroupPressed",
+        UiEventKind::GroupInvitationAnswered { .. } => "GroupInvitationAnswered",
+        UiEventKind::AddContactByUsernameRequested { .. } => "AddContactByUsernameRequested",
         UiEventKind::StartConversationRequested { .. } => "StartConversationRequested",
         UiEventKind::AttachFile { .. } => "AttachFile",
         UiEventKind::ActionInvoked { .. } => "ActionInvoked",
@@ -90,6 +98,12 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
         IntentKind::RetryMessage { .. } => "RetryMessage",
         IntentKind::SendMessage { .. } => "SendMessage",
+        IntentKind::ReplyMessage { .. } => "ReplyMessage",
+        IntentKind::EditMessage { .. } => "EditMessage",
+        IntentKind::DeleteMessage { .. } => "DeleteMessage",
+        IntentKind::LeaveGroup { .. } => "LeaveGroup",
+        IntentKind::AnswerGroupInvitation { .. } => "AnswerGroupInvitation",
+        IntentKind::AddContactByUsername { .. } => "AddContactByUsername",
         IntentKind::StartConversation { .. } => "StartConversation",
         IntentKind::AttachObject { .. } => "AttachObject",
         IntentKind::PinContext { .. } => "PinContext",
@@ -178,6 +192,9 @@ pub fn effect_label(effect: &Effect) -> String {
 pub fn event_name(event: &DomainEvent) -> &'static str {
     match event {
         DomainEvent::AccountUpdated(_) => "AccountUpdated",
+        DomainEvent::EffectSucceeded { .. } => "EffectSucceeded",
+        DomainEvent::GroupInvitationsListed(_) => "GroupInvitationsListed",
+        DomainEvent::UsernameStatusUpdated(_) => "UsernameStatusUpdated",
         DomainEvent::AccountLockChanged { .. } => "AccountLockChanged",
         DomainEvent::NodeUpserted(_) => "NodeUpserted",
         DomainEvent::NodeHealthChanged { .. } => "NodeHealthChanged",

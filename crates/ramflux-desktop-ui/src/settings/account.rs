@@ -60,7 +60,24 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
     let current = {
         let account = account.clone();
         let sink = sink.clone();
+        let store = context.store.clone();
         SettingItem::render(move |_, _, cx: &mut App| {
+            // The username the directory reports, or why it cannot be used
+            // (a daemon without a provisioned directory refuses; claiming
+            // and changing then wait for it).
+            let username = match store.read(cx).store().username() {
+                Some(ramflux_desktop_core::UsernameStatus::Known(Some(name))) => {
+                    SharedString::from(format!("@{name}"))
+                }
+                Some(ramflux_desktop_core::UsernameStatus::Known(None)) => {
+                    tr("settings.account.username_none")
+                }
+                Some(ramflux_desktop_core::UsernameStatus::Unavailable(reason)) => tr_args(
+                    "settings.account.username_unavailable",
+                    &[("reason", &i18n::backend_text(reason))],
+                ),
+                None => tr("settings.account.username_unknown"),
+            };
             let section =
                 design::section("account-current", tr("settings.account.current_title"), cx);
             let Some(a) = account.clone() else {
@@ -80,12 +97,16 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                 .map_or_else(|| tr("settings.account.no_device"), SharedString::from);
             let lock_id = a.id.clone();
             let lock = sink.clone();
+            // The username rides on the account's own line (no taller page).
+            let named = tr_args("settings.account.username_line", &[("username", &username)]);
             section
-                .child(design::row(
-                    ramflux_desktop_navigation::row::list_text(&a.label),
-                    i18n::join(&i18n::account_kind(a.kind), &state),
-                    Some(design::chip(tr("settings.account.current_chip"), cx)),
-                    cx,
+                .child(div().id("account-username").test_support().aria_label(username).child(
+                    design::row(
+                        ramflux_desktop_navigation::row::list_text(&a.label),
+                        i18n::join(&i18n::join(&i18n::account_kind(a.kind), &state), &named),
+                        Some(design::chip(tr("settings.account.current_chip"), cx)),
+                        cx,
+                    ),
                 ))
                 .child(design::row(
                     tr("settings.account.default_node"),

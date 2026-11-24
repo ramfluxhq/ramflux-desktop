@@ -34,12 +34,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ramflux_desktop_core::{
-    ContextId, DomainEvent, GovernanceAction, GovernancePayload, GroupRenamePayload, Lifecycle,
-    Moment, MomentId, MomentKind, ParticipantId, Timestamp,
+    ContextId, DomainEvent, GovernanceAction, GovernancePayload, GroupInvitation,
+    GroupRenamePayload, Lifecycle, Moment, MomentId, MomentKind, ParticipantId, Timestamp,
 };
+use serde_json::Value;
 
 use super::Translator;
-use crate::directory::Group;
+use crate::directory::{Group, field};
 
 impl Group {
     /// The principals in the roster (devices of one principal count once).
@@ -145,6 +146,24 @@ impl Translator {
             .map(|(id, _)| id.clone())
             .filter(|id| self.contexts.contains_key(id))
     }
+}
+
+/// A `group.invitations.list` answer: every group waiting for this
+/// account's answer (`group_id`, `name`, `inviter`, `expires_at`).
+pub(super) fn invitations(value: &Value) -> Vec<DomainEvent> {
+    let rows = super::list(value, "invitations")
+        .iter()
+        .filter_map(|row| {
+            let group_id = field(row, "group_id")?;
+            Some(GroupInvitation {
+                group_id,
+                name: field(row, "name"),
+                inviter: field(row, "inviter"),
+                expires_at: row.get("expires_at").and_then(super::seconds),
+            })
+        })
+        .collect();
+    vec![DomainEvent::GroupInvitationsListed(rows)]
 }
 
 #[cfg(test)]

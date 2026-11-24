@@ -63,11 +63,12 @@ pub struct ContactsDirectory {
 
 impl EventEmitter<ContactsDirectoryEvent> for ContactsDirectory {}
 
-/// Avatar shape of a participant kind.
+/// Avatar shape of a participant kind: the AI marker only for an agent
+/// (a kind the SDK verified); anyone else is drawn as a person.
 pub(crate) fn avatar_kind(kind: ParticipantKind) -> catalog::AvatarKind {
     match kind {
-        ParticipantKind::Human => catalog::AvatarKind::Person,
-        _ => catalog::AvatarKind::Agent,
+        ParticipantKind::Agent => catalog::AvatarKind::Agent,
+        _ => catalog::AvatarKind::Person,
     }
 }
 

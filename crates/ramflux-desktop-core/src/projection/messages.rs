@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Mutation capability boundary until the bridge supplies message commands.
+//! Mutation capability boundary: which message commands the bridge carries.
+//!
+//! Reply, edit and delete for everyone go to the daemon's conversation
+//! mutations (`conversation.reply`, `conversation.edit` with the revision it
+//! expects, `conversation.delete` scope `everyone`). Reactions and a delete
+//! on this device only have no control yet.
 
-/// A command the message menu can present without claiming implementation.
+/// A command the message menu can present.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mutation {
     Reply,
@@ -22,13 +27,16 @@ pub enum Unavailable {
 }
 
 impl Mutation {
-    /// Checks operation availability. Source display facts do not establish
-    /// mutation support; no UI path may accept a draft and discard it.
+    /// Checks operation availability. No UI path may accept a draft for a
+    /// command the bridge cannot carry and discard it.
     ///
     /// # Errors
-    /// Returns the missing bridge contract until an authoritative adapter exists.
+    /// Returns the missing bridge contract for reactions and local deletes.
     pub fn check(self) -> Result<(), Unavailable> {
-        Err(Unavailable::BridgeContract)
+        match self {
+            Self::Reply | Self::Edit | Self::DeleteEveryone => Ok(()),
+            Self::React | Self::DeleteLocal => Err(Unavailable::BridgeContract),
+        }
     }
 }
 
@@ -36,19 +44,12 @@ impl Mutation {
 mod tests {
     use super::*;
     #[test]
-    fn source_display_fields_do_not_enable_unimplemented_mutations() {
-        for command in [
-            Mutation::Reply,
-            Mutation::Edit,
-            Mutation::React,
-            Mutation::DeleteLocal,
-            Mutation::DeleteEveryone,
-        ] {
-            assert_eq!(
-                command.check(),
-                Err(Unavailable::BridgeContract),
-                "a display fact cannot fabricate a bridge mutation for {command:?}"
-            );
+    fn only_carried_mutations_are_available() {
+        for command in [Mutation::Reply, Mutation::Edit, Mutation::DeleteEveryone] {
+            assert_eq!(command.check(), Ok(()), "{command:?}");
+        }
+        for command in [Mutation::React, Mutation::DeleteLocal] {
+            assert_eq!(command.check(), Err(Unavailable::BridgeContract), "{command:?}");
         }
     }
 }

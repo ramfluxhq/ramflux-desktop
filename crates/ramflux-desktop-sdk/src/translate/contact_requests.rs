@@ -170,6 +170,26 @@ impl Translator {
         let (incoming, outgoing): (Vec<_>, Vec<_>) =
             requests.into_iter().partition(|r| r.direction == RequestDirection::Incoming);
         events.push(DomainEvent::ContactRequestsListed(incoming));
+        // The list holds pending requests only: an own request that was
+        // waiting and is no longer listed, to a contact the daemon lists as
+        // accepted, was accepted (its `contact.accepted` event may have come
+        // before the request was known, or not at all).
+        let answered: Vec<ContactRequest> = self
+            .outgoing_requests
+            .values()
+            .filter(|known| {
+                known.state == RequestState::Pending
+                    && !outgoing.iter().any(|listed| listed.peer == known.peer)
+                    && self.links.get(&known.peer).is_some_and(|link| {
+                        link.state == ramflux_desktop_core::ContactLink::Accepted
+                    })
+            })
+            .map(|known| ContactRequest { state: RequestState::Accepted, ..known.clone() })
+            .collect();
+        for request in answered {
+            self.remember_outgoing(&request);
+            events.push(DomainEvent::ContactRequestUpserted(request));
+        }
         for request in outgoing {
             self.remember_outgoing(&request);
             events.push(DomainEvent::ContactRequestUpserted(request));

@@ -80,6 +80,8 @@ fn replaced_root(message: &str) -> Option<String> {
 pub enum Submission {
     /// Add by principal id.
     Id(ParticipantId),
+    /// Add by the username they claimed (typed with a leading `@`).
+    Username(String),
     /// Add from a contact card.
     Card(String),
     /// Add from a contact card that replaces the provisional root the user
@@ -100,6 +102,8 @@ enum Pending {
     /// By card (typed, or from a file); done when the answer names a
     /// contact.
     Card { since: u64, from_file: bool, card: String },
+    /// By username; done when the answer names a contact.
+    Username(u64),
 }
 
 /// View-local state of the form.
@@ -198,6 +202,18 @@ impl AddForm {
             return None;
         }
         self.confirming = None;
+        // `@name`: the username directory resolves it (the daemon refuses
+        // when no directory is provisioned, and says why).
+        if let Some(name) = value.strip_prefix('@') {
+            let name = name.trim();
+            if name.is_empty() || name.chars().any(char::is_whitespace) {
+                self.note = Some(FormNote::Error(tr("dock.contacts.add.bad_username")));
+                return None;
+            }
+            self.note = Some(FormNote::AddingCard);
+            self.pending = Some(Pending::Username(store.failures_total()));
+            return Some(Submission::Username(name.to_owned()));
+        }
         if matches!(classify_contact_input(value), ContactInput::Card(_))
             && super::without_home_node(store)
         {
@@ -220,7 +236,9 @@ impl AddForm {
             Ok((pending, submission)) => {
                 self.note = Some(match &submission {
                     Submission::Id(id) => FormNote::Adding(id.clone()),
-                    Submission::Card(_) | Submission::CardReplacing { .. } => FormNote::AddingCard,
+                    Submission::Card(_)
+                    | Submission::CardReplacing { .. }
+                    | Submission::Username(_) => FormNote::AddingCard,
                 });
                 self.pending = Some(pending);
                 Some(submission)
@@ -280,6 +298,11 @@ impl AddForm {
                     .is_some_and(|changes| changes.participants().any(|id| is_contact(store, id)));
                 (named, since, methods::CONTACT_CARD_IMPORT, !from_file)
             }
+            Some(Pending::Username(since)) => {
+                let named = changes
+                    .is_some_and(|changes| changes.participants().any(|id| is_contact(store, id)));
+                (named, since, methods::USERNAME_CONTACT_ADD, true)
+            }
         };
         if added {
             self.pending = None;
@@ -319,6 +342,9 @@ impl AddForm {
         let value = self.input.read(cx).value().trim().to_owned();
         if value.is_empty() {
             return tr("dock.contacts.add.help");
+        }
+        if value.starts_with('@') {
+            return tr("dock.contacts.add.kind_username");
         }
         match classify_contact_input(&value) {
             ContactInput::Card(_) => tr("dock.contacts.add.kind_card"),

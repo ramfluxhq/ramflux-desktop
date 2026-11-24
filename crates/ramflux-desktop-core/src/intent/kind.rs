@@ -41,6 +41,42 @@ pub enum IntentKind {
         /// Text.
         text: String,
     },
+    /// Reply to a message.
+    ReplyMessage {
+        /// The message replied to.
+        moment_id: MomentId,
+        /// Text.
+        text: String,
+    },
+    /// Replace the text of one of this account's messages.
+    EditMessage {
+        /// The edited message.
+        moment_id: MomentId,
+        /// New text.
+        text: String,
+    },
+    /// Delete a message for everyone (needs a confirmation).
+    DeleteMessage {
+        /// The message.
+        moment_id: MomentId,
+    },
+    /// Leave a group (needs a confirmation).
+    LeaveGroup {
+        /// The group conversation.
+        context_id: ContextId,
+    },
+    /// Accept or decline a group invitation.
+    AnswerGroupInvitation {
+        /// The group.
+        group_id: String,
+        /// Accept (true) or decline.
+        accept: bool,
+    },
+    /// Add a contact by username.
+    AddContactByUsername {
+        /// The name, without a leading `@`.
+        name: String,
+    },
     /// Start a direct conversation with a contact: the first message
     /// creates it. The conversation id is chosen fresh by the caller (never
     /// derived from either identity), so a retry names the same one.

@@ -157,7 +157,8 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
     assert_eq!(kai[0].reachable, Some(true));
     assert_eq!(
         (kai[0].kind, kai[0].kind_claim),
-        (ParticipantKind::Agent, KindClaim::Asserted(PeerKind::HeadlessAi))
+        // An unproven claim draws no AI marker.
+        (ParticipantKind::Unknown, KindClaim::Asserted(PeerKind::HeadlessAi))
     );
     assert_eq!(kai[0].safety, SafetyState::Unverified);
     assert_eq!(kai[0].root_source, Some(RootSource::Card), "the card pinned the root");

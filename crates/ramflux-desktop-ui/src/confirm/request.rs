@@ -104,6 +104,16 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
             };
             (tr_args(key, &[("member", &target), ("group", &group)]), None, op.risk())
         }
+        IntentKind::DeleteMessage { moment_id } => {
+            let excerpt = store.body(moment_id).map(ramflux_desktop_navigation::row::list_text);
+            (tr("confirm.message.delete_everyone"), excerpt, Risk::High)
+        }
+        IntentKind::LeaveGroup { context_id } => {
+            let group = store
+                .context(context_id)
+                .map_or_else(|| context_id.to_string(), |c| c.title.clone());
+            (tr_args("confirm.group.leave", &[("group", &group)]), None, Risk::High)
+        }
         IntentKind::Reveal { moment_id } => {
             let label = store
                 .moment(moment_id)

@@ -98,6 +98,17 @@ impl Translator {
         }
     }
 
+    /// This account left the group conversation `context`: it is no longer
+    /// listed (the daemon keeps the group's record).
+    pub(super) fn left_group(&mut self, context: &ContextId) -> Vec<DomainEvent> {
+        self.left.insert(context.clone());
+        if self.contexts.contains_key(context) {
+            vec![self.remove_context(context)]
+        } else {
+            Vec::new()
+        }
+    }
+
     /// Forgets a rename the daemon refused.
     pub(super) fn rename_failed(&mut self, body: &Value) {
         self.renames.remove(&ContextId::new(text(body, "context_id")));
@@ -111,7 +122,8 @@ impl Translator {
         let mut listed = Vec::new();
         for row in &rows {
             let Some(id) = field(row, "id").map(ContextId::new) else { continue };
-            if row["archived"].as_bool().unwrap_or(false)
+            if self.left.contains(&id)
+                || row["archived"].as_bool().unwrap_or(false)
                 || row["hidden"].as_bool().unwrap_or(false)
             {
                 continue;
@@ -158,6 +170,14 @@ impl Translator {
             .as_array()
             .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_owned).collect())
             .unwrap_or_default();
+        // A direct row names its peer (`peer_principal_id`) since the
+        // read model resolves the route's commitment.
+        if kind == ContextKind::Direct
+            && let Some(peer) = field(row, "peer_principal_id")
+            && !participants.contains(&peer)
+        {
+            participants.push(peer);
+        }
         let group = conversation.group_id.as_ref().and_then(|g| self.directory.groups.get(g));
         let mut roles = BTreeMap::new();
         if let Some(group) = group {
@@ -191,7 +211,13 @@ impl Translator {
             last_activity: conversation.last_activity,
             id: id.clone(),
             kind,
-            title: field(row, "title").unwrap_or_else(|| id.to_string()),
+            // The SDK names a direct conversation after its peer
+            // (`peer_display_name`) when no title was kept.
+            title: field(row, "title")
+                .or_else(|| {
+                    (kind == ContextKind::Direct).then(|| field(row, "peer_display_name")).flatten()
+                })
+                .unwrap_or_else(|| id.to_string()),
             participants: participants.iter().map(|p| ParticipantId::new(p.as_str())).collect(),
             // Pins are restored in pin order once the lists are known.
             pinned: known.is_some_and(|c| c.pinned),

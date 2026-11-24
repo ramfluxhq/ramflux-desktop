@@ -17,6 +17,9 @@ use serde_json::json;
 fn domain_event_name(event: &DomainEvent) -> &'static str {
     match event {
         DomainEvent::AccountUpdated(_) => "AccountUpdated",
+        DomainEvent::EffectSucceeded { .. } => "EffectSucceeded",
+        DomainEvent::GroupInvitationsListed(_) => "GroupInvitationsListed",
+        DomainEvent::UsernameStatusUpdated(_) => "UsernameStatusUpdated",
         DomainEvent::NodeUpserted(_) => "NodeUpserted",
         DomainEvent::NodeHealthChanged { .. } => "NodeHealthChanged",
         DomainEvent::ParticipantUpserted(_) => "ParticipantUpserted",
@@ -68,7 +71,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 50;
+const DOMAIN_EVENT_VARIANTS: usize = 53;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -97,6 +100,12 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
         IntentKind::RetryMessage { .. } => "RetryMessage",
         IntentKind::SendMessage { .. } => "SendMessage",
+        IntentKind::ReplyMessage { .. } => "ReplyMessage",
+        IntentKind::EditMessage { .. } => "EditMessage",
+        IntentKind::DeleteMessage { .. } => "DeleteMessage",
+        IntentKind::LeaveGroup { .. } => "LeaveGroup",
+        IntentKind::AnswerGroupInvitation { .. } => "AnswerGroupInvitation",
+        IntentKind::AddContactByUsername { .. } => "AddContactByUsername",
         IntentKind::StartConversation { .. } => "StartConversation",
         IntentKind::AttachObject { .. } => "AttachObject",
         IntentKind::SurfaceAction { .. } => "SurfaceAction",
@@ -168,13 +177,21 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the eight secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 61;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 67;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
         UiEventKind::CopyMessagePressed => "CopyMessagePressed",
         UiEventKind::RetryMessagePressed => "RetryMessagePressed",
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
+        UiEventKind::ReplyPressed => "ReplyPressed",
+        UiEventKind::EditPressed => "EditPressed",
+        UiEventKind::DeleteForEveryonePressed => "DeleteForEveryonePressed",
+        UiEventKind::SubmitReply { .. } => "SubmitReply",
+        UiEventKind::SubmitEdit { .. } => "SubmitEdit",
+        UiEventKind::LeaveGroupPressed => "LeaveGroupPressed",
+        UiEventKind::GroupInvitationAnswered { .. } => "GroupInvitationAnswered",
+        UiEventKind::AddContactByUsernameRequested { .. } => "AddContactByUsernameRequested",
         UiEventKind::StartConversationRequested { .. } => "StartConversationRequested",
         UiEventKind::AttachFile { .. } => "AttachFile",
         UiEventKind::ActionInvoked { .. } => "ActionInvoked",
@@ -221,7 +238,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 47;
+const UI_EVENT_KIND_VARIANTS: usize = 55;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -666,6 +683,14 @@ fn all_domain_events() -> Vec<DomainEvent> {
             unrouted: Some(1),
         }),
         DomainEvent::ListingsLoaded(Listing::ALL.to_vec()),
+        DomainEvent::EffectSucceeded { method: "node.add".to_owned() },
+        DomainEvent::GroupInvitationsListed(vec![GroupInvitation {
+            group_id: "g-1".to_owned(),
+            name: Some("Group".to_owned()),
+            inviter: None,
+            expires_at: Some(Timestamp(5)),
+        }]),
+        DomainEvent::UsernameStatusUpdated(UsernameStatus::Unavailable("refused".to_owned())),
         DomainEvent::OwnContactCardUpdated(ContactCard {
             text: "card-text".to_owned(),
             link: Some("ramflux:contact/card".to_owned()),
@@ -786,6 +811,12 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::ClearRequestFloors,
         IntentKind::RetryMessage { moment_id: MomentId::new("m-1") },
         IntentKind::SendMessage { context_id: ContextId::new("c-1"), text: "hi".into() },
+        IntentKind::ReplyMessage { moment_id: MomentId::new("m-1"), text: "re".into() },
+        IntentKind::EditMessage { moment_id: MomentId::new("m-1"), text: "ed".into() },
+        IntentKind::DeleteMessage { moment_id: MomentId::new("m-1") },
+        IntentKind::LeaveGroup { context_id: ContextId::new("c-1") },
+        IntentKind::AnswerGroupInvitation { group_id: "g-1".into(), accept: true },
+        IntentKind::AddContactByUsername { name: "ana".into() },
         IntentKind::StartConversation {
             context_id: ContextId::new("c-new"),
             participant_id: ParticipantId::new("p-ana"),
@@ -891,6 +922,14 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::RetryMessagePressed,
         UiEventKind::CopyMessagePressed,
         UiEventKind::SubmitMessage { text: "hi".into() },
+        UiEventKind::ReplyPressed,
+        UiEventKind::EditPressed,
+        UiEventKind::DeleteForEveryonePressed,
+        UiEventKind::SubmitReply { target: MomentId::new("m-1"), text: "re".into() },
+        UiEventKind::SubmitEdit { target: MomentId::new("m-1"), text: "ed".into() },
+        UiEventKind::LeaveGroupPressed,
+        UiEventKind::GroupInvitationAnswered { group_id: "g-1".into(), accept: false },
+        UiEventKind::AddContactByUsernameRequested { name: "@ana".into() },
         UiEventKind::StartConversationRequested {
             context_id: ContextId::new("c-new"),
             participant_id: ParticipantId::new("p-ana"),

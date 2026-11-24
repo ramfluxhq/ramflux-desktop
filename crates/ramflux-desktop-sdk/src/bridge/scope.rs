@@ -166,6 +166,8 @@ pub(super) enum Internal {
         key: String,
         sent: bool,
     },
+    /// A read mark was moved: the unread counts are read again.
+    ReadDone,
     /// What a creation or recovery step came to.
     Custody(super::custody::Outcome),
     /// What a running attachment job reported.
@@ -189,6 +191,7 @@ impl Internal {
             | Self::SendDone { .. }
             | Self::EffectDone { .. }
             | Self::ReceiptDone { .. }
+            | Self::ReadDone
             | Self::Custody(_)
             | Self::Media(_) => None,
         }
@@ -1206,6 +1209,9 @@ impl Task {
                     receipts.answered(&key, sent, Instant::now());
                 }
             }
+            Internal::ReadDone => {
+                self.spawn_fetches(vec![Fetch::first(Paged::Conversations)]);
+            }
             Internal::Custody(outcome) => self.on_custody(outcome),
             Internal::Media(note) => self.on_media(note),
         }
@@ -1223,6 +1229,18 @@ impl Task {
     /// waits for them, and a failed one is retried later (see
     /// [`crate::receipts`]).
     fn send_receipts(&mut self) {
+        if self.link == Link::Live && self.gate.is_open() {
+            for request in self.translator.take_reads() {
+                let (client, internal) = (self.client.clone(), self.internal.clone());
+                tokio::spawn(async move {
+                    // A read mark that fails is moved again by the next
+                    // message listed; nothing waits for it.
+                    if client.call(&request).await.is_ok() {
+                        let _ = internal.send(Internal::ReadDone);
+                    }
+                });
+            }
+        }
         let listed = self.translator.take_delivered();
         let (Some(receipts), Some(account)) = (&mut self.receipts, self.scope.account()) else {
             return;
@@ -1353,6 +1371,21 @@ impl Task {
         }
         if let (Fetch::MessagesBefore(context, _), Err(_)) = (fetch, &result) {
             self.translator.older_failed(context);
+        }
+        // A daemon without a provisioned username directory refuses the
+        // status: that is the honest state of the feature, not an error of
+        // the moment (no status-strip failure, no retry).
+        if let (Fetch::UsernameStatus, Err(error)) = (fetch, &result)
+            && !error.is_connection_lost()
+        {
+            self.read_recovery.succeeded(fetch);
+            let reason = match error {
+                BusError::Daemon { reason_code: Some(code), message, .. } => {
+                    format!("{code}: {message}")
+                }
+                other => other.message(),
+            };
+            return self.emit(crate::translate::account::username_unavailable(reason));
         }
         // An account made by an older development build cannot be opened:
         // nothing is retried and nothing is written to it.
