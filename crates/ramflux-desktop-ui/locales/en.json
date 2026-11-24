@@ -1410,6 +1410,7 @@
   "dock.contacts.add.kind_id": "User ID: looked up on your home node and trusted on first use. Provisional until their card pins it or you compare safety numbers.",
   "dock.contacts.add.adding": "Adding %{id}…",
   "dock.contacts.add.adding_card": "Adding the contact card…",
+  "dock.contacts.add.card_added": "Contact card added.",
   "dock.contacts.add.failed": "Not added: %{reason}",
   "dock.contacts.add.root_replace": "Use the card's identity",
   "dock.contacts.add.root_keep": "Keep the current one",
