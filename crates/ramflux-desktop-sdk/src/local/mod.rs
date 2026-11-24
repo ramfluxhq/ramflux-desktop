@@ -11,8 +11,6 @@
 //! - [`platform_dirs`]: the operating system's per-user directories.
 //! - [`paths`]: settings, log and default data directories, the default
 //!   socket; the bundled daemon.
-//! - [`data_migration`]: the one-time copy of daemon data to the XDG data
-//!   directory.
 //! - [`notifications`]: how much operating-system notifications reveal.
 //! - [`settings_file`]: the versioned desktop settings file.
 //! - [`launch`]: source, socket, daemon binary and data directory choices.
@@ -25,7 +23,6 @@
 pub mod app_log;
 pub mod appearance;
 pub mod daemon_process;
-pub mod data_migration;
 pub mod identity;
 pub mod launch;
 pub mod notifications;

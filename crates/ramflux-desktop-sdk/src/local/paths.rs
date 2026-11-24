@@ -11,11 +11,6 @@
 //! | daemon data (default) | `<settings>/rfd-data` | `$XDG_DATA_HOME/ramflux-desktop/rfd-data` |
 //! | daemon socket (default) | `/tmp/ramflux/rfd.sock` | `$XDG_RUNTIME_DIR/ramflux/rfd.sock` |
 //!
-//! On Linux, daemon data used to live under the settings directory
-//! (`<settings>/rfd-data`). [`super::data_migration`] copies it to the data
-//! directory once; until that copy has completed, the old folder stays the
-//! default, so a failed or skipped copy never hides the user's data.
-//!
 //! The default socket on Linux is in the session's runtime directory, never
 //! in `/tmp` while one exists. Two exceptions keep an existing setup
 //! working: a daemon already listening at the reference CLI's socket
@@ -93,51 +88,14 @@ pub fn log_dir() -> Option<PathBuf> {
         .or_else(|| dirs().map(|d| d.logs))
 }
 
-/// The two candidate default data roots: where data belongs now, and where
-/// an older build put it (`None` when they are the same folder).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DataDirs {
-    /// The current default.
-    pub current: PathBuf,
-    /// The pre-XDG default, to be migrated from.
-    pub legacy: Option<PathBuf>,
-}
-
-/// The default data roots for `dirs` on `platform`.
-pub fn data_dirs_for(platform: Platform, dirs: &Dirs) -> DataDirs {
-    let legacy = dirs.config.join(DATA_DIR_NAME);
-    let current = dirs.data.join(DATA_DIR_NAME);
-    match platform {
-        Platform::Xdg if current != legacy => DataDirs { current, legacy: Some(legacy) },
-        // macOS keeps data beside the settings, as before; Windows has no
-        // earlier layout.
-        _ => DataDirs { current, legacy: None },
-    }
-}
-
-/// The default data roots of this process; under the state override both
-/// are the old `<state>/rfd-data` and nothing migrates.
-pub fn data_dirs() -> Option<DataDirs> {
-    if let Some(state) = state_override() {
-        return Some(DataDirs { current: state.join(DATA_DIR_NAME), legacy: None });
-    }
-    dirs().map(|d| data_dirs_for(Platform::current(), &d))
-}
-
-/// Which data root is the default: the current one once it exists, else a
-/// legacy one that exists (its migration has not completed), else the
-/// current one.
-pub fn choose_data_dir(dirs: &DataDirs, exists: impl Fn(&Path) -> bool) -> PathBuf {
-    match &dirs.legacy {
-        Some(legacy) if !exists(&dirs.current) && exists(legacy) => legacy.clone(),
-        _ => dirs.current.clone(),
-    }
-}
-
 /// Where a daemon the desktop starts keeps its data when no other folder
-/// is set; never in a temporary folder.
+/// is set; never in a temporary folder. Under the state override it is
+/// `<state>/rfd-data`.
 pub fn default_data_dir() -> Option<PathBuf> {
-    data_dirs().map(|dirs| choose_data_dir(&dirs, Path::exists))
+    if let Some(state) = state_override() {
+        return Some(state.join(DATA_DIR_NAME));
+    }
+    dirs().map(|d| d.data.join(DATA_DIR_NAME))
 }
 
 /// The default local-bus socket and, when the desktop is responsible for
@@ -226,34 +184,6 @@ mod tests {
         if let (Some(state), Some(file)) = (state_dir(), settings_file()) {
             assert_eq!(file.parent(), Some(state.as_path()));
         }
-    }
-
-    #[test]
-    fn linux_data_moves_from_config_to_data_home() {
-        let dirs = data_dirs_for(Platform::Xdg, &linux(None));
-        let current = PathBuf::from("/home/u/.local/share/ramflux-desktop/rfd-data");
-        let legacy = PathBuf::from("/home/u/.config/ramflux-desktop/rfd-data");
-        assert_eq!(dirs, DataDirs { current: current.clone(), legacy: Some(legacy.clone()) });
-
-        assert_eq!(choose_data_dir(&dirs, |_| false), current, "fresh install");
-        assert_eq!(choose_data_dir(&dirs, |p| p == legacy), legacy, "not migrated yet");
-        assert_eq!(choose_data_dir(&dirs, |_| true), current, "migrated");
-        assert_eq!(choose_data_dir(&dirs, |p| p == current), current);
-    }
-
-    #[test]
-    fn macos_data_stays_beside_the_settings() {
-        let env = Env { home: Some(OsString::from("/Users/u")), ..Env::default() };
-        let dirs = data_dirs_for(Platform::MacOs, &resolve(Platform::MacOs, &env).expect("d"));
-        assert_eq!(
-            dirs,
-            DataDirs {
-                current: PathBuf::from(
-                    "/Users/u/Library/Application Support/Ramflux Desktop/rfd-data"
-                ),
-                legacy: None,
-            }
-        );
     }
 
     #[test]

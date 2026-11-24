@@ -201,9 +201,8 @@ Versioning.
   `.icns`, and a Windows `.ico`. All are generated from
   `packaging/brand/*.svg` by `scripts/generate-icons.sh`.
 - On Linux a started daemon's default data folder is
-  `$XDG_DATA_HOME/ramflux-desktop/rfd-data`; data under the settings folder
-  from older builds is copied there once (under the daemon's lock, verified
-  byte for byte, then switched; the old folder is never deleted).
+  `$XDG_DATA_HOME/ramflux-desktop/rfd-data`. Data under the settings folder
+  from older builds is not copied (no migrations before the beta).
 - On Linux the default daemon socket is `$XDG_RUNTIME_DIR/ramflux/rfd.sock`
   (folder created 0700), unless a daemon already listens on the reference
   CLI's `/tmp/ramflux/rfd.sock`.
