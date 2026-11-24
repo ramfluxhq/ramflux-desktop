@@ -45,6 +45,7 @@ fn choose<H: Host, D: DemoDaemon>(
     label: &str,
 ) -> Result<(), String> {
     let desk = demo.sides[ix].desk()?;
+    desk.scroll_to_moment(demo.host, moment)?;
     desk.click(demo.host, Some(&format!("moment-{moment}")), "message-menu")?;
     desk.click_label(demo.host, &tr(label))
 }
