@@ -29,7 +29,12 @@ Versioning.
 
 ### Changed
 
-- Core pinned to f2f466be (the core's next head).
+- Core pinned to 31ab2296 (the core's next head). The username directory is
+  provisioned by `rf daemon start` from its environment (`RAMFLUX_USERNAME_CENTER_*`,
+  `RAMFLUX_USERNAME_TRUST_GENERATION`); the desktop passes its environment on.
+- A direct conversation's header no longer shows a member count.
+- Adding a contact card confirms ("Contact card added.") also when the card
+  named a contact that was already known.
 - The AI marker follows the core's signed classification
   (`verified_classification`: person, AI agent, unknown); an unproven claim
   no longer draws a party as an agent.
