@@ -243,8 +243,9 @@ mod shots {
         let report = scratch_file(&files, "quarterly-report.txt", 8192);
         attach(&mut run, &report);
         run.shot("f10_07_attach_staged");
-        let huge =
-            scratch_file(&files, "raw-footage.mov", ramflux_desktop_sdk::ATTACHMENT_LIMIT + 4096);
+        let over_limit = usize::try_from(ramflux_desktop_sdk::ATTACHMENT_LIMIT + 4096)
+            .expect("the attachment limit fits in usize");
+        let huge = scratch_file(&files, "raw-footage.mov", over_limit);
         attach(&mut run, &huge);
         run.shot("f10_08_attach_too_large");
         attach(&mut run, &report);
