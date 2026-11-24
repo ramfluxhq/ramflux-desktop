@@ -195,6 +195,10 @@ impl Store {
                 changes.source_status = true;
             }
             DomainEvent::EffectSucceeded { method } => {
+                if method == crate::methods::GROUP_CREATE {
+                    self.group_creations += 1;
+                    changes.source_status = true;
+                }
                 // A node confirmed or added clears what its earlier steps
                 // reported (a probe, the first add before the key check).
                 let node = method.starts_with("node.");

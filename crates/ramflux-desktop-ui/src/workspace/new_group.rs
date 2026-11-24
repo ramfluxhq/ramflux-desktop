@@ -14,7 +14,8 @@
 //! policy's own check (`check_create_group`) first and explains a refusal
 //! in place; then it emits [`UiEventKind::CreateGroupRequested`], which the
 //! root turns into the `CreateGroup` intent. The form follows the outcome
-//! in the store: the group conversation appearing ends it
+//! in the store: the group conversation appearing once the whole creation
+//! (the group, then every member add) has finished ends it
 //! ([`NewGroupEvent::Created`]); a failure is shown with the daemon's reason
 //! and keeps the name and members. Cancel ends it without creating
 //! anything ([`NewGroupEvent::Cancelled`]).
@@ -53,10 +54,13 @@ pub const SCOPE: &str = "new_group";
 pub enum Phase {
     /// Choosing a name and members.
     Editing,
-    /// Create was pressed; `since` is the store's failure count then.
+    /// Create was pressed; `since` and `created` are the store's failure
+    /// and finished-creation counts then.
     Creating {
         /// Failures recorded before the submission.
         since: u64,
+        /// Group creations finished before the submission.
+        created: u64,
     },
     /// The creation failed or was refused (translated reason).
     Failed(SharedString),
@@ -211,16 +215,16 @@ impl NewGroup {
             return;
         };
         let title = self.name.read(cx).value().to_string();
-        let (checked, since) = {
+        let (checked, since, created) = {
             let store = self.store.read(cx).store();
             let checked = check_create_group(store, &title, &self.members)
                 .map(|(title, members)| (title.to_owned(), members))
                 .map_err(|error| refusal(store, &error));
-            (checked, store.failures_total())
+            (checked, store.failures_total(), store.group_creations())
         };
         match checked {
             Ok((title, members)) => {
-                self.phase = Phase::Creating { since };
+                self.phase = Phase::Creating { since, created };
                 sink.emit(
                     UiEventKind::CreateGroupRequested { context_id, title, members },
                     window,
@@ -240,7 +244,7 @@ impl NewGroup {
 
     /// Follows the store: the group appeared, or its creation failed.
     fn observe(&mut self, cx: &mut Context<Self>) {
-        let Phase::Creating { since } = self.phase else {
+        let Phase::Creating { since, created } = self.phase else {
             if self.is_open() {
                 // Who can be chosen may have changed.
                 cx.notify();
@@ -257,6 +261,12 @@ impl NewGroup {
         if let Some(reason) = failure {
             self.phase = Phase::Failed(tr_args("group.new.failed", &[("reason", &reason)]));
             cx.notify();
+            return;
+        }
+        // The group conversation can be listed as soon as the group exists;
+        // it is shown only once the creation, which adds every member after
+        // the group, has finished, so a first message reaches all of them.
+        if store.group_creations() == created {
             return;
         }
         if let Some(id) = self.context_id.clone().filter(|id| store.context(id).is_some()) {

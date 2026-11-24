@@ -112,6 +112,7 @@ pub struct Store {
     username: Option<crate::UsernameStatus>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
+    group_creations: u64,
     pin_order: Vec<ContextId>,
     listed: BTreeSet<Listing>,
     needs_me_since: BTreeMap<MomentId, Timestamp>,
@@ -397,6 +398,13 @@ impl Store {
     /// past [`MAX_FAILURES`]), so a view can tell which failures are new.
     pub fn failures_total(&self) -> u64 {
         self.failures_total
+    }
+
+    /// How many group creations (`group.create`, which runs the group and
+    /// then every member add) finished successfully since the store was
+    /// created, so a view can tell its own creation is complete.
+    pub fn group_creations(&self) -> u64 {
+        self.group_creations
     }
 
     /// The failures recorded after the count was `since`, oldest first

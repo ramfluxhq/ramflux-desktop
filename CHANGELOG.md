@@ -41,6 +41,9 @@ Versioning.
 
 ### Fixed
 
+- New group stays in its creating state until every member has been added;
+  the group conversation was shown (and a first message could be sent) while
+  members were still being added, so the message reached only some of them.
 - A failure banner ("Last error") no longer stays after the same operation
   succeeded (a node added after a refused attempt).
 - A contact's "waiting for … to accept" row no longer stays after the
