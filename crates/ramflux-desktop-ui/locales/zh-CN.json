@@ -1384,6 +1384,7 @@
   "dock.contacts.add.kind_id": "用户 ID：在你的主节点上查询，首次使用即信任。在对方名片固定其身份或你比对安全码之前均为临时身份。",
   "dock.contacts.add.adding": "正在添加 %{id}…",
   "dock.contacts.add.adding_card": "正在添加联系人名片…",
+  "dock.contacts.add.card_added": "已添加联系人名片。",
   "dock.contacts.add.failed": "未添加：%{reason}",
   "dock.contacts.add.root_replace": "使用名片中的身份",
   "dock.contacts.add.root_keep": "保留当前身份",

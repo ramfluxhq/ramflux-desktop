@@ -110,6 +110,8 @@ enum Pending {
 pub struct AddForm {
     input: Entity<InputState>,
     note: Option<FormNote>,
+    /// The last card was added (shown until the field is edited).
+    card_added: bool,
     pending: Option<Pending>,
     /// The field value the note belongs to; editing it clears the note.
     noted_value: String,
@@ -137,7 +139,14 @@ impl AddForm {
     pub fn new(window: &mut Window, cx: &mut App) -> Self {
         let input =
             i18n::localized_input("dock.contacts.add.placeholder", window, cx, |input| input);
-        Self { input, note: None, pending: None, noted_value: String::new(), confirming: None }
+        Self {
+            input,
+            note: None,
+            card_added: false,
+            pending: None,
+            noted_value: String::new(),
+            confirming: None,
+        }
     }
 
     /// The field.
@@ -148,6 +157,11 @@ impl AddForm {
     /// The line under the field.
     pub fn note(&self) -> Option<&FormNote> {
         self.note.as_ref()
+    }
+
+    /// Whether the last card was added and nothing else is said.
+    pub fn card_added(&self) -> bool {
+        self.card_added && self.note.is_none()
     }
 
     /// Moves keyboard focus to the field.
@@ -280,6 +294,7 @@ impl AddForm {
         if value != self.noted_value {
             // The user edited the field: what was said no longer applies.
             self.note = None;
+            self.card_added = false;
             self.pending = None;
             self.confirming = None;
             self.noted_value = value;
@@ -305,6 +320,9 @@ impl AddForm {
             }
         };
         if added {
+            // A card's add is confirmed also when it named a contact that was
+            // already known (a re-add), where nothing else on screen changes.
+            self.card_added = matches!(self.pending, Some(Pending::Card { .. }));
             self.pending = None;
             self.note = None;
             if typed {
@@ -469,6 +487,17 @@ where
             .text_color(color)
             .child(text)
     });
+    let added = form.card_added().then(|| {
+        let text = tr("dock.contacts.add.card_added");
+        div()
+            .id("contact-add-card-added")
+            .role(Role::Status)
+            .aria_label(text.clone())
+            .test_support()
+            .text_size(text_caption())
+            .text_color(cx.theme().muted_foreground)
+            .child(text)
+    });
     let confirm = form.is_confirming().then(|| {
         let RootHandlers { replace, keep } = on_root;
         h_flex()
@@ -517,6 +546,7 @@ where
                 .child(hint),
         )
         .children(note)
+        .children(added)
         .children(confirm)
         .child(h_flex().child(crate::gate::gated(import, disabled.or(card_disabled), cx)))
         .into_any_element()

@@ -1462,6 +1462,7 @@
   "dock.contacts.add.kind_id": null,
   "dock.contacts.add.adding": null,
   "dock.contacts.add.adding_card": null,
+  "dock.contacts.add.card_added": null,
   "dock.contacts.add.failed": null,
   "dock.contacts.add.root_replace": null,
   "dock.contacts.add.root_keep": null,
