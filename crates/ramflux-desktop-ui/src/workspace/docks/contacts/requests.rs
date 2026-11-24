@@ -32,8 +32,8 @@ use gpui_kit::component::{
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, div};
 use ramflux_desktop_core::{
-    ContactRequest, Participant, RequestAnswer, RequestPolicy, RequestState, Store, UiEventKind,
-    methods, selectors,
+    ContactRequest, GroupInvitation, Participant, RequestAnswer, RequestPolicy, RequestState,
+    Store, UiEventKind, methods, selectors,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
@@ -166,6 +166,73 @@ pub fn pending_row(
                 .child(answer("request-block", RequestAnswer::Block))
                 .child(answer("request-decline", RequestAnswer::Decline))
                 .child(answer("request-accept", RequestAnswer::Accept)),
+        )
+        .into_any_element()
+}
+
+/// A group invitation waiting for an answer (a group made by someone who
+/// is not a contact): its name, and Accept or Decline.
+pub fn invitation_row(invitation: &GroupInvitation, sink: &EventSink, cx: &App) -> AnyElement {
+    let name: SharedString = invitation
+        .name
+        .clone()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| tr("dock.contacts.invitation.unnamed").to_string())
+        .into();
+    let answer = |id: &'static str, accept: bool| {
+        let sink = sink.clone();
+        let group_id = invitation.group_id.clone();
+        let (label, spoken) = if accept {
+            ("dock.contacts.invitation.accept", "dock.contacts.invitation.accept_for")
+        } else {
+            ("dock.contacts.invitation.decline", "dock.contacts.invitation.decline_for")
+        };
+        let button = Button::new(id)
+            .xsmall()
+            .label(tr(label))
+            .accessibility_label(tr_args(spoken, &[("name", &name)]))
+            .on_click(move |_, window, cx| {
+                sink.emit(
+                    UiEventKind::GroupInvitationAnswered { group_id: group_id.clone(), accept },
+                    window,
+                    cx,
+                );
+            });
+        if accept { button.design_primary(cx) } else { button.design_secondary(cx) }
+    };
+    v_flex()
+        .id(gpui_kit::ElementId::Name(format!("group-invitation-{}", invitation.group_id).into()))
+        .test_support()
+        .px(space(3.))
+        .py(space(1.))
+        .gap(space(1.))
+        .child(
+            h_flex()
+                .gap(space(2.))
+                .child(
+                    Icon::new(gpui_kit::assets::IconName::Users)
+                        .small()
+                        .text_color(cx.theme().warning),
+                )
+                .child(
+                    div()
+                        .id("invitation-name")
+                        .aria_label(name.clone())
+                        .test_support()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(text_secondary())
+                        .font_medium()
+                        .child(tr_args("dock.contacts.invitation.to", &[("name", &name)])),
+                ),
+        )
+        .child(
+            h_flex()
+                .gap(space(2.))
+                .justify_row_end()
+                .child(answer("invitation-decline", false))
+                .child(answer("invitation-accept", true)),
         )
         .into_any_element()
 }

@@ -257,6 +257,33 @@ pub struct ContactCard {
     pub link: Option<String>,
 }
 
+/// An invitation to a group this account has not joined: the daemon holds
+/// a group made by someone who is not a contact until it is accepted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupInvitation {
+    /// The group.
+    pub group_id: String,
+    /// The group's name, as the invitation names it.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Who invited (a root commitment), when the daemon says.
+    #[serde(default)]
+    pub inviter: Option<String>,
+    /// When the invitation expires.
+    #[serde(default)]
+    pub expires_at: Option<crate::Timestamp>,
+}
+
+/// This account's username, as the username directory reports it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UsernameStatus {
+    /// The directory answered: the claimed name, if any.
+    Known(Option<String>),
+    /// The directory refused: why, as the daemon said (no username can be
+    /// claimed or looked up through this daemon now).
+    Unavailable(String),
+}
+
 /// Context shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ContextKind {

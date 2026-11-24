@@ -79,8 +79,9 @@ pub use contact_request::{
     ContactRequest, RequestAnswer, RequestDirection, RequestFloors, RequestPolicy, RequestState,
 };
 pub use conversation::{
-    ContactCard, ContactLink, Context, ContextKind, ContextPreview, Disappearing, KindClaim,
-    NameWarnings, Participant, ParticipantKind, PeerKind, Role, RootSource, SafetyState,
+    ContactCard, ContactLink, Context, ContextKind, ContextPreview, Disappearing, GroupInvitation,
+    KindClaim, NameWarnings, Participant, ParticipantKind, PeerKind, Role, RootSource, SafetyState,
+    UsernameStatus,
 };
 pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingApproval};
 pub use integrations::{A2iItem, Integrations, McpServer};

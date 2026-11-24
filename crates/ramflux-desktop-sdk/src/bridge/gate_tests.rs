@@ -353,7 +353,7 @@ async fn schema_gate_state_machine_blocks_message_traffic() {
     assert_eq!(verdict(&task), SchemaGate::Unresolved);
     assert_eq!(
         task.gate.queued_reads(),
-        [Fetch::first(Paged::Groups), Fetch::first(Paged::Conversations)],
+        [Fetch::first(Paged::Groups), Fetch::first(Paged::Conversations), Fetch::GroupInvitations],
         "the snapshot's message reads are held in snapshot order"
     );
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "zero message-class requests");
@@ -477,7 +477,10 @@ const INVENTORY: &[(&str, bool)] = &[
     ("contact.verify", false),
     ("conversation.directory", true),
     ("conversation.disappearing.set", true),
+    ("conversation.delete", true),
+    ("conversation.edit", true),
     ("conversation.mute", true),
+    ("conversation.reply", true),
     ("conversation.start", true),
     ("daemon.status", false),
     ("device.list", false),
@@ -489,6 +492,10 @@ const INVENTORY: &[(&str, bool)] = &[
     ("grant.revoke", false),
     ("grant.revoke_standing_approval", false),
     ("group.create", true),
+    ("group.invitation.accept", true),
+    ("group.invitation.decline", true),
+    ("group.invitations.list", true),
+    ("group.leave", true),
     ("group.list", true),
     ("group.member.add", true),
     ("group.member.kick", true),
@@ -1405,8 +1412,8 @@ async fn each_account_scope_holds_its_own_queue_while_unresolved() {
     attach(&mut second, &mut second_inbox).await;
     settle(&mut first, &mut first_inbox).await;
     settle(&mut second, &mut second_inbox).await;
-    assert_eq!(first.gate.queued(), 2);
-    assert_eq!(second.gate.queued(), 2, "per-account queues");
+    assert_eq!(first.gate.queued(), 3);
+    assert_eq!(second.gate.queued(), 3, "per-account queues");
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "nothing is sent");
     fake.shutdown();
 }
@@ -1714,7 +1721,7 @@ fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
         ("effects.rs", 9, 0, 0),
         ("media.rs", 10, 0, 0),
         ("mod.rs", 1, 0, 0),
-        ("scope.rs", 3, 1, 2),
+        ("scope.rs", 4, 1, 2),
         ("sends.rs", 1, 0, 0),
     ];
     let modules = bridge_modules();

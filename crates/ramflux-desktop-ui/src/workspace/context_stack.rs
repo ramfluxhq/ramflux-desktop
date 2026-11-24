@@ -370,6 +370,10 @@ fn entry(store: &Store, row: ConversationRow<'_>, filter: ListFilter) -> Option<
 
 fn accessible_name(entry: &Entry) -> SharedString {
     let mut text = vec![entry.title.to_string(), entry.preview.to_string()];
+    // The AI marker is the avatar's shape and color; said in words too.
+    if entry.kind == AvatarKind::Agent {
+        text.push(tr("message_ui.agent").to_string());
+    }
     if entry.pinned {
         text.push(tr("stack.pinned").to_string());
     }

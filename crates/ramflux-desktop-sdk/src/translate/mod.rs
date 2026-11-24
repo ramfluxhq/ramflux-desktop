@@ -187,6 +187,17 @@ pub struct Translator {
     local_ids: BTreeMap<String, String>,
     /// Messages this device is sending whose daemon id is not known yet.
     sending: BTreeSet<String>,
+    /// What a reply, edit or delete names of each listed message: the
+    /// daemon's id and the revision shown.
+    message_targets: BTreeMap<MomentId, crate::plan::message::MessageTarget>,
+    /// The newest message listed in each direct conversation (the read
+    /// mark a read receipt moves to).
+    newest_listed: BTreeMap<ContextId, (u64, String)>,
+    /// The read mark last sent for each conversation.
+    read_sent: BTreeMap<ContextId, String>,
+    /// Group conversations this account left: the daemon keeps their
+    /// record, the desktop no longer lists them.
+    left: BTreeSet<ContextId>,
     /// Conversations this device started that the directory has not
     /// listed yet: a listing read before the start does not remove them.
     started: BTreeSet<ContextId>,
@@ -295,6 +306,10 @@ impl Translator {
             media_folder: None,
             local_ids: BTreeMap::new(),
             sending: BTreeSet::new(),
+            message_targets: BTreeMap::new(),
+            newest_listed: BTreeMap::new(),
+            read_sent: BTreeMap::new(),
+            left: BTreeSet::new(),
             started: BTreeSet::new(),
             renames: BTreeMap::new(),
             surfaces: BTreeMap::new(),
@@ -476,6 +491,8 @@ impl Translator {
             Fetch::Calls => self.call_list(value),
             Fetch::ContactRequests => Translated::events(self.contact_request_list(value)),
             Fetch::BackupJobs => self.backup_job_list(value),
+            Fetch::GroupInvitations => Translated::events(group_sync::invitations(value)),
+            Fetch::UsernameStatus => Translated::events(account::username_status(value)),
             Fetch::Messages(context) | Fetch::MessagesBefore(context, _) => {
                 self.messages(context, fetch, value, now)
             }
@@ -638,6 +655,10 @@ impl Known for Translator {
 
     fn media_file(&self, object: &ObjectId) -> Option<&std::path::Path> {
         self.media_files.get(object).map(std::path::PathBuf::as_path)
+    }
+
+    fn message_target(&self, moment: &MomentId) -> Option<&crate::plan::message::MessageTarget> {
+        self.message_targets.get(moment)
     }
 }
 

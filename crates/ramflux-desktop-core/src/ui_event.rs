@@ -81,6 +81,42 @@ pub enum UiEventKind {
         /// Text.
         text: String,
     },
+    /// Reply chosen in a message's menu: the composer quotes the message
+    /// (view-local; the reply itself is [`Self::SubmitReply`]).
+    ReplyPressed,
+    /// Edit chosen in an own message's menu: the composer takes its text
+    /// (view-local; the edit itself is [`Self::SubmitEdit`]).
+    EditPressed,
+    /// Delete for everyone chosen in an own message's menu.
+    DeleteForEveryonePressed,
+    /// The composer submitted a reply to `target`.
+    SubmitReply {
+        /// The message replied to.
+        target: MomentId,
+        /// Text.
+        text: String,
+    },
+    /// The composer submitted the new text of `target`.
+    SubmitEdit {
+        /// The edited message.
+        target: MomentId,
+        /// Text.
+        text: String,
+    },
+    /// Leave chosen for a group conversation.
+    LeaveGroupPressed,
+    /// A group invitation was accepted or declined.
+    GroupInvitationAnswered {
+        /// The group the invitation is for.
+        group_id: String,
+        /// Accept (true) or decline.
+        accept: bool,
+    },
+    /// Add a contact by the username they claimed.
+    AddContactByUsernameRequested {
+        /// The name, with or without a leading `@`.
+        name: String,
+    },
     /// The first message of a new direct conversation was submitted.
     StartConversationRequested {
         /// The new conversation's id, chosen when the draft opened.

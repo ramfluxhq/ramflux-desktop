@@ -119,18 +119,9 @@ fn native_selection_and_message_menu_copy_literal_text_without_mutating(cx: &mut
     in_window(cx, handle, |w, _| {
         assert!(
             !w.find_all_by_label("Edit message").is_empty(),
-            "owned message menu must name the unavailable command"
+            "an owned message's menu offers Edit"
         );
     });
-    in_window(cx, handle, |w, cx| {
-        let center = w.find_by_label("Edit message").bounds().center();
-        w.pointer_down(center, gpui_kit::MouseButton::Left, cx);
-        w.pointer_up(center, gpui_kit::MouseButton::Left, cx);
-    });
-    assert!(
-        has_label(cx, handle, "Edit message"),
-        "a disabled mutation must leave its menu open without activation"
-    );
     in_window(cx, handle, |w, cx| w.press("escape", cx));
     assert!(
         in_window(cx, handle, |w, _| w.within("moment-x-03").find("message-menu").focused()

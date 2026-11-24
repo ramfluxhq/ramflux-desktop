@@ -9,6 +9,12 @@
 
 /// Send a text message.
 pub const SEND_MESSAGE: &str = "message.send";
+/// Reply to a message with a text that quotes it.
+pub const MESSAGE_REPLY: &str = "message.reply";
+/// Replace the text of one of this account's messages.
+pub const MESSAGE_EDIT: &str = "message.edit";
+/// Delete a message for everyone in the conversation.
+pub const MESSAGE_DELETE: &str = "message.delete";
 /// Start a direct conversation with a contact by sending its first message.
 pub const CONVERSATION_START: &str = "conversation.start";
 /// Send an object.
@@ -94,6 +100,14 @@ pub const GROUP_REMOVE_MEMBER: &str = "group.remove_member";
 pub const GROUP_KICK: &str = "group.kick";
 /// Change a member's role.
 pub const GROUP_SET_ROLE: &str = "group.set_role";
+/// Leave a group (this account removes itself).
+pub const GROUP_LEAVE: &str = "group.leave";
+/// Accept an invitation to a group.
+pub const GROUP_INVITATION_ACCEPT: &str = "group.invitation.accept";
+/// Decline an invitation to a group.
+pub const GROUP_INVITATION_DECLINE: &str = "group.invitation.decline";
+/// Add a contact by the username they claimed (`@name`).
+pub const USERNAME_CONTACT_ADD: &str = "username.contact.add";
 /// Place a voice call in a direct conversation (CALL-01 §6 `call.invite`).
 pub const CALL_INVITE: &str = "call.invite";
 /// Answer a ringing call.

@@ -217,7 +217,8 @@ fn cards_add_the_contact_they_name_and_refusals_show_the_daemon_reason(cx: &mut 
     assert_eq!(
         (bot.kind, bot.kind_claim, bot.reachable),
         (
-            ramflux_desktop_core::ParticipantKind::Agent,
+            // An unproven claim draws no AI marker.
+            ramflux_desktop_core::ParticipantKind::Unknown,
             KindClaim::Asserted(PeerKind::HeadlessAi),
             Some(true)
         )

@@ -1,5 +1,5 @@
 {
-  "_about": "Response bodies of the daemon local bus, by method. Entries marked recorded were captured from rfd at product commit fd3b184 with an empty data root and re-checked unchanged at b38b4e4 and 3f8d726 (where account.list adds account_details); the others follow the SDK's serialized types and the client read model rows (docs/client_read_model.md, bus/read_model/rows.rs, bus/group_delivery.rs) at 3f8d726 (NodeProfile, DirectMessageRecord, GroupState plus member routes, FriendLinkRecord, approval directory records, LocalMcpGrantRecord, LocalMcpStandingApprovalRecord, LocalBusDeviceListResponse, LocalBusAccountCreateResponse). message.read follows the SDK's read model (MessageViewPage, client/typed_read_model.rs) at e39111de.",
+  "_about": "Response bodies of the daemon local bus, by method. Entries marked recorded were captured from rfd at product commit fd3b184 with an empty data root and re-checked unchanged at b38b4e4 and 3f8d726 (where account.list adds account_details); the others follow the SDK's serialized types and the client read model rows (docs/client_read_model.md, bus/read_model/rows.rs, bus/group_delivery.rs) at 3f8d726 (NodeProfile, DirectMessageRecord, GroupState plus member routes, FriendLinkRecord, approval directory records, LocalMcpGrantRecord, LocalMcpStandingApprovalRecord, LocalBusDeviceListResponse, LocalBusAccountCreateResponse). message.read follows the SDK's read model (MessageViewPage, client/typed_read_model.rs) at e39111de; identity rows carry the signed verified_classification (person / ai_agent / unknown) since 14e38cda.",
   "daemon.status#recorded": {
     "accounts": 0,
     "socket_path": "/tmp/ramflux-f2/rfd.sock"
@@ -522,7 +522,8 @@
         "principal_commitment": "cm-bo",
         "contact_identity_commitment": "cm-bo",
         "display_name": null,
-        "kind": "bot",
+        "kind": "headless_ai",
+        "verified_classification": "ai_agent",
         "is_self": false,
         "devices": [
           {

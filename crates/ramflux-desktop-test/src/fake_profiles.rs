@@ -83,12 +83,20 @@ impl FakeProfiles {
     /// (null, null, false, null, false for an unknown principal).
     pub fn contact_fields(&self, principal: &str) -> Value {
         let profile = self.get(principal).unwrap_or_default();
+        // The SDK's signed classification (core 14e38cda): a person or an
+        // AI agent only from a verified record, else unknown.
+        let classification = match (profile.verified, profile.kind) {
+            (true, Some("human")) => "person",
+            (true, Some("headless_ai")) => "ai_agent",
+            _ => "unknown",
+        };
         json!({
             "display_name": profile.display_name,
             "kind_asserted": profile.kind,
             "kind_verified": profile.verified,
             "display_name_confusable_with": profile.confusable_with,
             "mixed_script": profile.mixed_script,
+            "verified_classification": classification,
         })
     }
 
@@ -135,7 +143,8 @@ mod tests {
         assert_eq!(
             fields,
             json!({ "display_name": null, "kind_asserted": null, "kind_verified": false,
-                    "display_name_confusable_with": null, "mixed_script": false })
+                    "display_name_confusable_with": null, "mixed_script": false,
+                    "verified_classification": "unknown" })
         );
         profiles.verified("p-kai", "Kai", "human");
         profiles.warn("p-kai", true, Some("p-kay"));

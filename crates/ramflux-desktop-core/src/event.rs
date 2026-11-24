@@ -276,6 +276,16 @@ pub enum DomainEvent {
     SyncStatusChanged(SyncStatus),
     /// An effect could not be performed. Changes no domain entity.
     EffectFailed(EffectFailure),
+    /// An effect of `method` succeeded: earlier failures of the same
+    /// operation are no longer current.
+    EffectSucceeded {
+        /// Contract method of the effect.
+        method: String,
+    },
+    /// The group invitations waiting for an answer (the whole list).
+    GroupInvitationsListed(Vec<crate::GroupInvitation>),
+    /// This account's username, or why the directory cannot be used.
+    UsernameStatusUpdated(crate::UsernameStatus),
     /// An actionable networking failure associated with its originating account.
     AccountNetworkingFailed {
         /// Account that issued the operation.

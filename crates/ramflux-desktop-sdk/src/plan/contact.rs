@@ -197,6 +197,27 @@ pub(super) fn verify(acct: Option<&str>, body: &Value, known: &impl Known) -> Pl
     }
 }
 
+/// Plans adding a contact by username: `username.contact.add` `{name}`.
+/// The daemon resolves the name through the username directory (fresh
+/// centre and home revalidation) and adds the account it names like an add
+/// by id; a daemon without a provisioned directory refuses, and the refusal
+/// is shown as it came.
+pub(super) fn username_add(acct: Option<&str>, body: &Value) -> Plan {
+    let name = text(body, "name");
+    if name.is_empty() {
+        return refuse_invalid("no username given");
+    }
+    Plan::Call {
+        request: BusRequest::new(
+            acct,
+            "username",
+            "username.contact.add",
+            serde_json::json!({ "name": name }),
+        ),
+        refresh: super::contact_card::contact_refresh(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

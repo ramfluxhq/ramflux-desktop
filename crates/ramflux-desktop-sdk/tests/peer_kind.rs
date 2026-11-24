@@ -79,7 +79,7 @@ fn a_root_signed_profile_proves_the_kind_and_a_card_only_claims_it() {
     );
     let bot = one(&events, "principal-bot");
     assert_eq!(bot.kind_claim, KindClaim::Asserted(PeerKind::HeadlessAi));
-    assert_eq!(bot.kind, ParticipantKind::Agent);
+    assert_eq!(bot.kind, ParticipantKind::Unknown, "an unproven claim draws no AI marker");
     assert!(!bot.name_warnings.any());
     // The safe default: nothing claimed, nothing verified, shown by id.
     let legacy = one(&events, "principal-legacy");

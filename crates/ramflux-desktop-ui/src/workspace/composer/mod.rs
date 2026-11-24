@@ -38,7 +38,9 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window, div,
 };
-use ramflux_desktop_core::{ContextId, ParticipantId, ParticipantKind, UiEventKind, selectors};
+use ramflux_desktop_core::{
+    ContextId, MomentId, ParticipantId, ParticipantKind, UiEventKind, selectors,
+};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption};
 
@@ -57,6 +59,25 @@ pub enum ComposerMode {
     Message,
     /// A one-sentence request that starts a task.
     Task,
+}
+
+/// A reply or an edit the composer is writing instead of a new message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MessageAction {
+    /// A reply that quotes `target`.
+    Reply {
+        /// The message replied to.
+        target: MomentId,
+        /// Its author, as shown.
+        author: SharedString,
+        /// Its text, as one line.
+        excerpt: SharedString,
+    },
+    /// The new text of this account's message `target`.
+    Edit {
+        /// The edited message.
+        target: MomentId,
+    },
 }
 
 /// The new conversation the composer writes the first message of.
@@ -80,6 +101,7 @@ pub struct Composer {
     mode: ComposerMode,
     unavailable: Unavailable,
     staged: Option<Staged>,
+    action: Option<MessageAction>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -164,6 +186,7 @@ impl Composer {
             mode: ComposerMode::Message,
             unavailable: Unavailable::default(),
             staged: None,
+            action: None,
             _subscriptions: subscriptions,
         }
     }
@@ -179,6 +202,7 @@ impl Composer {
         cx: &mut Context<Self>,
     ) {
         if self.context != context || self.draft.is_some() {
+            self.action = None;
             self.save_draft(cx);
             let text =
                 context.as_ref().and_then(|id| self.drafts.get(id)).cloned().unwrap_or_default();
@@ -234,6 +258,63 @@ impl Composer {
                 self.drafts.insert(id.clone(), text);
             }
         }
+    }
+
+    /// Quotes `target` in the next message (Reply in a message's menu).
+    pub fn reply_to(
+        &mut self,
+        target: MomentId,
+        author: SharedString,
+        excerpt: SharedString,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.draft.is_some() || self.context.is_none() {
+            return;
+        }
+        if matches!(self.action, Some(MessageAction::Edit { .. })) {
+            self.input.update(cx, |input, cx| input.set_value("", window, cx));
+        }
+        self.set_mode(ComposerMode::Message, window, cx);
+        self.action = Some(MessageAction::Reply { target, author, excerpt });
+        self.focus(window, cx);
+        cx.notify();
+    }
+
+    /// Writes the new text of this account's message `target`, starting
+    /// from `text` (Edit in a message's menu).
+    pub fn edit(
+        &mut self,
+        target: MomentId,
+        text: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.draft.is_some() || self.context.is_none() {
+            return;
+        }
+        self.set_mode(ComposerMode::Message, window, cx);
+        self.staged = None;
+        self.action = Some(MessageAction::Edit { target });
+        self.input.update(cx, |input, cx| input.set_value(text, window, cx));
+        self.focus(window, cx);
+        cx.notify();
+    }
+
+    /// Stops the reply or edit being written (Escape, or the close
+    /// button); an edit's text is dropped.
+    pub fn cancel_action(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(action) = self.action.take() {
+            if matches!(action, MessageAction::Edit { .. }) {
+                self.input.update(cx, |input, cx| input.set_value("", window, cx));
+            }
+            cx.notify();
+        }
+    }
+
+    /// The reply or edit being written, if any.
+    pub fn action(&self) -> Option<&MessageAction> {
+        self.action.as_ref()
     }
 
     /// The draft the composer writes for, if any.
@@ -410,6 +491,23 @@ impl Composer {
                     cx,
                 );
             }
+            return;
+        }
+        if let Some(action) = self.action.clone() {
+            if text.is_empty() {
+                return;
+            }
+            let kind = match action {
+                MessageAction::Reply { target, .. } => UiEventKind::SubmitReply { target, text },
+                MessageAction::Edit { target } => UiEventKind::SubmitEdit { target, text },
+            };
+            self.action = None;
+            if let Some(id) = self.context.as_ref() {
+                self.drafts.remove(id);
+            }
+            self.input.update(cx, |input, cx| input.set_value("", window, cx));
+            sink.emit(kind, window, cx);
+            cx.notify();
             return;
         }
         let file = self.staged.as_ref().and_then(Staged::ready_path).map(str::to_owned);
@@ -603,11 +701,59 @@ impl Render for Composer {
                     .design_disabled(!can_send, cx)
                     .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
             );
+        // A reply quotes its message with the design's quote excerpt (the
+        // same component as in the bubble); an edit names itself.
+        let action_line = self.action.as_ref().map(|action| {
+            let (label, quote) = match action {
+                MessageAction::Reply { author, excerpt, .. } => (
+                    tr_args("composer.reply.to", &[("name", author)]),
+                    Some(ramflux_desktop_navigation::generated::catalog::quote_excerpt(
+                        author.clone(),
+                        excerpt.clone(),
+                        palette,
+                    )),
+                ),
+                MessageAction::Edit { .. } => (tr("composer.edit.label"), None),
+            };
+            h_flex()
+                .id("composer-action")
+                .test_support()
+                .aria_label(label.clone())
+                .w_full()
+                .min_w_0()
+                .items_center()
+                .gap(space(2.))
+                .child(div().flex_1().min_w_0().overflow_hidden().children(quote).when(
+                    matches!(action, MessageAction::Edit { .. }),
+                    |line| {
+                        line.text_size(gpui_kit::rems(palette.size_secondary / 15.0))
+                            .text_color(palette.secondary)
+                            .child(label.clone())
+                    },
+                ))
+                .child(
+                    Button::new("composer-action-cancel")
+                        .ghost()
+                        .xsmall()
+                        .icon(IconName::Close)
+                        .accessibility_label(tr("composer.action.cancel"))
+                        .tooltip(tr("composer.action.cancel"))
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.cancel_action(window, cx)),
+                        ),
+                )
+        });
         // Design board 02: the composer region is the 880 px reading column,
         // 8 px above and 16 px below.
         v_flex()
             .id("composer")
             .test_support()
+            .on_key_down(cx.listener(|this, event: &gpui_kit::KeyDownEvent, window, cx| {
+                if event.keystroke.key == "escape" && this.action.is_some() {
+                    this.cancel_action(window, cx);
+                    cx.stop_propagation();
+                }
+            }))
             .w_full()
             .max_w(gpui_kit::rems(palette.column_max / 15.0))
             .mx_auto()
@@ -615,6 +761,7 @@ impl Render for Composer {
             .pt(space(2.))
             .pb(gpui_kit::rems(16.0 / 15.0))
             .children(receiver)
+            .children(action_line)
             // Design `Composer / Default`: the generated shell (no empty slot
             // adds space since PEN-GEN-05), the staged file above the editor.
             .child({

@@ -42,8 +42,8 @@ pub mod surface;
 pub mod task;
 
 use ramflux_desktop_core::{
-    AccountId, ContextId, ContextKind, Effect, FailureCode, ObjectId, PinSource, SecretInput,
-    methods,
+    AccountId, ContextId, ContextKind, Effect, FailureCode, MomentId, ObjectId, PinSource,
+    SecretInput, methods,
 };
 use serde_json::{Value, json};
 
@@ -87,6 +87,11 @@ pub trait Known {
     /// Where a reported task lives, by its desktop id.
     fn task(&self, task_id: &str) -> Option<&task::TaskTarget> {
         let _ = task_id;
+        None
+    }
+    /// What a reply, edit or delete of a listed message names.
+    fn message_target(&self, moment: &MomentId) -> Option<&message::MessageTarget> {
+        let _ = moment;
         None
     }
     /// What is known about an attachment.
@@ -372,6 +377,14 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
             refresh: vec![Fetch::DeviceList],
         },
         methods::SEND_MESSAGE => message::send(acct, body, known),
+        methods::MESSAGE_REPLY | methods::MESSAGE_EDIT | methods::MESSAGE_DELETE => {
+            message::mutate(acct, method, body, known)
+        }
+        methods::GROUP_LEAVE => group::leave(acct, body, known),
+        methods::GROUP_INVITATION_ACCEPT | methods::GROUP_INVITATION_DECLINE => {
+            group::invitation(acct, method, body)
+        }
+        methods::USERNAME_CONTACT_ADD => contact::username_add(acct, body),
         methods::CONVERSATION_START => conversation::start(acct, body, known),
         methods::ATTACH_OBJECT => media::send(body, known),
         methods::OBJECT_PULL

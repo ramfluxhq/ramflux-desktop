@@ -173,3 +173,46 @@ pub(super) fn invitations(
         })
         .collect()
 }
+
+/// Plans leaving a group: `group.leave` `{group_id, actor_id}`; the daemon
+/// removes this device's membership through the signed group state (an
+/// owner is refused until ownership is transferred).
+pub(super) fn leave(acct: Option<&str>, body: &Value, known: &impl Known) -> Plan {
+    let context = ContextId::new(text(body, "context_id"));
+    let Some(group) = known.directory().and_then(|d| d.group_of(&context)).map(str::to_owned)
+    else {
+        return refuse(key::NO_GROUP_LINK);
+    };
+    let Some(actor) = known.self_device().map(str::to_owned) else { return refuse(key::NO_SELF) };
+    Plan::Call {
+        request: BusRequest::new(
+            acct,
+            "group",
+            "group.leave",
+            serde_json::json!({ "group_id": group, "actor_id": actor }),
+        ),
+        refresh: vec![Fetch::first(Paged::Groups), Fetch::first(Paged::Conversations)],
+    }
+}
+
+/// Plans an answer to a group invitation: `group.invitation.accept` or
+/// `.decline` `{group_id}`.
+pub(super) fn invitation(acct: Option<&str>, method: &str, body: &Value) -> Plan {
+    let group = text(body, "group_id");
+    if group.is_empty() {
+        return refuse_invalid("no group named");
+    }
+    let daemon = if method == methods::GROUP_INVITATION_ACCEPT {
+        "group.invitation.accept"
+    } else {
+        "group.invitation.decline"
+    };
+    Plan::Call {
+        request: BusRequest::new(acct, "group", daemon, serde_json::json!({ "group_id": group })),
+        refresh: vec![
+            Fetch::GroupInvitations,
+            Fetch::first(Paged::Groups),
+            Fetch::first(Paged::Conversations),
+        ],
+    }
+}

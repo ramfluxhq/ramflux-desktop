@@ -4,7 +4,7 @@
 //! Native row composition around the generated, presentation-only message shell.
 
 use gpui_kit::component::button::ButtonVariants as _;
-use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Sizable as _, ThemeStyled as _, v_flex,
 };
@@ -227,10 +227,18 @@ pub(crate) fn render(
         content,
         cx,
     );
-    let copy = sink.clone();
     let copy_enabled = !payload.tombstone && row.body.is_some();
     let own = row.outbound;
     let deleted = payload.tombstone;
+    // Actions name the message the daemon stored: one still sending (or
+    // refused) has none yet; a file message keeps its text as it is.
+    let accepted = !matches!(
+        payload.receipt,
+        Receipt::Sending | Receipt::Failed { .. } | Receipt::WaitingForNode { .. }
+    ) || !own;
+    let editable = own && payload.media.is_empty() && row.body.is_some();
+    let actions =
+        MenuActions { sink: sink.clone(), copy_enabled, own, deleted, accepted, editable };
     let menu_focus = state.menu_focus.clone();
     let trigger = gpui_kit::base::Button::new("message-menu")
         .when_some(menu_focus.as_ref(), |button, focus| button.track_focus(focus))
@@ -246,33 +254,8 @@ pub(crate) fn render(
         .focus_visible(|style| style.border_color(cx.theme().ring))
         .accessibility_label(tr("message_ui.actions"))
         .child(Icon::new(IconName::Ellipsis).small());
-    let menu = MenuTrigger(trigger).dropdown_menu(move |menu, _, _| {
-        if deleted {
-            return menu.item(PopupMenuItem::new(tr("moment.message.deleted")).disabled(true));
-        }
-        let copy = copy.clone();
-        let menu =
-            menu.item(PopupMenuItem::new(tr("message_ui.copy")).disabled(!copy_enabled).on_click(
-                move |_, window, cx| copy.emit(UiEventKind::CopyMessagePressed, window, cx),
-            ));
-        let commands = [
-            (Mutation::Reply, "message_ui.reply"),
-            (Mutation::React, "message_ui.react"),
-            (Mutation::DeleteLocal, "message_ui.delete_local"),
-        ];
-        let mut menu = commands.into_iter().fold(menu, |menu, (command, label)| {
-            menu.item(PopupMenuItem::new(tr(label)).disabled(command.check().is_err()))
-        });
-        if own {
-            for (command, label) in [
-                (Mutation::Edit, "message_ui.edit"),
-                (Mutation::DeleteEveryone, "message_ui.delete_everyone"),
-            ] {
-                menu = menu.item(PopupMenuItem::new(tr(label)).disabled(command.check().is_err()));
-            }
-        }
-        menu.separator().item(PopupMenuItem::new(tr("message_ui.unavailable")).disabled(true))
-    });
+    let dropdown = actions.clone();
+    let menu = MenuTrigger(trigger).dropdown_menu(move |menu, _, _| dropdown.build(menu));
     let menu = menu.on_open_change(move |open, window, cx| {
         if !open && let Some(focus) = menu_focus.as_ref() {
             window.focus(focus, cx);
@@ -323,6 +306,10 @@ pub(crate) fn render(
                     v_flex()
                         .id("message-bubble")
                         .test_support()
+                        .context_menu({
+                            let actions = actions.clone();
+                            move |menu, _, _| actions.build(menu)
+                        })
                         .min_w_0()
                         .max_w(design_px(theme.bubble_max))
                         .when_some(body_width, |bubble, width| bubble.w(width))
@@ -350,6 +337,58 @@ pub(crate) fn render(
                 ),
         )
         .into_any_element()
+}
+
+/// What a message's menu offers (the actions button and the context menu
+/// show the same): copy, reply, and for this account's own messages edit
+/// and delete for everyone. Each emits its event on the moment's sink.
+#[derive(Clone)]
+struct MenuActions {
+    sink: EventSink,
+    copy_enabled: bool,
+    own: bool,
+    deleted: bool,
+    accepted: bool,
+    editable: bool,
+}
+
+impl MenuActions {
+    fn build(&self, menu: PopupMenu) -> PopupMenu {
+        if self.deleted {
+            return menu.item(PopupMenuItem::new(tr("moment.message.deleted")).disabled(true));
+        }
+        let item = |menu: PopupMenu, label: &str, enabled: bool, kind: UiEventKind| {
+            let sink = self.sink.clone();
+            menu.item(
+                PopupMenuItem::new(tr(label))
+                    .disabled(!enabled)
+                    .on_click(move |_, window, cx| sink.emit(kind.clone(), window, cx)),
+            )
+        };
+        let mut menu =
+            item(menu, "message_ui.copy", self.copy_enabled, UiEventKind::CopyMessagePressed);
+        menu = item(
+            menu,
+            "message_ui.reply",
+            self.accepted && Mutation::Reply.check().is_ok(),
+            UiEventKind::ReplyPressed,
+        );
+        if self.own {
+            menu = item(
+                menu,
+                "message_ui.edit",
+                self.accepted && self.editable && Mutation::Edit.check().is_ok(),
+                UiEventKind::EditPressed,
+            );
+            menu = item(
+                menu,
+                "message_ui.delete_everyone",
+                self.accepted && Mutation::DeleteEveryone.check().is_ok(),
+                UiEventKind::DeleteForEveryonePressed,
+            );
+        }
+        menu
+    }
 }
 
 /// The receipt beside the time of an own message (design `B23`): a clock

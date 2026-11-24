@@ -20,6 +20,13 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             check_add_contact(p.store, participant_id.as_str())?;
             Ok(Decision::Call(methods::CONTACT_ADD, json!({ "participant_id": participant_id })))
         }),
+        IntentKind::AddContactByUsername { name } => p.human_only("add a contact").and_then(|()| {
+            let name = name.trim().trim_start_matches('@').trim();
+            if name.is_empty() {
+                return Err(IntentError::Empty("username"));
+            }
+            Ok(Decision::Call(methods::USERNAME_CONTACT_ADD, json!({ "name": name })))
+        }),
         IntentKind::AddContactCard { card, replace_provisional_root } => {
             p.human_only("add a contact").and_then(|()| {
                 let card = check_add_contact_card(card)?;

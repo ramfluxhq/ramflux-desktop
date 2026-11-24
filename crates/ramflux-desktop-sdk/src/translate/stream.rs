@@ -22,8 +22,9 @@ use super::{Translator, seconds, text};
 use crate::plan::fetch::{Fetch, Paged};
 
 /// Topics whose events call for reads.
-pub const READ_TOPICS: [&str; 16] = [
+pub const READ_TOPICS: [&str; 17] = [
     "conversation.changed",
+    "group.invitation",
     "message.received",
     "message.updated",
     "group.message.received",
@@ -168,7 +169,9 @@ impl Translator {
                     _ => vec![conversations],
                 }
             }
-            "group.changed" => vec![Fetch::first(Paged::Groups), conversations],
+            "group.changed" | "group.invitation" => {
+                vec![Fetch::first(Paged::Groups), conversations, Fetch::GroupInvitations]
+            }
             "contact.changed" | "safety.changed" => {
                 vec![Fetch::ContactList, Fetch::first(Paged::Identities)]
             }
