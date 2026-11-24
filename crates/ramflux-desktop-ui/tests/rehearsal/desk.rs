@@ -16,7 +16,7 @@ use gpui_kit::{
     AppContext as _, Bounds, Entity, MouseButton, Point, WindowBounds, WindowHandle, WindowOptions,
     px, size,
 };
-use ramflux_desktop_core::{ContextId, Store};
+use ramflux_desktop_core::{ContextId, MomentId, Store};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::route::Page;
 use ramflux_desktop_ui::shell::ShellOptions;
@@ -25,6 +25,13 @@ use super::host::Host;
 
 /// Texts longer than this are pasted instead of typed.
 const PASTE_FROM: usize = 256;
+
+/// Whether an element `id` was painted inside the identity scope `scope`
+/// (`within` requires its scope to exist).
+fn in_scope(window: &gpui_kit::Window, scope: &str, id: &str) -> bool {
+    let scope = gpui_kit::ElementId::Name(scope.to_owned().into());
+    window.find_all(id.to_owned()).iter().any(|e| e.path().contains(&scope))
+}
 
 /// One desktop window.
 pub struct Desk {
@@ -112,7 +119,7 @@ impl Desk {
     pub fn exists_in(&self, host: &mut impl Host, scope: &str, id: &str) -> bool {
         let (scope, id) = (scope.to_owned(), id.to_owned());
         host.window(self.handle.into(), move |window, _| {
-            window.within(scope).try_find(id).is_some()
+            in_scope(window, &scope, &id) && window.within(scope).try_find(id).is_some()
         })
         .unwrap_or(false)
     }
@@ -131,6 +138,9 @@ impl Desk {
     pub fn label_in(&self, host: &mut impl Host, scope: &str, id: &str) -> Option<String> {
         let (scope, id) = (scope.to_owned(), id.to_owned());
         host.window(self.handle.into(), move |window, _| {
+            if !in_scope(window, &scope, &id) {
+                return None;
+            }
             window.within(scope).try_find(id).and_then(|e| e.label().map(str::to_owned))
         })
         .ok()
@@ -143,7 +153,10 @@ impl Desk {
         let (scope, id) = (scope.map(str::to_owned), id.to_owned());
         let found = host.window(self.handle.into(), move |window, cx| {
             let present = match &scope {
-                Some(scope) => window.within(scope.clone()).try_find(id.clone()).is_some(),
+                Some(scope) => {
+                    in_scope(window, scope, &id)
+                        && window.within(scope.clone()).try_find(id.clone()).is_some()
+                }
                 None => window.try_find(id.clone()).is_some(),
             };
             if present {
@@ -170,7 +183,12 @@ impl Desk {
             let (scope, id) = (scope.map(str::to_owned), id.to_owned());
             let hidden = host.window(self.handle.into(), move |window, cx| {
                 let target = match &scope {
-                    Some(scope) => window.within(scope.clone()).try_find(id.clone()),
+                    Some(scope) => {
+                        if !in_scope(window, scope, &id) {
+                            return None;
+                        }
+                        window.within(scope.clone()).try_find(id.clone())
+                    }
                     None => window.try_find(id.clone()),
                 };
                 let target = target.filter(|t| !t.visible())?;
@@ -189,6 +207,17 @@ impl Desk {
                 return Ok(());
             }
         }
+        Ok(())
+    }
+
+    /// Scrolls the shown conversation until `moment` is drawn, as a reader
+    /// scrolls back to a message before opening its menu.
+    pub fn scroll_to_moment(&self, host: &mut impl Host, moment: &MomentId) -> Result<(), String> {
+        let field = host.app(|cx| self.shell.read(cx).workspace().read(cx).conversation().clone());
+        let moment = moment.clone();
+        host.window(self.handle.into(), move |_, cx| {
+            field.update(cx, |conversation, cx| conversation.focus_moment(&moment, cx));
+        })?;
         Ok(())
     }
 
