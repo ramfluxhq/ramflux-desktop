@@ -19,10 +19,7 @@
 //! Application events go to the platform log directory, redacted.
 //!
 //! The window carries the application id `org.ramflux.desktop` (Wayland
-//! `app_id`, X11 `WM_CLASS`), matching the Linux desktop entry. Before the
-//! window opens, daemon data left by an older build under the Linux
-//! settings directory is copied to the XDG data directory once
-//! (`local::data_migration`), unless a data directory is set.
+//! `app_id`, X11 `WM_CLASS`), matching the Linux desktop entry.
 
 // Production code: no unwrap, expect, panic or `std::sync` locks (see the
 // workspace `Cargo.toml`); tests may.
@@ -33,7 +30,6 @@
 
 use gpui_kit::component::TitleBar;
 use gpui_kit::*;
-use ramflux_desktop_sdk::local::data_migration::{self, Outcome};
 use ramflux_desktop_sdk::local::{AppearanceStore, LaunchStore, app_log, identity, paths};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::launch::choice::{self, Overrides};
@@ -54,31 +50,6 @@ fn source_choice() -> Result<SourceChoice, String> {
     choice::resolve(&flags.or(env), &LaunchStore::default_location().load())
 }
 
-/// Copies daemon data from the pre-XDG default folder once (Linux). A
-/// configured data directory is the user's choice and is left alone.
-fn migrate_daemon_data() {
-    if LaunchStore::default_location().load().data_dir.is_some() {
-        return;
-    }
-    let Some(dirs) = paths::data_dirs() else { return };
-    let Some(legacy) = dirs.legacy.as_deref() else { return };
-    match data_migration::migrate(legacy, &dirs.current) {
-        Ok(Outcome::Migrated { files, bytes }) => app_log::info(&format!(
-            "daemon data copied to {} ({files} files, {bytes} bytes); {} is kept and may be removed",
-            dirs.current.display(),
-            legacy.display()
-        )),
-        Ok(Outcome::InUse) => {
-            app_log::info("daemon data not copied: a daemon is using it; next start")
-        }
-        Ok(Outcome::NothingToMove | Outcome::AlreadyMigrated) => {}
-        Err(error) => app_log::warn(&format!(
-            "daemon data not copied ({error}); {} stays in use",
-            legacy.display()
-        )),
-    }
-}
-
 fn main() {
     let log = app_log::init(paths::log_dir());
     let source = match source_choice() {
@@ -89,7 +60,6 @@ fn main() {
         }
     };
     app_log::info(&format!("start: {}", version::summary()));
-    migrate_daemon_data();
     match &source {
         SourceChoice::Mock => app_log::info("source: demo scenarios"),
         SourceChoice::Rfd(config) => {

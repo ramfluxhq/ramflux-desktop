@@ -37,17 +37,14 @@ available; use Settings › Diagnostics or the archive name).
 | 1.3 | The running window is matched to its entry | the dock or task switcher shows the Ramflux icon, not a generic one | | | | |
 | 1.4 | Software centre | GNOME Software or KDE Discover shows the metainfo (summary, licence, links) for the installed package | | | | |
 
-## 2. Files and migration
+## 2. Files
 
 | # | Check | How | A | B | C | D |
 |---|---|---|---|---|---|---|
 | 2.1 | Fresh install layout | after first run: settings in `~/.config/ramflux-desktop/`, logs in `~/.local/state/ramflux-desktop/logs/`, nothing in `/tmp` except a CLI daemon's own files | | | | |
 | 2.2 | Socket in the runtime directory | "Start local daemon"; `ls -ld $XDG_RUNTIME_DIR/ramflux` shows `drwx------`; `rfd.sock` inside | | | | |
 | 2.3 | Attach to a CLI daemon | start `rf daemon start` (socket `/tmp/ramflux/rfd.sock`) first, then the app: it attaches | | | | |
-| 2.4 | Migration copies an old data root | with an older build's `~/.config/ramflux-desktop/rfd-data` holding an account: start the new build; the log says "daemon data copied"; `~/.local/share/ramflux-desktop/rfd-data` exists; the old folder is unchanged; the account unlocks after "Start local daemon" | | | | |
-| 2.5 | Migration waits for a running daemon | with a daemon running on the old root, start the app: log says "a daemon is using it"; nothing copied | | | | |
-| 2.6 | Migration runs once | restart: no second copy, no new log line | | | | |
-| 2.7 | No runtime directory | `env -u XDG_RUNTIME_DIR ramflux-desktop`: the socket goes to `~/.local/state/ramflux-desktop/run/` (mode 0700) | | | | |
+| 2.4 | No runtime directory | `env -u XDG_RUNTIME_DIR ramflux-desktop`: the socket goes to `~/.local/state/ramflux-desktop/run/` (mode 0700) | | | | |
 
 ## 3. Appearance and input
 

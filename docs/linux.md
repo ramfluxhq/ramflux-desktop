@@ -109,32 +109,6 @@ ignored, as the Base Directory specification requires.
 settings and log folders; with the first set, daemon data stays under it and
 the socket stays the reference CLI's, as before.
 
-### Daemon data moved out of the settings folder
-
-Older builds put a started daemon's data under
-`~/.config/ramflux-desktop/rfd-data`. On start, before the window opens, the
-desktop copies it to `~/.local/share/ramflux-desktop/rfd-data`
-(`local/data_migration.rs`), unless a data folder is set in Settings ›
-Diagnostics:
-
-1. If the new folder exists, nothing happens (the copy is done).
-2. The copy holds the daemon's own lock (`daemon.lock`) on the old folder for
-   its whole duration. If a daemon is using the old folder, nothing is copied
-   and the old folder stays in use; the next start tries again.
-3. The tree is copied to `rfd-data.migrating` beside the destination, synced,
-   and compared byte for byte with the original. A symbolic link or special
-   file, a difference or an I/O error abandons the copy and removes only that
-   staging folder.
-4. The staging folder is renamed to `rfd-data`; that rename is the switch.
-   `rfd-data.migrated-from` records where the data came from.
-5. The old folder is never changed or deleted. Remove
-   `~/.config/ramflux-desktop/rfd-data` yourself once the app works from the
-   new place.
-
-Until the switch, the old folder is the default, so a skipped or failed copy
-never hides data. The copy runs synchronously at start; a very large data
-folder delays the first window of that one start.
-
 ### The daemon socket
 
 Without a socket set, the desktop connects to
