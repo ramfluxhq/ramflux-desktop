@@ -221,6 +221,17 @@ impl Desk {
         Ok(())
     }
 
+    /// Scrolls the shown conversation to its newest message, as a reader
+    /// taps "jump to latest".
+    pub fn scroll_conversation_to_end(&self, host: &mut impl Host) -> Result<(), String> {
+        let field = host.app(|cx| self.shell.read(cx).workspace().read(cx).conversation().clone());
+        host.window(self.handle.into(), move |_, cx| {
+            let scroller = field.read(cx).scroller().clone();
+            scroller.update(cx, |state, cx| state.scroll_to_end(cx));
+        })?;
+        Ok(())
+    }
+
     /// Scrolls the shown conversation to its oldest loaded message, as a
     /// reader dragging the scrollbar to the top.
     pub fn scroll_conversation_to_top(&self, host: &mut impl Host) -> Result<(), String> {
