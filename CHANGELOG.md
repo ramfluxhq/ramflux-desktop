@@ -29,7 +29,7 @@ Versioning.
 
 ### Changed
 
-- Core pinned to 14e38cda (the core's next head).
+- Core pinned to f2f466be (the core's next head).
 - The AI marker follows the core's signed classification
   (`verified_classification`: person, AI agent, unknown); an unproven claim
   no longer draws a party as an agent.
