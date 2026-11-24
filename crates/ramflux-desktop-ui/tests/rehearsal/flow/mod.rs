@@ -21,6 +21,7 @@
 //! reference CLI only cross-checks). Steps live in `setup` (1 to 3), `talk`
 //! (4 to 6), `group` (7) and `resume` (8); `probe` reads the stores.
 
+mod actions;
 pub mod call;
 mod evidence;
 mod files;
@@ -281,61 +282,147 @@ pub fn run_live<H: Host, D: DemoDaemon>(
     after_step(&mut steps, demo, 2);
     steps.run(3, "Create Alice and Bob on the node", &[2], |n| setup::accounts(demo, n));
     after_step(&mut steps, demo, 3);
+    // A diagnostic run of one part only (never the verification run):
+    // `peers` goes from the accounts straight to the node peer steps.
+    let only_peers = std::env::var(ONLY_ENV).ok().as_deref() == Some("peers");
+    if !only_peers {
+        desktop_pair(&mut steps, demo);
+    }
+    if let Some(peers) = peers {
+        peer_steps(&mut steps, demo, peers);
+    }
+    steps
+}
+
+/// Selects one part of the live rehearsal for a diagnostic run.
+pub const ONLY_ENV: &str = "RAMFLUX_DEMO_ONLY";
+
+/// For a diagnostic run: the peer steps to run (comma-separated numbers);
+/// all of them when unset.
+pub const PEER_STEPS_ENV: &str = "RAMFLUX_DEMO_PEER_STEPS";
+
+/// For a diagnostic run: desktop steps left out (comma-separated numbers).
+pub const SKIP_ENV: &str = "RAMFLUX_DEMO_SKIP";
+
+fn skipped(number: u8) -> bool {
+    std::env::var(SKIP_ENV)
+        .is_ok_and(|list| list.split(',').any(|n| n.trim().parse::<u8>().ok() == Some(number)))
+}
+
+fn peer_step_wanted(number: u8) -> bool {
+    std::env::var(PEER_STEPS_ENV)
+        .map_or(true, |list| list.split(',').any(|n| n.trim().parse::<u8>().ok() == Some(number)))
+}
+
+/// Steps 4 to 10 and the message actions between the two desktops.
+fn desktop_pair<H: Host, D: DemoDaemon>(steps: &mut Steps, demo: &mut Demo<'_, H, D>) {
     steps.run(4, "Add each other as contacts; verify safety numbers", &[3], |n| {
         talk::contacts(demo, n)
     });
-    after_step(&mut steps, demo, 4);
+    after_step(steps, demo, 4);
     steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
-    after_step(&mut steps, demo, 5);
-    steps.run(6, "Files both ways between the desktops", &[5], |n| talk::attachment(demo, n));
-    after_step(&mut steps, demo, 6);
+    after_step(steps, demo, 5);
+    if !skipped(6) {
+        steps.run(6, "Files both ways between the desktops", &[5], |n| talk::attachment(demo, n));
+        after_step(steps, demo, 6);
+    }
     steps.run(7, "A new group with both from the desktop; messages both ways", &[4], |n| {
         group::group(demo, n)
     });
-    after_step(&mut steps, demo, 7);
+    after_step(steps, demo, 7);
     steps.run(8, "Bob's desktop quits and reopens; resumes from its cursor", &[5], |n| {
         reopen::reopen(demo, n)
     });
-    after_step(&mut steps, demo, 8);
+    after_step(steps, demo, 8);
     steps.run(9, "Live receive on the event stream, polling off (frame taps)", &[5], |n| {
         evidence::stream(demo, n)
     });
-    after_step(&mut steps, demo, 9);
+    after_step(steps, demo, 9);
     steps.run(10, "Lock and unlock Alice; restart her daemon; history kept", &[5], |n| {
         resume::lock_and_restart(demo, n)
     });
-    after_step(&mut steps, demo, 10);
-    if let Some(peers) = peers {
-        let mut run = peers::PeerRun { peers, conversation: None };
-        steps.run(20, "Add node peers from their contact cards; trust state shown", &[3], |n| {
-            peers::contacts(demo, &mut run, n)
-        });
-        after_step(&mut steps, demo, 20);
-        steps.run(21, "Direct messages both ways with a node peer, live", &[20], |n| {
-            peers::messages(demo, &mut run, n)
-        });
-        after_step(&mut steps, demo, 21);
-        steps.run(22, "An image and a file each way with a node peer", &[21], |n| {
-            peers::files_both_ways(demo, &mut run, n)
-        });
-        after_step(&mut steps, demo, 22);
-        steps.run(
-            23,
-            "A group with both node peers from the desktop; messages both ways",
-            &[20],
-            |n| peers::group(demo, &mut run, n),
-        );
-        after_step(&mut steps, demo, 23);
-        steps.run(24, "Settings account and devices pages with real data", &[3], |n| {
-            peers::settings(demo, n)
-        });
-        after_step(&mut steps, demo, 24);
-        steps.run(25, "History: older messages paged on scroll after a reopen", &[21], |n| {
-            peers::history(demo, &mut run, n)
-        });
-        after_step(&mut steps, demo, 25);
+    after_step(steps, demo, 10);
+    steps.run(11, "Reply, edit and delete for everyone, seen by the other desktop", &[5], |n| {
+        actions::message_actions(demo, n)
+    });
+    after_step(steps, demo, 11);
+    steps.run(12, "A read receipt seen by the sender", &[5], |n| actions::read_receipt(demo, n));
+    after_step(steps, demo, 12);
+    steps.run(13, "Bob leaves the group; Alice no longer lists him", &[7], |n| {
+        actions::leave_group(demo, n)
+    });
+    after_step(steps, demo, 13);
+}
+
+/// Steps 20 and on: desktop A with the node's command-line peers.
+fn peer_steps<H: Host, D: DemoDaemon>(
+    steps: &mut Steps,
+    demo: &mut Demo<'_, H, D>,
+    peers: Vec<peers::Peer>,
+) {
+    {
+        let mut run = peers::PeerRun { peers, conversation: None, invited: None };
+        if peer_step_wanted(20) {
+            steps.run(
+                20,
+                "Add node peers from their contact cards; trust state shown",
+                &[3],
+                |n| peers::contacts(demo, &mut run, n),
+            );
+            after_step(steps, demo, 20);
+        }
+        if peer_step_wanted(21) {
+            steps.run(21, "Direct messages both ways with a node peer, live", &[20], |n| {
+                peers::messages(demo, &mut run, n)
+            });
+            after_step(steps, demo, 21);
+        }
+        if peer_step_wanted(22) {
+            steps.run(22, "An image and a file each way with a node peer", &[21], |n| {
+                peers::files_both_ways(demo, &mut run, n)
+            });
+            after_step(steps, demo, 22);
+        }
+        if peer_step_wanted(23) {
+            steps.run(
+                23,
+                "A group with both node peers from the desktop; messages both ways",
+                &[20],
+                |n| peers::group(demo, &mut run, n),
+            );
+            after_step(steps, demo, 23);
+        }
+        if peer_step_wanted(24) {
+            steps.run(24, "Settings account and devices pages with real data", &[3], |n| {
+                peers::settings(demo, n)
+            });
+            after_step(steps, demo, 24);
+        }
+        if peer_step_wanted(25) {
+            steps.run(25, "History: older messages paged on scroll after a reopen", &[21], |n| {
+                peers::history(demo, &mut run, n)
+            });
+            after_step(steps, demo, 25);
+        }
+        if peer_step_wanted(26) {
+            steps.run(
+                26,
+                "A group invitation from a non-contact, accepted on the desktop",
+                &[3],
+                |n| peers::invitation(demo, &mut run, n),
+            );
+            after_step(steps, demo, 26);
+        }
+        if peer_step_wanted(27) {
+            steps.run(
+                27,
+                "Leave the group joined by invitation; the peer no longer lists the desktop",
+                &[26],
+                |n| peers::leave(demo, &mut run, n),
+            );
+            after_step(steps, demo, 27);
+        }
     }
-    steps
 }
 
 /// Runs the voice call rehearsal: steps 1 to 5 as [`run`] (desktops,

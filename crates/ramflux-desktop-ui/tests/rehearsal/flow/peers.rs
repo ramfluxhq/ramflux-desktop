@@ -36,6 +36,9 @@ use crate::rehearsal::daemon::DemoDaemon;
 use crate::rehearsal::host::Host;
 use crate::rehearsal::steps::Notes;
 
+/// How soon a contact added from its card must be listed.
+const LISTED_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// The file that lists the node's test peers (switches the peer steps on).
 pub const PEERS_ENV: &str = "RAMFLUX_DEMO_PEERS";
 
@@ -129,6 +132,9 @@ pub struct PeerRun {
     pub peers: Vec<Peer>,
     /// The direct conversation with the first peer.
     pub conversation: Option<ContextId>,
+    /// The group Bob's desktop joined by invitation (step 26): its id and
+    /// conversation.
+    pub invited: Option<(String, ContextId)>,
 }
 
 /// Step 20: both peers added from their cards, each answering back.
@@ -150,15 +156,20 @@ pub fn contacts<H: Host, D: DemoDaemon>(
         let kind = desk.label(demo.host, "contact-add-kind").unwrap_or_default();
         desk.click(demo.host, None, "contact-add")?;
         let participant = ParticipantId::new(&peer.principal);
-        let listed = demo.wait(0, demo.config.limits.answer, "the peer listed", |desk, host| {
+        // A contact added by card is listed within a few seconds (the
+        // daemon answers the add at once; the desktop shows its answer).
+        let listed = demo.wait(0, LISTED_WITHIN, "the peer listed", |desk, host| {
             desk.store(host, |s| s.participant(&participant).is_some())
         });
-        if let Err(error) = listed {
-            let note = demo.sides[0].desk()?.label(demo.host, "contact-add-note");
-            return Err(note.map_or(error.clone(), |note| format!("{error}: {note}")));
-        }
+        let listed = match listed {
+            Ok(after) => after,
+            Err(error) => {
+                let note = demo.sides[0].desk()?.label(demo.host, "contact-add-note");
+                return Err(note.map_or(error.clone(), |note| format!("{error}: {note}")));
+            }
+        };
         notes.add(format!(
-            "desktop added peer {} from the card its daemon exported ({} bytes); the form said: {kind}",
+            "desktop added peer {} from the card its daemon exported ({} bytes); listed after {listed:?} (bound {LISTED_WITHIN:?}); the form said: {kind}",
             peer.name,
             card.len()
         ));
@@ -197,6 +208,12 @@ pub fn contacts<H: Host, D: DemoDaemon>(
         let shown = demo.read(0, |s| {
             s.participant(&participant).map(|p| (p.safety, p.root_source, p.reachable))
         })?;
+        let marker =
+            demo.read(0, |s| s.participant(&participant).map(|p| (p.kind, p.kind_claim)))?;
+        notes.add(format!(
+            "desktop shows peer {}: (kind, SDK classification) = {marker:?}",
+            peer.name
+        ));
         notes.add(format!(
             "desktop shows peer {}: (safety, root, reachable) = {shown:?}",
             peer.name
@@ -561,6 +578,9 @@ pub fn settings<H: Host, D: DemoDaemon>(
     });
     let listed = demo.read(0, |s| s.accounts().map(|a| a.id.to_string()).collect::<Vec<_>>())?;
     notes.add(format!("account page drawn: {}; accounts listed {listed:?}", account.is_ok()));
+    let username = demo.sides[0].desk()?.label(demo.host, "account-username");
+    let reported = demo.read(0, |s| s.username().cloned())?;
+    notes.add(format!("username row: {username:?} (daemon: {reported:?})"));
     demo.shots(0, "24_settings_account", notes)?;
     let desk = demo.sides[0].desk()?;
     desk.open_settings(demo.host, SettingsSection::Devices);
@@ -682,5 +702,135 @@ pub fn history<H: Host, D: DemoDaemon>(
     if !reached || loaded <= first_page {
         return Err(format!("older history was not paged in ({first_page} then {loaded})"));
     }
+    Ok(())
+}
+
+/// A fresh group id (the desktop's own groups take random UUIDs too).
+fn fresh_group_id() -> String {
+    use std::io::Read as _;
+    let mut bytes = [0_u8; 16];
+    let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
+}
+
+/// Step 26: a group invitation from someone who is not a contact, accepted
+/// on the desktop. The second peer adds Bob's desktop from the card it shows
+/// (Bob does not answer the request) and makes a group with him; the
+/// creator is no contact of Bob's, so his daemon holds the group as an
+/// invitation. Bob's desktop lists it under Group invitations and Join
+/// joins it: the group conversation is shown.
+pub fn invitation<H: Host, D: DemoDaemon>(
+    demo: &mut Demo<'_, H, D>,
+    run: &mut PeerRun,
+    notes: &mut Notes,
+) -> Result<(), String> {
+    let peer = run.peers.get(1).cloned().ok_or("no second peer")?;
+    let bob = demo.sides[1].facts()?.clone();
+    let limit = demo.config.limits.answer;
+    let card = super::talk::shown_card(demo, 1, notes)?;
+    let added = peer.rf(&["contact", "add", &peer.account_flag(), &format!("--card={card}")]);
+    notes.add(format!(
+        "peer {}: contact add --card (Bob's desktop card) {}",
+        peer.name,
+        added.as_ref().map_or_else(|e| format!("refused: {e}"), |_| "done".to_owned())
+    ));
+    let group = fresh_group_id();
+    let groups_before = demo.read(1, |s| {
+        s.contexts().filter(|c| c.kind == ramflux_desktop_core::ContextKind::Group).count()
+    })?;
+    peer.rf(&[
+        "group",
+        "create",
+        &peer.account_flag(),
+        &format!("--group={group}"),
+        &format!("--creator={}", peer.device),
+        &format!("--member={}", bob.principal),
+    ])?;
+    notes.add(format!("peer {} made group {} with Bob as a member", peer.name, short(&group)));
+    let listed = demo.wait(1, limit, "the invitation listed", |desk, host| {
+        desk.store(host, |s| s.group_invitations().iter().any(|i| i.group_id == group))
+    })?;
+    notes.add(format!("Bob's desktop lists the invitation after {listed:?}"));
+    let row = format!("group-invitation-{group}");
+    let desk = demo.sides[1].desk()?;
+    if !desk.exists(demo.host, &row) {
+        desk.click(demo.host, None, "rail-contacts")?;
+    }
+    let desk = demo.sides[1].desk()?;
+    if !desk.exists(demo.host, &row) {
+        return Err(format!("the invitation is listed but its row {row} is not drawn"));
+    }
+    let shown = desk.label_in(demo.host, &row, "invitation-name");
+    demo.shots(1, "26_invitation_b", notes)?;
+    demo.sides[1].desk()?.click(demo.host, Some(&row), "invitation-accept")?;
+    let joined = demo.wait(1, limit, "the group joined", |desk, host| {
+        desk.store(host, |s| {
+            !s.group_invitations().iter().any(|i| i.group_id == group)
+                && s.contexts()
+                    .filter(|c| c.kind == ramflux_desktop_core::ContextKind::Group)
+                    .count()
+                    > groups_before
+        })
+    });
+    let failures = demo.read(1, probe::failures)?;
+    let joined = joined.map_err(|e| format!("{e}{failures}"))?;
+    let conversation = demo.read(1, |s| {
+        s.contexts()
+            .filter(|c| c.kind == ramflux_desktop_core::ContextKind::Group)
+            .find(|c| c.participants.contains(&ParticipantId::new(&peer.principal)))
+            .map(|c| c.id.clone())
+    })?;
+    if let Some(conversation) = conversation {
+        run.invited = Some((group.clone(), conversation));
+    }
+    notes.add(format!(
+        "Bob pressed Join on the row ({shown:?}); the group conversation is listed after {joined:?}"
+    ));
+    demo.shots(1, "26_joined_b", notes)?;
+    Ok(())
+}
+
+/// Step 27: Bob's desktop leaves the group it joined by invitation (the
+/// conversation's menu, Leave group, Confirm); the peer that made it no
+/// longer lists him as a member.
+pub fn leave<H: Host, D: DemoDaemon>(
+    demo: &mut Demo<'_, H, D>,
+    run: &mut PeerRun,
+    notes: &mut Notes,
+) -> Result<(), String> {
+    let peer = run.peers.get(1).cloned().ok_or("no second peer")?;
+    let (group, conversation) = run.invited.clone().ok_or("step 26 joined no group")?;
+    let bob = demo.sides[1].facts()?.clone();
+    let desk = demo.sides[1].desk()?;
+    desk.show_context(demo.host, &conversation)?;
+    desk.click(demo.host, None, "conversation-more")?;
+    desk.click_label(demo.host, &tr("group.leave.action"))?;
+    let desk = demo.sides[1].desk()?;
+    if !desk.strip_open(demo.host) {
+        return Err("Leave group asked for no confirmation".to_owned());
+    }
+    demo.shots(1, "27_leave_confirm", notes)?;
+    demo.sides[1].desk()?.tap_confirm(demo.host)?;
+    // Current members only (a removed device stays in `excluded_devices`).
+    let member = |page: &Value| {
+        page["members"].as_array().is_some_and(|m| m.iter().any(|d| d == bob.device.as_str()))
+    };
+    let gone = wait_cli(demo, || {
+        let page =
+            peer.rf(&["group", "members", &peer.account_flag(), &format!("--group={group}")])?;
+        Ok(!member(&page))
+    });
+    let failures = demo.read(1, probe::failures)?;
+    let gone = gone.map_err(|e| format!("peer {} still lists Bob: {e}{failures}", peer.name))?;
+    let shown = demo.read(1, |s| s.context(&conversation).map(|c| c.participants.len()))?;
+    notes.add(format!(
+        "Bob left with Leave group (confirmed); peer {} no longer lists him after {gone:?}; Bob's desktop: {}",
+        peer.name,
+        shown.map_or_else(|| "group no longer listed".to_owned(), |n| format!("group listed with {n} members"))
+    ));
+    demo.shots(1, "27_left_b", notes)?;
     Ok(())
 }

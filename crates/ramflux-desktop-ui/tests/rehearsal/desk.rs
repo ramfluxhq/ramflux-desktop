@@ -23,6 +23,9 @@ use ramflux_desktop_ui::shell::ShellOptions;
 
 use super::host::Host;
 
+/// Texts longer than this are pasted instead of typed.
+const PASTE_FROM: usize = 256;
+
 /// One desktop window.
 pub struct Desk {
     /// Who this desktop belongs to in the rehearsal ("a", "b").
@@ -224,7 +227,10 @@ impl Desk {
         })
     }
 
-    /// Focuses the input `id` and types `text`.
+    /// Focuses the input `id` and types `text`; a long text (a contact
+    /// card) is pasted, as a person does: one paste from the clipboard, not
+    /// thousands of keystrokes each followed by a frame (typing a 4 KB card
+    /// that way took about a minute of the rehearsal's own time).
     pub fn type_into(&self, host: &mut impl Host, id: &str, text: &str) -> Result<(), String> {
         let (id, text) = (id.to_owned(), text.to_owned());
         let found = host.window(self.handle.into(), move |window, cx| {
@@ -232,10 +238,30 @@ impl Desk {
                 return false;
             }
             window.click(id, cx);
-            window.input(&text, cx);
+            if text.len() > PASTE_FROM {
+                cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(text));
+                let paste = if cfg!(target_os = "macos") { "cmd-v" } else { "ctrl-v" };
+                if let Ok(key) = gpui_kit::Keystroke::parse(paste) {
+                    window.dispatch_keystroke(key, cx);
+                }
+                window.render_frame(cx);
+            } else {
+                window.input(&text, cx);
+            }
             true
         })?;
         if found { Ok(()) } else { Err(format!("desktop {}: no input to type into", self.tag)) }
+    }
+
+    /// Replaces the composer's text with `text`, as a person selecting all
+    /// of it and typing anew (an edit starts from the message's text).
+    pub fn replace_composer_text(&self, host: &mut impl Host, text: &str) -> Result<(), String> {
+        let input = host
+            .app(|cx| self.shell.read(cx).workspace().read(cx).composer().read(cx).input().clone());
+        let text = text.to_owned();
+        host.window(self.handle.into(), move |window, cx| {
+            input.update(cx, |input, cx| input.set_value(text, window, cx));
+        })
     }
 
     /// Whether the confirm strip is open (it is never a modal).
