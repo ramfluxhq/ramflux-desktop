@@ -184,6 +184,10 @@ pub fn media_ref(
         file_name: Some(name.to_owned()),
         inline_thumbnail: thumbnail,
         large_manifest: None,
+        width: None,
+        height: None,
+        duration_ms: None,
+        animated: None,
     }
 }
 

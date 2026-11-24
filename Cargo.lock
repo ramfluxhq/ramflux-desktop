@@ -5480,6 +5480,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nu-ansi-term"
+version = "0.50.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+dependencies = [
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "num"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6867,7 +6876,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 [[package]]
 name = "ramflux-core"
 version = "0.2.6"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=f2f466be297062c438d2b884baf71e810b4fcc92#f2f466be297062c438d2b884baf71e810b4fcc92"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=31ab2296afd4fbd00404055cdf4390d997b6f339#31ab2296afd4fbd00404055cdf4390d997b6f339"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -6877,7 +6886,7 @@ dependencies = [
 [[package]]
 name = "ramflux-crypto"
 version = "0.2.6"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=f2f466be297062c438d2b884baf71e810b4fcc92#f2f466be297062c438d2b884baf71e810b4fcc92"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=31ab2296afd4fbd00404055cdf4390d997b6f339#31ab2296afd4fbd00404055cdf4390d997b6f339"
 dependencies = [
  "aes-gcm 0.10.3",
  "aes-gcm 0.11.1",
@@ -7033,7 +7042,7 @@ dependencies = [
 [[package]]
 name = "ramflux-protocol"
 version = "0.2.6"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=f2f466be297062c438d2b884baf71e810b4fcc92#f2f466be297062c438d2b884baf71e810b4fcc92"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=31ab2296afd4fbd00404055cdf4390d997b6f339#31ab2296afd4fbd00404055cdf4390d997b6f339"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -7068,7 +7077,7 @@ dependencies = [
 [[package]]
 name = "ramflux-prx-client"
 version = "0.2.6"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=f2f466be297062c438d2b884baf71e810b4fcc92#f2f466be297062c438d2b884baf71e810b4fcc92"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=31ab2296afd4fbd00404055cdf4390d997b6f339#31ab2296afd4fbd00404055cdf4390d997b6f339"
 dependencies = [
  "ramflux-protocol",
  "reqwest",
@@ -7081,7 +7090,7 @@ dependencies = [
 [[package]]
 name = "ramflux-sdk"
 version = "0.2.6"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=f2f466be297062c438d2b884baf71e810b4fcc92#f2f466be297062c438d2b884baf71e810b4fcc92"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=31ab2296afd4fbd00404055cdf4390d997b6f339#31ab2296afd4fbd00404055cdf4390d997b6f339"
 dependencies = [
  "aes-gcm 0.10.3",
  "argon2",
@@ -7120,6 +7129,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tracing",
+ "tracing-subscriber",
  "unicode-normalization 0.1.26",
  "windows-sys 0.61.2",
  "zeroize",
@@ -7128,7 +7138,7 @@ dependencies = [
 [[package]]
 name = "ramflux-storage"
 version = "0.2.6"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=f2f466be297062c438d2b884baf71e810b4fcc92#f2f466be297062c438d2b884baf71e810b4fcc92"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=31ab2296afd4fbd00404055cdf4390d997b6f339#31ab2296afd4fbd00404055cdf4390d997b6f339"
 dependencies = [
  "blake3",
  "caseless",
@@ -7155,7 +7165,7 @@ dependencies = [
 [[package]]
 name = "ramflux-sync"
 version = "0.2.6"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=f2f466be297062c438d2b884baf71e810b4fcc92#f2f466be297062c438d2b884baf71e810b4fcc92"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=31ab2296afd4fbd00404055cdf4390d997b6f339#31ab2296afd4fbd00404055cdf4390d997b6f339"
 dependencies = [
  "chacha20poly1305",
  "ramflux-core",
@@ -7170,7 +7180,7 @@ dependencies = [
 [[package]]
 name = "ramflux-transport"
 version = "0.2.6"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=f2f466be297062c438d2b884baf71e810b4fcc92#f2f466be297062c438d2b884baf71e810b4fcc92"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=31ab2296afd4fbd00404055cdf4390d997b6f339#31ab2296afd4fbd00404055cdf4390d997b6f339"
 dependencies = [
  "arc-swap",
  "base64 0.22.1",
@@ -8278,6 +8288,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "shellexpand"
 version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8851,6 +8870,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread_local"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "tiff"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9200,6 +9228,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
+dependencies = [
+ "nu-ansi-term",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
@@ -9516,6 +9570,12 @@ dependencies = [
  "num-traits",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "valuable"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "vcpkg"

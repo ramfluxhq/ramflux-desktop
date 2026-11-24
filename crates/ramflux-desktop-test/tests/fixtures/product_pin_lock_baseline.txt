@@ -478,6 +478,7 @@ notify-rust|4.18.2|registry+https://github.com/rust-lang/crates.io-index|4587364
 notify-types|2.1.0|registry+https://github.com/rust-lang/crates.io-index|42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a
 notify|8.2.0|registry+https://github.com/rust-lang/crates.io-index|4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3
 ntapi|0.4.3|registry+https://github.com/rust-lang/crates.io-index|c3b335231dfd352ffb0f8017f3b6027a4917f7df785ea2143d8af2adc66980ae
+nu-ansi-term|0.50.3|registry+https://github.com/rust-lang/crates.io-index|7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5
 num-bigint-dig|0.9.1|registry+https://github.com/rust-lang/crates.io-index|a7f9a86e097b0d187ad0e65667c2f58b9254671e86e7dbb78036b16692eae099
 num-bigint|0.4.8|registry+https://github.com/rust-lang/crates.io-index|c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367
 num-cmp|0.1.0|registry+https://github.com/rust-lang/crates.io-index|63335b2e2c34fae2fb0aa2cecfd9f0832a1e24b3b32ecec612c3426d46dc8aaa
@@ -709,6 +710,7 @@ sha1_smol|1.0.1|registry+https://github.com/rust-lang/crates.io-index|bbfa15b3dd
 sha1|0.10.7|registry+https://github.com/rust-lang/crates.io-index|a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8
 sha2|0.10.9|registry+https://github.com/rust-lang/crates.io-index|a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283
 sha2|0.11.1|registry+https://github.com/rust-lang/crates.io-index|47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19
+sharded-slab|0.1.7|registry+https://github.com/rust-lang/crates.io-index|f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6
 shellexpand|3.1.2|registry+https://github.com/rust-lang/crates.io-index|32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8
 shlex|2.0.1|registry+https://github.com/rust-lang/crates.io-index|f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba
 signal-hook-registry|1.4.8|registry+https://github.com/rust-lang/crates.io-index|c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b
@@ -769,6 +771,7 @@ thiserror-impl|1.0.69|registry+https://github.com/rust-lang/crates.io-index|4fee
 thiserror-impl|2.0.21|registry+https://github.com/rust-lang/crates.io-index|fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524
 thiserror|1.0.69|registry+https://github.com/rust-lang/crates.io-index|b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52
 thiserror|2.0.21|registry+https://github.com/rust-lang/crates.io-index|09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e
+thread_local|1.1.10|registry+https://github.com/rust-lang/crates.io-index|1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070
 tiff|0.11.3|registry+https://github.com/rust-lang/crates.io-index|b63feaf3343d35b6ca4d50483f94843803b0f51634937cc2ec519fc32232bc52
 time-core|0.1.9|registry+https://github.com/rust-lang/crates.io-index|9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109
 time-macros|0.2.30|registry+https://github.com/rust-lang/crates.io-index|dcef1a61bdb119096e153208ec5cbec23944ce8bca13be5c7f60c634f7403935
@@ -800,6 +803,8 @@ tower-service|0.3.3|registry+https://github.com/rust-lang/crates.io-index|8df9b6
 tower|0.5.3|registry+https://github.com/rust-lang/crates.io-index|ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4
 tracing-attributes|0.1.31|registry+https://github.com/rust-lang/crates.io-index|7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da
 tracing-core|0.1.36|registry+https://github.com/rust-lang/crates.io-index|db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a
+tracing-log|0.2.0|registry+https://github.com/rust-lang/crates.io-index|ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3
+tracing-subscriber|0.3.23|registry+https://github.com/rust-lang/crates.io-index|cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319
 tracing|0.1.44|registry+https://github.com/rust-lang/crates.io-index|63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100
 triomphe|0.1.17|registry+https://github.com/rust-lang/crates.io-index|0d15f4f5898bcfc5d8a8e45ed30b2f108d710c1a2e5489dbf80e078f707181bc
 try-lock|0.2.5|registry+https://github.com/rust-lang/crates.io-index|e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b
@@ -838,6 +843,7 @@ utf8parse|0.2.2|registry+https://github.com/rust-lang/crates.io-index|06abde3611
 uuid-simd|0.8.0|registry+https://github.com/rust-lang/crates.io-index|23b082222b4f6619906941c17eb2297fff4c2fb96cb60164170522942a200bd8
 uuid|1.28.0|registry+https://github.com/rust-lang/crates.io-index|7cc1186384beb7dd8eedea376413fd654937285ea6c9cfbb928dc3043ea4b606
 v_frame|0.3.9|registry+https://github.com/rust-lang/crates.io-index|666b7727c8875d6ab5db9533418d7c764233ac9c0cff1d469aec8fa127597be2
+valuable|0.1.1|registry+https://github.com/rust-lang/crates.io-index|ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65
 vcpkg|0.2.15|registry+https://github.com/rust-lang/crates.io-index|accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426
 version_check|0.9.5|registry+https://github.com/rust-lang/crates.io-index|0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a
 vsimd|0.8.0|registry+https://github.com/rust-lang/crates.io-index|5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64
