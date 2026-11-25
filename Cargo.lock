@@ -297,7 +297,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -308,7 +308,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1941,7 +1941,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.3",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2203,7 +2203,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5485,7 +5485,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6704,7 +6704,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -6849,7 +6849,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6875,8 +6875,8 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "ramflux-core"
-version = "0.2.8"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=731de8bf0af161cb7d9365fbd55a624a33e6953d#731de8bf0af161cb7d9365fbd55a624a33e6953d"
+version = "0.2.9"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc#30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -6885,8 +6885,8 @@ dependencies = [
 
 [[package]]
 name = "ramflux-crypto"
-version = "0.2.8"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=731de8bf0af161cb7d9365fbd55a624a33e6953d#731de8bf0af161cb7d9365fbd55a624a33e6953d"
+version = "0.2.9"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc#30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc"
 dependencies = [
  "aes-gcm 0.10.3",
  "aes-gcm 0.11.1",
@@ -7041,8 +7041,8 @@ dependencies = [
 
 [[package]]
 name = "ramflux-media"
-version = "0.2.8"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=731de8bf0af161cb7d9365fbd55a624a33e6953d#731de8bf0af161cb7d9365fbd55a624a33e6953d"
+version = "0.2.9"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc#30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc"
 dependencies = [
  "aes-gcm 0.10.3",
  "getrandom 0.3.4",
@@ -7057,8 +7057,8 @@ dependencies = [
 
 [[package]]
 name = "ramflux-protocol"
-version = "0.2.8"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=731de8bf0af161cb7d9365fbd55a624a33e6953d#731de8bf0af161cb7d9365fbd55a624a33e6953d"
+version = "0.2.9"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc#30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -7092,8 +7092,8 @@ dependencies = [
 
 [[package]]
 name = "ramflux-prx-client"
-version = "0.2.8"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=731de8bf0af161cb7d9365fbd55a624a33e6953d#731de8bf0af161cb7d9365fbd55a624a33e6953d"
+version = "0.2.9"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc#30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc"
 dependencies = [
  "ramflux-protocol",
  "reqwest",
@@ -7105,8 +7105,8 @@ dependencies = [
 
 [[package]]
 name = "ramflux-sdk"
-version = "0.2.8"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=731de8bf0af161cb7d9365fbd55a624a33e6953d#731de8bf0af161cb7d9365fbd55a624a33e6953d"
+version = "0.2.9"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc#30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc"
 dependencies = [
  "aes-gcm 0.10.3",
  "argon2",
@@ -7154,8 +7154,8 @@ dependencies = [
 
 [[package]]
 name = "ramflux-storage"
-version = "0.2.8"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=731de8bf0af161cb7d9365fbd55a624a33e6953d#731de8bf0af161cb7d9365fbd55a624a33e6953d"
+version = "0.2.9"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc#30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc"
 dependencies = [
  "blake3",
  "caseless",
@@ -7181,8 +7181,8 @@ dependencies = [
 
 [[package]]
 name = "ramflux-sync"
-version = "0.2.8"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=731de8bf0af161cb7d9365fbd55a624a33e6953d#731de8bf0af161cb7d9365fbd55a624a33e6953d"
+version = "0.2.9"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc#30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc"
 dependencies = [
  "chacha20poly1305",
  "ramflux-core",
@@ -7196,8 +7196,8 @@ dependencies = [
 
 [[package]]
 name = "ramflux-transport"
-version = "0.2.8"
-source = "git+https://github.com/ramfluxhq/ramflux.git?rev=731de8bf0af161cb7d9365fbd55a624a33e6953d#731de8bf0af161cb7d9365fbd55a624a33e6953d"
+version = "0.2.9"
+source = "git+https://github.com/ramfluxhq/ramflux.git?rev=30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc#30d0f9a7cb4135c442d36c4aee4fcedc1a24ccbc"
 dependencies = [
  "arc-swap",
  "base64 0.22.1",
@@ -7844,7 +7844,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7910,7 +7910,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8477,7 +8477,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8823,7 +8823,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -9319,7 +9319,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -10297,7 +10297,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -10931,7 +10931,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
