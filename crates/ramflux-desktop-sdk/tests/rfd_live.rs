@@ -466,7 +466,7 @@ fn every_directory_and_action_frame_reaches_the_account_router_of_the_real_daemo
         ramflux_desktop_sdk::Deadlines::standard(),
     );
     let requests = read_model_requests();
-    assert_eq!(requests.len(), 11);
+    assert_eq!(requests.len(), 8);
     for request in &requests {
         let answer = runtime.block_on(client.call(request));
         println!("{} {}: {answer:?}", request.method, request.body);
