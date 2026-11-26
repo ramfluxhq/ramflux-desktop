@@ -332,6 +332,7 @@ impl Store {
     fn app_lock_changed(&mut self, account_id: &AccountId, lock: &AppLock, changes: &mut Changes) {
         let before = self.app_locks.insert(account_id.clone(), lock.clone());
         changes.accounts.insert(account_id.clone());
+        changes.app_locks.insert(account_id.clone());
         // Closing the lock drops what was on screen, as locking the account does.
         let closed = lock.state == AppLockState::Locked;
         if closed && before.is_none_or(|b| b.state != AppLockState::Locked) {

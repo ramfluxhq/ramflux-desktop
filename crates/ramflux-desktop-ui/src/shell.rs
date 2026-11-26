@@ -455,25 +455,42 @@ impl Shell {
     }
 
     /// Opens the settings overlay at `section`.
-    pub fn open_settings_at(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
+    /// Returns false (and does nothing) behind the lock or the cover.
+    pub fn open_settings_at(&mut self, section: SettingsSection, cx: &mut Context<Self>) -> bool {
         // Nothing of the accounts is shown behind the lock or the cover.
         if matches!(self.page, Page::Lock | Page::Cover) {
-            return;
+            return false;
         }
         self.palette_open = false;
         self.settings_open = true;
         self.settings.update(cx, |page, cx| page.show(section, cx));
         self.sync_host(cx);
         cx.notify();
+        true
     }
 
-    fn open_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
+    /// Opens settings at `section` and moves keyboard focus into them, only
+    /// when they opened.
+    fn open_settings_focused(
+        &mut self,
+        section: SettingsSection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if matches!(self.page, Page::Lock | Page::Cover) {
+            return;
+        }
         if !self.settings_open {
             self.remember_focus(window, cx);
         }
-        self.open_settings_at(SettingsSection::Account, cx);
-        let focus = self.settings.read(cx).focus_handle(cx);
-        window.focus(&focus, cx);
+        if self.open_settings_at(section, cx) {
+            let focus = self.settings.read(cx).focus_handle(cx);
+            window.focus(&focus, cx);
+        }
+    }
+
+    fn open_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_settings_focused(SettingsSection::Account, window, cx);
     }
 
     fn open_diagnostics(
@@ -482,12 +499,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.settings_open {
-            self.remember_focus(window, cx);
-        }
-        self.open_settings_at(SettingsSection::Diagnostics, cx);
-        let focus = self.settings.read(cx).focus_handle(cx);
-        window.focus(&focus, cx);
+        self.open_settings_focused(SettingsSection::Diagnostics, window, cx);
     }
 
     fn start_daemon(&mut self, _: &StartLocalDaemon, _: &mut Window, cx: &mut Context<Self>) {
@@ -601,7 +613,9 @@ impl Shell {
             PaletteChoice::SwitchAccount(account) => {
                 self.store.update(cx, |store, cx| store.set_active_account(&account, cx));
             }
-            PaletteChoice::OpenSettings => self.open_settings_at(SettingsSection::Account, cx),
+            PaletteChoice::OpenSettings => {
+                self.open_settings_at(SettingsSection::Account, cx);
+            }
             PaletteChoice::OpenDock(tool) => {
                 workspace.update(cx, |w, cx| w.open_tool(tool, window, cx))
             }
@@ -673,11 +687,7 @@ impl Render for Shell {
                 },
             ))
             .on_action(cx.listener(|this, _: &OpenAgentsSettings, window, cx| {
-                if !this.settings_open {
-                    this.remember_focus(window, cx);
-                }
-                this.open_settings_at(SettingsSection::Agents, cx);
-                window.focus(&this.settings.read(cx).focus_handle(cx), cx);
+                this.open_settings_focused(SettingsSection::Agents, window, cx);
             }))
             .on_action(cx.listener(Self::open_diagnostics))
             .on_action(cx.listener(Self::start_daemon))
