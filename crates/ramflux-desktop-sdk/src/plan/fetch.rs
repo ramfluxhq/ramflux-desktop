@@ -59,6 +59,8 @@ pub enum Fetch {
     AccountList,
     /// `account.status` of one account.
     AccountStatus(AccountId),
+    /// `account.app_lock.state` of one account: its lock policy and state.
+    AppLock(AccountId),
     /// `device.list`.
     DeviceList,
     /// One page of a paged list; `None` asks for the first page.
@@ -122,6 +124,9 @@ impl Fetch {
             Self::AccountList => BusRequest::new(None, "account", "account.list", empty),
             Self::AccountStatus(id) => {
                 BusRequest::new(Some(id.as_str()), "account", "account.status", empty)
+            }
+            Self::AppLock(id) => {
+                BusRequest::new(Some(id.as_str()), "account", "account.app_lock.state", empty)
             }
             Self::DeviceList => BusRequest::new(account, "device", "device.list", empty),
             Self::Page(paged, cursor) => {

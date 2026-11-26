@@ -8,8 +8,11 @@ use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
 use crate::ids::{AccountId, NodeId};
-use crate::intent::{IntentKind, SecretInput, SyncDirection, methods};
+use crate::intent::{AppLockPhase, IntentKind, SecretInput, SyncDirection, methods};
 use crate::model::{Node, Risk};
+
+/// The longest app lock timeout the daemon accepts: one day, in milliseconds.
+const APP_LOCK_MAX_TIMEOUT_MS: u64 = 86_400_000;
 
 /// Decides account-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
@@ -130,6 +133,30 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
         }),
         IntentKind::ExportDiagnostics { path } => non_empty(path, "diagnostics path")
             .map(|()| Decision::Call(methods::DIAGNOSTICS_EXPORT, json!({ "path": path }))),
+        IntentKind::ConfigureAppLock { account_id, enabled, timeout_ms } => {
+            p.human_only("change the app lock").and_then(|()| {
+                account(p, account_id)?;
+                if *timeout_ms > APP_LOCK_MAX_TIMEOUT_MS {
+                    return Err(IntentError::AppLockTimeout(*timeout_ms));
+                }
+                Ok(Decision::Call(
+                    methods::APP_LOCK_CONFIGURE,
+                    json!({ "account_id": account_id, "enabled": enabled, "timeout_ms": timeout_ms }),
+                ))
+            })
+        }
+        IntentKind::AppLockLifecycle { account_id, phase } => {
+            account(p, account_id).map(|()| {
+                let state = match phase {
+                    AppLockPhase::Background => "background",
+                    AppLockPhase::Foreground => "foreground",
+                };
+                Decision::Call(
+                    methods::APP_LOCK_LIFECYCLE,
+                    json!({ "account_id": account_id, "state": state }),
+                )
+            })
+        }
         _ => return None,
     })
 }

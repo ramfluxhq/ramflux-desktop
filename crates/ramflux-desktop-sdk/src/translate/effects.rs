@@ -91,6 +91,9 @@ impl Translator {
                 let id = AccountId::new(text(body, "account_id"));
                 self.set_lock(&id, LockState::Locked)
             }
+            methods::APP_LOCK_STATE | methods::APP_LOCK_CONFIGURE | methods::APP_LOCK_LIFECYCLE => {
+                self.app_lock_answer(&AccountId::new(text(body, "account_id")), answer)
+            }
             methods::GRANT_APPROVE | methods::GRANT_DENY if body["retry"] == true => {
                 self.task_decision_resent(text(body, "grant_id"))
             }

@@ -48,9 +48,10 @@ impl EntryPage {
     /// The locked account the passphrase unlocks: a person's. An AI
     /// participant is started by the agent host, never unlocked here.
     fn locked_account(store: &Store) -> Option<&Account> {
-        store
-            .accounts()
-            .find(|a| a.lock_state == LockState::Locked && a.kind != AccountKind::HeadlessAi)
+        store.accounts().find(|a| {
+            (a.lock_state == LockState::Locked || store.app_locked(&a.id))
+                && a.kind != AccountKind::HeadlessAi
+        })
     }
 
     /// The node new accounts bind to: the chosen one, else the default,
@@ -248,6 +249,10 @@ impl EntryPage {
 
     fn render_unlock(&self, accounts: &[Account], cx: &mut Context<Self>) -> impl IntoElement {
         let unlocking = self.submitted.is_some();
+        let app_closed: Vec<AccountId> = {
+            let store = self.store.read(cx).store();
+            store.accounts().filter(|a| store.app_locked(&a.id)).map(|a| a.id.clone()).collect()
+        };
         let nothing_to_unlock = Self::locked_account(self.store.read(cx).store()).is_none();
         let muted = cx.theme().muted_foreground;
         // A person's locked account of a daemon that offers the phrase:
@@ -323,6 +328,7 @@ impl EntryPage {
                         }))
                         .child(div().text_size(text_caption()).text_color(muted).child(tr(
                             match account.lock_state {
+                                _ if app_closed.contains(&account.id) => "entry.app_lock.locked",
                                 LockState::Locked => "entry.account.locked",
                                 LockState::Unlocked => "entry.account.unlocked",
                             },

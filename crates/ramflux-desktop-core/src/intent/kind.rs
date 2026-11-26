@@ -21,6 +21,16 @@ pub enum SyncDirection {
     Export,
 }
 
+/// Whether the app is in the foreground, for the app lock's timer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppLockPhase {
+    /// The window lost focus or was hidden: the lock timer runs.
+    Background,
+    /// The window is in front again: the timer stops.
+    Foreground,
+}
+
 /// Every intent kind.
 ///
 /// Kinds that carry a [`SecretInput`] (unlock, restore,
@@ -540,5 +550,21 @@ pub enum IntentKind {
     ExportDiagnostics {
         /// Local path chosen by the user.
         path: String,
+    },
+    /// Turn an account's app lock on or off, and set its timeout. Human only.
+    ConfigureAppLock {
+        /// Account (must be open).
+        account_id: AccountId,
+        /// Whether the lock is on.
+        enabled: bool,
+        /// Background time before the lock, in milliseconds (0 is immediately).
+        timeout_ms: u64,
+    },
+    /// Report that the window went to the background or came to the front.
+    AppLockLifecycle {
+        /// Account.
+        account_id: AccountId,
+        /// New phase of the window.
+        phase: AppLockPhase,
     },
 }

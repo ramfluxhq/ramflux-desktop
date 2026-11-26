@@ -252,6 +252,13 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::LockPressed { account_id } => {
             IntentKind::LockAccount { account_id: account_id.clone() }
         }
+        UiEventKind::AppLockConfigureRequested { account_id, enabled, timeout_ms } => {
+            IntentKind::ConfigureAppLock {
+                account_id: account_id.clone(),
+                enabled: *enabled,
+                timeout_ms: *timeout_ms,
+            }
+        }
         UiEventKind::RevokeDevicePressed { device_id } => {
             IntentKind::RevokeDevice { device_id: device_id.clone() }
         }

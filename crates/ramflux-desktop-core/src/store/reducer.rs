@@ -17,8 +17,8 @@ use super::{MAX_AUDIT, Store};
 use crate::event::DomainEvent;
 use crate::ids::{AccountId, ContextId, GrantId, MomentId, NodeId, Timestamp};
 use crate::model::{
-    Context, Disappearing, GrantState, Lifecycle, LockState, Moment, MomentKind, NodeHealth,
-    NodeProbe,
+    AppLock, AppLockState, Context, Disappearing, GrantState, Lifecycle, LockState, Moment,
+    MomentKind, NodeHealth, NodeProbe,
 };
 
 impl Store {
@@ -59,6 +59,9 @@ impl Store {
             }
             DomainEvent::AccountLockChanged { account_id, lock_state } => {
                 self.set_lock(account_id, *lock_state, changes)?;
+            }
+            DomainEvent::AppLockChanged { account_id, lock } => {
+                self.app_lock_changed(account_id, lock, changes);
             }
             DomainEvent::NodeUpserted(node) => {
                 changes.nodes.insert(node.id.clone());
@@ -324,6 +327,16 @@ impl Store {
 
     fn node_mut(&mut self, node_id: &NodeId) -> Result<&mut crate::model::Node, ApplyError> {
         self.nodes.get_mut(node_id).ok_or_else(|| ApplyError::UnknownNode(node_id.clone()))
+    }
+
+    fn app_lock_changed(&mut self, account_id: &AccountId, lock: &AppLock, changes: &mut Changes) {
+        let before = self.app_locks.insert(account_id.clone(), lock.clone());
+        changes.accounts.insert(account_id.clone());
+        // Closing the lock drops what was on screen, as locking the account does.
+        let closed = lock.state == AppLockState::Locked;
+        if closed && before.is_none_or(|b| b.state != AppLockState::Locked) {
+            self.drop_bodies(changes);
+        }
     }
 
     fn set_lock(

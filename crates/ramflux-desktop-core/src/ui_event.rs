@@ -315,6 +315,15 @@ pub enum UiEventKind {
         /// Account.
         account_id: AccountId,
     },
+    /// The app lock switch or timeout was changed for an account.
+    AppLockConfigureRequested {
+        /// Account.
+        account_id: AccountId,
+        /// Whether the lock is on.
+        enabled: bool,
+        /// Timeout in milliseconds.
+        timeout_ms: u64,
+    },
     /// Revoke pressed on a device.
     RevokeDevicePressed {
         /// Device.

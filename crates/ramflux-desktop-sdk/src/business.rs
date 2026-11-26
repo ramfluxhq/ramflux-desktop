@@ -113,7 +113,12 @@ pub fn read_plan(area: Area, account: &AccountId) -> ReadPlan {
         ),
         Area::Backup => (vec![Fetch::BackupJobs], vec![]),
         Area::Settings => (
-            vec![Fetch::AccountStatus(account.clone()), Fetch::NodeList, Fetch::ContactRequests],
+            vec![
+                Fetch::AccountStatus(account.clone()),
+                Fetch::AppLock(account.clone()),
+                Fetch::NodeList,
+                Fetch::ContactRequests,
+            ],
             vec![ContractGap::AccountPrivacy],
         ),
     };

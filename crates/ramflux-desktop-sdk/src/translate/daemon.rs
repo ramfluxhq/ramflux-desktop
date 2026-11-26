@@ -246,6 +246,7 @@ impl Translator {
         for id in open {
             let unknown = self.accounts.get(&id).is_none_or(|a| a.node_id.is_none());
             out.events.extend(self.set_lock(&id, LockState::Unlocked));
+            out.follow.push(Fetch::AppLock(id.clone()));
             if unknown {
                 out.follow.push(Fetch::AccountStatus(id));
             }

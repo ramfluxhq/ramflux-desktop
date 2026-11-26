@@ -17,6 +17,38 @@ pub enum LockState {
     Unlocked,
 }
 
+/// Where an account's app lock stands, as the daemon reports it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppLockState {
+    /// Open for use (or the lock is off).
+    #[default]
+    Unlocked,
+    /// Closed after the timeout: only the account code opens it again.
+    Locked,
+    /// The lock cannot be used on this device (no custody to hold it).
+    Unavailable,
+}
+
+/// An account's app lock: the policy the user chose and the current state.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppLock {
+    /// Whether the lock is on. Off by default.
+    pub enabled: bool,
+    /// How long the app may stay in the background before it locks (0 is
+    /// immediately), in milliseconds.
+    pub timeout_ms: u64,
+    /// The current state.
+    pub state: AppLockState,
+    /// Why the state is what it is (the daemon's reason, for example
+    /// `timeout` or `custody_unavailable`), when it gave one.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// The daemon's change counter for this lock.
+    #[serde(default)]
+    pub generation: u64,
+}
+
 /// What an account is for.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AccountKind {

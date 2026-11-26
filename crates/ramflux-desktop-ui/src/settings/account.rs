@@ -9,15 +9,19 @@
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
+use gpui_kit::component::switch::Switch;
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, SharedString, TestSupportExt as _, Window, div};
-use ramflux_desktop_core::{Account, IntentKind, LockState, SecretInput, UiEventKind};
+use ramflux_desktop_core::{
+    Account, AccountId, AppLockState, IntentKind, LockState, SecretInput, UiEventKind, methods,
+};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::space;
 
 use super::{SectionContext, SettingsSection, design, note};
 use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
+use crate::style::DesignButton as _;
 
 /// The masked inputs of the account section, owned by the settings page.
 pub struct AccountInputs {
@@ -48,6 +52,7 @@ fn take(input: &Entity<InputState>, window: &mut Window, cx: &mut App) -> Secret
 /// The account section.
 pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> SettingPage {
     let account = active_account(context, cx);
+    let app_lock = app_lock_item(context, account.as_ref().map(|a| a.id.clone()));
     let sink = context.sink(SettingsSection::Account);
     let export_reason = crate::gate::reason(
         context.store.read(cx).store(),
@@ -261,6 +266,102 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
             )
             .into_any_element()
     });
-    SettingPage::new(tr("settings.section.account"))
-        .group(SettingGroup::new().item(current).item(backup).item(rotation).item(privacy))
+    SettingPage::new(tr("settings.section.account")).group(
+        SettingGroup::new().item(current).item(backup).item(rotation).item(app_lock).item(privacy),
+    )
+}
+
+/// The timeout choices of the app lock: the daemon's value, its label key
+/// and the element id of its button.
+const APP_LOCK_TIMEOUTS: [(u64, &str, &str); 5] = [
+    (0, "settings.app_lock.immediately", "app-lock-timeout-0"),
+    (60_000, "settings.app_lock.minute", "app-lock-timeout-60000"),
+    (300_000, "settings.app_lock.minutes_5", "app-lock-timeout-300000"),
+    (900_000, "settings.app_lock.minutes_15", "app-lock-timeout-900000"),
+    (3_600_000, "settings.app_lock.hour", "app-lock-timeout-3600000"),
+];
+
+/// Settings · Account · App lock: the switch (off by default), the timeout
+/// after which the app asks for the account code, and the biometric row the
+/// daemon does not offer yet.
+fn app_lock_item(context: &SectionContext, account: Option<AccountId>) -> SettingItem {
+    let sink = context.sink(SettingsSection::Account);
+    let store = context.store.clone();
+    SettingItem::render(move |_, _, cx: &mut App| {
+        let Some(account_id) = account.clone() else { return h_flex().into_any_element() };
+        let (lock, failure) = {
+            let handle = store.read(cx);
+            let store = handle.store();
+            let failure = store
+                .failures()
+                .iter()
+                .rev()
+                .find(|f| f.method == methods::APP_LOCK_CONFIGURE)
+                .map(|f| f.message.clone());
+            (store.app_lock(&account_id).cloned(), failure)
+        };
+        let section = design::section("account-app-lock", tr("settings.app_lock.title"), cx);
+        let Some(lock) = lock else {
+            return section
+                .child(design::help(tr("settings.app_lock.loading"), cx))
+                .into_any_element();
+        };
+        if lock.state == AppLockState::Unavailable {
+            return section
+                .child(design::help(tr("settings.app_lock.unavailable"), cx))
+                .into_any_element();
+        }
+        let (enabled, current) = (lock.enabled, lock.timeout_ms);
+        let switch_sink = sink.clone();
+        let switch_id = account_id.clone();
+        let timeouts = APP_LOCK_TIMEOUTS.iter().map(|&(ms, key, id)| {
+            let (button_sink, button_id) = (sink.clone(), account_id.clone());
+            let button = if ms == current {
+                crate::style::primary_button(id, cx)
+            } else {
+                crate::style::secondary_button(id, cx)
+            };
+            button.label(tr(key)).design_disabled(!enabled, cx).on_click(move |_, window, cx| {
+                button_sink.emit(
+                    UiEventKind::AppLockConfigureRequested {
+                        account_id: button_id.clone(),
+                        enabled,
+                        timeout_ms: ms,
+                    },
+                    window,
+                    cx,
+                )
+            })
+        });
+        let section = section
+            .child(
+                Switch::new("app-lock-switch")
+                    .label(tr("settings.app_lock.switch"))
+                    .checked(enabled)
+                    .on_change(move |checked, window, cx| {
+                        switch_sink.emit(
+                            UiEventKind::AppLockConfigureRequested {
+                                account_id: switch_id.clone(),
+                                enabled: *checked,
+                                timeout_ms: current,
+                            },
+                            window,
+                            cx,
+                        )
+                    }),
+            )
+            .child(design::help(tr("settings.app_lock.help"), cx))
+            .child(h_flex().gap(space(2.)).children(timeouts))
+            .child(design::row(
+                tr("settings.app_lock.biometric"),
+                tr("settings.app_lock.biometric_unavailable"),
+                None,
+                cx,
+            ));
+        section
+            .children(failure.map(|message| {
+                design::help(tr_args("settings.app_lock.failed", &[("reason", &message)]), cx)
+            }))
+            .into_any_element()
+    })
 }

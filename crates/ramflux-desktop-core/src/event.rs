@@ -10,11 +10,12 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AgentExport, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony, ContactCard,
-    ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure,
-    GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node,
-    NodeHealth, NodeProbe, Object, Participant, RecoveryCeremony, RequestFloors, RequestPolicy,
-    StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskAnswer, TaskState,
+    Account, AgentExport, AppLock, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony,
+    ContactCard, ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant,
+    GrantFailure, GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind,
+    NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant, RecoveryCeremony, RequestFloors,
+    RequestPolicy, StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskAnswer,
+    TaskState,
 };
 
 pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
@@ -228,6 +229,14 @@ pub enum DomainEvent {
         account_id: AccountId,
         /// New state.
         lock_state: LockState,
+    },
+    /// An account's app lock was read or changed (the whole state, so a
+    /// refusal that closes it carries the policy as well).
+    AppLockChanged {
+        /// Account.
+        account_id: AccountId,
+        /// The lock as the daemon reports it.
+        lock: AppLock,
     },
     /// Local node settings changed. Setting a default clears the previous one.
     NodeSettingsChanged {
