@@ -73,7 +73,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 54;
+const DOMAIN_EVENT_VARIANTS: usize = 55;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
