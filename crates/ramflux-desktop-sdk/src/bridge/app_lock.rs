@@ -22,8 +22,15 @@ use crate::translate::Scope;
 /// Added to the daemon's remaining time so the read lands after the lock.
 pub(super) const MARGIN: Duration = Duration::from_millis(250);
 
-/// The longest wait between two repeated reads of an unreadable lock.
+/// The longest wait between two repeated reads of an unreadable lock (and
+/// between two tries to open a stream the lock refuses).
 const BACKOFF_CAP: Duration = Duration::from_secs(30);
+
+/// The wait before the next try to open a stream the app lock refused:
+/// `base`, doubled for every refusal in a row, up to a cap.
+pub(super) fn stream_backoff(base: Duration, streak: u32) -> Duration {
+    base.saturating_mul(1u32 << streak.min(5)).min(BACKOFF_CAP.max(base))
+}
 
 /// The next read of each account's app lock, if one is planned.
 #[derive(Debug, Default)]
@@ -96,6 +103,32 @@ impl AppLockWatch {
 }
 
 impl Task {
+    /// The daemon said the app lock of an account changed (on the account
+    /// stream, or on a request connection attached to the account). A lock
+    /// that is closed takes over at once; in any case the lock is read again
+    /// and the daemon session lists the accounts again, so the stores hold
+    /// what the daemon holds. `account` is the account the frame named, if it
+    /// did; an account session only follows its own account.
+    pub(super) fn app_lock_changed(&mut self, account: Option<&str>, body: &Value) {
+        let own = self.account();
+        let named = account.map(str::to_owned).or_else(|| own.clone());
+        let Some(named) = named else { return };
+        if own.as_ref().is_some_and(|own| *own != named) {
+            return;
+        }
+        let account = AccountId::new(named);
+        if body["state"].as_str() == Some("locked") {
+            let closed = self.translator.app_locked(&account);
+            self.emit(closed);
+        } else if self.sync.task.is_none() && self.sync.open_at.is_some() {
+            // Opened again: the stream the lock refused is tried at once.
+            self.sync.open_at = Some(Instant::now());
+        }
+        self.sync.locked_streak = 0;
+        self.request_reads(vec![crate::plan::fetch::Fetch::AppLock(account)]);
+        self.refresh_daemon();
+    }
+
     /// The daemon refused a request of `account` because the app lock holds
     /// it closed. The lock screen is routed from the daemon's store, so an
     /// account session also has the daemon list and read the locks again; the

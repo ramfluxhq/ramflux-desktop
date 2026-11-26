@@ -343,9 +343,7 @@ impl IntentRoot {
         for account_id in accounts {
             let held = covered.contains(&account_id);
             let has = self.store.read(cx).reported_phase(&account_id);
-            // Only an account covered since the return is told it is back, so
-            // an answer to an uncovered report cannot release a later hold.
-            if (phase == AppLockPhase::Foreground && !held) || has == Some(phase) {
+            if !report_due(has, phase) {
                 if held {
                     given_back.push(account_id);
                 }
@@ -407,6 +405,14 @@ impl IntentRoot {
     }
 }
 
+/// Whether the daemon has to be told the window is in `phase`: it is unless
+/// its last answer already says so. This holds for an account that was not
+/// covered as well: a stored background (or no answer yet) while the window
+/// is in use would lock the account under the user's hands.
+fn report_due(has: Option<AppLockPhase>, phase: AppLockPhase) -> bool {
+    has != Some(phase)
+}
+
 /// Why a pending intent no longer matches the store: the inspector result,
 /// and the surface moment when a surface changed. `None` while it matches.
 fn stale(store: &Store, kind: &IntentKind) -> Option<(&'static str, Option<MomentId>)> {
@@ -428,5 +434,24 @@ fn stale(store: &Store, kind: &IntentKind) -> Option<(&'static str, Option<Momen
             (!current).then_some(("confirmation cancelled: contact changed", None))
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_foreground_is_reported_when_the_daemon_has_background_or_nothing() {
+        assert!(report_due(Some(AppLockPhase::Background), AppLockPhase::Foreground));
+        assert!(report_due(None, AppLockPhase::Foreground));
+        assert!(!report_due(Some(AppLockPhase::Foreground), AppLockPhase::Foreground));
+    }
+
+    #[test]
+    fn the_background_is_reported_unless_the_daemon_has_it() {
+        assert!(report_due(Some(AppLockPhase::Foreground), AppLockPhase::Background));
+        assert!(report_due(None, AppLockPhase::Background));
+        assert!(!report_due(Some(AppLockPhase::Background), AppLockPhase::Background));
     }
 }

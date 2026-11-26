@@ -26,6 +26,8 @@ pub fn app_lock_of(body: &Value) -> AppLock {
         state,
         reason: body["reason"].as_str().map(str::to_owned),
         generation: body["generation"].as_u64().unwrap_or(0),
+        armed: body["state"].as_str() == Some("armed")
+            || body["remaining_ms"].as_u64().is_some_and(|ms| ms > 0),
     }
 }
 
@@ -75,5 +77,24 @@ impl Translator {
     fn set_app_lock(&mut self, account: &AccountId, lock: AppLock) -> Vec<DomainEvent> {
         self.app_locks.insert(account.clone(), lock.clone());
         vec![DomainEvent::AppLockChanged { account_id: account.clone(), lock }]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn a_lock_counting_down_is_armed_and_one_without_a_deadline_is_not() {
+        let armed = app_lock_of(&json!({"enabled": true, "state": "armed", "remaining_ms": 900}));
+        assert!(armed.armed);
+        let counting =
+            app_lock_of(&json!({"enabled": true, "state": "unlocked", "remaining_ms": 900}));
+        assert!(counting.armed);
+        let open = app_lock_of(&json!({"enabled": true, "state": "unlocked", "remaining_ms": 0}));
+        assert_eq!(open.state, AppLockState::Unlocked);
+        assert!(!open.armed);
     }
 }

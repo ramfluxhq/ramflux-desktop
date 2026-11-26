@@ -586,6 +586,21 @@ impl StoreHandle {
         for (account, phase) in &domain.lifecycle_phases {
             self.resume_hold.reported(account, *phase);
         }
+        // Another client's unlock leaves the account open with no deadline
+        // while this window is in the background: it is reported again.
+        let unarmed: Vec<AccountId> = domain
+            .app_locks
+            .iter()
+            .filter(|id| {
+                self.entry_store().app_lock(id).is_some_and(|lock| {
+                    lock.state == ramflux_desktop_core::AppLockState::Unlocked && !lock.armed
+                })
+            })
+            .cloned()
+            .collect();
+        for account in &unarmed {
+            self.resume_hold.unarmed(account);
+        }
         if self.resume_hold.is_empty() {
             return;
         }

@@ -49,6 +49,19 @@ pub(crate) struct ConnectionState {
     pub(crate) connected: bool,
 }
 
+/// The event the daemon sends to every connection attached to an account
+/// whose app lock changed (another client locked or unlocked it, or its
+/// deadline passed).
+pub(crate) const APP_LOCK_CHANGED: &str = "account.app_lock.changed";
+
+/// An `account.app_lock.changed` event that reached a request connection.
+#[derive(Debug, Clone)]
+pub(crate) struct AppLockEvent {
+    /// The account the frame named.
+    pub(crate) account: Option<String>,
+    pub(crate) body: Value,
+}
+
 struct OpenConnection {
     generation: u64,
     client: LocalBusClient,
@@ -75,6 +88,9 @@ struct Inner {
     /// The open connection and its generation.
     link: Mutex<Option<OpenConnection>>,
     status: Option<mpsc::UnboundedSender<ConnectionState>>,
+    /// Where the app lock events of this connection go (an observer is
+    /// only started for a client with a status or an event receiver).
+    lock_events: Option<mpsc::UnboundedSender<AppLockEvent>>,
     generations: AtomicU64,
     next_id: AtomicU64,
     slots: Semaphore,
@@ -84,7 +100,7 @@ struct Inner {
 impl BusClient {
     /// A client of `socket`; nothing connects until the first request.
     pub fn new(socket: PathBuf, connect_timeout: Duration, deadlines: Deadlines) -> Self {
-        Self::with_status(socket, connect_timeout, deadlines, None)
+        Self::with_status(socket, connect_timeout, deadlines, None, None)
     }
 
     pub(crate) fn with_status(
@@ -92,6 +108,7 @@ impl BusClient {
         connect_timeout: Duration,
         deadlines: Deadlines,
         status: Option<mpsc::UnboundedSender<ConnectionState>>,
+        lock_events: Option<mpsc::UnboundedSender<AppLockEvent>>,
     ) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -100,6 +117,7 @@ impl BusClient {
                 deadlines,
                 link: Mutex::new(None),
                 status,
+                lock_events,
                 generations: AtomicU64::new(0),
                 next_id: AtomicU64::new(1),
                 slots: Semaphore::new(MAX_IN_FLIGHT),
@@ -241,21 +259,39 @@ impl BusClient {
         .map_err(BusError::from)?;
         let generation = self.inner.generations.fetch_add(1, Ordering::Relaxed) + 1;
         let down = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let observer = self.inner.status.as_ref().map(|out| {
-            let out = out.clone();
-            let _ = out.send(ConnectionState { generation, connected: true });
-            let mut client = client.clone();
-            let down = down.clone();
-            tokio::spawn(async move {
-                // Ordinary connections have no subscription; their event receiver
-                // also closes on EOF, without a probe or a periodic request.
-                while client.next_event().await.is_ok() {}
-                if !down.swap(true, Ordering::SeqCst) {
-                    let _ = out.send(ConnectionState { generation, connected: false });
+        let observer =
+            (self.inner.status.is_some() || self.inner.lock_events.is_some()).then(|| {
+                let out = self.inner.status.clone();
+                let locks = self.inner.lock_events.clone();
+                if let Some(out) = &out {
+                    let _ = out.send(ConnectionState { generation, connected: true });
                 }
-            })
-            .abort_handle()
-        });
+                let mut client = client.clone();
+                let down = down.clone();
+                tokio::spawn(async move {
+                    // Ordinary connections have no subscription; their event receiver
+                    // also closes on EOF, without a probe or a periodic request. The
+                    // only events kept are the app lock's: the daemon sends them to
+                    // every connection attached to the account, and a window with
+                    // no account stream learns of a lock from them.
+                    while let Ok(frame) = client.next_event().await {
+                        if frame.method == APP_LOCK_CHANGED
+                            && let Some(locks) = &locks
+                        {
+                            let _ = locks.send(AppLockEvent {
+                                account: frame.account_id.clone(),
+                                body: frame.body,
+                            });
+                        }
+                    }
+                    if !down.swap(true, Ordering::SeqCst)
+                        && let Some(out) = &out
+                    {
+                        let _ = out.send(ConnectionState { generation, connected: false });
+                    }
+                })
+                .abort_handle()
+            });
         *link = Some(OpenConnection { generation, client: client.clone(), observer, down });
         Ok((generation, client))
     }
@@ -336,6 +372,7 @@ mod tests {
             Duration::from_secs(5),
             Deadlines::uniform(Duration::from_secs(5)),
             Some(out),
+            None,
         );
         let generation = client.attach().await.expect("connects");
         let first = states.recv().await.expect("a state");
@@ -353,5 +390,39 @@ mod tests {
         let next = client.attach().await;
         assert!(next.is_err(), "no daemon to connect to");
         assert!(states.try_recv().is_err(), "the loss is reported once");
+    }
+
+    #[tokio::test]
+    async fn an_app_lock_event_on_a_request_connection_is_forwarded_and_others_are_not() {
+        let path = socket_path("client-lock-event");
+        let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({})));
+        let (events, mut locks) = mpsc::unbounded_channel();
+        let client = BusClient::with_status(
+            path,
+            Duration::from_secs(5),
+            Deadlines::uniform(Duration::from_secs(5)),
+            None,
+            Some(events),
+        );
+        client.attach().await.expect("connects");
+        // The fake may not have registered the connection yet: push again
+        // until the event arrives.
+        let mut received = None;
+        for _ in 0..100 {
+            fake.push_to_connections("acct", "message.received", json!({"x": 1}));
+            fake.push_to_connections("acct", APP_LOCK_CHANGED, json!({"state": "locked"}));
+            if let Ok(event) = tokio::time::timeout(Duration::from_millis(100), locks.recv()).await
+            {
+                received = event;
+                break;
+            }
+        }
+        let event = received.expect("the event is forwarded");
+        assert_eq!(event.account.as_deref(), Some("acct"));
+        assert_eq!(event.body["state"], "locked");
+        while let Ok(more) = locks.try_recv() {
+            assert_eq!(more.body["state"], "locked", "an event of another topic is dropped");
+        }
+        fake.shutdown();
     }
 }

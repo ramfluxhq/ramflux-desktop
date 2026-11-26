@@ -283,6 +283,14 @@ fn a_lock_sent_by_another_control_client_shows_the_lock_page(cx: &mut TestAppCon
     wait(cx, "the workspace", |cx| page(cx, &shell) == Page::Workspace);
     configure_app_lock(cx, handle, &shell, &account, 600_000);
     assert_eq!(page(cx, &shell), Page::Workspace);
+    // Quiet: no request is in flight any more, so only the daemon's
+    // `account.app_lock.changed` event (or a refusal of a later request) can
+    // tell the idle window. About three seconds of real time.
+    for _ in 0..300 {
+        std::thread::sleep(Duration::from_millis(10));
+        advance(cx, 10);
+    }
+    assert_eq!(page(cx, &shell), Page::Workspace, "nothing locked it yet");
     let locked = daemon
         .call(Some(account.as_str()), "account", "account.app_lock.lock", &serde_json::json!({}))
         .unwrap_or_else(|e| panic!("{e}"));
@@ -290,4 +298,8 @@ fn a_lock_sent_by_another_control_client_shows_the_lock_page(cx: &mut TestAppCon
     let started = std::time::Instant::now();
     wait(cx, "the lock page", |cx| page(cx, &shell) == Page::Lock);
     println!("the lock page showed {:?} after the control client's lock", started.elapsed());
+    assert!(
+        lock_state(cx, &shell, &account)
+            .is_some_and(|lock| lock.state == ramflux_desktop_core::AppLockState::Locked)
+    );
 }

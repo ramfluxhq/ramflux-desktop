@@ -241,3 +241,144 @@ async fn a_daemon_session_refusal_names_the_account_of_its_request() {
         .collect();
     assert_eq!(locked, vec![(AccountId::new("acct-other"), AppLockState::Locked)]);
 }
+
+fn locked_event() -> serde_json::Value {
+    json!({"state": "locked", "reason": "manual", "generation": 4, "remaining_ms": 0})
+}
+
+/// Another client locked the account while this window was idle: the account
+/// stream carries the event, the lock page is routed at once, and the lock
+/// and the daemon's listing are read again.
+#[tokio::test(start_paused = true)]
+async fn a_changed_event_on_the_stream_locks_the_account_at_once() {
+    let path = socket_path("app-lock-changed-stream");
+    let fake = FakeBus::start(&path, |method, _, _| match method {
+        "account.app_lock.state" => {
+            Reply::Ok(json!({"enabled": true, "state": "locked", "reason": "manual"}))
+        }
+        _ => Reply::Ok(json!({})),
+    });
+    let (mut task, mut inbox, delivered) = task(&path, Scope::Account(AccountId::new("acct-main")));
+    let (tx, mut notices) = tokio::sync::mpsc::unbounded_channel();
+    task.daemon_refresh = Some(tx);
+    task.on_streamed(Streamed::Event {
+        seq: None,
+        at: None,
+        topic: "account.app_lock.changed".to_owned(),
+        body: locked_event(),
+    });
+    assert_eq!(app_lock_states(&delivered), vec![AppLockState::Locked], "applied before any read");
+    assert!(matches!(notices.try_recv(), Ok(crate::bridge::DaemonNotice::Refresh)));
+    pump(&mut task, &mut inbox, |t| t.read_recovery.running.is_empty()).await;
+    assert_eq!(lock_reads(&fake), 1, "the lock is read again");
+}
+
+/// An unlock by another client is read, not assumed, and does not lock.
+#[tokio::test(start_paused = true)]
+async fn a_changed_event_that_is_not_locked_only_reads_the_lock() {
+    let path = socket_path("app-lock-changed-open");
+    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({})));
+    let (mut task, mut inbox, delivered) = task(&path, Scope::Account(AccountId::new("acct-main")));
+    let (tx, _notices) = tokio::sync::mpsc::unbounded_channel();
+    task.daemon_refresh = Some(tx);
+    task.app_lock_changed(None, &json!({"state": "unlocked", "remaining_ms": 0}));
+    pump(&mut task, &mut inbox, |t| t.read_recovery.running.is_empty()).await;
+    assert_eq!(lock_reads(&fake), 1);
+    assert_eq!(app_lock_states(&delivered), vec![AppLockState::Unlocked]);
+}
+
+/// An event that names another account is not this session's.
+#[tokio::test(start_paused = true)]
+async fn a_changed_event_of_another_account_is_ignored_by_an_account_session() {
+    let path = socket_path("app-lock-changed-other");
+    let fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({})));
+    let (mut task, _inbox, delivered) = task(&path, Scope::Account(AccountId::new("acct-main")));
+    task.app_lock_changed(Some("acct-other"), &locked_event());
+    assert!(app_lock_states(&delivered).is_empty());
+    assert_eq!(lock_reads(&fake), 0);
+}
+
+/// With no account stream attached, the daemon session's request connection
+/// is told: its store closes and it lists the accounts again.
+#[tokio::test(start_paused = true)]
+async fn a_changed_event_on_the_daemon_request_connection_locks_the_daemon_store() {
+    let path = socket_path("app-lock-changed-daemon");
+    let fake = FakeBus::start(&path, |method, _, _| match method {
+        "account.list" => Reply::Ok(daemon_listing()),
+        "account.app_lock.state" => {
+            Reply::Ok(json!({"enabled": true, "state": "locked", "reason": "manual"}))
+        }
+        _ => Reply::Ok(json!({})),
+    });
+    let (mut task, mut inbox, delivered) = task(&path, Scope::Daemon);
+    let (events, mut locks) = tokio::sync::mpsc::unbounded_channel();
+    task.client = BusClient::with_status(
+        path.clone(),
+        Duration::from_secs(2),
+        task.config.deadlines,
+        None,
+        Some(events),
+    );
+    task.client.attach().await.expect("connects");
+    // The fake may not have registered the connection yet.
+    let mut event = None;
+    for _ in 0..200 {
+        fake.push_to_connections("acct-main", "account.app_lock.changed", locked_event());
+        tokio::task::yield_now().await;
+        std::thread::sleep(Duration::from_millis(5));
+        if let Ok(received) = locks.try_recv() {
+            event = Some(received);
+            break;
+        }
+    }
+    let event = event.expect("the request connection forwards the event");
+    task.app_lock_changed(event.account.as_deref(), &event.body);
+    assert_eq!(app_lock_states(&delivered), vec![AppLockState::Locked], "applied at once");
+    pump(&mut task, &mut inbox, |t| t.read_recovery.running.is_empty()).await;
+    assert!(fake.seen().iter().any(|r| r.method == "account.list"), "the accounts are listed");
+    assert!(lock_reads(&fake) >= 1);
+}
+
+#[test]
+fn the_locked_stream_retry_backs_off_to_the_cap() {
+    let base = Duration::from_secs(2);
+    let waits: Vec<_> = (0..8).map(|n| crate::bridge::app_lock::stream_backoff(base, n)).collect();
+    assert_eq!(waits[0], base);
+    assert_eq!(waits[1], Duration::from_secs(4));
+    assert_eq!(waits[3], Duration::from_secs(16));
+    assert_eq!(waits[4], Duration::from_secs(30));
+    assert_eq!(waits[7], Duration::from_secs(30));
+}
+
+#[tokio::test(start_paused = true)]
+async fn repeated_locked_refusals_of_the_stream_retry_later_each_time() {
+    let path = socket_path("app-lock-stream-backoff");
+    let _fake = FakeBus::start(&path, |_, _, _| Reply::Ok(json!({})));
+    let (mut task, _inbox, _delivered) = task(&path, Scope::Account(AccountId::new("acct-main")));
+    let base = task.config.reconnect_backoff;
+    let mut waits = Vec::new();
+    for _ in 0..3 {
+        task.on_streamed(Streamed::Ended(StreamEnd::AppLocked));
+        waits.push(task.sync.open_at.map(|at| at - Instant::now()));
+    }
+    assert_eq!(waits, vec![Some(base), Some(base * 2), Some(base * 4)]);
+}
+
+/// An account session whose status read says the account is not open sends
+/// the daemon session to list the accounts again.
+#[tokio::test(start_paused = true)]
+async fn an_account_not_open_answer_refreshes_the_daemon() {
+    let path = socket_path("app-lock-not-open");
+    let _fake = FakeBus::start(&path, |method, _, _| match method {
+        "account.status" => Reply::Error("ValidationFailed", "account not open: acct-main".into()),
+        _ => Reply::Ok(json!({})),
+    });
+    let (mut task, mut inbox, _delivered) =
+        task(&path, Scope::Account(AccountId::new("acct-main")));
+    let (tx, mut notices) = tokio::sync::mpsc::unbounded_channel();
+    task.daemon_refresh = Some(tx);
+    task.spawn_fetches(vec![Fetch::AccountStatus(AccountId::new("acct-main"))]);
+    pump(&mut task, &mut inbox, |t| t.read_recovery.running.is_empty() && t.link == Link::Locked)
+        .await;
+    assert!(matches!(notices.try_recv(), Ok(crate::bridge::DaemonNotice::Refresh)));
+}

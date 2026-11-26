@@ -576,6 +576,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
                 state: AppLockState::Locked,
                 reason: Some("timeout".into()),
                 generation: 3,
+                armed: false,
             },
         },
         DomainEvent::AppLockLifecycleAnswered {
