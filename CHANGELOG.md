@@ -47,6 +47,8 @@ Versioning.
 
 ### Fixed
 
+- A new group takes no messages until its member adds finish: its composer says
+  it is being created (RFGUI-102).
 - New group stays in its creating state until every member has been added;
   the group conversation was shown (and a first message could be sent) while
   members were still being added, so the message reached only some of them.

@@ -196,6 +196,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::EffectSucceeded { .. } => "EffectSucceeded",
         DomainEvent::GroupInvitationsListed(_) => "GroupInvitationsListed",
         DomainEvent::MomentRemoved { .. } => "MomentRemoved",
+        DomainEvent::GroupCreation { .. } => "GroupCreation",
         DomainEvent::UsernameStatusUpdated(_) => "UsernameStatusUpdated",
         DomainEvent::AccountLockChanged { .. } => "AccountLockChanged",
         DomainEvent::NodeUpserted(_) => "NodeUpserted",

@@ -109,6 +109,8 @@ pub struct Store {
     request_floors: Option<RequestFloors>,
     request_read_error: Option<String>,
     group_invitations: Vec<crate::GroupInvitation>,
+    /// Group conversations whose creation has not finished.
+    creating: BTreeSet<ContextId>,
     username: Option<crate::UsernameStatus>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
@@ -365,6 +367,12 @@ impl Store {
     /// The group invitations waiting for an answer.
     pub fn group_invitations(&self) -> &[crate::GroupInvitation] {
         &self.group_invitations
+    }
+
+    /// Whether the group conversation is still being created: its members
+    /// are being added, so it takes no messages yet.
+    pub fn is_creating(&self, context: &ContextId) -> bool {
+        self.creating.contains(context)
     }
 
     /// This account's username as last reported.

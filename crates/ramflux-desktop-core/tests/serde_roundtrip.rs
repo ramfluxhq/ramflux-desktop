@@ -20,6 +20,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::EffectSucceeded { .. } => "EffectSucceeded",
         DomainEvent::GroupInvitationsListed(_) => "GroupInvitationsListed",
         DomainEvent::MomentRemoved { .. } => "MomentRemoved",
+        DomainEvent::GroupCreation { .. } => "GroupCreation",
         DomainEvent::UsernameStatusUpdated(_) => "UsernameStatusUpdated",
         DomainEvent::NodeUpserted(_) => "NodeUpserted",
         DomainEvent::NodeHealthChanged { .. } => "NodeHealthChanged",
@@ -693,6 +694,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             inviter: None,
             expires_at: Some(Timestamp(5)),
         }]),
+        DomainEvent::GroupCreation { context_id: ContextId::new("c-1"), creating: true },
         DomainEvent::UsernameStatusUpdated(UsernameStatus::Unavailable("refused".to_owned())),
         DomainEvent::OwnContactCardUpdated(ContactCard {
             text: "card-text".to_owned(),
