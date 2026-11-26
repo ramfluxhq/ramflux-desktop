@@ -68,6 +68,7 @@ fn scratch(name: &str) -> PathBuf {
 
 #[gpui_kit::test]
 fn theme_and_language_switch_in_the_open_window_and_follow_the_system(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
     let (handle, shell) = open(cx, "s02_daily");
     advance(cx, 1_000);
     cx.update(|cx| {
@@ -130,6 +131,7 @@ fn theme_and_language_switch_in_the_open_window_and_follow_the_system(cx: &mut T
 
 #[gpui_kit::test]
 fn choices_are_saved_on_the_device_and_read_back(cx: &mut TestAppContext) {
+    let _locale = locale_guard();
     let dir = scratch("saved");
     let path = dir.join("desktop-settings.json");
     cx.update(|cx| {
