@@ -13,8 +13,9 @@ Versioning.
   app asks for the account code after the chosen time in the background
   (immediately, 1 minute, 5 minutes, 15 minutes or 1 hour). The lock is the
   core's (`account.app_lock.configure`, `.state` and `.lifecycle`); while it
-  holds the account closed, the entry page asks for the account code, and
-  notices show no sender and no text. Unlock is by account code only:
+  holds the account closed, a lock page asks for the account code and shows
+  nothing else, and the content stays covered until the lock state is known
+  after the window comes back. Notices show no sender and no text. Unlock is by account code only:
   biometric unlock waits for the core.
 
 - Message actions in direct and group conversations: Reply (the composer

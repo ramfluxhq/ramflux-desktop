@@ -24,7 +24,7 @@ mod names;
 mod renderer_errors;
 mod session;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
@@ -81,6 +81,12 @@ pub struct AccountAttention {
 
 /// Owns every account session and is the only path to the store and source.
 pub struct StoreHandle {
+    /// Accounts whose app lock the window waits for after it came back to
+    /// the front: their content stays covered until the daemon answers.
+    resume_hold: BTreeSet<AccountId>,
+    /// The account last rendered while its session existed: the lock screen
+    /// asks for it first (a held account drops out of the daemon's open list).
+    remembered: Option<AccountId>,
     sessions: BTreeMap<AccountId, AccountSession>,
     active: Option<AccountId>,
     inspector: Inspector,
@@ -115,6 +121,8 @@ impl StoreHandle {
     /// Creates a handle with no account and a stopped clock.
     pub fn new() -> Self {
         Self {
+            resume_hold: BTreeSet::new(),
+            remembered: None,
             sessions: BTreeMap::new(),
             active: None,
             inspector: Inspector::default(),
@@ -530,7 +538,37 @@ impl StoreHandle {
         self.sessions.get_mut(&id)
     }
 
+    /// Covers the content of `accounts` until the daemon answers their app
+    /// lock (the next change to them releases the hold).
+    pub fn hold_for_resume(&mut self, accounts: Vec<AccountId>, cx: &mut Context<Self>) {
+        if accounts.is_empty() {
+            return;
+        }
+        self.resume_hold.extend(accounts);
+        self.emit_reset(cx);
+    }
+
+    /// The account last rendered (see the field).
+    pub fn remembered_account(&self) -> Option<&AccountId> {
+        self.remembered.as_ref()
+    }
+
+    /// Whether an account's app lock is still awaited after a resume.
+    pub fn resume_held(&self) -> bool {
+        !self.resume_hold.is_empty()
+    }
+
+    /// Releases the resume hold of the accounts a change names (their app
+    /// lock answered).
+    fn release_resume_hold(&mut self, changes: &ChangeSet) {
+        if !self.resume_hold.is_empty() {
+            let changed = &changes.domain().accounts;
+            self.resume_hold.retain(|id| !changed.contains(id));
+        }
+    }
+
     fn publish(&mut self, applied: Applied, cx: &mut Context<Self>) {
+        self.release_resume_hold(&applied.changes);
         if applied.changes.is_empty() && applied.records.is_empty() {
             return;
         }

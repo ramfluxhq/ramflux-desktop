@@ -257,15 +257,17 @@ fn map(
             call(BusRequest::new(None, "node", "node.set_enabled", request))
         }
         methods::ACCOUNT_UNLOCK => match secrets.pop() {
-            Some(secret) => call(
-                BusRequest::new(
+            // The app lock's state is read back with the unlock.
+            Some(secret) => Plan::Call {
+                request: BusRequest::new(
                     Some(text(body, "account_id")),
                     "account",
                     "account.unlock",
                     json!({}),
                 )
                 .with_secret("passphrase", secret),
-            ),
+                refresh: vec![Fetch::AppLock(AccountId::new(text(body, "account_id")))],
+            },
             None => refuse_invalid("missing passphrase"),
         },
         methods::ACCOUNT_BACKUP_IMPORT => match secrets.pop() {

@@ -1339,6 +1339,26 @@ impl Task {
             };
             return self.emit(crate::translate::account::username_unavailable(reason));
         }
+        // The daemon refuses an account's reads while its app lock holds the
+        // account closed: the lock screen takes over, and nothing is retried
+        // or reported as a failure.
+        if let Err(BusError::Daemon { code, .. }) = &result
+            && code == "app_locked"
+        {
+            let closed = match self.account() {
+                Some(id) => self.translator.app_locked(&ramflux_desktop_core::AccountId::new(id)),
+                None => Vec::new(),
+            };
+            return self.emit(closed);
+        }
+        // An app lock state that cannot be read stays closed (the account
+        // code opens it), not open.
+        if let (Fetch::AppLock(id), Err(error)) = (fetch, &result)
+            && !error.is_connection_lost()
+        {
+            let events = self.translator.app_lock_unreadable(id);
+            return self.emit(events);
+        }
         // An account made by an older development build cannot be opened:
         // nothing is retried and nothing is written to it.
         if let Err(BusError::Daemon { code, .. }) = &result

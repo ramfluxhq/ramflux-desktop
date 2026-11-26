@@ -145,6 +145,10 @@ pub struct EntryPage {
     /// Where the wait for a freshly opened account session is (see
     /// [`EntryPage::awaits_session`]).
     session_wait: SessionWait,
+    /// `Some(cover)` while the window is held by the app lock: the lock view
+    /// (`false`) or the blank cover (`true`) replaces the steps. Set by the
+    /// shell, which decides the page.
+    lock_view: Option<bool>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -226,6 +230,7 @@ impl EntryPage {
             submitted: None,
             node_lookup: None,
             session_wait: SessionWait::Idle,
+            lock_view: None,
             _subscriptions: subscriptions,
         }
     }
@@ -303,7 +308,10 @@ impl EntryPage {
         let handle = self.store.read(cx);
         handle.is_live()
             && !handle.daemon_unreachable()
-            && matches!(page_for(handle.store()), Page::Entry(EntryStep::Daemon))
+            && matches!(
+                page_for(handle.store(), handle.entry_store(), true),
+                Page::Entry(EntryStep::Daemon) | Page::Cover
+            )
     }
 
     /// Whether the wait for the account session has run out: the bound
@@ -362,12 +370,13 @@ impl EntryPage {
         if self.awaits_restore_listing(cx) || self.awaits_session(cx) {
             return EntryStep::Account;
         }
-        match page_for(self.store.read(cx).store()) {
+        let handle = self.store.read(cx);
+        match page_for(handle.store(), handle.entry_store(), handle.is_live()) {
             Page::Entry(EntryStep::Account) if self.review_nodes && !self.has_account(cx) => {
                 EntryStep::Node
             }
             Page::Entry(step) => step,
-            Page::Workspace => EntryStep::Account,
+            Page::Workspace | Page::Lock | Page::Cover => EntryStep::Account,
         }
     }
 
@@ -378,6 +387,22 @@ impl EntryPage {
 
 impl Render for EntryPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        match self.lock_view {
+            Some(cover) => self.render_lock(cover, window, cx).into_any_element(),
+            None => self.render_entry(window, cx).into_any_element(),
+        }
+    }
+}
+
+impl EntryPage {
+    /// Sets the lock view the shell asks for (see `lock_view`).
+    pub fn set_lock_view(&mut self, lock_view: Option<bool>, cx: &mut Context<Self>) {
+        self.lock_view = lock_view;
+        cx.notify();
+    }
+
+    /// The steps of the entry page.
+    fn render_entry(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let step = self.step(cx);
         let selected = match step {
             EntryStep::Daemon => 0,

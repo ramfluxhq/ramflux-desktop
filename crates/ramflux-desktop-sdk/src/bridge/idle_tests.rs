@@ -289,13 +289,14 @@ async fn daemon_eof_with_only_locked_account_reconnects_and_refreshes_nodes_with
         |d| matches!(d.event, DomainEvent::NodeUpserted(node) if node.id.as_str() == "n-restarted")
     ));
     let methods: Vec<_> = restarted.seen().iter().map(|r| r.method.clone()).collect();
-    assert_eq!(methods.len(), 3, "exactly one full daemon snapshot");
-    for method in ["daemon.status", "node.list", "account.list"] {
+    // The snapshot also reads the app lock of each listed account (one here).
+    assert_eq!(methods.len(), 4, "exactly one full daemon snapshot");
+    for method in ["daemon.status", "node.list", "account.list", "account.app_lock.state"] {
         assert_eq!(methods.iter().filter(|m| *m == method).count(), 1);
     }
     tokio::time::advance(Duration::from_secs(600)).await;
     daemon.tick();
-    assert_eq!(restarted.seen().len(), 3, "settled reconnect does not poll");
+    assert_eq!(restarted.seen().len(), 4, "settled reconnect does not poll");
 }
 
 #[tokio::test(start_paused = true)]

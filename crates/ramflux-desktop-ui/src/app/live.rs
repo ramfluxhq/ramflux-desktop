@@ -95,6 +95,7 @@ impl StoreHandle {
         if let (Some(part), Some(_)) = (daemon_part, self.active.as_ref()) {
             cx.emit(StoreEvent::Changed(std::rc::Rc::new(part)));
         }
+        self.release_resume_hold(&applied.changes);
         if self.active.is_none() {
             self.publish(applied, cx);
         } else if self.daemon_status.is_some_and(|seen| seen != status) {
@@ -135,6 +136,11 @@ impl StoreHandle {
     }
 
     fn reconcile_live(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.active.clone()
+            && self.sessions.contains_key(&id)
+        {
+            self.remembered = Some(id);
+        }
         let Some(link) = self.live.as_ref() else { return };
         let unlocked: Vec<AccountId> = link
             .daemon
@@ -180,8 +186,9 @@ impl StoreHandle {
         cx: &mut Context<Self>,
     ) -> DispatchOutcome {
         // The entry page's ceremonies belong to the daemon's session, also
-        // once the account one of them opened is rendered.
-        let ceremony = is_ceremony(&intent.kind);
+        // once the account one of them opened is rendered. So do the app lock
+        // and the unlock: the daemon's store is where the lock is decided.
+        let ceremony = runs_on_daemon(&intent.kind);
         let Some(mut session) = self.session() else { return DispatchOutcome::NoAccount };
         if ceremony && let Some(link) = self.live.as_ref() {
             session = link.daemon();
@@ -223,6 +230,18 @@ impl StoreHandle {
         cx.emit(StoreEvent::Inspected);
         DispatchOutcome::Submitted(labels)
     }
+}
+
+/// Whether `kind` runs on the daemon scope: the ceremonies, the app lock and
+/// the unlock (whose answer, lock state and refusal the daemon's store holds).
+fn runs_on_daemon(kind: &IntentKind) -> bool {
+    is_ceremony(kind)
+        || matches!(
+            kind,
+            IntentKind::ConfigureAppLock { .. }
+                | IntentKind::AppLockLifecycle { .. }
+                | IntentKind::Unlock { .. }
+        )
 }
 
 /// Whether `kind` belongs to the creation or recovery ceremony of the entry

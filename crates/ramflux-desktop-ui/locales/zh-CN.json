@@ -611,6 +611,7 @@
   "entry.account.lock": "锁定 %{name}",
   "entry.account.locked": "已锁定",
   "entry.app_lock.locked": "离开一段时间后已锁定。请输入账号密码以继续。",
+  "entry.app_lock.wrong_code": "账号密码不对，请重试。",
   "entry.account.unlocked": "已解锁",
   "entry.account.detail": "%{kind} · 节点 %{node} · 设备 %{device}",
   "entry.account.passphrase": "六位数字账号密码",
