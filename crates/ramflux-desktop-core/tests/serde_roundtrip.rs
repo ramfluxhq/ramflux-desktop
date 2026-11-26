@@ -246,7 +246,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 56;
+const UI_EVENT_KIND_VARIANTS: usize = 57;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
