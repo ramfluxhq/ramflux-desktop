@@ -205,8 +205,13 @@ impl Task {
                     ramflux_desktop_core::methods::APP_LOCK_STATE
                         | ramflux_desktop_core::methods::APP_LOCK_CONFIGURE
                         | ramflux_desktop_core::methods::APP_LOCK_LIFECYCLE
-                ) {
-                    self.app_lock_watch.observe(&answer, tokio::time::Instant::now());
+                ) && let Some(id) = body["account_id"].as_str()
+                {
+                    self.app_lock_watch.observe(
+                        &ramflux_desktop_core::AccountId::new(id),
+                        &answer,
+                        tokio::time::Instant::now(),
+                    );
                 }
                 events.extend(Self::creation_ended(method, body));
                 self.emit(events);
@@ -224,22 +229,24 @@ impl Task {
                 if let BusError::Daemon { code: refusal, .. } = &error
                     && refusal == "app_locked"
                 {
-                    let closed = match self.scope.account() {
-                        Some(id) => self.translator.app_locked(id),
-                        None => Vec::new(),
-                    };
-                    self.emit(closed);
+                    // The daemon session takes the account from the request.
+                    let account = self.scope.account().cloned().or_else(|| {
+                        body["account_id"].as_str().map(ramflux_desktop_core::AccountId::new)
+                    });
+                    self.app_lock_refused(account);
                     return;
                 }
                 // A lifecycle the daemon did not answer leaves the account's lock
                 // unknown: it stays closed until the account code opens it.
                 if method == ramflux_desktop_core::methods::APP_LOCK_LIFECYCLE {
                     if let Some(id) = body["account_id"].as_str() {
-                        self.app_lock_watch
-                            .unreadable(self.config.reconnect_backoff, tokio::time::Instant::now());
-                        let events = self
-                            .translator
-                            .app_lock_unreadable(&ramflux_desktop_core::AccountId::new(id));
+                        let account = ramflux_desktop_core::AccountId::new(id);
+                        self.app_lock_watch.unreadable(
+                            &account,
+                            self.config.reconnect_backoff,
+                            tokio::time::Instant::now(),
+                        );
+                        let events = self.translator.app_lock_unreadable(&account);
                         self.emit(events);
                     }
                     if error.is_connection_lost() {

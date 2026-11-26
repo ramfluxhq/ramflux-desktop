@@ -32,7 +32,8 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, EventEmitter, Task};
 use ramflux_desktop_core::{
-    AccountId, AttentionItem, CallState, ContextId, Intent, MomentId, Store, Timestamp, selectors,
+    AccountId, AppLockPhase, AttentionItem, CallState, ContextId, Intent, MomentId, Store,
+    Timestamp, selectors,
 };
 #[cfg(feature = "demo")]
 use ramflux_desktop_test::{Scenario, load_fixture};
@@ -581,10 +582,13 @@ impl StoreHandle {
     /// page covers it, and nothing is left to wait for). Any other change
     /// naming the account leaves the hold in place.
     fn release_resume_hold(&mut self, changes: &ChangeSet) {
+        let domain = changes.domain();
+        for (account, phase) in &domain.lifecycle_phases {
+            self.resume_hold.reported(account, *phase);
+        }
         if self.resume_hold.is_empty() {
             return;
         }
-        let domain = changes.domain();
         for (account, answers) in &domain.foreground_answers {
             self.resume_hold.answered(account, *answers);
         }
@@ -599,8 +603,25 @@ impl StoreHandle {
         }
     }
 
+    /// The phase of the window the daemon last answered for `account`.
+    pub fn reported_phase(&self, account: &AccountId) -> Option<AppLockPhase> {
+        self.resume_hold.phase(account)
+    }
+
+    /// Forgets the phases of accounts that are no longer reported.
+    pub fn retain_reported(&mut self, accounts: &[AccountId]) {
+        self.resume_hold.retain_phases(accounts);
+    }
+
+    /// Whether the daemon's connection is up (only then does it have an app
+    /// lock to report to).
+    pub fn daemon_connected(&self) -> bool {
+        self.daemon_store().is_some_and(|store| {
+            store.source_status() == ramflux_desktop_core::SourceStatus::Connected
+        })
+    }
+
     fn publish(&mut self, applied: Applied, cx: &mut Context<Self>) {
-        self.release_resume_hold(&applied.changes);
         if applied.changes.is_empty() && applied.records.is_empty() {
             return;
         }

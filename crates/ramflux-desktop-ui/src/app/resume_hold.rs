@@ -8,12 +8,14 @@
 
 use std::collections::BTreeMap;
 
-use ramflux_desktop_core::AccountId;
+use ramflux_desktop_core::{AccountId, AppLockPhase};
 
-/// Foreground reports not answered yet, per account.
+/// Foreground reports not answered yet, per account, and the phase the
+/// daemon last answered for each account.
 #[derive(Debug, Default)]
 pub(super) struct ResumeHold {
     pending: BTreeMap<AccountId, u32>,
+    reported: BTreeMap<AccountId, AppLockPhase>,
 }
 
 impl ResumeHold {
@@ -38,6 +40,32 @@ impl ResumeHold {
     /// nothing is left to wait for.
     pub(super) fn closed(&mut self, account: &AccountId) -> bool {
         self.pending.remove(account).is_some()
+    }
+
+    /// The daemon answered a report of `phase` for `account`: that is the
+    /// phase it has now.
+    pub(super) fn reported(&mut self, account: &AccountId, phase: AppLockPhase) {
+        self.reported.insert(account.clone(), phase);
+    }
+
+    /// The phase the daemon last answered for `account`.
+    pub(super) fn phase(&self, account: &AccountId) -> Option<AppLockPhase> {
+        self.reported.get(account).copied()
+    }
+
+    /// Forgets the phases of accounts not in `keep`.
+    pub(super) fn retain_phases(&mut self, keep: &[AccountId]) {
+        self.reported.retain(|id, _| keep.contains(id));
+    }
+
+    /// The daemon connection was lost: every hold goes (the content is not
+    /// kept covered for an answer that cannot come) and the phases the daemon
+    /// had are unknown; whether anything was held.
+    pub(super) fn lost(&mut self) -> bool {
+        self.reported.clear();
+        let held = !self.pending.is_empty();
+        self.pending.clear();
+        held
     }
 
     /// Whether `account` is held.
@@ -66,6 +94,18 @@ mod tests {
         assert!(hold.holds(&account));
         assert!(hold.answered(&account, 1));
         assert!(hold.is_empty());
+    }
+
+    #[test]
+    fn a_lost_connection_drops_every_hold_and_phase() {
+        let account = AccountId::new("a");
+        let mut hold = ResumeHold::default();
+        hold.hold(account.clone());
+        hold.reported(&account, AppLockPhase::Background);
+        assert!(hold.lost());
+        assert!(hold.is_empty());
+        assert_eq!(hold.phase(&account), None);
+        assert!(!hold.lost());
     }
 
     #[test]

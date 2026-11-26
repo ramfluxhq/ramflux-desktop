@@ -96,6 +96,11 @@ impl StoreHandle {
             cx.emit(StoreEvent::Changed(std::rc::Rc::new(part)));
         }
         self.release_resume_hold(&applied.changes);
+        // A lost daemon cannot answer: nothing stays covered for it, and what
+        // it had is unknown when it returns.
+        if status != ramflux_desktop_core::SourceStatus::Connected && self.resume_hold.lost() {
+            self.emit_reset(cx);
+        }
         if self.active.is_none() {
             self.publish(applied, cx);
         } else if self.daemon_status.is_some_and(|seen| seen != status) {

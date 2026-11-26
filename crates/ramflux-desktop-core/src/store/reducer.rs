@@ -61,6 +61,7 @@ impl Store {
                 self.set_lock(account_id, *lock_state, changes)?;
             }
             DomainEvent::AppLockLifecycleAnswered { account_id, phase } => {
+                changes.lifecycle_phases.insert(account_id.clone(), *phase);
                 if *phase == crate::intent::AppLockPhase::Foreground {
                     *changes.foreground_answers.entry(account_id.clone()).or_default() += 1;
                 }

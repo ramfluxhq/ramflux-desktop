@@ -154,3 +154,140 @@ fn a_daemon_started_from_the_app_is_stopped_gracefully(cx: &mut TestAppContext) 
         with_store(cx, &shell, |s| s.source_status() == SourceStatus::Disconnected)
     });
 }
+
+/// A daemon on a copy of the prepared data root (an account the daemon opens
+/// by itself); `None` when live tests or the template are not switched on.
+fn prepared_daemon(tag: &str) -> Option<LiveDaemon> {
+    if !live_daemon::enabled() {
+        println!("skipped: set {}=1 to run against a real daemon", live_daemon::ENABLE_ENV);
+        return None;
+    }
+    let Some(template) = std::env::var_os(live_daemon::TEMPLATE_ENV) else {
+        println!("skipped: set {} to a prepared data root", live_daemon::TEMPLATE_ENV);
+        return None;
+    };
+    let daemon = LiveDaemon::start_from(tag, std::path::Path::new(&template))
+        .unwrap_or_else(|e| panic!("daemon: {e}"));
+    // The daemon opens the account by itself a moment after it answers; the
+    // window lists accounts once when it connects.
+    for _ in 0..200 {
+        let listed = daemon.call(None, "account", "account.list", &serde_json::json!({}));
+        if listed.is_ok_and(|l| l["account_details"][0]["state"] == "unlocked") {
+            return Some(daemon);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    panic!("the daemon did not open the prepared account");
+}
+
+/// The id of the one account the prepared daemon has open.
+fn open_account(daemon: &LiveDaemon) -> ramflux_desktop_core::AccountId {
+    let listed = daemon
+        .call(None, "account", "account.list", &serde_json::json!({}))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let id = listed["accounts"][0]["id"].as_str().expect("an open account").to_owned();
+    ramflux_desktop_core::AccountId::new(id)
+}
+
+/// Submits `kind` as the window's human would.
+fn submit(
+    cx: &mut TestAppContext,
+    handle: gpui_kit::WindowHandle<gpui_kit::base::Root>,
+    shell: &gpui_kit::Entity<ramflux_desktop_ui::shell::Shell>,
+    kind: ramflux_desktop_core::IntentKind,
+) -> String {
+    let root = cx.update(|cx| shell.read(cx).root().clone());
+    in_window(cx, handle, move |window, cx| {
+        root.update(cx, |root, cx| {
+            root.submit(ramflux_desktop_core::Intent::human(kind), window, cx)
+        })
+    })
+}
+
+/// The app lock the daemon session's store holds for `account`.
+fn lock_state(
+    cx: &mut TestAppContext,
+    shell: &gpui_kit::Entity<ramflux_desktop_ui::shell::Shell>,
+    account: &ramflux_desktop_core::AccountId,
+) -> Option<ramflux_desktop_core::AppLock> {
+    cx.update(|cx| shell.read(cx).store().read(cx).entry_store().app_lock(account).cloned())
+}
+
+fn configure_app_lock(
+    cx: &mut TestAppContext,
+    handle: gpui_kit::WindowHandle<gpui_kit::base::Root>,
+    shell: &gpui_kit::Entity<ramflux_desktop_ui::shell::Shell>,
+    account: &ramflux_desktop_core::AccountId,
+    timeout_ms: u64,
+) {
+    let result = submit(
+        cx,
+        handle,
+        shell,
+        ramflux_desktop_core::IntentKind::ConfigureAppLock {
+            account_id: account.clone(),
+            enabled: true,
+            timeout_ms,
+        },
+    );
+    assert!(result.starts_with("submitted"), "{result}");
+    wait(cx, "the lock is on", |cx| {
+        lock_state(cx, shell, account)
+            .is_some_and(|lock| lock.enabled && lock.timeout_ms == timeout_ms)
+    });
+}
+
+/// The window goes to the background (the report the root sends) and then
+/// nothing changes: no focus change, no input. The daemon's own timer locks
+/// the account, and the window must show the lock page.
+#[gpui_kit::test]
+#[ignore = "needs a real rf daemon and a prepared account: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=... RAMFLUX_LIVE_APP_LOCK_TEMPLATE=..."]
+fn the_daemons_timeout_locks_an_unfocused_window_without_a_focus_change(cx: &mut TestAppContext) {
+    let Some(daemon) = prepared_daemon("lock-timeout") else { return };
+    let account = open_account(&daemon);
+    let (handle, shell) = open_with(cx, options(&daemon));
+    wait(cx, "the workspace", |cx| page(cx, &shell) == Page::Workspace);
+    configure_app_lock(cx, handle, &shell, &account, 1_500);
+    assert_eq!(page(cx, &shell), Page::Workspace);
+    let result = submit(
+        cx,
+        handle,
+        &shell,
+        ramflux_desktop_core::IntentKind::AppLockLifecycle {
+            account_id: account.clone(),
+            phase: ramflux_desktop_core::AppLockPhase::Background,
+        },
+    );
+    assert!(result.starts_with("submitted"), "{result}");
+    let started = std::time::Instant::now();
+    wait(cx, "the lock page", |cx| page(cx, &shell) == Page::Lock);
+    println!("the lock page showed {:?} after the background report", started.elapsed());
+    assert!(
+        started.elapsed() >= Duration::from_millis(1_000),
+        "the page cannot show before the daemon's deadline"
+    );
+    assert!(
+        lock_state(cx, &shell, &account)
+            .is_some_and(|lock| lock.reason.as_deref() == Some("timeout"))
+    );
+}
+
+/// A second control client (as `rf account app-lock lock` is) locks the
+/// account while the window stays in the foreground and untouched.
+#[gpui_kit::test]
+#[ignore = "needs a real rf daemon and a prepared account: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=... RAMFLUX_LIVE_APP_LOCK_TEMPLATE=..."]
+fn a_lock_sent_by_another_control_client_shows_the_lock_page(cx: &mut TestAppContext) {
+    let Some(daemon) = prepared_daemon("lock-cli") else { return };
+    let account = open_account(&daemon);
+    let (handle, shell) = open_with(cx, options(&daemon));
+    wait(cx, "the workspace", |cx| page(cx, &shell) == Page::Workspace);
+    configure_app_lock(cx, handle, &shell, &account, 600_000);
+    assert_eq!(page(cx, &shell), Page::Workspace);
+    let locked = daemon
+        .call(Some(account.as_str()), "account", "account.app_lock.lock", &serde_json::json!({}))
+        .unwrap_or_else(|e| panic!("{e}"));
+    println!("account.app_lock.lock answered: {locked}");
+    let started = std::time::Instant::now();
+    wait(cx, "the lock page", |cx| page(cx, &shell) == Page::Lock);
+    println!("the lock page showed {:?} after the control client's lock", started.elapsed());
+}

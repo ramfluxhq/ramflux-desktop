@@ -773,10 +773,10 @@ impl Task {
         match self.link {
             Link::Lost if now >= self.reconnect_at => self.snapshot(),
             Link::Live => {
-                if app_lock_due && let Some(account) = self.account() {
-                    self.request_reads(vec![Fetch::AppLock(ramflux_desktop_core::AccountId::new(
-                        account,
-                    ))]);
+                // Each account's lock is read by the session that observed its
+                // deadline (the daemon session reads any account's lock).
+                if !app_lock_due.is_empty() {
+                    self.request_reads(app_lock_due.into_iter().map(Fetch::AppLock).collect());
                 }
                 if self.sync.open_at.is_some_and(|at| now >= at) {
                     self.open_stream();
@@ -1356,23 +1356,21 @@ impl Task {
         if let Err(BusError::Daemon { code, .. }) = &result
             && code == "app_locked"
         {
-            let closed = match self.account() {
-                Some(id) => self.translator.app_locked(&ramflux_desktop_core::AccountId::new(id)),
-                None => Vec::new(),
-            };
-            return self.emit(closed);
+            let account = self.account().map(ramflux_desktop_core::AccountId::new);
+            self.app_lock_refused(account);
+            return false;
         }
         // An app lock state that cannot be read stays closed (the account
         // code opens it), not open.
         if let (Fetch::AppLock(id), Err(error)) = (fetch, &result)
             && !error.is_connection_lost()
         {
-            self.app_lock_watch.unreadable(self.config.reconnect_backoff, Instant::now());
+            self.app_lock_watch.unreadable(id, self.config.reconnect_backoff, Instant::now());
             let events = self.translator.app_lock_unreadable(id);
             return self.emit(events);
         }
-        if let (Fetch::AppLock(_), Ok(body)) = (fetch, &result) {
-            self.app_lock_watch.observe(body, Instant::now());
+        if let (Fetch::AppLock(id), Ok(body)) = (fetch, &result) {
+            self.app_lock_watch.observe(id, body, Instant::now());
         }
         // An account made by an older development build cannot be opened:
         // nothing is retried and nothing is written to it.

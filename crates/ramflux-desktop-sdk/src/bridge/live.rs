@@ -322,7 +322,11 @@ impl Task {
                 self.sync.open_at =
                     Some(if moved { now } else { now + self.config.reconnect_backoff });
             }
-            StreamEnd::NotOpen => self.locked(),
+            StreamEnd::NotOpen => {
+                self.locked();
+                // The lock screen is routed from the daemon's store.
+                self.app_lock_refused(None);
+            }
             StreamEnd::AppLocked => {
                 // The daemon closed the stream when its app lock closed the
                 // account, and refuses the next one: the lock screen takes
@@ -332,11 +336,8 @@ impl Task {
                 self.sync.stop();
                 self.sync.failures = 0;
                 self.sync.open_at = Some(now + self.config.reconnect_backoff);
-                if let Some(account) = self.account() {
-                    let closed =
-                        self.translator.app_locked(&ramflux_desktop_core::AccountId::new(account));
-                    self.emit(closed);
-                }
+                let account = self.account().map(ramflux_desktop_core::AccountId::new);
+                self.app_lock_refused(account);
             }
             StreamEnd::Unsupported(reason) => self.fall_back(reason),
             StreamEnd::Lost(error) => {

@@ -107,7 +107,6 @@ mod tests {
         };
 
         let id = AccountId::new("a-1");
-        let mut store = Store::new();
         let account = Account {
             id: id.clone(),
             label: "a-1".to_owned(),
@@ -140,14 +139,19 @@ mod tests {
                 },
             )
         };
-        store
-            .apply(&EventEnvelope::new(1, Timestamp(1), DomainEvent::AccountUpdated(account)))
-            .expect("account");
-        store.apply(&lock(AppLockState::Unlocked, 2)).expect("unlocked");
-        assert_eq!(page_for(&store, &store, true), Page::Workspace);
+        let opened = EventEnvelope::new(1, Timestamp(1), DomainEvent::AccountUpdated(account));
+        // The rendered account's own session never hears of the daemon's
+        // timer: the page is routed from the daemon session's store.
+        let mut session = Store::new();
+        session.apply(&opened).expect("session account");
+        let mut daemon = Store::new();
+        daemon.apply(&opened).expect("daemon account");
+        daemon.apply(&lock(AppLockState::Unlocked, 2)).expect("unlocked");
+        assert_eq!(page_for(&session, &daemon, true), Page::Workspace);
         // The daemon's timer closed the lock while the window stayed unfocused:
-        // the next read of its state is all the store gets.
-        store.apply(&lock(AppLockState::Locked, 3)).expect("locked");
-        assert_eq!(page_for(&store, &store, true), Page::Lock);
+        // the next read of its state is all the daemon's store gets.
+        daemon.apply(&lock(AppLockState::Locked, 3)).expect("locked");
+        assert_eq!(page_for(&session, &daemon, true), Page::Lock);
+        assert!(session.app_lock(&id).is_none(), "the session store is not told");
     }
 }
