@@ -303,9 +303,23 @@ fn approval_of(value: &Value) -> Option<AgentApproval> {
         agent: text_of(value, &["agent"]),
         tool: plain_line(&text_of(value, &["tool"]), 128),
         preview: plain_line(&text_of(value, &["preview"]), 512),
-        status: text_of(value, &["status"]),
+        status: approval_status(value),
         expires_at: expiry_of(&text_of(value, &["expiresAt", "expires_at"])),
     })
+}
+
+/// The state of an approval the daemon answered. An answered approval is
+/// stored as `decided` with its `decision`; the desktop reads that as
+/// `approved` or `denied`. Any other pair is kept as the daemon sent it.
+fn approval_status(value: &Value) -> String {
+    let status = text_of(value, &["status"]);
+    if status != "decided" {
+        return status;
+    }
+    match text_of(value, &["decision"]).as_str() {
+        decision @ ("approved" | "denied") => decision.to_owned(),
+        _ => status,
+    }
 }
 
 /// The unix seconds of an RFC 3339 expiry the core stored as text. Empty
@@ -613,6 +627,17 @@ mod tests {
         assert_eq!(approval.expires_at, Some(1_893_456_000));
         let offset = json!({"approval_id": "a", "expires_at": "2030-01-01T01:00:00+01:00"});
         assert_eq!(approval_of(&offset).expect("approval").expires_at, Some(1_893_456_000));
+    }
+
+    #[test]
+    fn an_answered_approval_reads_its_decision() {
+        let answered = |status: &str, decision: &str| json!({"approval_id": "ap", "status": status, "decision": decision});
+        let state = |row: Value| approval_of(&row).expect("approval").status;
+        assert_eq!(state(answered("decided", "approved")), "approved");
+        assert_eq!(state(answered("decided", "denied")), "denied");
+        assert_eq!(state(answered("decided", "maybe")), "decided", "an unknown decision is kept");
+        assert_eq!(state(json!({"approval_id": "ap", "status": "pending"})), "pending");
+        assert_eq!(state(answered("approved", "")), "approved");
     }
 
     #[test]

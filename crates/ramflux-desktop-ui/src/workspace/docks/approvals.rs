@@ -313,8 +313,18 @@ fn agent_approval_row(
         )
         .child(div().text_size(text_caption()).text_color(cx.theme().muted_foreground).child(state))
         .when_some(owner.filter(|_| pending), |row, owner| {
-            row.child(decide(true, "dock.approvals.allow", &approval.approval_id, owner.clone()))
-                .child(decide(false, "dock.approvals.deny", &approval.approval_id, owner.clone()))
+            // Only an agent the owner's roster holds can be allowed; an
+            // unknown agent can be denied.
+            let known = store.agent_of_approval(approval).is_some();
+            row.children(known.then(|| {
+                decide(true, "dock.approvals.allow", &approval.approval_id, owner.clone())
+            }))
+            .child(decide(
+                false,
+                "dock.approvals.deny",
+                &approval.approval_id,
+                owner.clone(),
+            ))
         })
         .into_any_element()
 }
