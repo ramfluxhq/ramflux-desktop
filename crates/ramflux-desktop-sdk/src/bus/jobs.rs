@@ -198,6 +198,7 @@ impl JobLink {
             Ok(answer) => answer,
             Err(error) => {
                 let end = match &error {
+                    BusError::Daemon { code, .. } if code == "app_locked" => StreamEnd::AppLocked,
                     BusError::Daemon { message, .. } => StreamEnd::Unsupported(message.clone()),
                     lost => StreamEnd::Lost(lost.clone()),
                 };

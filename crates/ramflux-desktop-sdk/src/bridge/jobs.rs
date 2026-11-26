@@ -128,7 +128,9 @@ impl Task {
                     StreamEnd::Lagged { .. } | StreamEnd::ResyncRequired | StreamEnd::NotOpen => {
                         Some(now)
                     }
-                    StreamEnd::Lost(_) => Some(now + self.config.reconnect_backoff),
+                    StreamEnd::Lost(_) | StreamEnd::AppLocked => {
+                        Some(now + self.config.reconnect_backoff)
+                    }
                     StreamEnd::Unsupported(_) => None,
                 };
             }

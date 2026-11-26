@@ -366,3 +366,26 @@ fn only_an_app_lock_answer_names_the_account_in_app_locks() {
     assert!(unrelated.accounts.contains(&account));
     assert!(unrelated.app_locks.is_empty());
 }
+
+#[test]
+fn only_a_foreground_lifecycle_answer_counts_for_the_resume_hold() {
+    let mut feed = Feed::new();
+    let account = AccountId::new("a-1");
+    let background = feed.ok(
+        1,
+        DomainEvent::AppLockLifecycleAnswered {
+            account_id: account.clone(),
+            phase: AppLockPhase::Background,
+        },
+    );
+    assert!(background.foreground_answers.is_empty());
+    let foreground = feed.ok(
+        2,
+        DomainEvent::AppLockLifecycleAnswered {
+            account_id: account.clone(),
+            phase: AppLockPhase::Foreground,
+        },
+    );
+    assert_eq!(foreground.foreground_answers.get(&account), Some(&1));
+    assert!(!foreground.is_empty());
+}

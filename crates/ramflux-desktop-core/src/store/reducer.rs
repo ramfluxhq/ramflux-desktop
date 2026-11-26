@@ -60,6 +60,11 @@ impl Store {
             DomainEvent::AccountLockChanged { account_id, lock_state } => {
                 self.set_lock(account_id, *lock_state, changes)?;
             }
+            DomainEvent::AppLockLifecycleAnswered { account_id, phase } => {
+                if *phase == crate::intent::AppLockPhase::Foreground {
+                    *changes.foreground_answers.entry(account_id.clone()).or_default() += 1;
+                }
+            }
             DomainEvent::AppLockChanged { account_id, lock } => {
                 self.app_lock_changed(account_id, lock, changes);
             }

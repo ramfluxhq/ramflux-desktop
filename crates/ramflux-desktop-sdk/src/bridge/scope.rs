@@ -220,6 +220,8 @@ pub(super) struct Task {
     gate_told: (SchemaGate, Option<i64>),
     /// When a failed status read is repeated.
     gate_retry_at: Option<Instant>,
+    /// When the app lock is read again on the bridge's own account.
+    pub(super) app_lock_watch: super::app_lock::AppLockWatch,
     /// The request-connection generation the current epoch's status was
     /// read on; a newer generation starts a new epoch.
     gate_connection: Option<u64>,
@@ -374,6 +376,7 @@ pub(super) fn build(
         gate,
         gate_told: (SchemaGate::Open, None),
         gate_retry_at: None,
+        app_lock_watch: super::app_lock::AppLockWatch::default(),
         gate_connection: None,
         pending_markers: 0,
         batch_pending: 0,
@@ -739,6 +742,7 @@ impl Task {
         let far =
             self.next_send_due().unwrap_or_else(|| Instant::now() + Duration::from_secs(3_600));
         let far = self.gate_retry_at.map_or(far, |at| far.min(at));
+        let far = self.app_lock_watch.next_due().map_or(far, |at| far.min(at));
         match self.link {
             Link::Lost => self.reconnect_at.min(far),
             Link::Live => {
@@ -765,9 +769,15 @@ impl Task {
         if !matches!(self.link, Link::Lost | Link::Locked) {
             self.retry_gate(now);
         }
+        let app_lock_due = self.app_lock_watch.take_due(now);
         match self.link {
             Link::Lost if now >= self.reconnect_at => self.snapshot(),
             Link::Live => {
+                if app_lock_due && let Some(account) = self.account() {
+                    self.request_reads(vec![Fetch::AppLock(ramflux_desktop_core::AccountId::new(
+                        account,
+                    ))]);
+                }
                 if self.sync.open_at.is_some_and(|at| now >= at) {
                     self.open_stream();
                 }
@@ -1009,6 +1019,7 @@ impl Task {
         self.sends.clear();
         self.cancel_reads();
         self.gate_retry_at = None;
+        self.app_lock_watch.clear();
         self.link = Link::Locked;
         self.sync.stop();
         self.save_cursor(true);
@@ -1356,8 +1367,12 @@ impl Task {
         if let (Fetch::AppLock(id), Err(error)) = (fetch, &result)
             && !error.is_connection_lost()
         {
+            self.app_lock_watch.unreadable(self.config.reconnect_backoff, Instant::now());
             let events = self.translator.app_lock_unreadable(id);
             return self.emit(events);
+        }
+        if let (Fetch::AppLock(_), Ok(body)) = (fetch, &result) {
+            self.app_lock_watch.observe(body, Instant::now());
         }
         // An account made by an older development build cannot be opened:
         // nothing is retried and nothing is written to it.
@@ -1600,6 +1615,10 @@ mod networking_tests;
 #[cfg(test)]
 #[path = "idle_tests.rs"]
 mod idle_tests;
+
+#[cfg(test)]
+#[path = "app_lock_tests.rs"]
+mod app_lock_tests;
 
 #[cfg(test)]
 #[path = "gate_tests.rs"]

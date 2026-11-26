@@ -15,6 +15,7 @@
 //! - `live`: how an account scope stays up to date (stream or polling).
 //! - `effects`: performing a scope's effects.
 
+mod app_lock;
 mod custody;
 mod effects;
 mod gate;

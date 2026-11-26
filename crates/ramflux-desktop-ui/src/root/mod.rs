@@ -22,9 +22,10 @@
 
 mod intent_map;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
-use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, Subscription, Window};
+use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, Subscription, Task, Window};
 
 use ramflux_desktop_core::{
     AccountId, AppLockPhase, ConfirmationIssuer, GrantState, Intent, IntentError, IntentKind,
@@ -39,6 +40,9 @@ use crate::bubble::EventSink;
 use crate::confirm::{ConfirmEvent, ConfirmRequest, ConfirmStrip};
 
 pub use intent_map::{intent_for, step_block_id};
+
+/// How long the window must keep its focus state before the app lock is told.
+const LIFECYCLE_SETTLE: Duration = Duration::from_millis(200);
 
 /// Which page shows the confirm strip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +74,13 @@ pub struct IntentRoot {
     /// The only issuer of human confirmations in the application. Not
     /// `Clone`; it mints one only when the strip reports a press of Confirm.
     issuer: ConfirmationIssuer,
+    /// The phase last reported to each account's app lock.
+    reported: BTreeMap<AccountId, AppLockPhase>,
+    /// Accounts covered since the window came back, whose report is not
+    /// settled yet.
+    covered: BTreeSet<AccountId>,
+    /// The wait that settles rapid focus changes into one report.
+    settle: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -256,36 +267,77 @@ impl IntentRoot {
         cx.notify();
     }
 
-    /// Reports to the app lock of each open account whose lock is on, or not
-    /// known yet, that the window went to the background or came back to the
-    /// front. Coming back, the content of those accounts is held until the
-    /// daemon answers (the reply carries the state). The daemon arms its timer
-    /// on the first and stops it on the second. Only a live daemon has an app
-    /// lock to read.
+    /// The open accounts whose app lock is on, or not known yet, when the
+    /// daemon is live (only a live daemon has an app lock to read).
+    fn lifecycle_accounts(&self, cx: &Context<Self>) -> Option<Vec<AccountId>> {
+        let handle = self.store.read(cx);
+        if !handle.is_live() {
+            return None;
+        }
+        let store = handle.entry_store();
+        Some(
+            store
+                .accounts()
+                .filter(|a| a.lock_state == LockState::Unlocked)
+                .filter(|a| store.app_lock(&a.id).is_none_or(|lock| lock.enabled))
+                .map(|a| a.id.clone())
+                .collect(),
+        )
+    }
+
+    /// The window went to the background or came back to the front. Coming
+    /// back, the content of the accounts whose daemon was told it went away
+    /// is covered at once, until the daemon answers (the reply carries the
+    /// state). The report itself is sent once the window has settled for
+    /// [`LIFECYCLE_SETTLE`], so rapid focus changes send one report with
+    /// the final phase, and none when it is the phase the daemon already has.
     fn on_window_activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(accounts) = self.lifecycle_accounts(cx) else { return };
+        if window.is_window_active() {
+            let covered: Vec<AccountId> = accounts
+                .into_iter()
+                .filter(|id| self.reported.get(id) != Some(&AppLockPhase::Foreground))
+                .filter(|id| self.covered.insert(id.clone()))
+                .collect();
+            self.store.update(cx, |store, cx| store.hold_for_resume(covered, cx));
+        }
+        self.settle = Some(cx.spawn_in(window, async move |root, cx| {
+            cx.background_executor().timer(LIFECYCLE_SETTLE).await;
+            let _ = root.update_in(cx, |root, window, cx| root.settle_lifecycle(window, cx));
+        }));
+    }
+
+    /// Reports the settled phase of the window to the app lock of each
+    /// account whose daemon does not have it yet. The hold a quick return
+    /// took is given back when no report follows it.
+    fn settle_lifecycle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let phase = if window.is_window_active() {
             AppLockPhase::Foreground
         } else {
             AppLockPhase::Background
         };
-        let (live, accounts) = {
-            let handle = self.store.read(cx);
-            let store = handle.entry_store();
-            let accounts: Vec<AccountId> = store
-                .accounts()
-                .filter(|a| a.lock_state == LockState::Unlocked)
-                .filter(|a| store.app_lock(&a.id).is_none_or(|lock| lock.enabled))
-                .map(|a| a.id.clone())
-                .collect();
-            (handle.is_live(), accounts)
-        };
-        if !live {
-            return;
-        }
-        self.store.update(cx, |store, cx| store.hold_for_resume(accounts.clone(), cx));
+        let covered = std::mem::take(&mut self.covered);
+        let Some(accounts) = self.lifecycle_accounts(cx) else { return };
+        self.reported.retain(|id, _| accounts.contains(id));
+        let mut given_back = Vec::new();
         for account_id in accounts {
+            let held = covered.contains(&account_id);
+            if self.reported.get(&account_id) == Some(&phase) {
+                // The daemon has this phase: no report, no answer to wait for.
+                if held {
+                    given_back.push(account_id);
+                }
+                continue;
+            }
+            if held && phase == AppLockPhase::Background {
+                given_back.push(account_id.clone());
+            }
+            self.reported.insert(account_id.clone(), phase);
             let kind = IntentKind::AppLockLifecycle { account_id, phase };
             self.submit(Intent::human(kind), window, cx);
+        }
+        if !given_back.is_empty() {
+            self.store.update(cx, |store, cx| store.cancel_resume_hold(&given_back, cx));
         }
     }
 
@@ -317,6 +369,9 @@ impl IntentRoot {
                 pending: None,
                 host: ConfirmHost::Workspace,
                 issuer: ConfirmationIssuer::new(),
+                reported: BTreeMap::new(),
+                covered: BTreeSet::new(),
+                settle: None,
                 _subscriptions: subscriptions,
             }
         })

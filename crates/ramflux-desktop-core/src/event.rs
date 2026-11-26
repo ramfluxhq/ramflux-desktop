@@ -238,6 +238,17 @@ pub enum DomainEvent {
         /// The lock as the daemon reports it.
         lock: AppLock,
     },
+    /// The daemon answered a lifecycle report (the window went to the
+    /// background or came to the front). Coming with the answer's
+    /// [`DomainEvent::AppLockChanged`], it lets a window that holds its
+    /// content for the answer to the latest foreground report tell that
+    /// answer from any other app lock change.
+    AppLockLifecycleAnswered {
+        /// Account.
+        account_id: AccountId,
+        /// The phase the answered report named.
+        phase: crate::intent::AppLockPhase,
+    },
     /// Local node settings changed. Setting a default clears the previous one.
     NodeSettingsChanged {
         /// Node.

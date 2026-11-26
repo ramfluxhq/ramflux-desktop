@@ -72,6 +72,8 @@ pub enum StreamEnd {
     Unsupported(String),
     /// The account is not open (locked).
     NotOpen,
+    /// The app lock holds the account closed: the lock screen takes over.
+    AppLocked,
     /// The connection could not be made or broke.
     Lost(BusError),
 }
@@ -188,6 +190,7 @@ pub fn refused(error: SdkError) -> StreamEnd {
         return StreamEnd::ResyncRequired;
     }
     match BusError::from(error) {
+        BusError::Daemon { code, .. } if code == "app_locked" => StreamEnd::AppLocked,
         BusError::Daemon { message, .. } if message.contains("account not open") => {
             StreamEnd::NotOpen
         }
@@ -218,6 +221,7 @@ mod tests {
             refused(local("ValidationFailed: local bus error: unsupported method bus.subscribe")),
             StreamEnd::Unsupported("local bus error: unsupported method bus.subscribe".to_owned())
         );
+        assert_eq!(refused(local("app_locked: account app lock is closed")), StreamEnd::AppLocked);
         assert!(matches!(
             refused(local("local bus connection closed")),
             StreamEnd::Lost(BusError::Transport(_))
