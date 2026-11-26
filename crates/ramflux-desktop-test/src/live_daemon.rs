@@ -34,6 +34,12 @@ pub const ROOT_ENV: &str = "RAMFLUX_LIVE_DAEMON_ROOT";
 /// kept, for evidence.
 pub const KEEP_ENV: &str = "RAMFLUX_LIVE_DAEMON_KEEP";
 
+/// A prepared data root for tests that need an open account. Its `data`
+/// folder is copied into each daemon's own directory
+/// ([`LiveDaemon::start_from`]); the account is created once, outside the
+/// tests (it needs a node and a terminal ceremony).
+pub const TEMPLATE_ENV: &str = "RAMFLUX_LIVE_APP_LOCK_TEMPLATE";
+
 /// How long a daemon may take to answer after starting.
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -100,6 +106,31 @@ impl LiveDaemon {
         let dir = root.join(format!("rf-f3-{}-{tag}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        let mut daemon = Self { rf: rf_binary()?, dir, child: None };
+        daemon.spawn()?;
+        Ok(daemon)
+    }
+
+    /// Like [`Self::start`], on a copy of the `data` folder of `template`
+    /// (a data root holding an account the daemon opens by itself).
+    ///
+    /// # Errors
+    ///
+    /// Returns why the copy or the start failed.
+    pub fn start_from(tag: &str, template: &Path) -> Result<Self, String> {
+        let root = std::env::var_os(ROOT_ENV).map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
+        let dir = root.join(format!("rf-f3-{}-{tag}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        let copied = Command::new("cp")
+            .arg("-R")
+            .arg(template.join("data"))
+            .arg(dir.join("data"))
+            .status()
+            .map_err(|e| format!("cannot copy the template: {e}"))?;
+        if !copied.success() {
+            return Err(format!("copying {} failed", template.display()));
+        }
         let mut daemon = Self { rf: rf_binary()?, dir, child: None };
         daemon.spawn()?;
         Ok(daemon)

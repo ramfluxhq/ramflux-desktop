@@ -270,6 +270,9 @@ pub struct Changes {
     /// Per account, how many foreground lifecycle reports the daemon
     /// answered (a background answer is not counted).
     pub foreground_answers: std::collections::BTreeMap<AccountId, u32>,
+    /// Per account, the phase of the last lifecycle report the daemon
+    /// answered (what the daemon has now).
+    pub lifecycle_phases: std::collections::BTreeMap<AccountId, crate::intent::AppLockPhase>,
     /// Changed or removed nodes.
     pub nodes: BTreeSet<NodeId>,
     /// Changed devices.
@@ -323,6 +326,7 @@ impl Changes {
         self.accounts.is_empty()
             && self.app_locks.is_empty()
             && self.foreground_answers.is_empty()
+            && self.lifecycle_phases.is_empty()
             && self.nodes.is_empty()
             && self.devices.is_empty()
             && self.participants.is_empty()
@@ -352,6 +356,7 @@ impl Changes {
             accounts,
             app_locks,
             foreground_answers,
+            lifecycle_phases,
             nodes,
             devices,
             participants,
@@ -379,6 +384,7 @@ impl Changes {
         for (account, count) in foreground_answers {
             *self.foreground_answers.entry(account).or_default() += count;
         }
+        self.lifecycle_phases.extend(lifecycle_phases);
         self.nodes.extend(nodes);
         self.devices.extend(devices);
         self.participants.extend(participants);

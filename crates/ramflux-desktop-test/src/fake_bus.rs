@@ -661,6 +661,8 @@ fn answer(
         shared.applied.fetch_add(1, Ordering::SeqCst);
         match (shared.handler)(&method, account.as_deref(), &body) {
             Reply::Ok(state) if state.get("state").is_some() => Reply::Ok(state),
+            // The refusal of a locked account is the handler's to give.
+            Reply::Error("app_locked", message) => Reply::Error("app_locked", message),
             _ => Reply::Ok(json!({
                 "enabled": false,
                 "timeout_ms": 0,

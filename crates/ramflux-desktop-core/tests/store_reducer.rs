@@ -379,6 +379,7 @@ fn only_a_foreground_lifecycle_answer_counts_for_the_resume_hold() {
         },
     );
     assert!(background.foreground_answers.is_empty());
+    assert_eq!(background.lifecycle_phases.get(&account), Some(&AppLockPhase::Background));
     let foreground = feed.ok(
         2,
         DomainEvent::AppLockLifecycleAnswered {
@@ -387,5 +388,6 @@ fn only_a_foreground_lifecycle_answer_counts_for_the_resume_hold() {
         },
     );
     assert_eq!(foreground.foreground_answers.get(&account), Some(&1));
+    assert_eq!(foreground.lifecycle_phases.get(&account), Some(&AppLockPhase::Foreground));
     assert!(!foreground.is_empty());
 }

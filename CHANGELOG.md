@@ -66,6 +66,14 @@ Versioning.
   lock state is read again with backoff while the account stays closed; a
   notification asked for during the lock opens its conversation after the
   unlock; the lock page names only a refusal of its own unlock.
+- App lock: the read at the daemon's deadline is kept per account and issued by
+  the session that heard the deadline (it never fired from the daemon session),
+  only for an armed lock with time left; an `app_locked` refusal in an account
+  session makes the daemon session list and read the locks again, so the lock
+  page shows without any focus change (also for a lock sent by `rf`); the
+  cover is given back when no report follows it or the daemon connection is
+  lost, only covered accounts are told the window is back, and a burst of focus
+  changes settles within one second.
 - New group stays in its creating state until every member has been added;
   the group conversation was shown (and a first message could be sent) while
   members were still being added, so the message reached only some of them.
