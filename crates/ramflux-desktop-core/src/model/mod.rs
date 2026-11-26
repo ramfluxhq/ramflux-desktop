@@ -60,7 +60,12 @@ pub use account::{
 };
 pub use account_code::{ACCOUNT_CODE_DIGITS, AccountCodeProblem, check_account_code};
 pub use actor::{Actor, ConfirmGesture, ConfirmationIssuer, HumanConfirmation};
-pub use agent::{AgentCustodyProblem, AgentExport, AgentExportPhase, AgentExportRefusal};
+pub use agent::{
+    AgentAccess, AgentAccessMode, AgentApproval, AgentConfig, AgentCreateRequest, AgentCreation,
+    AgentCreationState, AgentCustodyProblem, AgentHostState, AgentHostStatus, AgentJob,
+    AgentJobAction, AgentJobKind, AgentLifecycle, AgentPersona, AgentRecord, AgentRefusal,
+    AgentRosterState, AgentRuntimeAction, AgentTools, AgentUnavailable,
+};
 pub use backend::{
     Capabilities, DaemonInfo, DaemonSyncState, EffectFailure, FailureCode, SyncMode, SyncStatus,
 };

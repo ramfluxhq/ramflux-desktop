@@ -19,8 +19,8 @@
 //! - `accounts`: entry (accounts, devices, nodes) and settings.
 //! - `backup`: full backup and restore.
 //! - `ceremony`: account creation with a recovery phrase.
-//! - `agents`: AI participants an owner custodies: creation and the export
-//!   of their credentials.
+//! - `agents`: named agents: creation (approved on the owner's phone), persona,
+//!   access, jobs, approvals and the PRX runtime on this computer.
 //! - `recovery`: recovering an account from its recovery phrase.
 
 mod accounts;
@@ -45,7 +45,7 @@ use crate::intent::{Effect, Intent, IntentKind, SecretInput};
 use crate::model::{Actor, Context, Moment, ParticipantKind, Risk};
 use crate::store::Store;
 
-pub use agents::{check_agent_custodian, check_agent_export};
+pub use agents::check_agent_custodian;
 pub use calls::{call_peer, check_start_call};
 pub use contacts::{check_add_contact, check_add_contact_card, contact_action_current};
 pub use error::IntentError;
@@ -62,6 +62,9 @@ pub(crate) enum Decision {
     SecretCall(&'static str, Value),
     /// The intent (calling `method`) needs the attended human's confirmation first.
     Confirm(&'static str),
+    /// The source does this itself, in process (no bus call). The intent's
+    /// secrets are attached to the effect.
+    Local(Effect),
 }
 
 /// What every area needs to decide.
@@ -154,10 +157,14 @@ pub fn handle_intent(
         .or_else(|| agents::decide(&policy, &intent.kind))
         .or_else(|| recovery::decide(&policy, &intent.kind))
         .unwrap_or_else(|| unreachable!("every intent kind belongs to one area"))?;
+    if let Decision::Local(effect) = decision {
+        return Ok(vec![attach_runtime_key(effect, intent.kind)]);
+    }
     let method = match &decision {
         Decision::Call(method, _) | Decision::SecretCall(method, _) | Decision::Confirm(method) => {
             *method
         }
+        Decision::Local(_) => unreachable!("local decisions returned above"),
     };
     if let Some(reason) = store.unsupported_reason(method) {
         return Err(IntentError::UnsupportedByBackend { method, reason: reason.to_owned() });
@@ -179,7 +186,19 @@ pub fn handle_intent(
             secrets: take_secrets(intent.kind),
         },
         Decision::Confirm(_) => Effect::RequireConfirmation { intent: Box::new(intent) },
+        Decision::Local(_) => unreachable!("local decisions returned above"),
     }])
+}
+
+/// Moves the provider key of a runtime install into its effect. The key
+/// never leaves the intent otherwise.
+fn attach_runtime_key(mut effect: Effect, kind: IntentKind) -> Effect {
+    if let (Effect::AgentRuntime { key: slot, .. }, IntentKind::AgentRuntime { key, .. }) =
+        (&mut effect, kind)
+    {
+        *slot = key;
+    }
+    effect
 }
 
 /// Moves the secrets out of a secret-carrying intent, in method order.

@@ -155,9 +155,35 @@ pub const CUSTODY_HIDDEN_CHALLENGE: &str = "account.create.hidden_challenge";
 pub const CUSTODY_CONFIRM: &str = "account.create.confirm";
 /// Cancel the ceremony and erase the phrase.
 pub const CUSTODY_CANCEL: &str = "account.create.cancel";
-/// Write the one-shot provisioning bundle of an AI participant the sending
-/// account custodies (owner session only); the bundle holds no phrase.
-pub const AGENT_EXPORT_CREDENTIALS: &str = "account.export_agent_credentials";
+/// List the agents of the account (one page; the journal cursor follows).
+pub const AGENT_LIST: &str = "agent.list";
+/// Read the changed agent records since a journal cursor.
+pub const AGENT_WATCH: &str = "agent.watch";
+/// Read one agent record.
+pub const AGENT_GET: &str = "agent.get";
+/// Ask for a creation request (answers the custody status).
+pub const AGENT_CREATE: &str = "agent.create";
+/// Read the custody status of a creation request (empty id: the next one
+/// that waits for this device).
+pub const AGENT_OPERATION_GET: &str = "agent.operation.get";
+/// Edit the persona of an agent.
+pub const AGENT_PERSONA_EDIT: &str = "agent.persona.edit";
+/// Set the access of an agent (carries the base it was read with).
+pub const AGENT_ACCESS_SET: &str = "agent.access.set";
+/// Delete an agent in state U.
+pub const AGENT_DELETE: &str = "agent.delete";
+/// Pause a PRX job of an agent (cron, xin_task or xin_goal).
+pub const AGENT_JOB_PAUSE: &str = "agent.job.pause";
+/// Resume a PRX job of an agent.
+pub const AGENT_JOB_RESUME: &str = "agent.job.resume";
+/// Remove a PRX job of an agent.
+pub const AGENT_JOB_REMOVE: &str = "agent.job.remove";
+/// List the PRX jobs of an agent.
+pub const AGENT_JOB_LIST: &str = "agent.job.list";
+/// List the approvals of agents waiting for an answer.
+pub const AGENT_APPROVAL_LIST: &str = "agent.approval.list";
+/// Approve or deny one approval of an agent.
+pub const AGENT_APPROVAL_DECIDE: &str = "agent.approval.decide";
 /// Begin recovering an account from its phrase (user-started only).
 pub const RECOVER_BEGIN: &str = "account.recover.begin";
 /// Check the fingerprint, the phrase and the passphrase and recover (carries

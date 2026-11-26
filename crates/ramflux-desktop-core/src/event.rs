@@ -10,7 +10,8 @@ use crate::ids::{
     AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AgentExport, AppLock, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony,
+    Account, AgentApproval, AgentCreation, AgentHostStatus, AgentJob, AgentRecord,
+    AgentRosterState, AppLock, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony,
     ContactCard, ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant,
     GrantFailure, GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind,
     NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant, RecoveryCeremony, RequestFloors,
@@ -379,16 +380,31 @@ pub enum DomainEvent {
     /// `Prepared` (or `Failed` when the daemon refuses), then follows
     /// [`crate::RecoveryPhase::can_follow`]; the id and expiry stay.
     RecoveryUpdated(RecoveryCeremony),
-    /// The owner of an AI participant: the person's account that custodies
-    /// it (the creation ceremony names it; a daemon that lists it reports
-    /// it too).
-    CustodianKnown {
-        /// The AI participant.
-        agent: AccountId,
-        /// Its custodian.
-        custodian: AccountId,
+    /// A page of agent records as the daemon lists them. Each record
+    /// replaces the one held for its anchor.
+    AgentsListed {
+        /// The records of the page.
+        records: Vec<AgentRecord>,
+        /// The journal cursor the next watch starts from.
+        journal_cursor: String,
     },
-    /// The outcome of exporting an AI participant's credentials: where the
-    /// bundle was written, or why it was not. Never the credentials.
-    AgentExportUpdated(AgentExport),
+    /// One agent record as the daemon reports it (after a read, a watch or
+    /// an edit). The record is replaced whole.
+    AgentRecordUpdated(Box<AgentRecord>),
+    /// The roster's read state: loading, ready, offline or failed.
+    AgentRosterStateChanged(AgentRosterState),
+    /// A creation request this desktop started, as the daemon reports it.
+    /// Its state follows [`crate::AgentCreationState`].
+    AgentCreationUpdated(AgentCreation),
+    /// The PRX runtime status on this computer.
+    AgentHostUpdated(AgentHostStatus),
+    /// The PRX jobs of one agent, as the runtime lists them (the whole list).
+    AgentJobsUpdated {
+        /// The agent's anchor.
+        agent: String,
+        /// The jobs.
+        jobs: Vec<AgentJob>,
+    },
+    /// The approvals of agents waiting for an answer (the whole list).
+    AgentApprovalsUpdated(Vec<AgentApproval>),
 }

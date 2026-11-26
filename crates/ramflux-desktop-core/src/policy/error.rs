@@ -275,12 +275,28 @@ pub enum IntentError {
     /// The confirmation needs exactly three words, none empty.
     #[error("confirming needs exactly three words")]
     CeremonyWords,
-    /// The account cannot custody an AI participant.
-    #[error("this account cannot be the custodian of an AI participant: {0:?}")]
+    /// The account cannot own an agent (see [`crate::AgentCustodyProblem`]).
+    #[error("this account cannot own an agent: {0:?}")]
     AgentCustody(crate::model::AgentCustodyProblem),
-    /// The credentials of the AI participant cannot be exported now.
-    #[error("the AI participant's credentials cannot be exported: {0:?}")]
-    AgentExport(crate::model::AgentExportRefusal),
+    /// The agent cannot be changed here: this build offers it only as a
+    /// typed unavailable reason (see [`crate::AgentUnavailable`]).
+    #[error("this agent action is not available: {0:?}")]
+    AgentUnavailable(crate::model::AgentUnavailable),
+    /// The agent is not in the roster the desktop holds.
+    #[error("unknown agent {0}")]
+    AgentRecordUnknown(String),
+    /// The agent is retired (state X): it is read only.
+    #[error("agent {0} is retired")]
+    AgentRecordRetired(String),
+    /// The agent's record has no base to send back (read it again first).
+    #[error("agent {0} has no base; read it again")]
+    AgentRecordBase(String),
+    /// The access policy is not one the daemon accepts.
+    #[error("the agent access policy is invalid")]
+    AgentAccessInvalid,
+    /// The agent's persona or configuration is missing a required field.
+    #[error("the agent {0} is missing a required field")]
+    AgentFieldMissing(&'static str),
     /// The recovery is not in a phase this intent applies to (or none runs).
     #[error("the recovery cannot do this now")]
     RecoveryPhase,

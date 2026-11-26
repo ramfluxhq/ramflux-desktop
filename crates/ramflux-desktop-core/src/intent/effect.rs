@@ -6,6 +6,7 @@
 use serde_json::Value;
 
 use super::{Intent, SecretInput};
+use crate::model::AgentRuntimeAction;
 
 /// What a source must do as a result of an intent.
 #[derive(Debug)]
@@ -28,6 +29,18 @@ pub enum Effect {
         /// Secrets in the order the method defines.
         secrets: Vec<SecretInput>,
     },
+    /// Run a PRX runtime action on this computer, in process. Not a bus
+    /// call; the source hands the key to PRX and keeps it nowhere else.
+    AgentRuntime {
+        /// The action.
+        action: AgentRuntimeAction,
+        /// The provider (install only).
+        provider: String,
+        /// The model (install only).
+        model: String,
+        /// The provider key (install only). Never printed or stored.
+        key: Option<SecretInput>,
+    },
     /// Policy requires explicit human confirmation before the intent may proceed.
     /// The app shows a confirm strip and resubmits the intent with
     /// `confirmed_by` set.
@@ -42,7 +55,7 @@ impl Effect {
     pub fn method(&self) -> Option<&str> {
         match self {
             Self::Call { method, .. } | Self::SecretCall { method, .. } => Some(method),
-            Self::RequireConfirmation { .. } => None,
+            Self::RequireConfirmation { .. } | Self::AgentRuntime { .. } => None,
         }
     }
 
@@ -50,7 +63,7 @@ impl Effect {
     pub fn body(&self) -> Option<&Value> {
         match self {
             Self::Call { body, .. } | Self::SecretCall { body, .. } => Some(body),
-            Self::RequireConfirmation { .. } => None,
+            Self::RequireConfirmation { .. } | Self::AgentRuntime { .. } => None,
         }
     }
 }

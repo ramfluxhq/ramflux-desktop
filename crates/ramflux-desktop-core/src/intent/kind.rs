@@ -12,7 +12,10 @@ use crate::ids::{
     AccountId, BackupJobId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
     ParticipantId, StandingApprovalId, SurfaceId, TaskId,
 };
-use crate::model::{ConflictResolution, DeleteScope, PinSource, RequestAnswer, RequestPolicy};
+use crate::model::{
+    AgentAccess, AgentCreateRequest, AgentJobAction, AgentJobKind, AgentPersona,
+    AgentRuntimeAction, ConflictResolution, DeleteScope, PinSource, RequestAnswer, RequestPolicy,
+};
 
 /// Direction of an own-device sync transfer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -478,17 +481,72 @@ pub enum IntentKind {
     },
     /// Cancel the running ceremony; the daemon erases the phrase.
     CancelCeremony,
-    /// Write the one-shot credentials bundle of an AI participant the
-    /// owner custodies to a location the owner chose. The daemon creates
-    /// the file readable by its owner only, refuses to replace one, and
-    /// the bundle holds neither a recovery phrase nor a master key.
-    ExportAgentCredentials {
-        /// The owner's account (unlocked, attended, the custodian).
+    /// Create a named agent. The daemon asks the account's phone to
+    /// approve it; the desktop then polls the request. Human only, on an
+    /// unlocked, connected person's account.
+    AgentCreate {
+        /// The owner's account (unlocked, connected, the person's own).
         owner_id: AccountId,
-        /// The AI participant.
-        account_id: AccountId,
-        /// The location the owner chose.
-        path: String,
+        /// The persona, the runtime choice and the access.
+        request: AgentCreateRequest,
+    },
+    /// Read the custody status of a creation request this desktop started
+    /// (after a restart it is read again from its stored id).
+    AgentOperationRefresh {
+        /// The request id the daemon gave.
+        request_id: String,
+    },
+    /// Change the persona of an agent (name, avatar preset, responsibility).
+    AgentPersonaEdit {
+        /// The agent's anchor.
+        agent: String,
+        /// The new persona.
+        persona: AgentPersona,
+    },
+    /// Change who may reach an agent. Sent with the record's base; a stale
+    /// base is refused and the record is read again.
+    AgentAccessSet {
+        /// The agent's anchor.
+        agent: String,
+        /// The new access.
+        access: AgentAccess,
+    },
+    /// Delete an agent in state U (the record is retired, not erased).
+    AgentDelete {
+        /// The agent's anchor.
+        agent: String,
+    },
+    /// Pause, resume or remove one PRX job of an agent.
+    AgentJob {
+        /// The agent's anchor.
+        agent: String,
+        /// The job's kind.
+        kind: AgentJobKind,
+        /// The job's id.
+        id: String,
+        /// What to do.
+        action: AgentJobAction,
+    },
+    /// Approve or deny an agent's approval in a conversation.
+    AgentApprovalDecide {
+        /// The approval id.
+        approval_id: String,
+        /// Approve (true) or deny (false).
+        approved: bool,
+    },
+    /// Run a PRX runtime action on this computer, in process (not on the
+    /// bus). The provider key of an install is one-shot and never
+    /// serializes.
+    AgentRuntime {
+        /// The action.
+        action: AgentRuntimeAction,
+        /// The provider the runtime uses (install only).
+        provider: String,
+        /// The model the runtime uses (install only).
+        model: String,
+        /// The provider key (install only).
+        #[serde(skip)]
+        key: Option<SecretInput>,
     },
     /// Begin recovering an account that lives on this device, from its 24
     /// words. Only the user starts it, from the account itself; nothing a
