@@ -99,6 +99,7 @@ impl Store {
                 self.remove_context(context_id, changes)?;
             }
             DomainEvent::MomentAdded(moment) => self.add_moment(at, moment, changes)?,
+            DomainEvent::MomentRemoved { moment_id } => self.remove_moment(moment_id, changes),
             DomainEvent::MomentUpdated { moment_id, lifecycle, kind } => {
                 self.update_moment(at, moment_id, *lifecycle, kind.as_ref(), changes)?;
             }
@@ -483,6 +484,17 @@ impl Store {
             changes.calls.insert(call);
         }
         Ok(())
+    }
+
+    /// Erases a moment from the store, its body, its indexes and its surface.
+    fn remove_moment(&mut self, id: &MomentId, changes: &mut Changes) {
+        if let Some(moment) = self.moments.remove(id) {
+            let since = self.needs_me_since.remove(id);
+            self.index.remove_moment(&moment, since);
+            self.bodies.remove(id);
+            self.forget_surface(id);
+            changes.moments.insert(id.clone());
+        }
     }
 
     pub(super) fn add_moment(

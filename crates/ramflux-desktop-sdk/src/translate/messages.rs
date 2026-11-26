@@ -136,6 +136,16 @@ impl Translator {
             if text(row, "id").is_empty() {
                 continue;
             }
+            // Erased on this device only (a delete for me): the row leaves
+            // the conversation here, and no other device is changed.
+            if state == "tombstone" && row["erasure"]["scope"].as_str() == Some("local") {
+                let moment_id = message_moment_id(context, self.local_id(text(row, "id")));
+                self.message_targets.remove(&moment_id);
+                if self.moments.remove(&moment_id).is_some() {
+                    events.push(DomainEvent::MomentRemoved { moment_id });
+                }
+                continue;
+            }
             if state == "content" && text(row, "kind") != "message" {
                 continue;
             }

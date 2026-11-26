@@ -19,6 +19,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AccountUpdated(_) => "AccountUpdated",
         DomainEvent::EffectSucceeded { .. } => "EffectSucceeded",
         DomainEvent::GroupInvitationsListed(_) => "GroupInvitationsListed",
+        DomainEvent::MomentRemoved { .. } => "MomentRemoved",
         DomainEvent::UsernameStatusUpdated(_) => "UsernameStatusUpdated",
         DomainEvent::NodeUpserted(_) => "NodeUpserted",
         DomainEvent::NodeHealthChanged { .. } => "NodeHealthChanged",
@@ -71,7 +72,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 53;
+const DOMAIN_EVENT_VARIANTS: usize = 54;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -685,6 +686,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
         }),
         DomainEvent::ListingsLoaded(Listing::ALL.to_vec()),
         DomainEvent::EffectSucceeded { method: "node.add".to_owned() },
+        DomainEvent::MomentRemoved { moment_id: MomentId::new("m-1") },
         DomainEvent::GroupInvitationsListed(vec![GroupInvitation {
             group_id: "g-1".to_owned(),
             name: Some("Group".to_owned()),

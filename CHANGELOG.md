@@ -18,8 +18,9 @@ Versioning.
 - Read receipts: the conversation shown is marked read through its newest
   message (`message.receipt.read`; the core routes the receipt to the
   author's device), and own messages show Read when the peer read them.
-- Delete for me in a message's menu: erases the message on this device only
-  (`conversation.delete` with scope `local`), with its own confirmation.
+- Delete for me in a message's menu: the message leaves this device's
+  conversation only (`conversation.delete` with scope `local`), with its own
+  confirmation.
 - A message that the peer edits or deletes updates on screen without
   reopening the conversation; a reply quote jumps to and highlights the
   message it quotes.

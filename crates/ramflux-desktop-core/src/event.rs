@@ -103,6 +103,12 @@ pub enum DomainEvent {
     },
     /// New moment.
     MomentAdded(Box<Moment>),
+    /// A moment is erased from this device (a delete for this device only):
+    /// it leaves the store and every index. An unknown id changes nothing.
+    MomentRemoved {
+        /// Moment.
+        moment_id: MomentId,
+    },
     /// Lifecycle and/or payload of a moment changed. A new payload must be the same kind.
     MomentUpdated {
         /// Moment.
