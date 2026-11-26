@@ -51,6 +51,19 @@ with `cargo build --release --locked -p ramflux-desktop --no-default-features`,
 so a packaged app has no mock data and always runs on a daemon. CI checks that
 configuration and that it does not depend on `ramflux-desktop-test`.
 
+Cards (agent surfaces) are drawn by the card runtime, which the daemon runs
+behind the `card.session.*` bus methods. The stock `rf` does not enable it yet:
+build the daemon in the core checkout at the revision pinned in `Cargo.lock`,
+with the runtime feature and the release profile that keeps unwinding on (the card C
+ABI refuses `panic = "abort"`):
+
+```sh
+cargo build -p ramflux-rf --profile ffi-release --features ramflux-sdk/card-runtime
+```
+
+Until the desktop draws cards from the runtime, a card shows its fallback text
+only; `backend.gap.surfaces` stays set.
+
 Live tests against a real `rf daemon` (no node needed) are ignored by
 default. Install `rf` from the product revision pinned in `Cargo.lock`, then:
 

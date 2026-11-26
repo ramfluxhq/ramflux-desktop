@@ -52,6 +52,17 @@ pub enum SecretField {
     Text(SecretInput),
     /// A 32-byte seed, sent as an array of numbers.
     Seed(Zeroizing<[u8; 32]>),
+    /// A structured value (a card token or event), sent as it is. Wiped
+    /// when the request is dropped.
+    Json(Value),
+}
+
+impl Drop for SecretField {
+    fn drop(&mut self) {
+        if let Self::Json(value) = self {
+            wipe(std::mem::take(value));
+        }
+    }
 }
 
 impl std::fmt::Debug for SecretField {
@@ -92,6 +103,13 @@ impl BusRequest {
         self
     }
 
+    /// Adds a secret structured field (a card token or event).
+    #[must_use]
+    pub fn with_json(mut self, field: &'static str, value: Value) -> Self {
+        self.secrets.push((field, SecretField::Json(value)));
+        self
+    }
+
     /// Adds a secret seed field.
     #[must_use]
     pub fn with_seed(mut self, field: &'static str, seed: Zeroizing<[u8; 32]>) -> Self {
@@ -110,6 +128,7 @@ impl BusRequest {
                     SecretField::Seed(seed) => {
                         Value::Array(seed.iter().map(|b| Value::from(*b)).collect())
                     }
+                    SecretField::Json(value) => value.clone(),
                 };
                 map.insert((*field).to_owned(), value);
             }

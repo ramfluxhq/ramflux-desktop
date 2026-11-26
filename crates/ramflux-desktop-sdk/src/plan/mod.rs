@@ -20,6 +20,7 @@
 //! - [`media`]: attachments: send, download, save, retry and cancel.
 //! - [`group`]: membership, roles and invitations.
 //! - [`surface`]: surface actions and update requests.
+//! - [`card_session`]: the card runtime's session calls (`card.session.*`).
 //! - [`group_create`]: creating and renaming a group.
 //! - [`task`]: starting, accepting, declining, cancelling and resolving
 //!   conversation tasks.
@@ -31,6 +32,7 @@
 pub mod agents;
 pub mod backup;
 pub mod call;
+pub mod card_session;
 pub mod contact;
 pub mod contact_card;
 pub mod conversation;

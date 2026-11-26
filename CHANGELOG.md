@@ -22,6 +22,14 @@ Versioning.
 
 ### Added
 
+- Card runtime groundwork: the core holds a card's native tree and applies
+  its mutation batches atomically (a refused batch leaves the tree as it
+  was), and keeps the card sessions per account within the runtime's limits
+  (two resumed, twenty-four open, least recently used first). The SDK builds
+  the `card.session.*` bus requests and types their replies; event, slot and
+  submit bodies travel as secret fields. Cards are not drawn yet: they still
+  show their fallback text.
+
 - App lock (Settings › Account › App lock, off by default): when on, the
   app asks for the account code after the chosen time in the background
   (immediately, 1 minute, 5 minutes, 15 minutes or 1 hour). The lock is the
