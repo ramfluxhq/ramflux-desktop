@@ -220,9 +220,13 @@ impl Render for GroupDirectory {
             .map(|entry| {
                 let members =
                     tr_args("sections.groups.members", &[("count", &entry.members.to_string())]);
-                let subtitle = match entry.role {
-                    Some(role) => i18n::join(&members, &i18n::role(role)),
-                    None => members,
+                let subtitle = if store.is_creating(&entry.id) {
+                    tr("sections.groups.creating")
+                } else {
+                    match entry.role {
+                        Some(role) => i18n::join(&members, &i18n::role(role)),
+                        None => members,
+                    }
                 };
                 DirectoryRow {
                     card: None,
