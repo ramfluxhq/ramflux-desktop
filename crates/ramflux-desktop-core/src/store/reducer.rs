@@ -17,9 +17,8 @@ use super::{MAX_AUDIT, Store};
 use crate::event::DomainEvent;
 use crate::ids::{AccountId, ContextId, GrantId, MomentId, NodeId, Timestamp};
 use crate::model::{
-    AgentRecord, AgentRosterState, AppLock, AppLockState, Context, Disappearing, GrantState,
-    Lifecycle, LockState, Moment,
-    MomentKind, NodeHealth, NodeProbe,
+    AgentHostStatus, AgentRecord, AgentRosterState, AppLock, AppLockState, Context, Disappearing,
+    GrantState, Lifecycle, LockState, Moment, MomentKind, NodeHealth, NodeProbe,
 };
 
 impl Store {
@@ -300,7 +299,17 @@ impl Store {
                     self.upsert_agent(record, changes);
                 }
                 self.agent_roster = Some(AgentRosterState::Ready);
-                self.agent_cursor = Some(journal_cursor.clone());
+                // A listing keeps the cursor of its first page (the later
+                // pages carry none), and a watch answer advances it.
+                if !journal_cursor.is_empty() {
+                    self.agent_cursor = Some(journal_cursor.clone());
+                }
+                changes.agents = true;
+            }
+            DomainEvent::AgentCursorReset => {
+                // The daemon does not know the cursor: the next read is a
+                // fresh listing, which brings a new one.
+                self.agent_cursor = None;
                 changes.agents = true;
             }
             DomainEvent::AgentRecordUpdated(record) => self.upsert_agent(record, changes),
@@ -317,8 +326,19 @@ impl Store {
                 }
             }
             DomainEvent::AgentHostUpdated(status) => {
-                if self.agent_host.as_ref() != Some(status) {
-                    self.agent_host = Some(status.clone());
+                // A refused action reports no state of its own: the runtime
+                // stays as it was last seen, with the refusal and the number.
+                let next = match (&self.agent_host, &status.refusal) {
+                    (Some(held), Some(_)) => AgentHostStatus {
+                        refusal: status.refusal.clone(),
+                        applied: false,
+                        nonce: status.nonce,
+                        ..held.clone()
+                    },
+                    _ => status.clone(),
+                };
+                if self.agent_host.as_ref() != Some(&next) {
+                    self.agent_host = Some(next);
                     changes.agents = true;
                 }
             }

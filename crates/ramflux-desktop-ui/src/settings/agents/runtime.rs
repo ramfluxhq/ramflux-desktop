@@ -27,6 +27,7 @@ use ramflux_desktop_sdk::translate::agents::{RESTART_HINT_KEYS, refusal_key};
 use super::AgentsPanel;
 use super::rows::unavailable_line;
 use crate::i18n::{tr, tr_args};
+use crate::root::{CONFIRMATION_REQUIRED, SUBMITTED};
 use crate::style::DesignButton as _;
 
 /// The install form's fields.
@@ -80,7 +81,7 @@ impl AgentsPanel {
         let state =
             self.store.read(cx).store().agent_host().map(|host| (host.state, host.refusal.clone()));
         // An install the panel submitted shows as installing until its answer.
-        let installing = self.installing(cx);
+        let installing = self.installing();
         let line = if installing {
             tr("agents.runtime.installing")
         } else {
@@ -274,7 +275,7 @@ impl AgentsPanel {
             key: Some(key),
             nonce,
         };
-        self.arm_host_action(nonce, true, cx);
+        self.arm_host_action(nonce, true);
         self.submit_host(kind, window, cx);
     }
 
@@ -293,15 +294,20 @@ impl AgentsPanel {
             key: None,
             nonce,
         };
-        self.arm_host_action(nonce, false, cx);
+        self.arm_host_action(nonce, false);
         self.submit_host(kind, window, cx);
     }
 
-    /// Submits a runtime action through the root. A refused one is not
-    /// followed: no answer will come for it.
+    /// Submits a runtime action through the root. One held for the owner's
+    /// confirmation waits for it; one that was not submitted (refused, no
+    /// account) is not followed: no answer will come for it.
     fn submit_host(&mut self, kind: IntentKind, window: &mut Window, cx: &mut Context<Self>) {
         let result = self.root.update(cx, |root, cx| root.submit_secret(kind, window, cx));
-        if result.starts_with("refused") {
+        if result == CONFIRMATION_REQUIRED {
+            if let Some(action) = self.host_action.as_mut() {
+                action.await_confirmation();
+            }
+        } else if !result.starts_with(SUBMITTED) {
             self.host_action = None;
         }
         cx.notify();

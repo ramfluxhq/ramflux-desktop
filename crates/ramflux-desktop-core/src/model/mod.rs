@@ -64,7 +64,7 @@ pub use agent::{
     AgentAccess, AgentAccessMode, AgentApproval, AgentConfig, AgentCreateRequest, AgentCreation,
     AgentCreationState, AgentCustodyProblem, AgentHostState, AgentHostStatus, AgentJob,
     AgentJobAction, AgentJobKind, AgentLifecycle, AgentPersona, AgentRecord, AgentRefusal,
-    AgentRosterState, AgentRuntimeAction, AgentTools, AgentUnavailable,
+    AgentRosterState, AgentRuntimeAction, AgentTools, AgentUnavailable, HostAction, HostStep,
 };
 pub use backend::{
     Capabilities, DaemonInfo, DaemonSyncState, EffectFailure, FailureCode, SyncMode, SyncStatus,

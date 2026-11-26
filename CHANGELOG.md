@@ -110,6 +110,14 @@ Versioning.
   (stored background or unknown), the daemon's accounts are listed again when
   an account session opens or finds its account not open, and a stream the lock
   refuses is retried with growing backoff up to 30 seconds.
+- A PRX runtime action in Settings › Agents ends only with its own result:
+  a failed background read no longer cancels an install or the daemon restart
+  that adopts the runtime, a failed action reports its typed refusal, and a
+  declined install confirmation clears the installing state.
+- The agent roster keeps the journal cursor of the first page of a listing
+  (later pages no longer move it), the pages after the first are applied, and
+  a refused cursor (`journal_cursor_invalid`) is dropped and the roster listed
+  again.
 - Agents: a daemon restart after a runtime install or restart adopts the
   runtime from the answer to that action only, and every answer is a change,
   so an identical second restart still restarts the daemon once.

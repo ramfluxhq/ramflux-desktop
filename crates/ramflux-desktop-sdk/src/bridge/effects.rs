@@ -230,6 +230,13 @@ impl Task {
                     self.locked();
                 }
             }
+            // The daemon does not know the watch's cursor: drop it and list
+            // the roster again (no failure record; the listing brings a new
+            // cursor, so the next watch is a fresh start, not a retry).
+            Err(error) if crate::translate::agents::is_stale_cursor(method, &error) => {
+                self.emit(vec![DomainEvent::AgentCursorReset]);
+                self.spawn_fetches(vec![Fetch::AgentList]);
+            }
             Err(error) => {
                 // The app lock holds the account closed: the lock screen takes
                 // over, and the refusal is no failure to report.
@@ -297,6 +304,14 @@ impl Task {
                 } else {
                     on_task
                 };
+                // A failed runtime action ends in the status the panel
+                // follows: the refusal, carrying the action's number.
+                if method == crate::plan::agents::RUNTIME_METHOD {
+                    let nonce = body["nonce"].as_u64().unwrap_or_default();
+                    events.push(DomainEvent::AgentHostUpdated(
+                        crate::translate::agents::host_refusal(&error, nonce),
+                    ));
+                }
                 if self.scope.account().is_none()
                     && let Some(id) = body["local_account_id"].as_str()
                 {

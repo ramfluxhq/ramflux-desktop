@@ -400,6 +400,7 @@ impl Workspace {
                     RootEvent::SurfaceChanged(moment) => {
                         this.conversation.update(cx, |field, cx| field.review_again(moment, cx));
                     }
+                    RootEvent::ConfirmDeclined => {}
                 },
             ),
             cx.subscribe(&dock_area, |this, _, event: &DockToggleEvent, cx| {

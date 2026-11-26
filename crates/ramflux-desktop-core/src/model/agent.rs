@@ -323,6 +323,73 @@ impl AgentHostStatus {
     }
 }
 
+/// What the panel's follow step does after looking at a runtime action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostStep {
+    /// The action is not over: its answer has not arrived, or its
+    /// confirmation is still open.
+    Waiting,
+    /// The action is over. When `adopt` names a state directory, the owned
+    /// daemon restarts with it so it adopts the runtime.
+    Ended {
+        /// The state directory the owned daemon restarts with, if any.
+        adopt: Option<PathBuf>,
+    },
+}
+
+/// A runtime action the panel submitted and has not seen end. This is the
+/// whole rule of the follow step: the action ends only with a status that
+/// carries its own number (an answer, or the refusal the bridge reports for
+/// a failed action), or when the owner declines its confirmation. Failures
+/// of other requests running at the same time never end it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostAction {
+    nonce: u64,
+    install: bool,
+    confirming: bool,
+}
+
+impl HostAction {
+    /// An action submitted with `nonce`; `install` when it installs.
+    pub fn new(nonce: u64, install: bool) -> Self {
+        Self { nonce, install, confirming: false }
+    }
+
+    /// The number the action was submitted with.
+    pub fn nonce(&self) -> u64 {
+        self.nonce
+    }
+
+    /// The action waits for the owner's confirmation: it is not running yet.
+    pub fn await_confirmation(&mut self) {
+        self.confirming = true;
+    }
+
+    /// Whether an install is running: submitted, confirmed, not ended.
+    pub fn installing(&self) -> bool {
+        self.install && !self.confirming
+    }
+
+    /// The confirmation strip closed. A decline ends the action when it was
+    /// the one waiting for it; a confirmation lets it run (its answer ends
+    /// it).
+    pub fn confirmation_closed(&mut self, declined: bool) -> HostStep {
+        let was_confirming = std::mem::take(&mut self.confirming);
+        if declined && was_confirming { HostStep::Ended { adopt: None } } else { HostStep::Waiting }
+    }
+
+    /// Looks at the stored status: only the status carrying this action's
+    /// number ends it, and only an applied, unrefused, running one adopts.
+    pub fn follow(&self, host: Option<&AgentHostStatus>) -> HostStep {
+        match host.filter(|host| host.nonce == self.nonce) {
+            Some(host) => HostStep::Ended {
+                adopt: host.adoption_for(self.nonce).map(std::path::Path::to_path_buf),
+            },
+            None => HostStep::Waiting,
+        }
+    }
+}
+
 /// A runtime action the owner asks for. `Update` is not one: its manifest
 /// is unavailable (see [`AgentUnavailable::RuntimeUpdate`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

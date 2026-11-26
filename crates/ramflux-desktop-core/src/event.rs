@@ -385,9 +385,13 @@ pub enum DomainEvent {
     AgentsListed {
         /// The records of the page.
         records: Vec<AgentRecord>,
-        /// The journal cursor the next watch starts from.
+        /// The journal cursor the next watch starts from. Empty on a later
+        /// page of a listing: the store keeps the cursor of the first page.
         journal_cursor: String,
     },
+    /// The daemon refused the stored journal cursor (it is above its head):
+    /// the cursor is dropped, and the roster is listed again.
+    AgentCursorReset,
     /// One agent record as the daemon reports it (after a read, a watch or
     /// an edit). The record is replaced whole.
     AgentRecordUpdated(Box<AgentRecord>),

@@ -278,14 +278,17 @@ fn the_jobs_of_an_agent_are_read_without_confirmation() {
     );
 }
 
-/// The adoption rule of the agents panel, as its follow step applies it:
-/// the restart of the owned daemon is taken from the status answering the
-/// action the panel submitted last, and only from that answer.
-fn adopt_for(store: &Store, submitted: &mut Option<u64>) -> Option<std::path::PathBuf> {
-    let nonce = (*submitted)?;
-    let host = store.agent_host().filter(|host| host.nonce == nonce)?;
-    *submitted = None;
-    host.adoption_for(nonce).map(std::path::Path::to_path_buf)
+/// The panel's follow step: the real rule ([`HostAction::follow`]) applied to
+/// the stored status; an ended action is dropped, like the panel drops it.
+fn follow(store: &Store, action: &mut Option<HostAction>) -> Option<std::path::PathBuf> {
+    let step = action.as_ref()?.follow(store.agent_host());
+    match step {
+        HostStep::Waiting => None,
+        HostStep::Ended { adopt } => {
+            *action = None;
+            adopt
+        }
+    }
 }
 
 #[test]
@@ -300,30 +303,30 @@ fn a_restart_adopts_the_runtime_once_and_never_early() {
         nonce,
     };
     let state_dir = std::path::PathBuf::from("/state/prx");
-    let mut submitted = Some(1);
+    let mut submitted = Some(HostAction::new(1, true));
     let mut restarts = Vec::new();
 
     // The install (action 1) answers running: one restart, with the state dir.
     let changes = feed.ok(1, DomainEvent::AgentHostUpdated(answer(1)));
     assert!(changes.agents);
-    restarts.extend(adopt_for(&feed.store, &mut submitted));
+    restarts.extend(follow(&feed.store, &mut submitted));
     assert_eq!(restarts, vec![state_dir.clone()]);
 
     // The restart (action 2) is submitted; until its answer, the stored
     // status (action 1) adopts nothing, so no restart runs early.
-    submitted = Some(2);
-    assert_eq!(adopt_for(&feed.store, &mut submitted), None);
-    assert_eq!(submitted, Some(2), "the wait for the restart's answer goes on");
+    submitted = Some(HostAction::new(2, false));
+    assert_eq!(follow(&feed.store, &mut submitted), None);
+    assert!(submitted.is_some(), "the wait for the restart's answer goes on");
 
     // Its answer is identical in every field but the number: still a change,
     // and the second restart runs with the same state dir.
     let changes = feed.ok(2, DomainEvent::AgentHostUpdated(answer(2)));
     assert!(changes.agents, "an identical answer is a change");
-    restarts.extend(adopt_for(&feed.store, &mut submitted));
+    restarts.extend(follow(&feed.store, &mut submitted));
     assert_eq!(restarts, vec![state_dir.clone(), state_dir]);
 
     // A later status read (action 3) that is refused adopts nothing.
-    submitted = Some(3);
+    submitted = Some(HostAction::new(3, false));
     feed.ok(
         3,
         DomainEvent::AgentHostUpdated(AgentHostStatus {
@@ -331,8 +334,102 @@ fn a_restart_adopts_the_runtime_once_and_never_early() {
             ..answer(3)
         }),
     );
-    assert_eq!(adopt_for(&feed.store, &mut submitted), None);
+    assert_eq!(follow(&feed.store, &mut submitted), None);
+    assert!(submitted.is_none(), "the refused status ends the action");
     assert_eq!(restarts.len(), 2, "two restarts, the install's and the restart's");
+}
+
+fn listed(cursor: &str) -> DomainEvent {
+    DomainEvent::AgentsListed { records: Vec::new(), journal_cursor: cursor.into() }
+}
+
+#[test]
+fn a_background_failure_does_not_cancel_an_install() {
+    let mut feed = world();
+    let mut action = Some(HostAction::new(1, true));
+    // A background watch fails: a failed effect of another method.
+    feed.ok(
+        6,
+        DomainEvent::EffectFailed(EffectFailure {
+            method: methods::AGENT_WATCH.to_owned(),
+            code: FailureCode::Timeout,
+            message: "timeout".into(),
+        }),
+    );
+    assert_eq!(follow(&feed.store, &mut action), None);
+    assert!(action.is_some_and(|a| a.installing()), "the install is still running");
+
+    // Its own refusal (the bridge's status carrying its number) ends it,
+    // keeps what was known of the runtime, and adopts nothing.
+    feed.ok(
+        7,
+        DomainEvent::AgentHostUpdated(AgentHostStatus {
+            state: AgentHostState::Running,
+            prx_version: Some("0.1.0".into()),
+            refusal: None,
+            state_dir: Some("/state/prx".into()),
+            applied: false,
+            nonce: 0,
+        }),
+    );
+    feed.ok(
+        8,
+        DomainEvent::AgentHostUpdated(AgentHostStatus {
+            state: AgentHostState::Unknown,
+            prx_version: None,
+            refusal: Some(AgentRefusal::CredentialUnavailable),
+            state_dir: None,
+            applied: false,
+            nonce: 1,
+        }),
+    );
+    let host = feed.store.agent_host().cloned().expect("a status");
+    assert_eq!(host.state, AgentHostState::Running, "the last seen state stays");
+    assert_eq!(host.refusal, Some(AgentRefusal::CredentialUnavailable));
+    assert_eq!(follow(&feed.store, &mut action), None);
+    assert!(action.is_none(), "its own refusal ends the wait");
+}
+
+#[test]
+fn a_declined_confirmation_clears_the_installing_state() {
+    let mut action = HostAction::new(1, true);
+    action.await_confirmation();
+    assert!(!action.installing(), "waiting for the owner is not installing");
+    assert_eq!(action.confirmation_closed(true), HostStep::Ended { adopt: None });
+
+    // A confirmation lets the install run; a later close does not end it.
+    let mut action = HostAction::new(2, true);
+    action.await_confirmation();
+    assert_eq!(action.confirmation_closed(false), HostStep::Waiting);
+    assert!(action.installing());
+    assert_eq!(action.confirmation_closed(true), HostStep::Waiting);
+}
+
+#[test]
+fn a_listing_keeps_the_cursor_of_its_first_page_and_a_watch_advances_it() {
+    let mut feed = world();
+    feed.ok(10, listed("c-1"));
+    assert_eq!(feed.store.agent_cursor(), Some("c-1"));
+    // The later pages of the listing name no cursor.
+    feed.ok(11, listed(""));
+    feed.ok(12, listed(""));
+    assert_eq!(feed.store.agent_cursor(), Some("c-1"));
+    // A watch answer advances it.
+    feed.ok(13, listed("c-2"));
+    assert_eq!(feed.store.agent_cursor(), Some("c-2"));
+}
+
+#[test]
+fn a_refused_cursor_is_dropped_and_no_watch_goes_out_until_a_listing() {
+    let mut feed = world();
+    feed.ok(10, listed("c-1"));
+    feed.ok(11, DomainEvent::AgentCursorReset);
+    assert_eq!(feed.store.agent_cursor(), None);
+    let watch =
+        handle_intent(&feed.store, Intent::human(IntentKind::AgentWatchRefresh), Timestamp(12));
+    assert!(watch.is_err(), "no cursor, no watch: no retry storm");
+    feed.ok(13, listed("c-3"));
+    assert_eq!(feed.store.agent_cursor(), Some("c-3"));
 }
 
 #[test]
