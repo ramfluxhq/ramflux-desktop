@@ -44,7 +44,7 @@ Versioning.
 
 ### Changed
 
-- Core pinned to 30d0f9a7 (core release v0.2.9). The username directory is
+- Core pinned to 69fca252 (core `next`, PRX pin 6e39b396). The username directory is
   provisioned by `rf daemon start` from its environment (`RAMFLUX_USERNAME_CENTER_*`,
   `RAMFLUX_USERNAME_TRUST_GENERATION`); the desktop passes its environment on.
 - A direct conversation's header no longer shows a member count.

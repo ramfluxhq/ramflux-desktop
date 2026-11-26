@@ -112,6 +112,7 @@ cc|1.10.0|registry+https://github.com/rust-lang/crates.io-index|86e055fa6e3e40ad
 cfg-if|1.0.5|registry+https://github.com/rust-lang/crates.io-index|4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600
 cfg_aliases|0.2.2|registry+https://github.com/rust-lang/crates.io-index|f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527
 chacha20poly1305|0.10.1|registry+https://github.com/rust-lang/crates.io-index|10cd79432192d1c0f4e1a0fef9527696cc039165d729fb41b3f4f4f354c2dc35
+chacha20poly1305|0.11.0|registry+https://github.com/rust-lang/crates.io-index|9b89e1c441e926b9c82a8d023f6e1b7ae0adcfaa7d621814e4d60789bac751cb
 chacha20|0.10.2|registry+https://github.com/rust-lang/crates.io-index|65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06
 chacha20|0.9.1|registry+https://github.com/rust-lang/crates.io-index|c3613f74bd2eac03dad61bd53dbe620703d4371614fe0bc3b9f04dd36fe4e818
 chrono|0.4.45|registry+https://github.com/rust-lang/crates.io-index|1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327
@@ -576,6 +577,7 @@ polling|3.11.0|registry+https://github.com/rust-lang/crates.io-index|5d0e4f59085
 pollster|0.2.5|registry+https://github.com/rust-lang/crates.io-index|5da3b0203fd7ee5720aa0b5e790b591aa5d3f41c3ed2c34a3a393382198af2f7
 pollster|0.4.0|registry+https://github.com/rust-lang/crates.io-index|2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3
 poly1305|0.8.0|registry+https://github.com/rust-lang/crates.io-index|8159bd90725d2df49889a078b54f4f79e87f1f8a8444194cdca81d38f5393abf
+poly1305|0.9.1|registry+https://github.com/rust-lang/crates.io-index|6e2d0073b297041425c7c3df6eb4792d598a15323fe63346852b092eca02904c
 polycool|0.4.0|registry+https://github.com/rust-lang/crates.io-index|50596ddc09eb5ad5f75cacd40209568e66df71baf86e1499a0e99c4cff12a5a6
 polyval|0.6.2|registry+https://github.com/rust-lang/crates.io-index|9d1fe60d06143b2430aa532c94cfe9e29783047f06c0d7fd359a9a51b729fa25
 polyval|0.7.3|registry+https://github.com/rust-lang/crates.io-index|f0fa31d631f2b2cb2a544d0aa321ce847a94764d701ca2becc411138b93d49cd
