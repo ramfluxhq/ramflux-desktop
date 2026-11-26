@@ -98,6 +98,12 @@ impl Task {
         let planned = plan(self.scope.account(), effect, &self.translator);
         let (method, body) = (planned.method, planned.body);
         self.translator.decision_sent(&method, &body);
+        if method == methods::GROUP_CREATE {
+            // Until the member adds finish, the group takes no messages.
+            let context_id =
+                ramflux_desktop_core::ContextId::new(crate::plan::text(&body, "context_id"));
+            self.emit(vec![DomainEvent::GroupCreation { context_id, creating: true }]);
+        }
         self.translator.rename_sent(&method, &body);
         let operation = match planned.plan {
             Plan::Call { request, refresh } if method == methods::SEND_MESSAGE => {
@@ -193,6 +199,7 @@ impl Task {
             Ok(answer) => {
                 let mut events = self.translator.effect_done(method, body, &answer, now());
                 events.push(DomainEvent::EffectSucceeded { method: method.to_owned() });
+                events.extend(Self::creation_ended(method, body));
                 self.emit(events);
                 self.spawn_fetches(refresh);
                 self.resolve_task_step(method, body, &answer);
@@ -236,6 +243,7 @@ impl Task {
                     ));
                 }
                 events.extend(closed);
+                events.extend(Self::creation_ended(method, body));
                 self.emit(events);
                 // What applied before a failure is read back.
                 self.spawn_fetches(refresh);
@@ -248,6 +256,14 @@ impl Task {
 }
 
 impl Task {
+    /// The end of a group creation (success or failure) for `method`.
+    fn creation_ended(method: &str, body: &Value) -> Option<DomainEvent> {
+        (method == methods::GROUP_CREATE).then(|| DomainEvent::GroupCreation {
+            context_id: ramflux_desktop_core::ContextId::new(crate::plan::text(body, "context_id")),
+            creating: false,
+        })
+    }
+
     /// After the grant flow decided an approval a task step waits on, sends
     /// the requester's resolution of that step (the task records the
     /// decision; the grant alone authorizes the tool). It names the

@@ -717,9 +717,12 @@ impl Workspace {
             };
             let gate_reason = schema_gate::active(self.store.read(cx))
                 .and_then(|(_, gate)| schema_gate::composer_reason(gate));
+            let creating = self.current.as_ref().is_some_and(|id| store.is_creating(id));
             composer::Unavailable {
                 message: gate_reason.or_else(|| {
-                    if draft.is_open() {
+                    if creating {
+                        Some(crate::i18n::tr("group.creating.composer"))
+                    } else if draft.is_open() {
                         draft.blocked(store)
                     } else {
                         in_context(methods::SEND_MESSAGE)

@@ -1624,6 +1624,7 @@
   "composer.edit.label": "正在编辑你的消息",
   "composer.reply.to": "回复 %{name}",
   "group.leave.action": "离开群组",
+  "group.creating.composer": "正在创建群组，全部成员添加完成后即可发送消息。",
   "dock.contacts.invitations": "群组邀请",
   "dock.contacts.invitation.accept": "加入",
   "dock.contacts.invitation.decline": "拒绝",

@@ -290,6 +290,15 @@ pub enum DomainEvent {
     },
     /// The group invitations waiting for an answer (the whole list).
     GroupInvitationsListed(Vec<crate::GroupInvitation>),
+    /// A group conversation is being created: its creation has not finished
+    /// (`creating: true`), or it has (`false`, on success or failure). A
+    /// creating group takes no messages yet.
+    GroupCreation {
+        /// The conversation being created.
+        context_id: crate::ContextId,
+        /// Whether the creation is still running.
+        creating: bool,
+    },
     /// This account's username, or why the directory cannot be used.
     UsernameStatusUpdated(crate::UsernameStatus),
     /// An actionable networking failure associated with its originating account.

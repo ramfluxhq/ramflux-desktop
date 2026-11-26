@@ -210,6 +210,16 @@ impl Store {
                     changes.source_status = true;
                 }
             }
+            DomainEvent::GroupCreation { context_id, creating } => {
+                let changed = if *creating {
+                    self.creating.insert(context_id.clone())
+                } else {
+                    self.creating.remove(context_id)
+                };
+                if changed {
+                    changes.contexts.insert(context_id.clone());
+                }
+            }
             DomainEvent::GroupInvitationsListed(invitations) => {
                 if self.group_invitations != *invitations {
                     self.group_invitations.clone_from(invitations);
