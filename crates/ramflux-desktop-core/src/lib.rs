@@ -57,9 +57,9 @@ pub use ids::{
     ObjectId, ParticipantId, StandingApprovalId, StepId, SurfaceId, TaskId, Timestamp,
 };
 pub use intent::{
-    ContactAction, ContactCardProblem, ContactIdProblem, ContactInput, Effect, GovernanceOp,
-    Intent, IntentKind, MAX_CONTACT_CARD_LEN, MAX_CONTACT_ID_LEN, SecretInput, SyncDirection,
-    check_contact_card, check_contact_id, classify_contact_input, methods,
+    AppLockPhase, ContactAction, ContactCardProblem, ContactIdProblem, ContactInput, Effect,
+    GovernanceOp, Intent, IntentKind, MAX_CONTACT_CARD_LEN, MAX_CONTACT_ID_LEN, SecretInput,
+    SyncDirection, check_contact_card, check_contact_id, classify_contact_input, methods,
 };
 pub use model::*;
 pub use policy::{

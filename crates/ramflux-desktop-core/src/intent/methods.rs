@@ -124,6 +124,12 @@ pub const HANDOFF_DECLINE: &str = "handoff.decline";
 pub const ACCOUNT_UNLOCK: &str = "account.unlock";
 /// Lock an account.
 pub const ACCOUNT_LOCK: &str = "account.lock";
+/// Read an account's app lock (the policy and whether it is locked now).
+pub const APP_LOCK_STATE: &str = "account.app_lock.state";
+/// Turn the app lock on or off and set its timeout (the account must be open).
+pub const APP_LOCK_CONFIGURE: &str = "account.app_lock.configure";
+/// Report that the app went to the background or came back to the front.
+pub const APP_LOCK_LIFECYCLE: &str = "account.app_lock.lifecycle";
 /// Rotate an account passphrase (carries secrets).
 pub const ACCOUNT_ROTATE_PASSPHRASE: &str = "account.passphrase.rotate";
 /// Export an encrypted account backup (carries a secret).

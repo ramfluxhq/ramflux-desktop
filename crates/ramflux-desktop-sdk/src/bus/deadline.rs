@@ -78,11 +78,12 @@ const NETWORK: [&str; 37] = [
 ];
 
 /// Methods that only read.
-const READS: [&str; 19] = [
+const READS: [&str; 20] = [
     "daemon.status",
     "node.list",
     "account.list",
     "account.status",
+    "account.app_lock.state",
     "device.list",
     "conversation.list",
     "group.list",

@@ -196,6 +196,9 @@ pub enum IntentError {
     /// The device is already revoked.
     #[error("device {0} is already revoked")]
     DeviceRevoked(DeviceId),
+    /// An app lock timeout outside the daemon's range (0 through 86 400 000 ms).
+    #[error("app lock timeout {0} ms is out of range")]
+    AppLockTimeout(u64),
     /// The backend behind the source cannot perform the method.
     #[error("{method} is not available on this backend: {reason}")]
     UnsupportedByBackend {

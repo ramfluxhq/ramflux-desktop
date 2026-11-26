@@ -431,6 +431,9 @@ async fn schema_gate_table_per_generation_and_support() {
 /// message-class. A literal in `plan/*.rs` that is not here fails the
 /// completeness test below.
 const INVENTORY: &[(&str, bool)] = &[
+    ("account.app_lock.configure", false),
+    ("account.app_lock.lifecycle", false),
+    ("account.app_lock.state", false),
     ("account.backup.cancel", false),
     ("account.backup.create", false),
     ("account.backup.export", false),

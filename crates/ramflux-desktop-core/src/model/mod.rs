@@ -54,8 +54,8 @@ mod task;
 mod vault;
 
 pub use account::{
-    Account, AccountKind, Device, LockState, NetworkingCapacity, NetworkingReason,
-    NetworkingReasonKind, Node, NodeHealth, NodeProbe, PinSource, ProbeOutcome,
+    Account, AccountKind, AppLock, AppLockState, Device, LockState, NetworkingCapacity,
+    NetworkingReason, NetworkingReasonKind, Node, NodeHealth, NodeProbe, PinSource, ProbeOutcome,
     RegistrationRefusal, SecureSessions,
 };
 pub use account_code::{ACCOUNT_CODE_DIGITS, AccountCodeProblem, check_account_code};

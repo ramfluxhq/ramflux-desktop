@@ -9,6 +9,14 @@ Versioning.
 
 ### Added
 
+- App lock (Settings › Account › App lock, off by default): when on, the
+  app asks for the account code after the chosen time in the background
+  (immediately, 1 minute, 5 minutes, 15 minutes or 1 hour). The lock is the
+  core's (`account.app_lock.configure`, `.state` and `.lifecycle`); while it
+  holds the account closed, the entry page asks for the account code, and
+  notices show no sender and no text. Unlock is by account code only:
+  biometric unlock waits for the core.
+
 - Message actions in direct and group conversations: Reply (the composer
   quotes the message; the bubble shows the quote), Edit (with the revision
   the core expects; the message is marked edited), Delete for everyone

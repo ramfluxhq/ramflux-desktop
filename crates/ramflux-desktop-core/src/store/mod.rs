@@ -46,10 +46,10 @@ use crate::ids::{
     ParticipantId, StandingApprovalId, SurfaceId, TaskId, Timestamp,
 };
 use crate::model::{
-    Account, AgentExport, AuditEntry, BackupJob, Call, Capabilities, Ceremony, ContactCard,
-    ContactRequest, Context, DaemonInfo, Device, EffectFailure, Grant, Integrations, Listing,
-    Moment, Node, Object, Participant, RecoveryCeremony, RequestDirection, RequestFloors,
-    RequestPolicy, StandingApproval, SyncStatus, Task,
+    Account, AgentExport, AppLock, AppLockState, AuditEntry, BackupJob, Call, Capabilities,
+    Ceremony, ContactCard, ContactRequest, Context, DaemonInfo, Device, EffectFailure, Grant,
+    Integrations, Listing, Moment, Node, Object, Participant, RecoveryCeremony, RequestDirection,
+    RequestFloors, RequestPolicy, StandingApproval, SyncStatus, Task,
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
@@ -75,6 +75,8 @@ pub const MAX_FAILURES: usize = 32;
 #[derive(Debug, Clone, Default)]
 pub struct Store {
     accounts: BTreeMap<AccountId, Account>,
+    /// The app lock of each account, once the daemon reported it.
+    app_locks: BTreeMap<AccountId, AppLock>,
     nodes: BTreeMap<NodeId, Node>,
     devices: BTreeMap<DeviceId, Device>,
     participants: BTreeMap<ParticipantId, Participant>,
@@ -212,6 +214,18 @@ impl Store {
     /// Account by id.
     pub fn account(&self, id: &AccountId) -> Option<&Account> {
         self.accounts.get(id)
+    }
+
+    /// The app lock of an account, once the daemon has reported it (`None`
+    /// while it is loading).
+    pub fn app_lock(&self, id: &AccountId) -> Option<&AppLock> {
+        self.app_locks.get(id)
+    }
+
+    /// Whether the app lock holds the account closed now: the lock screen
+    /// stands in for it until the account code opens it.
+    pub fn app_locked(&self, id: &AccountId) -> bool {
+        self.app_lock(id).is_some_and(|lock| lock.state == AppLockState::Locked)
     }
 
     /// All accounts ordered by id.

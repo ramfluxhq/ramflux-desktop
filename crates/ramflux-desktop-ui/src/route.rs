@@ -28,9 +28,10 @@ pub enum Page {
 
 /// Derives the page from the store.
 ///
-/// The workspace opens when an account is unlocked, or when the source
-/// declares no account at all but already serves contexts (a single implicit
-/// account). A locked account always returns to entry. Without an account,
+/// The workspace opens when an account is unlocked and its app lock is not
+/// holding it closed, or when the source declares no account at all but
+/// already serves contexts (a single implicit account). A locked account, or
+/// one the app lock holds closed, always returns to entry. Without an account,
 /// entry stays on the node step until a node is confirmed and no discovered
 /// node waits for a decision.
 pub fn page_for(store: &Store) -> Page {
@@ -39,7 +40,10 @@ pub fn page_for(store: &Store) -> Page {
         if store.contexts().next().is_some() {
             return Page::Workspace;
         }
-    } else if store.accounts().any(|a| a.lock_state == LockState::Unlocked) {
+    } else if store
+        .accounts()
+        .any(|a| a.lock_state == LockState::Unlocked && !store.app_locked(&a.id))
+    {
         return Page::Workspace;
     }
     let pending_node = store.nodes().any(|n| !n.confirmed);

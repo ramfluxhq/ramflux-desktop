@@ -43,6 +43,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::SourceStatusChanged(_) => "SourceStatusChanged",
         DomainEvent::ContextSettingsChanged { .. } => "ContextSettingsChanged",
         DomainEvent::AccountLockChanged { .. } => "AccountLockChanged",
+        DomainEvent::AppLockChanged { .. } => "AppLockChanged",
         DomainEvent::NodeSettingsChanged { .. } => "NodeSettingsChanged",
         DomainEvent::NodeProbed { .. } => "NodeProbed",
         DomainEvent::NodeRemoved { .. } => "NodeRemoved",
@@ -73,7 +74,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 55;
+const DOMAIN_EVENT_VARIANTS: usize = 56;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -152,6 +153,8 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::SetDefaultNode { .. } => "SetDefaultNode",
         IntentKind::SetNodeEnabled { .. } => "SetNodeEnabled",
         IntentKind::ExportDiagnostics { .. } => "ExportDiagnostics",
+        IntentKind::ConfigureAppLock { .. } => "ConfigureAppLock",
+        IntentKind::AppLockLifecycle { .. } => "AppLockLifecycle",
         IntentKind::StartCall { .. } => "StartCall",
         IntentKind::AnswerContactRequest { .. } => "AnswerContactRequest",
         IntentKind::SetContactRequestPolicy { .. } => "SetContactRequestPolicy",
@@ -179,7 +182,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the eight secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 67;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 69;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -228,6 +231,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::ConfirmNodePressed { .. } => "ConfirmNodePressed",
         UiEventKind::NodeActionPressed { .. } => "NodeActionPressed",
         UiEventKind::LockPressed { .. } => "LockPressed",
+        UiEventKind::AppLockConfigureRequested { .. } => "AppLockConfigureRequested",
         UiEventKind::RevokeDevicePressed { .. } => "RevokeDevicePressed",
         UiEventKind::DeviceSyncRequested { .. } => "DeviceSyncRequested",
         UiEventKind::DiagnosticsExportRequested { .. } => "DiagnosticsExportRequested",
@@ -562,6 +566,16 @@ fn all_domain_events() -> Vec<DomainEvent> {
         DomainEvent::AccountLockChanged {
             account_id: AccountId::new("a-1"),
             lock_state: LockState::Locked,
+        },
+        DomainEvent::AppLockChanged {
+            account_id: AccountId::new("a-1"),
+            lock: AppLock {
+                enabled: true,
+                timeout_ms: 60_000,
+                state: AppLockState::Locked,
+                reason: Some("timeout".into()),
+                generation: 3,
+            },
         },
         DomainEvent::NodeSettingsChanged {
             node_id: NodeId::new("n-1"),
@@ -902,6 +916,15 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::SetDefaultNode { node_id: NodeId::new("n-1") },
         IntentKind::SetNodeEnabled { node_id: NodeId::new("n-1"), enabled: false },
         IntentKind::ExportDiagnostics { path: "/tmp/d".into() },
+        IntentKind::ConfigureAppLock {
+            account_id: AccountId::new("a-1"),
+            enabled: true,
+            timeout_ms: 60_000,
+        },
+        IntentKind::AppLockLifecycle {
+            account_id: AccountId::new("a-1"),
+            phase: AppLockPhase::Background,
+        },
         IntentKind::StartCall { context_id: "c-1".into() },
         IntentKind::AnswerCall { call_id: "k-1".into() },
         IntentKind::RejectCall { call_id: "k-1".into() },
@@ -999,6 +1022,11 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
             action: NodeAction::SetEnabled(false),
         },
         UiEventKind::LockPressed { account_id: AccountId::new("a-1") },
+        UiEventKind::AppLockConfigureRequested {
+            account_id: AccountId::new("a-1"),
+            enabled: false,
+            timeout_ms: 0,
+        },
         UiEventKind::RevokeDevicePressed { device_id: DeviceId::new("dev-2") },
         UiEventKind::DeviceSyncRequested {
             direction: SyncDirection::Export,

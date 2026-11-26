@@ -320,9 +320,13 @@ fn open(
 
 /// Shows `notice` as the device's preview level allows. Does nothing before
 /// [`install`].
-pub fn post(notice: &Notice, cx: &App) {
+///
+/// While `locked` (the app lock holds an account closed) the notice shows no
+/// sender and no text, whatever the preview level.
+pub fn post(notice: &Notice, locked: bool, cx: &App) {
     if let Some(service) = cx.try_global::<Notifications>() {
-        service.notifier.show(&compose(notice, service.preview()));
+        let level = if locked { PreviewLevel::Nothing } else { service.preview() };
+        service.notifier.show(&compose(notice, level));
     }
 }
 

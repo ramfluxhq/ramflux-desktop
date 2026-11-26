@@ -211,6 +211,18 @@ impl Task {
                 }
             }
             Err(error) => {
+                // The app lock holds the account closed: the lock screen takes
+                // over, and the refusal is no failure to report.
+                if let BusError::Daemon { code: refusal, .. } = &error
+                    && refusal == "app_locked"
+                {
+                    let closed = match self.scope.account() {
+                        Some(id) => self.translator.app_locked(id),
+                        None => Vec::new(),
+                    };
+                    self.emit(closed);
+                    return;
+                }
                 let code = match &error {
                     BusError::Daemon { code, .. } => FailureCode::Daemon(code.clone()),
                     BusError::Transport(_) => FailureCode::Transport,

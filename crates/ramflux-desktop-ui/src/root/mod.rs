@@ -27,8 +27,8 @@ use std::time::{Duration, Instant};
 use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, Subscription, Window};
 
 use ramflux_desktop_core::{
-    ConfirmationIssuer, GrantState, Intent, IntentError, IntentKind, MomentId, ParticipantId,
-    Scope, Store, UiEvent,
+    AccountId, AppLockPhase, ConfirmationIssuer, GrantState, Intent, IntentError, IntentKind,
+    MomentId, ParticipantId, Scope, Store, UiEvent,
 };
 
 use crate::app::{
@@ -256,6 +256,30 @@ impl IntentRoot {
         cx.notify();
     }
 
+    /// Reports to the app lock of each enabled account that the window went
+    /// to the background or came back to the front. The daemon arms its timer
+    /// on the first and stops it on the second; the reply carries the state.
+    fn on_window_activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let phase = if window.is_window_active() {
+            AppLockPhase::Foreground
+        } else {
+            AppLockPhase::Background
+        };
+        let accounts: Vec<AccountId> = {
+            let handle = self.store.read(cx);
+            let store = handle.store();
+            store
+                .accounts()
+                .filter(|a| store.app_lock(&a.id).is_some_and(|lock| lock.enabled))
+                .map(|a| a.id.clone())
+                .collect()
+        };
+        for account_id in accounts {
+            let kind = IntentKind::AppLockLifecycle { account_id, phase };
+            self.submit(Intent::human(kind), window, cx);
+        }
+    }
+
     /// Creates a root dispatching to `store` and wires the strip's events,
     /// which need a window.
     pub fn attach(store: Entity<StoreHandle>, window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -273,6 +297,9 @@ impl IntentRoot {
                     if matches!(event, StoreEvent::Changed(_)) {
                         root.recheck_pending(cx);
                     }
+                }),
+                cx.observe_window_activation(window, |root: &mut Self, window, cx| {
+                    root.on_window_activation(window, cx);
                 }),
             ];
             Self {

@@ -298,6 +298,18 @@ fn map(
             "account.lock",
             json!({}),
         )),
+        methods::APP_LOCK_CONFIGURE => call(BusRequest::new(
+            Some(text(body, "account_id")),
+            "account",
+            "account.app_lock.configure",
+            json!({ "enabled": body["enabled"], "timeout_ms": body["timeout_ms"] }),
+        )),
+        methods::APP_LOCK_LIFECYCLE => call(BusRequest::new(
+            Some(text(body, "account_id")),
+            "account",
+            "account.app_lock.lifecycle",
+            json!({ "state": body["state"] }),
+        )),
         methods::ACCOUNT_ROTATE_PASSPHRASE => {
             let mut secrets = secrets.into_iter();
             match (secrets.next(), secrets.next()) {

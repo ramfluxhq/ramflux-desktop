@@ -40,6 +40,7 @@
 
 pub mod account;
 pub mod agents;
+mod app_lock;
 pub mod backup;
 pub mod calls;
 mod contact_failures;
@@ -143,6 +144,7 @@ pub struct Translator {
     socket: String,
     nodes: BTreeMap<NodeId, ramflux_desktop_core::Node>,
     accounts: BTreeMap<AccountId, Account>,
+    app_locks: BTreeMap<AccountId, ramflux_desktop_core::AppLock>,
     node_relays: BTreeMap<NodeId, String>,
     self_device: Option<String>,
     /// Whether `self_device` came from `account.status.device_id` (which
@@ -273,6 +275,7 @@ impl Translator {
             socket: socket.into(),
             nodes: BTreeMap::new(),
             accounts: BTreeMap::new(),
+            app_locks: BTreeMap::new(),
             node_relays: BTreeMap::new(),
             self_device: None,
             status_device: false,
@@ -471,6 +474,7 @@ impl Translator {
             Fetch::NodeList => Translated::events(self.node_list(value)),
             Fetch::AccountList => self.account_list(value),
             Fetch::AccountStatus(id) => Translated::events(self.account_status(id, value)),
+            Fetch::AppLock(id) => Translated::events(self.app_lock_answer(id, value)),
             Fetch::DeviceList => Translated::events(self.device_list(value)),
             Fetch::Page(paged, cursor) => match self.pages.page(*paged, cursor.as_deref(), value) {
                 Paging::More(next) => Translated { events: Vec::new(), follow: vec![next] },
