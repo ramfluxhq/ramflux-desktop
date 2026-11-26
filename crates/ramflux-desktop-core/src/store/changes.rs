@@ -265,6 +265,8 @@ pub struct Rejection {
 pub struct Changes {
     /// Changed accounts.
     pub accounts: BTreeSet<AccountId>,
+    /// Accounts whose app lock answer arrived (state, policy or refusal).
+    pub app_locks: BTreeSet<AccountId>,
     /// Changed or removed nodes.
     pub nodes: BTreeSet<NodeId>,
     /// Changed devices.
@@ -316,6 +318,7 @@ impl Changes {
     /// Returns true when nothing changed.
     pub fn is_empty(&self) -> bool {
         self.accounts.is_empty()
+            && self.app_locks.is_empty()
             && self.nodes.is_empty()
             && self.devices.is_empty()
             && self.participants.is_empty()
@@ -343,6 +346,7 @@ impl Changes {
     pub fn merge(&mut self, other: Changes) {
         let Changes {
             accounts,
+            app_locks,
             nodes,
             devices,
             participants,
@@ -366,6 +370,7 @@ impl Changes {
             source_status,
         } = other;
         self.accounts.extend(accounts);
+        self.app_locks.extend(app_locks);
         self.nodes.extend(nodes);
         self.devices.extend(devices);
         self.participants.extend(participants);

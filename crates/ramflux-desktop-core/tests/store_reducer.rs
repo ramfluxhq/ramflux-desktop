@@ -320,3 +320,49 @@ fn sync_status_is_replaced_and_reports_a_change_only_when_it_differs() {
     assert!(feed.ok(3, DomainEvent::SyncStatusChanged(polling.clone())).source_status);
     assert_eq!(feed.store.sync_status(), Some(&polling), "a new status replaces the old one");
 }
+
+#[test]
+fn only_an_app_lock_answer_names_the_account_in_app_locks() {
+    let mut feed = Feed::new();
+    let account = AccountId::new("a-1");
+    let lock = AppLock {
+        enabled: true,
+        timeout_ms: 0,
+        state: AppLockState::Locked,
+        reason: None,
+        generation: 1,
+    };
+    feed.ok(
+        5,
+        DomainEvent::AccountUpdated(Account {
+            id: account.clone(),
+            label: "a-1".to_owned(),
+            kind: AccountKind::HumanInteractive,
+            node_id: None,
+            device_id: None,
+            lock_state: LockState::Unlocked,
+            self_participant_id: None,
+            secure_sessions: SecureSessions::Ready,
+            networking_session: None,
+            networking_custody: None,
+            authority_blocked: false,
+            networking_failure: None,
+            networking_reason: None,
+            networking: Networking::Live,
+        }),
+    );
+    let answered = feed
+        .ok(10, DomainEvent::AppLockChanged { account_id: account.clone(), lock: lock.clone() });
+    assert!(answered.app_locks.contains(&account));
+    assert!(answered.accounts.contains(&account));
+
+    let unrelated = feed.ok(
+        20,
+        DomainEvent::AccountLockChanged {
+            account_id: account.clone(),
+            lock_state: LockState::Locked,
+        },
+    );
+    assert!(unrelated.accounts.contains(&account));
+    assert!(unrelated.app_locks.is_empty());
+}

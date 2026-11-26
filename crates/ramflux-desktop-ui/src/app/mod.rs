@@ -539,7 +539,7 @@ impl StoreHandle {
     }
 
     /// Covers the content of `accounts` until the daemon answers their app
-    /// lock (the next change to them releases the hold).
+    /// lock (their next app lock answer releases the hold).
     pub fn hold_for_resume(&mut self, accounts: Vec<AccountId>, cx: &mut Context<Self>) {
         if accounts.is_empty() {
             return;
@@ -558,11 +558,11 @@ impl StoreHandle {
         !self.resume_hold.is_empty()
     }
 
-    /// Releases the resume hold of the accounts a change names (their app
-    /// lock answered).
+    /// Releases the resume hold of the accounts whose app lock answered; any
+    /// other change naming the account leaves the hold in place.
     fn release_resume_hold(&mut self, changes: &ChangeSet) {
         if !self.resume_hold.is_empty() {
-            let changed = &changes.domain().accounts;
+            let changed = &changes.domain().app_locks;
             self.resume_hold.retain(|id| !changed.contains(id));
         }
     }
