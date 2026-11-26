@@ -123,6 +123,9 @@ Versioning.
   (stored background or unknown), the daemon's accounts are listed again when
   an account session opens or finds its account not open, and a stream the lock
   refuses is retried with growing backoff up to 30 seconds.
+- Agent approvals (G19): an approval is allowed only when the owner's roster
+  holds its agent; an unknown agent can only be denied. An answered approval
+  (`decided` with a decision) shows as allowed or denied.
 - A PRX runtime action in Settings › Agents ends only with its own result:
   a failed background read no longer cancels an install or the daemon restart
   that adopts the runtime, a failed action reports its typed refusal, and a

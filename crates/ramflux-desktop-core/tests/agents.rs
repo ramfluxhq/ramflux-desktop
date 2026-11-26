@@ -518,6 +518,42 @@ fn an_approval_is_decided_by_the_owner_of_the_agent_it_names() {
 }
 
 #[test]
+fn an_approval_of_an_agent_the_roster_does_not_hold_can_only_be_denied() {
+    let store = with_approvals(world(), vec![approval("ap-1", "ghost-agent", None)]);
+    assert!(
+        matches!(
+            decide(&store, decide_approval("owner", "ap-1")),
+            Err(IntentError::AgentApprovalOwner(_))
+        ),
+        "an unknown agent cannot be approved, even by an owner"
+    );
+    let deny = IntentKind::AgentApprovalDecide {
+        owner_id: AccountId::new("owner"),
+        approval_id: "ap-1".into(),
+        approved: false,
+    };
+    let sent = decide(&store, deny).expect("a denial of an unknown agent is allowed");
+    assert_eq!(sent[0].body().expect("call")["decision"], "denied");
+}
+
+#[test]
+fn an_approval_of_an_agent_another_account_owns_is_refused_both_ways() {
+    let mut feed = with_agent(world(), record("agent-2", AgentLifecycle::Active, "other"));
+    feed.ok(5, DomainEvent::AgentApprovalsUpdated(vec![approval("ap-1", "agent-2", None)]));
+    let store = feed.store;
+    let deny = IntentKind::AgentApprovalDecide {
+        owner_id: AccountId::new("owner"),
+        approval_id: "ap-1".into(),
+        approved: false,
+    };
+    assert!(matches!(
+        decide(&store, decide_approval("owner", "ap-1")),
+        Err(IntentError::AgentApprovalOwner(_))
+    ));
+    assert!(matches!(decide(&store, deny), Err(IntentError::AgentApprovalOwner(_))));
+}
+
+#[test]
 fn an_approval_is_refused_for_another_account_an_unknown_id_or_an_expired_one() {
     let mut feed = world();
     feed.ok(

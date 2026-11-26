@@ -130,11 +130,13 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 if approval.is_expired(p.now.0) {
                     return Err(IntentError::AgentApprovalExpired(approval_id.clone()));
                 }
-                if p.store
-                    .agent_of_approval(approval)
-                    .is_some_and(|record| record.custodian_anchor != owner_id.as_str())
-                {
-                    return Err(IntentError::AgentApprovalOwner(approval_id.clone()));
+                // Approving needs a roster record whose custodian is the owner.
+                // Denying an agent the roster does not hold stays allowed.
+                match p.store.agent_of_approval(approval) {
+                    Some(record) if record.custodian_anchor == owner_id.as_str() => {}
+                    Some(_) => return Err(IntentError::AgentApprovalOwner(approval_id.clone())),
+                    None if !*approved => {}
+                    None => return Err(IntentError::AgentApprovalOwner(approval_id.clone())),
                 }
                 let decision = if *approved { "approved" } else { "denied" };
                 Ok(Decision::Call(
