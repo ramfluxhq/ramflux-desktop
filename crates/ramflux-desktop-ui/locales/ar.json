@@ -1765,6 +1765,7 @@
   "composer.reply.to": null,
   "group.leave.action": null,
   "group.creating.composer": null,
+  "sections.groups.creating": null,
   "dock.contacts.invitations": null,
   "dock.contacts.invitation.accept": null,
   "dock.contacts.invitation.decline": null,

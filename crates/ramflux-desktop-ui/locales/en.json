@@ -1653,6 +1653,7 @@
   "composer.reply.to": "Replying to %{name}",
   "group.leave.action": "Leave group",
   "group.creating.composer": "Creating the group. Messages open once everyone is added.",
+  "sections.groups.creating": "Creating…",
   "dock.contacts.invitations": "Group invitations",
   "dock.contacts.invitation.accept": "Join",
   "dock.contacts.invitation.decline": "Decline",

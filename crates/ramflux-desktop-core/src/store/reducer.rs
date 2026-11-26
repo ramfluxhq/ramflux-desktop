@@ -351,6 +351,11 @@ impl Store {
         if self.bodies.clear() {
             changes.bodies_cleared = true;
         }
+        // A creation that was running under the lock or the reset store is
+        // no longer tracked: its outcome is answered to nobody here.
+        for context in std::mem::take(&mut self.creating) {
+            changes.contexts.insert(context);
+        }
         self.drop_request_content(changes);
     }
 

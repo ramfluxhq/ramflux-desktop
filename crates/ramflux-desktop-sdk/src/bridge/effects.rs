@@ -96,10 +96,11 @@ impl Task {
             return;
         }
         let planned = plan(self.scope.account(), effect, &self.translator);
-        let (method, body) = (planned.method, planned.body);
+        let (method, body) = (planned.method.clone(), planned.body.clone());
         self.translator.decision_sent(&method, &body);
-        if method == methods::GROUP_CREATE {
-            // Until the member adds finish, the group takes no messages.
+        if method == methods::GROUP_CREATE && matches!(planned.plan, Plan::Calls { .. }) {
+            // Until the member adds finish, the group takes no messages. A
+            // refused creation runs nothing, so it never starts one.
             let context_id =
                 ramflux_desktop_core::ContextId::new(crate::plan::text(&body, "context_id"));
             self.emit(vec![DomainEvent::GroupCreation { context_id, creating: true }]);
