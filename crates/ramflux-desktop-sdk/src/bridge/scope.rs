@@ -230,6 +230,9 @@ pub(super) struct Task {
     pending_markers: u32,
     /// Snapshot batches of this epoch still in flight.
     batch_pending: u32,
+    /// The creation requests whose `agent.operation.get` is in flight: a
+    /// new read of one waits for the answer to the previous one.
+    pub(super) operations_in_flight: super::effects::ReadsInFlight,
     /// Numbers the current read attempt: every cancellation (a new epoch, a
     /// retry in the same epoch, a lost link) starts a new one, and a batch
     /// completion of an earlier attempt is dropped before any bookkeeping,
@@ -380,6 +383,7 @@ pub(super) fn build(
         gate_connection: None,
         pending_markers: 0,
         batch_pending: 0,
+        operations_in_flight: super::effects::ReadsInFlight::default(),
         read_attempt: 0,
         recovered_generation: 0,
         #[cfg(any(test, feature = "test-support"))]

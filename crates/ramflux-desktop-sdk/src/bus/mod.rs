@@ -3,8 +3,6 @@
 
 //! Local-bus requests and their failures, independent of any connection.
 //!
-//! - [`attended`]: requests only an attended session may make, on a
-//!   connection of their own.
 //! - [`client`]: one multiplexed request connection for one scope.
 //! - [`deadline`]: the deadline every request carries.
 //! - [`idempotency`]: the retry key every mutating request carries.
@@ -15,7 +13,6 @@
 //!   without the stream.
 
 pub mod approval;
-pub mod attended;
 pub mod client;
 pub mod deadline;
 pub mod idempotency;

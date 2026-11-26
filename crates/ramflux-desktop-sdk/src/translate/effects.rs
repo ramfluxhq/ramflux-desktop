@@ -48,11 +48,15 @@ impl Translator {
             | methods::AGENT_ACCESS_SET
             | methods::AGENT_DELETE => agents::effect_events(method, answer),
             RUNTIME_METHOD => {
+                let nonce = body["nonce"].as_u64().unwrap_or_default();
                 vec![DomainEvent::AgentHostUpdated(agents::host_status_of(
                     answer,
                     text(body, "action"),
+                    nonce,
                 ))]
             }
+            // The roster's changes since the cursor: its records and the new cursor.
+            methods::AGENT_WATCH => agents::read_events(&Fetch::AgentList, answer),
             // The job list of the agent the panel asked for.
             methods::AGENT_JOB_LIST => agents::read_events(
                 &Fetch::AgentJobs(text(body, "agent_anchor").to_owned()),

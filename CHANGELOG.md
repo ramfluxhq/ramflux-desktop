@@ -110,6 +110,17 @@ Versioning.
   (stored background or unknown), the daemon's accounts are listed again when
   an account session opens or finds its account not open, and a stream the lock
   refuses is retried with growing backoff up to 30 seconds.
+- Agents: a daemon restart after a runtime install or restart adopts the
+  runtime from the answer to that action only, and every answer is a change,
+  so an identical second restart still restarts the daemon once.
+- Agents: the creation poll lives in the app, so it keeps following a
+  creation while the panel is closed, and one `agent.operation.get` per
+  request is in flight at a time. The roster follows the daemon's changes
+  (`agent.watch`) after own changes, on reconnect and every 30 seconds, and
+  reads every page of `agent.list`.
+- Agents: retired agents are greyed out, and PRX refusals have their own
+  wording (with a restart hint for an expired runtime credential or an
+  unreachable runtime).
 - New group stays in its creating state until every member has been added;
   the group conversation was shown (and a first message could be sent) while
   members were still being added, so the message reached only some of them.
@@ -146,6 +157,8 @@ Versioning.
 
 - The desktop's interim delivery-receipt sender (`message.receipt.delivered`):
   the core sends delivered receipts itself.
+- The credential export of AI participants on the desktop (no request reaches
+  the daemon for it any more).
 - The retired one-shot attachment input (`message.submit` `attachments`), the
   object directory read and `object.get` / `object.transfer.resume`.
 

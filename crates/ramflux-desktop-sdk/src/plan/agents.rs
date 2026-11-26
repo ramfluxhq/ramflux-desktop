@@ -66,6 +66,7 @@ pub fn is_agent_method(method: &str) -> bool {
             | methods::AGENT_JOB_REMOVE
             | methods::AGENT_APPROVAL_DECIDE
             | methods::AGENT_JOB_LIST
+            | methods::AGENT_WATCH
     )
 }
 
@@ -116,6 +117,16 @@ pub fn agent_effect(method: &str, body: &Value, account: Option<&AccountId>) -> 
         // The answer is read by the translator (`effects.rs`): it carries no
         // follow-up read.
         methods::AGENT_JOB_LIST => job_list(body),
+        // The roster's changes since its cursor (one page; the next change
+        // round reads the rest).
+        methods::AGENT_WATCH => {
+            let cursor = text(body, "journal_cursor");
+            if cursor.is_empty() {
+                Err("the watch names the journal cursor it follows".to_owned())
+            } else {
+                Ok((json!({ "journal_cursor": cursor }), Vec::new()))
+            }
+        }
         methods::AGENT_APPROVAL_DECIDE => {
             let decision = match body["decision"].as_str() {
                 Some("approved") => "approved",

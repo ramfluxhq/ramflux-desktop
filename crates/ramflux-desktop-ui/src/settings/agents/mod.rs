@@ -20,15 +20,14 @@ mod rows;
 mod runtime;
 pub mod wizard;
 
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, App, Context, Entity, Subscription, Task, Window, div};
-use ramflux_desktop_core::{AgentAccessMode, AgentHostState, Intent, IntentKind, Store};
-use ramflux_desktop_sdk::plan::agents::{CREATION_POLL, pending_creation_reads};
-use ramflux_desktop_sdk::plan::fetch::Fetch;
+use gpui_kit::{AnyElement, App, Context, Entity, Subscription, Window, div};
+use ramflux_desktop_core::{AgentAccessMode, AgentRuntimeAction, Intent, IntentKind, Store};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::tr;
@@ -42,6 +41,18 @@ enum Part {
     Create,
     List,
     Unavailable,
+}
+
+/// A runtime action the panel submitted and whose answer has not arrived.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct HostAction {
+    /// The number the action was submitted with (its answer carries it).
+    pub nonce: u64,
+    /// Whether the action is an install (it shows the installing state).
+    pub install: bool,
+    /// The store's failure count when the action was submitted: a later
+    /// count means the action failed, and no answer will come.
+    pub failures: u64,
 }
 
 /// The persona inputs of the edit form (name and responsibility).
@@ -67,9 +78,10 @@ pub struct AgentsPanel {
     /// The local daemon launcher: restarted to adopt the runtime after an
     /// install or a restart of it.
     launcher: Entity<DaemonLauncher>,
-    /// An install or a restart the panel asked for and whose applied status
-    /// has not arrived yet.
-    adopt_pending: bool,
+    /// The last number given to a runtime action.
+    host_nonce: u64,
+    /// The runtime action submitted and not answered yet.
+    host_action: Option<HostAction>,
     /// The new-agent wizard.
     wizard: Option<wizard::Wizard>,
     /// The wizard's typed fields.
@@ -80,8 +92,6 @@ pub struct AgentsPanel {
     persona_inputs: PersonaInputs,
     /// The form open under one agent's row.
     form: Option<Form>,
-    /// Polls the creations still waiting (every [`CREATION_POLL`]).
-    poll: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -123,13 +133,13 @@ impl AgentsPanel {
             store,
             root,
             launcher,
-            adopt_pending: false,
+            host_nonce: 0,
+            host_action: None,
             wizard: None,
             wizard_inputs,
             runtime_inputs,
             persona_inputs,
             form: None,
-            poll: None,
             _subscriptions: subscriptions,
         }
     }
@@ -147,68 +157,64 @@ impl AgentsPanel {
     }
 
     /// Ends the wait of the wizard's creation once the store holds its
-    /// answer, and keeps the poll running while a creation is pending.
+    /// answer, and follows the runtime action the panel submitted.
     fn follow(&mut self, cx: &mut Context<Self>) {
         let store = self.store.read(cx).store();
         if let Some(sent) = self.wizard.as_mut().and_then(|wizard| wizard.sent.as_mut()) {
             sent.observe(store);
         }
-        self.adopt_runtime(cx);
-        self.ensure_poll(cx);
+        self.follow_host(cx);
     }
 
-    /// After an install or a restart the panel asked for answered running,
-    /// the owned daemon restarts with the runtime's state directory, so it
-    /// adopts the runtime. A refused or stopped runtime restarts nothing.
-    fn adopt_runtime(&mut self, cx: &mut Context<Self>) {
-        if !self.adopt_pending {
-            return;
+    /// Gives the next runtime action its number.
+    fn next_host_nonce(&mut self) -> u64 {
+        self.host_nonce += 1;
+        self.host_nonce
+    }
+
+    /// Follows the runtime action submitted last. Only its own answer (the
+    /// status carrying its number) ends the wait, and only that answer can
+    /// adopt the runtime: after an install or a restart answered running,
+    /// the owned daemon restarts with the runtime's state directory so it
+    /// adopts the runtime. An action that failed ends its wait too.
+    fn follow_host(&mut self, cx: &mut Context<Self>) {
+        let Some(action) = self.host_action else { return };
+        let store = self.state(cx);
+        let answer = store.agent_host().filter(|host| host.nonce == action.nonce).cloned();
+        let failed = store.failures_total() > action.failures;
+        if let Some(host) = answer {
+            self.host_action = None;
+            if let Some(state_dir) = host.adoption_for(action.nonce).map(Path::to_path_buf) {
+                self.adopt_with(state_dir, cx);
+            }
+        } else if failed {
+            self.host_action = None;
+            cx.notify();
         }
-        let Some(host) = self.state(cx).agent_host().cloned() else { return };
-        if !host.applied {
-            return;
-        }
-        self.adopt_pending = false;
-        let Some(state_dir) = host.state_dir else { return };
-        if host.refusal.is_some() || host.state != AgentHostState::Running {
-            return;
-        }
+    }
+
+    /// Restarts the owned daemon with the runtime's state directory.
+    fn adopt_with(&mut self, state_dir: PathBuf, cx: &mut Context<Self>) {
         self.launcher.update(cx, |launcher, cx| launcher.restart_for_runtime(Some(state_dir), cx));
     }
 
-    /// Starts the poll when a creation is pending and none is running.
-    fn ensure_poll(&mut self, cx: &mut Context<Self>) {
-        if self.poll.is_some() || pending_creation_reads(self.state(cx)).is_empty() {
-            return;
-        }
-        self.poll = Some(cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(CREATION_POLL).await;
-                let keep = this.update(cx, |panel, cx| panel.poll_creations(cx)).unwrap_or(false);
-                if !keep {
-                    break;
-                }
-            }
-        }));
+    /// Records a runtime action just submitted as the one being followed.
+    fn arm_host_action(&mut self, nonce: u64, install: bool, cx: &mut Context<Self>) {
+        let failures = self.state(cx).failures_total();
+        self.host_action = Some(HostAction { nonce, install, failures });
     }
 
-    /// One poll tick: reads every creation still waiting (`agent.operation.get`).
-    /// Returns whether the poll goes on.
-    fn poll_creations(&mut self, cx: &mut Context<Self>) -> bool {
-        let reads = pending_creation_reads(self.state(cx));
-        if reads.is_empty() {
-            self.poll = None;
-            cx.notify();
-            return false;
-        }
-        for read in reads {
-            if let Fetch::AgentOperation(request_id) = read {
-                let kind = IntentKind::AgentOperationRefresh { request_id };
-                self.store.update(cx, |store, cx| store.dispatch(Intent::human(kind), cx));
-            }
-        }
-        cx.notify();
-        true
+    /// Whether an install is running: submitted, not answered. While the
+    /// owner still has to confirm it (the confirm strip holds it), it is not
+    /// running yet.
+    fn installing(&self, cx: &App) -> bool {
+        let awaiting_confirmation = self.root.read(cx).pending_intent().is_some_and(|intent| {
+            matches!(
+                intent.kind,
+                IntentKind::AgentRuntime { action: AgentRuntimeAction::Install, .. }
+            )
+        });
+        self.host_action.is_some_and(|action| action.install) && !awaiting_confirmation
     }
 
     /// The last failed agent request, as its translated message.

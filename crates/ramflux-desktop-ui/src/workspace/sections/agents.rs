@@ -33,6 +33,7 @@ use super::directory::{self, Search};
 use crate::actions::{NextConversation, PreviousConversation};
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::{tr, tr_args};
+use crate::style::{DesignButton as _, RETIRED_OPACITY};
 
 /// What the roster reports to the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -237,6 +238,7 @@ fn group_row(group: &AgentGroup<'_>, cx: &App) -> gpui_kit::AnyElement {
     let reason = tr(AgentUnavailable::SubAgent.key());
     v_flex()
         .id(gpui_kit::ElementId::from(format!("agents-group-{}", main.agent_anchor)))
+        .opacity(if retired { RETIRED_OPACITY } else { 1.0 })
         .role(gpui_kit::Role::ListItem)
         .aria_label(tr_args("agents.roster.group", &[("name", &main.persona.name)]))
         .test_support()
@@ -279,17 +281,34 @@ fn group_row(group: &AgentGroup<'_>, cx: &App) -> gpui_kit::AnyElement {
                 ),
         )
         .child(
-            div()
-                .id(gpui_kit::ElementId::from(format!("agents-add-sub-{}", main.agent_anchor)))
-                .role(gpui_kit::Role::Status)
-                .aria_label(reason.clone())
-                .test_support()
-                .text_size(text_caption())
-                .text_color(cx.theme().muted_foreground)
-                .whitespace_normal()
-                .child(tr("agents.roster.add_sub"))
-                .child(" · ")
-                .child(reason),
+            h_flex()
+                .gap(space(2.))
+                .items_center()
+                .flex_wrap()
+                .child(
+                    Button::new(gpui_kit::ElementId::from(format!(
+                        "agents-add-sub-{}",
+                        main.agent_anchor
+                    )))
+                    .small()
+                    .design_secondary(cx)
+                    .design_label(tr("agents.roster.add_sub"))
+                    .design_disabled(true, cx),
+                )
+                .child(
+                    div()
+                        .id(gpui_kit::ElementId::from(format!(
+                            "agents-add-sub-reason-{}",
+                            main.agent_anchor
+                        )))
+                        .role(gpui_kit::Role::Status)
+                        .aria_label(reason.clone())
+                        .test_support()
+                        .text_size(text_caption())
+                        .text_color(cx.theme().muted_foreground)
+                        .whitespace_normal()
+                        .child(reason),
+                ),
         )
         .into_any_element()
 }

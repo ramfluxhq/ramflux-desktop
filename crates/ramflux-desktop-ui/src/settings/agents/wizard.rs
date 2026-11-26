@@ -379,7 +379,6 @@ impl AgentsPanel {
                 wizard.refusal = Some(DraftError::Custody(AgentCustodyProblem::Unknown));
             }
         }
-        self.ensure_poll(cx);
         cx.notify();
     }
 

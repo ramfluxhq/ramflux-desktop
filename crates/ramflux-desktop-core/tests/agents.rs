@@ -214,6 +214,7 @@ fn runtime_install_needs_a_provider_and_a_key_that_never_serializes() {
         provider: "anthropic".into(),
         model: "model-x".into(),
         key: key.map(SecretInput::new),
+        nonce: 1,
     };
     assert_eq!(
         handle_intent(&store, confirmed(install(None)), Timestamp(10)).err(),
@@ -275,6 +276,63 @@ fn the_jobs_of_an_agent_are_read_without_confirmation() {
         .is_err(),
         "an empty agent is refused"
     );
+}
+
+/// The adoption rule of the agents panel, as its follow step applies it:
+/// the restart of the owned daemon is taken from the status answering the
+/// action the panel submitted last, and only from that answer.
+fn adopt_for(store: &Store, submitted: &mut Option<u64>) -> Option<std::path::PathBuf> {
+    let nonce = (*submitted)?;
+    let host = store.agent_host().filter(|host| host.nonce == nonce)?;
+    *submitted = None;
+    host.adoption_for(nonce).map(std::path::Path::to_path_buf)
+}
+
+#[test]
+fn a_restart_adopts_the_runtime_once_and_never_early() {
+    let mut feed = world();
+    let answer = |nonce: u64| AgentHostStatus {
+        state: AgentHostState::Running,
+        prx_version: Some("0.1.0".into()),
+        refusal: None,
+        state_dir: Some("/state/prx".into()),
+        applied: true,
+        nonce,
+    };
+    let state_dir = std::path::PathBuf::from("/state/prx");
+    let mut submitted = Some(1);
+    let mut restarts = Vec::new();
+
+    // The install (action 1) answers running: one restart, with the state dir.
+    let changes = feed.ok(1, DomainEvent::AgentHostUpdated(answer(1)));
+    assert!(changes.agents);
+    restarts.extend(adopt_for(&feed.store, &mut submitted));
+    assert_eq!(restarts, vec![state_dir.clone()]);
+
+    // The restart (action 2) is submitted; until its answer, the stored
+    // status (action 1) adopts nothing, so no restart runs early.
+    submitted = Some(2);
+    assert_eq!(adopt_for(&feed.store, &mut submitted), None);
+    assert_eq!(submitted, Some(2), "the wait for the restart's answer goes on");
+
+    // Its answer is identical in every field but the number: still a change,
+    // and the second restart runs with the same state dir.
+    let changes = feed.ok(2, DomainEvent::AgentHostUpdated(answer(2)));
+    assert!(changes.agents, "an identical answer is a change");
+    restarts.extend(adopt_for(&feed.store, &mut submitted));
+    assert_eq!(restarts, vec![state_dir.clone(), state_dir]);
+
+    // A later status read (action 3) that is refused adopts nothing.
+    submitted = Some(3);
+    feed.ok(
+        3,
+        DomainEvent::AgentHostUpdated(AgentHostStatus {
+            refusal: Some(AgentRefusal::PrxMissing),
+            ..answer(3)
+        }),
+    );
+    assert_eq!(adopt_for(&feed.store, &mut submitted), None);
+    assert_eq!(restarts.len(), 2, "two restarts, the install's and the restart's");
 }
 
 #[test]

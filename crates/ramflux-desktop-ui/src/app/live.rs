@@ -69,6 +69,7 @@ impl StoreHandle {
             move || executor.now(),
         );
         self.live = Some(LiveLink { hub, daemon });
+        super::agent_sync::AgentSync::start(self, cx);
         self.emit_reset(cx);
     }
 

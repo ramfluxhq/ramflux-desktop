@@ -490,10 +490,10 @@ impl Translator {
             Fetch::BackupJobs => self.backup_job_list(value),
             Fetch::GroupInvitations => Translated::events(group_sync::invitations(value)),
             Fetch::UsernameStatus => Translated::events(account::username_status(value)),
-            Fetch::AgentList
-            | Fetch::AgentApprovals
-            | Fetch::AgentJobs(_)
-            | Fetch::AgentOperation(_) => Translated::events(agents::read_events(fetch, value)),
+            Fetch::AgentList | Fetch::AgentListPage(_) => agents::list_page(fetch, value),
+            Fetch::AgentApprovals | Fetch::AgentJobs(_) | Fetch::AgentOperation(_) => {
+                Translated::events(agents::read_events(fetch, value))
+            }
             Fetch::Messages(context) | Fetch::MessagesBefore(context, _) => {
                 self.messages(context, fetch, value, now)
             }

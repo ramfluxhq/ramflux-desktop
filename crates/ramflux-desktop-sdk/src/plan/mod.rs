@@ -176,10 +176,14 @@ pub struct Planned {
 
 /// Plans `effect` for the scope's `account` (`None` for the daemon scope).
 pub fn plan(account: Option<&AccountId>, effect: Effect, known: &impl Known) -> Planned {
-    if let Effect::AgentRuntime { action, provider, model, key } = effect {
+    if let Effect::AgentRuntime { action, provider, model, key, nonce } = effect {
         return Planned {
             method: agents::RUNTIME_METHOD.to_owned(),
-            body: json!({ "action": agents::runtime_action_name(action), "provider": provider }),
+            body: json!({
+                "action": agents::runtime_action_name(action),
+                "provider": provider,
+                "nonce": nonce,
+            }),
             plan: Plan::PrxHost { action, provider, model, key },
         };
     }

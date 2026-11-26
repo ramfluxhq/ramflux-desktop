@@ -161,12 +161,42 @@ pub enum AgentRefusal {
     PrxCommand,
     /// PRX could not be started.
     PrxSpawn,
+    /// PRX refused the request and asked for a confirmation the desktop
+    /// cannot send yet (PRX answers 428).
+    PrxRejected,
+    /// PRX could not be reached (or it timed out).
+    PrxUnavailable,
+    /// PRX rejected the credential of this runtime (a token from another
+    /// process, until the runtime restarts).
+    AuthFailed,
+    /// PRX does not support the request.
+    PrxUnsupported,
+    /// The PRX cron job named does not exist.
+    CronJobUnknown,
+    /// The PRX xin task named does not exist.
+    XinTaskUnknown,
+    /// The PRX xin goal named does not exist.
+    XinGoalUnknown,
+    /// PRX rejected a field of the request.
+    FieldInvalid,
+    /// PRX rejected the agent the request names.
+    AgentInvalid,
+    /// PRX could not use its storage.
+    StorageUnavailable,
     /// The daemon or PRX did not answer in time.
     Timeout,
     /// The connection to the daemon broke.
     Transport,
     /// A code this desktop has no wording for.
     Other(String),
+}
+
+impl AgentRefusal {
+    /// Whether a restart of the PRX runtime may clear this refusal (an
+    /// expired token or an unreachable runtime), so the UI offers it.
+    pub fn offers_restart(&self) -> bool {
+        matches!(self, Self::AuthFailed | Self::PrxUnavailable)
+    }
 }
 
 /// The state of one creation request, from the desktop's point of view.
@@ -260,6 +290,11 @@ pub struct AgentHostStatus {
     /// been applied: the owned daemon must restart to adopt the runtime.
     #[serde(default)]
     pub applied: bool,
+    /// The number of the runtime action this status answers. Every action
+    /// the owner submits takes the next number, so every answer differs
+    /// from the one before it, even when the runtime did not change.
+    #[serde(default)]
+    pub nonce: u64,
 }
 
 impl AgentHostStatus {
@@ -271,7 +306,20 @@ impl AgentHostStatus {
             refusal: None,
             state_dir: None,
             applied: false,
+            nonce: 0,
         }
+    }
+
+    /// The state directory the owned daemon restarts with, when this is the
+    /// answer to the runtime action submitted as `nonce`, it installed or
+    /// restarted a running runtime, and it was not refused. Any other
+    /// answer (an earlier one, or one for another action) adopts nothing.
+    pub fn adoption_for(&self, nonce: u64) -> Option<&std::path::Path> {
+        let fresh = self.nonce == nonce && self.applied && self.refusal.is_none();
+        if !fresh || self.state != AgentHostState::Running {
+            return None;
+        }
+        self.state_dir.as_deref()
     }
 }
 
