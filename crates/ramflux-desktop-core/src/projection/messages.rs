@@ -3,10 +3,10 @@
 
 //! Mutation capability boundary: which message commands the bridge carries.
 //!
-//! Reply, edit and delete for everyone go to the daemon's conversation
-//! mutations (`conversation.reply`, `conversation.edit` with the revision it
-//! expects, `conversation.delete` scope `everyone`). Reactions and a delete
-//! on this device only have no control yet.
+//! Reply, edit, and delete (for everyone, or for this device only) go to the
+//! daemon's conversation mutations (`conversation.reply`, `conversation.edit`
+//! with the revision it expects, `conversation.delete` with its scope).
+//! Reactions have no control yet.
 
 /// A command the message menu can present.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,11 +31,11 @@ impl Mutation {
     /// command the bridge cannot carry and discard it.
     ///
     /// # Errors
-    /// Returns the missing bridge contract for reactions and local deletes.
+    /// Returns the missing bridge contract for reactions.
     pub fn check(self) -> Result<(), Unavailable> {
         match self {
-            Self::Reply | Self::Edit | Self::DeleteEveryone => Ok(()),
-            Self::React | Self::DeleteLocal => Err(Unavailable::BridgeContract),
+            Self::Reply | Self::Edit | Self::DeleteLocal | Self::DeleteEveryone => Ok(()),
+            Self::React => Err(Unavailable::BridgeContract),
         }
     }
 }
@@ -45,11 +45,11 @@ mod tests {
     use super::*;
     #[test]
     fn only_carried_mutations_are_available() {
-        for command in [Mutation::Reply, Mutation::Edit, Mutation::DeleteEveryone] {
+        for command in
+            [Mutation::Reply, Mutation::Edit, Mutation::DeleteLocal, Mutation::DeleteEveryone]
+        {
             assert_eq!(command.check(), Ok(()), "{command:?}");
         }
-        for command in [Mutation::React, Mutation::DeleteLocal] {
-            assert_eq!(command.check(), Err(Unavailable::BridgeContract), "{command:?}");
-        }
+        assert_eq!(Mutation::React.check(), Err(Unavailable::BridgeContract));
     }
 }

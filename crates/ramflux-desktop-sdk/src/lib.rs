@@ -46,7 +46,6 @@ pub mod directory;
 pub mod local;
 pub mod pins;
 pub mod plan;
-pub mod receipts;
 pub mod renames;
 pub mod source;
 pub mod surface;

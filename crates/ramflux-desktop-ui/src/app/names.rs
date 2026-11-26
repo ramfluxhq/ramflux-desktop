@@ -34,6 +34,7 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
         UiEventKind::ReplyPressed => "ReplyPressed",
         UiEventKind::EditPressed => "EditPressed",
+        UiEventKind::DeleteForMePressed => "DeleteForMePressed",
         UiEventKind::DeleteForEveryonePressed => "DeleteForEveryonePressed",
         UiEventKind::SubmitReply { .. } => "SubmitReply",
         UiEventKind::SubmitEdit { .. } => "SubmitEdit",

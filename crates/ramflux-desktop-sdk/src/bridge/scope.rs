@@ -53,7 +53,6 @@ use crate::config::SdkConfig;
 use crate::cursor::CursorStore;
 use crate::pins::PinStore;
 use crate::plan::fetch::{Fetch, Paged};
-use crate::receipts::Receipts;
 use crate::translate::{Scope, Translator};
 
 /// What the bridge forwards to a scope.
@@ -102,8 +101,6 @@ pub struct GateProbe {
     pub queued: usize,
     /// Cached message plaintexts in the translator.
     pub plaintext: usize,
-    /// Delivery receipts waiting to be sent.
-    pub receipts: usize,
 }
 
 /// Where a scope's ceremonies hand the recovery phrase and count it.
@@ -161,11 +158,6 @@ pub(super) enum Internal {
         result: Result<Value, BusError>,
         refresh: Vec<Fetch>,
     },
-    /// A delivery receipt's answer: its key and whether it was sent.
-    ReceiptDone {
-        key: String,
-        sent: bool,
-    },
     /// A read mark was moved: the unread counts are read again.
     ReadDone,
     /// What a creation or recovery step came to.
@@ -182,7 +174,7 @@ impl Internal {
             | Self::SchemaAnswer { stamp, .. }
             | Self::FetchedAt { stamp, .. } => Some(*stamp),
             // Not reads: an attach wake (guarded by `attach_pending`), the
-            // epoch marker, and answers to sends, effects, receipts and
+            // epoch marker, and answers to sends, effects and
             // custody ceremonies, each keyed by its own record. Reads that
             // an effect asks for are spawned when it is handled, under the
             // stamp then current.
@@ -190,7 +182,6 @@ impl Internal {
             | Self::EpochStart
             | Self::SendDone { .. }
             | Self::EffectDone { .. }
-            | Self::ReceiptDone { .. }
             | Self::ReadDone
             | Self::Custody(_)
             | Self::Media(_) => None,
@@ -263,8 +254,6 @@ pub(super) struct Task {
     pub(super) listings_sent: Arc<AtomicU64>,
     /// The number of the listing last applied, per list.
     pub(super) listing_applied: BTreeMap<Paged, u64>,
-    /// Delivery receipts of received direct messages (account scope).
-    pub(super) receipts: Option<Receipts>,
     /// Authenticated renames shown in conversations (account scope).
     pub(super) renames: Option<crate::renames::RenameStore>,
     /// Which person's account custodies each AI participant this desktop
@@ -363,9 +352,6 @@ pub(super) fn build(
     if let Some(recorded) = scope.account().and_then(|account| pins.load(account)) {
         translator.set_pins(recorded);
     }
-    let receipts = scope.account().map(|account| {
-        Receipts::new(config.settings_path.clone(), socket.clone(), account.clone())
-    });
     let renames = scope.account().map(|account| {
         crate::renames::RenameStore::new(
             config.settings_path.clone(),
@@ -416,7 +402,6 @@ pub(super) fn build(
         alive: true,
         listings_sent: Arc::new(AtomicU64::new(0)),
         listing_applied: BTreeMap::new(),
-        receipts,
         renames,
         custodians,
         found: capabilities::Found::default(),
@@ -583,9 +568,6 @@ impl Task {
         // epoch's: its completions are dropped untranslated.
         self.pending_markers += 1;
         let _ = self.internal.send(Internal::EpochStart);
-        if let Some(receipts) = &mut self.receipts {
-            receipts.drop_pending();
-        }
         self.gate_changed();
         self.spawn_schema_status(epoch);
     }
@@ -666,9 +648,6 @@ impl Task {
         }
         if was_open && !told.0.is_open() {
             self.translator.drop_message_state();
-            if let Some(receipts) = &mut self.receipts {
-                receipts.drop_pending();
-            }
         } else if !was_open && told.0.is_open() {
             self.flush_gate();
         }
@@ -773,9 +752,6 @@ impl Task {
                 if let Some(due) = self.read_recovery.next_due() {
                     wake = wake.min(due);
                 }
-                if let Some(due) = self.receipts.as_ref().and_then(Receipts::next_due) {
-                    wake = wake.min(due);
-                }
                 wake
             }
             Link::Attaching | Link::Locked => far,
@@ -800,7 +776,7 @@ impl Task {
                 }
                 let retries = self.read_recovery.due(now);
                 self.spawn_reads(retries, false);
-                self.send_receipts();
+                self.send_reads();
             }
             _ => {}
         }
@@ -1204,11 +1180,6 @@ impl Task {
             Internal::EffectDone { method, body, result, refresh } => {
                 self.on_effect_done(&method, &body, result, refresh);
             }
-            Internal::ReceiptDone { key, sent } => {
-                if let Some(receipts) = &mut self.receipts {
-                    receipts.answered(&key, sent, Instant::now());
-                }
-            }
             Internal::ReadDone => {
                 self.spawn_fetches(vec![Fetch::first(Paged::Conversations)]);
             }
@@ -1221,14 +1192,13 @@ impl Task {
                 (0..slots).filter_map(|_| self.read_recovery.pop_queued()).collect();
             self.spawn_reads(queued, false);
         }
-        self.send_receipts();
+        self.send_reads();
     }
 
-    /// Queues the received direct messages listed since the last call and
-    /// sends the delivery receipts that are due, each on its own: nothing
-    /// waits for them, and a failed one is retried later (see
-    /// [`crate::receipts`]).
-    fn send_receipts(&mut self) {
+    /// Sends the read marks that are due: the conversation shown is marked
+    /// read through its newest peer message (see
+    /// [`crate::translate::Translator::take_reads`]). Nothing waits for it.
+    fn send_reads(&mut self) {
         if self.link == Link::Live && self.gate.is_open() {
             for request in self.translator.take_reads() {
                 let (client, internal) = (self.client.clone(), self.internal.clone());
@@ -1240,24 +1210,6 @@ impl Task {
                     }
                 });
             }
-        }
-        let listed = self.translator.take_delivered();
-        let (Some(receipts), Some(account)) = (&mut self.receipts, self.scope.account()) else {
-            return;
-        };
-        let now = Instant::now();
-        receipts.observe(listed, now);
-        if self.link != Link::Live || !self.gate.is_open() {
-            return;
-        }
-        for delivered in receipts.due(now) {
-            let request = delivered.request(account.as_str());
-            let (client, internal, key) =
-                (self.client.clone(), self.internal.clone(), delivered.key());
-            tokio::spawn(async move {
-                let sent = client.call(&request).await.is_ok();
-                let _ = internal.send(Internal::ReceiptDone { key, sent });
-            });
         }
     }
 
@@ -1603,7 +1555,6 @@ impl Task {
                     gate: self.gate.verdict(),
                     queued: self.gate.queued(),
                     plaintext: self.translator.plaintext_len(),
-                    receipts: self.receipts.as_ref().map_or(0, Receipts::pending_len),
                 });
             }
             ScopeCommand::CallMedia(call_id, reply) => self.call_media(call_id, reply),

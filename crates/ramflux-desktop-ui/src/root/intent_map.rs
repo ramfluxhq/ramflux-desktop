@@ -8,8 +8,8 @@
 //! carry human confirmation or a secret; both arrive by other paths.
 
 use ramflux_desktop_core::{
-    BlockId, BlockKind, GrantId, IntentKind, Moment, MomentKind, NodeAction, ObjectAction, Store,
-    UiEvent, UiEventKind,
+    BlockId, BlockKind, DeleteScope, GrantId, IntentKind, Moment, MomentKind, NodeAction,
+    ObjectAction, Store, UiEvent, UiEventKind,
 };
 
 /// Maps a root-level UI event to its intent kind.
@@ -65,7 +65,12 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
     let moment_id = moment.id.clone();
     Some(match &event.kind {
         UiEventKind::RetryMessagePressed => IntentKind::RetryMessage { moment_id },
-        UiEventKind::DeleteForEveryonePressed => IntentKind::DeleteMessage { moment_id },
+        UiEventKind::DeleteForMePressed => {
+            IntentKind::DeleteMessage { moment_id, scope: DeleteScope::Local }
+        }
+        UiEventKind::DeleteForEveryonePressed => {
+            IntentKind::DeleteMessage { moment_id, scope: DeleteScope::Everyone }
+        }
         UiEventKind::ActionInvoked { action_id, values, surface_hash, version } => {
             let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
             IntentKind::SurfaceAction {

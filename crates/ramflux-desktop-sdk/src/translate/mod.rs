@@ -190,9 +190,9 @@ pub struct Translator {
     /// What a reply, edit or delete names of each listed message: the
     /// daemon's id and the revision shown.
     message_targets: BTreeMap<MomentId, crate::plan::message::MessageTarget>,
-    /// The newest message listed in each direct conversation (the read
-    /// mark a read receipt moves to).
-    newest_listed: BTreeMap<ContextId, (u64, String)>,
+    /// The newest message a peer wrote that is listed in each conversation
+    /// (the read mark a read receipt moves to; never this account's own).
+    newest_peer: BTreeMap<ContextId, (u64, String)>,
     /// The read mark last sent for each conversation.
     read_sent: BTreeMap<ContextId, String>,
     /// Group conversations this account left: the daemon keeps their
@@ -231,9 +231,6 @@ pub struct Translator {
     focus: Option<ContextId>,
     listed: BTreeSet<Listing>,
     completed: BTreeSet<Paged>,
-    /// Received direct messages listed since the bridge last took them
-    /// (delivery receipts to send, see [`crate::receipts`]).
-    delivered: Vec<crate::receipts::Delivered>,
     /// The sequence number of each call last reported.
     reported_calls: BTreeMap<ramflux_desktop_core::CallId, u64>,
     /// This account's own contact requests, by peer, as last reported.
@@ -307,7 +304,7 @@ impl Translator {
             local_ids: BTreeMap::new(),
             sending: BTreeSet::new(),
             message_targets: BTreeMap::new(),
-            newest_listed: BTreeMap::new(),
+            newest_peer: BTreeMap::new(),
             read_sent: BTreeMap::new(),
             left: BTreeSet::new(),
             started: BTreeSet::new(),
@@ -327,7 +324,6 @@ impl Translator {
             focus: None,
             listed: BTreeSet::new(),
             completed: BTreeSet::new(),
-            delivered: Vec::new(),
             reported_calls: BTreeMap::new(),
             pending_calls: BTreeMap::new(),
             name_changes: Vec::new(),

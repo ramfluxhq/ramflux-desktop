@@ -68,7 +68,6 @@ impl FakeDaemon {
             if matches!(
                 method,
                 "message.submit"
-                    | "message.receipt.delivered"
                     | "group.send"
                     | "group.create"
                     | "group.member.add"

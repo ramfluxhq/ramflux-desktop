@@ -88,6 +88,12 @@ impl Translator {
                 members.iter().map(|device| self.member_name(device)).collect();
             return keyed(key::GROUP_ROUTES_UNRESOLVED, &[("members", &names.join(", "))]);
         }
+        if method == methods::MESSAGE_EDIT
+            && let BusError::Daemon { code, reason_code, .. } = error
+            && (code == "edit_conflict" || reason_code.as_deref() == Some("edit_conflict"))
+        {
+            return key::MESSAGE_EDIT_CONFLICT.to_owned();
+        }
         if method == methods::SURFACE_ACTION
             && let BusError::Daemon { code, .. } = error
             && super::surface_answers::code_of(code).is_some()

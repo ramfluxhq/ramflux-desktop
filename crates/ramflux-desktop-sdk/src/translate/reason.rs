@@ -48,6 +48,8 @@ pub mod key {
     pub const FILE: &str = "backend.failure.file";
     /// A group send reached no one: `members` could not be resolved.
     pub const GROUP_ROUTES_UNRESOLVED: &str = "backend.failure.group_routes_unresolved";
+    /// An edit named a revision the message no longer has (`edit_conflict`).
+    pub const MESSAGE_EDIT_CONFLICT: &str = "backend.message.edit_conflict";
     /// The node's host is unreachable because Local Network access was not
     /// allowed (macOS privacy).
     pub const LOCAL_NETWORK: &str = "backend.failure.local_network";
@@ -256,7 +258,7 @@ pub mod key {
     pub const VAULT_MODE_MISMATCH: &str = "backend.failure.vault_mode_mismatch";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 100] = [
+    pub const ALL: [&str; 101] = [
         AGENT_EXPORT_NO_LOCATION,
         AGENT_EXPORT_NOT_OWNER_SESSION,
         AGENT_EXPORT_OWNER_LOCKED,
@@ -303,6 +305,7 @@ pub mod key {
         MEDIA_REFUSED,
         FILE,
         GROUP_ROUTES_UNRESOLVED,
+        MESSAGE_EDIT_CONFLICT,
         LOCAL_NETWORK,
         LOCAL_NETWORK_MAYBE,
         PARTIAL,

@@ -87,6 +87,8 @@ pub enum UiEventKind {
     /// Edit chosen in an own message's menu: the composer takes its text
     /// (view-local; the edit itself is [`Self::SubmitEdit`]).
     EditPressed,
+    /// Delete for me (this device only) chosen in a message's menu.
+    DeleteForMePressed,
     /// Delete for everyone chosen in an own message's menu.
     DeleteForEveryonePressed,
     /// The composer submitted a reply to `target`.
