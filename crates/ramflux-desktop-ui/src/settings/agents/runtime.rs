@@ -241,6 +241,7 @@ impl AgentsPanel {
             model,
             key: Some(key),
         };
+        self.adopt_pending = true;
         self.root.update(cx, |root, cx| root.submit_secret(kind, window, cx));
         cx.notify();
     }
@@ -258,6 +259,8 @@ impl AgentsPanel {
             model: String::new(),
             key: None,
         };
+        // Only a restart or an install changes which runtime the daemon adopts.
+        self.adopt_pending = matches!(action, AgentRuntimeAction::Restart);
         self.root.update(cx, |root, cx| root.submit_secret(kind, window, cx));
         cx.notify();
     }

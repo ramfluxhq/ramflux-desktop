@@ -21,6 +21,7 @@ use serde_json::Value;
 use crate::bus::BusError;
 use crate::plan::agents::RUNTIME_METHOD;
 use crate::plan::fetch::Fetch;
+use crate::prx_host;
 
 /// The first non-null value under one of `keys`.
 fn pick<'a>(value: &'a Value, keys: &[&str]) -> &'a Value {
@@ -238,8 +239,10 @@ fn approval_of(value: &Value) -> Option<AgentApproval> {
     })
 }
 
-/// The runtime status the host answered, without any secret.
-pub fn host_status_of(answer: &Value) -> AgentHostStatus {
+/// The runtime status the host answered, without any secret. `action` is the
+/// runtime action the answer is for (its name, as the effect body carries
+/// it): an install or a restart marks the status as applied.
+pub fn host_status_of(answer: &Value, action: &str) -> AgentHostStatus {
     let state = match answer["state"].as_str().unwrap_or_default() {
         "absent" => AgentHostState::Absent,
         "running" => AgentHostState::Running,
@@ -253,6 +256,8 @@ pub fn host_status_of(answer: &Value) -> AgentHostStatus {
         state,
         prx_version: Some(version.to_owned()).filter(|v| !v.is_empty()),
         refusal: None,
+        state_dir: prx_host::state_dir_of(answer),
+        applied: matches!(action, "install" | "restart"),
     }
 }
 
@@ -271,7 +276,6 @@ pub fn effect_events(method: &str, answer: &Value) -> Vec<DomainEvent> {
                 .into_iter()
                 .collect()
         }
-        RUNTIME_METHOD => vec![DomainEvent::AgentHostUpdated(host_status_of(answer))],
         _ => Vec::new(),
     }
 }
@@ -394,10 +398,29 @@ mod tests {
 
     #[test]
     fn the_runtime_status_names_its_state_without_secrets() {
-        let status = host_status_of(&json!({"state": "running", "prx_version": "0.1.0"}));
+        let status = host_status_of(&json!({"state": "running", "prx_version": "0.1.0"}), "status");
         assert_eq!(status.state, AgentHostState::Running);
         assert_eq!(status.prx_version.as_deref(), Some("0.1.0"));
-        assert_eq!(host_status_of(&json!({"state": "odd"})).state, AgentHostState::Unknown);
+        assert!(!status.applied, "a status read applies nothing");
+        assert_eq!(
+            host_status_of(&json!({"state": "odd"}), "status").state,
+            AgentHostState::Unknown
+        );
+    }
+
+    #[test]
+    fn an_applied_runtime_names_the_state_directory_the_daemon_adopts() {
+        let answer = json!({
+            "state": "running",
+            "runtime_path": "/state/prx/runtime.json",
+            "api_base": "http://127.0.0.1:9/",
+        });
+        let status = host_status_of(&answer, "restart");
+        assert!(status.applied);
+        assert_eq!(status.state_dir, Some(std::path::PathBuf::from("/state/prx")));
+        let stopped = host_status_of(&answer, "stop");
+        assert!(!stopped.applied);
+        assert_eq!(host_status_of(&json!({"state": "absent"}), "install").state_dir, None);
     }
 
     #[test]

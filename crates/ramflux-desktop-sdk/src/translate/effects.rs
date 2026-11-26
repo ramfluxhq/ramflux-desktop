@@ -13,6 +13,7 @@ use super::agents;
 use super::daemon::node_from_profile;
 use super::{Translator, text};
 use crate::plan::agents::RUNTIME_METHOD;
+use crate::plan::fetch::Fetch;
 
 impl Translator {
     /// Translates the daemon's answer to a performed effect.
@@ -45,8 +46,18 @@ impl Translator {
             | methods::AGENT_OPERATION_GET
             | methods::AGENT_PERSONA_EDIT
             | methods::AGENT_ACCESS_SET
-            | methods::AGENT_DELETE
-            | RUNTIME_METHOD => agents::effect_events(method, answer),
+            | methods::AGENT_DELETE => agents::effect_events(method, answer),
+            RUNTIME_METHOD => {
+                vec![DomainEvent::AgentHostUpdated(agents::host_status_of(
+                    answer,
+                    text(body, "action"),
+                ))]
+            }
+            // The job list of the agent the panel asked for.
+            methods::AGENT_JOB_LIST => agents::read_events(
+                &Fetch::AgentJobs(text(body, "agent_anchor").to_owned()),
+                answer,
+            ),
             methods::NODE_ADD => {
                 let default = self.default_node().map(str::to_owned);
                 let mut node = node_from_profile(&answer["node"], default.as_deref(), false);

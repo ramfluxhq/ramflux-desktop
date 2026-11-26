@@ -527,6 +527,12 @@ pub enum IntentKind {
         /// What to do.
         action: AgentJobAction,
     },
+    /// Read the PRX jobs of an agent (the jobs panel opens, and again after
+    /// a job action). Read only; the answer replaces the agent's job list.
+    AgentJobsRefresh {
+        /// The agent's anchor.
+        agent: String,
+    },
     /// Approve or deny an agent's approval in a conversation.
     AgentApprovalDecide {
         /// The approval id.

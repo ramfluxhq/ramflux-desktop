@@ -35,6 +35,8 @@ impl Default for MockAgents {
                 state: AgentHostState::Absent,
                 prx_version: None,
                 refusal: None,
+                state_dir: None,
+                applied: false,
             },
         }
     }
@@ -90,6 +92,10 @@ impl MockAgents {
             methods::AGENT_JOB_PAUSE | methods::AGENT_JOB_RESUME | methods::AGENT_JOB_REMOVE => {
                 Vec::new()
             }
+            methods::AGENT_JOB_LIST => vec![DomainEvent::AgentJobsUpdated {
+                agent: text(body, "agent_anchor").to_owned(),
+                jobs: Vec::new(),
+            }],
             methods::AGENT_APPROVAL_DECIDE => {
                 vec![DomainEvent::AgentApprovalsUpdated(Vec::new())]
             }
@@ -143,6 +149,8 @@ impl MockAgents {
     }
 
     fn runtime(&mut self, action: AgentRuntimeAction) -> DomainEvent {
+        self.host.applied =
+            matches!(action, AgentRuntimeAction::Install | AgentRuntimeAction::Restart);
         self.host.state = match action {
             AgentRuntimeAction::Install | AgentRuntimeAction::Restart => AgentHostState::Running,
             AgentRuntimeAction::Stop => AgentHostState::Stopped,
@@ -151,6 +159,7 @@ impl MockAgents {
         };
         if self.host.state == AgentHostState::Running {
             self.host.prx_version = Some("mock".to_owned());
+            self.host.state_dir = Some(std::path::PathBuf::from("/mock/prx"));
         }
         DomainEvent::AgentHostUpdated(self.host.clone())
     }

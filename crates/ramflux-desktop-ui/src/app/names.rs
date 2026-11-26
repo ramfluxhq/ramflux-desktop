@@ -174,6 +174,7 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::ConfirmCeremony { .. } => "ConfirmCeremony",
         IntentKind::AgentCreate { .. } => "AgentCreate",
         IntentKind::AgentOperationRefresh { .. } => "AgentOperationRefresh",
+        IntentKind::AgentJobsRefresh { .. } => "AgentJobsRefresh",
         IntentKind::AgentPersonaEdit { .. } => "AgentPersonaEdit",
         IntentKind::AgentAccessSet { .. } => "AgentAccessSet",
         IntentKind::AgentDelete { .. } => "AgentDelete",

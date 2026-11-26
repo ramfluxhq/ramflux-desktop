@@ -9,6 +9,8 @@
 //! key, a credential or a passphrase. Everything the core or PRX cannot do
 //! yet is a typed [`AgentUnavailable`] reason, never a silent default.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 /// The persona of an agent: the name, the avatar preset token and the
@@ -250,12 +252,26 @@ pub struct AgentHostStatus {
     pub prx_version: Option<String>,
     /// The refusal of the last runtime action, if it failed.
     pub refusal: Option<AgentRefusal>,
+    /// The state directory of the runtime (its `runtime.json` lives there),
+    /// when the host named one. The owned daemon adopts it on restart.
+    #[serde(default)]
+    pub state_dir: Option<PathBuf>,
+    /// Whether this status answers an install or a restart that has just
+    /// been applied: the owned daemon must restart to adopt the runtime.
+    #[serde(default)]
+    pub applied: bool,
 }
 
 impl AgentHostStatus {
     /// Not known yet: the status is read before anything is shown.
     pub fn unknown() -> Self {
-        Self { state: AgentHostState::Unknown, prx_version: None, refusal: None }
+        Self {
+            state: AgentHostState::Unknown,
+            prx_version: None,
+            refusal: None,
+            state_dir: None,
+            applied: false,
+        }
     }
 }
 

@@ -180,6 +180,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::AgentAccessSet { .. } => "AgentAccessSet",
         IntentKind::AgentDelete { .. } => "AgentDelete",
         IntentKind::AgentJob { .. } => "AgentJob",
+        IntentKind::AgentJobsRefresh { .. } => "AgentJobsRefresh",
         IntentKind::AgentApprovalDecide { .. } => "AgentApprovalDecide",
         IntentKind::AgentRuntime { .. } => "AgentRuntime",
         IntentKind::BeginRecovery { .. } => "BeginRecovery",
@@ -195,7 +196,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the eight secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 76;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 77;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -705,6 +706,8 @@ fn all_domain_events() -> Vec<DomainEvent> {
             state: AgentHostState::Running,
             prx_version: Some("0.1.0".into()),
             refusal: None,
+            state_dir: Some("/state/prx".into()),
+            applied: true,
         }),
         DomainEvent::AgentJobsUpdated {
             agent: "agent-anchor".into(),
@@ -1016,6 +1019,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::CancelCeremony,
         IntentKind::AgentCreate { owner_id: AccountId::new("a-1"), request: sample_request() },
         IntentKind::AgentOperationRefresh { request_id: "req-1".into() },
+        IntentKind::AgentJobsRefresh { agent: "agent-anchor".into() },
         IntentKind::AgentPersonaEdit { agent: "agent-anchor".into(), persona: sample_persona() },
         IntentKind::AgentAccessSet {
             agent: "agent-anchor".into(),

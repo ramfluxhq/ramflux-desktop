@@ -208,7 +208,9 @@ impl SettingsPage {
         }));
         let backup = cx.new(|cx| backup::BackupPanel::new(store.clone(), root.clone(), window, cx));
         subscriptions.push(cx.observe(&backup, |_, _, cx| cx.notify()));
-        let agents = cx.new(|cx| agents::AgentsPanel::new(store.clone(), root.clone(), window, cx));
+        let agents = cx.new(|cx| {
+            agents::AgentsPanel::new(store.clone(), root.clone(), launcher.clone(), window, cx)
+        });
         subscriptions.push(cx.observe(&agents, |_, _, cx| cx.notify()));
         let sink = IntentRoot::sink(&root).scoped(Scope::Panel("settings".into()));
         Self {
