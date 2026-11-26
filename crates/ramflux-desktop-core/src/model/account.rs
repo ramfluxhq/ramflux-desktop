@@ -47,6 +47,10 @@ pub struct AppLock {
     /// The daemon's change counter for this lock.
     #[serde(default)]
     pub generation: u64,
+    /// Whether the daemon counts down to a lock (the window went away and
+    /// the lock is on). An unlocked lock that is not armed has no deadline.
+    #[serde(default)]
+    pub armed: bool,
 }
 
 /// What an account is for.

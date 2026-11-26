@@ -518,6 +518,20 @@ impl FakeBus {
         }
     }
 
+    /// Pushes an event frame for `account` to every open connection, as the
+    /// daemon does with an app lock change (it reaches each connection
+    /// attached to the account, subscribed or not).
+    pub fn push_to_connections(&self, account: &str, topic: &str, body: Value) {
+        let frame = json!({
+            "bus_protocol": "ramflux.local_bus.v1", "frame_id": "frame_evt", "kind": "event",
+            "request_id": "evt", "account_id": account, "sdk_api": "mcp", "method": topic,
+            "body": body, "trace_id": null,
+        });
+        for stream in self.streams.lock().expect("streams").iter_mut() {
+            let _ = write_frame(stream, &frame);
+        }
+    }
+
     /// Whether `account` has a subscription open.
     pub fn subscribed(&self, account: &str) -> bool {
         self.subscribers.lock().expect("subs").iter().any(|(who, _)| who == account)

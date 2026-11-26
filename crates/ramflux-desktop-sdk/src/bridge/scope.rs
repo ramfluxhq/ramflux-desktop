@@ -313,6 +313,7 @@ async fn read(
 pub(super) struct Inbox {
     pub(super) internal: mpsc::UnboundedReceiver<Internal>,
     pub(super) connection_states: mpsc::UnboundedReceiver<crate::bus::client::ConnectionState>,
+    pub(super) lock_events: mpsc::UnboundedReceiver<crate::bus::client::AppLockEvent>,
     pub(super) streamed: mpsc::UnboundedReceiver<Streamed>,
     pub(super) jobs: mpsc::UnboundedReceiver<JobStreamed>,
 }
@@ -327,6 +328,7 @@ pub(super) fn build(
     let outbox = outbox.into();
     let (internal, internal_rx) = mpsc::unbounded_channel();
     let (connection_states, connection_rx) = mpsc::unbounded_channel();
+    let (lock_events, lock_events_rx) = mpsc::unbounded_channel();
     let (streamed, streamed_rx) = mpsc::unbounded_channel();
     let (jobs_out, jobs_rx) = mpsc::unbounded_channel::<JobStreamed>();
     let socket = config.socket_path.to_string_lossy().into_owned();
@@ -337,6 +339,7 @@ pub(super) fn build(
         config.connect_timeout,
         config.deadlines,
         Some(connection_states),
+        Some(lock_events),
     );
     let job_link = JobLink::new(
         config.socket_path.clone(),
@@ -424,6 +427,7 @@ pub(super) fn build(
         Inbox {
             internal: internal_rx,
             connection_states: connection_rx,
+            lock_events: lock_events_rx,
             streamed: streamed_rx,
             jobs: jobs_rx,
         },
@@ -441,9 +445,15 @@ pub(crate) async fn run(
 ) {
     let (mut task, inbox) = build(config, scope, outbox, ceremonies);
     task.daemon_refresh = Some(daemon_refresh);
+    // The account session opened: the daemon session lists the accounts
+    // again (it may have listed them before this account was open).
+    if task.scope.account().is_some() {
+        task.refresh_daemon();
+    }
     let Inbox {
         internal: mut internal_rx,
         connection_states: mut connection_rx,
+        lock_events: mut lock_events_rx,
         streamed: mut streamed_rx,
         jobs: mut jobs_rx,
     } = inbox;
@@ -460,6 +470,9 @@ pub(crate) async fn run(
             },
             Some(internal) = internal_rx.recv() => task.internal(internal),
             Some(status) = connection_rx.recv() => task.connection_changed(status),
+            Some(event) = lock_events_rx.recv() => {
+                task.app_lock_changed(event.account.as_deref(), &event.body);
+            }
             Some(jobs) = jobs_rx.recv() => task.on_jobs(jobs),
             Some(streamed) = streamed_rx.recv() => {
                 task.on_streamed(streamed);
@@ -1488,6 +1501,8 @@ impl Task {
                     && self.scope.account().is_some()
                     && message.contains("account not open") =>
             {
+                // The daemon's listing may predate the account's state.
+                self.refresh_daemon();
                 self.locked();
                 true
             }

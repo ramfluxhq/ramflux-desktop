@@ -74,6 +74,16 @@ Versioning.
   cover is given back when no report follows it or the daemon connection is
   lost, only covered accounts are told the window is back, and a burst of focus
   changes settles within one second.
+- App lock: a lock sent by another client (`rf account app-lock lock`) now
+  shows the lock page on an idle window at once. The window handles the
+  daemon's `account.app_lock.changed` event on the account stream and on the
+  daemon session's request connection (a locked event closes the account
+  before any read; the lock is read again and the daemon session lists the
+  accounts again). Another client's unlock re-arms a window in the background,
+  an account is told the window is in front also when it was not covered
+  (stored background or unknown), the daemon's accounts are listed again when
+  an account session opens or finds its account not open, and a stream the lock
+  refuses is retried with growing backoff up to 30 seconds.
 - New group stays in its creating state until every member has been added;
   the group conversation was shown (and a first message could be sent) while
   members were still being added, so the message reached only some of them.

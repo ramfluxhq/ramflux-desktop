@@ -48,6 +48,15 @@ impl ResumeHold {
         self.reported.insert(account.clone(), phase);
     }
 
+    /// A lock answer shows `account` unlocked with no deadline: whatever
+    /// reported the window as gone is no longer true in the daemon (another
+    /// client unlocked it), so the next settle reports the phase again.
+    pub(super) fn unarmed(&mut self, account: &AccountId) {
+        if self.reported.get(account) == Some(&AppLockPhase::Background) {
+            self.reported.remove(account);
+        }
+    }
+
     /// The phase the daemon last answered for `account`.
     pub(super) fn phase(&self, account: &AccountId) -> Option<AppLockPhase> {
         self.reported.get(account).copied()
@@ -106,6 +115,18 @@ mod tests {
         assert!(hold.is_empty());
         assert_eq!(hold.phase(&account), None);
         assert!(!hold.lost());
+    }
+
+    #[test]
+    fn an_unarmed_lock_forgets_only_a_background_phase() {
+        let account = AccountId::new("a");
+        let mut hold = ResumeHold::default();
+        hold.reported(&account, AppLockPhase::Background);
+        hold.unarmed(&account);
+        assert_eq!(hold.phase(&account), None);
+        hold.reported(&account, AppLockPhase::Foreground);
+        hold.unarmed(&account);
+        assert_eq!(hold.phase(&account), Some(AppLockPhase::Foreground));
     }
 
     #[test]

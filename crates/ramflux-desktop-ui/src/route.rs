@@ -135,6 +135,7 @@ mod tests {
                         state,
                         reason: None,
                         generation: 1,
+                        armed: false,
                     },
                 },
             )

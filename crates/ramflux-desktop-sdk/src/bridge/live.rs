@@ -43,8 +43,10 @@ pub(super) struct SyncState {
     pub(super) reload_on_open: bool,
     /// Failed attempts since the stream was last open.
     failures: u32,
+    /// Refusals of the stream by the app lock in a row (the retry backs off).
+    pub(super) locked_streak: u32,
     /// The running stream connection.
-    task: Option<tokio::task::AbortHandle>,
+    pub(super) task: Option<tokio::task::AbortHandle>,
     /// When to open the stream; `None` while it is open or not wanted.
     pub(super) open_at: Option<Instant>,
     /// The cursor when the stream last opened (to tell lag from no progress).
@@ -71,6 +73,7 @@ impl SyncState {
             saved_at: now,
             reload_on_open: false,
             failures: 0,
+            locked_streak: 0,
             task: None,
             open_at: None,
             opened_with: None,
@@ -195,6 +198,7 @@ impl Task {
         self.sync.mode = SyncMode::Stream;
         self.sync.reason = None;
         self.sync.failures = 0;
+        self.sync.locked_streak = 0;
 
         if std::mem::take(&mut self.sync.reload_on_open) {
             self.sync.cursor = Some(head_seq);
@@ -238,6 +242,7 @@ impl Task {
         }
         match topic {
             "account.networking.changed" => self.networking_event(body),
+            crate::bus::client::APP_LOCK_CHANGED => self.app_lock_changed(None, body),
             "sync.status" => {
                 self.sync.daemon = Some(DaemonSync::from_body(body));
                 self.show_sync(false);
@@ -331,11 +336,16 @@ impl Task {
                 // The daemon closed the stream when its app lock closed the
                 // account, and refuses the next one: the lock screen takes
                 // over (nothing here is an error to show). The stream is
-                // tried again with backoff, so it resumes once the account
-                // code opens the account.
+                // tried again with growing backoff (up to a cap), so it
+                // resumes once the account code opens the account.
                 self.sync.stop();
                 self.sync.failures = 0;
-                self.sync.open_at = Some(now + self.config.reconnect_backoff);
+                let wait = super::app_lock::stream_backoff(
+                    self.config.reconnect_backoff,
+                    self.sync.locked_streak,
+                );
+                self.sync.locked_streak = self.sync.locked_streak.saturating_add(1);
+                self.sync.open_at = Some(now + wait);
                 let account = self.account().map(ramflux_desktop_core::AccountId::new);
                 self.app_lock_refused(account);
             }
