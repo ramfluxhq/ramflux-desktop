@@ -107,6 +107,12 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             }
             Ok(Decision::Call(method, body))
         }),
+        IntentKind::AgentJobsRefresh { agent } => p.human_only(WHAT).and_then(|()| {
+            if agent.trim().is_empty() {
+                return Err(IntentError::Empty("agent anchor"));
+            }
+            Ok(Decision::Call(methods::AGENT_JOB_LIST, json!({ "agent_anchor": agent })))
+        }),
         IntentKind::AgentApprovalDecide { approval_id, approved } => {
             p.human_only(WHAT).and_then(|()| {
                 if approval_id.trim().is_empty() {

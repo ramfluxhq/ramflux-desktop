@@ -256,6 +256,28 @@ fn jobs_pause_at_once_and_removal_is_asked_for() {
 }
 
 #[test]
+fn the_jobs_of_an_agent_are_read_without_confirmation() {
+    let store = world().store;
+    let read = handle_intent(
+        &store,
+        Intent::human(IntentKind::AgentJobsRefresh { agent: "agent-1".into() }),
+        Timestamp(10),
+    )
+    .expect("the job list is read");
+    assert_eq!(read[0].method(), Some("agent.job.list"));
+    assert_eq!(read[0].body().expect("call")["agent_anchor"], "agent-1");
+    assert!(
+        handle_intent(
+            &store,
+            Intent::human(IntentKind::AgentJobsRefresh { agent: " ".into() }),
+            Timestamp(10)
+        )
+        .is_err(),
+        "an empty agent is refused"
+    );
+}
+
+#[test]
 fn the_roster_and_the_creation_live_in_the_store() {
     let mut feed = world();
     assert_eq!(feed.store.agent_roster(), AgentRosterState::Loading);

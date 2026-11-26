@@ -26,12 +26,13 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, Subscription, Task, Window, div};
-use ramflux_desktop_core::{AgentAccessMode, Intent, IntentKind, Store};
+use ramflux_desktop_core::{AgentAccessMode, AgentHostState, Intent, IntentKind, Store};
 use ramflux_desktop_sdk::plan::agents::{CREATION_POLL, pending_creation_reads};
 use ramflux_desktop_sdk::plan::fetch::Fetch;
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::tr;
+use crate::launch::DaemonLauncher;
 use crate::root::IntentRoot;
 
 /// A part of the section, rendered by its setting item.
@@ -63,6 +64,12 @@ pub(super) enum Form {
 pub struct AgentsPanel {
     store: Entity<StoreHandle>,
     root: Entity<IntentRoot>,
+    /// The local daemon launcher: restarted to adopt the runtime after an
+    /// install or a restart of it.
+    launcher: Entity<DaemonLauncher>,
+    /// An install or a restart the panel asked for and whose applied status
+    /// has not arrived yet.
+    adopt_pending: bool,
     /// The new-agent wizard.
     wizard: Option<wizard::Wizard>,
     /// The wizard's typed fields.
@@ -79,10 +86,12 @@ pub struct AgentsPanel {
 }
 
 impl AgentsPanel {
-    /// The panel over `store`, submitting through `root`.
+    /// The panel over `store`, submitting through `root`, restarting the
+    /// owned daemon through `launcher`.
     pub fn new(
         store: Entity<StoreHandle>,
         root: Entity<IntentRoot>,
+        launcher: Entity<DaemonLauncher>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -113,6 +122,8 @@ impl AgentsPanel {
         Self {
             store,
             root,
+            launcher,
+            adopt_pending: false,
             wizard: None,
             wizard_inputs,
             runtime_inputs,
@@ -142,7 +153,27 @@ impl AgentsPanel {
         if let Some(sent) = self.wizard.as_mut().and_then(|wizard| wizard.sent.as_mut()) {
             sent.observe(store);
         }
+        self.adopt_runtime(cx);
         self.ensure_poll(cx);
+    }
+
+    /// After an install or a restart the panel asked for answered running,
+    /// the owned daemon restarts with the runtime's state directory, so it
+    /// adopts the runtime. A refused or stopped runtime restarts nothing.
+    fn adopt_runtime(&mut self, cx: &mut Context<Self>) {
+        if !self.adopt_pending {
+            return;
+        }
+        let Some(host) = self.state(cx).agent_host().cloned() else { return };
+        if !host.applied {
+            return;
+        }
+        self.adopt_pending = false;
+        let Some(state_dir) = host.state_dir else { return };
+        if host.refusal.is_some() || host.state != AgentHostState::Running {
+            return;
+        }
+        self.launcher.update(cx, |launcher, cx| launcher.restart_for_runtime(Some(state_dir), cx));
     }
 
     /// Starts the poll when a creation is pending and none is running.
@@ -193,9 +224,18 @@ impl AgentsPanel {
             .map(|failure| failure.message.clone())
     }
 
-    /// The form open under an agent's row.
+    /// The form open under an agent's row. The jobs form reads the agent's
+    /// PRX jobs as it opens.
     fn open_form(&mut self, form: Option<Form>, cx: &mut Context<Self>) {
+        let jobs_of = match &form {
+            Some(Form::Jobs { agent }) => Some(agent.clone()),
+            _ => None,
+        };
         self.form = form;
+        if let Some(agent) = jobs_of {
+            let kind = IntentKind::AgentJobsRefresh { agent };
+            self.store.update(cx, |store, cx| store.dispatch(Intent::human(kind), cx));
+        }
         cx.notify();
     }
 

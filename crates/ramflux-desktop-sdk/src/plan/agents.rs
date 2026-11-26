@@ -65,6 +65,7 @@ pub fn is_agent_method(method: &str) -> bool {
             | methods::AGENT_JOB_RESUME
             | methods::AGENT_JOB_REMOVE
             | methods::AGENT_APPROVAL_DECIDE
+            | methods::AGENT_JOB_LIST
     )
 }
 
@@ -112,6 +113,9 @@ pub fn agent_effect(method: &str, body: &Value, account: Option<&AccountId>) -> 
         methods::AGENT_JOB_PAUSE | methods::AGENT_JOB_RESUME | methods::AGENT_JOB_REMOVE => {
             job(method, body)
         }
+        // The answer is read by the translator (`effects.rs`): it carries no
+        // follow-up read.
+        methods::AGENT_JOB_LIST => job_list(body),
         methods::AGENT_APPROVAL_DECIDE => {
             let decision = match body["decision"].as_str() {
                 Some("approved") => "approved",
@@ -176,6 +180,12 @@ fn anchored(body: &Value) -> Result<(String, Map<String, Value>), String> {
 fn confirmed(mut out: Map<String, Value>, refresh: Vec<Fetch>) -> (Value, Vec<Fetch>) {
     out.insert("confirmed".into(), json!(true));
     (Value::Object(out), refresh)
+}
+
+/// The job list of an agent: its PRX name only.
+fn job_list(body: &Value) -> Result<(Value, Vec<Fetch>), String> {
+    let (anchor, _) = anchored(body)?;
+    Ok((json!({ "agent": prx_name(&anchor)? }), Vec::new()))
 }
 
 /// A job request: the PRX name of its agent, the kind and the id.
@@ -279,6 +289,17 @@ mod tests {
         assert!(name.starts_with("a_"), "rf-derived names carry the rf prefix");
         assert_eq!(request.body, json!({"agent": name, "kind": "xin_goal", "id": "j-1"}));
         assert_eq!(refresh, vec![Fetch::AgentJobs(ANCHOR.to_owned())]);
+    }
+
+    #[test]
+    fn job_list_names_the_agent_by_its_prx_name() {
+        let body = json!({"agent_anchor": ANCHOR});
+        let (request, refresh) =
+            request(agent_effect(methods::AGENT_JOB_LIST, &body, Some(&owner())));
+        let name = prx_name(ANCHOR).expect("test: a 32-byte anchor");
+        assert_eq!(request.method, "agent.job.list");
+        assert_eq!(request.body, json!({"agent": name}));
+        assert!(refresh.is_empty());
     }
 
     #[test]

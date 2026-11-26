@@ -31,6 +31,9 @@ Versioning.
   pause, resume or remove its PRX scheduled jobs.
 - Agent approvals (in a conversation) are listed in the approvals dock, where
   they can be allowed or denied.
+- The agents' PRX jobs are read when their panel opens, and the owned daemon
+  restarts with the runtime's state directory after an install or a restart,
+  so it adopts the runtime.
 - The PRX runtime panel: status, install (the provider key is typed into a
   masked field, used once and never shown again), restart, stop and
   uninstall. Features the core or PRX do not offer yet show a typed
