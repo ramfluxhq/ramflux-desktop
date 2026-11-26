@@ -223,15 +223,41 @@ impl Task {
                     self.emit(closed);
                     return;
                 }
+                // A lifecycle the daemon did not answer leaves the account's lock
+                // unknown: it stays closed until the account code opens it.
+                if method == ramflux_desktop_core::methods::APP_LOCK_LIFECYCLE {
+                    if let Some(id) = body["account_id"].as_str() {
+                        let events = self
+                            .translator
+                            .app_lock_unreadable(&ramflux_desktop_core::AccountId::new(id));
+                        self.emit(events);
+                    }
+                    if error.is_connection_lost() {
+                        self.lost();
+                    }
+                    return;
+                }
                 let code = match &error {
                     BusError::Daemon { code, .. } => FailureCode::Daemon(code.clone()),
                     BusError::Transport(_) => FailureCode::Transport,
                     BusError::Timeout => FailureCode::Timeout,
                 };
-                let message = self
-                    .translator
-                    .request_failure(method, body, &error)
-                    .unwrap_or_else(|| self.translator.failure_message(method, &error));
+                // A refused configure is shown with the daemon's reason code.
+                // An unlock the daemon refuses for the account code is marked with
+                // its reason (`invalid_argument`); other refusals keep their text.
+                let message = match &error {
+                    BusError::Daemon { reason_code: Some(reason), .. }
+                        if method == ramflux_desktop_core::methods::APP_LOCK_CONFIGURE
+                            || (method == ramflux_desktop_core::methods::ACCOUNT_UNLOCK
+                                && reason == "invalid_argument") =>
+                    {
+                        reason.clone()
+                    }
+                    _ => self
+                        .translator
+                        .request_failure(method, body, &error)
+                        .unwrap_or_else(|| self.translator.failure_message(method, &error)),
+                };
                 let closed = self.translator.effect_failed(method, body, &code, &message, now());
                 // A refused update request is answered in its surface, next
                 // to the button, and a refused task request on its task, next

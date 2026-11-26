@@ -28,7 +28,7 @@ use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, Subscription
 
 use ramflux_desktop_core::{
     AccountId, AppLockPhase, ConfirmationIssuer, GrantState, Intent, IntentError, IntentKind,
-    MomentId, ParticipantId, Scope, Store, UiEvent,
+    LockState, MomentId, ParticipantId, Scope, Store, UiEvent,
 };
 
 use crate::app::{
@@ -256,24 +256,33 @@ impl IntentRoot {
         cx.notify();
     }
 
-    /// Reports to the app lock of each enabled account that the window went
-    /// to the background or came back to the front. The daemon arms its timer
-    /// on the first and stops it on the second; the reply carries the state.
+    /// Reports to the app lock of each open account whose lock is on, or not
+    /// known yet, that the window went to the background or came back to the
+    /// front. Coming back, the content of those accounts is held until the
+    /// daemon answers (the reply carries the state). The daemon arms its timer
+    /// on the first and stops it on the second. Only a live daemon has an app
+    /// lock to read.
     fn on_window_activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let phase = if window.is_window_active() {
             AppLockPhase::Foreground
         } else {
             AppLockPhase::Background
         };
-        let accounts: Vec<AccountId> = {
+        let (live, accounts) = {
             let handle = self.store.read(cx);
-            let store = handle.store();
-            store
+            let store = handle.entry_store();
+            let accounts: Vec<AccountId> = store
                 .accounts()
-                .filter(|a| store.app_lock(&a.id).is_some_and(|lock| lock.enabled))
+                .filter(|a| a.lock_state == LockState::Unlocked)
+                .filter(|a| store.app_lock(&a.id).is_none_or(|lock| lock.enabled))
                 .map(|a| a.id.clone())
-                .collect()
+                .collect();
+            (handle.is_live(), accounts)
         };
+        if !live {
+            return;
+        }
+        self.store.update(cx, |store, cx| store.hold_for_resume(accounts.clone(), cx));
         for account_id in accounts {
             let kind = IntentKind::AppLockLifecycle { account_id, phase };
             self.submit(Intent::human(kind), window, cx);

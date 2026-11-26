@@ -24,7 +24,7 @@ use ramflux_desktop_core::{
     SecretInput, Store, UiEventKind, methods,
 };
 use ramflux_desktop_navigation::direction::h_flex;
-use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary, text_subheading};
 use unicode_segmentation::UnicodeSegmentation as _;
 use unicode_width::UnicodeWidthStr;
 
@@ -44,9 +44,30 @@ fn text(input: &Entity<InputState>, cx: &App) -> String {
     input.read(cx).value().trim().to_owned()
 }
 
+/// The reason the daemon gives (with `ValidationFailed`) when an unlock is
+/// refused for the account code; the SDK keeps it as the failure's message.
+const WRONG_CODE_REASON: &str = "invalid_argument";
+
 impl EntryPage {
     /// The locked account the passphrase unlocks: a person's. An AI
     /// participant is started by the agent host, never unlocked here.
+    /// The account the lock or unlock form unlocks: the one last rendered,
+    /// when it is held, else the first held one.
+    fn unlock_target(&self, cx: &App) -> Option<AccountId> {
+        let handle = self.store.read(cx);
+        let store = handle.entry_store();
+        handle
+            .remembered_account()
+            .filter(|id| {
+                store.account(id).is_some_and(|a| {
+                    (a.lock_state == LockState::Locked || store.app_locked(id))
+                        && a.kind != AccountKind::HeadlessAi
+                })
+            })
+            .cloned()
+            .or_else(|| Self::locked_account(store).map(|a| a.id.clone()))
+    }
+
     fn locked_account(store: &Store) -> Option<&Account> {
         store.accounts().find(|a| {
             (a.lock_state == LockState::Locked || store.app_locked(&a.id))
@@ -77,7 +98,7 @@ impl EntryPage {
 
     /// Sends the typed passphrase for the locked account and clears the input.
     pub fn unlock(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let account = Self::locked_account(self.store.read(cx).store()).map(|a| a.id.clone());
+        let account = self.unlock_target(cx);
         let secret = take_secret(&self.inputs.passphrase, window, cx);
         let Some(account_id) = account.filter(|_| !secret.is_empty()) else { return };
         self.submitted = Some(account_id.clone());
@@ -250,10 +271,10 @@ impl EntryPage {
     fn render_unlock(&self, accounts: &[Account], cx: &mut Context<Self>) -> impl IntoElement {
         let unlocking = self.submitted.is_some();
         let app_closed: Vec<AccountId> = {
-            let store = self.store.read(cx).store();
+            let store = self.store.read(cx).entry_store();
             store.accounts().filter(|a| store.app_locked(&a.id)).map(|a| a.id.clone()).collect()
         };
-        let nothing_to_unlock = Self::locked_account(self.store.read(cx).store()).is_none();
+        let nothing_to_unlock = self.unlock_target(cx).is_none();
         let muted = cx.theme().muted_foreground;
         // A person's locked account of a daemon that offers the phrase:
         // "Recover with recovery phrase…" is the user's own request.
@@ -639,6 +660,101 @@ fn clip_label(label: &str, max: usize) -> (String, bool) {
         head.push_str(cluster);
     }
     (format!("{}…", head.trim_end()), true)
+}
+
+impl EntryPage {
+    /// The lock view: the app name and, unless `cover`, the account code
+    /// field and its unlock button. Nothing of the accounts is named here.
+    pub(super) fn render_lock(
+        &self,
+        cover: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let _ = window;
+        let muted = cx.theme().muted_foreground;
+        let title = div().id("lock-title").text_size(text_subheading()).child(tr("app.name"));
+        let mut column = v_flex()
+            .w_full()
+            .max_w(gpui_kit::rems(360.0 / 15.0))
+            .gap(space(3.))
+            .items_center()
+            .child(title);
+        if !cover {
+            let unlocking = self.submitted.is_some();
+            let nothing_to_unlock = self.unlock_target(cx).is_none();
+            let handle = self.store.read(cx);
+            // The last unlock the daemon refused for its code. Only that refusal
+            // is named: any other failure stays out of the lock view.
+            // The last unlock the daemon refused: the account code is wrong, or
+            // another refusal (a wait) whose own text is shown.
+            let last_refusal = handle
+                .entry_store()
+                .failures()
+                .iter()
+                .rev()
+                .find(|f| f.method == methods::ACCOUNT_UNLOCK);
+            let wrong_code = !unlocking
+                && last_refusal.is_some_and(|f| {
+                    matches!(&f.code, ramflux_desktop_core::FailureCode::Daemon(code) if code == "ValidationFailed")
+                        && f.message == WRONG_CODE_REASON
+                });
+            let refused_text = last_refusal.filter(|_| !unlocking).map(|f| f.message.clone());
+            column = column
+                .child(
+                    div()
+                        .id("lock-help")
+                        .text_size(text_caption())
+                        .text_color(muted)
+                        .child(tr("entry.app_lock.locked")),
+                )
+                .children(refused_text.filter(|_| !wrong_code).map(|text| {
+                    div()
+                        .id("lock-refused")
+                        .role(gpui_kit::Role::Status)
+                        .text_size(text_caption())
+                        .text_color(cx.theme().danger)
+                        .child(text)
+                }))
+                .children(wrong_code.then(|| {
+                    div()
+                        .id("lock-wrong-code")
+                        .role(gpui_kit::Role::Status)
+                        .text_size(text_caption())
+                        .text_color(cx.theme().danger)
+                        .child(tr("entry.app_lock.wrong_code"))
+                }))
+                .child(
+                    div().w_full().child(
+                        Input::new(&self.inputs.passphrase)
+                            .id("passphrase")
+                            .aria_label(tr("entry.account.passphrase"))
+                            .mask_toggle()
+                            .disabled(unlocking),
+                    ),
+                )
+                .child(
+                    Button::new("unlock")
+                        .design_primary(cx)
+                        .icon(IconName::Check)
+                        .design_label(tr(if unlocking {
+                            "entry.account.unlocking"
+                        } else {
+                            "entry.account.unlock"
+                        }))
+                        .loading(unlocking)
+                        .design_disabled(unlocking || nothing_to_unlock, cx)
+                        .on_click(cx.listener(|this, _, window, cx| this.unlock(window, cx))),
+                );
+        }
+        v_flex()
+            .id("entry-lock")
+            .size_full()
+            .items_center()
+            .justify_center()
+            .p(space(4.))
+            .child(column)
+    }
 }
 
 #[cfg(test)]

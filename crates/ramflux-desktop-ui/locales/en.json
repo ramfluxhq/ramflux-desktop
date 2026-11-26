@@ -616,6 +616,7 @@
   "entry.account.lock": "Lock %{name}",
   "entry.account.locked": "Locked",
   "entry.app_lock.locked": "Locked after time away. Enter your account code to continue.",
+  "entry.app_lock.wrong_code": "The account code is not right. Try again.",
   "entry.account.unlocked": "Unlocked",
   "entry.account.detail": "%{kind} · node %{node} · device %{device}",
   "entry.account.passphrase": "Six-digit account code",

@@ -291,7 +291,7 @@ fn app_lock_item(context: &SectionContext, account: Option<AccountId>) -> Settin
         let Some(account_id) = account.clone() else { return h_flex().into_any_element() };
         let (lock, failure) = {
             let handle = store.read(cx);
-            let store = handle.store();
+            let store = handle.entry_store();
             let failure = store
                 .failures()
                 .iter()

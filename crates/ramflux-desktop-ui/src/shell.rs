@@ -368,32 +368,48 @@ impl Shell {
     }
 
     fn sync_page(&mut self, cx: &mut Context<Self>) {
-        let mut page = page_for(self.store.read(cx).store());
-        // A full restore's result stays on the entry page until the user
-        // closes it, even once the daemon reopened the restored account.
-        // The session that took over from the daemon's starts empty, so it
-        // would also route back to an earlier step (the daemon step) until
-        // its first jobs listing: the account step holds that interval too.
-        let entry = self.entry.read(cx);
-        if entry.holds_restore(cx) && (page == Page::Workspace || entry.awaits_restore_listing(cx))
-        {
-            page = Page::Entry(EntryStep::Account);
+        let handle = self.store.read(cx);
+        let mut page = page_for(handle.store(), handle.entry_store(), handle.is_live());
+        // The content of an account whose app lock is awaited after a resume
+        // stays covered until the daemon answers.
+        if page == Page::Workspace && handle.resume_held() {
+            page = Page::Cover;
         }
-        if entry.restore_session_lost(cx) {
-            page = Page::Entry(EntryStep::Daemon);
-        }
-        // The result of a ceremony stays in view until it is closed, though
-        // the account it made is listed (and unlocked) by now.
-        if page == Page::Workspace && (entry.holds_ceremony(cx) || entry.holds_recovery(cx)) {
-            page = Page::Entry(EntryStep::Account);
-        }
-        // A freshly opened account session is waited for on the account
-        // step too, so the page value is the step that is rendered.
-        if page == Page::Entry(EntryStep::Daemon) && entry.awaits_session(cx) {
-            page = Page::Entry(EntryStep::Account);
+        // The lock and the cover come first: nothing else is routed over them.
+        if !matches!(page, Page::Lock | Page::Cover) {
+            let entry = self.entry.read(cx);
+            // A full restore's result stays on the entry page until the user
+            // closes it, even once the daemon reopened the restored account.
+            // The session that took over from the daemon's starts empty, so it
+            // would also route back to an earlier step (the daemon step) until
+            // its first jobs listing: the account step holds that interval too.
+            if entry.holds_restore(cx)
+                && (page == Page::Workspace || entry.awaits_restore_listing(cx))
+            {
+                page = Page::Entry(EntryStep::Account);
+            }
+            if entry.restore_session_lost(cx) {
+                page = Page::Entry(EntryStep::Daemon);
+            }
+            // The result of a ceremony stays in view until it is closed, though
+            // the account it made is listed (and unlocked) by now.
+            if page == Page::Workspace && (entry.holds_ceremony(cx) || entry.holds_recovery(cx)) {
+                page = Page::Entry(EntryStep::Account);
+            }
+            // A freshly opened account session is waited for on the account
+            // step too, so the page value is the step that is rendered.
+            if page == Page::Entry(EntryStep::Daemon) && entry.awaits_session(cx) {
+                page = Page::Entry(EntryStep::Account);
+            }
         }
         if page != self.page {
             self.page = page;
+            let lock_view = match page {
+                Page::Lock => Some(false),
+                Page::Cover => Some(true),
+                _ => None,
+            };
+            self.entry.update(cx, |entry, cx| entry.set_lock_view(lock_view, cx));
             let show = page == Page::Workspace;
             self.status.update(cx, |status, cx| status.set_show_commands(show, cx));
             if !show {
@@ -440,6 +456,10 @@ impl Shell {
 
     /// Opens the settings overlay at `section`.
     pub fn open_settings_at(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
+        // Nothing of the accounts is shown behind the lock or the cover.
+        if matches!(self.page, Page::Lock | Page::Cover) {
+            return;
+        }
         self.palette_open = false;
         self.settings_open = true;
         self.settings.update(cx, |page, cx| page.show(section, cx));
@@ -613,6 +633,15 @@ impl Render for Shell {
         // The status banner sits at the top of the content: above the entry
         // page here, inside the workspace's content column there.
         let content = match self.page {
+            // The lock and the cover show the entry page's lock view, and no
+            // status strip: a daemon failure there would be a generic notice.
+            Page::Lock | Page::Cover => v_flex()
+                .size_full()
+                .when(cfg!(target_os = "macos"), |page| {
+                    page.child(div().flex_none().h(gpui_kit::rems(WINDOW_DRAG_HEIGHT / 15.0)))
+                })
+                .child(div().flex_1().min_h_0().child(self.entry.clone()))
+                .into_any_element(),
             Page::Entry(step) => v_flex()
                 .size_full()
                 // Below the macOS drag region (and its traffic lights).

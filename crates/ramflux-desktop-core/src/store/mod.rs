@@ -225,7 +225,14 @@ impl Store {
     /// Whether the app lock holds the account closed now: the lock screen
     /// stands in for it until the account code opens it.
     pub fn app_locked(&self, id: &AccountId) -> bool {
-        self.app_lock(id).is_some_and(|lock| lock.state == AppLockState::Locked)
+        self.app_lock(id).is_some_and(|lock| {
+            // A lock on an account the daemon reports locked holds it closed too.
+            lock.state == AppLockState::Locked
+                || (lock.enabled
+                    && self
+                        .account(id)
+                        .is_some_and(|a| a.lock_state == crate::model::LockState::Locked))
+        })
     }
 
     /// All accounts ordered by id.

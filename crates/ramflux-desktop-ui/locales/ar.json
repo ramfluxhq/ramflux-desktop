@@ -636,6 +636,7 @@
   "entry.account.lock": null,
   "entry.account.locked": null,
   "entry.app_lock.locked": null,
+  "entry.app_lock.wrong_code": null,
   "entry.account.unlocked": null,
   "entry.account.detail": null,
   "entry.account.passphrase": null,
