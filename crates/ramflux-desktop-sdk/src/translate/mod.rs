@@ -43,6 +43,7 @@ pub mod agents;
 mod app_lock;
 pub mod backup;
 pub mod calls;
+pub mod card_session;
 mod contact_failures;
 pub mod contact_requests;
 mod contacts;

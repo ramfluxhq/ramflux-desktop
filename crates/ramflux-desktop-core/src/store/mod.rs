@@ -27,6 +27,7 @@
 mod backup;
 pub mod bodies;
 mod calls;
+mod cards;
 mod ceremony;
 mod changes;
 mod contact_requests;
@@ -54,6 +55,7 @@ use crate::model::{
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
+pub use cards::{CardEntry, CardPool, MAX_OPEN, MAX_RESUMED, PoolPlan};
 pub use changes::{ApplyError, Changes, Rejection};
 pub use surfaces::{StreamState, SurfaceRecord, SurfaceState, UpdateRequest};
 

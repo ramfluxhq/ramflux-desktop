@@ -36,6 +36,7 @@ mod agent;
 mod backend;
 mod backup;
 mod call;
+mod card_tree;
 mod ceremony;
 mod contact_request;
 mod conversation;
@@ -75,6 +76,10 @@ pub use backup::{
 };
 pub use call::{
     Call, CallDirection, CallEndReason, CallKey, CallMedia, CallOutcome, CallRebind, CallState,
+};
+pub use card_tree::{
+    CardApplyError, CardBatch, CardHostSlot, CardLifecycle, CardMutation, CardNode, CardPhase,
+    CardToken, CardTree, MAX_BATCH_BYTES, MAX_BATCH_OPS, MAX_NODES, MUTATIONS_SCHEMA, parse_batch,
 };
 pub use ceremony::{
     CEREMONY_TTL_MS, CHALLENGE_WORDS, Ceremony, CeremonyAccount, CeremonyFailure, CeremonyPhase,
