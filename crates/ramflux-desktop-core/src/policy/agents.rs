@@ -125,9 +125,13 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
-        IntentKind::AgentRuntime { action, provider, model, key } => {
-            runtime(p, *action, provider, model, key.is_some())
+        IntentKind::AgentRuntime { action, provider, model, key, nonce } => {
+            runtime(p, *action, provider, model, key.is_some(), *nonce)
         }
+        IntentKind::AgentWatchRefresh => p.human_only(WHAT).and_then(|()| {
+            let cursor = p.store.agent_cursor().ok_or(IntentError::Empty("journal cursor"))?;
+            Ok(Decision::Call(methods::AGENT_WATCH, json!({ "journal_cursor": cursor })))
+        }),
         _ => return None,
     })
 }
@@ -140,6 +144,7 @@ fn runtime(
     provider: &str,
     model: &str,
     has_key: bool,
+    nonce: u64,
 ) -> Result<Decision, IntentError> {
     p.human_only(WHAT)?;
     check_runtime(action, provider, model, has_key)?;
@@ -151,6 +156,7 @@ fn runtime(
         provider: provider.trim().to_owned(),
         model: model.trim().to_owned(),
         key: None,
+        nonce,
     }))
 }
 

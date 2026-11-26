@@ -57,32 +57,17 @@ async fn trace_accounts_for_ordinary_stream_and_job_sends() {
             json!({"job_id":"missing"}),
         ))
         .await;
-    // Attended setup and its data request go through the same send hook too.
-    crate::bus::attended::call(
-        &path,
-        Duration::from_secs(2),
-        deadlines,
-        &BusRequest::new(
-            Some("acct-main"),
-            "account",
-            "account.export_agent_credentials",
-            json!({}),
-        ),
-    )
-    .await
-    .expect("attended request");
     client.call(&BusRequest::new(None, "daemon", "daemon.stop", json!({}))).await.expect("control");
     let entries = after(&path, 0);
     let seen = fake.seen();
     assert_eq!(entries.len(), seen.len(), "every actual frame appears exactly once");
-    assert_eq!(entries.len(), 8);
+    assert_eq!(entries.len(), 6);
     for method in [
         "daemon.status",
         "node.probe",
         "bus.subscribe",
         "subscription.open",
         "account.backup.cancel",
-        "account.export_agent_credentials",
     ] {
         assert_eq!(
             entries.iter().filter(|(_, e)| e.method == method).count(),
@@ -96,8 +81,6 @@ async fn trace_accounts_for_ordinary_stream_and_job_sends() {
         ("stream", "subscription", 1),
         ("job", "subscription", 1),
         ("job", "data", 1),
-        ("attended", "setup", 1),
-        ("attended", "data", 1),
     ] {
         assert_eq!(
             entries

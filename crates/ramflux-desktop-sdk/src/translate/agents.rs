@@ -22,6 +22,7 @@ use crate::bus::BusError;
 use crate::plan::agents::RUNTIME_METHOD;
 use crate::plan::fetch::Fetch;
 use crate::prx_host;
+use crate::translate::Translated;
 
 /// The first non-null value under one of `keys`.
 fn pick<'a>(value: &'a Value, keys: &[&str]) -> &'a Value {
@@ -55,6 +56,16 @@ pub fn refusal_of_code(code: &str) -> AgentRefusal {
         "unsupported" => AgentRefusal::Unsupported,
         "prx_unconfigured" => AgentRefusal::PrxUnconfigured,
         "host_not_supported" => AgentRefusal::HostNotSupported,
+        "prx_rejected" => AgentRefusal::PrxRejected,
+        "prx_unavailable" => AgentRefusal::PrxUnavailable,
+        "auth_failed" => AgentRefusal::AuthFailed,
+        "prx_unsupported" => AgentRefusal::PrxUnsupported,
+        "cron_job_unknown" => AgentRefusal::CronJobUnknown,
+        "xin_task_unknown" => AgentRefusal::XinTaskUnknown,
+        "xin_goal_unknown" => AgentRefusal::XinGoalUnknown,
+        "field_invalid" => AgentRefusal::FieldInvalid,
+        "agent_invalid" => AgentRefusal::AgentInvalid,
+        "storage_unavailable" => AgentRefusal::StorageUnavailable,
         "prx_missing" | "runtime_missing" => AgentRefusal::PrxMissing,
         "provider_missing" => AgentRefusal::ProviderMissing,
         "credential_unavailable" => AgentRefusal::CredentialUnavailable,
@@ -94,8 +105,20 @@ fn runtime_refusal(refusal: &AgentRefusal) -> bool {
             | AgentRefusal::UnsupportedPlatform
             | AgentRefusal::PrxCommand
             | AgentRefusal::PrxSpawn
+            | AgentRefusal::PrxRejected
+            | AgentRefusal::PrxUnavailable
+            | AgentRefusal::AuthFailed
+            | AgentRefusal::PrxUnsupported
+            | AgentRefusal::FieldInvalid
+            | AgentRefusal::AgentInvalid
+            | AgentRefusal::StorageUnavailable
     )
 }
+
+/// The locale keys whose hint is a restart of the runtime (see
+/// [`AgentRefusal::offers_restart`]).
+pub const RESTART_HINT_KEYS: [&str; 2] =
+    ["backend.agent.prx.auth_failed", "backend.agent.prx.unavailable"];
 
 /// The locale key of a refusal. Every [`AgentRefusal`] has one.
 pub fn refusal_key(refusal: &AgentRefusal) -> &'static str {
@@ -119,6 +142,16 @@ pub fn refusal_key(refusal: &AgentRefusal) -> &'static str {
         AgentRefusal::UnsupportedPlatform => "backend.agent.prx.unsupported_platform",
         AgentRefusal::PrxCommand => "backend.agent.prx.command",
         AgentRefusal::PrxSpawn => "backend.agent.prx.spawn",
+        AgentRefusal::PrxRejected => "backend.agent.prx.rejected",
+        AgentRefusal::PrxUnavailable => "backend.agent.prx.unavailable",
+        AgentRefusal::AuthFailed => "backend.agent.prx.auth_failed",
+        AgentRefusal::PrxUnsupported => "backend.agent.prx.unsupported",
+        AgentRefusal::CronJobUnknown => "backend.agent.job.cron_unknown",
+        AgentRefusal::XinTaskUnknown => "backend.agent.job.xin_task_unknown",
+        AgentRefusal::XinGoalUnknown => "backend.agent.job.xin_goal_unknown",
+        AgentRefusal::FieldInvalid => "backend.agent.prx.field_invalid",
+        AgentRefusal::AgentInvalid => "backend.agent.prx.agent_invalid",
+        AgentRefusal::StorageUnavailable => "backend.agent.prx.storage_unavailable",
         AgentRefusal::Timeout => "backend.agent.timeout",
         AgentRefusal::Transport => "backend.agent.transport",
         AgentRefusal::Other(_) => "backend.agent.other",
@@ -241,8 +274,9 @@ fn approval_of(value: &Value) -> Option<AgentApproval> {
 
 /// The runtime status the host answered, without any secret. `action` is the
 /// runtime action the answer is for (its name, as the effect body carries
-/// it): an install or a restart marks the status as applied.
-pub fn host_status_of(answer: &Value, action: &str) -> AgentHostStatus {
+/// it): an install or a restart marks the status as applied. `nonce` is the
+/// number the action was submitted with.
+pub fn host_status_of(answer: &Value, action: &str, nonce: u64) -> AgentHostStatus {
     let state = match answer["state"].as_str().unwrap_or_default() {
         "absent" => AgentHostState::Absent,
         "running" => AgentHostState::Running,
@@ -258,6 +292,7 @@ pub fn host_status_of(answer: &Value, action: &str) -> AgentHostStatus {
         refusal: None,
         state_dir: prx_host::state_dir_of(answer),
         applied: matches!(action, "install" | "restart"),
+        nonce,
     }
 }
 
@@ -314,6 +349,14 @@ pub fn read_events(fetch: &Fetch, value: &Value) -> Vec<DomainEvent> {
             .collect(),
         _ => Vec::new(),
     }
+}
+
+/// A page of the roster: its records, and the read of its `next` page while
+/// the daemon has one.
+pub fn list_page(fetch: &Fetch, value: &Value) -> Translated {
+    let next = text_of(pick(value, &["page"]), &["next"]);
+    let follow = if next.is_empty() { Vec::new() } else { vec![Fetch::AgentListPage(next)] };
+    Translated { events: read_events(fetch, value), follow }
 }
 
 #[cfg(test)]
@@ -398,12 +441,13 @@ mod tests {
 
     #[test]
     fn the_runtime_status_names_its_state_without_secrets() {
-        let status = host_status_of(&json!({"state": "running", "prx_version": "0.1.0"}), "status");
+        let status =
+            host_status_of(&json!({"state": "running", "prx_version": "0.1.0"}), "status", 1);
         assert_eq!(status.state, AgentHostState::Running);
         assert_eq!(status.prx_version.as_deref(), Some("0.1.0"));
         assert!(!status.applied, "a status read applies nothing");
         assert_eq!(
-            host_status_of(&json!({"state": "odd"}), "status").state,
+            host_status_of(&json!({"state": "odd"}), "status", 2).state,
             AgentHostState::Unknown
         );
     }
@@ -415,12 +459,58 @@ mod tests {
             "runtime_path": "/state/prx/runtime.json",
             "api_base": "http://127.0.0.1:9/",
         });
-        let status = host_status_of(&answer, "restart");
+        let status = host_status_of(&answer, "restart", 3);
+        assert_eq!(status.nonce, 3, "the status carries the action's number");
         assert!(status.applied);
         assert_eq!(status.state_dir, Some(std::path::PathBuf::from("/state/prx")));
-        let stopped = host_status_of(&answer, "stop");
+        let stopped = host_status_of(&answer, "stop", 4);
         assert!(!stopped.applied);
-        assert_eq!(host_status_of(&json!({"state": "absent"}), "install").state_dir, None);
+        assert_eq!(host_status_of(&json!({"state": "absent"}), "install", 5).state_dir, None);
+    }
+
+    #[test]
+    fn every_refusal_code_has_a_typed_refusal_and_a_key() {
+        for (code, refusal) in [
+            ("prx_rejected", AgentRefusal::PrxRejected),
+            ("prx_unavailable", AgentRefusal::PrxUnavailable),
+            ("auth_failed", AgentRefusal::AuthFailed),
+            ("prx_unsupported", AgentRefusal::PrxUnsupported),
+            ("cron_job_unknown", AgentRefusal::CronJobUnknown),
+            ("xin_task_unknown", AgentRefusal::XinTaskUnknown),
+            ("xin_goal_unknown", AgentRefusal::XinGoalUnknown),
+            ("field_invalid", AgentRefusal::FieldInvalid),
+            ("agent_invalid", AgentRefusal::AgentInvalid),
+            ("storage_unavailable", AgentRefusal::StorageUnavailable),
+        ] {
+            assert_eq!(refusal_of_code(code), refusal, "{code}");
+            assert!(!refusal_key(&refusal).ends_with(".other"), "{code} has its own wording");
+        }
+        assert!(AgentRefusal::AuthFailed.offers_restart());
+        assert!(AgentRefusal::PrxUnavailable.offers_restart());
+        assert!(!AgentRefusal::PrxRejected.offers_restart());
+        let prx = BusError::Daemon {
+            retry_after_ms: None,
+            code: "prx_failed".into(),
+            message: String::new(),
+            reason_code: Some("prx_rejected".into()),
+            details: None,
+            cause: None,
+        };
+        assert_eq!(
+            failure_key(methods::AGENT_CREATE, &prx),
+            Some("backend.agent.create.runtime_not_applied"),
+            "a PRX failure of a creation says it was created without its runtime"
+        );
+    }
+
+    #[test]
+    fn a_roster_page_with_a_next_cursor_reads_the_next_page() {
+        let page = json!({"page": {"records": [], "next": "n-1", "journal_cursor": "c-1"}});
+        let more = list_page(&Fetch::AgentList, &page);
+        assert_eq!(more.follow, vec![Fetch::AgentListPage("n-1".into())]);
+        let last =
+            list_page(&Fetch::AgentListPage("n-1".into()), &json!({"page": {"records": []}}));
+        assert!(last.follow.is_empty(), "the last page ends the read");
     }
 
     #[test]

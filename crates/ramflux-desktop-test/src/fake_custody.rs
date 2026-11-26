@@ -20,11 +20,6 @@
 //!   `CustodySetupInvalid`, whatever the cause. Its `.confirm` takes the
 //!   three words only (a passphrase is refused: the daemon makes the data
 //!   passphrase) and the account is listed `kind: headless_ai`, unlocked.
-//! - `account.export_agent_credentials {account, path}` writes a one-shot
-//!   bundle (a file readable by its owner only, never replacing one) for the
-//!   custodian, on a connection that attended the custodian's account
-//!   (`subscription.open` with `attended_frontend`), and refuses as the
-//!   daemon does otherwise; the bundle here holds no real credential.
 //! - A ceremony belongs to the connection it began on: another connection
 //!   cannot continue it, and the end of the connection erases it.
 //! - Accounts it made survive a restart of the fake bus (give the same
@@ -59,8 +54,6 @@ struct Account {
     kind: &'static str,
     /// The account that custodies an AI participant.
     custodian: Option<String>,
-    /// The credentials an export would write are still in the vault.
-    provisioning: bool,
 }
 
 #[derive(Debug)]
@@ -130,17 +123,11 @@ struct State {
     /// The listing names an AI participant's custodian
     /// (`custodian_account_id`), as a later daemon may.
     report_custodian: bool,
-    /// Exports written: owner, AI participant, path.
-    exports: Vec<(String, String, String)>,
     /// The daemon refuses every AI participant's begin, whatever the
     /// custodian (it checks something the desktop cannot see).
     refuse_headless: bool,
-    /// How long an export takes to answer (a vault that waits for the
-    /// person).
-    export_delay: Duration,
     /// An error object (written out as JSON) the daemon answers every
-    /// ceremony begin, recovery begin and credential export with, in place
-    /// of its own checks.
+    /// ceremony begin and recovery begin with, in place of its own checks.
     error_frame: Option<Value>,
 }
 
@@ -161,16 +148,6 @@ impl Default for FakeCustody {
 
 fn refuse(code: &'static str) -> Reply {
     Reply::Error(code, code.to_owned())
-}
-
-/// Writes the fake bundle: owner-only, never over a file that exists. It
-/// holds the account id and a marker, no credential.
-fn write_bundle(path: &str, agent: &str) -> std::io::Result<()> {
-    use std::io::Write as _;
-    use std::os::unix::fs::OpenOptionsExt as _;
-    let mut file =
-        std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(path)?;
-    file.write_all(format!("{{\"account_id\":\"{agent}\",\"fake_bundle\":true}}").as_bytes())
 }
 
 impl FakeCustody {
@@ -201,9 +178,7 @@ impl FakeCustody {
                 last_confirm_fields: Vec::new(),
                 attended: BTreeMap::new(),
                 report_custodian: false,
-                exports: Vec::new(),
                 refuse_headless: false,
-                export_delay: Duration::ZERO,
                 error_frame: None,
             }),
         }
@@ -261,11 +236,6 @@ impl FakeCustody {
         self.state().last_confirm_fields.clone()
     }
 
-    /// Exports answer after `delay` from now on.
-    pub fn set_export_delay(&self, delay: Duration) {
-        self.state().export_delay = delay;
-    }
-
     /// From now on the begins and the credential export answer with this
     /// error object (or, with `None`, with their own checks again).
     pub fn set_error_frame(&self, frame: Option<Value>) {
@@ -280,16 +250,6 @@ impl FakeCustody {
     /// Whether the listing names an AI participant's custodian.
     pub fn report_custodian(&self, report: bool) {
         self.state().report_custodian = report;
-    }
-
-    /// The exports written, as `(owner, AI participant, path)`.
-    pub fn exports(&self) -> Vec<(String, String, String)> {
-        self.state().exports.clone()
-    }
-
-    /// Whether the credentials of `id` are still held (not exported yet).
-    pub fn holds_credentials(&self, id: &str) -> bool {
-        self.state().accounts.get(id).is_some_and(|account| account.provisioning)
     }
 
     /// The account `id` as listed: its kind and custodian.
@@ -318,19 +278,16 @@ impl FakeCustody {
                 networking,
                 kind: "human",
                 custodian: None,
-                provisioning: false,
             },
         );
     }
 
-    /// Adds an AI participant `custodian` custodies, with its credentials
-    /// still in the vault.
+    /// Adds an AI participant `custodian` custodies.
     pub fn add_agent(&self, id: &str, label: &str, custodian: &str) {
         self.add_account(id, label, "daemon-made", true);
         if let Some(account) = self.state().accounts.get_mut(id) {
             account.kind = "headless_ai";
             account.custodian = Some(custodian.to_owned());
-            account.provisioning = true;
         }
     }
 
@@ -378,7 +335,6 @@ impl FakeCustody {
                 networking,
                 kind: "human",
                 custodian: None,
-                provisioning: false,
             },
         );
     }
@@ -406,7 +362,6 @@ impl FakeCustody {
             "node.set_default" => true,
             "account.list" | "account.lock" | "account.unlock" => self.serves_accounts(),
             "account.status" => account.is_some_and(|id| self.state().accounts.contains_key(id)),
-            "account.export_agent_credentials" => self.serves_accounts(),
             _ => method.starts_with("account.create.") || method.starts_with("account.recover."),
         }
     }
@@ -432,13 +387,6 @@ impl FakeCustody {
             "account.unlock" => Self::unlock(&mut state, account, body),
             "account.create" | "account.create.begin" => {
                 Self::begin(&mut state, connection, account, body)
-            }
-            "account.export_agent_credentials" => {
-                let delay = state.export_delay;
-                match Self::export(&mut state, connection, account, body) {
-                    Reply::Ok(answer) if !delay.is_zero() => Reply::Slow(delay, answer),
-                    other => other,
-                }
             }
             "account.recover.begin" => Self::recover_begin(&mut state, connection, body),
             "account.create.cancel" | "account.recover.cancel" => {
@@ -673,71 +621,10 @@ impl FakeCustody {
                 networking,
                 kind: if agent { "headless_ai" } else { "human" },
                 custodian: c.custodian.clone(),
-                provisioning: agent,
             },
         );
         Reply::Ok(json!({ "account_id": id, "display_name": c.label, "state": "unlocked",
                           "networking": networking }))
-    }
-
-    /// `account.export_agent_credentials`, as the daemon takes it: from the
-    /// custodian's attended session only, never replacing a file, and once.
-    fn export(state: &mut State, connection: usize, account: Option<&str>, body: &Value) -> Reply {
-        let permission = || {
-            Reply::Error("ValidationFailed", "local bus peer credential check failed".to_owned())
-        };
-        let Some(owner) = account else { return permission() };
-        let open = state.accounts.get(owner).is_some_and(|found| !found.locked);
-        if state.attended.get(&connection).map(String::as_str) != Some(owner) || !open {
-            return permission();
-        }
-        if let Some(frame) = state.error_frame.clone() {
-            return Reply::ErrorFrame(frame);
-        }
-        let fields: Vec<&str> = body
-            .as_object()
-            .map(|map| map.keys().map(String::as_str).collect())
-            .unwrap_or_default();
-        let (Some(agent), Some(path), 2) =
-            (body["account"].as_str(), body["path"].as_str(), fields.len())
-        else {
-            return Reply::Error("ValidationFailed", "unknown field".to_owned());
-        };
-        let connected = |id: &str, state: &State| {
-            state.accounts.get(id).is_some_and(|found| found.networking == "live")
-        };
-        if state.accounts.get(owner).is_none_or(|found| found.kind != "human") {
-            return refuse("CustodySetupInvalid");
-        }
-        if !connected(owner, state) {
-            return refuse("NetworkingPending");
-        }
-        let Some(found) = state.accounts.get(agent) else { return refuse("CustodySetupInvalid") };
-        if found.kind != "headless_ai" || found.custodian.as_deref() != Some(owner) {
-            return refuse("CustodySetupInvalid");
-        }
-        if !connected(agent, state) {
-            return refuse("NetworkingPending");
-        }
-        if !found.provisioning {
-            return refuse("CustodyVaultUnavailable");
-        }
-        match write_bundle(path, agent) {
-            Ok(()) => {}
-            Err(error) => {
-                return Reply::Io {
-                    code: "ValidationFailed",
-                    message: format!("io error: {error}"),
-                    kind: format!("{:?}", error.kind()),
-                    raw_os_error: error.raw_os_error(),
-                };
-            }
-        }
-        if let Some(found) = state.accounts.get_mut(agent) {
-            found.provisioning = false;
-        }
-        state.exports.push((owner.to_owned(), agent.to_owned(), path.to_owned()));
-        Reply::Ok(json!({ "account": agent, "path": path, "exported": true }))
     }
 
     fn confirm_recovery(state: &mut State, r: &Recovery, body: &Value) -> Reply {

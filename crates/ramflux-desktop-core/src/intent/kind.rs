@@ -553,7 +553,13 @@ pub enum IntentKind {
         /// The provider key (install only).
         #[serde(skip)]
         key: Option<SecretInput>,
+        /// The number of this submission (see `AgentHostStatus::nonce`).
+        #[serde(default)]
+        nonce: u64,
     },
+    /// Read the changes to the account's agents since the roster's journal
+    /// cursor (`agent.watch`). Read only.
+    AgentWatchRefresh,
     /// Begin recovering an account that lives on this device, from its 24
     /// words. Only the user starts it, from the account itself; nothing a
     /// network event carries may. The daemon answers with the account's

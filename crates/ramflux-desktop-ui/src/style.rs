@@ -108,6 +108,9 @@ impl DesignStyle {
     }
 }
 
+/// The opacity of a retired agent's rows and groups (greyed out, D41–D43).
+pub const RETIRED_OPACITY: f32 = 0.55;
+
 /// The design's button geometry and colours for a Kit [`Button`].
 pub trait DesignButton: Sized {
     /// A prepared design style.

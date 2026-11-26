@@ -24,9 +24,26 @@ use crate::bus::client::BusClient;
 use crate::bus::{BusError, BusRequest, idempotency, wipe};
 use crate::capabilities;
 use crate::plan::fetch::Fetch;
-use crate::plan::{Plan, plan};
+use crate::plan::{Plan, plan, text};
 use crate::translate::node_failures;
 use crate::translate::reason::{key, keyed};
+
+/// The creation requests whose `agent.operation.get` is in flight.
+#[derive(Debug, Default)]
+pub(super) struct ReadsInFlight(std::collections::HashSet<String>);
+
+impl ReadsInFlight {
+    /// Marks a read of `request_id` in flight. `false` when one already is:
+    /// the new read is not sent.
+    pub(super) fn start(&mut self, request_id: &str) -> bool {
+        self.0.insert(request_id.to_owned())
+    }
+
+    /// Clears the mark once the read has answered (or failed).
+    pub(super) fn finish(&mut self, request_id: &str) {
+        self.0.remove(request_id);
+    }
+}
 
 impl Task {
     pub(super) fn effect(&mut self, effect: Effect) {
@@ -140,14 +157,16 @@ impl Task {
             }
             Plan::Media(job) => self.media(job),
             other => {
+                // One creation's status is read at a time: a read due while
+                // the previous one is in flight waits for its answer (the next tick).
+                if method == methods::AGENT_OPERATION_GET
+                    && !self.operations_in_flight.start(text(&body, "operation_id"))
+                {
+                    return;
+                }
                 let client = self.client.clone();
                 let job_link = self.job_link.clone();
                 let internal = self.internal.clone();
-                let (socket, connect_timeout, deadlines) = (
-                    self.config.socket_path.clone(),
-                    self.config.connect_timeout,
-                    self.config.deadlines,
-                );
                 let retries: Vec<Duration> = self
                     .config
                     .local_network_retry_ms
@@ -162,21 +181,6 @@ impl Task {
                             if crate::bus::jobs::REQUESTS.contains(&request.method.as_str()) =>
                         {
                             (job_link.call(&request).await, refresh)
-                        }
-                        // Taken only from the owner's attended session, on a
-                        // connection of its own.
-                        Plan::Call { request, refresh }
-                            if crate::bus::attended::is_attended(&request.method) =>
-                        {
-                            let result = crate::bus::attended::call(
-                                &socket,
-                                connect_timeout,
-                                deadlines,
-                                &request,
-                            )
-                            .await;
-                            wipe(request.body);
-                            (result, refresh)
                         }
                         other => perform(&client, other, &retries).await,
                     };
@@ -193,6 +197,9 @@ impl Task {
         result: Result<Value, BusError>,
         refresh: Vec<Fetch>,
     ) {
+        if method == methods::AGENT_OPERATION_GET {
+            self.operations_in_flight.finish(text(body, "operation_id"));
+        }
         if method.starts_with("account.") {
             self.refresh_daemon();
         }
@@ -493,5 +500,20 @@ impl Task {
         all.extend(events);
         self.emit(all);
         self.spawn_fetches(refresh);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReadsInFlight;
+
+    #[test]
+    fn one_creation_read_is_in_flight_at_a_time() {
+        let mut reads = ReadsInFlight::default();
+        assert!(reads.start("req-1"), "the first read is sent");
+        assert!(!reads.start("req-1"), "a read due while it is in flight is not sent");
+        assert!(reads.start("req-2"), "another creation is read at its own pace");
+        reads.finish("req-1");
+        assert!(reads.start("req-1"), "after the answer the next tick reads again");
     }
 }

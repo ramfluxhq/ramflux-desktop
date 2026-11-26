@@ -107,6 +107,8 @@ pub enum Fetch {
     UsernameStatus,
     /// `agent.list`: the first page of the account's named agents.
     AgentList,
+    /// `agent.list` from a page's `next` cursor: the rest of the roster.
+    AgentListPage(String),
     /// `agent.approval.list`: the approvals of agents waiting for an answer.
     AgentApprovals,
     /// `agent.job.list` of one agent, by its anchor.
@@ -164,7 +166,13 @@ impl Fetch {
                 account,
                 "agent",
                 "agent.list",
-                json!({ "cursor": null, "limit": 100 }),
+                json!({ "cursor": null, "limit": PAGE_LIMIT }),
+            ),
+            Self::AgentListPage(cursor) => BusRequest::new(
+                account,
+                "agent",
+                "agent.list",
+                json!({ "cursor": cursor, "limit": PAGE_LIMIT }),
             ),
             Self::AgentApprovals => BusRequest::new(account, "agent", "agent.approval.list", empty),
             Self::AgentJobs(anchor) => BusRequest::new(

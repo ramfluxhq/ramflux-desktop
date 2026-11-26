@@ -31,7 +31,7 @@ pub async fn run(
     model: &str,
     key: Option<SecretInput>,
 ) -> Result<Value, BusError> {
-    let secret = key.map(|key| Zeroizing::new(key.expose().to_owned()));
+    let secret = key.map(SecretInput::into_zeroizing);
     let request = Request {
         action: host_action(action),
         provider: (!provider.is_empty()).then(|| provider.to_owned()),

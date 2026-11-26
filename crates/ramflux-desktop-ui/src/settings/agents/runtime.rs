@@ -22,7 +22,7 @@ use ramflux_desktop_core::{
 };
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
-use ramflux_desktop_sdk::translate::agents::refusal_key;
+use ramflux_desktop_sdk::translate::agents::{RESTART_HINT_KEYS, refusal_key};
 
 use super::AgentsPanel;
 use super::rows::unavailable_line;
@@ -79,9 +79,21 @@ impl AgentsPanel {
     pub(super) fn render_runtime(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let state =
             self.store.read(cx).store().agent_host().map(|host| (host.state, host.refusal.clone()));
-        let line = status_line(self.store.read(cx).store());
+        // An install the panel submitted shows as installing until its answer.
+        let installing = self.installing(cx);
+        let line = if installing {
+            tr("agents.runtime.installing")
+        } else {
+            status_line(self.store.read(cx).store())
+        };
         let refusal = state.as_ref().and_then(|(_, refusal)| refusal.clone());
-        let host_state = state.map(|(state, _)| state);
+        let host_state = if installing {
+            Some(AgentHostState::Installing)
+        } else {
+            state.map(|(state, _)| state)
+        };
+        let restart_hint =
+            self.last_failure(cx).is_some_and(|key| RESTART_HINT_KEYS.contains(&key.as_str()));
         let can_install = !self.runtime_inputs.provider.read(cx).value().trim().is_empty()
             && !self.runtime_inputs.model.read(cx).value().trim().is_empty()
             && !self.runtime_inputs.key.read(cx).value().trim().is_empty();
@@ -114,6 +126,25 @@ impl AgentsPanel {
                     .aria_label(text.clone())
                     .test_support()
                     .child(Alert::error("agent-runtime-refusal-alert", text).small())
+            }))
+            .children(restart_hint.then(|| {
+                v_flex()
+                    .gap(space(1.))
+                    .child(
+                        div()
+                            .id("agent-runtime-restart-hint")
+                            .text_size(text_caption())
+                            .text_color(cx.theme().muted_foreground)
+                            .whitespace_normal()
+                            .child(tr("agents.runtime.restart_hint")),
+                    )
+                    .child(self.runtime_button(
+                        "agent-runtime-restart-now",
+                        "agents.runtime.restart",
+                        AgentRuntimeAction::Restart,
+                        true,
+                        cx,
+                    ))
             }))
             .children((host_state == Some(AgentHostState::Absent)).then(|| {
                 v_flex()
@@ -235,15 +266,16 @@ impl AgentsPanel {
         let model = self.runtime_inputs.model.read(cx).value().trim().to_owned();
         let key = SecretInput::new(self.runtime_inputs.key.read(cx).value().to_string());
         self.runtime_inputs.key.update(cx, |input, cx| input.set_value("", window, cx));
+        let nonce = self.next_host_nonce();
         let kind = IntentKind::AgentRuntime {
             action: AgentRuntimeAction::Install,
             provider,
             model,
             key: Some(key),
+            nonce,
         };
-        self.adopt_pending = true;
-        self.root.update(cx, |root, cx| root.submit_secret(kind, window, cx));
-        cx.notify();
+        self.arm_host_action(nonce, true, cx);
+        self.submit_host(kind, window, cx);
     }
 
     /// A runtime action without a key (status, restart, stop, uninstall).
@@ -253,15 +285,25 @@ impl AgentsPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let nonce = self.next_host_nonce();
         let kind = IntentKind::AgentRuntime {
             action,
             provider: String::new(),
             model: String::new(),
             key: None,
+            nonce,
         };
-        // Only a restart or an install changes which runtime the daemon adopts.
-        self.adopt_pending = matches!(action, AgentRuntimeAction::Restart);
-        self.root.update(cx, |root, cx| root.submit_secret(kind, window, cx));
+        self.arm_host_action(nonce, false, cx);
+        self.submit_host(kind, window, cx);
+    }
+
+    /// Submits a runtime action through the root. A refused one is not
+    /// followed: no answer will come for it.
+    fn submit_host(&mut self, kind: IntentKind, window: &mut Window, cx: &mut Context<Self>) {
+        let result = self.root.update(cx, |root, cx| root.submit_secret(kind, window, cx));
+        if result.starts_with("refused") {
+            self.host_action = None;
+        }
         cx.notify();
     }
 }

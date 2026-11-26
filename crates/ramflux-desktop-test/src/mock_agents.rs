@@ -37,6 +37,7 @@ impl Default for MockAgents {
                 refusal: None,
                 state_dir: None,
                 applied: false,
+                nonce: 0,
             },
         }
     }
@@ -56,8 +57,8 @@ impl MockAgents {
 
     /// Answers one effect; `None` for effects this mock does not own.
     pub fn answer(&mut self, effect: &Effect) -> Option<Vec<DomainEvent>> {
-        if let Effect::AgentRuntime { action, .. } = effect {
-            return Some(vec![self.runtime(*action)]);
+        if let Effect::AgentRuntime { action, nonce, .. } = effect {
+            return Some(vec![self.runtime(*action, *nonce)]);
         }
         let method = effect.method()?;
         let body = effect.body()?;
@@ -148,7 +149,8 @@ impl MockAgents {
         vec![DomainEvent::AgentRecordUpdated(Box::new(record.clone()))]
     }
 
-    fn runtime(&mut self, action: AgentRuntimeAction) -> DomainEvent {
+    fn runtime(&mut self, action: AgentRuntimeAction, nonce: u64) -> DomainEvent {
+        self.host.nonce = nonce;
         self.host.applied =
             matches!(action, AgentRuntimeAction::Install | AgentRuntimeAction::Restart);
         self.host.state = match action {
@@ -241,6 +243,7 @@ mod tests {
             provider: "p".into(),
             model: "m".into(),
             key: None,
+            nonce: 1,
         };
         assert!(matches!(
             mock.answer(&effect).expect("ours").as_slice(),

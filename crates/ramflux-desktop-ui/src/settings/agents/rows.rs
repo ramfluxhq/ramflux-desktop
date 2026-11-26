@@ -29,7 +29,7 @@ use ramflux_desktop_sdk::translate::agents::refusal_key;
 use super::wizard::{self, GLYPHS, TONES};
 use super::{AgentsPanel, Form, muted};
 use crate::i18n::{tr, tr_args};
-use crate::style::DesignButton as _;
+use crate::style::{DesignButton as _, RETIRED_OPACITY};
 
 /// A muted note a reader hears and the tests read.
 fn note(id: &'static str, key: &str, cx: &App) -> AnyElement {
@@ -193,6 +193,7 @@ impl AgentsPanel {
         let label = tr_args("agents.row.label", &[("name", &agent.persona.name)]);
         let row = h_flex()
             .id(ElementId::from(format!("agent-row-{anchor}")))
+            .opacity(if active { 1.0 } else { RETIRED_OPACITY })
             .role(Role::ListItem)
             .aria_label(label)
             .test_support()

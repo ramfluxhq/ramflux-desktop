@@ -15,6 +15,7 @@
 //! unlocked account; sessions appear when the daemon reports an account
 //! unlocked and disappear when it reports it locked. See `live`.
 
+mod agent_sync;
 mod call_audio;
 mod changes;
 mod clock;
@@ -112,6 +113,8 @@ pub struct StoreHandle {
     call: Option<call_audio::CallLink>,
     ringer: Option<Box<dyn std::any::Any>>,
     ringing: bool,
+    /// The periodic agent reads of a live store (see [`agent_sync`]).
+    agent_sync: agent_sync::AgentSync,
 }
 
 impl EventEmitter<StoreEvent> for StoreHandle {}
@@ -146,6 +149,7 @@ impl StoreHandle {
             call: None,
             ringer: None,
             ringing: false,
+            agent_sync: agent_sync::AgentSync::default(),
         }
     }
 
