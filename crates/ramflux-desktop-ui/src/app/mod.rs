@@ -22,9 +22,10 @@ mod inspector;
 mod live;
 mod names;
 mod renderer_errors;
+mod resume_hold;
 mod session;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
@@ -82,8 +83,11 @@ pub struct AccountAttention {
 /// Owns every account session and is the only path to the store and source.
 pub struct StoreHandle {
     /// Accounts whose app lock the window waits for after it came back to
-    /// the front: their content stays covered until the daemon answers.
-    resume_hold: BTreeSet<AccountId>,
+    /// the front, with the number of foreground reports not answered yet:
+    /// their content stays covered until the daemon has answered the latest
+    /// one (an answer to an older report, or any other app lock change,
+    /// does not release it) or has closed the lock.
+    resume_hold: resume_hold::ResumeHold,
     /// The account last rendered while its session existed: the lock screen
     /// asks for it first (a held account drops out of the daemon's open list).
     remembered: Option<AccountId>,
@@ -121,7 +125,7 @@ impl StoreHandle {
     /// Creates a handle with no account and a stopped clock.
     pub fn new() -> Self {
         Self {
-            resume_hold: BTreeSet::new(),
+            resume_hold: resume_hold::ResumeHold::default(),
             remembered: None,
             sessions: BTreeMap::new(),
             active: None,
@@ -538,14 +542,28 @@ impl StoreHandle {
         self.sessions.get_mut(&id)
     }
 
-    /// Covers the content of `accounts` until the daemon answers their app
-    /// lock (their next app lock answer releases the hold).
+    /// Covers the content of `accounts` until the daemon answers the
+    /// foreground report about to be sent for each of them.
     pub fn hold_for_resume(&mut self, accounts: Vec<AccountId>, cx: &mut Context<Self>) {
         if accounts.is_empty() {
             return;
         }
-        self.resume_hold.extend(accounts);
+        for account in accounts {
+            self.resume_hold.hold(account);
+        }
         self.emit_reset(cx);
+    }
+
+    /// Takes back one hold of `accounts` whose foreground report was never
+    /// sent (the window went to the background again before it settled).
+    pub fn cancel_resume_hold(&mut self, accounts: &[AccountId], cx: &mut Context<Self>) {
+        let mut released = false;
+        for account in accounts {
+            released |= self.resume_hold.answered(account, 1);
+        }
+        if released {
+            self.emit_reset(cx);
+        }
     }
 
     /// The account last rendered (see the field).
@@ -558,12 +576,26 @@ impl StoreHandle {
         !self.resume_hold.is_empty()
     }
 
-    /// Releases the resume hold of the accounts whose app lock answered; any
-    /// other change naming the account leaves the hold in place.
+    /// Releases the resume hold of an account when the daemon answered its
+    /// latest foreground report, or when its app lock is closed (the lock
+    /// page covers it, and nothing is left to wait for). Any other change
+    /// naming the account leaves the hold in place.
     fn release_resume_hold(&mut self, changes: &ChangeSet) {
-        if !self.resume_hold.is_empty() {
-            let changed = &changes.domain().app_locks;
-            self.resume_hold.retain(|id| !changed.contains(id));
+        if self.resume_hold.is_empty() {
+            return;
+        }
+        let domain = changes.domain();
+        for (account, answers) in &domain.foreground_answers {
+            self.resume_hold.answered(account, *answers);
+        }
+        let closed: Vec<AccountId> = domain
+            .app_locks
+            .iter()
+            .filter(|id| self.resume_hold.holds(id) && self.entry_store().app_locked(id))
+            .cloned()
+            .collect();
+        for account in closed {
+            self.resume_hold.closed(&account);
         }
     }
 

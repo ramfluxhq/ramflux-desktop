@@ -267,6 +267,9 @@ pub struct Changes {
     pub accounts: BTreeSet<AccountId>,
     /// Accounts whose app lock answer arrived (state, policy or refusal).
     pub app_locks: BTreeSet<AccountId>,
+    /// Per account, how many foreground lifecycle reports the daemon
+    /// answered (a background answer is not counted).
+    pub foreground_answers: std::collections::BTreeMap<AccountId, u32>,
     /// Changed or removed nodes.
     pub nodes: BTreeSet<NodeId>,
     /// Changed devices.
@@ -319,6 +322,7 @@ impl Changes {
     pub fn is_empty(&self) -> bool {
         self.accounts.is_empty()
             && self.app_locks.is_empty()
+            && self.foreground_answers.is_empty()
             && self.nodes.is_empty()
             && self.devices.is_empty()
             && self.participants.is_empty()
@@ -347,6 +351,7 @@ impl Changes {
         let Changes {
             accounts,
             app_locks,
+            foreground_answers,
             nodes,
             devices,
             participants,
@@ -371,6 +376,9 @@ impl Changes {
         } = other;
         self.accounts.extend(accounts);
         self.app_locks.extend(app_locks);
+        for (account, count) in foreground_answers {
+            *self.foreground_answers.entry(account).or_default() += count;
+        }
         self.nodes.extend(nodes);
         self.devices.extend(devices);
         self.participants.extend(participants);

@@ -203,6 +203,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::UsernameStatusUpdated(_) => "UsernameStatusUpdated",
         DomainEvent::AccountLockChanged { .. } => "AccountLockChanged",
         DomainEvent::AppLockChanged { .. } => "AppLockChanged",
+        DomainEvent::AppLockLifecycleAnswered { .. } => "AppLockLifecycleAnswered",
         DomainEvent::NodeUpserted(_) => "NodeUpserted",
         DomainEvent::NodeHealthChanged { .. } => "NodeHealthChanged",
         DomainEvent::NodeSettingsChanged { .. } => "NodeSettingsChanged",

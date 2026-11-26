@@ -58,6 +58,14 @@ Versioning.
 
 - A new group takes no messages until its member adds finish: its composer says
   it is being created (RFGUI-102).
+- App lock: a lock the daemon starts while the window is not in front now
+  reaches the window (the closed subscription's `app_locked` refusal shows the
+  lock page, and the lock state is read again when the daemon's countdown
+  ends); the content stays covered until the latest foreground report is
+  answered; focus changes are reported once the window settled; an unreadable
+  lock state is read again with backoff while the account stays closed; a
+  notification asked for during the lock opens its conversation after the
+  unlock; the lock page names only a refusal of its own unlock.
 - New group stays in its creating state until every member has been added;
   the group conversation was shown (and a first message could be sent) while
   members were still being added, so the message reached only some of them.

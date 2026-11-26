@@ -98,4 +98,56 @@ mod tests {
             "a disconnect is shown, not routed"
         );
     }
+
+    #[test]
+    fn a_lock_the_daemon_starts_shows_the_lock_page_without_a_focus_change() {
+        use ramflux_desktop_core::{
+            Account, AccountId, AccountKind, AppLock, AppLockState, DomainEvent, EventEnvelope,
+            LockState, Networking, SecureSessions, Timestamp,
+        };
+
+        let id = AccountId::new("a-1");
+        let mut store = Store::new();
+        let account = Account {
+            id: id.clone(),
+            label: "a-1".to_owned(),
+            kind: AccountKind::HumanInteractive,
+            node_id: None,
+            device_id: None,
+            lock_state: LockState::Unlocked,
+            self_participant_id: None,
+            secure_sessions: SecureSessions::Ready,
+            networking_session: None,
+            networking_custody: None,
+            authority_blocked: false,
+            networking_failure: None,
+            networking_reason: None,
+            networking: Networking::Live,
+        };
+        let lock = |state, seq| {
+            EventEnvelope::new(
+                seq,
+                Timestamp(seq as i64),
+                DomainEvent::AppLockChanged {
+                    account_id: id.clone(),
+                    lock: AppLock {
+                        enabled: true,
+                        timeout_ms: 1_000,
+                        state,
+                        reason: None,
+                        generation: 1,
+                    },
+                },
+            )
+        };
+        store
+            .apply(&EventEnvelope::new(1, Timestamp(1), DomainEvent::AccountUpdated(account)))
+            .expect("account");
+        store.apply(&lock(AppLockState::Unlocked, 2)).expect("unlocked");
+        assert_eq!(page_for(&store, &store, true), Page::Workspace);
+        // The daemon's timer closed the lock while the window stayed unfocused:
+        // the next read of its state is all the store gets.
+        store.apply(&lock(AppLockState::Locked, 3)).expect("locked");
+        assert_eq!(page_for(&store, &store, true), Page::Lock);
+    }
 }

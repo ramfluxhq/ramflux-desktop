@@ -125,6 +125,9 @@ pub struct Shell {
     focus_handle: FocusHandle,
     /// Where keyboard focus returns when an overlay (settings, palette) closes.
     return_focus: Option<FocusHandle>,
+    /// The conversation a notification asked for while the lock page or the
+    /// cover was up: opened once the workspace shows again.
+    pending_conversation: Option<ramflux_desktop_core::ContextId>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -292,6 +295,7 @@ impl Shell {
             page: Page::Entry(EntryStep::Daemon),
             focus_handle,
             return_focus: None,
+            pending_conversation: None,
             _subscriptions: subscriptions,
         };
         shell.sync_page(cx);
@@ -357,6 +361,17 @@ impl Shell {
         None
     }
 
+    /// Whether the lock page or the cover holds the window.
+    pub(crate) fn is_held(&self) -> bool {
+        matches!(self.page, Page::Lock | Page::Cover)
+    }
+
+    /// Keeps the conversation a notification asked for until the workspace
+    /// shows again (nothing of the accounts is routed over the lock page).
+    pub(crate) fn defer_conversation(&mut self, id: ramflux_desktop_core::ContextId) {
+        self.pending_conversation = Some(id);
+    }
+
     /// Whether the settings overlay is showing.
     pub fn is_settings_open(&self) -> bool {
         self.settings_open
@@ -403,6 +418,10 @@ impl Shell {
             }
         }
         if page != self.page {
+            if page == Page::Lock {
+                // Whatever was shown while the account was open says who wrote.
+                crate::notify::withdraw(cx);
+            }
             self.page = page;
             let lock_view = match page {
                 Page::Lock => Some(false),
@@ -644,6 +663,15 @@ pub const WINDOW_DRAG_HEIGHT: f32 = 52.0;
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.page == Page::Workspace
+            && let Some(id) = self.pending_conversation.take()
+        {
+            cx.defer_in(window, move |shell, window, cx| {
+                shell
+                    .workspace()
+                    .update(cx, |workspace, cx| workspace.select_context(Some(id), window, cx));
+            });
+        }
         // The status banner sits at the top of the content: above the entry
         // page here, inside the workspace's content column there.
         let content = match self.page {

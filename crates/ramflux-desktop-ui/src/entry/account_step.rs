@@ -53,7 +53,7 @@ impl EntryPage {
     /// participant is started by the agent host, never unlocked here.
     /// The account the lock or unlock form unlocks: the one last rendered,
     /// when it is held, else the first held one.
-    fn unlock_target(&self, cx: &App) -> Option<AccountId> {
+    pub(super) fn unlock_target(&self, cx: &App) -> Option<AccountId> {
         let handle = self.store.read(cx);
         let store = handle.entry_store();
         handle
@@ -688,9 +688,15 @@ impl EntryPage {
             // is named: any other failure stays out of the lock view.
             // The last unlock the daemon refused: the account code is wrong, or
             // another refusal (a wait) whose own text is shown.
+            // Only a refusal of an unlock after this lock page began for this
+            // account (and this closing of its lock) is named.
+            let since = match (&self.lock_mark, self.unlock_target(cx)) {
+                (Some((id, _, mark)), Some(target)) if *id == target => *mark,
+                _ => u64::MAX,
+            };
             let last_refusal = handle
                 .entry_store()
-                .failures()
+                .failures_since(since)
                 .iter()
                 .rev()
                 .find(|f| f.method == methods::ACCOUNT_UNLOCK);

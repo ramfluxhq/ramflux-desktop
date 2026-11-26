@@ -44,6 +44,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContextSettingsChanged { .. } => "ContextSettingsChanged",
         DomainEvent::AccountLockChanged { .. } => "AccountLockChanged",
         DomainEvent::AppLockChanged { .. } => "AppLockChanged",
+        DomainEvent::AppLockLifecycleAnswered { .. } => "AppLockLifecycleAnswered",
         DomainEvent::NodeSettingsChanged { .. } => "NodeSettingsChanged",
         DomainEvent::NodeProbed { .. } => "NodeProbed",
         DomainEvent::NodeRemoved { .. } => "NodeRemoved",
@@ -74,7 +75,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 56;
+const DOMAIN_EVENT_VARIANTS: usize = 57;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -576,6 +577,10 @@ fn all_domain_events() -> Vec<DomainEvent> {
                 reason: Some("timeout".into()),
                 generation: 3,
             },
+        },
+        DomainEvent::AppLockLifecycleAnswered {
+            account_id: AccountId::new("a-1"),
+            phase: ramflux_desktop_core::AppLockPhase::Foreground,
         },
         DomainEvent::NodeSettingsChanged {
             node_id: NodeId::new("n-1"),

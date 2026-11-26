@@ -200,6 +200,14 @@ impl Task {
             Ok(answer) => {
                 let mut events = self.translator.effect_done(method, body, &answer, now());
                 events.push(DomainEvent::EffectSucceeded { method: method.to_owned() });
+                if matches!(
+                    method,
+                    ramflux_desktop_core::methods::APP_LOCK_STATE
+                        | ramflux_desktop_core::methods::APP_LOCK_CONFIGURE
+                        | ramflux_desktop_core::methods::APP_LOCK_LIFECYCLE
+                ) {
+                    self.app_lock_watch.observe(&answer, tokio::time::Instant::now());
+                }
                 events.extend(Self::creation_ended(method, body));
                 self.emit(events);
                 self.spawn_fetches(refresh);
@@ -227,6 +235,8 @@ impl Task {
                 // unknown: it stays closed until the account code opens it.
                 if method == ramflux_desktop_core::methods::APP_LOCK_LIFECYCLE {
                     if let Some(id) = body["account_id"].as_str() {
+                        self.app_lock_watch
+                            .unreadable(self.config.reconnect_backoff, tokio::time::Instant::now());
                         let events = self
                             .translator
                             .app_lock_unreadable(&ramflux_desktop_core::AccountId::new(id));

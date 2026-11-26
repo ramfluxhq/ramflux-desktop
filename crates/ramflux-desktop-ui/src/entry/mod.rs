@@ -139,6 +139,10 @@ pub struct EntryPage {
     node: Option<NodeId>,
     review_nodes: bool,
     submitted: Option<AccountId>,
+    /// The account the lock page unlocks, the generation of its app lock, and
+    /// the store's failure count when that pair was first seen: only an unlock
+    /// refusal after it is shown on the lock page.
+    lock_mark: Option<(AccountId, u64, u64)>,
     /// The store's failure count when a node was last looked up; a node
     /// lookup failure after it is shown under the add-node form.
     node_lookup: Option<u64>,
@@ -189,6 +193,7 @@ impl EntryPage {
                     cx.notify();
                 }
                 this.sync_session_wait(cx);
+                this.sync_lock_mark(cx);
             }),
             cx.observe(&root, |_, _, cx| cx.notify()),
             cx.observe(&launcher, |_, _, cx| cx.notify()),
@@ -228,6 +233,7 @@ impl EntryPage {
             node: None,
             review_nodes: false,
             submitted: None,
+            lock_mark: None,
             node_lookup: None,
             session_wait: SessionWait::Idle,
             lock_view: None,
@@ -320,6 +326,22 @@ impl EntryPage {
         self.awaits_session(cx)
             && (matches!(self.session_wait, SessionWait::Failed)
                 || !self.store.read(cx).store().failures().is_empty())
+    }
+
+    /// Starts counting refusals afresh when the lock page unlocks another
+    /// account, or the account's app lock closed again.
+    fn sync_lock_mark(&mut self, cx: &mut Context<Self>) {
+        let Some(target) = self.unlock_target(cx) else {
+            self.lock_mark = None;
+            return;
+        };
+        let handle = self.store.read(cx);
+        let store = handle.entry_store();
+        let generation = store.app_lock(&target).map_or(0, |lock| lock.generation);
+        if self.lock_mark.as_ref().is_none_or(|(id, seen, _)| *id != target || *seen != generation)
+        {
+            self.lock_mark = Some((target, generation, store.failures_total()));
+        }
     }
 
     /// Starts or ends the bounded wait as the store's state changes.

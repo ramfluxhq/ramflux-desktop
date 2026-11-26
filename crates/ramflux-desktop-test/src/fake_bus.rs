@@ -656,17 +656,21 @@ fn answer(
             "capability denied: backup jobs require an attended human frontend".to_owned(),
         )
     } else if method.starts_with("account.app_lock.") {
-        // A fake account's app lock is off: nothing holds it closed.
+        // A fake account's app lock is off (nothing holds it closed) unless
+        // the handler answers with a lock state of its own.
         shared.applied.fetch_add(1, Ordering::SeqCst);
-        Reply::Ok(json!({
-            "enabled": false,
-            "timeout_ms": 0,
-            "state": "unlocked",
-            "reason": "authenticated",
-            "remaining_ms": 0,
-            "presence_available": false,
-            "generation": 0,
-        }))
+        match (shared.handler)(&method, account.as_deref(), &body) {
+            Reply::Ok(state) if state.get("state").is_some() => Reply::Ok(state),
+            _ => Reply::Ok(json!({
+                "enabled": false,
+                "timeout_ms": 0,
+                "state": "unlocked",
+                "reason": "authenticated",
+                "remaining_ms": 0,
+                "presence_available": false,
+                "generation": 0,
+            })),
+        }
     } else if shared.custody.handles(&method, account.as_deref(), &body) {
         shared.applied.fetch_add(1, Ordering::SeqCst);
         shared.custody.answer(connection, &method, account.as_deref(), &body)

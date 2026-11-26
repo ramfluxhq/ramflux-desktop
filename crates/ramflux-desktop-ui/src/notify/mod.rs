@@ -234,6 +234,10 @@ pub trait Notifier {
     /// Shows `shown`, replacing the live one with the same key. Never
     /// blocks the caller; failures are logged, not returned.
     fn show(&self, shown: &Shown);
+
+    /// Takes back the notifications still on screen, when the platform lets
+    /// the application close them (the default leaves them).
+    fn withdraw_all(&self) {}
 }
 
 /// Shows nothing (platforms without a sender yet, tests).
@@ -312,6 +316,12 @@ fn open(
 ) {
     window.activate_window();
     let Some(id) = activation.conversation.clone() else { return };
+    // The lock page and the cover show nothing of the accounts, and nothing
+    // is routed over them: the conversation waits for the unlock.
+    if shell.is_held() {
+        shell.defer_conversation(id);
+        return;
+    }
     if shell.is_settings_open() {
         shell.close_settings_now(cx);
     }
@@ -322,11 +332,21 @@ fn open(
 /// [`install`].
 ///
 /// While `locked` (the app lock holds an account closed) the notice shows no
-/// sender and no text, whatever the preview level.
+/// sender and no text, whatever the preview level. A caller must pass
+/// `store.app_locked(account)` of the account the notice is for, never a
+/// guess: a notice posted with `false` shows what the preview level allows.
 pub fn post(notice: &Notice, locked: bool, cx: &App) {
     if let Some(service) = cx.try_global::<Notifications>() {
         let level = if locked { PreviewLevel::Nothing } else { service.preview() };
         service.notifier.show(&compose(notice, level));
+    }
+}
+
+/// Takes back the notifications on screen, where the platform allows it
+/// (when an account locks). Does nothing before [`install`].
+pub fn withdraw(cx: &App) {
+    if let Some(service) = cx.try_global::<Notifications>() {
+        service.notifier.withdraw_all();
     }
 }
 

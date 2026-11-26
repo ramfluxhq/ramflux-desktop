@@ -319,8 +319,10 @@ const DEADLINE_EXCEEDED: &str = "request deadline exceeded";
 /// `docs/local_bus_errors.md`: `Unavailable` is a transient outage (a
 /// retry may work), `Unauthenticated` and `TransportSecurity` are not
 /// retried (sign in again, or repair the trusted binding, first).
-const DAEMON_CODES: [&str; 12] = [
+const DAEMON_CODES: [&str; 13] = [
     "ValidationFailed",
+    // The app lock holds the account closed (the lock screen, never a failure).
+    "app_locked",
     RECONCILE_CODE,
     "Unavailable",
     "Unauthenticated",
