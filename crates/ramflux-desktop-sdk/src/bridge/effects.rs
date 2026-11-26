@@ -365,6 +365,9 @@ async fn perform(
         }
         Plan::Calls { requests, refresh } => (in_order(client, requests).await, refresh),
         Plan::Verify { lookup, refresh } => (verify(client, lookup).await, refresh),
+        Plan::PrxHost { action, provider, model, key } => {
+            (crate::prx_host::run(action, &provider, &model, key).await, Vec::new())
+        }
         Plan::Diagnostics { path } => (write_diagnostics(client, &path).await, Vec::new()),
         Plan::Local | Plan::Refuse { .. } | Plan::Media(_) => (Ok(Value::Null), Vec::new()),
     }
@@ -484,11 +487,6 @@ impl Task {
     /// the ceremony's end), then the ceremony's events.
     pub(super) fn on_custody(&mut self, outcome: super::custody::Outcome) {
         let super::custody::Outcome { events, account, refresh } = outcome;
-        if let Some(opened) = &account
-            && let Some(custodian) = &opened.custodian
-        {
-            self.custodians.remember(opened.id.clone(), custodian.clone());
-        }
         let mut all = account
             .map(|opened| self.translator.native_account_opened(&opened))
             .unwrap_or_default();

@@ -243,8 +243,6 @@ pub(crate) struct NativeAccount {
     pub(crate) networking: Networking,
     /// A person's account, or an AI participant.
     pub(crate) kind: AccountKind,
-    /// The account that custodies an AI participant.
-    pub(crate) custodian: Option<AccountId>,
 }
 
 /// What a step came to.
@@ -578,7 +576,6 @@ async fn confirm(
                 display_name: created.display_name,
                 networking: networking(created.networking),
                 kind: AccountKind::HumanInteractive,
-                custodian: None,
             };
             let done = CeremonyAccount {
                 local_account_id: account.id.to_string(),
@@ -666,7 +663,6 @@ async fn confirm_recovery(
                 display_name: opened.display_name,
                 networking: networking(opened.networking),
                 kind: AccountKind::HumanInteractive,
-                custodian: None,
             };
             let done = CeremonyAccount {
                 local_account_id: account.id.to_string(),

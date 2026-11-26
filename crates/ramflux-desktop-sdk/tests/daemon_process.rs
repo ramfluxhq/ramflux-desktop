@@ -67,6 +67,7 @@ fn a_started_daemon_gets_the_socket_and_data_root_and_stops() {
         socket: dir.join("rfd.sock"),
         data_dir: dir.join("data"),
         log_file: Some(dir.join("logs/rfd.log")),
+        prx_state_dir: None,
     };
     let mut process = DaemonProcess::spawn(&command).expect("spawn");
     let deadline = Instant::now() + Duration::from_secs(5);

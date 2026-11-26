@@ -34,19 +34,27 @@ pub struct DaemonCommand {
     pub data_dir: PathBuf,
     /// Where the daemon's output goes; `None` discards it.
     pub log_file: Option<PathBuf>,
+    /// The PRX state directory the daemon adopts its runtime from (after an
+    /// install or a restart of the runtime). `None` starts without PRX.
+    pub prx_state_dir: Option<PathBuf>,
 }
 
 impl DaemonCommand {
     /// The arguments after the binary.
     pub fn args(&self) -> Vec<std::ffi::OsString> {
-        vec![
+        let mut args: Vec<std::ffi::OsString> = vec![
             "--socket".into(),
             self.socket.clone().into_os_string(),
             "daemon".into(),
             "start".into(),
             "--data-root".into(),
             self.data_dir.clone().into_os_string(),
-        ]
+        ];
+        if let Some(dir) = &self.prx_state_dir {
+            args.push("--prx-state-dir".into());
+            args.push(dir.clone().into_os_string());
+        }
+        args
     }
 }
 
@@ -246,6 +254,7 @@ mod tests {
             socket: "s".into(),
             data_dir: "d".into(),
             log_file: None,
+            prx_state_dir: None,
         };
         let child = child_command(&command);
         let filter = child.get_envs().find(|(key, _)| *key == "RUST_LOG").expect("child filter").1;
@@ -267,6 +276,7 @@ mod tests {
             socket: dir.join("s"),
             data_dir: dir.join("d"),
             log_file: None,
+            prx_state_dir: None,
         };
         let missing = dir.join("nope");
         assert_eq!(
@@ -285,5 +295,27 @@ mod tests {
             "a directory is not a binary"
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod prx_state_dir_tests {
+    use super::*;
+
+    #[test]
+    fn the_daemon_adopts_the_runtime_from_its_state_directory_when_given() {
+        let mut command = DaemonCommand {
+            binary: "rf".into(),
+            socket: "s".into(),
+            data_dir: "d".into(),
+            log_file: None,
+            prx_state_dir: None,
+        };
+        assert!(!command.args().iter().any(|arg| arg == "--prx-state-dir"));
+        command.prx_state_dir = Some("/state/prx".into());
+        let args = command.args();
+        let at = args.iter().position(|arg| arg == "--prx-state-dir").expect("the flag");
+        assert_eq!(args[at + 1], "/state/prx");
+        assert_eq!(args[4], "--data-root", "the flag follows the data root");
     }
 }

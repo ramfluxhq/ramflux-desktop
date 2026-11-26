@@ -9,7 +9,7 @@ use crate::plan::{
     fetch::{Fetch, Paged},
 };
 use ramflux_desktop_core::{
-    AccountId, Effect, Intent, IntentError, Store, Timestamp, handle_intent,
+    AccountId, AgentUnavailable, Effect, Intent, IntentError, Store, Timestamp, handle_intent,
 };
 
 /// Complete directory presentation with source activity for unloaded histories.
@@ -60,11 +60,9 @@ pub enum Area {
 /// Contract work that must arrive before a complete screen can be wired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContractGap {
-    /// Agent runtime/tool/scope catalog and configuration operations.
-    AgentConfiguration,
-    /// Creating an agent with the person's approval on their phone
-    /// (`agent.create`, `agent.operation.get`, `agent.creation.decide`).
-    AgentCreation,
+    /// A named-agent feature the core or PRX does not offer yet (its typed
+    /// reason; the screen shows it disabled).
+    Agent(AgentUnavailable),
     /// Authenticated browser platform and exact origin in the device directory.
     WebDeviceFacts,
     /// Approving a new device with authenticated pairing review facts.
@@ -85,6 +83,23 @@ pub struct ReadPlan {
     pub gaps: Vec<ContractGap>,
 }
 
+/// The named-agent features still missing from core or PRX (every typed
+/// unavailable reason except the one that is never offered on a phone).
+const AGENT_GAPS: [AgentUnavailable; 12] = [
+    AgentUnavailable::SubAgent,
+    AgentUnavailable::Skills,
+    AgentUnavailable::ConfigEdit,
+    AgentUnavailable::AutonomyHonoured,
+    AgentUnavailable::Catalog,
+    AgentUnavailable::PerToolApproval,
+    AgentUnavailable::AgentPause,
+    AgentUnavailable::HostBinding,
+    AgentUnavailable::AvatarUpload,
+    AgentUnavailable::PerAgentKey,
+    AgentUnavailable::Retire,
+    AgentUnavailable::RuntimeUpdate,
+];
+
 /// Plans authoritative reads; paged reads start at page one and follow source cursors.
 #[must_use]
 pub fn read_plan(area: Area, account: &AccountId) -> ReadPlan {
@@ -104,8 +119,8 @@ pub fn read_plan(area: Area, account: &AccountId) -> ReadPlan {
             vec![],
         ),
         Area::Agents => (
-            vec![Fetch::AccountList, Fetch::first(Paged::Identities)],
-            vec![ContractGap::AgentConfiguration],
+            vec![Fetch::AgentList, Fetch::AgentApprovals],
+            AGENT_GAPS.iter().map(|reason| ContractGap::Agent(*reason)).collect(),
         ),
         Area::Devices => (
             vec![Fetch::DeviceList],
@@ -261,7 +276,7 @@ mod tests {
         }
         assert_eq!(
             read_plan(Area::Agents, &account).gaps,
-            vec![ContractGap::AgentConfiguration],
+            AGENT_GAPS.iter().map(|reason| ContractGap::Agent(*reason)).collect::<Vec<_>>(),
             "missing configuration cannot be represented as a successful identity read"
         );
         assert!(
