@@ -10,7 +10,7 @@
 
 #![allow(dead_code)]
 
-use ramflux_desktop_core::{AgentExportRefusal, CeremonyFailure, VaultReason};
+use ramflux_desktop_core::{CeremonyFailure, VaultReason};
 
 /// One text in both languages.
 pub struct Text {
@@ -47,11 +47,6 @@ pub struct Row {
     pub recovery: Text,
     /// The status strip's reason of a failed bus request.
     pub bus: Text,
-    /// The export refusal in the agents view.
-    pub export_refusal: AgentExportRefusal,
-    pub export: Text,
-    /// The export's reason in the status strip.
-    pub export_backend: Text,
 }
 
 pub const ROWS: [Row; 9] = [
@@ -75,15 +70,6 @@ pub const ROWS: [Row; 9] = [
             en: r#"The key vault of this device is not set up."#,
             zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{3002}",
         },
-        export_refusal: AgentExportRefusal::Vault(VaultReason::Missing),
-        export: Text {
-            en: r#"The credentials were not exported: this device's key vault is not set up. Set it up first. They can be exported once."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{3002}\u{8bf7}\u{5148}\u{8bbe}\u{7f6e}\u{3002}\u{51ed}\u{636e}\u{53ea}\u{80fd}\u{5bfc}\u{51fa}\u{4e00}\u{6b21}\u{3002}",
-        },
-        export_backend: Text {
-            en: r#"The credentials were not exported: this device's key vault is not set up. Set it up first. They can be exported once."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{3002}\u{8bf7}\u{5148}\u{8bbe}\u{7f6e}\u{3002}\u{51ed}\u{636e}\u{53ea}\u{80fd}\u{5bfc}\u{51fa}\u{4e00}\u{6b21}\u{3002}",
-        },
     },
     Row {
         reason_code: "vault_init_pending",
@@ -104,15 +90,6 @@ pub const ROWS: [Row; 9] = [
         bus: Text {
             en: r#"Setting up the key vault of this device was not finished. Finish it on this device (rf vault init)."#,
             zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{5b8c}\u{6210}\u{3002}\u{8bf7}\u{5728}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{4e0a}\u{5b8c}\u{6210}\u{8bbe}\u{7f6e}\u{ff08}rf vault init\u{ff09}\u{3002}",
-        },
-        export_refusal: AgentExportRefusal::Vault(VaultReason::InitPending),
-        export: Text {
-            en: r#"The credentials were not exported: setting up this device's key vault was not finished. Finish it on this device (rf vault init), then export again."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{5b8c}\u{6210}\u{3002}\u{8bf7}\u{5728}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{4e0a}\u{5b8c}\u{6210}\u{8bbe}\u{7f6e}\u{ff08}rf vault init\u{ff09}\u{ff0c}\u{7136}\u{540e}\u{518d}\u{6b21}\u{5bfc}\u{51fa}\u{3002}",
-        },
-        export_backend: Text {
-            en: r#"The credentials were not exported: setting up this device's key vault was not finished. Finish it on this device (rf vault init), then export again."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{5b8c}\u{6210}\u{3002}\u{8bf7}\u{5728}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{4e0a}\u{5b8c}\u{6210}\u{8bbe}\u{7f6e}\u{ff08}rf vault init\u{ff09}\u{ff0c}\u{7136}\u{540e}\u{518d}\u{6b21}\u{5bfc}\u{51fa}\u{3002}",
         },
     },
     Row {
@@ -135,15 +112,6 @@ pub const ROWS: [Row; 9] = [
             en: r#"Importing the provisioned keys into the key vault was not finished. Retry the provisioning import."#,
             zh: "\u{5411}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5bfc}\u{5165}\u{9884}\u{7f6e}\u{5bc6}\u{94a5}\u{5c1a}\u{672a}\u{5b8c}\u{6210}\u{3002}\u{8bf7}\u{91cd}\u{8bd5}\u{9884}\u{7f6e}\u{5bfc}\u{5165}\u{3002}",
         },
-        export_refusal: AgentExportRefusal::Vault(VaultReason::ImportPending),
-        export: Text {
-            en: r#"The credentials were not exported: importing the provisioned keys into this device's key vault was not finished. Retry the provisioning import, then export again."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{5411}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5bfc}\u{5165}\u{9884}\u{7f6e}\u{5bc6}\u{94a5}\u{5c1a}\u{672a}\u{5b8c}\u{6210}\u{3002}\u{8bf7}\u{91cd}\u{8bd5}\u{9884}\u{7f6e}\u{5bfc}\u{5165}\u{ff0c}\u{7136}\u{540e}\u{518d}\u{6b21}\u{5bfc}\u{51fa}\u{3002}",
-        },
-        export_backend: Text {
-            en: r#"The credentials were not exported: importing the provisioned keys into this device's key vault was not finished. Retry the provisioning import, then export again."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{5411}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5bfc}\u{5165}\u{9884}\u{7f6e}\u{5bc6}\u{94a5}\u{5c1a}\u{672a}\u{5b8c}\u{6210}\u{3002}\u{8bf7}\u{91cd}\u{8bd5}\u{9884}\u{7f6e}\u{5bfc}\u{5165}\u{ff0c}\u{7136}\u{540e}\u{518d}\u{6b21}\u{5bfc}\u{51fa}\u{3002}",
-        },
     },
     Row {
         reason_code: "vault_corrupt",
@@ -164,15 +132,6 @@ pub const ROWS: [Row; 9] = [
         bus: Text {
             en: r#"The key vault of this device is damaged or failed its checks."#,
             zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{635f}\u{574f}\u{6216}\u{672a}\u{901a}\u{8fc7}\u{68c0}\u{67e5}\u{3002}",
-        },
-        export_refusal: AgentExportRefusal::Vault(VaultReason::Corrupt),
-        export: Text {
-            en: r#"The credentials were not exported: this device's key vault is damaged or failed its checks. Nothing was written."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{635f}\u{574f}\u{6216}\u{672a}\u{901a}\u{8fc7}\u{68c0}\u{67e5}\u{3002}\u{6ca1}\u{6709}\u{5199}\u{5165}\u{4efb}\u{4f55}\u{5185}\u{5bb9}\u{3002}",
-        },
-        export_backend: Text {
-            en: r#"The credentials were not exported: this device's key vault is damaged or failed its checks. Nothing was written."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{635f}\u{574f}\u{6216}\u{672a}\u{901a}\u{8fc7}\u{68c0}\u{67e5}\u{3002}\u{6ca1}\u{6709}\u{5199}\u{5165}\u{4efb}\u{4f55}\u{5185}\u{5bb9}\u{3002}",
         },
     },
     Row {
@@ -195,15 +154,6 @@ pub const ROWS: [Row; 9] = [
             en: r#"The key vault of this device cannot be used: its files are not safe to use or access was denied."#,
             zh: "\u{65e0}\u{6cd5}\u{4f7f}\u{7528}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{ff1a}\u{5176}\u{6587}\u{4ef6}\u{4e0d}\u{5b89}\u{5168}\u{6216}\u{8bbf}\u{95ee}\u{88ab}\u{62d2}\u{7edd}\u{3002}",
         },
-        export_refusal: AgentExportRefusal::Vault(VaultReason::Permission),
-        export: Text {
-            en: r#"The credentials were not exported: this device's key vault cannot be used because its files are not safe to use or access was denied. Nothing was written."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{65e0}\u{6cd5}\u{4f7f}\u{7528}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{ff0c}\u{5176}\u{6587}\u{4ef6}\u{4e0d}\u{5b89}\u{5168}\u{6216}\u{8bbf}\u{95ee}\u{88ab}\u{62d2}\u{7edd}\u{3002}\u{6ca1}\u{6709}\u{5199}\u{5165}\u{4efb}\u{4f55}\u{5185}\u{5bb9}\u{3002}",
-        },
-        export_backend: Text {
-            en: r#"The credentials were not exported: this device's key vault cannot be used because its files are not safe to use or access was denied. Nothing was written."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{65e0}\u{6cd5}\u{4f7f}\u{7528}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{ff0c}\u{5176}\u{6587}\u{4ef6}\u{4e0d}\u{5b89}\u{5168}\u{6216}\u{8bbf}\u{95ee}\u{88ab}\u{62d2}\u{7edd}\u{3002}\u{6ca1}\u{6709}\u{5199}\u{5165}\u{4efb}\u{4f55}\u{5185}\u{5bb9}\u{3002}",
-        },
     },
     Row {
         reason_code: "vault_locked",
@@ -224,15 +174,6 @@ pub const ROWS: [Row; 9] = [
         bus: Text {
             en: r#"The key vault of this device is locked, or the unlock was cancelled or took too long."#,
             zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{9501}\u{5b9a}\u{ff0c}\u{6216}\u{89e3}\u{9501}\u{88ab}\u{53d6}\u{6d88}\u{3001}\u{8d85}\u{65f6}\u{3002}",
-        },
-        export_refusal: AgentExportRefusal::Vault(VaultReason::Locked),
-        export: Text {
-            en: r#"The credentials were not exported: this device's key vault is locked, or the unlock was cancelled or took too long. Unlock it and export again."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{9501}\u{5b9a}\u{ff0c}\u{6216}\u{89e3}\u{9501}\u{88ab}\u{53d6}\u{6d88}\u{3001}\u{8d85}\u{65f6}\u{3002}\u{8bf7}\u{89e3}\u{9501}\u{540e}\u{518d}\u{6b21}\u{5bfc}\u{51fa}\u{3002}",
-        },
-        export_backend: Text {
-            en: r#"The credentials were not exported: this device's key vault is locked, or the unlock was cancelled or took too long. Unlock it and export again."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{9501}\u{5b9a}\u{ff0c}\u{6216}\u{89e3}\u{9501}\u{88ab}\u{53d6}\u{6d88}\u{3001}\u{8d85}\u{65f6}\u{3002}\u{8bf7}\u{89e3}\u{9501}\u{540e}\u{518d}\u{6b21}\u{5bfc}\u{51fa}\u{3002}",
         },
     },
     Row {
@@ -255,15 +196,6 @@ pub const ROWS: [Row; 9] = [
             en: r#"The key vault of this device is busy right now. Try again in a moment."#,
             zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5f53}\u{524d}\u{6b63}\u{5fd9}\u{3002}\u{8bf7}\u{7a0d}\u{540e}\u{91cd}\u{8bd5}\u{3002}",
         },
-        export_refusal: AgentExportRefusal::Vault(VaultReason::Busy),
-        export: Text {
-            en: r#"The credentials were not exported: this device's key vault is busy right now. Wait a moment and export again."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5f53}\u{524d}\u{6b63}\u{5fd9}\u{3002}\u{8bf7}\u{7a0d}\u{5019}\u{540e}\u{518d}\u{6b21}\u{5bfc}\u{51fa}\u{3002}",
-        },
-        export_backend: Text {
-            en: r#"The credentials were not exported: this device's key vault is busy right now. Wait a moment and export again."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5f53}\u{524d}\u{6b63}\u{5fd9}\u{3002}\u{8bf7}\u{7a0d}\u{5019}\u{540e}\u{518d}\u{6b21}\u{5bfc}\u{51fa}\u{3002}",
-        },
     },
     Row {
         reason_code: "vault_primary_unavailable",
@@ -285,15 +217,6 @@ pub const ROWS: [Row; 9] = [
             en: r#"The key vault of this device holds no primary key for this account."#,
             zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e2d}\u{6ca1}\u{6709}\u{6b64}\u{8d26}\u{53f7}\u{7684}\u{4e3b}\u{5bc6}\u{94a5}\u{3002}",
         },
-        export_refusal: AgentExportRefusal::Vault(VaultReason::PrimaryUnavailable),
-        export: Text {
-            en: r#"The credentials were not exported: this device's key vault holds no primary key for this account."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e2d}\u{6ca1}\u{6709}\u{6b64}\u{8d26}\u{53f7}\u{7684}\u{4e3b}\u{5bc6}\u{94a5}\u{3002}",
-        },
-        export_backend: Text {
-            en: r#"The credentials were not exported: this device's key vault holds no primary key for this account."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e2d}\u{6ca1}\u{6709}\u{6b64}\u{8d26}\u{53f7}\u{7684}\u{4e3b}\u{5bc6}\u{94a5}\u{3002}",
-        },
     },
     Row {
         reason_code: "vault_mode_mismatch",
@@ -314,15 +237,6 @@ pub const ROWS: [Row; 9] = [
         bus: Text {
             en: r#"This device's key vault does not support what was asked."#,
             zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e0d}\u{652f}\u{6301}\u{6240}\u{8bf7}\u{6c42}\u{7684}\u{64cd}\u{4f5c}\u{3002}",
-        },
-        export_refusal: AgentExportRefusal::NotCustodian,
-        export: Text {
-            en: r#"Only the custodian of this AI participant can export its credentials, and your account is not its custodian."#,
-            zh: "\u{53ea}\u{6709}\u{6b64} Agent \u{7684}\u{6258}\u{7ba1}\u{4eba}\u{624d}\u{80fd}\u{5bfc}\u{51fa}\u{5b83}\u{7684}\u{51ed}\u{636e}\u{ff0c}\u{800c}\u{4f60}\u{7684}\u{8d26}\u{53f7}\u{4e0d}\u{662f}\u{5b83}\u{7684}\u{6258}\u{7ba1}\u{4eba}\u{3002}",
-        },
-        export_backend: Text {
-            en: r#"The credentials were not exported: your account is not the custodian of this AI participant."#,
-            zh: "\u{51ed}\u{636e}\u{672a}\u{5bfc}\u{51fa}\u{ff1a}\u{4f60}\u{7684}\u{8d26}\u{53f7}\u{4e0d}\u{662f}\u{6b64} Agent \u{7684}\u{6258}\u{7ba1}\u{4eba}\u{3002}",
         },
     },
 ];

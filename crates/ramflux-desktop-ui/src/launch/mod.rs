@@ -114,6 +114,11 @@ pub struct DaemonLauncher {
     stopping_left_behind: Option<LeftBehindStop>,
     last_stop_graceful: Option<bool>,
     poll: Option<Task<()>>,
+    /// The PRX state directory the daemon adopts (set after an install or
+    /// a restart of the runtime).
+    runtime_state_dir: Option<PathBuf>,
+    /// Start again once the owned daemon has stopped (a runtime restart).
+    restart_pending: bool,
 }
 
 /// Where a launcher keeps its settings, finds a bundled daemon and writes
@@ -192,6 +197,8 @@ impl DaemonLauncher {
             stopping_left_behind: None,
             last_stop_graceful: None,
             poll: None,
+            runtime_state_dir: None,
+            restart_pending: false,
         }
     }
 
@@ -312,7 +319,27 @@ impl DaemonLauncher {
         daemon_process::check_binary(&binary)?;
         let data_dir = self.data_dir().ok_or(LaunchError::NoDataDir)?;
         prepare_socket_dir(&socket, &paths::default_socket_choice());
-        Ok(DaemonCommand { binary, socket, data_dir, log_file: self.daemon_log() })
+        Ok(DaemonCommand {
+            binary,
+            socket,
+            data_dir,
+            log_file: self.daemon_log(),
+            prx_state_dir: self.runtime_state_dir.clone(),
+        })
+    }
+
+    /// Restarts the owned daemon so it adopts the PRX runtime in
+    /// `state_dir` (after an install or a restart of the runtime). A daemon
+    /// that is running is stopped first and started again once it has
+    /// stopped; otherwise it is started now.
+    pub fn restart_for_runtime(&mut self, state_dir: Option<PathBuf>, cx: &mut Context<Self>) {
+        self.runtime_state_dir = state_dir;
+        if self.process.is_some() {
+            self.restart_pending = true;
+            self.stop(cx);
+        } else {
+            self.start(cx);
+        }
     }
 
     /// Stops a daemon the desktop started (gracefully, then by signal, then
@@ -385,6 +412,10 @@ impl DaemonLauncher {
         if !watching {
             self.poll = None;
             cx.notify();
+            if self.restart_pending && self.process.is_none() {
+                self.restart_pending = false;
+                self.start(cx);
+            }
         }
         watching
     }

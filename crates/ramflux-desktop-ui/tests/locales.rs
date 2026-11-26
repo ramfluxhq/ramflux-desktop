@@ -305,7 +305,8 @@ fn every_key_used_in_code_exists() {
 /// Prefixes the code builds keys under at run time (`format!` with an enum
 /// key, or a reason code from the SDK), so their keys are used even when no
 /// literal names them.
-const DYNAMIC_PREFIXES: [&str; 8] = [
+const DYNAMIC_PREFIXES: [&str; 9] = [
+    "agents.unavailable.",
     "backend.backup.",
     "backend.failure.action.",
     "backend.message.",

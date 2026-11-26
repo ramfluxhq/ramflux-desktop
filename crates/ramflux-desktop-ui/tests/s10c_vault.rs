@@ -3,18 +3,16 @@
 
 //! S10c c09: the nine refusals of the key vault, as the daemon writes them,
 //! are read into the right desktop reason, retry facts and words on each
-//! path (the account ceremonies, the bus, the AI participant credential
-//! export), in both languages. Every expectation is a literal row in
+//! path (the account ceremonies and the bus), in both languages. Every expectation is a literal row in
 //! `vault_rows`; the frames are bytes, not product builders. The same rows
 //! drive the rendered views in `s10c_vault_live`. One test: the locale is
 //! process-global.
 
 mod vault_rows;
 
-use ramflux_desktop_core::{AgentExportRefusal, CeremonyFailure};
+use ramflux_desktop_core::CeremonyFailure;
 use ramflux_desktop_sdk::bridge::ceremony_refusal;
 use ramflux_desktop_sdk::bus::BusError;
-use ramflux_desktop_sdk::translate::agents::{export_refusal, export_refusal_key};
 use ramflux_desktop_ui::i18n::{backend_text, labels};
 use ramflux_sdk::SdkError;
 use ramflux_sdk::custody::CustodyVaultReason;
@@ -49,20 +47,6 @@ fn custody_vault_reasons_map_and_render() {
                 backend_text(&error.message()).to_string(),
                 row.bus.in_locale(locale),
                 "{name}: bus text"
-            );
-
-            // The AI participant export.
-            let refusal = export_refusal(&error);
-            assert_eq!(refusal, row.export_refusal, "{name}: export mapping");
-            assert_eq!(
-                labels::agent_export_refusal(refusal).to_string(),
-                row.export.in_locale(locale),
-                "{name}: export text"
-            );
-            assert_eq!(
-                backend_text(export_refusal_key(refusal)).to_string(),
-                row.export_backend.in_locale(locale),
-                "{name}: export backend text"
             );
 
             // The ceremonies, from the product's reading of the same wire.
@@ -103,7 +87,6 @@ fn custody_vault_reasons_map_and_render() {
     );
     let untyped =
         decoded(r#"{"code":"CustodyVaultUnavailable","message":"vault","retry_after_ms":null}"#);
-    assert_eq!(export_refusal(&untyped), AgentExportRefusal::CredentialsGone);
     assert!(untyped.vault_reason().is_none());
     let wrong_code = decoded(
         r#"{"code":"CustodySetupInvalid","message":"x","reason_code":"vault_busy","retry_after_ms":1000}"#,
@@ -114,5 +97,4 @@ fn custody_vault_reasons_map_and_render() {
         r#"{"code":"CustodyVaultUnavailable","message":"x","reason_code":"vault_something_new","retry_after_ms":null}"#,
     );
     assert!(unknown.vault_reason().is_none());
-    assert_eq!(export_refusal(&unknown), AgentExportRefusal::CredentialsGone);
 }

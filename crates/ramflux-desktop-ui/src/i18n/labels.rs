@@ -5,10 +5,9 @@
 
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
-    AccountKind, AgentCustodyProblem, AgentExportRefusal, CeremonyFailure, Direction,
-    GovernanceAction, GrantState, Lifecycle, MomentKind, NodeHealth, PeerKind, PinSource, Receipt,
-    Risk, Role, SafetyState, SourceStatus, StepState, SystemLevel, TaskState, TransferState,
-    VaultReason,
+    AccountKind, AgentCustodyProblem, CeremonyFailure, Direction, GovernanceAction, GrantState,
+    Lifecycle, MomentKind, NodeHealth, PeerKind, PinSource, Receipt, Risk, Role, SafetyState,
+    SourceStatus, StepState, SystemLevel, TaskState, TransferState, VaultReason,
 };
 
 use super::tr;
@@ -223,36 +222,6 @@ pub fn recovery_ended_key(failure: CeremonyFailure) -> &'static str {
         // A recovery never has a custodian: a ceremony of another kind.
         CeremonyFailure::Invalid => "recovery.ended.invalid",
     }
-}
-
-/// Why the credentials of an AI participant were not exported.
-pub fn agent_export_refusal(refusal: AgentExportRefusal) -> SharedString {
-    tr(match refusal {
-        AgentExportRefusal::NoLocation => "agent.export.refused.no_location",
-        AgentExportRefusal::NotOwnerSession => "agent.export.refused.not_owner_session",
-        AgentExportRefusal::OwnerLocked => "agent.export.refused.owner_locked",
-        AgentExportRefusal::NotCustodian => "agent.export.refused.not_custodian",
-        AgentExportRefusal::NotConnected => "agent.export.refused.not_connected",
-        AgentExportRefusal::FileExists => "agent.export.refused.file_exists",
-        AgentExportRefusal::LocationDenied => "agent.export.refused.location_denied",
-        AgentExportRefusal::LocationMissing => "agent.export.refused.location_missing",
-        AgentExportRefusal::CredentialsGone => "agent.export.refused.credentials_gone",
-        AgentExportRefusal::Vault(reason) => match reason {
-            VaultReason::Missing => "agent.export.refused.vault_missing",
-            VaultReason::InitPending => "agent.export.refused.vault_init_pending",
-            VaultReason::ImportPending => "agent.export.refused.vault_import_pending",
-            VaultReason::Corrupt => "agent.export.refused.vault_corrupt",
-            VaultReason::Permission => "agent.export.refused.vault_permission",
-            VaultReason::Locked => "agent.export.refused.vault_locked",
-            VaultReason::Busy => "agent.export.refused.vault_busy",
-            VaultReason::PrimaryUnavailable => "agent.export.refused.vault_primary_unavailable",
-            // A refused setup, as the daemon sends it: not the custodian's.
-            VaultReason::ModeMismatch => "agent.export.refused.not_custodian",
-        },
-        AgentExportRefusal::Timeout => "agent.export.refused.timeout",
-        AgentExportRefusal::Transport => "agent.export.refused.transport",
-        AgentExportRefusal::Other => "agent.export.refused.other",
-    })
 }
 
 /// Label of an object direction.

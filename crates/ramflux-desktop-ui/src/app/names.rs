@@ -70,6 +70,7 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::GovernanceRequested { .. } => "GovernanceRequested",
         UiEventKind::RevokeGrantPressed { .. } => "RevokeGrantPressed",
         UiEventKind::RevokeStandingPressed { .. } => "RevokeStandingPressed",
+        UiEventKind::AgentApprovalPressed { .. } => "AgentApprovalPressed",
         UiEventKind::AddNodeRequested { .. } => "AddNodeRequested",
         UiEventKind::ConfirmNodePressed { .. } => "ConfirmNodePressed",
         UiEventKind::NodeActionPressed { .. } => "NodeActionPressed",
@@ -171,7 +172,14 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::ShowRecoveryPhrase => "ShowRecoveryPhrase",
         IntentKind::HideRecoveryPhrase => "HideRecoveryPhrase",
         IntentKind::ConfirmCeremony { .. } => "ConfirmCeremony",
-        IntentKind::ExportAgentCredentials { .. } => "ExportAgentCredentials",
+        IntentKind::AgentCreate { .. } => "AgentCreate",
+        IntentKind::AgentOperationRefresh { .. } => "AgentOperationRefresh",
+        IntentKind::AgentPersonaEdit { .. } => "AgentPersonaEdit",
+        IntentKind::AgentAccessSet { .. } => "AgentAccessSet",
+        IntentKind::AgentDelete { .. } => "AgentDelete",
+        IntentKind::AgentJob { .. } => "AgentJob",
+        IntentKind::AgentApprovalDecide { .. } => "AgentApprovalDecide",
+        IntentKind::AgentRuntime { .. } => "AgentRuntime",
         IntentKind::CancelCeremony => "CancelCeremony",
         IntentKind::BeginRecovery { .. } => "BeginRecovery",
         IntentKind::ConfirmRecovery { .. } => "ConfirmRecovery",
@@ -189,6 +197,7 @@ pub fn effect_label(effect: &Effect) -> String {
         Effect::RequireConfirmation { intent } => {
             format!("RequireConfirmation({})", intent_name(intent))
         }
+        Effect::AgentRuntime { action, .. } => format!("AgentRuntime({action:?})"),
     }
 }
 
@@ -258,8 +267,13 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
         DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",
         DomainEvent::RecoveryUpdated(_) => "RecoveryUpdated",
-        DomainEvent::CustodianKnown { .. } => "CustodianKnown",
-        DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
+        DomainEvent::AgentsListed { .. } => "AgentsListed",
+        DomainEvent::AgentRecordUpdated(_) => "AgentRecordUpdated",
+        DomainEvent::AgentRosterStateChanged(_) => "AgentRosterStateChanged",
+        DomainEvent::AgentCreationUpdated(_) => "AgentCreationUpdated",
+        DomainEvent::AgentHostUpdated(_) => "AgentHostUpdated",
+        DomainEvent::AgentJobsUpdated { .. } => "AgentJobsUpdated",
+        DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
     }
 }
 

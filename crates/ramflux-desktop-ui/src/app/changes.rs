@@ -38,14 +38,12 @@ impl ChangeSet {
     }
 
     /// What an account session's window needs of the daemon session's
-    /// changes: the creation ceremony, the accounts it lists (an AI
-    /// participant appears there) and the credential exports. `None` when
-    /// none of them changed.
+    /// changes: the creation ceremony and the accounts it lists. `None` when
+    /// neither changed.
     pub fn daemon_part(&self) -> Option<Self> {
         let changes = Changes {
             ceremony: self.changes.ceremony,
             accounts: self.changes.accounts.clone(),
-            agent_exports: self.changes.agent_exports.clone(),
             ..Changes::default()
         };
         if changes.is_empty() {
@@ -181,7 +179,7 @@ impl ChangeSet {
         self.reset
             || !self.changes.accounts.is_empty()
             || !self.changes.backup_jobs.is_empty()
-            || !self.changes.agent_exports.is_empty()
+            || self.changes.agents
             || !self.changes.nodes.is_empty()
             || !self.changes.devices.is_empty()
             || self.changes.integrations

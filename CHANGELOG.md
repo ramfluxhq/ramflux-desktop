@@ -17,7 +17,24 @@ Versioning.
   nothing else, and the content stays covered until the lock state is known
   after the window comes back. Notices show no sender and no text. Unlock is by account code only:
   biometric unlock waits for the core.
-
+- Named agents on the desktop (G19, AGENT-IDENTITY-01): Settings › Agents
+  lists the agents the account owns, grouped as a main agent with its
+  sub-agents (the sub-agent action is disabled with its reason), with
+  loading, offline and failed states. The new-agent wizard collects the
+  persona (name, avatar preset, what it is for), the provider and model,
+  tools and limits, who may reach the agent, and reviews them. Create asks
+  the account's phone to approve; the result follows the request (pending
+  approval with a countdown, confirming, created, denied, expired, cancelled
+  or failed with its reason).
+- Agent management: edit the persona, change who may reach an agent (with
+  the record's base, so a stale record is refused), remove an agent, and
+  pause, resume or remove its PRX scheduled jobs.
+- Agent approvals (in a conversation) are listed in the approvals dock, where
+  they can be allowed or denied.
+- The PRX runtime panel: status, install (the provider key is typed into a
+  masked field, used once and never shown again), restart, stop and
+  uninstall. Features the core or PRX do not offer yet show a typed
+  unavailable reason instead of a control that does nothing.
 - Message actions in direct and group conversations: Reply (the composer
   quotes the message; the bubble shows the quote), Edit (with the revision
   the core expects; the message is marked edited), Delete for everyone
@@ -43,6 +60,12 @@ Versioning.
   (`username.contact.add`).
 
 ### Changed
+
+- Agents no longer use the AI participant credential export or the
+  headless-AI account ceremony; the wizard's unlock-free flow is replaced by
+  the desktop-started creation above. The bus methods are the
+  AGENT-IDENTITY-01 `agent.*` set, and the daemon owned by the desktop
+  adopts the PRX runtime after an install or restart (`--prx-state-dir`).
 
 - Core pinned to 69fca252 (core `next`, PRX pin 6e39b396). The username directory is
   provisioned by `rf daemon start` from its environment (`RAMFLUX_USERNAME_CENTER_*`,

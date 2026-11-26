@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The Agents section (design 04 / D01): the roster of the agents this
-//! account talks to in the list pane, the conversation with the chosen one
-//! in the detail pane, and "Start a multi-agent conversation" at the foot
-//! (a new group, the existing feature). The roster is the account's agent
-//! contacts; nothing here creates, configures or authorizes an agent.
+//! The Agents section (design 04 / D01, D06): the agents this account owns,
+//! grouped as a main agent with its sub-agents (derived #29), with the
+//! loading, offline and failed states (D41–D43); below them the agents this
+//! account talks to, each opening its conversation; and "Start a
+//! multi-agent conversation" at the foot (a new group, the existing feature).
+//! Nothing here creates, configures or authorizes an agent: management is in
+//! Settings, where "Manage" leads.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputEvent;
 use gpui_kit::component::{Selectable as _, Sizable as _, v_flex};
@@ -17,16 +20,19 @@ use gpui_kit::{
     App, Context, Entity, EventEmitter, IntoElement, Render, SharedString, Subscription, Window,
     div,
 };
+use ramflux_desktop_core::projection::agents::{AgentGroup, roster_groups};
 use ramflux_desktop_core::{
-    ContextKind, MomentKind, ParticipantId, ParticipantKind, Store, TaskState, selectors,
+    AgentRosterState, AgentUnavailable, ContextKind, MomentKind, ParticipantId, ParticipantKind,
+    Store, TaskState, selectors,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
-use ramflux_desktop_navigation::scale::space;
+use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
+use ramflux_desktop_sdk::translate::agents::refusal_key;
 
 use super::directory::{self, Search};
 use crate::actions::{NextConversation, PreviousConversation};
 use crate::app::{StoreEvent, StoreHandle};
-use crate::i18n::tr;
+use crate::i18n::{tr, tr_args};
 
 /// What the roster reports to the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,6 +168,132 @@ pub(crate) fn status(store: &Store, agent: &ParticipantId) -> SharedString {
     }
 }
 
+impl AgentRoster {
+    /// The owned agents, one group each, or the roster's state (D41–D43).
+    fn groups(&self, cx: &App) -> gpui_kit::AnyElement {
+        let theme = ramflux_desktop_navigation::palette(cx);
+        let store = self.store.read(cx).store();
+        let body = match store.agent_roster() {
+            AgentRosterState::Loading => {
+                state_line("agents-roster-loading", tr("agents.roster.loading"), cx)
+            }
+            AgentRosterState::Offline => {
+                state_line("agents-roster-offline", tr("agents.roster.offline"), cx)
+            }
+            AgentRosterState::Failed(refusal) => {
+                state_line("agents-roster-failed", tr(refusal_key(&refusal)), cx)
+            }
+            AgentRosterState::Ready => {
+                let groups = roster_groups(store);
+                if groups.is_empty() {
+                    state_line("agents-roster-empty", tr("agents.roster.empty"), cx)
+                } else {
+                    v_flex()
+                        .gap(space(2.))
+                        .children(groups.iter().map(|group| group_row(group, cx)))
+                        .into_any_element()
+                }
+            }
+        };
+        v_flex()
+            .id("agents-roster-groups")
+            .role(gpui_kit::Role::List)
+            .aria_label(tr("agents.roster.title"))
+            .test_support()
+            .gap(space(2.))
+            .child(
+                div()
+                    .text_size(text_secondary())
+                    .font_weight(gpui_kit::FontWeight::MEDIUM)
+                    .text_color(theme.primary)
+                    .child(tr("agents.roster.title")),
+            )
+            .child(body)
+            .into_any_element()
+    }
+}
+
+/// A roster state line: loading, offline, failed or empty.
+fn state_line(id: &'static str, text: gpui_kit::SharedString, cx: &App) -> gpui_kit::AnyElement {
+    div()
+        .id(id)
+        .role(gpui_kit::Role::Status)
+        .aria_label(text.clone())
+        .test_support()
+        .text_size(text_secondary())
+        .text_color(cx.theme().muted_foreground)
+        .whitespace_normal()
+        .child(text)
+        .into_any_element()
+}
+
+/// One group: the main agent, its sub-agents (none until the relation
+/// exists) and the disabled "Add sub-agent" with its typed reason.
+fn group_row(group: &AgentGroup<'_>, cx: &App) -> gpui_kit::AnyElement {
+    let main = group.main;
+    let retired = main.lifecycle == ramflux_desktop_core::AgentLifecycle::Retired;
+    let initial = main.persona.name.chars().next().map(String::from).unwrap_or_default();
+    let status = if retired { tr("agents.roster.retired") } else { tr("agents.roster.active") };
+    let reason = tr(AgentUnavailable::SubAgent.key());
+    v_flex()
+        .id(gpui_kit::ElementId::from(format!("agents-group-{}", main.agent_anchor)))
+        .role(gpui_kit::Role::ListItem)
+        .aria_label(tr_args("agents.roster.group", &[("name", &main.persona.name)]))
+        .test_support()
+        .gap(space(1.))
+        .px(space(3.))
+        .py(space(2.))
+        .rounded(cx.theme().radius)
+        .child(
+            h_flex()
+                .gap(space(3.))
+                .items_center()
+                .child(
+                    div()
+                        .flex_none()
+                        .size(gpui_kit::rems(32.0 / 15.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(cx.theme().radius)
+                        .bg(ramflux_desktop_navigation::palette(cx).agent_av)
+                        .text_color(ramflux_desktop_navigation::palette(cx).on_agent_av)
+                        .child(initial),
+                )
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .child(
+                            div()
+                                .truncate()
+                                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                .child(main.persona.name.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(text_caption())
+                                .text_color(cx.theme().muted_foreground)
+                                .child(status),
+                        ),
+                ),
+        )
+        .child(
+            div()
+                .id(gpui_kit::ElementId::from(format!("agents-add-sub-{}", main.agent_anchor)))
+                .role(gpui_kit::Role::Status)
+                .aria_label(reason.clone())
+                .test_support()
+                .text_size(text_caption())
+                .text_color(cx.theme().muted_foreground)
+                .whitespace_normal()
+                .child(tr("agents.roster.add_sub"))
+                .child(" · ")
+                .child(reason),
+        )
+        .into_any_element()
+}
+
 impl Render for AgentRoster {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = ramflux_desktop_navigation::palette(cx);
@@ -210,6 +342,7 @@ impl Render for AgentRoster {
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(AgentRosterEvent::Manage))),
                 cx,
             ))
+            .child(self.groups(cx))
             .child(self.search.field("agents-search", tr("sections.agents.search"), cx))
             .children(empty)
             .child(

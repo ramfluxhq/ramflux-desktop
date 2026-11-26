@@ -250,14 +250,12 @@ fn runs_on_daemon(kind: &IntentKind) -> bool {
 }
 
 /// Whether `kind` belongs to the creation or recovery ceremony of the entry
-/// page, or to an AI participant's creation and credential export (which
-/// are decided against the daemon's accounts and run on the daemon scope,
-/// on connections of their own).
+/// page (decided against the daemon's accounts and run on the daemon scope,
+/// on a connection of its own).
 fn is_ceremony(kind: &IntentKind) -> bool {
     matches!(
         kind,
-        IntentKind::ExportAgentCredentials { .. }
-            | IntentKind::BeginCeremony { .. }
+        IntentKind::BeginCeremony { .. }
             | IntentKind::ShowRecoveryPhrase
             | IntentKind::HideRecoveryPhrase
             | IntentKind::ConfirmCeremony { .. }

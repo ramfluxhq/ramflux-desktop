@@ -103,7 +103,7 @@ impl ErrorScope {
             (SettingsSection::Account, !domain.accounts.is_empty()),
             (SettingsSection::Backup, !domain.backup_jobs.is_empty()),
             (SettingsSection::Nodes, !domain.nodes.is_empty()),
-            (SettingsSection::Agents, !domain.agent_exports.is_empty()),
+            (SettingsSection::Agents, domain.agents),
         ];
         for (section, changed) in succeeded {
             if changed {
