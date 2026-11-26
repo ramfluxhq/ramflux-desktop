@@ -3,6 +3,7 @@
 
 //! Pure, borrowed business presentations. No runtime, UI, persistence or authority.
 
+pub mod agents;
 pub mod conversations;
 pub mod devices;
 pub mod requests;

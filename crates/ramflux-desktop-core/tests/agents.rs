@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! AI participants an owner custodies (DESK-AGENT-01) in policy and in the
-//! store: creation only for an unlocked, connected person's account and
-//! only when the daemon offers it; the confirmation takes exactly three
-//! words and no passphrase; the export only for the custodian, to an
-//! absolute location, never for a person's account; custodian links and
-//! export outcomes live in the store and carry no credential.
+//! Named agents (AGENT-IDENTITY-01) in policy and in the store: every step
+//! is the owner's, on an unlocked, connected person's account; creation
+//! carries both limits and never a host; changes wait for the owner's
+//! confirmation; retired agents are read only; the runtime key never
+//! reaches a body or a serialized intent.
 
 mod common;
 
 use common::*;
 use ramflux_desktop_core::*;
+use serde_json::json;
 
 fn account(id: &str, kind: AccountKind, lock: LockState, networking: Networking) -> Account {
     Account {
@@ -41,28 +41,45 @@ fn world() -> Feed {
             ..Capabilities::default()
         }),
     );
-    let person = |id, lock, net| {
-        DomainEvent::AccountUpdated(account(id, AccountKind::HumanInteractive, lock, net))
-    };
-    feed.ok(2, person("owner", LockState::Unlocked, Networking::Live));
-    feed.ok(3, person("locked", LockState::Locked, Networking::Live));
-    feed.ok(4, person("pending", LockState::Unlocked, Networking::Pending));
     feed.ok(
-        5,
+        2,
         DomainEvent::AccountUpdated(account(
-            "bot",
-            AccountKind::HeadlessAi,
+            "owner",
+            AccountKind::HumanInteractive,
             LockState::Unlocked,
             Networking::Live,
         )),
     );
     feed.ok(
-        6,
-        DomainEvent::CustodianKnown {
-            agent: AccountId::new("bot"),
-            custodian: AccountId::new("owner"),
-        },
+        3,
+        DomainEvent::AccountUpdated(account(
+            "locked",
+            AccountKind::HumanInteractive,
+            LockState::Locked,
+            Networking::Live,
+        )),
     );
+    feed
+}
+
+fn record(anchor: &str, lifecycle: AgentLifecycle, owner: &str) -> AgentRecord {
+    AgentRecord {
+        agent_anchor: anchor.into(),
+        custodian_anchor: owner.into(),
+        persona: AgentPersona {
+            name: "Research helper".into(),
+            avatar: "preset:spark:teal".into(),
+            responsibility: "Reads papers".into(),
+        },
+        lifecycle,
+        access: AgentAccess::owner_only(),
+        role: "named".into(),
+        base: json!({"id": "base-1"}),
+    }
+}
+
+fn with_agent(mut feed: Feed, agent: AgentRecord) -> Feed {
+    feed.ok(4, DomainEvent::AgentRecordUpdated(Box::new(agent)));
     feed
 }
 
@@ -70,101 +87,200 @@ fn decide(store: &Store, kind: IntentKind) -> Result<Vec<Effect>, IntentError> {
     handle_intent(store, Intent::human(kind), Timestamp(10))
 }
 
-fn export(owner: &str, agent: &str, path: &str) -> IntentKind {
-    IntentKind::ExportAgentCredentials {
-        owner_id: AccountId::new(owner),
-        account_id: AccountId::new(agent),
-        path: path.into(),
+fn confirmed(kind: IntentKind) -> Intent {
+    Intent::human(kind).confirmed_by_human(ConfirmationIssuer::new().issue_tap())
+}
+
+fn request() -> AgentCreateRequest {
+    AgentCreateRequest {
+        persona: AgentPersona {
+            name: "Research helper".into(),
+            avatar: "preset:spark:teal".into(),
+            responsibility: "Reads papers".into(),
+        },
+        config: AgentConfig {
+            provider: "anthropic".into(),
+            model: "model-x".into(),
+            autonomy: "full".into(),
+            tools: AgentTools::None,
+            prompt: None,
+            max_concurrent_turns: 2,
+            max_cost_per_day_cents: 500,
+        },
+        access: AgentAccess::owner_only(),
     }
 }
 
 #[test]
-fn the_export_goes_to_the_custodian_alone_and_names_nothing_secret() {
-    let feed = world();
-    let effects = decide(&feed.store, export("owner", "bot", " /Users/a/bot.bundle ")).expect("ok");
-    assert_eq!(effects[0].method(), Some(methods::AGENT_EXPORT_CREDENTIALS));
-    let body = effects[0].body().expect("body");
-    assert_eq!(body["path"], "/Users/a/bot.bundle");
-    assert_eq!(body["account"], "bot");
-    assert_eq!(body["owner_id"], "owner");
-    let refused = |owner: &str, agent: &str, path: &str| {
-        decide(&feed.store, export(owner, agent, path)).err()
-    };
-    let no = |r| Some(IntentError::AgentExport(r));
-    assert_eq!(refused("owner", "bot", ""), no(AgentExportRefusal::NoLocation));
-    assert_eq!(refused("owner", "bot", "relative/bot.bundle"), no(AgentExportRefusal::NoLocation));
-    assert_eq!(refused("nobody", "bot", "/x"), no(AgentExportRefusal::NotOwnerSession));
-    assert_eq!(refused("locked", "bot", "/x"), no(AgentExportRefusal::OwnerLocked));
-    assert_eq!(refused("pending", "bot", "/x"), no(AgentExportRefusal::NotConnected));
-    assert_eq!(refused("bot", "bot", "/x"), no(AgentExportRefusal::NotCustodian));
-    assert_eq!(refused("owner", "owner", "/x"), no(AgentExportRefusal::NotCustodian));
-    assert_eq!(refused("owner", "nobody", "/x"), no(AgentExportRefusal::NotCustodian));
+fn an_agent_never_changes_an_agent() {
+    let store = world().store;
+    let attempt = handle_intent(
+        &store,
+        Intent::agent(
+            ParticipantId::new("p-bot"),
+            IntentKind::AgentDelete { agent: "agent-1".into() },
+        ),
+        Timestamp(10),
+    );
+    assert!(matches!(attempt, Err(IntentError::UnknownAgent(_) | IntentError::AgentForbidden(_))));
 }
 
 #[test]
-fn another_persons_account_cannot_export_what_it_does_not_custody() {
-    let mut feed = world();
-    feed.ok(
-        7,
-        DomainEvent::AccountUpdated(account(
-            "other",
-            AccountKind::HumanInteractive,
-            LockState::Unlocked,
-            Networking::Live,
-        )),
-    );
+fn creation_waits_for_the_owner_and_sends_both_limits_and_no_host() {
+    let store = world().store;
+    let kind = || IntentKind::AgentCreate { owner_id: AccountId::new("owner"), request: request() };
+    let unconfirmed = decide(&store, kind()).expect("an unconfirmed create is asked for");
+    assert!(matches!(unconfirmed.as_slice(), [Effect::RequireConfirmation { .. }]));
+
+    let effects = handle_intent(&store, confirmed(kind()), Timestamp(10)).expect("create");
+    let body = effects[0].body().expect("a call");
+    assert_eq!(effects[0].method(), Some("agent.create"));
+    assert_eq!(body["confirmed"], true);
+    assert_eq!(body["role"], "named");
+    assert_eq!(body["config"]["limits"]["max_concurrent_turns"], 2);
+    assert_eq!(body["config"]["limits"]["max_cost_per_day_cents"], 500);
+    assert_eq!(body["config"]["tools"], json!([]));
+    assert!(body.get("host").is_none(), "a host binding is never sent");
+}
+
+#[test]
+fn a_locked_owner_cannot_create_an_agent() {
+    let store = world().store;
+    let kind = IntentKind::AgentCreate { owner_id: AccountId::new("locked"), request: request() };
     assert_eq!(
-        decide(&feed.store, export("other", "bot", "/x")).err(),
-        Some(IntentError::AgentExport(AgentExportRefusal::NotCustodian))
+        handle_intent(&store, confirmed(kind), Timestamp(10)).err(),
+        Some(IntentError::AgentCustody(AgentCustodyProblem::Locked))
     );
 }
 
 #[test]
-fn links_and_outcomes_live_in_the_store_and_say_what_changed() {
-    let mut feed = world();
-    assert_eq!(feed.store.custodian_of(&AccountId::new("bot")), Some(&AccountId::new("owner")));
-    let same = feed.ok(
-        8,
-        DomainEvent::CustodianKnown {
-            agent: AccountId::new("bot"),
-            custodian: AccountId::new("owner"),
-        },
+fn edits_need_a_known_live_agent_and_its_base() {
+    let store = world().store;
+    let edit =
+        || IntentKind::AgentPersonaEdit { agent: "agent-1".into(), persona: request().persona };
+    assert_eq!(
+        decide(&store, edit()).err(),
+        Some(IntentError::AgentRecordUnknown("agent-1".into()))
     );
-    assert!(same.is_empty(), "a link told again changes nothing");
-    let done = AgentExport {
-        account_id: AccountId::new("bot"),
-        path: "/Users/a/bot.bundle".into(),
-        phase: AgentExportPhase::Exported,
-    };
-    let changes = feed.ok(9, DomainEvent::AgentExportUpdated(done.clone()));
-    assert!(changes.agent_exports.contains(&AccountId::new("bot")));
-    assert_eq!(feed.store.agent_export(&AccountId::new("bot")), Some(&done));
-    assert!(feed.ok(10, DomainEvent::AgentExportUpdated(done)).is_empty());
-    let refused = AgentExport {
-        account_id: AccountId::new("bot"),
-        path: "/Users/a/bot.bundle".into(),
-        phase: AgentExportPhase::Refused(AgentExportRefusal::CredentialsGone),
-    };
-    feed.ok(11, DomainEvent::AgentExportUpdated(refused.clone()));
-    assert_eq!(feed.store.agent_export(&AccountId::new("bot")), Some(&refused));
+
+    let store = with_agent(world(), record("agent-1", AgentLifecycle::Active, "owner")).store;
+    let asked = decide(&store, edit()).expect("an unconfirmed edit is asked for");
+    assert!(matches!(asked.as_slice(), [Effect::RequireConfirmation { .. }]));
+    let effects = handle_intent(&store, confirmed(edit()), Timestamp(10)).expect("edit");
+    assert_eq!(effects[0].method(), Some("agent.persona.edit"));
+    assert_eq!(effects[0].body().expect("call")["agent_anchor"], "agent-1");
+
+    let mut no_base = record("agent-1", AgentLifecycle::Active, "owner");
+    no_base.base = serde_json::Value::Null;
+    let store = with_agent(world(), no_base).store;
+    let access =
+        IntentKind::AgentAccessSet { agent: "agent-1".into(), access: AgentAccess::owner_only() };
+    assert_eq!(
+        handle_intent(&store, confirmed(access), Timestamp(10)).err(),
+        Some(IntentError::AgentRecordBase("agent-1".into()))
+    );
 }
 
 #[test]
-fn the_new_events_and_records_survive_serialization() {
-    let events = [
-        DomainEvent::CustodianKnown {
-            agent: AccountId::new("bot"),
-            custodian: AccountId::new("owner"),
-        },
-        DomainEvent::AgentExportUpdated(AgentExport {
-            account_id: AccountId::new("bot"),
-            path: "/x".into(),
-            phase: AgentExportPhase::Refused(AgentExportRefusal::FileExists),
-        }),
-    ];
-    for event in events {
-        let text = serde_json::to_string(&event).expect("json");
-        let back: DomainEvent = serde_json::from_str(&text).expect("back");
-        assert_eq!(back, event);
+fn retired_agents_are_read_only_and_an_allowlist_needs_humans() {
+    let store = with_agent(world(), record("agent-1", AgentLifecycle::Retired, "owner")).store;
+    assert_eq!(
+        decide(&store, IntentKind::AgentDelete { agent: "agent-1".into() }).err(),
+        Some(IntentError::AgentRecordRetired("agent-1".into()))
+    );
+
+    let store = with_agent(world(), record("agent-1", AgentLifecycle::Active, "owner")).store;
+    let bad_access = AgentAccess {
+        dm: AgentAccessMode::Owner,
+        group_inviters: AgentAccessMode::Owner,
+        allowed_humans: vec!["h-1".into()],
+    };
+    assert_eq!(
+        handle_intent(
+            &store,
+            confirmed(IntentKind::AgentAccessSet { agent: "agent-1".into(), access: bad_access }),
+            Timestamp(10),
+        )
+        .err(),
+        Some(IntentError::AgentAccessInvalid)
+    );
+}
+
+#[test]
+fn runtime_install_needs_a_provider_and_a_key_that_never_serializes() {
+    let store = world().store;
+    let install = |key: Option<&str>| IntentKind::AgentRuntime {
+        action: AgentRuntimeAction::Install,
+        provider: "anthropic".into(),
+        model: "model-x".into(),
+        key: key.map(SecretInput::new),
+    };
+    assert_eq!(
+        handle_intent(&store, confirmed(install(None)), Timestamp(10)).err(),
+        Some(IntentError::Empty("provider key"))
+    );
+
+    let asked = decide(&store, install(Some("sk-test"))).expect("install is asked for first");
+    assert!(matches!(asked.as_slice(), [Effect::RequireConfirmation { .. }]));
+
+    let effects =
+        handle_intent(&store, confirmed(install(Some("sk-test"))), Timestamp(10)).expect("install");
+    match &effects[0] {
+        Effect::AgentRuntime { action, provider, key, .. } => {
+            assert_eq!(*action, AgentRuntimeAction::Install);
+            assert_eq!(provider, "anthropic");
+            assert!(key.is_some(), "the key travels in the effect only");
+        }
+        other => panic!("test: expected a runtime effect, got {other:?}"),
     }
+    let serialized = serde_json::to_string(&install(Some("sk-test"))).expect("serialize");
+    assert!(!serialized.contains("sk-test"), "a key never serializes");
+    assert!(!format!("{:?}", install(Some("sk-test"))).contains("sk-test"), "nor in debug output");
+}
+
+#[test]
+fn jobs_pause_at_once_and_removal_is_asked_for() {
+    let store = world().store;
+    let job = |action| IntentKind::AgentJob {
+        agent: "agent-1".into(),
+        kind: AgentJobKind::Cron,
+        id: "job-1".into(),
+        action,
+    };
+    let paused = handle_intent(&store, Intent::human(job(AgentJobAction::Pause)), Timestamp(10))
+        .expect("pause");
+    assert_eq!(paused[0].method(), Some("agent.job.pause"));
+    assert_eq!(paused[0].body().expect("call")["kind"], "cron");
+    let removed = decide(&store, job(AgentJobAction::Remove)).expect("remove is asked for");
+    assert!(matches!(removed.as_slice(), [Effect::RequireConfirmation { .. }]));
+}
+
+#[test]
+fn the_roster_and_the_creation_live_in_the_store() {
+    let mut feed = world();
+    assert_eq!(feed.store.agent_roster(), AgentRosterState::Loading);
+    feed.ok(
+        4,
+        DomainEvent::AgentsListed {
+            records: vec![record("agent-1", AgentLifecycle::Active, "owner")],
+            journal_cursor: "c-9".into(),
+        },
+    );
+    assert_eq!(feed.store.agent_roster(), AgentRosterState::Ready);
+    assert_eq!(feed.store.agent("agent-1").map(|a| a.lifecycle), Some(AgentLifecycle::Active));
+    assert_eq!(feed.store.agent_cursor(), Some("c-9"));
+    feed.ok(
+        5,
+        DomainEvent::AgentCreationUpdated(AgentCreation {
+            request_id: "req-1".into(),
+            request_hash: "hash-1".into(),
+            state: AgentCreationState::from_custody_state("authorization_pending"),
+            agent_anchor: None,
+            expires_at: Some(1_900_000_000),
+        }),
+    );
+    let creation = feed.store.agent_creation("req-1").expect("the creation is kept");
+    assert_eq!(creation.state, AgentCreationState::PendingPhone);
+    assert!(!creation.state.is_terminal());
+    assert!(AgentCreationState::from_custody_state("unknown_state").is_terminal());
 }

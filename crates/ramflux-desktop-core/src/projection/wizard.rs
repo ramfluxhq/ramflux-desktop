@@ -1,119 +1,150 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Agent configuration review against an explicit host-provided catalog.
-//! This validates a draft; it never creates credentials or grants authority.
+//! The new-agent draft (the five steps of the wizard). It validates what
+//! the owner chose and builds the `agent.create` request; it never invents
+//! a provider, a model or a limit: a value the owner did not choose stays
+//! unset and blocks Create.
 
+use crate::model::{AgentAccess, AgentConfig, AgentCreateRequest, AgentPersona, AgentTools};
 use crate::{AccountId, AgentCustodyProblem, Store, check_agent_custodian};
-use std::collections::BTreeSet;
 
-/// Maximum number of tools/scopes in one local configuration draft.
-pub const SELECTION_LIMIT: usize = 128;
-/// Maximum bytes in a local display label or catalog identifier.
+/// Maximum bytes in one text field of the draft.
 pub const FIELD_LIMIT: usize = 256;
+/// Maximum bytes in the system prompt.
+pub const PROMPT_LIMIT: usize = 8192;
 
-/// Runtime and allowed choices reported by the host; no inferred defaults.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct RuntimeOffer {
-    /// Stable host runtime identifier.
-    pub id: String,
-    /// Tool identifiers this runtime offers.
-    pub tools: BTreeSet<String>,
-    /// Scope identifiers this runtime offers.
-    pub scopes: BTreeSet<String>,
+/// The wizard's steps, in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WizardStep {
+    /// Name, avatar preset and responsibility.
+    Basics,
+    /// The PRX runtime: its status and the provider and model.
+    Runtime,
+    /// Autonomy, tools and limits.
+    Capabilities,
+    /// Who may reach the agent.
+    Conversations,
+    /// The review and Create.
+    Review,
 }
 
-impl RuntimeOffer {
-    /// Constructs a runtime catalog entry. Selection is still validated later.
-    #[must_use]
-    pub fn new(id: String, tools: BTreeSet<String>, scopes: BTreeSet<String>) -> Self {
-        Self { id, tools, scopes }
-    }
+impl WizardStep {
+    /// Every step, in order.
+    pub const ALL: [Self; 5] =
+        [Self::Basics, Self::Runtime, Self::Capabilities, Self::Conversations, Self::Review];
 }
 
-/// User-editable draft. Contains no passphrase, seed, token or credential bundle.
+/// The draft the owner is filling in. Contains no key, passphrase or
+/// credential: the provider key goes to the runtime, never here.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
 pub struct AgentDraft {
-    /// Owner of the new participant.
+    /// The owner's human account on this daemon.
     pub owner: AccountId,
-    /// Display label.
-    pub name: String,
-    /// Host runtime identifier explicitly chosen by the owner.
-    pub runtime: String,
-    /// Explicit tool selections; empty grants nothing.
-    pub tools: BTreeSet<String>,
-    /// Explicit scope selections; empty grants nothing.
-    pub scopes: BTreeSet<String>,
+    /// The persona.
+    pub persona: AgentPersona,
+    /// The provider id, free text until the PRX catalog exists.
+    pub provider: String,
+    /// The model id, free text until the PRX catalog exists.
+    pub model: String,
+    /// The autonomy token. `full` is the only value the runtime publishes.
+    pub autonomy: String,
+    /// The tools; `None` until the owner chooses.
+    pub tools: Option<AgentTools>,
+    /// An optional system prompt; the runtime does not apply it yet.
+    pub prompt: Option<String>,
+    /// Concurrent turns; `None` until the owner chooses.
+    pub max_concurrent_turns: Option<u32>,
+    /// Cost per day in cents; `None` until the owner chooses.
+    pub max_cost_per_day_cents: Option<u64>,
+    /// Who may reach the agent (owner only until the owner changes it).
+    pub access: AgentAccess,
 }
 
 impl AgentDraft {
-    /// Starts an empty configuration for `owner` with no ambient permissions.
+    /// A new draft for `owner`: nothing chosen except the owner-only access.
     #[must_use]
     pub fn new(owner: AccountId) -> Self {
         Self {
             owner,
-            name: String::new(),
-            runtime: String::new(),
-            tools: BTreeSet::new(),
-            scopes: BTreeSet::new(),
+            persona: AgentPersona::default(),
+            provider: String::new(),
+            model: String::new(),
+            autonomy: "full".to_owned(),
+            tools: None,
+            prompt: None,
+            max_concurrent_turns: None,
+            max_cost_per_day_cents: None,
+            access: AgentAccess::owner_only(),
         }
     }
 
-    /// Validates review data against current custody and runtime facts.
+    /// Checks the draft against the current facts: the owner's account and
+    /// every chosen field.
     ///
     /// # Errors
-    /// Refuses stale custody, missing/oversized fields, unknown runtimes and unoffered permissions.
-    pub fn validate(&self, store: &Store, offers: &[RuntimeOffer]) -> Result<(), DraftError> {
+    ///
+    /// [`DraftError::Custody`] when the owner cannot own an agent now, and
+    /// [`DraftError::Field`] with the first field that is missing or too
+    /// long.
+    pub fn validate(&self, store: &Store) -> Result<(), DraftError> {
         check_agent_custodian(store, &self.owner).map_err(DraftError::Custody)?;
-        if valid_field(&self.name)
-            && self.runtime.is_empty()
-            && self.tools.is_empty()
-            && self.scopes.is_empty()
-        {
-            return Ok(());
+        let text = [
+            ("name", &self.persona.name),
+            ("avatar", &self.persona.avatar),
+            ("responsibility", &self.persona.responsibility),
+            ("provider", &self.provider),
+            ("model", &self.model),
+            ("autonomy", &self.autonomy),
+        ];
+        for (field, value) in text {
+            if !valid_field(value) {
+                return Err(DraftError::Field(field));
+            }
         }
-        self.validate_selections(offers)
-    }
-
-    fn validate_selections(&self, offers: &[RuntimeOffer]) -> Result<(), DraftError> {
-        if !valid_field(&self.name) || !valid_field(&self.runtime) {
-            return Err(DraftError::Field);
+        if self.tools.is_none() {
+            return Err(DraftError::Field("tools"));
         }
-        if self.tools.len() > SELECTION_LIMIT || self.scopes.len() > SELECTION_LIMIT {
-            return Err(DraftError::Limit);
+        if self.max_concurrent_turns.is_none() {
+            return Err(DraftError::Field("max_concurrent_turns"));
         }
-        if self.tools.iter().chain(&self.scopes).any(|id| !valid_field(id)) {
-            return Err(DraftError::Field);
+        if self.max_cost_per_day_cents.is_none() {
+            return Err(DraftError::Field("max_cost_per_day_cents"));
         }
-        let mut matches = offers.iter().filter(|offer| offer.id == self.runtime);
-        let offer = matches.next().ok_or(DraftError::Runtime)?;
-        if matches.next().is_some() {
-            return Err(DraftError::Runtime);
+        if self.prompt.as_deref().is_some_and(|p| p.len() > PROMPT_LIMIT) {
+            return Err(DraftError::Field("prompt"));
         }
-        if !self.tools.is_subset(&offer.tools) || !self.scopes.is_subset(&offer.scopes) {
-            return Err(DraftError::Permission);
+        if !self.access.is_valid() {
+            return Err(DraftError::Access);
         }
         Ok(())
     }
 
-    /// Reviews the draft for Create against current facts. Creating an
-    /// agent is the core's `agent.create` with the person's approval on
-    /// their phone, which this build does not run yet, so a valid draft is
-    /// refused as unavailable and kept as it is.
+    /// The `agent.create` request for this draft, once it validates.
     ///
     /// # Errors
-    /// Returns validation errors, [`DraftError::ConfigurationUnavailable`]
-    /// for a draft with a runtime, tool or scope, and
-    /// [`DraftError::CreationUnavailable`] otherwise; no selection is
-    /// silently discarded.
-    pub fn review(&self, store: &Store, offers: &[RuntimeOffer]) -> Result<(), DraftError> {
-        self.validate(store, offers)?;
-        if !self.runtime.is_empty() || !self.tools.is_empty() || !self.scopes.is_empty() {
-            return Err(DraftError::ConfigurationUnavailable);
-        }
-        Err(DraftError::CreationUnavailable)
+    ///
+    /// The same errors as [`Self::validate`].
+    pub fn request(&self, store: &Store) -> Result<AgentCreateRequest, DraftError> {
+        self.validate(store)?;
+        let (Some(tools), Some(turns), Some(cost)) =
+            (self.tools, self.max_concurrent_turns, self.max_cost_per_day_cents)
+        else {
+            return Err(DraftError::Field("limits"));
+        };
+        Ok(AgentCreateRequest {
+            persona: self.persona.clone(),
+            config: AgentConfig {
+                provider: self.provider.trim().to_owned(),
+                model: self.model.trim().to_owned(),
+                autonomy: self.autonomy.trim().to_owned(),
+                tools,
+                prompt: self.prompt.clone().filter(|p| !p.trim().is_empty()),
+                max_concurrent_turns: turns,
+                max_cost_per_day_cents: cost,
+            },
+            access: self.access.clone(),
+        })
     }
 }
 
@@ -121,31 +152,18 @@ fn valid_field(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= FIELD_LIMIT && !value.chars().any(char::is_control)
 }
 
-/// Why the configuration cannot proceed to review/identity creation.
+/// Why the draft cannot be created yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum DraftError {
-    /// The backend cannot apply runtime/tools/scopes; the draft must be retained.
-    #[error("agent configuration is unavailable in the backend")]
-    ConfigurationUnavailable,
-    /// Creating an agent (with the person's approval on their phone) is not
-    /// available in this build.
-    #[error("agent creation is unavailable in this build")]
-    CreationUnavailable,
-    /// Owner is no longer eligible.
-    #[error("agent custodian is unavailable: {0:?}")]
+    /// The owner cannot own an agent now.
+    #[error("the owner cannot own an agent: {0:?}")]
     Custody(AgentCustodyProblem),
-    /// Empty or oversized display/catalog field.
-    #[error("invalid agent configuration field")]
-    Field,
-    /// Too many permissions selected.
-    #[error("agent configuration selection limit exceeded")]
-    Limit,
-    /// Runtime not offered, or catalog contains ambiguous duplicate identifiers.
-    #[error("runtime is not uniquely offered")]
-    Runtime,
-    /// Selected tool or scope was not offered for the chosen runtime.
-    #[error("permission is not offered by the runtime")]
-    Permission,
+    /// A field is missing, too long or not chosen yet.
+    #[error("the agent field {0} is missing or invalid")]
+    Field(&'static str),
+    /// The access policy is not one the daemon accepts.
+    #[error("the agent access policy is invalid")]
+    Access,
 }
 
 #[cfg(test)]
@@ -155,101 +173,72 @@ mod tests {
 
     fn owner_store() -> Store {
         let mut store = Store::new();
-        let account:Account=serde_json::from_value(serde_json::json!({"id":"owner","label":"Owner","lock_state":"Unlocked","networking":"Live"})).expect("test: connected human owner");
+        let account: Account = serde_json::from_value(serde_json::json!({
+            "id": "owner",
+            "label": "Owner",
+            "lock_state": "Unlocked",
+            "networking": "Live"
+        }))
+        .expect("test: a connected owner account");
         store
             .apply(&EventEnvelope::new(1, Timestamp(0), DomainEvent::AccountUpdated(account)))
             .expect("test: owner source fact");
         store
     }
 
+    fn complete(owner: &str) -> AgentDraft {
+        let mut draft = AgentDraft::new(AccountId::new(owner));
+        draft.persona = AgentPersona {
+            name: "Research helper".into(),
+            avatar: "preset:spark:teal".into(),
+            responsibility: "Reads papers".into(),
+        };
+        draft.provider = "anthropic".into();
+        draft.model = "model-x".into();
+        draft.tools = Some(AgentTools::None);
+        draft.max_concurrent_turns = Some(2);
+        draft.max_cost_per_day_cents = Some(500);
+        draft
+    }
+
     #[test]
-    fn creation_never_accepts_then_drops_configuration() {
-        let mut store = owner_store();
-        let mut draft = AgentDraft::new(AccountId::new("owner"));
-        draft.name = "Research helper".into();
+    fn nothing_is_defaulted_and_every_field_blocks_create() {
+        let store = owner_store();
+        let draft = AgentDraft::new(AccountId::new("owner"));
+        assert_eq!(draft.validate(&store), Err(DraftError::Field("name")));
+        let filled = complete("owner");
+        assert_eq!(filled.validate(&store), Ok(()));
+        let mut no_limits = filled.clone();
+        no_limits.max_cost_per_day_cents = None;
         assert_eq!(
-            draft.validate(&store, &[]),
-            Ok(()),
-            "identity-only review must validate current custody without inventing a runtime"
-        );
-        assert_eq!(
-            draft.review(&store, &[]),
-            Err(DraftError::CreationUnavailable),
-            "creation is refused as unavailable, never begun through another path"
-        );
-        let offers = vec![RuntimeOffer::new(
-            "host".into(),
-            BTreeSet::from(["read".into()]),
-            BTreeSet::new(),
-        )];
-        draft.runtime = "host".into();
-        draft.tools.insert("read".into());
-        assert_eq!(
-            draft.validate(&store, &offers),
-            Ok(()),
-            "the configured draft is structurally valid against the offered catalog"
-        );
-        assert_eq!(
-            draft.review(&store, &offers),
-            Err(DraftError::ConfigurationUnavailable),
-            "creation must preserve configured drafts rather than drop their permissions"
-        );
-        draft.tools.clear();
-        assert_eq!(
-            draft.review(&store, &offers),
-            Err(DraftError::ConfigurationUnavailable),
-            "even a runtime-only choice cannot be silently discarded"
-        );
-        let mut account = store.account(&draft.owner).cloned().expect("test: known owner");
-        account.lock_state = LockState::Locked;
-        store
-            .apply(&EventEnvelope::new(2, Timestamp(1), DomainEvent::AccountUpdated(account)))
-            .expect("test: owner locks before review");
-        assert_eq!(
-            draft.validate(&store, &offers),
-            Err(DraftError::Custody(AgentCustodyProblem::Locked)),
-            "public validation must recheck custody after the draft was displayed"
+            no_limits.request(&store),
+            Err(DraftError::Field("max_cost_per_day_cents")),
+            "limits are sent always, so an unchosen limit blocks the request"
         );
     }
 
     #[test]
-    fn configuration_cannot_expand_catalog_permissions_or_choose_defaults() {
-        let mut draft = AgentDraft::new(AccountId::new("owner"));
-        let offers = vec![RuntimeOffer::new(
-            "host".into(),
-            BTreeSet::from(["read".into()]),
-            BTreeSet::from(["folder".into()]),
-        )];
-        assert_eq!(
-            draft.validate_selections(&offers),
-            Err(DraftError::Field),
-            "wizard must start without a runtime or permissions"
-        );
-        draft.name = "Research helper".into();
-        draft.runtime = "host".into();
-        assert_eq!(
-            draft.validate_selections(&offers),
-            Ok(()),
-            "an empty permission set grants nothing and is valid"
-        );
-        draft.tools.insert("execute".into());
-        assert_eq!(
-            draft.validate_selections(&offers),
-            Err(DraftError::Permission),
-            "tools cannot exceed the runtime catalog"
-        );
-        draft.tools.clear();
-        draft.scopes.insert("all files".into());
-        assert_eq!(
-            draft.validate_selections(&offers),
-            Err(DraftError::Permission),
-            "scopes cannot exceed the runtime catalog"
-        );
-        draft.scopes.clear();
-        assert_eq!(
-            draft.validate_selections(&[offers[0].clone(), offers[0].clone()]),
-            Err(DraftError::Runtime),
-            "ambiguous runtime identifiers must fail closed"
-        );
+    fn the_request_carries_both_limits_and_never_a_host() {
+        let store = owner_store();
+        let request = complete("owner").request(&store).expect("test: complete draft");
+        let value = serde_json::to_value(&request).expect("test: request serializes");
+        assert_eq!(value["config"]["provider"], "anthropic");
+        assert!(value["config"].get("host").is_none(), "a host binding is never sent");
+        assert_eq!(request.config.tools.bus_list(), Vec::<&str>::new());
+        assert_eq!(request.config.max_concurrent_turns, 2);
+        assert_eq!(request.config.max_cost_per_day_cents, 500);
+    }
+
+    #[test]
+    fn a_locked_owner_cannot_create_and_the_draft_is_kept() {
+        let mut store = owner_store();
+        let draft = complete("owner");
+        let mut account = store.account(&draft.owner).cloned().expect("test: known owner");
+        account.lock_state = LockState::Locked;
+        store
+            .apply(&EventEnvelope::new(2, Timestamp(1), DomainEvent::AccountUpdated(account)))
+            .expect("test: owner locks");
+        assert_eq!(draft.validate(&store), Err(DraftError::Custody(AgentCustodyProblem::Locked)));
+        assert_eq!(draft.provider, "anthropic", "a refused draft keeps what the owner chose");
     }
 }

@@ -17,11 +17,21 @@ use super::{MAX_AUDIT, Store};
 use crate::event::DomainEvent;
 use crate::ids::{AccountId, ContextId, GrantId, MomentId, NodeId, Timestamp};
 use crate::model::{
-    AppLock, AppLockState, Context, Disappearing, GrantState, Lifecycle, LockState, Moment,
+    AgentRecord, AgentRosterState, AppLock, AppLockState, Context, Disappearing, GrantState,
+    Lifecycle, LockState, Moment,
     MomentKind, NodeHealth, NodeProbe,
 };
 
 impl Store {
+    /// Replaces the record of its anchor when it changed. A record is a
+    /// whole record: the daemon never sends part of one.
+    fn upsert_agent(&mut self, record: &AgentRecord, changes: &mut Changes) {
+        if self.agents.get(&record.agent_anchor) != Some(record) {
+            self.agents.insert(record.agent_anchor.clone(), record.clone());
+            changes.agents = true;
+        }
+    }
+
     pub(super) fn reduce(
         &mut self,
         at: Timestamp,
@@ -285,16 +295,43 @@ impl Store {
             DomainEvent::BackupJobUpdated(job) => self.upsert_backup_job(job, changes)?,
             DomainEvent::CeremonyUpdated(ceremony) => self.update_ceremony(ceremony, changes)?,
             DomainEvent::RecoveryUpdated(recovery) => self.update_recovery(recovery, changes)?,
-            DomainEvent::CustodianKnown { agent, custodian } => {
-                if self.custodians.get(agent) != Some(custodian) {
-                    self.custodians.insert(agent.clone(), custodian.clone());
-                    changes.accounts.insert(agent.clone());
+            DomainEvent::AgentsListed { records, journal_cursor } => {
+                for record in records {
+                    self.upsert_agent(record, changes);
+                }
+                self.agent_roster = Some(AgentRosterState::Ready);
+                self.agent_cursor = Some(journal_cursor.clone());
+                changes.agents = true;
+            }
+            DomainEvent::AgentRecordUpdated(record) => self.upsert_agent(record, changes),
+            DomainEvent::AgentRosterStateChanged(state) => {
+                if self.agent_roster.as_ref() != Some(state) {
+                    self.agent_roster = Some(state.clone());
+                    changes.agents = true;
                 }
             }
-            DomainEvent::AgentExportUpdated(export) => {
-                if self.agent_exports.get(&export.account_id) != Some(export) {
-                    self.agent_exports.insert(export.account_id.clone(), export.clone());
-                    changes.agent_exports.insert(export.account_id.clone());
+            DomainEvent::AgentCreationUpdated(creation) => {
+                if self.agent_creations.get(&creation.request_id) != Some(creation) {
+                    self.agent_creations.insert(creation.request_id.clone(), creation.clone());
+                    changes.agents = true;
+                }
+            }
+            DomainEvent::AgentHostUpdated(status) => {
+                if self.agent_host.as_ref() != Some(status) {
+                    self.agent_host = Some(status.clone());
+                    changes.agents = true;
+                }
+            }
+            DomainEvent::AgentJobsUpdated { agent, jobs } => {
+                if self.agent_jobs.get(agent) != Some(jobs) {
+                    self.agent_jobs.insert(agent.clone(), jobs.clone());
+                    changes.agents = true;
+                }
+            }
+            DomainEvent::AgentApprovalsUpdated(approvals) => {
+                if self.agent_approvals != *approvals {
+                    self.agent_approvals = approvals.clone();
+                    changes.agents = true;
                 }
             }
             DomainEvent::TaskStepChanged { task_id, version, step_id, state, needs_me } => {

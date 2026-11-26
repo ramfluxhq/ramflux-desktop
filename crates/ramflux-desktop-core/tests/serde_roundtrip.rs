@@ -71,11 +71,16 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
         DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",
         DomainEvent::RecoveryUpdated(_) => "RecoveryUpdated",
-        DomainEvent::CustodianKnown { .. } => "CustodianKnown",
-        DomainEvent::AgentExportUpdated(_) => "AgentExportUpdated",
+        DomainEvent::AgentsListed { .. } => "AgentsListed",
+        DomainEvent::AgentRecordUpdated(_) => "AgentRecordUpdated",
+        DomainEvent::AgentRosterStateChanged(_) => "AgentRosterStateChanged",
+        DomainEvent::AgentCreationUpdated(_) => "AgentCreationUpdated",
+        DomainEvent::AgentHostUpdated(_) => "AgentHostUpdated",
+        DomainEvent::AgentJobsUpdated { .. } => "AgentJobsUpdated",
+        DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 57;
+const DOMAIN_EVENT_VARIANTS: usize = 62;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -169,7 +174,14 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::ShowRecoveryPhrase => "ShowRecoveryPhrase",
         IntentKind::HideRecoveryPhrase => "HideRecoveryPhrase",
         IntentKind::CancelCeremony => "CancelCeremony",
-        IntentKind::ExportAgentCredentials { .. } => "ExportAgentCredentials",
+        IntentKind::AgentCreate { .. } => "AgentCreate",
+        IntentKind::AgentOperationRefresh { .. } => "AgentOperationRefresh",
+        IntentKind::AgentPersonaEdit { .. } => "AgentPersonaEdit",
+        IntentKind::AgentAccessSet { .. } => "AgentAccessSet",
+        IntentKind::AgentDelete { .. } => "AgentDelete",
+        IntentKind::AgentJob { .. } => "AgentJob",
+        IntentKind::AgentApprovalDecide { .. } => "AgentApprovalDecide",
+        IntentKind::AgentRuntime { .. } => "AgentRuntime",
         IntentKind::BeginRecovery { .. } => "BeginRecovery",
         IntentKind::CancelRecovery => "CancelRecovery",
         IntentKind::Unlock { .. }
@@ -183,7 +195,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the eight secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 69;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 76;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -684,15 +696,29 @@ fn all_domain_events() -> Vec<DomainEvent> {
             ceremony_id: String::new(),
             expires_at: Timestamp(0),
         }),
-        DomainEvent::CustodianKnown {
-            agent: AccountId::new("a-bot"),
-            custodian: AccountId::new("a-1"),
-        },
-        DomainEvent::AgentExportUpdated(AgentExport {
-            account_id: AccountId::new("a-bot"),
-            path: "/Users/a/bot.bundle".to_owned(),
-            phase: AgentExportPhase::Refused(AgentExportRefusal::FileExists),
+        DomainEvent::AgentsListed { records: vec![sample_agent()], journal_cursor: "c-1".into() },
+        DomainEvent::AgentRecordUpdated(Box::new(sample_agent())),
+        DomainEvent::AgentRosterStateChanged(AgentRosterState::Offline),
+        DomainEvent::AgentCreationUpdated(sample_creation()),
+        DomainEvent::AgentHostUpdated(AgentHostStatus {
+            state: AgentHostState::Running,
+            prx_version: Some("0.1.0".into()),
+            refusal: None,
         }),
+        DomainEvent::AgentJobsUpdated {
+            agent: "agent-anchor".into(),
+            jobs: vec![AgentJob {
+                id: "job-1".into(),
+                kind: AgentJobKind::Cron,
+                creator_agent: None,
+            }],
+        },
+        DomainEvent::AgentApprovalsUpdated(vec![AgentApproval {
+            approval_id: "ap-1".into(),
+            conversation_id: "conv-1".into(),
+            status: "pending".into(),
+            expires_at: Some(1_900_000_000),
+        }]),
         DomainEvent::DaemonInfoUpdated(DaemonInfo {
             socket_path: "/tmp/rfd.sock".to_owned(),
             open_accounts: 1,
@@ -826,6 +852,52 @@ fn contact_request() -> ContactRequest {
     }
 }
 
+fn sample_persona() -> AgentPersona {
+    AgentPersona {
+        name: "Research helper".into(),
+        avatar: "preset:spark:teal".into(),
+        responsibility: "Reads papers".into(),
+    }
+}
+
+fn sample_request() -> AgentCreateRequest {
+    AgentCreateRequest {
+        persona: sample_persona(),
+        config: AgentConfig {
+            provider: "anthropic".into(),
+            model: "model-x".into(),
+            autonomy: "full".into(),
+            tools: AgentTools::None,
+            prompt: None,
+            max_concurrent_turns: 1,
+            max_cost_per_day_cents: 100,
+        },
+        access: AgentAccess::owner_only(),
+    }
+}
+
+fn sample_agent() -> AgentRecord {
+    AgentRecord {
+        agent_anchor: "agent-anchor".into(),
+        custodian_anchor: "a-1".into(),
+        persona: sample_persona(),
+        lifecycle: AgentLifecycle::Active,
+        access: AgentAccess::owner_only(),
+        role: "named".into(),
+        base: serde_json::json!({"id": "base-1"}),
+    }
+}
+
+fn sample_creation() -> AgentCreation {
+    AgentCreation {
+        request_id: "req-1".into(),
+        request_hash: "hash-1".into(),
+        state: AgentCreationState::Failed(AgentRefusal::PrxSpawn),
+        agent_anchor: None,
+        expires_at: None,
+    }
+}
+
 fn all_intent_kinds() -> Vec<IntentKind> {
     vec![
         IntentKind::AnswerContactRequest {
@@ -941,10 +1013,26 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::ShowRecoveryPhrase,
         IntentKind::HideRecoveryPhrase,
         IntentKind::CancelCeremony,
-        IntentKind::ExportAgentCredentials {
-            owner_id: AccountId::new("a-1"),
-            account_id: AccountId::new("a-bot"),
-            path: "/Users/a/bot.bundle".into(),
+        IntentKind::AgentCreate { owner_id: AccountId::new("a-1"), request: sample_request() },
+        IntentKind::AgentOperationRefresh { request_id: "req-1".into() },
+        IntentKind::AgentPersonaEdit { agent: "agent-anchor".into(), persona: sample_persona() },
+        IntentKind::AgentAccessSet {
+            agent: "agent-anchor".into(),
+            access: AgentAccess::owner_only(),
+        },
+        IntentKind::AgentDelete { agent: "agent-anchor".into() },
+        IntentKind::AgentJob {
+            agent: "agent-anchor".into(),
+            kind: AgentJobKind::XinTask,
+            id: "job-1".into(),
+            action: AgentJobAction::Pause,
+        },
+        IntentKind::AgentApprovalDecide { approval_id: "ap-1".into(), approved: true },
+        IntentKind::AgentRuntime {
+            action: AgentRuntimeAction::Install,
+            provider: "anthropic".into(),
+            model: "model-x".into(),
+            key: Some(SecretInput::new("sk-test")),
         },
         IntentKind::BeginRecovery { account_id: AccountId::new("a-1") },
         IntentKind::CancelRecovery,
