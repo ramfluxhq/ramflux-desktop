@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The product pin: the three product revisions in the workspace manifest are
+//! The product pin: the four product revisions in the workspace manifest are
 //! one and the same commit, and the lock file moved only as far as that pin
 //! requires.
 //!
@@ -67,7 +67,7 @@ fn lock_packages(lock: &str) -> Vec<(String, String, String, String)> {
 #[test]
 fn product_pin_single_rev_and_lock_scope() {
     let revs = manifest_revs(&root_file("Cargo.toml"));
-    assert_eq!(revs.len(), 3, "sdk, protocol and crypto are pinned");
+    assert_eq!(revs.len(), 4, "sdk, protocol, crypto and the PRX client are pinned");
     assert!(revs.iter().all(|r| r == PINNED_REV), "all product revs equal the pin: {revs:?}");
 
     let packages = lock_packages(&root_file("Cargo.lock"));

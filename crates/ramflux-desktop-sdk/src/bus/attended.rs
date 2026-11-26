@@ -4,8 +4,9 @@
 //! Requests the daemon takes only from the attended session of an account,
 //! on a connection of their own (DESK-AGENT-01).
 //!
-//! Exporting the credentials of an AI participant is allowed to the
-//! custodian's own unlocked session only: the daemon checks that the
+//! A method the daemon takes from the owner's unlocked session only is
+//! sent here. No agent request is one at this core rev (creation is
+//! approved on the owner's phone). The daemon checks that the
 //! connection the request arrives on opened an attended subscription for
 //! the account named in the frame. The account scopes' request connections
 //! are shared with every other request of the scope and never claim to be
@@ -25,8 +26,10 @@ use super::client::exchange;
 use super::deadline::Deadlines;
 use super::{BusError, BusRequest};
 
-/// The requests that travel on an attended connection of their own.
-pub const REQUESTS: [&str; 1] = ["account.export_agent_credentials"];
+/// The requests that travel on an attended connection of their own. None at
+/// this core rev: named agents are approved on the owner's phone, not by an
+/// attended session of this desktop.
+pub const REQUESTS: [&str; 0] = [];
 
 /// Whether `method` must be sent with [`call`].
 pub fn is_attended(method: &str) -> bool {

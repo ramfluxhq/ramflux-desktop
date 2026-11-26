@@ -9,8 +9,10 @@ use ramflux_desktop_core::{
 };
 use serde_json::Value;
 
+use super::agents;
 use super::daemon::node_from_profile;
 use super::{Translator, text};
+use crate::plan::agents::RUNTIME_METHOD;
 
 impl Translator {
     /// Translates the daemon's answer to a performed effect.
@@ -39,7 +41,12 @@ impl Translator {
         let node_id = || NodeId::new(text(body, "node_id"));
         let context = || ContextId::new(text(body, "context_id"));
         match method {
-            methods::AGENT_EXPORT_CREDENTIALS => self.export_done(body, answer),
+            methods::AGENT_CREATE
+            | methods::AGENT_OPERATION_GET
+            | methods::AGENT_PERSONA_EDIT
+            | methods::AGENT_ACCESS_SET
+            | methods::AGENT_DELETE
+            | RUNTIME_METHOD => agents::effect_events(method, answer),
             methods::NODE_ADD => {
                 let default = self.default_node().map(str::to_owned);
                 let mut node = node_from_profile(&answer["node"], default.as_deref(), false);
@@ -192,8 +199,7 @@ impl Translator {
     }
 
     /// An account a creation or recovery ceremony opened (unlocked), named
-    /// as the ceremony named it: a person's account, or an AI participant
-    /// with the custodian that made it.
+    /// as the ceremony named it: a person's account, or an AI participant.
     pub(crate) fn native_account_opened(
         &mut self,
         opened: &crate::bridge::NativeAccount,
@@ -207,11 +213,7 @@ impl Translator {
         if account.networking_session.is_none() {
             account.networking = opened.networking;
         }
-        let mut events = self.put_account(account);
-        if let Some(custodian) = &opened.custodian {
-            events.extend(self.custodian_made(&opened.id, custodian));
-        }
-        events
+        self.put_account(account)
     }
 
     fn opened_account(

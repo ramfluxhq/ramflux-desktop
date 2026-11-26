@@ -13,8 +13,8 @@
 //! - `pages`: collecting the pages of a paged list.
 //! - `daemon`: daemon status, nodes, accounts.
 //! - `account`: account status, devices, integrations.
-//! - `agents`: AI participants an owner custodies, and exporting their
-//!   credentials.
+//! - `agents`: named agents, their creation, records, jobs and approvals, and
+//!   the PRX runtime status.
 //! - `identity`: identities (participants, devices, safety).
 //! - `contacts`: participants and contact links.
 //! - `conversation`: conversations and groups as contexts, pins, settings.
@@ -252,8 +252,6 @@ pub struct Translator {
     /// Whether a complete `group.list` was translated (the baseline of the
     /// group sync records).
     groups_listed: bool,
-    /// AI participants: custodians known, and the links told to the store.
-    agents: agents::Agents,
     /// The local opt-in for inline media thumbnails.
     inline_thumbnails: bool,
     /// Objects whose fetch was refused (revoked or unavailable).
@@ -332,7 +330,6 @@ impl Translator {
             name_changes: Vec::new(),
             new_name_changes: Vec::new(),
             groups_listed: false,
-            agents: agents::Agents::default(),
             inline_thumbnails: false,
             media_refused: v1::state::Bounded::default(),
             v1: v1::state::V1State::default(),
@@ -493,6 +490,10 @@ impl Translator {
             Fetch::BackupJobs => self.backup_job_list(value),
             Fetch::GroupInvitations => Translated::events(group_sync::invitations(value)),
             Fetch::UsernameStatus => Translated::events(account::username_status(value)),
+            Fetch::AgentList
+            | Fetch::AgentApprovals
+            | Fetch::AgentJobs(_)
+            | Fetch::AgentOperation(_) => Translated::events(agents::read_events(fetch, value)),
             Fetch::Messages(context) | Fetch::MessagesBefore(context, _) => {
                 self.messages(context, fetch, value, now)
             }

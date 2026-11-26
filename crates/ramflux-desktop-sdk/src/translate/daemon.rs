@@ -237,14 +237,10 @@ impl Translator {
                 account.kind = kind;
             }
             apply_networking(&mut account, detail);
-            let agent = account.kind == ramflux_desktop_core::AccountKind::HeadlessAi;
             out.events.extend(self.put_account(account));
             // The app lock is read for every listed account, open or held
             // closed: the daemon's store is where the lock screen is decided.
             out.follow.push(Fetch::AppLock(id.clone()));
-            if agent {
-                out.events.extend(self.custodian_listed(&id, detail));
-            }
         }
         for id in open {
             let unknown = self.accounts.get(&id).is_none_or(|a| a.node_id.is_none());

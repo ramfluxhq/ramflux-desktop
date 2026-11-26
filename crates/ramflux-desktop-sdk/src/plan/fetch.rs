@@ -105,6 +105,14 @@ pub enum Fetch {
     /// `username.status`: this account's username, or why the directory
     /// cannot be used.
     UsernameStatus,
+    /// `agent.list`: the first page of the account's named agents.
+    AgentList,
+    /// `agent.approval.list`: the approvals of agents waiting for an answer.
+    AgentApprovals,
+    /// `agent.job.list` of one agent, by its anchor.
+    AgentJobs(String),
+    /// `agent.operation.get` of one creation request this desktop started.
+    AgentOperation(String),
 }
 
 impl Fetch {
@@ -152,6 +160,25 @@ impl Fetch {
             Self::GroupInvitations => {
                 BusRequest::new(account, "group", "group.invitations.list", empty)
             }
+            Self::AgentList => BusRequest::new(
+                account,
+                "agent",
+                "agent.list",
+                json!({ "cursor": null, "limit": 100 }),
+            ),
+            Self::AgentApprovals => BusRequest::new(account, "agent", "agent.approval.list", empty),
+            Self::AgentJobs(anchor) => BusRequest::new(
+                account,
+                "agent",
+                "agent.job.list",
+                json!({ "agent": super::agents::prx_name(anchor).unwrap_or_default() }),
+            ),
+            Self::AgentOperation(request_id) => BusRequest::new(
+                account,
+                "agent",
+                "agent.operation.get",
+                json!({ "operation_id": request_id }),
+            ),
             Self::UsernameStatus => BusRequest::new(
                 account,
                 "username",

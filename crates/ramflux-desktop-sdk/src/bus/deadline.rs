@@ -42,9 +42,8 @@ const NETWORK: [&str; 37] = [
     "account.restore.verify",
     // Answers once the job's worker stopped (a file fetch may be under way).
     "account.backup.cancel",
-    // Loads the credential from the primary vault (the system keychain may
-    // wait for the person) and writes the bundle.
-    "account.export_agent_credentials",
+    // The daemon stages the agent and publishes its runtime settings.
+    "agent.create",
     "account.passphrase.rotate",
     "node.add",
     "node.probe",
@@ -197,9 +196,8 @@ mod tests {
         assert_eq!(deadlines.budget("contact.block"), deadlines.local);
         assert_eq!(deadlines.budget("group.send"), deadlines.network);
         assert_eq!(deadlines.budget("daemon.stop"), deadlines.stop);
-        // The AI participant's credential export waits like the account
-        // ceremonies (a vault may ask the person).
-        assert_eq!(deadlines.budget("account.export_agent_credentials"), deadlines.network);
+        // Creating an agent stages it and publishes it, like a network call.
+        assert_eq!(deadlines.budget("agent.create"), deadlines.network);
         assert!(deadlines.read < deadlines.network);
     }
 

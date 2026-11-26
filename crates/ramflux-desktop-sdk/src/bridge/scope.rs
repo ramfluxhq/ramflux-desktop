@@ -260,7 +260,6 @@ pub(super) struct Task {
     pub(super) renames: Option<crate::renames::RenameStore>,
     /// Which person's account custodies each AI participant this desktop
     /// made (remembered across restarts).
-    pub(super) custodians: crate::custodians::CustodianStore,
     /// The daemon answered `call.list` (it has the call API, and calls are
     /// not turned off in the settings; until then the call methods are
     /// declared unsupported), whether it refused `contact.requests.list`
@@ -367,8 +366,6 @@ pub(super) fn build(
     if let Some(renames) = &renames {
         translator.restore_renames(renames.records());
     }
-    let custodians = crate::custodians::CustodianStore::new(config.settings_path.clone(), socket);
-    translator.restore_custodians(custodians.links());
     let gate = Gate::new(scope.account().is_some(), config.schema_support);
     if gate.enabled() {
         // Fail closed from the start: before any connection has been checked
@@ -409,7 +406,6 @@ pub(super) fn build(
         listings_sent: Arc::new(AtomicU64::new(0)),
         listing_applied: BTreeMap::new(),
         renames,
-        custodians,
         found: capabilities::Found::default(),
         job_link,
         jobs: super::jobs::Jobs::Closed,

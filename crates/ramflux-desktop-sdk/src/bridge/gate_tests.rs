@@ -440,7 +440,6 @@ const INVENTORY: &[(&str, bool)] = &[
     ("account.backup.import", false),
     ("account.backup.jobs", false),
     ("account.create", false),
-    ("account.export_agent_credentials", false),
     ("account.list", false),
     ("account.lock", false),
     ("account.passphrase.rotate", false),

@@ -1,322 +1,422 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! AI participants an owner custodies (DESK-AGENT-01): who custodies each,
-//! and what became of exporting its credentials.
+//! Named agents (AGENT-IDENTITY-01): the daemon's answers as events, the
+//! typed refusal of each failed request, and the PRX runtime status.
 //!
-//! The account list names an AI participant's kind. It names the custodian
-//! only when a daemon reports one (`custodian_account_id`); the desktop
-//! otherwise knows the links its own ceremonies made (remembered, see
-//! [`crate::custodians`]) and says nothing about the rest.
-//!
-//! `account.export_agent_credentials` answers `{account, path, exported}`.
-//! A refusal reaches the desktop as one of the product's error codes
-//! (`docs/local_bus_errors.md`) or, for the file system, as the operating
-//! system's words inside `ValidationFailed`; each is mapped to an
-//! [`AgentExportRefusal`], and the message of the failed effect is that
-//! refusal's locale key, never the daemon's English. The daemon's text is
-//! read, never shown. Nothing here sees a credential: the bundle is written
-//! by the daemon.
-
-use std::collections::{BTreeMap, BTreeSet};
+//! The daemon answers ProtoJSON, whose field names are lower camel case
+//! (`agentAnchor`), and it writes 64-bit numbers as strings; both spellings
+//! are read here, and a missing field stays missing rather than invented.
+//! A refusal reaches the desktop as the daemon's `reason_code` (or its
+//! `code`) and becomes an [`AgentRefusal`]; the failed effect's message is
+//! that refusal's locale key, never the daemon's English.
 
 use ramflux_desktop_core::{
-    AccountId, AgentExport, AgentExportPhase, AgentExportRefusal, DomainEvent, FailureCode,
-    VaultReason, methods,
+    AgentAccess, AgentAccessMode, AgentApproval, AgentCreation, AgentCreationState, AgentHostState,
+    AgentHostStatus, AgentJob, AgentJobKind, AgentLifecycle, AgentPersona, AgentRecord,
+    AgentRefusal, DomainEvent, methods,
 };
 use serde_json::Value;
 
-use super::reason::key;
-use super::{Translator, text};
-use crate::bus::{BusError, IoCause};
+use crate::bus::BusError;
+use crate::plan::agents::RUNTIME_METHOD;
+use crate::plan::fetch::Fetch;
 
-/// What the translator keeps about AI participants.
-#[derive(Debug, Default)]
-pub(super) struct Agents {
-    /// AI participant to custodian, as known.
-    custodians: BTreeMap<AccountId, AccountId>,
-    /// The links already told to the store.
-    announced: BTreeSet<(AccountId, AccountId)>,
+/// The first non-null value under one of `keys`.
+fn pick<'a>(value: &'a Value, keys: &[&str]) -> &'a Value {
+    keys.iter().map(|key| &value[*key]).find(|found| !found.is_null()).unwrap_or(&Value::Null)
 }
 
-/// The refusal a daemon error means for an export.
-pub fn export_refusal(error: &BusError) -> AgentExportRefusal {
-    match error {
-        BusError::Timeout => AgentExportRefusal::Timeout,
-        BusError::Transport(_) => AgentExportRefusal::Transport,
-        BusError::Daemon { code, message, cause, reason_code, .. } => {
-            classify(code, message, cause.as_deref(), reason_code.as_deref())
-        }
+/// The first non-empty string under one of `keys`, or empty.
+fn text_of(value: &Value, keys: &[&str]) -> String {
+    pick(value, keys).as_str().unwrap_or_default().to_owned()
+}
+
+/// A 64-bit number, written as a number or as a string.
+fn number_of(value: &Value, keys: &[&str]) -> Option<u64> {
+    match pick(value, keys) {
+        Value::Number(number) => number.as_u64(),
+        Value::String(text) => text.parse().ok(),
+        _ => None,
     }
 }
 
-/// The refusal of a failed export. A file-system refusal is told by the
-/// operating-system cause the daemon reports (`cause {kind, raw_os_error}`),
-/// never by its English message; a refusal that names none is `Other`. The
-/// one refusal with no structured form, the peer-credential check (the
-/// daemon sends it as a plain `ValidationFailed`), is told by that check's
-/// own message.
-fn classify(
-    code: &str,
-    message: &str,
-    cause: Option<&IoCause>,
-    reason_code: Option<&str>,
-) -> AgentExportRefusal {
-    // The vault named its reason: a mode mismatch is a refused setup (not the
-    // custodian's), every other reason has its own wording (a busy vault says
-    // to try again, the pending ones say what to finish).
-    if let Some(reason) = VaultReason::from_wire(code, reason_code) {
-        return match reason {
-            VaultReason::ModeMismatch => AgentExportRefusal::NotCustodian,
-            VaultReason::Missing
-            | VaultReason::InitPending
-            | VaultReason::ImportPending
-            | VaultReason::Corrupt
-            | VaultReason::Permission
-            | VaultReason::Locked
-            | VaultReason::Busy
-            | VaultReason::PrimaryUnavailable => AgentExportRefusal::Vault(reason),
-        };
-    }
+/// The refusal a daemon or PRX code names.
+pub fn refusal_of_code(code: &str) -> AgentRefusal {
     match code {
-        "NetworkingPending" => return AgentExportRefusal::NotConnected,
-        "CustodySetupInvalid" => return AgentExportRefusal::NotCustodian,
-        "CustodyVaultUnavailable" => return AgentExportRefusal::CredentialsGone,
-        "AccountNotOpen" => return AgentExportRefusal::OwnerLocked,
-        _ => {}
+        "confirmation_required" => AgentRefusal::ConfirmationRequired,
+        "desktop_required" => AgentRefusal::DesktopRequired,
+        "creation_pairing_required" => AgentRefusal::CreationPairingRequired,
+        "metadata_pending" => AgentRefusal::MetadataPending,
+        "access_policy_invalid" => AgentRefusal::AccessPolicyInvalid,
+        "persona_invalid" => AgentRefusal::PersonaInvalid,
+        "stale_base" => AgentRefusal::StaleBase,
+        "unsupported" => AgentRefusal::Unsupported,
+        "prx_unconfigured" => AgentRefusal::PrxUnconfigured,
+        "host_not_supported" => AgentRefusal::HostNotSupported,
+        "prx_missing" | "runtime_missing" => AgentRefusal::PrxMissing,
+        "provider_missing" => AgentRefusal::ProviderMissing,
+        "credential_unavailable" => AgentRefusal::CredentialUnavailable,
+        "runtime_stale" => AgentRefusal::RuntimeStale,
+        "ancestor_rejected" => AgentRefusal::AncestorRejected,
+        "manifest_unavailable" => AgentRefusal::ManifestUnavailable,
+        "unsupported_platform" => AgentRefusal::UnsupportedPlatform,
+        "prx_command" => AgentRefusal::PrxCommand,
+        "prx_spawn" => AgentRefusal::PrxSpawn,
+        other => AgentRefusal::Other(other.to_owned()),
     }
-    if let Some(cause) = cause {
-        return match (cause.kind.as_str(), cause.raw_os_error) {
-            ("AlreadyExists", _) | (_, Some(17)) => AgentExportRefusal::FileExists,
-            ("NotFound", _) | (_, Some(2)) => AgentExportRefusal::LocationMissing,
-            ("PermissionDenied" | "ReadOnlyFilesystem" | "IsADirectory" | "NotADirectory", _)
-            | (_, Some(13 | 30 | 21 | 20)) => AgentExportRefusal::LocationDenied,
-            _ => AgentExportRefusal::Other,
-        };
-    }
-    if message.to_ascii_lowercase().contains("peer credential") {
-        return AgentExportRefusal::NotOwnerSession;
-    }
-    AgentExportRefusal::Other
 }
 
-/// The locale key that says `refusal`.
-pub fn export_refusal_key(refusal: AgentExportRefusal) -> &'static str {
+/// The refusal of a failed agent request.
+pub fn refusal_of(error: &BusError) -> AgentRefusal {
+    match error {
+        BusError::Timeout => AgentRefusal::Timeout,
+        BusError::Transport(_) => AgentRefusal::Transport,
+        BusError::Daemon { code, reason_code, .. } => {
+            refusal_of_code(reason_code.as_deref().filter(|r| !r.is_empty()).unwrap_or(code))
+        }
+    }
+}
+
+/// Whether a refusal came from the PRX runtime (the daemon's `prx_*` codes
+/// and the runtime states they name).
+fn runtime_refusal(refusal: &AgentRefusal) -> bool {
+    matches!(
+        refusal,
+        AgentRefusal::PrxUnconfigured
+            | AgentRefusal::PrxMissing
+            | AgentRefusal::ProviderMissing
+            | AgentRefusal::CredentialUnavailable
+            | AgentRefusal::RuntimeStale
+            | AgentRefusal::AncestorRejected
+            | AgentRefusal::ManifestUnavailable
+            | AgentRefusal::UnsupportedPlatform
+            | AgentRefusal::PrxCommand
+            | AgentRefusal::PrxSpawn
+    )
+}
+
+/// The locale key of a refusal. Every [`AgentRefusal`] has one.
+pub fn refusal_key(refusal: &AgentRefusal) -> &'static str {
     match refusal {
-        AgentExportRefusal::NoLocation => key::AGENT_EXPORT_NO_LOCATION,
-        AgentExportRefusal::NotOwnerSession => key::AGENT_EXPORT_NOT_OWNER_SESSION,
-        AgentExportRefusal::OwnerLocked => key::AGENT_EXPORT_OWNER_LOCKED,
-        AgentExportRefusal::NotCustodian => key::AGENT_EXPORT_NOT_CUSTODIAN,
-        AgentExportRefusal::NotConnected => key::AGENT_EXPORT_NOT_CONNECTED,
-        AgentExportRefusal::FileExists => key::AGENT_EXPORT_FILE_EXISTS,
-        AgentExportRefusal::LocationDenied => key::AGENT_EXPORT_LOCATION_DENIED,
-        AgentExportRefusal::LocationMissing => key::AGENT_EXPORT_LOCATION_MISSING,
-        AgentExportRefusal::CredentialsGone => key::AGENT_EXPORT_CREDENTIALS_GONE,
-        AgentExportRefusal::Vault(reason) => vault_export_key(reason),
-        AgentExportRefusal::Timeout => key::AGENT_EXPORT_TIMEOUT,
-        AgentExportRefusal::Transport => key::AGENT_EXPORT_TRANSPORT,
-        AgentExportRefusal::Other => key::AGENT_EXPORT_OTHER,
+        AgentRefusal::ConfirmationRequired => "backend.agent.confirmation_required",
+        AgentRefusal::DesktopRequired => "backend.agent.desktop_required",
+        AgentRefusal::CreationPairingRequired => "backend.agent.creation_pairing_required",
+        AgentRefusal::MetadataPending => "backend.agent.metadata_pending",
+        AgentRefusal::AccessPolicyInvalid => "backend.agent.access_policy_invalid",
+        AgentRefusal::PersonaInvalid => "backend.agent.persona_invalid",
+        AgentRefusal::StaleBase => "backend.agent.stale_base",
+        AgentRefusal::Unsupported => "backend.agent.unsupported",
+        AgentRefusal::PrxUnconfigured => "backend.agent.prx.unconfigured",
+        AgentRefusal::HostNotSupported => "backend.agent.host_not_supported",
+        AgentRefusal::PrxMissing => "backend.agent.prx.missing",
+        AgentRefusal::ProviderMissing => "backend.agent.prx.provider_missing",
+        AgentRefusal::CredentialUnavailable => "backend.agent.prx.credential_unavailable",
+        AgentRefusal::RuntimeStale => "backend.agent.prx.runtime_stale",
+        AgentRefusal::AncestorRejected => "backend.agent.prx.ancestor_rejected",
+        AgentRefusal::ManifestUnavailable => "backend.agent.prx.manifest_unavailable",
+        AgentRefusal::UnsupportedPlatform => "backend.agent.prx.unsupported_platform",
+        AgentRefusal::PrxCommand => "backend.agent.prx.command",
+        AgentRefusal::PrxSpawn => "backend.agent.prx.spawn",
+        AgentRefusal::Timeout => "backend.agent.timeout",
+        AgentRefusal::Transport => "backend.agent.transport",
+        AgentRefusal::Other(_) => "backend.agent.other",
     }
 }
 
-/// The locale key that says why the vault could not give the credentials
-/// out, one per reason. A mode mismatch is a refused setup, never this.
-fn vault_export_key(reason: VaultReason) -> &'static str {
-    match reason {
-        VaultReason::Missing => key::AGENT_EXPORT_VAULT_MISSING,
-        VaultReason::InitPending => key::AGENT_EXPORT_VAULT_INIT_PENDING,
-        VaultReason::ImportPending => key::AGENT_EXPORT_VAULT_IMPORT_PENDING,
-        VaultReason::Corrupt => key::AGENT_EXPORT_VAULT_CORRUPT,
-        VaultReason::Permission => key::AGENT_EXPORT_VAULT_PERMISSION,
-        VaultReason::Locked => key::AGENT_EXPORT_VAULT_LOCKED,
-        VaultReason::Busy => key::AGENT_EXPORT_VAULT_BUSY,
-        VaultReason::PrimaryUnavailable => key::AGENT_EXPORT_VAULT_PRIMARY_UNAVAILABLE,
-        VaultReason::ModeMismatch => key::AGENT_EXPORT_NOT_CUSTODIAN,
+/// The message of a failed agent effect: the refusal's key. A creation
+/// that failed on the runtime is shown as created with its runtime settings
+/// not applied, since the daemon stages the agent before it publishes it.
+pub fn failure_key(method: &str, error: &BusError) -> Option<&'static str> {
+    if !crate::plan::agents::is_agent_method(method) && method != RUNTIME_METHOD {
+        return None;
+    }
+    let refusal = refusal_of(error);
+    if method == methods::AGENT_CREATE && runtime_refusal(&refusal) {
+        return Some("backend.agent.create.runtime_not_applied");
+    }
+    Some(refusal_key(&refusal))
+}
+
+/// The creation request as the daemon's custody status describes it.
+pub fn creation_of(custody: &Value) -> Option<AgentCreation> {
+    let request_id = text_of(custody, &["requestId", "request_id"]);
+    if request_id.is_empty() {
+        return None;
+    }
+    let refused = pick(custody, &["error"]);
+    let state = if refused.is_object() {
+        AgentCreationState::Failed(refusal_of_code(&text_of(
+            refused,
+            &["reasonCode", "reason_code"],
+        )))
+    } else {
+        AgentCreationState::from_custody_state(&text_of(custody, &["state"]))
+    };
+    let agent_anchor = Some(text_of(custody, &["agentAnchor", "agent_anchor"]))
+        .filter(|anchor| !anchor.is_empty());
+    Some(AgentCreation {
+        request_id,
+        // The phone checks its own hash of the plan; this desktop shows none.
+        request_hash: String::new(),
+        state,
+        agent_anchor,
+        expires_at: number_of(custody, &["expiresAt", "expires_at"]),
+    })
+}
+
+fn mode_of(token: &str) -> AgentAccessMode {
+    match token {
+        "contacts" => AgentAccessMode::Contacts,
+        "allowlist" => AgentAccessMode::Allowlist,
+        "open" => AgentAccessMode::Open,
+        // Owner only, and an unknown token too: the most restrictive reading.
+        _ => AgentAccessMode::Owner,
     }
 }
 
-impl Translator {
-    /// Custodian links remembered from earlier sessions: told to the store
-    /// once the accounts are listed.
-    pub fn restore_custodians(&mut self, links: BTreeMap<AccountId, AccountId>) {
-        self.agents.custodians.extend(links);
+fn access_of(value: &Value) -> AgentAccess {
+    let allowed = pick(value, &["allowedHumans", "allowed_humans"])
+        .as_array()
+        .map(|list| list.iter().filter_map(|a| a.as_str().map(str::to_owned)).collect())
+        .unwrap_or_default();
+    AgentAccess {
+        dm: mode_of(&text_of(value, &["dm"])),
+        group_inviters: mode_of(&text_of(value, &["groupInviters", "group_inviters"])),
+        allowed_humans: allowed,
     }
+}
 
-    /// The link a ceremony made, as an event.
-    pub(super) fn custodian_made(
-        &mut self,
-        agent: &AccountId,
-        custodian: &AccountId,
-    ) -> Vec<DomainEvent> {
-        self.agents.custodians.insert(agent.clone(), custodian.clone());
-        self.announce_custodian(agent)
+/// An agent record as the daemon reports it. A record without an anchor is
+/// not one this desktop can show.
+pub fn record_of(value: &Value) -> Option<AgentRecord> {
+    let agent_anchor = text_of(value, &["agentAnchor", "agent_anchor"]);
+    if agent_anchor.is_empty() {
+        return None;
     }
+    let persona = pick(value, &["persona"]);
+    Some(AgentRecord {
+        agent_anchor,
+        custodian_anchor: text_of(value, &["custodianAnchor", "custodian_anchor"]),
+        persona: AgentPersona {
+            name: text_of(persona, &["name"]),
+            avatar: text_of(persona, &["avatar"]),
+            responsibility: text_of(persona, &["responsibility"]),
+        },
+        lifecycle: AgentLifecycle::from_code(&text_of(value, &["lifecycle"])),
+        access: access_of(pick(value, &["access"])),
+        role: text_of(value, &["role"]),
+        base: pick(value, &["base"]).clone(),
+    })
+}
 
-    /// The custodian of the listed AI participant `agent`: the one the
-    /// daemon reported, else the one this desktop knows.
-    pub(super) fn custodian_listed(&mut self, agent: &AccountId, row: &Value) -> Vec<DomainEvent> {
-        let reported = ["custodian_account_id", "custodian_account", "custodian"]
-            .into_iter()
-            .find_map(|field| row[field].as_str().filter(|id| !id.is_empty()));
-        if let Some(custodian) = reported {
-            self.agents.custodians.insert(agent.clone(), AccountId::new(custodian));
-        }
-        self.announce_custodian(agent)
+fn job_of(value: &Value) -> Option<AgentJob> {
+    let id = text_of(value, &["id"]);
+    let kind = match text_of(value, &["kind"]).as_str() {
+        "cron" => AgentJobKind::Cron,
+        "xin_task" => AgentJobKind::XinTask,
+        "xin_goal" => AgentJobKind::XinGoal,
+        _ => return None,
+    };
+    if id.is_empty() {
+        return None;
     }
+    let creator = text_of(value, &["creatorAgent", "creator_agent"]);
+    Some(AgentJob { id, kind, creator_agent: Some(creator).filter(|creator| !creator.is_empty()) })
+}
 
-    fn announce_custodian(&mut self, agent: &AccountId) -> Vec<DomainEvent> {
-        let Some(custodian) = self.agents.custodians.get(agent).cloned() else {
-            return Vec::new();
-        };
-        if !self.agents.announced.insert((agent.clone(), custodian.clone())) {
-            return Vec::new();
-        }
-        vec![DomainEvent::CustodianKnown { agent: agent.clone(), custodian }]
+fn approval_of(value: &Value) -> Option<AgentApproval> {
+    let approval_id = text_of(value, &["approvalId", "approval_id"]);
+    if approval_id.is_empty() {
+        return None;
     }
+    Some(AgentApproval {
+        approval_id,
+        conversation_id: text_of(value, &["conversationId", "conversation_id"]),
+        status: text_of(value, &["status"]),
+        expires_at: number_of(value, &["expiresAt", "expires_at"]),
+    })
+}
 
-    /// The daemon wrote the bundle.
-    pub(super) fn export_done(&mut self, body: &Value, answer: &Value) -> Vec<DomainEvent> {
-        let path = answer["path"].as_str().unwrap_or_else(|| text(body, "path"));
-        vec![DomainEvent::AgentExportUpdated(AgentExport {
-            account_id: AccountId::new(text(body, "account")),
-            path: path.to_owned(),
-            phase: AgentExportPhase::Exported,
-        })]
+/// The runtime status the host answered, without any secret.
+pub fn host_status_of(answer: &Value) -> AgentHostStatus {
+    let state = match answer["state"].as_str().unwrap_or_default() {
+        "absent" => AgentHostState::Absent,
+        "running" => AgentHostState::Running,
+        "stopped" => AgentHostState::Stopped,
+        "stale" => AgentHostState::Stale,
+        "installing" => AgentHostState::Installing,
+        _ => AgentHostState::Unknown,
+    };
+    let version = answer["prx_version"].as_str().unwrap_or_default();
+    AgentHostStatus {
+        state,
+        prx_version: Some(version.to_owned()).filter(|v| !v.is_empty()),
+        refusal: None,
     }
+}
 
-    /// The export did not happen. `message` is the failed effect's message,
-    /// the refusal's locale key (see [`Translator::agent_failure`]).
-    pub(super) fn export_failed(
-        &self,
-        body: &Value,
-        code: &FailureCode,
-        message: &str,
-    ) -> Vec<DomainEvent> {
-        let refusal = match code {
-            FailureCode::Timeout => AgentExportRefusal::Timeout,
-            FailureCode::Transport => AgentExportRefusal::Transport,
-            _ => ALL
+/// The events of a performed agent request.
+pub fn effect_events(method: &str, answer: &Value) -> Vec<DomainEvent> {
+    match method {
+        methods::AGENT_CREATE | methods::AGENT_OPERATION_GET => {
+            creation_of(pick(answer, &["custody"]))
+                .map(DomainEvent::AgentCreationUpdated)
                 .into_iter()
-                .chain(
-                    VaultReason::ALL
-                        .into_iter()
-                        .filter(|reason| *reason != VaultReason::ModeMismatch)
-                        .map(AgentExportRefusal::Vault),
-                )
-                .find(|refusal| export_refusal_key(*refusal) == message)
-                .unwrap_or(AgentExportRefusal::Other),
-        };
-        vec![DomainEvent::AgentExportUpdated(AgentExport {
-            account_id: AccountId::new(text(body, "account")),
-            path: text(body, "path").to_owned(),
-            phase: AgentExportPhase::Refused(refusal),
-        })]
-    }
-
-    /// The message of a failed AI participant request: the refusal's key.
-    pub(super) fn agent_failure(&self, method: &str, error: &BusError) -> Option<String> {
-        (method == methods::AGENT_EXPORT_CREDENTIALS)
-            .then(|| export_refusal_key(export_refusal(error)).to_owned())
+                .collect()
+        }
+        methods::AGENT_PERSONA_EDIT | methods::AGENT_ACCESS_SET | methods::AGENT_DELETE => {
+            record_of(pick(answer, &["record"]))
+                .map(|record| DomainEvent::AgentRecordUpdated(Box::new(record)))
+                .into_iter()
+                .collect()
+        }
+        RUNTIME_METHOD => vec![DomainEvent::AgentHostUpdated(host_status_of(answer))],
+        _ => Vec::new(),
     }
 }
 
-/// Every refusal an export can come to.
-const ALL: [AgentExportRefusal; 12] = [
-    AgentExportRefusal::NoLocation,
-    AgentExportRefusal::NotOwnerSession,
-    AgentExportRefusal::OwnerLocked,
-    AgentExportRefusal::NotCustodian,
-    AgentExportRefusal::NotConnected,
-    AgentExportRefusal::FileExists,
-    AgentExportRefusal::LocationDenied,
-    AgentExportRefusal::LocationMissing,
-    AgentExportRefusal::CredentialsGone,
-    AgentExportRefusal::Timeout,
-    AgentExportRefusal::Transport,
-    AgentExportRefusal::Other,
-];
+/// The events of a read of agent state.
+pub fn read_events(fetch: &Fetch, value: &Value) -> Vec<DomainEvent> {
+    match fetch {
+        Fetch::AgentList => {
+            let page = pick(value, &["page"]);
+            let records = page["records"]
+                .as_array()
+                .map(|list| list.iter().filter_map(record_of).collect())
+                .unwrap_or_default();
+            vec![DomainEvent::AgentsListed {
+                records,
+                journal_cursor: text_of(page, &["journalCursor", "journal_cursor"]),
+            }]
+        }
+        Fetch::AgentApprovals => {
+            let approvals = value["approvals"]
+                .as_array()
+                .map(|list| list.iter().filter_map(approval_of).collect())
+                .unwrap_or_default();
+            vec![DomainEvent::AgentApprovalsUpdated(approvals)]
+        }
+        Fetch::AgentJobs(anchor) => {
+            let jobs = value["jobs"]
+                .as_array()
+                .map(|list| list.iter().filter_map(job_of).collect())
+                .unwrap_or_default();
+            vec![DomainEvent::AgentJobsUpdated { agent: anchor.clone(), jobs }]
+        }
+        Fetch::AgentOperation(_) => creation_of(pick(value, &["custody"]))
+            .map(DomainEvent::AgentCreationUpdated)
+            .into_iter()
+            .collect(),
+        _ => Vec::new(),
+    }
+}
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
-    fn daemon(code: &str, message: &str) -> BusError {
-        BusError::daemon(code, message)
-    }
-
-    fn io(kind: &str, errno: Option<i32>) -> BusError {
-        BusError::Daemon {
-            retry_after_ms: None,
-            code: "ValidationFailed".to_owned(),
-            message: "words that may change".to_owned(),
-            reason_code: None,
-            details: None,
-            cause: Some(Box::new(IoCause { kind: kind.to_owned(), raw_os_error: errno })),
-        }
-    }
-
     #[test]
-    fn each_refusal_the_daemon_makes_is_told_apart() {
-        let cases = [
-            ("CustodySetupInvalid", "custody setup invalid", AgentExportRefusal::NotCustodian),
-            ("NetworkingPending", "networking is pending", AgentExportRefusal::NotConnected),
-            ("CustodyVaultUnavailable", "vault", AgentExportRefusal::CredentialsGone),
-            ("AccountNotOpen", "account not open: a", AgentExportRefusal::OwnerLocked),
-            (
-                "ValidationFailed",
-                "local bus peer credential check failed",
-                AgentExportRefusal::NotOwnerSession,
-            ),
-            ("ValidationFailed", "something new", AgentExportRefusal::Other),
-        ];
-        for (code, message, expected) in cases {
-            assert_eq!(export_refusal(&daemon(code, message)), expected, "{code}: {message}");
-        }
-        assert_eq!(export_refusal(&BusError::Timeout), AgentExportRefusal::Timeout);
+    fn a_custody_status_maps_each_daemon_state() {
+        let pending = json!({"custody": {"requestId": "r-1", "state": "authorization_pending",
+            "expiresAt": "1900000000"}});
+        let creation = creation_of(&pending["custody"]).expect("a request id");
+        assert_eq!(creation.state, AgentCreationState::PendingPhone);
+        assert_eq!(creation.expires_at, Some(1_900_000_000));
+        let done = json!({"requestId": "r-1", "state": "complete", "agentAnchor": "anc"});
+        assert_eq!(creation_of(&done).map(|c| c.state), Some(AgentCreationState::Created));
+        let refused = json!({"requestId": "r-1", "state": "refused",
+            "error": {"reasonCode": "prx_spawn"}});
         assert_eq!(
-            export_refusal(&BusError::Transport("gone".to_owned())),
-            AgentExportRefusal::Transport
+            creation_of(&refused).map(|c| c.state),
+            Some(AgentCreationState::Failed(AgentRefusal::PrxSpawn))
         );
     }
 
     #[test]
-    fn a_file_system_refusal_is_told_by_its_cause_whatever_the_words() {
-        let cases = [
-            (io("AlreadyExists", Some(17)), AgentExportRefusal::FileExists),
-            (io("AlreadyExists", None), AgentExportRefusal::FileExists),
-            (io("Other", Some(17)), AgentExportRefusal::FileExists),
-            (io("NotFound", Some(2)), AgentExportRefusal::LocationMissing),
-            (io("PermissionDenied", Some(13)), AgentExportRefusal::LocationDenied),
-            (io("IsADirectory", None), AgentExportRefusal::LocationDenied),
-            (io("Other", Some(30)), AgentExportRefusal::LocationDenied),
-            (io("TimedOut", Some(60)), AgentExportRefusal::Other),
-        ];
-        for (error, expected) in cases {
-            assert_eq!(export_refusal(&error), expected, "{error:?}");
-        }
+    fn a_record_reads_both_spellings_and_keeps_its_base() {
+        let camel = json!({
+            "agentAnchor": "anc", "custodianAnchor": "owner", "lifecycle": "U", "role": "named",
+            "persona": {"name": "N", "avatar": "preset:spark:teal", "responsibility": "R"},
+            "access": {"dm": "contacts", "groupInviters": "owner", "allowedHumans": []},
+            "base": {"id": "b"},
+        });
+        let record = record_of(&camel).expect("an anchor");
+        assert_eq!(record.lifecycle, AgentLifecycle::Active);
+        assert_eq!(record.access.dm, AgentAccessMode::Contacts);
+        assert_eq!(record.base, json!({"id": "b"}));
+        let snake = json!({"agent_anchor": "anc", "lifecycle": "X"});
+        assert_eq!(record_of(&snake).map(|r| r.lifecycle), Some(AgentLifecycle::Retired));
+        assert!(record_of(&json!({"lifecycle": "U"})).is_none());
     }
 
     #[test]
-    fn without_a_cause_the_words_of_a_file_system_refusal_are_not_read() {
-        // The same words the daemon uses today, but no structured cause:
-        // not guessed from the text.
-        for message in [
-            "io error: File exists (os error 17)",
-            "io error: No such file or directory (os error 2)",
-            "io error: Permission denied (os error 13)",
-        ] {
-            assert_eq!(
-                export_refusal(&daemon("ValidationFailed", message)),
-                AgentExportRefusal::Other,
-                "{message}"
-            );
-        }
+    fn an_unknown_access_token_is_the_owner_only() {
+        let value = json!({"dm": "everyone", "group_inviters": "open"});
+        let access = access_of(&value);
+        assert_eq!(access.dm, AgentAccessMode::Owner);
+        assert_eq!(access.group_inviters, AgentAccessMode::Open);
     }
 
     #[test]
-    fn every_refusal_has_its_own_locale_key() {
-        let keys: BTreeSet<&str> = ALL.into_iter().map(export_refusal_key).collect();
-        assert_eq!(keys.len(), ALL.len());
-        assert!(keys.iter().all(|k| key::ALL.contains(k)), "each key is in the table");
+    fn a_refusal_keeps_its_typed_code_and_has_a_key() {
+        let error = BusError::Daemon {
+            retry_after_ms: None,
+            code: "ValidationFailed".into(),
+            message: "english".into(),
+            reason_code: Some("stale_base".into()),
+            details: None,
+            cause: None,
+        };
+        assert_eq!(refusal_of(&error), AgentRefusal::StaleBase);
+        assert_eq!(refusal_key(&refusal_of(&error)), "backend.agent.stale_base");
+        assert_eq!(refusal_key(&AgentRefusal::Other("x".into())), "backend.agent.other");
+    }
+
+    #[test]
+    fn a_runtime_failure_of_a_creation_says_it_was_created_without_runtime() {
+        let error = BusError::Daemon {
+            retry_after_ms: None,
+            code: "prx_failed".into(),
+            message: String::new(),
+            reason_code: Some("prx_unconfigured".into()),
+            details: None,
+            cause: None,
+        };
+        assert_eq!(
+            failure_key(methods::AGENT_CREATE, &error),
+            Some("backend.agent.create.runtime_not_applied")
+        );
+        assert_eq!(failure_key("contact.block", &error), None);
+    }
+
+    #[test]
+    fn the_runtime_status_names_its_state_without_secrets() {
+        let status = host_status_of(&json!({"state": "running", "prx_version": "0.1.0"}));
+        assert_eq!(status.state, AgentHostState::Running);
+        assert_eq!(status.prx_version.as_deref(), Some("0.1.0"));
+        assert_eq!(host_status_of(&json!({"state": "odd"})).state, AgentHostState::Unknown);
+    }
+
+    #[test]
+    fn jobs_and_approvals_read_their_rows() {
+        let jobs = json!({"jobs": [
+            {"id": "j-1", "kind": "xin_goal", "creator_agent": "a_x"},
+            {"id": "j-2", "kind": "unknown"},
+        ]});
+        let events = read_events(&Fetch::AgentJobs("anc".into()), &jobs);
+        let [DomainEvent::AgentJobsUpdated { agent, jobs }] = events.as_slice() else {
+            panic!("test: a jobs update")
+        };
+        assert_eq!(agent, "anc");
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].kind, AgentJobKind::XinGoal);
+        let approvals = json!({"approvals": [{"approval_id": "ap", "status": "pending"}]});
+        assert!(matches!(
+            read_events(&Fetch::AgentApprovals, &approvals).as_slice(),
+            [DomainEvent::AgentApprovalsUpdated(list)] if list.len() == 1
+        ));
     }
 }

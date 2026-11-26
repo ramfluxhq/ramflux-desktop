@@ -24,7 +24,8 @@
 //! - [`task`]: starting, accepting, declining, cancelling and resolving
 //!   conversation tasks.
 //! - [`backup`]: full backup and restore jobs.
-//! - [`agents`]: exporting the credentials of an AI participant.
+//! - [`agents`]: named agents: creation, persona, access, jobs and approvals,
+//!   and the PRX runtime on this computer (in process, no bus call).
 //! - [`call`]: placing, answering, declining and hanging up voice calls.
 
 pub mod agents;
@@ -42,8 +43,8 @@ pub mod surface;
 pub mod task;
 
 use ramflux_desktop_core::{
-    AccountId, ContextId, ContextKind, Effect, FailureCode, MomentId, ObjectId, PinSource,
-    SecretInput, methods,
+    AccountId, AgentRuntimeAction, ContextId, ContextKind, Effect, FailureCode, MomentId, ObjectId,
+    PinSource, SecretInput, methods,
 };
 use serde_json::{Value, json};
 
@@ -141,6 +142,18 @@ pub enum Plan {
         /// Destination chosen by the user.
         path: String,
     },
+    /// Run a PRX runtime action on this computer, in process. The provider
+    /// key is handed only to PRX's key callback.
+    PrxHost {
+        /// The action.
+        action: AgentRuntimeAction,
+        /// The provider (install only).
+        provider: String,
+        /// The model (install only).
+        model: String,
+        /// The provider key (install only).
+        key: Option<SecretInput>,
+    },
     /// The effect cannot be performed.
     Refuse {
         /// Classification.
@@ -163,10 +176,17 @@ pub struct Planned {
 
 /// Plans `effect` for the scope's `account` (`None` for the daemon scope).
 pub fn plan(account: Option<&AccountId>, effect: Effect, known: &impl Known) -> Planned {
+    if let Effect::AgentRuntime { action, provider, model, key } = effect {
+        return Planned {
+            method: agents::RUNTIME_METHOD.to_owned(),
+            body: json!({ "action": agents::runtime_action_name(action), "provider": provider }),
+            plan: Plan::PrxHost { action, provider, model, key },
+        };
+    }
     let (method, body, secrets) = match effect {
         Effect::Call { method, body } => (method, body, Vec::new()),
         Effect::SecretCall { method, body, secrets } => (method, body, secrets),
-        Effect::RequireConfirmation { .. } => {
+        Effect::RequireConfirmation { .. } | Effect::AgentRuntime { .. } => {
             return Planned {
                 method: String::new(),
                 body: Value::Null,
@@ -332,7 +352,7 @@ fn map(
         | methods::RESTORE_VERIFY
         | methods::RESTORE_INSTALL
         | methods::BACKUP_CANCEL => backup::backup_effect(acct, method, body, secrets),
-        methods::AGENT_EXPORT_CREDENTIALS => agents::agent_effect(method, body),
+        _ if agents::is_agent_method(method) => agents::agent_effect(method, body, account),
         methods::DIAGNOSTICS_EXPORT => Plan::Diagnostics { path: text(body, "path").to_owned() },
         methods::CONTEXT_PIN | methods::CONTEXT_UNPIN => Plan::Local,
         _ if acct.is_none() => refuse_invalid("this action needs an unlocked account"),

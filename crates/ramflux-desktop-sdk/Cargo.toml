@@ -19,6 +19,7 @@ test-support = ["tokio/test-util"]
 [dependencies]
 parking_lot.workspace = true
 ramflux-crypto.workspace = true
+ramflux-prx-client.workspace = true
 ramflux-protocol.workspace = true
 ramflux-desktop-core.workspace = true
 ramflux-sdk.workspace = true
