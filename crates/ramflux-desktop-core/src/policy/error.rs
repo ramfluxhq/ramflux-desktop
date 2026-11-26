@@ -285,6 +285,16 @@ pub enum IntentError {
     /// The agent is not in the roster the desktop holds.
     #[error("unknown agent {0}")]
     AgentRecordUnknown(String),
+    /// The agent approval is not waiting for an answer (unknown, or
+    /// already decided).
+    #[error("agent approval {0} is not waiting for an answer")]
+    AgentApprovalUnknown(String),
+    /// The agent approval has expired.
+    #[error("agent approval {0} has expired")]
+    AgentApprovalExpired(String),
+    /// The account answering is not the owner of the agent the approval names.
+    #[error("agent approval {0} belongs to another account")]
+    AgentApprovalOwner(String),
     /// The agent is retired (state X): it is read only.
     #[error("agent {0} is retired")]
     AgentRecordRetired(String),

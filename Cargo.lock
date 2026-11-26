@@ -7012,6 +7012,7 @@ dependencies = [
 name = "ramflux-desktop-sdk"
 version = "0.2.6"
 dependencies = [
+ "chrono",
  "parking_lot",
  "ramflux-crypto",
  "ramflux-desktop-core",

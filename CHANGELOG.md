@@ -7,6 +7,19 @@ Versioning.
 
 ## [Unreleased]
 
+### Security
+
+- Agent management (G19): the PRX provider key field is now masked and kept
+  out of the clipboard, and the key is trimmed before use. An agent's
+  approval names the agent (from the owner's roster), the tool and the
+  preview as plain clipped text marked as the agent's own words, reads its
+  RFC 3339 expiry and offers no answer once expired; the answer is refused
+  on an account mismatch. Agent mutations no longer carry a frame operation
+  id, which the daemon refuses (`CustodySetupInvalid`). Jobs are touched
+  only for a live agent of the owner. `prx` is resolved once to an absolute
+  path (relative search path entries, and folders or files others can write
+  or another user owns, are refused) and the install confirmation shows it.
+
 ### Added
 
 - App lock (Settings › Account › App lock, off by default): when on, the

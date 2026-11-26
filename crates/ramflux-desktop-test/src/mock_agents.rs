@@ -191,6 +191,7 @@ mod tests {
             access: AgentAccess::owner_only(),
             role: "named".into(),
             base: json!({"id": "base-1"}),
+            runtime_name: String::new(),
         }
     }
 

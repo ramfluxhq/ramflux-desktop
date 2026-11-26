@@ -17,6 +17,7 @@ bus-trace = []
 test-support = ["tokio/test-util"]
 
 [dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 parking_lot.workspace = true
 ramflux-crypto.workspace = true
 ramflux-prx-client.workspace = true

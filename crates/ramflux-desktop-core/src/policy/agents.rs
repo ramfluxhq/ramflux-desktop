@@ -93,6 +93,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             Ok(confirmed(p, methods::AGENT_DELETE, body))
         }),
         IntentKind::AgentJob { agent, kind, id, action } => p.human_only(WHAT).and_then(|()| {
+            live_record(p.store, agent)?;
             if id.trim().is_empty() {
                 return Err(IntentError::Empty("job id"));
             }
@@ -111,12 +112,29 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             if agent.trim().is_empty() {
                 return Err(IntentError::Empty("agent anchor"));
             }
+            live_record(p.store, agent)?;
             Ok(Decision::Call(methods::AGENT_JOB_LIST, json!({ "agent_anchor": agent })))
         }),
-        IntentKind::AgentApprovalDecide { approval_id, approved } => {
+        IntentKind::AgentApprovalDecide { owner_id, approval_id, approved } => {
             p.human_only(WHAT).and_then(|()| {
                 if approval_id.trim().is_empty() {
                     return Err(IntentError::Empty("approval id"));
+                }
+                check_agent_custodian(p.store, owner_id).map_err(IntentError::AgentCustody)?;
+                let approval = p
+                    .store
+                    .agent_approvals()
+                    .iter()
+                    .find(|a| a.approval_id == *approval_id && a.status == "pending")
+                    .ok_or_else(|| IntentError::AgentApprovalUnknown(approval_id.clone()))?;
+                if approval.is_expired(p.now.0) {
+                    return Err(IntentError::AgentApprovalExpired(approval_id.clone()));
+                }
+                if p.store
+                    .agent_of_approval(approval)
+                    .is_some_and(|record| record.custodian_anchor != owner_id.as_str())
+                {
+                    return Err(IntentError::AgentApprovalOwner(approval_id.clone()));
                 }
                 let decision = if *approved { "approved" } else { "denied" };
                 Ok(Decision::Call(

@@ -233,8 +233,9 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::RevokeStandingPressed { approval_id } => {
             IntentKind::RevokeStandingApproval { approval_id: approval_id.clone() }
         }
-        UiEventKind::AgentApprovalPressed { approval_id, approved } => {
+        UiEventKind::AgentApprovalPressed { owner_id, approval_id, approved } => {
             IntentKind::AgentApprovalDecide {
+                owner_id: owner_id.clone(),
                 approval_id: approval_id.clone(),
                 approved: *approved,
             }

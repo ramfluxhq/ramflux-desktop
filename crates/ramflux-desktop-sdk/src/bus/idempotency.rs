@@ -26,12 +26,29 @@
 /// in a receipt; `contact.card.export` only reads this account's card.
 const NOT_MUTATIONS: [&str; 3] = ["node.probe", "object.get", "contact.card.export"];
 
+/// The methods the daemon's agent module answers. It refuses any frame of
+/// these that carries an `operation_id` (`CustodySetupInvalid`): their
+/// retries are keyed inside the body instead (a creation's `request_id`).
+/// The `rf` CLI sends them without a frame key either.
+const AGENT_UNKEYED: [&str; 10] = [
+    "agent.create",
+    "agent.creation.decide",
+    "agent.operation.get",
+    "agent.list",
+    "agent.get",
+    "agent.watch",
+    "agent.delete",
+    "agent.retire",
+    "agent.persona.edit",
+    "agent.access.set",
+];
+
 /// Prefix of desktop keys (readable in daemon traces).
 const KEY_PREFIX: &str = "desk-op-";
 
 /// Whether an effect request with `method` changes daemon state.
 pub fn is_mutation(method: &str) -> bool {
-    !NOT_MUTATIONS.contains(&method)
+    !NOT_MUTATIONS.contains(&method) && !AGENT_UNKEYED.contains(&method)
 }
 
 /// A fresh retry key.
@@ -61,7 +78,10 @@ mod tests {
         assert!(is_mutation("contact.block"));
         assert!(!is_mutation("node.probe"));
         assert!(!is_mutation("object.get"));
-        assert!(is_mutation("agent.create"));
-        assert!(is_mutation("agent.delete"));
+        // The daemon refuses a frame key on these.
+        assert!(!is_mutation("agent.create"));
+        assert!(!is_mutation("agent.delete"));
+        assert!(!is_mutation("agent.persona.edit"));
+        assert!(!is_mutation("agent.access.set"));
     }
 }

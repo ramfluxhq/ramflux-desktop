@@ -3,7 +3,8 @@
 
 //! The PRX runtime panel (derived #32): its state on this computer, and the
 //! install, status, restart, stop and uninstall actions. The provider key
-//! is typed into a masked field, taken once into a [`SecretInput`] for the
+//! is typed into a masked field (shown as dots, kept out of the clipboard;
+//! the eye toggle only reveals it on request), taken once into a [`SecretInput`] for the
 //! install, and cleared from the field at once. It is never shown again,
 //! never logged and never kept by this panel.
 
@@ -53,7 +54,10 @@ impl Inputs {
                 cx,
                 |i| i,
             ),
-            key: crate::i18n::localized_input("agents.runtime.key_placeholder", window, cx, |i| i),
+            // Masked: the text is dots, and a masked field stays out of the clipboard.
+            key: crate::i18n::localized_input("agents.runtime.key_placeholder", window, cx, |i| {
+                i.masked(true)
+            }),
         }
     }
 }
@@ -265,7 +269,7 @@ impl AgentsPanel {
     fn install_runtime(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let provider = self.runtime_inputs.provider.read(cx).value().trim().to_owned();
         let model = self.runtime_inputs.model.read(cx).value().trim().to_owned();
-        let key = SecretInput::new(self.runtime_inputs.key.read(cx).value().to_string());
+        let key = SecretInput::new(self.runtime_inputs.key.read(cx).value().trim().to_owned());
         self.runtime_inputs.key.update(cx, |input, cx| input.set_value("", window, cx));
         let nonce = self.next_host_nonce();
         let kind = IntentKind::AgentRuntime {
