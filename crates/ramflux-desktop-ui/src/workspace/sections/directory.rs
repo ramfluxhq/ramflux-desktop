@@ -490,10 +490,12 @@ pub(crate) fn placeholder(
 /// typed gap, translated. The control stays visible and disabled.
 pub(crate) fn unavailable(gap: ramflux_desktop_sdk::business::ContractGap) -> SharedString {
     use ramflux_desktop_sdk::business::ContractGap;
+    if let ContractGap::Agent(reason) = gap {
+        return tr(reason.key());
+    }
     tr(match gap {
+        ContractGap::Agent(_) => "sections.unavailable.stranger_actions",
         ContractGap::StrangerActions => "sections.unavailable.stranger_actions",
-        ContractGap::AgentConfiguration => "sections.unavailable.agent_configuration",
-        ContractGap::AgentCreation => "sections.unavailable.agent_creation",
         ContractGap::AccountPrivacy => "settings_ui.privacy_unavailable",
         ContractGap::DevicePairingApproval => "settings_ui.pairing_unavailable",
         ContractGap::WebDeviceFacts => "settings_ui.source_unavailable",

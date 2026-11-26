@@ -5,8 +5,8 @@
 //! Each literal error frame (`vault_rows`, bytes as the daemon writes them)
 //! is answered by the fake daemon on the real SDK source, travels bus ->
 //! bridge -> event -> store, and is read where a person reads it: the
-//! ceremony and recovery panels, the status strip after a refused send, and
-//! the AI participant export view (panel and strip), in both languages.
+//! ceremony and recovery panels and the status strip after a refused send,
+//! in both languages.
 //! The interface language is process-wide: the tests hold the locale guard
 //! and end in English. One test per reason and path, each with a context and
 //! daemon of its own (a test that opens many windows leaves their bridges
@@ -22,13 +22,10 @@ use std::sync::Arc;
 use common::*;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Entity, TestAppContext, WindowHandle};
-use ramflux_desktop_core::{
-    AccountId, AgentExportPhase, CeremonyPhase, ContextId, FailureCode, RecoveryPhase,
-};
+use ramflux_desktop_core::{AccountId, CeremonyPhase, ContextId, FailureCode, RecoveryPhase};
 use ramflux_desktop_test::fake_custody::FakeCustody;
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::route::{EntryStep, Page};
-use ramflux_desktop_ui::settings::SettingsSection;
 use vault_rows::{ROWS, Row};
 
 type Handle = WindowHandle<gpui_kit::base::Root>;
@@ -247,75 +244,6 @@ fn send_row(cx: &mut TestAppContext, ix: usize) {
     finish(cx, handle, fake);
 }
 
-fn export_row(cx: &mut TestAppContext, ix: usize) {
-    let _locale = locale_guard();
-    let row = &ROWS[ix];
-    let name = row.reason_code;
-    arm(format!("agent export row: {name}"));
-    speak(cx, "en");
-    let custody = Arc::new(FakeCustody::new());
-    custody.set_live(true);
-    custody.add_account("acct-owner", "Me", "owner passphrase", false);
-    custody.add_agent("acct-bot", "Bot", "acct-owner");
-    custody.set_error_frame(Some(frame_of(row)));
-    let (fake, state, path) =
-        sdk_fake::start_with_custody(&format!("ui-vault-a{ix}"), custody.clone());
-    {
-        let mut state = state.lock().expect("state");
-        state.born_v3 = true;
-        state.accounts = Some(serde_json::json!({ "accounts": [], "account_details": [] }));
-    }
-    let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 1100.);
-    cx.update_window(handle.into(), |_, window, _| window.activate_window()).expect("window");
-    wait(cx, "the workspace", |cx| page(cx, &shell) == Page::Workspace);
-    wait(cx, "both listed", |cx| {
-        daemon(cx, &shell, |s| s.account(&AccountId::new("acct-bot")).is_some())
-    });
-    cx.update(|cx| {
-        shell.update(cx, |shell, cx| shell.open_settings_at(SettingsSection::Agents, cx))
-    });
-    wait(cx, "owner event stream", |_| fake.streaming("acct-owner"));
-    cx.run_until_parked();
-    in_window(cx, handle, |_, _| {});
-    click(cx, handle, "agent-export-acct-bot");
-    let dir = std::env::temp_dir().join(format!("rf-ui-vault-export-{}-{ix}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("dir");
-    let panel = cx.update(|cx| shell.read(cx).settings().read(cx).agents_panel().clone());
-    let target = dir.join("bot.bundle").to_string_lossy().into_owned();
-    in_window(cx, handle, move |window, cx| {
-        let input = panel.read(cx).location_input().clone();
-        input.update(cx, |input, cx| input.set_value(target, window, cx));
-    });
-    click(cx, handle, "agent-export-submit");
-    wait(cx, name, |cx| daemon(cx, &shell, |s| s.failures_total()) > 0);
-    let phase = daemon(cx, &shell, |s| {
-        s.agent_export(&AccountId::new("acct-bot")).map(|e| e.phase.clone())
-    });
-    assert_eq!(phase, Some(AgentExportPhase::Refused(row.export_refusal)), "{name}");
-    // The failed effect the store keeps says the same in words.
-    let failed = daemon(cx, &shell, |s| s.failures().last().cloned()).expect("a failure");
-    assert_eq!(failed.code, FailureCode::Daemon(row.wire_code.to_owned()), "{name}");
-    for locale in LOCALES {
-        speak(cx, locale);
-        assert!(
-            has_label(cx, handle, row.export.in_locale(locale)),
-            "{name} {locale}: the export view says {}",
-            row.export.in_locale(locale)
-        );
-        assert_eq!(
-            ramflux_desktop_ui::i18n::backend_text(&failed.message).to_string(),
-            row.export_backend.in_locale(locale),
-            "{name} {locale}: the failed effect"
-        );
-    }
-    speak(cx, "en");
-    // Nothing was written, whatever the reason.
-    assert!(std::fs::read_dir(&dir).expect("dir").next().is_none());
-    assert!(custody.exports().is_empty());
-    finish(cx, handle, fake);
-    let _ = std::fs::remove_dir_all(dir);
-}
-
 /// One test per reason on each path.
 macro_rules! rows {
     ($($ix:literal $name:ident),* $(,)?) => {
@@ -330,10 +258,6 @@ macro_rules! rows {
         mod refused_send {
             use super::*;
             $(#[gpui_kit::test] fn $name(cx: &mut TestAppContext) { send_row(cx, $ix) })*
-        }
-        mod agent_export {
-            use super::*;
-            $(#[gpui_kit::test] fn $name(cx: &mut TestAppContext) { export_row(cx, $ix) })*
         }
     };
 }

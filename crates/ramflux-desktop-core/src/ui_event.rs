@@ -293,6 +293,13 @@ pub enum UiEventKind {
         /// Standing approval.
         approval_id: StandingApprovalId,
     },
+    /// Allow or deny pressed on an agent's approval (D40).
+    AgentApprovalPressed {
+        /// The agent approval's id.
+        approval_id: String,
+        /// Allow (true) or deny (false).
+        approved: bool,
+    },
     /// A node address was submitted for discovery.
     AddNodeRequested {
         /// URL or node id.

@@ -1,38 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Settings · AI participants: the new-Agent wizard (whose Create is
-//! unavailable until this build runs `agent.create` with the person's
-//! approval on their phone), the list of AI accounts the open account
-//! custodies, and exporting an AI participant's one-shot credentials for
-//! the agent host.
+//! Settings · Agents (AGENT-IDENTITY-01): the PRX runtime on this computer,
+//! the new-agent wizard (D33–D38), the agents this account owns (persona,
+//! access, PRX jobs, removal) and the features the build shows as
+//! unavailable, each with its typed reason.
 //!
-//! What is shown comes from the store (the accounts the daemon lists, their
-//! kind and, where known, their custodian; the last export of each); this
-//! panel holds only what the owner is looking at and typing (view-local):
-//! the wizard, which AI participant's export form is open and the location
-//! typed in it.
+//! What is shown comes from the store (the agent records, the creation
+//! requests, the runtime status, the jobs). This panel holds only what the
+//! owner is typing and which form is open. The provider key is typed into a
+//! masked field, handed once to the runtime install and never kept here.
 //!
-//! The export asks the daemon to write the
-//! bundle; this panel never sees the credentials, only whether the file was
-//! written and where.
-//!
-//! An AI participant is never unlocked from here (or anywhere in this app):
-//! the agent host starts it from the exported credentials, and the list
-//! says so.
-//!
-//! - `rows`: the list and the export form.
+//! - `wizard`: the new-agent wizard and the creation states (D38).
+//! - `runtime`: the PRX runtime panel (install, status, restart, stop,
+//!   uninstall).
+//! - `rows`: the list of agents and their forms.
 
 mod rows;
+mod runtime;
 pub mod wizard;
+
+use std::time::Duration;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::{App, Context, Entity, Subscription, Window};
-use ramflux_desktop_core::{
-    Account, AccountId, AccountKind, AgentCustodyProblem, AgentExport, AgentExportPhase,
-    AgentExportRefusal, Intent, IntentKind, check_agent_custodian, check_agent_export,
-};
+use gpui_kit::prelude::*;
+use gpui_kit::{AnyElement, App, Context, Entity, Subscription, Task, Window, div};
+use ramflux_desktop_core::{AgentAccessMode, Intent, IntentKind, Store};
+use ramflux_desktop_sdk::plan::agents::{CREATION_POLL, pending_creation_reads};
+use ramflux_desktop_sdk::plan::fetch::Fetch;
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::tr;
@@ -41,48 +37,44 @@ use crate::root::IntentRoot;
 /// A part of the section, rendered by its setting item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Part {
+    Runtime,
     Create,
     List,
+    Unavailable,
 }
 
-/// An export sent and not answered yet.
-struct Awaiting {
-    agent: AccountId,
-    /// The record before the request: a different one is the answer.
-    before: Option<AgentExport>,
-    /// The failed effects counted then: a newer failure of this export is
-    /// the answer too (another effect failing says nothing about it).
-    failures: u64,
+/// The persona inputs of the edit form (name and responsibility).
+pub(super) struct PersonaInputs {
+    pub name: Entity<InputState>,
+    pub responsibility: Entity<InputState>,
 }
 
-impl Awaiting {
-    /// Whether `store` holds the answer to this export: a new record for
-    /// this AI participant, or a failure of this request. Another effect
-    /// failing says nothing about it.
-    fn answered(&self, store: &ramflux_desktop_core::Store) -> bool {
-        store.agent_export(&self.agent) != self.before.as_ref()
-            || store.failures_since(self.failures).iter().any(|failure| {
-                failure.method == ramflux_desktop_core::methods::AGENT_EXPORT_CREDENTIALS
-            })
-    }
+/// The form open under one agent's row.
+pub(super) enum Form {
+    /// Edit the persona (D08): name, avatar preset, responsibility.
+    Edit { agent: String, glyph: Option<&'static str>, tone: Option<&'static str> },
+    /// Edit who may reach the agent (D08 access).
+    Access { agent: String, dm: AgentAccessMode, group_inviters: AgentAccessMode },
+    /// The agent's PRX jobs (D10): pause, resume, remove.
+    Jobs { agent: String },
 }
 
-/// The AI participants section's view state.
+/// The agents section's view state.
 pub struct AgentsPanel {
     store: Entity<StoreHandle>,
     root: Entity<IntentRoot>,
-    /// The new-Agent wizard.
+    /// The new-agent wizard.
     wizard: Option<wizard::Wizard>,
-    /// The wizard's name field (retained across steps).
-    wizard_name: Entity<InputState>,
-    /// Where the credentials are written.
-    location: Entity<InputState>,
-    /// The AI participant whose export form is open.
-    exporting: Option<AccountId>,
-    /// The export that was sent.
-    awaiting: Option<Awaiting>,
-    /// Why the last export was not even sent (checked here first).
-    unsent: Option<(AccountId, AgentExportRefusal)>,
+    /// The wizard's typed fields.
+    wizard_inputs: wizard::Inputs,
+    /// The runtime install form's fields (the key is masked).
+    runtime_inputs: runtime::Inputs,
+    /// The persona edit form's fields.
+    persona_inputs: PersonaInputs,
+    /// The form open under one agent's row.
+    form: Option<Form>,
+    /// Polls the creations still waiting (every [`CREATION_POLL`]).
+    poll: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -94,12 +86,17 @@ impl AgentsPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let location =
-            crate::i18n::localized_input("agent.export.where", window, cx, |input| input);
-        let wizard_name =
-            crate::i18n::localized_input("agent_wizard.name_placeholder", window, cx, |input| {
-                input
-            });
+        let wizard_inputs = wizard::Inputs::new(window, cx);
+        let runtime_inputs = runtime::Inputs::new(window, cx);
+        let persona_inputs = PersonaInputs {
+            name: crate::i18n::localized_input("agent_wizard.name_placeholder", window, cx, |i| i),
+            responsibility: crate::i18n::localized_input(
+                "agent_wizard.responsibility_placeholder",
+                window,
+                cx,
+                |i| i,
+            ),
+        };
         let subscriptions = vec![
             cx.subscribe(&store, |this, _, event: &StoreEvent, cx| {
                 if matches!(event, StoreEvent::Changed(_)) {
@@ -107,7 +104,7 @@ impl AgentsPanel {
                     cx.notify();
                 }
             }),
-            cx.subscribe(&location, |_, _, event: &InputEvent, cx| {
+            cx.subscribe(&wizard_inputs.name, |_, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     cx.notify();
                 }
@@ -117,260 +114,160 @@ impl AgentsPanel {
             store,
             root,
             wizard: None,
-            wizard_name,
-            location,
-            exporting: None,
-            awaiting: None,
-            unsent: None,
+            wizard_inputs,
+            runtime_inputs,
+            persona_inputs,
+            form: None,
+            poll: None,
             _subscriptions: subscriptions,
         }
     }
 
-    /// The location input of the export form.
-    pub fn location_input(&self) -> &Entity<InputState> {
-        &self.location
+    /// The agent state of the open account's session.
+    fn state<'a>(&self, cx: &'a App) -> &'a Store {
+        self.store.read(cx).store()
     }
 
-    /// The AI participant whose export form is open.
-    pub fn exporting(&self) -> Option<&AccountId> {
-        self.exporting.as_ref()
+    /// Submits an intent through the root (its confirmation strip answers
+    /// the owner's yes or no, and resubmits when it is confirmed).
+    fn submit(&self, kind: IntentKind, window: &mut Window, cx: &mut Context<Self>) {
+        let intent = Intent::human(kind);
+        self.root.update(cx, |root, cx| root.submit(intent, window, cx));
     }
 
-    /// Whether an export was sent and has no answer yet.
-    pub fn is_exporting(&self) -> bool {
-        self.awaiting.is_some()
-    }
-
-    /// The account that would custody a new AI participant and export the
-    /// credentials: the open account.
-    pub(crate) fn owner(&self, cx: &App) -> Option<AccountId> {
-        self.store.read(cx).active_account().cloned()
-    }
-
-    /// Why the open account cannot custody (`None`: it can).
-    pub(crate) fn owner_problem(&self, cx: &App) -> Option<AgentCustodyProblem> {
-        match self.owner(cx) {
-            None => Some(AgentCustodyProblem::Unknown),
-            Some(owner) => check_agent_custodian(self.store.read(cx).entry_store(), &owner).err(),
+    /// Ends the wait of the wizard's creation once the store holds its
+    /// answer, and keeps the poll running while a creation is pending.
+    fn follow(&mut self, cx: &mut Context<Self>) {
+        let store = self.store.read(cx).store();
+        if let Some(sent) = self.wizard.as_mut().and_then(|wizard| wizard.sent.as_mut()) {
+            sent.observe(store);
         }
+        self.ensure_poll(cx);
     }
 
-    /// The AI participants the daemon lists, by name.
-    pub(crate) fn agents(&self, cx: &App) -> Vec<Account> {
-        let mut agents: Vec<Account> = self
-            .store
-            .read(cx)
-            .entry_store()
-            .accounts()
-            .filter(|account| account.kind == AccountKind::HeadlessAi)
-            .cloned()
-            .collect();
-        agents.sort_by(|a, b| a.label.cmp(&b.label).then_with(|| a.id.cmp(&b.id)));
-        agents
-    }
-
-    /// Ends the wait once the export has an answer.
-    fn follow(&mut self, cx: &App) {
-        let store = self.store.read(cx).entry_store();
-        if self.awaiting.as_ref().is_some_and(|awaiting| awaiting.answered(store)) {
-            self.awaiting = None;
-        }
-    }
-
-    /// Opens the export form of `agent`, with a location to start from in
-    /// the owner's home folder.
-    pub fn open_export(&mut self, agent: AccountId, window: &mut Window, cx: &mut Context<Self>) {
-        let suggestion = home_location(&self.default_name(&agent, cx));
-        self.location.update(cx, |input, cx| input.set_value(suggestion, window, cx));
-        self.exporting = Some(agent);
-        self.unsent = None;
-        cx.notify();
-    }
-
-    /// The default file name for `agent`'s credentials, named after the AI
-    /// participant (its id when it has no name), the same for the typed
-    /// location and the save dialog.
-    fn default_name(&self, agent: &AccountId, cx: &App) -> String {
-        let store = self.store.read(cx).entry_store();
-        let label = store.account(agent).map(|account| account.label.trim().to_owned());
-        file_name(&label.filter(|label| !label.is_empty()).unwrap_or_else(|| agent.to_string()))
-    }
-
-    /// Closes the export form.
-    pub fn close_export(&mut self, cx: &mut Context<Self>) {
-        self.exporting = None;
-        self.unsent = None;
-        cx.notify();
-    }
-
-    /// Asks the daemon to write the credentials of the open form's AI
-    /// participant where the owner typed. Checked here first, with the
-    /// policy's own rule, so a request the daemon would refuse is not sent.
-    pub fn export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (Some(agent), Some(owner)) = (self.exporting.clone(), self.owner(cx)) else { return };
-        if self.awaiting.is_some() {
+    /// Starts the poll when a creation is pending and none is running.
+    fn ensure_poll(&mut self, cx: &mut Context<Self>) {
+        if self.poll.is_some() || pending_creation_reads(self.state(cx)).is_empty() {
             return;
         }
-        let path = self.location.read(cx).value().trim().to_owned();
-        let store = self.store.read(cx).entry_store();
-        if let Err(refusal) = check_agent_export(store, &owner, &agent, &path) {
-            self.unsent = Some((agent, refusal));
+        self.poll = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(CREATION_POLL).await;
+                let keep = this.update(cx, |panel, cx| panel.poll_creations(cx)).unwrap_or(false);
+                if !keep {
+                    break;
+                }
+            }
+        }));
+    }
+
+    /// One poll tick: reads every creation still waiting (`agent.operation.get`).
+    /// Returns whether the poll goes on.
+    fn poll_creations(&mut self, cx: &mut Context<Self>) -> bool {
+        let reads = pending_creation_reads(self.state(cx));
+        if reads.is_empty() {
+            self.poll = None;
             cx.notify();
-            return;
+            return false;
         }
-        self.unsent = None;
-        let awaiting = Awaiting {
-            before: store.agent_export(&agent).cloned(),
-            failures: store.failures_total(),
-            agent: agent.clone(),
-        };
-        let kind = IntentKind::ExportAgentCredentials { owner_id: owner, account_id: agent, path };
-        let sent = self.root.update(cx, |root, cx| root.submit(Intent::human(kind), window, cx));
-        if sent.starts_with("submitted") {
-            self.awaiting = Some(awaiting);
+        for read in reads {
+            if let Fetch::AgentOperation(request_id) = read {
+                let kind = IntentKind::AgentOperationRefresh { request_id };
+                self.store.update(cx, |store, cx| store.dispatch(Intent::human(kind), cx));
+            }
         }
+        cx.notify();
+        true
+    }
+
+    /// The last failed agent request, as its translated message.
+    fn last_failure(&self, cx: &App) -> Option<String> {
+        self.state(cx)
+            .failures()
+            .iter()
+            .rev()
+            .find(|failure| {
+                ramflux_desktop_sdk::plan::agents::is_agent_method(&failure.method)
+                    || failure.method == ramflux_desktop_sdk::plan::agents::RUNTIME_METHOD
+            })
+            .map(|failure| failure.message.clone())
+    }
+
+    /// The form open under an agent's row.
+    fn open_form(&mut self, form: Option<Form>, cx: &mut Context<Self>) {
+        self.form = form;
         cx.notify();
     }
 
-    /// What the save dialog starts from: the file name and the folder (the
-    /// owner's home), the same file as the typed default.
-    pub fn save_dialog_default(&self, cx: &App) -> (String, std::path::PathBuf) {
-        let name = self.exporting.as_ref().map_or_else(String::new, |a| self.default_name(a, cx));
-        (name, crate::file_dialog::StartDir::Home.path())
-    }
-
-    /// Chooses the location in the platform's save dialog.
-    pub fn choose_location(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (suggested, _) = self.save_dialog_default(cx);
-        let input = self.location.clone();
-        crate::file_dialog::save_as(
-            crate::file_dialog::StartDir::Home,
-            &suggested,
-            window,
-            cx,
-            move |path, window, cx| input.update(cx, |input, cx| input.set_value(path, window, cx)),
-        );
-    }
-
-    /// The last export attempt of `agent` as the owner sees it: the daemon's
-    /// record, else why it was not sent.
-    pub(crate) fn outcome(&self, agent: &AccountId, cx: &App) -> Option<AgentExportPhase> {
-        if let Some((unsent, refusal)) = &self.unsent
-            && unsent == agent
-        {
-            return Some(AgentExportPhase::Refused(*refusal));
-        }
-        self.store.read(cx).entry_store().agent_export(agent).map(|export| export.phase.clone())
-    }
-
-    /// The location of the last export of `agent`.
-    pub(crate) fn exported_path(&self, agent: &AccountId, cx: &App) -> Option<String> {
-        self.store.read(cx).entry_store().agent_export(agent).map(|export| export.path.clone())
-    }
-
-    fn render_part(
-        &mut self,
-        part: Part,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> gpui_kit::AnyElement {
+    /// One part of the page.
+    fn render_part(&mut self, part: Part, cx: &mut Context<Self>) -> AnyElement {
         match part {
-            Part::Create => self.render_create(window, cx),
-            Part::List => self.render_list(window, cx),
+            Part::Runtime => self.render_runtime(cx),
+            Part::Create => self.render_create(cx),
+            Part::List => self.render_list(cx),
+            Part::Unavailable => self.render_unavailable(cx),
         }
-    }
-}
-
-/// A file name for an AI participant's credentials.
-fn file_name(name: &str) -> String {
-    let safe: String = name
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
-        .collect();
-    format!("ramflux-agent-{}.bundle", safe.trim_matches('-'))
-}
-
-/// The default location: the file name in the owner's home folder.
-fn home_location(file: &str) -> String {
-    match ramflux_desktop_sdk::local::paths::home_dir() {
-        Some(home) => home.join(file).to_string_lossy().into_owned(),
-        None => file.to_owned(),
     }
 }
 
 fn item(panel: &Entity<AgentsPanel>, part: Part) -> SettingItem {
     let panel = panel.clone();
-    SettingItem::render(move |_, window, cx: &mut App| {
-        panel.update(cx, |panel, cx| panel.render_part(part, window, cx))
+    SettingItem::render(move |_, _, cx: &mut App| {
+        panel.update(cx, |panel, cx| panel.render_part(part, cx))
     })
 }
 
-/// The AI participants section.
+/// The agents section.
 pub fn page(panel: &Entity<AgentsPanel>) -> SettingPage {
     SettingPage::new(tr("settings.section.agents"))
+        .group(
+            SettingGroup::new().title(tr("agents.runtime.title")).item(item(panel, Part::Runtime)),
+        )
         .group(SettingGroup::new().item(item(panel, Part::Create)))
         .group(
             SettingGroup::new()
                 .title(tr("agent.settings.list_title"))
                 .item(item(panel, Part::List)),
         )
+        .group(
+            SettingGroup::new()
+                .title(tr("agents.unavailable.title"))
+                .item(item(panel, Part::Unavailable)),
+        )
+}
+
+/// A muted line of text.
+pub(super) fn muted(text: gpui_kit::SharedString, cx: &App) -> AnyElement {
+    use gpui_kit::component::ActiveTheme as _;
+    use ramflux_desktop_navigation::scale::text_secondary;
+    div()
+        .text_size(text_secondary())
+        .text_color(cx.theme().muted_foreground)
+        .whitespace_normal()
+        .child(text)
+        .into_any_element()
+}
+
+/// Whether the grace period of a request has passed (unix seconds).
+pub(super) fn seconds_left(expires_at: Option<u64>) -> Option<Duration> {
+    let expires = expires_at?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    Some(Duration::from_secs(expires.saturating_sub(now)))
 }
 
 #[cfg(test)]
 mod tests {
-    use ramflux_desktop_core::{
-        DomainEvent, EffectFailure, EventEnvelope, FailureCode, Store, Timestamp, methods,
-    };
-
     use super::*;
 
-    fn failure(method: &str) -> DomainEvent {
-        DomainEvent::EffectFailed(EffectFailure {
-            method: method.to_owned(),
-            code: FailureCode::Transport,
-            message: String::new(),
-        })
-    }
-
-    fn apply(store: &mut Store, seq: u64, event: DomainEvent) {
-        store.apply(&EventEnvelope::new(seq, Timestamp(1), event)).expect("applies");
+    #[test]
+    fn a_request_without_an_expiry_has_no_countdown() {
+        assert_eq!(seconds_left(None), None);
     }
 
     #[test]
-    fn only_this_exports_own_result_ends_the_wait() {
-        let mut store = Store::new();
-        let bot = AccountId::new("bot");
-        let awaiting =
-            Awaiting { agent: bot.clone(), before: None, failures: store.failures_total() };
-        assert!(!awaiting.answered(&store));
-        // Another effect failing, and another AI participant's export.
-        apply(&mut store, 1, failure(methods::SEND_MESSAGE));
-        apply(&mut store, 2, failure(methods::NODE_PROBE));
-        apply(
-            &mut store,
-            3,
-            DomainEvent::AgentExportUpdated(AgentExport {
-                account_id: AccountId::new("other"),
-                path: "/x".into(),
-                phase: AgentExportPhase::Exported,
-            }),
-        );
-        assert!(!awaiting.answered(&store), "none of those is its answer");
-        // Its own failure ends it, with or without a record that differs.
-        apply(&mut store, 4, failure(methods::AGENT_EXPORT_CREDENTIALS));
-        assert!(awaiting.answered(&store));
-        // So does its own record.
-        let mut store = Store::new();
-        let awaiting = Awaiting { agent: bot.clone(), before: None, failures: 0 };
-        apply(
-            &mut store,
-            1,
-            DomainEvent::AgentExportUpdated(AgentExport {
-                account_id: bot,
-                path: "/x".into(),
-                phase: AgentExportPhase::Exported,
-            }),
-        );
-        assert!(awaiting.answered(&store));
+    fn a_passed_expiry_leaves_no_time() {
+        assert_eq!(seconds_left(Some(1)), Some(Duration::ZERO));
     }
 }

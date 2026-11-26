@@ -240,6 +240,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::GovernanceRequested { .. } => "GovernanceRequested",
         UiEventKind::RevokeGrantPressed { .. } => "RevokeGrantPressed",
         UiEventKind::RevokeStandingPressed { .. } => "RevokeStandingPressed",
+        UiEventKind::AgentApprovalPressed { .. } => "AgentApprovalPressed",
         UiEventKind::AddNodeRequested { .. } => "AddNodeRequested",
         UiEventKind::ConfirmNodePressed { .. } => "ConfirmNodePressed",
         UiEventKind::NodeActionPressed { .. } => "NodeActionPressed",
@@ -258,7 +259,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 57;
+const UI_EVENT_KIND_VARIANTS: usize = 58;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -1109,6 +1110,7 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         },
         UiEventKind::RevokeGrantPressed { grant_id: GrantId::new("g-1") },
         UiEventKind::RevokeStandingPressed { approval_id: StandingApprovalId::new("sa-1") },
+        UiEventKind::AgentApprovalPressed { approval_id: "ap-1".to_owned(), approved: true },
         UiEventKind::AddNodeRequested { url: "https://node.example.test".into() },
         UiEventKind::ConfirmNodePressed { node_id: NodeId::new("n-1") },
         UiEventKind::NodeActionPressed {

@@ -233,6 +233,12 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::RevokeStandingPressed { approval_id } => {
             IntentKind::RevokeStandingApproval { approval_id: approval_id.clone() }
         }
+        UiEventKind::AgentApprovalPressed { approval_id, approved } => {
+            IntentKind::AgentApprovalDecide {
+                approval_id: approval_id.clone(),
+                approved: *approved,
+            }
+        }
         UiEventKind::AddNodeRequested { url } => IntentKind::AddNode { url: url.clone() },
         UiEventKind::ConfirmNodePressed { node_id } => IntentKind::ConfirmNode {
             node_id: node_id.clone(),

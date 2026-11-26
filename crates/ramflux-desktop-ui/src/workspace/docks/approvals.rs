@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The approvals dock: pending requests (decided in place, through the same
+//! The approvals dock: agents' approvals (D40), pending requests (decided in place, through the same
 //! policy as the inline intervention), decided grants (an approved, unused
 //! grant can be revoked with a confirmation), standing approvals (revocable with a
 //! confirmation) and the read-only audit trail.
@@ -13,7 +13,7 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div};
 use ramflux_desktop_core::{
-    Actor, AuditEntry, Grant, GrantFilter, GrantState, Listing, MomentKind, Scope,
+    Actor, AgentApproval, AuditEntry, Grant, GrantFilter, GrantState, Listing, MomentKind, Scope,
     StandingApproval, Store, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
@@ -225,6 +225,57 @@ fn standing_row(approval: &StandingApproval, sink: &EventSink, cx: &App) -> AnyE
         .into_any_element()
 }
 
+/// An agent's approval in a conversation (D40): allow or deny while it is
+/// pending, else its state.
+fn agent_approval_row(approval: &AgentApproval, sink: &EventSink, cx: &App) -> AnyElement {
+    let pending = approval.status == "pending";
+    let state = match approval.status.as_str() {
+        "pending" => tr("dock.approvals.agent_pending"),
+        "approved" => tr("dock.approvals.agent_allowed"),
+        "denied" => tr("dock.approvals.agent_denied"),
+        _ => tr("dock.approvals.agent_other"),
+    };
+    let decide = |approved: bool, key: &'static str, id: &String| {
+        let sink = sink.clone();
+        let approval_id = id.clone();
+        Button::new(domain_id(
+            if approved { "agent-approval-allow" } else { "agent-approval-deny" },
+            id,
+        ))
+        .xsmall()
+        .design_secondary(cx)
+        .design_label(tr(key))
+        .on_click(move |_, window, cx| {
+            sink.emit(
+                UiEventKind::AgentApprovalPressed { approval_id: approval_id.clone(), approved },
+                window,
+                cx,
+            );
+        })
+    };
+    h_flex()
+        .id(domain_id("agent-approval", &approval.approval_id))
+        .gap(space(2.))
+        .px(space(3.))
+        .py(space(1.))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_size(text_secondary())
+                .child(tr("dock.approvals.agent_request")),
+        )
+        .child(div().text_size(text_caption()).text_color(cx.theme().muted_foreground).child(state))
+        .when(pending, |row| {
+            row.child(decide(true, "dock.approvals.allow", &approval.approval_id)).child(decide(
+                false,
+                "dock.approvals.deny",
+                &approval.approval_id,
+            ))
+        })
+        .into_any_element()
+}
+
 fn audit_row(store: &Store, entry: &AuditEntry, cx: &App) -> AnyElement {
     let who = match &entry.proposed_by {
         Actor::Human => tr("audit.you"),
@@ -268,12 +319,16 @@ impl Render for ApprovalsDock {
             .cloned()
             .collect();
         let standing: Vec<StandingApproval> = store.standing_approvals().cloned().collect();
+        let agents: Vec<AgentApproval> = store.agent_approvals().to_vec();
         let audit: Vec<AuditEntry> =
             store.audit().iter().rev().take(AUDIT_SHOWN).cloned().collect();
         v_flex()
             .id("dock-approvals")
             .size_full()
             .overflow_y_scroll()
+            .child(section("dock.approvals.agents", cx))
+            .when(agents.is_empty(), |col| col.child(empty_line("dock.approvals.none", cx)))
+            .children(agents.iter().map(|a| agent_approval_row(a, &sink, cx)))
             .child(section("dock.approvals.pending", cx))
             .children(crate::list_state::placeholder(
                 "approvals-list-state",
