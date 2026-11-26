@@ -8,7 +8,6 @@ use super::*;
 use crate::bus::BusRequest;
 use crate::bus::approval::is_message_method;
 use crate::config::{Deadlines, SchemaSupport};
-use crate::receipts::Delivered;
 use ramflux_desktop_core::{AccountId, SchemaGate};
 use ramflux_desktop_test::fake_bus::{FakeBus, Reply, socket_path};
 use serde_json::json;
@@ -286,16 +285,6 @@ fn seed_plaintext(task: &mut Task) {
     assert_eq!(task.translator.plaintext_len(), 1, "the oracle is seeded");
 }
 
-fn receipt() -> Delivered {
-    Delivered {
-        conversation_id: "c-1".to_owned(),
-        message_id: "m-9".to_owned(),
-        receiver_device_id: "dev-me".to_owned(),
-        sender_device_id: "dev-ana".to_owned(),
-        sender_target: "target-ana".to_owned(),
-    }
-}
-
 /// Answers the gate's status as the daemon would on the current connection.
 fn answer(task: &mut Task, generation: serde_json::Value) {
     let epoch = task.gate.epoch();
@@ -508,7 +497,6 @@ const INVENTORY: &[(&str, bool)] = &[
     ("mcp.server.list", false),
     ("mcp.tool.list", false),
     ("message.read", true),
-    ("message.receipt.delivered", true),
     ("message.submit", true),
     ("node.add", false),
     ("node.confirm", false),
@@ -1245,12 +1233,6 @@ async fn reconnect_revokes_the_approval_and_a_late_old_epoch_answer_cannot_reope
     assert!(!message_requests(&fake).is_empty());
     let first_epoch = task.gate.epoch();
     seed_plaintext(&mut task);
-    // A retry that is not due yet when the connection drops.
-    task.receipts
-        .as_mut()
-        .expect("receipts")
-        .observe(vec![receipt()], Instant::now() + Duration::from_secs(30));
-    assert_eq!(task.receipts.as_ref().map(Receipts::pending_len), Some(1));
     delivered.try_iter().for_each(drop);
     fake.shutdown();
 
@@ -1267,15 +1249,6 @@ async fn reconnect_revokes_the_approval_and_a_late_old_epoch_answer_cannot_reope
     assert_eq!(verdict(&task), SchemaGate::Unresolved, "the approval is revoked");
     assert_eq!(message_requests(&fake), Vec::<String>::new(), "zero message-class requests");
     assert_eq!(task.translator.plaintext_len(), 0, "caches are empty at the data layer");
-    assert_eq!(
-        task.receipts.as_ref().map(Receipts::pending_len),
-        Some(0),
-        "receipt retries dropped"
-    );
-    assert!(
-        fake.seen().iter().all(|r| r.method != "message.receipt.delivered"),
-        "no receipt is sent while unresolved"
-    );
     // An old epoch's compatible answer cannot open the gate.
     task.internal(Internal::SchemaAnswer {
         stamp: Stamp { epoch: first_epoch, attempt: task.read_attempt },
@@ -1721,7 +1694,7 @@ fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
         ("effects.rs", 9, 0, 0),
         ("media.rs", 10, 0, 0),
         ("mod.rs", 1, 0, 0),
-        ("scope.rs", 4, 1, 2),
+        ("scope.rs", 3, 1, 2),
         ("sends.rs", 1, 0, 0),
     ];
     let modules = bridge_modules();

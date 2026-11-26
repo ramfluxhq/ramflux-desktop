@@ -12,7 +12,7 @@ use crate::ids::{
     AccountId, BackupJobId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
     ParticipantId, StandingApprovalId, SurfaceId, TaskId,
 };
-use crate::model::{ConflictResolution, PinSource, RequestAnswer, RequestPolicy};
+use crate::model::{ConflictResolution, DeleteScope, PinSource, RequestAnswer, RequestPolicy};
 
 /// Direction of an own-device sync transfer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,10 +55,13 @@ pub enum IntentKind {
         /// New text.
         text: String,
     },
-    /// Delete a message for everyone (needs a confirmation).
+    /// Delete a message, on this device only or for everyone (needs a
+    /// confirmation). Everyone is limited to this account's own message.
     DeleteMessage {
         /// The message.
         moment_id: MomentId,
+        /// Where the message is erased.
+        scope: DeleteScope,
     },
     /// Leave a group (needs a confirmation).
     LeaveGroup {

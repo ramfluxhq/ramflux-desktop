@@ -8,7 +8,7 @@ use serde_json::json;
 use super::{Decision, IntentError, Policy};
 use crate::ids::ObjectId;
 use crate::intent::{IntentKind, methods};
-use crate::model::{Direction, Object, TransferState};
+use crate::model::{DeleteScope, Direction, Object, TransferState};
 
 /// Decides conversation-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
@@ -67,15 +67,21 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
-        IntentKind::DeleteMessage { moment_id } => {
+        IntentKind::DeleteMessage { moment_id, scope } => {
             message_target(p, moment_id).and_then(|(moment, _)| {
-                if !own(p, moment) {
-                    return Err(IntentError::NotActionable(moment_id.clone()));
-                }
+                let scope = match scope {
+                    DeleteScope::Local => "local",
+                    DeleteScope::Everyone => {
+                        if !own(p, moment) {
+                            return Err(IntentError::NotActionable(moment_id.clone()));
+                        }
+                        "everyone"
+                    }
+                };
                 Ok(p.gated(
                     crate::model::Risk::High,
                     methods::MESSAGE_DELETE,
-                    json!({"context_id":moment.context_id,"moment_id":moment_id}),
+                    json!({"context_id":moment.context_id,"moment_id":moment_id,"scope":scope}),
                 ))
             })
         }

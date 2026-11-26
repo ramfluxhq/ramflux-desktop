@@ -340,8 +340,9 @@ pub(crate) fn render(
 }
 
 /// What a message's menu offers (the actions button and the context menu
-/// show the same): copy, reply, and for this account's own messages edit
-/// and delete for everyone. Each emits its event on the moment's sink.
+/// show the same): copy, reply, edit (own messages), delete for me, and
+/// delete for everyone (own messages). Each emits its event on the moment's
+/// sink.
 #[derive(Clone)]
 struct MenuActions {
     sink: EventSink,
@@ -380,6 +381,14 @@ impl MenuActions {
                 self.accepted && self.editable && Mutation::Edit.check().is_ok(),
                 UiEventKind::EditPressed,
             );
+        }
+        menu = item(
+            menu,
+            "message_ui.delete_me",
+            self.accepted && Mutation::DeleteLocal.check().is_ok(),
+            UiEventKind::DeleteForMePressed,
+        );
+        if self.own {
             menu = item(
                 menu,
                 "message_ui.delete_everyone",

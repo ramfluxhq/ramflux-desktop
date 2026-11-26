@@ -186,6 +186,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::SubmitMessage { .. } => "SubmitMessage",
         UiEventKind::ReplyPressed => "ReplyPressed",
         UiEventKind::EditPressed => "EditPressed",
+        UiEventKind::DeleteForMePressed => "DeleteForMePressed",
         UiEventKind::DeleteForEveryonePressed => "DeleteForEveryonePressed",
         UiEventKind::SubmitReply { .. } => "SubmitReply",
         UiEventKind::SubmitEdit { .. } => "SubmitEdit",
@@ -238,7 +239,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 55;
+const UI_EVENT_KIND_VARIANTS: usize = 56;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -813,7 +814,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::SendMessage { context_id: ContextId::new("c-1"), text: "hi".into() },
         IntentKind::ReplyMessage { moment_id: MomentId::new("m-1"), text: "re".into() },
         IntentKind::EditMessage { moment_id: MomentId::new("m-1"), text: "ed".into() },
-        IntentKind::DeleteMessage { moment_id: MomentId::new("m-1") },
+        IntentKind::DeleteMessage { moment_id: MomentId::new("m-1"), scope: DeleteScope::Everyone },
         IntentKind::LeaveGroup { context_id: ContextId::new("c-1") },
         IntentKind::AnswerGroupInvitation { group_id: "g-1".into(), accept: true },
         IntentKind::AddContactByUsername { name: "ana".into() },
@@ -924,6 +925,7 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::SubmitMessage { text: "hi".into() },
         UiEventKind::ReplyPressed,
         UiEventKind::EditPressed,
+        UiEventKind::DeleteForMePressed,
         UiEventKind::DeleteForEveryonePressed,
         UiEventKind::SubmitReply { target: MomentId::new("m-1"), text: "re".into() },
         UiEventKind::SubmitEdit { target: MomentId::new("m-1"), text: "ed".into() },

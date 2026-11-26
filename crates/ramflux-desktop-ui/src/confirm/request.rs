@@ -6,7 +6,7 @@
 
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
-    Actor, ContactAction, GovernanceOp, Intent, IntentKind, MomentKind, ParticipantId,
+    Actor, ContactAction, DeleteScope, GovernanceOp, Intent, IntentKind, MomentKind, ParticipantId,
     RequestAnswer, Risk, Store,
 };
 
@@ -104,9 +104,13 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
             };
             (tr_args(key, &[("member", &target), ("group", &group)]), None, op.risk())
         }
-        IntentKind::DeleteMessage { moment_id } => {
+        IntentKind::DeleteMessage { moment_id, scope } => {
             let excerpt = store.body(moment_id).map(ramflux_desktop_navigation::row::list_text);
-            (tr("confirm.message.delete_everyone"), excerpt, Risk::High)
+            let key = match scope {
+                DeleteScope::Local => "confirm.message.delete_local",
+                DeleteScope::Everyone => "confirm.message.delete_everyone",
+            };
+            (tr(key), excerpt, Risk::High)
         }
         IntentKind::LeaveGroup { context_id } => {
             let group = store

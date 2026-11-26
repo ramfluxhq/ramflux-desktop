@@ -115,7 +115,7 @@ fn typed_renderer_unknown_unicode_delete_and_transient(cx: &mut gpui_kit::TestAp
             "no body text left in the store"
         );
     });
-    wait(cx, "the tombstone shown", |cx| has_label(cx, handle, "Message deleted"));
+    wait(cx, "the tombstone shown", |cx| has_label(cx, handle, "This message was deleted"));
     assert!(!has_label(cx, handle, "bold: \u{1F600}"), "no span of the old text on screen");
     assert!(!has_label(cx, handle, "Forwarded from Kai"), "no forward header of the old message");
 

@@ -18,8 +18,8 @@
 //! receipts, typing) are already folded into the rows they change.
 
 use ramflux_desktop_core::{
-    ContextId, ContextKind, DomainEvent, FallbackPayload, Lifecycle, MessagePayload, Moment,
-    MomentId, MomentKind, ParticipantId, Receipt, Timestamp, UnsupportedInfo,
+    ContextId, DomainEvent, FallbackPayload, Lifecycle, MessagePayload, Moment, MomentId,
+    MomentKind, ParticipantId, Receipt, Timestamp, UnsupportedInfo,
 };
 use serde_json::Value;
 
@@ -127,9 +127,9 @@ impl Translator {
         rows: &[Value],
         now: Timestamp,
     ) -> Vec<DomainEvent> {
-        let Some(kind) = self.contexts.get(context).map(|c| c.kind) else {
+        if !self.contexts.contains_key(context) {
             return Vec::new();
-        };
+        }
         let mut events = Vec::new();
         for row in rows {
             let state = text(row, "state");
@@ -150,15 +150,15 @@ impl Translator {
             {
                 continue;
             }
-            if kind == ContextKind::Direct && state == "content" {
-                self.note_received(context, row);
-            }
-            // The newest content row listed is the conversation's read mark
-            // (by its clock: a page of older history never moves it back).
-            if state == "content" {
+            // The newest content row a peer wrote is the conversation's read
+            // mark (by its clock: a page of older history never moves it
+            // back). This account's own rows never are: a read receipt for
+            // them reaches no peer.
+            let peer = !row["is_own"].as_bool().unwrap_or(false);
+            if state == "content" && peer {
                 let at = row["hlc_ms"].as_u64().unwrap_or(0);
-                if self.newest_listed.get(context).is_none_or(|(seen, _)| at >= *seen) {
-                    self.newest_listed.insert(context.clone(), (at, id.to_owned()));
+                if self.newest_peer.get(context).is_none_or(|(seen, _)| at >= *seen) {
+                    self.newest_peer.insert(context.clone(), (at, id.to_owned()));
                 }
             }
             let (moment, objects) = self.message_moment(context, row, now);
@@ -166,44 +166,6 @@ impl Translator {
             events.extend(self.report_moment(moment));
         }
         events
-    }
-
-    /// Notes a listed direct message from a peer, for its delivery receipt:
-    /// never this account's own (`is_own`), nor a deleted one. The receipt
-    /// goes to the author device when the identity directory lists it with
-    /// a delivery target. Skipped while no target is listed.
-    fn note_received(&mut self, context: &ContextId, row: &Value) {
-        let message = text(row, "id");
-        let sender = author_device(row);
-        let Some(me) = self.self_device.clone() else { return };
-        if row["is_own"].as_bool().unwrap_or(false) || sender.is_empty() || sender == me {
-            return;
-        }
-        let Some(principal) = self.directory.principal_of_device(sender) else { return };
-        if Some(principal) == self.directory.self_principal.as_deref() {
-            return;
-        }
-        let Some(identity) = self.directory.identities.get(principal) else { return };
-        if identity.is_self {
-            return;
-        }
-        let Some(target) =
-            identity.devices.iter().find(|d| d.device_id == sender).and_then(|d| d.target.clone())
-        else {
-            return;
-        };
-        self.delivered.push(crate::receipts::Delivered {
-            conversation_id: context.to_string(),
-            message_id: message.to_owned(),
-            receiver_device_id: me,
-            sender_device_id: sender.to_owned(),
-            sender_target: target,
-        });
-    }
-
-    /// The received direct messages listed since the last call.
-    pub fn take_delivered(&mut self) -> Vec<crate::receipts::Delivered> {
-        std::mem::take(&mut self.delivered)
     }
 
     /// The participant a sending device stands for.
@@ -349,16 +311,16 @@ fn receipt(row: &Value) -> Receipt {
 
 impl Translator {
     /// The read receipts due: the conversation shown (focused) is marked
-    /// read through its newest listed message, once per new mark
+    /// read through its newest message a peer wrote, once per new mark
     /// (`message.receipt.read` `{conversation_id, message_id, reader_id}`).
-    /// The SDK routes the receipt to the author's device for a message
-    /// from a peer, and only moves the local read mark for this account's
-    /// own message (which also stops it counting as unread).
+    /// The SDK routes the receipt to the author's device, so the peer sees
+    /// the message read. Own messages are never the mark: a receipt for
+    /// one would only move the local read mark.
     pub fn take_reads(&mut self) -> Vec<crate::bus::BusRequest> {
         let (Some(context), Some(reader)) = (self.focus.clone(), self.self_device.clone()) else {
             return Vec::new();
         };
-        let Some((_, newest)) = self.newest_listed.get(&context).cloned() else {
+        let Some((_, newest)) = self.newest_peer.get(&context).cloned() else {
             return Vec::new();
         };
         if self.read_sent.get(&context) == Some(&newest) {

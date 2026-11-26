@@ -225,7 +225,8 @@ pub struct MessageTarget {
 /// - `conversation.edit` `{conversation_id, message_id, text,
 ///   expected_revision}`: the revision shown, so an edit made meanwhile on
 ///   another device is refused (`edit_conflict`) instead of overwritten;
-/// - `conversation.delete` `{conversation_id, message_id, scope: everyone}`.
+/// - `conversation.delete` `{conversation_id, message_id, scope}`, the scope
+///   the intent named: `local` (this device) or `everyone`.
 ///
 /// The frame's retry key makes a resend the same operation.
 pub(super) fn mutate(acct: Option<&str>, method: &str, body: &Value, known: &impl Known) -> Plan {
@@ -255,14 +256,20 @@ pub(super) fn mutate(acct: Option<&str>, method: &str, body: &Value, known: &imp
                 "expected_revision": target.revision,
             }),
         ),
-        _ => (
-            "conversation.delete",
-            serde_json::json!({
-                "conversation_id": context,
-                "message_id": target.daemon_id,
-                "scope": "everyone",
-            }),
-        ),
+        _ => {
+            let scope = text(body, "scope");
+            if !matches!(scope, "local" | "everyone") {
+                return refuse_invalid("unknown delete scope");
+            }
+            (
+                "conversation.delete",
+                serde_json::json!({
+                    "conversation_id": context,
+                    "message_id": target.daemon_id,
+                    "scope": scope,
+                }),
+            )
+        }
     };
     Plan::Call {
         request: BusRequest::new(acct, "message", daemon, request),

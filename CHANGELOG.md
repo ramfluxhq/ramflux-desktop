@@ -18,6 +18,11 @@ Versioning.
 - Read receipts: the conversation shown is marked read through its newest
   message (`message.receipt.read`; the core routes the receipt to the
   author's device), and own messages show Read when the peer read them.
+- Delete for me in a message's menu: erases the message on this device only
+  (`conversation.delete` with scope `local`), with its own confirmation.
+- A message that the peer edits or deletes updates on screen without
+  reopening the conversation; a reply quote jumps to and highlights the
+  message it quotes.
 - Conversation names from the core (`peer_display_name` on direct rows).
 - Leave group (the conversation's menu, confirmed) and group invitations
   from people who are not contacts: listed in the contacts dock with Join
@@ -75,6 +80,8 @@ Versioning.
 
 ### Removed
 
+- The desktop's interim delivery-receipt sender (`message.receipt.delivered`):
+  the core sends delivered receipts itself.
 - The retired one-shot attachment input (`message.submit` `attachments`), the
   object directory read and `object.get` / `object.transfer.resume`.
 
