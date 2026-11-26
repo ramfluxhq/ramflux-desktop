@@ -90,6 +90,34 @@ pub fn refusal_of(error: &BusError) -> AgentRefusal {
     }
 }
 
+/// Whether the daemon refused a watch because it does not know the cursor
+/// (above its stored head): the caller lists again.
+pub fn is_stale_cursor(method: &str, error: &BusError) -> bool {
+    method == methods::AGENT_WATCH && refusal_code(error) == Some("journal_cursor_invalid")
+}
+
+fn refusal_code(error: &BusError) -> Option<&str> {
+    match error {
+        BusError::Daemon { code, reason_code, .. } => {
+            Some(reason_code.as_deref().filter(|r| !r.is_empty()).unwrap_or(code))
+        }
+        _ => None,
+    }
+}
+
+/// The status a failed runtime action reports: the typed refusal and the
+/// number of the action, so the panel that submitted it sees it end.
+pub fn host_refusal(error: &BusError, nonce: u64) -> AgentHostStatus {
+    AgentHostStatus {
+        state: AgentHostState::Unknown,
+        prx_version: None,
+        refusal: Some(refusal_of(error)),
+        state_dir: None,
+        applied: false,
+        nonce,
+    }
+}
+
 /// Whether a refusal came from the PRX runtime (the daemon's `prx_*` codes
 /// and the runtime states they name).
 fn runtime_refusal(refusal: &AgentRefusal) -> bool {
@@ -318,16 +346,20 @@ pub fn effect_events(method: &str, answer: &Value) -> Vec<DomainEvent> {
 /// The events of a read of agent state.
 pub fn read_events(fetch: &Fetch, value: &Value) -> Vec<DomainEvent> {
     match fetch {
-        Fetch::AgentList => {
+        Fetch::AgentList | Fetch::AgentListPage(_) => {
             let page = pick(value, &["page"]);
             let records = page["records"]
                 .as_array()
                 .map(|list| list.iter().filter_map(record_of).collect())
                 .unwrap_or_default();
-            vec![DomainEvent::AgentsListed {
-                records,
-                journal_cursor: text_of(page, &["journalCursor", "journal_cursor"]),
-            }]
+            // Only the first page of a listing (and a watch answer) names
+            // the cursor: a later page carries the head as of its own read,
+            // which could skip a change made between the pages.
+            let journal_cursor = match fetch {
+                Fetch::AgentListPage(_) => String::new(),
+                _ => text_of(page, &["journalCursor", "journal_cursor"]),
+            };
+            vec![DomainEvent::AgentsListed { records, journal_cursor }]
         }
         Fetch::AgentApprovals => {
             let approvals = value["approvals"]
@@ -501,6 +533,32 @@ mod tests {
             Some("backend.agent.create.runtime_not_applied"),
             "a PRX failure of a creation says it was created without its runtime"
         );
+    }
+
+    #[test]
+    fn a_later_page_names_no_cursor_and_a_stale_cursor_is_told() {
+        let page = json!({"page": {"records": [], "journal_cursor": "c-2"}});
+        let events = read_events(&Fetch::AgentListPage("n-1".into()), &page);
+        assert!(matches!(
+            events.as_slice(),
+            [DomainEvent::AgentsListed { journal_cursor, .. }] if journal_cursor.is_empty()
+        ));
+        let events = read_events(&Fetch::AgentList, &page);
+        assert!(matches!(
+            events.as_slice(),
+            [DomainEvent::AgentsListed { journal_cursor, .. }] if journal_cursor == "c-2"
+        ));
+        let invalid = BusError::Daemon {
+            retry_after_ms: None,
+            code: "internal".into(),
+            message: String::new(),
+            reason_code: Some("journal_cursor_invalid".into()),
+            details: None,
+            cause: None,
+        };
+        assert!(is_stale_cursor(methods::AGENT_WATCH, &invalid));
+        assert!(!is_stale_cursor(methods::AGENT_JOB_LIST, &invalid));
+        assert!(!is_stale_cursor(methods::AGENT_WATCH, &BusError::Timeout));
     }
 
     #[test]

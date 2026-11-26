@@ -47,6 +47,12 @@ const LIFECYCLE_SETTLE: Duration = Duration::from_millis(200);
 /// The longest a flurry of focus changes may delay the report.
 const LIFECYCLE_SETTLE_CAP: Duration = Duration::from_secs(1);
 
+/// The start of the result of a submitted intent.
+pub const SUBMITTED: &str = "submitted";
+
+/// The result of an intent held for the owner's confirmation.
+pub const CONFIRMATION_REQUIRED: &str = "confirmation required";
+
 /// Which page shows the confirm strip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfirmHost {
@@ -63,6 +69,10 @@ pub enum ConfirmHost {
 pub enum RootEvent {
     /// The strip closed (confirmed or cancelled); the host restores focus.
     ConfirmClosed,
+    /// A pending confirmation went away without being submitted (declined,
+    /// or cancelled because the page changed). Reported before
+    /// [`RootEvent::ConfirmClosed`] when the strip closes on a decline.
+    ConfirmDeclined,
     /// An action on this surface was not performed because the surface
     /// changed after the user reviewed it.
     SurfaceChanged(MomentId),
@@ -129,6 +139,7 @@ impl IntentRoot {
         if let Some(intent) = self.pending.take() {
             self.confirm.update(cx, ConfirmStrip::close);
             self.record_intent(&intent, "confirmation cancelled: page changed", cx);
+            cx.emit(RootEvent::ConfirmDeclined);
         }
         cx.notify();
     }
@@ -138,6 +149,7 @@ impl IntentRoot {
         if let Some(intent) = self.pending.take() {
             self.confirm.update(cx, ConfirmStrip::close);
             self.record_intent(&intent, "confirmation cancelled: navigation changed", cx);
+            cx.emit(RootEvent::ConfirmDeclined);
             cx.notify();
         }
     }
@@ -175,14 +187,16 @@ impl IntentRoot {
     ) -> String {
         let request = ConfirmRequest::describe(self.store.read(cx).store(), &intent);
         match self.store.update(cx, |store, cx| store.dispatch(intent, cx)) {
-            DispatchOutcome::Submitted(labels) => format!("submitted {}", labels.join(", ")),
+            DispatchOutcome::Submitted(labels) => {
+                format!("{SUBMITTED} {}", labels.join(", "))
+            }
             DispatchOutcome::NeedsConfirmation(intent) => {
                 if let Some(replaced) = self.pending.replace(*intent) {
                     self.record_intent(&replaced, "confirmation replaced", cx);
                 }
                 self.confirm.update(cx, |strip, cx| strip.open(request, window, cx));
                 cx.notify();
-                "confirmation required".to_owned()
+                CONFIRMATION_REQUIRED.to_owned()
             }
             DispatchOutcome::Refused(error) => {
                 if let IntentError::SurfaceChanged(moment) = &error {
@@ -240,6 +254,7 @@ impl IntentRoot {
         let Some(intent) = self.pending.take() else { return };
         self.confirm.update(cx, ConfirmStrip::close);
         self.record_intent(&intent, result, cx);
+        cx.emit(RootEvent::ConfirmDeclined);
         if let Some(moment) = surface {
             cx.emit(RootEvent::SurfaceChanged(moment));
         }
@@ -264,7 +279,10 @@ impl IntentRoot {
                 let entry = InspectorEntry::Intent { intent: name, actor: label, result };
                 self.store.update(cx, |store, cx| store.record(entry, cx));
             }
-            ConfirmEvent::Cancelled => self.record_intent(&intent, "confirmation cancelled", cx),
+            ConfirmEvent::Cancelled => {
+                self.record_intent(&intent, "confirmation cancelled", cx);
+                cx.emit(RootEvent::ConfirmDeclined);
+            }
         }
         cx.emit(RootEvent::ConfirmClosed);
         cx.notify();

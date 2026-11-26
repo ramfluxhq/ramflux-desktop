@@ -20,19 +20,19 @@ mod rows;
 mod runtime;
 pub mod wizard;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Context, Entity, Subscription, Window, div};
-use ramflux_desktop_core::{AgentAccessMode, AgentRuntimeAction, Intent, IntentKind, Store};
+use ramflux_desktop_core::{AgentAccessMode, HostAction, HostStep, Intent, IntentKind, Store};
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::tr;
 use crate::launch::DaemonLauncher;
-use crate::root::IntentRoot;
+use crate::root::{IntentRoot, RootEvent};
 
 /// A part of the section, rendered by its setting item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,18 +41,6 @@ enum Part {
     Create,
     List,
     Unavailable,
-}
-
-/// A runtime action the panel submitted and whose answer has not arrived.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct HostAction {
-    /// The number the action was submitted with (its answer carries it).
-    pub nonce: u64,
-    /// Whether the action is an install (it shows the installing state).
-    pub install: bool,
-    /// The store's failure count when the action was submitted: a later
-    /// count means the action failed, and no answer will come.
-    pub failures: u64,
 }
 
 /// The persona inputs of the edit form (name and responsibility).
@@ -123,6 +111,11 @@ impl AgentsPanel {
                     cx.notify();
                 }
             }),
+            cx.subscribe(&root, |this, _, event: &RootEvent, cx| match event {
+                RootEvent::ConfirmDeclined => this.confirmation_closed(true, cx),
+                RootEvent::ConfirmClosed => this.confirmation_closed(false, cx),
+                RootEvent::SurfaceChanged(_) => {}
+            }),
             cx.subscribe(&wizard_inputs.name, |_, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     cx.notify();
@@ -172,23 +165,32 @@ impl AgentsPanel {
         self.host_nonce
     }
 
-    /// Follows the runtime action submitted last. Only its own answer (the
-    /// status carrying its number) ends the wait, and only that answer can
-    /// adopt the runtime: after an install or a restart answered running,
-    /// the owned daemon restarts with the runtime's state directory so it
-    /// adopts the runtime. An action that failed ends its wait too.
+    /// Follows the runtime action submitted last (the rule is
+    /// [`HostAction::follow`]): only its own status ends the wait, and only
+    /// that status can adopt the runtime. After an install or a restart
+    /// answered running, the owned daemon restarts with the runtime's state
+    /// directory so it adopts the runtime. A failed action ends its wait
+    /// with its refusal, which the bridge reports under its number.
     fn follow_host(&mut self, cx: &mut Context<Self>) {
         let Some(action) = self.host_action else { return };
-        let store = self.state(cx);
-        let answer = store.agent_host().filter(|host| host.nonce == action.nonce).cloned();
-        let failed = store.failures_total() > action.failures;
-        if let Some(host) = answer {
+        let step = action.follow(self.state(cx).agent_host());
+        self.end_host_step(step, cx);
+    }
+
+    /// The confirmation strip closed: a decline ends the action that waited
+    /// for it, a confirmation lets it run.
+    fn confirmation_closed(&mut self, declined: bool, cx: &mut Context<Self>) {
+        let Some(action) = self.host_action.as_mut() else { return };
+        let step = action.confirmation_closed(declined);
+        self.end_host_step(step, cx);
+    }
+
+    fn end_host_step(&mut self, step: HostStep, cx: &mut Context<Self>) {
+        if let HostStep::Ended { adopt } = step {
             self.host_action = None;
-            if let Some(state_dir) = host.adoption_for(action.nonce).map(Path::to_path_buf) {
+            if let Some(state_dir) = adopt {
                 self.adopt_with(state_dir, cx);
             }
-        } else if failed {
-            self.host_action = None;
             cx.notify();
         }
     }
@@ -199,22 +201,14 @@ impl AgentsPanel {
     }
 
     /// Records a runtime action just submitted as the one being followed.
-    fn arm_host_action(&mut self, nonce: u64, install: bool, cx: &mut Context<Self>) {
-        let failures = self.state(cx).failures_total();
-        self.host_action = Some(HostAction { nonce, install, failures });
+    fn arm_host_action(&mut self, nonce: u64, install: bool) {
+        self.host_action = Some(HostAction::new(nonce, install));
     }
 
-    /// Whether an install is running: submitted, not answered. While the
-    /// owner still has to confirm it (the confirm strip holds it), it is not
-    /// running yet.
-    fn installing(&self, cx: &App) -> bool {
-        let awaiting_confirmation = self.root.read(cx).pending_intent().is_some_and(|intent| {
-            matches!(
-                intent.kind,
-                IntentKind::AgentRuntime { action: AgentRuntimeAction::Install, .. }
-            )
-        });
-        self.host_action.is_some_and(|action| action.install) && !awaiting_confirmation
+    /// Whether an install is running: submitted, not ended. While the owner
+    /// still has to confirm it, it is not running yet.
+    fn installing(&self) -> bool {
+        self.host_action.is_some_and(|action| action.installing())
     }
 
     /// The last failed agent request, as its translated message.

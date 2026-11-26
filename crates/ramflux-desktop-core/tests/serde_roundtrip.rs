@@ -76,11 +76,12 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentRosterStateChanged(_) => "AgentRosterStateChanged",
         DomainEvent::AgentCreationUpdated(_) => "AgentCreationUpdated",
         DomainEvent::AgentHostUpdated(_) => "AgentHostUpdated",
+        DomainEvent::AgentCursorReset => "AgentCursorReset",
         DomainEvent::AgentJobsUpdated { .. } => "AgentJobsUpdated",
         DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 62;
+const DOMAIN_EVENT_VARIANTS: usize = 63;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -702,6 +703,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
         DomainEvent::AgentsListed { records: vec![sample_agent()], journal_cursor: "c-1".into() },
         DomainEvent::AgentRecordUpdated(Box::new(sample_agent())),
         DomainEvent::AgentRosterStateChanged(AgentRosterState::Offline),
+        DomainEvent::AgentCursorReset,
         DomainEvent::AgentCreationUpdated(sample_creation()),
         DomainEvent::AgentHostUpdated(AgentHostStatus {
             state: AgentHostState::Running,

@@ -236,8 +236,8 @@ impl FakeCustody {
         self.state().last_confirm_fields.clone()
     }
 
-    /// From now on the begins and the credential export answer with this
-    /// error object (or, with `None`, with their own checks again).
+    /// From now on the creation and recovery begins answer with this error
+    /// object (or, with `None`, with their own checks again).
     pub fn set_error_frame(&self, frame: Option<Value>) {
         self.state().error_frame = frame;
     }

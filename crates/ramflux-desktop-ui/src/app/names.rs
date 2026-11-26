@@ -274,6 +274,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentRosterStateChanged(_) => "AgentRosterStateChanged",
         DomainEvent::AgentCreationUpdated(_) => "AgentCreationUpdated",
         DomainEvent::AgentHostUpdated(_) => "AgentHostUpdated",
+        DomainEvent::AgentCursorReset => "AgentCursorReset",
         DomainEvent::AgentJobsUpdated { .. } => "AgentJobsUpdated",
         DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
     }
