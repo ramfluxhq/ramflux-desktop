@@ -11,10 +11,12 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, App, Context, Entity, IntoElement, Render, Subscription, Window, div};
+use gpui_kit::{
+    AnyElement, App, Context, Entity, IntoElement, Render, SharedString, Subscription, Window, div,
+};
 use ramflux_desktop_core::{
-    Actor, AgentApproval, AuditEntry, Grant, GrantFilter, GrantState, Listing, MomentKind, Scope,
-    StandingApproval, Store, UiEventKind, selectors,
+    AccountId, Actor, AgentApproval, AuditEntry, Grant, GrantFilter, GrantState, Listing,
+    MomentKind, Scope, StandingApproval, Store, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
@@ -27,6 +29,11 @@ use crate::ids::domain_id;
 
 /// Audit records shown (newest first).
 pub const AUDIT_SHOWN: usize = 20;
+
+/// Characters of an agent's name, tool and preview shown in an approval row.
+const NAME_SHOWN: usize = 48;
+const TOOL_SHOWN: usize = 48;
+const PREVIEW_SHOWN: usize = 160;
 
 /// The approvals dock content.
 pub struct ApprovalsDock {
@@ -227,15 +234,35 @@ fn standing_row(approval: &StandingApproval, sink: &EventSink, cx: &App) -> AnyE
 
 /// An agent's approval in a conversation (D40): allow or deny while it is
 /// pending, else its state.
-fn agent_approval_row(approval: &AgentApproval, sink: &EventSink, cx: &App) -> AnyElement {
-    let pending = approval.status == "pending";
+///
+/// The agent's name comes from the owner's roster (matched by anchor, or by
+/// the runtime name PRX uses); an agent the roster does not hold is shown as
+/// unknown. The tool and the preview are text the agent supplied: they are
+/// shown as plain single lines, clipped, and marked as the agent's own words.
+/// An expired approval offers no answer.
+fn agent_approval_row(
+    store: &Store,
+    owner: Option<&AccountId>,
+    approval: &AgentApproval,
+    now_ms: i64,
+    sink: &EventSink,
+    cx: &App,
+) -> AnyElement {
+    let expired = approval.is_expired(now_ms);
+    let pending = approval.status == "pending" && !expired;
+    let name = store
+        .agent_of_approval(approval)
+        .map(|record| record.persona.name.trim())
+        .filter(|name| !name.is_empty())
+        .map_or_else(|| tr("dock.approvals.agent_unknown"), |name| clip(name, NAME_SHOWN).into());
     let state = match approval.status.as_str() {
+        "pending" if expired => tr("dock.approvals.agent_expired"),
         "pending" => tr("dock.approvals.agent_pending"),
         "approved" => tr("dock.approvals.agent_allowed"),
         "denied" => tr("dock.approvals.agent_denied"),
         _ => tr("dock.approvals.agent_other"),
     };
-    let decide = |approved: bool, key: &'static str, id: &String| {
+    let decide = |approved: bool, key: &'static str, id: &String, owner: AccountId| {
         let sink = sink.clone();
         let approval_id = id.clone();
         Button::new(domain_id(
@@ -247,7 +274,11 @@ fn agent_approval_row(approval: &AgentApproval, sink: &EventSink, cx: &App) -> A
         .design_label(tr(key))
         .on_click(move |_, window, cx| {
             sink.emit(
-                UiEventKind::AgentApprovalPressed { approval_id: approval_id.clone(), approved },
+                UiEventKind::AgentApprovalPressed {
+                    owner_id: owner.clone(),
+                    approval_id: approval_id.clone(),
+                    approved,
+                },
                 window,
                 cx,
             );
@@ -259,21 +290,63 @@ fn agent_approval_row(approval: &AgentApproval, sink: &EventSink, cx: &App) -> A
         .px(space(3.))
         .py(space(1.))
         .child(
-            div()
+            v_flex()
                 .flex_1()
                 .min_w_0()
-                .text_size(text_secondary())
-                .child(tr("dock.approvals.agent_request")),
+                .child(div().text_size(text_secondary()).child(name))
+                .children((!approval.tool.is_empty()).then(|| {
+                    agent_text_line(
+                        "dock.approvals.agent_tool",
+                        "tool",
+                        &clip(&approval.tool, TOOL_SHOWN),
+                        cx,
+                    )
+                }))
+                .children((!approval.preview.is_empty()).then(|| {
+                    agent_text_line(
+                        "dock.approvals.agent_preview",
+                        "preview",
+                        &clip(&approval.preview, PREVIEW_SHOWN),
+                        cx,
+                    )
+                })),
         )
         .child(div().text_size(text_caption()).text_color(cx.theme().muted_foreground).child(state))
-        .when(pending, |row| {
-            row.child(decide(true, "dock.approvals.allow", &approval.approval_id)).child(decide(
-                false,
-                "dock.approvals.deny",
-                &approval.approval_id,
-            ))
+        .when_some(owner.filter(|_| pending), |row, owner| {
+            row.child(decide(true, "dock.approvals.allow", &approval.approval_id, owner.clone()))
+                .child(decide(false, "dock.approvals.deny", &approval.approval_id, owner.clone()))
         })
         .into_any_element()
+}
+
+/// One line of text the agent supplied, under a label that says so.
+fn agent_text_line(label: &str, key: &str, text: &str, cx: &App) -> AnyElement {
+    div()
+        .id(SharedString::from(format!("agent-approval-{key}")))
+        .text_size(text_caption())
+        .text_color(cx.theme().muted_foreground)
+        .whitespace_nowrap()
+        .child(tr_args(label, &[(key, text)]))
+        .into_any_element()
+}
+
+/// `text` cut to `max` characters, with an ellipsis when it was longer.
+fn clip(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_owned();
+    }
+    let mut out: String = text.chars().take(max.saturating_sub(1)).collect();
+    out.push('\u{2026}');
+    out
+}
+
+/// The wall clock in unix milliseconds (0 when it reads before the epoch).
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok())
+        .unwrap_or(0)
 }
 
 fn audit_row(store: &Store, entry: &AuditEntry, cx: &App) -> AnyElement {
@@ -320,6 +393,8 @@ impl Render for ApprovalsDock {
             .collect();
         let standing: Vec<StandingApproval> = store.standing_approvals().cloned().collect();
         let agents: Vec<AgentApproval> = store.agent_approvals().to_vec();
+        let owner = self.store.read(cx).active_account().cloned();
+        let now = now_ms();
         let audit: Vec<AuditEntry> =
             store.audit().iter().rev().take(AUDIT_SHOWN).cloned().collect();
         v_flex()
@@ -328,7 +403,9 @@ impl Render for ApprovalsDock {
             .overflow_y_scroll()
             .child(section("dock.approvals.agents", cx))
             .when(agents.is_empty(), |col| col.child(empty_line("dock.approvals.none", cx)))
-            .children(agents.iter().map(|a| agent_approval_row(a, &sink, cx)))
+            .children(
+                agents.iter().map(|a| agent_approval_row(store, owner.as_ref(), a, now, &sink, cx)),
+            )
             .child(section("dock.approvals.pending", cx))
             .children(crate::list_state::placeholder(
                 "approvals-list-state",
@@ -346,5 +423,18 @@ impl Render for ApprovalsDock {
             .child(section("dock.approvals.audit", cx))
             .when(audit.is_empty(), |col| col.child(empty_line("dock.approvals.none", cx)))
             .children(audit.iter().map(|e| audit_row(store, e, cx)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clip;
+
+    #[test]
+    fn clip_keeps_short_text_and_marks_a_cut() {
+        assert_eq!(clip("shell", 48), "shell");
+        let cut = clip(&"x".repeat(60), 10);
+        assert_eq!(cut.chars().count(), 10);
+        assert!(cut.ends_with('\u{2026}'));
     }
 }

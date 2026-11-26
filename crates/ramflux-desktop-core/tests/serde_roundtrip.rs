@@ -725,6 +725,9 @@ fn all_domain_events() -> Vec<DomainEvent> {
             approval_id: "ap-1".into(),
             conversation_id: "conv-1".into(),
             status: "pending".into(),
+            agent: "agent-1".into(),
+            tool: "shell".into(),
+            preview: "ls".into(),
             expires_at: Some(1_900_000_000),
         }]),
         DomainEvent::DaemonInfoUpdated(DaemonInfo {
@@ -893,6 +896,7 @@ fn sample_agent() -> AgentRecord {
         access: AgentAccess::owner_only(),
         role: "named".into(),
         base: serde_json::json!({"id": "base-1"}),
+        runtime_name: "a_name".into(),
     }
 }
 
@@ -1037,7 +1041,11 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             id: "job-1".into(),
             action: AgentJobAction::Pause,
         },
-        IntentKind::AgentApprovalDecide { approval_id: "ap-1".into(), approved: true },
+        IntentKind::AgentApprovalDecide {
+            owner_id: AccountId::new("a-1"),
+            approval_id: "ap-1".into(),
+            approved: true,
+        },
         IntentKind::AgentRuntime {
             action: AgentRuntimeAction::Install,
             provider: "anthropic".into(),
@@ -1120,7 +1128,11 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         },
         UiEventKind::RevokeGrantPressed { grant_id: GrantId::new("g-1") },
         UiEventKind::RevokeStandingPressed { approval_id: StandingApprovalId::new("sa-1") },
-        UiEventKind::AgentApprovalPressed { approval_id: "ap-1".to_owned(), approved: true },
+        UiEventKind::AgentApprovalPressed {
+            owner_id: AccountId::new("a-1"),
+            approval_id: "ap-1".to_owned(),
+            approved: true,
+        },
         UiEventKind::AddNodeRequested { url: "https://node.example.test".into() },
         UiEventKind::ConfirmNodePressed { node_id: NodeId::new("n-1") },
         UiEventKind::NodeActionPressed {

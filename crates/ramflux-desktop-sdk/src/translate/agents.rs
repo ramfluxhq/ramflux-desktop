@@ -19,7 +19,7 @@ use ramflux_desktop_core::{
 use serde_json::Value;
 
 use crate::bus::BusError;
-use crate::plan::agents::RUNTIME_METHOD;
+use crate::plan::agents::{RUNTIME_METHOD, prx_name};
 use crate::plan::fetch::Fetch;
 use crate::prx_host;
 use crate::translate::Translated;
@@ -67,6 +67,7 @@ pub fn refusal_of_code(code: &str) -> AgentRefusal {
         "agent_invalid" => AgentRefusal::AgentInvalid,
         "storage_unavailable" => AgentRefusal::StorageUnavailable,
         "prx_missing" | "runtime_missing" => AgentRefusal::PrxMissing,
+        "prx_path_unsafe" => AgentRefusal::PrxPathUnsafe,
         "provider_missing" => AgentRefusal::ProviderMissing,
         "credential_unavailable" => AgentRefusal::CredentialUnavailable,
         "runtime_stale" => AgentRefusal::RuntimeStale,
@@ -125,6 +126,7 @@ fn runtime_refusal(refusal: &AgentRefusal) -> bool {
         refusal,
         AgentRefusal::PrxUnconfigured
             | AgentRefusal::PrxMissing
+            | AgentRefusal::PrxPathUnsafe
             | AgentRefusal::ProviderMissing
             | AgentRefusal::CredentialUnavailable
             | AgentRefusal::RuntimeStale
@@ -162,6 +164,7 @@ pub fn refusal_key(refusal: &AgentRefusal) -> &'static str {
         AgentRefusal::PrxUnconfigured => "backend.agent.prx.unconfigured",
         AgentRefusal::HostNotSupported => "backend.agent.host_not_supported",
         AgentRefusal::PrxMissing => "backend.agent.prx.missing",
+        AgentRefusal::PrxPathUnsafe => "backend.agent.prx.path_unsafe",
         AgentRefusal::ProviderMissing => "backend.agent.prx.provider_missing",
         AgentRefusal::CredentialUnavailable => "backend.agent.prx.credential_unavailable",
         AgentRefusal::RuntimeStale => "backend.agent.prx.runtime_stale",
@@ -257,6 +260,7 @@ pub fn record_of(value: &Value) -> Option<AgentRecord> {
         return None;
     }
     let persona = pick(value, &["persona"]);
+    let runtime_name = prx_name(&agent_anchor).unwrap_or_default();
     Some(AgentRecord {
         agent_anchor,
         custodian_anchor: text_of(value, &["custodianAnchor", "custodian_anchor"]),
@@ -269,6 +273,7 @@ pub fn record_of(value: &Value) -> Option<AgentRecord> {
         access: access_of(pick(value, &["access"])),
         role: text_of(value, &["role"]),
         base: pick(value, &["base"]).clone(),
+        runtime_name,
     })
 }
 
@@ -295,9 +300,37 @@ fn approval_of(value: &Value) -> Option<AgentApproval> {
     Some(AgentApproval {
         approval_id,
         conversation_id: text_of(value, &["conversationId", "conversation_id"]),
+        agent: text_of(value, &["agent"]),
+        tool: plain_line(&text_of(value, &["tool"]), 128),
+        preview: plain_line(&text_of(value, &["preview"]), 512),
         status: text_of(value, &["status"]),
-        expires_at: number_of(value, &["expiresAt", "expires_at"]),
+        expires_at: expiry_of(&text_of(value, &["expiresAt", "expires_at"])),
     })
+}
+
+/// The unix seconds of an RFC 3339 expiry the core stored as text. Empty
+/// text is no expiry; text that is not RFC 3339 reads as already expired, so
+/// an approval whose expiry cannot be told is never offered.
+fn expiry_of(text: &str) -> Option<i64> {
+    if text.is_empty() {
+        return None;
+    }
+    Some(chrono::DateTime::parse_from_rfc3339(text).map_or(0, |at| at.timestamp()))
+}
+
+/// Text an agent supplied, made safe to show as one plain line: control
+/// characters and bidirectional overrides become spaces, runs of white space
+/// collapse, and at most `max` characters are kept.
+fn plain_line(raw: &str, max: usize) -> String {
+    let spaced: String = raw
+        .chars()
+        .map(|c| {
+            let hidden = c.is_control()
+                || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}');
+            if hidden { ' ' } else { c }
+        })
+        .collect();
+    spaced.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(max).collect()
 }
 
 /// The runtime status the host answered, without any secret. `action` is the
@@ -559,6 +592,51 @@ mod tests {
         assert!(is_stale_cursor(methods::AGENT_WATCH, &invalid));
         assert!(!is_stale_cursor(methods::AGENT_JOB_LIST, &invalid));
         assert!(!is_stale_cursor(methods::AGENT_WATCH, &BusError::Timeout));
+    }
+
+    #[test]
+    fn an_approval_carries_its_agent_tool_preview_and_rfc3339_expiry() {
+        let row = json!({
+            "approval_id": "ap",
+            "conversation_id": "conv-1",
+            "agent": "a_name",
+            "tool": "shell\u{202E}\n  run",
+            "preview": "rm -rf\t/tmp/x\u{0007}",
+            "status": "pending",
+            "expires_at": "2030-01-01T00:00:00Z",
+        });
+        let approval = approval_of(&row).expect("approval");
+        assert_eq!(approval.agent, "a_name");
+        assert_eq!(approval.conversation_id, "conv-1");
+        assert_eq!(approval.tool, "shell run", "controls and overrides never reach the screen");
+        assert_eq!(approval.preview, "rm -rf /tmp/x");
+        assert_eq!(approval.expires_at, Some(1_893_456_000));
+        let offset = json!({"approval_id": "a", "expires_at": "2030-01-01T01:00:00+01:00"});
+        assert_eq!(approval_of(&offset).expect("approval").expires_at, Some(1_893_456_000));
+    }
+
+    #[test]
+    fn an_expiry_that_is_missing_is_none_and_one_that_is_unreadable_is_expired() {
+        assert_eq!(expiry_of(""), None);
+        assert_eq!(expiry_of("tomorrow"), Some(0));
+        assert_eq!(expiry_of("1893456000"), Some(0), "a number is not RFC 3339 text");
+    }
+
+    #[test]
+    fn plain_line_keeps_at_most_the_limit() {
+        assert_eq!(plain_line(&"x".repeat(600), 512).chars().count(), 512);
+    }
+
+    #[test]
+    fn a_roster_record_knows_the_runtime_name_an_approval_uses() {
+        let anchor = ramflux_protocol::encode_base64url([9u8; 32]);
+        let row = json!({"agent_anchor": anchor, "lifecycle": "active"});
+        let record = record_of(&row).expect("record");
+        assert_eq!(record.runtime_name, prx_name(&anchor).expect("name"));
+        assert!(record.is_named(&record.runtime_name));
+        assert!(record.is_named(&anchor));
+        assert!(!record.is_named(""));
+        assert!(!record.is_named("other"));
     }
 
     #[test]

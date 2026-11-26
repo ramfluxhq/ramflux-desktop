@@ -595,6 +595,11 @@ impl Store {
         self.agents.values()
     }
 
+    /// The roster agent an approval names: by anchor or by runtime name.
+    pub fn agent_of_approval(&self, approval: &AgentApproval) -> Option<&AgentRecord> {
+        self.agents.values().find(|record| record.is_named(&approval.agent))
+    }
+
     /// The roster's read state (loading until the first read).
     pub fn agent_roster(&self) -> AgentRosterState {
         self.agent_roster.clone().unwrap_or(AgentRosterState::Loading)

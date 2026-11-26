@@ -295,6 +295,8 @@ pub enum UiEventKind {
     },
     /// Allow or deny pressed on an agent's approval (D40).
     AgentApprovalPressed {
+        /// The account whose approvals the panel shows (the owner answering).
+        owner_id: AccountId,
         /// The agent approval's id.
         approval_id: String,
         /// Allow (true) or deny (false).

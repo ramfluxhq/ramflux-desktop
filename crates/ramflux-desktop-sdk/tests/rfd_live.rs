@@ -242,6 +242,73 @@ fn every_contact_frame_reaches_the_account_router_of_the_real_daemon() {
     assert!(cli.status.success());
 }
 
+/// An agent mutation planned by the desktop, for an account the daemon does
+/// not have open.
+fn agent_request(method: &str, body: serde_json::Value) -> ramflux_desktop_sdk::bus::BusRequest {
+    use ramflux_desktop_core::{ContextId, ContextKind};
+    use ramflux_desktop_sdk::plan::{Known, KnownLink, Plan, plan};
+    struct Nothing;
+    impl Known for Nothing {
+        fn context_kind(&self, _: &ContextId) -> Option<ContextKind> {
+            None
+        }
+        fn self_device(&self) -> Option<&str> {
+            None
+        }
+        fn daemon_grant_id(&self, _: &str) -> Option<&str> {
+            None
+        }
+        fn self_principal(&self) -> Option<&str> {
+            None
+        }
+        fn contact_link(&self, _: &str) -> Option<&KnownLink> {
+            None
+        }
+    }
+    let effect = Effect::Call { method: method.to_owned(), body };
+    match plan(Some(&AccountId::new("acct-none")), effect, &Nothing).plan {
+        Plan::Call { request, .. } => request,
+        other => panic!("{method}: expected a call, got {other:?}"),
+    }
+}
+
+#[test]
+#[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
+fn an_agent_mutation_carries_no_frame_key_and_the_real_daemon_does_not_refuse_it_as_malformed() {
+    use ramflux_desktop_sdk::bus::client::BusClient;
+    use ramflux_desktop_sdk::bus::{BusError, idempotency};
+    let Some(daemon) = daemon("agent-keys") else { return };
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("rt");
+    let client = BusClient::new(
+        daemon.socket(),
+        std::time::Duration::from_secs(5),
+        ramflux_desktop_sdk::Deadlines::standard(),
+    );
+    let anchor = ramflux_protocol::encode_base64url([7u8; 32]);
+    let request = agent_request(
+        methods::AGENT_PERSONA_EDIT,
+        json!({ "agent_anchor": anchor, "persona": { "display_name": "Ghost" } }),
+    );
+    assert!(request.operation_id.is_none(), "an agent frame carries no frame key");
+    let answer = runtime.block_on(client.call(&request));
+    println!("agent.persona.edit without a key: {answer:?}");
+    match &answer {
+        Err(BusError::Daemon { code, .. }) => {
+            assert_ne!(code, "CustodySetupInvalid", "{answer:?}");
+        }
+        other => panic!("expected a business refusal from the daemon: {other:?}"),
+    }
+    // The audit's finding, kept as evidence: the same frame with a key is
+    // refused as malformed before any business check.
+    let keyed = request.with_operation_id(idempotency::fresh_key().expect("randomness"));
+    let refused = runtime.block_on(client.call(&keyed));
+    println!("agent.persona.edit with a key: {refused:?}");
+    assert!(
+        matches!(&refused, Err(BusError::Daemon { code, .. }) if code == "CustodySetupInvalid"),
+        "{refused:?}"
+    );
+}
+
 #[test]
 #[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
 fn many_requests_run_concurrently_on_one_connection_of_a_real_daemon() {

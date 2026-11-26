@@ -32,6 +32,9 @@ pub async fn run(
     key: Option<SecretInput>,
 ) -> Result<Value, BusError> {
     let secret = key.map(SecretInput::into_zeroizing);
+    // Resolved once: the host runs this exact file, not whatever `prx` the
+    // search path names by the time it spawns.
+    let binary = resolve_prx(std::env::var_os("PATH").as_deref()).map_err(resolve_error)?;
     let request = Request {
         action: host_action(action),
         provider: (!provider.is_empty()).then(|| provider.to_owned()),
@@ -39,7 +42,7 @@ pub async fn run(
         native_tools: false,
         no_native_tools: false,
         target_version: None,
-        binary: PathBuf::from("prx"),
+        binary,
         state_dir: None,
         // The owner's confirmation was taken by the core for install, stop
         // and uninstall; the desktop's own Restart button is the confirmation
@@ -57,6 +60,109 @@ pub async fn run(
         details: None,
         cause: None,
     })
+}
+
+/// Why `prx` could not be resolved to a file this computer trusts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolveError {
+    /// No executable `prx` on the search path.
+    Missing,
+    /// A `prx` exists only where it is not trusted (see [`resolve_prx`]).
+    Unsafe,
+}
+
+/// Resolves `prx` on `search_path` to an absolute, canonical file path.
+///
+/// Relative and empty search path entries are refused (they name the
+/// current folder). A candidate is accepted only when its folder and the
+/// file itself are owned by root or by the current user and are not
+/// writable by group or others; an unsafe candidate is skipped, and the
+/// search goes on. Without a match the answer is [`ResolveError::Unsafe`]
+/// when something was skipped, else [`ResolveError::Missing`].
+///
+/// # Errors
+///
+/// [`ResolveError`] as above.
+pub fn resolve_prx(search_path: Option<&std::ffi::OsStr>) -> Result<PathBuf, ResolveError> {
+    let Some(search_path) = search_path.filter(|path| !path.is_empty()) else {
+        return Err(ResolveError::Missing);
+    };
+    let mut skipped = false;
+    let trusted = trusted_owners();
+    for dir in std::env::split_paths(search_path) {
+        if !dir.is_absolute() {
+            skipped = true;
+            continue;
+        }
+        let candidate = dir.join("prx");
+        let Ok(real) = std::fs::canonicalize(&candidate) else { continue };
+        if !real.is_file() {
+            continue;
+        }
+        if trusted_file(&real, &trusted) {
+            return Ok(real);
+        }
+        skipped = true;
+    }
+    Err(if skipped { ResolveError::Unsafe } else { ResolveError::Missing })
+}
+
+/// The `prx` the runtime panel would run, for the confirmation to show.
+pub fn resolved_prx() -> Result<PathBuf, ResolveError> {
+    resolve_prx(std::env::var_os("PATH").as_deref())
+}
+
+/// The owners trusted for the file and its folder: root and the user (the
+/// owner of the home folder).
+#[cfg(unix)]
+fn trusted_owners() -> Vec<u32> {
+    use std::os::unix::fs::MetadataExt as _;
+    let mut owners = vec![0];
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
+        && home.is_absolute()
+        && let Ok(meta) = std::fs::metadata(&home)
+    {
+        owners.push(meta.uid());
+    }
+    owners
+}
+
+#[cfg(not(unix))]
+fn trusted_owners() -> Vec<u32> {
+    Vec::new()
+}
+
+/// Whether the file and the folder it lives in are trusted.
+#[cfg(unix)]
+fn trusted_file(file: &Path, owners: &[u32]) -> bool {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+    let ok = |path: &Path, executable: bool| {
+        std::fs::metadata(path).is_ok_and(|meta| {
+            let mode = meta.permissions().mode();
+            owners.contains(&meta.uid()) && mode & 0o022 == 0 && (!executable || mode & 0o111 != 0)
+        })
+    };
+    file.parent().is_some_and(|dir| ok(dir, false)) && ok(file, true)
+}
+
+#[cfg(not(unix))]
+fn trusted_file(_file: &Path, _owners: &[u32]) -> bool {
+    true
+}
+
+fn resolve_error(error: ResolveError) -> BusError {
+    let (code, message) = match error {
+        ResolveError::Missing => ("prx_missing", "PRX is not installed on this computer"),
+        ResolveError::Unsafe => ("prx_path_unsafe", "PRX was found only in an untrusted place"),
+    };
+    BusError::Daemon {
+        retry_after_ms: None,
+        code: code.to_owned(),
+        message: message.to_owned(),
+        reason_code: Some(code.to_owned()),
+        details: None,
+        cause: None,
+    }
 }
 
 /// The state directory of the runtime a status names (its `runtime.json`
@@ -122,6 +228,93 @@ mod tests {
         ));
         let mut none = key_callback(None, "p".into());
         assert!(none("p").is_err(), "no key held means no key");
+    }
+
+    #[cfg(unix)]
+    mod resolve {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        use super::*;
+
+        fn prx_in(dir: &Path, mode: u32) {
+            std::fs::create_dir_all(dir).expect("dir");
+            let file = dir.join("prx");
+            std::fs::write(&file, "#!/bin/sh\n").expect("file");
+            std::fs::set_permissions(&file, std::fs::Permissions::from_mode(mode)).expect("mode");
+        }
+
+        fn dir_mode(dir: &Path, mode: u32) {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode)).expect("mode");
+        }
+
+        fn scratch(tag: &str) -> PathBuf {
+            let dir = std::env::temp_dir().join(format!("rfd-prx-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("scratch");
+            dir
+        }
+
+        #[test]
+        fn a_prx_in_a_private_absolute_folder_resolves_to_its_real_path() {
+            let root = scratch("ok");
+            let bin = root.join("bin");
+            prx_in(&bin, 0o755);
+            dir_mode(&bin, 0o755);
+            let path = std::env::join_paths([&bin]).expect("path");
+            let found = resolve_prx(Some(&path)).expect("resolves");
+            assert!(found.is_absolute());
+            assert_eq!(found, std::fs::canonicalize(bin.join("prx")).expect("real"));
+            let _ = std::fs::remove_dir_all(root);
+        }
+
+        #[test]
+        fn relative_empty_and_missing_entries_never_resolve() {
+            let root = scratch("rel");
+            let bin = root.join("bin");
+            prx_in(&bin, 0o755);
+            let relative = std::env::join_paths(["", ".", "bin"]).expect("path");
+            // Relative entries are refused whatever the current folder holds.
+            assert_eq!(resolve_prx(Some(&relative)), Err(ResolveError::Unsafe));
+            assert_eq!(resolve_prx(None), Err(ResolveError::Missing));
+            let _ = std::fs::remove_dir_all(root);
+        }
+
+        #[test]
+        fn a_folder_or_file_others_can_write_is_skipped() {
+            let root = scratch("open");
+            let loose = root.join("loose");
+            prx_in(&loose, 0o755);
+            dir_mode(&loose, 0o777);
+            let path = std::env::join_paths([&loose]).expect("path");
+            assert_eq!(resolve_prx(Some(&path)), Err(ResolveError::Unsafe));
+            let tight = root.join("tight");
+            prx_in(&tight, 0o777);
+            dir_mode(&tight, 0o755);
+            let path = std::env::join_paths([&tight]).expect("path");
+            assert_eq!(resolve_prx(Some(&path)), Err(ResolveError::Unsafe));
+            // The search goes on past an unsafe candidate to a safe one.
+            let good = root.join("good");
+            prx_in(&good, 0o755);
+            dir_mode(&good, 0o755);
+            let path = std::env::join_paths([&loose, &good]).expect("path");
+            assert_eq!(
+                resolve_prx(Some(&path)),
+                Ok(std::fs::canonicalize(good.join("prx")).expect("real"))
+            );
+            dir_mode(&loose, 0o755);
+            let _ = std::fs::remove_dir_all(root);
+        }
+
+        #[test]
+        fn a_file_that_is_not_executable_is_not_a_prx() {
+            let root = scratch("noexec");
+            let bin = root.join("bin");
+            prx_in(&bin, 0o644);
+            dir_mode(&bin, 0o755);
+            let path = std::env::join_paths([&bin]).expect("path");
+            assert_eq!(resolve_prx(Some(&path)), Err(ResolveError::Unsafe));
+            let _ = std::fs::remove_dir_all(root);
+        }
     }
 
     #[test]

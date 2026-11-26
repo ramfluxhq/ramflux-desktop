@@ -535,6 +535,10 @@ pub enum IntentKind {
     },
     /// Approve or deny an agent's approval in a conversation.
     AgentApprovalDecide {
+        /// The account that owns the agent and answers: the account the
+        /// panel is showing. Refused when it is not the owner of the agent
+        /// the approval names.
+        owner_id: AccountId,
         /// The approval id.
         approval_id: String,
         /// Approve (true) or deny (false).

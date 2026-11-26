@@ -116,6 +116,22 @@ pub struct AgentRecord {
     pub role: String,
     /// The record's identity, as the daemon gave it (opaque JSON).
     pub base: serde_json::Value,
+    /// The name PRX knows the agent by (derived from the anchor), or empty
+    /// when the anchor is not a valid one. An approval names its agent by
+    /// this name.
+    #[serde(default)]
+    pub runtime_name: String,
+}
+
+impl AgentRecord {
+    /// Whether an approval's `agent` text names this agent: its anchor or
+    /// its runtime name.
+    #[must_use]
+    pub fn is_named(&self, agent: &str) -> bool {
+        !agent.is_empty()
+            && (self.agent_anchor == agent
+                || (!self.runtime_name.is_empty() && self.runtime_name == agent))
+    }
 }
 
 /// Why a request or a runtime action was refused, typed. The codes are the
@@ -145,6 +161,10 @@ pub enum AgentRefusal {
     HostNotSupported,
     /// PRX is not installed on this computer.
     PrxMissing,
+    /// A `prx` was found only where this computer does not trust it (a
+    /// relative PATH entry, or a folder or file others can write or another
+    /// user owns).
+    PrxPathUnsafe,
     /// No provider was chosen.
     ProviderMissing,
     /// The provider credential is not available to PRX.
@@ -508,10 +528,29 @@ pub struct AgentApproval {
     pub approval_id: String,
     /// The conversation it belongs to.
     pub conversation_id: String,
+    /// The agent the runtime names (an anchor or a runtime name; empty when
+    /// the record carries none). Match it with [`AgentRecord::is_named`].
+    pub agent: String,
+    /// The tool the agent wants to use. Supplied by the agent: plain text,
+    /// never trusted.
+    pub tool: String,
+    /// What the agent says it will do. Supplied by the agent: plain text,
+    /// never trusted.
+    pub preview: String,
     /// The status the daemon reports.
     pub status: String,
-    /// When it expires (unix seconds).
-    pub expires_at: Option<u64>,
+    /// When it expires (unix seconds), read from the RFC 3339 text the core
+    /// stores. `None` when the record has no expiry; an expiry that cannot
+    /// be read is `Some(0)`, that is, already expired.
+    pub expires_at: Option<i64>,
+}
+
+impl AgentApproval {
+    /// Whether the approval has expired at `now_ms` (unix milliseconds).
+    #[must_use]
+    pub fn is_expired(&self, now_ms: i64) -> bool {
+        self.expires_at.is_some_and(|at| at.saturating_mul(1000) <= now_ms)
+    }
 }
 
 /// Why an account cannot be the owner of an agent: the daemon accepts only

@@ -6,8 +6,8 @@
 
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
-    Actor, ContactAction, DeleteScope, GovernanceOp, Intent, IntentKind, MomentKind, ParticipantId,
-    RequestAnswer, Risk, Store,
+    Actor, AgentRuntimeAction, ContactAction, DeleteScope, GovernanceOp, Intent, IntentKind,
+    MomentKind, ParticipantId, RequestAnswer, Risk, Store,
 };
 
 use crate::i18n::{tr, tr_args};
@@ -188,6 +188,15 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
         IntentKind::ClearRequestFloors => {
             let count = store.request_floors().map_or(0, |f| f.clearable).to_string();
             (tr_args("confirm.contact.clear_floors", &[("count", &count)]), None, Risk::High)
+        }
+        // An install runs a program from this computer's search path: the
+        // confirmation names the file that would run.
+        IntentKind::AgentRuntime { action: AgentRuntimeAction::Install, .. } => {
+            let path = match ramflux_desktop_sdk::prx_host::resolved_prx() {
+                Ok(path) => SharedString::from(path.display().to_string()),
+                Err(_) => tr("confirm.agent_runtime.no_prx"),
+            };
+            (tr("confirm.agent_runtime.install"), Some(path), Risk::High)
         }
         _ => (tr("confirm.generic"), None, Risk::High),
     }

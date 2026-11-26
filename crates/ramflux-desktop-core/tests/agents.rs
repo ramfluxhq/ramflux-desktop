@@ -75,6 +75,7 @@ fn record(anchor: &str, lifecycle: AgentLifecycle, owner: &str) -> AgentRecord {
         access: AgentAccess::owner_only(),
         role: "named".into(),
         base: json!({"id": "base-1"}),
+        runtime_name: format!("a_{anchor}"),
     }
 }
 
@@ -241,7 +242,7 @@ fn runtime_install_needs_a_provider_and_a_key_that_never_serializes() {
 
 #[test]
 fn jobs_pause_at_once_and_removal_is_asked_for() {
-    let store = world().store;
+    let store = with_agent(world(), record("agent-1", AgentLifecycle::Active, "owner")).store;
     let job = |action| IntentKind::AgentJob {
         agent: "agent-1".into(),
         kind: AgentJobKind::Cron,
@@ -258,7 +259,7 @@ fn jobs_pause_at_once_and_removal_is_asked_for() {
 
 #[test]
 fn the_jobs_of_an_agent_are_read_without_confirmation() {
-    let store = world().store;
+    let store = with_agent(world(), record("agent-1", AgentLifecycle::Active, "owner")).store;
     let read = handle_intent(
         &store,
         Intent::human(IntentKind::AgentJobsRefresh { agent: "agent-1".into() }),
@@ -460,4 +461,104 @@ fn the_roster_and_the_creation_live_in_the_store() {
     assert_eq!(creation.state, AgentCreationState::PendingPhone);
     assert!(!creation.state.is_terminal());
     assert!(AgentCreationState::from_custody_state("unknown_state").is_terminal());
+}
+
+#[test]
+fn the_jobs_of_an_agent_the_owner_does_not_hold_are_not_touched() {
+    let store = world().store;
+    let refresh = IntentKind::AgentJobsRefresh { agent: "agent-1".into() };
+    assert!(matches!(decide(&store, refresh), Err(IntentError::AgentRecordUnknown(_))));
+    let job = IntentKind::AgentJob {
+        agent: "agent-1".into(),
+        kind: AgentJobKind::Cron,
+        id: "job-1".into(),
+        action: AgentJobAction::Pause,
+    };
+    assert!(matches!(decide(&store, job), Err(IntentError::AgentRecordUnknown(_))));
+    let retired = with_agent(world(), record("agent-1", AgentLifecycle::Retired, "owner")).store;
+    let refresh = IntentKind::AgentJobsRefresh { agent: "agent-1".into() };
+    assert!(matches!(decide(&retired, refresh), Err(IntentError::AgentRecordRetired(_))));
+}
+
+fn approval(id: &str, agent: &str, expires_at: Option<i64>) -> AgentApproval {
+    AgentApproval {
+        approval_id: id.into(),
+        conversation_id: "conv-1".into(),
+        agent: agent.into(),
+        tool: "shell".into(),
+        preview: "ls".into(),
+        status: "pending".into(),
+        expires_at,
+    }
+}
+
+fn decide_approval(owner: &str, id: &str) -> IntentKind {
+    IntentKind::AgentApprovalDecide {
+        owner_id: AccountId::new(owner),
+        approval_id: id.into(),
+        approved: true,
+    }
+}
+
+fn with_approvals(feed: Feed, approvals: Vec<AgentApproval>) -> Store {
+    let mut feed = with_agent(feed, record("agent-1", AgentLifecycle::Active, "owner"));
+    feed.ok(5, DomainEvent::AgentApprovalsUpdated(approvals));
+    feed.store
+}
+
+#[test]
+fn an_approval_is_decided_by_the_owner_of_the_agent_it_names() {
+    let store = with_approvals(world(), vec![approval("ap-1", "agent-1", None)]);
+    let sent = decide(&store, decide_approval("owner", "ap-1")).expect("the owner decides");
+    assert_eq!(sent[0].method(), Some("agent.approval.decide"));
+    assert_eq!(sent[0].body().expect("call")["decision"], "approved");
+    // The runtime name PRX uses names the same agent.
+    let store = with_approvals(world(), vec![approval("ap-1", "a_agent-1", None)]);
+    assert!(decide(&store, decide_approval("owner", "ap-1")).is_ok());
+}
+
+#[test]
+fn an_approval_is_refused_for_another_account_an_unknown_id_or_an_expired_one() {
+    let mut feed = world();
+    feed.ok(
+        6,
+        DomainEvent::AccountUpdated(account(
+            "other",
+            AccountKind::HumanInteractive,
+            LockState::Unlocked,
+            Networking::Live,
+        )),
+    );
+    let store = with_approvals(
+        feed,
+        vec![approval("ap-1", "agent-1", None), approval("ap-old", "agent-1", Some(0))],
+    );
+    assert!(matches!(
+        decide(&store, decide_approval("other", "ap-1")),
+        Err(IntentError::AgentApprovalOwner(_))
+    ));
+    assert!(matches!(
+        decide(&store, decide_approval("owner", "ap-none")),
+        Err(IntentError::AgentApprovalUnknown(_))
+    ));
+    assert!(matches!(
+        decide(&store, decide_approval("owner", "ap-old")),
+        Err(IntentError::AgentApprovalExpired(_))
+    ));
+    assert!(matches!(
+        decide(&store, decide_approval("locked", "ap-1")),
+        Err(IntentError::AgentCustody(_))
+    ));
+    assert!(matches!(
+        decide(&store, decide_approval("owner", " ")),
+        Err(IntentError::Empty("approval id"))
+    ));
+}
+
+#[test]
+fn an_approval_expires_by_its_unix_seconds() {
+    let at = approval("ap", "agent-1", Some(100));
+    assert!(!at.is_expired(99_999));
+    assert!(at.is_expired(100_000));
+    assert!(!approval("ap", "agent-1", None).is_expired(i64::MAX));
 }
