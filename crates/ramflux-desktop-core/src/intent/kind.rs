@@ -710,6 +710,13 @@ pub enum IntentKind {
     /// Read the changes to the account's agents since the roster's journal
     /// cursor (`agent.watch`). Read only.
     AgentWatchRefresh,
+    /// Remove an app-locked account whose code attempts are used up from
+    /// this device. The client supplies the confirmation (the account id)
+    /// itself; the user's acknowledgement is the dialog's checkbox.
+    RemoveLocalAccount {
+        /// The locked account.
+        account: AccountId,
+    },
     /// Begin recovering an account that lives on this device, from its 24
     /// words. Only the user starts it, from the account itself; nothing a
     /// network event carries may. The daemon answers with the account's

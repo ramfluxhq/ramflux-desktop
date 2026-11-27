@@ -204,6 +204,7 @@ pub fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::AgentRuntime { .. } => "AgentRuntime",
         IntentKind::CancelCeremony => "CancelCeremony",
         IntentKind::BeginRecovery { .. } => "BeginRecovery",
+        IntentKind::RemoveLocalAccount { .. } => "RemoveLocalAccount",
         IntentKind::ConfirmRecovery { .. } => "ConfirmRecovery",
         IntentKind::CancelRecovery => "CancelRecovery",
     }
@@ -291,6 +292,7 @@ pub fn event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
         DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",
         DomainEvent::RecoveryUpdated(_) => "RecoveryUpdated",
+        DomainEvent::AccountRemoved { .. } => "AccountRemoved",
         DomainEvent::AgentsListed { .. } => "AgentsListed",
         DomainEvent::AgentRecordUpdated(_) => "AgentRecordUpdated",
         DomainEvent::AgentRosterStateChanged(_) => "AgentRosterStateChanged",

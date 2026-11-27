@@ -118,6 +118,11 @@ impl AppLockWatch {
         plan.due = Some(now + doubled.min(BACKOFF_CAP.max(base)));
     }
 
+    /// Drops the plan of one account (it was removed from this device).
+    pub(super) fn forget(&mut self, account: &AccountId) {
+        self.plans.remove(account);
+    }
+
     /// Drops every plan (the account closed or the daemon is gone).
     pub(super) fn clear(&mut self) {
         self.plans.clear();

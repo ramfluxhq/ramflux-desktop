@@ -28,6 +28,7 @@ use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary, tex
 use unicode_segmentation::UnicodeSegmentation as _;
 use unicode_width::UnicodeWidthStr;
 
+use super::remove::LockNotice;
 use super::{AccountPath, EntryPage, RestoreKind};
 use crate::file_dialog;
 use crate::i18n::{self, tr, tr_args};
@@ -97,6 +98,8 @@ impl EntryPage {
         let account = self.unlock_target(cx);
         let secret = take_secret(&self.inputs.passphrase, window, cx);
         let Some(account_id) = account.filter(|_| !secret.is_empty()) else { return };
+        self.lock_notice = None;
+        self.removed_notice = false;
         self.submitted = Some(account_id.clone());
         self.submit_secret(IntentKind::Unlock { account_id, secret }, window, cx);
     }
@@ -111,6 +114,8 @@ impl EntryPage {
     /// The user asked to recover `account` with its recovery phrase: the
     /// recovery screens open (nothing is sent yet).
     fn open_recovery(&mut self, account: AccountId, window: &mut Window, cx: &mut Context<Self>) {
+        self.lock_notice = None;
+        self.removed_notice = false;
         self.recovery.update(cx, |panel, cx| panel.open(account, window, cx));
         self.recovery_open = true;
         cx.notify();
@@ -187,7 +192,15 @@ impl EntryPage {
                 .child(self.render_unlock(&accounts, cx))
                 .into_any_element()
         };
-        v_flex().id("entry-account").gap(space(3.)).child(body)
+        let removed = self.removed_notice.then(|| {
+            div()
+                .id("entry-removed")
+                .role(gpui_kit::Role::Status)
+                .text_size(text_caption())
+                .text_color(cx.theme().success)
+                .child(tr("entry.remove.done"))
+        });
+        v_flex().id("entry-account").gap(space(3.)).children(removed).child(body)
     }
 
     /// A freshly opened account session that has not answered: a neutral
@@ -736,13 +749,15 @@ impl EntryPage {
             }
             let blocked = unlocking || waiting || exhausted;
             let refused_text = last_refusal.filter(|_| !unlocking);
-            column = column.child(
-                div()
-                    .id("lock-help")
-                    .text_size(text_caption())
-                    .text_color(muted)
-                    .child(tr("entry.app_lock.locked")),
-            );
+            if !exhausted {
+                column = column.child(
+                    div()
+                        .id("lock-help")
+                        .text_size(text_caption())
+                        .text_color(muted)
+                        .child(tr("entry.app_lock.locked")),
+                );
+            }
             if let Some(text) = refused_text {
                 column = column.child(
                     div()
@@ -763,37 +778,71 @@ impl EntryPage {
                         .child(tr("entry.app_lock.wrong_code")),
                 );
             }
-            if waiting {
+            if self.lock_notice == Some(LockNotice::WrongCode) {
                 column = column.child(
                     div()
-                        .id("lock-code-wait")
+                        .id("lock-recovery-wrong-code")
+                        .role(gpui_kit::Role::Status)
+                        .text_size(text_caption())
+                        .text_color(cx.theme().danger)
+                        .child(tr("recovery.ended.wrong_code")),
+                );
+            }
+            if waiting {
+                // After a recovery phrase was accepted the same countdown says so.
+                let (id, key) = if self.lock_notice == Some(LockNotice::PhraseAccepted) {
+                    ("lock-phrase-accepted", "entry.app_lock.phrase_accepted_wait")
+                } else {
+                    ("lock-code-wait", "settings.app_lock.code_wait")
+                };
+                column = column.child(
+                    div()
+                        .id(id)
                         .role(gpui_kit::Role::Status)
                         .text_size(text_caption())
                         .text_color(cx.theme().danger)
                         .child(tr_args(
-                            "settings.app_lock.code_wait",
+                            key,
                             &[("time", &crate::settings::account::countdown(wait_ms))],
                         )),
                 );
             }
             if exhausted {
-                // Only restoring the account from its recovery phrase helps: no code field.
-                let restore_target = target.clone();
+                // No code field: the account is recovered with its recovery
+                // phrase and account code, or removed from this device.
+                let recover_target = target.clone();
+                let remove_target = target.clone();
                 column = column
+                    .child(
+                        div()
+                            .id("lock-code-exhausted-title")
+                            .role(gpui_kit::Role::Heading)
+                            .text_size(text_secondary())
+                            .font_semibold()
+                            .child(tr("entry.app_lock.exhausted_title")),
+                    )
                     .child(
                         div()
                             .id("lock-code-exhausted")
                             .role(gpui_kit::Role::Status)
                             .text_size(text_caption())
                             .text_color(cx.theme().danger)
-                            .child(tr("settings.app_lock.code_exhausted")),
+                            .child(tr("entry.app_lock.exhausted_body")),
                     )
-                    .children(restore_target.map(|account| {
+                    .children(recover_target.map(|account| {
                         Button::new("lock-restore")
                             .design_primary(cx)
-                            .design_label(tr("settings.app_lock.restore"))
+                            .design_label(tr("entry.app_lock.recover"))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_recovery(account.clone(), window, cx);
+                            }))
+                    }))
+                    .children(remove_target.map(|account| {
+                        Button::new("lock-remove")
+                            .design_danger_quiet(cx)
+                            .design_label(tr("entry.app_lock.remove"))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_remove(account.clone(), window, cx);
                             }))
                     }));
             } else {
@@ -822,13 +871,31 @@ impl EntryPage {
                     );
             }
         }
-        v_flex()
-            .id("entry-lock")
+        let dialog = if cover { None } else { self.render_remove_dialog(&self.remove_focus, cx) };
+        let notice = (!cover && self.removed_notice).then(|| {
+            div()
+                .id("lock-removed")
+                .role(gpui_kit::Role::Status)
+                .text_size(text_caption())
+                .text_color(cx.theme().success)
+                .child(tr("entry.remove.done"))
+        });
+        div()
+            .id("entry-lock-frame")
+            .relative()
             .size_full()
-            .items_center()
-            .justify_center()
-            .p(space(4.))
-            .child(column)
+            .child(
+                v_flex()
+                    .id("entry-lock")
+                    .size_full()
+                    .items_center()
+                    .justify_center()
+                    .gap(space(3.))
+                    .p(space(4.))
+                    .children(notice)
+                    .child(column),
+            )
+            .children(dialog)
             .into_any_element()
     }
 }

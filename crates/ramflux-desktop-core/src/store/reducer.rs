@@ -66,6 +66,19 @@ impl Store {
                     self.drop_bodies(changes);
                 }
             }
+            DomainEvent::AccountRemoved { account_id } => {
+                self.accounts.remove(account_id);
+                self.app_locks.remove(account_id);
+                self.app_lock_sheets.remove(account_id);
+                self.app_lock_refusals.remove(account_id);
+                self.schema.remove(account_id);
+                self.username_claims.remove(account_id);
+                self.username_lookups.remove(&Some(account_id.clone()));
+                changes.accounts.insert(account_id.clone());
+                changes.app_locks.insert(account_id.clone());
+                changes.app_lock_codes.insert(account_id.clone());
+                self.drop_bodies(changes);
+            }
             DomainEvent::AccountLockChanged { account_id, lock_state } => {
                 // An unlock that succeeded leaves no refusal of its code on screen.
                 if *lock_state == LockState::Unlocked {

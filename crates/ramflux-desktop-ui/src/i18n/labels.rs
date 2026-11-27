@@ -192,6 +192,10 @@ pub fn ceremony_ended_key(failure: CeremonyFailure) -> &'static str {
         },
         CeremonyFailure::Expired => "ceremony.ended.expired",
         CeremonyFailure::Invalid => "ceremony.ended.invalid",
+        // A creation has no account code to check.
+        CeremonyFailure::WrongCode | CeremonyFailure::CodeWait | CeremonyFailure::CodeExhausted => {
+            "ceremony.ended.invalid"
+        }
     }
 }
 
@@ -221,6 +225,9 @@ pub fn recovery_ended_key(failure: CeremonyFailure) -> &'static str {
         CeremonyFailure::Expired => "recovery.ended.expired",
         // A recovery never has a custodian: a ceremony of another kind.
         CeremonyFailure::Invalid => "recovery.ended.invalid",
+        CeremonyFailure::WrongCode => "recovery.ended.wrong_code",
+        CeremonyFailure::CodeWait => "recovery.ended.code_wait",
+        CeremonyFailure::CodeExhausted => "recovery.ended.code_exhausted",
     }
 }
 

@@ -77,6 +77,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::BackupJobUpdated(_) => "BackupJobUpdated",
         DomainEvent::CeremonyUpdated(_) => "CeremonyUpdated",
         DomainEvent::RecoveryUpdated(_) => "RecoveryUpdated",
+        DomainEvent::AccountRemoved { .. } => "AccountRemoved",
         DomainEvent::AgentsListed { .. } => "AgentsListed",
         DomainEvent::AgentRecordUpdated(_) => "AgentRecordUpdated",
         DomainEvent::AgentRosterStateChanged(_) => "AgentRosterStateChanged",
@@ -87,7 +88,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 64;
+const DOMAIN_EVENT_VARIANTS: usize = 65;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -206,6 +207,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::AgentApprovalDecide { .. } => "AgentApprovalDecide",
         IntentKind::AgentRuntime { .. } => "AgentRuntime",
         IntentKind::BeginRecovery { .. } => "BeginRecovery",
+        IntentKind::RemoveLocalAccount { .. } => "RemoveLocalAccount",
         IntentKind::CancelRecovery => "CancelRecovery",
         IntentKind::Unlock { .. }
         | IntentKind::RestoreBackup { .. }
@@ -219,7 +221,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the nine secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 91;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 92;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -662,6 +664,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             ceremony_id: String::new(),
             expires_at: Timestamp(0),
         }),
+        DomainEvent::AccountRemoved { account_id: AccountId::new("a-1") },
         DomainEvent::AgentsListed { records: vec![sample_agent()], journal_cursor: "c-1".into() },
         DomainEvent::AgentRecordUpdated(Box::new(sample_agent())),
         DomainEvent::AgentRosterStateChanged(AgentRosterState::Offline),
@@ -1063,6 +1066,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             nonce: 1,
         },
         IntentKind::BeginRecovery { account_id: AccountId::new("a-1") },
+        IntentKind::RemoveLocalAccount { account: AccountId::new("a-1") },
         IntentKind::CancelRecovery,
     ]
 }

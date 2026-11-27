@@ -117,6 +117,13 @@ impl Translator {
                 let id = AccountId::new(text(body, "account_id"));
                 self.set_lock(&id, LockState::Locked)
             }
+            // The daemon erased the account's local data: the account and
+            // everything held for it leaves the store.
+            methods::ACCOUNT_REMOVE_LOCAL if answer["removed"].as_bool() == Some(true) => {
+                let id = AccountId::new(text(body, "account_id"));
+                self.accounts.remove(&id);
+                vec![DomainEvent::AccountRemoved { account_id: id }]
+            }
             methods::APP_LOCK_STATE | methods::APP_LOCK_CONFIGURE => {
                 self.app_lock_answer(&AccountId::new(text(body, "account_id")), answer)
             }

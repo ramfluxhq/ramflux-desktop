@@ -18,6 +18,7 @@ use crate::model::{AccountKind, RecoveryPhase};
 use crate::recovery::check_phrase;
 
 const WHAT: &str = "recover an account with a recovery phrase";
+const REMOVE: &str = "remove an account from this device";
 
 /// Decides recovery kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
@@ -61,6 +62,21 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
+        IntentKind::RemoveLocalAccount { account } => p.human_only(REMOVE).and_then(|()| {
+            p.store.account(account).ok_or_else(|| IntentError::UnknownAccount(account.clone()))?;
+            // Only the lock page's exhausted account: the daemon's own state.
+            let exhausted = p.store.app_locked(account)
+                && p.store.app_lock(account).is_some_and(|lock| lock.code_attempts_exhausted);
+            if !exhausted {
+                return Err(IntentError::RemoveNotOffered);
+            }
+            // The confirmation (the account id) is added to the secret body
+            // when the request is planned; the effect body names the account only.
+            Ok(Decision::SecretCall(
+                methods::ACCOUNT_REMOVE_LOCAL,
+                json!({ "account_id": account }),
+            ))
+        }),
         IntentKind::CancelRecovery => p.human_only(WHAT).and_then(|()| {
             if !p.store.recovery().is_some_and(|recovery| recovery.is_active()) {
                 return Err(IntentError::RecoveryPhase);

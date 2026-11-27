@@ -331,6 +331,17 @@ fn map(
             "account.lock",
             json!({}),
         )),
+        // The account id is in the header; the confirmation (the same id) is
+        // a secret body field, spliced in only when the frame is written.
+        methods::ACCOUNT_REMOVE_LOCAL => call(
+            BusRequest::new(
+                Some(text(body, "account_id")),
+                "account",
+                "account.remove_local",
+                json!({}),
+            )
+            .with_json("confirmation", json!(text(body, "account_id"))),
+        ),
         methods::APP_LOCK_CONFIGURE => call(BusRequest::new(
             Some(text(body, "account_id")),
             "account",

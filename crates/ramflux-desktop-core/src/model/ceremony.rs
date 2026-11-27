@@ -50,6 +50,14 @@ pub enum CeremonyFailure {
     /// The daemon refused a step as out of order, replayed or not valid
     /// (`CustodySetupInvalid`), or could not be reached.
     Invalid,
+    /// The recovery phrase was right but the account code was not
+    /// (`wrong_passphrase`); the code attempt counts.
+    WrongCode,
+    /// The recovery phrase was accepted but the code wait is still running
+    /// (`unlock_retry_later`); one code try is granted after it.
+    CodeWait,
+    /// The code attempts are used up (`unlock_attempts_exhausted`).
+    CodeExhausted,
 }
 
 /// Whether the new account is connected to its node.

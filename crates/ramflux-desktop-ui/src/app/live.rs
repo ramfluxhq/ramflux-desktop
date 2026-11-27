@@ -160,6 +160,11 @@ impl StoreHandle {
             self.remembered = Some(id);
         }
         let Some(link) = self.live.as_ref() else { return };
+        // An account the daemon no longer lists (removed from this device)
+        // is not remembered as the lock page's target.
+        if self.remembered.as_ref().is_some_and(|id| link.daemon.store().account(id).is_none()) {
+            self.remembered = None;
+        }
         let unlocked: Vec<AccountId> = link
             .daemon
             .store()
@@ -283,6 +288,7 @@ fn runs_on_daemon(kind: &IntentKind) -> bool {
                 | IntentKind::AnswerAppLockCode { .. }
                 | IntentKind::AppLockLifecycle { .. }
                 | IntentKind::Unlock { .. }
+                | IntentKind::RemoveLocalAccount { .. }
         )
 }
 

@@ -31,6 +31,7 @@ mod node_card;
 mod node_step;
 mod parts;
 mod recovery;
+mod remove;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::ButtonVariants as _;
@@ -38,7 +39,7 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Context, Entity, IntoElement, Render, Subscription, Window, div, rems};
-use ramflux_desktop_core::{AccountId, NodeId, Scope};
+use ramflux_desktop_core::{AccountId, CeremonyFailure, NodeId, Scope};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::scale::space;
 
@@ -136,6 +137,13 @@ pub struct EntryPage {
     /// own action on an account.
     recovery: Entity<RecoveryPanel>,
     recovery_open: bool,
+    /// The confirmation of removing the lock page's exhausted account.
+    remove_dialog: Option<remove::RemoveDialog>,
+    remove_focus: gpui_kit::FocusHandle,
+    /// What the lock page tells after a recovery's code answer.
+    lock_notice: Option<remove::LockNotice>,
+    /// An account was just removed from this device.
+    removed_notice: bool,
     node: Option<NodeId>,
     review_nodes: bool,
     submitted: Option<AccountId>,
@@ -179,10 +187,44 @@ impl EntryPage {
             cx.observe(&full_restore, |_, _, cx| cx.notify()),
             cx.observe(&ceremony, |_, _, cx| cx.notify()),
             cx.observe(&recovery, |_, _, cx| cx.notify()),
-            cx.subscribe(&recovery, |this, _, event: &RecoveryEvent, cx| {
-                let RecoveryEvent::Closed = event;
-                this.recovery_open = false;
-                cx.notify();
+            cx.subscribe_in(&recovery, window, |this, panel, event: &RecoveryEvent, window, cx| {
+                match event {
+                    RecoveryEvent::Closed => {
+                        this.recovery_open = false;
+                        cx.notify();
+                    }
+                    RecoveryEvent::Code(failure) => {
+                        // On the lock page the daemon's state (read again by
+                        // the bridge) decides what shows next: the lock form
+                        // with its countdown, or the exhausted page.
+                        if this.lock_view == Some(false) {
+                            this.lock_notice = match failure {
+                                CeremonyFailure::CodeWait => {
+                                    Some(remove::LockNotice::PhraseAccepted)
+                                }
+                                CeremonyFailure::WrongCode => Some(remove::LockNotice::WrongCode),
+                                _ => None,
+                            };
+                            panel.update(cx, |panel, cx| panel.close(window, cx));
+                        }
+                    }
+                }
+            }),
+            cx.observe_window_activation(window, |this, window, cx| {
+                if window.is_window_active() {
+                    return;
+                }
+                // The lock page keeps nothing open under a window that lost
+                // focus: the removal dialog closes, and a recovery that is
+                // not finished is cancelled and its inputs cleared.
+                this.close_remove(cx);
+                if this.lock_view == Some(false) && this.recovery_open {
+                    let keeps = this.recovery.read(cx).shows_result(cx);
+                    if !keeps {
+                        this.recovery.update(cx, |panel, cx| panel.cancel_for_close(window, cx));
+                        this.recovery.update(cx, |panel, cx| panel.close(window, cx));
+                    }
+                }
             }),
             cx.subscribe(&ceremony, |this, _, event: &CeremonyEvent, cx| {
                 let CeremonyEvent::Closed = event;
@@ -198,6 +240,7 @@ impl EntryPage {
                 }
                 this.sync_session_wait(cx);
                 this.sync_lock_mark(cx);
+                this.sync_remove(cx);
             }),
             cx.observe(&root, |_, _, cx| cx.notify()),
             cx.observe(&launcher, |_, _, cx| cx.notify()),
@@ -234,6 +277,10 @@ impl EntryPage {
             ceremony_open: false,
             recovery,
             recovery_open: false,
+            remove_dialog: None,
+            remove_focus: cx.focus_handle(),
+            lock_notice: None,
+            removed_notice: false,
             node: None,
             review_nodes: false,
             submitted: None,
@@ -437,6 +484,8 @@ impl EntryPage {
         cx: &mut Context<Self>,
     ) {
         self.inputs.passphrase.update(cx, |input, cx| input.set_value("", window, cx));
+        self.close_remove(cx);
+        self.lock_notice = None;
         let keeps_result =
             lock_view.is_none() && self.recovery_open && self.recovery.read(cx).shows_result(cx);
         if self.recovery_open && !keeps_result {

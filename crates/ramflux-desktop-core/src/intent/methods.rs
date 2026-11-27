@@ -149,6 +149,8 @@ pub const HANDOFF_DECLINE: &str = "handoff.decline";
 pub const ACCOUNT_UNLOCK: &str = "account.unlock";
 /// Lock an account.
 pub const ACCOUNT_LOCK: &str = "account.lock";
+/// Remove an account from this device (secret body: the confirmation).
+pub const ACCOUNT_REMOVE_LOCAL: &str = "account.remove_local";
 /// Read an account's app lock (the policy and whether it is locked now).
 pub const APP_LOCK_STATE: &str = "account.app_lock.state";
 /// Turn the app lock on or off and set its timeout (the account must be open).
