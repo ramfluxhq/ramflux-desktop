@@ -71,13 +71,12 @@ so a packaged app has no mock data and always runs on a daemon. CI checks that
 configuration and that it does not depend on `ramflux-desktop-test`.
 
 Cards (agent surfaces) are drawn by the card runtime, which the daemon runs
-behind the `card.session.*` bus methods. The stock `rf` does not enable it yet:
-build the daemon in the core checkout at the revision pinned in `Cargo.lock`,
-with the runtime feature and the release profile that keeps unwinding on (the card C
-ABI refuses `panic = "abort"`):
+behind the `card.session.*` bus methods. Every `rf` links it. Build the daemon in
+the core checkout at the revision pinned in `Cargo.lock`, with the profile that
+keeps unwinding on (the card C ABI refuses `panic = "abort"`, so `--release` fails):
 
 ```sh
-cargo build -p ramflux-rf --profile ffi-release --features ramflux-sdk/card-runtime
+cargo build -p ramflux-rf --profile ffi-release
 ```
 
 The desktop draws every card from the runtime's native tree. Against a daemon

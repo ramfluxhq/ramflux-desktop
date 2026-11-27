@@ -13,8 +13,8 @@
 #                desktop executable), so "Start local daemon" works without
 #                configuring a program path. RF_BIN=PATH does the same.
 #                Cards need the daemon's card runtime: build it with
-#                `cargo build -p ramflux-rf --profile ffi-release
-#                --features ramflux-sdk/card-runtime` in the core checkout.
+#                `cargo build -p ramflux-rf --profile ffi-release` in the core
+#                checkout.
 #   --no-build   package the existing target/release binary (build it with
 #                `--no-default-features`, as this script does).
 #   --no-sign    leave the bundle unsigned (default: ad hoc signature, which

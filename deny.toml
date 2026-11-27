@@ -19,6 +19,7 @@ ignore = [
     "RUSTSEC-2026-0371", # zbus_names
     "RUSTSEC-2026-0372", # zvariant_derive
     "RUSTSEC-2026-0543", # chrono
+    "RUSTSEC-2026-0173", # proc-macro-error2 unmaintained (not a vulnerability, build-time proc-macro only); via hpke-rs/libcrux <- openmls_rust_crypto <- ramflux-mls
 ]
 
 [licenses]
