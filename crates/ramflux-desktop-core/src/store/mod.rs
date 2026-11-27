@@ -8,11 +8,11 @@
 //!
 //! - [`changes`]: [`Changes`], [`ApplyError`] and [`Rejection`].
 //! - `reducer`: one validated arm per domain event.
-//! - `surface_ops`: unversioned agent surface patch operations.
-//! - `surfaces`: surface versions, content hashes, states and streams;
-//!   compare-and-swap patches and conflicts.
-//! - `surface_events`: the versioned surface events (create, patch,
-//!   stream, close) and the renderer limits at the reducer edge.
+//! - `surfaces`: surface versions, content hashes and states.
+//! - `surface_events`: the surface facts the authority reports (snapshot,
+//!   action and update answers, removal).
+//! - `cards`: the card runtime's facts per surface and the session pool
+//!   (two resumed, twenty-four open) with its queued bus steps.
 //! - `tasks`: task updates, step changes and where a step needs the
 //!   requester; task moments follow their task's state.
 //! - `calls`: voice calls and their timeline records.
@@ -35,7 +35,6 @@ mod index;
 mod recovery;
 mod reducer;
 mod surface_events;
-mod surface_ops;
 mod surfaces;
 mod tasks;
 
@@ -55,9 +54,9 @@ use crate::model::{
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
-pub use cards::{CardEntry, CardPool, MAX_OPEN, MAX_RESUMED, PoolPlan};
+pub use cards::{CardDue, CardEntry, CardPool, CardRecord, MAX_OPEN, MAX_RESUMED, PoolPlan};
 pub use changes::{ApplyError, Changes, Rejection};
-pub use surfaces::{StreamState, SurfaceRecord, SurfaceState, UpdateRequest};
+pub use surfaces::{SurfaceRecord, SurfaceState, UpdateRequest};
 
 use index::Indexes;
 
@@ -137,6 +136,9 @@ pub struct Store {
     needs_me_since: BTreeMap<MomentId, Timestamp>,
     surfaces: BTreeMap<MomentId, SurfaceRecord>,
     surface_ids: BTreeMap<SurfaceId, MomentId>,
+    cards: CardPool,
+    card_records: BTreeMap<SurfaceId, CardRecord>,
+    card_due: Vec<CardDue>,
     source_status: SourceStatus,
     last_seq: u64,
     rejections: Vec<Rejection>,

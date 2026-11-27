@@ -50,12 +50,6 @@ pub(crate) fn stream_key(moment: &Moment) -> StreamKey {
 pub(crate) fn presented_grants(kind: &MomentKind) -> Vec<GrantId> {
     match kind {
         MomentKind::Intervention(p) => vec![p.grant_id.clone()],
-        MomentKind::AgentSurface(s) => s
-            .blocks
-            .iter()
-            .filter_map(|b| b.data.get("grant_id").and_then(|v| v.as_str()))
-            .map(GrantId::new)
-            .collect(),
         _ => Vec::new(),
     }
 }

@@ -233,6 +233,8 @@ pub(super) struct Task {
     /// The creation requests whose `agent.operation.get` is in flight: a
     /// new read of one waits for the answer to the previous one.
     pub(super) operations_in_flight: super::effects::ReadsInFlight,
+    /// The card runtime calls: one at a time, in the order the user made them.
+    pub(super) card_calls: super::effects::CardCalls,
     /// Numbers the current read attempt: every cancellation (a new epoch, a
     /// retry in the same epoch, a lost link) starts a new one, and a batch
     /// completion of an earlier attempt is dropped before any bookkeeping,
@@ -384,6 +386,7 @@ pub(super) fn build(
         pending_markers: 0,
         batch_pending: 0,
         operations_in_flight: super::effects::ReadsInFlight::default(),
+        card_calls: super::effects::CardCalls::default(),
         read_attempt: 0,
         recovered_generation: 0,
         #[cfg(any(test, feature = "test-support"))]

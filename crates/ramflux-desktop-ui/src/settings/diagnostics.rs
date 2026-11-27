@@ -6,11 +6,9 @@
 //! built from the store, which never holds keys, tokens, nonces or message
 //! plaintext; identifiers that could link people are reduced to counts.
 //!
-//! A read-only group shows the renderer profile this client declares to its
-//! source and the renderer errors found this session. The local setup groups
-//! ([`super::local_setup`]) follow, with the message sync group
-//! ([`super::sync`]: how the account is kept up to date) after the local
-//! daemon.
+//! The local setup groups ([`super::local_setup`]) follow, with the message
+//! sync group ([`super::sync`]: how the account is kept up to date) after the
+//! local daemon.
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
@@ -18,16 +16,14 @@ use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, div};
-use ramflux_desktop_core::{RendererProfile, Store, UiEventKind};
+use ramflux_desktop_core::{Store, UiEventKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use super::local_setup::{self, LaunchInputs};
 use super::{SectionContext, SettingsSection};
-use crate::app::RendererErrors;
 use crate::file_dialog::{self, StartDir};
-use crate::i18n::{tr, tr_args};
-use crate::moments::surface::registry;
+use crate::i18n::tr;
 use crate::style::DesignButton as _;
 
 /// File name suggested for the diagnostics export.
@@ -69,41 +65,6 @@ pub fn preview(store: &Store) -> String {
     lines.join("\n")
 }
 
-/// The renderer profile and error counts, one `key: value` per line.
-/// Errors are counted by kind; no block data or ids are shown.
-pub fn renderer_summary(profile: &RendererProfile, errors: Option<&RendererErrors>) -> String {
-    let blocks: Vec<String> = profile
-        .blocks
-        .iter()
-        .map(|b| {
-            let versions: Vec<String> = b.versions.iter().map(|v| format!("v{v}")).collect();
-            format!("{:?}({})", b.kind, versions.join("/"))
-        })
-        .collect();
-    let limits = &profile.limits;
-    let mut lines = vec![
-        format!("device: {:?}, runtime: {}", profile.device_class, profile.runtime),
-        format!("input: {:?}, output: {:?}", profile.input, profile.output),
-        format!("surface modes: {:?}", profile.surface_modes),
-        format!("blocks: {}", blocks.join(", ")),
-        format!(
-            "limits: blocks={} actions={} text={} data_bytes={} delta_bytes={} stream_chars={}",
-            limits.max_blocks,
-            limits.max_actions,
-            limits.max_text_chars,
-            limits.max_data_bytes,
-            limits.max_text_delta_bytes,
-            limits.max_stream_chars
-        ),
-    ];
-    if let Some(errors) = errors {
-        for (kind, count) in errors.counts() {
-            lines.push(format!("renderer.errors.{kind}: {count}"));
-        }
-    }
-    lines.join("\n")
-}
-
 fn mono_box(id: &'static str, text: String, cx: &App) -> gpui_kit::AnyElement {
     div()
         .id(id)
@@ -119,31 +80,7 @@ fn mono_box(id: &'static str, text: String, cx: &App) -> gpui_kit::AnyElement {
         .into_any_element()
 }
 
-fn renderer_group(context: &SectionContext, cx: &App) -> SettingGroup {
-    let handle = context.store.read(cx);
-    let errors = handle.session().map(|s| s.renderer_errors());
-    let total = errors.map_or(0, RendererErrors::total);
-    let text = renderer_summary(registry::profile(), errors);
-    let item = SettingItem::render(move |_, _, cx: &mut App| {
-        v_flex()
-            .gap(space(2.))
-            .child(
-                div()
-                    .text_size(text_caption())
-                    .text_color(cx.theme().muted_foreground)
-                    .child(tr("settings.diagnostics.renderer_explain")),
-            )
-            .child(mono_box("renderer-profile", text.clone(), cx))
-            .child(div().id("renderer-error-count").text_size(text_caption()).child(tr_args(
-                "settings.diagnostics.renderer_errors",
-                &[("count", &total.to_string())],
-            )))
-            .into_any_element()
-    });
-    SettingGroup::new().title(tr("settings.diagnostics.renderer")).item(item)
-}
-
-/// The diagnostics section: the export and the renderer profile, then the
+/// The diagnostics section: the export, then the
 /// local setup, the local daemon, version and logs.
 pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> SettingPage {
     let [setup, daemon, about] = local_setup::groups(context, inputs, cx);
@@ -188,7 +125,6 @@ pub fn page(context: &SectionContext, inputs: &LaunchInputs, cx: &App) -> Settin
     });
     let mut page = SettingPage::new(tr("settings.section.diagnostics"))
         .group(SettingGroup::new().title(tr("settings.diagnostics.export_title")).item(item))
-        .group(renderer_group(context, cx))
         .group(setup)
         .group(daemon);
     if let Some(sync) = super::sync::group(context, cx) {

@@ -9,9 +9,8 @@
 // This is the script a rule-based AI participant mirrors: every rule below
 // is "when the user does X, the AI participant sends Y". Offsets are in
 // milliseconds, timeline offsets from the start, response offsets from the
-// submitted effect. Surfaces use the versioned surface events (Create,
-// StreamAppend with `final`, Patch with `base_hash`); tasks use rising
-// versions. The fixture carries no content hashes (the surface protocol
+// submitted effect. Surfaces are presented as snapshots (version 1); tasks use
+// rising versions. The fixture carries no content hashes (the surface protocol
 // computes those; the SDK replay gets them from the fake daemon), so
 // `base_hash` is the label `vN` of the version patched; the test
 // `s10_hashes_match_the_contract` checks it.
@@ -44,23 +43,8 @@
                     kind: Message(text: "@Orbit can you check the launch checklist and sort out what is open?",
                         receipt: Sent),
                     lifecycle: Done)),
-                (300, Surface(Create(
-                    moment_id: "m-reply",
-                    context_id: "c-launch",
-                    origin: "p-orbit",
-                    surface_id: "s-reply",
-                    version: 1,
-                    blocks: [(id: "b-reply", kind: Markdown, data: {"text": ""})],
-                    actions: [],
-                    fallback_text: "Orbit: two checklist items are open (release notes, staging deploy). I proposed a task to finish them.",
-                ))),
-                (500, Surface(StreamAppend(surface_id: "s-reply", version: 2, block_id: "b-reply",
-                    text_delta: "I checked the launch checklist. "))),
-                (700, Surface(StreamAppend(surface_id: "s-reply", version: 3, block_id: "b-reply",
-                    text_delta: "Two items are still open: **the release notes** and **the staging deploy**. "))),
-                (900, Surface(StreamAppend(surface_id: "s-reply", version: 4, block_id: "b-reply",
-                    text_delta: "I can draft the notes and run the deploy for you.", final: true))),
-                (1000, TaskUpserted(
+                (300, Surface(Snapshot(moment_id: "m-reply", context_id: "c-launch", origin: "p-orbit", surface_id: "s-reply", version: 1, actions: [], fallback_text: "Orbit: two checklist items are open (release notes, staging deploy). I proposed a task to finish them.", hash: "v1",))),
+                                                                (1000, TaskUpserted(
                     id: "t-launch",
                     context_id: "c-launch",
                     requester: Human,
@@ -82,22 +66,7 @@
             on: Call(method: "task.start", fields: {"proposal_id": "t-launch"}),
             emit: [
                 (100, TaskStateChanged(task_id: "t-launch", version: 2, state: Running)),
-                (150, Surface(Create(
-                    moment_id: "m-status",
-                    context_id: "c-launch",
-                    origin: "p-orbit",
-                    surface_id: "s-status",
-                    version: 1,
-                    blocks: [
-                        (id: "b-title", kind: Heading, data: {"text": "Launch checklist"}),
-                        (id: "b-items", kind: KeyValue, data: {"items": [
-                            ["Release notes", "In progress"],
-                            ["Staging deploy", "Not started"],
-                        ]}),
-                    ],
-                    actions: [],
-                    fallback_text: "Orbit's launch checklist: release notes and the staging deploy.",
-                ))),
+                (150, Surface(Snapshot(moment_id: "m-status", context_id: "c-launch", origin: "p-orbit", surface_id: "s-status", version: 1, actions: [], fallback_text: "Orbit's launch checklist: release notes and the staging deploy.", hash: "v1",))),
                 (400, TaskStepChanged(task_id: "t-launch", version: 3, step_id: "notes", state: Running)),
                 (1200, TaskStepChanged(task_id: "t-launch", version: 4, step_id: "notes", state: Done)),
                 (1300, GrantRequested(
@@ -116,22 +85,7 @@
             emit: [
                 (100, GrantResolved(grant_id: "g-deploy", state: Approved)),
                 (100, TaskStepChanged(task_id: "t-launch", version: 6, step_id: "deploy", state: Running)),
-                (900, Surface(Patch(
-                    surface_id: "s-status",
-                    version: 2,
-                    base_hash: "v1",
-                    ops: [
-                        ReplaceBlock(block: (id: "b-items", kind: KeyValue, data: {"items": [
-                            ["Release notes", "Drafted"],
-                            ["Staging deploy", "Green, build 2.4.0-rc1"],
-                        ]})),
-                        InsertBlock(index: 2, block: (id: "b-done", kind: Success, data: {
-                            "title": "Staging is green",
-                            "text": "Build 2.4.0-rc1 deployed in 3 minutes; smoke tests passed.",
-                        })),
-                    ],
-                ))),
-                (1000, TaskStepChanged(task_id: "t-launch", version: 7, step_id: "deploy", state: Done)),
+                                (1000, TaskStepChanged(task_id: "t-launch", version: 7, step_id: "deploy", state: Done)),
                 (1100, TaskStepChanged(task_id: "t-launch", version: 8, step_id: "report", state: Running)),
                 (1500, TaskStepChanged(task_id: "t-launch", version: 9, step_id: "report", state: Done)),
                 (1500, TaskUpserted(

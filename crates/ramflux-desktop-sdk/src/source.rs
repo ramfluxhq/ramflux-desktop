@@ -14,7 +14,7 @@ use std::sync::mpsc as std_mpsc;
 
 use ramflux_desktop_core::{
     AccountId, CallId, CallMedia, CeremonyPhase, ContextId, DomainEvent, Effect, EventEnvelope,
-    MomentId, RecoveryPhrase, RendererProfile, Source, Timestamp,
+    MomentId, RecoveryPhrase, Source, Timestamp,
 };
 
 use crate::bridge::{Bridge, Command, Delivery, Handoff, MediaAnswer, PhraseAudit};
@@ -124,7 +124,6 @@ pub struct SdkSource {
     inbox: std_mpsc::Receiver<Delivery>,
     media: (crate::completion::CompletionSender<MediaAnswer>, std_mpsc::Receiver<MediaAnswer>),
     last_seq: u64,
-    profile: Option<RendererProfile>,
     /// Phrases the bridge moved here, not yet taken.
     phrases: std_mpsc::Receiver<Handoff>,
     /// The phrase of the running creation ceremony, once handed over.
@@ -166,7 +165,6 @@ impl SdkSource {
             inbox,
             media: (crate::completion::CompletionSender::new(media_tx, wake), media_rx),
             last_seq: 0,
-            profile: None,
             phrases,
             parked: None,
             running: None,
@@ -208,11 +206,6 @@ impl SdkSource {
     pub fn last_seq(&self) -> u64 {
         self.last_seq
     }
-
-    /// The renderer profile the app declared.
-    pub fn negotiated_profile(&self) -> Option<&RendererProfile> {
-        self.profile.as_ref()
-    }
 }
 
 impl Source for SdkSource {
@@ -244,12 +237,6 @@ impl Source for SdkSource {
 
     fn focus(&mut self, context: Option<&ContextId>) {
         self.bridge.send(Command::Focus { scope: self.scope.clone(), context: context.cloned() });
-    }
-
-    /// Kept for the surface stream (K2), which will send it to producers;
-    /// the daemon has no counterpart yet.
-    fn renderer_profile(&mut self, profile: &RendererProfile) {
-        self.profile = Some(profile.clone());
     }
 
     fn request_bodies(&mut self, moments: &[MomentId]) {
@@ -333,7 +320,6 @@ mod tests {
             inbox,
             media: (CompletionSender::new(media_tx, wake.clone()), media_rx),
             last_seq: 0,
-            profile: None,
             phrases,
             parked: None,
             running: None,

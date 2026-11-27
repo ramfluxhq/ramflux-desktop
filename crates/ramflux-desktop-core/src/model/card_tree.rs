@@ -77,8 +77,11 @@ pub enum CardPhase {
     Superseded,
 }
 
-/// The token that fences one host event or slot reply.
+/// The token that fences one host event or slot reply. On the wire its keys
+/// are camelCase (`signedVersion`, `editSeq`, `treeVersion`), as the runtime
+/// sends them in the tree and expects them back.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CardToken {
     /// The session the batch named.
     pub session: u64,
@@ -291,6 +294,11 @@ impl CardTree {
     #[must_use]
     pub fn node(&self, key: &str) -> Option<&CardNode> {
         self.nodes.get(key)
+    }
+
+    /// Every node of the held version, in key order.
+    pub fn nodes(&self) -> impl Iterator<Item = &CardNode> {
+        self.nodes.values()
     }
 
     /// The node count.

@@ -22,19 +22,18 @@ mod clock;
 mod inspector;
 mod live;
 mod names;
-mod renderer_errors;
 mod resume_hold;
 mod session;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, EventEmitter, Task};
 use ramflux_desktop_core::{
-    AccountId, AppLockPhase, AttentionItem, CallState, ContextId, Intent, MomentId, Store,
-    Timestamp, selectors,
+    AccountId, AppLockPhase, AttentionItem, CallState, ContextId, Intent, IntentKind, MomentId,
+    Store, SurfaceId, Timestamp, selectors,
 };
 #[cfg(feature = "demo")]
 use ramflux_desktop_test::{Scenario, load_fixture};
@@ -49,7 +48,6 @@ pub use names::{
     effect_label, event_name, format_path, format_scope, intent_kind_name, intent_name,
     ui_event_name,
 };
-pub use renderer_errors::{MAX_RENDERER_ERRORS, RendererErrors};
 pub use session::{AccountSession, Applied, DispatchOutcome, audit_label};
 
 /// Interval of the clock task.
@@ -84,6 +82,9 @@ pub struct AccountAttention {
 
 /// Owns every account session and is the only path to the store and source.
 pub struct StoreHandle {
+    /// Whether the active account was locked at the last publish (a change
+    /// suspends or resumes its cards).
+    cards_locked: bool,
     /// Accounts whose app lock the window waits for after it came back to
     /// the front, with the number of foreground reports not answered yet:
     /// their content stays covered until the daemon has answered the latest
@@ -129,6 +130,7 @@ impl StoreHandle {
     /// Creates a handle with no account and a stopped clock.
     pub fn new() -> Self {
         Self {
+            cards_locked: false,
             resume_hold: resume_hold::ResumeHold::default(),
             remembered: None,
             sessions: BTreeMap::new(),
@@ -514,6 +516,76 @@ impl StoreHandle {
         self.dispatch_decided(intent, cx)
     }
 
+    /// Suspends every card session: the window went away for a while, or the
+    /// app locked. The runtime drops its VMs and keeps the drafts.
+    pub fn card_suspend_all(&mut self, cx: &mut Context<Self>) {
+        self.dispatch(Intent::human(IntentKind::CardSuspendAll), cx);
+    }
+
+    /// Resumes the most recently used cards, when the app is unlocked.
+    pub fn card_resume_all(&mut self, cx: &mut Context<Self>) {
+        let locked = self
+            .active
+            .as_ref()
+            .and_then(|id| self.session().map(|s| s.store().app_locked(id)))
+            .unwrap_or(false);
+        if !locked {
+            self.dispatch(Intent::human(IntentKind::CardResumeAll), cx);
+        }
+    }
+
+    /// Releases the sessions of cards that are no longer in the loaded
+    /// window (`visible`), once each.
+    pub fn card_retain(&mut self, visible: &BTreeSet<SurfaceId>, cx: &mut Context<Self>) {
+        let stale: Vec<(MomentId, SurfaceId)> = match self.session() {
+            Some(session) if !session.is_live() => return,
+            Some(session) => session
+                .cards_held()
+                .into_iter()
+                .filter(|card| !visible.contains(card) && !session.card_disposing(card))
+                .filter_map(|card| session.card_moment(&card).map(|moment| (moment, card)))
+                .collect(),
+            None => return,
+        };
+        for (moment_id, surface_id) in stale {
+            self.dispatch(Intent::human(IntentKind::CardDispose { moment_id, surface_id }), cx);
+        }
+    }
+
+    /// Brings a card on screen up to date: its session is opened once, or
+    /// presented again in `locale` and `dark` when the runtime shows another
+    /// presentation. Nothing is sent when neither applies.
+    pub fn card_on_screen(
+        &mut self,
+        moment: &MomentId,
+        surface: &SurfaceId,
+        locale: &str,
+        dark: bool,
+        cx: &mut Context<Self>,
+    ) {
+        // A scenario or mock session has no card runtime to answer: its cards
+        // show their fallback text.
+        let kind = match self.session() {
+            Some(session) if !session.is_live() => return,
+            Some(session) if session.card_open_pending(surface) => IntentKind::CardOpen {
+                moment_id: moment.clone(),
+                surface_id: surface.clone(),
+                locale: locale.to_owned(),
+                dark,
+            },
+            Some(session) if session.card_presentation_stale(surface, locale, dark) => {
+                IntentKind::CardPresent {
+                    moment_id: moment.clone(),
+                    surface_id: surface.clone(),
+                    locale: locale.to_owned(),
+                    dark,
+                }
+            }
+            _ => return,
+        };
+        self.dispatch(Intent::human(kind), cx);
+    }
+
     fn dispatch_decided(&mut self, intent: Intent, cx: &mut Context<Self>) -> DispatchOutcome {
         if self.live.is_some() {
             return self.dispatch_live(intent, cx);
@@ -641,11 +713,32 @@ impl StoreHandle {
     }
 
     fn publish(&mut self, applied: Applied, cx: &mut Context<Self>) {
-        if applied.changes.is_empty() && applied.records.is_empty() {
+        // A locked app holds no card session: they are suspended with the lock
+        // and resumed when it opens.
+        let locked = self
+            .active
+            .as_ref()
+            .and_then(|id| self.session().map(|s| s.store().app_locked(id)))
+            .unwrap_or(false);
+        if locked != self.cards_locked {
+            self.cards_locked = locked;
+            if locked {
+                self.card_suspend_all(cx);
+            } else {
+                self.card_resume_all(cx);
+            }
+        }
+        if applied.changes.is_empty() && applied.records.is_empty() && applied.open_urls.is_empty()
+        {
             return;
         }
         for record in applied.records {
             self.inspector.push(record);
+        }
+        // A link the host confirmed opens in the system browser now, and only
+        // now: the runtime's `opened` answer came after the sheet's Open.
+        for url in &applied.open_urls {
+            cx.open_url(url);
         }
         cx.emit(StoreEvent::Changed(Rc::new(applied.changes)));
     }

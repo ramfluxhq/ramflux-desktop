@@ -13,13 +13,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::conformance::SurfaceHash;
 use crate::ids::{
     AccountId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
     ParticipantId, StandingApprovalId, SurfaceId,
 };
 use crate::intent::{ContactAction, GovernanceOp, SyncDirection};
 use crate::model::{ConflictResolution, RequestAnswer};
+use crate::surface_hash::SurfaceHash;
 
 /// One level of the UI nesting.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,6 +149,20 @@ pub enum UiEventKind {
     },
     /// "Request update" pressed on an out-of-sync surface.
     SurfaceUpdateRequested,
+    /// A host event on one node of a card (typed input, tap, tab, modal).
+    CardInteracted {
+        /// Key of the node the event addresses.
+        key: String,
+        /// The event.
+        event: crate::CardInput,
+    },
+    /// The host's answer to a card slot (a link sheet, or an approval).
+    CardSlotAnswered {
+        /// Slot id, as the card named it.
+        slot_id: String,
+        /// The answer.
+        outcome: crate::CardSlotOutcome,
+    },
     /// Approve pressed on an intervention or a task step.
     ApprovePressed,
     /// Deny pressed on an intervention or a task step.

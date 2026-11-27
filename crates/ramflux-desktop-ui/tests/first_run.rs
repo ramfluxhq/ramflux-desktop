@@ -170,7 +170,7 @@ fn a_missing_program_disables_the_start_and_points_to_settings(cx: &mut TestAppC
     assert!(cx.update(|cx| shell.read(cx).is_settings_open()));
     let section = cx.update(|cx| shell.read(cx).settings().read(cx).section());
     assert_eq!(section, SettingsSection::Diagnostics);
-    assert!(exists(cx, handle, "renderer-profile"), "diagnostics is shown");
+    assert!(exists(cx, handle, "diagnostics-preview"), "diagnostics is shown");
     // A start requested anyway (command palette, key binding) fails clearly.
     cx.update(|cx| launcher.update(cx, |launcher, cx| launcher.start(cx)));
     assert_eq!(
@@ -212,10 +212,10 @@ fn launch_settings_typed_in_diagnostics_persist(cx: &mut TestAppContext) {
     let (handle, shell) = open_with(cx, fx.options(None, LaunchStore::at(file.clone())));
     let launcher = launcher(cx, &shell);
     click(cx, handle, "entry-daemon-settings");
-    // The local setup follows the export and the renderer profile.
+    // The local setup follows the export.
     in_window(cx, handle, |window, cx| {
         let delta = ScrollDelta::Pixels(point(px(0.), px(-900.)));
-        window.scroll("renderer-profile", delta, cx);
+        window.scroll("launch-socket", delta, cx);
     });
     type_into(cx, handle, "launch-binary", "/opt/ramflux/bin/rf");
     type_into(cx, handle, "launch-data-dir", "/tmp/rf-demo-data");
@@ -290,7 +290,7 @@ fn open_diagnostics(
         // outside the list, so the lowest anchor shown is the one scrolled at.
         // The anchor is chosen and scrolled in one frame: no task runs in
         // between, so it cannot leave the tree before the wheel lands.
-        let anchors = ["diagnostics-preview", "renderer-profile", "launch-socket", "launch-save"];
+        let anchors = ["diagnostics-preview", "launch-socket", "launch-save"];
         let scrolled = in_window(cx, handle, |window, cx| {
             let bottom = window.viewport_size().height;
             let anchor = anchors.into_iter().rev().find(|id| {

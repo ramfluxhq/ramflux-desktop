@@ -113,7 +113,7 @@ pub use order::OrderKey;
 pub use protected::Protected;
 pub use recovery_ceremony::{RecoveryCeremony, RecoveryPhase};
 pub use schema_gate::SchemaGate;
-pub use surface::{Block, BlockKind, DEFAULT_BLOCK_VERSION, SurfaceAction};
+pub use surface::SurfaceAction;
 pub use task::{
     NeedsMe, StepState, Task, TaskActor, TaskActors, TaskAnswer, TaskFlags, TaskRefusal, TaskRole,
     TaskState, TaskStep,

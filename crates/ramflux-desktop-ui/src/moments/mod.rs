@@ -14,6 +14,7 @@
 //! they never touch the store.
 
 pub mod call;
+pub mod card;
 mod conflict;
 mod contact;
 mod governance;
@@ -29,26 +30,23 @@ mod notice;
 mod object_transfer;
 mod privacy;
 mod safety;
-pub mod surface;
 mod task_event;
 mod task_progress;
 mod task_status;
 
 use ramflux_desktop_navigation::scale::{DesignText as _, space, style, text_caption};
 use std::collections::BTreeMap;
-use std::rc::Rc;
 
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::ThemeStyled as _;
 use gpui_kit::component::diff::DiffState;
-use gpui_kit::component::input::InputState;
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, FocusHandle, IntoElement, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
-    Actor, AuditEntry, BlockId, BlockKind, Call, Grant, GrantId, Lifecycle, Moment, MomentId,
-    MomentKind, Object, ObjectId, Participant, ParticipantId, Store, Task, selectors,
+    Actor, AuditEntry, Call, Grant, GrantId, Lifecycle, Moment, MomentId, MomentKind, Object,
+    ObjectId, Participant, ParticipantId, Scope, Store, Task, selectors,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
@@ -171,8 +169,8 @@ pub struct MomentRow {
     pub day_header: Option<SharedString>,
     /// The local user wrote it (receipts are shown on outbound messages).
     pub outbound: bool,
-    /// For a surface: its version and renderer verdict.
-    pub surface: Option<surface::SurfaceStatus>,
+    /// For a surface: the card the runtime holds, and the surface's actions.
+    pub card: Option<card::CardSnapshot>,
 }
 
 impl MomentRow {
@@ -203,6 +201,7 @@ impl MomentRow {
             }
             _ => None,
         };
+        let author_for_card = author.clone();
         Self {
             moment: moment.clone(),
             body,
@@ -211,7 +210,7 @@ impl MomentRow {
             refs: refs(store, moment, audit),
             day_header: None,
             outbound: me == Some(&moment.origin),
-            surface: surface::SurfaceStatus::of(store, moment),
+            card: card::CardSnapshot::of(store, moment, author_for_card),
         }
     }
 
@@ -258,14 +257,7 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
             });
             Vec::new()
         }
-        MomentKind::AgentSurface(p) => {
-            for block in p.blocks.iter().filter(|b| b.kind == BlockKind::Approval) {
-                if let Some(id) = block.data.get("grant_id").and_then(|v| v.as_str()) {
-                    grant(&GrantId::new(id), &mut refs);
-                }
-            }
-            Vec::new()
-        }
+        MomentKind::AgentSurface(_) => Vec::new(),
         MomentKind::ObjectTransfer(p) => {
             object(&p.object_id, &mut refs);
             Vec::new()
@@ -376,18 +368,15 @@ pub struct RowState {
     pub message_text: Option<Entity<gpui_kit::component::input::TextareaState>>,
     /// The row is the target of "take me to what needs me".
     pub highlighted: bool,
-    /// Selected values of surface select blocks, by block.
-    pub fields: Rc<BTreeMap<BlockId, String>>,
-    /// Text inputs of surface input blocks, by block.
-    pub inputs: Rc<BTreeMap<BlockId, Entity<InputState>>>,
+    /// Text field drafts of a card, by node key.
+    pub card_inputs: card::Inputs,
+    /// Tabs, modal and list presentation a card keeps locally.
+    pub card_local: card::Local,
     /// Compare state of a conflict.
     pub diff: Option<Entity<DiffState>>,
     /// Keyboard focus of the highlighted row ("take me to what needs me"
     /// moves focus here; Tab then reaches the row's own controls).
     pub focus: Option<FocusHandle>,
-    /// A pending confirmation on this surface was cancelled because the
-    /// surface changed; the user reviews it again.
-    pub review_again: bool,
     /// Opens the stale-verification acknowledgement of the conversation's
     /// call (Call back on a call record asks through it).
     pub ask_call: crate::identity::AskCall,
@@ -417,11 +406,14 @@ impl RenderOnce for MomentView {
             MomentKind::Message(p) => {
                 message::render(p, &row, &state, &sink, cx).into_any_element()
             }
-            MomentKind::AgentSurface(p) => match row.surface.clone() {
-                Some(status) => {
-                    surface::SurfaceBody::new(p.clone(), status, &row.refs, sink.clone(), &state)
-                        .into_any_element()
-                }
+            MomentKind::AgentSurface(p) => match row.card.clone() {
+                Some(snap) => card::CardBody::new(
+                    snap,
+                    sink.scoped(Scope::Surface(p.surface_id.clone())),
+                    state.card_inputs.clone(),
+                    state.card_local.clone(),
+                )
+                .into_any_element(),
                 None => div().into_any_element(),
             },
             MomentKind::ObjectTransfer(p) => {
@@ -688,15 +680,5 @@ fn header(row: &MomentRow, cx: &App) -> impl IntoElement {
         .child(div().text_color(cx.theme().muted_foreground).child(i18n::time_of_day(moment.at)))
         .when_some(marker, |header, (label, color)| {
             header.child(div().id("row-state").text_color(color).child(label).test_support())
-        })
-        .when_some(
-            row.surface
-                .as_ref()
-                .and_then(|s| s.updated_at)
-                .and_then(|updated| surface::updated_mark(moment.at, updated, cx)),
-            |header, mark| header.child(mark),
-        )
-        .when(matches!(&moment.kind, MomentKind::AgentSurface(p) if p.streaming), |header| {
-            header.child(surface::writing_mark(cx))
         })
 }

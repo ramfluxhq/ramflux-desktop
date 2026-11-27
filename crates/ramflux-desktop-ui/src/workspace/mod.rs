@@ -397,9 +397,7 @@ impl Workspace {
                             this.composer.update(cx, |composer, cx| composer.focus(window, cx));
                         }
                     }
-                    RootEvent::SurfaceChanged(moment) => {
-                        this.conversation.update(cx, |field, cx| field.review_again(moment, cx));
-                    }
+                    RootEvent::SurfaceChanged(_) => {}
                     RootEvent::ConfirmDeclined => {}
                 },
             ),

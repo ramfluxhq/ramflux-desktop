@@ -12,16 +12,16 @@
 //! source over a real daemon), which follows the wall clock and ignores the
 //! scenario controls.
 //!
-//! The session declares this client's renderer profile to its source when
-//! it starts, and checks every surface an envelope changed against it: new
-//! renderer errors are logged ([`RendererErrors`]) and reported to the
-//! source when the backend can carry the report.
+//! Card runtime facts are applied to the store like any other fact; the
+//! bus steps the store asks for (a re-read, a submit, a pool suspend or
+//! dispose) are dispatched here as intents, and a link the host confirmed
+//! names the URL the app opens.
 
 use std::collections::BTreeSet;
 
 use ramflux_desktop_core::{
-    ContextId, Effect, EventEnvelope, Intent, IntentError, MomentId, Source, Store, Timestamp,
-    handle_intent,
+    CardDue, CardEvent, ContextId, DomainEvent, Effect, EventEnvelope, Intent, IntentError,
+    IntentKind, MomentId, Source, Store, SurfaceId, Timestamp, handle_intent,
 };
 #[cfg(feature = "demo")]
 use ramflux_desktop_test::{MockSource, Scenario};
@@ -29,7 +29,41 @@ use ramflux_desktop_test::{MockSource, Scenario};
 use super::changes::ChangeSet;
 use super::inspector::InspectorEntry;
 use super::names::{effect_label, event_name, intent_name};
-use super::renderer_errors::RendererErrors;
+
+/// Card intents accepted and not yet answered.
+#[derive(Debug, Default)]
+pub struct CardMarks {
+    /// Surfaces whose session open was asked.
+    opening: BTreeSet<SurfaceId>,
+    /// The locale and theme each card was last presented in.
+    presented: std::collections::BTreeMap<SurfaceId, (String, bool)>,
+    /// Surfaces whose session release was asked.
+    disposing: BTreeSet<SurfaceId>,
+}
+
+/// The card state an accepted intent records (see [`card_mark`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CardMark {
+    /// A session open was asked for this surface.
+    Open(SurfaceId),
+    /// This surface was presented in this locale and theme.
+    Present(SurfaceId, String, bool),
+    /// This surface's session release was asked.
+    Dispose(SurfaceId),
+}
+
+/// The card state `kind` records when it is accepted, if it is a card intent
+/// that opens or presents a session.
+pub fn card_mark(kind: &IntentKind) -> Option<CardMark> {
+    match kind {
+        IntentKind::CardOpen { surface_id, .. } => Some(CardMark::Open(surface_id.clone())),
+        IntentKind::CardPresent { surface_id, locale, dark, .. } => {
+            Some(CardMark::Present(surface_id.clone(), locale.clone(), *dark))
+        }
+        IntentKind::CardDispose { surface_id, .. } => Some(CardMark::Dispose(surface_id.clone())),
+        _ => None,
+    }
+}
 
 /// What one clock movement or step applied.
 #[derive(Debug, Default)]
@@ -38,6 +72,8 @@ pub struct Applied {
     pub changes: ChangeSet,
     /// Inspector records for the applied envelopes.
     pub records: Vec<InspectorEntry>,
+    /// Links the host confirmed: the app opens these URLs.
+    pub open_urls: Vec<String>,
 }
 
 /// The policy result of a dispatched intent.
@@ -75,7 +111,10 @@ pub struct AccountSession {
     /// Message bodies asked of the source and not delivered yet (asked once).
     requested: BTreeSet<MomentId>,
     focused_context: Option<ContextId>,
-    renderer_errors: RendererErrors,
+    /// What the card intents accepted so far (see [`CardMarks`]).
+    card_marks: std::cell::RefCell<CardMarks>,
+    /// Links the host confirmed since the last publish (URLs to open).
+    open_urls: Vec<String>,
     networking_deadlines: std::collections::BTreeMap<
         ramflux_desktop_core::AccountId,
         (ramflux_desktop_core::NetworkingReason, Timestamp),
@@ -126,7 +165,7 @@ impl AccountSession {
     }
 
     fn start(backing: Backing) -> Self {
-        let mut session = Self {
+        Self {
             backing,
             store: Store::new(),
             clock_ms: 0,
@@ -137,23 +176,10 @@ impl AccountSession {
             paused: false,
             requested: BTreeSet::new(),
             focused_context: None,
-            renderer_errors: RendererErrors::default(),
+            card_marks: std::cell::RefCell::new(CardMarks::default()),
+            open_urls: Vec::new(),
             networking_deadlines: Default::default(),
-        };
-        let profile = crate::moments::surface::registry::profile();
-        session.source_mut().renderer_profile(profile);
-        session
-    }
-
-    /// Renderer errors found in this session.
-    pub fn renderer_errors(&self) -> &RendererErrors {
-        &self.renderer_errors
-    }
-
-    /// The renderer profile the mock source received (`None` when live).
-    #[cfg(feature = "demo")]
-    pub fn negotiated_profile(&self) -> Option<&ramflux_desktop_core::RendererProfile> {
-        self.mock().and_then(MockSource::negotiated_profile)
+        }
     }
 
     /// Whether a live source feeds the session.
@@ -388,7 +414,7 @@ impl AccountSession {
         source.rewind();
         self.store = Store::new();
         self.requested.clear();
-        self.renderer_errors.clear();
+        *self.card_marks.borrow_mut() = CardMarks::default();
         self.clock_ms = ms;
         let mut applied = self.pump();
         let mut changes = ChangeSet::reset();
@@ -397,14 +423,70 @@ impl AccountSession {
         applied
     }
 
+    /// Whether a card on screen should be opened now: the store holds no
+    /// session for it and none is being opened.
+    pub fn card_open_pending(&self, surface: &SurfaceId) -> bool {
+        self.store.card(surface).is_none() && !self.card_marks.borrow().opening.contains(surface)
+    }
+
+    /// The cards the pool holds, by surface.
+    pub fn cards_held(&self) -> Vec<SurfaceId> {
+        self.store.card_pool().recent(usize::MAX).into_iter().map(SurfaceId::new).collect()
+    }
+
+    /// The moment that presents a held card.
+    pub fn card_moment(&self, surface: &SurfaceId) -> Option<MomentId> {
+        self.store.surface_moment(surface).cloned()
+    }
+
+    /// Whether a card's session release was asked and not answered yet.
+    pub fn card_disposing(&self, surface: &SurfaceId) -> bool {
+        self.card_marks.borrow().disposing.contains(surface)
+    }
+
+    /// Whether a resumed card must be presented in another locale or theme.
+    pub fn card_presentation_stale(&self, surface: &SurfaceId, locale: &str, dark: bool) -> bool {
+        let Some(record) = self.store.card(surface) else { return false };
+        record.tree.is_some()
+            && record.resumed(self.store.card_pool(), surface)
+            && self
+                .card_marks
+                .borrow()
+                .presented
+                .get(surface)
+                .is_none_or(|p| p.0 != locale || p.1 != dark)
+    }
+
+    /// Dispatches the bus steps the store queued for cards (a re-read, a
+    /// submit the runtime asked for, a pool suspend or dispose).
+    fn dispatch_card_due(&mut self) -> Vec<InspectorEntry> {
+        let mut records = Vec::new();
+        for due in self.store.take_card_due() {
+            let surface_id = due.surface().clone();
+            let Some(moment_id) = self.store.surface_moment(&surface_id).cloned() else {
+                continue;
+            };
+            let kind = match due {
+                CardDue::Refresh(_) => IntentKind::CardRefresh { moment_id, surface_id },
+                CardDue::Submit(_) => IntentKind::CardSubmit { moment_id, surface_id },
+                CardDue::Suspend(_) => IntentKind::CardSuspend { moment_id, surface_id },
+                CardDue::Dispose(_) => IntentKind::CardDispose { moment_id, surface_id },
+            };
+            records.extend(self.dispatch(Intent::human(kind)).1);
+        }
+        records
+    }
+
     /// Runs policy for `intent` at the session time and submits the
     /// resulting effects. A confirmation request is handed back unsubmitted.
     pub fn dispatch(&mut self, intent: Intent) -> (DispatchOutcome, Vec<InspectorEntry>) {
+        let mark = card_mark(&intent.kind);
         let (decided, mut records) = self.decide(intent);
         let effects = match decided {
             Ok(effects) => effects,
             Err(outcome) => return (outcome, records),
         };
+        self.note_card_mark(mark);
         let mut labels = Vec::new();
         for effect in effects {
             let label = effect_label(&effect);
@@ -451,6 +533,25 @@ impl AccountSession {
         (Ok(submit), records)
     }
 
+    /// Records that a card intent was accepted for submission: a card opens
+    /// once until its first answer, and a presentation is remembered so the
+    /// same locale and theme are not sent again.
+    pub fn note_card_mark(&self, mark: Option<CardMark>) {
+        let mut marks = self.card_marks.borrow_mut();
+        match mark {
+            Some(CardMark::Open(surface)) => {
+                marks.opening.insert(surface);
+            }
+            Some(CardMark::Present(surface, locale, dark)) => {
+                marks.presented.insert(surface, (locale, dark));
+            }
+            Some(CardMark::Dispose(surface)) => {
+                marks.disposing.insert(surface);
+            }
+            None => {}
+        }
+    }
+
     /// Hands one effect to the source.
     pub fn submit(&mut self, effect: Effect) {
         self.source_mut().submit(effect);
@@ -462,6 +563,8 @@ impl AccountSession {
         for env in self.source_mut().drain(now) {
             self.apply(&env, &mut applied);
         }
+        applied.records.extend(self.dispatch_card_due());
+        applied.open_urls = std::mem::take(&mut self.open_urls);
         if self.source_mut().recovery_phrase_ready() {
             applied
                 .changes
@@ -475,6 +578,17 @@ impl AccountSession {
     }
 
     fn apply(&mut self, env: &EventEnvelope, applied: &mut Applied) {
+        if let DomainEvent::Card(card) = &env.event {
+            let mut marks = self.card_marks.borrow_mut();
+            marks.opening.remove(card.surface_id());
+            if matches!(card, CardEvent::Disposed { .. }) {
+                marks.disposing.remove(card.surface_id());
+            }
+            drop(marks);
+            if let CardEvent::LinkOpened { url, .. } = card {
+                self.open_urls.push(url.clone());
+            }
+        }
         let result = self.store.apply(env);
         applied.records.push(InspectorEntry::Envelope {
             seq: env.seq,
@@ -504,27 +618,7 @@ impl AccountSession {
                     self.networking_deadlines.remove(id);
                 }
             }
-            let errors = self.renderer_errors.check(&self.store, &changes.moments);
-            self.report(errors, applied);
             applied.changes.merge(changes);
-        }
-    }
-
-    /// Reports new renderer errors to the source, when the backend carries
-    /// the report (a backend without it declares the method unsupported).
-    fn report(&mut self, errors: Vec<ramflux_desktop_core::RendererError>, applied: &mut Applied) {
-        if errors.is_empty()
-            || self
-                .store
-                .unsupported_reason(ramflux_desktop_core::methods::RENDERER_ERROR)
-                .is_some()
-        {
-            return;
-        }
-        for error in errors {
-            let effect = error.to_effect();
-            applied.records.push(InspectorEntry::Effect { label: effect_label(&effect) });
-            self.submit(effect);
         }
     }
 }

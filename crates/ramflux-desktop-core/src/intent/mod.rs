@@ -28,7 +28,7 @@ pub use contact::{
 };
 pub use effect::Effect;
 pub use governance::GovernanceOp;
-pub use kind::{AppLockPhase, IntentKind, SyncDirection};
+pub use kind::{AppLockPhase, CardInput, IntentKind, SyncDirection};
 pub use secret::SecretInput;
 
 /// An intent: a request to change business state.

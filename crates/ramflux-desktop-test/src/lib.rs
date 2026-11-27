@@ -87,6 +87,6 @@ pub use mock_recovery::MockRecovery;
 pub use mock_source::{EffectRecord, MockSource};
 pub use player::ScenarioPlayer;
 pub use scenario::{
-    CONFORMANCE_NAMES, Companion, DEFAULT_EPOCH, EffectMatcher, ResponseRule, SCENARIO_NAMES,
-    Scenario, ScenarioError, conformance_dir, fixtures_dir, load_conformance, load_fixture,
+    Companion, DEFAULT_EPOCH, EffectMatcher, ResponseRule, SCENARIO_NAMES, Scenario, ScenarioError,
+    fixtures_dir, load_fixture,
 };

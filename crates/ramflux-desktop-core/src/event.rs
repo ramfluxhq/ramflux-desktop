@@ -5,21 +5,18 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::conformance::SurfaceHash;
-use crate::ids::{
-    AccountId, BlockId, ContextId, GrantId, MomentId, NodeId, StepId, SurfaceId, TaskId, Timestamp,
-};
+use crate::ids::{AccountId, ContextId, GrantId, MomentId, NodeId, StepId, TaskId, Timestamp};
 use crate::model::{
     Account, AgentApproval, AgentCreation, AgentHostStatus, AgentJob, AgentRecord,
-    AgentRosterState, AppLock, AuditEntry, BackupJob, Block, Call, Capabilities, Ceremony,
-    ContactCard, ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant,
-    GrantFailure, GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind,
-    NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant, RecoveryCeremony, RequestFloors,
-    RequestPolicy, StandingApproval, StepState, SurfaceAction, SyncStatus, Task, TaskAnswer,
-    TaskState,
+    AgentRosterState, AppLock, AuditEntry, BackupJob, Call, Capabilities, Ceremony, ContactCard,
+    ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure,
+    GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node,
+    NodeHealth, NodeProbe, Object, Participant, RecoveryCeremony, RequestFloors, RequestPolicy,
+    StandingApproval, StepState, SyncStatus, Task, TaskAnswer, TaskState,
 };
 
-pub use crate::surface_event::{SurfaceEvent, SurfacePatchOp, SurfaceSnapshot};
+use crate::card_event::CardEvent;
+pub use crate::surface_event::{SurfaceEvent, SurfaceSnapshot};
 
 /// Schema tag carried by every envelope. The store rejects any other value.
 pub const EVENT_SCHEMA: &str = "ramflux.desktop.event.v1";
@@ -54,30 +51,6 @@ pub enum SourceStatus {
     Disconnected,
     /// Reachable but the account is locked.
     Locked,
-}
-
-/// One operation of an unversioned agent surface patch
-/// ([`DomainEvent::SurfacePatched`]). Versioned surfaces use
-/// [`SurfaceEvent`] instead.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum SurfaceOp {
-    /// Append blocks at the end.
-    AppendBlocks(Vec<Block>),
-    /// Replace the block with the same id.
-    ReplaceBlock(Block),
-    /// Replace all blocks.
-    ReplaceBlocks(Vec<Block>),
-    /// Append text to the `"text"` string of a block's data (streaming).
-    AppendText {
-        /// Target block.
-        block_id: BlockId,
-        /// Text to append.
-        text: String,
-    },
-    /// Replace all actions.
-    SetActions(Vec<SurfaceAction>),
-    /// Set the streaming flag.
-    SetStreaming(bool),
 }
 
 /// Every fact the store understands.
@@ -122,23 +95,13 @@ pub enum DomainEvent {
         #[serde(default)]
         kind: Option<MomentKind>,
     },
-    /// A versioned agent surface event (create, patch, stream, close).
+    /// An agent surface fact (its snapshot and the authority's answers).
     Surface(SurfaceEvent),
-    /// Agent surface patched in place, without a version (a source that
-    /// projects surfaces itself). Raises the surface version by one.
-    SurfacePatched {
-        /// Moment holding the surface.
-        moment_id: MomentId,
-        /// Surface; must match the moment's surface.
-        surface_id: SurfaceId,
-        /// Operations applied in order, all or nothing.
-        ops: Vec<SurfaceOp>,
-        /// The surface version the patch was made against. When set and
-        /// not the current version, the patch is not applied and the surface
-        /// is marked in conflict until a full copy replaces it.
-        #[serde(default)]
-        base_hash: Option<SurfaceHash>,
-    },
+    /// A card runtime fact about an agent surface's card.
+    Card(CardEvent),
+    /// The daemon has no card runtime: every card call is unsupported, and
+    /// cards show their fallback text.
+    CardRuntimeUnavailable,
     /// Object inserted or replaced.
     ObjectUpserted(Object),
     /// New pending grant.

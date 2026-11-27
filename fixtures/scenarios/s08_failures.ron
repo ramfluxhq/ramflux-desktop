@@ -3,7 +3,7 @@
 // this client does not know and renders through the Fallback block.
 // Retrying the failed transfer starts a new transfer moment that completes.
 // Demonstrates: NodeHealthChanged, TransferState::Failed, SourceStatusChanged,
-// System moments, unknown BlockKind -> Fallback, a Fallback moment, and
+// System moments, a Fallback moment, and
 // object.transfer.resume.
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
@@ -25,14 +25,7 @@
         (100, MomentAdded(id: "m-upload", context_id: "c-lena", origin: "p-me", at: 0,
             kind: ObjectTransfer(object_id: "o-photos"), lifecycle: InProgress)),
         (800, MomentAdded(id: "m-chart", context_id: "c-orbit", origin: "p-orbit", at: 0,
-            kind: AgentSurface(
-                surface_id: "s-chart",
-                fallback_text: "Monthly spending chart",
-                blocks: [
-                    (id: "b-title", kind: Heading, data: {"text": "Spending by month"}),
-                    (id: "b-chart", kind: HolographicChart, data: {"series": [120, 98, 143]}),
-                ],
-            ),
+            kind: AgentSurface(surface_id: "s-chart", fallback_text: "Monthly spending chart",),
             lifecycle: Done)),
         (900, MomentAdded(id: "m-fallback", context_id: "c-orbit", origin: "p-orbit", at: 0,
             kind: Fallback(reason: "unsupported surface catalog", text: "Open this report on a client that supports charts."),

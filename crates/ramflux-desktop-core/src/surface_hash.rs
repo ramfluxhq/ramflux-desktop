@@ -61,17 +61,8 @@ impl fmt::Display for SurfaceHash {
     }
 }
 
-/// Bytes of the compact JSON encoding of `value` (the same length as its
-/// canonical form for the data a surface carries: key order does not change
-/// the length). Used for the renderer's data-size bound only.
-pub(crate) fn encoded_len(value: &serde_json::Value) -> usize {
-    serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len())
-}
-
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
 
     #[test]
@@ -79,13 +70,5 @@ mod tests {
         assert_eq!(SurfaceHash::new("sha256:0123456789abcdef").short(), "0123456789ab");
         assert_eq!(SurfaceHash::new("Qx3-_abcdefghijk").short(), "Qx3-_abcdefg");
         assert_eq!(SurfaceHash::of_version(3).as_str(), "v3");
-    }
-
-    #[test]
-    fn the_encoded_length_does_not_depend_on_key_order() {
-        let a: serde_json::Value = serde_json::from_str(r#"{"b":1,"a":"x"}"#).unwrap();
-        let b = json!({ "a": "x", "b": 1 });
-        assert_eq!(encoded_len(&a), encoded_len(&b));
-        assert_eq!(encoded_len(&b), r#"{"a":"x","b":1}"#.len());
     }
 }

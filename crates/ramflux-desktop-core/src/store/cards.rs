@@ -9,12 +9,24 @@
 //! tree. At most [`MAX_OPEN`] cards are held; when a card leaves the loaded
 //! timeline window its session is disposed.
 //!
+//! The store applies the runtime's facts (`CardEvent`) to a [`CardRecord`]
+//! per surface and to the pool. What the pool decides that needs a bus call
+//! (a suspend or a dispose, or a re-read or submit the runtime asked for) is
+//! queued as a [`CardDue`]; the session takes the queue after applying events
+//! and turns each item into an intent.
+//!
 //! The pool only decides. It returns the suspend, resume and dispose steps
 //! the caller must perform on the bus, and the caller reports the session a
 //! resume created with [`CardPool::adopt`] (a resume issues a fresh session
 //! id). Recency is a logical clock, never wall time.
 
 use std::collections::{BTreeMap, BTreeSet};
+
+use super::Store;
+use super::changes::Changes;
+use crate::card_event::{CardEvent, CardLink, CardReceipt, CardSlotOutcome, CardStatus};
+use crate::ids::SurfaceId;
+use crate::model::{CardBatch, CardTree};
 
 /// Resumed (live) sessions per account.
 pub const MAX_RESUMED: usize = 2;
@@ -135,6 +147,14 @@ impl CardPool {
         self.cards.remove(card).map(|entry| entry.session)
     }
 
+    /// The `limit` most recently used held cards, most recent first.
+    #[must_use]
+    pub fn recent(&self, limit: usize) -> Vec<String> {
+        let mut cards: Vec<(&String, &CardEntry)> = self.cards.iter().collect();
+        cards.sort_by_key(|(_, entry)| std::cmp::Reverse(entry.used));
+        cards.into_iter().take(limit).map(|(card, _)| card.clone()).collect()
+    }
+
     /// Keeps only the cards in `visible` (the loaded timeline window). The
     /// others are removed and their sessions returned for disposal.
     pub fn retain_visible(&mut self, visible: &BTreeSet<String>) -> PoolPlan {
@@ -194,5 +214,219 @@ impl CardPool {
             .filter(|(card, entry)| card.as_str() != keep && (!resumed_only || entry.resumed))
             .min_by_key(|(_, entry)| entry.used)
             .map(|(card, _)| card.clone())
+    }
+}
+
+/// What the store still needs the desktop to do about a card.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CardDue {
+    /// Read the card again (`card.session.update`).
+    Refresh(SurfaceId),
+    /// Send the submit the runtime's button press asked for.
+    Submit(SurfaceId),
+    /// Suspend the card's session (pool bound).
+    Suspend(SurfaceId),
+    /// Dispose the card's session (pool bound).
+    Dispose(SurfaceId),
+}
+
+impl CardDue {
+    /// The surface the step is about.
+    pub fn surface(&self) -> &SurfaceId {
+        match self {
+            Self::Refresh(s) | Self::Submit(s) | Self::Suspend(s) | Self::Dispose(s) => s,
+        }
+    }
+}
+
+/// The runtime's card for one surface, as the desktop holds it.
+#[derive(Clone, PartialEq)]
+pub struct CardRecord {
+    /// The session the held tree belongs to (fresh after a resume).
+    pub session: u64,
+    /// The held tree; `None` until the open batch applied.
+    pub tree: Option<CardTree>,
+    /// The overlay status.
+    pub status: CardStatus,
+    /// The link sheet the runtime asked for, while it is shown.
+    pub link: Option<CardLink>,
+    /// The last refusal (its reason key), until the next accepted call.
+    pub refusal: Option<String>,
+    /// The runtime discarded a local draft in favour of the signed update.
+    pub draft_discarded: bool,
+    /// The receipt of the last accepted submit.
+    pub receipt: Option<CardReceipt>,
+}
+
+impl std::fmt::Debug for CardRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CardRecord")
+            .field("session", &self.session)
+            .field("tree", &self.tree.as_ref().map(CardTree::tree_version))
+            .field("status", &self.status)
+            .field("link", &self.link)
+            .field("refusal", &self.refusal)
+            .finish_non_exhaustive()
+    }
+}
+
+impl CardRecord {
+    fn new(session: u64, status: CardStatus) -> Self {
+        Self {
+            session,
+            tree: None,
+            status,
+            link: None,
+            refusal: None,
+            draft_discarded: false,
+            receipt: None,
+        }
+    }
+
+    /// Whether the held session is resumed (live) in the pool.
+    pub fn resumed(&self, pool: &CardPool, surface: &SurfaceId) -> bool {
+        pool.entry(surface.as_str()).is_some_and(|e| e.resumed)
+    }
+}
+
+/// Applies the open or resume batch to a fresh tree of `session`.
+fn fresh_tree(session: u64, batch: &CardBatch) -> Option<CardTree> {
+    let mut tree = CardTree::empty(session);
+    tree.apply(batch).ok().map(|()| tree)
+}
+
+impl Store {
+    /// The card of `surface`, when the runtime holds one for it.
+    pub fn card(&self, surface: &SurfaceId) -> Option<&CardRecord> {
+        self.card_records.get(surface)
+    }
+
+    /// The pool of the card sessions this account holds.
+    pub fn card_pool(&self) -> &CardPool {
+        &self.cards
+    }
+
+    /// Takes what the store asks the desktop to do about cards.
+    pub fn take_card_due(&mut self) -> Vec<CardDue> {
+        std::mem::take(&mut self.card_due)
+    }
+
+    /// Queues the pool's bus steps (suspends and disposes) for the session.
+    fn queue_pool_plan(&mut self, plan: &PoolPlan) {
+        for (card, _) in &plan.suspend {
+            self.card_due.push(CardDue::Suspend(SurfaceId::new(card)));
+        }
+        for (card, _) in &plan.dispose {
+            self.card_due.push(CardDue::Dispose(SurfaceId::new(card)));
+        }
+    }
+
+    /// Applies one card runtime fact. A fact about a card the store no
+    /// longer holds (it was disposed, or its surface removed) is dropped.
+    pub(super) fn card_event(&mut self, event: &CardEvent, changes: &mut Changes) {
+        let surface = event.surface_id().clone();
+        changes.cards.insert(surface.clone());
+        if let Some(moment) = self.surface_moment(&surface).cloned() {
+            changes.moments.insert(moment);
+        }
+        match event {
+            CardEvent::Opened { session, batch, .. } => {
+                let plan = self.cards.opened(surface.as_str(), *session);
+                self.queue_pool_plan(&plan);
+                let mut record = CardRecord::new(*session, CardStatus::Live);
+                match fresh_tree(*session, batch) {
+                    Some(tree) => {
+                        record.tree = Some(tree);
+                    }
+                    None => record.status = CardStatus::Stale,
+                }
+                self.card_records.insert(surface, record);
+            }
+            CardEvent::Resumed { session, batch, .. } => {
+                let _ = self.cards.touch(surface.as_str());
+                self.cards.adopt(surface.as_str(), *session);
+                let Some(record) = self.card_records.get_mut(&surface) else { return };
+                record.session = *session;
+                match fresh_tree(*session, batch) {
+                    Some(tree) => {
+                        record.tree = Some(tree);
+                    }
+                    None => record.status = CardStatus::Stale,
+                }
+            }
+            CardEvent::Batch { batch, draft_conflict, .. } => {
+                let _ = self.cards.touch(surface.as_str());
+                let Some(record) = self.card_records.get_mut(&surface) else { return };
+                record.draft_discarded = *draft_conflict;
+                record.refusal = None;
+                let applied = record.tree.as_mut().map(|tree| tree.apply(batch));
+                match applied {
+                    Some(Ok(())) => record.status = CardStatus::Live,
+                    _ => {
+                        // A batch that does not follow the held tree: the
+                        // card is read again, and nothing is interactive
+                        // until then.
+                        record.status = CardStatus::Stale;
+                        self.card_due.push(CardDue::Refresh(surface));
+                    }
+                }
+            }
+            CardEvent::Stale { .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.status = CardStatus::Stale;
+                    self.card_due.push(CardDue::Refresh(surface));
+                }
+            }
+            CardEvent::Fallback { .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.status = CardStatus::Fallback;
+                }
+            }
+            CardEvent::PendingSubmit { .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.status = CardStatus::PendingSubmit;
+                    self.card_due.push(CardDue::Submit(surface));
+                }
+            }
+            CardEvent::Submitted { receipt, .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.status = CardStatus::Consumed;
+                    record.receipt = Some(receipt.clone());
+                    record.refusal = None;
+                }
+            }
+            CardEvent::Suspended { .. } => {
+                self.cards.suspended(surface.as_str());
+            }
+            CardEvent::Disposed { .. } => {
+                self.cards.remove(surface.as_str());
+                self.card_records.remove(&surface);
+            }
+            CardEvent::OpenUrl { link, .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.link = Some(link.clone());
+                }
+            }
+            CardEvent::LinkOpened { .. } | CardEvent::LinkClosed { .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.link = None;
+                }
+            }
+            CardEvent::ApprovalVerdict { outcome, .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface)
+                    && matches!(outcome, CardSlotOutcome::Confirm | CardSlotOutcome::Deny)
+                {
+                    record.status = CardStatus::AwaitingConfirmation;
+                }
+            }
+            CardEvent::Refused { reason, .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.refusal = Some(reason.clone());
+                    if record.status == CardStatus::PendingSubmit {
+                        record.status = CardStatus::Live;
+                    }
+                }
+            }
+        }
     }
 }

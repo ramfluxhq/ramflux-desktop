@@ -14,7 +14,8 @@
 //! - [`selectors`] derive read-only views.
 //! - [`handle_intent`] validates intents and applies policy without mutating the store.
 //! - [`Source`] executes effects and yields events.
-//! - [`conformance`] checks agent surfaces against a renderer profile.
+//! - [`card_event`] holds the card runtime's facts; [`store::CardPool`]
+//!   keeps the card sessions within the runtime's limits.
 //! - [`recovery`] holds the recovery phrase of a born-v3 account on its way to
 //!   the screen, and the word list typed words are checked against.
 //! - [`export`] renders a conversation as plain text (the terminal degradation).
@@ -29,7 +30,7 @@
     deny(clippy::disallowed_types, clippy::expect_used, clippy::panic, clippy::unwrap_used)
 )]
 
-pub mod conformance;
+pub mod card_event;
 pub mod event;
 pub mod export;
 pub mod ids;
@@ -42,24 +43,25 @@ pub mod selectors;
 pub mod source;
 pub mod store;
 pub mod surface_event;
+pub mod surface_hash;
 pub mod typing;
 pub mod ui_event;
 
-pub use conformance::{
-    RendererError, RendererErrorKind, RendererProfile, SurfaceHash, SurfaceVerdict,
+pub use card_event::{
+    CARD_METHODS, CARD_RUNTIME_GAP, CardEvent, CardLink, CardReceipt, CardSlotOutcome, CardStatus,
 };
 pub use event::{
-    DomainEvent, EVENT_SCHEMA, EventEnvelope, SourceStatus, SurfaceEvent, SurfaceOp,
-    SurfacePatchOp, SurfaceSnapshot,
+    DomainEvent, EVENT_SCHEMA, EventEnvelope, SourceStatus, SurfaceEvent, SurfaceSnapshot,
 };
 pub use ids::{
     AccountId, BackupJobId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId,
     ObjectId, ParticipantId, StandingApprovalId, StepId, SurfaceId, TaskId, Timestamp,
 };
 pub use intent::{
-    AppLockPhase, ContactAction, ContactCardProblem, ContactIdProblem, ContactInput, Effect,
-    GovernanceOp, Intent, IntentKind, MAX_CONTACT_CARD_LEN, MAX_CONTACT_ID_LEN, SecretInput,
-    SyncDirection, check_contact_card, check_contact_id, classify_contact_input, methods,
+    AppLockPhase, CardInput, ContactAction, ContactCardProblem, ContactIdProblem, ContactInput,
+    Effect, GovernanceOp, Intent, IntentKind, MAX_CONTACT_CARD_LEN, MAX_CONTACT_ID_LEN,
+    SecretInput, SyncDirection, check_contact_card, check_contact_id, classify_contact_input,
+    methods,
 };
 pub use model::*;
 pub use policy::{
@@ -76,8 +78,9 @@ pub use selectors::{AttentionItem, AttentionReason, CONTEXT_STACK_CAP, GrantFilt
 pub use serde_json::Value as JsonValue;
 pub use source::Source;
 pub use store::{
-    ApplyError, BodyCache, Changes, MAX_AUDIT, MAX_BODIES, MAX_FAILURES, MAX_REJECTIONS, Rejection,
-    Store, StreamState, SurfaceRecord, SurfaceState, UpdateRequest,
+    ApplyError, BodyCache, CardDue, CardRecord, Changes, MAX_AUDIT, MAX_BODIES, MAX_FAILURES,
+    MAX_REJECTIONS, Rejection, Store, SurfaceRecord, SurfaceState, UpdateRequest,
 };
+pub use surface_hash::SurfaceHash;
 pub use typing::{TYPING_MAX_MS, TypingStore};
 pub use ui_event::{NodeAction, ObjectAction, Scope, UiEvent, UiEventKind};

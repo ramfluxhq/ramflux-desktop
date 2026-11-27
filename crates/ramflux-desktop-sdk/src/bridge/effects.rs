@@ -32,6 +32,13 @@ use crate::translate::reason::{key, keyed};
 #[derive(Debug, Default)]
 pub(super) struct ReadsInFlight(std::collections::HashSet<String>);
 
+/// The card runtime calls in flight (at most one) and waiting behind it.
+#[derive(Default)]
+pub(super) struct CardCalls {
+    pub(super) busy: bool,
+    pub(super) queue: std::collections::VecDeque<(String, Value, Plan)>,
+}
+
 impl ReadsInFlight {
     /// Marks a read of `request_id` in flight. `false` when one already is:
     /// the new read is not sent.
@@ -157,35 +164,16 @@ impl Task {
             }
             Plan::Media(job) => self.media(job),
             other => {
-                // One creation's status is read at a time: a read due while
-                // the previous one is in flight waits for its answer (the next tick).
-                if method == methods::AGENT_OPERATION_GET
-                    && !self.operations_in_flight.start(text(&body, "operation_id"))
-                {
-                    return;
+                // Card runtime calls run one at a time (a draft sent before a
+                // press must land before the press), in the order they were made.
+                if crate::plan::card_session::is_card_method(&method) {
+                    if self.card_calls.busy {
+                        self.card_calls.queue.push_back((method, body, other));
+                        return;
+                    }
+                    self.card_calls.busy = true;
                 }
-                let client = self.client.clone();
-                let job_link = self.job_link.clone();
-                let internal = self.internal.clone();
-                let retries: Vec<Duration> = self
-                    .config
-                    .local_network_retry_ms
-                    .iter()
-                    .take_while(|ms| **ms > 0)
-                    .map(|ms| Duration::from_millis(u64::from(*ms)))
-                    .collect();
-                tokio::spawn(async move {
-                    let (result, refresh) = match other {
-                        // Taken only from the attended job connection.
-                        Plan::Call { request, refresh }
-                            if crate::bus::jobs::REQUESTS.contains(&request.method.as_str()) =>
-                        {
-                            (job_link.call(&request).await, refresh)
-                        }
-                        other => perform(&client, other, &retries).await,
-                    };
-                    let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
-                });
+                self.spawn_operation(method, body, other);
             }
         }
     }
@@ -197,6 +185,19 @@ impl Task {
         result: Result<Value, BusError>,
         refresh: Vec<Fetch>,
     ) {
+        if crate::plan::card_session::is_card_method(method) {
+            // Card replies are read as the runtime's own facts; a card call
+            // never reads back and is never retried. The next queued card call
+            // starts only now, so calls land in the order they were made.
+            let events = crate::translate::card_session::outcome(method, body, &result);
+            let lost = matches!(&result, Err(error) if error.is_connection_lost());
+            self.emit(events);
+            self.next_card_call();
+            if lost {
+                self.lost();
+            }
+            return;
+        }
         if method == methods::AGENT_OPERATION_GET {
             self.operations_in_flight.finish(text(body, "operation_id"));
         }
@@ -515,6 +516,52 @@ impl Task {
         all.extend(events);
         self.emit(all);
         self.spawn_fetches(refresh);
+    }
+}
+
+impl Task {
+    /// Runs one planned call off the bridge task; its answer comes back as
+    /// `EffectDone`.
+    fn spawn_operation(&mut self, method: String, body: Value, other: Plan) {
+        // One creation's status is read at a time: a read due while
+        // the previous one is in flight waits for its answer (the next tick).
+        if method == methods::AGENT_OPERATION_GET
+            && !self.operations_in_flight.start(text(&body, "operation_id"))
+        {
+            return;
+        }
+        let client = self.client.clone();
+        let job_link = self.job_link.clone();
+        let internal = self.internal.clone();
+        let retries: Vec<Duration> = self
+            .config
+            .local_network_retry_ms
+            .iter()
+            .take_while(|ms| **ms > 0)
+            .map(|ms| Duration::from_millis(u64::from(*ms)))
+            .collect();
+        tokio::spawn(async move {
+            let (result, refresh) = match other {
+                // Taken only from the attended job connection.
+                Plan::Call { request, refresh }
+                    if crate::bus::jobs::REQUESTS.contains(&request.method.as_str()) =>
+                {
+                    (job_link.call(&request).await, refresh)
+                }
+                other => perform(&client, other, &retries).await,
+            };
+            let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
+        });
+    }
+
+    /// Starts the next queued card call, once the previous one answered.
+    fn next_card_call(&mut self) {
+        if let Some((method, body, plan)) = self.card_calls.queue.pop_front() {
+            self.card_calls.busy = true;
+            self.spawn_operation(method, body, plan);
+        } else {
+            self.card_calls.busy = false;
+        }
     }
 }
 

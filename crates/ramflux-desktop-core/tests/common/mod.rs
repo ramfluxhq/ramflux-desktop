@@ -117,11 +117,6 @@ pub fn surface(id: &str) -> MomentKind {
     MomentKind::AgentSurface(AgentSurfacePayload {
         surface_id: SurfaceId::new(id),
         fallback_text: "Agent output".to_owned(),
-        blocks: vec![Block::new(
-            BlockId::new("b-text"),
-            BlockKind::Text,
-            serde_json::json!({ "text": "Hello" }),
-        )],
         actions: vec![
             SurfaceAction {
                 id: "run".to_owned(),
@@ -136,6 +131,5 @@ pub fn surface(id: &str) -> MomentKind {
                 disabled_reason: Some("export is disabled on this device".to_owned()),
             },
         ],
-        streaming: true,
     })
 }

@@ -31,8 +31,24 @@ pub const OBJECT_CANCEL: &str = "object.transfer.cancel";
 pub const SURFACE_ACTION: &str = "surface.action";
 /// Ask the author of an out-of-sync surface for its current state.
 pub const SURFACE_REQUEST_RESYNC: &str = "surface.request_resync";
-/// Report what a renderer could not show (to the surface producer).
-pub const RENDERER_ERROR: &str = "surface.renderer_error";
+/// Open a card's runtime session on a surface.
+pub const CARD_SESSION_OPEN: &str = "card.session.open";
+/// Read an open card again (after `surface.changed`).
+pub const CARD_SESSION_UPDATE: &str = "card.session.update";
+/// Present an open card in another locale or theme.
+pub const CARD_SESSION_PRESENT: &str = "card.session.present";
+/// A host event on one node of a card.
+pub const CARD_SESSION_EVENT: &str = "card.session.event";
+/// The host's answer to a card slot (link sheet, approval).
+pub const CARD_SESSION_SLOT: &str = "card.session.slot";
+/// Submit a card (the only networked card call).
+pub const CARD_SESSION_SUBMIT: &str = "card.session.submit";
+/// Suspend a card's session (its tree and drafts stay).
+pub const CARD_SESSION_SUSPEND: &str = "card.session.suspend";
+/// Resume a suspended card under a fresh session.
+pub const CARD_SESSION_RESUME: &str = "card.session.resume";
+/// Release a card's session.
+pub const CARD_SESSION_DISPOSE: &str = "card.session.dispose";
 /// Approve a grant.
 pub const GRANT_APPROVE: &str = "grant.approve";
 /// Deny a grant.
