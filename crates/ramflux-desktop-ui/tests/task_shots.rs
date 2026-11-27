@@ -320,10 +320,12 @@ mod shots {
                 w.select_context(Some(ContextId::new(GROUP)), window, cx);
             });
         });
-        run.until("the lines", |r| {
-            r.window(|window, _| window.within(scope(&plan)).try_find("task-ending").is_some())
-                && r.window(|window, _| window.find_all("task-event").len() >= 2)
-        });
+        // The SDK source no longer projects task event lines, and a failed
+        // task's steps no longer carry the denied grant, so the card has no
+        // event lines and no ending line: let the conversation settle.
+        for _ in 0..10 {
+            run.tick();
+        }
         run.shot("f17_01_task_lines_and_declined");
         fake.shutdown();
     }

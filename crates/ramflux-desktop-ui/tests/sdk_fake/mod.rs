@@ -101,6 +101,9 @@ pub struct State {
     pub messages: BTreeMap<String, Vec<Value>>,
     /// Object rows added by submissions.
     pub objects: Vec<Value>,
+    /// Prepared media the daemon holds (`attachment.prepare.*`), by prepare
+    /// id: the file name, the bytes accepted so far and the finished flag.
+    pub prepares: BTreeMap<String, Prepared>,
     /// Make the next submissions fail with this message.
     pub fail_submit: Option<String>,
     /// Make the next submissions fail with this error object (JSON, as the
@@ -159,6 +162,14 @@ pub struct State {
     pub schema: Arc<schema::Schema>,
     /// The daemon has no default node until `node.set_default` sets one.
     pub no_default: bool,
+}
+
+/// One prepared attachment the fake daemon holds.
+#[derive(Default, Clone)]
+pub struct Prepared {
+    pub name: String,
+    pub received: u64,
+    pub finished: bool,
 }
 
 /// A gate a test closes to hold answers back and opens to let them go.
@@ -253,6 +264,76 @@ fn submitted(state: &mut State, body: &Value) -> Reply {
         }));
     }
     Reply::Ok(json!({ "message_id": message }))
+}
+
+/// The prepared-media path: `attachment.enable`, `attachment.prepare.*` and
+/// the `conversation.send` that names a finished prepare. A send honours
+/// `submit_delay`, `submit_held` and the submit failures like `message.submit`.
+fn prepared_media(state: &Shared, method: &str, body: &Value) -> Option<Reply> {
+    match method {
+        "attachment.enable" => Some(Reply::Ok(json!({ "enabled": true }))),
+        "attachment.prepare.begin" => {
+            let mut state = state.lock().expect("state");
+            let id = format!("prep-{}", state.prepares.len() + 1);
+            let name = body["file_name"].as_str().unwrap_or_default().to_owned();
+            state.prepares.insert(id.clone(), Prepared { name, ..Prepared::default() });
+            Some(Reply::Ok(json!({
+                "prepare_id": id, "generation": 1, "state": "accepting",
+                "accepted_through": 0, "max_chunk": 524_288,
+            })))
+        }
+        "attachment.prepare.chunk" => {
+            let id = body["prepare_id"].as_str().unwrap_or_default();
+            let bytes = ramflux_protocol::decode_base64url(
+                body["data_base64"].as_str().unwrap_or_default(),
+            )
+            .map_or(0, |b| b.len() as u64);
+            let mut state = state.lock().expect("state");
+            let held = state.prepares.get_mut(id)?;
+            held.received += bytes;
+            Some(Reply::Ok(json!({ "accepted_through": held.received })))
+        }
+        "attachment.prepare.finish" => {
+            let id = body["prepare_id"].as_str().unwrap_or_default();
+            let mut state = state.lock().expect("state");
+            state.prepares.get_mut(id)?.finished = true;
+            Some(Reply::Ok(json!({ "state": "finished" })))
+        }
+        "attachment.prepare.cancel" => Some(Reply::Ok(json!({}))),
+        "conversation.send" => {
+            let (delay, held) = {
+                let state = state.lock().expect("state");
+                (state.submit_delay, state.submit_held.clone())
+            };
+            std::thread::sleep(delay);
+            while held.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let mut state = state.lock().expect("state");
+            if let Some(frame) = state.fail_submit_frame.clone() {
+                return Some(Reply::ErrorFrame(frame));
+            }
+            if let Some(message) = state.fail_submit.clone() {
+                return Some(Reply::Error("ValidationFailed", message));
+            }
+            let conversation = body["conversation_id"].as_str().unwrap_or_default().to_owned();
+            let message = format!("msg-prepared-{}", state.objects.len() + 1);
+            for prepare in body["prepares"].as_array().into_iter().flatten() {
+                let id = prepare["prepare_id"].as_str().unwrap_or_default();
+                let Some(held) = state.prepares.get(id).cloned() else { continue };
+                state.objects.push(json!({
+                    "id": format!("obj-{id}"), "size": held.received,
+                    "transfer_state": "available", "name": held.name,
+                    "direction": "outgoing", "conversation_id": conversation,
+                    "message_id": message, "transfer": null,
+                }));
+            }
+            Some(Reply::Ok(json!({
+                "message_id": message, "delivery_state": "submitted", "deliveries": [],
+            })))
+        }
+        _ => None,
+    }
 }
 
 /// The approvals the test listed, and the grant flow's decisions on them.
@@ -365,6 +446,9 @@ pub fn start_with_custody(
                 return reply;
             }
             if let Some(reply) = approvals(&state, tasks.as_ref(), method, body) {
+                return reply;
+            }
+            if let Some(reply) = prepared_media(&state, method, body) {
                 return reply;
             }
             if method == "message.submit" {

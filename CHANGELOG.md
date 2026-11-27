@@ -9,6 +9,7 @@ Versioning.
 
 ### Changed
 
+- Screenshot programs `conversation_shots`, `task_shots`, `desk_pin_shots` and `desk_pin3_shots` run to completion again: the fake daemon answers the prepared-media path (`attachment.prepare.*`, `conversation.send`), `screenshots` drops its removed conformance set, and the programs no longer wait for task event lines or the kind mark, which the SDK source stopped projecting.
 - App lock: turning the lock off, or choosing a longer timeout, asks for the account code in a sheet. The code goes to the daemon's attended prompt on the shared request connection, only while that configure runs, and is zeroized on every path. The sheet closes, its code is cleared and the prompt is refused when the window loses focus, Settings closes, the lock or cover rises, or the account changes; only a weakening configure can be prompted, and the next configure starts only after the previous answer is handled. "Wrong code" is shown only on the typed `wrong_passphrase` reason; a wait after wrong codes is a live countdown with no sheet; exhausted codes route to the recovery-phrase restore on the lock screen. Code refusals no longer appear as failure text.
 - Core pinned to `a897c417` (core `next`, #649). The core brings the typed app-lock code refusals (APP-LOCK-REAUTH-02, `2a8b6899`), the account-code prompt for `account.app_lock.configure` on the local bus (APP-LOCK-REAUTH-03, #649), the agent management rows (`e42182d7`) and the username witness registry (`859b5fd3`). The desktop does not use the agent or witness rows yet.
 

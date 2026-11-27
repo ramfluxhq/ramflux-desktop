@@ -275,7 +275,15 @@ mod shots {
         let broken = scratch_file(&files, "notes.txt", 512);
         attach(&mut run, &broken);
         run.click(None, "composer-send");
-        run.until("the failed attachment", |r| r.store(|s| !s.failures().is_empty()));
+        // A failed prepared send marks its file row failed (no effect failure).
+        run.until("the failed attachment", |r| {
+            r.store(|s| {
+                s.objects().any(|o| {
+                    o.name.as_deref() == Some("notes.txt")
+                        && matches!(o.transfer, ramflux_desktop_core::TransferState::Failed { .. })
+                })
+            })
+        });
         for _ in 0..5 {
             run.tick();
         }

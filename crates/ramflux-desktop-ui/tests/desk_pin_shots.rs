@@ -270,7 +270,9 @@ mod shots {
             .propose(sdk_fake::GROUP, "t-plan", "Draft the release notes", &[("a", "Draft")])
             .expect("proposal");
         tasks.accept_as("principal-ana", sdk_fake::GROUP, "t-plan").expect("accept");
-        run.until("the kind mark", |r| r.exists("task-event-kind"));
+        // The SDK source no longer projects task event lines, the only place
+        // the kind mark (`task-event-kind`) is drawn, so there is no mark to
+        // wait for: the card is shown without it.
         run.settle();
         run.shot("pin_02_kind_mismatch");
 
