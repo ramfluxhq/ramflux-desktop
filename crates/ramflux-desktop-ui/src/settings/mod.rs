@@ -555,22 +555,16 @@ impl Render for SettingsPage {
                                     .id("settings-header")
                                     .test_support()
                                     .w_full()
-                                    // The generated page header (88 px, 32 px
+                                    // The design's page header (88 px, 32 px
                                     // inset, rule) with the board's 24 px title.
-                                    .child(
-                                        ramflux_desktop_navigation::generated::catalog::page_header_content(
-                                            ramflux_desktop_navigation::generated::catalog::RowContent::new(
-                                                "settings-page".into(),
-                                                page_title(self.section),
-                                                SharedString::default(),
-                                            )
-                                            .title_size(palette.size_page)
-                                            .title_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                            .trailing(close),
-                                            false,
-                                            palette,
-                                        ),
-                                    ),
+                                    .child(crate::page_header::page_header(
+                                        page_title(self.section),
+                                        ramflux_desktop_navigation::scale::style::page(),
+                                        SharedString::default(),
+                                        None,
+                                        close,
+                                        palette,
+                                    )),
                             )
                             .child(
                                 div()

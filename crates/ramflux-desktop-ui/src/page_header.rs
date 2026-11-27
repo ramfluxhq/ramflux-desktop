@@ -12,19 +12,23 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, SharedString, div};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::generated::rf_tokens::RFTheme;
-use ramflux_desktop_navigation::scale::{DesignText as _, design_px, style};
+use ramflux_desktop_navigation::scale::{DesignText as _, TextStyle, design_px, style};
 
 /// The header's design height.
 const HEIGHT_PX: f32 = 88.0;
 
-/// A page header with `title` and `description`.
+/// A page header with `title` set in `title_style` (17 px `style::subheading()`
+/// for a section page, 24 px `style::page()` for Settings) and `description`
+/// (omitted when empty).
 pub fn page_header(
     title: impl Into<SharedString>,
+    title_style: TextStyle,
     description: impl Into<SharedString>,
     leading: Option<AnyElement>,
     trailing: impl IntoElement,
     theme: RFTheme,
 ) -> impl IntoElement {
+    let description: SharedString = description.into();
     h_flex()
         .w_full()
         .min_w_0()
@@ -41,18 +45,15 @@ pub fn page_header(
                 .flex_col()
                 .flex_1()
                 .min_w_0()
-                .child(
-                    div()
-                        .text_color(theme.text)
-                        .design_text(style::subheading())
-                        .child(title.into()),
-                )
-                .child(
-                    div()
-                        .text_color(theme.secondary)
-                        .design_text(style::secondary())
-                        .child(description.into()),
-                ),
+                .child(div().text_color(theme.text).design_text(title_style).child(title.into()))
+                .when(!description.is_empty(), |column| {
+                    column.child(
+                        div()
+                            .text_color(theme.secondary)
+                            .design_text(style::secondary())
+                            .child(description.clone()),
+                    )
+                }),
         )
         .child(trailing)
 }

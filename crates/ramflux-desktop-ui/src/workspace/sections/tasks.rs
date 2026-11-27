@@ -30,7 +30,6 @@ use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args, tr_count};
 use crate::style::DesignButton as _;
-use ramflux_desktop_navigation::generated::catalog;
 
 /// A category of the list pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -336,16 +335,13 @@ impl TasksArea {
             .id("tasks-detail")
             .test_support()
             .size_full()
-            // The generated page header with the board's semibold title.
-            .child(catalog::page_header_content(
-                catalog::RowContent::new(
-                    "tasks-header".into(),
-                    tr(&format!("sections.tasks.{}", category.key())),
-                    tr(&format!("sections.tasks.help.{}", category.key())),
-                )
-                .title_size(palette.size_subheading)
-                .title_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .trailing(h_flex().gap(space(3.)).children(tools).when(
+            // The design's page header.
+            .child(crate::page_header::page_header(
+                tr(&format!("sections.tasks.{}", category.key())),
+                ramflux_desktop_navigation::scale::style::subheading(),
+                tr(&format!("sections.tasks.help.{}", category.key())),
+                None,
+                h_flex().gap(space(3.)).children(tools).when(
                     category != TaskCategory::All,
                     |slot| {
                         slot.child(
@@ -358,8 +354,7 @@ impl TasksArea {
                                 })),
                         )
                     },
-                )),
-                false,
+                ),
                 palette,
             ))
             .child(

@@ -147,6 +147,19 @@ repeating the inline styling of a crate-private view with its source named
 later-scope features). `rf-design kit` crops the reference, compares at 1x
 and writes `kit.md` (worst first), `kit.json` and three-up images.
 
+Rules the kit follows when it has to choose:
+
+- A replica (`R`) copies the application's source and names it; a component
+  that the application builds in a shared function is called, never redrawn
+  (`avatar::avatar`, `page_header::page_header`).
+- Bubble width: on screens a bubble hugs its text up to `rf-bubble-max`
+  (boards 02 and B20). The 360 px of board 00B is the component frame, a
+  fixed width that only the kit capture uses so the time sits at the board's
+  right edge; the application never draws it.
+- Group avatar: a named group shows its initial in the person circle (boards
+  02 and C02); a group with no name to take an initial from shows the users
+  glyph (board 00D). `Avatar / Group` measures the glyph variant.
+
 ## Reviewed deviations
 
 One TOML file per board in `design/deviations/`:
