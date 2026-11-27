@@ -7,6 +7,10 @@ Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `deny.toml` for `cargo deny`: advisories, bans, licences and sources policy modelled on the core, with the workspace AGPL-3.0-or-later licence allowed and the local SQLCipher exceptions of the core. Advisories outside this change are not yet ignored.
+
 ### Security
 
 - Agent cards (G10 review round 2 and security audit): a tap is rebased onto
