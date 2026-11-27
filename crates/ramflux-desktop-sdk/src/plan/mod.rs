@@ -286,6 +286,8 @@ fn map(
             call(BusRequest::new(None, "node", "node.set_enabled", request))
         }
         methods::ACCOUNT_UNLOCK => match secrets.pop() {
+            // Always sent with its passphrase: a passphrase-less unlock would
+            // let the daemon prompt on this connection's attended provider.
             // The app lock's state is read back with the unlock.
             Some(secret) => Plan::Call {
                 request: BusRequest::new(

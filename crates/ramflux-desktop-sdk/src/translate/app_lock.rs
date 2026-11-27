@@ -76,6 +76,21 @@ impl Translator {
         self.set_app_lock(account, lock)
     }
 
+    /// Whether a configure of `account` to `enabled` and `timeout_ms` weakens
+    /// the lock the daemon last reported (the rule the daemon asks the account
+    /// code by): the lock is on and is turned off or given a longer timeout.
+    /// An unread lock counts as weakening, so the daemon decides.
+    pub(crate) fn app_lock_weakens(
+        &self,
+        account: &AccountId,
+        enabled: bool,
+        timeout_ms: u64,
+    ) -> bool {
+        self.app_locks
+            .get(account)
+            .is_none_or(|lock| lock.enabled && (!enabled || timeout_ms > lock.timeout_ms))
+    }
+
     fn set_app_lock(&mut self, account: &AccountId, lock: AppLock) -> Vec<DomainEvent> {
         self.app_locks.insert(account.clone(), lock.clone());
         vec![DomainEvent::AppLockChanged { account_id: account.clone(), lock }]

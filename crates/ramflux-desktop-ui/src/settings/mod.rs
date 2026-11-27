@@ -243,10 +243,11 @@ impl SettingsPage {
             &store,
             window,
             move |_, store, event: &StoreEvent, window, cx| {
+                // The sheets live in the daemon session's store, where the configure runs.
                 if matches!(event, StoreEvent::Changed(_))
-                    && store.read(cx).store().app_lock_sheets().next().is_none()
+                    && store.read(cx).entry_store().app_lock_sheets().next().is_none()
                 {
-                    clear_code.update(cx, |input, cx| input.set_value("", window, cx));
+                    account::clear_code(&clear_code, window, cx);
                 }
             },
         ));
@@ -302,7 +303,9 @@ impl SettingsPage {
     }
 
     /// Empties every typed secret as soon as the window is free to be
-    /// updated, whether or not anything renders afterwards.
+    /// updated, whether or not anything renders afterwards, and refuses every
+    /// account code prompt still open (its sheet is no longer in front of the
+    /// user who started it).
     fn clear_secrets(&self, cx: &mut Context<Self>) {
         let page = cx.entity().downgrade();
         let window = self.window;
@@ -310,6 +313,13 @@ impl SettingsPage {
             let _ = window.update(cx, move |_, window, cx| {
                 let _ = page.update(cx, |page, cx| {
                     account::clear_inputs(&page.inputs, window, cx);
+                    account::refuse_app_lock_codes(
+                        &page.context.store,
+                        &page.context.root,
+                        &page.inputs.app_lock_code,
+                        window,
+                        cx,
+                    );
                     page.backup.update(cx, |panel, cx| panel.clear_inputs(window, cx));
                 });
             });

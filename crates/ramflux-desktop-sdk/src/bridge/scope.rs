@@ -157,6 +157,8 @@ pub(super) enum Internal {
         body: Value,
         result: Result<Value, BusError>,
         refresh: Vec<Fetch>,
+        /// The attended gate a configure held; released once the answer is handled.
+        code_arm: Option<crate::bus::attended::ArmGuard>,
     },
     /// A read mark was moved: the unread counts are read again.
     ReadDone,
@@ -1243,8 +1245,10 @@ impl Task {
                 self.read_ended(&fetch, finished);
                 self.rerun_fetch(&fetch);
             }
-            Internal::EffectDone { method, body, result, refresh } => {
+            Internal::EffectDone { method, body, result, refresh, code_arm } => {
                 self.on_effect_done(&method, &body, result, refresh);
+                // The configure's record is reset: the gate is free for the next one.
+                drop(code_arm);
             }
             Internal::ReadDone => {
                 self.spawn_fetches(vec![Fetch::first(Paged::Conversations)]);
