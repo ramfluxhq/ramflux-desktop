@@ -274,7 +274,7 @@ mod shots {
         // the kind mark (`task-event-kind`) is drawn, so there is no mark to
         // wait for: the card is shown without it.
         run.settle();
-        run.shot("pin_02_kind_mismatch");
+        run.shot("pin_02_task_card_accepted");
 
         run.show("dm-ana");
 

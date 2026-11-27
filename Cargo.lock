@@ -7095,6 +7095,7 @@ dependencies = [
  "parking_lot",
  "ramflux-crypto",
  "ramflux-desktop-core",
+ "ramflux-desktop-sdk",
  "ramflux-desktop-test",
  "ramflux-protocol",
  "ramflux-prx-client",

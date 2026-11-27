@@ -266,6 +266,10 @@ fn submitted(state: &mut State, body: &Value) -> Reply {
     Reply::Ok(json!({ "message_id": message }))
 }
 
+fn unknown_prepare(id: &str) -> Reply {
+    Reply::Error("ValidationFailed", format!("unknown prepare_id {id:?}"))
+}
+
 /// The prepared-media path: `attachment.enable`, `attachment.prepare.*` and
 /// the `conversation.send` that names a finished prepare. A send honours
 /// `submit_delay`, `submit_held` and the submit failures like `message.submit`.
@@ -289,14 +293,19 @@ fn prepared_media(state: &Shared, method: &str, body: &Value) -> Option<Reply> {
             )
             .map_or(0, |b| b.len() as u64);
             let mut state = state.lock().expect("state");
-            let held = state.prepares.get_mut(id)?;
+            let Some(held) = state.prepares.get_mut(id) else {
+                return Some(unknown_prepare(id));
+            };
             held.received += bytes;
             Some(Reply::Ok(json!({ "accepted_through": held.received })))
         }
         "attachment.prepare.finish" => {
             let id = body["prepare_id"].as_str().unwrap_or_default();
             let mut state = state.lock().expect("state");
-            state.prepares.get_mut(id)?.finished = true;
+            let Some(held) = state.prepares.get_mut(id) else {
+                return Some(unknown_prepare(id));
+            };
+            held.finished = true;
             Some(Reply::Ok(json!({ "state": "finished" })))
         }
         "attachment.prepare.cancel" => Some(Reply::Ok(json!({}))),

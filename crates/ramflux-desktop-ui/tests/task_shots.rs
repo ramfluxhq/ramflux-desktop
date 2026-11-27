@@ -322,10 +322,12 @@ mod shots {
         });
         // The SDK source no longer projects task event lines, and a failed
         // task's steps no longer carry the denied grant, so the card has no
-        // event lines and no ending line: let the conversation settle.
-        for _ in 0..10 {
-            run.tick();
-        }
+        // event lines and no ending line: wait for the failed card's step row.
+        let failed_card = scope(&plan);
+        run.until("the failed card", |r| {
+            let failed_card = failed_card.clone();
+            r.window(move |window, _| window.within(failed_card).try_find("step-prod").is_some())
+        });
         run.shot("f17_01_task_lines_and_declined");
         fake.shutdown();
     }

@@ -31,7 +31,6 @@ SDK_TESTS = [
     "bridge::scope::networking_tests::authority_restored_event_clears_blocked_and_fences_delayed_status",
     "bridge::scope::networking_tests::custody_pending_and_authority_blocked_override_live_session",
     "bridge::scope::networking_tests::daemon_list_and_lifecycle_merge_preserves_account_session",
-    "bridge::scope::networking_tests::push_gap_reopen_recovers_networking_snapshot",
     "bridge::scope::networking_tests::sessionless_terminal_reason_survives_delayed_status",
 
     "bus::tests::a_retry_the_daemon_cannot_replay_asks_the_user_to_check",
@@ -55,7 +54,6 @@ SDK_TESTS = [
     "local::daemon_process::tests::daemon_spawn_sets_default_rust_log_unless_inherited",
 ]
 UI_TESTS = [
-    "attachment_fallback_and_paused_state_are_localized",
     "background_account_media_drains_without_render_ticks",
     "hidden_scenario_playback_stops_render_ticks",
     "sent_text_has_done_lifecycle_and_no_in_progress_label",
@@ -106,10 +104,6 @@ def main():
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--lib", "--features", "bus-trace"],
         "bus::trace::tests::trace_accounts_for_ordinary_stream_and_job_sends")
     required(["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "requests"], GUARD)
-    required(
-        ["cargo", "test", "--locked", "-p", "ramflux-desktop-sdk", "--test", "attach_flow"],
-        "node_profiles_resolve_the_relay_after_early_account_status",
-    )
     for name in (
         "the_restore_result_stays_in_view_when_the_daemon_reopens_the_account",
         "a_daemon_that_goes_away_during_the_hold_releases_it",

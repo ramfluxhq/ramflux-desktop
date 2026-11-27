@@ -344,7 +344,7 @@ mod shots {
         // the kind mark (`task-event-kind`) is drawn, so there is no mark to
         // wait for: the card is shown without it.
         run.settle();
-        run.shot("pin3_09_event_kind_verified_named");
+        run.shot("pin3_09_task_card_accepted");
         fake.shutdown();
     }
 
