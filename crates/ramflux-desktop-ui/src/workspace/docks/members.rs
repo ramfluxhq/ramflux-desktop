@@ -246,7 +246,7 @@ impl Render for MembersDock {
             .child(
                 h_flex()
                     .gap(space(2.))
-                    .child(ramflux_desktop_navigation::generated::catalog::avatar(
+                    .child(crate::avatar::avatar(
                         ramflux_desktop_navigation::row::initial(&title),
                         ramflux_desktop_navigation::generated::catalog::AvatarKind::Group,
                         ramflux_desktop_navigation::palette(cx),

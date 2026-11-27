@@ -60,7 +60,6 @@ pub fn dialog(
     cx: &App,
 ) -> AnyElement {
     let theme = cx.theme();
-    let palette = ramflux_desktop_navigation::palette(cx);
     let body = v_flex()
         .id("device-approval")
         .test_support()
@@ -114,28 +113,14 @@ pub fn dialog(
                 ),
         )
         .child(
-            h_flex()
-                .id("device-approval-warning")
-                .gap(space(3.))
-                .p(space(3.))
-                .rounded(theme.radius)
-                .bg(palette.warning_bg)
-                .child(Icon::new(IconName::TriangleAlert).small())
-                .child(
-                    v_flex()
-                        .gap(space(1.))
-                        .child(
-                            div()
-                                .text_size(text_secondary())
-                                .font_medium()
-                                .child(tr("settings.devices.approve.warning_title")),
-                        )
-                        .child(
-                            div()
-                                .text_size(text_caption())
-                                .child(tr("settings.devices.approve.warning_body")),
-                        ),
-                ),
+            // Wraps inside the card (the warning's text is two sentences).
+            crate::status::security_notice(
+                false,
+                tr("settings.devices.approve.warning_title"),
+                tr("settings.devices.approve.warning_body"),
+                cx,
+            )
+            .id("device-approval-warning"),
         );
     let close = reject.clone();
     Modal::new("device-approval-dialog", tr("settings.devices.approve.title"), focus, close)

@@ -10,7 +10,7 @@
 //! never positions. Search is local over what the store already holds and
 //! is bounded; it is not a server search.
 
-use ramflux_desktop_navigation::scale::{space, text_caption};
+use ramflux_desktop_navigation::scale::{design_px, space, text_caption};
 use std::rc::Rc;
 
 use crate::controls::DesignCheckbox;
@@ -137,6 +137,12 @@ impl Search {
 }
 
 /// Whether any of `fields` contains `query` (already lowercased).
+/// The search glyph and the field's inset (board 00D: a 16 px glyph 8 px
+/// inside the rule, the label 6 px after it).
+const SEARCH_ICON_PX: f32 = 16.0;
+const SEARCH_INSET_PX: f32 = 8.0;
+const SEARCH_GAP_PX: f32 = 6.0;
+
 /// The design's search field (`RF / Search field`): 34 px on the white
 /// surface with a strong rule, the search glyph leading, and an optional
 /// trailing element (the palette shortcut in the message list).
@@ -151,15 +157,15 @@ pub(crate) fn search_input(
     h_flex()
         .w_full()
         .h(gpui_kit::rems(34.0 / 15.0))
-        .px(space(2.))
-        .gap(space(2.))
+        .px(design_px(SEARCH_INSET_PX))
+        .gap(design_px(SEARCH_GAP_PX))
         .rounded(gpui_kit::rems(theme.radius_input / 15.0))
         .border_1()
         .border_color(theme.line_strong)
         .bg(theme.surface_white)
         .child(
             gpui_kit::component::Icon::new(gpui_kit::component::IconName::Search)
-                .small()
+                .size(design_px(SEARCH_ICON_PX))
                 .text_color(theme.secondary),
         )
         .child(
@@ -169,8 +175,9 @@ pub(crate) fn search_input(
                     .small()
                     .appearance(false)
                     .bordered(false)
-                    .text_size(gpui_kit::rems(theme.size_secondary / 15.0))
+                    .text_size(gpui_kit::rems(theme.size_button / 15.0))
                     .aria_label(label)
+                    .px_0()
                     .cleanable(true),
             ),
         )
@@ -251,7 +258,7 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                 .title_size(theme.size_body)
                 .title_weight(gpui_kit::FontWeight::MEDIUM)
                 .subtitle_size(theme.size_secondary)
-                .leading(catalog::avatar(
+                .leading(crate::avatar::avatar(
                     ramflux_desktop_navigation::row::initial(&row.title),
                     visible_kind(row.avatar),
                     theme,
@@ -339,7 +346,7 @@ fn request_card(
         .child(
             h_flex()
                 .gap(space(2.))
-                .child(catalog::avatar(
+                .child(crate::avatar::avatar(
                     ramflux_desktop_navigation::row::initial(&row.title),
                     row.avatar,
                     theme,

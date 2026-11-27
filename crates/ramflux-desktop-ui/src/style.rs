@@ -36,6 +36,7 @@ use gpui_kit::component::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, ElementId, Hsla, SharedString, div, px};
+use ramflux_desktop_navigation::direction::DirectionalExt as _;
 use ramflux_desktop_navigation::scale::{DesignText as _, design_px, space, style as text_style};
 
 /// The design's button kinds.
@@ -51,6 +52,8 @@ pub enum ButtonKind {
 
 /// The design height of a button.
 const HEIGHT_PX: f32 = 32.0;
+/// The design's inset before the label.
+const INSET_PX: f32 = 12.0;
 
 struct Colours {
     fill: Hsla,
@@ -159,11 +162,19 @@ impl DesignButton for Button {
     fn design_style(self, style: &DesignStyle) -> Self {
         // Kit's custom variant supplies the pointer feedback; its idle fill is
         // a tint, so the solid fill and label colour are set here.
+        let edge = if style.edge.is_some() { 1.0 } else { 0.0 };
         self.custom(style.variant)
             .bg(style.fill)
             .text_color(style.label)
             .h(design_px(HEIGHT_PX))
-            .px(space(3.))
+            // The label's advance measures 1 px wider than the boards' (four
+            // CJK glyphs at 14 px: 57 px against 56), which made every button
+            // 81 px against the design's 80. The 12 px before the label is
+            // kept (the label lands on a whole pixel) and the 1 px comes off
+            // the inset after it; an outlined button's edge takes its own
+            // pixel off both.
+            .pad_start(design_px(INSET_PX - edge))
+            .pad_end(design_px(INSET_PX - 1.0 - edge))
             .rounded(px(style.radius))
             .when_some(style.edge, |b, edge| b.border_1().border_color(edge))
     }

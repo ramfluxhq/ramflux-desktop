@@ -17,7 +17,8 @@
 //! A tip bar's text is 13 px `rf-text` after a 16 px icon and an 8 px gap;
 //! it wraps when it is longer than the bar.
 
-use gpui_kit::component::{Icon, IconName};
+use gpui_kit::assets::IconName as CatalogIcon;
+use gpui_kit::component::{Icon, IconName, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Div, Hsla, SharedString, div};
 use ramflux_desktop_navigation::direction::h_flex;
@@ -106,3 +107,54 @@ pub fn tip_bar(tone: Tone, icon: Option<IconName>, text: impl Into<SharedString>
                 .child(text.into()),
         )
 }
+
+/// The security notice (`RF / Security warning` and its danger variant on
+/// board 00D): an 18 px icon in the tone colour, a 10 px gap, a semibold title and a
+/// regular body, both `rf-text`, on the tone's fill, 12 px inset, `rf-radius-sm`. Replaces
+/// the generated catalog trust banner, whose text had no type styles.
+pub fn security_notice(
+    danger: bool,
+    title: impl Into<SharedString>,
+    body: impl Into<SharedString>,
+    cx: &App,
+) -> Div {
+    let p = ramflux_desktop_navigation::palette(cx);
+    let (tone, icon) = if danger {
+        (Tone::Danger, Icon::new(CatalogIcon::ShieldAlert))
+    } else {
+        (Tone::Warning, Icon::new(IconName::TriangleAlert))
+    };
+    let (fill, accent) = colours(tone, cx);
+    h_flex()
+        .w_full()
+        .min_w_0()
+        .items_start()
+        .gap(design_px(10.))
+        .p(space(3.))
+        .rounded(design_px(p.radius_sm))
+        .bg(fill)
+        .child(icon.flex_none().size(design_px(NOTICE_ICON_PX)).text_color(accent))
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(design_px(3.))
+                .child(
+                    div()
+                        .whitespace_normal()
+                        .text_color(p.text)
+                        .design_text(style::secondary().weight(gpui_kit::FontWeight::SEMIBOLD))
+                        .child(title.into()),
+                )
+                .child(
+                    div()
+                        .whitespace_normal()
+                        .text_color(p.text)
+                        .design_text(style::secondary())
+                        .child(body.into()),
+                ),
+        )
+}
+
+/// The security notice's icon.
+const NOTICE_ICON_PX: f32 = 18.0;

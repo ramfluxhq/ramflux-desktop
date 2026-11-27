@@ -39,6 +39,7 @@
 pub mod actions;
 pub mod app;
 pub mod assets;
+pub mod avatar;
 pub mod bubble;
 /// The card gallery and its conformance (test builds only).
 #[cfg(feature = "card-gallery")]
@@ -60,6 +61,7 @@ pub mod message_shell;
 pub mod modal;
 pub mod moments;
 pub mod notify;
+pub mod page_header;
 pub mod palette;
 pub mod preferences;
 pub mod qr;

@@ -26,7 +26,6 @@ use ramflux_desktop_core::{
     selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
-use ramflux_desktop_navigation::generated::catalog;
 use ramflux_desktop_navigation::palette;
 use ramflux_desktop_navigation::scale::{design_px, space, text_caption, text_secondary};
 
@@ -91,7 +90,6 @@ impl ContactProfile {
     }
 
     fn safety_block(&self, contact: &Participant, cx: &mut Context<Self>) -> AnyElement {
-        let theme = palette(cx);
         let number = contact.safety_number.clone();
         let grouped: Option<SharedString> = number.as_ref().map(|n| group_digits(n).into());
         let state = safety_label(contact.safety);
@@ -134,15 +132,11 @@ impl ContactProfile {
                     .child(grouped.clone().unwrap_or_else(|| tr("sections.contact.no_number"))),
             );
         if danger {
-            block = block.child(catalog::trust_banner(
-                catalog::NoticeContent::new(
-                    tr("sections.contact.key_changed"),
-                    tr("sections.contact.key_changed_help"),
-                    Icon::new(IconName::ShieldAlert).text_color(cx.theme().danger),
-                    div(),
-                ),
+            block = block.child(crate::status::security_notice(
                 true,
-                theme,
+                tr("sections.contact.key_changed"),
+                tr("sections.contact.key_changed_help"),
+                cx,
             ));
         }
         if contact.safety == SafetyState::Verified {
@@ -341,18 +335,24 @@ impl Render for ContactProfile {
             .size_full()
             .min_w_0()
             .overflow_y_scroll()
-            .child(div().border_b_1().border_color(cx.theme().border).child(catalog::page_header(
-                ramflux_desktop_navigation::row::list_text(&contact.display),
-                SharedString::from(contact.id.to_string()),
-                false,
-                catalog::avatar(
-                    ramflux_desktop_navigation::row::initial(&contact.display),
-                    super::contacts::avatar_kind(contact.kind),
-                    theme,
+            .child(
+                div().border_b_1().border_color(cx.theme().border).child(
+                    crate::page_header::page_header(
+                        ramflux_desktop_navigation::row::list_text(&contact.display),
+                        SharedString::from(contact.id.to_string()),
+                        Some(
+                            crate::avatar::avatar(
+                                ramflux_desktop_navigation::row::initial(&contact.display),
+                                super::contacts::avatar_kind(contact.kind),
+                                theme,
+                            )
+                            .into_any_element(),
+                        ),
+                        h_flex().gap(space(2.)).flex_wrap().child(message).child(call),
+                        theme,
+                    ),
                 ),
-                h_flex().gap(space(2.)).flex_wrap().child(message).child(call),
-                theme,
-            )))
+            )
             .child(
                 v_flex()
                     .gap(space(4.))

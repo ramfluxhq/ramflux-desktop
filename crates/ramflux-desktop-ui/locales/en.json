@@ -1347,6 +1347,7 @@
   "dock.contacts.verify.no_number": "No safety number for %{name} yet. It appears once their devices are listed.",
   "dock.contacts.verify.confirm": "The numbers match",
   "dock.contacts.verify.cancel": "Cancel",
+  "dock.contacts.add.cancel": "Cancel",
   "dock.contacts.advanced_safety": "Safety number",
   "dock.contacts.advanced_safety_for": "Show the safety number for %{name} (advanced)",
   "dock.contacts.reachable": "Reachable",

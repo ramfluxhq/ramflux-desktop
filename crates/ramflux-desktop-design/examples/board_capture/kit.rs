@@ -29,7 +29,7 @@ use gpui_kit::{
 };
 use ramflux_desktop_navigation::generated::catalog as kit;
 use ramflux_desktop_navigation::palette;
-use ramflux_desktop_navigation::scale::space;
+use ramflux_desktop_navigation::scale::{design_px, space};
 use ramflux_desktop_ui::AppAssets as Assets;
 use ramflux_desktop_ui::controls::{DesignCheckbox, radio_indicator};
 use ramflux_desktop_ui::message_shell::{BubbleKind, message_avatar, message_shell};
@@ -98,7 +98,7 @@ fn row_replica(
                 .flex_col()
                 .flex_1()
                 .min_w_0()
-                .gap_1()
+                .gap(space(1.))
                 .child(div().text_size(rem(p.size_body)).font_medium().child(title))
                 .child(
                     div().text_size(rem(p.size_secondary)).text_color(p.secondary).child(detail),
@@ -113,8 +113,12 @@ fn bubble(
     sender: Option<SharedString>,
     text: SharedString,
     time: &'static str,
+    width: f32,
     cx: &App,
 ) -> AnyElement {
+    // The component boards draw a bubble in a fixed frame (360 px wide, time
+    // at the right edge); on screens a bubble hugs its text up to
+    // `rf-bubble-max`.
     // content: replica of crates/ramflux-desktop-ui/src/moments/message_bubble.rs
     // (`render`) and moments/message.rs (the body in the message style)
     use ramflux_desktop_navigation::scale::{DesignText as _, style};
@@ -147,16 +151,23 @@ fn bubble(
                         .flex()
                         .flex_row()
                         .flex_none()
+                        .items_center()
+                        .relative()
+                        .top(design_px(1.))
                         .gap(space(1.))
-                        .design_text(style::caption())
+                        .design_text(style::caption().line(24.0))
                         .text_color(meta)
                         .child(time)
                         .when(own, |r| {
-                            r.child(Icon::new(IconName::CheckCheck).xsmall().text_color(meta))
+                            r.child(
+                                Icon::new(IconName::CheckCheck)
+                                    .size(design_px(14.0))
+                                    .text_color(meta),
+                            )
                         }),
                 ),
         );
-    message_shell("m", kind, content, cx).into_any_element()
+    message_shell("m", kind, content, cx).w(rem(width)).into_any_element()
 }
 
 fn tip(tone: Tone, title: SharedString, cx: &App) -> AnyElement {
@@ -183,23 +194,25 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "avatar-identity",
-            how: A("catalog::avatar Person", |_, cx, _| {
-                kit::avatar("A".into(), kit::AvatarKind::Person, palette(cx)).into_any_element()
+            how: A("avatar::avatar Person", |_, cx, _| {
+                ramflux_desktop_ui::avatar::avatar("A".into(), kit::AvatarKind::Person, palette(cx))
+                    .into_any_element()
             }),
         },
         Component {
             slug: "avatar-agent",
-            how: A("catalog::avatar Agent", |_, cx, _| {
-                kit::avatar("N".into(), kit::AvatarKind::Agent, palette(cx)).into_any_element()
+            how: A("avatar::avatar Agent", |_, cx, _| {
+                ramflux_desktop_ui::avatar::avatar("N".into(), kit::AvatarKind::Agent, palette(cx))
+                    .into_any_element()
             }),
         },
         Component {
             slug: "list-row-conversation",
             how: R("workspace/context_stack.rs list row (Button + navigation Row)", |_, cx, _| {
                 let p = palette(cx);
-                // The component shows no time; the application's row always
-                // has its avatar.
-                let row = ramflux_desktop_navigation::row::Row::new(t("kit02"), t("kit03"));
+                // The component shows no avatar and no time.
+                let mut row = ramflux_desktop_navigation::row::Row::new(t("kit02"), t("kit03"));
+                row.avatar = false;
                 Button::new("row")
                     .ghost()
                     .w_full()
@@ -234,13 +247,13 @@ pub fn components() -> Vec<Component> {
         Component {
             slug: "bubble-peer",
             how: R("message_shell + moments/message_bubble.rs content", |_, cx, _| {
-                bubble(BubbleKind::Peer, None, t("kit10"), "14:32", cx)
+                bubble(BubbleKind::Peer, None, t("kit10"), "14:32", 360.0, cx)
             }),
         },
         Component {
             slug: "bubble-own",
             how: R("message_shell + moments/message_bubble.rs content", |_, cx, _| {
-                bubble(BubbleKind::Own, None, t("kit11"), "14:33", cx)
+                bubble(BubbleKind::Own, None, t("kit11"), "14:33", 360.0, cx)
             }),
         },
         Component {
@@ -253,7 +266,14 @@ pub fn components() -> Vec<Component> {
                         .flex_row()
                         .gap(space(2.))
                         .child(message_avatar(t("kit04"), false, cx))
-                        .child(bubble(BubbleKind::Peer, Some(t("kit12")), t("kit10"), "14:32", cx))
+                        .child(bubble(
+                            BubbleKind::Peer,
+                            Some(t("kit12")),
+                            t("kit10"),
+                            "14:32",
+                            360.0,
+                            cx,
+                        ))
                         .into_any_element()
                 },
             ),
@@ -314,8 +334,17 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "icon-button",
-            how: R("conversation/header.rs ellipsis button", |_, _, _| {
-                Button::new("i").ghost().small().icon(IconName::Ellipsis).into_any_element()
+            how: R("conversation/header.rs ellipsis button", |_, cx, _| {
+                Button::new("i")
+                    .ghost()
+                    .small()
+                    .size(rem(32.0))
+                    .child(
+                        Icon::new(IconName::Ellipsis)
+                            .size(rem(20.0))
+                            .text_color(palette(cx).secondary),
+                    )
+                    .into_any_element()
             }),
         },
         Component {
@@ -327,7 +356,7 @@ pub fn components() -> Vec<Component> {
                     .items_center()
                     .justify_center()
                     .text_color(palette(cx).secondary)
-                    .child(Icon::new(IconName::Info).small())
+                    .child(Icon::new(IconName::Info).size(rem(18.0)))
                     .into_any_element()
             }),
         },
@@ -377,6 +406,7 @@ pub fn components() -> Vec<Component> {
                         .h(rem(28.0))
                         .rounded(px(p.radius_xs))
                         .when(on, |b| b.bg(p.surface_white).font_semibold())
+                        .text_color(if on { p.text } else { p.secondary })
                         .selected(on)
                         .label(label)
                 };
@@ -409,19 +439,20 @@ pub fn components() -> Vec<Component> {
                     .items_center()
                     .w_full()
                     .h(rem(34.0))
-                    .px_2()
-                    .gap_2()
+                    .px(rem(8.0))
+                    .gap(rem(6.0))
                     .rounded(rem(p.radius_input))
                     .border_1()
                     .border_color(p.line_strong)
                     .bg(p.surface_white)
-                    .child(Icon::new(IconName::Search).small().text_color(p.secondary))
+                    .child(Icon::new(IconName::Search).size(rem(16.0)).text_color(p.secondary))
                     .child(
                         Input::new(&inputs.search)
                             .small()
                             .appearance(false)
                             .bordered(false)
-                            .text_size(rem(p.size_secondary)),
+                            .px_0()
+                            .text_size(rem(p.size_button)),
                     )
                     .into_any_element()
             }),
@@ -440,34 +471,30 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "security-warning-default",
-            how: A("catalog::trust_banner", |_, cx, _| {
-                kit::trust_banner(
-                    kit::NoticeContent::new(
+            how: A("status::security_notice", |_, cx, _| {
+                div()
+                    .w(rem(480.0))
+                    .child(ramflux_desktop_ui::status::security_notice(
+                        false,
                         t("kit05"),
                         t("kit06"),
-                        Icon::new(IconName::TriangleAlert),
-                        div(),
-                    ),
-                    false,
-                    palette(cx),
-                )
-                .into_any_element()
+                        cx,
+                    ))
+                    .into_any_element()
             }),
         },
         Component {
             slug: "security-warning-danger",
-            how: A("catalog::trust_banner danger", |_, cx, _| {
-                kit::trust_banner(
-                    kit::NoticeContent::new(
+            how: A("status::security_notice", |_, cx, _| {
+                div()
+                    .w(rem(480.0))
+                    .child(ramflux_desktop_ui::status::security_notice(
+                        true,
                         t("kit05"),
                         t("kit06"),
-                        Icon::new(IconName::ShieldAlert),
-                        div(),
-                    ),
-                    true,
-                    palette(cx),
-                )
-                .into_any_element()
+                        cx,
+                    ))
+                    .into_any_element()
             }),
         },
         Component {
@@ -540,9 +567,22 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "avatar-group",
-            how: A("catalog::avatar Group", |_, cx, _| {
-                kit::avatar("".into(), kit::AvatarKind::Group, palette(cx)).into_any_element()
-            }),
+            how: R(
+                "catalog::avatar frame (the application draws group avatars with the group's initial; the board shows the glyph of an unnamed group)",
+                |_, cx, _| {
+                    let p = palette(cx);
+                    div()
+                        .size(rem(40.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_full()
+                        .bg(p.avatar_person)
+                        .text_color(p.on_avatar_person)
+                        .child(Icon::new(IconName::Users).size(rem(20.0)))
+                        .into_any_element()
+                },
+            ),
         },
         Component { slug: "stage", how: S("video is later scope") },
         Component {
@@ -554,14 +594,13 @@ pub fn components() -> Vec<Component> {
         Component { slug: "chat-header-channel", how: S("channels are later scope") },
         Component {
             slug: "page-header",
-            how: A("catalog::page_header_content", |_, cx, _| {
-                let p = palette(cx);
-                kit::page_header_content(
-                    kit::RowContent::new("ph".into(), t("kit07"), t("kit08")).trailing(
-                        ramflux_desktop_ui::style::secondary_button("a", cx).label(t("kit28")),
-                    ),
-                    false,
-                    p,
+            how: A("page_header::page_header", |_, cx, _| {
+                ramflux_desktop_ui::page_header::page_header(
+                    t("kit07"),
+                    t("kit08"),
+                    None,
+                    Button::new("a").design_text(cx).design_label(t("kit28")),
+                    palette(cx),
                 )
                 .into_any_element()
             }),

@@ -123,7 +123,7 @@ impl StrangersArea {
             .gap(space(3.))
             .border_b_1()
             .border_color(theme.line)
-            .child(catalog::avatar(
+            .child(crate::avatar::avatar(
                 ramflux_desktop_navigation::row::initial(&name),
                 catalog::AvatarKind::Person,
                 theme,

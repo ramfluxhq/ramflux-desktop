@@ -142,8 +142,11 @@ pub(crate) fn render(
         // The selectable body keeps Kit's 4 px editor inset on each side.
         width += window.rem_size() * (8.0 / 15.0);
         // An own message also shows its receipt icon (12 px and a 4 px gap).
-        let receipt =
-            if row.outbound { window.rem_size() * (16.0 / 15.0) } else { gpui_kit::px(0.) };
+        let receipt = if row.outbound {
+            window.rem_size() * ((RECEIPT_PX + 4.0) / 15.0)
+        } else {
+            gpui_kit::px(0.)
+        };
         (width + meta + receipt + window.rem_size() * (8.0 / 15.0) + window.rem_size() * 2.0)
             .max(window.rem_size() * 8.0)
     });
@@ -210,8 +213,13 @@ pub(crate) fn render(
                 .child(
                     h_flex()
                         .flex_none()
+                        .items_center()
+                        .relative()
+                        .top(design_px(1.))
                         .gap(space(1.))
-                        .design_text(style::caption())
+                        // The time shares the body line's 24 px box, so it
+                        // sits on the line's middle as on the boards.
+                        .design_text(style::caption().line(24.0))
                         .text_color(if row.outbound {
                             theme.outgoing_meta
                         } else {
@@ -400,6 +408,9 @@ impl MenuActions {
     }
 }
 
+/// The receipt icon beside the time (the boards draw it 14 px).
+const RECEIPT_PX: f32 = 14.0;
+
 /// The receipt beside the time of an own message (design `B23`): a clock
 /// while sending, one check when sent, a double check when delivered or read.
 /// A failure or a wait for the node is told under the bubble instead.
@@ -417,7 +428,7 @@ fn receipt_meta(payload: &MessagePayload, outbound: bool) -> Option<impl IntoEle
             .id("message-receipt")
             .aria_label(i18n::receipt(payload.receipt))
             .test_support()
-            .child(Icon::new(icon).xsmall()),
+            .child(Icon::new(icon).size(design_px(RECEIPT_PX))),
     )
 }
 

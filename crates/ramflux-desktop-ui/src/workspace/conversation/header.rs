@@ -22,7 +22,7 @@ use ramflux_desktop_core::{
     Context, ContextKind, Participant, Scope, Store, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
-use ramflux_desktop_navigation::scale::{space, text_secondary};
+use ramflux_desktop_navigation::scale::{design_px, space, text_secondary};
 
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args};
@@ -224,7 +224,14 @@ pub fn render(
             Button::new("conversation-more")
                 .ghost()
                 .small()
-                .icon(IconName::Ellipsis)
+                // `RF / Icon button`: 32 px square, the glyph 20 px in
+                // `rf-secondary`.
+                .size(design_px(32.0))
+                .child(
+                    Icon::new(IconName::Ellipsis)
+                        .size(design_px(20.0))
+                        .text_color(palette.secondary),
+                )
                 .accessibility_label(tr("conversation.more"))
                 .tooltip(tr("conversation.more"))
                 .dropdown_menu(move |menu, _, _| {

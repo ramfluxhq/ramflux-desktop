@@ -37,6 +37,9 @@ pub struct Row {
     /// A fixed avatar glyph instead of the title's initial (the strangers
     /// entry shows "?").
     pub glyph: Option<SharedString>,
+    /// Whether the row shows its avatar (the component board `List row /
+    /// Conversation` draws none; every screen board does).
+    pub avatar: bool,
 }
 
 impl Row {
@@ -51,6 +54,7 @@ impl Row {
             attention: 0,
             kind: AvatarKind::Person,
             glyph: None,
+            avatar: true,
         }
     }
 
@@ -77,24 +81,26 @@ impl Row {
             .w_full()
             .min_w_0()
             .gap(space(3.))
-            .child(
-                div()
-                    .flex_none()
-                    .size(rem(crate::geometry::AVATAR))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(if self.kind == AvatarKind::Agent {
-                        // The design's agent avatar: a 10 px corner on 40 px.
-                        rem(crate::geometry::AVATAR / 4.0)
-                    } else {
-                        rem(palette.radius_full)
-                    })
-                    .bg(background)
-                    .text_color(foreground)
-                    .font_semibold()
-                    .child(initial),
-            )
+            .when(self.avatar, |row| {
+                row.child(
+                    div()
+                        .flex_none()
+                        .size(rem(crate::geometry::AVATAR))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(if self.kind == AvatarKind::Agent {
+                            // The design's agent avatar: a 10 px corner on 40 px.
+                            rem(crate::geometry::AVATAR / 4.0)
+                        } else {
+                            rem(palette.radius_full)
+                        })
+                        .bg(background)
+                        .text_color(foreground)
+                        .font_semibold()
+                        .child(initial),
+                )
+            })
             .child(
                 v_flex()
                     .flex_1()
