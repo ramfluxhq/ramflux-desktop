@@ -12,9 +12,9 @@
 //!
 //! `RAMFLUX_SHOTS_SET=hardening` renders only the loading and empty states
 //! and the keyboard focus states (shots 10 to 14);
-//! `RAMFLUX_SHOTS_SET=conformance` renders the renderer conformance states
-//! (shots 15 to 17); `RAMFLUX_SHOTS_SET=ai_participant` renders the AI
-//! participant in the conversation (shots 18 to 22).
+//! `RAMFLUX_SHOTS_SET=ai_participant` renders the AI participant in the
+//! conversation (shots 18 to 22). The renderer conformance states (shots 15
+//! to 17) went with the block renderer.
 //!
 //! The developer panel stays closed: scenarios are loaded and time is moved
 //! through the store handle (as the panel would), and every interaction is
@@ -43,7 +43,7 @@ mod shots {
         Account, AccountId, AccountKind, ContextId, DomainEvent, Listing, LockState, MomentId,
         SourceStatus, Timestamp,
     };
-    use ramflux_desktop_test::{Scenario, load_conformance, load_fixture};
+    use ramflux_desktop_test::{Scenario, load_fixture};
     use ramflux_desktop_ui::AppAssets as Assets;
     use ramflux_desktop_ui::Shell;
     use ramflux_desktop_ui::actions::OpenPalette;
@@ -201,7 +201,6 @@ mod shots {
         let mut s = Session::open(out);
         match std::env::var("RAMFLUX_SHOTS_SET").as_deref() {
             Ok("hardening") => return hardening(&mut s),
-            Ok("conformance") => return conformance(&mut s),
             Ok("ai_participant") => return ai_participant(&mut s),
             _ => {}
         }
@@ -343,42 +342,6 @@ mod shots {
         s.cx.run_until_parked();
         s.both("14_keyboard_cancel_focused");
         s.in_window(|window, cx| window.press("escape", cx));
-    }
-
-    /// Renderer conformance states.
-    fn conformance(s: &mut Session) {
-        // 15. A patch lands while the confirm strip is open: the pending
-        //     confirmation is cancelled and the surface asks for a new review.
-        let l2 = load_conformance("l2_interactive").expect("fixture");
-        s.play(&l2, 2_500);
-        s.show("c-conf", Some("m-form"));
-        s.click_in("moment-m-form", "action-deploy");
-        s.advance(1_000);
-        s.show("c-conf", Some("m-form"));
-        s.both("15_surface_changed_review_again");
-
-        // 16. A surface over the action limit: only its summary, no actions.
-        let l1 = load_conformance("l1_documents").expect("fixture");
-        s.play(&l1, 1_100);
-        s.show("c-conf", Some("m-over"));
-        s.both("16_surface_over_limit_fallback");
-
-        // 17. A high-risk approval refused by the backend: fail-closed
-        //     inline and in the approvals dock, never retried.
-        s.play(&l2, 500);
-        s.show("c-conf", Some("m-tool"));
-        s.click_in("moment-m-tool", "approve");
-        s.in_window(|window, cx| {
-            let at = window.find("confirm-accept").bounds().center();
-            window.pointer_down(at, gpui_kit::MouseButton::Left, cx);
-            window.pointer_up(at, gpui_kit::MouseButton::Left, cx);
-        });
-        s.cx.run_until_parked();
-        s.advance(300);
-        s.show("c-conf", Some("m-tool"));
-        s.click("rail-approvals");
-        s.both("17_grant_fail_closed");
-        s.click("rail-approvals");
     }
 
     /// The AI participant in the conversation (demo 3 and surface versions).
