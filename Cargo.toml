@@ -36,7 +36,7 @@ disallowed_types = "allow"
 
 [workspace.dependencies]
 # Pinned exactly: GPUI Kit ships breaking minor releases every few weeks.
-gpui-kit = "=0.8.0"
+gpui-kit = "=0.11.0"
 # Locks that do not poison (the workspace rule: no `std::sync` locks).
 parking_lot = "0.12"
 ron = "0.12"
