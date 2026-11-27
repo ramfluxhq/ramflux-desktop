@@ -339,6 +339,7 @@ impl Render for ContactProfile {
                 div().border_b_1().border_color(cx.theme().border).child(
                     crate::page_header::page_header(
                         ramflux_desktop_navigation::row::list_text(&contact.display),
+                        ramflux_desktop_navigation::scale::style::subheading(),
                         SharedString::from(contact.id.to_string()),
                         Some(
                             crate::avatar::avatar(

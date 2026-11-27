@@ -6,7 +6,7 @@
 //! size on the board's background, with the board's label text.
 //!
 //! Where the application exposes the component (`style::primary_button`,
-//! the catalog's `avatar`, `badge`, `trust_banner`, `page_header_content`,
+//! the catalog's `avatar`, `badge`, `trust_banner`, `page_header`,
 //! `message_shell`, `state_block`, the navigation `Row`, design checkbox and radio, Kit
 //! switches), the capture calls that code. Where the application builds it
 //! inline in a crate-private view, the capture repeats that inline styling
@@ -567,22 +567,10 @@ pub fn components() -> Vec<Component> {
         },
         Component {
             slug: "avatar-group",
-            how: R(
-                "catalog::avatar frame (the application draws group avatars with the group's initial; the board shows the glyph of an unnamed group)",
-                |_, cx, _| {
-                    let p = palette(cx);
-                    div()
-                        .size(rem(40.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded_full()
-                        .bg(p.avatar_person)
-                        .text_color(p.on_avatar_person)
-                        .child(Icon::new(IconName::Users).size(rem(20.0)))
-                        .into_any_element()
-                },
-            ),
+            how: A("avatar::avatar Group (no initial)", |_, cx, _| {
+                ramflux_desktop_ui::avatar::avatar("".into(), kit::AvatarKind::Group, palette(cx))
+                    .into_any_element()
+            }),
         },
         Component { slug: "stage", how: S("video is later scope") },
         Component {
@@ -597,6 +585,7 @@ pub fn components() -> Vec<Component> {
             how: A("page_header::page_header", |_, cx, _| {
                 ramflux_desktop_ui::page_header::page_header(
                     t("kit07"),
+                    ramflux_desktop_navigation::scale::style::subheading(),
                     t("kit08"),
                     None,
                     Button::new("a").design_text(cx).design_label(t("kit28")),

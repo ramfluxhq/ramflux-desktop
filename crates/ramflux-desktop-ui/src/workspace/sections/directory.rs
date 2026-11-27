@@ -136,7 +136,6 @@ impl Search {
     }
 }
 
-/// Whether any of `fields` contains `query` (already lowercased).
 /// The search glyph and the field's inset (board 00D: a 16 px glyph 8 px
 /// inside the rule, the label 6 px after it).
 const SEARCH_ICON_PX: f32 = 16.0;
@@ -184,6 +183,7 @@ pub(crate) fn search_input(
         .children(trailing)
 }
 
+/// Whether any of `fields` contains `query` (already lowercased).
 pub(crate) fn matches(query: &str, fields: &[&str]) -> bool {
     query.is_empty() || fields.iter().any(|field| field.to_lowercase().contains(query))
 }
@@ -260,7 +260,7 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
                 .subtitle_size(theme.size_secondary)
                 .leading(crate::avatar::avatar(
                     ramflux_desktop_navigation::row::initial(&row.title),
-                    visible_kind(row.avatar),
+                    row.avatar,
                     theme,
                 ));
             let shape = match &row.card {
@@ -312,16 +312,6 @@ pub(crate) fn rows(list: RowList, cx: &App) -> AnyElement {
             )
         })
         .into_any_element()
-}
-
-/// The generated group avatar paints its initial in its own fill (a
-/// generator gap); the person avatar has the same fill and a readable
-/// initial, as board 03 draws it.
-fn visible_kind(kind: catalog::AvatarKind) -> catalog::AvatarKind {
-    match kind {
-        catalog::AvatarKind::Group => catalog::AvatarKind::Person,
-        kind => kind,
-    }
 }
 
 /// A request card row (board F17): avatar, name and handle with the time

@@ -394,29 +394,23 @@ impl ContactsDirectory {
             .id("contacts-people")
             .test_support()
             .size_full()
-            // The generated page header with the board's semibold title.
-            .child(catalog::page_header_content(
-                catalog::RowContent::new(
-                    "contacts-people-header".into(),
-                    tr("sections.contacts.people"),
-                    tr("sections.contacts.people_help"),
-                )
-                .title_size(palette.size_subheading)
-                .title_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .trailing(
-                    h_flex().gap(space(3.)).children(tools).child(crate::gate::gated(
-                        Button::new("contacts-add-detail")
-                            .small()
-                            .ghost()
-                            .label(tr("sections.contacts.add"))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.emit(ContactsDirectoryEvent::AddContact)
-                            })),
-                        add_reason,
-                        cx,
-                    )),
-                ),
-                false,
+            // The design's page header.
+            .child(crate::page_header::page_header(
+                tr("sections.contacts.people"),
+                ramflux_desktop_navigation::scale::style::subheading(),
+                tr("sections.contacts.people_help"),
+                None,
+                h_flex().gap(space(3.)).children(tools).child(crate::gate::gated(
+                    Button::new("contacts-add-detail")
+                        .small()
+                        .ghost()
+                        .label(tr("sections.contacts.add"))
+                        .on_click(
+                            cx.listener(|_, _, _, cx| cx.emit(ContactsDirectoryEvent::AddContact)),
+                        ),
+                    add_reason,
+                    cx,
+                )),
                 palette,
             ))
             .child(
