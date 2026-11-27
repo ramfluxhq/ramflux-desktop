@@ -18,7 +18,7 @@ use serde_json::Value;
 /// The fixture copies in this checkout.
 pub const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../card-fixtures");
 /// The core revision the copies were taken at; the workspace pins the same.
-pub const CORE_REV: &str = "a897c4174d12dd47e34fa6179e2e495852b088ad";
+pub const CORE_REV: &str = "01174ecef0567b60c76dd56b176c5e7c39bd3d07";
 /// The scenario batches that ship next to the host fixtures.
 pub const SCENARIOS: [&str; 5] = ["approval", "chart", "complete_form", "form", "task"];
 const MANIFEST: &str = "MANIFEST.json";
