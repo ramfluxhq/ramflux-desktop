@@ -48,8 +48,8 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, SharedString, Subscription,
-    Window, div,
+    AnyWindowHandle, App, Context, Entity, FocusHandle, Focusable, IntoElement, Render,
+    SharedString, Subscription, Window, div,
 };
 use ramflux_desktop_core::{AccountId, Scope};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
@@ -147,7 +147,7 @@ pub struct SettingsPage {
     /// account and whether it is unlocked); a change of it clears them.
     secrets_scope: Option<(Option<AccountId>, bool)>,
     /// The typed inputs are cleared on the next render.
-    clear_secrets: bool,
+    window: AnyWindowHandle,
     opened: usize,
     errors: errors::ErrorScope,
     focus_handle: FocusHandle,
@@ -177,7 +177,7 @@ impl SettingsPage {
                     let scope = account::input_scope(&this.context, cx);
                     if this.secrets_scope.as_ref() != Some(&scope) {
                         this.secrets_scope = Some(scope);
-                        this.clear_secrets = true;
+                        this.clear_secrets(cx);
                         cx.notify();
                     }
                     let handle = store.read(cx);
@@ -209,6 +209,7 @@ impl SettingsPage {
             crate::i18n::localized_input(key, window, cx, |input| input.masked(true))
         };
         let inputs = account::AccountInputs {
+            refresh_cooldown: std::rc::Rc::default(),
             username_configured: ramflux_desktop_sdk::username_center::current().is_some(),
             current: masked("settings.account.current", window, cx),
             next: masked("settings.account.next", window, cx),
@@ -242,7 +243,7 @@ impl SettingsPage {
             launch_inputs,
             section: SettingsSection::Account,
             secrets_scope: None,
-            clear_secrets: false,
+            window: window.window_handle(),
             opened: 0,
             errors: errors::ErrorScope::default(),
             focus_handle: cx.focus_handle(),
@@ -254,9 +255,9 @@ impl SettingsPage {
     pub fn show(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
         if self.section != section {
             self.context.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
-            // Leaving a section clears what was typed in it.
-            self.clear_secrets = true;
         }
+        // Every open, and every section change, starts with empty inputs.
+        self.clear_secrets(cx);
         self.section = section;
         self.opened += 1;
         // Showing a section starts its error banner afresh for the rendered
@@ -270,6 +271,26 @@ impl SettingsPage {
             self.errors.clear(account.as_ref(), section, handle.store());
         }
         cx.notify();
+    }
+
+    /// Empties every typed secret as soon as the window is free to be
+    /// updated, whether or not anything renders afterwards.
+    fn clear_secrets(&self, cx: &mut Context<Self>) {
+        let page = cx.entity().downgrade();
+        let window = self.window;
+        cx.defer(move |cx| {
+            let _ = window.update(cx, move |_, window, cx| {
+                let _ = page.update(cx, |page, cx| {
+                    account::clear_inputs(&page.inputs, window, cx);
+                    page.backup.update(cx, |panel, cx| panel.clear_inputs(window, cx));
+                });
+            });
+        });
+    }
+
+    /// The overlay closed: nothing typed in it stays in memory.
+    pub fn closed(&mut self, cx: &mut Context<Self>) {
+        self.clear_secrets(cx);
     }
 
     /// The section shown when the overlay opened.
@@ -312,10 +333,6 @@ impl SettingsPage {
 
 impl Render for SettingsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if std::mem::take(&mut self.clear_secrets) {
-            account::clear_inputs(&self.inputs, window, cx);
-            self.backup.update(cx, |panel, cx| panel.clear_inputs(window, cx));
-        }
         let context = &self.context;
         let page = match self.section {
             SettingsSection::Account => account::page(context, &self.inputs, cx),

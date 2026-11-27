@@ -20,8 +20,12 @@ Versioning.
   contact by username. A directory that cannot be reached, or a computer with
   no username centre, shows a typed state; messaging is unaffected. A claim
   the directory has not settled within the wait shows "Still publishing" with
-  a Refresh action, and settles when the directory reports it committed or
-  aborted.
+  a Refresh action (asked for that claim's own operation, ignoring repeats for
+  two seconds), and settles when the directory reports it committed or
+  aborted. Typed phrases and passphrases are cleared at once when the account
+  locks or changes, the section changes, or settings open or close; claim and
+  lookup state is kept per account, and answers that arrive after a lock are
+  dropped.
 
 ### Security
 

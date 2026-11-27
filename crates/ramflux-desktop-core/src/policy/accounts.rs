@@ -83,9 +83,13 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
-        IntentKind::UsernameStatusRefresh => p.human_only("read the username").map(|()| {
-            Decision::Call(methods::USERNAME_STATUS, json!({}))
-        }),
+        // The directory answers for the operation asked about (`null`: the
+        // current state), echoing its id so the answer settles that claim.
+        IntentKind::UsernameStatusRefresh { operation_id } => {
+            p.human_only("read the username").map(|()| {
+                Decision::Call(methods::USERNAME_STATUS, json!({ "operation_id": operation_id }))
+            })
+        }
         IntentKind::ClaimUsername { account_id, name, secret } => {
             p.human_only("claim a username").and_then(|()| {
                 account(p, account_id)?;

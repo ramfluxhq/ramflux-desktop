@@ -433,6 +433,7 @@ impl Shell {
             self.status.update(cx, |status, cx| status.set_show_commands(show, cx));
             if !show {
                 self.settings_open = false;
+                self.settings.update(cx, |page, cx| page.closed(cx));
                 self.palette_open = false;
             }
             cx.notify();
@@ -564,6 +565,7 @@ impl Shell {
     /// Closes the settings overlay.
     pub fn close_settings_now(&mut self, cx: &mut Context<Self>) {
         self.settings_open = false;
+        self.settings.update(cx, |page, cx| page.closed(cx));
         self.sync_host(cx);
         cx.notify();
     }
@@ -571,6 +573,7 @@ impl Shell {
     fn close_settings(&mut self, _: &CloseSettings, window: &mut Window, cx: &mut Context<Self>) {
         if self.settings_open {
             self.settings_open = false;
+            self.settings.update(cx, |page, cx| page.closed(cx));
             self.sync_host(cx);
             self.restore_focus(window, cx);
             cx.notify();
@@ -588,6 +591,7 @@ impl Shell {
             self.remember_focus(window, cx);
         }
         self.settings_open = false;
+        self.settings.update(cx, |page, cx| page.closed(cx));
         self.sync_host(cx);
         self.palette_open = true;
         self.palette.update(cx, |palette, cx| palette.open(current, window, cx));

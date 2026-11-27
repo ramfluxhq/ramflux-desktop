@@ -104,7 +104,9 @@ pub enum Fetch {
     GroupInvitations,
     /// `username.status`: this account's username, or why the directory
     /// cannot be used.
-    UsernameStatus,
+    /// A claim's own operation id asks for that operation's state; `None`
+    /// reads the current one.
+    UsernameStatus(Option<String>),
     /// `agent.list`: the first page of the account's named agents.
     AgentList,
     /// `agent.list` from a page's `next` cursor: the rest of the roster.
@@ -187,11 +189,11 @@ impl Fetch {
                 "agent.operation.get",
                 json!({ "operation_id": request_id }),
             ),
-            Self::UsernameStatus => BusRequest::new(
+            Self::UsernameStatus(operation_id) => BusRequest::new(
                 account,
                 "username",
                 "username.status",
-                json!({ "operation_id": null }),
+                json!({ "operation_id": operation_id }),
             ),
             Self::Messages(context) => BusRequest::new(
                 account,
@@ -271,7 +273,7 @@ impl Fetch {
             Self::McpTools,
             Self::first(Paged::McpServers),
             Self::GroupInvitations,
-            Self::UsernameStatus,
+            Self::UsernameStatus(None),
         ]
     }
 }

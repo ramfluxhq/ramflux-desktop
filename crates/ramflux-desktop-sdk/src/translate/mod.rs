@@ -491,7 +491,7 @@ impl Translator {
             Fetch::ContactRequests => Translated::events(self.contact_request_list(value)),
             Fetch::BackupJobs => self.backup_job_list(value),
             Fetch::GroupInvitations => Translated::events(group_sync::invitations(value)),
-            Fetch::UsernameStatus => {
+            Fetch::UsernameStatus(_) => {
                 let mut events = account::username_status(value);
                 if let Some(id) = self.scope.account() {
                     events.extend(username::settled(id, value));
