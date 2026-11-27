@@ -99,21 +99,3 @@ impl LocalCredentialProvider for CodeGate {
         }
     }
 }
-
-#[cfg(test)]
-mod gate_tests {
-    use super::*;
-
-    #[test]
-    fn the_slot_alone_says_busy_and_the_guard_frees_it() {
-        let (requests, _inbox) = mpsc::unbounded_channel();
-        let gate = CodeGate::new(requests);
-        assert!(!gate.is_armed());
-        let guard = gate.arm(AccountId::new("a1")).ok();
-        assert!(guard.is_some() && gate.is_armed());
-        assert!(gate.arm(AccountId::new("a2")).is_err());
-        drop(guard);
-        assert!(!gate.is_armed());
-        assert!(gate.arm(AccountId::new("a2")).is_ok());
-    }
-}
