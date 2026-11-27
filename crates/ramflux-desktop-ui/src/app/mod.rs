@@ -80,11 +80,31 @@ pub struct AccountAttention {
     pub item: AttentionItem,
 }
 
+/// How long a card waits for the card freed for it before it is tried anyway.
+const CARD_WAIT_MS: u64 = 5_000;
+
+/// A card the runtime would not open or resume for a limit, waiting for
+/// another card to free a slot; it is tried again once.
+#[derive(Debug)]
+struct CardWait {
+    account: AccountId,
+    hit: session::CardLimitHit,
+    /// The card asked to make room (the account, the card, and whether it
+    /// is disposed rather than suspended), if there was one.
+    victim: Option<(AccountId, SurfaceId, bool)>,
+    waited_ms: u64,
+}
+
 /// Owns every account session and is the only path to the store and source.
 pub struct StoreHandle {
-    /// Whether the active account was locked at the last publish (a change
-    /// suspends or resumes its cards).
+    /// Whether the active account was locked at the last publish (a lock
+    /// makes its cards forget their sessions).
     cards_locked: bool,
+    /// The resumed cards of the whole process, counted across accounts.
+    card_budget: ramflux_desktop_core::ResumedBudget,
+    /// Cards waiting for another card to free a slot before they are tried
+    /// again, once.
+    card_waits: Vec<CardWait>,
     /// Accounts whose app lock the window waits for after it came back to
     /// the front, with the number of foreground reports not answered yet:
     /// their content stays covered until the daemon has answered the latest
@@ -131,6 +151,8 @@ impl StoreHandle {
     pub fn new() -> Self {
         Self {
             cards_locked: false,
+            card_budget: ramflux_desktop_core::ResumedBudget::new(),
+            card_waits: Vec::new(),
             resume_hold: resume_hold::ResumeHold::default(),
             remembered: None,
             sessions: BTreeMap::new(),
@@ -164,11 +186,13 @@ impl StoreHandle {
 
     #[cfg(feature = "demo")]
     fn new_session(&self, scenario: &Scenario) -> AccountSession {
-        if self.wall_clock {
+        let mut session = if self.wall_clock {
             AccountSession::with_epoch(scenario, wall_clock_now())
         } else {
             AccountSession::new(scenario)
-        }
+        };
+        session.share_card_budget(self.card_budget.clone());
+        session
     }
 
     /// Plays `scenario` as the active account and its companions as
@@ -475,8 +499,73 @@ impl StoreHandle {
             cx.emit(StoreEvent::BackgroundChanged(account));
         }
         self.advance_live(ms, cx);
+        self.coordinate_cards(ms);
         self.drive_calls(cx);
         self.refresh_clocks(cx);
+    }
+
+    /// Frees a card for the ones the runtime would not take for a limit, and
+    /// tries them again once. The runtime's resident-card cap is per daemon
+    /// process, so the card to suspend is the least recently used resumed
+    /// card of any account; the sessions-per-account cap frees the least
+    /// recently used held card of that account.
+    fn coordinate_cards(&mut self, ms: u64) {
+        let mut hits = Vec::new();
+        for (account, session) in &mut self.sessions {
+            for hit in session.take_card_limits() {
+                hits.push((account.clone(), hit));
+            }
+        }
+        for (account, hit) in hits {
+            let victim = match hit.limit {
+                ramflux_desktop_core::CardLimit::Account => self
+                    .sessions
+                    .get(&account)
+                    .and_then(|session| session.card_lru_open(&hit.surface))
+                    .map(|card| (account.clone(), card, true)),
+                ramflux_desktop_core::CardLimit::Process => self
+                    .sessions
+                    .iter()
+                    .filter_map(|(id, session)| {
+                        let keep = (id == &account).then_some(&hit.surface);
+                        session.card_lru_resumed(keep).map(|(card, used)| (used, id, card))
+                    })
+                    .min_by_key(|(used, _, _)| *used)
+                    .map(|(_, id, card)| (id.clone(), card, false)),
+            };
+            if let Some((owner, card, dispose)) = &victim
+                && let Some(session) = self.sessions.get_mut(owner)
+            {
+                let records = if *dispose {
+                    session.card_dispose_one(card)
+                } else {
+                    session.card_suspend_one(card)
+                };
+                for record in records {
+                    self.inspector.push(record);
+                }
+            }
+            self.card_waits.push(CardWait { account, hit, victim, waited_ms: 0 });
+        }
+        let waits = std::mem::take(&mut self.card_waits);
+        for mut wait in waits {
+            wait.waited_ms = wait.waited_ms.saturating_add(ms);
+            let freed = match &wait.victim {
+                None => true,
+                Some((owner, card, dispose)) => self.sessions.get(owner).is_none_or(|session| {
+                    if *dispose { !session.card_held(card) } else { !session.card_resumed(card) }
+                }),
+            };
+            if !freed && wait.waited_ms < CARD_WAIT_MS {
+                self.card_waits.push(wait);
+                continue;
+            }
+            if let Some(session) = self.sessions.get_mut(&wait.account) {
+                for record in session.card_retry(&wait.hit) {
+                    self.inspector.push(record);
+                }
+            }
+        }
     }
 
     /// Whether the active session's clock is frozen.
@@ -537,6 +626,10 @@ impl StoreHandle {
     /// Releases the sessions of cards that are no longer in the loaded
     /// window (`visible`), once each.
     pub fn card_retain(&mut self, visible: &BTreeSet<SurfaceId>, cx: &mut Context<Self>) {
+        // Decoded pictures of cards that are gone (disposed, forgotten) are released.
+        let keep: BTreeSet<String> =
+            self.sessions.values().flat_map(AccountSession::card_image_paths).collect();
+        crate::moments::card::images::retain(cx, &keep);
         let stale: Vec<(MomentId, SurfaceId)> = match self.session() {
             Some(session) if !session.is_live() => return,
             Some(session) => session
@@ -565,6 +658,12 @@ impl StoreHandle {
     ) {
         // A demo (mock) session answers cards from the fixture trees; a surface
         // without one is refused and shows its fallback text.
+        // The images a card shows are read once, beside its own session.
+        if let Some(records) = self.active_session_mut().map(|s| s.card_load_images(surface)) {
+            for record in records {
+                self.inspector.push(record);
+            }
+        }
         let kind = match self.session() {
             Some(session) if session.card_open_pending(surface) => IntentKind::CardOpen {
                 moment_id: moment.clone(),
@@ -721,10 +820,11 @@ impl StoreHandle {
             .unwrap_or(false);
         if locked != self.cards_locked {
             self.cards_locked = locked;
-            if locked {
-                self.card_suspend_all(cx);
-            } else {
-                self.card_resume_all(cx);
+            // The daemon drops an account's card sessions when its lock
+            // closes: the handles are forgotten here without a call, and
+            // unlocking resumes nothing (a card opens on the next interaction).
+            if locked && let Some(session) = self.active_session_mut() {
+                session.forget_cards();
             }
         }
         if applied.changes.is_empty() && applied.records.is_empty() && applied.open_urls.is_empty()

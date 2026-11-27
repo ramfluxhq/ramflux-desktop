@@ -472,10 +472,10 @@ async fn copy_out(
 }
 
 #[cfg(unix)]
-fn restrict(path: &Path, mode: u32) {
+pub(super) fn restrict(path: &Path, mode: u32) {
     use std::os::unix::fs::PermissionsExt as _;
     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));
 }
 
 #[cfg(not(unix))]
-fn restrict(_path: &Path, _mode: u32) {}
+pub(super) fn restrict(_path: &Path, _mode: u32) {}

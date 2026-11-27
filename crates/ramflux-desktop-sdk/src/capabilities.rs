@@ -16,9 +16,6 @@ use ramflux_desktop_core::{Capabilities, ContextKind, methods};
 
 /// Reason keys, one per gap.
 pub mod reason {
-    /// The daemon has no card runtime (`card.session.*`): cards show their
-    /// fallback text. Raised only when a card call finds no runtime.
-    pub const SURFACES: &str = "backend.gap.surfaces";
     /// Handoff (K7).
     pub const HANDOFF: &str = "backend.gap.handoff";
     /// CAS conflict objects (K8).

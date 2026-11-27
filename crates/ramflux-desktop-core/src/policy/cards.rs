@@ -75,6 +75,12 @@ pub(super) fn handle(
         IntentKind::CardSubmit { moment_id, surface_id } => {
             p.human_only("submit a card").and_then(|()| submit(p, moment_id, surface_id, stamp))
         }
+        IntentKind::CardLoadImage { moment_id, surface_id, slot_id } => {
+            load_image(p, moment_id, surface_id, slot_id, stamp)
+        }
+        IntentKind::CardApprove { moment_id, surface_id } => p
+            .human_only("decide an approval")
+            .and_then(|()| approve(p, moment_id, surface_id, stamp)),
         IntentKind::CardRefresh { moment_id, surface_id } => {
             live_or_touch(p, moment_id, surface_id, stamp, |record| {
                 call(
@@ -174,7 +180,9 @@ fn present_target<'a>(
 
 fn open(p: &Policy<'_>, moment_id: &MomentId, surface_id: &SurfaceId) -> Result<(), IntentError> {
     check_moment(p, moment_id, surface_id)?;
-    if p.store.card(surface_id).is_some() {
+    // A card with no session (its handle was forgotten, or an earlier open
+    // was refused) may be opened again; one with a session may not.
+    if p.store.card(surface_id).is_some_and(|record| !record.reopenable()) {
         return Err(IntentError::NotActionable(moment_id.clone()));
     }
     Ok(())
@@ -368,6 +376,79 @@ fn submit(
             stamp,
         )?])
     })
+}
+
+/// The read of an image slot's bytes. The object and the digest come from
+/// the held tree's slot (the runtime's own record of what the card selects),
+/// never from the caller; a slot that is not an object selector is not read.
+fn load_image(
+    p: &Policy<'_>,
+    moment_id: &MomentId,
+    surface_id: &SurfaceId,
+    slot_id: &str,
+    stamp: &dyn Fn(Value) -> Value,
+) -> Result<Vec<Effect>, IntentError> {
+    check_moment(p, moment_id, surface_id)?;
+    let not = || IntentError::NotActionable(moment_id.clone());
+    let record = p.store.card(surface_id).ok_or_else(not)?;
+    let tree = record.tree.as_ref().ok_or_else(not)?;
+    let slot = tree.host_slots().iter().find(|s| s.id == slot_id).ok_or_else(not)?;
+    if slot.request.get("kind").and_then(Value::as_str) != Some("image") {
+        return Err(not());
+    }
+    let attachment = slot.request.get("attachment").ok_or_else(not)?;
+    if attachment.get("retrieval").and_then(Value::as_str) != Some("object") {
+        return Err(not());
+    }
+    let text = |field: &str| attachment.get(field).and_then(Value::as_str).map(str::to_owned);
+    let (object_id, digest) = (text("object_id").ok_or_else(not)?, text("manifest_digest"));
+    Ok(vec![call(
+        p,
+        methods::CARD_IMAGE_LOAD,
+        json!({
+            "surface_id": surface_id,
+            "object_id": object_id,
+            "manifest_digest": digest.ok_or_else(not)?,
+            "transfer_state": text("transfer_state"),
+            "size": attachment.get("size").and_then(Value::as_u64),
+            "mime": text("mime"),
+        }),
+        stamp,
+    )?])
+}
+
+/// The grant and task decisions of an approval verdict the runtime recorded:
+/// `grant.approve` or `grant.deny`, then `task.resolve` with the body core
+/// built, unchanged. The decision body and the record it names are one
+/// secret; nothing here builds or edits the task decision.
+fn approve(
+    p: &Policy<'_>,
+    moment_id: &MomentId,
+    surface_id: &SurfaceId,
+    stamp: &dyn Fn(Value) -> Value,
+) -> Result<Vec<Effect>, IntentError> {
+    check_moment(p, moment_id, surface_id)?;
+    let not = || IntentError::NotActionable(moment_id.clone());
+    let record = p.store.card(surface_id).ok_or_else(not)?;
+    let approval = record.approval.as_ref().filter(|_| !record.approval_sent).ok_or_else(not)?;
+    let outcome = match approval.outcome {
+        CardSlotOutcome::Confirm => "confirm",
+        CardSlotOutcome::Deny => "deny",
+        CardSlotOutcome::Cancel | CardSlotOutcome::Unavailable => return Err(not()),
+    };
+    let task_resolve = approval.task_resolve.clone().ok_or_else(not)?;
+    let secret = json!({
+        "request_ref": approval.request_ref,
+        "task_resolve": task_resolve,
+    })
+    .to_string();
+    Ok(vec![secret_call(
+        p,
+        methods::CARD_APPROVAL_FINISH,
+        json!({ "surface_id": surface_id, "outcome": outcome }),
+        SecretInput::new(secret),
+        stamp,
+    )?])
 }
 
 /// The tree of a card the host may interact with now: live and interactive.

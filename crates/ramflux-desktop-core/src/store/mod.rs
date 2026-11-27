@@ -54,7 +54,9 @@ use crate::model::{
 };
 
 pub use bodies::{BodyCache, MAX_BODIES};
-pub use cards::{CardDue, CardEntry, CardPool, CardRecord, MAX_OPEN, MAX_RESUMED, PoolPlan};
+pub use cards::{
+    CardDue, CardEntry, CardPool, CardRecord, MAX_OPEN, MAX_RESUMED, PoolPlan, ResumedBudget,
+};
 pub use changes::{ApplyError, Changes, Rejection};
 pub use surfaces::{SurfaceRecord, SurfaceState, UpdateRequest};
 

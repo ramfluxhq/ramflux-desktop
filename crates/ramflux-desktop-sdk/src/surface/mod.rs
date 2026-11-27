@@ -9,9 +9,8 @@
 //! re-validates a surface: it shows the daemon's state.
 //!
 //! Surfaces are cards (`urn:ramflux:catalog:rf-card:1.0`). Their components
-//! are drawn by the shared card runtime (`card.session.*`), which this build
-//! does not embed yet: a surface is shown as its author's fallback text, and
-//! acting on it is unsupported (`backend.gap.surfaces`).
+//! are drawn by the card runtime of the daemon (`card.session.*`); the
+//! surface's own fallback text is shown where the runtime does not draw it.
 
 /// The daemon's scoped reference (`surface_ref`, the desktop's surface
 /// id) of the author's surface `surface_id` in `conversation`; `None` when

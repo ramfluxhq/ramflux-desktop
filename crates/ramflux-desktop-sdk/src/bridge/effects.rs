@@ -205,6 +205,20 @@ impl Task {
                 self.emit(vec![DomainEvent::EffectFailed(EffectFailure { method, code, message })]);
             }
             Plan::Media(job) => self.media(job),
+            Plan::CardImage(mut job) => {
+                // The verified bytes are kept in the account's private media
+                // folder; without one there is no image to show.
+                match super::media::media_folder(&self.config, &job.account) {
+                    Some(folder) => {
+                        job.folder = folder;
+                        self.spawn_operation(method, body, Plan::CardImage(job));
+                    }
+                    None => {
+                        let failed = Err(BusError::daemon("card_image_unavailable", "no folder"));
+                        self.emit(crate::translate::card_session::image_outcome(&body, &failed));
+                    }
+                }
+            }
             Plan::Username(job) => {
                 let events = crate::translate::username::claim_started(&job.account, &job.name);
                 self.emit(events);
@@ -241,6 +255,13 @@ impl Task {
         result: Result<Value, BusError>,
         refresh: Vec<Fetch>,
     ) {
+        if method == methods::CARD_IMAGE_LOAD {
+            // An image read runs beside the card calls (it may wait for a
+            // fetch) and ends as the image, or as "Image unavailable".
+            let events = crate::translate::card_session::image_outcome(body, &result);
+            self.emit(events);
+            return;
+        }
         if crate::plan::card_session::is_card_method(method) {
             // Card replies are read as the runtime's own facts; a card call
             // never reads back and is never retried. The next queued card call
@@ -248,6 +269,11 @@ impl Task {
             let events = crate::translate::card_session::outcome(method, body, &result);
             let lost = matches!(&result, Err(error) if error.is_connection_lost());
             self.emit(events);
+            // A finished or refused approval reads the grants and the task
+            // again, so the card follows what the daemon holds.
+            if method == methods::CARD_APPROVAL_FINISH {
+                self.spawn_fetches(refresh);
+            }
             if lost {
                 self.drop_card_calls();
             }
@@ -530,6 +556,7 @@ async fn perform(
         }
         Plan::Calls { requests, refresh } => (in_order(client, requests).await, refresh),
         Plan::Verify { lookup, refresh } => (verify(client, lookup).await, refresh),
+        Plan::CardImage(job) => (super::card_image::load(client, &job).await, Vec::new()),
         Plan::PrxHost { action, provider, model, key } => {
             (crate::prx_host::run(action, &provider, &model, key).await, Vec::new())
         }

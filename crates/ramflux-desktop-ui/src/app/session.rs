@@ -20,9 +20,9 @@
 use std::collections::BTreeSet;
 
 use ramflux_desktop_core::{
-    CARD_CHANGED_REASON, CardDue, CardEvent, CardInput, CardSeen, ContextId, DomainEvent, Effect,
-    EventEnvelope, Intent, IntentError, IntentKind, MomentId, Source, Store, SurfaceId, Timestamp,
-    handle_intent, methods,
+    CARD_CHANGED_REASON, CardDue, CardEvent, CardInput, CardLimit, CardSeen, ContextId,
+    DomainEvent, Effect, EventEnvelope, Intent, IntentError, IntentKind, MomentId, Source, Store,
+    SurfaceId, Timestamp, handle_intent, methods,
 };
 #[cfg(feature = "demo")]
 use ramflux_desktop_test::{MockSource, Scenario};
@@ -49,9 +49,35 @@ pub struct CardMarks {
     /// Host events waiting for the call in flight on their card, in order
     /// (one consumer per card: the oldest is sent first).
     queued: std::collections::BTreeMap<SurfaceId, Vec<QueuedEvent>>,
-    /// Card steps held while the app lock is closed (a re-read or a
-    /// submit); they are dispatched once it opens.
+    /// Card steps held while the app lock is closed (a re-read, a submit or
+    /// an approval); they are dispatched once it opens.
     held_due: Vec<CardDue>,
+    /// Calls the runtime refused for a limit, for the app root to free a
+    /// card and retry once (it sees every account's cards).
+    limit_hits: Vec<CardLimitHit>,
+    /// When a card whose open the runtime refused for a limit may be tried
+    /// again (it has no tree to tap, so it is tried when next drawn).
+    open_retry_at: std::collections::BTreeMap<SurfaceId, Timestamp>,
+    /// Image reads asked and not answered yet, by card and object.
+    images_loading: BTreeSet<(SurfaceId, String)>,
+}
+
+/// How many image reads run at once.
+const IMAGES_AT_ONCE: usize = 2;
+
+/// How long a card the runtime would not open waits before it is tried
+/// again when it is next drawn.
+const OPEN_RETRY_MS: u64 = 3_000;
+
+/// A call the runtime refused for a limit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardLimitHit {
+    /// The card.
+    pub surface: SurfaceId,
+    /// Which limit.
+    pub limit: CardLimit,
+    /// The call was a resume (else an open).
+    pub resume: bool,
 }
 
 /// A call in flight on a card that its host events wait for.
@@ -148,6 +174,8 @@ pub fn is_card_intent(kind: &IntentKind) -> bool {
             | IntentKind::CardInteract { .. }
             | IntentKind::CardSlotAnswer { .. }
             | IntentKind::CardSubmit { .. }
+            | IntentKind::CardApprove { .. }
+            | IntentKind::CardLoadImage { .. }
             | IntentKind::CardRefresh { .. }
             | IntentKind::CardSuspend { .. }
             | IntentKind::CardDispose { .. }
@@ -251,6 +279,9 @@ pub struct AccountSession {
     card_marks: std::cell::RefCell<CardMarks>,
     /// Links the host confirmed since the last publish (URLs to open).
     open_urls: Vec<String>,
+    /// The process budget of resumed cards the store counts in, kept so a
+    /// store started afresh (a rewind) counts in it again.
+    card_budget: Option<ramflux_desktop_core::ResumedBudget>,
     networking_deadlines: std::collections::BTreeMap<
         ramflux_desktop_core::AccountId,
         (ramflux_desktop_core::NetworkingReason, Timestamp),
@@ -313,6 +344,7 @@ impl AccountSession {
             requested: BTreeSet::new(),
             focused_context: None,
             card_marks: std::cell::RefCell::new(CardMarks::default()),
+            card_budget: None,
             open_urls: Vec::new(),
             networking_deadlines: Default::default(),
         }
@@ -549,6 +581,9 @@ impl AccountSession {
         let Backing::Mock { source, .. } = &mut self.backing else { return Applied::default() };
         source.rewind();
         self.store = Store::new();
+        if let Some(budget) = self.card_budget.clone() {
+            self.store.share_card_budget(budget);
+        }
         self.requested.clear();
         *self.card_marks.borrow_mut() = CardMarks::default();
         self.clock_ms = ms;
@@ -565,7 +600,18 @@ impl AccountSession {
     pub fn card_open_pending(&self, surface: &SurfaceId) -> bool {
         let marks = self.card_marks.borrow();
         let refused = marks.open_refused.get(surface) == Some(&self.surface_version(surface));
-        self.store.card(surface).is_none() && !marks.opening.contains(surface) && !refused
+        if marks.opening.contains(surface) || refused {
+            return false;
+        }
+        match self.store.card(surface) {
+            None => true,
+            // A card the runtime would not open for a limit is tried again
+            // when it is next drawn, a few seconds later.
+            Some(record) => {
+                record.tree.is_none()
+                    && marks.open_retry_at.get(surface).is_some_and(|at| self.now() >= *at)
+            }
+        }
     }
 
     /// The version of the surface a card belongs to (0 when unknown).
@@ -576,16 +622,134 @@ impl AccountSession {
             .map_or(0, |s| s.version)
     }
 
-    /// Releases every card session this account holds (the account is being
-    /// removed or signed out). The releases are dispatched like any other.
-    pub fn dispose_all_cards(&mut self) -> Vec<InspectorEntry> {
+    /// The runtime dropped every card session of this account (the app lock
+    /// closed, or the account is signing out): every handle is forgotten
+    /// without a bus call, and each card keeps its last tree read-only until
+    /// the next interaction opens it again. Nothing in flight survives.
+    pub fn forget_cards(&mut self) {
+        self.store.cards_drop_handles();
+        let mut marks = self.card_marks.borrow_mut();
+        let presented = std::mem::take(&mut marks.presented);
+        *marks = CardMarks { presented, ..CardMarks::default() };
+    }
+
+    /// Asks for the bytes of the image slots a card on screen shows and has
+    /// not read yet (an object selector the runtime resolved; at most
+    /// [`IMAGES_AT_ONCE`] reads run at once).
+    pub fn card_load_images(&mut self, surface: &SurfaceId) -> Vec<InspectorEntry> {
+        let Some(moment_id) = self.card_moment(surface) else { return Vec::new() };
+        let wanted: Vec<(String, String)> = {
+            let marks = self.card_marks.borrow();
+            let Some(record) = self.store.card(surface) else { return Vec::new() };
+            let Some(tree) = record.tree.as_ref() else { return Vec::new() };
+            tree.host_slots()
+                .iter()
+                .filter(|slot| slot.request.get("kind").and_then(|k| k.as_str()) == Some("image"))
+                .filter_map(|slot| {
+                    let attachment = slot.request.get("attachment")?;
+                    if attachment.get("retrieval")?.as_str()? != "object" {
+                        return None;
+                    }
+                    let object = attachment.get("object_id")?.as_str()?.to_owned();
+                    (!record.images.contains_key(&object)
+                        && !marks.images_loading.contains(&(surface.clone(), object.clone())))
+                    .then(|| (slot.id.clone(), object))
+                })
+                .collect()
+        };
         let mut records = Vec::new();
-        for surface_id in self.cards_held() {
-            let Some(moment_id) = self.card_moment(&surface_id) else { continue };
-            let kind = IntentKind::CardDispose { moment_id, surface_id };
-            records.extend(self.dispatch(Intent::human(kind)).1);
+        for (slot_id, object) in wanted {
+            if self.card_marks.borrow().images_loading.len() >= IMAGES_AT_ONCE {
+                break;
+            }
+            let kind = IntentKind::CardLoadImage {
+                moment_id: moment_id.clone(),
+                surface_id: surface.clone(),
+                slot_id,
+            };
+            let (outcome, recorded) = self.dispatch(Intent::human(kind));
+            records.extend(recorded);
+            if matches!(&outcome, DispatchOutcome::Submitted(labels) if !labels.is_empty()) {
+                self.card_marks.borrow_mut().images_loading.insert((surface.clone(), object));
+            }
         }
         records
+    }
+
+    /// The private image files this account's cards hold now.
+    pub fn card_image_paths(&self) -> Vec<String> {
+        self.store.card_image_paths().map(str::to_owned).collect()
+    }
+
+    /// Hands the process budget of resumed cards to this account's store.
+    pub fn share_card_budget(&mut self, budget: ramflux_desktop_core::ResumedBudget) {
+        self.card_budget = Some(budget.clone());
+        self.store.share_card_budget(budget);
+    }
+
+    /// The calls the runtime refused for a limit since the last look.
+    pub fn take_card_limits(&mut self) -> Vec<CardLimitHit> {
+        std::mem::take(&mut self.card_marks.borrow_mut().limit_hits)
+    }
+
+    /// The least recently used resumed card of this account other than
+    /// `keep`, with its recency (comparable across accounts).
+    pub fn card_lru_resumed(&self, keep: Option<&SurfaceId>) -> Option<(SurfaceId, u64)> {
+        self.store
+            .card_pool()
+            .least_recent_resumed(keep.map(SurfaceId::as_str))
+            .map(|(card, used)| (SurfaceId::new(card), used))
+    }
+
+    /// The least recently used held card of this account other than `keep`.
+    pub fn card_lru_open(&self, keep: &SurfaceId) -> Option<SurfaceId> {
+        self.store.card_pool().least_recent_open(Some(keep.as_str())).map(SurfaceId::new)
+    }
+
+    /// Whether `surface` is held and resumed in this account's pool.
+    pub fn card_resumed(&self, surface: &SurfaceId) -> bool {
+        self.store.card(surface).is_some_and(|r| r.resumed(self.store.card_pool(), surface))
+    }
+
+    /// Whether `surface` is held in this account's pool.
+    pub fn card_held(&self, surface: &SurfaceId) -> bool {
+        self.store.card_pool().entry(surface.as_str()).is_some()
+    }
+
+    /// Suspends one card's session (the root freeing a slot).
+    pub fn card_suspend_one(&mut self, surface: &SurfaceId) -> Vec<InspectorEntry> {
+        let Some(moment_id) = self.card_moment(surface) else { return Vec::new() };
+        let kind = IntentKind::CardSuspend { moment_id, surface_id: surface.clone() };
+        self.dispatch(Intent::human(kind)).1
+    }
+
+    /// Releases one card's session (the root freeing a slot).
+    pub fn card_dispose_one(&mut self, surface: &SurfaceId) -> Vec<InspectorEntry> {
+        let Some(moment_id) = self.card_moment(surface) else { return Vec::new() };
+        let kind = IntentKind::CardDispose { moment_id, surface_id: surface.clone() };
+        self.dispatch(Intent::human(kind)).1
+    }
+
+    /// Tries a card's open or resume again after a slot was freed.
+    pub fn card_retry(&mut self, hit: &CardLimitHit) -> Vec<InspectorEntry> {
+        let Some(moment_id) = self.card_moment(&hit.surface) else { return Vec::new() };
+        let kind = if hit.resume {
+            IntentKind::CardRefresh { moment_id, surface_id: hit.surface.clone() }
+        } else {
+            let (locale, dark) = self.card_presentation(&hit.surface);
+            IntentKind::CardOpen { moment_id, surface_id: hit.surface.clone(), locale, dark }
+        };
+        self.dispatch(Intent::human(kind)).1
+    }
+
+    /// The locale and theme the card was last shown in (the app's, else).
+    fn card_presentation(&self, surface: &SurfaceId) -> (String, bool) {
+        self.card_marks
+            .borrow()
+            .presented
+            .get(surface)
+            .cloned()
+            .unwrap_or_else(|| (crate::i18n::locale(), false))
     }
 
     /// The cards the pool holds, by surface.
@@ -626,7 +790,9 @@ impl AccountSession {
         let mut due = std::mem::take(&mut self.card_marks.borrow_mut().held_due);
         due.extend(self.store.take_card_due());
         for due in due {
-            if locked && matches!(due, CardDue::Refresh(_) | CardDue::Submit(_)) {
+            if locked
+                && matches!(due, CardDue::Refresh(_) | CardDue::Submit(_) | CardDue::Approve(_))
+            {
                 let mut marks = self.card_marks.borrow_mut();
                 if !marks.held_due.contains(&due) {
                     marks.held_due.push(due);
@@ -634,6 +800,24 @@ impl AccountSession {
                 continue;
             }
             let surface_id = due.surface().clone();
+            // A limit is the app root's to free a card for: it sees every
+            // account's cards. A retry that failed too is final.
+            if let CardDue::LimitHit { limit, resume, last, .. } = &due {
+                let mut marks = self.card_marks.borrow_mut();
+                if *last {
+                    if !*resume {
+                        let retry_at = self.now().saturating_add_ms(OPEN_RETRY_MS);
+                        marks.open_retry_at.insert(surface_id, retry_at);
+                    }
+                } else {
+                    marks.limit_hits.push(CardLimitHit {
+                        surface: surface_id,
+                        limit: *limit,
+                        resume: *resume,
+                    });
+                }
+                continue;
+            }
             let Some(moment_id) = self.store.surface_moment(&surface_id).cloned() else {
                 continue;
             };
@@ -642,6 +826,8 @@ impl AccountSession {
                 CardDue::Submit(_) => IntentKind::CardSubmit { moment_id, surface_id },
                 CardDue::Suspend(_) => IntentKind::CardSuspend { moment_id, surface_id },
                 CardDue::Dispose(_) => IntentKind::CardDispose { moment_id, surface_id },
+                CardDue::Approve(_) => IntentKind::CardApprove { moment_id, surface_id },
+                CardDue::LimitHit { .. } => continue,
             };
             records.extend(self.dispatch(Intent::human(kind)).1);
         }
@@ -715,10 +901,23 @@ impl AccountSession {
                     continue;
                 };
                 self.card_marks.borrow_mut().busy.insert(surface.clone(), InFlight::Resume);
-                let refresh = Intent::human(IntentKind::CardRefresh {
-                    moment_id,
-                    surface_id: surface.clone(),
-                });
+                // A card whose session the runtime dropped is opened again (a
+                // fresh session); a suspended one is resumed.
+                let reopen = self.store.card(&surface).is_some_and(|r| r.reopenable());
+                let refresh = if reopen {
+                    let (locale, dark) = self.card_presentation(&surface);
+                    Intent::human(IntentKind::CardOpen {
+                        moment_id,
+                        surface_id: surface.clone(),
+                        locale,
+                        dark,
+                    })
+                } else {
+                    Intent::human(IntentKind::CardRefresh {
+                        moment_id,
+                        surface_id: surface.clone(),
+                    })
+                };
                 let (outcome, recorded) = self.dispatch_now(refresh);
                 records.extend(recorded);
                 if !matches!(&outcome, DispatchOutcome::Submitted(labels) if !labels.is_empty()) {
@@ -852,6 +1051,10 @@ impl AccountSession {
             IntentKind::CardInteract { .. } | IntentKind::CardSlotAnswer { .. }
         );
         let submit = matches!(&intent.kind, IntentKind::CardSubmit { .. });
+        let approval = match &intent.kind {
+            IntentKind::CardApprove { surface_id, .. } => Some(surface_id.clone()),
+            _ => None,
+        };
         let (decided, mut records) = self.decide(intent);
         let effects = match decided {
             Ok(effects) => effects,
@@ -866,6 +1069,11 @@ impl AccountSession {
             }
         };
         self.note_card_mark(mark);
+        // The approval's decisions go out once: the task decision is not
+        // held after this.
+        if let Some(surface) = approval.as_ref().filter(|_| !effects.is_empty()) {
+            self.store.card_approval_sent(surface);
+        }
         if let Some(surface) = &user_surface {
             self.store.card_bump(surface);
             if submit && !effects.is_empty() {
@@ -995,6 +1203,10 @@ impl AccountSession {
                 let mut marks = self.card_marks.borrow_mut();
                 marks.opening.remove(&surface);
                 match card {
+                    CardEvent::ImageReady { object_id, .. }
+                    | CardEvent::ImageUnavailable { object_id, .. } => {
+                        marks.images_loading.remove(&(surface.clone(), object_id.clone()));
+                    }
                     CardEvent::Disposed { .. } => {
                         // The card is gone: nothing of it waits any more.
                         marks.disposing.remove(&surface);
@@ -1003,6 +1215,8 @@ impl AccountSession {
                     }
                     CardEvent::Refused { .. }
                     | CardEvent::Stale { .. }
+                    | CardEvent::Expired { .. }
+                    | CardEvent::LimitExceeded { .. }
                     | CardEvent::Fallback { .. } => {
                         // A refused dispose is not in flight any more: the
                         // pool may ask again. A refused resume ends it. Events
@@ -1024,8 +1238,9 @@ impl AccountSession {
                     CardEvent::Batch { own_reply: true, .. } => {
                         own_tap_reply = in_flight == Some(InFlight::Event { input: false });
                     }
-                    CardEvent::Resumed { .. } => {
+                    CardEvent::Resumed { .. } | CardEvent::Opened { .. } => {
                         resumed_waiting = in_flight == Some(InFlight::Resume);
+                        marks.open_retry_at.remove(&surface);
                     }
                     _ => {}
                 }

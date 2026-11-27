@@ -79,12 +79,13 @@ keeps unwinding on (the card C ABI refuses `panic = "abort"`, so `--release` fai
 cargo build -p ramflux-rf --profile ffi-release
 ```
 
-The desktop draws every card from the runtime's native tree. Against a daemon
-without the runtime, a card shows its fallback text only, and the first card call
-that finds no runtime sets `backend.gap.surfaces` (card actions are then refused
-with that reason). A card runs in the same daemon session as the rest of the
-account; the desktop suspends card sessions while the window is away for a
-minute and while the app is locked.
+The desktop draws every card from the runtime's native tree. A card runs in the
+same daemon session as the rest of the account. The daemon allows two resident
+cards per process (shared by every account and by the TUI); the desktop suspends
+the least recently used one when it needs a slot, and suspends them all while the
+window is away for a minute. The daemon drops an account's card sessions when the
+app locks, the account signs out or is removed: the desktop keeps each card's last
+tree read-only and opens it again on the next interaction.
 
 Live tests against a real `rf daemon` (no node needed) are ignored by
 default. Install `rf` from the product revision pinned in `Cargo.lock`, then:

@@ -38,7 +38,7 @@ pub enum Weight {
 }
 
 /// Methods that reach a node, or derive keys from a passphrase.
-const NETWORK: [&str; 39] = [
+const NETWORK: [&str; 40] = [
     "account.create",
     "account.backup.import",
     "account.backup.export",
@@ -62,6 +62,8 @@ const NETWORK: [&str; 39] = [
     "message.submit",
     "contact.verify",
     "object.get",
+    // A card image fetch (one attempt may import for up to a minute).
+    "object.fetch",
     "object.transfer.resume",
     "subscription.open",
     "call.invite",

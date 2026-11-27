@@ -350,7 +350,27 @@ pub enum IntentKind {
         /// Surface.
         surface_id: SurfaceId,
     },
-    /// Suspend every resumed card (the window is hidden or the app locked).
+    /// Read the bytes an image slot of the held tree selects, through the
+    /// object API. The slot is named; its object and digest come from the
+    /// held tree, never from the caller.
+    CardLoadImage {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+        /// The image slot of the held tree.
+        slot_id: String,
+    },
+    /// Finish an approval verdict: `grant.approve` or `grant.deny`, then
+    /// `task.resolve` with the body core built for it (only the card's
+    /// approval slot raises this).
+    CardApprove {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+    },
+    /// Suspend every resumed card (the window is hidden).
     CardSuspendAll,
     /// Resume the most recently used cards (the window is shown again).
     CardResumeAll,

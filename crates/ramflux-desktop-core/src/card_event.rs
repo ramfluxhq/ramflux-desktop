@@ -120,21 +120,82 @@ pub struct CardReceipt {
 /// card no longer holds: the user reviews the card again first.
 pub const CARD_CHANGED_REASON: &str = "card_changed";
 
-/// The reason key of a daemon without the card runtime.
-pub const CARD_RUNTIME_GAP: &str = "backend.gap.surfaces";
+/// The refusal reason the desktop shows when the runtime's limit on resident
+/// cards (`card_limit_exceeded`) kept a card from being drawn live: "Too many
+/// cards are active. Try again in a moment."
+pub const CARD_OVER_LIMIT_REASON: &str = "card_limit_exceeded";
 
-/// The bus methods the card runtime serves (gapped together when it is missing).
-pub const CARD_METHODS: [&str; 9] = [
-    "card.session.open",
-    "card.session.update",
-    "card.session.present",
-    "card.session.event",
-    "card.session.slot",
-    "card.session.submit",
-    "card.session.suspend",
-    "card.session.resume",
-    "card.session.dispose",
-];
+/// The refusal reason of an approval whose task decision was refused as
+/// changed (`stale_revision`, `decision_consumed`, `decision_mismatch`,
+/// `terminal`, `not_found`): "This request changed. Review it again."
+pub const CARD_REQUEST_CHANGED_REASON: &str = "card_request_changed";
+
+/// The refusal reason of an event the runtime dropped as stale
+/// (`stale_dropped`): the field reverts and the card says it changed.
+pub const CARD_STALE_REASON: &str = "stale_dropped";
+
+/// Which limit a card call ran into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CardLimit {
+    /// The runtime's resident cards of the daemon process
+    /// (`card_limit_exceeded`; shared by every account and the TUI).
+    Process,
+    /// The sessions one account holds (`card_session_limit`).
+    Account,
+}
+
+/// Where an image slot's bytes are, as the host read them through the
+/// object API: the verified file the decoder reads, or why there is none.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CardImage {
+    /// The bytes are being read.
+    Loading,
+    /// The bytes were read, checked against the slot's object and digest and
+    /// the decoder limits, and kept in a private file.
+    Ready {
+        /// The private file.
+        path: String,
+        /// Pixel width (from the file's own header).
+        width: u32,
+        /// Pixel height (from the file's own header).
+        height: u32,
+    },
+    /// No image: the slot has none, the object could not be read or did not
+    /// match, or the picture is not one the decoder accepts.
+    Unavailable,
+}
+
+impl fmt::Debug for CardImage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Loading => f.write_str("Loading"),
+            Self::Ready { width, height, .. } => write!(f, "Ready({width}x{height})"),
+            Self::Unavailable => f.write_str("Unavailable"),
+        }
+    }
+}
+
+/// The host's approval verdict and what finishes it: the task decision core
+/// built for the verdict, held until it is sent (memory only, never logged).
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+pub struct CardApproval {
+    /// Confirm or deny.
+    pub outcome: CardSlotOutcome,
+    /// The record the verdict is bound to (the `grant.approve|deny` id).
+    pub request_ref: String,
+    /// The complete `task.resolve` body, passed through unchanged.
+    pub task_resolve: Option<Value>,
+}
+
+impl fmt::Debug for CardApproval {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CardApproval")
+            .field("outcome", &self.outcome)
+            .field("request_ref", &"<redacted>")
+            .field("task_resolve", &"<redacted>")
+            .finish()
+    }
+}
 
 /// A card runtime fact about one surface (its `surface_ref`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -239,12 +300,52 @@ pub enum CardEvent {
         /// Surface.
         surface_id: SurfaceId,
     },
-    /// The host's approval verdict was recorded; not yet an author effect.
+    /// The host's approval verdict was recorded; the grant decision and the
+    /// task decision core built for it follow.
     ApprovalVerdict {
         /// Surface.
         surface_id: SurfaceId,
-        /// Confirm or deny.
-        outcome: CardSlotOutcome,
+        /// The verdict and what finishes it.
+        approval: CardApproval,
+    },
+    /// The grant and task decision of an approval were refused as changed
+    /// (a typed `task.resolve` refusal): the card says so and the task is
+    /// read again. Nothing is retried.
+    ApprovalChanged {
+        /// Surface.
+        surface_id: SurfaceId,
+    },
+    /// The runtime dropped the card's session (`card_session_expired` or
+    /// `card_session_inactive`): the handle is forgotten, the last tree stays
+    /// read-only, and the card is opened again on the next interaction.
+    Expired {
+        /// Surface.
+        surface_id: SurfaceId,
+    },
+    /// An image slot's bytes were read and checked.
+    ImageReady {
+        /// Surface.
+        surface_id: SurfaceId,
+        /// The object the slot selects.
+        object_id: String,
+        /// The private file, and the picture's size from its header.
+        image: CardImage,
+    },
+    /// An image slot's bytes cannot be shown ("Image unavailable").
+    ImageUnavailable {
+        /// Surface.
+        surface_id: SurfaceId,
+        /// The object the slot selects.
+        object_id: String,
+    },
+    /// A call ran into a limit of the runtime.
+    LimitExceeded {
+        /// Surface.
+        surface_id: SurfaceId,
+        /// Which limit.
+        limit: CardLimit,
+        /// The call was a resume (the card keeps its last tree).
+        resume: bool,
     },
     /// A call was refused, by its typed reason.
     Refused {
@@ -274,6 +375,11 @@ impl CardEvent {
             | Self::LinkOpened { surface_id, .. }
             | Self::LinkClosed { surface_id }
             | Self::ApprovalVerdict { surface_id, .. }
+            | Self::ApprovalChanged { surface_id }
+            | Self::Expired { surface_id }
+            | Self::ImageReady { surface_id, .. }
+            | Self::ImageUnavailable { surface_id, .. }
+            | Self::LimitExceeded { surface_id, .. }
             | Self::Refused { surface_id, .. } => surface_id,
         }
     }

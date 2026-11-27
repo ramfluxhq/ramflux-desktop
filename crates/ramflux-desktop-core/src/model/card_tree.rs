@@ -368,6 +368,12 @@ impl CardTree {
         self.tree_version
     }
 
+    /// The edit sequence shown (above zero while the session holds drafts).
+    #[must_use]
+    pub const fn edit_seq(&self) -> u64 {
+        self.edit_seq
+    }
+
     /// The signed version shown.
     #[must_use]
     pub const fn signed_version(&self) -> u64 {
@@ -531,9 +537,12 @@ impl CardTree {
         if batch.mutations.len() > MAX_BATCH_OPS {
             return Err(CardApplyError::Limit);
         }
+        // A reply that changes nothing carries the mounted tree: no
+        // operation, the same version, the current host slots.
+        let unchanged = batch.mutations.is_empty() && batch.version == batch.previous_version;
         if batch.session != self.session
             || batch.previous_version != self.tree_version
-            || batch.version <= batch.previous_version
+            || (batch.version <= batch.previous_version && !unchanged)
         {
             return Err(CardApplyError::Mismatch);
         }

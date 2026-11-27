@@ -4,10 +4,14 @@
 //! Card sessions the desktop holds for one account.
 //!
 //! The card runtime allows two resident sessions per process and 32 per
-//! account. The desktop keeps at most [`MAX_RESUMED`] cards resumed (the
-//! most recently touched ones); the others are suspended and keep their last
-//! tree. At most [`MAX_OPEN`] cards are held; when a card leaves the loaded
-//! timeline window its session is disposed.
+//! account. The desktop keeps at most [`MAX_RESUMED`] cards resumed in the
+//! whole process, across every account's pool (see [`ResumedBudget`]); the
+//! others are suspended and keep their last tree. At most [`MAX_OPEN`] cards
+//! are held per account; when a card leaves the loaded timeline window its
+//! session is disposed. The runtime drops every session of an account on
+//! lock, sign-out and removal: the pool then forgets its handles without a
+//! bus call and the cards keep their last tree read-only until the next
+//! interaction opens them again.
 //!
 //! The store applies the runtime's facts (`CardEvent`) to a [`CardRecord`]
 //! per surface and to the pool. What the pool decides that needs a bus call
@@ -21,19 +25,68 @@
 //! id). Recency is a logical clock, never wall time.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use super::Store;
 use super::changes::Changes;
-use crate::card_event::{CardEvent, CardLink, CardReceipt, CardSlotOutcome, CardStatus};
+use crate::card_event::{
+    CARD_OVER_LIMIT_REASON, CARD_REQUEST_CHANGED_REASON, CardApproval, CardEvent, CardImage,
+    CardLimit, CardLink, CardReceipt, CardSlotOutcome, CardStatus,
+};
 use crate::ids::SurfaceId;
 use crate::model::{CardBatch, CardSeen, CardStamp, CardTree};
 
-/// Resumed (live) sessions per account.
+/// Resumed (live) sessions in the whole desktop process.
 pub const MAX_RESUMED: usize = 2;
 /// Held sessions per account.
 pub const MAX_OPEN: usize = 24;
 /// Stamps kept in one card's rebase chain (the oldest are dropped first).
 pub const MAX_CHAIN: usize = 64;
+
+/// The resumed-session budget of the desktop process, shared by the pools of
+/// every account (the runtime's resident-card cap is per daemon process, not
+/// per account). The app root owns one and hands a clone to each account's
+/// store. It also holds the recency clock, so the least recently used card
+/// of any account can be found.
+#[derive(Debug, Clone, Default)]
+pub struct ResumedBudget {
+    shared: Arc<BudgetCounters>,
+}
+
+#[derive(Debug, Default)]
+struct BudgetCounters {
+    resumed: AtomicUsize,
+    clock: AtomicU64,
+}
+
+impl ResumedBudget {
+    /// A new, empty budget.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The cards resumed now, in every pool of the process.
+    #[must_use]
+    pub fn resumed(&self) -> usize {
+        self.shared.resumed.load(Ordering::SeqCst)
+    }
+
+    fn tick(&self) -> u64 {
+        self.shared.clock.fetch_add(1, Ordering::SeqCst).saturating_add(1)
+    }
+
+    fn add(&self, count: usize) {
+        self.shared.resumed.fetch_add(count, Ordering::SeqCst);
+    }
+
+    fn remove(&self, count: usize) {
+        let _ = self.shared.resumed.try_update(Ordering::SeqCst, Ordering::SeqCst, |held| {
+            Some(held.saturating_sub(count))
+        });
+    }
+}
 
 /// One held card session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,10 +119,44 @@ impl PoolPlan {
 }
 
 /// The card sessions of one account, keyed by the card's surface reference.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct CardPool {
     clock: u64,
     cards: BTreeMap<String, CardEntry>,
+    /// The process budget this pool counts its resumed cards in, when one
+    /// was installed (a copy made for planning has none).
+    budget: Option<ResumedBudget>,
+    /// How many resumed cards this pool has counted in the budget.
+    counted: usize,
+    /// Resumed cards of other pools, known to a copy made for planning.
+    elsewhere: usize,
+}
+
+impl Clone for CardPool {
+    /// A copy for planning: it never changes the shared budget, and keeps
+    /// what the other pools hold as a fixed number.
+    fn clone(&self) -> Self {
+        let elsewhere = match &self.budget {
+            Some(budget) => budget.resumed().saturating_sub(self.counted),
+            None => self.elsewhere,
+        };
+        let newest = self.cards.values().map(|entry| entry.used).max().unwrap_or(0);
+        Self {
+            clock: self.clock.max(newest),
+            cards: self.cards.clone(),
+            budget: None,
+            counted: 0,
+            elsewhere,
+        }
+    }
+}
+
+impl Drop for CardPool {
+    fn drop(&mut self) {
+        if let Some(budget) = &self.budget {
+            budget.remove(self.counted);
+        }
+    }
 }
 
 impl CardPool {
@@ -77,6 +164,70 @@ impl CardPool {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Counts this pool's resumed cards in the process `budget` from now on.
+    pub fn share(&mut self, budget: ResumedBudget) {
+        if let Some(old) = &self.budget {
+            old.remove(self.counted);
+        }
+        self.counted = 0;
+        self.budget = Some(budget);
+        self.recount();
+    }
+
+    /// The resumed cards of this pool.
+    fn resumed_here(&self) -> usize {
+        self.cards.values().filter(|entry| entry.resumed).count()
+    }
+
+    /// The resumed cards of the whole process, as far as this pool knows.
+    fn resumed_total(&self) -> usize {
+        let elsewhere = match &self.budget {
+            Some(budget) => budget.resumed().saturating_sub(self.counted),
+            None => self.elsewhere,
+        };
+        elsewhere + self.resumed_here()
+    }
+
+    /// Brings the shared count in line with this pool's resumed cards.
+    fn recount(&mut self) {
+        let Some(budget) = &self.budget else { return };
+        let now = self.resumed_here();
+        if now > self.counted {
+            budget.add(now - self.counted);
+        } else {
+            budget.remove(self.counted - now);
+        }
+        self.counted = now;
+    }
+
+    /// The least recently used resumed card other than `keep`, with its
+    /// recency stamp (comparable across pools that share a budget).
+    #[must_use]
+    pub fn least_recent_resumed(&self, keep: Option<&str>) -> Option<(String, u64)> {
+        self.cards
+            .iter()
+            .filter(|(card, entry)| entry.resumed && Some(card.as_str()) != keep)
+            .min_by_key(|(_, entry)| entry.used)
+            .map(|(card, entry)| (card.clone(), entry.used))
+    }
+
+    /// The least recently used held card other than `keep` (resumed or not).
+    #[must_use]
+    pub fn least_recent_open(&self, keep: Option<&str>) -> Option<String> {
+        self.cards
+            .iter()
+            .filter(|(card, _)| Some(card.as_str()) != keep)
+            .min_by_key(|(_, entry)| entry.used)
+            .map(|(card, _)| card.clone())
+    }
+
+    /// Forgets every held session without a bus call (the runtime already
+    /// dropped them) and gives its resumed cards back to the budget.
+    pub fn forget_all(&mut self) {
+        self.cards.clear();
+        self.recount();
     }
 
     /// The held entry of `card`.
@@ -109,6 +260,7 @@ impl CardPool {
             plan.dispose.push((card.to_owned(), previous.session));
         }
         self.enforce(card, &mut plan);
+        self.recount();
         plan
     }
 
@@ -136,6 +288,7 @@ impl CardPool {
             plan.resume = Some((card.to_owned(), entry.session));
         }
         self.enforce(card, &mut plan);
+        self.recount();
         plan
     }
 
@@ -146,6 +299,7 @@ impl CardPool {
             entry.session = session;
             entry.resumed = true;
         }
+        self.recount();
     }
 
     /// Records that a suspend of `card` completed.
@@ -153,11 +307,14 @@ impl CardPool {
         if let Some(entry) = self.cards.get_mut(card) {
             entry.resumed = false;
         }
+        self.recount();
     }
 
     /// Drops `card` from the pool, returning its session to dispose.
     pub fn remove(&mut self, card: &str) -> Option<u64> {
-        self.cards.remove(card).map(|entry| entry.session)
+        let session = self.cards.remove(card).map(|entry| entry.session);
+        self.recount();
+        session
     }
 
     /// The `limit` most recently used held cards, most recent first.
@@ -177,6 +334,7 @@ impl CardPool {
             .into_iter()
             .filter_map(|card| self.cards.remove(&card).map(|entry| (card, entry.session)))
             .collect();
+        self.recount();
         PoolPlan { dispose, ..PoolPlan::default() }
     }
 
@@ -190,17 +348,23 @@ impl CardPool {
                 suspend.push((card.clone(), entry.session));
             }
         }
+        self.recount();
         PoolPlan { suspend, ..PoolPlan::default() }
     }
 
     fn tick(&mut self) -> u64 {
-        self.clock = self.clock.saturating_add(1);
+        if let Some(budget) = &self.budget {
+            // One clock for the process, so recency compares across accounts.
+            self.clock = budget.tick();
+        } else {
+            self.clock = self.clock.saturating_add(1);
+        }
         self.clock
     }
 
     /// Brings the pool within its limits, never evicting `keep`.
     fn enforce(&mut self, keep: &str, plan: &mut PoolPlan) {
-        while self.cards.values().filter(|entry| entry.resumed).count() > MAX_RESUMED {
+        while self.resumed_total() > MAX_RESUMED && self.resumed_here() > 0 {
             let Some(victim) = self.least_recent(keep, true) else {
                 break;
             };
@@ -241,13 +405,32 @@ pub enum CardDue {
     Suspend(SurfaceId),
     /// Dispose the card's session (pool bound).
     Dispose(SurfaceId),
+    /// Send the grant and task decisions of the approval verdict.
+    Approve(SurfaceId),
+    /// A call ran into a limit of the runtime. The first time in a row the
+    /// app frees a card and tries again once; `last` says it was the retry.
+    LimitHit {
+        /// Surface.
+        surface: SurfaceId,
+        /// Which limit.
+        limit: CardLimit,
+        /// The call was a resume.
+        resume: bool,
+        /// A retry already failed: no more is made.
+        last: bool,
+    },
 }
 
 impl CardDue {
     /// The surface the step is about.
     pub fn surface(&self) -> &SurfaceId {
         match self {
-            Self::Refresh(s) | Self::Submit(s) | Self::Suspend(s) | Self::Dispose(s) => s,
+            Self::Refresh(s)
+            | Self::Submit(s)
+            | Self::Suspend(s)
+            | Self::Dispose(s)
+            | Self::Approve(s) => s,
+            Self::LimitHit { surface, .. } => surface,
         }
     }
 }
@@ -278,6 +461,21 @@ pub struct CardRecord {
     /// draft sent on an older stamp of this chain may be rebased onto the
     /// held version; nothing else may.
     pub chain: Vec<CardStamp>,
+    /// The runtime dropped the card's session (it expired, or the account
+    /// locked, signed out or was removed) and the handle is forgotten: the
+    /// last tree stays read-only, and the next interaction opens the card
+    /// again.
+    pub dropped: bool,
+    /// The approval verdict waiting to be sent, or sent and waiting for the
+    /// signed update (memory only; never logged).
+    pub approval: Option<CardApproval>,
+    /// The approval's decisions were handed to the daemon.
+    pub approval_sent: bool,
+    /// How many calls in a row the runtime refused for a limit (the second
+    /// one is final: the card says "Too many cards are active").
+    pub limit_strikes: u8,
+    /// Where each image slot's bytes are, by the object the slot selects.
+    pub images: BTreeMap<String, CardImage>,
 }
 
 impl std::fmt::Debug for CardRecord {
@@ -305,6 +503,11 @@ impl CardRecord {
             receipt: None,
             submit_failed: false,
             chain: Vec::new(),
+            dropped: false,
+            approval: None,
+            approval_sent: false,
+            limit_strikes: 0,
+            images: BTreeMap::new(),
         }
     }
 
@@ -346,6 +549,13 @@ impl CardRecord {
         }
     }
 
+    /// Whether the card has no session and may be opened: its handle was
+    /// forgotten, or it never had a tree (an open the runtime refused).
+    #[must_use]
+    pub fn reopenable(&self) -> bool {
+        self.dropped || self.tree.is_none()
+    }
+
     /// Whether the held session is resumed (live) in the pool.
     pub fn resumed(&self, pool: &CardPool, surface: &SurfaceId) -> bool {
         pool.entry(surface.as_str()).is_some_and(|e| e.resumed)
@@ -362,6 +572,16 @@ impl Store {
     /// The card of `surface`, when the runtime holds one for it.
     pub fn card(&self, surface: &SurfaceId) -> Option<&CardRecord> {
         self.card_records.get(surface)
+    }
+
+    /// The private image files the account's cards hold now.
+    pub fn card_image_paths(&self) -> impl Iterator<Item = &str> {
+        self.card_records.values().flat_map(|record| {
+            record.images.values().filter_map(|image| match image {
+                CardImage::Ready { path, .. } => Some(path.as_str()),
+                CardImage::Loading | CardImage::Unavailable => None,
+            })
+        })
     }
 
     /// The pool of the card sessions this account holds.
@@ -433,8 +653,50 @@ impl Store {
             }
         }
         self.card_records.clear();
-        self.cards = CardPool::new();
+        self.cards.forget_all();
         self.card_due.clear();
+    }
+
+    /// Counts this account's resumed cards in the process budget `budget`
+    /// (the app root's), so the cap is shared by every account.
+    pub fn share_card_budget(&mut self, budget: ResumedBudget) {
+        self.cards.share(budget);
+    }
+
+    /// The account's sessions were dropped by the runtime (the app lock
+    /// closed, the account signed out or was removed): every handle is
+    /// forgotten without a bus call, and every card keeps its last tree
+    /// read-only until the next interaction opens it again. A draft that was
+    /// visible is gone: the card says so.
+    pub fn cards_drop_handles(&mut self) -> Vec<SurfaceId> {
+        self.cards.forget_all();
+        self.card_due.clear();
+        let mut dropped = Vec::new();
+        for (surface, record) in &mut self.card_records {
+            record.link = None;
+            record.chain.clear();
+            record.dropped = true;
+            record.approval = None;
+            record.approval_sent = false;
+            if record.status == CardStatus::PendingSubmit {
+                record.status = CardStatus::Live;
+            }
+            record.draft_discarded =
+                record.draft_discarded || record.tree.as_ref().is_some_and(|t| t.edit_seq() > 0);
+            dropped.push(surface.clone());
+        }
+        dropped
+    }
+
+    /// The approval's decisions were handed to the daemon: the task decision
+    /// is not held any more.
+    pub fn card_approval_sent(&mut self, surface: &SurfaceId) {
+        if let Some(record) = self.card_records.get_mut(surface) {
+            record.approval_sent = true;
+            if let Some(approval) = &mut record.approval {
+                approval.task_resolve = None;
+            }
+        }
     }
 
     /// Queues the pool's bus steps (suspends and disposes) for the session.
@@ -473,6 +735,10 @@ impl Store {
                 self.cards.adopt(surface.as_str(), *session);
                 let Some(record) = self.card_records.get_mut(&surface) else { return };
                 record.session = *session;
+                record.limit_strikes = 0;
+                if record.refusal.as_deref() == Some(CARD_OVER_LIMIT_REASON) {
+                    record.refusal = None;
+                }
                 // A link sheet belongs to the session that asked for it.
                 record.link = None;
                 match fresh_tree(*session, batch) {
@@ -566,12 +832,73 @@ impl Store {
                     record.link = None;
                 }
             }
-            CardEvent::ApprovalVerdict { outcome, .. } => {
+            CardEvent::ApprovalVerdict { approval, .. } => {
                 if let Some(record) = self.card_records.get_mut(&surface)
-                    && matches!(outcome, CardSlotOutcome::Confirm | CardSlotOutcome::Deny)
+                    && matches!(approval.outcome, CardSlotOutcome::Confirm | CardSlotOutcome::Deny)
                 {
                     record.status = CardStatus::AwaitingConfirmation;
+                    record.refusal = None;
+                    record.approval_sent = false;
+                    record.approval = Some(approval.clone());
+                    if approval.task_resolve.is_some() {
+                        self.card_due.push(CardDue::Approve(surface));
+                    }
                 }
+            }
+            CardEvent::ImageReady { object_id, image, .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.images.insert(object_id.clone(), image.clone());
+                }
+            }
+            CardEvent::ImageUnavailable { object_id, .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.images.insert(object_id.clone(), CardImage::Unavailable);
+                }
+            }
+            CardEvent::ApprovalChanged { .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.status = CardStatus::Live;
+                    record.refusal = Some(CARD_REQUEST_CHANGED_REASON.to_owned());
+                    record.approval = None;
+                    record.approval_sent = false;
+                }
+            }
+            CardEvent::Expired { .. } => {
+                // The runtime dropped the session: its handle is forgotten
+                // (no dispose to send), the last tree stays read-only.
+                self.cards.remove(surface.as_str());
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    record.dropped = true;
+                    record.link = None;
+                    record.chain.clear();
+                    record.approval = None;
+                    record.approval_sent = false;
+                    record.draft_discarded = record.draft_discarded
+                        || record.tree.as_ref().is_some_and(|tree| tree.edit_seq() > 0);
+                    if record.status == CardStatus::PendingSubmit {
+                        record.status = CardStatus::Live;
+                    }
+                }
+            }
+            CardEvent::LimitExceeded { limit, resume, .. } => {
+                // The runtime did not take the card: a resume leaves it
+                // suspended, an open leaves a card with no tree.
+                self.cards.suspended(surface.as_str());
+                let record = self
+                    .card_records
+                    .entry(surface.clone())
+                    .or_insert_with(|| CardRecord::new(0, CardStatus::Live));
+                record.limit_strikes = record.limit_strikes.saturating_add(1);
+                let last = record.limit_strikes >= 2;
+                if last {
+                    record.refusal = Some(CARD_OVER_LIMIT_REASON.to_owned());
+                }
+                self.card_due.push(CardDue::LimitHit {
+                    surface,
+                    limit: *limit,
+                    resume: *resume,
+                    last,
+                });
             }
             CardEvent::Refused { reason, .. } => {
                 if let Some(record) = self.card_records.get_mut(&surface) {
