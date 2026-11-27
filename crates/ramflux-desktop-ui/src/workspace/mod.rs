@@ -359,6 +359,8 @@ impl Workspace {
                 }
             }),
             cx.observe(&strangers, |_, _, cx| cx.notify()),
+            cx.observe(&contacts, |_, _, cx| cx.notify()),
+            cx.observe(&tasks_area, |_, _, cx| cx.notify()),
             cx.subscribe_in(&contacts, window, |this, _, event: &ContactsDockEvent, window, cx| {
                 let ContactsDockEvent::MessageRequested(participant) = event;
                 this.open_conversation_with(participant.clone(), window, cx);
@@ -382,10 +384,7 @@ impl Workspace {
                         this.select_context(Some(id.clone()), window, cx);
                         this.composer.update(cx, |composer, cx| composer.focus(window, cx));
                     }
-                    NewGroupEvent::Cancelled => {
-                        this.conversation.update(cx, |field, cx| field.set_group_form(None, cx));
-                        this.ensure_current(window, cx);
-                    }
+                    NewGroupEvent::Cancelled => this.ensure_current(window, cx),
                 }
             }),
             cx.subscribe_in(
@@ -550,30 +549,12 @@ impl Workspace {
         &self.new_group
     }
 
-    /// Opens the new-group form in the conversation field (no context is
-    /// shown meanwhile) and focuses its name.
+    /// Opens the new-group dialog over the shown screen and focuses its
+    /// name.
     pub fn open_new_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.new_conversation.update(cx, NewConversation::close);
-        if self.current.take().is_some() {
-            self.store.update(cx, |store, _| store.focus(None));
-        }
         let sink = IntentRoot::sink(&self.root);
         self.new_group.update(cx, |form, cx| form.open(&sink, window, cx));
-        let form = self.new_group.clone();
-        self.conversation.update(cx, |field, cx| {
-            field.set_context(None, cx);
-            field.set_draft(None, cx);
-            field.set_group_form(Some(form), cx);
-        });
-        self.composer.update(cx, |composer, cx| composer.set_sink(None, None, window, cx));
-        self.stack.update(cx, |stack, cx| stack.set_current(None, cx));
-        self.members.update(cx, |dock, cx| dock.set_context(None, cx));
-        self.evidence.update(cx, |dock, cx| dock.set_context(None, cx));
-        if let Some(open) = self.open_tool
-            && self.prefs.pinned != Some(open)
-        {
-            self.close_dock(window, cx);
-        }
         cx.notify();
     }
 
@@ -635,10 +616,10 @@ impl Workspace {
         self.composer.update(cx, |composer, cx| composer.ask(agent, window, cx));
     }
 
-    /// Opens the contacts dock and moves focus to its add-contact field.
+    /// Opens the add-contact dialog and moves focus to its field.
     pub fn open_add_contact(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_tool(DockTool::Contacts, window, cx);
-        self.contacts.update(cx, |dock, cx| dock.focus_add(window, cx));
+        self.contacts.update(cx, |dock, cx| dock.open_add_dialog(window, cx));
+        cx.notify();
     }
 
     /// The confirm strip.
@@ -678,10 +659,7 @@ impl Workspace {
         self.current = id.clone();
         self.new_conversation.update(cx, NewConversation::close);
         self.new_group.update(cx, NewGroup::close);
-        self.conversation.update(cx, |field, cx| {
-            field.set_draft(None, cx);
-            field.set_group_form(None, cx);
-        });
+        self.conversation.update(cx, |field, cx| field.set_draft(None, cx));
         let sink =
             id.as_ref().map(|id| IntentRoot::sink(&self.root).scoped(Scope::Context(id.clone())));
         if changed {
@@ -991,8 +969,12 @@ impl Render for Workspace {
         });
         let list_pane = self.section_list();
         let rail = self.navigation_rail(cx);
+        let new_group = self.new_group.read(cx).is_open().then(|| self.new_group.clone());
+        let contacts_dialog = self.contacts.update(cx, |dock, cx| dock.dialog(cx));
+        let task_dialog = self.tasks_area.update(cx, |area, cx| area.dialog(cx));
         h_flex()
             .id("workspace")
+            .relative()
             .test_support()
             .key_context("Workspace")
             .on_action(cx.listener(
@@ -1066,6 +1048,10 @@ impl Render for Workspace {
                         ),
                 )
             })
+            // Modal dialogs cover the whole workspace.
+            .children(new_group)
+            .children(contacts_dialog)
+            .children(task_dialog)
     }
 }
 

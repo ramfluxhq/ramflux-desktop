@@ -1839,5 +1839,21 @@
   "username.error.retry": null,
   "username.error.other": null,
   "dock.contacts.add.send_request": null,
-  "dock.contacts.add.found": null
+  "dock.contacts.add.found": null,
+  "dock.contacts.verify.title": null,
+  "dock.contacts.verify.number": null,
+  "dock.contacts.verify.rule": null,
+  "dock.contacts.verify.not_now": null,
+  "sections.tasks.details_title": null,
+  "settings.devices.approve.title": null,
+  "settings.devices.approve.device": null,
+  "settings.devices.approve.kind": null,
+  "settings.devices.approve.kind_web": null,
+  "settings.devices.approve.origin": null,
+  "settings.devices.approve.origin_help": null,
+  "settings.devices.approve.warning_title": null,
+  "settings.devices.approve.warning_body": null,
+  "settings.devices.approve.reject": null,
+  "settings.devices.approve.approve": null,
+  "dock.contacts.add.submit_dialog": null
 }

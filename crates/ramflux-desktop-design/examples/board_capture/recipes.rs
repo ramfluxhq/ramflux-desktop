@@ -23,6 +23,7 @@ use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
 use ramflux_desktop_test::mock_recovery::{DEMO_ANCHOR, demo_phrase};
 use ramflux_desktop_ui::actions::OpenPalette;
 use ramflux_desktop_ui::settings::SettingsSection;
+use ramflux_desktop_ui::settings::device_approval::LinkRequest;
 use ramflux_desktop_ui::workspace::WorkspaceRoute;
 
 use crate::harness::{Run, Start, Step};
@@ -208,8 +209,7 @@ fn strangers_selected(run: &mut Run) -> Step {
 }
 
 /// B11: from the product conversation (c-product) the board shows, the
-/// contacts tool comparing p-zhou's safety number (the app compares in the tool's row; it
-/// has no modal dialog).
+/// safety number dialog of p-zhou over the dimmed shell.
 fn safety_compare(run: &mut Run) -> Step {
     let mut s = messages_world()?;
     push(
@@ -224,9 +224,8 @@ fn safety_compare(run: &mut Run) -> Step {
     );
     run.play(&s, 1_000);
     run.show("c-product")?;
-    run.click("rail-contacts")?;
-    // The row's compare button is below the fold of the tool: start the
-    // comparison the way that button does.
+    // The contacts dock's compare button: start the comparison the way it
+    // does; the dialog is drawn by the workspace over the whole window.
     let workspace = run.cx.update(|cx| run.shell.read(cx).workspace().clone());
     let dock = run.cx.update(|cx| workspace.read(cx).contacts_dock().clone());
     run.cx.update(|cx| dock.update(cx, |d, cx| d.start_verify(ParticipantId::new("p-zhou"), cx)));
@@ -390,10 +389,28 @@ fn wizard(run: &mut Run, next: usize, create: bool) -> Step {
     run.play(&s, 1_000);
     run.settings(SettingsSection::Agents);
     run.click("agent-create")?;
-    if next > 0 {
-        run.type_into("agent-wizard-name", "Nova")?;
-    }
-    for _ in 0..next {
+    // Each step needs its own fields before the wizard moves on: fill the
+    // step shown, then press Next (basics, runtime, capabilities, then the
+    // conversation access, whose default is valid).
+    for step in 0..next {
+        match step {
+            0 => {
+                run.type_into("agent-wizard-name", "Nova")?;
+                run.type_into("agent-wizard-responsibility", "Reference research")?;
+                run.click("agent-wizard-glyph-spark")?;
+                run.click("agent-wizard-tone-teal")?;
+            }
+            1 => {
+                run.type_into("agent-wizard-provider", "provider-a")?;
+                run.type_into("agent-wizard-model", "model-a")?;
+            }
+            2 => {
+                run.click("agent-wizard-tools-all")?;
+                run.type_into("agent-wizard-turns", "2")?;
+                run.type_into("agent-wizard-cost", "500")?;
+            }
+            _ => {}
+        }
         run.click("agent-wizard-next")?;
     }
     if create {
@@ -507,7 +524,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "B11" | "I31" => capture!(
             S02,
-            "board_zh c-product, contacts tool comparing p-zhou's safety number (the app compares in the tool row, no dialog)",
+            "board_zh c-product, the safety number dialog comparing p-zhou's number",
             ["verify-confirm"],
             safety_compare
         ),
@@ -606,10 +623,19 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         // Groups.
         "C01" => {
-            capture!(S02, "board_zh new group form over c-product", ["new-group-name"], |run| {
-                daily_product(run)?;
-                run.workspace(|w, window, cx| w.open_new_group(window, cx))
-            })
+            capture!(
+                S02,
+                "board_zh new group dialog over the groups section",
+                ["new-group-name"],
+                |run| {
+                    daily(run)?;
+                    run.route(WorkspaceRoute::Groups)?;
+                    run.workspace(|w, window, cx| {
+                        w.show_group(ContextId::new("c-product"), window, cx)
+                    })?;
+                    run.workspace(|w, window, cx| w.open_new_group(window, cx))
+                }
+            )
         }
         "C02" => capture!(
             S02,
@@ -689,7 +715,7 @@ pub fn plan(key: &str) -> Option<Plan> {
         )),
         "D38" => capture!(
             S02,
-            "new agent wizard, after create (continues into the old identity ceremony)",
+            "new agent wizard, after create (the result line follows the request)",
             [],
             |run| wizard(run, 4, true)
         ),
@@ -730,10 +756,11 @@ pub fn plan(key: &str) -> Option<Plan> {
         }),
         "F02" => capture!(
             S02,
-            "board_zh add contact form in the contacts tool (the app has no dialog)",
+            "board_zh add contact dialog over the contacts section",
             ["contact-add-id"],
             |run| {
-                daily_product(run)?;
+                daily(run)?;
+                run.route(WorkspaceRoute::Contacts)?;
                 run.workspace(|w, window, cx| w.open_add_contact(window, cx))
             }
         ),
@@ -811,9 +838,16 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "G24" => capture!(
             S02,
-            "board_zh settings, devices: link gated (placeholder; the approval dialog has no screen)",
-            ["settings-link-device"],
-            |run| settings_board(run, SettingsSection::Devices)
+            "board_zh settings, devices with the approval dialog of a web device (Approve gated: no pairing contract)",
+            ["settings-link-device", "device-approval-dialog"],
+            |run| {
+                settings_board(run, SettingsSection::Devices)?;
+                let settings = run.cx.update(|cx| run.shell.read(cx).settings().clone());
+                let request = LinkRequest { device: t("g24_device"), origin: t("g24_origin") };
+                run.window(move |window, cx| {
+                    settings.update(cx, |page, cx| page.show_link_request(request, window, cx))
+                })
+            }
         ),
         "G09" => {
             capture!(S02, "board_zh settings, nodes", ["settings-header"], |run| settings_board(

@@ -28,11 +28,11 @@ use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Context, Entity, EventEmitter, IntoElement, Render, Role, SharedString, Subscription, Window,
-    div,
+    Context, Entity, EventEmitter, FocusHandle, IntoElement, Render, Role, SharedString,
+    Subscription, Window, div,
 };
 use ramflux_desktop_core::{
     ContactLink, ContextId, GroupProblem, IntentError, Participant, ParticipantId, Scope, Store,
@@ -85,6 +85,7 @@ pub struct NewGroup {
     /// Chosen members whose stale verification the user acknowledged.
     acknowledged: Vec<ParticipantId>,
     phase: Phase,
+    focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -119,6 +120,7 @@ impl NewGroup {
             members: Vec::new(),
             acknowledged: Vec::new(),
             phase: Phase::Editing,
+            focus: cx.focus_handle(),
             _subscriptions: subscriptions,
         }
     }
@@ -313,9 +315,12 @@ fn ineligible(store: &Store, contact: &Participant) -> Option<SharedString> {
 
 impl Render for NewGroup {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.is_open() {
+            return div().id("new-group").into_any_element();
+        }
         let store = self.store.read(cx).store();
         let theme = cx.theme();
-        let (muted, border) = (theme.muted_foreground, theme.border);
+        let muted = theme.muted_foreground;
         let danger = crate::tone::text(theme.danger, cx);
         let contacts: Vec<Participant> = selectors::contacts(store)
             .into_iter()
@@ -384,102 +389,70 @@ impl Render for NewGroup {
             Phase::Failed(reason) => Some((reason.clone(), danger)),
             Phase::Editing => None,
         };
-        v_flex()
-            .id("new-group")
+        let this = cx.weak_entity();
+        let creating_or_waiting = creating || waiting || self.context_id.is_none();
+        let create = Button::new("new-group-create")
+            .design_primary(cx)
+            .design_label(tr("group.new.create"))
+            .design_disabled(creating_or_waiting, cx)
+            .on_click(cx.listener(|this, _, window, cx| this.create(window, cx)));
+        let cancel = Button::new("new-group-cancel")
+            .design_secondary(cx)
+            .design_label(tr("group.new.cancel"))
+            .on_click(cx.listener(|this, _, _, cx| this.cancel(cx)));
+        let form = v_flex()
+            .id("new-group-form")
             .test_support()
-            .flex_1()
-            .min_h_0()
+            .gap(space(4.))
             .child(
-                h_flex()
-                    .id("new-group-header")
-                    .gap(space(2.))
-                    .px(space(4.))
-                    .py(space(3.))
-                    .border_b_1()
-                    .border_color(border)
-                    .child(Icon::new(IconName::User).small())
+                v_flex()
+                    .gap(space(1.))
+                    .child(div().text_size(text_secondary()).child(tr("group.new.name")))
+                    .child(
+                        Input::new(&self.name)
+                            .id("new-group-name")
+                            .aria_label(tr("group.new.name")),
+                    )
                     .child(
                         div()
-                            .flex_1()
-                            .font_weight(gpui_kit::FontWeight::MEDIUM)
-                            .child(tr("group.new.title")),
+                            .text_size(text_caption())
+                            .text_color(muted)
+                            .child(tr("group.new.name_help")),
                     ),
             )
             .child(
                 v_flex()
-                    .id("new-group-form")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .gap(space(4.))
-                    .px(space(4.))
-                    .py(space(4.))
-                    .child(
-                        v_flex()
-                            .gap(space(1.))
-                            .child(div().text_size(text_secondary()).child(tr("group.new.name")))
-                            .child(
-                                Input::new(&self.name)
-                                    .id("new-group-name")
-                                    .aria_label(tr("group.new.name")),
-                            )
-                            .child(
-                                div()
-                                    .text_size(text_caption())
-                                    .text_color(muted)
-                                    .child(tr("group.new.name_help")),
-                            ),
-                    )
-                    .child(
-                        v_flex()
-                            .gap(space(1.))
-                            .child(div().text_size(text_secondary()).child(tr("group.new.members")))
-                            .when(contacts.is_empty(), |col| {
-                                col.child(
-                                    div()
-                                        .id("new-group-no-contacts")
-                                        .test_support()
-                                        .text_size(text_caption())
-                                        .text_color(muted)
-                                        .child(tr("group.new.no_contacts")),
-                                )
-                            })
-                            .children(rows),
-                    )
-                    .children(acks)
-                    .children(status.map(|(text, color)| {
-                        div()
-                            .id("new-group-status")
-                            .role(Role::Status)
-                            .aria_label(text.clone())
-                            .test_support()
-                            .text_size(text_secondary())
-                            .text_color(color)
-                            .child(text)
-                    }))
-                    .child(
-                        h_flex()
-                            .gap(space(2.))
-                            .child(div().flex_1())
-                            .child(
-                                Button::new("new-group-cancel")
-                                    .design_secondary(cx)
-                                    .design_label(tr("group.new.cancel"))
-                                    .on_click(cx.listener(|this, _, _, cx| this.cancel(cx))),
-                            )
-                            .child(
-                                Button::new("new-group-create")
-                                    .design_primary(cx)
-                                    .design_label(tr("group.new.create"))
-                                    .design_disabled(
-                                        creating || waiting || self.context_id.is_none(),
-                                        cx,
-                                    )
-                                    .on_click(
-                                        cx.listener(|this, _, window, cx| this.create(window, cx)),
-                                    ),
-                            ),
-                    ),
+                    .gap(space(1.))
+                    .child(div().text_size(text_secondary()).child(tr("group.new.members")))
+                    .when(contacts.is_empty(), |col| {
+                        col.child(
+                            div()
+                                .id("new-group-no-contacts")
+                                .test_support()
+                                .text_size(text_caption())
+                                .text_color(muted)
+                                .child(tr("group.new.no_contacts")),
+                        )
+                    })
+                    .children(rows),
             )
+            .children(acks)
+            .children(status.map(|(text, color)| {
+                div()
+                    .id("new-group-status")
+                    .role(Role::Status)
+                    .aria_label(text.clone())
+                    .test_support()
+                    .text_size(text_secondary())
+                    .text_color(color)
+                    .child(text)
+            }));
+        crate::modal::Modal::new("new-group", tr("group.new.title"), &self.focus, move |_, cx| {
+            this.update(cx, |form, cx| form.cancel(cx)).ok();
+        })
+        .child(form)
+        .button(cancel)
+        .button(create)
+        .render(cx)
     }
 }

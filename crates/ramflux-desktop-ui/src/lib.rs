@@ -57,6 +57,7 @@ mod ids;
 pub mod launch;
 pub mod list_state;
 pub mod message_shell;
+pub mod modal;
 pub mod moments;
 pub mod notify;
 pub mod palette;

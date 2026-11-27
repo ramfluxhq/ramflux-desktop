@@ -199,14 +199,8 @@ pub type Click = Box<dyn Fn(&gpui_kit::ClickEvent, &mut Window, &mut App)>;
 pub struct VerifyHandlers {
     /// Why verifying is unavailable, if it is.
     pub reason: Option<SharedString>,
-    /// Whether the comparison is open in this row.
-    pub open: bool,
-    /// Verify pressed: open the comparison.
+    /// Verify pressed: open the comparison dialog.
     pub start: Click,
-    /// The numbers match: mark verified.
-    pub confirm: Click,
-    /// Cancel pressed.
-    pub cancel: Click,
 }
 
 /// A contact with its safety state, safety number, Verify while unverified
@@ -219,7 +213,7 @@ pub fn contact_row(
     request: Option<super::requests::Outgoing>,
     cx: &App,
 ) -> AnyElement {
-    let VerifyHandlers { reason: verify_reason, open, start, confirm, cancel } = verify;
+    let VerifyHandlers { reason: verify_reason, start } = verify;
     let unreachable = (contact.reachable == Some(false))
         .then(|| tr_args("dock.contacts.unreachable_reason", &[("name", &contact.display)]));
     let message = (contact.link_state() == ContactLink::Accepted).then(|| {
@@ -244,7 +238,7 @@ pub fn contact_row(
         SafetyState::KeyChanged | SafetyState::Forked => cx.theme().danger,
     };
     // The advanced fallback: the safety number and its comparison.
-    let verify = (!open).then(|| {
+    let verify = Some({
         crate::gate::gated(
             Button::new("verify")
                 .xsmall()
@@ -259,7 +253,6 @@ pub fn contact_row(
             cx,
         )
     });
-    let comparison = open.then(|| comparison(contact, confirm, cancel, verify_reason.as_ref(), cx));
     v_flex()
         .id(domain_id("contacts", &contact.id))
         .test_support()
@@ -381,7 +374,6 @@ pub fn contact_row(
                     .child(label),
             )
         })
-        .children(comparison)
         .into_any_element()
 }
 
@@ -394,13 +386,15 @@ pub fn root_label(source: RootSource) -> SharedString {
     })
 }
 
-/// The safety number comparison: what to compare, the number, and "The
-/// numbers match" (only with a number to compare) or Cancel.
-fn comparison(
+/// The safety number comparison dialog (board B11): what to compare, the
+/// number in a field, the rule that only a full match counts, then "Not
+/// now" and "The numbers match" (only with a number to compare).
+pub fn comparison_dialog(
     contact: &Participant,
     confirm: Click,
-    cancel: Click,
+    cancel: crate::modal::OnClose,
     reason: Option<&SharedString>,
+    focus: &gpui_kit::FocusHandle,
     cx: &App,
 ) -> AnyElement {
     let name = contact.display.as_str();
@@ -413,53 +407,82 @@ fn comparison(
     let blocked = reason.cloned().or_else(|| {
         number.is_none().then(|| tr_args("dock.contacts.verify.no_number", &[("name", name)]))
     });
-    v_flex()
+    let theme = cx.theme();
+    let body = v_flex()
         .id("contact-verify")
-        .gap(space(1.))
-        .p(space(2.))
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border)
+        .gap(space(4.))
         .child(
             div()
                 .id("contact-verify-help")
                 .role(gpui_kit::Role::Status)
                 .aria_label(help.clone())
                 .test_support()
-                .text_size(text_caption())
+                .text_size(rems_body(cx))
                 .child(help),
         )
         .when_some(number, |col, number| {
             col.child(
-                div()
-                    .id("contact-verify-number")
-                    .test_support()
-                    .text_size(text_secondary())
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .child(number),
+                v_flex()
+                    .gap(space(1.))
+                    .child(
+                        div()
+                            .text_size(text_secondary())
+                            .font_medium()
+                            .child(tr("dock.contacts.verify.number")),
+                    )
+                    .child(
+                        div()
+                            .id("contact-verify-number")
+                            .test_support()
+                            .h(gpui_kit::px(36.0))
+                            .flex()
+                            .items_center()
+                            .px(space(2.))
+                            .rounded(theme.radius)
+                            .border_1()
+                            .border_color(theme.border)
+                            .text_size(text_secondary())
+                            .font_family(theme.mono_font_family.clone())
+                            .child(number),
+                    ),
             )
         })
         .child(
-            h_flex()
-                .gap(space(2.))
-                .child(crate::gate::gated(
-                    Button::new("verify-confirm")
-                        .xsmall()
-                        .design_primary(cx)
-                        .design_label(tr("dock.contacts.verify.confirm"))
-                        .on_click(confirm),
-                    blocked,
-                    cx,
-                ))
-                .child(
-                    Button::new("verify-cancel")
-                        .xsmall()
-                        .ghost()
-                        .label(tr("dock.contacts.verify.cancel"))
-                        .on_click(cancel),
-                ),
-        )
-        .into_any_element()
+            div()
+                .id("contact-verify-rule")
+                .h(gpui_kit::px(55.0))
+                .flex()
+                .items_center()
+                .px(space(4.))
+                .rounded(theme.radius)
+                .bg(theme.secondary)
+                .font_medium()
+                .text_size(rems_body(cx))
+                .child(tr("dock.contacts.verify.rule")),
+        );
+    let close = cancel.clone();
+    crate::modal::Modal::new(
+        "contact-verify-dialog",
+        tr("dock.contacts.verify.title"),
+        focus,
+        move |window, cx| cancel(window, cx),
+    )
+    .child(body)
+    .button(crate::modal::cancel_button(
+        "verify-cancel",
+        tr("dock.contacts.verify.not_now"),
+        cx,
+        move |window, cx| close(window, cx),
+    ))
+    .button(crate::gate::gated(
+        Button::new("verify-confirm")
+            .design_primary(cx)
+            .design_label(tr("dock.contacts.verify.confirm"))
+            .on_click(confirm),
+        blocked,
+        cx,
+    ))
+    .render(cx)
 }
 
 /// The safety state as a contact row says it: a status, never a request
@@ -508,4 +531,9 @@ pub fn blocked_row(contact: &Participant, sink: &EventSink, cx: &App) -> AnyElem
                 .on_click(action_handler(sink, &contact.id, ContactAction::Remove)),
         )
         .into_any_element()
+}
+
+/// The body text size of the design (`size-body`).
+fn rems_body(cx: &App) -> gpui_kit::Rems {
+    gpui_kit::rems(ramflux_desktop_navigation::palette(cx).size_body / 15.0)
 }

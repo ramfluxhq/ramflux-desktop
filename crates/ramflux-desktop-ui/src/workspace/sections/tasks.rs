@@ -19,7 +19,8 @@ use gpui_kit::{
     Subscription, Window, div,
 };
 use ramflux_desktop_core::{
-    Actor, ContextId, MomentId, MomentKind, Scope, Store, Task, TaskState, UiEventKind, selectors,
+    Actor, ContextId, MomentId, MomentKind, Scope, Store, Task, TaskId, TaskState, UiEventKind,
+    selectors,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::scale::space;
@@ -81,6 +82,10 @@ pub struct TasksArea {
     sink: EventSink,
     search: Search,
     category: TaskCategory,
+    /// The task whose details dialog is open.
+    open_task: Option<TaskId>,
+    /// Tracked by the dialog's focus trap.
+    dialog_focus: gpui_kit::FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -108,13 +113,145 @@ impl TasksArea {
             }),
             crate::i18n::on_locale_switch(cx, |_, cx| cx.notify()),
         ];
-        Self { store, sink, search, category: TaskCategory::NeedsMe, _subscriptions: subscriptions }
+        Self {
+            store,
+            sink,
+            search,
+            category: TaskCategory::NeedsMe,
+            open_task: None,
+            dialog_focus: cx.focus_handle(),
+            _subscriptions: subscriptions,
+        }
     }
 
     /// Shows `category`.
     pub fn set_category(&mut self, category: TaskCategory, cx: &mut Context<Self>) {
         self.category = category;
         cx.notify();
+    }
+
+    /// Opens the details dialog of the task `id`.
+    pub fn open_details(&mut self, id: TaskId, cx: &mut Context<Self>) {
+        self.open_task = Some(id);
+        cx.notify();
+    }
+
+    /// The task whose details dialog is open.
+    pub fn open_task(&self) -> Option<&TaskId> {
+        self.open_task.as_ref()
+    }
+
+    /// Closes the details dialog.
+    pub fn close_details(&mut self, cx: &mut Context<Self>) {
+        if self.open_task.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    /// The task details dialog (board E05), drawn by the workspace over the
+    /// whole window while a task is open: title, state, the steps with
+    /// their states, then Cancel task and, for a proposal, Confirm and start.
+    pub fn dialog(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let id = self.open_task.clone()?;
+        let palette = ramflux_desktop_navigation::palette(cx);
+        let rem = |px: f32| gpui_kit::rems(px / 15.0);
+        let store = self.store.read(cx).store();
+        let Some(task) = store.tasks().find(|t| t.id == id).cloned() else {
+            self.open_task = None;
+            return None;
+        };
+        let moment = task_moment(store, &task).map(|m| m.id.clone());
+        let task_sink = moment.map(|moment| {
+            self.sink.scoped(Scope::Context(task.context_id.clone())).scoped(Scope::Moment(moment))
+        });
+        let mine = task.requester == Actor::Human;
+        let proposal = task.state == TaskState::Proposed;
+        let steps = task.steps.iter().enumerate().map(|(index, step)| {
+            v_flex()
+                .id(SharedString::from(format!("task-step-{}", step.id)))
+                .py(rem(22.0))
+                .gap(rem(2.0))
+                .border_b_1()
+                .border_color(palette.line)
+                .child(
+                    div()
+                        .text_size(rem(palette.size_body))
+                        .child(i18n::join(&(index + 1).to_string(), &step.label)),
+                )
+                .child(
+                    div()
+                        .text_size(rem(palette.size_secondary))
+                        .text_color(palette.secondary)
+                        .child(i18n::step_state(step.state)),
+                )
+        });
+        let body = v_flex()
+            .id("task-details")
+            .test_support()
+            .gap(space(3.))
+            .child(
+                div()
+                    .text_size(rem(palette.size_title))
+                    .font_semibold()
+                    .child(SharedString::from(task.title.clone())),
+            )
+            .child(
+                h_flex().child(
+                    div()
+                        .px(space(2.))
+                        .py(rem(4.0))
+                        .rounded(rem(palette.radius_chip))
+                        .bg(palette.surface)
+                        .text_size(rem(palette.size_meta))
+                        .child(i18n::task_state(task.state)),
+                ),
+            )
+            .child(v_flex().id("task-details-steps").children(steps));
+        let this = cx.weak_entity();
+        let close = move |_: &mut Window, cx: &mut App| {
+            this.update(cx, |area, cx| area.close_details(cx)).ok();
+        };
+        let this = cx.weak_entity();
+        let close_button = move |_: &mut Window, cx: &mut App| {
+            this.update(cx, |area, cx| area.close_details(cx)).ok();
+        };
+        let cancel_sink = task_sink.clone().filter(|_| mine && !task.state.is_terminal());
+        let start_sink = task_sink.filter(|_| proposal && mine);
+        let mut modal = crate::modal::Modal::new(
+            "task-details-dialog",
+            tr("sections.tasks.details_title"),
+            &self.dialog_focus,
+            close,
+        )
+        .width(crate::modal::width::WIDE)
+        .child(body);
+        modal = match cancel_sink {
+            Some(sink) => modal.button(
+                gpui_kit::component::button::Button::new("task-details-cancel")
+                    .design_secondary(cx)
+                    .design_label(tr("sections.tasks.cancel"))
+                    .on_click(move |_, window, cx| {
+                        sink.emit(UiEventKind::CancelPressed, window, cx)
+                    }),
+            ),
+            None => modal.button(crate::modal::cancel_button(
+                "task-details-close",
+                tr("common.close"),
+                cx,
+                close_button,
+            )),
+        };
+        if let Some(sink) = start_sink {
+            modal = modal.button(
+                gpui_kit::component::button::Button::new("task-details-start")
+                    .design_primary(cx)
+                    .design_label(tr("sections.tasks.start"))
+                    .on_click(move |_, window, cx| {
+                        sink.emit(UiEventKind::ProposalAccepted, window, cx)
+                    }),
+            );
+        }
+        Some(modal.render(cx))
     }
 
     /// The category shown.
@@ -333,8 +470,14 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
     let id = task.id.clone();
     let context = task.context_id.clone();
     let open_moment = moment.clone();
+    let details = id.clone();
     v_flex()
         .id(SharedString::from(format!("task-card-{id}")))
+        .cursor_pointer()
+        .on_click(cx.listener(move |this, _, window, cx| {
+            this.open_details(details.clone(), cx);
+            window.focus(&this.dialog_focus, cx);
+        }))
         .test_support()
         .role(gpui_kit::Role::Article)
         .aria_label(SharedString::from(task.title.clone()))
@@ -391,6 +534,8 @@ fn card(facts: CardFacts, sink: &EventSink, cx: &mut Context<TasksArea>) -> AnyE
         .child(
             h_flex()
                 .gap(space(3.))
+                // The answers do not also open the details.
+                .on_mouse_up(gpui_kit::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .when_some(task_sink.clone().filter(|_| proposal && mine), |row, sink| {
                     row.child(
                         gpui_kit::component::button::Button::new(SharedString::from(format!(

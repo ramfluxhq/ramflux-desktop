@@ -224,7 +224,7 @@ fn the_palette_opens_the_add_contact_field(cx: &mut TestAppContext) {
     in_window(cx, handle, move |window, cx| window.input(&query, cx));
     in_window(cx, handle, |window, cx| window.press("enter", cx));
     assert!(!cx.update(|cx| shell.read(cx).is_palette_open()));
-    assert!(exists(cx, handle, "dock-content-contacts"), "the contacts dock is open");
+    assert!(exists(cx, handle, "contact-add-id"), "the add-contact dialog is open");
     let workspace = workspace(cx, &shell);
     let focused = in_window(cx, handle, move |window, cx| {
         workspace.read(cx).contacts_dock().read(cx).add_focused(window, cx)
