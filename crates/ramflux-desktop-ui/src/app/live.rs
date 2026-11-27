@@ -280,6 +280,7 @@ fn runs_on_daemon(kind: &IntentKind) -> bool {
         || matches!(
             kind,
             IntentKind::ConfigureAppLock { .. }
+                | IntentKind::AnswerAppLockCode { .. }
                 | IntentKind::AppLockLifecycle { .. }
                 | IntentKind::Unlock { .. }
         )

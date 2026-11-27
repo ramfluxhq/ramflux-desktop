@@ -44,10 +44,6 @@ fn text(input: &Entity<InputState>, cx: &App) -> String {
     input.read(cx).value().trim().to_owned()
 }
 
-/// The reason the daemon gives (with `ValidationFailed`) when an unlock is
-/// refused for the account code; the SDK keeps it as the failure's message.
-const WRONG_CODE_REASON: &str = "invalid_argument";
-
 impl EntryPage {
     /// The locked account the passphrase unlocks: a person's. An AI
     /// participant is started by the agent host, never unlocked here.
@@ -683,75 +679,131 @@ impl EntryPage {
         if !cover {
             let unlocking = self.submitted.is_some();
             let nothing_to_unlock = self.unlock_target(cx).is_none();
+            let target = self.unlock_target(cx);
             let handle = self.store.read(cx);
-            // The last unlock the daemon refused for its code. Only that refusal
-            // is named: any other failure stays out of the lock view.
-            // The last unlock the daemon refused: the account code is wrong, or
-            // another refusal (a wait) whose own text is shown.
+            let store = handle.entry_store();
             // Only a refusal of an unlock after this lock page began for this
             // account (and this closing of its lock) is named.
-            let since = match (&self.lock_mark, self.unlock_target(cx)) {
-                (Some((id, _, mark)), Some(target)) if *id == target => *mark,
+            let since = match (&self.lock_mark, target.as_ref()) {
+                (Some((id, _, mark)), Some(target)) if id == target => *mark,
                 _ => u64::MAX,
             };
-            let last_refusal = handle
-                .entry_store()
+            let last_refusal = store
                 .failures_since(since)
                 .iter()
                 .rev()
-                .find(|f| f.method == methods::ACCOUNT_UNLOCK);
-            let wrong_code = !unlocking
-                && last_refusal.is_some_and(|f| {
-                    matches!(&f.code, ramflux_desktop_core::FailureCode::Daemon(code) if code == "ValidationFailed")
-                        && f.message == WRONG_CODE_REASON
-                });
-            let refused_text = last_refusal.filter(|_| !unlocking).map(|f| f.message.clone());
-            column = column
-                .child(
-                    div()
-                        .id("lock-help")
-                        .text_size(text_caption())
-                        .text_color(muted)
-                        .child(tr("entry.app_lock.locked")),
-                )
-                .children(refused_text.filter(|_| !wrong_code).map(|text| {
+                .find(|f| f.method == methods::ACCOUNT_UNLOCK)
+                .map(|f| f.message.clone());
+            // The typed refusal of the code, and the daemon's wait or exhaustion.
+            let refusal =
+                target.as_ref().and_then(|id| store.app_lock_refusal(id)).filter(|_| !unlocking);
+            let wrong_code = refusal == Some(ramflux_desktop_core::AppLockCodeRefusal::Wrong);
+            let lock_state = target.as_ref().and_then(|id| store.app_lock(id));
+            let exhausted = lock_state.is_some_and(|lock| lock.code_attempts_exhausted)
+                || refusal == Some(ramflux_desktop_core::AppLockCodeRefusal::Exhausted);
+            let wait_ms = lock_state
+                .and_then(|lock| lock.code_retry_after_ms)
+                .map_or(0, |ms| crate::settings::account::remaining_ms(&self.code_clock, ms));
+            let waiting = wait_ms > 0 && !exhausted;
+            if waiting && !self.code_ticking.get() {
+                // The countdown is drawn again each second.
+                self.code_ticking.set(true);
+                let ticking = self.code_ticking.clone();
+                window
+                    .spawn(cx, async move |cx| {
+                        cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
+                        ticking.set(false);
+                        cx.update(|window, _| window.refresh()).ok();
+                    })
+                    .detach();
+            }
+            let blocked = unlocking || waiting || exhausted;
+            let refused_text = last_refusal.filter(|_| !unlocking);
+            column = column.child(
+                div()
+                    .id("lock-help")
+                    .text_size(text_caption())
+                    .text_color(muted)
+                    .child(tr("entry.app_lock.locked")),
+            );
+            if let Some(text) = refused_text {
+                column = column.child(
                     div()
                         .id("lock-refused")
                         .role(gpui_kit::Role::Status)
                         .text_size(text_caption())
                         .text_color(cx.theme().danger)
-                        .child(text)
-                }))
-                .children(wrong_code.then(|| {
+                        .child(text),
+                );
+            }
+            if wrong_code {
+                column = column.child(
                     div()
                         .id("lock-wrong-code")
                         .role(gpui_kit::Role::Status)
                         .text_size(text_caption())
                         .text_color(cx.theme().danger)
-                        .child(tr("entry.app_lock.wrong_code"))
-                }))
-                .child(
-                    div().w_full().child(
-                        Input::new(&self.inputs.passphrase)
-                            .id("passphrase")
-                            .aria_label(tr("entry.account.passphrase"))
-                            .mask_toggle()
-                            .disabled(unlocking),
-                    ),
-                )
-                .child(
-                    Button::new("unlock")
-                        .design_primary(cx)
-                        .icon(IconName::Check)
-                        .design_label(tr(if unlocking {
-                            "entry.account.unlocking"
-                        } else {
-                            "entry.account.unlock"
-                        }))
-                        .loading(unlocking)
-                        .design_disabled(unlocking || nothing_to_unlock, cx)
-                        .on_click(cx.listener(|this, _, window, cx| this.unlock(window, cx))),
+                        .child(tr("entry.app_lock.wrong_code")),
                 );
+            }
+            if waiting {
+                column = column.child(
+                    div()
+                        .id("lock-code-wait")
+                        .role(gpui_kit::Role::Status)
+                        .text_size(text_caption())
+                        .text_color(cx.theme().danger)
+                        .child(tr_args(
+                            "settings.app_lock.code_wait",
+                            &[("time", &crate::settings::account::countdown(wait_ms))],
+                        )),
+                );
+            }
+            if exhausted {
+                // Only restoring the account from its recovery phrase helps: no code field.
+                let restore_target = target.clone();
+                column = column
+                    .child(
+                        div()
+                            .id("lock-code-exhausted")
+                            .role(gpui_kit::Role::Status)
+                            .text_size(text_caption())
+                            .text_color(cx.theme().danger)
+                            .child(tr("settings.app_lock.code_exhausted")),
+                    )
+                    .children(restore_target.map(|account| {
+                        Button::new("lock-restore")
+                            .design_primary(cx)
+                            .design_label(tr("settings.app_lock.restore"))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_recovery(account.clone(), window, cx);
+                            }))
+                    }));
+            } else {
+                column = column
+                    .child(
+                        div().w_full().child(
+                            Input::new(&self.inputs.passphrase)
+                                .id("passphrase")
+                                .aria_label(tr("entry.account.passphrase"))
+                                .mask_toggle()
+                                .disabled(blocked),
+                        ),
+                    )
+                    .child(
+                        Button::new("unlock")
+                            .design_primary(cx)
+                            .icon(IconName::Check)
+                            .design_label(tr(if unlocking {
+                                "entry.account.unlocking"
+                            } else {
+                                "entry.account.unlock"
+                            }))
+                            .loading(unlocking)
+                            .design_disabled(blocked || nothing_to_unlock, cx)
+                            .on_click(cx.listener(|this, _, window, cx| this.unlock(window, cx))),
+                    );
+            }
         }
         v_flex()
             .id("entry-lock")

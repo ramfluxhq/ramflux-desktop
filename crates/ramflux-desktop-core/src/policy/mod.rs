@@ -214,7 +214,8 @@ fn take_secrets(kind: IntentKind) -> Vec<SecretInput> {
         | IntentKind::ExportBackup { secret, .. }
         | IntentKind::CreateBackup { secret, .. }
         | IntentKind::VerifyRestore { secret, .. }
-        | IntentKind::ClaimUsername { secret, .. } => vec![secret],
+        | IntentKind::ClaimUsername { secret, .. }
+        | IntentKind::AnswerAppLockCode { secret, .. } => vec![secret],
         IntentKind::ConfirmCeremony { words, passphrase } => {
             let mut secrets = words;
             secrets.push(passphrase);

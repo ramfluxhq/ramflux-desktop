@@ -318,6 +318,7 @@ async fn a_changed_event_on_the_daemon_request_connection_locks_the_daemon_store
         task.config.deadlines,
         None,
         Some(events),
+        None,
     );
     task.client.attach().await.expect("connects");
     // The fake may not have registered the connection yet.

@@ -79,6 +79,10 @@ pub struct Store {
     accounts: BTreeMap<AccountId, Account>,
     /// The app lock of each account, once the daemon reported it.
     app_locks: BTreeMap<AccountId, AppLock>,
+    /// Accounts whose app lock asks for the account code now (in memory only).
+    app_lock_sheets: BTreeSet<AccountId>,
+    /// The last refused account code per account (in memory only).
+    app_lock_refusals: BTreeMap<AccountId, crate::model::AppLockCodeRefusal>,
     nodes: BTreeMap<NodeId, Node>,
     devices: BTreeMap<DeviceId, Device>,
     participants: BTreeMap<ParticipantId, Participant>,
@@ -242,6 +246,21 @@ impl Store {
     /// while it is loading).
     pub fn app_lock(&self, id: &AccountId) -> Option<&AppLock> {
         self.app_locks.get(id)
+    }
+
+    /// Whether the daemon asked for the account code of this account's app lock change.
+    pub fn app_lock_sheet_open(&self, id: &AccountId) -> bool {
+        self.app_lock_sheets.contains(id)
+    }
+
+    /// The accounts whose app lock asks for the account code now.
+    pub fn app_lock_sheets(&self) -> impl Iterator<Item = &AccountId> {
+        self.app_lock_sheets.iter()
+    }
+
+    /// The last account code refusal of this account's app lock or unlock.
+    pub fn app_lock_refusal(&self, id: &AccountId) -> Option<crate::model::AppLockCodeRefusal> {
+        self.app_lock_refusals.get(id).copied()
     }
 
     /// Whether the app lock holds any account of this store closed now (an

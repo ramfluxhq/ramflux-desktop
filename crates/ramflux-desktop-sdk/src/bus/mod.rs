@@ -13,6 +13,7 @@
 //!   without the stream.
 
 pub mod approval;
+pub(crate) mod attended;
 pub mod client;
 pub mod deadline;
 pub mod idempotency;
@@ -20,7 +21,7 @@ pub mod jobs;
 pub mod stream;
 pub mod trace;
 
-use ramflux_desktop_core::{SecretInput, VaultReason};
+use ramflux_desktop_core::{AppLockCodeRefusal, SecretInput, VaultReason};
 use ramflux_sdk::SdkError;
 use serde_json::Value;
 use zeroize::{Zeroize, Zeroizing};
@@ -227,6 +228,26 @@ impl BusError {
         match self {
             Self::Daemon { reason_code, .. } => reason_code.as_deref(),
             _ => None,
+        }
+    }
+
+    /// The account-code refusal of an app lock change or an unlock, read from
+    /// the typed error code or reason (never from the message). A refused
+    /// code prompt (`reauth_required`) is reported as `TimedOut`; the window
+    /// turns it into `Cancelled` when the user dismissed the sheet.
+    pub fn code_refusal(&self) -> Option<AppLockCodeRefusal> {
+        let Self::Daemon { code, reason_code, .. } = self else { return None };
+        let is = |name: &str| code == name || reason_code.as_deref() == Some(name);
+        if is("wrong_passphrase") {
+            Some(AppLockCodeRefusal::Wrong)
+        } else if is("UnlockRetryLater") || is("unlock_retry_later") {
+            Some(AppLockCodeRefusal::RetryLater)
+        } else if is("UnlockAttemptsExhausted") || is("unlock_attempts_exhausted") {
+            Some(AppLockCodeRefusal::Exhausted)
+        } else if is("reauth_required") {
+            Some(AppLockCodeRefusal::TimedOut)
+        } else {
+            None
         }
     }
 

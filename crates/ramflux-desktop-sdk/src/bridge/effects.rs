@@ -54,6 +54,17 @@ impl ReadsInFlight {
 
 impl Task {
     pub(super) fn effect(&mut self, effect: Effect) {
+        // The window's answer to the account code sheet never reaches the
+        // daemon as a call: the code goes straight to the prompt in flight.
+        let effect = match effect {
+            Effect::SecretCall { method, secrets, .. }
+                if method == ramflux_desktop_core::methods::APP_LOCK_CODE_ANSWER =>
+            {
+                self.answer_code(secrets);
+                return;
+            }
+            other => other,
+        };
         // Creation and recovery ceremonies run on a connection of their own
         // (the daemon ties a ceremony to its connection), never through the
         // multiplexed request connection.
@@ -129,6 +140,10 @@ impl Task {
         }
         let planned = plan(self.scope.account(), effect, &self.translator);
         let (method, body) = (planned.method.clone(), planned.body.clone());
+        if method == methods::APP_LOCK_CONFIGURE {
+            self.app_lock_code
+                .begin(body["account_id"].as_str().map(ramflux_desktop_core::AccountId::new));
+        }
         self.translator.decision_sent(&method, &body);
         if method == methods::GROUP_CREATE && matches!(planned.plan, Plan::Calls { .. }) {
             // Until the member adds finish, the group takes no messages. A
@@ -269,6 +284,15 @@ impl Task {
             Ok(answer) => {
                 let mut events = self.translator.effect_done(method, body, &answer, now());
                 events.push(DomainEvent::EffectSucceeded { method: method.to_owned() });
+                if method == ramflux_desktop_core::methods::APP_LOCK_CONFIGURE {
+                    self.app_lock_code.finish();
+                    if let Some(id) = body["account_id"].as_str() {
+                        events.push(DomainEvent::AppLockCodeSheet {
+                            account_id: ramflux_desktop_core::AccountId::new(id),
+                            open: false,
+                        });
+                    }
+                }
                 if matches!(
                     method,
                     ramflux_desktop_core::methods::APP_LOCK_STATE
@@ -300,6 +324,41 @@ impl Task {
                 self.spawn_fetches(vec![Fetch::AgentList]);
             }
             Err(error) => {
+                // A configure that ends closes its code sheet, whatever the reason.
+                if method == ramflux_desktop_core::methods::APP_LOCK_CONFIGURE {
+                    self.app_lock_code.finish();
+                    if let Some(id) = body["account_id"].as_str() {
+                        self.emit(vec![DomainEvent::AppLockCodeSheet {
+                            account_id: ramflux_desktop_core::AccountId::new(id),
+                            open: false,
+                        }]);
+                    }
+                }
+                // A refused account code is shown as its typed refusal, never as a failure text.
+                if let Some(refusal) = error.code_refusal().filter(|_| {
+                    matches!(
+                        method,
+                        ramflux_desktop_core::methods::APP_LOCK_CONFIGURE
+                            | ramflux_desktop_core::methods::ACCOUNT_UNLOCK
+                    )
+                }) && let Some(id) = body["account_id"].as_str()
+                {
+                    let account = ramflux_desktop_core::AccountId::new(id);
+                    let refusal = self.code_refusal(refusal);
+                    self.emit(vec![DomainEvent::AppLockCodeRefused {
+                        account_id: account.clone(),
+                        refusal,
+                    }]);
+                    if matches!(
+                        refusal,
+                        ramflux_desktop_core::AppLockCodeRefusal::RetryLater
+                            | ramflux_desktop_core::AppLockCodeRefusal::Exhausted
+                    ) {
+                        self.spawn_fetches(vec![Fetch::AppLock(account)]);
+                    }
+                    self.spawn_fetches(refresh);
+                    return;
+                }
                 // The app lock holds the account closed: the lock screen takes
                 // over, and the refusal is no failure to report.
                 if let BusError::Daemon { code: refusal, .. } = &error
@@ -598,6 +657,8 @@ impl Task {
             return None;
         }
         let client = self.client.clone();
+        // A configure may be answered with the account code, while it runs.
+        let code_arm = (method == methods::APP_LOCK_CONFIGURE).then(|| client.arm_code()).flatten();
         let job_link = self.job_link.clone();
         let internal = self.internal.clone();
         let retries: Vec<Duration> = self
@@ -608,6 +669,8 @@ impl Task {
             .map(|ms| Duration::from_millis(u64::from(*ms)))
             .collect();
         let task = tokio::spawn(async move {
+            // Disarmed when the configure ends, however it ends.
+            let _code_arm = code_arm;
             let (result, refresh) = match other {
                 // Taken only from the attended job connection.
                 Plan::Call { request, refresh }

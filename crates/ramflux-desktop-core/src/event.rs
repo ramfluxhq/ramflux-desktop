@@ -202,6 +202,21 @@ pub enum DomainEvent {
         /// The lock as the daemon reports it.
         lock: AppLock,
     },
+    /// The account code sheet of an app lock change opened (the daemon asked
+    /// for the code) or closed (the change ended, or the code was answered).
+    AppLockCodeSheet {
+        /// Account.
+        account_id: AccountId,
+        /// Whether the sheet is open.
+        open: bool,
+    },
+    /// The daemon refused the account code of an app lock change or unlock.
+    AppLockCodeRefused {
+        /// Account.
+        account_id: AccountId,
+        /// Why.
+        refusal: crate::model::AppLockCodeRefusal,
+    },
     /// The daemon answered a lifecycle report (the window went to the
     /// background or came to the front). Coming with the answer's
     /// [`DomainEvent::AppLockChanged`], it lets a window that holds its

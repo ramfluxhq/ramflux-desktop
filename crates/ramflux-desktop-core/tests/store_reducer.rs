@@ -270,6 +270,8 @@ fn only_an_app_lock_answer_names_the_account_in_app_locks() {
         reason: None,
         generation: 1,
         armed: false,
+        code_retry_after_ms: None,
+        code_attempts_exhausted: false,
     };
     feed.ok(
         5,

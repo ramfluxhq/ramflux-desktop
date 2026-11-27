@@ -12,11 +12,12 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use ramflux_desktop_core::AccountId;
+use ramflux_desktop_core::{AccountId, AppLockCodeRefusal, DomainEvent, SecretInput};
 use serde_json::Value;
 use tokio::time::Instant;
 
 use super::scope::Task;
+use crate::bus::attended::CodeRequest;
 use crate::translate::Scope;
 
 /// Added to the daemon's remaining time so the read lands after the lock.
@@ -30,6 +31,29 @@ const BACKOFF_CAP: Duration = Duration::from_secs(30);
 /// `base`, doubled for every refusal in a row, up to a cap.
 pub(super) fn stream_backoff(base: Duration, streak: u32) -> Duration {
     base.saturating_mul(1u32 << streak.min(5)).min(BACKOFF_CAP.max(base))
+}
+
+/// The account code of the app lock change in flight (in memory only).
+#[derive(Default)]
+pub(super) struct AppLockCode {
+    /// The account whose configure is in flight.
+    account: Option<AccountId>,
+    /// The daemon's prompt waiting for the window's answer.
+    reply: Option<std::sync::mpsc::SyncSender<SecretInput>>,
+    /// The window dismissed the sheet during the configure in flight.
+    cancelled: bool,
+}
+
+impl AppLockCode {
+    /// A configure of `account` starts: its code prompt, if any, is its own.
+    pub(super) fn begin(&mut self, account: Option<AccountId>) {
+        *self = Self { account, ..Self::default() };
+    }
+
+    /// The configure ended: a prompt still waiting is dropped (refused).
+    pub(super) fn finish(&mut self) {
+        *self = Self::default();
+    }
 }
 
 /// The next read of each account's app lock, if one is planned.
@@ -140,6 +164,40 @@ impl Task {
         }
         if self.scope != Scope::Daemon {
             self.refresh_daemon();
+        }
+    }
+
+    /// The daemon asks the window for the account code of the configure in
+    /// flight. The sheet opens; the prompt waits for the answer (the provider
+    /// refuses after its own bounded wait). With no configure in flight the
+    /// request is dropped, which refuses it.
+    pub(super) fn code_requested(&mut self, request: CodeRequest) {
+        let Some(account) = self.app_lock_code.account.clone() else { return };
+        self.app_lock_code.reply = Some(request.reply);
+        self.app_lock_code.cancelled = false;
+        self.emit(vec![DomainEvent::AppLockCodeSheet { account_id: account, open: true }]);
+    }
+
+    /// The window answers the sheet: a non-empty code goes to the prompt in
+    /// flight; an empty one dismisses it. The secret is dropped (zeroized)
+    /// here whether or not a prompt waits.
+    pub(super) fn answer_code(&mut self, secrets: Vec<SecretInput>) {
+        let secret = secrets.into_iter().next().unwrap_or_else(|| SecretInput::new(String::new()));
+        if secret.is_empty() {
+            self.app_lock_code.cancelled = true;
+        }
+        if let Some(reply) = self.app_lock_code.reply.take() {
+            let _ = reply.send(secret);
+        }
+    }
+
+    /// The refusal of an account code, as the window shows it. A refused
+    /// prompt is a cancellation when the window dismissed the sheet.
+    pub(super) fn code_refusal(&self, refusal: AppLockCodeRefusal) -> AppLockCodeRefusal {
+        if refusal == AppLockCodeRefusal::TimedOut && self.app_lock_code.cancelled {
+            AppLockCodeRefusal::Cancelled
+        } else {
+            refusal
         }
     }
 }
