@@ -26,6 +26,10 @@ Versioning.
   only for a live agent of the owner. `prx` is resolved once to an absolute
   path (relative search path entries, and folders or files others can write
   or another user owns, are refused) and the install confirmation shows it.
+- Agent cards: a host event that finds its card suspended is kept until the
+  card has resumed and is then sent on the resumed tree (a text draft is
+  rebased onto it; a tap only when the signed version is unchanged), instead
+  of being consumed by the resume.
 
 ### Added
 

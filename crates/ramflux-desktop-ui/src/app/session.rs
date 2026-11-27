@@ -48,6 +48,8 @@ pub struct CardMarks {
     busy: BTreeSet<SurfaceId>,
     /// Host events waiting for the call in flight on their card, in order.
     queued: std::collections::BTreeMap<SurfaceId, Vec<QueuedEvent>>,
+    /// Suspended cards whose resume was asked for waiting host events.
+    resuming: BTreeSet<SurfaceId>,
 }
 
 /// A host event on a card that waits behind the event call in flight on its
@@ -60,6 +62,10 @@ pub struct QueuedEvent {
     key: String,
     event: CardInput,
     seen: CardSeen,
+    /// The signed version of the tree the event was valid on when it found
+    /// its card suspended (the resume brings a fresh session, so the event
+    /// is rebased onto the resumed tree afterwards). `None`: not valid.
+    pre_resume: Option<u64>,
 }
 
 impl QueuedEvent {
@@ -72,6 +78,7 @@ impl QueuedEvent {
                 key: key.clone(),
                 event: event.clone(),
                 seen: seen.clone(),
+                pre_resume: None,
             }),
             _ => None,
         }
@@ -596,8 +603,12 @@ impl AccountSession {
     /// A host event on a card waits while another event call on that card is
     /// in flight (see [`QueuedEvent`]).
     pub fn dispatch(&mut self, intent: Intent) -> (DispatchOutcome, Vec<InspectorEntry>) {
-        if let Some(event) = QueuedEvent::of(&intent.kind) {
-            let holds = self.card_marks.borrow().holds(&event.surface_id);
+        if let Some(mut event) = QueuedEvent::of(&intent.kind) {
+            let suspended = self.card_suspended(&event.surface_id);
+            if suspended {
+                event.pre_resume = self.pre_resume_version(&event);
+            }
+            let holds = suspended || self.card_marks.borrow().holds(&event.surface_id);
             if holds {
                 self.card_marks.borrow_mut().enqueue(event);
                 // Sent now when no call is in flight on the card.
@@ -621,6 +632,32 @@ impl AccountSession {
                     .map(|(surface, _)| surface.clone())
             };
             let Some(surface) = ready else { break };
+            if self.card_suspended(&surface) {
+                // The resume consumes a tap, so the events wait for it and
+                // are sent on the resumed tree (see `rebase_after_resume`).
+                let Some(moment_id) = self.queued_moment(&surface) else {
+                    self.card_marks.borrow_mut().queued.remove(&surface);
+                    continue;
+                };
+                {
+                    let mut marks = self.card_marks.borrow_mut();
+                    marks.busy.insert(surface.clone());
+                    marks.resuming.insert(surface.clone());
+                }
+                let refresh = Intent::human(IntentKind::CardRefresh {
+                    moment_id,
+                    surface_id: surface.clone(),
+                });
+                let (outcome, recorded) = self.dispatch_now(refresh);
+                records.extend(recorded);
+                if !matches!(&outcome, DispatchOutcome::Submitted(labels) if !labels.is_empty()) {
+                    let mut marks = self.card_marks.borrow_mut();
+                    marks.busy.remove(&surface);
+                    marks.resuming.remove(&surface);
+                    marks.queued.remove(&surface);
+                }
+                continue;
+            }
             let mut next = {
                 let mut marks = self.card_marks.borrow_mut();
                 let Some(queue) = marks.queued.get_mut(&surface) else { break };
@@ -645,6 +682,65 @@ impl AccountSession {
             }
         }
         records
+    }
+
+    /// The held card of `surface` is suspended in the pool.
+    fn card_suspended(&self, surface: &SurfaceId) -> bool {
+        self.store
+            .card(surface)
+            .is_some_and(|r| r.tree.is_some() && !r.resumed(self.store.card_pool(), surface))
+    }
+
+    fn queued_moment(&self, surface: &SurfaceId) -> Option<MomentId> {
+        let marks = self.card_marks.borrow();
+        marks.queued.get(surface)?.first().map(|q| q.moment_id.clone())
+    }
+
+    /// The signed version an event is valid on in the held (suspended) tree:
+    /// its stamp names the held version, or a text draft of this desktop's
+    /// own chain that may be rebased.
+    fn pre_resume_version(&self, event: &QueuedEvent) -> Option<u64> {
+        let record = self.store.card(&event.surface_id)?;
+        let tree = record.tree.as_ref()?;
+        let valid = event.seen.stamp == tree.stamp()
+            || (event.is_input() && record.rebasable(&event.key, &event.seen));
+        valid.then(|| tree.signed_version())
+    }
+
+    /// Rebases the events that waited for a resume onto the resumed tree:
+    /// all of them when the signed version is unchanged, a text draft whose
+    /// node keeps its kind and input target otherwise (the whole value
+    /// replaces the draft); anything else is dropped, the user acts again
+    /// on the card as it is.
+    fn rebase_after_resume(&mut self, surface: &SurfaceId) {
+        let Some(tree) = self.store.card(surface).and_then(|r| r.tree.as_ref()) else {
+            self.card_marks.borrow_mut().queued.remove(surface);
+            return;
+        };
+        let stamp = tree.stamp();
+        let signed = tree.signed_version();
+        let mut marks = self.card_marks.borrow_mut();
+        let Some(queue) = marks.queued.get_mut(surface) else { return };
+        queue.retain_mut(|q| {
+            let same_signed = q.pre_resume == Some(signed);
+            let draft_ok = q.pre_resume.is_some()
+                && q.is_input()
+                && tree.node(&q.key).is_some_and(|n| {
+                    n.kind == q.seen.kind
+                        && n.attrs.get("input_pointer").and_then(serde_json::Value::as_str)
+                            == q.seen.input_pointer.as_deref()
+                });
+            if same_signed || draft_ok {
+                q.seen.stamp = stamp;
+                q.pre_resume = None;
+                true
+            } else {
+                false
+            }
+        });
+        if queue.is_empty() {
+            marks.queued.remove(surface);
+        }
     }
 
     fn dispatch_now(&mut self, intent: Intent) -> (DispatchOutcome, Vec<InspectorEntry>) {
@@ -810,6 +906,23 @@ impl AccountSession {
             }
         }
         let result = self.store.apply(env);
+        if let DomainEvent::Card(card) = &env.event {
+            let surface = card.surface_id();
+            if matches!(card, CardEvent::Resumed { .. })
+                && self.card_marks.borrow_mut().resuming.remove(surface)
+            {
+                self.rebase_after_resume(surface);
+                self.card_marks.borrow_mut().busy.remove(surface);
+            } else if matches!(
+                card,
+                CardEvent::Refused { .. }
+                    | CardEvent::Stale { .. }
+                    | CardEvent::Fallback { .. }
+                    | CardEvent::Disposed { .. }
+            ) {
+                self.card_marks.borrow_mut().resuming.remove(surface);
+            }
+        }
         if let DomainEvent::Card(card) = &env.event
             && matches!(card, CardEvent::Refused { .. } | CardEvent::Fallback { .. })
             && self.store.card(card.surface_id()).is_none()

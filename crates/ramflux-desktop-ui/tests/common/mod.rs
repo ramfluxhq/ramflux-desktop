@@ -286,7 +286,24 @@ pub fn effects(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<String> {
     bodies(cx, shell).into_iter().map(|(label, _)| label).collect()
 }
 
-/// Every effect the active source received, with its secret-free body.
+/// Card runtime calls that only keep a drawn card alive (open on render,
+/// update, present, suspend, resume, dispose). They carry no user intent, so
+/// "nothing was sent" assertions do not count them; `card.session.event`,
+/// `.slot` and `.submit` stay visible.
+fn is_card_lifecycle(label: &str) -> bool {
+    matches!(
+        label,
+        "card.session.open"
+            | "card.session.update"
+            | "card.session.present"
+            | "card.session.suspend"
+            | "card.session.resume"
+            | "card.session.dispose"
+    )
+}
+
+/// Every effect the active source received, with its secret-free body, except
+/// the card runtime's keep-alive calls (see [`is_card_lifecycle`]).
 pub fn bodies(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<(String, JsonValue)> {
     cx.update(|cx| {
         shell
@@ -294,7 +311,12 @@ pub fn bodies(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<(String, Js
             .store()
             .read(cx)
             .session()
-            .map(|s| s.effects().map(|(l, b)| (l.to_owned(), b.clone())).collect())
+            .map(|s| {
+                s.effects()
+                    .filter(|(l, _)| !is_card_lifecycle(l))
+                    .map(|(l, b)| (l.to_owned(), b.clone()))
+                    .collect()
+            })
             .unwrap_or_default()
     })
 }
