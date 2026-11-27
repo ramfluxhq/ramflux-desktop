@@ -673,14 +673,19 @@ impl Task {
             return None;
         }
         let client = self.client.clone();
-        // A configure may be answered with the account code, while it runs.
-        // A refused arm (another configure holds the gate) leaves the prompt refused.
+        // A configure holds the gate while it runs; only a weakening one may
+        // be answered with the account code. A refused arm (another configure
+        // holds the gate) leaves the prompt refused.
         let code_arm = (method == methods::APP_LOCK_CONFIGURE)
             .then(|| {
-                body["account_id"]
-                    .as_str()
-                    .map(ramflux_desktop_core::AccountId::new)
-                    .and_then(|account| client.arm_code(account).ok().flatten())
+                let account =
+                    body["account_id"].as_str().map(ramflux_desktop_core::AccountId::new)?;
+                let prompt = self.translator.app_lock_weakens(
+                    &account,
+                    body["enabled"].as_bool().unwrap_or(false),
+                    body["timeout_ms"].as_u64().unwrap_or(0),
+                );
+                client.arm_code(account, prompt).ok().flatten()
             })
             .flatten();
         let job_link = self.job_link.clone();
@@ -693,8 +698,11 @@ impl Task {
             .map(|ms| Duration::from_millis(u64::from(*ms)))
             .collect();
         let task = tokio::spawn(async move {
-            // Disarmed when the configure ends, however it ends.
-            let _code_arm = code_arm;
+            // Disarmed when the configure ends, however it ends: with its
+            // answer, once the bridge has handled it (so a configure that
+            // follows finds the gate free only after the record is reset),
+            // or with this future if it is aborted or never answered.
+            let code_arm = code_arm;
             let (result, refresh) = match other {
                 // Taken only from the attended job connection.
                 Plan::Call { request, refresh }
@@ -704,10 +712,7 @@ impl Task {
                 }
                 other => perform(&client, other, &retries).await,
             };
-            // Disarmed before the answer is handed back, so a configure that
-            // follows it finds the gate free.
-            drop(_code_arm);
-            let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
+            let _ = internal.send(Internal::EffectDone { method, body, result, refresh, code_arm });
         });
         Some(task.abort_handle())
     }

@@ -57,13 +57,24 @@ pub struct AccountInputs {
 const REFRESH_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Clears every masked and typed input of the account section (leaving the
-/// section, locking the account or switching accounts).
+/// section, locking the account or switching accounts), the account code
+/// included.
 pub(super) fn clear_inputs(inputs: &AccountInputs, window: &mut Window, cx: &mut App) {
     for input in
         [&inputs.current, &inputs.next, &inputs.backup, &inputs.username, &inputs.username_phrase]
     {
         input.update(cx, |input, cx| input.set_value("", window, cx));
     }
+    clear_code(&inputs.app_lock_code, window, cx);
+}
+
+/// Empties the account code input and masks it again (a code revealed once
+/// is not shown, or copyable, in the next sheet).
+pub(super) fn clear_code(code: &Entity<InputState>, window: &mut Window, cx: &mut App) {
+    code.update(cx, |input, cx| {
+        input.set_value("", window, cx);
+        input.set_masked(true, window, cx);
+    });
 }
 
 /// The account the section is about, and whether it is unlocked: the key of
@@ -703,8 +714,8 @@ fn code_sheet(
         .into_any_element()
 }
 
-/// Dismisses every open account code sheet when the window loses focus: the
-/// typed code is cleared and the prompt is refused.
+/// Dismisses every open account code sheet when the window loses focus (see
+/// [`refuse_app_lock_codes`]).
 pub(super) fn dismiss_app_lock_codes(
     store: &Entity<crate::app::StoreHandle>,
     root: &Entity<crate::root::IntentRoot>,
@@ -715,11 +726,24 @@ pub(super) fn dismiss_app_lock_codes(
     if window.is_window_active() {
         return;
     }
-    let accounts: Vec<AccountId> = store.read(cx).store().app_lock_sheets().cloned().collect();
-    if accounts.is_empty() {
-        return;
-    }
-    code.update(cx, |input, cx| input.set_value("", window, cx));
+    refuse_app_lock_codes(store, root, code, window, cx);
+}
+
+/// Dismisses every open account code sheet now (the window lost focus, the
+/// settings overlay closed, the lock or cover rose, or the account changed):
+/// the typed code is cleared and every prompt is refused, so nothing typed
+/// can be answered later from a sheet shown again.
+pub(super) fn refuse_app_lock_codes(
+    store: &Entity<crate::app::StoreHandle>,
+    root: &Entity<crate::root::IntentRoot>,
+    code: &Entity<InputState>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    clear_code(code, window, cx);
+    // The sheets live in the daemon session's store, where the configure runs.
+    let accounts: Vec<AccountId> =
+        store.read(cx).entry_store().app_lock_sheets().cloned().collect();
     for account_id in accounts {
         root.update(cx, |root, cx| {
             root.submit_secret(

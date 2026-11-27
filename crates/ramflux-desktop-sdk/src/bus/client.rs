@@ -173,10 +173,15 @@ impl BusClient {
     }
 
     /// Arms the attended account code for one configure of `account`; the
-    /// daemon's code prompt is answered only while the guard lives. `Ok(None)`
-    /// when this connection has no gate. Refused while another configure holds it.
-    pub(crate) fn arm_code(&self, account: AccountId) -> Result<Option<ArmGuard>, CodeBusy> {
-        self.inner.gate.as_ref().map(|gate| gate.arm(account)).transpose()
+    /// daemon's code prompt is answered only while the guard lives, and only
+    /// when `prompt` (the configure weakens the lock). `Ok(None)` when this
+    /// connection has no gate. Refused while another configure holds it.
+    pub(crate) fn arm_code(
+        &self,
+        account: AccountId,
+        prompt: bool,
+    ) -> Result<Option<ArmGuard>, CodeBusy> {
+        self.inner.gate.as_ref().map(|gate| gate.arm(account, prompt)).transpose()
     }
 
     /// Whether a configure holds the attended gate (see [`Self::arm_code`]).

@@ -6,9 +6,9 @@
 //! Turning the app lock off, or choosing a longer timeout, makes the daemon
 //! ask for the account code on the same request connection. The code comes
 //! from the window through [`CodeRequest`]: it is never a frame field, and it
-//! is zeroized on every path. Only the configure this client is running (the
-//! armed account of an [`ArmGuard`]) can be answered; any other prompt is
-//! refused.
+//! is zeroized on every path. Only a weakening configure this client is
+//! running (an [`ArmGuard`] armed with `prompt` for its account) can be
+//! answered; any other prompt is refused.
 
 use std::sync::Arc;
 
@@ -35,10 +35,20 @@ pub(crate) struct CodeRequest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CodeBusy;
 
+/// The configure that holds the gate.
+struct Armed {
+    /// The account the configure changes.
+    account: AccountId,
+    /// Whether the configure weakens the stored lock, so the daemon may ask
+    /// for the account code. A strengthening one holds the gate (one
+    /// configure at a time) but has every prompt refused.
+    prompt: bool,
+}
+
 /// The attended provider of one scope's request connection.
 pub(crate) struct CodeGate {
-    /// The account whose configure is running (one at a time).
-    armed: Mutex<Option<AccountId>>,
+    /// The configure that is running (one at a time).
+    armed: Mutex<Option<Armed>>,
     requests: mpsc::UnboundedSender<CodeRequest>,
 }
 
@@ -51,14 +61,20 @@ impl CodeGate {
         Arc::new(Self { armed: Mutex::new(None), requests })
     }
 
-    /// Arms the gate for `account` until the returned guard is dropped.
-    /// Refused with [`CodeBusy`] while another configure holds the gate.
-    pub(crate) fn arm(self: &Arc<Self>, account: AccountId) -> Result<ArmGuard, CodeBusy> {
+    /// Arms the gate for one configure of `account` until the returned guard
+    /// is dropped; its code prompt is answered only when `prompt` (the
+    /// configure weakens the lock). Refused with [`CodeBusy`] while another
+    /// configure holds the gate.
+    pub(crate) fn arm(
+        self: &Arc<Self>,
+        account: AccountId,
+        prompt: bool,
+    ) -> Result<ArmGuard, CodeBusy> {
         let mut slot = self.armed.lock();
         if slot.is_some() {
             return Err(CodeBusy);
         }
-        *slot = Some(account);
+        *slot = Some(Armed { account, prompt });
         Ok(ArmGuard(Arc::clone(self)))
     }
 
@@ -78,11 +94,9 @@ impl Drop for ArmGuard {
 impl LocalCredentialProvider for CodeGate {
     fn provide(&self, request: &CredentialRequest) -> Result<CredentialOutcome, SdkError> {
         // Only the code of a weakening, for the account this client is weakening.
-        let for_armed_account = self
-            .armed
-            .lock()
-            .as_ref()
-            .is_some_and(|armed| armed.as_str() == request.local_account_id);
+        let for_armed_account = self.armed.lock().as_ref().is_some_and(|armed| {
+            armed.prompt && armed.account.as_str() == request.local_account_id
+        });
         if request.action != "unlock" || !for_armed_account {
             return Ok(CredentialOutcome::Refused);
         }

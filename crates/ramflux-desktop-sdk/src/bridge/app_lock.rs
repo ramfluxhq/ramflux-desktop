@@ -57,6 +57,19 @@ impl AppLockCode {
     pub(super) fn finish(&mut self) {
         *self = Self::default();
     }
+
+    /// The lock of `account` closed while its configure runs: a prompt still
+    /// waiting is refused as a cancellation and the sheet closes, so the code
+    /// is never typed into, or answered from, a window under the lock.
+    pub(super) fn dismiss(&mut self, account: &AccountId) -> Option<DomainEvent> {
+        if self.account.as_ref() != Some(account) {
+            return None;
+        }
+        self.cancelled = true;
+        self.reply
+            .take()
+            .map(|_| DomainEvent::AppLockCodeSheet { account_id: account.clone(), open: false })
+    }
 }
 
 /// The next read of each account's app lock, if one is planned.
@@ -145,7 +158,8 @@ impl Task {
         }
         let account = AccountId::new(named);
         if body["state"].as_str() == Some("locked") {
-            let closed = self.translator.app_locked(&account);
+            let mut closed = self.translator.app_locked(&account);
+            closed.extend(self.app_lock_code.dismiss(&account));
             self.emit(closed);
         } else if self.sync.task.is_none() && self.sync.open_at.is_some() {
             // Opened again: the stream the lock refused is tried at once.
