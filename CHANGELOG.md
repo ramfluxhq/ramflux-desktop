@@ -7,6 +7,10 @@ Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- Core pinned to `a897c417` (core `next`, #649). The core brings the typed app-lock code refusals (APP-LOCK-REAUTH-02, `2a8b6899`), the account-code prompt for `account.app_lock.configure` on the local bus (APP-LOCK-REAUTH-03, #649), the agent management rows (`e42182d7`) and the username witness registry (`859b5fd3`). The desktop does not use the agent or witness rows yet.
+
 ### Added
 
 - `deny.toml` for `cargo deny`: advisories, bans, licences and sources policy modelled on the core, with the workspace AGPL-3.0-or-later licence allowed and the local SQLCipher exceptions of the core. Advisories outside this change are not yet ignored.
