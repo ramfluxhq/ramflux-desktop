@@ -295,11 +295,7 @@ fn job_of(value: &Value) -> Option<AgentJob> {
         return None;
     }
     let creator = strip_format(&text_of(value, &["creatorAgent", "creator_agent"]));
-    Some(AgentJob {
-        id: strip_format(&id),
-        kind,
-        creator_agent: Some(creator).filter(|creator| !creator.is_empty()),
-    })
+    Some(AgentJob { id, kind, creator_agent: Some(creator).filter(|creator| !creator.is_empty()) })
 }
 
 fn approval_of(value: &Value) -> Option<AgentApproval> {

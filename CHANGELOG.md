@@ -47,6 +47,7 @@ Versioning.
 
 ### Security
 
+- G10b audit round 2: a card image read always sends `object.get.finish` after a successful `object.get.begin` (also on an error or a cancelled task), so the daemon's plaintext spool never stays open; removing an account erases its pins, stream cursors, name changes and agent creations from the desktop settings file; the install confirmation is disabled when no `prx` file was found and the host refuses an install that names none; removing a locked account is sent only when the lock page's account is the dialog's. Smaller: job ids are not format-stripped, a failed card image write removes its `.part` file, and a card the runtime would not open is retried three times, then only on interaction.
 - Agent cards (G10 review round 2 and security audit): a tap is rebased onto
   the desktop's own replies only when the signed version and the pressed
   node's drawn content (attributes, label, action) are exactly what the user

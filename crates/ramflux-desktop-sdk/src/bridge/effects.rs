@@ -680,10 +680,31 @@ impl Task {
     /// recorded first (so the account list the translator keeps agrees with
     /// the ceremony's end), then the ceremony's events.
     /// The daemon removed `id` from this device: its read plan ends and the
-    /// desktop's private media folder for it is erased (best effort, off
-    /// the bridge task).
+    /// desktop's private media folder and its entries in the settings file
+    /// (pins, stream cursors, name changes, agent creations) are erased
+    /// (best effort, off the bridge task).
     fn account_removed(&mut self, id: &str) {
-        self.app_lock_watch.forget(&ramflux_desktop_core::AccountId::new(id));
+        let account = ramflux_desktop_core::AccountId::new(id);
+        self.app_lock_watch.forget(&account);
+        if let Some(path) = self.config.settings_path.clone() {
+            tokio::task::spawn_blocking(move || {
+                let dropped = crate::local::settings_file::update(&path, |settings| {
+                    settings.pinned.remove(&account);
+                    settings.agent_creations.remove(&account);
+                    for cursors in settings.stream_cursors.values_mut() {
+                        cursors.remove(&account);
+                    }
+                    for names in settings.name_changes.values_mut() {
+                        names.remove(&account);
+                    }
+                    settings.stream_cursors.retain(|_, cursors| !cursors.is_empty());
+                    settings.name_changes.retain(|_, names| !names.is_empty());
+                });
+                if dropped.is_err() {
+                    crate::local::app_log::warn("settings of a removed account not erased");
+                }
+            });
+        }
         if let Some(folder) = super::media::media_folder(&self.config, id) {
             tokio::task::spawn_blocking(move || {
                 if let Err(error) = std::fs::remove_dir_all(&folder)

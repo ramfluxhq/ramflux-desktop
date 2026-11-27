@@ -112,6 +112,9 @@ impl ConfirmStrip {
     }
 
     fn confirm(&mut self, cx: &mut Context<Self>) {
+        if self.request.as_ref().is_some_and(|request| !request.is_confirmable()) {
+            return;
+        }
         if self.request.take().is_some() {
             cx.emit(ConfirmEvent::Confirmed);
             cx.notify();
@@ -148,6 +151,7 @@ impl Render for ConfirmStrip {
         let risk = i18n::risk(request.risk());
         let announce =
             tr_args("confirm.announce", &[("summary", request.summary()), ("risk", &risk)]);
+        let confirmable = request.is_confirmable();
         let focused = self.focus_handle.is_focused(window);
         let cancel_focused = self.cancel_focus.is_focused(window);
         let cancel_label = tr("common.cancel");
@@ -251,7 +255,8 @@ impl Render for ConfirmStrip {
                     .bg(accent.opacity(0.15))
                     .text_size(text_secondary())
                     .text_color(cx.theme().foreground)
-                    .cursor_pointer()
+                    .when(!confirmable, |control| control.opacity(0.4))
+                    .when(confirmable, |control| control.cursor_pointer())
                     .when(focused, |control| control.focus_ring_style(window, cx))
                     .child(confirm_label)
                     // A click, or Enter or Space pressed fresh and released

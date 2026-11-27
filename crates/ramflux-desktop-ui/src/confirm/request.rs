@@ -22,16 +22,18 @@ pub struct ConfirmRequest {
     /// The `prx` file an install confirmation names (resolved once, for the
     /// sheet and for the intent that follows it).
     runtime_path: Option<String>,
+    /// An install with no `prx` file found has nothing to confirm.
+    confirmable: bool,
 }
 
 impl ConfirmRequest {
     /// Describes `intent` for the strip.
     pub fn describe(store: &Store, intent: &Intent) -> Self {
-        let prx = matches!(
+        let install = matches!(
             &intent.kind,
             IntentKind::AgentRuntime { action: AgentRuntimeAction::Install, .. }
-        )
-        .then(ramflux_desktop_sdk::prx_host::resolved_prx);
+        );
+        let prx = install.then(ramflux_desktop_sdk::prx_host::resolved_prx);
         let runtime_path = prx
             .as_ref()
             .and_then(|found| found.as_ref().ok())
@@ -41,7 +43,14 @@ impl ConfirmRequest {
             Actor::Human => None,
             Actor::Agent(id) | Actor::Member(id) => Some(display_name(store, id).into()),
         };
-        Self { summary, detail, risk, proposed_by, runtime_path }
+        let confirmable = !install || runtime_path.is_some();
+        Self { summary, detail, risk, proposed_by, runtime_path, confirmable }
+    }
+
+    /// Whether Confirm may act: an install is confirmed for a `prx` file the
+    /// sheet names, so it needs one.
+    pub fn is_confirmable(&self) -> bool {
+        self.confirmable
     }
 
     /// The `prx` file the sheet names, for an install.
