@@ -298,6 +298,9 @@ pub enum IntentError {
     /// The account answering is not the owner of the agent the approval names.
     #[error("agent approval {0} belongs to another account")]
     AgentApprovalOwner(String),
+    /// The account named as the owner is not the active account.
+    #[error("the owner is not the active account")]
+    AgentOwnerNotActive,
     /// The agent is retired (state X): it is read only.
     #[error("agent {0} is retired")]
     AgentRecordRetired(String),

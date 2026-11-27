@@ -499,9 +499,11 @@ impl Translator {
                 Translated::events(events)
             }
             Fetch::AgentList | Fetch::AgentListPage(_) => agents::list_page(fetch, value),
-            Fetch::AgentApprovals | Fetch::AgentJobs(_) | Fetch::AgentOperation(_) => {
-                Translated::events(agents::read_events(fetch, value))
-            }
+            Fetch::AgentApprovals
+            | Fetch::AgentJobs(_)
+            | Fetch::AgentOperation(_)
+            | Fetch::AgentCatalog
+            | Fetch::AgentGet(_) => Translated::events(agents::read_events(fetch, value)),
             Fetch::Messages(context) | Fetch::MessagesBefore(context, _) => {
                 self.messages(context, fetch, value, now)
             }

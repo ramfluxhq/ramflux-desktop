@@ -42,6 +42,9 @@ pub enum Effect {
         key: Option<SecretInput>,
         /// The number of this submission (see `AgentHostStatus::nonce`).
         nonce: u64,
+        /// The `prx` file the owner confirmed (an install); a later
+        /// resolution that differs is refused.
+        confirmed_path: Option<String>,
     },
     /// Policy requires explicit human confirmation before the intent may proceed.
     /// The app shows a confirm strip and resubmits the intent with

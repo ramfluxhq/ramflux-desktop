@@ -85,14 +85,11 @@ pub struct ReadPlan {
 
 /// The named-agent features still missing from core or PRX (every typed
 /// unavailable reason except the one that is never offered on a phone).
-const AGENT_GAPS: [AgentUnavailable; 12] = [
+const AGENT_GAPS: [AgentUnavailable; 9] = [
     AgentUnavailable::SubAgent,
     AgentUnavailable::Skills,
-    AgentUnavailable::ConfigEdit,
     AgentUnavailable::AutonomyHonoured,
-    AgentUnavailable::Catalog,
     AgentUnavailable::PerToolApproval,
-    AgentUnavailable::AgentPause,
     AgentUnavailable::HostBinding,
     AgentUnavailable::AvatarUpload,
     AgentUnavailable::PerAgentKey,

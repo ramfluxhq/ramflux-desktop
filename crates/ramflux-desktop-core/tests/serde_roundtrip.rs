@@ -81,13 +81,15 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentRecordUpdated(_) => "AgentRecordUpdated",
         DomainEvent::AgentRosterStateChanged(_) => "AgentRosterStateChanged",
         DomainEvent::AgentCreationUpdated(_) => "AgentCreationUpdated",
+        DomainEvent::AgentCatalogLoaded(_) => "AgentCatalogLoaded",
+        DomainEvent::AgentSettingsChanged { .. } => "AgentSettingsChanged",
         DomainEvent::AgentHostUpdated(_) => "AgentHostUpdated",
         DomainEvent::AgentCursorReset => "AgentCursorReset",
         DomainEvent::AgentJobsUpdated { .. } => "AgentJobsUpdated",
         DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 64;
+const DOMAIN_EVENT_VARIANTS: usize = 66;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -205,6 +207,10 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::AgentJob { .. } => "AgentJob",
         IntentKind::AgentJobsRefresh { .. } => "AgentJobsRefresh",
         IntentKind::AgentWatchRefresh => "AgentWatchRefresh",
+        IntentKind::AgentCatalogRefresh => "AgentCatalogRefresh",
+        IntentKind::AgentRead { .. } => "AgentRead",
+        IntentKind::AgentUpdate { .. } => "AgentUpdate",
+        IntentKind::AgentSwitch { .. } => "AgentSwitch",
         IntentKind::AgentApprovalDecide { .. } => "AgentApprovalDecide",
         IntentKind::AgentRuntime { .. } => "AgentRuntime",
         IntentKind::BeginRecovery { .. } => "BeginRecovery",
@@ -222,7 +228,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the nine secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 94;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 98;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -670,6 +676,22 @@ fn all_domain_events() -> Vec<DomainEvent> {
         DomainEvent::AgentRosterStateChanged(AgentRosterState::Offline),
         DomainEvent::AgentCursorReset,
         DomainEvent::AgentCreationUpdated(sample_creation()),
+        DomainEvent::AgentCatalogLoaded(AgentCatalog {
+            prx_version: "1.0".into(),
+            revision: "c-1".into(),
+            models: vec![CatalogModel {
+                provider: "anthropic".into(),
+                model: "model-x".into(),
+                credentials_ready: true,
+            }],
+            tools: vec![CatalogTool { name: "file_read".into(), read_only: true }],
+            default_autonomy: "full".into(),
+            reserved_names: vec!["main".into()],
+        }),
+        DomainEvent::AgentSettingsChanged {
+            agent_anchor: "agent-anchor".into(),
+            settings: AgentSettings::default(),
+        },
         DomainEvent::AgentHostUpdated(AgentHostStatus {
             state: AgentHostState::Running,
             prx_version: Some("0.1.0".into()),
@@ -862,6 +884,17 @@ fn sample_agent() -> AgentRecord {
         role: "named".into(),
         base: serde_json::json!({"id": "base-1"}),
         runtime_name: "a_name".into(),
+        settings: Some(AgentSettings {
+            provider: "anthropic".into(),
+            model: "model-x".into(),
+            autonomy: "full".into(),
+            prompt: None,
+            tools: vec!["*".into()],
+            enabled: true,
+            max_concurrent_turns: Some(2),
+            max_cost_per_day_cents: None,
+            revision: Some("r-1".into()),
+        }),
     }
 }
 
@@ -1050,6 +1083,31 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::AgentOperationRefresh { request_id: "req-1".into() },
         IntentKind::AgentJobsRefresh { agent: "agent-anchor".into() },
         IntentKind::AgentWatchRefresh,
+        IntentKind::AgentCatalogRefresh,
+        IntentKind::AgentRead { agent: "agent-anchor".into() },
+        IntentKind::AgentUpdate {
+            owner_id: AccountId::new("a-1"),
+            agent: "agent-anchor".into(),
+            revision: Some("r-1".into()),
+            change: AgentChange {
+                provider: Some("anthropic".into()),
+                model: Some("model-x".into()),
+                autonomy: Some("supervised".into()),
+                prompt: PromptChange::Reset,
+                tools: Some(vec!["file_read".into()]),
+                limits: LimitsChange::Set {
+                    max_concurrent_turns: Some(2),
+                    max_cost_per_day_cents: None,
+                },
+            },
+            confirm_high_risk: false,
+        },
+        IntentKind::AgentSwitch {
+            owner_id: AccountId::new("a-1"),
+            agent: "agent-anchor".into(),
+            revision: Some("r-1".into()),
+            enabled: false,
+        },
         IntentKind::AgentPersonaEdit { agent: "agent-anchor".into(), persona: sample_persona() },
         IntentKind::AgentAccessSet {
             agent: "agent-anchor".into(),
@@ -1057,6 +1115,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         },
         IntentKind::AgentDelete { agent: "agent-anchor".into() },
         IntentKind::AgentJob {
+            owner_id: AccountId::new("a-1"),
             agent: "agent-anchor".into(),
             kind: AgentJobKind::XinTask,
             id: "job-1".into(),
@@ -1073,6 +1132,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             model: "model-x".into(),
             key: Some(SecretInput::new("sk-test")),
             nonce: 1,
+            confirmed_path: Some("/usr/local/bin/prx".into()),
         },
         IntentKind::BeginRecovery { account_id: AccountId::new("a-1") },
         IntentKind::RemoveLocalAccount { account: AccountId::new("a-1") },

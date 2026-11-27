@@ -557,9 +557,10 @@ async fn perform(
         Plan::Calls { requests, refresh } => (in_order(client, requests).await, refresh),
         Plan::Verify { lookup, refresh } => (verify(client, lookup).await, refresh),
         Plan::CardImage(job) => (super::card_image::load(client, &job).await, Vec::new()),
-        Plan::PrxHost { action, provider, model, key } => {
-            (crate::prx_host::run(action, &provider, &model, key).await, Vec::new())
-        }
+        Plan::PrxHost { action, provider, model, key, confirmed_path } => (
+            crate::prx_host::run(action, &provider, &model, key, confirmed_path.as_deref()).await,
+            Vec::new(),
+        ),
         Plan::Diagnostics { path } => (write_diagnostics(client, &path).await, Vec::new()),
         Plan::Username(job) => (super::username::claim(client, *job).await, Vec::new()),
         Plan::Local | Plan::Refuse { .. } | Plan::Media(_) => (Ok(Value::Null), Vec::new()),

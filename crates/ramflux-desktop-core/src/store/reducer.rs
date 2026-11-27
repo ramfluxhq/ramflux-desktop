@@ -401,6 +401,20 @@ impl Store {
                     changes.agents = true;
                 }
             }
+            DomainEvent::AgentCatalogLoaded(catalog) => {
+                if self.agent_catalog.as_ref() != Some(catalog) {
+                    self.agent_catalog = Some(catalog.clone());
+                    changes.agents = true;
+                }
+            }
+            DomainEvent::AgentSettingsChanged { agent_anchor, settings } => {
+                if let Some(record) = self.agents.get_mut(agent_anchor)
+                    && record.settings.as_ref() != Some(settings)
+                {
+                    record.settings = Some(settings.clone());
+                    changes.agents = true;
+                }
+            }
             DomainEvent::AgentHostUpdated(status) => {
                 // A refused action reports no state of its own: the runtime
                 // stays as it was last seen, with the refusal and the number.

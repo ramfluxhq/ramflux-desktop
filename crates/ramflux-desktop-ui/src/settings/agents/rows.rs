@@ -233,9 +233,6 @@ impl AgentsPanel {
         v_flex()
             .gap(space(2.))
             .child(row)
-            .children(active.then(|| {
-                unavailable_line("agent-pause-unavailable", AgentUnavailable::AgentPause, cx)
-            }))
             .children(open.then(|| self.form_view(agent, cx)))
             .into_any_element()
     }
@@ -247,8 +244,10 @@ impl AgentsPanel {
             let anchor = anchor.clone();
             (part, key, anchor)
         };
-        let [edit, access, jobs, remove] = [
+        let [edit, settings, pause, access, jobs, remove] = [
             button("edit", "agents.row.edit"),
+            button("settings", "agents.row.settings"),
+            button("pause", "agents.row.pause"),
             button("access", "agents.row.access_button"),
             button("jobs", "agents.row.jobs"),
             button("remove", "agents.row.remove"),
@@ -263,6 +262,28 @@ impl AgentsPanel {
                     .on_click(cx.listener(move |this, _, window, cx| {
                         if let Some(agent) = this.state(cx).agent(&edit.2).cloned() {
                             this.open_edit(&agent, window, cx);
+                        }
+                    })),
+            )
+            .child(
+                Button::new(ElementId::from(format!("agent-{}-{}", settings.0, settings.2)))
+                    .small()
+                    .design_secondary(cx)
+                    .design_label(tr(settings.1))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if let Some(agent) = this.state(cx).agent(&settings.2).cloned() {
+                            this.open_settings(&agent, window, cx);
+                        }
+                    })),
+            )
+            .child(
+                Button::new(ElementId::from(format!("agent-{}-{}", pause.0, pause.2)))
+                    .small()
+                    .design_secondary(cx)
+                    .design_label(super::config::pause_label(agent))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if let Some(agent) = this.state(cx).agent(&pause.2).cloned() {
+                            this.toggle_pause(&agent, window, cx);
                         }
                     })),
             )
@@ -404,7 +425,9 @@ impl AgentsPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let Some(owner_id) = self.owner(cx) else { return };
         let kind = IntentKind::AgentJob {
+            owner_id,
             agent: agent.to_owned(),
             kind: job.kind,
             id: job.id.clone(),
@@ -475,6 +498,7 @@ impl AgentsPanel {
                     )
                     .into_any_element()
             }
+            Some(Form::Settings { .. }) => self.settings_form(cx),
             Some(Form::Jobs { .. }) => {
                 let jobs = self.state(cx).agent_jobs(&anchor).to_vec();
                 v_flex()
@@ -504,7 +528,7 @@ impl AgentsPanel {
             .into_any_element()
     }
 
-    fn close_button(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn close_button(&mut self, cx: &mut Context<Self>) -> AnyElement {
         Button::new("agent-form-close")
             .small()
             .design_secondary(cx)
@@ -622,7 +646,10 @@ impl Form {
     /// The agent whose row the form sits under.
     fn agent(&self) -> &str {
         match self {
-            Self::Edit { agent, .. } | Self::Access { agent, .. } | Self::Jobs { agent } => agent,
+            Self::Edit { agent, .. }
+            | Self::Access { agent, .. }
+            | Self::Jobs { agent }
+            | Self::Settings { agent, .. } => agent,
         }
     }
 }

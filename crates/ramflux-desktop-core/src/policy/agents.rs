@@ -17,8 +17,8 @@ use super::{Decision, IntentError, Policy};
 use crate::ids::AccountId;
 use crate::intent::{Effect, IntentKind, methods};
 use crate::model::{
-    AgentCreateRequest, AgentCustodyProblem, AgentJobAction, AgentLifecycle, AgentPersona,
-    AgentRecord, AgentRuntimeAction,
+    AgentChange, AgentCreateRequest, AgentCustodyProblem, AgentJobAction, AgentLifecycle,
+    AgentPersona, AgentRecord, AgentRuntimeAction,
 };
 use crate::store::Store;
 
@@ -47,6 +47,16 @@ pub fn check_agent_custodian(store: &Store, owner: &AccountId) -> Result<(), Age
         return Err(AgentCustodyProblem::NotConnected);
     }
     Ok(())
+}
+
+/// The owner a decision names is the active account: the one this store
+/// belongs to. A store that was not given an account (a scenario) cannot say,
+/// and the other checks stand alone.
+fn check_active_owner(store: &Store, owner: &AccountId) -> Result<(), IntentError> {
+    match store.bound_account() {
+        Some(active) if active != owner => Err(IntentError::AgentOwnerNotActive),
+        _ => Ok(()),
+    }
 }
 
 /// Decides agent kinds; `None` for kinds of other areas.
@@ -92,22 +102,28 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             let body = json!({ "agent_anchor": record.agent_anchor });
             Ok(confirmed(p, methods::AGENT_DELETE, body))
         }),
-        IntentKind::AgentJob { agent, kind, id, action } => p.human_only(WHAT).and_then(|()| {
-            live_record(p.store, agent)?;
-            if id.trim().is_empty() {
-                return Err(IntentError::Empty("job id"));
-            }
-            let method = match action {
-                AgentJobAction::Pause => methods::AGENT_JOB_PAUSE,
-                AgentJobAction::Resume => methods::AGENT_JOB_RESUME,
-                AgentJobAction::Remove => methods::AGENT_JOB_REMOVE,
-            };
-            let body = json!({ "agent_anchor": agent, "kind": kind.code(), "id": id });
-            if *action == AgentJobAction::Remove {
-                return Ok(confirmed(p, method, body));
-            }
-            Ok(Decision::Call(method, body))
-        }),
+        IntentKind::AgentJob { owner_id, agent, kind, id, action } => {
+            p.human_only(WHAT).and_then(|()| {
+                check_active_owner(p.store, owner_id)?;
+                let record = live_record(p.store, agent)?;
+                if record.custodian_anchor != owner_id.as_str() {
+                    return Err(IntentError::AgentApprovalOwner(agent.clone()));
+                }
+                if id.trim().is_empty() {
+                    return Err(IntentError::Empty("job id"));
+                }
+                let method = match action {
+                    AgentJobAction::Pause => methods::AGENT_JOB_PAUSE,
+                    AgentJobAction::Resume => methods::AGENT_JOB_RESUME,
+                    AgentJobAction::Remove => methods::AGENT_JOB_REMOVE,
+                };
+                let body = json!({ "agent_anchor": agent, "kind": kind.code(), "id": id });
+                if *action == AgentJobAction::Remove {
+                    return Ok(confirmed(p, method, body));
+                }
+                Ok(Decision::Call(method, body))
+            })
+        }
         IntentKind::AgentJobsRefresh { agent } => p.human_only(WHAT).and_then(|()| {
             if agent.trim().is_empty() {
                 return Err(IntentError::Empty("agent anchor"));
@@ -120,6 +136,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 if approval_id.trim().is_empty() {
                     return Err(IntentError::Empty("approval id"));
                 }
+                check_active_owner(p.store, owner_id)?;
                 check_agent_custodian(p.store, owner_id).map_err(IntentError::AgentCustody)?;
                 let approval = p
                     .store
@@ -145,8 +162,33 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
-        IntentKind::AgentRuntime { action, provider, model, key, nonce } => {
-            runtime(p, *action, provider, model, key.is_some(), *nonce)
+        IntentKind::AgentRuntime { action, provider, model, key, nonce, confirmed_path } => {
+            runtime(p, *action, (provider, model), key.is_some(), *nonce, confirmed_path.as_deref())
+        }
+        IntentKind::AgentCatalogRefresh => {
+            p.human_only(WHAT).map(|()| Decision::Call(methods::AGENT_CATALOG, json!({})))
+        }
+        IntentKind::AgentRead { agent } => p.human_only(WHAT).and_then(|()| {
+            live_record(p.store, agent)?;
+            Ok(Decision::Call(methods::AGENT_GET, json!({ "agent_anchor": agent })))
+        }),
+        IntentKind::AgentUpdate { owner_id, agent, revision, change, confirm_high_risk } => {
+            p.human_only(WHAT).and_then(|()| {
+                owned_live_record(p.store, owner_id, agent)?;
+                let body = update_body(agent, revision.as_deref(), change, *confirm_high_risk)?;
+                Ok(Decision::Call(methods::AGENT_UPDATE, body))
+            })
+        }
+        IntentKind::AgentSwitch { owner_id, agent, revision, enabled } => {
+            p.human_only(WHAT).and_then(|()| {
+                owned_live_record(p.store, owner_id, agent)?;
+                let mut body = json!({ "agent_anchor": agent });
+                if let Some(revision) = revision.as_deref().filter(|r| !r.is_empty()) {
+                    body["revision"] = json!(revision);
+                }
+                let method = if *enabled { methods::AGENT_RESUME } else { methods::AGENT_PAUSE };
+                Ok(Decision::Call(method, body))
+            })
         }
         IntentKind::AgentWatchRefresh => p.human_only(WHAT).and_then(|()| {
             let cursor = p.store.agent_cursor().ok_or(IntentError::Empty("journal cursor"))?;
@@ -161,10 +203,10 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
 fn runtime(
     p: &Policy<'_>,
     action: AgentRuntimeAction,
-    provider: &str,
-    model: &str,
+    (provider, model): (&str, &str),
     has_key: bool,
     nonce: u64,
+    confirmed_path: Option<&str>,
 ) -> Result<Decision, IntentError> {
     p.human_only(WHAT)?;
     check_runtime(action, provider, model, has_key)?;
@@ -177,6 +219,9 @@ fn runtime(
         model: model.trim().to_owned(),
         key: None,
         nonce,
+        // Only what the owner confirmed is carried: a path nobody confirmed
+        // is not one to compare with.
+        confirmed_path: confirmed_path.filter(|_| p.human_confirmed).map(str::to_owned),
     }))
 }
 
@@ -205,6 +250,80 @@ fn live_record<'a>(store: &'a Store, agent: &str) -> Result<&'a AgentRecord, Int
     let owner = AccountId::new(record.custodian_anchor.as_str());
     check_agent_custodian(store, &owner).map_err(IntentError::AgentCustody)?;
     Ok(record)
+}
+
+/// The agent's record, when the active account owns it and may change it.
+fn owned_live_record<'a>(
+    store: &'a Store,
+    owner: &AccountId,
+    agent: &str,
+) -> Result<&'a AgentRecord, IntentError> {
+    check_active_owner(store, owner)?;
+    let record = live_record(store, agent)?;
+    if record.custodian_anchor != owner.as_str() {
+        return Err(IntentError::AgentApprovalOwner(agent.to_owned()));
+    }
+    Ok(record)
+}
+
+/// The `agent.update` body: closed, every field optional, only what changes.
+fn update_body(
+    agent: &str,
+    revision: Option<&str>,
+    change: &AgentChange,
+    confirm_high_risk: bool,
+) -> Result<Value, IntentError> {
+    use crate::model::{LimitsChange, PromptChange};
+    let mut body = json!({ "agent_anchor": agent });
+    if let Some(revision) = revision.filter(|r| !r.is_empty()) {
+        body["revision"] = json!(revision);
+    }
+    let named = |value: &Option<String>, what: &'static str| match value {
+        Some(text) if text.trim().is_empty() => Err(IntentError::Empty(what)),
+        Some(text) => Ok(Some(text.trim().to_owned())),
+        None => Ok(None),
+    };
+    if let Some(provider) = named(&change.provider, "provider")? {
+        body["provider"] = json!(provider);
+    }
+    if let Some(model) = named(&change.model, "model")? {
+        body["model"] = json!(model);
+    }
+    if let Some(autonomy) = &change.autonomy {
+        if !matches!(autonomy.as_str(), "full" | "supervised" | "readonly") {
+            return Err(IntentError::AgentFieldMissing("autonomy"));
+        }
+        body["autonomy"] = json!(autonomy);
+    }
+    match &change.prompt {
+        PromptChange::Keep => {}
+        PromptChange::Reset => body["prompt"] = Value::Null,
+        PromptChange::Set(text) => body["prompt"] = json!(text),
+    }
+    if let Some(tools) = &change.tools {
+        body["tools"] = json!(tools);
+    }
+    match &change.limits {
+        LimitsChange::Keep => {}
+        LimitsChange::Clear => body["limits"] = Value::Null,
+        LimitsChange::Set { max_concurrent_turns, max_cost_per_day_cents } => {
+            body["limits"] = json!({
+                "max_concurrent_turns": max_concurrent_turns,
+                "max_cost_per_day_cents": max_cost_per_day_cents,
+            });
+        }
+    }
+    if confirm_high_risk {
+        body["confirm_high_risk"] = json!(true);
+    }
+    if body.as_object().is_some_and(|fields| {
+        fields
+            .keys()
+            .all(|key| key == "agent_anchor" || key == "revision" || key == "confirm_high_risk")
+    }) {
+        return Err(IntentError::Empty("change"));
+    }
+    Ok(body)
 }
 
 /// Whether a runtime action changes the computer's runtime and so needs

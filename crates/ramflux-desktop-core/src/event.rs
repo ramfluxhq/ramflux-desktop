@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::{AccountId, ContextId, GrantId, MomentId, NodeId, StepId, TaskId, Timestamp};
 use crate::model::{
-    Account, AgentApproval, AgentCreation, AgentHostStatus, AgentJob, AgentRecord,
-    AgentRosterState, AppLock, AuditEntry, BackupJob, Call, Capabilities, Ceremony, ContactCard,
-    ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant, GrantFailure,
-    GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind, NeedsMe, Node,
-    NodeHealth, NodeProbe, Object, Participant, RecoveryCeremony, RequestFloors, RequestPolicy,
-    StandingApproval, StepState, SyncStatus, Task, TaskAnswer, TaskState,
+    Account, AgentApproval, AgentCatalog, AgentCreation, AgentHostStatus, AgentJob, AgentRecord,
+    AgentRosterState, AgentSettings, AppLock, AuditEntry, BackupJob, Call, Capabilities, Ceremony,
+    ContactCard, ContactRequest, Context, DaemonInfo, Device, Disappearing, EffectFailure, Grant,
+    GrantFailure, GrantState, Integrations, Lifecycle, Listing, LockState, Moment, MomentKind,
+    NeedsMe, Node, NodeHealth, NodeProbe, Object, Participant, RecoveryCeremony, RequestFloors,
+    RequestPolicy, StandingApproval, StepState, SyncStatus, Task, TaskAnswer, TaskState,
 };
 
 use crate::card_event::CardEvent;
@@ -408,6 +408,17 @@ pub enum DomainEvent {
     /// A creation request this desktop started, as the daemon reports it.
     /// Its state follows [`crate::AgentCreationState`].
     AgentCreationUpdated(AgentCreation),
+    /// The PRX catalog as `agent.catalog` answered it.
+    AgentCatalogLoaded(AgentCatalog),
+    /// The configuration of one agent as `agent.get`, `agent.update`,
+    /// `agent.pause` or `agent.resume` showed it, with its revision. A pause
+    /// or a resume shows as `enabled`.
+    AgentSettingsChanged {
+        /// The agent's anchor.
+        agent_anchor: String,
+        /// The configuration now.
+        settings: AgentSettings,
+    },
     /// The PRX runtime status on this computer.
     AgentHostUpdated(AgentHostStatus),
     /// The PRX jobs of one agent, as the runtime lists them (the whole list).

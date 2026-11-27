@@ -221,11 +221,10 @@ pub fn ensure_private_dir(dir: &Path) -> Result<(), PrivateDirError> {
         if !meta.file_type().is_dir() {
             return Err(PrivateDirError::NotADirectory(dir.to_owned()));
         }
-        if let Some(parent) = dir.parent() {
-            let owner = std::fs::metadata(parent).map_err(io)?.uid();
-            if meta.uid() != owner {
-                return Err(PrivateDirError::ForeignOwner(dir.to_owned()));
-            }
+        // The folder is this process user's, not merely the same as its
+        // parent's (the parent can be anyone's).
+        if meta.uid() != rustix::process::getuid().as_raw() {
+            return Err(PrivateDirError::ForeignOwner(dir.to_owned()));
         }
         if meta.permissions().mode() & 0o077 != 0 {
             std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(io)?;

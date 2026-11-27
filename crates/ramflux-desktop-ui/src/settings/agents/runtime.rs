@@ -278,6 +278,7 @@ impl AgentsPanel {
             model,
             key: Some(key),
             nonce,
+            confirmed_path: None,
         };
         self.arm_host_action(nonce, true);
         self.submit_host(kind, window, cx);
@@ -297,6 +298,7 @@ impl AgentsPanel {
             model: String::new(),
             key: None,
             nonce,
+            confirmed_path: None,
         };
         self.arm_host_action(nonce, false);
         self.submit_host(kind, window, cx);

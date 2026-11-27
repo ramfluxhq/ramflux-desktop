@@ -31,7 +31,7 @@ const NOT_MUTATIONS: [&str; 4] =
 /// these that carries an `operation_id` (`CustodySetupInvalid`): their
 /// retries are keyed inside the body instead (a creation's `request_id`).
 /// The `rf` CLI sends them without a frame key either.
-const AGENT_UNKEYED: [&str; 10] = [
+const AGENT_UNKEYED: [&str; 14] = [
     "agent.create",
     "agent.creation.decide",
     "agent.operation.get",
@@ -42,6 +42,10 @@ const AGENT_UNKEYED: [&str; 10] = [
     "agent.retire",
     "agent.persona.edit",
     "agent.access.set",
+    "agent.catalog",
+    "agent.update",
+    "agent.pause",
+    "agent.resume",
 ];
 
 /// Prefix of desktop keys (readable in daemon traces).

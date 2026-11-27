@@ -76,6 +76,7 @@ fn record(anchor: &str, lifecycle: AgentLifecycle, owner: &str) -> AgentRecord {
         role: "named".into(),
         base: json!({"id": "base-1"}),
         runtime_name: format!("a_{anchor}"),
+        settings: None,
     }
 }
 
@@ -216,6 +217,7 @@ fn runtime_install_needs_a_provider_and_a_key_that_never_serializes() {
         model: "model-x".into(),
         key: key.map(SecretInput::new),
         nonce: 1,
+        confirmed_path: None,
     };
     assert_eq!(
         handle_intent(&store, confirmed(install(None)), Timestamp(10)).err(),
@@ -244,6 +246,7 @@ fn runtime_install_needs_a_provider_and_a_key_that_never_serializes() {
 fn jobs_pause_at_once_and_removal_is_asked_for() {
     let store = with_agent(world(), record("agent-1", AgentLifecycle::Active, "owner")).store;
     let job = |action| IntentKind::AgentJob {
+        owner_id: AccountId::new("owner"),
         agent: "agent-1".into(),
         kind: AgentJobKind::Cron,
         id: "job-1".into(),
@@ -469,6 +472,7 @@ fn the_jobs_of_an_agent_the_owner_does_not_hold_are_not_touched() {
     let refresh = IntentKind::AgentJobsRefresh { agent: "agent-1".into() };
     assert!(matches!(decide(&store, refresh), Err(IntentError::AgentRecordUnknown(_))));
     let job = IntentKind::AgentJob {
+        owner_id: AccountId::new("owner"),
         agent: "agent-1".into(),
         kind: AgentJobKind::Cron,
         id: "job-1".into(),

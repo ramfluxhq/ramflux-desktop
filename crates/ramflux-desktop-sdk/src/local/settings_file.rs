@@ -53,6 +53,11 @@ pub struct DesktopSettings {
     /// (a sequence number, not content).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub stream_cursors: BTreeMap<String, BTreeMap<AccountId, u64>>,
+    /// Agent creation requests still in flight, per account (request ids,
+    /// hashes and states only; removed when a request ends), so the polling
+    /// of a creation that waits for the phone resumes after a restart.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub agent_creations: BTreeMap<AccountId, Vec<ramflux_desktop_core::AgentCreation>>,
     /// Authenticated public renames shown in conversations, per daemon
     /// socket and account (public names only, see [`crate::renames`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

@@ -202,6 +202,14 @@ pub const AGENT_CREATE: &str = "agent.create";
 /// Read the custody status of a creation request (empty id: the next one
 /// that waits for this device).
 pub const AGENT_OPERATION_GET: &str = "agent.operation.get";
+/// Read the PRX catalog of models, tools and reserved names.
+pub const AGENT_CATALOG: &str = "agent.catalog";
+/// Change an agent's configuration (carries the revision it was read at).
+pub const AGENT_UPDATE: &str = "agent.update";
+/// Pause an agent (carries the revision it was read at).
+pub const AGENT_PAUSE: &str = "agent.pause";
+/// Resume an agent (carries the revision it was read at).
+pub const AGENT_RESUME: &str = "agent.resume";
 /// Edit the persona of an agent.
 pub const AGENT_PERSONA_EDIT: &str = "agent.persona.edit";
 /// Set the access of an agent (carries the base it was read with).

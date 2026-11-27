@@ -117,6 +117,11 @@ pub enum Fetch {
     AgentJobs(String),
     /// `agent.operation.get` of one creation request this desktop started.
     AgentOperation(String),
+    /// `agent.catalog`: the PRX catalog of models, tools and reserved names.
+    AgentCatalog,
+    /// `agent.get` of one agent, by its anchor: its configuration with the
+    /// revision a change must be sent with.
+    AgentGet(String),
 }
 
 impl Fetch {
@@ -183,6 +188,10 @@ impl Fetch {
                 "agent.job.list",
                 json!({ "agent": super::agents::prx_name(anchor).unwrap_or_default() }),
             ),
+            Self::AgentCatalog => BusRequest::new(account, "agent", "agent.catalog", json!({})),
+            Self::AgentGet(anchor) => {
+                BusRequest::new(account, "agent", "agent.get", json!({ "agent_anchor": anchor }))
+            }
             Self::AgentOperation(request_id) => BusRequest::new(
                 account,
                 "agent",

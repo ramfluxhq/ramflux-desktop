@@ -26,14 +26,11 @@ pub fn roster_groups(store: &Store) -> Vec<AgentGroup<'_>> {
 
 /// Every feature this build shows as unavailable, with its reason key. A
 /// screen lists these next to the disabled control.
-pub const UNAVAILABLE: [AgentUnavailable; 13] = [
+pub const UNAVAILABLE: [AgentUnavailable; 10] = [
     AgentUnavailable::SubAgent,
     AgentUnavailable::Skills,
-    AgentUnavailable::ConfigEdit,
     AgentUnavailable::AutonomyHonoured,
-    AgentUnavailable::Catalog,
     AgentUnavailable::PerToolApproval,
-    AgentUnavailable::AgentPause,
     AgentUnavailable::HostBinding,
     AgentUnavailable::AvatarUpload,
     AgentUnavailable::PerAgentKey,

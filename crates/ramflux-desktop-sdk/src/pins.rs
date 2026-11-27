@@ -49,6 +49,35 @@ impl PinStore {
     }
 }
 
+impl PinStore {
+    /// The agent creations of `account` that were in flight when the desktop
+    /// last ran.
+    pub fn creations(&self, account: &AccountId) -> Vec<ramflux_desktop_core::AgentCreation> {
+        self.path
+            .as_ref()
+            .and_then(|path| settings_file::read(path))
+            .and_then(|mut settings| settings.agent_creations.remove(account))
+            .unwrap_or_default()
+    }
+
+    /// Stores the agent creations of `account` that are still in flight,
+    /// keeping every other account's and the rest of the file. Best effort.
+    pub fn save_creations(
+        &self,
+        account: &AccountId,
+        creations: &[ramflux_desktop_core::AgentCreation],
+    ) {
+        let Some(path) = &self.path else { return };
+        let _ = settings_file::update(path, |settings| {
+            if creations.is_empty() {
+                settings.agent_creations.remove(account);
+            } else {
+                settings.agent_creations.insert(account.clone(), creations.to_vec());
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

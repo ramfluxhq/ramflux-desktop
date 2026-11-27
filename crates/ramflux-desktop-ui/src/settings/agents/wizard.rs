@@ -292,6 +292,30 @@ impl AgentsPanel {
         ] {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
+        for input in [&self.wizard_inputs.provider, &self.wizard_inputs.model] {
+            input.update(cx, |input, cx| input.set_value("", window, cx));
+        }
+        // The models, tools and reserved names come from PRX's own catalog.
+        self.submit(IntentKind::AgentCatalogRefresh, window, cx);
+        cx.notify();
+    }
+
+    /// Whether `name` is one PRX reserves (the name step refuses it).
+    fn name_reserved(&self, name: &str, cx: &App) -> bool {
+        self.state(cx).agent_catalog().is_some_and(|catalog| catalog.reserves(name))
+    }
+
+    /// Chooses a model of the catalog: its provider and model fill the draft.
+    pub fn choose_model(
+        &mut self,
+        provider: &str,
+        model: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (provider, model) = (provider.to_owned(), model.to_owned());
+        self.wizard_inputs.provider.update(cx, |input, cx| input.set_value(provider, window, cx));
+        self.wizard_inputs.model.update(cx, |input, cx| input.set_value(model, window, cx));
         cx.notify();
     }
 
@@ -305,7 +329,14 @@ impl AgentsPanel {
     pub fn wizard_step(&mut self, by: isize, cx: &mut Context<Self>) {
         let Some(wizard) = self.wizard.as_ref() else { return };
         let draft = wizard.current(&self.wizard_inputs, cx);
-        let refusal = (by > 0).then(|| step_error(&draft, wizard.step)).flatten();
+        let mut refusal = (by > 0).then(|| step_error(&draft, wizard.step)).flatten();
+        if by > 0
+            && refusal.is_none()
+            && wizard.step == WizardStep::Basics
+            && self.name_reserved(&draft.persona.name, cx)
+        {
+            refusal = Some(DraftError::Field("name"));
+        }
         if let Some(wizard) = self.wizard.as_mut() {
             wizard.draft = draft;
             wizard.refusal = refusal;
@@ -511,6 +542,7 @@ impl AgentsPanel {
     }
 
     fn basics(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let reserved = self.name_reserved(self.wizard_inputs.name.read(cx).value().as_ref(), cx);
         let glyph = self.wizard.as_ref().and_then(|w| w.glyph);
         let tone = self.wizard.as_ref().and_then(|w| w.tone);
         v_flex()
@@ -521,6 +553,15 @@ impl AgentsPanel {
                     .id("agent-wizard-name")
                     .aria_label(tr("agent_wizard.name")),
             )
+            .children(reserved.then(|| {
+                div()
+                    .id("agent-wizard-name-reserved")
+                    .role(Role::Alert)
+                    .test_support()
+                    .text_size(text_caption())
+                    .text_color(cx.theme().danger)
+                    .child(tr("agent_wizard.name_reserved"))
+            }))
             .child(
                 Input::new(&self.wizard_inputs.responsibility)
                     .id("agent-wizard-responsibility")
@@ -564,21 +605,68 @@ impl AgentsPanel {
 
     fn runtime_step(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let status = super::runtime::status_line(self.store.read(cx).store());
+        let chosen = (
+            self.wizard_inputs.provider.read(cx).value().to_string(),
+            self.wizard_inputs.model.read(cx).value().to_string(),
+        );
+        let models = self.state(cx).agent_catalog().map(|catalog| catalog.models.clone());
+        let choices = match models {
+            None => muted(tr("agents.catalog.loading"), cx).into_any_element(),
+            Some(models) if models.is_empty() => {
+                muted(tr("agents.catalog.empty"), cx).into_any_element()
+            }
+            Some(models) => v_flex()
+                .id("agent-wizard-models")
+                .role(Role::List)
+                .gap(space(2.))
+                .children(models.into_iter().enumerate().map(|(ix, model)| {
+                    self.model_button(
+                        format!("agent-wizard-model-{ix}"),
+                        &model,
+                        &chosen,
+                        Self::choose_model,
+                        cx,
+                    )
+                }))
+                .into_any_element(),
+        };
         v_flex()
             .gap(space(2.))
             .child(muted(tr("agent_wizard.runtime_help"), cx))
             .child(muted(status, cx))
+            .child(choices)
+            .into_any_element()
+    }
+
+    /// One model of the catalog as a choice: disabled, with the reason as
+    /// its tooltip, while its provider's key is not held.
+    pub(super) fn model_button(
+        &mut self,
+        id: String,
+        model: &ramflux_desktop_core::CatalogModel,
+        chosen: &(String, String),
+        choose: fn(&mut Self, &str, &str, &mut Window, &mut Context<Self>),
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let selected = chosen.0 == model.provider && chosen.1 == model.model;
+        let (provider, name) = (model.provider.clone(), model.model.clone());
+        let label = SharedString::from(format!("{} / {}", model.provider, model.model));
+        let ready = model.credentials_ready;
+        v_flex()
+            .gap(space(1.))
             .child(
-                Input::new(&self.wizard_inputs.provider)
-                    .id("agent-wizard-provider")
-                    .aria_label(tr("agent_wizard.provider")),
+                Button::new(ElementId::from(id))
+                    .small()
+                    .design_secondary(cx)
+                    .selected(selected)
+                    .toggled(selected)
+                    .design_label(label)
+                    .design_disabled(!ready, cx)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        choose(this, &provider, &name, window, cx);
+                    })),
             )
-            .child(
-                Input::new(&self.wizard_inputs.model)
-                    .id("agent-wizard-model")
-                    .aria_label(tr("agent_wizard.model")),
-            )
-            .child(muted(tr("agent_wizard.provider_free_text"), cx))
+            .children((!ready).then(|| muted(tr("agents.catalog.add_key_first"), cx)))
             .into_any_element()
     }
 

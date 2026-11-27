@@ -34,7 +34,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use ramflux_desktop_core::{ContextId, DomainEvent, Effect, MomentId, SchemaGate, SourceStatus};
+use ramflux_desktop_core::{
+    AgentCreationState, ContextId, DomainEvent, Effect, MomentId, SchemaGate, SourceStatus,
+};
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -206,6 +208,11 @@ pub(super) struct Task {
     pub(super) client: BusClient,
     pub(super) translator: Translator,
     pub(super) pins: PinStore,
+    /// The agent creations in flight (also kept in the settings file), by
+    /// request id.
+    creations: BTreeMap<String, ramflux_desktop_core::AgentCreation>,
+    /// The persisted creations were handed to the store.
+    creations_restored: bool,
     pub(super) outbox: crate::completion::CompletionSender<Delivery>,
     pub(super) internal: mpsc::UnboundedSender<Internal>,
     pub(super) streamed: mpsc::UnboundedSender<Streamed>,
@@ -408,6 +415,14 @@ pub(super) fn build(
         #[cfg(any(test, feature = "test-support"))]
         guard_violations: 0,
         translator,
+        creations: scope
+            .account()
+            .map(|account| pins.creations(account))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|creation| (creation.request_id.clone(), creation))
+            .collect(),
+        creations_restored: false,
         pins,
         config,
         scope,
@@ -542,6 +557,7 @@ impl Task {
         if let Some(id) = self.scope.account() {
             events.extend(Self::networking_failures(&events, id));
         }
+        self.persist_creations(&events);
         let any = !events.is_empty();
         let at = now();
         for event in events {
@@ -1084,6 +1100,38 @@ impl Task {
         }
     }
 
+    /// Keeps the agent creations in flight in the settings file: one starts
+    /// when its request is sent and ends with its terminal state.
+    fn persist_creations(&mut self, events: &[DomainEvent]) {
+        let Some(account) = self.scope.account().cloned() else { return };
+        let mut changed = false;
+        for event in events {
+            let DomainEvent::AgentCreationUpdated(creation) = event else { continue };
+            if creation.state.is_terminal() || creation.state == AgentCreationState::Draft {
+                changed |= self.creations.remove(&creation.request_id).is_some();
+            } else if self.creations.get(&creation.request_id) != Some(creation) {
+                self.creations.insert(creation.request_id.clone(), creation.clone());
+                changed = true;
+            }
+        }
+        if changed {
+            let held: Vec<_> = self.creations.values().cloned().collect();
+            self.pins.save_creations(&account, &held);
+        }
+    }
+
+    /// Hands the creations the last run left in flight to the store, once,
+    /// so the polling of those that wait for the phone resumes.
+    fn restore_creations(&mut self) {
+        if self.creations_restored {
+            return;
+        }
+        self.creations_restored = true;
+        let events: Vec<DomainEvent> =
+            self.creations.values().cloned().map(DomainEvent::AgentCreationUpdated).collect();
+        self.emit(events);
+    }
+
     /// Marks the persisted pins on contexts that are known now.
     fn restore_pins(&mut self) {
         let events = self.translator.restore_pins();
@@ -1328,6 +1376,7 @@ impl Task {
         }
         // Every list is known now, so pins come back in their saved order.
         self.restore_pins();
+        self.restore_creations();
         if self.link == Link::Live {
             self.live_after_snapshot();
         }
