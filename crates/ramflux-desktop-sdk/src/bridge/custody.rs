@@ -366,7 +366,28 @@ pub fn refusal(error: &SdkError) -> Option<CeremonyFailure> {
         // own wording. One arm per reason, no wildcard.
         SdkError::CustodyVault(reason) => vault_failure(crate::bus::vault_reason_of(*reason)),
         SdkError::CustodyExpired => CeremonyFailure::Expired,
-        SdkError::CustodySetupInvalid => CeremonyFailure::Invalid,
+        SdkError::CustodySetupInvalid | SdkError::CustodyConfirmRejected(_) => {
+            CeremonyFailure::Invalid
+        }
+        // A refusal the recovery client does not own: the typed reason is
+        // read from the body, never from the message.
+        SdkError::LocalBusRefused { code, body, .. } => {
+            let reason = body.get("reason_code").and_then(serde_json::Value::as_str);
+            match reason.unwrap_or(code.as_str()) {
+                "wrong_passphrase" => CeremonyFailure::WrongCode,
+                "unlock_retry_later" | "UnlockRetryLater" => CeremonyFailure::CodeWait,
+                "unlock_attempts_exhausted" | "UnlockAttemptsExhausted" => {
+                    CeremonyFailure::CodeExhausted
+                }
+                // `app_locked` here means the frame header did not name the
+                // locked account: a programming error, logged by method and
+                // code only.
+                other => {
+                    crate::local::app_log::warn(&format!("recovery call refused: {other}"));
+                    CeremonyFailure::Invalid
+                }
+            }
+        }
         _ => return None,
     })
 }
@@ -633,12 +654,17 @@ async fn begin_recovery(
             *session = Session::Recovery { client, meta };
             Some(Outcome::events(vec![event]))
         }
-        Err(error) => Some(Outcome::events(match refusal(&error) {
-            Some(failure) => vec![refused_recovery(account_id, failure)],
-            None => {
-                vec![failed(methods::RECOVER_BEGIN, FailureCode::Transport, &error.to_string())]
-            }
-        })),
+        Err(error) => {
+            let mut outcome = Outcome::events(match refusal(&error) {
+                Some(failure) => vec![refused_recovery(account_id, failure)],
+                None => {
+                    vec![failed(methods::RECOVER_BEGIN, FailureCode::Transport, &error.to_string())]
+                }
+            });
+            // The lock page renders core's state after every recovery failure.
+            outcome.refresh = vec![Fetch::AppLock(AccountId::new(account_id))];
+            Some(outcome)
+        }
     }
 }
 
@@ -670,14 +696,18 @@ async fn confirm_recovery(
                 networking: account.networking,
             };
             let event = recovery(meta, RecoveryPhase::Recovered(done));
+            // The lock page lowers only on core's app-lock state, which is
+            // read again here.
+            let refresh = vec![Fetch::AccountList, Fetch::AppLock(account.id.clone())];
             *session = Session::Idle;
-            Some(Outcome {
-                events: vec![event],
-                account: Some(account),
-                refresh: vec![Fetch::AccountList],
-            })
+            Some(Outcome { events: vec![event], account: Some(account), refresh })
         }
-        Err(error) => Some(broke(methods::RECOVER_CONFIRM, &error, session)),
+        Err(error) => {
+            let account = meta.account_id.clone();
+            let mut outcome = broke(methods::RECOVER_CONFIRM, &error, session);
+            outcome.refresh = vec![Fetch::AppLock(account)];
+            Some(outcome)
+        }
     }
 }
 

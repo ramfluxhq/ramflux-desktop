@@ -319,6 +319,10 @@ pub enum IntentError {
     /// The recovery phrase must be 24 recovery words.
     #[error("a recovery phrase has 24 recovery words")]
     RecoveryWords,
+    /// An account can be removed from the lock page only while its app lock
+    /// is closed with the code attempts used up.
+    #[error("the account cannot be removed from this device now")]
+    RemoveNotOffered,
     /// Only a person's account has a recovery phrase.
     #[error("only a person's account can be recovered with a phrase")]
     RecoveryNotForKind,

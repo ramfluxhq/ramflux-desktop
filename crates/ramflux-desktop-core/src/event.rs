@@ -384,6 +384,13 @@ pub enum DomainEvent {
     /// `Prepared` (or `Failed` when the daemon refuses), then follows
     /// [`crate::RecoveryPhase::can_follow`]; the id and expiry stay.
     RecoveryUpdated(RecoveryCeremony),
+    /// The daemon removed an account from this device (`account.remove_local`
+    /// answered `removed: true`): the account and everything held for it
+    /// leaves the store.
+    AccountRemoved {
+        /// The removed account.
+        account_id: AccountId,
+    },
     /// A page of agent records as the daemon lists them. Each record
     /// replaces the one held for its anchor.
     AgentsListed {

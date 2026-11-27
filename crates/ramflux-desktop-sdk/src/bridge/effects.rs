@@ -317,6 +317,12 @@ impl Task {
                     );
                 }
                 events.extend(Self::creation_ended(method, body));
+                if method == ramflux_desktop_core::methods::ACCOUNT_REMOVE_LOCAL
+                    && answer["removed"].as_bool() == Some(true)
+                    && let Some(id) = body["account_id"].as_str()
+                {
+                    self.account_removed(id);
+                }
                 self.emit(events);
                 self.spawn_fetches(refresh);
                 self.resolve_task_step(method, body, &answer);
@@ -645,6 +651,22 @@ impl Task {
     /// What a creation or recovery step came to: the account it opened is
     /// recorded first (so the account list the translator keeps agrees with
     /// the ceremony's end), then the ceremony's events.
+    /// The daemon removed `id` from this device: its read plan ends and the
+    /// desktop's private media folder for it is erased (best effort, off
+    /// the bridge task).
+    fn account_removed(&mut self, id: &str) {
+        self.app_lock_watch.forget(&ramflux_desktop_core::AccountId::new(id));
+        if let Some(folder) = super::media::media_folder(&self.config, id) {
+            tokio::task::spawn_blocking(move || {
+                if let Err(error) = std::fs::remove_dir_all(&folder)
+                    && error.kind() != std::io::ErrorKind::NotFound
+                {
+                    crate::local::app_log::warn("media folder of a removed account not erased");
+                }
+            });
+        }
+    }
+
     pub(super) fn on_custody(&mut self, outcome: super::custody::Outcome) {
         let super::custody::Outcome { events, account, refresh } = outcome;
         let mut all = account

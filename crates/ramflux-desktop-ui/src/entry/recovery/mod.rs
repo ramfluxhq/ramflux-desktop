@@ -38,8 +38,8 @@ use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable as _, Subscription, Window,
 };
 use ramflux_desktop_core::{
-    AccountId, IntentKind, RecoveryCeremony, RecoveryPhase, SecretInput, Timestamp, check_phrase,
-    methods, normalize_phrase,
+    AccountId, CeremonyFailure, IntentKind, RecoveryCeremony, RecoveryPhase, SecretInput,
+    Timestamp, check_phrase, methods, normalize_phrase,
 };
 
 use crate::actions::CeremonyEscape;
@@ -53,6 +53,11 @@ use crate::root::IntentRoot;
 pub enum RecoveryEvent {
     /// The user left the recovery (done, closed or backed out).
     Closed,
+    /// The daemon answered the account code check of a confirm: the phrase
+    /// was right and the code was wrong, the wait still runs, or the
+    /// attempts are used up. Sent once per answer; the lock page takes it
+    /// from here and renders the daemon's app lock state.
+    Code(CeremonyFailure),
 }
 
 /// A request sent to the daemon whose answer has not arrived. While one is
@@ -103,6 +108,8 @@ pub struct RecoveryPanel {
     /// records are an earlier recovery's, not this one's.
     baseline: u64,
     seen_revision: u64,
+    /// The revision whose code answer was already reported to the page.
+    reported_revision: u64,
     pending: Option<RecoveryPending>,
     /// The failed-effect count when the request was sent.
     failures_mark: u64,
@@ -173,6 +180,7 @@ impl RecoveryPanel {
             passphrase,
             baseline: revision,
             seen_revision: revision,
+            reported_revision: revision,
             pending: None,
             failures_mark: 0,
             expired: false,
@@ -266,6 +274,7 @@ impl RecoveryPanel {
         self.left_running = None;
         self.baseline = store.recovery_revision().saturating_sub(u64::from(running));
         self.seen_revision = store.recovery_revision();
+        self.reported_revision = store.recovery_revision();
         self.clear_inputs(window, cx);
         cx.notify();
     }
@@ -287,9 +296,14 @@ impl RecoveryPanel {
         self.store.read(cx).session().map(|session| session.now()).unwrap_or_default()
     }
 
+    /// Empties every input and hides what the masked ones will show next
+    /// (the mask toggle starts hidden whenever the panel opens or closes).
     fn clear_inputs(&self, window: &mut Window, cx: &mut Context<Self>) {
         for input in self.inputs() {
             input.update(cx, |input, cx| input.set_value("", window, cx));
+        }
+        for input in [&self.phrase, &self.passphrase] {
+            input.update(cx, |input, cx| input.set_masked(true, window, cx));
         }
     }
 
@@ -339,6 +353,20 @@ impl RecoveryPanel {
         if self.abandon.is_some() {
             self.settle_abandoned(answered, window, cx);
             cx.notify();
+            return;
+        }
+        // The account code's answer is the lock page's to show.
+        if answered
+            && self.reported_revision != revision
+            && let Some(RecoveryPhase::Failed(
+                failure @ (CeremonyFailure::WrongCode
+                | CeremonyFailure::CodeWait
+                | CeremonyFailure::CodeExhausted),
+            )) = self.record(cx).map(|record| record.phase)
+        {
+            self.reported_revision = revision;
+            self.clear_inputs(window, cx);
+            cx.emit(RecoveryEvent::Code(failure));
             return;
         }
         match self.record(cx) {
