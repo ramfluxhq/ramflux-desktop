@@ -256,15 +256,39 @@ impl Store {
                     changes.source_status = true;
                 }
             }
-            DomainEvent::UsernameLookupUpdated(lookup) => {
-                if self.username_lookup != *lookup {
-                    self.username_lookup.clone_from(lookup);
+            DomainEvent::UsernameLookupUpdated { account, lookup } => {
+                let next = lookup.clone().map(|lookup| (account.clone(), lookup));
+                if self.username_lookup != next {
+                    self.username_lookup = next;
                     changes.source_status = true;
                 }
             }
-            DomainEvent::UsernameClaimUpdated(claim) => {
-                if self.username_claim != *claim {
-                    self.username_claim.clone_from(claim);
+            DomainEvent::UsernameClaimUpdated { account, claim } => {
+                let next = claim.clone().map(|claim| (account.clone(), claim));
+                if self.username_claim != next {
+                    self.username_claim = next;
+                    changes.source_status = true;
+                }
+            }
+            DomainEvent::UsernameClaimSettled { account, operation_id, committed } => {
+                // Only the claim this operation is: a claim replaced since is
+                // left alone.
+                if let Some((claimed_by, claim)) = self.username_claim.as_mut()
+                    && *claimed_by == *account
+                    && let crate::UsernameClaim::StillPublishing { name, operation_id: Some(id) } =
+                        claim
+                    && id.as_str() == operation_id.as_str()
+                {
+                    let name = std::mem::take(name);
+                    *claim = if *committed {
+                        crate::UsernameClaim::Committed { name }
+                    } else {
+                        crate::UsernameClaim::Failed {
+                            name,
+                            code: "aborted".to_owned(),
+                            retry_after_ms: None,
+                        }
+                    };
                     changes.source_status = true;
                 }
             }

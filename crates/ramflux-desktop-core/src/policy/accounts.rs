@@ -83,6 +83,9 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
+        IntentKind::UsernameStatusRefresh => p.human_only("read the username").map(|()| {
+            Decision::Call(methods::USERNAME_STATUS, json!({}))
+        }),
         IntentKind::ClaimUsername { account_id, name, secret } => {
             p.human_only("claim a username").and_then(|()| {
                 account(p, account_id)?;

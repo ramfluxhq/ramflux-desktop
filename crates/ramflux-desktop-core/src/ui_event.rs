@@ -124,6 +124,8 @@ pub enum UiEventKind {
         /// The name, with or without a leading `@`.
         name: String,
     },
+    /// Re-read this account's username status (a claim still publishing).
+    UsernameStatusRefreshRequested,
     /// The first message of a new direct conversation was submitted.
     StartConversationRequested {
         /// The new conversation's id, chosen when the draft opened.

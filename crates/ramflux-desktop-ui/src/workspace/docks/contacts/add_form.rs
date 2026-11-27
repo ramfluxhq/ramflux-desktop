@@ -42,7 +42,7 @@ use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable 
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
-    ContactCardProblem, ContactIdProblem, ContactInput, ContactLink, IntentError,
+    AccountId, ContactCardProblem, ContactIdProblem, ContactInput, ContactLink, IntentError,
     MAX_CONTACT_CARD_LEN, ParticipantId, Store, UsernameLookup, check_add_contact,
     check_add_contact_card, classify_contact_input, methods, selectors,
 };
@@ -184,10 +184,15 @@ impl AddForm {
 
     /// Checks the typed text. Returns what to emit, or `None` with the
     /// reason shown under the field.
-    pub fn take_submission(&mut self, store: &Store, cx: &App) -> Option<Submission> {
+    pub fn take_submission(
+        &mut self,
+        store: &Store,
+        account: Option<&AccountId>,
+        cx: &App,
+    ) -> Option<Submission> {
         let value = self.input.read(cx).value().trim().to_owned();
         self.noted_value.clone_from(&value);
-        self.submit(store, &value)
+        self.submit(store, account, &value)
     }
 
     /// Checks card text read from a file and submits it; the field keeps
@@ -224,7 +229,12 @@ impl AddForm {
         self.note = Some(FormNote::Error(reason));
     }
 
-    fn submit(&mut self, store: &Store, value: &str) -> Option<Submission> {
+    fn submit(
+        &mut self,
+        store: &Store,
+        account: Option<&AccountId>,
+        value: &str,
+    ) -> Option<Submission> {
         if self.pending.is_some() {
             return None;
         }
@@ -238,7 +248,8 @@ impl AddForm {
                 self.note = Some(FormNote::Error(tr("dock.contacts.add.bad_username")));
                 return None;
             }
-            if self.found_name(store).is_some_and(|found| found.eq_ignore_ascii_case(name)) {
+            if self.found_name(store, account).is_some_and(|found| found.eq_ignore_ascii_case(name))
+            {
                 self.note = Some(FormNote::AddingCard);
                 self.pending = Some(Pending::Username(store.failures_total()));
                 return Some(Submission::Username(name.to_owned()));
@@ -378,9 +389,9 @@ impl AddForm {
 
     /// The name the last lookup of this form found an account for, while
     /// the store still holds that answer.
-    fn found_name<'a>(&self, store: &'a Store) -> Option<&'a str> {
+    fn found_name<'a>(&self, store: &'a Store, account: Option<&AccountId>) -> Option<&'a str> {
         let resolving = self.resolving.as_deref()?;
-        match store.username_lookup()? {
+        match store.username_lookup(account)? {
             UsernameLookup::Found { name, .. } if name.eq_ignore_ascii_case(resolving) => {
                 Some(name.as_str())
             }
@@ -389,9 +400,13 @@ impl AddForm {
     }
 
     /// The lookup answer this form shows for the name it looked up.
-    pub fn shown_lookup<'a>(&self, store: &'a Store) -> Option<&'a UsernameLookup> {
+    pub fn shown_lookup<'a>(
+        &self,
+        store: &'a Store,
+        account: Option<&AccountId>,
+    ) -> Option<&'a UsernameLookup> {
         let resolving = self.resolving.as_deref()?;
-        store.username_lookup().filter(|lookup| match lookup {
+        store.username_lookup(account).filter(|lookup| match lookup {
             UsernameLookup::Found { name, .. }
             | UsernameLookup::NotFound { name }
             | UsernameLookup::Refused { name, .. } => name.eq_ignore_ascii_case(resolving),

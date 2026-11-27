@@ -136,6 +136,9 @@ pub enum IntentKind {
         /// The name, with or without a leading `@`.
         name: String,
     },
+    /// Re-read this account's username status from the directory, to settle
+    /// a claim that was still publishing. Read only.
+    UsernameStatusRefresh,
     /// Claim or change this account's username. The recovery phrase
     /// authorizes it and is never stored or serialized. Not serializable.
     #[serde(skip)]

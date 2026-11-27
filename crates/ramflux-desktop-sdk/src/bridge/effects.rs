@@ -119,6 +119,12 @@ impl Task {
             self.emit(vec![DomainEvent::EffectFailed(failure)]);
             return;
         }
+        if effect.method() == Some(methods::USERNAME_STATUS) {
+            // A status read of this account's username: its answer settles a
+            // claim that was still publishing (see `translate::username`).
+            self.spawn_fetches(vec![Fetch::UsernameStatus]);
+            return;
+        }
         let planned = plan(self.scope.account(), effect, &self.translator);
         let (method, body) = (planned.method.clone(), planned.body.clone());
         self.translator.decision_sent(&method, &body);
@@ -131,7 +137,7 @@ impl Task {
         }
         self.translator.rename_sent(&method, &body);
         if method == ramflux_desktop_core::methods::USERNAME_RESOLVE {
-            let events = crate::translate::username::lookup_started();
+            let events = crate::translate::username::lookup_started(self.scope.account());
             self.emit(events);
         }
         let operation = match planned.plan {
@@ -173,9 +179,11 @@ impl Task {
             }
             Plan::Media(job) => self.media(job),
             Plan::Username(job) => {
-                let events = crate::translate::username::claim_started(&job.name);
+                let events = crate::translate::username::claim_started(&job.account, &job.name);
                 self.emit(events);
-                self.spawn_operation(method, body, Plan::Username(job));
+                // One claim runs at a time: a new one replaces the one before.
+                self.cancel_username_claim();
+                self.claim_job = self.spawn_operation(method, body, Plan::Username(job));
             }
             other => {
                 // Card runtime calls run one at a time (a draft sent before a
@@ -227,7 +235,11 @@ impl Task {
             // was committed reads the username in force again.
             let committed =
                 method == ramflux_desktop_core::methods::USERNAME_CLAIM && result.is_ok();
-            let events = crate::translate::username::outcome(method, body, &result);
+            if method == ramflux_desktop_core::methods::USERNAME_CLAIM {
+                self.claim_job = None;
+            }
+            let events =
+                crate::translate::username::outcome(self.scope.account(), method, body, &result);
             self.emit(events);
             if committed {
                 self.spawn_fetches(vec![Fetch::UsernameStatus]);
@@ -556,13 +568,18 @@ impl Task {
 impl Task {
     /// Runs one planned call off the bridge task; its answer comes back as
     /// `EffectDone`.
-    fn spawn_operation(&mut self, method: String, body: Value, other: Plan) {
+    fn spawn_operation(
+        &mut self,
+        method: String,
+        body: Value,
+        other: Plan,
+    ) -> Option<tokio::task::AbortHandle> {
         // One creation's status is read at a time: a read due while
         // the previous one is in flight waits for its answer (the next tick).
         if method == methods::AGENT_OPERATION_GET
             && !self.operations_in_flight.start(text(&body, "operation_id"))
         {
-            return;
+            return None;
         }
         let client = self.client.clone();
         let job_link = self.job_link.clone();
@@ -574,7 +591,7 @@ impl Task {
             .take_while(|ms| **ms > 0)
             .map(|ms| Duration::from_millis(u64::from(*ms)))
             .collect();
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             let (result, refresh) = match other {
                 // Taken only from the attended job connection.
                 Plan::Call { request, refresh }
@@ -586,6 +603,7 @@ impl Task {
             };
             let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
         });
+        Some(task.abort_handle())
     }
 
     /// The scope is ending (its source was dropped): the card sessions the

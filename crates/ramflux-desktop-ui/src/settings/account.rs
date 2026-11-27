@@ -24,6 +24,7 @@ use ramflux_desktop_navigation::scale::space;
 use super::{SectionContext, SettingsSection, design, note};
 use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
+use crate::root::SUBMITTED;
 use crate::style::DesignButton as _;
 
 /// The masked inputs of the account section, owned by the settings page.
@@ -38,6 +39,26 @@ pub struct AccountInputs {
     pub username: Entity<InputState>,
     /// The recovery phrase that authorizes the username change.
     pub username_phrase: Entity<InputState>,
+    /// Whether this computer has a username centre to claim against, read
+    /// once when the settings page opens.
+    pub username_configured: bool,
+}
+
+/// Clears every masked and typed input of the account section (leaving the
+/// section, locking the account or switching accounts).
+pub(super) fn clear_inputs(inputs: &AccountInputs, window: &mut Window, cx: &mut App) {
+    for input in
+        [&inputs.current, &inputs.next, &inputs.backup, &inputs.username, &inputs.username_phrase]
+    {
+        input.update(cx, |input, cx| input.set_value("", window, cx));
+    }
+}
+
+/// The account the section is about, and whether it is unlocked: the key of
+/// what the typed inputs belong to.
+pub(super) fn input_scope(context: &SectionContext, cx: &App) -> (Option<AccountId>, bool) {
+    active_account(context, cx)
+        .map_or((None, false), |a| (Some(a.id.clone()), a.lock_state == LockState::Unlocked))
 }
 
 pub(super) fn active_account(context: &SectionContext, cx: &App) -> Option<Account> {
@@ -50,10 +71,15 @@ pub(super) fn active_account(context: &SectionContext, cx: &App) -> Option<Accou
         .cloned()
 }
 
-/// The line under the username form: what the last claim or change says.
-fn claim_status(store: &Store) -> Option<SharedString> {
-    Some(match store.username_claim()? {
+/// The line under the username form: what the last claim or change of
+/// `account` says, and whether the status can be read again (the claim is
+/// still publishing and waits for a refresh).
+fn claim_status(store: &Store, account: &AccountId) -> Option<(SharedString, bool)> {
+    let claim = store.username_claim(account)?;
+    let refresh = matches!(claim, UsernameClaim::StillPublishing { .. });
+    let text = match claim {
         UsernameClaim::Publishing { .. } => tr("settings.account.username_publishing"),
+        UsernameClaim::StillPublishing { .. } => tr("settings.account.username_unsettled"),
         UsernameClaim::Committed { .. } => tr("settings.account.username_committed"),
         UsernameClaim::Failed { code, retry_after_ms, .. } => match code.as_str() {
             "username_taken" => tr("username.error.taken"),
@@ -62,7 +88,8 @@ fn claim_status(store: &Store) -> Option<SharedString> {
             "aborted" => tr("username.error.aborted"),
             _ => i18n::username_refusal(code, *retry_after_ms),
         },
-    })
+    };
+    Some((text, refresh))
 }
 
 fn take(input: &Entity<InputState>, window: &mut Window, cx: &mut App) -> SecretInput {
@@ -76,6 +103,7 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
     let account = active_account(context, cx);
     let app_lock = app_lock_item(context, account.as_ref().map(|a| a.id.clone()));
     let sink = context.sink(SettingsSection::Account);
+    let username_configured = inputs.username_configured;
     let export_reason = crate::gate::reason(
         context.store.read(cx).store(),
         ramflux_desktop_core::methods::ACCOUNT_BACKUP_EXPORT,
@@ -274,11 +302,12 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
         let root = context.root.clone();
         let store = context.store.clone();
         let account = account.as_ref().map(|a| a.id.clone());
+        let sink = sink.clone();
         SettingItem::render(move |_, _, cx: &mut App| {
             let Some(account_id) = account.clone() else { return h_flex().into_any_element() };
             // A build or computer without a username centre cannot claim one:
             // the section says so and offers no form.
-            if ramflux_desktop_sdk::username_center::current().is_none() {
+            if !username_configured {
                 return design::section(
                     "account-username-claim",
                     tr("settings.account.username_claim_title"),
@@ -287,9 +316,9 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                 .child(design::help(tr("settings.account.username_not_set_up"), cx))
                 .into_any_element();
             }
-            let (name, phrase, root, store) =
-                (name.clone(), phrase.clone(), root.clone(), store.clone());
-            let status = claim_status(store.read(cx).store());
+            let (name, phrase, root, store, sink) =
+                (name.clone(), phrase.clone(), root.clone(), store.clone(), sink.clone());
+            let status = claim_status(store.read(cx).store(), &account_id);
             let section = design::section(
                 "account-username-claim",
                 tr("settings.account.username_claim_title"),
@@ -313,16 +342,27 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                     .large(),
                 cx,
             ))
-            .children(status.map(|text| design::help(text, cx)));
+            .children(status.as_ref().map(|(text, _)| design::help(text.clone(), cx)));
+            let refresh = status.is_some_and(|(_, refresh)| refresh).then(|| {
+                h_flex().child(
+                    crate::style::secondary_button("settings-username-refresh", cx)
+                        .label(tr("settings.account.username_refresh"))
+                        .on_click(move |_, window, cx| {
+                            sink.emit(UiEventKind::UsernameStatusRefreshRequested, window, cx);
+                        }),
+                )
+            });
             section
                 .child(
                     h_flex().child(
                         crate::style::primary_button("settings-username-claim", cx)
                             .label(tr("settings.account.username_submit"))
                             .on_click(move |_, window, cx| {
+                                // The phrase is taken (and cleared) at once. The
+                                // name stays while the claim is refused before it
+                                // is sent.
                                 let secret = take(&phrase, window, cx);
                                 let typed = name.read(cx).value().trim().to_owned();
-                                name.update(cx, |input, cx| input.set_value("", window, cx));
                                 if typed.is_empty() {
                                     return;
                                 }
@@ -331,12 +371,15 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                                     name: typed,
                                     secret,
                                 };
-                                root.update(cx, |root, cx| {
-                                    root.submit_secret(kind, window, cx);
-                                });
+                                let answer = root
+                                    .update(cx, |root, cx| root.submit_secret(kind, window, cx));
+                                if answer.starts_with(SUBMITTED) {
+                                    name.update(cx, |input, cx| input.set_value("", window, cx));
+                                }
                             }),
                     ),
                 )
+                .children(refresh)
                 .into_any_element()
         })
     };

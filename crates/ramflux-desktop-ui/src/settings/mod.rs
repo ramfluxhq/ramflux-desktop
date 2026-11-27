@@ -51,7 +51,7 @@ use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, SharedString, Subscription,
     Window, div,
 };
-use ramflux_desktop_core::Scope;
+use ramflux_desktop_core::{AccountId, Scope};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 use ramflux_desktop_navigation::scale::{space, text_caption};
 
@@ -143,6 +143,11 @@ pub struct SettingsPage {
     agents: Entity<agents::AgentsPanel>,
     launch_inputs: local_setup::LaunchInputs,
     section: SettingsSection,
+    /// The typed inputs of the account section belong to this scope (the
+    /// account and whether it is unlocked); a change of it clears them.
+    secrets_scope: Option<(Option<AccountId>, bool)>,
+    /// The typed inputs are cleared on the next render.
+    clear_secrets: bool,
     opened: usize,
     errors: errors::ErrorScope,
     focus_handle: FocusHandle,
@@ -167,6 +172,14 @@ impl SettingsPage {
         let mut subscriptions = vec![
             cx.subscribe(&store, |this, store, event: &StoreEvent, cx| match event {
                 StoreEvent::Changed(changes) => {
+                    // Switching account or locking it clears what was typed
+                    // for it (a claim's phrase never outlives its account).
+                    let scope = account::input_scope(&this.context, cx);
+                    if this.secrets_scope.as_ref() != Some(&scope) {
+                        this.secrets_scope = Some(scope);
+                        this.clear_secrets = true;
+                        cx.notify();
+                    }
                     let handle = store.read(cx);
                     let account = handle.active_account().cloned();
                     this.errors.observe(account.as_ref(), changes, handle.store());
@@ -196,6 +209,7 @@ impl SettingsPage {
             crate::i18n::localized_input(key, window, cx, |input| input.masked(true))
         };
         let inputs = account::AccountInputs {
+            username_configured: ramflux_desktop_sdk::username_center::current().is_some(),
             current: masked("settings.account.current", window, cx),
             next: masked("settings.account.next", window, cx),
             backup: masked("settings.account.backup_passphrase", window, cx),
@@ -227,6 +241,8 @@ impl SettingsPage {
             agents,
             launch_inputs,
             section: SettingsSection::Account,
+            secrets_scope: None,
+            clear_secrets: false,
             opened: 0,
             errors: errors::ErrorScope::default(),
             focus_handle: cx.focus_handle(),
@@ -238,6 +254,8 @@ impl SettingsPage {
     pub fn show(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
         if self.section != section {
             self.context.root.update(cx, |root, cx| root.cancel_for_navigation(cx));
+            // Leaving a section clears what was typed in it.
+            self.clear_secrets = true;
         }
         self.section = section;
         self.opened += 1;
@@ -294,6 +312,10 @@ impl SettingsPage {
 
 impl Render for SettingsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if std::mem::take(&mut self.clear_secrets) {
+            account::clear_inputs(&self.inputs, window, cx);
+            self.backup.update(cx, |panel, cx| panel.clear_inputs(window, cx));
+        }
         let context = &self.context;
         let page = match self.section {
             SettingsSection::Account => account::page(context, &self.inputs, cx),

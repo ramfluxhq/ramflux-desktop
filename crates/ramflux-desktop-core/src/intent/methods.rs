@@ -130,6 +130,9 @@ pub const USERNAME_RESOLVE: &str = "username.resolve";
 
 /// Claim or change this account's username (needs the recovery phrase).
 pub const USERNAME_CLAIM: &str = "username.claim";
+
+/// Read this account's username status (`username.status`).
+pub const USERNAME_STATUS: &str = "username.status";
 /// Place a voice call in a direct conversation (CALL-01 §6 `call.invite`).
 pub const CALL_INVITE: &str = "call.invite";
 /// Answer a ringing call.
