@@ -1,0 +1,66 @@
+[advisories]
+version = 2
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = [
+    # Same advisory and the same follow-up as the core deny.toml: the PEM
+    # loader comes in through the pinned product SDK, not a desktop dependency.
+    "RUSTSEC-2025-0134", # rustls-pemfile unmaintained (not a vulnerability)
+]
+
+[licenses]
+version = 2
+# The workspace crates are AGPL-3.0-or-later (workspace.package.license);
+# every third-party licence must be on this list.
+allow = [
+    "AGPL-3.0-or-later",
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+# rusqlite 0.42 bundled-sqlcipher uses sqlcipher-src (SQLCipher amalgamation +
+# SQLite blessing + libtomcrypt WTFPL). MIT/BSD-3-Clause of that crate already
+# match the allow list; the two extra licenses are crate-scoped.
+exceptions = [
+    { crate = "sqlcipher-src", allow = ["blessing", "WTFPL"] },
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+highlight = "all"
+# Workspace members depend on each other by path with `workspace = true`.
+allow-wildcard-paths = true
+deny = [
+    { name = "native-tls" },
+    { name = "openssl" },
+    # Local SQLCipher (rusqlite bundled-sqlcipher, through libsqlite3-sys)
+    # vendors OpenSSL for database encryption; it is not a Rust TLS backend.
+    # Only that wrapper is excepted, as in the core deny.toml.
+    { name = "openssl-sys", wrappers = ["libsqlite3-sys"] },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# The product SDK crates are pinned by full commit `rev` in the workspace
+# manifest; the Unicode forks are pinned the same way in Cargo.lock.
+allow-git = [
+    "https://github.com/ramfluxhq/ramflux.git",
+    "https://github.com/unicode-rs/unicode-normalization",
+    "https://github.com/unicode-rs/unicode-segmentation",
+]
