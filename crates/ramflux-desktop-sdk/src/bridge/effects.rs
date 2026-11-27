@@ -143,7 +143,7 @@ impl Task {
         if method == methods::APP_LOCK_CONFIGURE {
             // One configure at a time: a second one is refused while the first runs.
             let account = body["account_id"].as_str().map(ramflux_desktop_core::AccountId::new);
-            if !self.app_lock_code.begin(account) {
+            if self.client.code_busy() {
                 let failure = EffectFailure {
                     method: method.clone(),
                     code: FailureCode::Daemon("app_lock_busy".to_owned()),
@@ -152,6 +152,7 @@ impl Task {
                 self.emit(vec![DomainEvent::EffectFailed(failure)]);
                 return;
             }
+            self.app_lock_code.begin(account);
         }
         self.translator.decision_sent(&method, &body);
         if method == methods::GROUP_CREATE && matches!(planned.plan, Plan::Calls { .. }) {

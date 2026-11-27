@@ -61,6 +61,12 @@ impl CodeGate {
         *slot = Some(account);
         Ok(ArmGuard(Arc::clone(self)))
     }
+
+    /// Whether a configure holds the gate. The slot is the only record of
+    /// it: the guard clears it however the configure task ends.
+    pub(crate) fn is_armed(&self) -> bool {
+        self.armed.lock().is_some()
+    }
 }
 
 impl Drop for ArmGuard {
@@ -91,5 +97,23 @@ impl LocalCredentialProvider for CodeGate {
             }),
             _ => Ok(CredentialOutcome::Refused),
         }
+    }
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use super::*;
+
+    #[test]
+    fn the_slot_alone_says_busy_and_the_guard_frees_it() {
+        let (requests, _inbox) = mpsc::unbounded_channel();
+        let gate = CodeGate::new(requests);
+        assert!(!gate.is_armed());
+        let guard = gate.arm(AccountId::new("a1")).ok();
+        assert!(guard.is_some() && gate.is_armed());
+        assert!(gate.arm(AccountId::new("a2")).is_err());
+        drop(guard);
+        assert!(!gate.is_armed());
+        assert!(gate.arm(AccountId::new("a2")).is_ok());
     }
 }

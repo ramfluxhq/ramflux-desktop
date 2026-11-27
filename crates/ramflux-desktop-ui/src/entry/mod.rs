@@ -423,11 +423,24 @@ impl Render for EntryPage {
 }
 
 impl EntryPage {
-    /// Sets the lock view the shell asks for (see `lock_view`). Leaving the
-    /// lock page (the lock lifted, or the cover came up as the window went to
-    /// the background) closes the recovery, so the next lock opens at its code form.
-    pub fn set_lock_view(&mut self, lock_view: Option<bool>, cx: &mut Context<Self>) {
-        if lock_view != Some(false) {
+    /// Sets the lock view the shell asks for (see `lock_view`). Whenever the
+    /// view changes (the lock lifted, the cover came up, the lock page was
+    /// left) the lock page's unsubmitted code is cleared, and an open recovery
+    /// is cancelled and cleared (its phrase inputs emptied, the daemon's
+    /// ceremony cancelled), so the next lock opens at its code form. The one
+    /// exception: a recovery that already restored the account keeps its
+    /// result in view when the lock lifts, so the recovered account is shown.
+    pub fn set_lock_view(
+        &mut self,
+        lock_view: Option<bool>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.inputs.passphrase.update(cx, |input, cx| input.set_value("", window, cx));
+        let keeps_result =
+            lock_view.is_none() && self.recovery_open && self.recovery.read(cx).shows_result(cx);
+        if self.recovery_open && !keeps_result {
+            self.recovery.update(cx, |panel, cx| panel.cancel_for_close(window, cx));
             self.recovery_open = false;
         }
         self.lock_view = lock_view;

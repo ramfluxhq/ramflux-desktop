@@ -179,6 +179,11 @@ impl BusClient {
         self.inner.gate.as_ref().map(|gate| gate.arm(account)).transpose()
     }
 
+    /// Whether a configure holds the attended gate (see [`Self::arm_code`]).
+    pub(crate) fn code_busy(&self) -> bool {
+        self.inner.gate.as_ref().is_some_and(|gate| gate.is_armed())
+    }
+
     /// Opens the connection if there is none and returns its generation.
     pub(crate) async fn attach(&self) -> Result<u64, BusError> {
         self.connection().await.map(|(generation, _)| generation)
