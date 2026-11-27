@@ -249,16 +249,16 @@ impl Shell {
             }),
             // The entry page holds a full restore's result in view: the
             // page it asks for changes when that result is closed.
-            cx.observe(&entry, |this, _, cx| this.sync_page(cx)),
+            cx.observe_in(&entry, window, |this, _, window, cx| this.sync_page(window, cx)),
             // A theme that follows the system follows its light/dark switch.
             cx.observe_window_appearance(window, |_, window, cx| {
                 crate::preferences::appearance_changed(window.appearance(), cx);
             }),
-            cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, _, cx| {
+            cx.subscribe_in(&store, window, |this, _, event: &StoreEvent, window, cx| {
                 if let StoreEvent::Changed(changes) = event
                     && changes.touches_status()
                 {
-                    this.sync_page(cx);
+                    this.sync_page(window, cx);
                 }
             }),
             cx.subscribe_in(&palette, window, |this, _, event: &PaletteEvent, window, cx| {
@@ -298,7 +298,7 @@ impl Shell {
             pending_conversation: None,
             _subscriptions: subscriptions,
         };
-        shell.sync_page(cx);
+        shell.sync_page(window, cx);
         shell
     }
 
@@ -382,7 +382,7 @@ impl Shell {
         self.palette_open
     }
 
-    fn sync_page(&mut self, cx: &mut Context<Self>) {
+    fn sync_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let handle = self.store.read(cx);
         let mut page = page_for(handle.store(), handle.entry_store(), handle.is_live());
         // The content of an account whose app lock is awaited after a resume
@@ -428,7 +428,7 @@ impl Shell {
                 Page::Cover => Some(true),
                 _ => None,
             };
-            self.entry.update(cx, |entry, cx| entry.set_lock_view(lock_view, cx));
+            self.entry.update(cx, |entry, cx| entry.set_lock_view(lock_view, window, cx));
             let show = page == Page::Workspace;
             self.status.update(cx, |status, cx| status.set_show_commands(show, cx));
             if !show {

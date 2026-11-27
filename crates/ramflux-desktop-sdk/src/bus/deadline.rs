@@ -24,7 +24,8 @@ pub enum Weight {
     /// Unlocks local account state, including key derivation.
     Unlock,
     /// Changes the app lock, which may wait for the account code: the unlock
-    /// budget plus the window the code sheet has.
+    /// budget plus the window the code sheet has. Its budget is 90 s, as on
+    /// the phones.
     Attended,
     /// Locks or switches the active account.
     Session,
@@ -149,7 +150,7 @@ impl Deadlines {
         Self {
             read: Duration::from_secs(2),
             unlock: Duration::from_secs(10),
-            attended: Duration::from_secs(70),
+            attended: Duration::from_secs(90),
             session: Duration::from_secs(5),
             local: Duration::from_secs(20),
             network: Duration::from_secs(60),
