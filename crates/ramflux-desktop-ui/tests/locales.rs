@@ -387,6 +387,10 @@ fn the_runtime_resolves_the_source_catalogue() {
     ramflux_desktop_ui::i18n::set_locale(SOURCE);
     for (key, text) in source().into_iter().step_by(17) {
         let Some(text) = text else { continue };
+        // The build leaves the card gallery's strings out without its feature.
+        if key.starts_with("card_gallery.") && !cfg!(feature = "card-gallery") {
+            continue;
+        }
         if text.contains('%')
             || key.rsplit_once('.').is_some_and(|(_, c)| Category::parse(c).is_some())
         {

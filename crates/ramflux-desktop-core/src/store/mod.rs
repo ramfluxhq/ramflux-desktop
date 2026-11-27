@@ -128,6 +128,10 @@ pub struct Store {
     /// Group conversations whose creation has not finished.
     creating: BTreeSet<ContextId>,
     username: Option<crate::UsernameStatus>,
+    /// The last `@name` lookup's answer.
+    username_lookup: Option<crate::UsernameLookup>,
+    /// Progress of the last username claim or change.
+    username_claim: Option<crate::UsernameClaim>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
     group_creations: u64,
@@ -422,6 +426,16 @@ impl Store {
     /// This account's username as last reported.
     pub fn username(&self) -> Option<&crate::UsernameStatus> {
         self.username.as_ref()
+    }
+
+    /// The answer to the last `@name` lookup.
+    pub fn username_lookup(&self) -> Option<&crate::UsernameLookup> {
+        self.username_lookup.as_ref()
+    }
+
+    /// Progress of the last username claim or change.
+    pub fn username_claim(&self) -> Option<&crate::UsernameClaim> {
+        self.username_claim.as_ref()
     }
 
     /// Why the contact requests could not be read just now, until they are

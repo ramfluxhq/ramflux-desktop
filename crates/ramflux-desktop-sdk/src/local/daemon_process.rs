@@ -115,7 +115,21 @@ fn child_command(command: &DaemonCommand) -> Command {
     let mut child = Command::new(&command.binary);
     child.args(command.args()).stdin(Stdio::null());
     set_child_log(&mut child, std::env::var_os("RUST_LOG"));
+    set_child_username_center(&mut child);
     child
+}
+
+/// Hands the daemon the username centre this computer uses (the bundled
+/// pin, or the environment override), so its username answers are checked
+/// against the same authority the desktop authorizes with.
+fn set_child_username_center(child: &mut Command) {
+    if let Some(pin) = crate::username_center::current() {
+        child
+            .env("RAMFLUX_USERNAME_CENTER_URL", pin.url)
+            .env("RAMFLUX_USERNAME_CENTER_ID", pin.id)
+            .env("RAMFLUX_USERNAME_CENTER_PUBLIC_KEY", pin.public_key)
+            .env("RAMFLUX_USERNAME_TRUST_GENERATION", pin.generation.to_string());
+    }
 }
 
 /// Keep the parent filter, including an explicitly empty filter.

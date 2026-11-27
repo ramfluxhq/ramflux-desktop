@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Span Brain
+
+//! Username lookups and claims as domain events: what a lookup found (or
+//! why it could not be answered), and where a claim stands. Codes are the
+//! directory's typed codes; the desktop shows them through its own text.
+
+use ramflux_desktop_core::{DomainEvent, UsernameClaim, UsernameLookup, methods};
+use serde_json::Value;
+
+use crate::bus::BusError;
+
+/// A claim has started: it is being published.
+pub fn claim_started(name: &str) -> Vec<DomainEvent> {
+    vec![DomainEvent::UsernameClaimUpdated(Some(UsernameClaim::Publishing { name: clean(name) }))]
+}
+
+/// A lookup has started: the previous answer no longer applies.
+pub fn lookup_started() -> Vec<DomainEvent> {
+    vec![DomainEvent::UsernameLookupUpdated(None)]
+}
+
+/// The events of a finished `username.resolve` or `username.claim`.
+pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> Vec<DomainEvent> {
+    let name = clean(body["name"].as_str().unwrap_or_default());
+    match (method, result) {
+        (methods::USERNAME_RESOLVE, Ok(answer)) => {
+            vec![DomainEvent::UsernameLookupUpdated(Some(found(name, answer)))]
+        }
+        (methods::USERNAME_RESOLVE, Err(error)) => {
+            let code = failure_code(error);
+            let lookup = if code == "not_found" {
+                UsernameLookup::NotFound { name }
+            } else {
+                UsernameLookup::Refused { name, code, retry_after_ms: retry_after(error) }
+            };
+            vec![DomainEvent::UsernameLookupUpdated(Some(lookup))]
+        }
+        (methods::USERNAME_CLAIM, Ok(answer)) => {
+            vec![DomainEvent::UsernameClaimUpdated(claimed(name, answer))]
+        }
+        (methods::USERNAME_CLAIM, Err(error)) => {
+            vec![DomainEvent::UsernameClaimUpdated(Some(UsernameClaim::Failed {
+                name,
+                code: failure_code(error),
+                retry_after_ms: retry_after(error),
+            }))]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The name without a leading `@` and surrounding space.
+fn clean(name: &str) -> String {
+    name.trim().trim_start_matches('@').trim().to_owned()
+}
+
+/// What a found answer names: the name asked for, with the display name and
+/// bio the account published, when it published them.
+fn found(name: String, answer: &Value) -> UsernameLookup {
+    let profile = &answer["profile"]["body"];
+    let text = |key: &str| {
+        profile[key].as_str().map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned)
+    };
+    UsernameLookup::Found { name, display_name: text("display_name"), bio: text("bio") }
+}
+
+/// Where a claim stands after the daemon's last answer. An answer without a
+/// state is the no-op a prepare gives: nothing is claimed in progress.
+fn claimed(name: String, answer: &Value) -> Option<UsernameClaim> {
+    match answer.get("state").and_then(Value::as_str) {
+        Some("committed") => Some(UsernameClaim::Committed { name }),
+        Some("aborted") => {
+            Some(UsernameClaim::Failed { name, code: "aborted".to_owned(), retry_after_ms: None })
+        }
+        Some("pending") => Some(UsernameClaim::Publishing { name }),
+        _ => None,
+    }
+}
+
+/// The typed code of a refusal: the directory's own code when the daemon
+/// gave one, else the daemon's code; transport and timeouts by name.
+fn failure_code(error: &BusError) -> String {
+    match error {
+        BusError::Daemon { code, reason_code, .. } => {
+            reason_code.clone().filter(|r| !r.is_empty()).unwrap_or_else(|| code.clone())
+        }
+        BusError::Transport(_) => "transport".to_owned(),
+        BusError::Timeout => "timeout".to_owned(),
+    }
+}
+
+fn retry_after(error: &BusError) -> Option<u64> {
+    match error {
+        BusError::Daemon { retry_after_ms, .. } => *retry_after_ms,
+        _ => None,
+    }
+}

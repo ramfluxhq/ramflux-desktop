@@ -10,6 +10,15 @@ Versioning.
 ### Added
 
 - `deny.toml` for `cargo deny`: advisories, bans, licences and sources policy modelled on the core, with the workspace AGPL-3.0-or-later licence allowed and the local SQLCipher exceptions of the core. Advisories outside this change are not yet ignored.
+- Usernames (G08): Settings > Account shows the claimed `@name` and claims or
+  changes it. The account's recovery phrase authorizes the change; it is held
+  in a secret for the one call, never serialized, logged or stored, and the
+  claim is authorized in process against the computer's username centre
+  (bundled configuration file, `RAMFLUX_USERNAME_CENTER_*` as an override).
+  Contacts > Add looks a typed `@name` up first and shows what was found
+  (display name and bio when published), then "Send contact request" adds the
+  contact by username. A directory that cannot be reached, or a computer with
+  no username centre, shows a typed state; messaging is unaffected.
 
 ### Security
 

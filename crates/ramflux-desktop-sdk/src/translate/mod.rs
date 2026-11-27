@@ -68,6 +68,7 @@ mod surfaces;
 pub mod task_answers;
 mod task_decisions;
 pub mod tasks;
+pub mod username;
 pub mod v1;
 
 use std::collections::{BTreeMap, BTreeSet};

@@ -43,6 +43,7 @@ pub mod media;
 pub mod message;
 pub mod surface;
 pub mod task;
+pub mod username;
 
 use ramflux_desktop_core::{
     AccountId, AgentRuntimeAction, ContextId, ContextKind, Effect, FailureCode, MomentId, ObjectId,
@@ -139,6 +140,8 @@ pub enum Plan {
     },
     /// A desktop-local preference; the translator echoes it.
     Local,
+    /// A username claim or change, run as a job (see [`username`]).
+    Username(Box<username::ClaimJob>),
     /// Write the redacted diagnostics bundle to `path`.
     Diagnostics {
         /// Destination chosen by the user.
@@ -362,6 +365,7 @@ fn map(
         methods::DIAGNOSTICS_EXPORT => Plan::Diagnostics { path: text(body, "path").to_owned() },
         methods::CONTEXT_PIN | methods::CONTEXT_UNPIN => Plan::Local,
         _ if acct.is_none() => refuse_invalid("this action needs an unlocked account"),
+        methods::USERNAME_CLAIM => username::claim(acct, body, std::mem::take(&mut secrets)),
         method if card_session::is_card_method(method) => {
             match card_session::request(acct, method, body, std::mem::take(&mut secrets)) {
                 Some(request) => Plan::Call { request, refresh: Vec::new() },
@@ -431,6 +435,7 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
             group::invitation(acct, method, body)
         }
         methods::USERNAME_CONTACT_ADD => contact::username_add(acct, body),
+        methods::USERNAME_RESOLVE => username::resolve(acct, body),
         methods::CONVERSATION_START => conversation::start(acct, body, known),
         methods::ATTACH_OBJECT => media::send(body, known),
         methods::OBJECT_PULL

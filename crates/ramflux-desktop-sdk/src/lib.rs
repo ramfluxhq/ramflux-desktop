@@ -50,6 +50,7 @@ pub mod renames;
 pub mod source;
 pub mod surface;
 pub mod translate;
+pub mod username_center;
 
 pub use config::{DEFAULT_SOCKET, Deadlines, SchemaSupport, SdkConfig};
 pub use plan::conversation::fresh_conversation_id;

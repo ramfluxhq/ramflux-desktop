@@ -139,6 +139,9 @@ impl ContactsDock {
             Some(Submission::Id(participant_id)) => {
                 self.sink.emit(UiEventKind::AddContactRequested { participant_id }, window, cx);
             }
+            Some(Submission::Resolve(name)) => {
+                self.sink.emit(UiEventKind::ResolveUsernameRequested { name }, window, cx);
+            }
             Some(Submission::Username(name)) => {
                 self.sink.emit(UiEventKind::AddContactByUsernameRequested { name }, window, cx);
             }
@@ -285,6 +288,7 @@ impl Render for ContactsDock {
                         cx.notify();
                     })),
                 },
+                lookup: self.form.shown_lookup(store).cloned(),
             },
             cx,
         );

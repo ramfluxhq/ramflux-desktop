@@ -199,6 +199,13 @@ impl SettingsPage {
             current: masked("settings.account.current", window, cx),
             next: masked("settings.account.next", window, cx),
             backup: masked("settings.account.backup_passphrase", window, cx),
+            username: crate::i18n::localized_input(
+                "settings.account.username_name",
+                window,
+                cx,
+                |input| input,
+            ),
+            username_phrase: masked("settings.account.username_phrase", window, cx),
         };
         // The export control enables once a backup passphrase is typed.
         subscriptions.push(cx.subscribe(&inputs.backup, |_, _, event: &InputEvent, cx| {

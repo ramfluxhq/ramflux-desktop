@@ -3,8 +3,10 @@
 
 //! Settings · Account: the active account, lock (returns to entry), backup
 //! export (a masked backup passphrase handed to the root as a secret with the
-//! chosen path), and passphrase rotation (two masked inputs handed to the
-//! root as secrets). Masked inputs are cleared the moment they are taken.
+//! chosen path), passphrase rotation (two masked inputs handed to the root as
+//! secrets), and the username claim (a name and the recovery phrase that
+//! authorizes it, handed to the root as a secret). Masked inputs are cleared
+//! the moment they are taken.
 
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputState};
@@ -13,7 +15,8 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, SharedString, TestSupportExt as _, Window, div};
 use ramflux_desktop_core::{
-    Account, AccountId, AppLockState, IntentKind, LockState, SecretInput, UiEventKind, methods,
+    Account, AccountId, AppLockState, IntentKind, LockState, SecretInput, Store, UiEventKind,
+    UsernameClaim, methods,
 };
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::space;
@@ -31,6 +34,10 @@ pub struct AccountInputs {
     pub next: Entity<InputState>,
     /// Passphrase the exported backup is encrypted with.
     pub backup: Entity<InputState>,
+    /// The username to claim (or change to), typed with or without `@`.
+    pub username: Entity<InputState>,
+    /// The recovery phrase that authorizes the username change.
+    pub username_phrase: Entity<InputState>,
 }
 
 pub(super) fn active_account(context: &SectionContext, cx: &App) -> Option<Account> {
@@ -41,6 +48,21 @@ pub(super) fn active_account(context: &SectionContext, cx: &App) -> Option<Accou
         .and_then(|id| store.account(id))
         .or_else(|| store.accounts().find(|a| a.lock_state == LockState::Unlocked))
         .cloned()
+}
+
+/// The line under the username form: what the last claim or change says.
+fn claim_status(store: &Store) -> Option<SharedString> {
+    Some(match store.username_claim()? {
+        UsernameClaim::Publishing { .. } => tr("settings.account.username_publishing"),
+        UsernameClaim::Committed { .. } => tr("settings.account.username_committed"),
+        UsernameClaim::Failed { code, retry_after_ms, .. } => match code.as_str() {
+            "username_taken" => tr("username.error.taken"),
+            "authentication_required" => tr("username.error.authentication"),
+            "invalid_username" => tr("username.error.invalid"),
+            "aborted" => tr("username.error.aborted"),
+            _ => i18n::username_refusal(code, *retry_after_ms),
+        },
+    })
 }
 
 fn take(input: &Entity<InputState>, window: &mut Window, cx: &mut App) -> SecretInput {
@@ -198,7 +220,7 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
         let current = inputs.current.clone();
         let next = inputs.next.clone();
         let root = context.root.clone();
-        let account = account.map(|a| a.id);
+        let account = account.as_ref().map(|a| a.id.clone());
         SettingItem::render(move |_, _, cx: &mut App| {
             let (current, next, root, account) =
                 (current.clone(), next.clone(), root.clone(), account.clone());
@@ -243,6 +265,81 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                 .into_any_element()
         })
     };
+    // Claim or change this account's username. The recovery phrase is taken
+    // with the name and handed to the root as a secret; it never stays in
+    // the field.
+    let claim = {
+        let name = inputs.username.clone();
+        let phrase = inputs.username_phrase.clone();
+        let root = context.root.clone();
+        let store = context.store.clone();
+        let account = account.as_ref().map(|a| a.id.clone());
+        SettingItem::render(move |_, _, cx: &mut App| {
+            let Some(account_id) = account.clone() else { return h_flex().into_any_element() };
+            // A build or computer without a username centre cannot claim one:
+            // the section says so and offers no form.
+            if ramflux_desktop_sdk::username_center::current().is_none() {
+                return design::section(
+                    "account-username-claim",
+                    tr("settings.account.username_claim_title"),
+                    cx,
+                )
+                .child(design::help(tr("settings.account.username_not_set_up"), cx))
+                .into_any_element();
+            }
+            let (name, phrase, root, store) =
+                (name.clone(), phrase.clone(), root.clone(), store.clone());
+            let status = claim_status(store.read(cx).store());
+            let section = design::section(
+                "account-username-claim",
+                tr("settings.account.username_claim_title"),
+                cx,
+            )
+            .child(design::help(tr("settings.account.username_help"), cx))
+            .child(super::presentation::field(
+                tr("settings.account.username_name"),
+                Input::new(&name)
+                    .id("username-name")
+                    .aria_label(tr("settings.account.username_name"))
+                    .large(),
+                cx,
+            ))
+            .child(super::presentation::field(
+                tr("settings.account.username_phrase"),
+                Input::new(&phrase)
+                    .id("username-phrase")
+                    .aria_label(tr("settings.account.username_phrase"))
+                    .mask_toggle()
+                    .large(),
+                cx,
+            ))
+            .children(status.map(|text| design::help(text, cx)));
+            section
+                .child(
+                    h_flex().child(
+                        crate::style::primary_button("settings-username-claim", cx)
+                            .label(tr("settings.account.username_submit"))
+                            .on_click(move |_, window, cx| {
+                                let secret = take(&phrase, window, cx);
+                                let typed = name.read(cx).value().trim().to_owned();
+                                name.update(cx, |input, cx| input.set_value("", window, cx));
+                                if typed.is_empty() {
+                                    return;
+                                }
+                                let kind = IntentKind::ClaimUsername {
+                                    account_id: account_id.clone(),
+                                    name: typed,
+                                    secret,
+                                };
+                                root.update(cx, |root, cx| {
+                                    root.submit_secret(kind, window, cx);
+                                });
+                            }),
+                    ),
+                )
+                .into_any_element()
+        })
+    };
     // The open-account switch (G25) has no backend contract yet: one
     // section with the typed reason, its heading said once.
     let privacy = SettingItem::render(|_, _, cx: &mut App| {
@@ -267,7 +364,13 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
             .into_any_element()
     });
     SettingPage::new(tr("settings.section.account")).group(
-        SettingGroup::new().item(current).item(backup).item(rotation).item(app_lock).item(privacy),
+        SettingGroup::new()
+            .item(current)
+            .item(backup)
+            .item(rotation)
+            .item(claim)
+            .item(app_lock)
+            .item(privacy),
     )
 }
 

@@ -256,6 +256,18 @@ impl Store {
                     changes.source_status = true;
                 }
             }
+            DomainEvent::UsernameLookupUpdated(lookup) => {
+                if self.username_lookup != *lookup {
+                    self.username_lookup.clone_from(lookup);
+                    changes.source_status = true;
+                }
+            }
+            DomainEvent::UsernameClaimUpdated(claim) => {
+                if self.username_claim != *claim {
+                    self.username_claim.clone_from(claim);
+                    changes.source_status = true;
+                }
+            }
             DomainEvent::OwnContactCardUpdated(card) => {
                 if self.own_card.as_ref() != Some(card) {
                     self.own_card = Some(card.clone());

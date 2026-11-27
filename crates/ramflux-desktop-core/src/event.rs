@@ -285,6 +285,10 @@ pub enum DomainEvent {
     },
     /// This account's username, or why the directory cannot be used.
     UsernameStatusUpdated(crate::UsernameStatus),
+    /// The answer to the last `@name` lookup (`None` clears it).
+    UsernameLookupUpdated(Option<crate::UsernameLookup>),
+    /// Progress of the last username claim or change (`None` clears it).
+    UsernameClaimUpdated(Option<crate::UsernameClaim>),
     /// An actionable networking failure associated with its originating account.
     AccountNetworkingFailed {
         /// Account that issued the operation.

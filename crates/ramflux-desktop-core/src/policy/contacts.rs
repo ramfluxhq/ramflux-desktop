@@ -27,6 +27,13 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
             }
             Ok(Decision::Call(methods::USERNAME_CONTACT_ADD, json!({ "name": name })))
         }),
+        IntentKind::ResolveUsername { name } => p.human_only("look up a username").and_then(|()| {
+            let name = name.trim().trim_start_matches('@').trim();
+            if name.is_empty() {
+                return Err(IntentError::Empty("username"));
+            }
+            Ok(Decision::Call(methods::USERNAME_RESOLVE, json!({ "name": name })))
+        }),
         IntentKind::AddContactCard { card, replace_provisional_root } => {
             p.human_only("add a contact").and_then(|()| {
                 let card = check_add_contact_card(card)?;

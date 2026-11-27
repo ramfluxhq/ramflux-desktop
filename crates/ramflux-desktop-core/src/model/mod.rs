@@ -92,7 +92,7 @@ pub use contact_request::{
 pub use conversation::{
     ContactCard, ContactLink, Context, ContextKind, ContextPreview, Disappearing, GroupInvitation,
     KindClaim, NameWarnings, Participant, ParticipantKind, PeerKind, Role, RootSource, SafetyState,
-    UsernameStatus,
+    UsernameClaim, UsernameLookup, UsernameStatus,
 };
 pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingApproval};
 pub use integrations::{A2iItem, Integrations, McpServer};

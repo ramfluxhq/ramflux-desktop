@@ -83,6 +83,18 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
+        IntentKind::ClaimUsername { account_id, name, secret } => {
+            p.human_only("claim a username").and_then(|()| {
+                account(p, account_id)?;
+                let name = name.trim().trim_start_matches('@').trim();
+                non_empty(name, "username")?;
+                secret_present(secret, "recovery phrase")?;
+                Ok(Decision::SecretCall(
+                    methods::USERNAME_CLAIM,
+                    json!({ "account_id": account_id, "name": name }),
+                ))
+            })
+        }
         IntentKind::RevokeDevice { device_id } => p.human_only("revoke a device").and_then(|()| {
             let device = p
                 .store

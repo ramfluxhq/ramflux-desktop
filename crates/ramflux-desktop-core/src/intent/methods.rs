@@ -124,6 +124,12 @@ pub const GROUP_INVITATION_ACCEPT: &str = "group.invitation.accept";
 pub const GROUP_INVITATION_DECLINE: &str = "group.invitation.decline";
 /// Add a contact by the username they claimed (`@name`).
 pub const USERNAME_CONTACT_ADD: &str = "username.contact.add";
+
+/// Look up a username (`@name`) in the username directory.
+pub const USERNAME_RESOLVE: &str = "username.resolve";
+
+/// Claim or change this account's username (needs the recovery phrase).
+pub const USERNAME_CLAIM: &str = "username.claim";
 /// Place a voice call in a direct conversation (CALL-01 §6 `call.invite`).
 pub const CALL_INVITE: &str = "call.invite";
 /// Answer a ringing call.
