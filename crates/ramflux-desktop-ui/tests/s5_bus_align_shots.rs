@@ -160,6 +160,11 @@ mod shots {
                 };
             }
             let mut body = frames.get(method).cloned().unwrap_or(json!({}));
+            if method == "message.read" {
+                // The own message m2 carries one unnamed attachment.
+                body["messages"][0]["content"] =
+                    json!({"message":{"media":[{"mimeType":"","size":12}]}});
+            }
             if method == "account.status" {
                 body["networking_snapshot"] = json!({"state":"networking_pending","phase":"connecting","generation":1,"cause":null});
             }
@@ -177,15 +182,17 @@ mod shots {
                 && r.store(|s| s.context(&ContextId::new("dm-ana")).is_some())
         });
         run.show();
-        // Capture the actual unnamed, paused attachment after its directory
-        // has arrived, rather than a partially loaded row.
-        run.until("paused attachment fixture", |r| {
+        // Capture the actual unnamed outgoing attachment after its directory
+        // has arrived, rather than a partially loaded row. The SDK no longer
+        // reports a paused transfer, so the row is waited for as listed.
+        run.until("unnamed attachment fixture", |r| {
             r.store(|s| {
-                s.object(&ramflux_desktop_core::ObjectId::new("attachment:m2:0"))
-                    .is_some_and(|o| o.name.is_none()
-                        && matches!(&o.transfer, ramflux_desktop_core::TransferState::Failed { reason } if reason == "paused"))
-                    && s.moments().any(|m| matches!(&m.kind, MomentKind::Message(p)
-                        if p.attachment.as_ref().is_some_and(|id| id.as_str() == "attachment:m2:0")))
+                s.object(&ramflux_desktop_core::ObjectId::new("m2#0"))
+                    .is_some_and(|o| o.name.is_none())
+                    && s.moments().any(|m| {
+                        matches!(&m.kind, MomentKind::Message(p)
+                        if p.media.iter().any(|v| v.object_id.as_str() == "m2#0"))
+                    })
             })
         });
         run.until("stream", |_| fake.streaming("acct-main"));

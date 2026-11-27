@@ -249,12 +249,16 @@ mod shots {
         attach(&mut run, &huge);
         run.shot("f10_08_attach_too_large");
         attach(&mut run, &report);
-        state.lock().expect("state").submit_delay = Duration::from_secs(3);
+        // Hold the send's answer for the shot: a fixed delay would race the
+        // fake's uniform 3 s request budget.
+        let held = state.lock().expect("state").submit_held.clone();
+        held.store(true, std::sync::atomic::Ordering::SeqCst);
         run.click(None, "composer-send");
         run.until("the message on its way", |r| {
             r.store(|s| s.objects().any(|o| o.name.as_deref() == Some("quarterly-report.txt")))
         });
         run.shot("f10_09_attach_sending");
+        held.store(false, std::sync::atomic::Ordering::SeqCst);
         run.until("the sent attachment", |r| {
             r.store(|s| {
                 s.objects().any(|o| {
