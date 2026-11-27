@@ -143,6 +143,10 @@ pub struct EntryPage {
     /// the store's failure count when that pair was first seen: only an unlock
     /// refusal after it is shown on the lock page.
     lock_mark: Option<(AccountId, u64, u64)>,
+    /// The last app lock wait the window saw on the lock page, and when.
+    code_clock: std::rc::Rc<std::cell::Cell<Option<(u64, std::time::Instant)>>>,
+    /// Whether a refresh for the lock page countdown is already scheduled.
+    code_ticking: std::rc::Rc<std::cell::Cell<bool>>,
     /// The store's failure count when a node was last looked up; a node
     /// lookup failure after it is shown under the add-node form.
     node_lookup: Option<u64>,
@@ -234,6 +238,8 @@ impl EntryPage {
             review_nodes: false,
             submitted: None,
             lock_mark: None,
+            code_clock: std::rc::Rc::default(),
+            code_ticking: std::rc::Rc::default(),
             node_lookup: None,
             session_wait: SessionWait::Idle,
             lock_view: None,

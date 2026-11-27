@@ -78,6 +78,21 @@ impl Store {
             DomainEvent::AppLockChanged { account_id, lock } => {
                 self.app_lock_changed(account_id, lock, changes);
             }
+            DomainEvent::AppLockCodeSheet { account_id, open } => {
+                if *open {
+                    self.app_lock_sheets.insert(account_id.clone());
+                    // A new code request starts with no refusal on screen.
+                    self.app_lock_refusals.remove(account_id);
+                } else {
+                    self.app_lock_sheets.remove(account_id);
+                    self.app_lock_refusals.remove(account_id);
+                }
+                changes.app_lock_codes.insert(account_id.clone());
+            }
+            DomainEvent::AppLockCodeRefused { account_id, refusal } => {
+                self.app_lock_refusals.insert(account_id.clone(), *refusal);
+                changes.app_lock_codes.insert(account_id.clone());
+            }
             DomainEvent::NodeUpserted(node) => {
                 changes.nodes.insert(node.id.clone());
                 self.nodes.insert(node.id.clone(), node.clone());

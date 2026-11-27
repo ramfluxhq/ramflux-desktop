@@ -170,6 +170,7 @@ impl ChangeSet {
             || !self.changes.nodes.is_empty()
             || !self.changes.moments.is_empty()
             || !self.changes.contexts.is_empty()
+            || !self.changes.app_lock_codes.is_empty()
             || self.changes.source_status
     }
 

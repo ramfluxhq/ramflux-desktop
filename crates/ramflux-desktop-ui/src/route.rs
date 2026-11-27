@@ -136,6 +136,7 @@ mod tests {
                         reason: None,
                         generation: 1,
                         armed: false,
+                        ..AppLock::default()
                     },
                 },
             )

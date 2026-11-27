@@ -22,10 +22,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use ramflux_sdk::custody::pairing::LocalCredentialProvider;
 use ramflux_sdk::{LocalBusClient, LocalBusFrame, LocalBusFrameKind};
 use serde_json::Value;
 use tokio::sync::{Mutex, Semaphore, mpsc};
 
+use super::attended::{ArmGuard, CodeGate};
 use super::deadline::{Deadlines, deadline_ms};
 use super::{BusError, BusRequest};
 
@@ -91,6 +93,9 @@ struct Inner {
     /// Where the app lock events of this connection go (an observer is
     /// only started for a client with a status or an event receiver).
     lock_events: Option<mpsc::UnboundedSender<AppLockEvent>>,
+    /// The attended account code of this connection (the daemon may ask for
+    /// it on any connection of the scope).
+    gate: Option<Arc<CodeGate>>,
     generations: AtomicU64,
     next_id: AtomicU64,
     slots: Semaphore,
@@ -100,7 +105,7 @@ struct Inner {
 impl BusClient {
     /// A client of `socket`; nothing connects until the first request.
     pub fn new(socket: PathBuf, connect_timeout: Duration, deadlines: Deadlines) -> Self {
-        Self::with_status(socket, connect_timeout, deadlines, None, None)
+        Self::with_status(socket, connect_timeout, deadlines, None, None, None)
     }
 
     pub(crate) fn with_status(
@@ -109,6 +114,7 @@ impl BusClient {
         deadlines: Deadlines,
         status: Option<mpsc::UnboundedSender<ConnectionState>>,
         lock_events: Option<mpsc::UnboundedSender<AppLockEvent>>,
+        gate: Option<Arc<CodeGate>>,
     ) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -118,6 +124,7 @@ impl BusClient {
                 link: Mutex::new(None),
                 status,
                 lock_events,
+                gate,
                 generations: AtomicU64::new(0),
                 next_id: AtomicU64::new(1),
                 slots: Semaphore::new(MAX_IN_FLIGHT),
@@ -162,6 +169,12 @@ impl BusClient {
     #[cfg(test)]
     pub(crate) async fn drop_connection(&self) {
         self.inner.link.lock().await.take();
+    }
+
+    /// Arms the attended account code for one configure of this client; the
+    /// daemon's code prompt is answered only while the guard lives.
+    pub(crate) fn arm_code(&self) -> Option<ArmGuard> {
+        self.inner.gate.as_ref().map(CodeGate::arm)
     }
 
     /// Opens the connection if there is none and returns its generation.
@@ -250,13 +263,22 @@ impl BusClient {
             return Ok((open.generation, open.client.clone()));
         }
         link.take();
-        let client = tokio::time::timeout(
-            self.inner.connect_timeout,
-            LocalBusClient::connect(&self.inner.socket),
-        )
-        .await
-        .map_err(|_| BusError::Transport("the daemon socket did not accept in time".to_owned()))?
-        .map_err(BusError::from)?;
+        let socket = &self.inner.socket;
+        let connect = async {
+            match &self.inner.gate {
+                Some(gate) => {
+                    let provider: Arc<dyn LocalCredentialProvider> = gate.clone();
+                    LocalBusClient::connect_with_provider(socket, provider).await
+                }
+                None => LocalBusClient::connect(socket).await,
+            }
+        };
+        let client = tokio::time::timeout(self.inner.connect_timeout, connect)
+            .await
+            .map_err(|_| {
+                BusError::Transport("the daemon socket did not accept in time".to_owned())
+            })?
+            .map_err(BusError::from)?;
         let generation = self.inner.generations.fetch_add(1, Ordering::Relaxed) + 1;
         let down = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let observer =
@@ -373,6 +395,7 @@ mod tests {
             Deadlines::uniform(Duration::from_secs(5)),
             Some(out),
             None,
+            None,
         );
         let generation = client.attach().await.expect("connects");
         let first = states.recv().await.expect("a state");
@@ -403,6 +426,7 @@ mod tests {
             Deadlines::uniform(Duration::from_secs(5)),
             None,
             Some(events),
+            None,
         );
         client.attach().await.expect("connects");
         // The fake may not have registered the connection yet: push again

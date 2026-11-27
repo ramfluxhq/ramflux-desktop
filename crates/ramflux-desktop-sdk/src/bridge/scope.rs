@@ -227,6 +227,8 @@ pub(super) struct Task {
     gate_retry_at: Option<Instant>,
     /// When the app lock is read again on the bridge's own account.
     pub(super) app_lock_watch: super::app_lock::AppLockWatch,
+    /// The account code the window was asked for, and the configure it serves.
+    pub(super) app_lock_code: super::app_lock::AppLockCode,
     /// The request-connection generation the current epoch's status was
     /// read on; a newer generation starts a new epoch.
     gate_connection: Option<u64>,
@@ -323,6 +325,7 @@ pub(super) struct Inbox {
     pub(super) internal: mpsc::UnboundedReceiver<Internal>,
     pub(super) connection_states: mpsc::UnboundedReceiver<crate::bus::client::ConnectionState>,
     pub(super) lock_events: mpsc::UnboundedReceiver<crate::bus::client::AppLockEvent>,
+    pub(super) code_requests: mpsc::UnboundedReceiver<crate::bus::attended::CodeRequest>,
     pub(super) streamed: mpsc::UnboundedReceiver<Streamed>,
     pub(super) jobs: mpsc::UnboundedReceiver<JobStreamed>,
 }
@@ -338,6 +341,7 @@ pub(super) fn build(
     let (internal, internal_rx) = mpsc::unbounded_channel();
     let (connection_states, connection_rx) = mpsc::unbounded_channel();
     let (lock_events, lock_events_rx) = mpsc::unbounded_channel();
+    let (code_requests, code_requests_rx) = mpsc::unbounded_channel();
     let (streamed, streamed_rx) = mpsc::unbounded_channel();
     let (jobs_out, jobs_rx) = mpsc::unbounded_channel::<JobStreamed>();
     let socket = config.socket_path.to_string_lossy().into_owned();
@@ -349,6 +353,7 @@ pub(super) fn build(
         config.deadlines,
         Some(connection_states),
         Some(lock_events),
+        Some(crate::bus::attended::CodeGate::new(code_requests)),
     );
     let job_link = JobLink::new(
         config.socket_path.clone(),
@@ -387,6 +392,7 @@ pub(super) fn build(
         gate_told: (SchemaGate::Open, None),
         gate_retry_at: None,
         app_lock_watch: super::app_lock::AppLockWatch::default(),
+        app_lock_code: super::app_lock::AppLockCode::default(),
         gate_connection: None,
         pending_markers: 0,
         batch_pending: 0,
@@ -438,6 +444,7 @@ pub(super) fn build(
             internal: internal_rx,
             connection_states: connection_rx,
             lock_events: lock_events_rx,
+            code_requests: code_requests_rx,
             streamed: streamed_rx,
             jobs: jobs_rx,
         },
@@ -464,6 +471,7 @@ pub(crate) async fn run(
         internal: mut internal_rx,
         connection_states: mut connection_rx,
         lock_events: mut lock_events_rx,
+        code_requests: mut code_requests_rx,
         streamed: mut streamed_rx,
         jobs: mut jobs_rx,
     } = inbox;
@@ -483,6 +491,7 @@ pub(crate) async fn run(
             Some(event) = lock_events_rx.recv() => {
                 task.app_lock_changed(event.account.as_deref(), &event.body);
             }
+            Some(request) = code_requests_rx.recv() => task.code_requested(request),
             Some(jobs) = jobs_rx.recv() => task.on_jobs(jobs),
             Some(streamed) = streamed_rx.recv() => {
                 task.on_streamed(streamed);

@@ -153,6 +153,9 @@ pub const ACCOUNT_LOCK: &str = "account.lock";
 pub const APP_LOCK_STATE: &str = "account.app_lock.state";
 /// Turn the app lock on or off and set its timeout (the account must be open).
 pub const APP_LOCK_CONFIGURE: &str = "account.app_lock.configure";
+/// Answer the account code sheet of an app lock change (carries a secret;
+/// handled by the source, never sent to the daemon).
+pub const APP_LOCK_CODE_ANSWER: &str = "app_lock.code.answer";
 /// Report that the app went to the background or came back to the front.
 pub const APP_LOCK_LIFECYCLE: &str = "account.app_lock.lifecycle";
 /// Rotate an account passphrase (carries secrets).

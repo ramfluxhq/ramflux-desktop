@@ -75,7 +75,7 @@ impl std::fmt::Debug for CardInput {
 ///
 /// Kinds that carry a [`SecretInput`] (unlock, restore,
 /// backup export, full backup and restore verification, passphrase
-/// rotation, username claim) are excluded from serde: serializing them is an
+/// rotation, username claim, app lock code answer) are excluded from serde: serializing them is an
 /// error and they cannot be deserialized.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum IntentKind {
@@ -770,6 +770,15 @@ pub enum IntentKind {
     ExportDiagnostics {
         /// Local path chosen by the user.
         path: String,
+    },
+    /// Answer the account code the daemon asked for an app lock change. An
+    /// empty secret dismisses the sheet. Human only.
+    #[serde(skip)]
+    AnswerAppLockCode {
+        /// Account.
+        account_id: AccountId,
+        /// The account code (empty to dismiss).
+        secret: SecretInput,
     },
     /// Turn an account's app lock on or off, and set its timeout. Human only.
     ConfigureAppLock {

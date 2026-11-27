@@ -24,7 +24,7 @@
 //!   local daemon, version and log locations (local preference).
 //! - [`appearance`]: theme and language (local preference).
 
-mod account;
+pub(crate) mod account;
 pub mod agents;
 pub mod appearance;
 pub mod backup;
@@ -221,7 +221,35 @@ impl SettingsPage {
                 |input| input,
             ),
             username_phrase: masked("settings.account.username_phrase", window, cx),
+            app_lock_code: masked("settings.app_lock.code", window, cx),
+            code_clock: std::rc::Rc::default(),
+            code_ticking: std::rc::Rc::default(),
         };
+        // The account code sheet is dismissed when the window loses focus.
+        let (dismiss_store, dismiss_root, dismiss_code) =
+            (store.clone(), root.clone(), inputs.app_lock_code.clone());
+        subscriptions.push(cx.observe_window_activation(window, move |_, window, cx| {
+            account::dismiss_app_lock_codes(
+                &dismiss_store,
+                &dismiss_root,
+                &dismiss_code,
+                window,
+                cx,
+            );
+        }));
+        // No sheet left: whatever was typed into it is cleared.
+        let clear_code = inputs.app_lock_code.clone();
+        subscriptions.push(cx.subscribe_in(
+            &store,
+            window,
+            move |_, store, event: &StoreEvent, window, cx| {
+                if matches!(event, StoreEvent::Changed(_))
+                    && store.read(cx).store().app_lock_sheets().next().is_none()
+                {
+                    clear_code.update(cx, |input, cx| input.set_value("", window, cx));
+                }
+            },
+        ));
         // The export control enables once a backup passphrase is typed.
         subscriptions.push(cx.subscribe(&inputs.backup, |_, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) {

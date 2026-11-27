@@ -152,6 +152,10 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
         }),
         IntentKind::ExportDiagnostics { path } => non_empty(path, "diagnostics path")
             .map(|()| Decision::Call(methods::DIAGNOSTICS_EXPORT, json!({ "path": path }))),
+        IntentKind::AnswerAppLockCode { account_id, .. } => p.human_only("answer the account code").and_then(|()| {
+            account(p, account_id)?;
+            Ok(Decision::SecretCall(methods::APP_LOCK_CODE_ANSWER, json!({ "account_id": account_id })))
+        }),
         IntentKind::ConfigureAppLock { account_id, enabled, timeout_ms } => {
             p.human_only("change the app lock").and_then(|()| {
                 account(p, account_id)?;

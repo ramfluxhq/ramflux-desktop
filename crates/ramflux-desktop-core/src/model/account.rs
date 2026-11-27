@@ -51,6 +51,30 @@ pub struct AppLock {
     /// the lock is on). An unlocked lock that is not armed has no deadline.
     #[serde(default)]
     pub armed: bool,
+    /// Milliseconds until the daemon accepts an account code again, while it
+    /// throttles wrong codes (`code_retry_after_ms`); `None` when it does not.
+    #[serde(default)]
+    pub code_retry_after_ms: Option<u64>,
+    /// Whether the daemon refuses every account code until the account is
+    /// restored from its recovery phrase.
+    #[serde(default)]
+    pub code_attempts_exhausted: bool,
+}
+
+/// Why the daemon refused an account code for the app lock or an unlock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppLockCodeRefusal {
+    /// The code is wrong (the typed `wrong_passphrase` reason).
+    Wrong,
+    /// The user dismissed the code sheet: nothing changed.
+    Cancelled,
+    /// No code came in time, or the sheet could not be shown: nothing changed.
+    TimedOut,
+    /// The daemon is throttling wrong codes; the wait is in the app lock state.
+    RetryLater,
+    /// Wrong codes exhausted the attempts; only restoring the account helps.
+    Exhausted,
 }
 
 /// What an account is for.
