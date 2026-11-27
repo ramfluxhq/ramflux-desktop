@@ -5,49 +5,90 @@
 //! why it could not be answered), and where a claim stands. Codes are the
 //! directory's typed codes; the desktop shows them through its own text.
 
-use ramflux_desktop_core::{DomainEvent, UsernameClaim, UsernameLookup, methods};
+use ramflux_desktop_core::{AccountId, DomainEvent, UsernameClaim, UsernameLookup, methods};
 use serde_json::Value;
 
 use crate::bus::BusError;
 
-/// A claim has started: it is being published.
-pub fn claim_started(name: &str) -> Vec<DomainEvent> {
-    vec![DomainEvent::UsernameClaimUpdated(Some(UsernameClaim::Publishing { name: clean(name) }))]
+/// A claim of `account` has started: it is being published.
+pub fn claim_started(account: &str, name: &str) -> Vec<DomainEvent> {
+    vec![DomainEvent::UsernameClaimUpdated {
+        account: AccountId::new(account),
+        claim: Some(UsernameClaim::Publishing { name: clean(name) }),
+    }]
 }
 
-/// A lookup has started: the previous answer no longer applies.
-pub fn lookup_started() -> Vec<DomainEvent> {
-    vec![DomainEvent::UsernameLookupUpdated(None)]
+/// A lookup made for `account` has started: the previous answer no longer
+/// applies.
+pub fn lookup_started(account: Option<&AccountId>) -> Vec<DomainEvent> {
+    vec![DomainEvent::UsernameLookupUpdated { account: account.cloned(), lookup: None }]
 }
 
-/// The events of a finished `username.resolve` or `username.claim`.
-pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> Vec<DomainEvent> {
+/// Clears the lookup and the claim of `account` (the account is locked, or
+/// its scope ends).
+pub fn account_cleared(account: &AccountId) -> Vec<DomainEvent> {
+    vec![
+        DomainEvent::UsernameLookupUpdated { account: Some(account.clone()), lookup: None },
+        DomainEvent::UsernameClaimUpdated { account: account.clone(), claim: None },
+    ]
+}
+
+/// The events of a finished `username.resolve` or `username.claim`, made for
+/// `account` (`None` when no account was open).
+pub fn outcome(
+    account: Option<&AccountId>,
+    method: &str,
+    body: &Value,
+    result: &Result<Value, BusError>,
+) -> Vec<DomainEvent> {
     let name = clean(body["name"].as_str().unwrap_or_default());
+    let lookup = |lookup| DomainEvent::UsernameLookupUpdated {
+        account: account.cloned(),
+        lookup: Some(lookup),
+    };
     match (method, result) {
-        (methods::USERNAME_RESOLVE, Ok(answer)) => {
-            vec![DomainEvent::UsernameLookupUpdated(Some(found(name, answer)))]
-        }
+        (methods::USERNAME_RESOLVE, Ok(answer)) => vec![lookup(found(name, answer))],
         (methods::USERNAME_RESOLVE, Err(error)) => {
             let code = failure_code(error);
-            let lookup = if code == "not_found" {
+            let found = if code == "not_found" {
                 UsernameLookup::NotFound { name }
             } else {
                 UsernameLookup::Refused { name, code, retry_after_ms: retry_after(error) }
             };
-            vec![DomainEvent::UsernameLookupUpdated(Some(lookup))]
+            vec![lookup(found)]
         }
-        (methods::USERNAME_CLAIM, Ok(answer)) => {
-            vec![DomainEvent::UsernameClaimUpdated(claimed(name, answer))]
-        }
-        (methods::USERNAME_CLAIM, Err(error)) => {
-            vec![DomainEvent::UsernameClaimUpdated(Some(UsernameClaim::Failed {
-                name,
-                code: failure_code(error),
-                retry_after_ms: retry_after(error),
-            }))]
+        (methods::USERNAME_CLAIM, _) => {
+            let Some(account) = account else { return Vec::new() };
+            let claim = match result {
+                Ok(answer) => claimed(name, answer),
+                Err(error) => Some(UsernameClaim::Failed {
+                    name,
+                    code: failure_code(error),
+                    retry_after_ms: retry_after(error),
+                }),
+            };
+            vec![DomainEvent::UsernameClaimUpdated { account: account.clone(), claim }]
         }
         _ => Vec::new(),
     }
+}
+
+/// A status read that reports a claim operation committed or aborted settles
+/// the claim that waits on it (the claim state matches the operation id).
+pub fn settled(account: &AccountId, status: &Value) -> Vec<DomainEvent> {
+    let committed = match status.get("state").and_then(Value::as_str) {
+        Some("committed") => true,
+        Some("aborted") => false,
+        _ => return Vec::new(),
+    };
+    let Some(operation_id) = status.get("operation_id").and_then(Value::as_str) else {
+        return Vec::new();
+    };
+    vec![DomainEvent::UsernameClaimSettled {
+        account: account.clone(),
+        operation_id: operation_id.to_owned(),
+        committed,
+    }]
 }
 
 /// The name without a leading `@` and surrounding space.
@@ -66,14 +107,19 @@ fn found(name: String, answer: &Value) -> UsernameLookup {
 }
 
 /// Where a claim stands after the daemon's last answer. An answer without a
-/// state is the no-op a prepare gives: nothing is claimed in progress.
+/// state is the no-op a prepare gives: nothing is claimed in progress. A
+/// claim still pending when the wait ran out keeps its operation id, so a
+/// later status read can settle it.
 fn claimed(name: String, answer: &Value) -> Option<UsernameClaim> {
     match answer.get("state").and_then(Value::as_str) {
         Some("committed") => Some(UsernameClaim::Committed { name }),
         Some("aborted") => {
             Some(UsernameClaim::Failed { name, code: "aborted".to_owned(), retry_after_ms: None })
         }
-        Some("pending") => Some(UsernameClaim::Publishing { name }),
+        Some("pending") => Some(UsernameClaim::StillPublishing {
+            name,
+            operation_id: answer.get("operation_id").and_then(Value::as_str).map(str::to_owned),
+        }),
         _ => None,
     }
 }

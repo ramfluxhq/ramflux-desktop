@@ -491,7 +491,13 @@ impl Translator {
             Fetch::ContactRequests => Translated::events(self.contact_request_list(value)),
             Fetch::BackupJobs => self.backup_job_list(value),
             Fetch::GroupInvitations => Translated::events(group_sync::invitations(value)),
-            Fetch::UsernameStatus => Translated::events(account::username_status(value)),
+            Fetch::UsernameStatus => {
+                let mut events = account::username_status(value);
+                if let Some(id) = self.scope.account() {
+                    events.extend(username::settled(id, value));
+                }
+                Translated::events(events)
+            }
             Fetch::AgentList | Fetch::AgentListPage(_) => agents::list_page(fetch, value),
             Fetch::AgentApprovals | Fetch::AgentJobs(_) | Fetch::AgentOperation(_) => {
                 Translated::events(agents::read_events(fetch, value))

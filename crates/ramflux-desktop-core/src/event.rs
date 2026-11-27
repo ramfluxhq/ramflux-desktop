@@ -285,10 +285,32 @@ pub enum DomainEvent {
     },
     /// This account's username, or why the directory cannot be used.
     UsernameStatusUpdated(crate::UsernameStatus),
-    /// The answer to the last `@name` lookup (`None` clears it).
-    UsernameLookupUpdated(Option<crate::UsernameLookup>),
-    /// Progress of the last username claim or change (`None` clears it).
-    UsernameClaimUpdated(Option<crate::UsernameClaim>),
+    /// The answer to the last `@name` lookup made for `account` (`None`
+    /// clears it). `None` as the account: a lookup made with no account open.
+    UsernameLookupUpdated {
+        /// The account the lookup was made for.
+        account: Option<crate::AccountId>,
+        /// The answer, or `None` to clear it.
+        lookup: Option<crate::UsernameLookup>,
+    },
+    /// Progress of the last username claim or change of `account` (`None`
+    /// clears it).
+    UsernameClaimUpdated {
+        /// The account whose name is being claimed or changed.
+        account: crate::AccountId,
+        /// The progress, or `None` to clear it.
+        claim: Option<crate::UsernameClaim>,
+    },
+    /// A status read reported the claim operation `operation_id` of `account`
+    /// as settled: committed, or aborted (nothing published).
+    UsernameClaimSettled {
+        /// The account whose claim settled.
+        account: crate::AccountId,
+        /// The directory operation the claim was submitted as.
+        operation_id: String,
+        /// Whether the directory committed the change.
+        committed: bool,
+    },
     /// An actionable networking failure associated with its originating account.
     AccountNetworkingFailed {
         /// Account that issued the operation.

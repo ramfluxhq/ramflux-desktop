@@ -206,6 +206,7 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::ResolveUsernameRequested { name } => {
             IntentKind::ResolveUsername { name: name.clone() }
         }
+        UiEventKind::UsernameStatusRefreshRequested => IntentKind::UsernameStatusRefresh,
         UiEventKind::GroupInvitationAnswered { group_id, accept } => {
             IntentKind::AnswerGroupInvitation { group_id: group_id.clone(), accept: *accept }
         }

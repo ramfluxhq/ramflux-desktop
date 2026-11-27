@@ -18,7 +18,10 @@ Versioning.
   Contacts > Add looks a typed `@name` up first and shows what was found
   (display name and bio when published), then "Send contact request" adds the
   contact by username. A directory that cannot be reached, or a computer with
-  no username centre, shows a typed state; messaging is unaffected.
+  no username centre, shows a typed state; messaging is unaffected. A claim
+  the directory has not settled within the wait shows "Still publishing" with
+  a Refresh action, and settles when the directory reports it committed or
+  aborted.
 
 ### Security
 

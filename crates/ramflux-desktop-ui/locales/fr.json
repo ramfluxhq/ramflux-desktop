@@ -1816,6 +1816,8 @@
   "settings.account.username_phrase": null,
   "settings.account.username_submit": null,
   "settings.account.username_publishing": null,
+  "settings.account.username_unsettled": null,
+  "settings.account.username_refresh": null,
   "settings.account.username_committed": null,
   "settings.account.username_not_set_up": null,
   "username.error.taken": null,

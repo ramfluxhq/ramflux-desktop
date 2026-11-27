@@ -128,10 +128,10 @@ pub struct Store {
     /// Group conversations whose creation has not finished.
     creating: BTreeSet<ContextId>,
     username: Option<crate::UsernameStatus>,
-    /// The last `@name` lookup's answer.
-    username_lookup: Option<crate::UsernameLookup>,
-    /// Progress of the last username claim or change.
-    username_claim: Option<crate::UsernameClaim>,
+    /// The last `@name` lookup's answer, with the account it was made for.
+    username_lookup: Option<(Option<AccountId>, crate::UsernameLookup)>,
+    /// Progress of the last username claim or change, with its account.
+    username_claim: Option<(AccountId, crate::UsernameClaim)>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
     group_creations: u64,
@@ -428,14 +428,23 @@ impl Store {
         self.username.as_ref()
     }
 
-    /// The answer to the last `@name` lookup.
-    pub fn username_lookup(&self) -> Option<&crate::UsernameLookup> {
-        self.username_lookup.as_ref()
+    /// The answer to the last `@name` lookup, when it was made for
+    /// `account` (the account now active). Another account's answer is not
+    /// shown.
+    pub fn username_lookup(&self, account: Option<&AccountId>) -> Option<&crate::UsernameLookup> {
+        self.username_lookup
+            .as_ref()
+            .filter(|(made_for, _)| made_for.as_ref() == account)
+            .map(|(_, lookup)| lookup)
     }
 
-    /// Progress of the last username claim or change.
-    pub fn username_claim(&self) -> Option<&crate::UsernameClaim> {
-        self.username_claim.as_ref()
+    /// Progress of the last username claim or change of `account`. Another
+    /// account's claim is not shown.
+    pub fn username_claim(&self, account: &AccountId) -> Option<&crate::UsernameClaim> {
+        self.username_claim
+            .as_ref()
+            .filter(|(claimed_by, _)| claimed_by == account)
+            .map(|(_, claim)| claim)
     }
 
     /// Why the contact requests could not be read just now, until they are

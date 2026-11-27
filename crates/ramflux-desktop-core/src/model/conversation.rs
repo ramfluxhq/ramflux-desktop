@@ -321,6 +321,15 @@ pub enum UsernameClaim {
         /// The name being claimed, without `@`.
         name: String,
     },
+    /// The wait for the directory ran out with the claim still pending. It
+    /// settles when a status read reports its operation committed or
+    /// aborted; until then the account can read the status again.
+    StillPublishing {
+        /// The name being claimed, without `@`.
+        name: String,
+        /// The directory's operation id for the change, once it gave one.
+        operation_id: Option<String>,
+    },
     /// The directory committed the name to this account.
     Committed {
         /// The name, without `@`.

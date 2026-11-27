@@ -123,8 +123,8 @@ impl ContactsDock {
     /// Submits the add-contact field.
     pub fn submit_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let submission = {
-            let store = self.store.read(cx).store();
-            self.form.take_submission(store, cx)
+            let handle = self.store.read(cx);
+            self.form.take_submission(handle.store(), handle.active_account(), cx)
         };
         self.emit_submission(submission, window, cx);
     }
@@ -258,7 +258,9 @@ impl ContactsDock {
 
 impl Render for ContactsDock {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let store: &Store = self.store.read(cx).store();
+        let handle = self.store.read(cx);
+        let store: &Store = handle.store();
+        let account = handle.active_account().cloned();
         let verify_reason = crate::gate::reason(store, methods::SAFETY_VERIFY);
         let add_reason = crate::gate::reason(store, methods::CONTACT_ADD);
         // Answers to incoming links are local when requests cannot travel.
@@ -288,7 +290,7 @@ impl Render for ContactsDock {
                         cx.notify();
                     })),
                 },
-                lookup: self.form.shown_lookup(store).cloned(),
+                lookup: self.form.shown_lookup(store, account.as_ref()).cloned(),
             },
             cx,
         );

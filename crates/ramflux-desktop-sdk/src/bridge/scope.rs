@@ -214,6 +214,9 @@ pub(super) struct Task {
     /// Per-fetch bounded recovery and cancellable reads.
     pub(super) read_recovery: super::read_recovery::ReadRecovery,
     snapshot_task: Option<tokio::task::AbortHandle>,
+    /// The username claim running in this scope (aborted with the scope or
+    /// the account's lock: its state is cleared with it).
+    pub(super) claim_job: Option<tokio::task::AbortHandle>,
     /// The schema gate of this connection (account scopes).
     pub(super) gate: Gate,
     /// What the store was last told of the gate.
@@ -408,6 +411,7 @@ pub(super) fn build(
         daemon_refresh: None,
         read_recovery: super::read_recovery::ReadRecovery::default(),
         snapshot_task: None,
+        claim_job: None,
         reconnect_at: start,
         alive: true,
         listings_sent: Arc::new(AtomicU64::new(0)),
@@ -497,6 +501,12 @@ pub(crate) async fn run(
 impl Drop for Task {
     fn drop(&mut self) {
         self.cancel_reads();
+        // The claim job is not left running past its account's scope, and
+        // the username state it showed is cleared with the scope.
+        self.cancel_username_claim();
+        if let Some(account) = self.scope.account().cloned() {
+            self.emit(crate::translate::username::account_cleared(&account));
+        }
         self.save_cursor(true);
         self.sync.stop();
     }
@@ -1038,6 +1048,7 @@ impl Task {
     pub(super) fn locked(&mut self) {
         self.sends.clear();
         self.cancel_reads();
+        self.cancel_username_claim();
         self.gate_retry_at = None;
         self.app_lock_watch.clear();
         self.link = Link::Locked;
@@ -1045,6 +1056,17 @@ impl Task {
         self.save_cursor(true);
         let events = self.translator.own_account_locked();
         self.emit(events);
+        if let Some(account) = self.scope.account().cloned() {
+            self.emit(crate::translate::username::account_cleared(&account));
+        }
+    }
+
+    /// Aborts the username claim job still running, if any. Its answer would
+    /// otherwise land after the account was locked or its scope ended.
+    pub(super) fn cancel_username_claim(&mut self) {
+        if let Some(job) = self.claim_job.take() {
+            job.abort();
+        }
     }
 
     /// Marks the persisted pins on contexts that are known now.

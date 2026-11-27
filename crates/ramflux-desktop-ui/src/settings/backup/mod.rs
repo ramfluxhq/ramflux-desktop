@@ -272,6 +272,15 @@ impl BackupPanel {
         cx.notify();
     }
 
+    /// Clears the typed passphrases (leaving the section, locking the account
+    /// or switching accounts); the open form stays as it is.
+    pub fn clear_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for input in [&self.passphrase, &self.repeat, &self.restore_secret] {
+            input.update(cx, |input, cx| input.set_value("", window, cx));
+        }
+        cx.notify();
+    }
+
     /// Closes the open form; nothing is submitted. A standalone panel
     /// keeps its restore form (there is nothing else to show).
     pub fn close_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {

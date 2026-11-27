@@ -1762,6 +1762,8 @@
   "settings.account.username_phrase": "恢复短语",
   "settings.account.username_submit": "认领用户名",
   "settings.account.username_publishing": "正在发布…",
+  "settings.account.username_unsettled": "仍在发布，请稍后再查看。",
+  "settings.account.username_refresh": "刷新",
   "settings.account.username_committed": "用户名已认领。",
   "settings.account.username_not_set_up": "此版本或此电脑未设置用户名。",
   "username.error.taken": "该用户名已被占用。",
