@@ -299,6 +299,13 @@ async fn serve(
 /// Checks the answer to `daemon.stop`.
 fn stopping(answer: serde_json::Value) -> Result<(), BusError> {
     if answer.get("stopping").and_then(serde_json::Value::as_bool) == Some(true) {
+        // The daemon answers after its shutdown ran; it says when a stage had
+        // to be forced or overran its budget (no pid or path is kept).
+        for (field, what) in [("forced", "forced"), ("overran", "overran its budget")] {
+            if answer.get(field).and_then(serde_json::Value::as_bool) == Some(true) {
+                crate::local::app_log::warn(&format!("daemon.stop: the shutdown {what}"));
+            }
+        }
         Ok(())
     } else {
         Err(BusError::Transport(format!("unexpected answer to daemon.stop: {answer}")))

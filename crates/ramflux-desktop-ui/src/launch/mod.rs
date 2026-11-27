@@ -44,8 +44,13 @@ use stopping::{GRACEFUL_POLLS, StopSequence, StopStep};
 /// Interval at which a started daemon is checked.
 pub const POLL: Duration = Duration::from_millis(250);
 
-/// How long quitting waits for the daemon to accept a graceful stop.
-const QUIT_ANSWER_WAIT: Duration = Duration::from_secs(2);
+/// How long quitting waits for the daemon's answer to a graceful stop: the
+/// daemon answers after its shutdown ran (bounded by its own 4.5 s watchdog).
+const QUIT_ANSWER_WAIT: Duration = Duration::from_secs(5);
+
+/// How long quitting waits for the process to exit after that answer (the
+/// daemon exits about a second after it); only then is it signalled.
+const QUIT_EXIT_WAIT: Duration = Duration::from_secs(5);
 
 fn supervision_level(scenario_process: bool) -> &'static str {
     if scenario_process { "INFO" } else { "WARN" }
@@ -376,7 +381,7 @@ impl DaemonLauncher {
             .request_daemon_stop()
             .and_then(|mut request| request.wait(QUIT_ANSWER_WAIT))
             .is_some_and(|answer| answer.is_ok());
-        let graceful = accepted && process.wait_exit(daemon_process::STOP_GRACE);
+        let graceful = accepted && process.wait_exit(QUIT_EXIT_WAIT);
         self.last_stop_graceful = Some(graceful);
         if graceful {
             app_log::info(&format!("local daemon stopped gracefully on quit pid={pid}"));
