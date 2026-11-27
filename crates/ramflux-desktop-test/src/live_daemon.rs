@@ -255,7 +255,8 @@ impl LiveDaemon {
     }
 
     /// Stops the daemon and waits for it: `rf daemon stop` first (a
-    /// graceful `daemon.stop`), then a terminate signal, then by force.
+    /// graceful `daemon.stop`; `rf` itself gives up after 5 s), then a
+    /// terminate signal, then by force.
     pub fn stop(&mut self) {
         if self.child.is_some() {
             let _ = self.rf(&["daemon", "stop"]);
