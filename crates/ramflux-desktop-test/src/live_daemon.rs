@@ -40,8 +40,20 @@ pub const KEEP_ENV: &str = "RAMFLUX_LIVE_DAEMON_KEEP";
 /// tests (it needs a node and a terminal ceremony).
 pub const TEMPLATE_ENV: &str = "RAMFLUX_LIVE_APP_LOCK_TEMPLATE";
 
+/// When `1`, every daemon starts with `--itest-memory-vault`: its custody
+/// keys live in a file under its data root instead of the login keychain, so
+/// a run raises no keychain prompt. Needs an `rf` built for the harness
+/// (`RAMFLUX_ITEST_BUILD=1`, feature `itest-memory-vault`, dev profile), and
+/// a template made by such a daemon.
+pub const ITEST_VAULT_ENV: &str = "RAMFLUX_LIVE_ITEST_VAULT";
+
 /// How long a daemon may take to answer after starting.
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Whether daemons start with the harness credential vault.
+fn itest_vault() -> bool {
+    std::env::var(ITEST_VAULT_ENV).is_ok_and(|value| value == "1")
+}
 
 /// Whether live tests are switched on.
 pub fn enabled() -> bool {
@@ -156,6 +168,7 @@ impl LiveDaemon {
         let child = Command::new(&self.rf)
             .arg(flag("--socket", &self.socket()))
             .args(["daemon", "start"])
+            .args(itest_vault().then_some("--itest-memory-vault"))
             .arg(flag("--data-root", &self.dir.join("data")))
             .stdin(Stdio::null())
             .stdout(log)
