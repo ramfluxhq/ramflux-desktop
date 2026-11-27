@@ -16,6 +16,8 @@ workspace = true
 # builds without it (`scripts/package-macos.sh`), so no mock data ships.
 default = ["demo"]
 demo = ["dep:ramflux-desktop-test"]
+# The card gallery and conformance (test builds only; never in default or release).
+card-gallery = ["dep:ramflux-card", "dep:blake3", "dep:base64"]
 bus-trace = ["ramflux-desktop-sdk/bus-trace"]
 
 [dependencies]
@@ -26,6 +28,11 @@ ramflux-desktop-core.workspace = true
 ramflux-desktop-sdk.workspace = true
 # The voice call media engine and the audio devices (its own threads).
 ramflux-desktop-media.workspace = true
+# The standalone card runtime for the card gallery (feature `card-gallery`).
+ramflux-card = { workspace = true, optional = true }
+# Hashes of the card fixture copies (manifest check) and the trust package encoding.
+blake3 = { version = "1", optional = true }
+base64 = { version = "0.22", optional = true }
 # The scenario-playing mock source of the demo scenarios (feature `demo`).
 ramflux-desktop-test = { workspace = true, optional = true }
 serde.workspace = true

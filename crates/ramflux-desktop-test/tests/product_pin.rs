@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! The product pin: the four product revisions in the workspace manifest are
+//! The product pin: the five product revisions in the workspace manifest are
 //! one and the same commit, and the lock file moved only as far as that pin
 //! requires.
 //!
@@ -17,7 +17,8 @@ use std::path::PathBuf;
 
 const PINNED_REV: &str = "69fca2527161f3fa3678cfef10f6641f28e1fecc";
 const PRODUCT_SOURCE: &str = "git+https://github.com/ramfluxhq/ramflux.git";
-const PRODUCT_CRATES: [&str; 9] = [
+const PRODUCT_CRATES: [&str; 10] = [
+    "ramflux-card",
     "ramflux-core",
     "ramflux-crypto",
     "ramflux-media",
@@ -67,7 +68,11 @@ fn lock_packages(lock: &str) -> Vec<(String, String, String, String)> {
 #[test]
 fn product_pin_single_rev_and_lock_scope() {
     let revs = manifest_revs(&root_file("Cargo.toml"));
-    assert_eq!(revs.len(), 4, "sdk, protocol, crypto and the PRX client are pinned");
+    assert_eq!(
+        revs.len(),
+        5,
+        "sdk, protocol, crypto, the PRX client and the card runtime are pinned"
+    );
     assert!(revs.iter().all(|r| r == PINNED_REV), "all product revs equal the pin: {revs:?}");
 
     let packages = lock_packages(&root_file("Cargo.lock"));

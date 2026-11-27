@@ -202,7 +202,8 @@ pub fn modal(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App
     let trigger_key = node.key.clone();
     let local = view.local.clone();
     let emit_view = view.sink.clone();
-    let enabled = view.enabled(node);
+    // A disabled trigger never opens the sheet (the runtime refuses it).
+    let enabled = view.enabled(node) && !super::attr_bool(trigger, "disabled");
     let open_trigger = div()
         .id(domain_id("card-id", &format!("modal-trigger-{}", node.key)))
         .cursor_pointer()

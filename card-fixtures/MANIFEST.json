@@ -1,0 +1,373 @@
+{
+  "core_rev": "69fca2527161f3fa3678cfef10f6641f28e1fecc",
+  "files": [
+    {
+      "path": "fixtures/approval.edit.json",
+      "blake3": "a00e7157f65e365bf81cc0495420078b87a5073c01fba537f7712194907b0170"
+    },
+    {
+      "path": "fixtures/approval.json",
+      "blake3": "cd6f574b1241611e76f401a89ea72fe53c946aa259177e192ac5aad02fd625d6"
+    },
+    {
+      "path": "fixtures/approval.mount.json",
+      "blake3": "beae764d1d2efbf76350389f200f43abfce34870cb900076429a85dc62ab6ef6"
+    },
+    {
+      "path": "fixtures/approval.tree.json",
+      "blake3": "cc9572c8af3724e636929359bbd7a3be884fe56c5c02000b36f2d0dd0751cd8d"
+    },
+    {
+      "path": "fixtures/approval.updated.json",
+      "blake3": "a5d7be6a02611e13d55c6c38a2bf0991a267ee453c1a6b99d4461b007cb9d7f7"
+    },
+    {
+      "path": "fixtures/chart.edit.json",
+      "blake3": "a23cbdd0d905225132cc1d93c1e966810568e73da2ffb907e833e736cafe783e"
+    },
+    {
+      "path": "fixtures/chart.json",
+      "blake3": "b9a4f872f9b20b8bd89ffca8f73e2ba98483af94e8ea4e32241121fcd60b151d"
+    },
+    {
+      "path": "fixtures/chart.mount.json",
+      "blake3": "9d6764b7c87f04b56683bb658e4ffba8cb9f5b1628d3f5073da6461fbc7d7452"
+    },
+    {
+      "path": "fixtures/chart.tree.json",
+      "blake3": "af3c825af1c3801f55707c7525e4a97f83247f9ef730c1bf06f50b303942e6ff"
+    },
+    {
+      "path": "fixtures/chart.updated.json",
+      "blake3": "27bbd0560beedc3142132770da440170674f75a82456a5879535db5a1be099f3"
+    },
+    {
+      "path": "fixtures/complete_form.edit.json",
+      "blake3": "dedf69a593f86b7266a5aea0106019bbb3c82cfaca32b36d3054e8451df85358"
+    },
+    {
+      "path": "fixtures/complete_form.json",
+      "blake3": "536923d226246985342102eea8b11e46936c77f63196aeb8817daf18e080036c"
+    },
+    {
+      "path": "fixtures/complete_form.mount.json",
+      "blake3": "dfc3253b4406bb60010b442189dfef9be1d4a5b6c1ad2b89862d99818e89b5b9"
+    },
+    {
+      "path": "fixtures/complete_form.tree.json",
+      "blake3": "a962feca6e445de554026f4ca1accda399708a7178e53d04c84ef5574e103bd2"
+    },
+    {
+      "path": "fixtures/complete_form.updated.json",
+      "blake3": "025708c801c8a741ad280fe8fd2d5ce5c93bcb0b741152a04c2cd16b596f017c"
+    },
+    {
+      "path": "fixtures/form.edit.json",
+      "blake3": "079225374e44241e429052f834a9a635d639044619891970f90108bdc24256bb"
+    },
+    {
+      "path": "fixtures/form.json",
+      "blake3": "41b47bfca0822febe3dccd59783f710bdd5454cd984962e5681829aaca42b3c5"
+    },
+    {
+      "path": "fixtures/form.mount.json",
+      "blake3": "aaff6c74b376d71f72fec7c70dc767c73952d04619ae3d8a5910dddb0630a61c"
+    },
+    {
+      "path": "fixtures/form.tree.json",
+      "blake3": "b78dc78af1bd4c54aba688c4b9c7885e1dc2654e6670a84a5352cae47b15e4ed"
+    },
+    {
+      "path": "fixtures/form.updated.json",
+      "blake3": "413cca0c8a90c64ad2c0d6342d06aa377e4e518703c9b0df633063b1d8919ef7"
+    },
+    {
+      "path": "fixtures/task.edit.json",
+      "blake3": "b301292853d76e91b9692be683c05831e57c08d3419cf3ddc5be63309ea0b049"
+    },
+    {
+      "path": "fixtures/task.json",
+      "blake3": "9c19dbeed1184da37d85bdabb9dd2a28fcc48d0b7a9bda024e7b388eba4626a3"
+    },
+    {
+      "path": "fixtures/task.mount.json",
+      "blake3": "7d00513fedf7134c536af3e69e093a9b83d89e4a72ffe088c5a6cd8d7e3cc456"
+    },
+    {
+      "path": "fixtures/task.tree.json",
+      "blake3": "a45e18ae36e9b5a5686ada9f5240b791bc4102e7a5af8175521baef97506abe2"
+    },
+    {
+      "path": "fixtures/task.updated.json",
+      "blake3": "4867edb96df842d43a44e2b0e24f5a95d96e79ebb05ef74c26871c866eb5d58a"
+    },
+    {
+      "path": "host-fixtures/README.md",
+      "blake3": "d1bedf696db7a57e71b3ec988e190436b3c00767c2045c880a0d09f79f3c01e5"
+    },
+    {
+      "path": "host-fixtures/approval/unset.input.json",
+      "blake3": "cd6f574b1241611e76f401a89ea72fe53c946aa259177e192ac5aad02fd625d6"
+    },
+    {
+      "path": "host-fixtures/approval/unset.tree.json",
+      "blake3": "fba0139b240517dbc6feec533d5e34e3991b4048bcfb1ca06d5d5d0646011f91"
+    },
+    {
+      "path": "host-fixtures/button/borderless.input.json",
+      "blake3": "b5926577c816d448de2b910238ac6a67e660fb76964ed4b4bf105cc1bba20004"
+    },
+    {
+      "path": "host-fixtures/button/borderless.tree.json",
+      "blake3": "efe843e7dae306becebaed620d2b82843dd0e4f56428a56508cd3d839bb3395a"
+    },
+    {
+      "path": "host-fixtures/button/default.input.json",
+      "blake3": "0aee1be84990763d9e084dbe35efa6d445c0901c83d19ca7eda34c39fd33ae34"
+    },
+    {
+      "path": "host-fixtures/button/default.tree.json",
+      "blake3": "f5ce5f54036b307698eef5d3aaf07f99e59d2b7220cf88d83c36d11a284d377a"
+    },
+    {
+      "path": "host-fixtures/button/primary.input.json",
+      "blake3": "b53373a1fd86f78ca0b1ac9aee6c3baf2bb0d41faaae742be2f4cf5e8f2a3775"
+    },
+    {
+      "path": "host-fixtures/button/primary.tree.json",
+      "blake3": "8336580a29dea37e82da340589b782b4741586897e7b4614c8a448ac939de53e"
+    },
+    {
+      "path": "host-fixtures/card/unset.input.json",
+      "blake3": "d1552890e24ff0c0e5a7a84a7956176f22e02cde505c65d1c33c3e1f972718e5"
+    },
+    {
+      "path": "host-fixtures/card/unset.tree.json",
+      "blake3": "15300533a467979e51d4f8d7233e46eb58c3181ecff4fba8e95f4a63aa0087a4"
+    },
+    {
+      "path": "host-fixtures/chart/unset.input.json",
+      "blake3": "b9a4f872f9b20b8bd89ffca8f73e2ba98483af94e8ea4e32241121fcd60b151d"
+    },
+    {
+      "path": "host-fixtures/chart/unset.tree.json",
+      "blake3": "27ee07c80023b42813ba76970c63b211f223c14c9156225abbf79939195f990c"
+    },
+    {
+      "path": "host-fixtures/check_box/unset.input.json",
+      "blake3": "fe8eb85f58151bdeb82813974bf1c5f2edfe2b55e70a249c74e926f17c804366"
+    },
+    {
+      "path": "host-fixtures/check_box/unset.tree.json",
+      "blake3": "8eaba8937239a7f8912ff368dd8d5a18108acbf2bd5892cefacd5b744299c8f6"
+    },
+    {
+      "path": "host-fixtures/choice_picker/multipleSelection.input.json",
+      "blake3": "02a3b2a439773c5dd6b0150ebd2062f171c222e66b1aaece94ccea9c5143f78f"
+    },
+    {
+      "path": "host-fixtures/choice_picker/multipleSelection.tree.json",
+      "blake3": "b60b7e415dc3e888127459b697c5efb74e538f284f3247959bc935ce7c5b04d7"
+    },
+    {
+      "path": "host-fixtures/choice_picker/mutuallyExclusive.input.json",
+      "blake3": "e5656569d4f901b979a8f3627c26ea316642895701c800b1483f7a1622bb507e"
+    },
+    {
+      "path": "host-fixtures/choice_picker/mutuallyExclusive.tree.json",
+      "blake3": "fb47e60fda12bf13c6f288afd6173033d56c1823cfb04f7d1dc50ab04c15cb04"
+    },
+    {
+      "path": "host-fixtures/column/unset.input.json",
+      "blake3": "3592edf4aa2fb259df5afa823a0221227fc7c827907382729fa78dabeb16ef7e"
+    },
+    {
+      "path": "host-fixtures/column/unset.tree.json",
+      "blake3": "a12d4cf461a908bc9af56a313cd50129d6e71d2504f1f267894fac59a59468db"
+    },
+    {
+      "path": "host-fixtures/date_time_input/unset.input.json",
+      "blake3": "c833f2396b85c4029873717ae1307e74238996f9764034fe51f85d969e10ea05"
+    },
+    {
+      "path": "host-fixtures/date_time_input/unset.tree.json",
+      "blake3": "917e7eb0612aaa0af522401c53c573729e795f1645e0128b34b39430da55f592"
+    },
+    {
+      "path": "host-fixtures/divider/unset.input.json",
+      "blake3": "e3b323be0099140a45e11d332033086cd407cdae2784cd349c2939deea05a879"
+    },
+    {
+      "path": "host-fixtures/divider/unset.tree.json",
+      "blake3": "c7d99d4fc4686f04e9a1cabafd86475b13c26806bd8f5ba82549b7eb03ec0895"
+    },
+    {
+      "path": "host-fixtures/icon/unset.input.json",
+      "blake3": "ba7d719d6d091b9ae7416cd4c093ed3d8a4f4da5b637860bd56961a33f578e10"
+    },
+    {
+      "path": "host-fixtures/icon/unset.tree.json",
+      "blake3": "7491f98ed1dcaf11091e784c81896af842be0a5478c943d5a53649b6c6bc1e3f"
+    },
+    {
+      "path": "host-fixtures/image/avatar.input.json",
+      "blake3": "bc19e38fd9d6632ad1c8e734e18a0f736f15825f61027faa3b5b9395a76d8f80"
+    },
+    {
+      "path": "host-fixtures/image/avatar.tree.json",
+      "blake3": "ee01572f10f88f29ac427eb0aac55a58bf75afa8b0168a0acedacc22915031d9"
+    },
+    {
+      "path": "host-fixtures/image/header.input.json",
+      "blake3": "e3960a3d08b5282231b1131bab9a2e36ff23d03d1c8ed2492ca8f47f37939552"
+    },
+    {
+      "path": "host-fixtures/image/header.tree.json",
+      "blake3": "01056615696c940cda93e378e9a891f3d649285c66cb11b5f659dc060fee1903"
+    },
+    {
+      "path": "host-fixtures/image/icon.input.json",
+      "blake3": "a1468648f4e7b13f632ed584c377118a182ce0af83a875892f63cdda3d56d806"
+    },
+    {
+      "path": "host-fixtures/image/icon.tree.json",
+      "blake3": "27a6d064e8273d2c82dc86e476156d0b6fb64b5cd99087bc6b8cc704f79a4cb1"
+    },
+    {
+      "path": "host-fixtures/image/largeFeature.input.json",
+      "blake3": "7e1dd63d0eea3152f52d1ca0ed73c8d6691f7135628bfb0f6da9c4fd0a587bc2"
+    },
+    {
+      "path": "host-fixtures/image/largeFeature.tree.json",
+      "blake3": "8b9b1d3f78761d96e28f660cd695cbfb50f78c3c9fcfd4c7d091f41cf335c0cf"
+    },
+    {
+      "path": "host-fixtures/image/mediumFeature.input.json",
+      "blake3": "3087ae489adfdbaf95eee8256dc3f37c46248e91fc8c91991ce92a9dd7fc7637"
+    },
+    {
+      "path": "host-fixtures/image/mediumFeature.tree.json",
+      "blake3": "866d8f1f801cd7a9a4f3f3081e3e8822ec5b7a5b056306938669041304085972"
+    },
+    {
+      "path": "host-fixtures/image/smallFeature.input.json",
+      "blake3": "bdb6f1289a2d33e71e438ce51cb059aae003431c55f53b140fd14423f5088e25"
+    },
+    {
+      "path": "host-fixtures/image/smallFeature.tree.json",
+      "blake3": "c3966ece4c8b071bc9b65a8c547f582d70c753f3b2f82c50aef385cab20d5832"
+    },
+    {
+      "path": "host-fixtures/index.json",
+      "blake3": "2b83f680e70db98146cadaa7a58dde724f9ad59f9dad6716a67ccc1c57bf79c3"
+    },
+    {
+      "path": "host-fixtures/list/unset.input.json",
+      "blake3": "cc4d0a16b4c94d8ac3ee49af7c3379a1ba850ffce4e948ac72ba814ee22c9024"
+    },
+    {
+      "path": "host-fixtures/list/unset.tree.json",
+      "blake3": "e9577d7dc5c023e31b969faa8f17e69ad983e026a31aed4fa2ad8d6c235f1f89"
+    },
+    {
+      "path": "host-fixtures/modal/unset.input.json",
+      "blake3": "705c30e818898ad067cf0f8c0e882518e32deccf33c4879c23492ad7c91616e1"
+    },
+    {
+      "path": "host-fixtures/modal/unset.tree.json",
+      "blake3": "a6ecb2b0a74039fd1e64d3622cb34a8b69bdcb8a98f862d7c023a7dccb9eb2d6"
+    },
+    {
+      "path": "host-fixtures/row/unset.input.json",
+      "blake3": "7a4a7a6b6dbf6e616db7cd2774a3d758eb09a881e4ad7efa8167426b34ab03f5"
+    },
+    {
+      "path": "host-fixtures/row/unset.tree.json",
+      "blake3": "a03b1de3ae68efa493cd0e11ed40c1e3cfbe1db1f0153c3a213992ce9c9cec20"
+    },
+    {
+      "path": "host-fixtures/slider/unset.input.json",
+      "blake3": "de8cbeadebb94c968cff70a1fde81e48637d6dc69184a6c74eb586fae44fe7d0"
+    },
+    {
+      "path": "host-fixtures/slider/unset.tree.json",
+      "blake3": "a46aa2df407dbf86ca14e39ee47afe54581dbd99680eb9b9bd61f12ceda3d4c9"
+    },
+    {
+      "path": "host-fixtures/table/unset.input.json",
+      "blake3": "f6ae1441b3957a8d20c0b44c41ffe6b098e36d6fe10ac4828efa780cb33c0ad9"
+    },
+    {
+      "path": "host-fixtures/table/unset.tree.json",
+      "blake3": "53bcde772c378fe4abd3f5fc7e8b6e23a12a13804d0c6d8a68b89269e3d63709"
+    },
+    {
+      "path": "host-fixtures/tabs/unset.input.json",
+      "blake3": "ad7446f155a547aa14d2d3c808c391d1581a2d6e8243b0d37fe30cbdbbbc503e"
+    },
+    {
+      "path": "host-fixtures/tabs/unset.tree.json",
+      "blake3": "f182a336449e0d34536f798170cfddd38ba864f6a2ca21015b31875fd7e29ee8"
+    },
+    {
+      "path": "host-fixtures/task/unset.input.json",
+      "blake3": "9c19dbeed1184da37d85bdabb9dd2a28fcc48d0b7a9bda024e7b388eba4626a3"
+    },
+    {
+      "path": "host-fixtures/task/unset.tree.json",
+      "blake3": "77d2d239d736517c2252beb09fb2a10fbc283db4f2142ac1497d194eeedf82d0"
+    },
+    {
+      "path": "host-fixtures/text/body.input.json",
+      "blake3": "4527b01b1a9d2224b40b0a90edc32c30af9c39467d8899b2907008b691a1a945"
+    },
+    {
+      "path": "host-fixtures/text/body.tree.json",
+      "blake3": "576f086db9a780c1e377bdcdce0c7943563b4ae0f426d45c812d6cda9fecb9a8"
+    },
+    {
+      "path": "host-fixtures/text/caption.input.json",
+      "blake3": "bf35cc2249eb1531da2d79bd4900ed94702bfd028db5ab614754f4130252ab4a"
+    },
+    {
+      "path": "host-fixtures/text/caption.tree.json",
+      "blake3": "45d872aadcff4b9f31fb07e1b1f61336888684412b9dc10b564ee59bea5a58d0"
+    },
+    {
+      "path": "host-fixtures/text_field/longText.input.json",
+      "blake3": "f622da56450830e0e79956bcd0bcaf8e644243fc2045226a455d33cc5cae5e7b"
+    },
+    {
+      "path": "host-fixtures/text_field/longText.tree.json",
+      "blake3": "9e1acfe8757bb4e53affa3fa3b0dd7621479b3b2fd8baa5dd737146334b24b8b"
+    },
+    {
+      "path": "host-fixtures/text_field/number.input.json",
+      "blake3": "3fe3958635d33aeed2555b25d520540d067e06357d90c03a603112cdf7bffd0f"
+    },
+    {
+      "path": "host-fixtures/text_field/number.tree.json",
+      "blake3": "452b633ab3b3cce148dd9d69a076a119bcb0366cf202e893e55a324f2909bfe5"
+    },
+    {
+      "path": "host-fixtures/text_field/obscured.input.json",
+      "blake3": "12a5215575d0fb13b8a7693ce00ab27bb9f5431d4d61bb36308cff314e544297"
+    },
+    {
+      "path": "host-fixtures/text_field/obscured.refusal.json",
+      "blake3": "1b89e3066828da58b77a67ae000c8b9469ebaf2eb134728939be37309a71cc13"
+    },
+    {
+      "path": "host-fixtures/text_field/shortText.input.json",
+      "blake3": "4702ecbe8d916de6168a62ffd7906c584864f97523b40afc3d733fdbed339b16"
+    },
+    {
+      "path": "host-fixtures/text_field/shortText.tree.json",
+      "blake3": "7cf259db94c03ce92767135538633405502774af1ca49fb42ca4b59a93093fe6"
+    },
+    {
+      "path": "trust.json",
+      "blake3": "662c41227de98a0f166ea4e056a05feb9bb8f3b48eddaf7f20776f4b7341eb1a"
+    }
+  ]
+}

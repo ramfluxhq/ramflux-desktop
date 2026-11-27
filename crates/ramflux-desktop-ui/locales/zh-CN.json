@@ -1736,5 +1736,10 @@
   "moment.card.modal_title": "详情",
   "moment.card.modal_close": "关闭",
   "moment.card.chart_value": "%{series} · %{point}：%{value}",
-  "moment.card.task_by": "%{requester} · %{owner}"
+  "moment.card.task_by": "%{requester} · %{owner}",
+  "card_gallery.title": "卡片图库 · {count} 个夹具",
+  "card_gallery.run": "运行一致性检查",
+  "card_gallery.summary": "一致性：A {a} · B {b} · C {c}",
+  "card_gallery.note.slot": "图库不发送槽位回复。",
+  "card_gallery.error": "图库无法打开：{error}"
 }

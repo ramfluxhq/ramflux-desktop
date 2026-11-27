@@ -49,6 +49,11 @@ fn errors_of(node: &CardNode, cx: &App) -> Vec<AnyElement> {
 /// drafts of the card's text fields, then the activation.
 pub fn button(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App) -> AnyElement {
     let _ = window;
+    // The label child is drawn as the button's text, not walked: record it.
+    #[cfg(feature = "card-gallery")]
+    for child in view.children(node) {
+        super::trace::drawn(&child.key, &child.kind);
+    }
     let label = view
         .children(node)
         .first()
@@ -239,7 +244,8 @@ pub fn choice_picker(
             }
             JsonValue::Array(list.into_iter().map(JsonValue::String).collect())
         } else {
-            JsonValue::String(value.clone())
+            // The runtime takes a choice as a list of one option for every variant.
+            JsonValue::Array(vec![JsonValue::String(value.clone())])
         };
         let key = node.key.clone();
         let sink = view.sink.clone();
@@ -286,7 +292,8 @@ pub fn slider(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut Ap
     let filled =
         if max > min { ((value - min) / (max - min) * f64::from(steps)).round() as u32 } else { 0 };
     let segments = (0..=steps).map(|step| {
-        let target = min + (max - min) * f64::from(step) / f64::from(steps);
+        // The runtime takes a slider value as an integer within the range.
+        let target = (min + (max - min) * f64::from(step) / f64::from(steps)).round() as i64;
         let key = node.key.clone();
         let sink = view.sink.clone();
         let on = step <= filled;

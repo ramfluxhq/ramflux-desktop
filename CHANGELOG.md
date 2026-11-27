@@ -22,6 +22,17 @@ Versioning.
 
 ### Added
 
+- Card gallery and conformance (test builds only, `--features card-gallery`):
+  `--card-gallery` lists every host fixture and scenario and draws each through
+  the card renderer, live against the standalone card runtime; the conformance
+  (checks A to C) runs from the window, and `--card-gallery-exit` runs it once
+  and exits. The gallery is never part of the default or the release build.
+- Fixture sync: `scripts/sync-card-fixtures.sh` copies the core's card host
+  fixtures and the bundled trust package at the pinned revision into
+  `card-fixtures/` with a BLAKE3 `MANIFEST.json`; copies that drift are refused.
+- Demo sessions draw cards from the fixture trees for the demo surfaces that
+  carry one; other demo surfaces keep their fallback text.
+
 - Cards are drawn from the card runtime's native tree (`ramflux.card.tree.v1`,
   all 20 kinds) through the `card.session.*` bus methods. The store holds each
   card's tree and applies its mutation batches atomically (a refused batch
@@ -116,6 +127,9 @@ Versioning.
 
 ### Fixed
 
+- Card choice and slider inputs send the shapes the runtime accepts: a choice
+  is a list of option values for every variant, and a slider value is an
+  integer within its range.
 - A new group takes no messages until its member adds finish: its composer says
   it is being created (RFGUI-102).
 - App lock: a lock the daemon starts while the window is not in front now

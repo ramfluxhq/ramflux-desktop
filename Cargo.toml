@@ -58,6 +58,8 @@ ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "69
 ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "69fca2527161f3fa3678cfef10f6641f28e1fecc" }
 # PRX agent names derived from anchors (the same rev as the product SDK).
 ramflux-prx-client = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "69fca2527161f3fa3678cfef10f6641f28e1fecc" }
+# The standalone card runtime: only the test-build card gallery (feature `card-gallery`).
+ramflux-card = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "69fca2527161f3fa3678cfef10f6641f28e1fecc" }
 # Only on the SDK bridge thread; never in GPUI tasks or core.
 tokio = { version = "1.42", default-features = false, features = ["rt", "net", "sync", "time", "macros", "io-util"] }
 ramflux-desktop-core = { path = "crates/ramflux-desktop-core" }

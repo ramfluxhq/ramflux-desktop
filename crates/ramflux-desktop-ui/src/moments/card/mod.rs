@@ -28,6 +28,8 @@ mod content;
 mod controls;
 mod layout;
 mod slots;
+#[cfg(feature = "card-gallery")]
+pub mod trace;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -125,6 +127,8 @@ impl CardBody {
 impl RenderOnce for CardBody {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let Self { snap, sink, inputs, local } = self;
+        #[cfg(feature = "card-gallery")]
+        let _trace = trace::Scope::begin(snap.surface_id.as_str());
         let tree = snap.record.as_ref().and_then(|r| r.tree.as_ref());
         let shown =
             tree.filter(|_| snap.record.as_ref().is_some_and(|r| r.status != CardStatus::Fallback));
@@ -206,6 +210,8 @@ impl View<'_> {
     /// Draws one node by its kind. An unknown kind shows the unsupported
     /// notice (the card as a whole falls back only when the tree does).
     pub fn render(&self, node: &CardNode, window: &mut Window, cx: &mut App) -> AnyElement {
+        #[cfg(feature = "card-gallery")]
+        trace::drawn(&node.key, &node.kind);
         match node.kind.as_str() {
             "Text" => content::text(self, node, cx),
             "Icon" => content::icon(node, cx),
