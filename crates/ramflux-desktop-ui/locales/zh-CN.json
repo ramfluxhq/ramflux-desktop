@@ -1785,5 +1785,21 @@
   "username.error.retry": "%{seconds} 秒后重试。",
   "username.error.other": "用户名更改失败：%{code}",
   "dock.contacts.add.send_request": "发送联系人请求",
-  "dock.contacts.add.found": "已找到 %{name}"
+  "dock.contacts.add.found": "已找到 %{name}",
+  "dock.contacts.verify.title": "比较安全号码",
+  "dock.contacts.verify.number": "安全号码",
+  "dock.contacts.verify.rule": "只有一致时才确认",
+  "dock.contacts.verify.not_now": "暂不验证",
+  "sections.tasks.details_title": "任务详情",
+  "settings.devices.approve.title": "批准关联网页设备？",
+  "settings.devices.approve.device": "设备",
+  "settings.devices.approve.kind": "类型",
+  "settings.devices.approve.kind_web": "网页设备 · 不保存主密钥和恢复密钥",
+  "settings.devices.approve.origin": "正在关联的来源",
+  "settings.devices.approve.origin_help": "确认它与那个浏览器地址栏显示的地址完全一致，否则请拒绝。",
+  "settings.devices.approve.warning_title": "网页会话不受节点运营方的防护",
+  "settings.devices.approve.warning_body": "该节点的运营方可以读取这台网页设备上的密钥和消息明文。网页设备可随时在「设置 › 设备」中撤销。",
+  "settings.devices.approve.reject": "拒绝",
+  "settings.devices.approve.approve": "批准关联",
+  "dock.contacts.add.submit_dialog": "添加联系人"
 }

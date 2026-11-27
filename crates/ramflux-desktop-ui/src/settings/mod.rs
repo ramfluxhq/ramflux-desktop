@@ -29,6 +29,7 @@ pub mod agents;
 pub mod appearance;
 pub mod backup;
 pub(crate) mod design;
+pub mod device_approval;
 pub mod devices;
 pub mod diagnostics;
 mod errors;
@@ -151,6 +152,10 @@ pub struct SettingsPage {
     opened: usize,
     errors: errors::ErrorScope,
     focus_handle: FocusHandle,
+    /// The web device waiting for the owner's approval (dialog open).
+    link_request: Option<device_approval::LinkRequest>,
+    /// Tracked by the approval dialog's focus trap.
+    dialog_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -276,6 +281,8 @@ impl SettingsPage {
             opened: 0,
             errors: errors::ErrorScope::default(),
             focus_handle: cx.focus_handle(),
+            link_request: None,
+            dialog_focus: cx.focus_handle(),
             _subscriptions: subscriptions,
         }
     }
@@ -361,6 +368,30 @@ impl SettingsPage {
     /// The AI participants section's panel.
     pub fn agents_panel(&self) -> &Entity<agents::AgentsPanel> {
         &self.agents
+    }
+
+    /// Opens the dialog that asks to approve linking a web device.
+    pub fn show_link_request(
+        &mut self,
+        request: device_approval::LinkRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.link_request = Some(request);
+        window.focus(&self.dialog_focus, cx);
+        cx.notify();
+    }
+
+    /// The web device whose linking waits for approval, if any.
+    pub fn link_request(&self) -> Option<&device_approval::LinkRequest> {
+        self.link_request.as_ref()
+    }
+
+    /// Closes the approval dialog (Reject).
+    pub fn close_link_request(&mut self, cx: &mut Context<Self>) {
+        if self.link_request.take().is_some() {
+            cx.notify();
+        }
     }
 
     /// The masked backup passphrase input.
@@ -582,6 +613,17 @@ impl Render for SettingsPage {
                     ),
             )
             .children(strip.map(|strip| div().flex_shrink_0().child(strip)))
+            .children(self.link_request.as_ref().map(|request| {
+                let this = cx.weak_entity();
+                device_approval::dialog(
+                    request,
+                    &self.dialog_focus,
+                    move |_, cx| {
+                        this.update(cx, |page, cx| page.close_link_request(cx)).ok();
+                    },
+                    cx,
+                )
+            }))
             // An overlay over the whole window: Tab stays inside it. The trap
             // tracks the page's focus handle and keeps the "settings" id.
             .focus_trap("settings", &self.focus_handle)

@@ -38,7 +38,9 @@ use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, IconName, Sizable as _, StyledExt as _, v_flex,
+};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
@@ -512,16 +514,45 @@ where
     A: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
     I: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
 {
+    build(form, controls, cx, false).0
+}
+
+/// The form for the add-contact dialog (board F02): the labelled field
+/// full width with its lines under it, and the Add button apart, for the
+/// dialog's button row.
+pub fn render_dialog<A, I>(
+    form: &AddForm,
+    controls: Controls<A, I>,
+    cx: &App,
+) -> (AnyElement, AnyElement)
+where
+    A: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
+    I: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
+{
+    let (body, button) = build(form, controls, cx, true);
+    (body, button.unwrap_or_else(|| div().into_any_element()))
+}
+
+fn build<A, I>(
+    form: &AddForm,
+    controls: Controls<A, I>,
+    cx: &App,
+    dialog: bool,
+) -> (AnyElement, Option<AnyElement>)
+where
+    A: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
+    I: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
+{
     let Controls { disabled, card_disabled, on_add, on_import, on_root, lookup } = controls;
     let found = matches!(lookup, Some(UsernameLookup::Found { .. }));
     let button = Button::new("contact-add")
-        .small()
-        .design_secondary(cx)
-        .icon(IconName::Plus)
-        .design_label(tr(if found {
-            "dock.contacts.add.send_request"
-        } else {
-            "dock.contacts.add.submit"
+        .when(!dialog, |button| button.small().icon(IconName::Plus))
+        .when(dialog, |button| button.design_primary(cx))
+        .when(!dialog, |button| button.design_secondary(cx))
+        .design_label(tr(match (found, dialog) {
+            (true, _) => "dock.contacts.add.send_request",
+            (false, true) => "dock.contacts.add.submit_dialog",
+            (false, false) => "dock.contacts.add.submit",
         }))
         .design_disabled(form.is_pending(), cx)
         .on_click(on_add);
@@ -586,38 +617,51 @@ where
     });
     let hint = form.kind_hint(cx);
     let lookup_card = lookup.as_ref().map(|lookup| lookup_card(lookup, cx));
-    v_flex()
+    let field =
+        Input::new(form.input()).id("contact-add-id").aria_label(tr("dock.contacts.add.label"));
+    let button = crate::gate::gated(button, disabled.clone(), cx);
+    let import = h_flex().child(crate::gate::gated(import, disabled.or(card_disabled), cx));
+    let kind = div()
+        .id("contact-add-kind")
+        .aria_label(hint.clone())
+        .test_support()
+        .text_size(text_caption())
+        .text_color(cx.theme().muted_foreground)
+        .child(hint);
+    if dialog {
+        let body = v_flex()
+            .id("contact-add")
+            .gap(space(2.))
+            .child(
+                div()
+                    .text_size(ramflux_desktop_navigation::scale::text_secondary())
+                    .font_medium()
+                    .child(tr("dock.contacts.add.label")),
+            )
+            .child(field)
+            .child(kind)
+            .children(lookup_card)
+            .children(note)
+            .children(added)
+            .children(confirm)
+            .child(import)
+            .into_any_element();
+        return (body, Some(button.into_any_element()));
+    }
+    let body = v_flex()
         .id("contact-add")
         .gap(space(1.))
         .px(space(3.))
         .pb(space(2.))
-        .child(
-            h_flex()
-                .gap(space(2.))
-                .child(
-                    Input::new(form.input())
-                        .id("contact-add-id")
-                        .aria_label(tr("dock.contacts.add.label"))
-                        .small()
-                        .flex_1(),
-                )
-                .child(crate::gate::gated(button, disabled.clone(), cx)),
-        )
-        .child(
-            div()
-                .id("contact-add-kind")
-                .aria_label(hint.clone())
-                .test_support()
-                .text_size(text_caption())
-                .text_color(cx.theme().muted_foreground)
-                .child(hint),
-        )
+        .child(h_flex().gap(space(2.)).child(field.small().flex_1()).child(button))
+        .child(kind)
         .children(lookup_card)
         .children(note)
         .children(added)
         .children(confirm)
-        .child(h_flex().child(crate::gate::gated(import, disabled.or(card_disabled), cx)))
-        .into_any_element()
+        .child(import)
+        .into_any_element();
+    (body, None)
 }
 
 /// What a `@name` lookup found, or why it could not answer, for the line

@@ -61,6 +61,11 @@ pub struct ContactsDock {
     /// The contact whose safety number is being compared before it is
     /// marked verified.
     verifying: Option<ParticipantId>,
+    /// Whether the add-contact dialog is open (the form moves from the
+    /// panel into the dialog while it is).
+    adding: bool,
+    /// Tracked by the dialogs' focus trap.
+    dialog_focus: gpui_kit::FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -96,8 +101,28 @@ impl ContactsDock {
             form,
             card: MyCard::default(),
             verifying: None,
+            adding: false,
+            dialog_focus: cx.focus_handle(),
             _subscriptions: vec![subscription, enter],
         }
+    }
+
+    /// Opens the add-contact dialog and focuses its field.
+    pub fn open_add_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.adding = true;
+        self.form.focus(window, cx);
+        cx.notify();
+    }
+
+    /// Whether the add-contact dialog is open.
+    pub fn add_dialog_open(&self) -> bool {
+        self.adding
+    }
+
+    /// Whether a dialog of this dock (add contact, compare safety numbers)
+    /// is open.
+    pub fn dialog_open(&self) -> bool {
+        self.adding || self.verifying.is_some()
     }
 
     /// Moves keyboard focus to the add-contact field.
@@ -251,18 +276,122 @@ impl ContactsDock {
             self.form.observe(store, changes, cx)
         };
         if clear {
+            self.adding = false;
             self.form.input().update(cx, |input, cx| input.set_value("", window, cx));
         }
     }
 }
 
-impl Render for ContactsDock {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl ContactsDock {
+    /// The add-contact form with its handlers.
+    fn add_form_element(
+        &mut self,
+        dialog: bool,
+        cx: &mut Context<Self>,
+    ) -> (gpui_kit::AnyElement, Option<gpui_kit::AnyElement>) {
         let handle = self.store.read(cx);
         let store: &Store = handle.store();
         let account = handle.active_account().cloned();
-        let verify_reason = crate::gate::reason(store, methods::SAFETY_VERIFY);
         let add_reason = crate::gate::reason(store, methods::CONTACT_ADD);
+        let card_reason = crate::gate::reason(store, methods::CONTACT_CARD_IMPORT);
+        let no_home = without_home_node(store);
+        let controls = add_form::Controls {
+            disabled: add_reason.or(card_reason),
+            card_disabled: no_home.then(|| crate::i18n::tr("backend.contact.no_home_node")),
+            on_add: cx.listener(|this, _, window, cx| this.submit_add(window, cx)),
+            on_import: cx.listener(|this, _, window, cx| this.pick_card_file(window, cx)),
+            on_root: add_form::RootHandlers {
+                replace: Box::new(cx.listener(|this, _, window, cx| this.confirm_root(window, cx))),
+                keep: Box::new(cx.listener(|this, _, _, cx| {
+                    this.form.keep_root();
+                    cx.notify();
+                })),
+            },
+            lookup: self.form.shown_lookup(store, account.as_ref()).cloned(),
+        };
+        if dialog {
+            let (body, button) = add_form::render_dialog(&self.form, controls, cx);
+            (body, Some(button))
+        } else {
+            (add_form::render(&self.form, controls, cx), None)
+        }
+    }
+
+    /// The open dialog of this dock, drawn by the workspace over the whole
+    /// window: the safety number comparison, or add contact.
+    pub fn dialog(&mut self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
+        if let Some(id) = self.verifying.clone() {
+            let (contact, reason) = {
+                let store = self.store.read(cx).store();
+                (
+                    store.participant(&id)?.clone(),
+                    crate::gate::reason(store, methods::SAFETY_VERIFY),
+                )
+            };
+            let this = cx.weak_entity();
+            let cancel = std::rc::Rc::new(move |_: &mut Window, cx: &mut gpui_kit::App| {
+                this.update(cx, |dock, cx| {
+                    dock.verifying = None;
+                    cx.notify();
+                })
+                .ok();
+            });
+            let confirm =
+                Box::new(cx.listener(|this, _, window, cx| this.confirm_verify(window, cx)));
+            return Some(rows::comparison_dialog(
+                &contact,
+                confirm,
+                cancel,
+                reason.as_ref(),
+                &self.dialog_focus,
+                cx,
+            ));
+        }
+        if !self.adding {
+            return None;
+        }
+        let (form, add_button) = self.add_form_element(true, cx);
+        let this = cx.weak_entity();
+        let close = move |_: &mut Window, cx: &mut gpui_kit::App| {
+            this.update(cx, |dock, cx| dock.close_add_dialog(cx)).ok();
+        };
+        let cancel = {
+            let this = cx.weak_entity();
+            move |_: &mut Window, cx: &mut gpui_kit::App| {
+                this.update(cx, |dock, cx| dock.close_add_dialog(cx)).ok();
+            }
+        };
+        Some(
+            crate::modal::Modal::new(
+                "contact-add-dialog",
+                crate::i18n::tr("dock.contacts.add.title"),
+                &self.dialog_focus,
+                close,
+            )
+            .child(form)
+            .button(crate::modal::cancel_button(
+                "contact-add-cancel",
+                crate::i18n::tr("dock.contacts.verify.cancel"),
+                cx,
+                cancel,
+            ))
+            .button(add_button.unwrap_or_else(|| gpui_kit::div().into_any_element()))
+            .render(cx),
+        )
+    }
+
+    fn close_add_dialog(&mut self, cx: &mut Context<Self>) {
+        self.adding = false;
+        cx.notify();
+    }
+}
+
+impl Render for ContactsDock {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let form = (!self.adding).then(|| self.add_form_element(false, cx).0);
+        let handle = self.store.read(cx);
+        let store: &Store = handle.store();
+        let verify_reason = crate::gate::reason(store, methods::SAFETY_VERIFY);
         // Answers to incoming links are local when requests cannot travel.
         let local_answers = crate::gate::reason(store, methods::CONTACT_REQUEST).is_some();
         let requests = rows::requests(store);
@@ -272,28 +401,6 @@ impl Render for ContactsDock {
         let contacts: Vec<Participant> = selectors::contacts(store).into_iter().cloned().collect();
         let blocked: Vec<Participant> =
             selectors::blocked_contacts(store).into_iter().cloned().collect();
-        let card_reason = crate::gate::reason(store, methods::CONTACT_CARD_IMPORT);
-        let no_home = without_home_node(store);
-        let form = add_form::render(
-            &self.form,
-            add_form::Controls {
-                disabled: add_reason.or(card_reason),
-                card_disabled: no_home.then(|| crate::i18n::tr("backend.contact.no_home_node")),
-                on_add: cx.listener(|this, _, window, cx| this.submit_add(window, cx)),
-                on_import: cx.listener(|this, _, window, cx| this.pick_card_file(window, cx)),
-                on_root: add_form::RootHandlers {
-                    replace: Box::new(
-                        cx.listener(|this, _, window, cx| this.confirm_root(window, cx)),
-                    ),
-                    keep: Box::new(cx.listener(|this, _, _, cx| {
-                        this.form.keep_root();
-                        cx.notify();
-                    })),
-                },
-                lookup: self.form.shown_lookup(store, account.as_ref()).cloned(),
-            },
-            cx,
-        );
         let this = cx.weak_entity();
         let card = my_card::render(
             &self.card,
@@ -322,8 +429,9 @@ impl Render for ContactsDock {
             .id("dock-contacts")
             .size_full()
             .overflow_y_scroll()
-            .child(section("dock.contacts.add.title", cx))
-            .child(form)
+            .when_some(form, |col, form| {
+                col.child(section("dock.contacts.add.title", cx)).child(form)
+            })
             .child(section("dock.contacts.card.title", cx))
             .child(card)
             // The heading stays once the setting is known, so the switch
@@ -387,16 +495,9 @@ impl Render for ContactsDock {
                 let id = c.id.clone();
                 let verify = rows::VerifyHandlers {
                     reason: verify_reason.clone(),
-                    open: self.verifying.as_ref() == Some(&c.id),
-                    start: Box::new(cx.listener(move |this, _, _, cx| {
+                    start: Box::new(cx.listener(move |this, _, window, cx| {
                         this.start_verify(id.clone(), cx);
-                    })),
-                    confirm: Box::new(
-                        cx.listener(|this, _, window, cx| this.confirm_verify(window, cx)),
-                    ),
-                    cancel: Box::new(cx.listener(|this, _, _, cx| {
-                        this.verifying = None;
-                        cx.notify();
+                        window.focus(&this.dialog_focus, cx);
                     })),
                 };
                 let request = requests::outgoing(store, c);

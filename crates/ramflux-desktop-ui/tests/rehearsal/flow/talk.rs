@@ -160,7 +160,7 @@ fn verify<H: Host, D: DemoDaemon>(
         // Verify opens the comparison; the numbers match is the confirmation.
         let _ = desk.click(demo.host, Some(row), "verify");
         demo.host.tick();
-        let _ = desk.click(demo.host, Some(row), "verify-confirm");
+        let _ = desk.click(demo.host, None, "verify-confirm");
         let pressed = std::time::Instant::now();
         while pressed.elapsed() < std::time::Duration::from_secs(1) {
             demo.host.tick();

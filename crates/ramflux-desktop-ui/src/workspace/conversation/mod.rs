@@ -56,7 +56,6 @@ pub struct Conversation {
     highlighted: Option<MomentId>,
     composer: Entity<Composer>,
     draft: Option<Entity<NewConversation>>,
-    group_form: Option<Entity<crate::workspace::new_group::NewGroup>>,
     rename: Option<rename::Rename>,
     rename_subscription: Option<Subscription>,
     /// The conversation whose call waits for the stale-verification
@@ -163,7 +162,6 @@ impl Conversation {
             highlighted: None,
             composer,
             draft: None,
-            group_form: None,
             rename: None,
             rename_subscription: None,
             call_ack: None,
@@ -179,19 +177,6 @@ impl Conversation {
     pub fn set_draft(&mut self, draft: Option<Entity<NewConversation>>, cx: &mut Context<Self>) {
         if self.draft.as_ref().map(Entity::entity_id) != draft.as_ref().map(Entity::entity_id) {
             self.draft = draft;
-            cx.notify();
-        }
-    }
-
-    /// Shows the new-group form in place of a context (without the
-    /// composer), or stops.
-    pub fn set_group_form(
-        &mut self,
-        form: Option<Entity<crate::workspace::new_group::NewGroup>>,
-        cx: &mut Context<Self>,
-    ) {
-        if self.group_form.as_ref().map(Entity::entity_id) != form.as_ref().map(Entity::entity_id) {
-            self.group_form = form;
             cx.notify();
         }
     }
@@ -624,8 +609,7 @@ impl Render for Conversation {
             }),
         };
         let ask_call = call_ack.ask.clone();
-        let in_form =
-            self.context_id.is_none() && (self.draft.is_some() || self.group_form.is_some());
+        let in_form = self.context_id.is_none() && self.draft.is_some();
         let open_tool = self.open_tool;
         let switcher = || {
             crate::workspace::DockRail::new(open_tool, |tool, window, cx| {
@@ -777,8 +761,7 @@ impl Render for Conversation {
         let root = self.root.read(cx);
         let strip = (root.host() == ConfirmHost::Workspace).then(|| root.confirm_strip().clone());
         let draft = self.draft.clone().filter(|_| self.context_id.is_none());
-        let group_form = self.group_form.clone().filter(|_| self.context_id.is_none());
-        let composer = group_form.is_none().then(|| self.composer.clone());
+        let composer = Some(self.composer.clone());
         let status = self.status.clone();
         v_flex()
             .id("conversation")
@@ -786,10 +769,9 @@ impl Render for Conversation {
             .size_full()
             .min_w_0()
             .bg(cx.theme().background)
-            .map(|field| match (group_form, draft) {
-                (Some(form), _) => field.children(tools_row).child(form),
-                (None, Some(draft)) => field.children(tools_row).child(draft),
-                (None, None) => field.child(header).children(status).child(body),
+            .map(|field| match draft {
+                Some(draft) => field.children(tools_row).child(draft),
+                None => field.child(header).children(status).child(body),
             })
             .children(strip)
             // Board H01: the composer keeps 24 px gutters when the pane is

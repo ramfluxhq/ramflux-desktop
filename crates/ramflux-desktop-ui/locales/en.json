@@ -1812,5 +1812,21 @@
   "username.error.retry": "Try again in %{seconds} s.",
   "username.error.other": "Username change failed: %{code}",
   "dock.contacts.add.send_request": "Send contact request",
-  "dock.contacts.add.found": "Found %{name}"
+  "dock.contacts.add.found": "Found %{name}",
+  "dock.contacts.verify.title": "Compare safety numbers",
+  "dock.contacts.verify.number": "Safety number",
+  "dock.contacts.verify.rule": "Confirm only if every digit matches.",
+  "dock.contacts.verify.not_now": "Not now",
+  "sections.tasks.details_title": "Task details",
+  "settings.devices.approve.title": "Approve linking a web device?",
+  "settings.devices.approve.device": "Device",
+  "settings.devices.approve.kind": "Type",
+  "settings.devices.approve.kind_web": "Web device · keeps no master key or recovery key",
+  "settings.devices.approve.origin": "Origin being linked",
+  "settings.devices.approve.origin_help": "Make sure it matches the address shown in that browser's address bar exactly, or reject.",
+  "settings.devices.approve.warning_title": "Web sessions are not protected from the node operator",
+  "settings.devices.approve.warning_body": "The node's operator can read the keys and message plaintext on this web device. You can revoke a web device at any time in Settings › Devices.",
+  "settings.devices.approve.reject": "Reject",
+  "settings.devices.approve.approve": "Approve linking",
+  "dock.contacts.add.submit_dialog": "Add contact"
 }

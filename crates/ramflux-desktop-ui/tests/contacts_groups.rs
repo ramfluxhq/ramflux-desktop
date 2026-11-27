@@ -326,8 +326,7 @@ fn a_new_group_is_created_with_its_members_named_and_renamed(cx: &mut TestAppCon
         cx.update(|cx| workspace.read(cx).new_group().clone())
     };
     assert!(cx.update(|cx| form.read(cx).is_open()));
-    assert!(exists(cx, handle, "new-group"), "the form replaces the conversation field");
-    assert!(!exists(cx, handle, "composer-input"), "no composer while making a group");
+    assert!(exists(cx, handle, "new-group-name"), "the form is a dialog over the window");
 
     // Refusals before anything is sent.
     click(cx, handle, "new-group-create");
@@ -494,7 +493,7 @@ fn a_looked_up_identity_is_provisional_until_a_card_replaces_it_after_confirmati
     click_in(cx, handle, "contacts-principal-kai", "verify");
     assert!(exists(cx, handle, "contact-verify-number"));
     assert!(seen(&state, "contact.verify").is_empty(), "opening the comparison changes nothing");
-    click_in(cx, handle, "contacts-principal-kai", "verify-confirm");
+    click(cx, handle, "verify-confirm");
     wait(cx, "verified", |cx| {
         contact(cx, &shell, "principal-kai")
             .is_some_and(|p| p.root_source == Some(RootSource::Verified))

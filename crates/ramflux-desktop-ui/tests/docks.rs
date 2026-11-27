@@ -61,12 +61,10 @@ fn contacts_dock_answers_requests_and_verifies(cx: &mut TestAppContext) {
     in_window(cx, handle, |window, cx| window.within("contacts-p-mira").click("verify", cx));
     assert!(exists(cx, handle, "contact-verify-number"), "the number to compare is shown");
     assert_eq!(verifies(cx), before, "opening the comparison verifies nothing");
-    in_window(cx, handle, |window, cx| window.within("contacts-p-mira").click("verify-cancel", cx));
+    in_window(cx, handle, |window, cx| window.click("verify-cancel", cx));
     assert!(!exists(cx, handle, "contact-verify"));
     in_window(cx, handle, |window, cx| window.within("contacts-p-mira").click("verify", cx));
-    in_window(cx, handle, |window, cx| {
-        window.within("contacts-p-mira").click("verify-confirm", cx)
-    });
+    in_window(cx, handle, |window, cx| window.click("verify-confirm", cx));
     assert_eq!(last_body(cx, &shell, methods::SAFETY_VERIFY)["participant_id"], "p-mira");
     advance(cx, 200);
     let safety = with_store(cx, &shell, |s| s.participant(&"p-mira".into()).map(|p| p.safety));

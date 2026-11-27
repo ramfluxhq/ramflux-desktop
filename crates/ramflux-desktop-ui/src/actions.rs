@@ -42,6 +42,8 @@ gpui_kit::actions!(
         OpenPalette,
         /// Close the command palette.
         ClosePalette,
+        /// Escape in a modal dialog: close it.
+        CloseModal,
         /// Show the first context of the stack and focus the composer.
         SelectStackEntry1,
         /// Show the second context of the stack.
@@ -85,6 +87,8 @@ pub const CONFIRM_CONTEXT: &str = "ConfirmStrip";
 pub const SETTINGS_CONTEXT: &str = "Settings";
 /// Key context of the command palette overlay.
 pub const PALETTE_CONTEXT: &str = "Palette";
+/// Key context of a modal dialog.
+pub const MODAL_CONTEXT: &str = "Modal";
 /// Key context of the account creation ceremony.
 pub const CEREMONY_CONTEXT: &str = "Ceremony";
 /// Key context of the account recovery screens.
@@ -106,6 +110,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("up", PreviousConversation, Some("ConversationList")),
         KeyBinding::new("secondary-[", ShowConversationList, Some("Workspace")),
         KeyBinding::new("escape", ClosePalette, Some(PALETTE_CONTEXT)),
+        KeyBinding::new("escape", CloseModal, Some(MODAL_CONTEXT)),
         KeyBinding::new("escape", CancelConfirmation, Some(CONFIRM_CONTEXT)),
         KeyBinding::new("escape", CloseSettings, Some(SETTINGS_CONTEXT)),
         KeyBinding::new("secondary-1", SelectStackEntry1, None),

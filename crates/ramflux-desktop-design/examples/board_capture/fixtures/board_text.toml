@@ -3,6 +3,8 @@
 # lives here and is read with `text::t`.
 
 [text]
+g24_device = "Chrome · macOS"
+g24_origin = "https://chat.example.org"
 kit01 = "等待确认"
 kit02 = "产品设计"
 kit03 = "已整理好界面拆分建议"
