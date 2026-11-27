@@ -78,6 +78,13 @@ impl EntryPage {
         if !dialog.acknowledged || dialog.sent.is_some() {
             return;
         }
+        // Only the locked account is removed; any other target closes the
+        // dialog without sending.
+        if self.unlock_target(cx).as_ref() != Some(&dialog.account) {
+            self.remove_dialog = None;
+            cx.notify();
+            return;
+        }
         let account = dialog.account.clone();
         let mark = self.store.read(cx).entry_store().failures_total();
         let result = self.root.update(cx, |root, cx| {

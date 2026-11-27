@@ -203,6 +203,65 @@ async fn read(
             Err(error) => return Err(error),
         }
     };
+    // From here the daemon holds a plaintext spool for `read_operation`: it
+    // is released on every path, including an error or a cancelled task.
+    let mut spool = Spool {
+        client: client.clone(),
+        account: job.account.clone(),
+        operation: read_operation,
+        released: false,
+    };
+    let result = read_slices(client, job, &spool.operation, &begin).await;
+    spool.release().await;
+    result
+}
+
+/// The daemon's read spool of one `object.get` operation. Dropping it
+/// unreleased (a cancelled task) sends `object.get.finish` from a spawned
+/// task; finishing an unknown operation is harmless.
+struct Spool {
+    client: BusClient,
+    account: String,
+    operation: String,
+    released: bool,
+}
+
+impl Spool {
+    async fn release(&mut self) {
+        self.released = true;
+        finish(self.client.clone(), finish_request(&self.account, &self.operation)).await;
+    }
+}
+
+impl Drop for Spool {
+    fn drop(&mut self) {
+        if self.released {
+            return;
+        }
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let client = self.client.clone();
+            let request = finish_request(&self.account, &self.operation);
+            runtime.spawn(finish(client, request));
+        }
+    }
+}
+
+/// The one place `object.get.finish` is sent; its answer does not matter.
+async fn finish(client: BusClient, request: BusRequest) {
+    let _ = client.call(&request).await;
+}
+
+fn finish_request(account: &str, operation: &str) -> BusRequest {
+    request(account, "object.get.finish", json!({ "operation_id": operation }))
+}
+
+/// Reads the slices of an object `begin` described and checks the hash.
+async fn read_slices(
+    client: &BusClient,
+    job: &Job,
+    read_operation: &str,
+    begin: &Value,
+) -> Result<Zeroizing<Vec<u8>>, BusError> {
     if begin["object_id"].as_str().is_some_and(|id| id != job.object_id) {
         return Err(refused("another object"));
     }
@@ -211,7 +270,7 @@ async fn read(
         .and_then(|len| usize::try_from(len).ok())
         .filter(|len| *len > 0 && *len <= MAX_BYTES)
         .ok_or_else(|| refused("size"))?;
-    let expected = begin["plaintext_hash"].as_str().ok_or_else(|| refused("no hash"))?.to_owned();
+    let expected = begin["plaintext_hash"].as_str().ok_or_else(|| refused("no hash"))?;
     let mut bytes = Zeroizing::new(Vec::with_capacity(total));
     let mut hasher = ramflux_crypto::Blake3DomainHasher::new(ramflux_protocol::domain::OBJECT);
     while bytes.len() < total {
@@ -233,14 +292,6 @@ async fn read(
         hasher.update(&data);
         bytes.extend_from_slice(&data);
     }
-    // The daemon's spool is released whatever the check says.
-    let _ = client
-        .call(&request(
-            &job.account,
-            "object.get.finish",
-            json!({ "operation_id": read_operation }),
-        ))
-        .await;
     if hasher.finalize_base64url() != expected {
         return Err(refused("hash"));
     }
@@ -288,10 +339,16 @@ fn keep(folder: &Path, object: &str, format: Format, bytes: &[u8]) -> Result<Str
     let name = super::media::file_safe(object);
     let target = folder.join(format!("{name}.{}", format.extension()));
     let partial = folder.join(format!("{name}.part"));
-    let mut file = std::fs::File::create(&partial).map_err(io)?;
-    super::media::restrict(&partial, 0o600);
-    file.write_all(bytes).map_err(io)?;
-    file.sync_all().map_err(io)?;
-    std::fs::rename(&partial, &target).map_err(io)?;
+    let written = (|| {
+        let mut file = std::fs::File::create(&partial).map_err(io)?;
+        super::media::restrict(&partial, 0o600);
+        file.write_all(bytes).map_err(io)?;
+        file.sync_all().map_err(io)?;
+        std::fs::rename(&partial, &target).map_err(io)
+    })();
+    if let Err(error) = written {
+        let _ = std::fs::remove_file(&partial);
+        return Err(error);
+    }
     Ok(target.display().to_string())
 }

@@ -24,7 +24,7 @@ use crate::bus::BusError;
 ///
 /// `confirmed_path` is the `prx` file the owner confirmed (an install): the
 /// path is resolved again here and refused as `prx_path_changed` when it is
-/// not that file.
+/// not that file (an install with none is refused the same way).
 ///
 /// # Errors
 ///
@@ -36,6 +36,10 @@ pub async fn run(
     key: Option<SecretInput>,
     confirmed_path: Option<&str>,
 ) -> Result<Value, BusError> {
+    // An install is confirmed for a named file; none named is no confirmation.
+    if action == AgentRuntimeAction::Install && confirmed_path.is_none() {
+        return Err(path_changed());
+    }
     let secret = key.map(SecretInput::into_zeroizing);
     // Resolved once: the host runs this exact file, not whatever `prx` the
     // search path names by the time it spawns.

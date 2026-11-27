@@ -58,6 +58,10 @@ pub struct CardMarks {
     /// When a card whose open the runtime refused for a limit may be tried
     /// again (it has no tree to tap, so it is tried when next drawn).
     open_retry_at: std::collections::BTreeMap<SurfaceId, Timestamp>,
+    /// How many timed retries a card's open has had since it last opened;
+    /// after [`OPEN_RETRIES`] it waits for an interaction, or for a redraw
+    /// after unlock or foreground (those reset the marks).
+    open_retries: std::collections::BTreeMap<SurfaceId, u32>,
     /// Image reads asked and not answered yet, by card and object.
     images_loading: BTreeSet<(SurfaceId, String)>,
 }
@@ -68,6 +72,9 @@ const IMAGES_AT_ONCE: usize = 2;
 /// How long a card the runtime would not open waits before it is tried
 /// again when it is next drawn.
 const OPEN_RETRY_MS: u64 = 3_000;
+
+/// How many timed retries a card the runtime would not open gets.
+const OPEN_RETRIES: u32 = 3;
 
 /// A call the runtime refused for a limit.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -812,8 +819,14 @@ impl AccountSession {
                 let mut marks = self.card_marks.borrow_mut();
                 if *last {
                     if !*resume {
-                        let retry_at = self.now().saturating_add_ms(OPEN_RETRY_MS);
-                        marks.open_retry_at.insert(surface_id, retry_at);
+                        let tried = marks.open_retries.entry(surface_id.clone()).or_insert(0);
+                        *tried = tried.saturating_add(1);
+                        if *tried <= OPEN_RETRIES {
+                            let retry_at = self.now().saturating_add_ms(OPEN_RETRY_MS);
+                            marks.open_retry_at.insert(surface_id, retry_at);
+                        } else {
+                            marks.open_retry_at.remove(&surface_id);
+                        }
                     }
                 } else {
                     marks.limit_hits.push(CardLimitHit {
@@ -1247,6 +1260,7 @@ impl AccountSession {
                     CardEvent::Resumed { .. } | CardEvent::Opened { .. } => {
                         resumed_waiting = in_flight == Some(InFlight::Resume);
                         marks.open_retry_at.remove(&surface);
+                        marks.open_retries.remove(&surface);
                     }
                     _ => {}
                 }
