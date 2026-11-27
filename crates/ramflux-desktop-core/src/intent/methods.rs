@@ -145,6 +145,12 @@ pub const CALL_HANGUP: &str = "call.hangup";
 pub const HANDOFF_ACCEPT: &str = "handoff.accept";
 /// Decline a handoff.
 pub const HANDOFF_DECLINE: &str = "handoff.decline";
+/// The desktop's read of an image slot's bytes through the object API
+/// (`object.fetch`, `object.get.begin/read/finish`).
+pub const CARD_IMAGE_LOAD: &str = "card.image.load";
+/// The desktop's composite card approval: `grant.approve` or `grant.deny`,
+/// then `task.resolve` with the body core built (carries a secret).
+pub const CARD_APPROVAL_FINISH: &str = "card.approval.finish";
 /// Unlock an account (carries a secret).
 pub const ACCOUNT_UNLOCK: &str = "account.unlock";
 /// Lock an account.

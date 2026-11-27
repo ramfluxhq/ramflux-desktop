@@ -1694,6 +1694,9 @@ fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
     // Message-class sites are gated at the client; reads go through
     // `spawn_reads` or `run_batch`.
     let known: &[(&str, usize, usize, usize)] = &[
+        // The image read of a card slot: fetch, begin, read, finish and the
+        // directory row, each an object-class request gated at the client.
+        ("card_image.rs", 5, 0, 0),
         ("effects.rs", 9, 0, 0),
         ("media.rs", 10, 0, 0),
         ("mod.rs", 1, 0, 0),

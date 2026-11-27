@@ -330,6 +330,11 @@ fn card_record(tree: &CardTree) -> Option<CardRecord> {
         receipt: None,
         submit_failed: false,
         chain: vec![tree.stamp()],
+        dropped: false,
+        approval: None,
+        approval_sent: false,
+        limit_strikes: 0,
+        images: std::collections::BTreeMap::new(),
     })
 }
 

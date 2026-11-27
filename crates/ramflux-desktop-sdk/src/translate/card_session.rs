@@ -4,24 +4,29 @@
 //! Replies of the card runtime (`card.session.*`), typed.
 //!
 //! Every reply carries `result`, `render_allowed` and `fallback_text`. When
-//! `render_allowed` is false the card shows its fallback text only. A
-//! refusal or failure is classified by [`failure`]: an absent runtime (a
-//! daemon built without `card-runtime`) is the only reason the desktop
-//! raises `backend.gap.surfaces`.
+//! `render_allowed` is false the card shows its fallback text only. Every
+//! `event` and `slot` reply that may be drawn carries a `batch` (an empty
+//! one says nothing changed). A refusal or failure is classified by
+//! [`failure`] from the typed `reason_code` (or the error `code`), never
+//! from the message.
 
 use ramflux_desktop_core::{
-    CardBatch, CardEvent, CardLink, CardReceipt, CardSlotOutcome as SlotOutcome, DomainEvent,
-    SurfaceId,
+    CARD_STALE_REASON, CardApproval, CardBatch, CardEvent, CardImage, CardLimit, CardLink,
+    CardReceipt, CardSlotOutcome as SlotOutcome, DomainEvent, SurfaceId,
 };
 use serde_json::Value;
 use thiserror::Error;
 
 use crate::bus::BusError;
 
-/// The message of a daemon built without the card runtime.
-const RUNTIME_UNAVAILABLE: &str = "card runtime unavailable";
 /// Prefix of every typed card refusal reason.
 const REASON_PREFIX: &str = "card_session_";
+/// The resident-card cap of the daemon process.
+const LIMIT_PROCESS: &str = "card_limit_exceeded";
+/// The sessions-per-account cap.
+const LIMIT_ACCOUNT: &str = "card_session_limit";
+/// A session the runtime dropped.
+const EXPIRED: [&str; 2] = ["card_session_expired", "card_session_inactive"];
 
 /// A reply that does not follow the contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -43,6 +48,8 @@ pub enum CardResult {
     Presented,
     /// A host event was applied.
     Edited,
+    /// A host event was applied and a field's validation answered.
+    Validation,
     /// A link activation needs the host's sheet (`host_request`).
     OpenUrl,
     /// The Button was consumed; call submit next.
@@ -74,6 +81,7 @@ impl CardResult {
             "updated" => Self::Updated,
             "presented" => Self::Presented,
             "edited" => Self::Edited,
+            "validation" => Self::Validation,
             "open_url" => Self::OpenUrl,
             "pending_submit" => Self::PendingSubmit,
             "submitted" => Self::Submitted,
@@ -112,6 +120,9 @@ pub enum HostRequest {
         request_ref: String,
         /// The task binding, when the approval has one.
         task_binding: Option<Value>,
+        /// The complete `task.resolve` body (confirm and deny only), to be
+        /// sent unchanged.
+        task_resolve: Option<Value>,
     },
 }
 
@@ -218,6 +229,7 @@ fn host_request(request: &Value) -> Result<HostRequest, ReplyError> {
             outcome: slot_outcome(request["outcome"].as_str().ok_or(ReplyError)?)?,
             request_ref: string(request, "request_ref")?,
             task_binding: request.get("task_binding").filter(|v| !v.is_null()).cloned(),
+            task_resolve: request.get("task_resolve").filter(|v| !v.is_null()).cloned(),
         }),
         _ => Err(ReplyError),
     }
@@ -244,39 +256,48 @@ fn action(outcome: &Value) -> Result<ActionOutcome, ReplyError> {
 /// Why a card call failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardFailure {
-    /// The daemon has no card runtime (or no `card.session.*` methods).
-    /// The only case that raises `backend.gap.surfaces`.
-    RuntimeUnavailable,
+    /// The session is gone (`card_session_expired`, `card_session_inactive`).
+    Expired,
+    /// A limit of the runtime (`card_limit_exceeded`, `card_session_limit`).
+    Limit(CardLimit),
     /// A typed refusal (`card_session_*`), by its reason key.
     Refused(String),
-    /// A timeout or a broken connection: the call may be retried later.
+    /// A timeout, a broken connection or an untyped refusal: the call may
+    /// be retried later.
     Other,
 }
 
-/// Classifies a failed card call.
+/// Classifies a failed card call from its typed reason. The resume cap is
+/// untyped at the pinned core (an invalid-argument refusal of a resume), so
+/// that one answer is a limit too.
 #[must_use]
-pub fn failure(error: &BusError) -> CardFailure {
-    if error.is_unknown_method() {
-        return CardFailure::RuntimeUnavailable;
-    }
-    let BusError::Daemon { message, .. } = error else {
+pub fn failure(method: &str, error: &BusError) -> CardFailure {
+    let BusError::Daemon { code, reason_code, .. } = error else {
         return CardFailure::Other;
     };
-    if message.contains(RUNTIME_UNAVAILABLE) {
-        return CardFailure::RuntimeUnavailable;
-    }
-    match error.reason_code().or(Some(message.as_str())) {
-        Some(reason) if reason.starts_with(REASON_PREFIX) => {
-            CardFailure::Refused(reason.to_owned())
-        }
-        _ => CardFailure::Other,
+    let token = reason_code.as_deref().unwrap_or(code.as_str());
+    if EXPIRED.contains(&token) {
+        CardFailure::Expired
+    } else if token == LIMIT_PROCESS {
+        CardFailure::Limit(CardLimit::Process)
+    } else if token == LIMIT_ACCOUNT {
+        CardFailure::Limit(CardLimit::Account)
+    } else if token.starts_with(REASON_PREFIX) {
+        CardFailure::Refused(token.to_owned())
+    } else if method == CARD_RESUME
+        && reason_code.is_none()
+        && matches!(code.as_str(), "InvalidArgument" | "ValidationFailed")
+    {
+        CardFailure::Limit(CardLimit::Process)
+    } else {
+        CardFailure::Other
     }
 }
 
 /// The domain events of one card call's outcome: its reply, or its failure.
-/// A daemon without the runtime raises the card gap (every card call is then
-/// unsupported); a typed refusal is the card's own refusal; anything else is
-/// a refused call the card shows in place, never retried here. A submit
+/// A typed refusal is the card's own refusal; a dropped session is the
+/// card's to open again; a limit is retried once by the app; anything else
+/// is a refused call the card shows in place, never retried here. A submit
 /// whose answer is unknown (a timeout or a broken connection, or a reply
 /// that cannot be read) is no refusal: the button stays consumed and the
 /// user may retry it. A host event call always ends with
@@ -287,14 +308,38 @@ pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> 
             surface_id: SurfaceId::new(body["surface_id"].as_str().unwrap_or_default()),
         })]
     };
+    let surface_id = || SurfaceId::new(body["surface_id"].as_str().unwrap_or_default());
+    if method == CARD_APPROVAL_FINISH {
+        return approval_outcome(body, result);
+    }
     let mut out = match result {
         Ok(answer) => match reply(answer) {
             Ok(reply) => events(method, body, reply),
             Err(ReplyError) if method == CARD_SUBMIT => unknown_submit(),
             Err(ReplyError) => vec![refused_event(body, "card_session_reply")],
         },
-        Err(error) => match failure(error) {
-            CardFailure::RuntimeUnavailable => vec![DomainEvent::CardRuntimeUnavailable],
+        Err(error) => match failure(method, error) {
+            // The release asked for is done: the runtime dropped it already.
+            CardFailure::Expired if method == CARD_DISPOSE => {
+                vec![DomainEvent::Card(CardEvent::Disposed { surface_id: surface_id() })]
+            }
+            CardFailure::Expired => {
+                vec![DomainEvent::Card(CardEvent::Expired { surface_id: surface_id() })]
+            }
+            CardFailure::Limit(limit) if method == CARD_OPEN || method == CARD_RESUME => {
+                vec![DomainEvent::Card(CardEvent::LimitExceeded {
+                    surface_id: surface_id(),
+                    limit,
+                    resume: method == CARD_RESUME,
+                })]
+            }
+            CardFailure::Limit(limit) => vec![refused_event(
+                body,
+                match limit {
+                    CardLimit::Process => LIMIT_PROCESS,
+                    CardLimit::Account => LIMIT_ACCOUNT,
+                },
+            )],
             CardFailure::Refused(reason) => vec![refused_event(body, &reason)],
             CardFailure::Other if method == CARD_SUBMIT => unknown_submit(),
             CardFailure::Other => vec![refused_event(body, "card_session_failed")],
@@ -302,6 +347,58 @@ pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> 
     };
     settle(method, body, &mut out);
     out
+}
+
+/// The task refusals that say the decision no longer applies to the task as
+/// it is: the request changed.
+const DECISION_CHANGED: [&str; 5] =
+    ["stale_revision", "decision_consumed", "decision_mismatch", "terminal", "not_found"];
+
+/// The events of the approval's grant and task decisions. Success changes
+/// nothing on the card: it keeps "Waiting for confirmation" until the signed
+/// update or the task change. A typed task refusal says the request changed;
+/// any other failure is the card's own refusal. Nothing is retried.
+fn approval_outcome(body: &Value, result: &Result<Value, BusError>) -> Vec<DomainEvent> {
+    let surface_id = SurfaceId::new(body["surface_id"].as_str().unwrap_or_default());
+    let Err(error) = result else { return Vec::new() };
+    let changed = matches!(error, BusError::Daemon { code, reason_code, .. }
+        if DECISION_CHANGED.contains(&reason_code.as_deref().unwrap_or(code.as_str())));
+    if changed {
+        vec![DomainEvent::Card(CardEvent::ApprovalChanged { surface_id })]
+    } else {
+        vec![refused_event(body, "card_session_failed")]
+    }
+}
+
+/// The events of an image read: the image with its size, or "Image
+/// unavailable" (whatever went wrong; only the error code is logged).
+pub fn image_outcome(body: &Value, result: &Result<Value, BusError>) -> Vec<DomainEvent> {
+    let surface_id = SurfaceId::new(body["surface_id"].as_str().unwrap_or_default());
+    let object_id = body["object_id"].as_str().unwrap_or_default().to_owned();
+    let image = match result {
+        Ok(answer) => {
+            answer["path"].as_str().zip(answer["width"].as_u64()).zip(answer["height"].as_u64())
+        }
+        Err(error) => {
+            if let BusError::Daemon { code, .. } = error {
+                crate::local::app_log::warn(&format!("card image refused: {code}"));
+            }
+            None
+        }
+    };
+    let image = image.and_then(|((path, width), height)| {
+        Some(CardImage::Ready {
+            path: path.to_owned(),
+            width: u32::try_from(width).ok()?,
+            height: u32::try_from(height).ok()?,
+        })
+    });
+    match image {
+        Some(image) => {
+            vec![DomainEvent::Card(CardEvent::ImageReady { surface_id, object_id, image })]
+        }
+        None => vec![DomainEvent::Card(CardEvent::ImageUnavailable { surface_id, object_id })],
+    }
 }
 
 /// The events of a card call that was never sent (its body did not follow
@@ -345,15 +442,43 @@ pub fn events(method: &str, body: &Value, reply: CardReply) -> Vec<DomainEvent> 
         })]
     };
     if reply.result == CardResult::Refused {
-        return refused(reply.reason.as_deref().unwrap_or("card_session_refused"));
+        let reason = reply.reason.as_deref().unwrap_or("card_session_refused");
+        // A session with no tree is a dropped session, like an expired one.
+        if EXPIRED.contains(&reason) {
+            return vec![event(CardEvent::Expired { surface_id })];
+        }
+        return refused(reason);
     }
+    let host_call = method == CARD_EVENT || method == CARD_SLOT;
+    // Every event and slot reply that may be drawn carries its batch (an empty
+    // one says nothing changed); one without is a reply that breaks the contract.
+    if host_call && reply.render_allowed && reply.batch.is_none() {
+        return refused("card_session_reply");
+    }
+    let batch = |b: CardBatch| Box::new(b);
+    // The batch of an event or slot reply is applied first: it is the card's
+    // current tree (a stale event's batch reverts the field).
+    let own_batch = |reply_batch: Option<CardBatch>, draft_conflict: bool| {
+        reply_batch.map(|b| {
+            event(CardEvent::Batch {
+                surface_id: surface_id.clone(),
+                batch: batch(b),
+                draft_conflict,
+                own_reply: true,
+            })
+        })
+    };
     if reply.result == CardResult::StaleDropped {
-        return refused("stale_dropped");
+        let mut out = Vec::new();
+        if host_call {
+            out.extend(own_batch(reply.batch, false));
+        }
+        out.extend(refused(CARD_STALE_REASON));
+        return out;
     }
     if reply.result == CardResult::Superseded {
         return vec![event(CardEvent::Stale { surface_id })];
     }
-    let batch = |b: CardBatch| Box::new(b);
     let mut out = Vec::new();
     match (method, reply.result) {
         (CARD_OPEN, CardResult::Opened) => match (reply.session, reply.batch) {
@@ -385,15 +510,14 @@ pub fn events(method: &str, body: &Value, reply: CardReply) -> Vec<DomainEvent> 
                 }));
             }
         }
-        (CARD_EVENT, CardResult::Edited | CardResult::PendingSubmit | CardResult::OpenUrl) => {
-            if let Some(b) = reply.batch {
-                out.push(event(CardEvent::Batch {
-                    surface_id: surface_id.clone(),
-                    batch: batch(b),
-                    draft_conflict: reply.draft_conflict,
-                    own_reply: true,
-                }));
-            }
+        (
+            CARD_EVENT,
+            CardResult::Edited
+            | CardResult::Validation
+            | CardResult::PendingSubmit
+            | CardResult::OpenUrl,
+        ) => {
+            out.extend(own_batch(reply.batch, reply.draft_conflict));
             if reply.result == CardResult::PendingSubmit {
                 out.push(event(CardEvent::PendingSubmit { surface_id: surface_id.clone() }));
             }
@@ -407,6 +531,7 @@ pub fn events(method: &str, body: &Value, reply: CardReply) -> Vec<DomainEvent> 
             }
         }
         (CARD_SLOT, CardResult::Opened) => {
+            out.extend(own_batch(reply.batch, false));
             // The browser opens for the URL the slot answer was given for.
             if let Some(url) = body["url"].as_str() {
                 out.push(event(CardEvent::LinkOpened {
@@ -417,15 +542,26 @@ pub fn events(method: &str, body: &Value, reply: CardReply) -> Vec<DomainEvent> 
             out.push(event(CardEvent::LinkClosed { surface_id: surface_id.clone() }));
         }
         (CARD_SLOT, CardResult::Cancelled | CardResult::SlotUnavailable) => {
+            out.extend(own_batch(reply.batch, false));
             out.push(event(CardEvent::LinkClosed { surface_id: surface_id.clone() }));
         }
         (CARD_SLOT, CardResult::ApprovalDecision) => {
-            if let Some(HostRequest::ApprovalDecision { outcome, .. }) = reply.host_request {
-                out.push(event(CardEvent::ApprovalVerdict {
-                    surface_id: surface_id.clone(),
-                    outcome,
-                }));
+            let Some(HostRequest::ApprovalDecision { outcome, request_ref, task_resolve, .. }) =
+                reply.host_request
+            else {
+                return refused("card_session_reply");
+            };
+            // A confirm or a deny carries the task decision core built; a
+            // verdict without it breaks the contract.
+            let decides = matches!(outcome, SlotOutcome::Confirm | SlotOutcome::Deny);
+            if decides && task_resolve.is_none() {
+                return refused("card_session_reply");
             }
+            out.extend(own_batch(reply.batch, false));
+            out.push(event(CardEvent::ApprovalVerdict {
+                surface_id: surface_id.clone(),
+                approval: CardApproval { outcome, request_ref, task_resolve },
+            }));
         }
         (CARD_SUBMIT, CardResult::Submitted) => {
             if let Some(receipt) = reply.submit {
@@ -459,6 +595,7 @@ const CARD_SUBMIT: &str = "card.session.submit";
 const CARD_SUSPEND: &str = "card.session.suspend";
 const CARD_RESUME: &str = "card.session.resume";
 const CARD_DISPOSE: &str = "card.session.dispose";
+const CARD_APPROVAL_FINISH: &str = ramflux_desktop_core::methods::CARD_APPROVAL_FINISH;
 
 #[cfg(test)]
 mod tests {
@@ -477,10 +614,14 @@ mod tests {
     }
 
     #[test]
-    fn an_edited_reply_without_a_batch_still_settles_the_event_call() {
+    fn an_edited_reply_without_a_batch_is_a_protocol_error_and_still_settles_the_event_call() {
         let answer = json!({ "result": "edited", "render_allowed": true, "fallback_text": "" });
         let events = outcome(CARD_EVENT, &body(), &Ok(answer));
-        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events.len(), 2, "{events:?}");
+        assert!(matches!(
+            &events[0],
+            DomainEvent::Card(CardEvent::Refused { reason, .. }) if reason == "card_session_reply"
+        ));
         assert!(settled(&events));
     }
 

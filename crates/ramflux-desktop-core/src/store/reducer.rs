@@ -156,14 +156,6 @@ impl Store {
             }
             DomainEvent::Surface(event) => self.surface_event(at, event, changes)?,
             DomainEvent::Card(event) => self.card_event(event, changes),
-            DomainEvent::CardRuntimeUnavailable => {
-                for method in crate::CARD_METHODS {
-                    self.capabilities
-                        .unsupported
-                        .insert(method.to_owned(), crate::CARD_RUNTIME_GAP.to_owned());
-                }
-                changes.source_status = true;
-            }
             DomainEvent::ObjectUpserted(object) => {
                 changes.objects.insert(object.id.clone());
                 self.objects.insert(object.id.clone(), object.clone());

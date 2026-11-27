@@ -11,17 +11,60 @@
 //! written, never logged). Only `submit` is a network call on the daemon, and
 //! it is never retried.
 
-use ramflux_desktop_core::{SecretInput, methods};
+use ramflux_desktop_core::{ContextId, SecretInput, methods};
 use serde_json::{Value, json};
 
+use super::Plan;
+use super::fetch::Fetch;
 use crate::bus::{BusRequest, wipe};
 
 /// The routing label of the card calls.
 const SDK_API: &str = "surface";
 
-/// Whether `method` is a card runtime call.
+/// Whether `method` is a card runtime call, or the card approval the desktop
+/// finishes after the runtime recorded the verdict.
 pub fn is_card_method(method: &str) -> bool {
-    method.starts_with("card.session.")
+    method.starts_with("card.session.") || method == methods::CARD_APPROVAL_FINISH
+}
+
+/// The fields of the `task.resolve` body core builds for an approval.
+const RESOLVE_FIELDS: [&str; 7] =
+    ["conversation_id", "task_id", "step_id", "base_revision", "target", "decision_id", "decision"];
+
+/// The two calls that finish an approval verdict: `grant.approve` or
+/// `grant.deny` with the record the verdict names, then `task.resolve` with
+/// the body core built, unchanged (its fields travel as secret fields; none
+/// is read, merged or rebuilt). `None` when the call does not follow the
+/// contract, a body with a field the task contract does not list included.
+pub fn approval_finish(
+    account: Option<&str>,
+    body: &Value,
+    secrets: Vec<SecretInput>,
+) -> Option<Plan> {
+    let mut secret = Parsed(one_secret(secrets)?);
+    let request_ref = secret.text("request_ref")?;
+    let mut resolve = Parsed(secret.take("task_resolve")?);
+    let conversation = resolve.0["conversation_id"].as_str()?.to_owned();
+    let task = resolve.0["task_id"].as_str()?.to_owned();
+    let daemon = match body["outcome"].as_str()? {
+        "confirm" => "grant.approve",
+        "deny" => "grant.deny",
+        _ => return None,
+    };
+    let grant = BusRequest::new(account, "grant", daemon, json!({ "approval_id": request_ref }));
+    let mut resolved = BusRequest::new(account, "task", "task.resolve", json!({}));
+    for field in RESOLVE_FIELDS {
+        if let Some(value) = resolve.take(field) {
+            resolved = resolved.with_json(field, value);
+        }
+    }
+    if resolve.has_rest() {
+        return None;
+    }
+    Some(Plan::Calls {
+        requests: vec![grant, resolved],
+        refresh: vec![Fetch::Grants, Fetch::Task(ContextId::new(conversation), task)],
+    })
 }
 
 /// The bus request of one card call, from the body core built and its
@@ -116,6 +159,13 @@ impl Parsed {
                 None
             }
         }
+    }
+}
+
+impl Parsed {
+    /// Whether any field is left after the ones taken out.
+    fn has_rest(&self) -> bool {
+        self.0.as_object().is_some_and(|fields| fields.values().any(|value| !value.is_null()))
     }
 }
 

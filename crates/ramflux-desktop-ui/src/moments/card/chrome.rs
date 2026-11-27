@@ -11,7 +11,8 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{
-    CARD_CHANGED_REASON, CardRecord, CardStatus, CardTree, SurfaceState, UiEventKind,
+    CARD_CHANGED_REASON, CARD_OVER_LIMIT_REASON, CARD_REQUEST_CHANGED_REASON, CARD_STALE_REASON,
+    CardRecord, CardStatus, CardTree, SurfaceState, UiEventKind,
 };
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption};
@@ -110,17 +111,31 @@ pub fn status(
                 ),
         );
     }
-    if let Some(reason) = record.refusal.as_deref() {
-        // The card changed since the user saw it: the field is reset to the
-        // held value, and the user reviews the new version first.
-        let text = if reason == CARD_CHANGED_REASON {
-            tr("moment.card.changed")
-        } else {
-            tr("moment.card.refused")
-        };
-        col = col.child(div().text_size(text_caption()).text_color(cx.theme().danger).child(text));
-    }
-    col.into_any_element()
+    col.children(refusal(record, cx)).into_any_element()
+}
+
+/// The line a card shows for its last refusal: the card changed since the
+/// user saw it (the field is reset to the held value and the user reviews
+/// the new version first), the runtime has too many cards active, the
+/// approval's request changed, or the change was not applied.
+pub fn refusal(record: &CardRecord, cx: &App) -> Option<AnyElement> {
+    let reason = record.refusal.as_deref()?;
+    let text = match reason {
+        CARD_CHANGED_REASON => tr("moment.card.changed"),
+        CARD_STALE_REASON => tr("moment.card.stale_dropped"),
+        CARD_OVER_LIMIT_REASON => tr("moment.card.over_limit"),
+        CARD_REQUEST_CHANGED_REASON => tr("moment.card.request_changed"),
+        _ => tr("moment.card.refused"),
+    };
+    Some(
+        div()
+            .id("card-refusal")
+            .role(gpui_kit::Role::Status)
+            .text_size(text_caption())
+            .text_color(cx.theme().danger)
+            .child(text)
+            .into_any_element(),
+    )
 }
 
 /// The fallback text: what a card shows when the runtime does not draw it.

@@ -32,6 +32,7 @@
 pub mod agents;
 pub mod backup;
 pub mod call;
+pub mod card_image;
 pub mod card_session;
 pub mod contact;
 pub mod contact_card;
@@ -130,6 +131,9 @@ pub enum Plan {
     },
     /// An attachment job, run step by step (see [`media`]).
     Media(media::Job),
+    /// The read of an image slot's bytes through the object API (see
+    /// [`card_image`]).
+    CardImage(Box<card_image::Job>),
     /// `contact.verify`: first `lookup` (`contact.safety_number`), then the
     /// verification of the compared snapshot it answers (`expected`).
     Verify {
@@ -379,6 +383,16 @@ fn map(
         methods::CONTEXT_PIN | methods::CONTEXT_UNPIN => Plan::Local,
         _ if acct.is_none() => refuse_invalid("this action needs an unlocked account"),
         methods::USERNAME_CLAIM => username::claim(acct, body, std::mem::take(&mut secrets)),
+        methods::CARD_APPROVAL_FINISH => {
+            match card_session::approval_finish(acct, body, std::mem::take(&mut secrets)) {
+                Some(plan) => plan,
+                None => refuse_invalid("the card approval does not follow the contract"),
+            }
+        }
+        methods::CARD_IMAGE_LOAD => match card_image::job(acct, body) {
+            Some(job) => Plan::CardImage(Box::new(job)),
+            None => refuse_invalid("the image read does not follow the contract"),
+        },
         method if card_session::is_card_method(method) => {
             match card_session::request(acct, method, body, std::mem::take(&mut secrets)) {
                 Some(request) => Plan::Call { request, refresh: Vec::new() },

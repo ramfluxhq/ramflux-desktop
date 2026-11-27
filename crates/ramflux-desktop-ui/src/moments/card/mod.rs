@@ -26,6 +26,7 @@
 mod chrome;
 mod content;
 mod controls;
+pub mod images;
 mod layout;
 mod slots;
 #[cfg(feature = "card-gallery")]
@@ -39,8 +40,8 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, IntoElement, RenderOnce, SharedString, Window};
 use ramflux_desktop_core::{
-    CardNode, CardRecord, CardSeen, CardStatus, CardTree, JsonValue, Moment, MomentKind, Store,
-    SurfaceAction, SurfaceHash, SurfaceId, SurfaceState,
+    CardImage, CardNode, CardRecord, CardSeen, CardStatus, CardTree, JsonValue, Moment, MomentKind,
+    Store, SurfaceAction, SurfaceHash, SurfaceId, SurfaceState,
 };
 use ramflux_desktop_navigation::direction::LayoutDirection;
 
@@ -108,6 +109,10 @@ pub struct CardLocal {
     /// The tree version a forced field reset (a refusal or a discarded
     /// draft) was applied at, so it happens once per version.
     pub reset_at: Option<u64>,
+    /// The Image node whose full view is open.
+    pub image: Option<String>,
+    /// Keyboard focus was moved to the open full view.
+    pub image_focused: bool,
 }
 
 /// Text field drafts of one card, by node key.
@@ -144,6 +149,7 @@ impl RenderOnce for CardBody {
             (Some(tree), Some(record)) => {
                 let view = View {
                     tree,
+                    images: &record.images,
                     interactive: snap.interactive(),
                     status: record.status,
                     sink: sink.clone(),
@@ -163,9 +169,17 @@ impl RenderOnce for CardBody {
                     .when_some(slots::link_sheet(&view, record, &snap, window, cx), |col, sheet| {
                         col.child(sheet)
                     })
+                    .when_some(content::image_sheet(&view, window, cx), |col, sheet| {
+                        col.child(sheet)
+                    })
                     .into_any_element()
             }
-            _ => v_stack_card(cx).child(chrome::fallback(&snap, cx)).into_any_element(),
+            // No tree to draw (the runtime would not open the card, or sent
+            // none): its fallback text, and why when the runtime was full.
+            _ => v_stack_card(cx)
+                .child(chrome::fallback(&snap, cx))
+                .children(snap.record.as_ref().and_then(|record| chrome::refusal(record, cx)))
+                .into_any_element(),
         };
         v_stack_card(cx).child(body).child(chrome::surface_actions(&snap, &sink, window, cx))
     }
@@ -189,6 +203,8 @@ fn direction_of(tree: &CardTree) -> LayoutDirection {
 /// The view a card's nodes are drawn through.
 pub(crate) struct View<'a> {
     pub tree: &'a CardTree,
+    /// Where each image slot's bytes are, by object.
+    pub images: &'a BTreeMap<String, CardImage>,
     /// The runtime accepts host events now.
     pub interactive: bool,
     /// The overlay status of the card.
@@ -250,7 +266,7 @@ impl View<'_> {
             "ChoicePicker" => controls::choice_picker(self, node, window, cx),
             "Slider" => controls::slider(self, node, window, cx),
             "DateTimeInput" => controls::date_time(self, node, cx),
-            "Image" => content::image(node, cx),
+            "Image" => content::image(self, node, window, cx),
             "Approval" => slots::approval(self, node, window, cx),
             "Task" => content::task(node, cx),
             "Chart" => content::chart(node, cx),

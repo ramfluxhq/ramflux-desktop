@@ -5,15 +5,18 @@
 //! table alternative, Table and Task. Values are untrusted and drawn as text.
 
 use gpui_kit::component::StyledExt as _;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, App, IntoElement, div, px};
-use ramflux_desktop_core::{CardNode, JsonValue};
+use gpui_kit::{AnyElement, App, IntoElement, SharedString, Window, div, px};
+use ramflux_desktop_core::{CardImage, CardNode, JsonValue};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
+use super::images::{self, Decoded};
 use super::{View, attr_bool, attr_f64, attr_str, attr_text, shown};
 use crate::i18n::{tr, tr_args};
+use crate::ids::domain_id;
 
 /// A Text node: its `text`, plain. Empty text draws nothing.
 pub fn text(view: &View<'_>, node: &CardNode, cx: &App) -> AnyElement {
@@ -49,27 +52,212 @@ pub fn icon(node: &CardNode, cx: &App) -> AnyElement {
     Icon::new(name).small().text_color(cx.theme().muted_foreground).into_any_element()
 }
 
-/// An Image: the spec's placeholder box with the description as its name.
-/// Byte delivery does not exist in this build, so the image is never
-/// fetched and its URL never read.
-pub fn image(node: &CardNode, cx: &App) -> AnyElement {
+/// An Image (spec 4.15): the box of its variant with the picture the host
+/// read through the object API, drawn with `fit`; while the bytes arrive, or
+/// when there are none to show, the placeholder box ("Image unavailable" on
+/// failure). `description` is the accessible name and the tooltip; a click
+/// opens the full view. Nothing is read from the node but its own
+/// attributes: no URL, path or data URI.
+pub fn image(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App) -> AnyElement {
     let description = attr_text(node, "description");
-    v_flex()
-        .w(px(160.))
-        .h(px(96.))
-        .items_center()
-        .justify_center()
-        .gap(space(1.))
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().muted)
-        .text_size(text_caption())
-        .text_color(cx.theme().muted_foreground)
-        .child(Icon::new(IconName::Info).small())
-        .child(tr("moment.card.image_unavailable"))
-        .when(!description.is_empty(), |col| col.child(description))
-        .into_any_element()
+    let shown = shown_of(view, node, window, cx);
+    let (frame, round) = frame(node, cx);
+    let frame = frame.id(domain_id("card-image", &node.key)).aria_label(description.clone());
+    let frame = if description.is_empty() {
+        frame
+    } else {
+        let tip = SharedString::from(description.clone());
+        frame.tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+    };
+    match shown {
+        Shown::Picture(image) => {
+            let (local, key) = (view.local.clone(), node.key.clone());
+            frame
+                .cursor_pointer()
+                .child(
+                    gpui_kit::img(image.clone())
+                        .size_full()
+                        .when(round, |picture| picture.rounded_full())
+                        .object_fit(fit(node)),
+                )
+                .on_click(move |_, window, _| {
+                    local.borrow_mut().image = Some(key.clone());
+                    window.refresh();
+                })
+                .into_any_element()
+        }
+        Shown::Waiting => frame
+            .bg(cx.theme().muted)
+            .child(Icon::new(IconName::Info).small().text_color(cx.theme().muted_foreground))
+            .into_any_element(),
+        Shown::Unavailable => frame
+            .bg(cx.theme().muted)
+            .flex_col()
+            .gap(space(1.))
+            .text_size(text_caption())
+            .text_color(cx.theme().muted_foreground)
+            .child(Icon::new(IconName::Info).small())
+            .child(tr("moment.card.image_unavailable"))
+            .into_any_element(),
+    }
+}
+
+/// The full view of an image (spec 4.15): a dialog over a scrim with the
+/// picture fitted with `contain` and its description below. Escape, the close
+/// button or a click outside it closes the view.
+pub fn image_sheet(view: &View<'_>, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+    let key = view.local.borrow().image.clone()?;
+    let node = view.node(&key)?;
+    let description = attr_text(node, "description");
+    let Shown::Picture(image) = shown_of(view, node, window, cx) else {
+        // The picture is gone (released or not decodable): nothing to show.
+        view.local.borrow_mut().image = None;
+        return None;
+    };
+    let focus = window
+        .use_keyed_state(domain_id("card-image-view", &key), cx, |_, cx| cx.focus_handle())
+        .read(cx)
+        .clone();
+    let (first, local) = {
+        let mut local = view.local.borrow_mut();
+        let first = !local.image_focused;
+        local.image_focused = true;
+        (first, view.local.clone())
+    };
+    if first {
+        let focus = focus.clone();
+        window.defer(cx, move |window, cx| window.focus(&focus, cx));
+    }
+    let close = {
+        let local = local.clone();
+        move |window: &mut Window| {
+            let mut local = local.borrow_mut();
+            local.image = None;
+            local.image_focused = false;
+            window.refresh();
+        }
+    };
+    let (escape, outside, button) = (close.clone(), close.clone(), close);
+    Some(
+        div()
+            .id(domain_id("card-image-sheet", &key))
+            .absolute()
+            .inset_0()
+            .bg(cx.theme().overlay)
+            .flex()
+            .items_center()
+            .justify_center()
+            .track_focus(&focus)
+            .on_key_down(move |event, window, _| {
+                if event.keystroke.key == "escape" {
+                    escape(window);
+                }
+            })
+            .on_mouse_down(gpui_kit::MouseButton::Left, move |_, window, _| outside(window))
+            .child(
+                v_flex()
+                    .w(px(480.))
+                    .max_w_full()
+                    .max_h_full()
+                    .gap(space(3.))
+                    .p(space(4.))
+                    .rounded(cx.theme().radius)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().background)
+                    .on_mouse_down(gpui_kit::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        // The close button sits at the inline end (a spacer
+                        // first, so the row mirrors under a right-to-left locale).
+                        h_flex().child(div().flex_1()).child(
+                            gpui_kit::component::button::Button::new(domain_id(
+                                "card-image-close",
+                                &key,
+                            ))
+                            .small()
+                            .label(tr("moment.card.modal_close"))
+                            .on_click(move |_, window, _| button(window)),
+                        ),
+                    )
+                    .child(div().w_full().h(px(320.)).child(
+                        gpui_kit::img(image).size_full().object_fit(gpui_kit::ObjectFit::Contain),
+                    ))
+                    .when(!description.is_empty(), |col| {
+                        col.child(
+                            div()
+                                .text_size(text_secondary())
+                                .text_color(cx.theme().muted_foreground)
+                                .child(description),
+                        )
+                    }),
+            )
+            .into_any_element(),
+    )
+}
+
+/// What `node` draws now (see [`Shown`]): its slot's object, where the bridge
+/// has its bytes, and whether they are decoded.
+fn shown_of(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App) -> Shown {
+    let object = view.tree.host_slots().iter().find_map(|slot| {
+        let image = slot.request.get("kind").and_then(JsonValue::as_str) == Some("image")
+            && slot.key == node.key;
+        let attachment = slot.request.get("attachment")?;
+        (image && attachment.get("retrieval").and_then(JsonValue::as_str) == Some("object"))
+            .then(|| attachment.get("object_id").and_then(JsonValue::as_str))
+            .flatten()
+    });
+    // A slot with no object selector never has a picture.
+    match object {
+        None => Shown::Unavailable,
+        Some(object) => match view.images.get(object) {
+            None | Some(CardImage::Loading) => Shown::Waiting,
+            Some(CardImage::Unavailable) => Shown::Unavailable,
+            Some(CardImage::Ready { path, width, height }) => {
+                match images::lookup(path, *width, *height, window, cx) {
+                    Decoded::Ready(image) => Shown::Picture(image),
+                    Decoded::Pending => Shown::Waiting,
+                    Decoded::Failed => Shown::Unavailable,
+                }
+            }
+        },
+    }
+}
+
+/// What an Image node draws.
+enum Shown {
+    /// The decoded picture.
+    Picture(std::sync::Arc<gpui_kit::RenderImage>),
+    /// The bytes are on their way or being decoded.
+    Waiting,
+    /// "Image unavailable".
+    Unavailable,
+}
+
+/// The box of an image variant (spec 4.15) and whether it is a circle.
+fn frame(node: &CardNode, cx: &App) -> (gpui_kit::Div, bool) {
+    let radius = cx.theme().radius;
+    let base = div().flex().items_center().justify_center().overflow_hidden();
+    match attr_str(node, "variant").unwrap_or("mediumFeature") {
+        "icon" => (base.size(px(24.)).rounded(px(4.)), false),
+        "avatar" => (base.size(px(40.)).rounded_full(), true),
+        "smallFeature" => (base.size(px(96.)).rounded(radius), false),
+        "largeFeature" => {
+            (base.w_full().max_h(px(420.)).aspect_ratio(4.0 / 3.0).rounded(radius), false)
+        }
+        "header" => (base.w_full().max_h(px(240.)).aspect_ratio(2.0).rounded(radius), false),
+        _ => (base.w_full().max_h(px(280.)).aspect_ratio(16.0 / 9.0).rounded(radius), false),
+    }
+}
+
+/// The node's `fit` (default `fill`).
+fn fit(node: &CardNode) -> gpui_kit::ObjectFit {
+    match attr_str(node, "fit") {
+        Some("contain") => gpui_kit::ObjectFit::Contain,
+        Some("cover") => gpui_kit::ObjectFit::Cover,
+        Some("scaleDown" | "scale-down") => gpui_kit::ObjectFit::ScaleDown,
+        Some("none") => gpui_kit::ObjectFit::None,
+        _ => gpui_kit::ObjectFit::Fill,
+    }
 }
 
 /// A Chart: one bar per point, scaled to the largest value, with the values

@@ -48,8 +48,9 @@ pub mod typing;
 pub mod ui_event;
 
 pub use card_event::{
-    CARD_CHANGED_REASON, CARD_METHODS, CARD_RUNTIME_GAP, CardEvent, CardLink, CardReceipt,
-    CardSlotOutcome, CardStatus, https_host,
+    CARD_CHANGED_REASON, CARD_OVER_LIMIT_REASON, CARD_REQUEST_CHANGED_REASON, CARD_STALE_REASON,
+    CardApproval, CardEvent, CardImage, CardLimit, CardLink, CardReceipt, CardSlotOutcome,
+    CardStatus, https_host,
 };
 pub use event::{
     DomainEvent, EVENT_SCHEMA, EventEnvelope, SourceStatus, SurfaceEvent, SurfaceSnapshot,
@@ -80,7 +81,7 @@ pub use serde_json::Value as JsonValue;
 pub use source::Source;
 pub use store::{
     ApplyError, BodyCache, CardDue, CardRecord, Changes, MAX_AUDIT, MAX_BODIES, MAX_FAILURES,
-    MAX_REJECTIONS, Rejection, Store, SurfaceRecord, SurfaceState, UpdateRequest,
+    MAX_REJECTIONS, Rejection, ResumedBudget, Store, SurfaceRecord, SurfaceState, UpdateRequest,
 };
 pub use surface_hash::SurfaceHash;
 pub use typing::{TYPING_MAX_MS, TypingStore};

@@ -99,9 +99,6 @@ pub enum DomainEvent {
     Surface(SurfaceEvent),
     /// A card runtime fact about an agent surface's card.
     Card(CardEvent),
-    /// The daemon has no card runtime: every card call is unsupported, and
-    /// cards show their fallback text.
-    CardRuntimeUnavailable,
     /// Object inserted or replaced.
     ObjectUpserted(Object),
     /// New pending grant.

@@ -126,31 +126,20 @@ impl StoreHandle {
     pub fn reload_active_session(&mut self, cx: &mut Context<Self>) {
         let (Some(id), true) = (self.active.clone(), self.live.is_some()) else { return };
         // The old source goes first: it detaches by account, which must not
-        // reach the scope the new source attaches. Its card sessions are
-        // released first, so the daemon does not keep them.
-        self.release_cards(&id);
+        // reach the scope the new source attaches. The daemon drops its card
+        // sessions with the connection that opened them.
         self.sessions.remove(&id);
         if let Some(link) = self.live.as_ref() {
             let source = link.hub.account_source(id.clone());
             let executor = cx.background_executor().clone();
-            self.sessions.insert(
-                id.clone(),
+            let mut session =
                 AccountSession::live_with_clock(id.to_string(), Box::new(source), move || {
                     executor.now()
-                }),
-            );
+                });
+            session.share_card_budget(self.card_budget.clone());
+            self.sessions.insert(id.clone(), session);
         }
         self.emit_reset(cx);
-    }
-
-    /// Releases the card sessions of an account that is being removed or
-    /// signed out, and records the releases in the inspector.
-    fn release_cards(&mut self, id: &AccountId) {
-        let Some(session) = self.sessions.get_mut(id) else { return };
-        let records = session.dispose_all_cards();
-        for record in records {
-            self.inspector.push(record);
-        }
     }
 
     fn reconcile_live(&mut self, cx: &mut Context<Self>) {
@@ -184,23 +173,20 @@ impl StoreHandle {
             return;
         }
         for id in stale {
-            // Disjoint fields: the link above borrows `self.live` only.
-            if let Some(session) = self.sessions.get_mut(&id) {
-                for record in session.dispose_all_cards() {
-                    self.inspector.push(record);
-                }
-            }
+            // The account locked, signed out or was removed: the daemon
+            // dropped its card sessions, so nothing is disposed here; the
+            // session and its pool go, and the resumed budget is given back.
             self.sessions.remove(&id);
         }
         for id in fresh {
             let source = link.hub.account_source(id.clone());
             let executor = cx.background_executor().clone();
-            self.sessions.insert(
-                id.clone(),
+            let mut session =
                 AccountSession::live_with_clock(id.to_string(), Box::new(source), move || {
                     executor.now()
-                }),
-            );
+                });
+            session.share_card_budget(self.card_budget.clone());
+            self.sessions.insert(id.clone(), session);
         }
         let active_gone = self.active.as_ref().is_some_and(|id| !self.sessions.contains_key(id));
         if self.active.is_none() || active_gone {

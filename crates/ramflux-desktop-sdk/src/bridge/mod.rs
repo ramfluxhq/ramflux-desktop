@@ -16,6 +16,7 @@
 //! - `effects`: performing a scope's effects.
 
 mod app_lock;
+mod card_image;
 mod custody;
 mod effects;
 mod gate;

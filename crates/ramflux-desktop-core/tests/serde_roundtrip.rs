@@ -34,7 +34,6 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::MomentUpdated { .. } => "MomentUpdated",
         DomainEvent::Surface(_) => "Surface",
         DomainEvent::Card(_) => "Card",
-        DomainEvent::CardRuntimeUnavailable => "CardRuntimeUnavailable",
         DomainEvent::ObjectUpserted(_) => "ObjectUpserted",
         DomainEvent::GrantRequested(_) => "GrantRequested",
         DomainEvent::GrantResolved { .. } => "GrantResolved",
@@ -88,7 +87,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 65;
+const DOMAIN_EVENT_VARIANTS: usize = 64;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -134,6 +133,8 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::CardInteract { .. } => "CardInteract",
         IntentKind::CardSlotAnswer { .. } => "CardSlotAnswer",
         IntentKind::CardSubmit { .. } => "CardSubmit",
+        IntentKind::CardApprove { .. } => "CardApprove",
+        IntentKind::CardLoadImage { .. } => "CardLoadImage",
         IntentKind::CardRefresh { .. } => "CardRefresh",
         IntentKind::CardSuspend { .. } => "CardSuspend",
         IntentKind::CardDispose { .. } => "CardDispose",
@@ -221,7 +222,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the nine secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 92;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 94;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -414,7 +415,6 @@ fn all_domain_events() -> Vec<DomainEvent> {
             surface_id: SurfaceId::new("s-1"),
             reason: "card_session_refused".into(),
         }),
-        DomainEvent::CardRuntimeUnavailable,
         DomainEvent::ObjectUpserted(Object {
             mime: None,
             local_path: None,
@@ -942,6 +942,15 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::CardSubmit {
             moment_id: MomentId::new("m-1"),
             surface_id: SurfaceId::new("s-1"),
+        },
+        IntentKind::CardApprove {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+        },
+        IntentKind::CardLoadImage {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+            slot_id: "[image,k-1]".into(),
         },
         IntentKind::CardRefresh {
             moment_id: MomentId::new("m-1"),
