@@ -138,7 +138,11 @@ pub enum IntentKind {
     },
     /// Re-read this account's username status from the directory, to settle
     /// a claim that was still publishing. Read only.
-    UsernameStatusRefresh,
+    UsernameStatusRefresh {
+        /// The operation of the claim still publishing, which the directory
+        /// answers for; `None` reads the current state.
+        operation_id: Option<String>,
+    },
     /// Claim or change this account's username. The recovery phrase
     /// authorizes it and is never stored or serialized. Not serializable.
     #[serde(skip)]

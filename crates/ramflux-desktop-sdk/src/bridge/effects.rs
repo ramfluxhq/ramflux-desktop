@@ -19,7 +19,7 @@ use ramflux_desktop_core::{DomainEvent, Effect, EffectFailure, FailureCode, meth
 use serde_json::{Value, json};
 
 use super::now;
-use super::scope::{Internal, Task};
+use super::scope::{Internal, Link, Task};
 use crate::bus::client::BusClient;
 use crate::bus::{BusError, BusRequest, idempotency, wipe};
 use crate::capabilities;
@@ -122,7 +122,9 @@ impl Task {
         if effect.method() == Some(methods::USERNAME_STATUS) {
             // A status read of this account's username: its answer settles a
             // claim that was still publishing (see `translate::username`).
-            self.spawn_fetches(vec![Fetch::UsernameStatus]);
+            let operation_id =
+                effect.body().and_then(|body| body["operation_id"].as_str()).map(str::to_owned);
+            self.spawn_fetches(vec![Fetch::UsernameStatus(operation_id)]);
             return;
         }
         let planned = plan(self.scope.account(), effect, &self.translator);
@@ -185,6 +187,13 @@ impl Task {
                 self.cancel_username_claim();
                 self.claim_job = self.spawn_operation(method, body, Plan::Username(job));
             }
+            other if method == methods::USERNAME_RESOLVE => {
+                // One lookup runs at a time: a new one replaces the one before.
+                if let Some(job) = self.resolve_job.take() {
+                    job.abort();
+                }
+                self.resolve_job = self.spawn_operation(method, body, other);
+            }
             other => {
                 // Card runtime calls run one at a time (a draft sent before a
                 // press must land before the press), in the order they were made.
@@ -237,12 +246,19 @@ impl Task {
                 method == ramflux_desktop_core::methods::USERNAME_CLAIM && result.is_ok();
             if method == ramflux_desktop_core::methods::USERNAME_CLAIM {
                 self.claim_job = None;
+            } else {
+                self.resolve_job = None;
+            }
+            // An answer queued before the lock lands after it: nothing is
+            // published for a locked or lost account.
+            if matches!(self.link, Link::Locked | Link::Lost) {
+                return;
             }
             let events =
                 crate::translate::username::outcome(self.scope.account(), method, body, &result);
             self.emit(events);
             if committed {
-                self.spawn_fetches(vec![Fetch::UsernameStatus]);
+                self.spawn_fetches(vec![Fetch::UsernameStatus(None)]);
             }
             return;
         }

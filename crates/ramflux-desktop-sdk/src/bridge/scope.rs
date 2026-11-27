@@ -217,6 +217,8 @@ pub(super) struct Task {
     /// The username claim running in this scope (aborted with the scope or
     /// the account's lock: its state is cleared with it).
     pub(super) claim_job: Option<tokio::task::AbortHandle>,
+    /// The `@name` lookup still running, if any (aborted with the claim).
+    pub(super) resolve_job: Option<tokio::task::AbortHandle>,
     /// The schema gate of this connection (account scopes).
     pub(super) gate: Gate,
     /// What the store was last told of the gate.
@@ -412,6 +414,7 @@ pub(super) fn build(
         read_recovery: super::read_recovery::ReadRecovery::default(),
         snapshot_task: None,
         claim_job: None,
+        resolve_job: None,
         reconnect_at: start,
         alive: true,
         listings_sent: Arc::new(AtomicU64::new(0)),
@@ -1061,10 +1064,11 @@ impl Task {
         }
     }
 
-    /// Aborts the username claim job still running, if any. Its answer would
-    /// otherwise land after the account was locked or its scope ended.
+    /// Aborts the username claim and lookup jobs still running, if any.
+    /// Their answers would otherwise land after the account was locked or its
+    /// scope ended.
     pub(super) fn cancel_username_claim(&mut self) {
-        if let Some(job) = self.claim_job.take() {
+        for job in [self.claim_job.take(), self.resolve_job.take()].into_iter().flatten() {
             job.abort();
         }
     }
@@ -1380,7 +1384,14 @@ impl Task {
         // A daemon without a provisioned username directory refuses the
         // status: that is the honest state of the feature, not an error of
         // the moment (no status-strip failure, no retry).
-        if let (Fetch::UsernameStatus, Err(error)) = (fetch, &result)
+        // A status asked for one operation that the directory no longer
+        // knows as the current one is asked again for the current state.
+        if let (Fetch::UsernameStatus(Some(_)), Err(BusError::Daemon { .. })) = (fetch, &result) {
+            self.read_recovery.succeeded(fetch);
+            self.spawn_fetches(vec![Fetch::UsernameStatus(None)]);
+            return false;
+        }
+        if let (Fetch::UsernameStatus(_), Err(error)) = (fetch, &result)
             && !error.is_connection_lost()
         {
             self.read_recovery.succeeded(fetch);

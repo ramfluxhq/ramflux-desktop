@@ -128,10 +128,11 @@ pub struct Store {
     /// Group conversations whose creation has not finished.
     creating: BTreeSet<ContextId>,
     username: Option<crate::UsernameStatus>,
-    /// The last `@name` lookup's answer, with the account it was made for.
-    username_lookup: Option<(Option<AccountId>, crate::UsernameLookup)>,
-    /// Progress of the last username claim or change, with its account.
-    username_claim: Option<(AccountId, crate::UsernameClaim)>,
+    /// The last `@name` lookup's answer of each account (`None`: a lookup
+    /// made with no account open).
+    username_lookups: BTreeMap<Option<AccountId>, crate::UsernameLookup>,
+    /// Progress of the last username claim or change of each account.
+    username_claims: BTreeMap<AccountId, crate::UsernameClaim>,
     failures: Vec<EffectFailure>,
     failures_total: u64,
     group_creations: u64,
@@ -260,6 +261,12 @@ impl Store {
                         .account(id)
                         .is_some_and(|a| a.lock_state == crate::model::LockState::Locked))
         })
+    }
+
+    /// Whether the daemon reports the account locked (an account the store
+    /// does not know is not).
+    fn is_locked(&self, id: &AccountId) -> bool {
+        self.account(id).is_some_and(|a| a.lock_state == crate::model::LockState::Locked)
     }
 
     /// All accounts ordered by id.
@@ -432,19 +439,13 @@ impl Store {
     /// `account` (the account now active). Another account's answer is not
     /// shown.
     pub fn username_lookup(&self, account: Option<&AccountId>) -> Option<&crate::UsernameLookup> {
-        self.username_lookup
-            .as_ref()
-            .filter(|(made_for, _)| made_for.as_ref() == account)
-            .map(|(_, lookup)| lookup)
+        self.username_lookups.get(&account.cloned())
     }
 
     /// Progress of the last username claim or change of `account`. Another
     /// account's claim is not shown.
     pub fn username_claim(&self, account: &AccountId) -> Option<&crate::UsernameClaim> {
-        self.username_claim
-            .as_ref()
-            .filter(|(claimed_by, _)| claimed_by == account)
-            .map(|(_, claim)| claim)
+        self.username_claims.get(account)
     }
 
     /// Why the contact requests could not be read just now, until they are

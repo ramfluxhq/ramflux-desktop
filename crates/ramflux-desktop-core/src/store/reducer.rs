@@ -257,24 +257,33 @@ impl Store {
                 }
             }
             DomainEvent::UsernameLookupUpdated { account, lookup } => {
-                let next = lookup.clone().map(|lookup| (account.clone(), lookup));
-                if self.username_lookup != next {
-                    self.username_lookup = next;
-                    changes.source_status = true;
-                }
+                let changed = match lookup {
+                    // An answer for an account the daemon reports locked is
+                    // a late one: its scope ended.
+                    Some(lookup) if !account.as_ref().is_some_and(|a| self.is_locked(a)) => {
+                        self.username_lookups.insert(account.clone(), lookup.clone()).as_ref()
+                            != Some(lookup)
+                    }
+                    Some(_) => false,
+                    None => self.username_lookups.remove(account).is_some(),
+                };
+                changes.source_status |= changed;
             }
             DomainEvent::UsernameClaimUpdated { account, claim } => {
-                let next = claim.clone().map(|claim| (account.clone(), claim));
-                if self.username_claim != next {
-                    self.username_claim = next;
-                    changes.source_status = true;
-                }
+                let changed = match claim {
+                    Some(claim) if !self.is_locked(account) => {
+                        self.username_claims.insert(account.clone(), claim.clone()).as_ref()
+                            != Some(claim)
+                    }
+                    Some(_) => false,
+                    None => self.username_claims.remove(account).is_some(),
+                };
+                changes.source_status |= changed;
             }
             DomainEvent::UsernameClaimSettled { account, operation_id, committed } => {
                 // Only the claim this operation is: a claim replaced since is
                 // left alone.
-                if let Some((claimed_by, claim)) = self.username_claim.as_mut()
-                    && *claimed_by == *account
+                if let Some(claim) = self.username_claims.get_mut(account)
                     && let crate::UsernameClaim::StillPublishing { name, operation_id: Some(id) } =
                         claim
                     && id.as_str() == operation_id.as_str()

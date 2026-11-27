@@ -42,7 +42,13 @@ pub struct AccountInputs {
     /// Whether this computer has a username centre to claim against, read
     /// once when the settings page opens.
     pub username_configured: bool,
+    /// Set for a moment after the username status was asked for again, so
+    /// repeated presses do not repeat the read.
+    pub refresh_cooldown: std::rc::Rc<std::cell::Cell<bool>>,
 }
+
+/// How long the status refresh ignores further presses.
+const REFRESH_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Clears every masked and typed input of the account section (leaving the
 /// section, locking the account or switching accounts).
@@ -74,9 +80,15 @@ pub(super) fn active_account(context: &SectionContext, cx: &App) -> Option<Accou
 /// The line under the username form: what the last claim or change of
 /// `account` says, and whether the status can be read again (the claim is
 /// still publishing and waits for a refresh).
-fn claim_status(store: &Store, account: &AccountId) -> Option<(SharedString, bool)> {
+fn claim_status(
+    store: &Store,
+    account: &AccountId,
+) -> Option<(SharedString, Option<Option<String>>)> {
     let claim = store.username_claim(account)?;
-    let refresh = matches!(claim, UsernameClaim::StillPublishing { .. });
+    let refresh = match claim {
+        UsernameClaim::StillPublishing { operation_id, .. } => Some(operation_id.clone()),
+        _ => None,
+    };
     let text = match claim {
         UsernameClaim::Publishing { .. } => tr("settings.account.username_publishing"),
         UsernameClaim::StillPublishing { .. } => tr("settings.account.username_unsettled"),
@@ -303,6 +315,7 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
         let store = context.store.clone();
         let account = account.as_ref().map(|a| a.id.clone());
         let sink = sink.clone();
+        let cooldown = inputs.refresh_cooldown.clone();
         SettingItem::render(move |_, _, cx: &mut App| {
             let Some(account_id) = account.clone() else { return h_flex().into_any_element() };
             // A build or computer without a username centre cannot claim one:
@@ -343,12 +356,33 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                 cx,
             ))
             .children(status.as_ref().map(|(text, _)| design::help(text.clone(), cx)));
-            let refresh = status.is_some_and(|(_, refresh)| refresh).then(|| {
+            let cooling = cooldown.get();
+            let refresh = status.clone().and_then(|(_, refresh)| refresh).map(|operation_id| {
+                let cooldown = cooldown.clone();
                 h_flex().child(
                     crate::style::secondary_button("settings-username-refresh", cx)
                         .label(tr("settings.account.username_refresh"))
+                        .design_disabled(cooling, cx)
                         .on_click(move |_, window, cx| {
-                            sink.emit(UiEventKind::UsernameStatusRefreshRequested, window, cx);
+                            if cooldown.replace(true) {
+                                return;
+                            }
+                            sink.emit(
+                                UiEventKind::UsernameStatusRefreshRequested {
+                                    operation_id: operation_id.clone(),
+                                },
+                                window,
+                                cx,
+                            );
+                            window.refresh();
+                            let cooldown = cooldown.clone();
+                            window
+                                .spawn(cx, async move |cx| {
+                                    cx.background_executor().timer(REFRESH_COOLDOWN).await;
+                                    cooldown.set(false);
+                                    cx.update(|window, _| window.refresh()).ok();
+                                })
+                                .detach();
                         }),
                 )
             });

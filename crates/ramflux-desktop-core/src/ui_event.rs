@@ -125,7 +125,10 @@ pub enum UiEventKind {
         name: String,
     },
     /// Re-read this account's username status (a claim still publishing).
-    UsernameStatusRefreshRequested,
+    UsernameStatusRefreshRequested {
+        /// The operation of the claim still publishing, if it has one.
+        operation_id: Option<String>,
+    },
     /// The first message of a new direct conversation was submitted.
     StartConversationRequested {
         /// The new conversation's id, chosen when the draft opened.
