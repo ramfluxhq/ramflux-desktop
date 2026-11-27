@@ -203,6 +203,9 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::AddContactByUsernameRequested { name } => {
             IntentKind::AddContactByUsername { name: name.clone() }
         }
+        UiEventKind::ResolveUsernameRequested { name } => {
+            IntentKind::ResolveUsername { name: name.clone() }
+        }
         UiEventKind::GroupInvitationAnswered { group_id, accept } => {
             IntentKind::AnswerGroupInvitation { group_id: group_id.clone(), accept: *accept }
         }

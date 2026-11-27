@@ -1698,6 +1698,9 @@ fn reads_and_requests_leave_the_bridge_only_at_known_sites() {
         ("mod.rs", 1, 0, 0),
         ("scope.rs", 3, 1, 2),
         ("sends.rs", 1, 0, 0),
+        // The username claim job: prepare, submit and status polls, each an
+        // effect-level request gated at the client like `effects.rs`.
+        ("username.rs", 3, 0, 0),
     ];
     let modules = bridge_modules();
     assert!(modules.iter().any(|m| m.file == "scope.rs"), "the scan found the bridge");

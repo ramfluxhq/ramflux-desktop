@@ -27,6 +27,12 @@
 //! again naming the looked-up root it replaces; Keep drops the card. Cards
 //! need the account's home node: without one, the form says so and sends
 //! nothing.
+//!
+//! A typed `@name` is looked up first: the form shows what the directory found
+//! (the name, with the display name and bio the account published) or why it
+//! could not answer, and the same button then reads "Send contact request" and
+//! adds that account by username. A lookup is only shown while the field still
+//! holds the name looked up; editing the field forgets it.
 
 use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
@@ -37,8 +43,8 @@ use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, Role, SharedString, Window, div};
 use ramflux_desktop_core::{
     ContactCardProblem, ContactIdProblem, ContactInput, ContactLink, IntentError,
-    MAX_CONTACT_CARD_LEN, ParticipantId, Store, check_add_contact, check_add_contact_card,
-    classify_contact_input, methods, selectors,
+    MAX_CONTACT_CARD_LEN, ParticipantId, Store, UsernameLookup, check_add_contact,
+    check_add_contact_card, classify_contact_input, methods, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption};
@@ -80,7 +86,10 @@ fn replaced_root(message: &str) -> Option<String> {
 pub enum Submission {
     /// Add by principal id.
     Id(ParticipantId),
-    /// Add by the username they claimed (typed with a leading `@`).
+    /// Look a typed `@name` up in the username directory, before adding it.
+    Resolve(String),
+    /// Add by the username they claimed (typed with a leading `@`), once
+    /// its lookup found the account.
     Username(String),
     /// Add from a contact card.
     Card(String),
@@ -118,6 +127,9 @@ pub struct AddForm {
     /// A card waiting for the user to confirm it replaces a looked-up root:
     /// the card and that root.
     confirming: Option<(String, String, bool)>,
+    /// The `@name` last looked up by this form (its answer is shown while
+    /// the field still holds it).
+    resolving: Option<String>,
 }
 
 /// Whether `id` names an established or requested contact in `store`.
@@ -146,6 +158,7 @@ impl AddForm {
             pending: None,
             noted_value: String::new(),
             confirming: None,
+            resolving: None,
         }
     }
 
@@ -216,17 +229,24 @@ impl AddForm {
             return None;
         }
         self.confirming = None;
-        // `@name`: the username directory resolves it (the daemon refuses
-        // when no directory is provisioned, and says why).
+        // `@name`: looked up first (the daemon refuses when no directory is
+        // provisioned, and says why). Once the lookup found the account, the
+        // same submission sends the contact request.
         if let Some(name) = value.strip_prefix('@') {
             let name = name.trim();
             if name.is_empty() || name.chars().any(char::is_whitespace) {
                 self.note = Some(FormNote::Error(tr("dock.contacts.add.bad_username")));
                 return None;
             }
-            self.note = Some(FormNote::AddingCard);
-            self.pending = Some(Pending::Username(store.failures_total()));
-            return Some(Submission::Username(name.to_owned()));
+            if self.found_name(store).is_some_and(|found| found.eq_ignore_ascii_case(name)) {
+                self.note = Some(FormNote::AddingCard);
+                self.pending = Some(Pending::Username(store.failures_total()));
+                return Some(Submission::Username(name.to_owned()));
+            }
+            self.note = None;
+            self.pending = None;
+            self.resolving = Some(name.to_owned());
+            return Some(Submission::Resolve(name.to_owned()));
         }
         if matches!(classify_contact_input(value), ContactInput::Card(_))
             && super::without_home_node(store)
@@ -252,7 +272,8 @@ impl AddForm {
                     Submission::Id(id) => FormNote::Adding(id.clone()),
                     Submission::Card(_)
                     | Submission::CardReplacing { .. }
-                    | Submission::Username(_) => FormNote::AddingCard,
+                    | Submission::Username(_)
+                    | Submission::Resolve(_) => FormNote::AddingCard,
                 });
                 self.pending = Some(pending);
                 Some(submission)
@@ -297,6 +318,7 @@ impl AddForm {
             self.card_added = false;
             self.pending = None;
             self.confirming = None;
+            self.resolving = None;
             self.noted_value = value;
             return false;
         }
@@ -352,6 +374,28 @@ impl AddForm {
     /// Whether a submission waits for its outcome.
     pub fn is_pending(&self) -> bool {
         self.pending.is_some()
+    }
+
+    /// The name the last lookup of this form found an account for, while
+    /// the store still holds that answer.
+    fn found_name<'a>(&self, store: &'a Store) -> Option<&'a str> {
+        let resolving = self.resolving.as_deref()?;
+        match store.username_lookup()? {
+            UsernameLookup::Found { name, .. } if name.eq_ignore_ascii_case(resolving) => {
+                Some(name.as_str())
+            }
+            _ => None,
+        }
+    }
+
+    /// The lookup answer this form shows for the name it looked up.
+    pub fn shown_lookup<'a>(&self, store: &'a Store) -> Option<&'a UsernameLookup> {
+        let resolving = self.resolving.as_deref()?;
+        store.username_lookup().filter(|lookup| match lookup {
+            UsernameLookup::Found { name, .. }
+            | UsernameLookup::NotFound { name }
+            | UsernameLookup::Refused { name, .. } => name.eq_ignore_ascii_case(resolving),
+        })
     }
 
     /// What the field holds now and how far it will be trusted, for the
@@ -434,6 +478,8 @@ pub struct Controls<A, I> {
     pub on_import: I,
     /// Replace and Keep pressed on a root to confirm.
     pub on_root: RootHandlers,
+    /// The answer to the typed `@name` lookup, when this form shows one.
+    pub lookup: Option<UsernameLookup>,
 }
 
 /// Handlers of a root replacement's Replace and Keep.
@@ -451,12 +497,17 @@ where
     A: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
     I: Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
 {
-    let Controls { disabled, card_disabled, on_add, on_import, on_root } = controls;
+    let Controls { disabled, card_disabled, on_add, on_import, on_root, lookup } = controls;
+    let found = matches!(lookup, Some(UsernameLookup::Found { .. }));
     let button = Button::new("contact-add")
         .small()
         .design_secondary(cx)
         .icon(IconName::Plus)
-        .design_label(tr("dock.contacts.add.submit"))
+        .design_label(tr(if found {
+            "dock.contacts.add.send_request"
+        } else {
+            "dock.contacts.add.submit"
+        }))
         .design_disabled(form.is_pending(), cx)
         .on_click(on_add);
     let import = Button::new("contact-import")
@@ -519,6 +570,7 @@ where
             )
     });
     let hint = form.kind_hint(cx);
+    let lookup_card = lookup.as_ref().map(|lookup| lookup_card(lookup, cx));
     v_flex()
         .id("contact-add")
         .gap(space(1.))
@@ -545,9 +597,57 @@ where
                 .text_color(cx.theme().muted_foreground)
                 .child(hint),
         )
+        .children(lookup_card)
         .children(note)
         .children(added)
         .children(confirm)
         .child(h_flex().child(crate::gate::gated(import, disabled.or(card_disabled), cx)))
+        .into_any_element()
+}
+
+/// What a `@name` lookup found, or why it could not answer, for the line
+/// under the field.
+fn lookup_card(lookup: &UsernameLookup, cx: &App) -> AnyElement {
+    let muted = cx.theme().muted_foreground;
+    let (title, details, color): (SharedString, Vec<SharedString>, _) = match lookup {
+        UsernameLookup::Found { name, display_name, bio } => {
+            let title = tr_args("dock.contacts.add.found", &[("name", &format!("@{name}"))]);
+            let details = [display_name, bio]
+                .into_iter()
+                .flatten()
+                .map(|text| SharedString::from(text.clone()))
+                .collect();
+            (title, details, cx.theme().foreground)
+        }
+        UsernameLookup::NotFound { .. } => {
+            (tr("username.error.not_found"), Vec::new(), cx.theme().warning)
+        }
+        UsernameLookup::Refused { code, retry_after_ms, .. } => {
+            let title = i18n::username_refusal(code, *retry_after_ms);
+            (title, Vec::new(), cx.theme().danger)
+        }
+    };
+    v_flex()
+        .id("contact-add-lookup")
+        .gap(space(1.))
+        .child(
+            div()
+                .id("contact-add-lookup-title")
+                .role(Role::Status)
+                .aria_label(title.clone())
+                .test_support()
+                .text_size(text_caption())
+                .text_color(color)
+                .child(title),
+        )
+        .children(details.into_iter().map(|detail| {
+            div()
+                .id("contact-add-lookup-detail")
+                .aria_label(detail.clone())
+                .test_support()
+                .text_size(text_caption())
+                .text_color(muted)
+                .child(detail)
+        }))
         .into_any_element()
 }

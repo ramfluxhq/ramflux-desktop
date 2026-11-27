@@ -130,6 +130,10 @@ impl Task {
             self.emit(vec![DomainEvent::GroupCreation { context_id, creating: true }]);
         }
         self.translator.rename_sent(&method, &body);
+        if method == ramflux_desktop_core::methods::USERNAME_RESOLVE {
+            let events = crate::translate::username::lookup_started();
+            self.emit(events);
+        }
         let operation = match planned.plan {
             Plan::Call { request, refresh } if method == methods::SEND_MESSAGE => {
                 if let Some(id) = body["retry_moment"].as_str() {
@@ -168,6 +172,11 @@ impl Task {
                 self.emit(vec![DomainEvent::EffectFailed(EffectFailure { method, code, message })]);
             }
             Plan::Media(job) => self.media(job),
+            Plan::Username(job) => {
+                let events = crate::translate::username::claim_started(&job.name);
+                self.emit(events);
+                self.spawn_operation(method, body, Plan::Username(job));
+            }
             other => {
                 // Card runtime calls run one at a time (a draft sent before a
                 // press must land before the press), in the order they were made.
@@ -208,6 +217,22 @@ impl Task {
         }
         if method == methods::AGENT_OPERATION_GET {
             self.operations_in_flight.finish(text(body, "operation_id"));
+        }
+        if matches!(
+            method,
+            ramflux_desktop_core::methods::USERNAME_RESOLVE
+                | ramflux_desktop_core::methods::USERNAME_CLAIM
+        ) {
+            // A username answer is shown where it was asked for; a claim that
+            // was committed reads the username in force again.
+            let committed =
+                method == ramflux_desktop_core::methods::USERNAME_CLAIM && result.is_ok();
+            let events = crate::translate::username::outcome(method, body, &result);
+            self.emit(events);
+            if committed {
+                self.spawn_fetches(vec![Fetch::UsernameStatus]);
+            }
+            return;
         }
         if method.starts_with("account.") {
             self.refresh_daemon();
@@ -400,6 +425,7 @@ async fn perform(
             (crate::prx_host::run(action, &provider, &model, key).await, Vec::new())
         }
         Plan::Diagnostics { path } => (write_diagnostics(client, &path).await, Vec::new()),
+        Plan::Username(job) => (super::username::claim(client, *job).await, Vec::new()),
         Plan::Local | Plan::Refuse { .. } | Plan::Media(_) => (Ok(Value::Null), Vec::new()),
     }
 }

@@ -74,8 +74,9 @@ impl std::fmt::Debug for CardInput {
 /// Every intent kind.
 ///
 /// Kinds that carry a [`SecretInput`] (unlock, restore,
-/// backup export, full backup and restore verification, passphrase rotation) are excluded from serde: serializing them is an error
-/// and they cannot be deserialized.
+/// backup export, full backup and restore verification, passphrase
+/// rotation, username claim) are excluded from serde: serializing them is an
+/// error and they cannot be deserialized.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum IntentKind {
     // Conversation.
@@ -129,6 +130,22 @@ pub enum IntentKind {
     AddContactByUsername {
         /// The name, without a leading `@`.
         name: String,
+    },
+    /// Look a username up in the directory, before adding it.
+    ResolveUsername {
+        /// The name, with or without a leading `@`.
+        name: String,
+    },
+    /// Claim or change this account's username. The recovery phrase
+    /// authorizes it and is never stored or serialized. Not serializable.
+    #[serde(skip)]
+    ClaimUsername {
+        /// Account.
+        account_id: AccountId,
+        /// The name, with or without a leading `@`.
+        name: String,
+        /// The recovery phrase.
+        secret: SecretInput,
     },
     /// Start a direct conversation with a contact: the first message
     /// creates it. The conversation id is chosen fresh by the caller (never

@@ -27,6 +27,7 @@ mod scope;
 #[cfg(feature = "test-support")]
 pub use scope::GateProbe;
 mod sends;
+mod username;
 
 #[cfg(test)]
 mod s5_lifecycle_tests;

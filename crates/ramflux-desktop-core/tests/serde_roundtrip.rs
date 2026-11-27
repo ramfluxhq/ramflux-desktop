@@ -22,6 +22,8 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::MomentRemoved { .. } => "MomentRemoved",
         DomainEvent::GroupCreation { .. } => "GroupCreation",
         DomainEvent::UsernameStatusUpdated(_) => "UsernameStatusUpdated",
+        DomainEvent::UsernameLookupUpdated(_) => "UsernameLookupUpdated",
+        DomainEvent::UsernameClaimUpdated(_) => "UsernameClaimUpdated",
         DomainEvent::NodeUpserted(_) => "NodeUpserted",
         DomainEvent::NodeHealthChanged { .. } => "NodeHealthChanged",
         DomainEvent::ParticipantUpserted(_) => "ParticipantUpserted",
@@ -117,6 +119,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::LeaveGroup { .. } => "LeaveGroup",
         IntentKind::AnswerGroupInvitation { .. } => "AnswerGroupInvitation",
         IntentKind::AddContactByUsername { .. } => "AddContactByUsername",
+        IntentKind::ResolveUsername { .. } => "ResolveUsername",
         IntentKind::StartConversation { .. } => "StartConversation",
         IntentKind::AttachObject { .. } => "AttachObject",
         IntentKind::SurfaceAction { .. } => "SurfaceAction",
@@ -206,11 +209,12 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         | IntentKind::VerifyRestore { .. }
         | IntentKind::ConfirmCeremony { .. }
         | IntentKind::ConfirmRecovery { .. }
-        | IntentKind::RotatePassphrase { .. } => "secret",
+        | IntentKind::RotatePassphrase { .. }
+        | IntentKind::ClaimUsername { .. } => "secret",
     }
 }
-/// Serializable intent variants (all but the eight secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 89;
+/// Serializable intent variants (all but the nine secret-carrying kinds).
+const SERIALIZABLE_INTENT_VARIANTS: usize = 90;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -226,6 +230,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::LeaveGroupPressed => "LeaveGroupPressed",
         UiEventKind::GroupInvitationAnswered { .. } => "GroupInvitationAnswered",
         UiEventKind::AddContactByUsernameRequested { .. } => "AddContactByUsernameRequested",
+        UiEventKind::ResolveUsernameRequested { .. } => "ResolveUsernameRequested",
         UiEventKind::StartConversationRequested { .. } => "StartConversationRequested",
         UiEventKind::AttachFile { .. } => "AttachFile",
         UiEventKind::ActionInvoked { .. } => "ActionInvoked",
@@ -277,7 +282,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 61;
+const UI_EVENT_KIND_VARIANTS: usize = 62;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -875,6 +880,7 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::LeaveGroup { context_id: ContextId::new("c-1") },
         IntentKind::AnswerGroupInvitation { group_id: "g-1".into(), accept: true },
         IntentKind::AddContactByUsername { name: "ana".into() },
+        IntentKind::ResolveUsername { name: "@ana".into() },
         IntentKind::StartConversation {
             context_id: ContextId::new("c-new"),
             participant_id: ParticipantId::new("p-ana"),
@@ -1066,6 +1072,7 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::LeaveGroupPressed,
         UiEventKind::GroupInvitationAnswered { group_id: "g-1".into(), accept: false },
         UiEventKind::AddContactByUsernameRequested { name: "@ana".into() },
+        UiEventKind::ResolveUsernameRequested { name: "@ana".into() },
         UiEventKind::StartConversationRequested {
             context_id: ContextId::new("c-new"),
             participant_id: ParticipantId::new("p-ana"),
@@ -1239,6 +1246,11 @@ fn secret_intents_refuse_to_serialize() {
             allow_missing_attachments: false,
         },
         IntentKind::VerifyRestore { path: "/tmp/b".into(), secret: secret() },
+        IntentKind::ClaimUsername {
+            account_id: AccountId::new("a-1"),
+            name: "ana".into(),
+            secret: secret(),
+        },
     ];
     for kind in kinds {
         assert_eq!(intent_kind_name(&kind), "secret");
@@ -1254,6 +1266,7 @@ fn secret_intents_refuse_to_serialize() {
         "RotatePassphrase",
         "CreateBackup",
         "VerifyRestore",
+        "ClaimUsername",
     ] {
         let text = format!(r#"{{"{name}":{{"account_id":"a-1"}}}}"#);
         assert!(serde_json::from_str::<IntentKind>(&text).is_err(), "{name} must not deserialize");

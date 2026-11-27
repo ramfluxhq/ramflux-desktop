@@ -228,6 +228,20 @@ pub fn unsupported(store: &Store, method: &str) -> Option<SharedString> {
 /// (`backend.*`), else shown as the daemon wrote it. A key may be followed
 /// by one space and a JSON object of string arguments, substituted into the
 /// translation (`backend.failure.partial {"done":"1","total":"2",…}`).
+/// What a refused username lookup or change says, by the directory's typed
+/// code: a retry delay when the directory gave one, the unreachable state
+/// for a directory that cannot be used now, else the code itself.
+pub fn username_refusal(code: &str, retry_after_ms: Option<u64>) -> SharedString {
+    match (code, retry_after_ms) {
+        ("rate_limited" | "capacity", Some(ms)) => {
+            let seconds = ms.div_ceil(1_000).max(1).to_string();
+            tr_args("username.error.retry", &[("seconds", &seconds)])
+        }
+        ("directory_unavailable" | "transport" | "timeout", _) => tr("username.error.unreachable"),
+        _ => tr_args("username.error.other", &[("code", code)]),
+    }
+}
+
 pub fn backend_text(text: &str) -> SharedString {
     if !text.starts_with("backend.") {
         return SharedString::from(text.to_owned());

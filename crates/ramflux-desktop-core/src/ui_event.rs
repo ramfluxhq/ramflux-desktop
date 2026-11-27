@@ -119,6 +119,11 @@ pub enum UiEventKind {
         /// The name, with or without a leading `@`.
         name: String,
     },
+    /// Look a typed `@name` up before adding it.
+    ResolveUsernameRequested {
+        /// The name, with or without a leading `@`.
+        name: String,
+    },
     /// The first message of a new direct conversation was submitted.
     StartConversationRequested {
         /// The new conversation's id, chosen when the draft opened.

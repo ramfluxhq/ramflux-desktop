@@ -284,6 +284,60 @@ pub enum UsernameStatus {
     Unavailable(String),
 }
 
+/// What a `@name` lookup found, for the add-contact form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UsernameLookup {
+    /// The directory names an account: its display name and bio, when set.
+    Found {
+        /// The name looked up, without `@`.
+        name: String,
+        /// The display name the account published, if any.
+        display_name: Option<String>,
+        /// The bio the account published, if any.
+        bio: Option<String>,
+    },
+    /// No account claims the name.
+    NotFound {
+        /// The name looked up, without `@`.
+        name: String,
+    },
+    /// The lookup could not be answered now (the directory code, and the
+    /// delay the directory asked for, if any).
+    Refused {
+        /// The name looked up, without `@`.
+        name: String,
+        /// The typed directory code (`directory_unavailable`, `rate_limited`, ...).
+        code: String,
+        /// Suggested wait before a retry, in milliseconds.
+        retry_after_ms: Option<u64>,
+    },
+}
+
+/// The progress of this account's username claim or change.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UsernameClaim {
+    /// Signed and submitted; the directory has not committed it yet.
+    Publishing {
+        /// The name being claimed, without `@`.
+        name: String,
+    },
+    /// The directory committed the name to this account.
+    Committed {
+        /// The name, without `@`.
+        name: String,
+    },
+    /// Refused or aborted; nothing was published.
+    Failed {
+        /// The name tried, without `@`.
+        name: String,
+        /// The typed code (`username_taken`, `authentication_required`,
+        /// `invalid_username`, `aborted`, ...).
+        code: String,
+        /// Suggested wait before a retry, in milliseconds.
+        retry_after_ms: Option<u64>,
+    },
+}
+
 /// Context shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ContextKind {

@@ -24,7 +24,8 @@
 /// Methods that are planned as effects but do not change daemon state.
 /// `object.get` answers with the object's bytes, which must never be kept
 /// in a receipt; `contact.card.export` only reads this account's card.
-const NOT_MUTATIONS: [&str; 3] = ["node.probe", "object.get", "contact.card.export"];
+const NOT_MUTATIONS: [&str; 4] =
+    ["node.probe", "object.get", "contact.card.export", "username.resolve"];
 
 /// The methods the daemon's agent module answers. It refuses any frame of
 /// these that carries an `operation_id` (`CustodySetupInvalid`): their
