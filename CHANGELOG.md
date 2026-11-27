@@ -142,6 +142,9 @@ Versioning.
 
 ### Changed
 
+- Core pinned to 7f534b2f (core `next`, PRX pin 3a5a6084). The core adds the
+  app-lock re-authentication with the account code, central push routes, and
+  FCM parity.
 - Task-step decisions on a surface are still answered through the surface's
   own actions (`surface.action`, the core's surface store and `surface.get`
   read model). This is a named interim: the card approval flow (`task.resolve`

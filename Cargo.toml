@@ -53,13 +53,13 @@ unicode-normalization = "0.1.25"
 unicode-width = "0.2"
 zeroize = "1.8"
 # The product SDK (local-bus client, request types), pinned by full commit.
-ramflux-sdk = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "69fca2527161f3fa3678cfef10f6641f28e1fecc" }
-ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "69fca2527161f3fa3678cfef10f6641f28e1fecc" }
-ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "69fca2527161f3fa3678cfef10f6641f28e1fecc" }
+ramflux-sdk = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "7f534b2fb2cf6a8f31dbf26e308bed8e09061ac7" }
+ramflux-protocol = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "7f534b2fb2cf6a8f31dbf26e308bed8e09061ac7" }
+ramflux-crypto = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "7f534b2fb2cf6a8f31dbf26e308bed8e09061ac7" }
 # PRX agent names derived from anchors (the same rev as the product SDK).
-ramflux-prx-client = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "69fca2527161f3fa3678cfef10f6641f28e1fecc" }
+ramflux-prx-client = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "7f534b2fb2cf6a8f31dbf26e308bed8e09061ac7" }
 # The standalone card runtime: only the test-build card gallery (feature `card-gallery`).
-ramflux-card = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "69fca2527161f3fa3678cfef10f6641f28e1fecc" }
+ramflux-card = { git = "https://github.com/ramfluxhq/ramflux.git", rev = "7f534b2fb2cf6a8f31dbf26e308bed8e09061ac7" }
 # Only on the SDK bridge thread; never in GPUI tasks or core.
 tokio = { version = "1.42", default-features = false, features = ["rt", "net", "sync", "time", "macros", "io-util"] }
 ramflux-desktop-core = { path = "crates/ramflux-desktop-core" }
