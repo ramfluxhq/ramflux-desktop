@@ -1752,7 +1752,6 @@
   "moment.card.nothing_to_show": null,
   "moment.card.show_all": null,
   "moment.card.approval_title": null,
-  "moment.card.approval_task": null,
   "moment.card.approval_confirm": null,
   "moment.card.author_words": null,
   "moment.card.link_title": null,
@@ -1770,5 +1769,18 @@
   "card_gallery.run": null,
   "card_gallery.summary": null,
   "card_gallery.note.slot": null,
-  "card_gallery.error": null
+  "card_gallery.error": null,
+  "moment.card.host_label": null,
+  "moment.card.approval_not_yours": null,
+  "moment.card.fact_requester": null,
+  "moment.card.fact_action": null,
+  "moment.card.fact_expires": null,
+  "moment.card.fact_risk": null,
+  "moment.card.fact_conversation": null,
+  "moment.card.fact_task": null,
+  "moment.card.fact_step": null,
+  "moment.card.fact_tool_scope": null,
+  "moment.card.fact_grant": null,
+  "moment.card.submit_failed": null,
+  "moment.card.submit_retry": null
 }

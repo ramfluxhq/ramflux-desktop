@@ -276,18 +276,49 @@ pub fn failure(error: &BusError) -> CardFailure {
 /// The domain events of one card call's outcome: its reply, or its failure.
 /// A daemon without the runtime raises the card gap (every card call is then
 /// unsupported); a typed refusal is the card's own refusal; anything else is
-/// a refused call the card shows in place, never retried here.
+/// a refused call the card shows in place, never retried here. A submit
+/// whose answer is unknown (a timeout or a broken connection, or a reply
+/// that cannot be read) is no refusal: the button stays consumed and the
+/// user may retry it. A host event call always ends with
+/// [`CardEvent::EventSettled`], whatever happened.
 pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> Vec<DomainEvent> {
-    match result {
+    let unknown_submit = || {
+        vec![DomainEvent::Card(CardEvent::SubmitFailed {
+            surface_id: SurfaceId::new(body["surface_id"].as_str().unwrap_or_default()),
+        })]
+    };
+    let mut out = match result {
         Ok(answer) => match reply(answer) {
             Ok(reply) => events(method, body, reply),
+            Err(ReplyError) if method == CARD_SUBMIT => unknown_submit(),
             Err(ReplyError) => vec![refused_event(body, "card_session_reply")],
         },
         Err(error) => match failure(error) {
             CardFailure::RuntimeUnavailable => vec![DomainEvent::CardRuntimeUnavailable],
             CardFailure::Refused(reason) => vec![refused_event(body, &reason)],
+            CardFailure::Other if method == CARD_SUBMIT => unknown_submit(),
             CardFailure::Other => vec![refused_event(body, "card_session_failed")],
         },
+    };
+    settle(method, body, &mut out);
+    out
+}
+
+/// The events of a card call that was never sent (its body did not follow
+/// the card contract): a refusal the card shows, and the settlement of a
+/// host event call.
+pub fn not_sent(method: &str, body: &Value) -> Vec<DomainEvent> {
+    let mut out = vec![refused_event(body, "card_session_failed")];
+    settle(method, body, &mut out);
+    out
+}
+
+/// Ends the events of a host event call with its settlement.
+fn settle(method: &str, body: &Value, out: &mut Vec<DomainEvent>) {
+    if method == CARD_EVENT {
+        out.push(DomainEvent::Card(CardEvent::EventSettled {
+            surface_id: SurfaceId::new(body["surface_id"].as_str().unwrap_or_default()),
+        }));
     }
 }
 
@@ -428,3 +459,74 @@ const CARD_SUBMIT: &str = "card.session.submit";
 const CARD_SUSPEND: &str = "card.session.suspend";
 const CARD_RESUME: &str = "card.session.resume";
 const CARD_DISPOSE: &str = "card.session.dispose";
+
+#[cfg(test)]
+mod tests {
+    use ramflux_desktop_core::{CardEvent, DomainEvent};
+    use serde_json::json;
+
+    use super::{CARD_EVENT, CARD_SUBMIT, outcome};
+    use crate::bus::BusError;
+
+    fn body() -> serde_json::Value {
+        json!({ "surface_id": "s-1", "session": 4 })
+    }
+
+    fn settled(events: &[DomainEvent]) -> bool {
+        matches!(events.last(), Some(DomainEvent::Card(CardEvent::EventSettled { .. })))
+    }
+
+    #[test]
+    fn an_edited_reply_without_a_batch_still_settles_the_event_call() {
+        let answer = json!({ "result": "edited", "render_allowed": true, "fallback_text": "" });
+        let events = outcome(CARD_EVENT, &body(), &Ok(answer));
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(settled(&events));
+    }
+
+    #[test]
+    fn every_event_call_outcome_ends_settled() {
+        let refused = json!({
+            "result": "refused", "reason": "card_session_refused",
+            "render_allowed": true, "fallback_text": "",
+        });
+        for result in [
+            Ok(refused),
+            Ok(json!({ "result": "nonsense" })),
+            Err(BusError::Timeout),
+            Err(BusError::Transport("broken".into())),
+            Err(BusError::daemon("Unavailable", "card runtime unavailable")),
+        ] {
+            let events = outcome(CARD_EVENT, &body(), &result);
+            assert!(settled(&events), "{result:?} -> {events:?}");
+        }
+        assert!(settled(&super::not_sent(CARD_EVENT, &body())));
+        assert!(!settled(&super::not_sent(CARD_SUBMIT, &body())));
+    }
+
+    #[test]
+    fn a_submit_with_an_unknown_outcome_is_no_refusal() {
+        for result in [
+            Err(BusError::Timeout),
+            Err(BusError::Transport("broken".into())),
+            Ok(json!({ "result": "submitted" })),
+        ] {
+            let events = outcome(CARD_SUBMIT, &body(), &result);
+            assert!(
+                matches!(events.as_slice(), [DomainEvent::Card(CardEvent::SubmitFailed { .. })]),
+                "{result:?} -> {events:?}"
+            );
+        }
+        // A typed refusal is the card's own refusal (never retried).
+        let refused = Err(BusError::Daemon {
+            retry_after_ms: None,
+            code: "ValidationFailed".into(),
+            message: "card_session_refused".into(),
+            reason_code: Some("card_session_refused".into()),
+            details: None,
+            cause: None,
+        });
+        let events = outcome(CARD_SUBMIT, &body(), &refused);
+        assert!(matches!(events.as_slice(), [DomainEvent::Card(CardEvent::Refused { .. })]));
+    }
+}

@@ -213,6 +213,19 @@ impl StoreHandle {
         // once the account one of them opened is rendered. So do the app lock
         // and the unlock: the daemon's store is where the lock is decided.
         let ceremony = runs_on_daemon(&intent.kind);
+        // A card intent is the rendered account's: its session keeps the
+        // card's queue of host events and its pool, so it dispatches it.
+        if !ceremony && super::session::is_card_intent(&intent.kind) {
+            let Some(session) = self.active_session_mut() else {
+                return DispatchOutcome::NoAccount;
+            };
+            let (outcome, records) = session.dispatch(intent);
+            for record in records {
+                self.inspector.push(record);
+            }
+            cx.emit(StoreEvent::Inspected);
+            return outcome;
+        }
         let Some(mut session) = self.session() else { return DispatchOutcome::NoAccount };
         if ceremony && let Some(link) = self.live.as_ref() {
             session = link.daemon();

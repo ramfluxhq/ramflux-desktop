@@ -328,6 +328,7 @@ fn card_record(tree: &CardTree) -> Option<CardRecord> {
         refusal: None,
         draft_discarded: false,
         receipt: None,
+        submit_failed: false,
         chain: vec![tree.stamp()],
     })
 }

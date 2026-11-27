@@ -139,10 +139,12 @@ impl CardPool {
         plan
     }
 
-    /// Records the session a resume created for `card` (fresh token identity).
+    /// Records that a resume of `card` completed: the card is resumed under
+    /// the session the resume created (fresh token identity).
     pub fn adopt(&mut self, card: &str, session: u64) {
         if let Some(entry) = self.cards.get_mut(card) {
             entry.session = session;
+            entry.resumed = true;
         }
     }
 
@@ -267,6 +269,9 @@ pub struct CardRecord {
     pub draft_discarded: bool,
     /// The receipt of the last accepted submit.
     pub receipt: Option<CardReceipt>,
+    /// The last submit did not reach the daemon or its answer is unknown:
+    /// the button stays consumed and the user may retry the submit.
+    pub submit_failed: bool,
     /// The stamps this desktop produced by absorbing its own replies since
     /// the last outside change (open, resume, signed update, present,
     /// re-read), oldest first, the last one being the held version. A text
@@ -283,6 +288,7 @@ impl std::fmt::Debug for CardRecord {
             .field("status", &self.status)
             .field("link", &self.link)
             .field("refusal", &self.refusal)
+            .field("submit_failed", &self.submit_failed)
             .finish_non_exhaustive()
     }
 }
@@ -297,20 +303,32 @@ impl CardRecord {
             refusal: None,
             draft_discarded: false,
             receipt: None,
+            submit_failed: false,
             chain: Vec::new(),
         }
     }
 
     /// Whether an event taken on `seen` for `key` may be re-sent on the held
-    /// version: the stamp is in the chain, and the node keeps its kind and
-    /// input target.
-    pub fn rebasable(&self, key: &str, seen: &CardSeen) -> bool {
+    /// version. The stamp must be in the chain (only this desktop's own text
+    /// drafts changed the tree since), and the node must keep its kind and
+    /// input target. A text draft (`input`) needs nothing more: its whole
+    /// value replaces the draft. Any other event (a tap) also needs the
+    /// signed version and the node's drawn content (its attributes, label
+    /// and action) to be exactly what the user saw.
+    pub fn rebasable(&self, key: &str, seen: &CardSeen, input: bool) -> bool {
         let Some(tree) = self.tree.as_ref() else { return false };
         let Some(node) = tree.node(key) else { return false };
-        self.chain.contains(&seen.stamp)
+        let same_node = self.chain.contains(&seen.stamp)
             && node.kind == seen.kind
             && node.attrs.get("input_pointer").and_then(serde_json::Value::as_str)
-                == seen.input_pointer.as_deref()
+                == seen.input_pointer.as_deref();
+        if !same_node {
+            return false;
+        }
+        input
+            || (seen.stamp.signed_version == tree.signed_version()
+                && seen.content.is_some()
+                && seen.content == tree.content(key))
     }
 
     fn reset_chain(&mut self) {
@@ -363,9 +381,10 @@ impl Store {
         surface: &SurfaceId,
         key: &str,
         seen: &CardSeen,
+        input: bool,
     ) -> Option<CardSeen> {
         let record = self.card_records.get(surface)?;
-        if !record.rebasable(key, seen) {
+        if !record.rebasable(key, seen, input) {
             return None;
         }
         let mut next = seen.clone();
@@ -374,19 +393,48 @@ impl Store {
     }
 
     /// Records a refusal the desktop decided itself (an event taken on a
-    /// version the card no longer holds). The card keeps its status.
+    /// version the card no longer holds, or one that was not sent). The card
+    /// keeps its status: a consumed button stays consumed.
     pub fn card_refuse(&mut self, surface: &SurfaceId, reason: &str) {
         if let Some(record) = self.card_records.get_mut(surface) {
             record.refusal = Some(reason.to_owned());
-            if record.status == CardStatus::PendingSubmit {
-                record.status = CardStatus::Live;
-            }
         }
     }
 
     /// Bumps the pool recency of a card the user acted on.
     pub fn card_bump(&mut self, surface: &SurfaceId) {
         self.cards.bump(surface.as_str());
+    }
+
+    /// Ends the rebase chain at the held version: the tree changed by
+    /// something other than this desktop's own text draft (its own tap), so
+    /// no event taken before may follow it.
+    pub fn card_reset_chain(&mut self, surface: &SurfaceId) {
+        if let Some(record) = self.card_records.get_mut(surface) {
+            record.reset_chain();
+        }
+    }
+
+    /// Records that the user retried a failed submit (it is in flight again).
+    pub fn card_submit_sent(&mut self, surface: &SurfaceId) {
+        if let Some(record) = self.card_records.get_mut(surface) {
+            record.submit_failed = false;
+        }
+    }
+
+    /// Forgets every card session: the connection to the daemon was lost (or
+    /// the account closed), and the runtime may no longer hold them. Cards
+    /// on screen are opened again once the connection is back.
+    pub(super) fn cards_reset(&mut self, changes: &mut Changes) {
+        for surface in self.card_records.keys() {
+            changes.cards.insert(surface.clone());
+            if let Some(moment) = self.surface_ids.get(surface) {
+                changes.moments.insert(moment.clone());
+            }
+        }
+        self.card_records.clear();
+        self.cards = CardPool::new();
+        self.card_due.clear();
     }
 
     /// Queues the pool's bus steps (suspends and disposes) for the session.
@@ -425,10 +473,15 @@ impl Store {
                 self.cards.adopt(surface.as_str(), *session);
                 let Some(record) = self.card_records.get_mut(&surface) else { return };
                 record.session = *session;
+                // A link sheet belongs to the session that asked for it.
+                record.link = None;
                 match fresh_tree(*session, batch) {
                     Some(tree) => {
                         record.tree = Some(tree);
                         record.reset_chain();
+                        if record.status == CardStatus::Stale {
+                            record.status = CardStatus::Live;
+                        }
                     }
                     None => record.status = CardStatus::Stale,
                 }
@@ -472,7 +525,16 @@ impl Store {
             CardEvent::PendingSubmit { .. } => {
                 if let Some(record) = self.card_records.get_mut(&surface) {
                     record.status = CardStatus::PendingSubmit;
+                    record.submit_failed = false;
                     self.card_due.push(CardDue::Submit(surface));
+                }
+            }
+            CardEvent::EventSettled { .. } => {}
+            CardEvent::SubmitFailed { .. } => {
+                if let Some(record) = self.card_records.get_mut(&surface)
+                    && record.status == CardStatus::PendingSubmit
+                {
+                    record.submit_failed = true;
                 }
             }
             CardEvent::Submitted { receipt, .. } => {
@@ -480,10 +542,15 @@ impl Store {
                     record.status = CardStatus::Consumed;
                     record.receipt = Some(receipt.clone());
                     record.refusal = None;
+                    record.submit_failed = false;
                 }
             }
             CardEvent::Suspended { .. } => {
                 self.cards.suspended(surface.as_str());
+                if let Some(record) = self.card_records.get_mut(&surface) {
+                    // A link sheet belongs to the session that asked for it.
+                    record.link = None;
+                }
             }
             CardEvent::Disposed { .. } => {
                 self.cards.remove(surface.as_str());
@@ -511,6 +578,7 @@ impl Store {
                     record.refusal = Some(reason.clone());
                     if record.status == CardStatus::PendingSubmit {
                         record.status = CardStatus::Live;
+                        record.submit_failed = false;
                     }
                 }
             }

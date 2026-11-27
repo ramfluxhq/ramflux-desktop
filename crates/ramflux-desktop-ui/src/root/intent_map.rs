@@ -110,6 +110,13 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                 seen: seen.clone(),
             }
         }
+        UiEventKind::CardSubmitRetried => {
+            let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
+            IntentKind::CardSubmit {
+                moment_id,
+                surface_id: event.surface_id().unwrap_or(&surface.surface_id).clone(),
+            }
+        }
         UiEventKind::ApprovePressed => {
             IntentKind::Approve { grant_id: decision_grant(event, moment, store)? }
         }

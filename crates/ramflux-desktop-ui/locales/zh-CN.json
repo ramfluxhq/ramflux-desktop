@@ -1725,7 +1725,6 @@
   "moment.card.nothing_to_show": "没有可显示的内容",
   "moment.card.show_all": "显示全部（%{count}）",
   "moment.card.approval_title": "需要审批",
-  "moment.card.approval_task": "任务 %{task}，步骤 %{step}",
   "moment.card.approval_confirm": "确认",
   "moment.card.author_words": "作者的说明",
   "moment.card.link_title": "打开此链接？",
@@ -1743,5 +1742,18 @@
   "card_gallery.run": "运行一致性检查",
   "card_gallery.summary": "一致性：A {a} · B {b} · C {c}",
   "card_gallery.note.slot": "图库不发送槽位回复。",
-  "card_gallery.error": "图库无法打开：{error}"
+  "card_gallery.error": "图库无法打开：{error}",
+  "moment.card.host_label": "由 Ramflux 核验",
+  "moment.card.approval_not_yours": "这项审批不需要你来决定。",
+  "moment.card.fact_requester": "请求方",
+  "moment.card.fact_action": "操作",
+  "moment.card.fact_expires": "到期时间",
+  "moment.card.fact_risk": "风险",
+  "moment.card.fact_conversation": "会话",
+  "moment.card.fact_task": "任务",
+  "moment.card.fact_step": "步骤",
+  "moment.card.fact_tool_scope": "工具范围",
+  "moment.card.fact_grant": "授权",
+  "moment.card.submit_failed": "Ramflux 无法确认你的回复已经发出。可以重试发送。",
+  "moment.card.submit_retry": "重试"
 }

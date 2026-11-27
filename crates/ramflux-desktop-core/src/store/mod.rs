@@ -239,6 +239,12 @@ impl Store {
         self.app_locks.get(id)
     }
 
+    /// Whether the app lock holds any account of this store closed now (an
+    /// account session's store holds its own account's lock only).
+    pub fn any_app_locked(&self) -> bool {
+        self.app_locks.keys().any(|id| self.app_locked(id))
+    }
+
     /// Whether the app lock holds the account closed now: the lock screen
     /// stands in for it until the account code opens it.
     pub fn app_locked(&self, id: &AccountId) -> bool {

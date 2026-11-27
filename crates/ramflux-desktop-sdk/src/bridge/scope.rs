@@ -489,6 +489,9 @@ pub(crate) async fn run(
             () = tokio::time::sleep_until(wake) => task.tick(),
         }
     }
+    // The account's card sessions released just before the source went
+    // away are still disposed.
+    task.flush_card_disposes();
 }
 
 impl Drop for Task {
@@ -1019,6 +1022,7 @@ impl Task {
 
     pub(super) fn lost(&mut self) {
         self.cancel_reads();
+        self.drop_card_calls();
         if self.link != Link::Lost {
             self.emit(vec![DomainEvent::SourceStatusChanged(SourceStatus::Disconnected)]);
         }

@@ -737,7 +737,10 @@ impl StoreHandle {
         // A link the host confirmed opens in the system browser now, and only
         // now: the runtime's `opened` answer came after the sheet's Open.
         for url in &applied.open_urls {
-            cx.open_url(url);
+            // Checked again right before the platform opener sees it.
+            if ramflux_desktop_core::https_host(url).is_some() {
+                cx.open_url(url);
+            }
         }
         cx.emit(StoreEvent::Changed(Rc::new(applied.changes)));
     }

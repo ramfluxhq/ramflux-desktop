@@ -79,8 +79,9 @@ pub enum CardPhase {
 
 /// The token that fences one host event or slot reply. On the wire its keys
 /// are camelCase (`signedVersion`, `editSeq`, `treeVersion`), as the runtime
-/// sends them in the tree and expects them back.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// sends them in the tree and expects them back. Its `Debug` output is
+/// redacted: a token fences a reply and never reaches a log.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CardToken {
     /// The session the batch named.
@@ -111,9 +112,10 @@ pub struct CardStamp {
 }
 
 /// What the user saw of one node when a host event was taken: the tree's
-/// stamp, and the node's kind and input target (a rebase of a text draft is
-/// only valid while both are unchanged).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// stamp, the node's kind and input target (a rebase of a text draft is only
+/// valid while both are unchanged), and the node's drawn content (a tap is
+/// only rebased while it is unchanged, see [`CardTree::content`]).
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardSeen {
     /// The tree state at the time.
     pub stamp: CardStamp,
@@ -121,6 +123,27 @@ pub struct CardSeen {
     pub kind: String,
     /// The node's `input_pointer` at the time.
     pub input_pointer: Option<String>,
+    /// The node's content at the time: its kind and attributes and those of
+    /// every node under it (a Button's label is its child). `None` when it
+    /// was not recorded; a tap without it is never rebased.
+    #[serde(default)]
+    pub content: Option<Value>,
+}
+
+impl std::fmt::Debug for CardSeen {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CardSeen")
+            .field("stamp", &self.stamp)
+            .field("kind", &self.kind)
+            .field("content", &self.content.as_ref().map(|_| "<redacted>"))
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for CardToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CardToken(<redacted>)")
+    }
 }
 
 /// One node of the tree, as the runtime serializes it.
@@ -149,8 +172,8 @@ pub struct CardNode {
 
 /// A host-owned slot the runtime asks the host to fill (approval, link,
 /// modal, image). Its fields beyond `id`, `key` and `token` depend on `kind`
-/// and are kept as the runtime sent them.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// and are kept as the runtime sent them. `Debug` shows the kind only.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardHostSlot {
     /// Slot id, `[kind,key]`.
     pub id: String,
@@ -163,8 +186,17 @@ pub struct CardHostSlot {
     pub request: Map<String, Value>,
 }
 
-/// One operation of a batch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl std::fmt::Debug for CardHostSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CardHostSlot")
+            .field("kind", &self.request.get("kind").and_then(Value::as_str))
+            .finish_non_exhaustive()
+    }
+}
+
+/// One operation of a batch. `Debug` shows the operation only, never the
+/// node's text.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CardMutation {
     /// Remove a node (descendants first in the batch).
@@ -184,8 +216,18 @@ pub enum CardMutation {
     },
 }
 
-/// A `ramflux.card.mutations.v1` batch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl std::fmt::Debug for CardMutation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Remove { .. } => f.write_str("Remove(<redacted>)"),
+            Self::Upsert { index, .. } => write!(f, "Upsert(index {index}, <redacted>)"),
+        }
+    }
+}
+
+/// A `ramflux.card.mutations.v1` batch. `Debug` shows its versions and
+/// sizes, never its text or tokens.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CardBatch {
     /// Schema tag; must be [`MUTATIONS_SCHEMA`].
@@ -226,6 +268,19 @@ pub struct CardBatch {
     pub replacement_ref: Option<String>,
 }
 
+impl std::fmt::Debug for CardBatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CardBatch")
+            .field("session", &self.session)
+            .field("previous_version", &self.previous_version)
+            .field("version", &self.version)
+            .field("signed_version", &self.signed_version)
+            .field("mutations", &self.mutations.len())
+            .field("host_slots", &self.host_slots.len())
+            .finish_non_exhaustive()
+    }
+}
+
 fn english() -> String {
     "en".to_owned()
 }
@@ -246,8 +301,9 @@ pub fn parse_batch(bytes: &[u8]) -> Result<CardBatch, CardApplyError> {
     Ok(batch)
 }
 
-/// The held tree of one card session.
-#[derive(Debug, Clone, PartialEq)]
+/// The held tree of one card session. `Debug` shows its versions and size,
+/// never its text or tokens.
+#[derive(Clone, PartialEq)]
 pub struct CardTree {
     session: u64,
     signed_version: u64,
@@ -263,6 +319,18 @@ pub struct CardTree {
     generating: bool,
     lifecycle: CardLifecycle,
     replacement_ref: Option<String>,
+}
+
+impl std::fmt::Debug for CardTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CardTree")
+            .field("session", &self.session)
+            .field("tree_version", &self.tree_version)
+            .field("signed_version", &self.signed_version)
+            .field("edit_seq", &self.edit_seq)
+            .field("nodes", &self.nodes.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl CardTree {
@@ -412,7 +480,34 @@ impl CardTree {
                 .get("input_pointer")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
+            content: self.content(key),
         })
+    }
+
+    /// The drawn content of the node `key`: its kind and attributes (its
+    /// action included) and, in order, those of every node under it (a
+    /// Button's label is its child). Two equal contents draw the same node.
+    /// `None` when the tree holds no such node.
+    #[must_use]
+    pub fn content(&self, key: &str) -> Option<Value> {
+        // The tree is validated acyclic and at most `MAX_NODES` large, so
+        // the walk is bounded; the budget guards it regardless.
+        let mut budget = MAX_NODES;
+        self.content_of(key, &mut budget)
+    }
+
+    fn content_of(&self, key: &str, budget: &mut usize) -> Option<Value> {
+        *budget = budget.checked_sub(1)?;
+        let node = self.nodes.get(key)?;
+        let mut children = Vec::with_capacity(node.children.len());
+        for child in &node.children {
+            children.push(self.content_of(child, budget)?);
+        }
+        Some(serde_json::json!({
+            "kind": node.kind,
+            "attrs": node.attrs,
+            "children": children,
+        }))
     }
 
     /// The token for a host event on `key`, from the held version. `None`
