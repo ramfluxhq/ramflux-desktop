@@ -7,6 +7,18 @@ ignore = [
     # Same advisory and the same follow-up as the core deny.toml: the PEM
     # loader comes in through the pinned product SDK, not a desktop dependency.
     "RUSTSEC-2025-0134", # rustls-pemfile unmaintained (not a vulnerability)
+    # Unmaintained notices (not vulnerabilities) for crates that come in only
+    # through the pinned GUI toolkit (gpui-kit: fonts, timers, macros) and its
+    # Linux accessibility and secret-service stack (accesskit/atspi, oo7, zbus).
+    # No desktop crate depends on them directly; revisit on each gpui-kit bump.
+    "RUSTSEC-2024-0384", # instant
+    "RUSTSEC-2024-0436", # paste
+    "RUSTSEC-2026-0192", # ttf-parser
+    "RUSTSEC-2026-0206", # rustybuzz
+    "RUSTSEC-2026-0370", # zvariant
+    "RUSTSEC-2026-0371", # zbus_names
+    "RUSTSEC-2026-0372", # zvariant_derive
+    "RUSTSEC-2026-0543", # chrono
 ]
 
 [licenses]
