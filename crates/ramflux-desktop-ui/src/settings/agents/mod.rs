@@ -16,6 +16,7 @@
 //!   uninstall).
 //! - `rows`: the list of agents and their forms.
 
+mod config;
 mod rows;
 mod runtime;
 pub mod wizard;
@@ -57,6 +58,13 @@ pub(super) enum Form {
     Access { agent: String, dm: AgentAccessMode, group_inviters: AgentAccessMode },
     /// The agent's PRX jobs (D10): pause, resume, remove.
     Jobs { agent: String },
+    /// The configuration: model, autonomy and prompt (revisioned).
+    Settings {
+        agent: String,
+        model: Option<(String, String)>,
+        autonomy: Option<String>,
+        reset_prompt: bool,
+    },
 }
 
 /// The agents section's view state.
@@ -80,6 +88,11 @@ pub struct AgentsPanel {
     persona_inputs: PersonaInputs,
     /// The form open under one agent's row.
     form: Option<Form>,
+    /// The settings form's prompt field.
+    prompt_input: Entity<InputState>,
+    /// A change of the settings form was sent (its refusal is then the
+    /// form's to show).
+    settings_sent: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -133,6 +146,13 @@ impl AgentsPanel {
             runtime_inputs,
             persona_inputs,
             form: None,
+            prompt_input: crate::i18n::localized_input(
+                "agents.settings.prompt_placeholder",
+                window,
+                cx,
+                |input| input,
+            ),
+            settings_sent: false,
             _subscriptions: subscriptions,
         }
     }
@@ -157,6 +177,7 @@ impl AgentsPanel {
             sent.observe(store);
         }
         self.follow_host(cx);
+        self.follow_settings(cx);
     }
 
     /// Gives the next runtime action its number.

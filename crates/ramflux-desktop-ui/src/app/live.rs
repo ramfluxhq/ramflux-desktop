@@ -137,6 +137,7 @@ impl StoreHandle {
                     executor.now()
                 });
             session.share_card_budget(self.card_budget.clone());
+            session.bind_account(id.clone());
             self.sessions.insert(id.clone(), session);
         }
         self.emit_reset(cx);
@@ -186,6 +187,7 @@ impl StoreHandle {
                     executor.now()
                 });
             session.share_card_budget(self.card_budget.clone());
+            session.bind_account(id.clone());
             self.sessions.insert(id.clone(), session);
         }
         let active_gone = self.active.as_ref().is_some_and(|id| !self.sessions.contains_key(id));

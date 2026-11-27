@@ -58,6 +58,11 @@ pub fn is_agent_method(method: &str) -> bool {
         method,
         methods::AGENT_CREATE
             | methods::AGENT_OPERATION_GET
+            | methods::AGENT_CATALOG
+            | methods::AGENT_GET
+            | methods::AGENT_UPDATE
+            | methods::AGENT_PAUSE
+            | methods::AGENT_RESUME
             | methods::AGENT_PERSONA_EDIT
             | methods::AGENT_ACCESS_SET
             | methods::AGENT_DELETE
@@ -92,6 +97,25 @@ pub fn agent_effect(method: &str, body: &Value, account: Option<&AccountId>) -> 
         methods::AGENT_CREATE => create(body),
         methods::AGENT_OPERATION_GET => {
             Ok((json!({ "operation_id": text(body, "operation_id") }), vec![]))
+        }
+        // The catalog and the configuration calls carry closed bodies core
+        // built (`agent_anchor`, the revision, the changed fields only): they
+        // go as they are, and the daemon refuses any field it does not know.
+        methods::AGENT_CATALOG => Ok((json!({}), vec![])),
+        methods::AGENT_GET => {
+            let anchor = text(body, "agent_anchor");
+            if anchor.is_empty() {
+                Err("the read names the agent".to_owned())
+            } else {
+                Ok((json!({ "agent_anchor": anchor }), vec![]))
+            }
+        }
+        methods::AGENT_UPDATE | methods::AGENT_PAUSE | methods::AGENT_RESUME => {
+            if text(body, "agent_anchor").is_empty() {
+                Err("the change names the agent".to_owned())
+            } else {
+                Ok((body.clone(), vec![]))
+            }
         }
         methods::AGENT_PERSONA_EDIT => anchored(body).map(|(anchor, mut out)| {
             out.insert("agent_anchor".into(), json!(anchor));

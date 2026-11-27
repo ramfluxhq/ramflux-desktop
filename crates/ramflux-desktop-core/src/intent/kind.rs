@@ -13,7 +13,7 @@ use crate::ids::{
     ParticipantId, StandingApprovalId, SurfaceId, TaskId,
 };
 use crate::model::{
-    AgentAccess, AgentCreateRequest, AgentJobAction, AgentJobKind, AgentPersona,
+    AgentAccess, AgentChange, AgentCreateRequest, AgentJobAction, AgentJobKind, AgentPersona,
     AgentRuntimeAction, CardSeen, ConflictResolution, DeleteScope, PinSource, RequestAnswer,
     RequestPolicy,
 };
@@ -684,6 +684,10 @@ pub enum IntentKind {
     },
     /// Pause, resume or remove one PRX job of an agent.
     AgentJob {
+        /// The account that owns the agent and answers: the account the
+        /// panel is showing. Refused when it is not the active account or
+        /// not the owner of the agent.
+        owner_id: AccountId,
         /// The agent's anchor.
         agent: String,
         /// The job's kind.
@@ -726,6 +730,47 @@ pub enum IntentKind {
         /// The number of this submission (see `AgentHostStatus::nonce`).
         #[serde(default)]
         nonce: u64,
+        /// The `prx` file the owner confirmed (an install): the runtime
+        /// resolves it again and refuses when the result differs. Set where
+        /// the confirmation is taken, never by the panel.
+        #[serde(default)]
+        confirmed_path: Option<String>,
+    },
+    /// Read the PRX catalog of models, tools and reserved names
+    /// (`agent.catalog`). Read only.
+    AgentCatalogRefresh,
+    /// Read one agent's record (`agent.get`): its configuration with the
+    /// revision a change must be sent with. Read only.
+    AgentRead {
+        /// The agent's anchor.
+        agent: String,
+    },
+    /// Change an agent's configuration (`agent.update`). The revision is the
+    /// one the screen was rendered from; the daemon refuses a change made
+    /// on an older one. `confirm_high_risk` is set only on the resend that
+    /// follows the owner's answer to `confirmation_required`.
+    AgentUpdate {
+        /// The account that owns the agent: the active account.
+        owner_id: AccountId,
+        /// The agent's anchor.
+        agent: String,
+        /// The revision the screen was rendered from.
+        revision: Option<String>,
+        /// What changes.
+        change: AgentChange,
+        /// The owner confirmed a high-risk change.
+        confirm_high_risk: bool,
+    },
+    /// Pause (`enabled` false) or resume (`enabled` true) an agent.
+    AgentSwitch {
+        /// The account that owns the agent: the active account.
+        owner_id: AccountId,
+        /// The agent's anchor.
+        agent: String,
+        /// The revision the screen was rendered from.
+        revision: Option<String>,
+        /// Resume (true) or pause (false).
+        enabled: bool,
     },
     /// Read the changes to the account's agents since the roster's journal
     /// cursor (`agent.watch`). Read only.

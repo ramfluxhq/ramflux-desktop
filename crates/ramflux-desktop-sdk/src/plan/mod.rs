@@ -162,6 +162,8 @@ pub enum Plan {
         model: String,
         /// The provider key (install only).
         key: Option<SecretInput>,
+        /// The `prx` file the owner confirmed (install only).
+        confirmed_path: Option<String>,
     },
     /// The effect cannot be performed.
     Refuse {
@@ -185,7 +187,7 @@ pub struct Planned {
 
 /// Plans `effect` for the scope's `account` (`None` for the daemon scope).
 pub fn plan(account: Option<&AccountId>, effect: Effect, known: &impl Known) -> Planned {
-    if let Effect::AgentRuntime { action, provider, model, key, nonce } = effect {
+    if let Effect::AgentRuntime { action, provider, model, key, nonce, confirmed_path } = effect {
         return Planned {
             method: agents::RUNTIME_METHOD.to_owned(),
             body: json!({
@@ -193,7 +195,7 @@ pub fn plan(account: Option<&AccountId>, effect: Effect, known: &impl Known) -> 
                 "provider": provider,
                 "nonce": nonce,
             }),
-            plan: Plan::PrxHost { action, provider, model, key },
+            plan: Plan::PrxHost { action, provider, model, key, confirmed_path },
         };
     }
     let (method, body, secrets) = match effect {

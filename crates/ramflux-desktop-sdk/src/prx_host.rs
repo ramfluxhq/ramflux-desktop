@@ -22,6 +22,10 @@ use crate::bus::BusError;
 
 /// Runs one runtime action and answers the host status as JSON (no secret).
 ///
+/// `confirmed_path` is the `prx` file the owner confirmed (an install): the
+/// path is resolved again here and refused as `prx_path_changed` when it is
+/// not that file.
+///
 /// # Errors
 ///
 /// [`BusError::Daemon`] carrying the host's typed refusal code.
@@ -30,11 +34,15 @@ pub async fn run(
     provider: &str,
     model: &str,
     key: Option<SecretInput>,
+    confirmed_path: Option<&str>,
 ) -> Result<Value, BusError> {
     let secret = key.map(SecretInput::into_zeroizing);
     // Resolved once: the host runs this exact file, not whatever `prx` the
     // search path names by the time it spawns.
     let binary = resolve_prx(std::env::var_os("PATH").as_deref()).map_err(resolve_error)?;
+    if confirmed_path.is_some_and(|confirmed| Path::new(confirmed) != binary) {
+        return Err(path_changed());
+    }
     let request = Request {
         action: host_action(action),
         provider: (!provider.is_empty()).then(|| provider.to_owned()),
@@ -74,11 +82,14 @@ pub enum ResolveError {
 /// Resolves `prx` on `search_path` to an absolute, canonical file path.
 ///
 /// Relative and empty search path entries are refused (they name the
-/// current folder). A candidate is accepted only when its folder and the
-/// file itself are owned by root or by the current user and are not
-/// writable by group or others; an unsafe candidate is skipped, and the
-/// search goes on. Without a match the answer is [`ResolveError::Unsafe`]
-/// when something was skipped, else [`ResolveError::Missing`].
+/// current folder). A candidate is accepted only when the search path entry
+/// it was found through, every folder above the canonical file, and the
+/// file itself are owned by root or by the current user (the process user)
+/// and are not writable by group or others, and the canonical file is still
+/// named `prx` once symbolic links are followed; an unsafe candidate is
+/// skipped, and the search goes on. Without a match the answer is
+/// [`ResolveError::Unsafe`] when something was skipped, else
+/// [`ResolveError::Missing`].
 ///
 /// # Errors
 ///
@@ -99,7 +110,10 @@ pub fn resolve_prx(search_path: Option<&std::ffi::OsStr>) -> Result<PathBuf, Res
         if !real.is_file() {
             continue;
         }
-        if trusted_file(&real, &trusted) {
+        if real.file_name().is_some_and(|name| name == "prx")
+            && trusted_dir(&dir, &trusted)
+            && trusted_file(&real, &trusted)
+        {
             return Ok(real);
         }
         skipped = true;
@@ -112,19 +126,12 @@ pub fn resolved_prx() -> Result<PathBuf, ResolveError> {
     resolve_prx(std::env::var_os("PATH").as_deref())
 }
 
-/// The owners trusted for the file and its folder: root and the user (the
-/// owner of the home folder).
+/// The owners trusted for the file and the folders above it: root and the
+/// user this process runs as (never the owner of some folder the
+/// environment names).
 #[cfg(unix)]
 fn trusted_owners() -> Vec<u32> {
-    use std::os::unix::fs::MetadataExt as _;
-    let mut owners = vec![0];
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
-        && home.is_absolute()
-        && let Ok(meta) = std::fs::metadata(&home)
-    {
-        owners.push(meta.uid());
-    }
-    owners
+    vec![0, rustix::process::getuid().as_raw()]
 }
 
 #[cfg(not(unix))]
@@ -132,22 +139,56 @@ fn trusted_owners() -> Vec<u32> {
     Vec::new()
 }
 
-/// Whether the file and the folder it lives in are trusted.
+/// Whether the file and every folder above it are trusted (owned by an
+/// accepted owner, not writable by group or others).
 #[cfg(unix)]
 fn trusted_file(file: &Path, owners: &[u32]) -> bool {
+    file.ancestors().skip(1).all(|dir| trusted_dir(dir, owners))
+        && trusted_entry(file, owners, true)
+}
+
+/// Whether a folder (a search path entry, or one above the file) is trusted:
+/// the entry as named and what it points at are both owned by an accepted
+/// owner and not writable by group or others.
+#[cfg(unix)]
+fn trusted_dir(dir: &Path, owners: &[u32]) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+    // A symbolic link in the path is owned by whoever made it: its owner
+    // counts too.
+    std::fs::symlink_metadata(dir).is_ok_and(|meta| owners.contains(&meta.uid()))
+        && trusted_entry(dir, owners, false)
+}
+
+/// Owner and mode of what `path` points at.
+#[cfg(unix)]
+fn trusted_entry(path: &Path, owners: &[u32], executable: bool) -> bool {
     use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-    let ok = |path: &Path, executable: bool| {
-        std::fs::metadata(path).is_ok_and(|meta| {
-            let mode = meta.permissions().mode();
-            owners.contains(&meta.uid()) && mode & 0o022 == 0 && (!executable || mode & 0o111 != 0)
-        })
-    };
-    file.parent().is_some_and(|dir| ok(dir, false)) && ok(file, true)
+    std::fs::metadata(path).is_ok_and(|meta| {
+        let mode = meta.permissions().mode();
+        owners.contains(&meta.uid()) && mode & 0o022 == 0 && (!executable || mode & 0o111 != 0)
+    })
 }
 
 #[cfg(not(unix))]
 fn trusted_file(_file: &Path, _owners: &[u32]) -> bool {
     true
+}
+
+#[cfg(not(unix))]
+fn trusted_dir(_dir: &Path, _owners: &[u32]) -> bool {
+    true
+}
+
+/// The `prx` that would run is not the file the owner confirmed.
+fn path_changed() -> BusError {
+    BusError::Daemon {
+        retry_after_ms: None,
+        code: "prx_path_changed".to_owned(),
+        message: "the runtime program changed since it was confirmed".to_owned(),
+        reason_code: Some("prx_path_changed".to_owned()),
+        details: None,
+        cause: None,
+    }
 }
 
 fn resolve_error(error: ResolveError) -> BusError {

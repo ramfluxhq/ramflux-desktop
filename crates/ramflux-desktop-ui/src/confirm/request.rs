@@ -19,17 +19,34 @@ pub struct ConfirmRequest {
     detail: Option<SharedString>,
     risk: Risk,
     proposed_by: Option<SharedString>,
+    /// The `prx` file an install confirmation names (resolved once, for the
+    /// sheet and for the intent that follows it).
+    runtime_path: Option<String>,
 }
 
 impl ConfirmRequest {
     /// Describes `intent` for the strip.
     pub fn describe(store: &Store, intent: &Intent) -> Self {
-        let (summary, detail, risk) = describe_kind(store, &intent.kind);
+        let prx = matches!(
+            &intent.kind,
+            IntentKind::AgentRuntime { action: AgentRuntimeAction::Install, .. }
+        )
+        .then(ramflux_desktop_sdk::prx_host::resolved_prx);
+        let runtime_path = prx
+            .as_ref()
+            .and_then(|found| found.as_ref().ok())
+            .map(|path| path.display().to_string());
+        let (summary, detail, risk) = describe_kind(store, &intent.kind, prx.as_ref());
         let proposed_by = match &intent.proposed_by {
             Actor::Human => None,
             Actor::Agent(id) | Actor::Member(id) => Some(display_name(store, id).into()),
         };
-        Self { summary, detail, risk, proposed_by }
+        Self { summary, detail, risk, proposed_by, runtime_path }
+    }
+
+    /// The `prx` file the sheet names, for an install.
+    pub fn runtime_path(&self) -> Option<&str> {
+        self.runtime_path.as_deref()
     }
 
     /// One-line description: object and verb.
@@ -63,7 +80,11 @@ fn display_name(store: &Store, id: &ParticipantId) -> String {
     store.participant(id).map_or_else(|| id.short(), |p| p.display.clone())
 }
 
-fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<SharedString>, Risk) {
+fn describe_kind(
+    store: &Store,
+    kind: &IntentKind,
+    prx: Option<&Result<std::path::PathBuf, ramflux_desktop_sdk::prx_host::ResolveError>>,
+) -> (SharedString, Option<SharedString>, Risk) {
     match kind {
         IntentKind::Approve { grant_id } => {
             let grant = store.grant(grant_id);
@@ -192,9 +213,9 @@ fn describe_kind(store: &Store, kind: &IntentKind) -> (SharedString, Option<Shar
         // An install runs a program from this computer's search path: the
         // confirmation names the file that would run.
         IntentKind::AgentRuntime { action: AgentRuntimeAction::Install, .. } => {
-            let path = match ramflux_desktop_sdk::prx_host::resolved_prx() {
-                Ok(path) => SharedString::from(path.display().to_string()),
-                Err(_) => tr("confirm.agent_runtime.no_prx"),
+            let path = match prx {
+                Some(Ok(path)) => SharedString::from(path.display().to_string()),
+                _ => tr("confirm.agent_runtime.no_prx"),
             };
             (tr("confirm.agent_runtime.install"), Some(path), Risk::High)
         }

@@ -196,7 +196,13 @@ impl IntentRoot {
                 format!("{SUBMITTED} {}", labels.join(", "))
             }
             DispatchOutcome::NeedsConfirmation(intent) => {
-                if let Some(replaced) = self.pending.replace(*intent) {
+                // An install is confirmed for the file the sheet names; the
+                // runtime resolves it again and refuses a different one.
+                let mut intent = *intent;
+                if let IntentKind::AgentRuntime { confirmed_path, .. } = &mut intent.kind {
+                    *confirmed_path = request.runtime_path().map(str::to_owned);
+                }
+                if let Some(replaced) = self.pending.replace(intent) {
                     self.record_intent(&replaced, "confirmation replaced", cx);
                 }
                 self.confirm.update(cx, |strip, cx| strip.open(request, window, cx));

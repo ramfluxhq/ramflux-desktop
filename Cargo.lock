@@ -7800,10 +7800,12 @@ dependencies = [
  "ramflux-protocol",
  "ramflux-prx-client",
  "ramflux-sdk",
+ "rustix",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "unicode-general-category",
  "unicode-segmentation 1.13.3",
  "zeroize",
 ]

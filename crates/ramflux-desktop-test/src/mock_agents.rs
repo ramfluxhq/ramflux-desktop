@@ -192,6 +192,7 @@ mod tests {
             role: "named".into(),
             base: json!({"id": "base-1"}),
             runtime_name: String::new(),
+            settings: None,
         }
     }
 
@@ -245,6 +246,7 @@ mod tests {
             model: "m".into(),
             key: None,
             nonce: 1,
+            confirmed_path: None,
         };
         assert!(matches!(
             mock.answer(&effect).expect("ours").as_slice(),

@@ -121,6 +121,130 @@ pub struct AgentRecord {
     /// this name.
     #[serde(default)]
     pub runtime_name: String,
+    /// The configuration the daemon mirrors for the agent, with the
+    /// per-agent revision a change must be sent with; `None` until it is
+    /// read.
+    #[serde(default)]
+    pub settings: Option<AgentSettings>,
+}
+
+/// An agent's configuration as `agent.get` and `agent.update` show it. The
+/// revision is the per-agent one: a change names the one the screen was
+/// rendered from, and the daemon refuses it as `revision_conflict` when the
+/// configuration moved on.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentSettings {
+    /// The provider id.
+    pub provider: String,
+    /// The model id.
+    pub model: String,
+    /// The autonomy token (`full`, `supervised` or `readonly`).
+    pub autonomy: String,
+    /// The prompt; `None` is the one PRX composes.
+    pub prompt: Option<String>,
+    /// The tool names; empty or `*` is every tool.
+    pub tools: Vec<String>,
+    /// Whether the agent runs (false: paused).
+    pub enabled: bool,
+    /// Concurrent turns allowed, when limited.
+    pub max_concurrent_turns: Option<u32>,
+    /// Cost allowed per day in cents, when limited.
+    pub max_cost_per_day_cents: Option<u64>,
+    /// The per-agent revision.
+    pub revision: Option<String>,
+}
+
+/// What a change of the prompt does.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PromptChange {
+    /// The prompt stays as it is.
+    #[default]
+    Keep,
+    /// The prompt goes back to the one PRX composes.
+    Reset,
+    /// The prompt becomes this text.
+    Set(String),
+}
+
+/// What a change of the limits does.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LimitsChange {
+    /// The limits stay as they are.
+    #[default]
+    Keep,
+    /// No limit.
+    Clear,
+    /// Replace both limits (an unset one is unlimited).
+    Set {
+        /// Concurrent turns allowed.
+        max_concurrent_turns: Option<u32>,
+        /// Cost allowed per day, in cents.
+        max_cost_per_day_cents: Option<u64>,
+    },
+}
+
+/// The fields an `agent.update` changes; a field left out stays as it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentChange {
+    /// The provider.
+    pub provider: Option<String>,
+    /// The model.
+    pub model: Option<String>,
+    /// The autonomy token.
+    pub autonomy: Option<String>,
+    /// The prompt.
+    pub prompt: PromptChange,
+    /// The tool names (empty: every tool).
+    pub tools: Option<Vec<String>>,
+    /// The limits.
+    pub limits: LimitsChange,
+}
+
+/// One model the PRX catalog offers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogModel {
+    /// The provider id.
+    pub provider: String,
+    /// The model id.
+    pub model: String,
+    /// Whether the provider's key is held: without it the model is shown
+    /// disabled ("Add the provider key first").
+    pub credentials_ready: bool,
+}
+
+/// One tool the PRX catalog offers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogTool {
+    /// The tool's name.
+    pub name: String,
+    /// Whether it only reads.
+    pub read_only: bool,
+}
+
+/// The PRX catalog (`agent.catalog`): what an agent may be set to.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentCatalog {
+    /// The PRX version that answered.
+    pub prx_version: String,
+    /// PRX's own revision of the catalog.
+    pub revision: String,
+    /// The models.
+    pub models: Vec<CatalogModel>,
+    /// The tools.
+    pub tools: Vec<CatalogTool>,
+    /// The autonomy a new agent starts with.
+    pub default_autonomy: String,
+    /// Names no agent may take.
+    pub reserved_names: Vec<String>,
+}
+
+impl AgentCatalog {
+    /// Whether `name` is one no agent may take (case-insensitive).
+    #[must_use]
+    pub fn reserves(&self, name: &str) -> bool {
+        let name = name.trim();
+        self.reserved_names.iter().any(|reserved| reserved.eq_ignore_ascii_case(name))
+    }
 }
 
 impl AgentRecord {
@@ -152,6 +276,9 @@ pub enum AgentRefusal {
     PersonaInvalid,
     /// The record changed since it was read; read it again.
     StaleBase,
+    /// The configuration changed since the screen was rendered
+    /// (`revision_conflict`): read it again and review.
+    RevisionConflict,
     /// The operation is not offered for this record (for example, delete
     /// of a retired agent).
     Unsupported,
@@ -165,6 +292,9 @@ pub enum AgentRefusal {
     /// relative PATH entry, or a folder or file others can write or another
     /// user owns).
     PrxPathUnsafe,
+    /// The `prx` that would run is not the one the owner confirmed (the
+    /// search path or the file changed meanwhile).
+    PrxPathChanged,
     /// No provider was chosen.
     ProviderMissing,
     /// The provider credential is not available to PRX.
@@ -588,16 +718,10 @@ pub enum AgentUnavailable {
     SubAgent,
     /// Skills per agent (core field, then PRX).
     Skills,
-    /// Editing the configuration after creation (no bus method, core).
-    ConfigEdit,
     /// Autonomy is applied by PRX only at its default (core publish).
     AutonomyHonoured,
-    /// The PRX catalog of models and tools (no `agent.catalog`, core).
-    Catalog,
     /// Per-tool approval mode (core and PRX).
     PerToolApproval,
-    /// Agent-level pause or enable (core).
-    AgentPause,
     /// Binding an agent to a runtime host (`host_not_supported`, core).
     HostBinding,
     /// An avatar image upload (core); the preset avatar is used.
@@ -618,11 +742,8 @@ impl AgentUnavailable {
         match self {
             Self::SubAgent => "agents.unavailable.sub_agent",
             Self::Skills => "agents.unavailable.skills",
-            Self::ConfigEdit => "agents.unavailable.config_edit",
             Self::AutonomyHonoured => "agents.unavailable.autonomy",
-            Self::Catalog => "agents.unavailable.catalog",
             Self::PerToolApproval => "agents.unavailable.per_tool_approval",
-            Self::AgentPause => "agents.unavailable.agent_pause",
             Self::HostBinding => "agents.unavailable.host_binding",
             Self::AvatarUpload => "agents.unavailable.avatar_upload",
             Self::PerAgentKey => "agents.unavailable.per_agent_key",

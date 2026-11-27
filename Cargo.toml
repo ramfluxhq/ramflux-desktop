@@ -50,6 +50,8 @@ thiserror = "2"
 unicode-segmentation = "1.13"
 # NFKD, to read a typed recovery word the way the backend does.
 unicode-normalization = "0.1.25"
+# General_Category, to strip every format character (Cf) from text agents supply.
+unicode-general-category = "1"
 unicode-width = "0.2"
 zeroize = "1.8"
 # The product SDK (local-bus client, request types), pinned by full commit.

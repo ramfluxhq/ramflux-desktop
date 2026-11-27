@@ -681,6 +681,12 @@ impl AccountSession {
         self.store.card_image_paths().map(str::to_owned).collect()
     }
 
+    /// Names the account this session shows: agent decisions for any other
+    /// owner are refused.
+    pub fn bind_account(&mut self, id: ramflux_desktop_core::AccountId) {
+        self.store.bind_account(id);
+    }
+
     /// Hands the process budget of resumed cards to this account's store.
     pub fn share_card_budget(&mut self, budget: ramflux_desktop_core::ResumedBudget) {
         self.card_budget = Some(budget.clone());

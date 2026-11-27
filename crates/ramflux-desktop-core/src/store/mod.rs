@@ -79,6 +79,9 @@ pub const MAX_FAILURES: usize = 32;
 #[derive(Debug, Clone, Default)]
 pub struct Store {
     accounts: BTreeMap<AccountId, Account>,
+    /// The account this store belongs to (the one its session shows), when
+    /// it was named; agent decisions are refused for any other owner.
+    bound_account: Option<AccountId>,
     /// The app lock of each account, once the daemon reported it.
     app_locks: BTreeMap<AccountId, AppLock>,
     /// Accounts whose app lock asks for the account code now (in memory only).
@@ -109,6 +112,8 @@ pub struct Store {
     agent_roster: Option<AgentRosterState>,
     /// Creation requests this desktop started, by request id.
     agent_creations: BTreeMap<String, AgentCreation>,
+    /// The PRX catalog of models, tools and reserved names; `None` until read.
+    agent_catalog: Option<crate::model::AgentCatalog>,
     /// The PRX runtime status; `None` until it is read.
     agent_host: Option<AgentHostStatus>,
     /// PRX jobs by agent anchor.
@@ -237,6 +242,16 @@ impl Store {
     /// When a `NeedsMe` moment entered that state.
     pub fn needs_me_since(&self, id: &MomentId) -> Option<Timestamp> {
         self.needs_me_since.get(id).copied()
+    }
+
+    /// Names the account this store belongs to (the session's account).
+    pub fn bind_account(&mut self, id: AccountId) {
+        self.bound_account = Some(id);
+    }
+
+    /// The account this store belongs to, when it was named.
+    pub fn bound_account(&self) -> Option<&AccountId> {
+        self.bound_account.as_ref()
     }
 
     /// Account by id.
@@ -683,6 +698,11 @@ impl Store {
     /// The approvals of agents waiting for an answer.
     pub fn agent_approvals(&self) -> &[AgentApproval] {
         &self.agent_approvals
+    }
+
+    /// The PRX catalog, once it was read.
+    pub fn agent_catalog(&self) -> Option<&crate::model::AgentCatalog> {
+        self.agent_catalog.as_ref()
     }
 
     /// The journal cursor of the last agent read, for the next watch.

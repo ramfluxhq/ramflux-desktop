@@ -12,9 +12,9 @@
 //! that refusal's locale key, never the daemon's English.
 
 use ramflux_desktop_core::{
-    AgentAccess, AgentAccessMode, AgentApproval, AgentCreation, AgentCreationState, AgentHostState,
-    AgentHostStatus, AgentJob, AgentJobKind, AgentLifecycle, AgentPersona, AgentRecord,
-    AgentRefusal, DomainEvent, methods,
+    AgentAccess, AgentAccessMode, AgentApproval, AgentCatalog, AgentCreation, AgentCreationState,
+    AgentHostState, AgentHostStatus, AgentJob, AgentJobKind, AgentLifecycle, AgentPersona,
+    AgentRecord, AgentRefusal, AgentSettings, CatalogModel, CatalogTool, DomainEvent, methods,
 };
 use serde_json::Value;
 
@@ -53,6 +53,7 @@ pub fn refusal_of_code(code: &str) -> AgentRefusal {
         "access_policy_invalid" => AgentRefusal::AccessPolicyInvalid,
         "persona_invalid" => AgentRefusal::PersonaInvalid,
         "stale_base" => AgentRefusal::StaleBase,
+        "revision_conflict" => AgentRefusal::RevisionConflict,
         "unsupported" => AgentRefusal::Unsupported,
         "prx_unconfigured" => AgentRefusal::PrxUnconfigured,
         "host_not_supported" => AgentRefusal::HostNotSupported,
@@ -68,6 +69,7 @@ pub fn refusal_of_code(code: &str) -> AgentRefusal {
         "storage_unavailable" => AgentRefusal::StorageUnavailable,
         "prx_missing" | "runtime_missing" => AgentRefusal::PrxMissing,
         "prx_path_unsafe" => AgentRefusal::PrxPathUnsafe,
+        "prx_path_changed" => AgentRefusal::PrxPathChanged,
         "provider_missing" => AgentRefusal::ProviderMissing,
         "credential_unavailable" => AgentRefusal::CredentialUnavailable,
         "runtime_stale" => AgentRefusal::RuntimeStale,
@@ -127,6 +129,7 @@ fn runtime_refusal(refusal: &AgentRefusal) -> bool {
         AgentRefusal::PrxUnconfigured
             | AgentRefusal::PrxMissing
             | AgentRefusal::PrxPathUnsafe
+            | AgentRefusal::PrxPathChanged
             | AgentRefusal::ProviderMissing
             | AgentRefusal::CredentialUnavailable
             | AgentRefusal::RuntimeStale
@@ -160,11 +163,13 @@ pub fn refusal_key(refusal: &AgentRefusal) -> &'static str {
         AgentRefusal::AccessPolicyInvalid => "backend.agent.access_policy_invalid",
         AgentRefusal::PersonaInvalid => "backend.agent.persona_invalid",
         AgentRefusal::StaleBase => "backend.agent.stale_base",
+        AgentRefusal::RevisionConflict => "backend.agent.revision_conflict",
         AgentRefusal::Unsupported => "backend.agent.unsupported",
         AgentRefusal::PrxUnconfigured => "backend.agent.prx.unconfigured",
         AgentRefusal::HostNotSupported => "backend.agent.host_not_supported",
         AgentRefusal::PrxMissing => "backend.agent.prx.missing",
         AgentRefusal::PrxPathUnsafe => "backend.agent.prx.path_unsafe",
+        AgentRefusal::PrxPathChanged => "backend.agent.prx.path_changed",
         AgentRefusal::ProviderMissing => "backend.agent.prx.provider_missing",
         AgentRefusal::CredentialUnavailable => "backend.agent.prx.credential_unavailable",
         AgentRefusal::RuntimeStale => "backend.agent.prx.runtime_stale",
@@ -265,15 +270,16 @@ pub fn record_of(value: &Value) -> Option<AgentRecord> {
         agent_anchor,
         custodian_anchor: text_of(value, &["custodianAnchor", "custodian_anchor"]),
         persona: AgentPersona {
-            name: text_of(persona, &["name"]),
+            name: strip_format(&text_of(persona, &["name"])),
             avatar: text_of(persona, &["avatar"]),
-            responsibility: text_of(persona, &["responsibility"]),
+            responsibility: strip_format(&text_of(persona, &["responsibility"])),
         },
         lifecycle: AgentLifecycle::from_code(&text_of(value, &["lifecycle"])),
         access: access_of(pick(value, &["access"])),
         role: text_of(value, &["role"]),
         base: pick(value, &["base"]).clone(),
         runtime_name,
+        settings: settings_of(value),
     })
 }
 
@@ -288,8 +294,12 @@ fn job_of(value: &Value) -> Option<AgentJob> {
     if id.is_empty() {
         return None;
     }
-    let creator = text_of(value, &["creatorAgent", "creator_agent"]);
-    Some(AgentJob { id, kind, creator_agent: Some(creator).filter(|creator| !creator.is_empty()) })
+    let creator = strip_format(&text_of(value, &["creatorAgent", "creator_agent"]));
+    Some(AgentJob {
+        id: strip_format(&id),
+        kind,
+        creator_agent: Some(creator).filter(|creator| !creator.is_empty()),
+    })
 }
 
 fn approval_of(value: &Value) -> Option<AgentApproval> {
@@ -332,18 +342,22 @@ fn expiry_of(text: &str) -> Option<i64> {
     Some(chrono::DateTime::parse_from_rfc3339(text).map_or(0, |at| at.timestamp()))
 }
 
+/// `text` without any format character (General_Category `Cf`): the
+/// bidirectional controls and isolates, zero-width characters, the word
+/// joiner, the soft hyphen, the byte order mark, tag characters and the rest
+/// of the category. Every agent text shown passes through here, so the text
+/// cannot reorder or hide what is drawn around it.
+pub fn strip_format(text: &str) -> String {
+    use unicode_general_category::{GeneralCategory, get_general_category};
+    text.chars().filter(|c| get_general_category(*c) != GeneralCategory::Format).collect()
+}
+
 /// Text an agent supplied, made safe to show as one plain line: control
-/// characters and bidirectional overrides become spaces, runs of white space
-/// collapse, and at most `max` characters are kept.
+/// characters become spaces, every format character is removed, runs of white
+/// space collapse, and at most `max` characters are kept.
 fn plain_line(raw: &str, max: usize) -> String {
-    let spaced: String = raw
-        .chars()
-        .map(|c| {
-            let hidden = c.is_control()
-                || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}');
-            if hidden { ' ' } else { c }
-        })
-        .collect();
+    let spaced: String =
+        strip_format(raw).chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
     spaced.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(max).collect()
 }
 
@@ -371,12 +385,99 @@ pub fn host_status_of(answer: &Value, action: &str, nonce: u64) -> AgentHostStat
     }
 }
 
+/// The PRX catalog an `agent.catalog` answer holds.
+fn catalog_of(value: &Value) -> AgentCatalog {
+    let rows = |key: &str| value[key].as_array().cloned().unwrap_or_default();
+    AgentCatalog {
+        prx_version: text_of(value, &["prx_version", "prxVersion"]),
+        revision: text_of(value, &["revision"]),
+        models: rows("models")
+            .iter()
+            .filter_map(|row| {
+                let (provider, model) = (text_of(row, &["provider"]), text_of(row, &["model"]));
+                (!provider.is_empty() && !model.is_empty()).then(|| CatalogModel {
+                    provider,
+                    model,
+                    credentials_ready: pick(row, &["credentials_ready", "credentialsReady"])
+                        .as_bool()
+                        .unwrap_or(false),
+                })
+            })
+            .collect(),
+        tools: rows("tools")
+            .iter()
+            .filter_map(|row| {
+                let name = text_of(row, &["name"]);
+                (!name.is_empty()).then(|| CatalogTool {
+                    name,
+                    read_only: pick(row, &["read_only", "readOnly"]).as_bool().unwrap_or(false),
+                })
+            })
+            .collect(),
+        default_autonomy: text_of(pick(value, &["defaults"]), &["autonomy"]),
+        reserved_names: rows("reserved_names")
+            .iter()
+            .chain(rows("reservedNames").iter())
+            .filter_map(|name| name.as_str().map(str::to_owned))
+            .collect(),
+    }
+}
+
+/// The configuration a record (or an update's answer) shows: the `config`
+/// object and the per-agent `revision` beside it; `None` without a config.
+fn settings_of(record: &Value) -> Option<AgentSettings> {
+    let config = pick(record, &["config"]);
+    if !config.is_object() {
+        return None;
+    }
+    let limits = pick(config, &["limits"]);
+    Some(AgentSettings {
+        provider: text_of(config, &["provider"]),
+        model: text_of(config, &["model"]),
+        autonomy: text_of(config, &["autonomy"]),
+        prompt: Some(text_of(config, &["prompt"])).filter(|text| !text.is_empty()),
+        tools: pick(config, &["tools"])
+            .as_array()
+            .map(|names| names.iter().filter_map(|n| n.as_str().map(str::to_owned)).collect())
+            .unwrap_or_default(),
+        enabled: pick(config, &["enabled"]).as_bool().unwrap_or(true),
+        max_concurrent_turns: number_of(limits, &["max_concurrent_turns", "maxConcurrentTurns"])
+            .and_then(|turns| u32::try_from(turns).ok()),
+        max_cost_per_day_cents: number_of(
+            limits,
+            &["max_cost_per_day_cents", "maxCostPerDayCents"],
+        ),
+        revision: Some(text_of(record, &["revision"])).filter(|text| !text.is_empty()),
+    })
+}
+
 /// The events of a performed agent request.
 pub fn effect_events(method: &str, answer: &Value) -> Vec<DomainEvent> {
     match method {
         methods::AGENT_CREATE | methods::AGENT_OPERATION_GET => {
             creation_of(pick(answer, &["custody"]))
                 .map(DomainEvent::AgentCreationUpdated)
+                .into_iter()
+                .collect()
+        }
+        methods::AGENT_CATALOG => vec![DomainEvent::AgentCatalogLoaded(catalog_of(answer))],
+        // The record of one agent: its configuration and its revision.
+        methods::AGENT_GET => {
+            let record = pick(answer, &["record"]);
+            record_of(record)
+                .map(|record| DomainEvent::AgentRecordUpdated(Box::new(record)))
+                .into_iter()
+                .collect()
+        }
+        // The answer names the agent, its revision and its configuration now.
+        methods::AGENT_UPDATE | methods::AGENT_PAUSE | methods::AGENT_RESUME => {
+            let anchor = text_of(answer, &["agent_anchor"]);
+            settings_of(answer)
+                .filter(|_| !anchor.is_empty())
+                .map(|settings| DomainEvent::AgentSettingsChanged {
+                    agent_anchor: anchor,
+                    settings,
+                })
                 .into_iter()
                 .collect()
         }
@@ -422,6 +523,14 @@ pub fn read_events(fetch: &Fetch, value: &Value) -> Vec<DomainEvent> {
                 .unwrap_or_default();
             vec![DomainEvent::AgentJobsUpdated { agent: anchor.clone(), jobs }]
         }
+        Fetch::AgentCatalog => vec![DomainEvent::AgentCatalogLoaded(catalog_of(value))],
+        Fetch::AgentGet(anchor) => settings_of(pick(value, &["record"]))
+            .map(|settings| DomainEvent::AgentSettingsChanged {
+                agent_anchor: anchor.clone(),
+                settings,
+            })
+            .into_iter()
+            .collect(),
         Fetch::AgentOperation(_) => creation_of(pick(value, &["custody"]))
             .map(DomainEvent::AgentCreationUpdated)
             .into_iter()
