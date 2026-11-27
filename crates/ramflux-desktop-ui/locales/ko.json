@@ -265,6 +265,7 @@
   "backend.failure.ceremony": null,
   "backend.failure.surface_action_rejected": null,
   "backend.failure.schema_gate_closed": null,
+  "backend.failure.app_lock_busy": null,
   "backend.failure.vault_missing": null,
   "backend.failure.vault_init_pending": null,
   "backend.failure.vault_import_pending": null,

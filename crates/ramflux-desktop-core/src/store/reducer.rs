@@ -67,6 +67,11 @@ impl Store {
                 }
             }
             DomainEvent::AccountLockChanged { account_id, lock_state } => {
+                // An unlock that succeeded leaves no refusal of its code on screen.
+                if *lock_state == LockState::Unlocked {
+                    self.app_lock_refusals.remove(account_id);
+                    changes.app_lock_codes.insert(account_id.clone());
+                }
                 self.set_lock(account_id, *lock_state, changes)?;
             }
             DomainEvent::AppLockLifecycleAnswered { account_id, phase } => {
@@ -467,6 +472,17 @@ impl Store {
         let before = self.app_locks.insert(account_id.clone(), lock.clone());
         changes.accounts.insert(account_id.clone());
         changes.app_locks.insert(account_id.clone());
+        // A new policy or state (the daemon's change counter moved) ends the
+        // refusal shown for the previous one. A re-read of the same lock keeps it.
+        let changed = before.as_ref().is_none_or(|b| {
+            b.generation != lock.generation
+                || b.enabled != lock.enabled
+                || b.timeout_ms != lock.timeout_ms
+                || b.state != lock.state
+        });
+        if changed && self.app_lock_refusals.remove(account_id).is_some() {
+            changes.app_lock_codes.insert(account_id.clone());
+        }
         // Closing the lock drops what was on screen, as locking the account does.
         let closed = lock.state == AppLockState::Locked;
         if closed && before.is_none_or(|b| b.state != AppLockState::Locked) {

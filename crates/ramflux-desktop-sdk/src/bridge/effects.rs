@@ -141,8 +141,17 @@ impl Task {
         let planned = plan(self.scope.account(), effect, &self.translator);
         let (method, body) = (planned.method.clone(), planned.body.clone());
         if method == methods::APP_LOCK_CONFIGURE {
-            self.app_lock_code
-                .begin(body["account_id"].as_str().map(ramflux_desktop_core::AccountId::new));
+            // One configure at a time: a second one is refused while the first runs.
+            let account = body["account_id"].as_str().map(ramflux_desktop_core::AccountId::new);
+            if !self.app_lock_code.begin(account) {
+                let failure = EffectFailure {
+                    method: method.clone(),
+                    code: FailureCode::Daemon("app_lock_busy".to_owned()),
+                    message: key::APP_LOCK_BUSY.to_owned(),
+                };
+                self.emit(vec![DomainEvent::EffectFailed(failure)]);
+                return;
+            }
         }
         self.translator.decision_sent(&method, &body);
         if method == methods::GROUP_CREATE && matches!(planned.plan, Plan::Calls { .. }) {
@@ -324,6 +333,18 @@ impl Task {
                 self.spawn_fetches(vec![Fetch::AgentList]);
             }
             Err(error) => {
+                // The typed refusal is read before the configure's sheet state
+                // is reset: a dismissed sheet is a cancellation.
+                let refusal = error
+                    .code_refusal()
+                    .filter(|_| {
+                        matches!(
+                            method,
+                            ramflux_desktop_core::methods::APP_LOCK_CONFIGURE
+                                | ramflux_desktop_core::methods::ACCOUNT_UNLOCK
+                        )
+                    })
+                    .map(|refusal| self.code_refusal(refusal));
                 // A configure that ends closes its code sheet, whatever the reason.
                 if method == ramflux_desktop_core::methods::APP_LOCK_CONFIGURE {
                     self.app_lock_code.finish();
@@ -335,16 +356,10 @@ impl Task {
                     }
                 }
                 // A refused account code is shown as its typed refusal, never as a failure text.
-                if let Some(refusal) = error.code_refusal().filter(|_| {
-                    matches!(
-                        method,
-                        ramflux_desktop_core::methods::APP_LOCK_CONFIGURE
-                            | ramflux_desktop_core::methods::ACCOUNT_UNLOCK
-                    )
-                }) && let Some(id) = body["account_id"].as_str()
+                if let Some(refusal) = refusal
+                    && let Some(id) = body["account_id"].as_str()
                 {
                     let account = ramflux_desktop_core::AccountId::new(id);
-                    let refusal = self.code_refusal(refusal);
                     self.emit(vec![DomainEvent::AppLockCodeRefused {
                         account_id: account.clone(),
                         refusal,
@@ -658,7 +673,15 @@ impl Task {
         }
         let client = self.client.clone();
         // A configure may be answered with the account code, while it runs.
-        let code_arm = (method == methods::APP_LOCK_CONFIGURE).then(|| client.arm_code()).flatten();
+        // A refused arm (another configure holds the gate) leaves the prompt refused.
+        let code_arm = (method == methods::APP_LOCK_CONFIGURE)
+            .then(|| {
+                body["account_id"]
+                    .as_str()
+                    .map(ramflux_desktop_core::AccountId::new)
+                    .and_then(|account| client.arm_code(account).ok().flatten())
+            })
+            .flatten();
         let job_link = self.job_link.clone();
         let internal = self.internal.clone();
         let retries: Vec<Duration> = self
@@ -680,6 +703,9 @@ impl Task {
                 }
                 other => perform(&client, other, &retries).await,
             };
+            // Disarmed before the answer is handed back, so a configure that
+            // follows it finds the gate free.
+            drop(_code_arm);
             let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
         });
         Some(task.abort_handle())

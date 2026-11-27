@@ -22,12 +22,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use ramflux_desktop_core::AccountId;
 use ramflux_sdk::custody::pairing::LocalCredentialProvider;
 use ramflux_sdk::{LocalBusClient, LocalBusFrame, LocalBusFrameKind};
 use serde_json::Value;
 use tokio::sync::{Mutex, Semaphore, mpsc};
 
-use super::attended::{ArmGuard, CodeGate};
+use super::attended::{ArmGuard, CodeBusy, CodeGate};
 use super::deadline::{Deadlines, deadline_ms};
 use super::{BusError, BusRequest};
 
@@ -171,10 +172,11 @@ impl BusClient {
         self.inner.link.lock().await.take();
     }
 
-    /// Arms the attended account code for one configure of this client; the
-    /// daemon's code prompt is answered only while the guard lives.
-    pub(crate) fn arm_code(&self) -> Option<ArmGuard> {
-        self.inner.gate.as_ref().map(CodeGate::arm)
+    /// Arms the attended account code for one configure of `account`; the
+    /// daemon's code prompt is answered only while the guard lives. `Ok(None)`
+    /// when this connection has no gate. Refused while another configure holds it.
+    pub(crate) fn arm_code(&self, account: AccountId) -> Result<Option<ArmGuard>, CodeBusy> {
+        self.inner.gate.as_ref().map(|gate| gate.arm(account)).transpose()
     }
 
     /// Opens the connection if there is none and returns its generation.

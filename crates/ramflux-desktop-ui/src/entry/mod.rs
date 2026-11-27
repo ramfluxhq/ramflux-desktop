@@ -423,8 +423,13 @@ impl Render for EntryPage {
 }
 
 impl EntryPage {
-    /// Sets the lock view the shell asks for (see `lock_view`).
+    /// Sets the lock view the shell asks for (see `lock_view`). Leaving the
+    /// lock page (the lock lifted, or the cover came up as the window went to
+    /// the background) closes the recovery, so the next lock opens at its code form.
     pub fn set_lock_view(&mut self, lock_view: Option<bool>, cx: &mut Context<Self>) {
+        if lock_view != Some(false) {
+            self.recovery_open = false;
+        }
         self.lock_view = lock_view;
         cx.notify();
     }

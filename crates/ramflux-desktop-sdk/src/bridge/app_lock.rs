@@ -46,8 +46,13 @@ pub(super) struct AppLockCode {
 
 impl AppLockCode {
     /// A configure of `account` starts: its code prompt, if any, is its own.
-    pub(super) fn begin(&mut self, account: Option<AccountId>) {
+    /// `false` (nothing changes) while another configure is in flight.
+    pub(super) fn begin(&mut self, account: Option<AccountId>) -> bool {
+        if self.account.is_some() {
+            return false;
+        }
         *self = Self { account, ..Self::default() };
+        true
     }
 
     /// The configure ended: a prompt still waiting is dropped (refused).
