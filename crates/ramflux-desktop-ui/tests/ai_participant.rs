@@ -33,18 +33,6 @@ fn count(cx: &mut TestAppContext, shell: &Entity<Shell>, method: &str) -> usize 
 }
 
 /// Top edge of `id` inside `scope`, in window coordinates.
-fn top(
-    cx: &mut TestAppContext,
-    handle: gpui_kit::WindowHandle<gpui_kit::base::Root>,
-    scope: &str,
-    id: &str,
-) -> f32 {
-    let (scope, id) = (scope.to_owned(), id.to_owned());
-    in_window(cx, handle, move |window, _| {
-        f32::from(window.within(scope).find(id).bounds().origin.y)
-    })
-}
-
 /// Opens demo 3 and asks Orbit in the group (a message, not a task).
 fn asked(cx: &mut TestAppContext) -> (gpui_kit::WindowHandle<gpui_kit::base::Root>, Entity<Shell>) {
     let (handle, shell) = open(cx, "s10_ai_participant");
@@ -68,40 +56,6 @@ fn at_approval(
 }
 
 #[gpui_kit::test]
-fn a_reply_streams_in_place_without_moving_what_is_above_it(cx: &mut TestAppContext) {
-    let (handle, shell) = asked(cx);
-    advance(cx, 350);
-    // Created with an empty text: one waiting line holds its place.
-    assert!(exists_in(cx, handle, "moment-m-reply", "block-waiting"));
-    assert!(exists_in(cx, handle, "moment-m-reply", "surface-streaming"));
-    let block_top = top(cx, handle, "moment-m-reply", "block-b-reply");
-    advance(cx, 200);
-    assert!(!exists_in(cx, handle, "moment-m-reply", "block-waiting"), "text replaced the line");
-    assert!(exists_in(cx, handle, "moment-m-reply", "surface-streaming"));
-    assert_eq!(
-        top(cx, handle, "moment-m-reply", "block-b-reply"),
-        block_top,
-        "appends grow downward"
-    );
-    advance(cx, 200);
-    assert_eq!(top(cx, handle, "moment-m-reply", "block-b-reply"), block_top);
-    advance(cx, 200);
-    assert!(!exists_in(cx, handle, "moment-m-reply", "surface-streaming"), "final ends the mark");
-    assert_eq!(
-        top(cx, handle, "moment-m-reply", "block-b-reply"),
-        block_top,
-        "the mark sits outside the flow: ending the stream moves nothing"
-    );
-    let version =
-        with_store(cx, &shell, |s| s.surface(&MomentId::new("m-reply")).map(|r| r.version));
-    assert_eq!(version, Some(4));
-    assert!(
-        effects(cx, &shell).iter().all(|m| m != methods::SURFACE_ACTION),
-        "reading sends nothing"
-    );
-}
-
-#[gpui_kit::test]
 fn a_proposal_is_started_from_its_card_and_needs_me_once(cx: &mut TestAppContext) {
     let (handle, shell) = asked(cx);
     advance(cx, 1_100);
@@ -121,38 +75,6 @@ fn a_proposal_is_started_from_its_card_and_needs_me_once(cx: &mut TestAppContext
     assert!(!exists_in(cx, handle, "moment-m-task", "task-start"));
     let attention = with_store(cx, &shell, |s| ramflux_desktop_core::selectors::attention(s).len());
     assert_eq!(attention, 1, "one decision, one place");
-}
-
-#[gpui_kit::test]
-fn approving_the_step_needs_confirmation_then_the_result_is_patched_in(cx: &mut TestAppContext) {
-    let (handle, shell) = at_approval(cx);
-    click_in(cx, handle, "moment-m-task", "step-approve");
-    assert!(strip_open(cx, &shell), "high risk: the confirm strip");
-    assert_eq!(
-        count(cx, &shell, methods::GRANT_APPROVE),
-        0,
-        "nothing sent before the confirmation"
-    );
-    tap_confirm(cx, handle);
-    let body = last_body(cx, &shell, methods::GRANT_APPROVE);
-    assert_eq!(body["grant_id"], "g-deploy");
-    assert_eq!(body["confirmed_by"]["gesture"], "Tap");
-    assert_eq!(body["proposed_by"], "Human");
-    advance(cx, 900);
-    assert!(
-        exists_in(cx, handle, "moment-m-status", "block-b-done"),
-        "the result patched in place"
-    );
-    assert!(!exists_in(cx, handle, "moment-m-status", "surface-conflict"));
-    advance(cx, 700);
-    assert_eq!(task(cx, &shell, "t-launch").state, TaskState::Done);
-    assert_eq!(lifecycle(cx, &shell, "m-task"), Some(Lifecycle::Done));
-    assert!(exists_in(cx, handle, "moment-m-task", "task-result"));
-    click_in(cx, handle, "moment-m-task", "task-show-result");
-    let ws = workspace(cx, &shell);
-    let highlighted = cx.update(|cx| ws.read(cx).conversation().read(cx).highlighted().cloned());
-    assert_eq!(highlighted, Some(MomentId::new("m-status")), "the result surface comes into view");
-    assert_eq!(count(cx, &shell, methods::GRANT_APPROVE), 1, "sent once");
 }
 
 #[gpui_kit::test]
@@ -297,87 +219,4 @@ fn a_conversation_without_an_ai_participant_has_nobody_to_ask(cx: &mut TestAppCo
     let ws = workspace(cx, &shell);
     let mode = cx.update(|cx| ws.read(cx).composer().read(cx).mode());
     assert_eq!(mode, ComposerMode::Message);
-}
-
-#[gpui_kit::test]
-fn a_choice_is_answered_in_the_surface_the_task_points_to(cx: &mut TestAppContext) {
-    let (handle, shell) = open(cx, "s11_surface_versions");
-    advance(cx, 300);
-    show_context(cx, handle, &shell, "c-plan");
-    assert!(
-        exists_in(cx, handle, "moment-m-task", "step-pointer"),
-        "the step points to the surface"
-    );
-    assert!(
-        !exists_in(cx, handle, "moment-m-task", "step-decision"),
-        "it never repeats the controls"
-    );
-    click_in(cx, handle, "moment-m-task", "step-show-view");
-    let ws = workspace(cx, &shell);
-    let highlighted = cx.update(|cx| ws.read(cx).conversation().read(cx).highlighted().cloned());
-    assert_eq!(highlighted, Some(MomentId::new("m-pick")));
-    advance(cx, 3_300);
-    click_in(cx, handle, "moment-m-pick", "action-thu");
-    let body = last_body(cx, &shell, methods::SURFACE_ACTION);
-    assert_eq!((body["action_id"].as_str(), body["version"].as_u64()), (Some("thu"), Some(3)));
-    let shown = with_store(cx, &shell, |s| s.surface_hash(&MomentId::new("m-pick")).cloned());
-    assert_eq!(body["surface_hash"], serde_json::json!(shown));
-    advance(cx, 1_500);
-    assert!(exists_in(cx, handle, "moment-m-pick", "surface-closed"), "a frozen record");
-    assert!(exists_in(cx, handle, "moment-m-pick", "surface-closed-text"));
-    assert!(!exists_in(cx, handle, "moment-m-pick", "surface-actions"));
-    // "Show" opened the row, so the final view is open; the disclosure
-    // folds it back to the one-line record.
-    assert!(exists_in(cx, handle, "moment-m-pick", "block-b-answer"));
-    click_in(cx, handle, "moment-m-pick", "surface-disclosure");
-    assert!(
-        !exists_in(cx, handle, "moment-m-pick", "block-b-answer"),
-        "folded to its fallback text"
-    );
-    assert!(exists_in(cx, handle, "moment-m-pick", "surface-closed-text"));
-    assert_eq!(task(cx, &shell, "t-day").state, TaskState::Done);
-    assert_eq!(count(cx, &shell, methods::SURFACE_ACTION), 1);
-}
-
-#[gpui_kit::test]
-fn a_surface_changed_under_review_is_never_acted_on_silently(cx: &mut TestAppContext) {
-    let (handle, shell) = open(cx, "s11_surface_versions");
-    advance(cx, 300);
-    show_context(cx, handle, &shell, "c-plan");
-    click_in(cx, handle, "moment-m-pick", "action-fri");
-    assert!(strip_open(cx, &shell), "a high-risk choice waits for the confirmation");
-    advance(cx, 1_300);
-    assert!(!strip_open(cx, &shell), "the change cancelled the pending confirmation");
-    assert!(exists_in(cx, handle, "moment-m-pick", "surface-review-again"));
-    assert_eq!(count(cx, &shell, methods::SURFACE_ACTION), 0, "no silent resend");
-}
-
-#[gpui_kit::test]
-fn an_out_of_date_surface_refuses_actions_until_resent(cx: &mut TestAppContext) {
-    let (handle, shell) = open(cx, "s11_surface_versions");
-    advance(cx, 2_600);
-    show_context(cx, handle, &shell, "c-plan");
-    assert!(exists_in(cx, handle, "moment-m-pick", "surface-conflict"));
-    click_in(cx, handle, "moment-m-pick", "action-thu");
-    assert_eq!(count(cx, &shell, methods::SURFACE_ACTION), 0, "disabled while out of date");
-    advance(cx, 1_000);
-    assert!(!exists_in(cx, handle, "moment-m-pick", "surface-conflict"), "resolved by the resend");
-    assert!(exists_in(cx, handle, "moment-m-pick", "block-b-note"));
-}
-
-#[gpui_kit::test]
-fn surfaces_over_a_limit_show_only_their_fallback(cx: &mut TestAppContext) {
-    let (handle, shell) = open(cx, "s12_surface_limits");
-    advance(cx, 700);
-    show_context(cx, handle, &shell, "c-limits");
-    assert!(exists_in(cx, handle, "moment-m-many", "surface-over-limit"));
-    assert!(!exists_in(cx, handle, "moment-m-many", "surface-actions"), "nothing to act on");
-    assert!(exists_in(cx, handle, "moment-m-log", "block-b-log"), "within the limits it streams");
-    advance(cx, 200);
-    assert!(exists_in(cx, handle, "moment-m-log", "surface-over-limit"));
-    assert!(!exists_in(cx, handle, "moment-m-log", "block-b-log"), "never a partial rendering");
-    let errors = cx.update(|cx| {
-        shell.read(cx).store().read(cx).session().map(|s| s.renderer_errors().total())
-    });
-    assert!(errors.is_some_and(|n| n >= 2), "both are renderer errors: {errors:?}");
 }

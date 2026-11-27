@@ -29,8 +29,9 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::ContextRemoved { .. } => "ContextRemoved",
         DomainEvent::MomentAdded(_) => "MomentAdded",
         DomainEvent::MomentUpdated { .. } => "MomentUpdated",
-        DomainEvent::SurfacePatched { .. } => "SurfacePatched",
         DomainEvent::Surface(_) => "Surface",
+        DomainEvent::Card(_) => "Card",
+        DomainEvent::CardRuntimeUnavailable => "CardRuntimeUnavailable",
         DomainEvent::ObjectUpserted(_) => "ObjectUpserted",
         DomainEvent::GrantRequested(_) => "GrantRequested",
         DomainEvent::GrantResolved { .. } => "GrantResolved",
@@ -81,7 +82,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 63;
+const DOMAIN_EVENT_VARIANTS: usize = 64;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -120,6 +121,17 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::AttachObject { .. } => "AttachObject",
         IntentKind::SurfaceAction { .. } => "SurfaceAction",
         IntentKind::RequestSurfaceUpdate { .. } => "RequestSurfaceUpdate",
+        IntentKind::CardOpen { .. } => "CardOpen",
+        IntentKind::CardPresent { .. } => "CardPresent",
+        IntentKind::CardInteract { .. } => "CardInteract",
+        IntentKind::CardSlotAnswer { .. } => "CardSlotAnswer",
+        IntentKind::CardSubmit { .. } => "CardSubmit",
+        IntentKind::CardRefresh { .. } => "CardRefresh",
+        IntentKind::CardSuspend { .. } => "CardSuspend",
+        IntentKind::CardDispose { .. } => "CardDispose",
+        IntentKind::CardSuspendAll => "CardSuspendAll",
+        IntentKind::CardResumeAll => "CardResumeAll",
+        IntentKind::CardRetainVisible { .. } => "CardRetainVisible",
         IntentKind::Approve { .. } => "Approve",
         IntentKind::Deny { .. } => "Deny",
         IntentKind::Reveal { .. } => "Reveal",
@@ -198,7 +210,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the eight secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 78;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 89;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -218,6 +230,8 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::AttachFile { .. } => "AttachFile",
         UiEventKind::ActionInvoked { .. } => "ActionInvoked",
         UiEventKind::SurfaceUpdateRequested => "SurfaceUpdateRequested",
+        UiEventKind::CardInteracted { .. } => "CardInteracted",
+        UiEventKind::CardSlotAnswered { .. } => "CardSlotAnswered",
         UiEventKind::ApprovePressed => "ApprovePressed",
         UiEventKind::DenyPressed => "DenyPressed",
         UiEventKind::RevealPressed => "RevealPressed",
@@ -262,7 +276,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 58;
+const UI_EVENT_KIND_VARIANTS: usize = 60;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -382,31 +396,11 @@ fn all_domain_events() -> Vec<DomainEvent> {
             lifecycle: Some(Lifecycle::Done),
             kind: Some(message("edited")),
         },
-        DomainEvent::SurfacePatched {
-            moment_id: MomentId::new("m-2"),
+        DomainEvent::Card(CardEvent::Refused {
             surface_id: SurfaceId::new("s-1"),
-            ops: vec![
-                SurfaceOp::AppendBlocks(vec![Block::new(
-                    BlockId::new("b-2"),
-                    BlockKind::Progress,
-                    json!({ "value": 0.5 }),
-                )]),
-                SurfaceOp::ReplaceBlock(Block {
-                    redacted: true,
-                    version: 2,
-                    ..Block::new(
-                        BlockId::new("b-1"),
-                        BlockKind::Markdown,
-                        json!({ "text": "# Title" }),
-                    )
-                }),
-                SurfaceOp::ReplaceBlocks(Vec::new()),
-                SurfaceOp::AppendText { block_id: BlockId::new("b-1"), text: " more".into() },
-                SurfaceOp::SetActions(Vec::new()),
-                SurfaceOp::SetStreaming(false),
-            ],
-            base_hash: Some(SurfaceHash::new("sha256:abc")),
-        },
+            reason: "card_session_refused".into(),
+        }),
+        DomainEvent::CardRuntimeUnavailable,
         DomainEvent::ObjectUpserted(Object {
             mime: None,
             local_path: None,
@@ -500,49 +494,6 @@ fn all_domain_events() -> Vec<DomainEvent> {
             },
         },
         DomainEvent::TaskRemoved { task_id: TaskId::new("t-2") },
-        DomainEvent::Surface(SurfaceEvent::Create {
-            moment_id: MomentId::new("m-s"),
-            context_id: ContextId::new("c-1"),
-            origin: ParticipantId::new("p-1"),
-            surface_id: SurfaceId::new("s-1"),
-            version: 1,
-            blocks: vec![Block::new("b-1", BlockKind::Text, json!({ "text": "" }))],
-            actions: vec![SurfaceAction {
-                id: "go".into(),
-                label: "Go".into(),
-                risk: Risk::High,
-                disabled_reason: None,
-            }],
-            fallback_text: "A reply".into(),
-            hash: Some(SurfaceHash::new("Qh1")),
-        }),
-        DomainEvent::Surface(SurfaceEvent::Patch {
-            surface_id: SurfaceId::new("s-1"),
-            version: 2,
-            base_hash: SurfaceHash::new("sha256:abc"),
-            ops: vec![
-                SurfacePatchOp::ReplaceBlock {
-                    block: Block::new("b-1", BlockKind::Text, json!({ "text": "x" })),
-                },
-                SurfacePatchOp::InsertBlock {
-                    index: 0,
-                    block: Block::new("b-0", BlockKind::Heading, json!({ "text": "H" })),
-                },
-                SurfacePatchOp::RemoveBlock { block_id: BlockId::new("b-0") },
-                SurfacePatchOp::SetActions { actions: Vec::new() },
-                SurfacePatchOp::SetFallback { fallback_text: "Done".into() },
-            ],
-            hash: None,
-        }),
-        DomainEvent::Surface(SurfaceEvent::StreamAppend {
-            surface_id: SurfaceId::new("s-1"),
-            version: 3,
-            block_id: BlockId::new("b-1"),
-            text_delta: "more".into(),
-            is_final: true,
-            hash: Some(SurfaceHash::new("Qh3")),
-        }),
-        DomainEvent::Surface(SurfaceEvent::Close { surface_id: SurfaceId::new("s-1"), version: 4 }),
         DomainEvent::Surface(SurfaceEvent::Snapshot(Box::new(SurfaceSnapshot {
             moment_id: MomentId::new("m-s"),
             context_id: ContextId::new("c-1"),
@@ -551,13 +502,10 @@ fn all_domain_events() -> Vec<DomainEvent> {
             surface_id: SurfaceId::new("s-1"),
             version: 7,
             hash: SurfaceHash::new("Qh7"),
-            blocks: vec![Block::new("b-1", BlockKind::Text, json!({ "text": "x" }))],
             actions: Vec::new(),
             fallback_text: "A reply".into(),
             closed: false,
             out_of_sync: true,
-            open_streams: vec![BlockId::new("b-1")],
-            final_streams: vec![BlockId::new("b-2")],
             order: Some(OrderKey { hlc: 7, author: "a/d".into(), device_sequence: 2 }),
         }))),
         DomainEvent::Surface(SurfaceEvent::ActionRefused {
@@ -944,6 +892,49 @@ fn all_intent_kinds() -> Vec<IntentKind> {
             moment_id: MomentId::new("m-1"),
             surface_id: SurfaceId::new("s-1"),
         },
+        IntentKind::CardOpen {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+            locale: "en".into(),
+            dark: false,
+        },
+        IntentKind::CardInteract {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+            key: "field".into(),
+            event: CardInput::Input { value: json!("text") },
+        },
+        IntentKind::CardSlotAnswer {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+            slot_id: "[link,link-1]".into(),
+            outcome: CardSlotOutcome::Cancel,
+        },
+        IntentKind::CardSuspendAll,
+        IntentKind::CardResumeAll,
+        IntentKind::CardPresent {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+            locale: "ar".into(),
+            dark: true,
+        },
+        IntentKind::CardSubmit {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+        },
+        IntentKind::CardRefresh {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+        },
+        IntentKind::CardSuspend {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+        },
+        IntentKind::CardDispose {
+            moment_id: MomentId::new("m-1"),
+            surface_id: SurfaceId::new("s-1"),
+        },
+        IntentKind::CardRetainVisible { surface_ids: BTreeSet::from([SurfaceId::new("s-1")]) },
         IntentKind::Approve { grant_id: GrantId::new("g-1") },
         IntentKind::Deny { grant_id: GrantId::new("g-1") },
         IntentKind::Reveal { moment_id: MomentId::new("m-1") },
@@ -1085,6 +1076,11 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
             version: 2,
         },
         UiEventKind::SurfaceUpdateRequested,
+        UiEventKind::CardInteracted { key: "field".into(), event: CardInput::Activate },
+        UiEventKind::CardSlotAnswered {
+            slot_id: "[approval,root]".into(),
+            outcome: CardSlotOutcome::Deny,
+        },
         UiEventKind::ApprovePressed,
         UiEventKind::DenyPressed,
         UiEventKind::RevealPressed,
@@ -1269,53 +1265,5 @@ fn every_ui_event_kind_round_trips_with_scope_path() {
         let text = serde_json::to_string(&event).expect("serialize ui event");
         let back: UiEvent = serde_json::from_str(&text).expect("deserialize ui event");
         assert_eq!(back, event);
-    }
-}
-
-#[test]
-fn unknown_block_kind_deserializes_to_unsupported() {
-    let block: Block = serde_json::from_value(json!({
-        "id": "b-x",
-        "kind": "HolographicChart",
-        "data": { "series": [1, 2, 3] }
-    }))
-    .expect("unknown block kind must not fail");
-    assert_eq!(block.kind, BlockKind::Unsupported);
-    assert_eq!(block.version, DEFAULT_BLOCK_VERSION);
-    assert!(!block.redacted);
-    assert_eq!(block.data["series"][2], 3);
-
-    let known: BlockKind = serde_json::from_str("\"Approval\"").expect("known kind");
-    assert_eq!(known, BlockKind::Approval);
-}
-
-#[test]
-fn every_catalog_block_kind_round_trips() {
-    let catalog = [
-        BlockKind::Text,
-        BlockKind::Markdown,
-        BlockKind::Heading,
-        BlockKind::KeyValue,
-        BlockKind::Metric,
-        BlockKind::List,
-        BlockKind::TableFallback,
-        BlockKind::Form,
-        BlockKind::Input,
-        BlockKind::Select,
-        BlockKind::Progress,
-        BlockKind::LogStream,
-        BlockKind::Warning,
-        BlockKind::Error,
-        BlockKind::Success,
-        BlockKind::Approval,
-        BlockKind::ActionGroup,
-        BlockKind::FilePreview,
-        BlockKind::Fallback,
-        BlockKind::Unsupported,
-    ];
-    for kind in catalog {
-        let text = serde_json::to_string(&kind).expect("serialize block kind");
-        let back: BlockKind = serde_json::from_str(&text).expect("deserialize block kind");
-        assert_eq!(back, kind);
     }
 }

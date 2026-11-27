@@ -122,8 +122,14 @@ impl Store {
                 self.update_moment(at, moment_id, *lifecycle, kind.as_ref(), changes)?;
             }
             DomainEvent::Surface(event) => self.surface_event(at, event, changes)?,
-            DomainEvent::SurfacePatched { moment_id, surface_id, ops, base_hash } => {
-                self.patch_surface(moment_id, surface_id, ops, base_hash.as_ref(), changes)?;
+            DomainEvent::Card(event) => self.card_event(event, changes),
+            DomainEvent::CardRuntimeUnavailable => {
+                for method in crate::CARD_METHODS {
+                    self.capabilities
+                        .unsupported
+                        .insert(method.to_owned(), crate::CARD_RUNTIME_GAP.to_owned());
+                }
+                changes.source_status = true;
             }
             DomainEvent::ObjectUpserted(object) => {
                 changes.objects.insert(object.id.clone());
@@ -616,7 +622,7 @@ impl Store {
             self.needs_me_since.insert(moment.id.clone(), since);
         }
         keep_body(&mut self.bodies, &stored.id, &mut stored.kind);
-        self.track_surface(&moment.id, &mut stored.kind);
+        self.track_surface(&moment.id, &stored.kind);
         self.index.add_moment(&stored, since);
         changes.moments.insert(moment.id.clone());
         self.moments.insert(moment.id.clone(), stored);
@@ -666,7 +672,7 @@ impl Store {
         if let Some(kind) = kind {
             let mut kind = kind.clone();
             keep_body(&mut self.bodies, moment_id, &mut kind);
-            self.track_surface(moment_id, &mut kind);
+            self.track_surface(moment_id, &kind);
             let moment = self
                 .moments
                 .get_mut(moment_id)

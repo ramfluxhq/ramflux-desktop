@@ -13,7 +13,7 @@ use super::message_v1::{
 };
 use super::order::OrderKey;
 use super::protected::Protected;
-use super::surface::{Block, SurfaceAction};
+use super::surface::SurfaceAction;
 use crate::ids::{
     CallId, ContextId, GrantId, MomentId, ObjectId, ParticipantId, SurfaceId, TaskId, Timestamp,
 };
@@ -116,23 +116,18 @@ pub enum Receipt {
     Read,
 }
 
-/// Payload of a [`MomentKind::AgentSurface`].
+/// Payload of a [`MomentKind::AgentSurface`]: the card's fallback text and
+/// the actions the author offers. The card itself is held by the store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentSurfacePayload {
-    /// Surface id.
+    /// Surface id (the daemon's `surface_ref`).
     pub surface_id: SurfaceId,
-    /// Text shown when the surface cannot be rendered.
+    /// Text shown when the card cannot be rendered.
     #[serde(default)]
     pub fallback_text: String,
-    /// Ordered blocks.
-    #[serde(default)]
-    pub blocks: Vec<Block>,
     /// Offered actions.
     #[serde(default)]
     pub actions: Vec<SurfaceAction>,
-    /// More patches are expected.
-    #[serde(default)]
-    pub streaming: bool,
 }
 
 /// Payload of a [`MomentKind::ObjectTransfer`]. Transfer state lives on the object.

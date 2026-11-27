@@ -27,6 +27,7 @@ mod accounts;
 mod agents;
 mod backup;
 mod calls;
+mod cards;
 mod ceremony;
 mod contacts;
 mod conversation;
@@ -143,6 +144,17 @@ pub fn handle_intent(
         is_agent: !matches!(intent.proposed_by, Actor::Human),
         human_confirmed: intent.confirmed_by.is_some(),
     };
+    let stamp = |mut body: Value| {
+        if let Value::Object(map) = &mut body {
+            map.insert("proposed_by".to_owned(), proposed_by.clone());
+            map.insert("confirmed_by".to_owned(), confirmed_by.clone());
+        }
+        body
+    };
+    // Card intents may answer with several bus calls (pool steps first).
+    if let Some(effects) = cards::handle(&policy, &intent.kind, &stamp) {
+        return effects;
+    }
     let decision = conversation::decide(&policy, &intent.kind)
         .or_else(|| tasks::decide(&policy, &intent.kind))
         .or_else(|| moments::decide(&policy, &intent.kind))
@@ -169,13 +181,6 @@ pub fn handle_intent(
     if let Some(reason) = store.unsupported_reason(method) {
         return Err(IntentError::UnsupportedByBackend { method, reason: reason.to_owned() });
     }
-    let stamp = |mut body: Value| {
-        if let Value::Object(map) = &mut body {
-            map.insert("proposed_by".to_owned(), proposed_by.clone());
-            map.insert("confirmed_by".to_owned(), confirmed_by.clone());
-        }
-        body
-    };
     Ok(vec![match decision {
         Decision::Call(method, body) => {
             Effect::Call { method: method.to_owned(), body: stamp(body) }

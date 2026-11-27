@@ -16,9 +16,8 @@ use ramflux_desktop_core::{Capabilities, ContextKind, methods};
 
 /// Reason keys, one per gap.
 pub mod reason {
-    /// Cards are drawn and acted on through the shared card runtime
-    /// (`card.session.*`), which this build does not embed yet; reporting
-    /// renderer errors has no daemon counterpart either.
+    /// The daemon has no card runtime (`card.session.*`): cards show their
+    /// fallback text. Raised only when a card call finds no runtime.
     pub const SURFACES: &str = "backend.gap.surfaces";
     /// Handoff (K7).
     pub const HANDOFF: &str = "backend.gap.handoff";
@@ -84,8 +83,6 @@ pub const BACKUP_METHODS: [&str; 4] = [
 /// Every unsupported contract method (or `method@ContextKind`) with its reason.
 pub fn unsupported() -> BTreeMap<String, &'static str> {
     let mut table: BTreeMap<String, &'static str> = [
-        (methods::RENDERER_ERROR, reason::SURFACES),
-        (methods::SURFACE_ACTION, reason::SURFACES),
         (methods::HANDOFF_ACCEPT, reason::HANDOFF),
         (methods::HANDOFF_DECLINE, reason::HANDOFF),
         (methods::CONFLICT_RESOLVE, reason::CONFLICTS),

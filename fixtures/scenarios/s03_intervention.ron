@@ -43,30 +43,11 @@
         (100, MomentAdded(id: "m-ask", context_id: "c-ops", origin: "p-me", at: 0,
             kind: Message(text: "Orbit, rotate the staging API keys.", receipt: Read, franking: "frank:2f8a 61c0 d93e 4b17"), lifecycle: Done)),
         (600, MomentAdded(id: "m-plan", context_id: "c-ops", origin: "p-orbit", at: 0,
-            kind: AgentSurface(
-                surface_id: "s-plan",
-                fallback_text: "Key rotation plan",
-                blocks: [
-                    (id: "b-intro", kind: Text, data: {"text": "I will rotate three keys and revoke the old ones."}),
-                    (id: "b-keys", kind: KeyValue, data: {"items": [["billing-api", "staging"], ["search-api", "staging"], ["media-api", "staging"]]}),
-                ],
-            ),
+            kind: AgentSurface(surface_id: "s-plan", fallback_text: "Key rotation plan",),
             lifecycle: Done)),
         (700, GrantRequested(id: "g-notice", scope: "tool.calendar.post", risk: Medium, args_hash: "sha256:7d3b0a19ce52")),
         (700, MomentAdded(id: "m-window", context_id: "c-ops", origin: "p-orbit", at: 0,
-            kind: AgentSurface(
-                surface_id: "s-window",
-                fallback_text: "Pick a maintenance window",
-                blocks: [
-                    (id: "b-form", kind: Form, data: {"title": "Maintenance window", "text": "Choose when the rotation may restart services."}),
-                    (id: "b-slot", kind: Select, data: {"label": "Window", "name": "window",
-                        "options": [["sat-0200", "Saturday 02:00"], ["sun-0400", "Sunday 04:00"]], "value": "sat-0200"}),
-                    (id: "b-note", kind: Input, data: {"label": "Note for the team", "name": "note", "placeholder": "Optional"}),
-                    (id: "b-submit", kind: ActionGroup, data: {"actions": ["schedule"]}),
-                    (id: "b-notice", kind: Approval, data: {"grant_id": "g-notice", "summary": "Post the maintenance notice to the team calendar"}),
-                ],
-                actions: [(id: "schedule", label: "Schedule")],
-            ),
+            kind: AgentSurface(surface_id: "s-window", fallback_text: "Pick a maintenance window", actions: [(id: "schedule", label: "Schedule")],),
             lifecycle: Done)),
         (800, GrantRequested(
             id: "g-rotate",
@@ -88,11 +69,7 @@
                 (100, GrantResolved(grant_id: "g-rotate", state: Approved)),
                 (150, MomentUpdated(moment_id: "m-approve", lifecycle: Done)),
                 (900, MomentAdded(id: "m-result", context_id: "c-ops", origin: "p-orbit", at: 0,
-                    kind: AgentSurface(
-                        surface_id: "s-result",
-                        fallback_text: "Rotation finished",
-                        blocks: [(id: "b-ok", kind: Success, data: {"text": "Rotated 3 keys. Old keys revoked."})],
-                    ),
+                    kind: AgentSurface(surface_id: "s-result", fallback_text: "Rotation finished",),
                     lifecycle: Done)),
             ],
         ),
@@ -114,11 +91,7 @@
         (
             on: Call(method: "surface.action", fields: {"moment_id": "m-window", "action_id": "schedule"}),
             emit: [
-                (200, SurfacePatched(moment_id: "m-window", surface_id: "s-window", ops: [
-                    AppendBlocks([(id: "b-scheduled", kind: Success, data: {"text": "Maintenance window scheduled."})]),
-                    SetActions([(id: "schedule", label: "Schedule", disabled_reason: "Already scheduled")]),
-                ])),
-            ],
+                            ],
         ),
         (
             on: Call(method: "grant.revoke", fields: {"grant_id": "g-calendar"}),

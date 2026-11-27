@@ -362,6 +362,12 @@ fn map(
         methods::DIAGNOSTICS_EXPORT => Plan::Diagnostics { path: text(body, "path").to_owned() },
         methods::CONTEXT_PIN | methods::CONTEXT_UNPIN => Plan::Local,
         _ if acct.is_none() => refuse_invalid("this action needs an unlocked account"),
+        method if card_session::is_card_method(method) => {
+            match card_session::request(acct, method, body, std::mem::take(&mut secrets)) {
+                Some(request) => Plan::Call { request, refresh: Vec::new() },
+                None => refuse_invalid("the card call does not follow the contract"),
+            }
+        }
         _ => account_call(acct, method, body, known),
     }
 }

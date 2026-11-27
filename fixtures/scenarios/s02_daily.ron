@@ -1,10 +1,9 @@
 // s02 Daily use: three contexts with unread counts and yesterday's history,
-// an agent participant streaming a reply into a surface, an agent digest that
-// uses the block catalog, an inbound transfer, an inbound object waiting for a
+// an agent participant presenting a card, an inbound transfer, an inbound object waiting for a
 // pull, a deleted message, and receipts that advance after a send.
 // Demonstrates: ContextUpserted with unread, history moments (a negative `at`
-// is an offset before the epoch), SurfacePatched AppendText and SetStreaming,
-// ObjectUpserted progress, object.get / object.save, surface.action, and a
+// is an offset before the epoch), ObjectUpserted progress, object.get /
+// object.save, surface.action, and a
 // message.send response whose receipt moves from Sent to Read.
 // Moment `at: 0` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
@@ -41,25 +40,9 @@
         (400, MomentAdded(id: "m-orbit-q", context_id: "c-orbit", origin: "p-me", at: 0,
             kind: Message(text: "Summarize yesterday's design review.", receipt: Read), lifecycle: Done)),
         (500, MomentAdded(id: "m-orbit-a", context_id: "c-orbit", origin: "p-orbit", at: 0,
-            kind: AgentSurface(
-                surface_id: "s-summary",
-                fallback_text: "Design review summary",
-                blocks: [(id: "b-answer", kind: Markdown, data: {"text": ""})],
-                streaming: true,
-            ),
+            kind: AgentSurface(surface_id: "s-summary", fallback_text: "Design review summary",),
             lifecycle: InProgress)),
-        (700, SurfacePatched(moment_id: "m-orbit-a", surface_id: "s-summary", ops: [
-            AppendText(block_id: "b-answer", text: "Three decisions were made: "),
-        ])),
-        (900, SurfacePatched(moment_id: "m-orbit-a", surface_id: "s-summary", ops: [
-            AppendText(block_id: "b-answer", text: "keep the open layout, "),
-        ])),
-        (1100, SurfacePatched(moment_id: "m-orbit-a", surface_id: "s-summary", ops: [
-            AppendText(block_id: "b-answer", text: "move the kitchen east, and defer lighting."),
-            SetActions([(id: "copy", label: "Copy summary")]),
-            SetStreaming(false),
-        ])),
-        (1150, MomentUpdated(moment_id: "m-orbit-a", lifecycle: Done)),
+                                (1150, MomentUpdated(moment_id: "m-orbit-a", lifecycle: Done)),
         (1200, ObjectUpserted(id: "o-floorplan", name: "floorplan-v2.pdf", size: 482133,
             direction: Inbound, transfer: Transferring(transferred: 0), preview: "Floor plan v2: open layout, kitchen moved east")),
         (1200, MomentAdded(id: "m-team-file", context_id: "c-team", origin: "p-tomas", at: 0,
@@ -74,31 +57,10 @@
         (2500, MomentAdded(id: "m-team-specs", context_id: "c-team", origin: "p-lena", at: 0,
             kind: ObjectTransfer(object_id: "o-specs"), lifecycle: Pending)),
         (2600, MomentAdded(id: "m-orbit-digest", context_id: "c-orbit", origin: "p-orbit", at: 0,
-            kind: AgentSurface(
-                surface_id: "s-digest",
-                fallback_text: "Weekly studio digest",
-                blocks: [
-                    (id: "b-title", kind: Heading, data: {"text": "Weekly studio digest"}),
-                    (id: "b-hours", kind: Metric, data: {"label": "Billable hours", "value": "126", "delta": "+8%"}),
-                    (id: "b-open", kind: Metric, data: {"label": "Open reviews", "value": "4", "delta": "-2"}),
-                    (id: "b-done", kind: List, data: {"items": ["Kitchen layout approved", "Lighting deferred to phase 2", "Supplier quotes requested"]}),
-                    (id: "b-budget", kind: TableFallback, data: {
-                        "columns": ["Item", "Budget", "Spent"],
-                        "rows": [["Joinery", "18,000", "11,400"], ["Lighting", "6,500", "0"], ["Paint", "2,200", "1,950"]],
-                    }),
-                    (id: "b-progress", kind: Progress, data: {"label": "Phase 1 completion", "value": 0.68}),
-                    (id: "b-log", kind: LogStream, data: {"text": "09:02 synced 14 files\n09:05 rendered 3 previews\n09:06 digest ready"}),
-                    (id: "b-warn", kind: Warning, data: {"title": "Supplier delay", "text": "Tiles arrive two weeks late."}),
-                    (id: "b-err", kind: Error, data: {"title": "Render failed", "text": "One preview could not be rendered."}),
-                    (id: "b-ok", kind: Success, data: {"text": "All drawings are backed up."}),
-                    (id: "b-file", kind: FilePreview, data: {"name": "floorplan-v2.pdf", "size": 482133, "excerpt": "Open layout, kitchen moved east"}),
-                    (id: "b-actions", kind: ActionGroup, data: {"actions": ["open-report", "archive"]}),
-                ],
-                actions: [
+            kind: AgentSurface(surface_id: "s-digest", fallback_text: "Weekly studio digest", actions: [
                     (id: "open-report", label: "Open full report"),
                     (id: "archive", label: "Archive digest", disabled_reason: "Archiving is not available on this device"),
-                ],
-            ),
+                ],),
             lifecycle: Done)),
     ],
     responses: [
@@ -143,10 +105,7 @@
         (
             on: Call(method: "surface.action", fields: {"moment_id": "m-orbit-digest", "action_id": "open-report"}),
             emit: [
-                (200, SurfacePatched(moment_id: "m-orbit-digest", surface_id: "s-digest", ops: [
-                    AppendBlocks([(id: "b-opened", kind: Success, data: {"text": "Full report shared to Objects."})]),
-                ])),
-            ],
+                            ],
         ),
     ],
 )

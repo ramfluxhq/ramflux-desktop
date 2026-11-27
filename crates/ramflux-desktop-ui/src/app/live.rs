@@ -207,7 +207,11 @@ impl StoreHandle {
         {
             session = link.daemon();
         }
+        let mark = super::session::card_mark(&intent.kind);
         let (decided, records) = session.decide(intent);
+        if decided.is_ok() {
+            session.note_card_mark(mark);
+        }
         for record in records {
             self.inspector.push(record);
         }

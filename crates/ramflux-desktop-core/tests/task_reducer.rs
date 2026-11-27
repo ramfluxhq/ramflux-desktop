@@ -10,7 +10,6 @@ mod common;
 use common::*;
 use ramflux_desktop_core::selectors::{AttentionReason, attention, in_flight};
 use ramflux_desktop_core::*;
-use serde_json::json;
 
 const NOW: Timestamp = Timestamp(1_000);
 
@@ -324,45 +323,6 @@ fn needs_me_is_in_exactly_one_place() {
         feed.push(4, step_change(2, "a", StepState::NeedsMe, None)),
         Err(ApplyError::InvalidTask { .. })
     ));
-}
-
-#[test]
-fn a_choice_needs_me_at_its_surface_not_at_the_task() {
-    let mut feed = seeded();
-    feed.ok(
-        2,
-        DomainEvent::TaskUpserted(task(
-            TaskState::Running,
-            1,
-            vec![step("pick", StepState::Running)],
-        )),
-    );
-    feed.ok(5, progress_moment());
-    feed.ok(
-        6,
-        DomainEvent::Surface(SurfaceEvent::Create {
-            moment_id: MomentId::new("m-pick"),
-            context_id: ContextId::new("c-1"),
-            origin: ParticipantId::new("p-ai"),
-            surface_id: SurfaceId::new("s-pick"),
-            version: 1,
-            blocks: vec![Block::new("b-q", BlockKind::Text, json!({ "text": "Which day?" }))],
-            actions: Vec::new(),
-            fallback_text: "Orbit asks which day to release".to_owned(),
-            hash: None,
-        }),
-    );
-    let choice = NeedsMe::Choice { surface_id: SurfaceId::new("s-pick") };
-    feed.ok(7, step_change(2, "pick", StepState::NeedsMe, Some(choice)));
-    let items = attention(&feed.store);
-    assert_eq!(items.len(), 1, "one decision, one place");
-    assert_eq!(items[0].moment_id.as_str(), "m-pick");
-    assert_eq!(items[0].reason, AttentionReason::SurfaceInput);
-    let text = export::timeline_text(&feed.store, &ContextId::new("c-1")).join("\n");
-    assert!(
-        text.contains("needs you: choose in \u{201c}Orbit asks which day to release\u{201d}"),
-        "{text}"
-    );
 }
 
 #[test]

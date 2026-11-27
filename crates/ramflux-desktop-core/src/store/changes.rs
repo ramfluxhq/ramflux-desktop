@@ -286,6 +286,8 @@ pub struct Changes {
     /// Surface moments on which the authority refused an action because the
     /// surface had changed: the user reviews them again.
     pub surface_refusals: BTreeSet<MomentId>,
+    /// Surfaces whose card runtime state changed (tree, status, session).
+    pub cards: BTreeSet<SurfaceId>,
     /// Changed objects.
     pub objects: BTreeSet<ObjectId>,
     /// Changed grants.
@@ -334,6 +336,7 @@ impl Changes {
             && self.contexts.is_empty()
             && self.moments.is_empty()
             && self.surface_refusals.is_empty()
+            && self.cards.is_empty()
             && self.objects.is_empty()
             && self.grants.is_empty()
             && self.tasks.is_empty()
@@ -364,6 +367,7 @@ impl Changes {
             contexts,
             moments,
             surface_refusals,
+            cards,
             objects,
             grants,
             tasks,
@@ -392,6 +396,7 @@ impl Changes {
         self.contexts.extend(contexts);
         self.moments.extend(moments);
         self.surface_refusals.extend(surface_refusals);
+        self.cards.extend(cards);
         self.objects.extend(objects);
         self.grants.extend(grants);
         self.tasks.extend(tasks);

@@ -7,7 +7,6 @@ mod common;
 
 use common::*;
 use ramflux_desktop_core::*;
-use serde_json::json;
 
 fn seeded() -> Feed {
     let mut feed = Feed::new();
@@ -124,67 +123,6 @@ fn needs_me_since_tracks_envelope_time() {
     assert_eq!(feed.store.needs_me_since(&MomentId::new("m-1")), Some(Timestamp(30)));
     feed.ok(40, set_lifecycle("m-1", Lifecycle::InProgress));
     assert_eq!(feed.store.needs_me_since(&MomentId::new("m-1")), None);
-}
-
-#[test]
-fn surface_patches_apply_in_order() {
-    let mut feed = seeded();
-    feed.ok(30, added(moment("m-s", "c-1", 30, surface("s-1"), Lifecycle::InProgress)));
-    feed.ok(
-        40,
-        DomainEvent::SurfacePatched {
-            moment_id: MomentId::new("m-s"),
-            surface_id: SurfaceId::new("s-1"),
-            ops: vec![
-                SurfaceOp::AppendText { block_id: BlockId::new("b-text"), text: ", world".into() },
-                SurfaceOp::AppendBlocks(vec![Block::new(
-                    BlockId::new("b-progress"),
-                    BlockKind::Progress,
-                    json!({ "value": 1.0 }),
-                )]),
-                SurfaceOp::SetStreaming(false),
-            ],
-            base_hash: None,
-        },
-    );
-    let moment = feed.store.moment(&MomentId::new("m-s")).expect("moment");
-    let MomentKind::AgentSurface(payload) = &moment.kind else { panic!("not a surface") };
-    assert_eq!(payload.blocks.len(), 2);
-    assert_eq!(payload.blocks[0].data["text"], "Hello, world");
-    assert!(!payload.streaming);
-}
-
-#[test]
-fn failing_surface_patch_is_atomic() {
-    let mut feed = seeded();
-    feed.ok(30, added(moment("m-s", "c-1", 30, surface("s-1"), Lifecycle::InProgress)));
-    let result = feed.push(
-        40,
-        DomainEvent::SurfacePatched {
-            moment_id: MomentId::new("m-s"),
-            surface_id: SurfaceId::new("s-1"),
-            ops: vec![
-                SurfaceOp::SetStreaming(false),
-                SurfaceOp::AppendText { block_id: BlockId::new("missing"), text: "x".into() },
-            ],
-            base_hash: None,
-        },
-    );
-    assert_eq!(result, Err(ApplyError::UnknownBlock(BlockId::new("missing"))));
-    let moment = feed.store.moment(&MomentId::new("m-s")).expect("moment");
-    let MomentKind::AgentSurface(payload) = &moment.kind else { panic!("not a surface") };
-    assert!(payload.streaming, "first op must not have been applied");
-
-    let wrong = feed.push(
-        50,
-        DomainEvent::SurfacePatched {
-            moment_id: MomentId::new("m-s"),
-            surface_id: SurfaceId::new("s-other"),
-            ops: Vec::new(),
-            base_hash: None,
-        },
-    );
-    assert!(matches!(wrong, Err(ApplyError::SurfaceMismatch { .. })));
 }
 
 #[test]

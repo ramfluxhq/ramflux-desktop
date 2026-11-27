@@ -83,20 +83,6 @@ fn pending_row(store: &Store, grant: &Grant, sink: &EventSink, cx: &App) -> AnyE
     let decide = moment.map(|m| {
         let scoped =
             sink.scoped(Scope::Context(m.context_id.clone())).scoped(Scope::Moment(m.id.clone()));
-        let block = match &m.kind {
-            MomentKind::AgentSurface(s) => s
-                .blocks
-                .iter()
-                .find(|b| {
-                    b.data.get("grant_id").and_then(|v| v.as_str()) == Some(grant.id.as_str())
-                })
-                .map(|b| b.id.clone()),
-            _ => None,
-        };
-        let scoped = match block {
-            Some(block) => scoped.scoped(Scope::Block(block)),
-            None => scoped,
-        };
         let deny = scoped.clone();
         h_flex()
             .gap(space(2.))

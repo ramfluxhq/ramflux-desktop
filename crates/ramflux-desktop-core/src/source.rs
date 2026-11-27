@@ -7,7 +7,6 @@
 //! mock and an SDK-backed implementation both satisfy this trait; neither the
 //! trait nor core depends on an async runtime.
 
-use crate::conformance::RendererProfile;
 use crate::event::EventEnvelope;
 use crate::ids::{CallId, ContextId, MomentId, Timestamp};
 use crate::intent::Effect;
@@ -36,11 +35,6 @@ pub trait Source {
     /// pages history delivers the older page (as `MomentAdded`); others
     /// ignore it.
     fn request_older(&mut self, _context: &ContextId) {}
-
-    /// What the renderer can show (capability negotiation). Given once when
-    /// the source is attached; a source that talks to surface producers
-    /// sends it on, others keep or ignore it.
-    fn renderer_profile(&mut self, _profile: &RendererProfile) {}
 
     /// The media engine needs the media session of `call` (relay
     /// endpoint, allocation token, SFrame keys). It is secret, so it never

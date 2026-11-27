@@ -8,8 +8,8 @@
 //! carry human confirmation or a secret; both arrive by other paths.
 
 use ramflux_desktop_core::{
-    BlockId, BlockKind, DeleteScope, GrantId, IntentKind, Moment, MomentKind, NodeAction,
-    ObjectAction, Store, UiEvent, UiEventKind,
+    BlockId, DeleteScope, GrantId, IntentKind, Moment, MomentKind, NodeAction, ObjectAction, Store,
+    UiEvent, UiEventKind,
 };
 
 /// Maps a root-level UI event to its intent kind.
@@ -90,6 +90,24 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                 surface_id: event.surface_id().unwrap_or(&surface.surface_id).clone(),
             }
         }
+        UiEventKind::CardInteracted { key, event: input } => {
+            let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
+            IntentKind::CardInteract {
+                moment_id,
+                surface_id: event.surface_id().unwrap_or(&surface.surface_id).clone(),
+                key: key.clone(),
+                event: input.clone(),
+            }
+        }
+        UiEventKind::CardSlotAnswered { slot_id, outcome } => {
+            let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
+            IntentKind::CardSlotAnswer {
+                moment_id,
+                surface_id: event.surface_id().unwrap_or(&surface.surface_id).clone(),
+                slot_id: slot_id.clone(),
+                outcome: *outcome,
+            }
+        }
         UiEventKind::ApprovePressed => {
             IntentKind::Approve { grant_id: decision_grant(event, moment, store)? }
         }
@@ -125,14 +143,9 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
 fn decision_grant(event: &UiEvent, moment: &Moment, store: &Store) -> Option<GrantId> {
     match &moment.kind {
         MomentKind::Intervention(payload) => Some(payload.grant_id.clone()),
-        MomentKind::AgentSurface(surface) => {
-            let block_id = event.block_id()?;
-            let block = surface.blocks.iter().find(|b| &b.id == block_id)?;
-            if block.kind != BlockKind::Approval {
-                return None;
-            }
-            block.data.get("grant_id").and_then(|v| v.as_str()).map(GrantId::new)
-        }
+        // A card's approval is answered through its slot (a verified intent,
+        // not a grant decision here).
+        MomentKind::AgentSurface(_) => None,
         MomentKind::TaskProgress(payload) => {
             let task = store.task(&payload.task_id)?;
             let step = event
@@ -300,20 +313,16 @@ mod tests {
     }
 
     #[test]
-    fn approvals_map_to_the_grant_of_their_moment_block_or_step() {
+    fn approvals_map_to_the_grant_of_their_intervention_or_step() {
         let s03 = player("s03_intervention", 1_000);
         let intervention = at("c-ops", "m-approve", "decision", UiEventKind::ApprovePressed);
         assert!(matches!(
             intent_for(&intervention, s03.store()),
             Some(IntentKind::Approve { grant_id }) if grant_id == GrantId::new("g-rotate")
         ));
-        let block = at("c-ops", "m-window", "b-notice", UiEventKind::DenyPressed);
-        assert!(matches!(
-            intent_for(&block, s03.store()),
-            Some(IntentKind::Deny { grant_id }) if grant_id == GrantId::new("g-notice")
-        ));
-        let not_an_approval = at("c-ops", "m-window", "b-slot", UiEventKind::ApprovePressed);
-        assert!(intent_for(&not_an_approval, s03.store()).is_none());
+        // A card's approval is answered through its slot, never as a grant.
+        let card = at("c-ops", "m-window", "b-notice", UiEventKind::DenyPressed);
+        assert!(intent_for(&card, s03.store()).is_none());
     }
 
     #[test]

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{ContactAction, GovernanceOp, SecretInput};
-use crate::conformance::SurfaceHash;
+use crate::card_event::CardSlotOutcome;
 use crate::ids::{
     AccountId, BackupJobId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId, ObjectId,
     ParticipantId, StandingApprovalId, SurfaceId, TaskId,
@@ -16,6 +16,7 @@ use crate::model::{
     AgentAccess, AgentCreateRequest, AgentJobAction, AgentJobKind, AgentPersona,
     AgentRuntimeAction, ConflictResolution, DeleteScope, PinSource, RequestAnswer, RequestPolicy,
 };
+use crate::surface_hash::SurfaceHash;
 
 /// Direction of an own-device sync transfer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +33,28 @@ pub enum AppLockPhase {
     Background,
     /// The window is in front again: the timer stops.
     Foreground,
+}
+
+/// A host event a card node takes (`card.session.event`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CardInput {
+    /// A typed value for a field (text, check, choice, slider, date).
+    Input {
+        /// The value, in the shape the card's component takes.
+        value: serde_json::Value,
+    },
+    /// A tap on a Button.
+    Activate,
+    /// A tab selection by index.
+    SelectTab {
+        /// The tab's index.
+        index: u64,
+    },
+    /// The host opened a modal of the card.
+    ModalOpen,
+    /// The host closed a modal of the card.
+    ModalClose,
 }
 
 /// Every intent kind.
@@ -212,6 +235,87 @@ pub enum IntentKind {
         moment_id: MomentId,
         /// Surface.
         surface_id: SurfaceId,
+    },
+    /// Open the card runtime's session for a card on screen.
+    CardOpen {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface (the daemon's `surface_ref`).
+        surface_id: SurfaceId,
+        /// The app locale (BCP 47).
+        locale: String,
+        /// The app is in its dark theme.
+        dark: bool,
+    },
+    /// Present an open card in another locale or theme.
+    CardPresent {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+        /// The app locale (BCP 47).
+        locale: String,
+        /// The app is in its dark theme.
+        dark: bool,
+    },
+    /// A host event on one node of an open card.
+    CardInteract {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+        /// Key of the node the event addresses.
+        key: String,
+        /// The event.
+        event: CardInput,
+    },
+    /// The host's answer to a slot of a card (link sheet or approval).
+    CardSlotAnswer {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+        /// Slot id, as the card asked for it.
+        slot_id: String,
+        /// The answer.
+        outcome: CardSlotOutcome,
+    },
+    /// Send the submit a button press asked for.
+    CardSubmit {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+    },
+    /// Read a card again: its tree no longer follows the runtime's session.
+    CardRefresh {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+    },
+    /// Suspend one card's session (the pool asked for it).
+    CardSuspend {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+    },
+    /// Release one card's session (the pool asked for it).
+    CardDispose {
+        /// Moment holding the surface.
+        moment_id: MomentId,
+        /// Surface.
+        surface_id: SurfaceId,
+    },
+    /// Suspend every resumed card (the window is hidden or the app locked).
+    CardSuspendAll,
+    /// Resume the most recently used cards (the window is shown again).
+    CardResumeAll,
+    /// Keep sessions only for the cards in `surface_ids` (the loaded window).
+    CardRetainVisible {
+        /// The surfaces still on screen.
+        surface_ids: std::collections::BTreeSet<SurfaceId>,
     },
     /// Approve a pending grant.
     Approve {

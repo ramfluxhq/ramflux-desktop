@@ -61,8 +61,12 @@ ABI refuses `panic = "abort"`):
 cargo build -p ramflux-rf --profile ffi-release --features ramflux-sdk/card-runtime
 ```
 
-Until the desktop draws cards from the runtime, a card shows its fallback text
-only; `backend.gap.surfaces` stays set.
+The desktop draws every card from the runtime's native tree. Against a daemon
+without the runtime, a card shows its fallback text only, and the first card call
+that finds no runtime sets `backend.gap.surfaces` (card actions are then refused
+with that reason). A card runs in the same daemon session as the rest of the
+account; the desktop suspends card sessions while the window is away for a
+minute and while the app is locked.
 
 Live tests against a real `rf daemon` (no node needed) are ignored by
 default. Install `rf` from the product revision pinned in `Cargo.lock`, then:

@@ -9,12 +9,14 @@
 //! daemon built without `card-runtime`) is the only reason the desktop
 //! raises `backend.gap.surfaces`.
 
-use ramflux_desktop_core::CardBatch;
+use ramflux_desktop_core::{
+    CardBatch, CardEvent, CardLink, CardReceipt, CardSlotOutcome as SlotOutcome, DomainEvent,
+    SurfaceId,
+};
 use serde_json::Value;
 use thiserror::Error;
 
 use crate::bus::BusError;
-use crate::plan::card_session::SlotOutcome;
 
 /// The message of a daemon built without the card runtime.
 const RUNTIME_UNAVAILABLE: &str = "card runtime unavailable";
@@ -270,3 +272,157 @@ pub fn failure(error: &BusError) -> CardFailure {
         _ => CardFailure::Other,
     }
 }
+
+/// The domain events of one card call's outcome: its reply, or its failure.
+/// A daemon without the runtime raises the card gap (every card call is then
+/// unsupported); a typed refusal is the card's own refusal; anything else is
+/// a refused call the card shows in place, never retried here.
+pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> Vec<DomainEvent> {
+    match result {
+        Ok(answer) => match reply(answer) {
+            Ok(reply) => events(method, body, reply),
+            Err(ReplyError) => vec![refused_event(body, "card_session_reply")],
+        },
+        Err(error) => match failure(error) {
+            CardFailure::RuntimeUnavailable => vec![DomainEvent::CardRuntimeUnavailable],
+            CardFailure::Refused(reason) => vec![refused_event(body, &reason)],
+            CardFailure::Other => vec![refused_event(body, "card_session_failed")],
+        },
+    }
+}
+
+fn refused_event(body: &Value, reason: &str) -> DomainEvent {
+    DomainEvent::Card(CardEvent::Refused {
+        surface_id: SurfaceId::new(body["surface_id"].as_str().unwrap_or_default()),
+        reason: reason.to_owned(),
+    })
+}
+
+/// The domain events one card call's reply means. `body` is the call's body
+/// (it names the surface, and the URL of a link answer); `method` is the bus
+/// method the call was made with.
+///
+/// A refusal carries its reason key. A reply the runtime does not allow to
+/// draw (`render_allowed` false) makes the card fall back to its text.
+pub fn events(method: &str, body: &Value, reply: CardReply) -> Vec<DomainEvent> {
+    let surface_id = SurfaceId::new(body["surface_id"].as_str().unwrap_or_default());
+    let event = |event: CardEvent| DomainEvent::Card(event);
+    let refused = |reason: &str| {
+        vec![event(CardEvent::Refused {
+            surface_id: surface_id.clone(),
+            reason: reason.to_owned(),
+        })]
+    };
+    if reply.result == CardResult::Refused {
+        return refused(reply.reason.as_deref().unwrap_or("card_session_refused"));
+    }
+    if reply.result == CardResult::StaleDropped {
+        return refused("stale_dropped");
+    }
+    if reply.result == CardResult::Superseded {
+        return vec![event(CardEvent::Stale { surface_id })];
+    }
+    let batch = |b: CardBatch| Box::new(b);
+    let mut out = Vec::new();
+    match (method, reply.result) {
+        (CARD_OPEN, CardResult::Opened) => match (reply.session, reply.batch) {
+            (Some(session), Some(b)) => out.push(event(CardEvent::Opened {
+                surface_id: surface_id.clone(),
+                session,
+                batch: batch(b),
+            })),
+            _ => out.push(event(CardEvent::Fallback { surface_id: surface_id.clone() })),
+        },
+        (CARD_RESUME, CardResult::Resumed) => match (reply.session, reply.batch) {
+            (Some(session), Some(b)) => out.push(event(CardEvent::Resumed {
+                surface_id: surface_id.clone(),
+                session,
+                batch: batch(b),
+            })),
+            _ => out.push(event(CardEvent::Stale { surface_id: surface_id.clone() })),
+        },
+        (CARD_UPDATE | CARD_PRESENT | CARD_EVENT | CARD_SLOT, _) if !reply.render_allowed => {
+            out.push(event(CardEvent::Fallback { surface_id: surface_id.clone() }));
+        }
+        (CARD_UPDATE, CardResult::Updated) | (CARD_PRESENT, CardResult::Presented) => {
+            if let Some(b) = reply.batch {
+                out.push(event(CardEvent::Batch {
+                    surface_id: surface_id.clone(),
+                    batch: batch(b),
+                    draft_conflict: reply.draft_conflict,
+                }));
+            }
+        }
+        (CARD_EVENT, CardResult::Edited | CardResult::PendingSubmit | CardResult::OpenUrl) => {
+            if let Some(b) = reply.batch {
+                out.push(event(CardEvent::Batch {
+                    surface_id: surface_id.clone(),
+                    batch: batch(b),
+                    draft_conflict: reply.draft_conflict,
+                }));
+            }
+            if reply.result == CardResult::PendingSubmit {
+                out.push(event(CardEvent::PendingSubmit { surface_id: surface_id.clone() }));
+            }
+            if let Some(HostRequest::OpenUrl { slot_id, request_id, url, token }) =
+                reply.host_request
+            {
+                out.push(event(CardEvent::OpenUrl {
+                    surface_id: surface_id.clone(),
+                    link: CardLink { slot_id, request_id, url, token },
+                }));
+            }
+        }
+        (CARD_SLOT, CardResult::Opened) => {
+            // The browser opens for the URL the slot answer was given for.
+            if let Some(url) = body["url"].as_str() {
+                out.push(event(CardEvent::LinkOpened {
+                    surface_id: surface_id.clone(),
+                    url: url.to_owned(),
+                }));
+            }
+            out.push(event(CardEvent::LinkClosed { surface_id: surface_id.clone() }));
+        }
+        (CARD_SLOT, CardResult::Cancelled | CardResult::SlotUnavailable) => {
+            out.push(event(CardEvent::LinkClosed { surface_id: surface_id.clone() }));
+        }
+        (CARD_SLOT, CardResult::ApprovalDecision) => {
+            if let Some(HostRequest::ApprovalDecision { outcome, .. }) = reply.host_request {
+                out.push(event(CardEvent::ApprovalVerdict {
+                    surface_id: surface_id.clone(),
+                    outcome,
+                }));
+            }
+        }
+        (CARD_SUBMIT, CardResult::Submitted) => {
+            if let Some(receipt) = reply.submit {
+                out.push(event(CardEvent::Submitted {
+                    surface_id: surface_id.clone(),
+                    receipt: CardReceipt {
+                        message_id: receipt.message_id,
+                        surface_version: receipt.surface_version,
+                        surface_hash: receipt.surface_hash,
+                    },
+                }));
+            }
+        }
+        (CARD_SUSPEND, CardResult::Suspended) => {
+            out.push(event(CardEvent::Suspended { surface_id: surface_id.clone() }));
+        }
+        (CARD_DISPOSE, CardResult::Disposed) => {
+            out.push(event(CardEvent::Disposed { surface_id: surface_id.clone() }));
+        }
+        _ => return refused("card_session_reply"),
+    }
+    out
+}
+
+const CARD_OPEN: &str = "card.session.open";
+const CARD_UPDATE: &str = "card.session.update";
+const CARD_PRESENT: &str = "card.session.present";
+const CARD_EVENT: &str = "card.session.event";
+const CARD_SLOT: &str = "card.session.slot";
+const CARD_SUBMIT: &str = "card.session.submit";
+const CARD_SUSPEND: &str = "card.session.suspend";
+const CARD_RESUME: &str = "card.session.resume";
+const CARD_DISPOSE: &str = "card.session.dispose";

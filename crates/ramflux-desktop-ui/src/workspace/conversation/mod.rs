@@ -136,16 +136,6 @@ impl Conversation {
             cx.subscribe(&store, |this, store, event: &StoreEvent, cx| {
                 let StoreEvent::Changed(changes) = event else { return };
                 this.follow_rename(cx);
-                if changes.is_reset() {
-                    // A new world (scenario, account switch): a "review again"
-                    // notice belongs to the old one.
-                    this.view.clear_reviews();
-                }
-                // The authority refused an action: the surface changed after
-                // the user reviewed it (rows below remeasure: they changed).
-                for id in changes.surface_refusals() {
-                    this.view.set_review_again(id, true);
-                }
                 let Some(context_id) = this.context_id.clone() else {
                     // The placeholder tells loading from no conversations.
                     if changes.touches_listings() {
@@ -408,19 +398,6 @@ impl Conversation {
         cx.notify();
     }
 
-    /// Asks the user to review a surface again: an action on it was not
-    /// performed because it changed after the user reviewed it.
-    pub fn review_again(&mut self, id: &MomentId, cx: &mut Context<Self>) {
-        if self.view.set_review_again(id, true) {
-            self.remeasure(id, cx);
-        }
-    }
-
-    /// Whether a surface row shows the "review again" notice.
-    pub fn is_review_again(&self, id: &MomentId) -> bool {
-        self.view.is_review_again(id)
-    }
-
     /// Toggles a row's disclosure. Called from the moment-level sink.
     pub fn set_expanded(&mut self, id: &MomentId, expanded: bool, cx: &mut Context<Self>) {
         if self.view.set_expanded(id, expanded) {
@@ -576,33 +553,10 @@ impl Conversation {
                     .ok();
                     None
                 }
-                UiEventKind::FieldChanged { value } => {
-                    let block = event.block_id()?.clone();
-                    let value = value.clone();
-                    this.update(cx, |field, cx| {
-                        if field.view.set_field(&moment_id, &block, value) {
-                            field.remeasure(&moment_id, cx);
-                        }
-                    })
-                    .ok();
-                    None
-                }
                 UiEventKind::ActionInvoked { action_id, values, surface_hash, version } => {
                     let (action_id, surface_hash, version) =
                         (action_id.clone(), surface_hash.clone(), *version);
-                    // Acting again is the new review: the notice goes away.
-                    let collected = this
-                        .update(cx, |field, cx| {
-                            if field.view.set_review_again(&moment_id, false) {
-                                field.remeasure(&moment_id, cx);
-                            }
-                            let row = field.rows.position(&moment_id)?;
-                            field.rows.as_slice().get(row).map(|row| field.view.values(row, cx))
-                        })
-                        .ok()
-                        .flatten()
-                        .unwrap_or_default();
-                    let values = if values.is_null() { collected } else { values.clone() };
+                    let values = values.clone();
                     Some(UiEvent {
                         scope_path: event.scope_path,
                         kind: UiEventKind::ActionInvoked {
@@ -622,6 +576,11 @@ impl Conversation {
 impl Render for Conversation {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rows = self.rows.shared();
+        // The cards of the loaded window: any other session is released.
+        let loaded_cards: std::collections::BTreeSet<ramflux_desktop_core::SurfaceId> = rows
+            .iter()
+            .filter_map(|row| row.card.as_ref().map(|card| card.surface_id.clone()))
+            .collect();
         self.view.ensure(self.rows.stateful(), window, cx);
         let store = self.store.read(cx).store();
         let context = self.context_id.as_ref().and_then(|id| store.context(id));
@@ -752,6 +711,26 @@ impl Render for Conversation {
                             let (store, id) = (store.clone(), id.clone());
                             cx.defer(move |cx| {
                                 store.update(cx, |store, _| store.request_bodies(&[id])).ok();
+                            });
+                        }
+                        if let Some(card) = row.card.as_ref() {
+                            // A card on screen is opened (or presented in the app's
+                            // locale and theme) once; the store is asked, not drawn.
+                            let (store, moment, surface) =
+                                (store.clone(), id.clone(), card.surface_id.clone());
+                            let (locale, dark) = (crate::i18n::locale(), cx.theme().is_dark());
+                            cx.defer(move |cx| {
+                                store
+                                    .update(cx, |store, cx| {
+                                        store.card_on_screen(&moment, &surface, &locale, dark, cx)
+                                    })
+                                    .ok();
+                            });
+                        }
+                        if ix == 0 {
+                            let (store, loaded) = (store.clone(), loaded_cards.clone());
+                            cx.defer(move |cx| {
+                                store.update(cx, |store, cx| store.card_retain(&loaded, cx)).ok();
                             });
                         }
                         if matches!(row.moment.kind, ramflux_desktop_core::MomentKind::Message(_)) {

@@ -79,6 +79,9 @@ pub enum RootEvent {
 }
 
 /// Owns the pending intent and the confirm strip.
+/// How long the window may stay away before the cards are suspended.
+const CARD_IDLE_SUSPEND: std::time::Duration = std::time::Duration::from_secs(60);
+
 pub struct IntentRoot {
     store: Entity<StoreHandle>,
     confirm: Entity<ConfirmStrip>,
@@ -94,6 +97,8 @@ pub struct IntentRoot {
     settle: Option<Task<()>>,
     /// When the first change of the flurry being settled happened.
     settle_since: Option<Instant>,
+    /// The wait after which the cards are suspended, while the window is away.
+    card_idle: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -315,6 +320,19 @@ impl IntentRoot {
     /// A flurry of changes settles after [`LIFECYCLE_SETTLE_CAP`] at the
     /// latest.
     fn on_window_activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Cards are suspended once the window has been away for a while, and
+        // resumed when it is back (the runtime frees its VMs meanwhile).
+        if window.is_window_active() {
+            self.card_idle = None;
+            self.store.update(cx, |store, cx| store.card_resume_all(cx));
+        } else if self.card_idle.is_none() {
+            self.card_idle = Some(cx.spawn_in(window, async move |root, cx| {
+                cx.background_executor().timer(CARD_IDLE_SUSPEND).await;
+                let _ = root.update_in(cx, |root, _, cx| {
+                    root.store.update(cx, |store, cx| store.card_suspend_all(cx));
+                });
+            }));
+        }
         if let Some(accounts) = self.lifecycle_accounts(cx)
             && window.is_window_active()
         {
@@ -417,6 +435,7 @@ impl IntentRoot {
                 covered: BTreeSet::new(),
                 settle: None,
                 settle_since: None,
+                card_idle: None,
                 _subscriptions: subscriptions,
             }
         })
@@ -436,8 +455,7 @@ fn report_due(has: Option<AppLockPhase>, phase: AppLockPhase) -> bool {
 fn stale(store: &Store, kind: &IntentKind) -> Option<(&'static str, Option<MomentId>)> {
     match kind {
         IntentKind::SurfaceAction { moment_id, surface_hash, .. } => {
-            let current = store.surface_hash(moment_id) == Some(surface_hash)
-                && !store.surface_conflict(moment_id);
+            let current = store.surface_hash(moment_id) == Some(surface_hash);
             (!current).then(|| ("confirmation cancelled: surface changed", Some(moment_id.clone())))
         }
         IntentKind::Approve { grant_id } => {

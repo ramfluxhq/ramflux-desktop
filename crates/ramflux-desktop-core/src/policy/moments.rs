@@ -7,11 +7,11 @@
 use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
-use crate::conformance::SurfaceHash;
 use crate::ids::{GrantId, MomentId};
 use crate::intent::{IntentKind, methods};
 use crate::model::{Grant, GrantState, Lifecycle, MomentKind, Risk, SafetyState, StepState};
 use crate::store::SurfaceState;
+use crate::surface_hash::SurfaceHash;
 
 /// Decides moment-area kinds; `None` for kinds of other areas.
 pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
@@ -176,12 +176,6 @@ fn surface_action(
     let record = p.store.surface(moment_id).ok_or_else(|| wrong_kind(moment_id, "AgentSurface"))?;
     match record.state {
         SurfaceState::Closed => return Err(IntentError::SurfaceClosed(moment_id.clone())),
-        SurfaceState::Conflict { .. } => {
-            return Err(IntentError::SurfaceConflict(moment_id.clone()));
-        }
-        SurfaceState::OverLimit(_) => {
-            return Err(IntentError::SurfaceOverLimit(moment_id.clone()));
-        }
         SurfaceState::OutOfSync => return Err(IntentError::SurfaceOutOfSync(moment_id.clone())),
         SurfaceState::Open => {}
     }

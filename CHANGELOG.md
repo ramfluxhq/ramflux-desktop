@@ -22,13 +22,21 @@ Versioning.
 
 ### Added
 
-- Card runtime groundwork: the core holds a card's native tree and applies
-  its mutation batches atomically (a refused batch leaves the tree as it
-  was), and keeps the card sessions per account within the runtime's limits
-  (two resumed, twenty-four open, least recently used first). The SDK builds
-  the `card.session.*` bus requests and types their replies; event, slot and
-  submit bodies travel as secret fields. Cards are not drawn yet: they still
-  show their fallback text.
+- Cards are drawn from the card runtime's native tree (`ramflux.card.tree.v1`,
+  all 20 kinds) through the `card.session.*` bus methods. The store holds each
+  card's tree and applies its mutation batches atomically (a refused batch
+  leaves the tree as it was). Text is plain; images are never fetched and show
+  "Image unavailable". Interactions: typed input, buttons (drafts travel with
+  the press), tabs, modal sheets, link confirmation (the browser opens only
+  after the runtime answers `opened`) and approvals (the desktop shows "Waiting
+  for confirmation" after its verdict; it does not decide the task step yet).
+  Lifecycle states (generating, submitting, consumed, closed, updated, out of
+  sync, stale) follow the runtime. Sessions stay within the runtime's limits
+  (two resumed, twenty-four open, least recently used first) and are suspended
+  when the window is away for a minute or the app locks.
+- Card runtime groundwork: the SDK builds the `card.session.*` bus requests and
+  types their replies; event, slot and submit bodies travel as secret fields;
+  a daemon without the runtime is reported as `backend.gap.surfaces`.
 
 - App lock (Settings › Account › App lock, off by default): when on, the
   app asks for the account code after the chosen time in the background
@@ -85,6 +93,11 @@ Versioning.
 
 ### Changed
 
+- Task-step decisions on a surface are still answered through the surface's
+  own actions (`surface.action`, the core's surface store and `surface.get`
+  read model). This is a named interim: the card approval flow (`task.resolve`
+  with its decision id and revision) replaces it with G12. Approval verdicts
+  from a card stop at "Waiting for confirmation".
 - Agents no longer use the AI participant credential export or the
   headless-AI account ceremony; the wizard's unlock-free flow is replaced by
   the desktop-started creation above. The bus methods are the
@@ -187,6 +200,14 @@ Versioning.
 
 ### Removed
 
+- The desktop's block renderer for agent surfaces (BlockKind blocks, patches,
+  text streams, renderer conformance profiles and renderer error reports) and
+  its payload translation. Surfaces are shown as their card (see Added) or
+  their fallback text.
+- The `RendererProfile` capability negotiation and the `surface.renderer_error`
+  report: the card runtime draws every card, so there is nothing to report.
+- The conformance fixtures and the scenarios that only exercised the removed
+  renderer (`s11_surface_versions`, `s12_surface_limits`).
 - The desktop's interim delivery-receipt sender (`message.receipt.delivered`):
   the core sends delivered receipts itself.
 - The credential export of AI participants on the desktop (no request reaches

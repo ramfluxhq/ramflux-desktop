@@ -35,12 +35,9 @@ fn body(store: &Store, moment: &Moment) -> String {
             store.body(&moment.id).map_or_else(|| "[message not loaded]".to_owned(), str::to_owned)
         }
         MomentKind::AgentSurface(p) => {
-            let note = match store.surface(&moment.id).map(|r| &r.state) {
+            let note = match store.surface(&moment.id).map(|r| r.state) {
                 Some(SurfaceState::Closed) => " [closed]",
-                Some(SurfaceState::Conflict { .. }) => " [out of date]",
-                Some(SurfaceState::OverLimit(_)) => " [too large to show; summary]",
                 Some(SurfaceState::OutOfSync) => " [out of sync]",
-                Some(SurfaceState::Open) | None if p.streaming => " [writing]",
                 Some(SurfaceState::Open) | None => "",
             };
             format!("{}{note}", p.fallback_text)

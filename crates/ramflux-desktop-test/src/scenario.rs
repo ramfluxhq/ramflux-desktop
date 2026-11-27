@@ -15,7 +15,7 @@ pub const DEFAULT_EPOCH: Timestamp = Timestamp(1_790_812_800_000);
 
 /// Names of the bundled scenarios, in order. Companion fixtures (background
 /// accounts of a multi-account scenario) are not listed.
-pub const SCENARIO_NAMES: [&str; 13] = [
+pub const SCENARIO_NAMES: [&str; 11] = [
     "s01_first_launch",
     "s02_daily",
     "s03_intervention",
@@ -26,8 +26,6 @@ pub const SCENARIO_NAMES: [&str; 13] = [
     "s08_failures",
     "s09_multi_account_day",
     "s10_ai_participant",
-    "s11_surface_versions",
-    "s12_surface_limits",
     "s13_born_v3",
 ];
 
@@ -159,23 +157,6 @@ impl Scenario {
 /// Directory holding the bundled `*.ron` scenarios.
 pub fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/scenarios")
-}
-
-/// Names of the renderer conformance fixtures, by level (L0, L1, L2).
-pub const CONFORMANCE_NAMES: [&str; 3] = ["l0_basics", "l1_documents", "l2_interactive"];
-
-/// Directory holding the renderer conformance fixtures.
-pub fn conformance_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/conformance")
-}
-
-/// Loads a renderer conformance fixture by name, e.g. `"l0_basics"`.
-///
-/// # Errors
-///
-/// Returns [`ScenarioError`] when the file is missing or invalid.
-pub fn load_conformance(name: &str) -> Result<Scenario, ScenarioError> {
-    Scenario::load(&conformance_dir().join(format!("{name}.ron")))
 }
 
 /// Loads a bundled scenario by name, e.g. `"s03_intervention"`.
