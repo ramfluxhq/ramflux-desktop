@@ -74,6 +74,34 @@ impl fmt::Debug for CardLink {
     }
 }
 
+/// The host part of an `https` URL, or `None` when the URL is not an https
+/// URL with a plain host (no userinfo, no whitespace or control characters).
+/// A link sheet shows this host on its own line; a link the host cannot
+/// parse is never opened.
+#[must_use]
+pub fn https_host(url: &str) -> Option<&str> {
+    if url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return None;
+    }
+    let scheme = url.get(..8)?;
+    if !scheme.eq_ignore_ascii_case("https://") {
+        return None;
+    }
+    let after = &url[8..];
+    let authority = after.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    let host = match authority.rsplit_once(':') {
+        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => host,
+        Some(_) => return None,
+        None => authority,
+    };
+    let valid = !host.is_empty()
+        && host.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-');
+    valid.then_some(host)
+}
+
 /// The receipt of a submit (what the daemon accepted).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardReceipt {
@@ -84,6 +112,10 @@ pub struct CardReceipt {
     /// Surface hash that was submitted.
     pub surface_hash: String,
 }
+
+/// The refusal reason the desktop gives an event taken on a card version the
+/// card no longer holds: the user reviews the card again first.
+pub const CARD_CHANGED_REASON: &str = "card_changed";
 
 /// The reason key of a daemon without the card runtime.
 pub const CARD_RUNTIME_GAP: &str = "backend.gap.surfaces";
@@ -124,7 +156,9 @@ pub enum CardEvent {
     },
     /// A batch for the held session: a signed update, an edit or a locale
     /// change. `draft_conflict` says the runtime discarded the author's
-    /// draft in favour of the signed update.
+    /// draft in favour of the signed update. `own_reply` says the batch
+    /// answers an event this desktop sent (an edit or a tap); any other
+    /// batch is an outside change.
     Batch {
         /// Surface.
         surface_id: SurfaceId,
@@ -132,6 +166,9 @@ pub enum CardEvent {
         batch: Box<CardBatch>,
         /// The runtime discarded a local draft.
         draft_conflict: bool,
+        /// The batch answers an event this desktop sent.
+        #[serde(default)]
+        own_reply: bool,
     },
     /// The surface changed on the daemon, the runtime superseded the
     /// session, or the held tree no longer follows it: the card is read

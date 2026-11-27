@@ -221,7 +221,7 @@ impl CardGallery {
     /// A host event from a card of the gallery. The card gets a live session
     /// (the others give theirs up), then the event goes to the runtime.
     fn on_event(&mut self, index: usize, kind: UiEventKind, cx: &mut Context<Self>) {
-        let UiEventKind::CardInteracted { key, event } = kind else {
+        let UiEventKind::CardInteracted { key, event, .. } = kind else {
             if let Some(entry) = self.entries.get_mut(index) {
                 entry.note = Some(tr("card_gallery.note.slot").to_string());
             }
@@ -328,6 +328,7 @@ fn card_record(tree: &CardTree) -> Option<CardRecord> {
         refusal: None,
         draft_discarded: false,
         receipt: None,
+        chain: vec![tree.stamp()],
     })
 }
 

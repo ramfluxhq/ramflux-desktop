@@ -48,7 +48,8 @@ pub mod typing;
 pub mod ui_event;
 
 pub use card_event::{
-    CARD_METHODS, CARD_RUNTIME_GAP, CardEvent, CardLink, CardReceipt, CardSlotOutcome, CardStatus,
+    CARD_CHANGED_REASON, CARD_METHODS, CARD_RUNTIME_GAP, CardEvent, CardLink, CardReceipt,
+    CardSlotOutcome, CardStatus, https_host,
 };
 pub use event::{
     DomainEvent, EVENT_SCHEMA, EventEnvelope, SourceStatus, SurfaceEvent, SurfaceSnapshot,

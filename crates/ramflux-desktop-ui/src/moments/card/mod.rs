@@ -39,12 +39,13 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, IntoElement, RenderOnce, SharedString, Window};
 use ramflux_desktop_core::{
-    CardNode, CardRecord, CardStatus, CardTree, JsonValue, Moment, MomentKind, Store,
+    CardNode, CardRecord, CardSeen, CardStatus, CardTree, JsonValue, Moment, MomentKind, Store,
     SurfaceAction, SurfaceHash, SurfaceId, SurfaceState,
 };
 use ramflux_desktop_navigation::direction::LayoutDirection;
 
 use crate::bubble::EventSink;
+use crate::i18n::bidi::strip_controls;
 
 /// What a card row needs from the store, copied when the row is built.
 #[derive(Clone, Debug, PartialEq)]
@@ -100,6 +101,13 @@ pub struct CardLocal {
     pub modal: Option<String>,
     /// Lists expanded past their first five items, by List node key.
     pub expanded: BTreeSet<String>,
+    /// The text each text field last sent to the runtime, by node key.
+    pub sent: BTreeMap<String, String>,
+    /// The tree value each text field was last synced to, by node key.
+    pub synced: BTreeMap<String, String>,
+    /// The tree version a forced field reset (a refusal or a discarded
+    /// draft) was applied at, so it happens once per version.
+    pub reset_at: Option<u64>,
 }
 
 /// Text field drafts of one card, by node key.
@@ -142,6 +150,7 @@ impl RenderOnce for CardBody {
                     inputs: inputs.clone(),
                     local: local.clone(),
                     dir: direction_of(tree),
+                    author: snap.author.clone(),
                 };
                 let root = tree.root().map(str::to_owned);
                 let card = match root.as_deref().and_then(|key| view.node(key)) {
@@ -189,12 +198,25 @@ pub(crate) struct View<'a> {
     pub inputs: Inputs,
     pub local: Local,
     pub dir: LayoutDirection,
+    /// The author's display name (untrusted text).
+    pub author: SharedString,
 }
 
 impl View<'_> {
     /// A node by key.
     pub fn node(&self, key: &str) -> Option<&CardNode> {
         self.tree.node(key)
+    }
+
+    /// What the user sees of `node` now: the held tree's state, carried by
+    /// every host event on the node.
+    pub fn seen(&self, node: &CardNode) -> CardSeen {
+        self.tree.seen(&node.key).unwrap_or_default()
+    }
+
+    /// What the user sees of the whole card now (slot answers).
+    pub fn seen_card(&self) -> CardSeen {
+        CardSeen { stamp: self.tree.stamp(), ..CardSeen::default() }
     }
 
     /// The children of a node, in order.
@@ -243,6 +265,18 @@ pub(crate) fn attr_str<'a>(node: &'a CardNode, name: &str) -> Option<&'a str> {
     node.attrs.get(name).and_then(JsonValue::as_str)
 }
 
+/// Tree text as it is drawn: directional and other controls removed, so a
+/// card cannot reorder or hide the text around it. Every tree string passes
+/// through here before it reaches the screen.
+pub(crate) fn shown(text: &str) -> String {
+    strip_controls(text).into_owned()
+}
+
+/// A string attribute as drawn text (see [`shown`]); empty when absent.
+pub(crate) fn attr_text(node: &CardNode, name: &str) -> String {
+    attr_str(node, name).map(shown).unwrap_or_default()
+}
+
 /// A boolean attribute (false when absent).
 pub(crate) fn attr_bool(node: &CardNode, name: &str) -> bool {
     node.attrs.get(name).and_then(JsonValue::as_bool).unwrap_or(false)
@@ -258,6 +292,6 @@ pub(crate) fn errors(node: &CardNode) -> Vec<String> {
     node.attrs
         .get("errors")
         .and_then(JsonValue::as_array)
-        .map(|rows| rows.iter().filter_map(|row| row.as_str().map(str::to_owned)).collect())
+        .map(|rows| rows.iter().filter_map(|row| row.as_str().map(shown)).collect())
         .unwrap_or_default()
 }

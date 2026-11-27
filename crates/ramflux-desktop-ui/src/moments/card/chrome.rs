@@ -10,11 +10,13 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, SharedString, Window, div};
-use ramflux_desktop_core::{CardRecord, CardStatus, CardTree, SurfaceState, UiEventKind};
+use ramflux_desktop_core::{
+    CARD_CHANGED_REASON, CardRecord, CardStatus, CardTree, SurfaceState, UiEventKind,
+};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption};
 
-use super::CardSnapshot;
+use super::{CardSnapshot, shown};
 use crate::bubble::EventSink;
 use crate::i18n::tr;
 use crate::ids::domain_id;
@@ -82,13 +84,15 @@ pub fn status(
                 .child(tr("moment.card.draft_discarded")),
         );
     }
-    if record.refusal.is_some() {
-        col = col.child(
-            div()
-                .text_size(text_caption())
-                .text_color(cx.theme().danger)
-                .child(tr("moment.card.refused")),
-        );
+    if let Some(reason) = record.refusal.as_deref() {
+        // The card changed since the user saw it: the field is reset to the
+        // held value, and the user reviews the new version first.
+        let text = if reason == CARD_CHANGED_REASON {
+            tr("moment.card.changed")
+        } else {
+            tr("moment.card.refused")
+        };
+        col = col.child(div().text_size(text_caption()).text_color(cx.theme().danger).child(text));
     }
     col.into_any_element()
 }
@@ -99,7 +103,7 @@ pub fn fallback(snap: &CardSnapshot, cx: &App) -> AnyElement {
         .w_full()
         .text_size(ramflux_desktop_navigation::scale::text_secondary())
         .text_color(cx.theme().muted_foreground)
-        .child(snap.fallback.clone())
+        .child(shown(snap.fallback.as_ref()))
         .into_any_element()
 }
 
@@ -135,7 +139,7 @@ pub fn surface_actions(
             .small()
             .design_secondary(cx)
             .design_disabled(disabled, cx)
-            .design_label(action.label.clone());
+            .design_label(shown(action.label.as_ref()));
         if disabled {
             return button.into_any_element();
         }

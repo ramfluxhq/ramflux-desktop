@@ -95,6 +95,34 @@ pub struct CardToken {
     pub key: String,
 }
 
+/// The version state of a held tree: what a host event or slot answer was
+/// taken on. The runtime refuses an event whose tree state differs from its
+/// own, so the host compares its stamps before it sends one.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardStamp {
+    /// The session the tree belongs to.
+    pub session: u64,
+    /// The tree version.
+    pub tree_version: u64,
+    /// The edit sequence of the tree.
+    pub edit_seq: u64,
+    /// The signed version the tree shows.
+    pub signed_version: u64,
+}
+
+/// What the user saw of one node when a host event was taken: the tree's
+/// stamp, and the node's kind and input target (a rebase of a text draft is
+/// only valid while both are unchanged).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardSeen {
+    /// The tree state at the time.
+    pub stamp: CardStamp,
+    /// The node's kind at the time.
+    pub kind: String,
+    /// The node's `input_pointer` at the time.
+    pub input_pointer: Option<String>,
+}
+
 /// One node of the tree, as the runtime serializes it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardNode {
@@ -359,6 +387,32 @@ impl CardTree {
             CardLifecycle::Open if self.generating => CardPhase::Generating,
             CardLifecycle::Open => CardPhase::Ready,
         }
+    }
+
+    /// The stamp of the held version.
+    #[must_use]
+    pub const fn stamp(&self) -> CardStamp {
+        CardStamp {
+            session: self.session,
+            tree_version: self.tree_version,
+            edit_seq: self.edit_seq,
+            signed_version: self.signed_version,
+        }
+    }
+
+    /// What a user sees of the node `key` in the held version. `None` when
+    /// the tree holds no such node.
+    #[must_use]
+    pub fn seen(&self, key: &str) -> Option<CardSeen> {
+        self.nodes.get(key).map(|node| CardSeen {
+            stamp: self.stamp(),
+            kind: node.kind.clone(),
+            input_pointer: node
+                .attrs
+                .get("input_pointer")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        })
     }
 
     /// The token for a host event on `key`, from the held version. `None`

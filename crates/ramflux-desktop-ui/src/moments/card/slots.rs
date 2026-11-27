@@ -6,9 +6,12 @@
 //! stamped (its task binding), never from tree text. The card's explanation
 //! is shown as the author's words, labelled as such.
 //!
-//! A link sheet shows the exact URL, the author's name and a privacy note,
-//! with Cancel and a single tap Open. The browser opens only after the
-//! runtime answers the slot `opened` (the app does that, not this module).
+//! A link sheet shows the host (on its own line), the exact URL in a
+//! scrollable block, the author's name and a privacy note, with Cancel and a
+//! single tap Open. Only an https link can be opened; any other link shows a
+//! refusal and Cancel. The browser opens only after the runtime answers the
+//! slot `opened` for the URL the sheet showed (the app does that, not this
+//! module).
 
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
@@ -16,12 +19,12 @@ use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, IntoElement, Window, div, px};
 use ramflux_desktop_core::{
-    CardInput, CardNode, CardRecord, CardSlotOutcome, CardStatus, UiEventKind,
+    CardInput, CardNode, CardRecord, CardSlotOutcome, CardStatus, UiEventKind, https_host,
 };
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary, text_subheading};
 
-use super::{CardSnapshot, View, attr_str};
+use super::{CardSnapshot, View, attr_text, shown};
 use crate::i18n::{tr, tr_args};
 use crate::ids::domain_id;
 use crate::style::DesignButton as _;
@@ -34,10 +37,10 @@ pub fn approval(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut 
     let slot = view.tree.host_slots().iter().find(|s| {
         s.key == node.key && s.request.get("kind").and_then(|k| k.as_str()) == Some("approval")
     });
-    let explanation = attr_str(node, "explanation").unwrap_or_default().to_owned();
+    let explanation = attr_text(node, "explanation");
     let binding = slot.and_then(|s| s.request.get("task_binding")).and_then(|b| {
-        let task = b.get("task_id")?.as_str()?.to_owned();
-        let step = b.get("step_id")?.as_str()?.to_owned();
+        let task = shown(b.get("task_id")?.as_str()?);
+        let step = shown(b.get("step_id")?.as_str()?);
         Some(tr_args("moment.card.approval_task", &[("task", &task), ("step", &step)]))
     });
     let mut col = v_flex()
@@ -86,6 +89,8 @@ pub fn approval(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut 
             let confirm_id = slot.id.clone();
             let deny_view = view.sink.clone();
             let confirm_view = view.sink.clone();
+            let deny_seen = view.seen_card();
+            let confirm_seen = deny_seen.clone();
             h_flex()
                 .gap(space(2.))
                 .child(
@@ -98,6 +103,7 @@ pub fn approval(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut 
                                 UiEventKind::CardSlotAnswered {
                                     slot_id: deny_id.clone(),
                                     outcome: CardSlotOutcome::Deny,
+                                    seen: deny_seen.clone(),
                                 },
                                 window,
                                 cx,
@@ -114,6 +120,7 @@ pub fn approval(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut 
                                 UiEventKind::CardSlotAnswered {
                                     slot_id: confirm_id.clone(),
                                     outcome: CardSlotOutcome::Confirm,
+                                    seen: confirm_seen.clone(),
                                 },
                                 window,
                                 cx,
@@ -139,6 +146,8 @@ pub fn modal_sheet(
     let close_local = view.local.clone();
     let close_view = view.sink.clone();
     let key = node.key.clone();
+    let close_seen = view.seen(node);
+    let author = shown(view.author.as_ref());
     let body = view.render(content, window, cx);
     div()
         .absolute()
@@ -165,7 +174,7 @@ pub fn modal_sheet(
                             div()
                                 .text_size(text_subheading())
                                 .font_semibold()
-                                .child(tr("moment.card.modal_title")),
+                                .child(tr_args("moment.card.modal_by", &[("author", &author)])),
                         )
                         .child(
                             Button::new(domain_id("card-modal-close", &node.key))
@@ -178,6 +187,7 @@ pub fn modal_sheet(
                                         UiEventKind::CardInteracted {
                                             key: key.clone(),
                                             event: CardInput::ModalClose,
+                                            seen: close_seen.clone(),
                                         },
                                         window,
                                         cx,
@@ -192,7 +202,9 @@ pub fn modal_sheet(
 }
 
 /// The link confirmation, when the runtime asked the host to show one: the
-/// full URL, the author and the privacy note, with Cancel and Open.
+/// host on its own line, the full URL in a scrollable block, the author and
+/// the privacy note, with Cancel and Open. A link that is not https is
+/// refused: only Cancel is offered.
 pub fn link_sheet(
     view: &View<'_>,
     record: &CardRecord,
@@ -206,79 +218,102 @@ pub fn link_sheet(
     let cancel_id = slot_id.clone();
     let cancel_view = view.sink.clone();
     let open_view = view.sink.clone();
-    let author = snap.author.clone();
-    let url = link.url.clone();
+    let seen = view.seen_card();
+    let cancel_seen = seen.clone();
+    let author = shown(snap.author.as_ref());
+    let url = shown(&link.url);
+    let host = https_host(&link.url).map(shown);
+    let mut sheet = v_flex()
+        .w_full()
+        .gap(space(2.))
+        .p(space(3.))
+        .rounded(cx.theme().radius)
+        .border_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().background)
+        .child(
+            div().text_size(text_subheading()).font_semibold().child(tr("moment.card.link_title")),
+        );
+    match &host {
+        Some(host) => {
+            sheet =
+                sheet.child(div().text_size(text_secondary()).font_semibold().child(host.clone()));
+        }
+        None => {
+            sheet = sheet.child(
+                div()
+                    .text_size(text_caption())
+                    .text_color(cx.theme().danger)
+                    .child(tr("moment.card.link_refused")),
+            );
+        }
+    }
+    sheet = sheet
+        .child(
+            div()
+                .id(domain_id("card-link-url", &slot_id))
+                .max_h(px(120.))
+                .overflow_y_scroll()
+                .text_size(text_secondary())
+                .font_family(cx.theme().mono_font_family.clone())
+                .child(url),
+        )
+        .child(
+            div()
+                .text_size(text_caption())
+                .child(tr_args("moment.card.link_author", &[("author", &author)])),
+        )
+        .child(
+            div()
+                .text_size(text_caption())
+                .text_color(cx.theme().muted_foreground)
+                .child(tr("moment.card.link_privacy")),
+        );
+    let mut actions = h_flex().gap(space(2.)).child(
+        Button::new(domain_id("card-link-cancel", &slot_id))
+            .small()
+            .design_secondary(cx)
+            .design_label(tr("moment.card.link_cancel"))
+            .on_click(move |_, window, cx| {
+                cancel_view.emit(
+                    UiEventKind::CardSlotAnswered {
+                        slot_id: cancel_id.clone(),
+                        outcome: CardSlotOutcome::Cancel,
+                        seen: cancel_seen.clone(),
+                    },
+                    window,
+                    cx,
+                );
+            }),
+    );
+    if host.is_some() {
+        let open_slot = link.slot_id.clone();
+        actions = actions.child(
+            Button::new(domain_id("card-link-open", &link.slot_id))
+                .small()
+                .design_primary(cx)
+                .design_label(tr("moment.card.link_open"))
+                .on_click(move |_, window, cx| {
+                    open_view.emit(
+                        UiEventKind::CardSlotAnswered {
+                            slot_id: open_slot.clone(),
+                            outcome: CardSlotOutcome::Confirm,
+                            seen: seen.clone(),
+                        },
+                        window,
+                        cx,
+                    );
+                }),
+        );
+    }
+    // A long link scrolls inside the sheet, never past the card.
     Some(
-        v_flex()
+        div()
+            .id(domain_id("card-link-sheet", &slot_id))
             .w_full()
-            .gap(space(2.))
-            .p(space(3.))
-            .rounded(cx.theme().radius)
-            .border_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().background)
-            .child(
-                div()
-                    .text_size(text_subheading())
-                    .font_semibold()
-                    .child(tr("moment.card.link_title")),
-            )
-            .child(
-                div()
-                    .text_size(text_secondary())
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .child(url),
-            )
-            .child(
-                div()
-                    .text_size(text_caption())
-                    .child(tr_args("moment.card.link_author", &[("author", author.as_ref())])),
-            )
-            .child(
-                div()
-                    .text_size(text_caption())
-                    .text_color(cx.theme().muted_foreground)
-                    .child(tr("moment.card.link_privacy")),
-            )
-            .child(
-                h_flex()
-                    .gap(space(2.))
-                    .child(
-                        Button::new(domain_id("card-link-cancel", &slot_id))
-                            .small()
-                            .design_secondary(cx)
-                            .design_label(tr("moment.card.link_cancel"))
-                            .on_click(move |_, window, cx| {
-                                cancel_view.emit(
-                                    UiEventKind::CardSlotAnswered {
-                                        slot_id: cancel_id.clone(),
-                                        outcome: CardSlotOutcome::Cancel,
-                                    },
-                                    window,
-                                    cx,
-                                );
-                            }),
-                    )
-                    .child(
-                        Button::new(domain_id("card-link-open", &link.slot_id))
-                            .small()
-                            .design_primary(cx)
-                            .design_label(tr("moment.card.link_open"))
-                            .on_click({
-                                let slot = link.slot_id.clone();
-                                move |_, window, cx| {
-                                    open_view.emit(
-                                        UiEventKind::CardSlotAnswered {
-                                            slot_id: slot.clone(),
-                                            outcome: CardSlotOutcome::Confirm,
-                                        },
-                                        window,
-                                        cx,
-                                    );
-                                }
-                            }),
-                    ),
-            )
+            .max_h(px(420.))
+            .overflow_y_scroll()
+            .child(sheet.child(actions))
             .into_any_element(),
     )
 }

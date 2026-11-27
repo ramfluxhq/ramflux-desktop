@@ -28,6 +28,9 @@ pub enum IntentError {
     /// Grant not in the store.
     #[error("unknown grant {0}")]
     UnknownGrant(GrantId),
+    /// The card changed since the user saw it: review it again first.
+    #[error("the card on {0} changed, review it again")]
+    CardChanged(MomentId),
     /// Task not in the store.
     #[error("unknown task {0}")]
     UnknownTask(TaskId),

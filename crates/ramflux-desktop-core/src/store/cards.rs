@@ -26,12 +26,14 @@ use super::Store;
 use super::changes::Changes;
 use crate::card_event::{CardEvent, CardLink, CardReceipt, CardSlotOutcome, CardStatus};
 use crate::ids::SurfaceId;
-use crate::model::{CardBatch, CardTree};
+use crate::model::{CardBatch, CardSeen, CardStamp, CardTree};
 
 /// Resumed (live) sessions per account.
 pub const MAX_RESUMED: usize = 2;
 /// Held sessions per account.
 pub const MAX_OPEN: usize = 24;
+/// Stamps kept in one card's rebase chain (the oldest are dropped first).
+pub const MAX_CHAIN: usize = 64;
 
 /// One held card session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +110,15 @@ impl CardPool {
         }
         self.enforce(card, &mut plan);
         plan
+    }
+
+    /// Bumps the recency of a held card the user acted on, without changing
+    /// its resume state (the pool plan for that action is already decided).
+    pub fn bump(&mut self, card: &str) {
+        let used = self.tick();
+        if let Some(entry) = self.cards.get_mut(card) {
+            entry.used = used;
+        }
     }
 
     /// Marks `card` as touched (a tap or focus). A suspended card is resumed
@@ -256,6 +267,12 @@ pub struct CardRecord {
     pub draft_discarded: bool,
     /// The receipt of the last accepted submit.
     pub receipt: Option<CardReceipt>,
+    /// The stamps this desktop produced by absorbing its own replies since
+    /// the last outside change (open, resume, signed update, present,
+    /// re-read), oldest first, the last one being the held version. A text
+    /// draft sent on an older stamp of this chain may be rebased onto the
+    /// held version; nothing else may.
+    pub chain: Vec<CardStamp>,
 }
 
 impl std::fmt::Debug for CardRecord {
@@ -280,6 +297,34 @@ impl CardRecord {
             refusal: None,
             draft_discarded: false,
             receipt: None,
+            chain: Vec::new(),
+        }
+    }
+
+    /// Whether an event taken on `seen` for `key` may be re-sent on the held
+    /// version: the stamp is in the chain, and the node keeps its kind and
+    /// input target.
+    pub fn rebasable(&self, key: &str, seen: &CardSeen) -> bool {
+        let Some(tree) = self.tree.as_ref() else { return false };
+        let Some(node) = tree.node(key) else { return false };
+        self.chain.contains(&seen.stamp)
+            && node.kind == seen.kind
+            && node.attrs.get("input_pointer").and_then(serde_json::Value::as_str)
+                == seen.input_pointer.as_deref()
+    }
+
+    fn reset_chain(&mut self) {
+        self.chain.clear();
+        if let Some(tree) = &self.tree {
+            self.chain.push(tree.stamp());
+        }
+    }
+
+    fn extend_chain(&mut self) {
+        if let Some(tree) = &self.tree {
+            self.chain.push(tree.stamp());
+            let excess = self.chain.len().saturating_sub(MAX_CHAIN);
+            self.chain.drain(..excess);
         }
     }
 
@@ -311,6 +356,39 @@ impl Store {
         std::mem::take(&mut self.card_due)
     }
 
+    /// The `seen` of an event rebased onto the held version, when the event
+    /// may be re-sent on it (see [`CardRecord::rebasable`]); `None` otherwise.
+    pub fn card_rebased(
+        &self,
+        surface: &SurfaceId,
+        key: &str,
+        seen: &CardSeen,
+    ) -> Option<CardSeen> {
+        let record = self.card_records.get(surface)?;
+        if !record.rebasable(key, seen) {
+            return None;
+        }
+        let mut next = seen.clone();
+        next.stamp = record.tree.as_ref()?.stamp();
+        Some(next)
+    }
+
+    /// Records a refusal the desktop decided itself (an event taken on a
+    /// version the card no longer holds). The card keeps its status.
+    pub fn card_refuse(&mut self, surface: &SurfaceId, reason: &str) {
+        if let Some(record) = self.card_records.get_mut(surface) {
+            record.refusal = Some(reason.to_owned());
+            if record.status == CardStatus::PendingSubmit {
+                record.status = CardStatus::Live;
+            }
+        }
+    }
+
+    /// Bumps the pool recency of a card the user acted on.
+    pub fn card_bump(&mut self, surface: &SurfaceId) {
+        self.cards.bump(surface.as_str());
+    }
+
     /// Queues the pool's bus steps (suspends and disposes) for the session.
     fn queue_pool_plan(&mut self, plan: &PoolPlan) {
         for (card, _) in &plan.suspend {
@@ -337,36 +415,44 @@ impl Store {
                 match fresh_tree(*session, batch) {
                     Some(tree) => {
                         record.tree = Some(tree);
+                        record.reset_chain();
                     }
                     None => record.status = CardStatus::Stale,
                 }
                 self.card_records.insert(surface, record);
             }
             CardEvent::Resumed { session, batch, .. } => {
-                let _ = self.cards.touch(surface.as_str());
                 self.cards.adopt(surface.as_str(), *session);
                 let Some(record) = self.card_records.get_mut(&surface) else { return };
                 record.session = *session;
                 match fresh_tree(*session, batch) {
                     Some(tree) => {
                         record.tree = Some(tree);
+                        record.reset_chain();
                     }
                     None => record.status = CardStatus::Stale,
                 }
             }
-            CardEvent::Batch { batch, draft_conflict, .. } => {
-                let _ = self.cards.touch(surface.as_str());
+            CardEvent::Batch { batch, draft_conflict, own_reply, .. } => {
                 let Some(record) = self.card_records.get_mut(&surface) else { return };
                 record.draft_discarded = *draft_conflict;
                 record.refusal = None;
                 let applied = record.tree.as_mut().map(|tree| tree.apply(batch));
                 match applied {
-                    Some(Ok(())) => record.status = CardStatus::Live,
+                    Some(Ok(())) => {
+                        record.status = CardStatus::Live;
+                        if *own_reply {
+                            record.extend_chain();
+                        } else {
+                            record.reset_chain();
+                        }
+                    }
                     _ => {
                         // A batch that does not follow the held tree: the
                         // card is read again, and nothing is interactive
                         // until then.
                         record.status = CardStatus::Stale;
+                        record.chain.clear();
                         self.card_due.push(CardDue::Refresh(surface));
                     }
                 }
@@ -374,6 +460,7 @@ impl Store {
             CardEvent::Stale { .. } => {
                 if let Some(record) = self.card_records.get_mut(&surface) {
                     record.status = CardStatus::Stale;
+                    record.chain.clear();
                     self.card_due.push(CardDue::Refresh(surface));
                 }
             }

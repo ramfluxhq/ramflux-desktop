@@ -18,7 +18,7 @@ use ramflux_desktop_core::{CardInput, CardNode, JsonValue};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption};
 
-use super::{View, attr_bool, attr_f64, attr_str, errors};
+use super::{View, attr_bool, attr_f64, attr_str, attr_text, errors, shown};
 use crate::ids::domain_id;
 use crate::style::DesignButton as _;
 
@@ -27,7 +27,7 @@ fn label_of(node: &CardNode, cx: &App) -> AnyElement {
     div()
         .text_size(text_caption())
         .text_color(cx.theme().muted_foreground)
-        .child(attr_str(node, "label").unwrap_or_default().to_owned())
+        .child(attr_text(node, "label"))
         .into_any_element()
 }
 
@@ -46,7 +46,9 @@ fn errors_of(node: &CardNode, cx: &App) -> Vec<AnyElement> {
 }
 
 /// A Button: its label is the text of its first child; a press sends the
-/// drafts of the card's text fields, then the activation.
+/// drafts of the card's text fields, then the activation. The runtime's
+/// queue of host events keeps the activation behind the drafts, so the
+/// activation is taken on the tree the drafts produce.
 pub fn button(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App) -> AnyElement {
     let _ = window;
     // The label child is drawn as the button's text, not walked: record it.
@@ -54,24 +56,24 @@ pub fn button(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut Ap
     for child in view.children(node) {
         super::trace::drawn(&child.key, &child.kind);
     }
-    let label = view
-        .children(node)
-        .first()
-        .and_then(|child| attr_str(child, "text"))
-        .unwrap_or_default()
-        .to_owned();
+    let label =
+        view.children(node).first().map(|child| attr_text(child, "text")).unwrap_or_default();
     let enabled = view.enabled(node);
     let variant = attr_str(node, "variant").unwrap_or("default");
     let key = node.key.clone();
     let sink = view.sink.clone();
-    // Drafts of the text fields still in the tree, sent before the press.
-    let drafts: Vec<(String, Entity<gpui_kit::component::input::InputState>)> = view
+    let local = view.local.clone();
+    let seen = view.seen(node);
+    // Drafts of the text fields still in the tree, with what the user saw
+    // of each field, sent before the press.
+    let drafts: Vec<(String, Entity<gpui_kit::component::input::InputState>, _)> = view
         .inputs
         .iter()
-        .filter(|(k, _)| {
-            view.node(k).is_some_and(|n| n.kind == "TextField" || n.kind == "DateTimeInput")
+        .filter_map(|(k, e)| {
+            let n = view.node(k)?;
+            (n.kind == "TextField" || n.kind == "DateTimeInput")
+                .then(|| (k.clone(), e.clone(), view.seen(n)))
         })
-        .map(|(k, e)| (k.clone(), e.clone()))
         .collect();
     let button = Button::new(domain_id("card-button", &node.key))
         .small()
@@ -83,12 +85,14 @@ pub fn button(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut Ap
         _ => button.design_secondary(cx),
     };
     let on_press = move |_: &gpui_kit::ClickEvent, window: &mut Window, cx: &mut App| {
-        for (field, entity) in &drafts {
+        for (field, entity, field_seen) in &drafts {
             let value = entity.read(cx).value().to_string();
+            local.borrow_mut().sent.insert(field.clone(), value.clone());
             sink.emit(
                 ramflux_desktop_core::UiEventKind::CardInteracted {
                     key: field.clone(),
                     event: CardInput::Input { value: JsonValue::String(value) },
+                    seen: field_seen.clone(),
                 },
                 window,
                 cx,
@@ -98,6 +102,7 @@ pub fn button(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut Ap
             ramflux_desktop_core::UiEventKind::CardInteracted {
                 key: key.clone(),
                 event: CardInput::Activate,
+                seen: seen.clone(),
             },
             window,
             cx,
@@ -117,7 +122,7 @@ pub fn button(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut Ap
 /// A TextField: a single-line input whose draft the runtime holds; the value
 /// shown at first is the runtime's own.
 pub fn text_field(view: &View<'_>, node: &CardNode, cx: &App) -> AnyElement {
-    let label = attr_str(node, "label").unwrap_or_default().to_owned();
+    let label = attr_text(node, "label");
     let mut col = v_flex().w_full().gap(space(1.)).child(label_of(node, cx));
     match view.inputs.get(&node.key) {
         Some(input) => {
@@ -131,11 +136,7 @@ pub fn text_field(view: &View<'_>, node: &CardNode, cx: &App) -> AnyElement {
             );
         }
         None => {
-            col = col.child(
-                div()
-                    .text_size(text_caption())
-                    .child(attr_str(node, "value").unwrap_or_default().to_owned()),
-            );
+            col = col.child(div().text_size(text_caption()).child(attr_text(node, "value")));
         }
     }
     col.children(errors_of(node, cx)).into_any_element()
@@ -158,6 +159,7 @@ pub fn check_box(
     let enabled = view.enabled(node);
     let key = node.key.clone();
     let sink = view.sink.clone();
+    let seen = view.seen(node);
     let row = h_flex()
         .id(domain_id("card-check", &node.key))
         .gap(space(2.))
@@ -181,17 +183,14 @@ pub fn check_box(
                     )
                 }),
         )
-        .child(
-            div()
-                .text_size(text_caption())
-                .child(attr_str(node, "label").unwrap_or_default().to_owned()),
-        )
+        .child(div().text_size(text_caption()).child(attr_text(node, "label")))
         .when(enabled, |r| {
             r.on_click(move |_, window, cx| {
                 sink.emit(
                     ramflux_desktop_core::UiEventKind::CardInteracted {
                         key: key.clone(),
                         event: CardInput::Input { value: JsonValue::Bool(!checked) },
+                        seen: seen.clone(),
                     },
                     window,
                     cx,
@@ -219,7 +218,7 @@ pub fn choice_picker(
                 .map(|o| {
                     let value = o.get("value").and_then(JsonValue::as_str).unwrap_or_default();
                     let label = o.get("label").and_then(JsonValue::as_str).unwrap_or(value);
-                    (value.to_owned(), label.to_owned())
+                    (value.to_owned(), shown(label))
                 })
                 .collect()
         })
@@ -233,6 +232,7 @@ pub fn choice_picker(
     };
     let multiple = attr_str(node, "variant") == Some("multipleSelection");
     let enabled = view.enabled(node);
+    let seen = view.seen(node);
     let buttons = options.into_iter().map(|(value, label)| {
         let chosen = current.contains(&value);
         let next: JsonValue = if multiple {
@@ -249,6 +249,7 @@ pub fn choice_picker(
         };
         let key = node.key.clone();
         let sink = view.sink.clone();
+        let seen = seen.clone();
         let button = Button::new(domain_id("card-choice", &format!("{}-{value}", node.key)))
             .small()
             .design_secondary(cx)
@@ -262,6 +263,7 @@ pub fn choice_picker(
                         ramflux_desktop_core::UiEventKind::CardInteracted {
                             key: key.clone(),
                             event: CardInput::Input { value: next.clone() },
+                            seen: seen.clone(),
                         },
                         window,
                         cx,
@@ -288,6 +290,7 @@ pub fn slider(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut Ap
     let max = attr_f64(node, "max").unwrap_or(100.0).max(min);
     let value = attr_f64(node, "value").unwrap_or(min).clamp(min, max);
     let enabled = view.enabled(node);
+    let seen = view.seen(node);
     let steps = 10_u32;
     let filled =
         if max > min { ((value - min) / (max - min) * f64::from(steps)).round() as u32 } else { 0 };
@@ -296,6 +299,7 @@ pub fn slider(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut Ap
         let target = (min + (max - min) * f64::from(step) / f64::from(steps)).round() as i64;
         let key = node.key.clone();
         let sink = view.sink.clone();
+        let seen = seen.clone();
         let on = step <= filled;
         let seg = div()
             .id(domain_id("card-slider", &format!("{}-{step}", node.key)))
@@ -310,6 +314,7 @@ pub fn slider(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut Ap
                         ramflux_desktop_core::UiEventKind::CardInteracted {
                             key: key.clone(),
                             event: CardInput::Input { value: JsonValue::from(target) },
+                            seen: seen.clone(),
                         },
                         window,
                         cx,

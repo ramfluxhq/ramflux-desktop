@@ -350,6 +350,7 @@ pub fn events(method: &str, body: &Value, reply: CardReply) -> Vec<DomainEvent> 
                     surface_id: surface_id.clone(),
                     batch: batch(b),
                     draft_conflict: reply.draft_conflict,
+                    own_reply: false,
                 }));
             }
         }
@@ -359,6 +360,7 @@ pub fn events(method: &str, body: &Value, reply: CardReply) -> Vec<DomainEvent> 
                     surface_id: surface_id.clone(),
                     batch: batch(b),
                     draft_conflict: reply.draft_conflict,
+                    own_reply: true,
                 }));
             }
             if reply.result == CardResult::PendingSubmit {
