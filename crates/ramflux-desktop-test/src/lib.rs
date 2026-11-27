@@ -69,6 +69,7 @@ pub mod fake_tasks;
 pub mod live_daemon;
 pub mod local_echo;
 pub mod mock_agents;
+pub mod mock_cards;
 pub mod mock_ceremony;
 pub mod mock_recovery;
 pub mod mock_source;
