@@ -23,6 +23,9 @@ pub enum Weight {
     Read,
     /// Unlocks local account state, including key derivation.
     Unlock,
+    /// Changes the app lock, which may wait for the account code: the unlock
+    /// budget plus the window the code sheet has.
+    Attended,
     /// Locks or switches the active account.
     Session,
     /// Changes local daemon state only.
@@ -108,6 +111,8 @@ pub fn weight(method: &str) -> Weight {
         Weight::Stop
     } else if method == "account.unlock" {
         Weight::Unlock
+    } else if method == "account.app_lock.configure" {
+        Weight::Attended
     } else if matches!(method, "account.lock" | "account.switch") {
         Weight::Session
     } else if NETWORK.contains(&method) {
@@ -126,6 +131,8 @@ pub struct Deadlines {
     pub read: Duration,
     /// Local account unlock.
     pub unlock: Duration,
+    /// An app lock change that may wait for the account code.
+    pub attended: Duration,
     /// Account lock and switch.
     pub session: Duration,
     /// Local changes.
@@ -142,6 +149,7 @@ impl Deadlines {
         Self {
             read: Duration::from_secs(2),
             unlock: Duration::from_secs(10),
+            attended: Duration::from_secs(70),
             session: Duration::from_secs(5),
             local: Duration::from_secs(20),
             network: Duration::from_secs(60),
@@ -154,6 +162,7 @@ impl Deadlines {
         Self {
             read: budget,
             unlock: budget,
+            attended: budget,
             session: budget,
             local: budget,
             network: budget,
@@ -166,6 +175,7 @@ impl Deadlines {
         match weight(method) {
             Weight::Read => self.read,
             Weight::Unlock => self.unlock,
+            Weight::Attended => self.attended,
             Weight::Session => self.session,
             Weight::Local => self.local,
             Weight::Network => self.network,

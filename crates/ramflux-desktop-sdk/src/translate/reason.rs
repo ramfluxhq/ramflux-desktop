@@ -71,6 +71,8 @@ pub mod key {
     /// The daemon did not send a surface action (`reason`).
     pub const SURFACE_ACTION_REJECTED: &str = "backend.failure.surface_action_rejected";
     pub const SCHEMA_GATE_CLOSED: &str = "backend.failure.schema_gate_closed";
+    /// A second app lock change while one is running (the first one answers).
+    pub const APP_LOCK_BUSY: &str = "backend.failure.app_lock_busy";
     /// The daemon refused a surface request with a code the desktop does
     /// not know (`code`).
     pub const SURFACE_REFUSED: &str = "backend.surface.refused";
@@ -216,7 +218,7 @@ pub mod key {
     pub const VAULT_MODE_MISMATCH: &str = "backend.failure.vault_mode_mismatch";
 
     /// Every key above (each needs a translation).
-    pub const ALL: [&str; 81] = [
+    pub const ALL: [&str; 82] = [
         VAULT_MISSING,
         VAULT_INIT_PENDING,
         VAULT_IMPORT_PENDING,
@@ -252,6 +254,7 @@ pub mod key {
         START_UNVERIFIED_KEY,
         SURFACE_ACTION_REJECTED,
         SCHEMA_GATE_CLOSED,
+        APP_LOCK_BUSY,
         SURFACE_REFUSED,
         SURFACE_STALE_VERSION,
         SURFACE_STALE_HASH,

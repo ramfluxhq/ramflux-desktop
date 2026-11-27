@@ -265,6 +265,7 @@
   "backend.failure.ceremony": "当前没有正在进行的设置或恢复，无法执行此操作。未做任何更改。",
   "backend.failure.surface_action_rejected": "本地服务未发送此操作：%{reason}",
   "backend.failure.schema_gate_closed": "消息功能暂不可用，因此未发送。",
+  "backend.failure.app_lock_busy": "应用锁更改正在进行中。请等待其结束。",
   "backend.failure.vault_missing": "这台设备的密钥保管库尚未设置。",
   "backend.failure.vault_init_pending": "这台设备的密钥保管库尚未设置完成。请在这台设备上完成设置（rf vault init）。",
   "backend.failure.vault_import_pending": "向密钥保管库导入预置密钥尚未完成。请重试预置导入。",

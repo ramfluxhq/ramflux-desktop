@@ -6,18 +6,20 @@
 //! Turning the app lock off, or choosing a longer timeout, makes the daemon
 //! ask for the account code on the same request connection. The code comes
 //! from the window through [`CodeRequest`]: it is never a frame field, and it
-//! is zeroized on every path. Only a configure this client is running (an
-//! armed [`ArmGuard`]) can be answered; any other prompt is refused.
+//! is zeroized on every path. Only the configure this client is running (the
+//! armed account of an [`ArmGuard`]) can be answered; any other prompt is
+//! refused.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 
-use ramflux_desktop_core::SecretInput;
+use parking_lot::Mutex;
+use ramflux_desktop_core::{AccountId, SecretInput};
 use ramflux_protocol::custody::pairing::local_dto::CredentialRequest;
 use ramflux_sdk::SdkError;
 use ramflux_sdk::custody::pairing::{CredentialOutcome, LocalCredentialProvider, SecretUtf8};
 use tokio::sync::mpsc;
+
+use std::time::Duration;
 
 /// How long the window may take to answer the code sheet. Past it the
 /// prompt is refused and the daemon answers the configure with a refusal.
@@ -29,38 +31,53 @@ pub(crate) struct CodeRequest {
     pub(crate) reply: std::sync::mpsc::SyncSender<SecretInput>,
 }
 
+/// A configure is already running on this client: the second one is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CodeBusy;
+
 /// The attended provider of one scope's request connection.
 pub(crate) struct CodeGate {
-    armed: AtomicUsize,
+    /// The account whose configure is running (one at a time).
+    armed: Mutex<Option<AccountId>>,
     requests: mpsc::UnboundedSender<CodeRequest>,
 }
 
-/// Keeps the gate armed while one configure runs.
+/// Keeps the gate armed for one account while one configure runs.
 pub(crate) struct ArmGuard(Arc<CodeGate>);
 
 impl CodeGate {
     /// A gate that forwards its prompts to `requests` (the window's inbox).
     pub(crate) fn new(requests: mpsc::UnboundedSender<CodeRequest>) -> Arc<Self> {
-        Arc::new(Self { armed: AtomicUsize::new(0), requests })
+        Arc::new(Self { armed: Mutex::new(None), requests })
     }
 
-    /// Arms the gate until the returned guard is dropped.
-    pub(crate) fn arm(self: &Arc<Self>) -> ArmGuard {
-        self.armed.fetch_add(1, Ordering::SeqCst);
-        ArmGuard(Arc::clone(self))
+    /// Arms the gate for `account` until the returned guard is dropped.
+    /// Refused with [`CodeBusy`] while another configure holds the gate.
+    pub(crate) fn arm(self: &Arc<Self>, account: AccountId) -> Result<ArmGuard, CodeBusy> {
+        let mut slot = self.armed.lock();
+        if slot.is_some() {
+            return Err(CodeBusy);
+        }
+        *slot = Some(account);
+        Ok(ArmGuard(Arc::clone(self)))
     }
 }
 
 impl Drop for ArmGuard {
     fn drop(&mut self) {
-        self.0.armed.fetch_sub(1, Ordering::SeqCst);
+        *self.0.armed.lock() = None;
     }
 }
 
 impl LocalCredentialProvider for CodeGate {
     fn provide(&self, request: &CredentialRequest) -> Result<CredentialOutcome, SdkError> {
-        // Only the code of a weakening, asked while this client is weakening.
-        if request.action != "unlock" || self.armed.load(Ordering::SeqCst) == 0 {
+        // Only the code of a weakening, for the account this client is weakening.
+        let for_armed_account = self
+            .armed
+            .lock()
+            .as_ref()
+            .is_some_and(|armed| armed.as_str() == request.local_account_id);
+        if request.action != "unlock" || !for_armed_account {
             return Ok(CredentialOutcome::Refused);
         }
         let (reply, answer) = std::sync::mpsc::sync_channel(1);

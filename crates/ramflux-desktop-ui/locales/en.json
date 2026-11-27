@@ -268,6 +268,7 @@
   "backend.failure.ceremony": "There is no setup or recovery under way to do this. Nothing was changed.",
   "backend.failure.surface_action_rejected": "The daemon did not send the action: %{reason}",
   "backend.failure.schema_gate_closed": "Messages are not available right now, so this was not sent.",
+  "backend.failure.app_lock_busy": "An app lock change is already running. Wait until it ends.",
   "backend.failure.vault_missing": "The key vault of this device is not set up.",
   "backend.failure.vault_init_pending": "Setting up the key vault of this device was not finished. Finish it on this device (rf vault init).",
   "backend.failure.vault_import_pending": "Importing the provisioned keys into the key vault was not finished. Retry the provisioning import.",

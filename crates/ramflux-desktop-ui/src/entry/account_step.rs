@@ -661,13 +661,30 @@ fn clip_label(label: &str, max: usize) -> (String, bool) {
 impl EntryPage {
     /// The lock view: the app name and, unless `cover`, the account code
     /// field and its unlock button. Nothing of the accounts is named here.
+    /// While the recovery of the locked account is open it takes the place of
+    /// the code form; the cover never shows it.
     pub(super) fn render_lock(
         &self,
         cover: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> AnyElement {
         let _ = window;
+        if !cover && self.recovery_open {
+            return div()
+                .id("entry-lock-recovery")
+                .size_full()
+                .overflow_y_scroll()
+                .child(
+                    v_flex()
+                        .w_full()
+                        .max_w(gpui_kit::rems(360.0 / 15.0))
+                        .mx_auto()
+                        .p(space(4.))
+                        .child(self.recovery.clone()),
+                )
+                .into_any_element();
+        }
         let muted = cx.theme().muted_foreground;
         let title = div().id("lock-title").text_size(text_subheading()).child(tr("app.name"));
         let mut column = v_flex()
@@ -699,8 +716,8 @@ impl EntryPage {
                 target.as_ref().and_then(|id| store.app_lock_refusal(id)).filter(|_| !unlocking);
             let wrong_code = refusal == Some(ramflux_desktop_core::AppLockCodeRefusal::Wrong);
             let lock_state = target.as_ref().and_then(|id| store.app_lock(id));
-            let exhausted = lock_state.is_some_and(|lock| lock.code_attempts_exhausted)
-                || refusal == Some(ramflux_desktop_core::AppLockCodeRefusal::Exhausted);
+            // Exhaustion is the daemon's state, never a stale refusal.
+            let exhausted = lock_state.is_some_and(|lock| lock.code_attempts_exhausted);
             let wait_ms = lock_state
                 .and_then(|lock| lock.code_retry_after_ms)
                 .map_or(0, |ms| crate::settings::account::remaining_ms(&self.code_clock, ms));
@@ -812,6 +829,7 @@ impl EntryPage {
             .justify_center()
             .p(space(4.))
             .child(column)
+            .into_any_element()
     }
 }
 
