@@ -232,6 +232,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::SurfaceUpdateRequested => "SurfaceUpdateRequested",
         UiEventKind::CardInteracted { .. } => "CardInteracted",
         UiEventKind::CardSlotAnswered { .. } => "CardSlotAnswered",
+        UiEventKind::CardSubmitRetried => "CardSubmitRetried",
         UiEventKind::ApprovePressed => "ApprovePressed",
         UiEventKind::DenyPressed => "DenyPressed",
         UiEventKind::RevealPressed => "RevealPressed",
@@ -276,7 +277,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 60;
+const UI_EVENT_KIND_VARIANTS: usize = 61;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -1088,6 +1089,7 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
             outcome: CardSlotOutcome::Deny,
             seen: CardSeen::default(),
         },
+        UiEventKind::CardSubmitRetried,
         UiEventKind::ApprovePressed,
         UiEventKind::DenyPressed,
         UiEventKind::RevealPressed,

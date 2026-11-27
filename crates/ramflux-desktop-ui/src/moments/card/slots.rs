@@ -2,24 +2,36 @@
 // Copyright (c) 2026 Span Brain
 
 //! Host-owned presentation: the approval card, the modal sheet and the link
-//! confirmation. The verified facts come only from the host slot the runtime
-//! stamped (its task binding), never from tree text. The card's explanation
-//! is shown as the author's words, labelled as such.
+//! confirmation.
+//!
+//! The approval and the link confirmation are drawn inside the host frame: a
+//! heavy border and a filled heading strip with the shield glyph, which no
+//! node of a tree can produce (no tree node draws that border, and no tree
+//! Icon name maps to that glyph), so a card cannot imitate a host request.
+//!
+//! An approval draws its verified facts only from the host slot's `facts`,
+//! which the SDK stamps from the verified approval row (requester, action,
+//! scope, expiry, risk); never from tree text. Without facts the approval is
+//! not awaiting this account's decision: it shows its outcome line and no
+//! buttons. The card's explanation is shown as the author's words, labelled
+//! as such; the author's task binding is not shown.
 //!
 //! A link sheet shows the host (on its own line), the exact URL in a
 //! scrollable block, the author's name and a privacy note, with Cancel and a
-//! single tap Open. Only an https link can be opened; any other link shows a
-//! refusal and Cancel. The browser opens only after the runtime answers the
-//! slot `opened` for the URL the sheet showed (the app does that, not this
-//! module).
+//! single tap Open. Only a printable-ASCII https link can be opened; any
+//! other link is refused as it is (never cleaned for display): the sheet
+//! shows the refusal and Cancel only. The browser opens only after the
+//! runtime answers the slot `opened` for the URL the sheet showed (the app
+//! does that, not this module).
 
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, App, IntoElement, Window, div, px};
+use gpui_kit::{AnyElement, App, IntoElement, SharedString, Window, div, px};
 use ramflux_desktop_core::{
-    CardInput, CardNode, CardRecord, CardSlotOutcome, CardStatus, UiEventKind, https_host,
+    CardHostSlot, CardInput, CardNode, CardRecord, CardSlotOutcome, CardStatus, JsonValue,
+    Timestamp, UiEventKind, https_host,
 };
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary, text_subheading};
@@ -29,44 +41,139 @@ use crate::i18n::{tr, tr_args};
 use crate::ids::domain_id;
 use crate::style::DesignButton as _;
 
-/// An approval card: the author's explanation, the verified task binding and
-/// Deny / Confirm while the runtime waits for the host (then "Waiting for
-/// confirmation" until the signed update).
+/// The host frame around a host request: a heavy accent border and a filled
+/// heading strip with the shield glyph and `title`. Tree nodes never draw
+/// this border or this glyph.
+fn host_frame(title: SharedString, cx: &App) -> gpui_kit::Div {
+    v_flex()
+        .w_full()
+        .rounded(cx.theme().radius)
+        .border_2()
+        .border_color(cx.theme().primary)
+        .bg(cx.theme().background)
+        .child(
+            h_flex()
+                .w_full()
+                .gap(space(2.))
+                .items_center()
+                .px(space(3.))
+                .py(space(1.5))
+                .bg(cx.theme().primary)
+                .text_color(cx.theme().primary_foreground)
+                .child(Icon::new(gpui_kit::assets::IconName::ShieldCheck).small())
+                .child(
+                    div()
+                        .text_size(text_caption())
+                        .font_semibold()
+                        .child(tr("moment.card.host_label")),
+                )
+                .child(div().text_size(text_secondary()).font_semibold().child(title)),
+        )
+}
+
+/// The verified facts of an approval, as the SDK stamped them.
+struct Facts {
+    requester: String,
+    action: Option<String>,
+    scope: Vec<(String, String)>,
+    expires_at: Option<i64>,
+    risk: Option<String>,
+}
+
+impl Facts {
+    /// The facts of an approval slot; `None` when the slot carries none (the
+    /// approval is not awaiting this account's decision) or they do not read
+    /// as the SDK writes them.
+    fn of(slot: &CardHostSlot) -> Option<Self> {
+        let facts = slot.request.get("facts")?.as_object()?;
+        let text = |name: &str| facts.get(name).and_then(JsonValue::as_str).map(str::to_owned);
+        let requester = text("requester").filter(|r| !r.is_empty())?;
+        let scope: Vec<(String, String)> = facts
+            .get("scope")?
+            .as_array()?
+            .iter()
+            .filter_map(|row| {
+                Some((
+                    row.get("name")?.as_str()?.to_owned(),
+                    row.get("value")?.as_str()?.to_owned(),
+                ))
+            })
+            .collect();
+        if scope.is_empty() {
+            return None;
+        }
+        Some(Self {
+            requester,
+            action: text("action"),
+            scope,
+            expires_at: facts.get("expires_at").and_then(JsonValue::as_i64),
+            risk: text("risk"),
+        })
+    }
+}
+
+/// The label of a verified scope row (fixed names only; others are not drawn).
+fn scope_label(name: &str) -> Option<SharedString> {
+    Some(match name {
+        "conversation" => tr("moment.card.fact_conversation"),
+        "task" => tr("moment.card.fact_task"),
+        "step" => tr("moment.card.fact_step"),
+        "tool_scope" => tr("moment.card.fact_tool_scope"),
+        "grant" => tr("moment.card.fact_grant"),
+        _ => return None,
+    })
+}
+
+/// One fact line: a muted label and the value.
+fn fact_row(label: SharedString, value: String, cx: &App) -> AnyElement {
+    h_flex()
+        .gap(space(2.))
+        .items_start()
+        .child(
+            div()
+                .min_w(px(96.))
+                .text_size(text_caption())
+                .text_color(cx.theme().muted_foreground)
+                .child(label),
+        )
+        .child(div().text_size(text_caption()).child(shown(&value)))
+        .into_any_element()
+}
+
+/// An approval card: the verified facts, the author's explanation and Deny /
+/// Confirm while the runtime waits for this account's decision (then
+/// "Waiting for confirmation" until the signed update). An approval without
+/// verified facts shows its outcome line and no buttons.
 pub fn approval(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App) -> AnyElement {
     let _ = window;
     let slot = view.tree.host_slots().iter().find(|s| {
         s.key == node.key && s.request.get("kind").and_then(|k| k.as_str()) == Some("approval")
     });
+    let facts = slot.and_then(Facts::of);
     let explanation = attr_text(node, "explanation");
-    let binding = slot.and_then(|s| s.request.get("task_binding")).and_then(|b| {
-        let task = shown(b.get("task_id")?.as_str()?);
-        let step = shown(b.get("step_id")?.as_str()?);
-        Some(tr_args("moment.card.approval_task", &[("task", &task), ("step", &step)]))
-    });
-    let mut col = v_flex()
-        .w_full()
-        .gap(space(2.))
-        .p(space(3.))
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border)
-        .child(
-            h_flex()
-                .gap(space(2.))
-                .items_center()
-                .child(Icon::new(IconName::TriangleAlert).small().text_color(cx.theme().warning))
-                .child(
-                    div()
-                        .text_size(text_secondary())
-                        .font_semibold()
-                        .child(tr("moment.card.approval_title")),
-                ),
-        );
-    if let Some(binding) = binding {
-        col = col.child(div().text_size(text_caption()).child(binding));
+    let mut body = v_flex().w_full().gap(space(2.)).p(space(3.));
+    if let Some(facts) = &facts {
+        let mut rows = v_flex().gap(space(1.));
+        rows = rows.child(fact_row(tr("moment.card.fact_requester"), facts.requester.clone(), cx));
+        if let Some(action) = &facts.action {
+            rows = rows.child(fact_row(tr("moment.card.fact_action"), action.clone(), cx));
+        }
+        for (name, value) in &facts.scope {
+            if let Some(label) = scope_label(name) {
+                rows = rows.child(fact_row(label, value.clone(), cx));
+            }
+        }
+        if let Some(at) = facts.expires_at {
+            let at = crate::i18n::format::date_time(Timestamp(at.saturating_mul(1000)));
+            rows = rows.child(fact_row(tr("moment.card.fact_expires"), at, cx));
+        }
+        if let Some(risk) = &facts.risk {
+            rows = rows.child(fact_row(tr("moment.card.fact_risk"), risk.clone(), cx));
+        }
+        body = body.child(rows);
     }
     if !explanation.is_empty() {
-        col = col.child(
+        body = body.child(
             v_flex()
                 .gap(space(1.))
                 .child(
@@ -78,13 +185,16 @@ pub fn approval(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut 
                 .child(div().text_size(text_secondary()).child(explanation)),
         );
     }
-    let decision: AnyElement = match slot {
-        _ if pending_status(view.status) => div()
+    let outcome_line = |key: &'static str, cx: &App| {
+        div()
             .text_size(text_caption())
             .text_color(cx.theme().muted_foreground)
-            .child(tr("moment.card.waiting_confirmation"))
-            .into_any_element(),
-        Some(slot) if view.enabled(node) => {
+            .child(tr(key))
+            .into_any_element()
+    };
+    let decision: AnyElement = match (slot, &facts) {
+        _ if pending_status(view.status) => outcome_line("moment.card.waiting_confirmation", cx),
+        (Some(slot), Some(_)) if view.enabled(node) => {
             let deny_id = slot.id.clone();
             let confirm_id = slot.id.clone();
             let deny_view = view.sink.clone();
@@ -129,9 +239,10 @@ pub fn approval(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut 
                 )
                 .into_any_element()
         }
-        _ => div().into_any_element(),
+        (_, Some(_)) => div().into_any_element(),
+        (_, None) => outcome_line("moment.card.approval_not_yours", cx),
     };
-    col.child(decision).into_any_element()
+    host_frame(tr("moment.card.approval_title"), cx).child(body.child(decision)).into_any_element()
 }
 
 /// The modal sheet of a Modal node: its content in a dialog over a scrim,
@@ -203,8 +314,9 @@ pub fn modal_sheet(
 
 /// The link confirmation, when the runtime asked the host to show one: the
 /// host on its own line, the full URL in a scrollable block, the author and
-/// the privacy note, with Cancel and Open. A link that is not https is
-/// refused: only Cancel is offered.
+/// the privacy note, with Cancel and Open. A link the host refuses (not
+/// https, or any character outside printable ASCII) is not shown at all:
+/// only the refusal and Cancel are offered.
 pub fn link_sheet(
     view: &View<'_>,
     record: &CardRecord,
@@ -221,23 +333,23 @@ pub fn link_sheet(
     let seen = view.seen_card();
     let cancel_seen = seen.clone();
     let author = shown(snap.author.as_ref());
-    let url = shown(&link.url);
-    let host = https_host(&link.url).map(shown);
-    let mut sheet = v_flex()
-        .w_full()
-        .gap(space(2.))
-        .p(space(3.))
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().background)
-        .child(
-            div().text_size(text_subheading()).font_semibold().child(tr("moment.card.link_title")),
-        );
+    let host = https_host(&link.url).map(str::to_owned);
+    let mut sheet = v_flex().w_full().gap(space(2.)).p(space(3.));
     match &host {
         Some(host) => {
-            sheet =
-                sheet.child(div().text_size(text_secondary()).font_semibold().child(host.clone()));
+            // The URL is printable ASCII (the host refuses anything else), so
+            // it is drawn exactly as it opens.
+            sheet = sheet
+                .child(div().text_size(text_secondary()).font_semibold().child(host.clone()))
+                .child(
+                    div()
+                        .id(domain_id("card-link-url", &slot_id))
+                        .max_h(px(120.))
+                        .overflow_y_scroll()
+                        .text_size(text_secondary())
+                        .font_family(cx.theme().mono_font_family.clone())
+                        .child(link.url.clone()),
+                );
         }
         None => {
             sheet = sheet.child(
@@ -249,15 +361,6 @@ pub fn link_sheet(
         }
     }
     sheet = sheet
-        .child(
-            div()
-                .id(domain_id("card-link-url", &slot_id))
-                .max_h(px(120.))
-                .overflow_y_scroll()
-                .text_size(text_secondary())
-                .font_family(cx.theme().mono_font_family.clone())
-                .child(url),
-        )
         .child(
             div()
                 .text_size(text_caption())
@@ -313,7 +416,7 @@ pub fn link_sheet(
             .w_full()
             .max_h(px(420.))
             .overflow_y_scroll()
-            .child(sheet.child(actions))
+            .child(host_frame(tr("moment.card.link_title"), cx).child(sheet.child(actions)))
             .into_any_element(),
     )
 }

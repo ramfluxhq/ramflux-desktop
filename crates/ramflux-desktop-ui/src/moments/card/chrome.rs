@@ -33,6 +33,7 @@ pub fn status(
 ) -> AnyElement {
     let _ = window;
     let chip: Option<SharedString> = match record.status {
+        CardStatus::PendingSubmit if record.submit_failed => None,
         CardStatus::PendingSubmit => Some(tr("moment.card.submitting")),
         CardStatus::Consumed | CardStatus::AwaitingConfirmation => {
             Some(tr("moment.card.waiting_confirmation"))
@@ -50,6 +51,7 @@ pub fn status(
     let out_of_sync = snap.state == Some(SurfaceState::OutOfSync);
     let superseded = tree.phase() == ramflux_desktop_core::CardPhase::Superseded;
     let resync_sink = sink.clone();
+    let retry_sink = sink.clone();
     let mut col = gpui_kit::component::v_flex().w_full().gap(space(1.));
     if let Some(chip) = chip {
         col = col.child(
@@ -82,6 +84,30 @@ pub fn status(
                 .text_size(text_caption())
                 .text_color(cx.theme().warning)
                 .child(tr("moment.card.draft_discarded")),
+        );
+    }
+    if record.status == CardStatus::PendingSubmit && record.submit_failed {
+        // The submit's answer is unknown: the button stays consumed, and the
+        // same submit is sent again only when the user asks.
+        col = col.child(
+            h_flex()
+                .gap(space(2.))
+                .items_center()
+                .child(
+                    div()
+                        .text_size(text_caption())
+                        .text_color(cx.theme().warning)
+                        .child(tr("moment.card.submit_failed")),
+                )
+                .child(
+                    Button::new(domain_id("card-submit-retry", &snap.surface_id))
+                        .small()
+                        .design_secondary(cx)
+                        .design_label(tr("moment.card.submit_retry"))
+                        .on_click(move |_, window, cx| {
+                            retry_sink.emit(UiEventKind::CardSubmitRetried, window, cx);
+                        }),
+                ),
         );
     }
     if let Some(reason) = record.refusal.as_deref() {

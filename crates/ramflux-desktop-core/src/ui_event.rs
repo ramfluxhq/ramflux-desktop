@@ -169,6 +169,9 @@ pub enum UiEventKind {
         /// The tree state the user saw.
         seen: crate::CardSeen,
     },
+    /// "Try again" pressed on a card whose submit did not go through: the
+    /// submit the button press asked for is sent again.
+    CardSubmitRetried,
     /// Approve pressed on an intervention or a task step.
     ApprovePressed,
     /// Deny pressed on an intervention or a task step.

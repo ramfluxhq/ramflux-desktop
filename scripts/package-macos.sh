@@ -28,6 +28,10 @@
 #                identity stable from one build to the next (TN3179).
 #   --out DIR    write the bundle to DIR instead of dist/.
 #
+# The script refuses a binary whose dependency graph contains the card
+# runtime crate or QuickJS, or that carries card gallery or QuickJS symbols
+# (`card-gallery` is a test-build feature only).
+#
 # The result is a development build: it is not signed with a Developer ID
 # and not notarized, so it is not ready for distribution. See docs/demo.md.
 #
@@ -104,6 +108,19 @@ if [ "$BUILD" -eq 1 ]; then
 fi
 BIN="target/release/$EXECUTABLE"
 [ -x "$BIN" ] || die "missing $BIN (build first or drop --no-build)"
+
+# The card gallery, its conformance and the standalone card runtime
+# (QuickJS) are test-build only: the release graph must not pull them in,
+# and the binary must not carry their symbols.
+tree=$(cargo tree --locked -e normal -p "$EXECUTABLE" --no-default-features --prefix none 2>/dev/null) \
+    || die "cannot read the release dependency graph"
+if printf '%s\n' "$tree" | grep -E -q '^(ramflux-card|rquickjs[a-z-]*) '; then
+    die "the release dependency graph contains ramflux-card or rquickjs (card-gallery must stay off)"
+fi
+symbols=$(nm -U "$BIN" 2>/dev/null) || die "cannot list the symbols of $BIN"
+if printf '%s\n' "$symbols" | grep -E -i -q 'card_gallery|rquickjs|quickjs|JS_NewRuntime'; then
+    die "$BIN carries card gallery or QuickJS symbols (card-gallery must stay off)"
+fi
 
 DIST="${OUT:-$ROOT/dist}"
 APP="$DIST/$APP_NAME.app"

@@ -1752,7 +1752,6 @@
   "moment.card.nothing_to_show": "Nothing to show",
   "moment.card.show_all": "Show all (%{count})",
   "moment.card.approval_title": "Approval requested",
-  "moment.card.approval_task": "Task %{task}, step %{step}",
   "moment.card.approval_confirm": "Confirm",
   "moment.card.author_words": "The author's words",
   "moment.card.link_title": "Open this link?",
@@ -1770,5 +1769,18 @@
   "card_gallery.run": "Run conformance",
   "card_gallery.summary": "Conformance: A {a} · B {b} · C {c}",
   "card_gallery.note.slot": "The gallery does not send slot answers.",
-  "card_gallery.error": "The gallery cannot open: {error}"
+  "card_gallery.error": "The gallery cannot open: {error}",
+  "moment.card.host_label": "Checked by Ramflux",
+  "moment.card.approval_not_yours": "This approval is not waiting for your decision.",
+  "moment.card.fact_requester": "Requested by",
+  "moment.card.fact_action": "Action",
+  "moment.card.fact_expires": "Expires",
+  "moment.card.fact_risk": "Risk",
+  "moment.card.fact_conversation": "Conversation",
+  "moment.card.fact_task": "Task",
+  "moment.card.fact_step": "Step",
+  "moment.card.fact_tool_scope": "Tool scope",
+  "moment.card.fact_grant": "Grant",
+  "moment.card.submit_failed": "Ramflux could not confirm that your answer was sent. Try again to send it.",
+  "moment.card.submit_retry": "Try again"
 }

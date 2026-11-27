@@ -17,10 +17,6 @@ use ramflux_desktop_core::{CardNode, JsonValue, MomentId, MomentKind};
 use crate::moments::card::{Inputs, Local};
 use crate::moments::{MomentRow, RowState};
 
-/// Brings a text field's draft to the held value of its node. The draft
-/// follows the tree only while it shows what the desktop last sent or synced
-/// for the field: typing the user has not sent is kept. `forced` (a refusal
-/// or a discarded draft) resets the draft regardless.
 /// One text field's sync: the node key, the held value and whether a
 /// refusal or a discarded draft forces the reset.
 struct FieldSync<'a> {

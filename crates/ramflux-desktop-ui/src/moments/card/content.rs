@@ -32,12 +32,13 @@ pub fn text(view: &View<'_>, node: &CardNode, cx: &App) -> AnyElement {
 }
 
 /// An Icon by its name (the platform set's common names); unknown names draw
-/// the generic info glyph, with the node's label as its accessible name.
+/// the generic info glyph, with the node's label as its accessible name. No
+/// name maps to a glyph the host frame or a security notice uses (the shield,
+/// the warning triangle), so a card cannot imitate them.
 pub fn icon(node: &CardNode, cx: &App) -> AnyElement {
     let name = match attr_str(node, "name").unwrap_or_default() {
         "check" => IconName::Check,
         "close" | "x" => IconName::Close,
-        "warning" | "alert" => IconName::TriangleAlert,
         "error" => IconName::CircleX,
         "success" => IconName::CircleCheck,
         "bot" | "agent" => IconName::Bot,

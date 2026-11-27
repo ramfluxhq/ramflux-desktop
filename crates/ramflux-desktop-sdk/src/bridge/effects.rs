@@ -159,6 +159,11 @@ impl Task {
                 self.persist_pins();
                 self.emit(events);
             }
+            Plan::Refuse { .. } if crate::plan::card_session::is_card_method(&method) => {
+                // A card call that cannot be sent is the card's own refusal;
+                // a host event call is settled, so the card is not held.
+                self.emit(crate::translate::card_session::not_sent(&method, &body));
+            }
             Plan::Refuse { code, message } => {
                 self.emit(vec![DomainEvent::EffectFailed(EffectFailure { method, code, message })]);
             }
@@ -192,6 +197,9 @@ impl Task {
             let events = crate::translate::card_session::outcome(method, body, &result);
             let lost = matches!(&result, Err(error) if error.is_connection_lost());
             self.emit(events);
+            if lost {
+                self.drop_card_calls();
+            }
             self.next_card_call();
             if lost {
                 self.lost();
@@ -552,6 +560,26 @@ impl Task {
             };
             let _ = internal.send(Internal::EffectDone { method, body, result, refresh });
         });
+    }
+
+    /// The scope is ending (its source was dropped): the card sessions the
+    /// account released are disposed anyway. Every queued dispose is sent at
+    /// once, past the one-at-a-time gate (its answer is not awaited); any
+    /// other queued card call is dropped with the scope.
+    pub(super) fn flush_card_disposes(&mut self) {
+        let queued = std::mem::take(&mut self.card_calls.queue);
+        for (method, body, plan) in queued {
+            if method == methods::CARD_SESSION_DISPOSE {
+                self.spawn_operation(method, body, plan);
+            }
+        }
+    }
+
+    /// The connection was lost: the daemon may no longer hold the card
+    /// sessions, so the card calls waiting for it are dropped (the store
+    /// forgets the cards and opens them again once the connection is back).
+    pub(super) fn drop_card_calls(&mut self) {
+        self.card_calls.queue.clear();
     }
 
     /// Starts the next queued card call, once the previous one answered.

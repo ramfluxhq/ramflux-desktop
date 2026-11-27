@@ -219,20 +219,22 @@ struct Taken<'a> {
 }
 
 /// The token a host event on `key` is sent with: the held tree's, once
-/// `seen` still names the held version. A text draft (`rebase`) may also
-/// name an older version of this desktop's own chain, where its node keeps
-/// its kind and input target; the whole value then replaces the draft
-/// (last write wins). Anything else is a change the user has not seen.
+/// `seen` still names the held version. An event may also name an older
+/// version of this desktop's own chain (see [`CardRecord::rebasable`]): a
+/// text draft (`input`) where its node keeps its kind and input target (the
+/// whole value then replaces the draft, last write wins), a tap only where
+/// the signed version and the node's drawn content are exactly what the
+/// user saw. Anything else is a change the user has not seen.
 fn held_token(
     record: &CardRecord,
     tree: &CardTree,
     key: &str,
     seen: &CardSeen,
-    rebase: bool,
+    input: bool,
     moment_id: &MomentId,
 ) -> Result<CardToken, IntentError> {
     let same = seen.stamp == tree.stamp();
-    if !same && !(rebase && record.rebasable(key, seen)) {
+    if !same && !record.rebasable(key, seen, input) {
         return Err(IntentError::CardChanged(moment_id.clone()));
     }
     tree.token_for(key).ok_or_else(|| IntentError::NotActionable(moment_id.clone()))
@@ -260,9 +262,9 @@ fn interact(
 ) -> Result<Vec<Effect>, IntentError> {
     live_or_touch(p, moment_id, surface_id, stamp, |record| {
         let tree = interactive_tree(record, moment_id)?;
-        let rebase = matches!(event, CardInput::Input { .. });
+        let input = matches!(event, CardInput::Input { .. });
         let key = taken.target;
-        let token = held_token(record, tree, key, taken.seen, rebase, moment_id)?;
+        let token = held_token(record, tree, key, taken.seen, input, moment_id)?;
         let event = serde_json::to_value(event)
             .map_err(|_| IntentError::NotActionable(moment_id.clone()))?;
         let secret = json!({ "token": token, "event": event }).to_string();
@@ -311,6 +313,14 @@ fn slot_answer(
                     .iter()
                     .find(|s| s.id == slot_id)
                     .ok_or_else(|| IntentError::NotActionable(moment_id.clone()))?;
+                // An approval is answered only when the SDK verified it is
+                // awaiting this account's decision (its facts are stamped);
+                // anything else shows its outcome only.
+                if slot.request.get("kind").and_then(Value::as_str) == Some("approval")
+                    && slot.request.get("facts").is_none_or(Value::is_null)
+                {
+                    return Err(IntentError::NotActionable(moment_id.clone()));
+                }
                 let request_id = slot
                     .request
                     .get("request_id")

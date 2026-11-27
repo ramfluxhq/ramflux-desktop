@@ -47,6 +47,7 @@ pub fn ui_event_name(event: &UiEvent) -> &'static str {
         UiEventKind::SurfaceUpdateRequested => "SurfaceUpdateRequested",
         UiEventKind::CardInteracted { .. } => "CardInteracted",
         UiEventKind::CardSlotAnswered { .. } => "CardSlotAnswered",
+        UiEventKind::CardSubmitRetried => "CardSubmitRetried",
         UiEventKind::ApprovePressed => "ApprovePressed",
         UiEventKind::DenyPressed => "DenyPressed",
         UiEventKind::RevealPressed => "RevealPressed",

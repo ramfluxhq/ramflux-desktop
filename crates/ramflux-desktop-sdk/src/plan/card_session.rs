@@ -14,7 +14,7 @@
 use ramflux_desktop_core::{SecretInput, methods};
 use serde_json::{Value, json};
 
-use crate::bus::BusRequest;
+use crate::bus::{BusRequest, wipe};
 
 /// The routing label of the card calls.
 const SDK_API: &str = "surface";
@@ -56,18 +56,18 @@ pub fn request(
             }),
         ),
         methods::CARD_SESSION_EVENT => {
-            let secret = one_secret(secrets)?;
-            let token = secret.get("token")?.clone();
-            let event = secret.get("event")?.clone();
+            let mut secret = Parsed(one_secret(secrets)?);
+            let token = secret.take("token")?;
+            let event = secret.take("event")?;
             BusRequest::new(account, SDK_API, "card.session.event", json!({ "session": session? }))
                 .with_json("token", token)
                 .with_json("event", event)
         }
         methods::CARD_SESSION_SLOT => {
-            let secret = one_secret(secrets)?;
-            let token = secret.get("token")?.clone();
-            let slot_id = secret.get("slot_id")?.as_str()?.to_owned();
-            let request_id = secret.get("request_id")?.as_str()?.to_owned();
+            let mut secret = Parsed(one_secret(secrets)?);
+            let token = secret.take("token")?;
+            let slot_id = secret.text("slot_id")?;
+            let request_id = secret.text("request_id")?;
             BusRequest::new(
                 account,
                 SDK_API,
@@ -96,6 +96,72 @@ fn one_secret(mut secrets: Vec<SecretInput>) -> Option<Value> {
     serde_json::from_str(secret.expose()).ok()
 }
 
+/// The parsed secret of a card call. Fields move out of it into secret
+/// fields; whatever is left (also on an early return) is wiped when it
+/// drops.
+struct Parsed(Value);
+
+impl Parsed {
+    /// Moves the field `name` out (`None` when it is absent or null).
+    fn take(&mut self, name: &str) -> Option<Value> {
+        self.0.get_mut(name).map(Value::take).filter(|value| !value.is_null())
+    }
+
+    /// Moves the text field `name` out.
+    fn text(&mut self, name: &str) -> Option<String> {
+        match self.take(name)? {
+            Value::String(text) => Some(text),
+            other => {
+                wipe(other);
+                None
+            }
+        }
+    }
+}
+
+impl Drop for Parsed {
+    fn drop(&mut self) {
+        wipe(self.0.take());
+    }
+}
+
 fn session_call(account: Option<&str>, method: &'static str, session: u64) -> BusRequest {
     BusRequest::new(account, SDK_API, method, json!({ "session": session }))
+}
+
+#[cfg(test)]
+mod tests {
+    use ramflux_desktop_core::{SecretInput, methods};
+    use serde_json::json;
+
+    use super::{Parsed, request};
+
+    #[test]
+    fn secret_fields_move_out_of_the_parsed_secret() {
+        let mut parsed =
+            Parsed(json!({ "token": { "key": "k" }, "slot_id": "s", "extra": "left" }));
+        assert_eq!(parsed.take("token"), Some(json!({ "key": "k" })));
+        assert_eq!(parsed.text("slot_id").as_deref(), Some("s"));
+        assert_eq!(parsed.take("missing"), None);
+        assert_eq!(parsed.0["token"], serde_json::Value::Null, "moved out, not copied");
+        assert_eq!(parsed.0["slot_id"], serde_json::Value::Null, "moved out, not copied");
+        // The remainder ("extra") is wiped when `parsed` drops.
+    }
+
+    #[test]
+    fn an_event_body_keeps_token_and_event_out_of_the_logged_body() {
+        let secret = json!({ "token": { "key": "k" }, "event": { "activate": {} } }).to_string();
+        let request = request(
+            Some("acct"),
+            methods::CARD_SESSION_EVENT,
+            &json!({ "surface_id": "s-1", "session": 3 }),
+            vec![SecretInput::new(secret)],
+        )
+        .expect("request");
+        assert_eq!(request.body, json!({ "session": 3 }));
+        let wire = request.wire_body();
+        assert_eq!(wire["token"], json!({ "key": "k" }));
+        assert_eq!(wire["event"], json!({ "activate": {} }));
+        crate::bus::wipe(wire);
+    }
 }

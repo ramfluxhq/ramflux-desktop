@@ -9,6 +9,28 @@ Versioning.
 
 ### Security
 
+- Agent cards (G10 review round 2 and security audit): a tap is rebased onto
+  the desktop's own replies only when the signed version and the pressed
+  node's drawn content (attributes, label, action) are exactly what the user
+  saw; otherwise it is refused with the "card changed" notice. Text drafts
+  merge only with a draft of the same field at the tail of a card's queue.
+  Every host event the desktop drops (behind a refusal, a stale card, a
+  resume on a new version, a failed resume) leaves the visible notice; events
+  waiting behind a call keep the version they are valid on when the card is
+  suspended. An event call frees its card whatever its reply, so an `edited`
+  reply without a batch no longer holds the card. An approval draws only the
+  facts the SDK verified (requester, action, scope, expiry, risk) inside a
+  host frame no card can draw (heavy border, shield heading strip; the
+  warning glyph is no longer a card icon); an approval without verified
+  facts shows "not waiting for your decision" and no buttons, and cannot be
+  answered. A link with any character outside printable ASCII is refused, not
+  cleaned for display; the link sheet is dropped on suspend and resume, and
+  the host is checked again right before the browser opens. Card trees,
+  batches, slots, tokens, mutations and the seen node content print redacted
+  in `Debug`, and the parsed secret of an event or slot call is wiped.
+  `scripts/package-macos.sh` refuses a release binary whose dependency graph
+  holds the card runtime crate or QuickJS, or that carries card gallery or
+  QuickJS symbols.
 - Agent cards (G10 review round 1): every host event and slot answer carries
   the tree state the user saw and is refused when the held tree has moved on
   (`card_changed`), except that a text draft may be re-sent on the desktop's
@@ -143,6 +165,15 @@ Versioning.
 
 ### Fixed
 
+- Card sessions: a resumed card is marked resumed in the pool (it was asked to
+  resume again on every tap); a live window dispatches card intents through
+  the account session's queue; every dispose an account sends before its
+  session goes away reaches the daemon; a lost connection or a daemon restart
+  forgets the held cards so they open again; nothing is resumed, re-read,
+  submitted or sent while the app lock is closed; a submit whose answer is
+  unknown keeps the button consumed and offers "Try again" instead of a
+  refusal; a desktop-side refusal never releases a consumed button. The demo
+  card trees load again (their batches named the tree schema).
 - Card choice and slider inputs send the shapes the runtime accepts: a choice
   is a list of option values for every variant, and a slider value is an
   integer within its range.

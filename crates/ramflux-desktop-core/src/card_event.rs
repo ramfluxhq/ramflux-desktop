@@ -75,12 +75,15 @@ impl fmt::Debug for CardLink {
 }
 
 /// The host part of an `https` URL, or `None` when the URL is not an https
-/// URL with a plain host (no userinfo, no whitespace or control characters).
-/// A link sheet shows this host on its own line; a link the host cannot
-/// parse is never opened.
+/// URL with a plain host (no userinfo). A URL with any character outside
+/// printable ASCII (whitespace, controls, and every non-ASCII character,
+/// format characters such as bidirectional overrides included) is refused,
+/// never cleaned: the sheet shows exactly the URL that would open. A link
+/// sheet shows this host on its own line; a link the host refuses is never
+/// opened.
 #[must_use]
 pub fn https_host(url: &str) -> Option<&str> {
-    if url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+    if !url.bytes().all(|b| b.is_ascii_graphic()) {
         return None;
     }
     let scheme = url.get(..8)?;
@@ -182,6 +185,19 @@ pub enum CardEvent {
         /// Surface.
         surface_id: SurfaceId,
     },
+    /// A host event call (`card.session.event`) on the card has completed,
+    /// whatever its reply or failure. Always the last fact of that call.
+    EventSettled {
+        /// Surface.
+        surface_id: SurfaceId,
+    },
+    /// The submit did not reach the daemon or its answer is unknown (a
+    /// timeout or a broken connection). The button stays consumed; the user
+    /// may retry the submit, it is never retried by itself.
+    SubmitFailed {
+        /// Surface.
+        surface_id: SurfaceId,
+    },
     /// A tap consumed a Button; the submit must follow.
     PendingSubmit {
         /// Surface.
@@ -248,6 +264,8 @@ impl CardEvent {
             | Self::Batch { surface_id, .. }
             | Self::Stale { surface_id }
             | Self::Fallback { surface_id }
+            | Self::EventSettled { surface_id }
+            | Self::SubmitFailed { surface_id }
             | Self::PendingSubmit { surface_id }
             | Self::Submitted { surface_id, .. }
             | Self::Suspended { surface_id }

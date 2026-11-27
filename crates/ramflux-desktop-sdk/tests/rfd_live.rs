@@ -691,3 +691,57 @@ fn a_text_field_then_a_button_is_taken_in_order_on_the_card_runtime() {
         .unwrap_or_else(|e| panic!("{e}"));
     assert!(matches!(tapped["result"].as_str(), Some("pending_submit" | "edited")), "{tapped}");
 }
+
+#[test]
+#[ignore = "needs a real rf daemon: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=..."]
+fn card_calls_the_real_daemon_refuses_settle_and_never_release_a_consumed_button() {
+    use ramflux_desktop_core::CardEvent;
+    let Some(daemon) = daemon("card-refusals") else { return };
+    let hub = hub(&daemon);
+    let mut account = Fed::new(hub.account_source(AccountId::new("acct-none")));
+    account.until("locked", |s, _| {
+        s.account(&AccountId::new("acct-none")).is_some_and(|a| a.lock_state == LockState::Locked)
+    });
+    let card = |events: &[ramflux_desktop_core::EventEnvelope]| -> Vec<CardEvent> {
+        events
+            .iter()
+            .filter_map(|e| match &e.event {
+                DomainEvent::Card(card) => Some(card.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    // A host event the daemon refuses (the account is not open) still
+    // settles, so the card takes the next one.
+    account.source.submit(Effect::SecretCall {
+        method: methods::CARD_SESSION_EVENT.to_owned(),
+        body: json!({ "surface_id": "s-live", "session": 1 }),
+        secrets: vec![SecretInput::new(
+            json!({ "token": { "session": 1, "signedVersion": 1, "editSeq": 0, "treeVersion": 1, "key": "k" }, "event": { "kind": "activate" } })
+                .to_string(),
+        )],
+    });
+    account.until("event settled", |_, envs| {
+        card(envs).iter().any(|c| matches!(c, CardEvent::EventSettled { .. }))
+    });
+    let events = card(&account.envelopes);
+    println!("event call outcome: {events:?}");
+    assert!(matches!(events.last(), Some(CardEvent::EventSettled { .. })), "{events:?}");
+    // A submit the daemon does not take keeps the button consumed: no
+    // refusal that would let the card be pressed again, only a retry.
+    account.source.submit(Effect::Call {
+        method: methods::CARD_SESSION_SUBMIT.to_owned(),
+        body: json!({ "surface_id": "s-live", "session": 1 }),
+    });
+    let before = events.len();
+    account.until("submit answered", |_, envs| card(envs).len() > before);
+    let submit = card(&account.envelopes).split_off(before);
+    println!("submit outcome: {submit:?}");
+    assert!(
+        matches!(submit.as_slice(), [CardEvent::SubmitFailed { .. }])
+            || matches!(submit.as_slice(), [CardEvent::Refused { reason, .. }] if reason.starts_with("card_session_") && reason != "card_session_failed"),
+        "a submit not taken is retried by the user or refused by the runtime: {submit:?}"
+    );
+    let cli = daemon.rf(&["account", "list"]).expect("rf account list");
+    assert!(cli.status.success(), "the daemon still answers");
+}

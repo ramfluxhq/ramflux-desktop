@@ -389,6 +389,11 @@ impl Store {
                     self.source_status = *status;
                     changes.source_status = true;
                 }
+                // A lost connection (a daemon restart included) or a closed
+                // account takes the runtime's card sessions with it.
+                if *status != crate::event::SourceStatus::Connected {
+                    self.cards_reset(changes);
+                }
             }
         }
         Ok(())

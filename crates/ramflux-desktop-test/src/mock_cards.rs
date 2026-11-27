@@ -53,6 +53,14 @@ pub fn respond(method: &str, body: &Value) -> Vec<DomainEvent> {
         },
         "card.session.present" => Vec::new(),
         "card.session.suspend" | "card.session.dispose" => Vec::new(),
+        // A host event call always settles, so the card takes the next one.
+        "card.session.event" => vec![
+            DomainEvent::Card(CardEvent::Refused {
+                surface_id: surface_id.clone(),
+                reason: "card_session_refused".to_owned(),
+            }),
+            DomainEvent::Card(CardEvent::EventSettled { surface_id }),
+        ],
         _ => vec![DomainEvent::Card(CardEvent::Refused {
             surface_id,
             reason: "card_session_refused".to_owned(),
@@ -77,7 +85,7 @@ fn open(tree: &str) -> Option<(u64, CardBatch)> {
         mutations.push(json!({"op": "upsert", "parent": parent, "index": index, "node": node}));
     }
     let batch = json!({
-        "schema": tree["schema"],
+        "schema": ramflux_desktop_core::MUTATIONS_SCHEMA,
         "session": session,
         "previous_version": 0,
         "version": tree["tree_version"],
