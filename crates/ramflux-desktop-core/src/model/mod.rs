@@ -79,7 +79,8 @@ pub use call::{
 };
 pub use card_tree::{
     CardApplyError, CardBatch, CardHostSlot, CardLifecycle, CardMutation, CardNode, CardPhase,
-    CardToken, CardTree, MAX_BATCH_BYTES, MAX_BATCH_OPS, MAX_NODES, MUTATIONS_SCHEMA, parse_batch,
+    CardSeen, CardStamp, CardToken, CardTree, MAX_BATCH_BYTES, MAX_BATCH_OPS, MAX_NODES,
+    MUTATIONS_SCHEMA, parse_batch,
 };
 pub use ceremony::{
     CEREMONY_TTL_MS, CHALLENGE_WORDS, Ceremony, CeremonyAccount, CeremonyFailure, CeremonyPhase,

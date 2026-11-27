@@ -90,22 +90,24 @@ fn moment_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                 surface_id: event.surface_id().unwrap_or(&surface.surface_id).clone(),
             }
         }
-        UiEventKind::CardInteracted { key, event: input } => {
+        UiEventKind::CardInteracted { key, event: input, seen } => {
             let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
             IntentKind::CardInteract {
                 moment_id,
                 surface_id: event.surface_id().unwrap_or(&surface.surface_id).clone(),
                 key: key.clone(),
                 event: input.clone(),
+                seen: seen.clone(),
             }
         }
-        UiEventKind::CardSlotAnswered { slot_id, outcome } => {
+        UiEventKind::CardSlotAnswered { slot_id, outcome, seen } => {
             let MomentKind::AgentSurface(surface) = &moment.kind else { return None };
             IntentKind::CardSlotAnswer {
                 moment_id,
                 surface_id: event.surface_id().unwrap_or(&surface.surface_id).clone(),
                 slot_id: slot_id.clone(),
                 outcome: *outcome,
+                seen: seen.clone(),
             }
         }
         UiEventKind::ApprovePressed => {

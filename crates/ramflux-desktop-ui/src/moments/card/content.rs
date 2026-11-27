@@ -12,21 +12,22 @@ use ramflux_desktop_core::{CardNode, JsonValue};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
-use super::{View, attr_bool, attr_f64, attr_str};
+use super::{View, attr_bool, attr_f64, attr_str, attr_text, shown};
 use crate::i18n::{tr, tr_args};
 
 /// A Text node: its `text`, plain. Empty text draws nothing.
 pub fn text(view: &View<'_>, node: &CardNode, cx: &App) -> AnyElement {
     let _ = view;
-    let Some(text) = attr_str(node, "text").filter(|t| !t.is_empty()) else {
+    let text = attr_text(node, "text");
+    if text.is_empty() {
         return div().into_any_element();
-    };
+    }
     let caption = attr_str(node, "variant") == Some("caption");
     div()
         .w_full()
         .text_size(if caption { text_caption() } else { text_secondary() })
         .text_color(if caption { cx.theme().muted_foreground } else { cx.theme().foreground })
-        .child(text.to_owned())
+        .child(text)
         .into_any_element()
 }
 
@@ -51,7 +52,7 @@ pub fn icon(node: &CardNode, cx: &App) -> AnyElement {
 /// Byte delivery does not exist in this build, so the image is never
 /// fetched and its URL never read.
 pub fn image(node: &CardNode, cx: &App) -> AnyElement {
-    let description = attr_str(node, "description").unwrap_or_default().to_owned();
+    let description = attr_text(node, "description");
     v_flex()
         .w(px(160.))
         .h(px(96.))
@@ -80,21 +81,22 @@ pub fn chart(node: &CardNode, cx: &App) -> AnyElement {
         .map(|rows| {
             rows.iter()
                 .map(|row| {
-                    let label = row.get("label").and_then(JsonValue::as_str).unwrap_or_default();
+                    let label =
+                        shown(row.get("label").and_then(JsonValue::as_str).unwrap_or_default());
                     let points = row
                         .get("points")
                         .and_then(JsonValue::as_array)
                         .map(|ps| {
                             ps.iter()
                                 .filter_map(|p| {
-                                    let name = p.get("label")?.as_str()?.to_owned();
+                                    let name = shown(p.get("label")?.as_str()?);
                                     let value = p.get("value")?.as_f64()?;
                                     Some((name, value))
                                 })
                                 .collect()
                         })
                         .unwrap_or_default();
-                    (label.to_owned(), points)
+                    (label, points)
                 })
                 .collect()
         })
@@ -166,7 +168,7 @@ pub fn table(node: &CardNode, cx: &App) -> AnyElement {
                 .map(|c| {
                     let key = c.get("key").and_then(JsonValue::as_str).unwrap_or_default();
                     let label = c.get("label").and_then(JsonValue::as_str).unwrap_or(key);
-                    (key.to_owned(), label.to_owned())
+                    (key.to_owned(), shown(label))
                 })
                 .collect()
         })
@@ -183,7 +185,9 @@ pub fn table(node: &CardNode, cx: &App) -> AnyElement {
                         .map(|cells| {
                             cells
                                 .iter()
-                                .map(|c| c.as_str().map_or_else(|| c.to_string(), str::to_owned))
+                                .map(|c| {
+                                    shown(&c.as_str().map_or_else(|| c.to_string(), str::to_owned))
+                                })
                                 .collect()
                         })
                         .unwrap_or_default()
@@ -213,9 +217,9 @@ pub fn table(node: &CardNode, cx: &App) -> AnyElement {
 
 /// A Task: its owner, requester, status, progress and steps (plain text).
 pub fn task(node: &CardNode, cx: &App) -> AnyElement {
-    let owner = attr_str(node, "owner").unwrap_or_default().to_owned();
-    let requester = attr_str(node, "requester").unwrap_or_default().to_owned();
-    let status = attr_str(node, "status").unwrap_or_default().to_owned();
+    let owner = attr_text(node, "owner");
+    let requester = attr_text(node, "requester");
+    let status = attr_text(node, "status");
     let progress = attr_f64(node, "progress").unwrap_or(0.0).clamp(0.0, 100.0);
     let steps: Vec<(String, String)> = node
         .attrs
@@ -226,7 +230,7 @@ pub fn task(node: &CardNode, cx: &App) -> AnyElement {
                 .map(|s| {
                     let text = s.get("text").and_then(JsonValue::as_str).unwrap_or_default();
                     let status = s.get("status").and_then(JsonValue::as_str).unwrap_or_default();
-                    (text.to_owned(), status.to_owned())
+                    (shown(text), shown(status))
                 })
                 .collect()
         })

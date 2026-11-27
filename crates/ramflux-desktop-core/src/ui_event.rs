@@ -150,18 +150,24 @@ pub enum UiEventKind {
     /// "Request update" pressed on an out-of-sync surface.
     SurfaceUpdateRequested,
     /// A host event on one node of a card (typed input, tap, tab, modal).
+    /// `seen` is the tree state the event was taken on.
     CardInteracted {
         /// Key of the node the event addresses.
         key: String,
         /// The event.
         event: crate::CardInput,
+        /// The tree state the user saw.
+        seen: crate::CardSeen,
     },
     /// The host's answer to a card slot (a link sheet, or an approval).
+    /// `seen` is the tree state the answer was given on.
     CardSlotAnswered {
         /// Slot id, as the card named it.
         slot_id: String,
         /// The answer.
         outcome: crate::CardSlotOutcome,
+        /// The tree state the user saw.
+        seen: crate::CardSeen,
     },
     /// Approve pressed on an intervention or a task step.
     ApprovePressed,

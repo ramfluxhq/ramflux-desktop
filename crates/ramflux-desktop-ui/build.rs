@@ -8,7 +8,8 @@
 //!   build reports its commit.
 //! - Compiles the string catalogues (`locales/<tag>.json`, one per locale) into
 //!   sorted static tables (`$OUT_DIR/catalog.rs`). A catalogue that is not a
-//!   flat JSON object of strings and nulls fails the build.
+//!   flat JSON object of strings and nulls fails the build. The `card_gallery.*`
+//!   keys are left out of the tables unless the `card-gallery` feature is on.
 //! - Fails the build when a translation key written as a literal in `src/` is
 //!   missing from the English catalogue, so a typo in a key never compiles.
 
@@ -71,9 +72,15 @@ fn catalogues(manifest: &Path) -> Result<(), String> {
          /// Every catalogue: its tag and its translated entries, sorted by key.\n\
          pub(crate) static CATALOGUES: &[(&str, &[(&str, &str)])] = &[\n",
     );
+    // The card gallery's strings (`card_gallery.*`) are compiled in only with
+    // its feature; a release catalogue never carries them.
+    let gallery = std::env::var_os("CARGO_FEATURE_CARD_GALLERY").is_some();
     for (tag, catalogue) in &catalogues {
         let _ = writeln!(out, "    ({tag:?}, &[");
         for (key, text) in catalogue {
+            if key.starts_with("card_gallery.") && !gallery {
+                continue;
+            }
             if let Some(text) = text {
                 let _ = writeln!(out, "        ({key:?}, {text:?}),");
             }

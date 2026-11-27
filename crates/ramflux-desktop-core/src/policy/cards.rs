@@ -14,10 +14,10 @@ use std::collections::BTreeSet;
 use serde_json::{Value, json};
 
 use super::{IntentError, Policy};
-use crate::card_event::{CardSlotOutcome, CardStatus};
+use crate::card_event::{CardSlotOutcome, CardStatus, https_host};
 use crate::ids::{MomentId, SurfaceId};
 use crate::intent::{CardInput, Effect, IntentKind, SecretInput, methods};
-use crate::model::{CardPhase, MomentKind};
+use crate::model::{CardPhase, CardSeen, CardToken, CardTree, MomentKind};
 use crate::store::{CardRecord, MAX_RESUMED, PoolPlan};
 
 /// Effects of a card intent, or `None` for a kind of another area.
@@ -55,12 +55,23 @@ pub(super) fn handle(
                 )?]),
             })
         }
-        IntentKind::CardInteract { moment_id, surface_id, key, event } => p
-            .human_only("act on a card")
-            .and_then(|()| interact(p, moment_id, surface_id, key, event, stamp)),
-        IntentKind::CardSlotAnswer { moment_id, surface_id, slot_id, outcome } => p
-            .human_only("answer a card")
-            .and_then(|()| slot_answer(p, moment_id, surface_id, slot_id, *outcome, stamp)),
+        IntentKind::CardInteract { moment_id, surface_id, key, event, seen } => {
+            p.human_only("act on a card").and_then(|()| {
+                interact(p, moment_id, surface_id, Taken { target: key, seen }, event, stamp)
+            })
+        }
+        IntentKind::CardSlotAnswer { moment_id, surface_id, slot_id, outcome, seen } => {
+            p.human_only("answer a card").and_then(|()| {
+                slot_answer(
+                    p,
+                    moment_id,
+                    surface_id,
+                    Taken { target: slot_id, seen },
+                    *outcome,
+                    stamp,
+                )
+            })
+        }
         IntentKind::CardSubmit { moment_id, surface_id } => {
             p.human_only("submit a card").and_then(|()| submit(p, moment_id, surface_id, stamp))
         }
@@ -199,20 +210,59 @@ fn touch(
     steps(p, plan, stamp)
 }
 
+/// What the user saw when a host event or slot answer was taken: the node
+/// it addressed (or the slot id) and the tree state.
+#[derive(Clone, Copy)]
+struct Taken<'a> {
+    target: &'a str,
+    seen: &'a CardSeen,
+}
+
+/// The token a host event on `key` is sent with: the held tree's, once
+/// `seen` still names the held version. A text draft (`rebase`) may also
+/// name an older version of this desktop's own chain, where its node keeps
+/// its kind and input target; the whole value then replaces the draft
+/// (last write wins). Anything else is a change the user has not seen.
+fn held_token(
+    record: &CardRecord,
+    tree: &CardTree,
+    key: &str,
+    seen: &CardSeen,
+    rebase: bool,
+    moment_id: &MomentId,
+) -> Result<CardToken, IntentError> {
+    let same = seen.stamp == tree.stamp();
+    if !same && !(rebase && record.rebasable(key, seen)) {
+        return Err(IntentError::CardChanged(moment_id.clone()));
+    }
+    tree.token_for(key).ok_or_else(|| IntentError::NotActionable(moment_id.clone()))
+}
+
+/// The held tree's stamp, when `seen` still names it (a strict check for
+/// taps, tabs, modals and slot answers).
+fn held_stamp(tree: &CardTree, seen: &CardSeen, moment_id: &MomentId) -> Result<(), IntentError> {
+    if seen.stamp == tree.stamp() {
+        Ok(())
+    } else {
+        Err(IntentError::CardChanged(moment_id.clone()))
+    }
+}
+
 /// A live card's host event: its token from the held tree, the event as a
 /// secret.
 fn interact(
     p: &Policy<'_>,
     moment_id: &MomentId,
     surface_id: &SurfaceId,
-    key: &str,
+    taken: Taken<'_>,
     event: &CardInput,
     stamp: &dyn Fn(Value) -> Value,
 ) -> Result<Vec<Effect>, IntentError> {
     live_or_touch(p, moment_id, surface_id, stamp, |record| {
         let tree = interactive_tree(record, moment_id)?;
-        let token =
-            tree.token_for(key).ok_or_else(|| IntentError::NotActionable(moment_id.clone()))?;
+        let rebase = matches!(event, CardInput::Input { .. });
+        let key = taken.target;
+        let token = held_token(record, tree, key, taken.seen, rebase, moment_id)?;
         let event = serde_json::to_value(event)
             .map_err(|_| IntentError::NotActionable(moment_id.clone()))?;
         let secret = json!({ "token": token, "event": event }).to_string();
@@ -232,11 +282,21 @@ fn slot_answer(
     p: &Policy<'_>,
     moment_id: &MomentId,
     surface_id: &SurfaceId,
-    slot_id: &str,
+    taken: Taken<'_>,
     outcome: CardSlotOutcome,
     stamp: &dyn Fn(Value) -> Value,
 ) -> Result<Vec<Effect>, IntentError> {
     live_or_touch(p, moment_id, surface_id, stamp, |record| {
+        let tree = interactive_tree(record, moment_id)?;
+        let slot_id = taken.target;
+        held_stamp(tree, taken.seen, moment_id)?;
+        // A link is opened only over https (the sheet refuses other links).
+        if let Some(link) = record.link.as_ref().filter(|l| l.slot_id == slot_id)
+            && outcome == CardSlotOutcome::Confirm
+            && https_host(&link.url).is_none()
+        {
+            return Err(IntentError::NotActionable(moment_id.clone()));
+        }
         // The URL the sheet shows, so the answer can name the link it opened.
         let url = record.link.as_ref().filter(|l| l.slot_id == slot_id).map(|l| l.url.clone());
         let (token, request_id) = match &record.link {

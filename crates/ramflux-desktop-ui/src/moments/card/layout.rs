@@ -16,7 +16,7 @@ use ramflux_desktop_core::{CardInput, CardNode};
 use ramflux_desktop_navigation::direction::h_flex_in;
 use ramflux_desktop_navigation::scale::{space, text_caption};
 
-use super::{View, attr_str, errors, slots};
+use super::{View, attr_str, errors, shown, slots};
 use crate::i18n::tr_args;
 use crate::style::DesignButton as _;
 
@@ -128,12 +128,11 @@ pub fn tabs(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App)
         .get("tabs")
         .and_then(|t| t.as_array())
         .map(|rows| {
-            rows.iter()
-                .filter_map(|t| t.get("title").and_then(|v| v.as_str()).map(str::to_owned))
-                .collect()
+            rows.iter().filter_map(|t| t.get("title").and_then(|v| v.as_str()).map(shown)).collect()
         })
         .unwrap_or_default();
     let panels = view.children(node);
+    let seen = view.seen(node);
     let selected = view
         .local
         .borrow()
@@ -152,6 +151,7 @@ pub fn tabs(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App)
             let key_for_event = node.key.clone();
             let is_selected = index as u64 == selected;
             let enabled = view.enabled(node);
+            let seen = seen.clone();
             Button::new(domain_id("card-id", &format!("tab-{}-{index}", node.key)))
                 .small()
                 .design_secondary(cx)
@@ -164,6 +164,7 @@ pub fn tabs(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App)
                         UiEventKind::CardInteracted {
                             key: key_for_event.clone(),
                             event: CardInput::SelectTab { index: index as u64 },
+                            seen: seen.clone(),
                         },
                         window,
                         cx,
@@ -202,6 +203,7 @@ pub fn modal(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App
     let trigger_key = node.key.clone();
     let local = view.local.clone();
     let emit_view = view.sink.clone();
+    let seen = view.seen(node);
     // A disabled trigger never opens the sheet (the runtime refuses it).
     let enabled = view.enabled(node) && !super::attr_bool(trigger, "disabled");
     let open_trigger = div()
@@ -214,6 +216,7 @@ pub fn modal(view: &View<'_>, node: &CardNode, window: &mut Window, cx: &mut App
                     UiEventKind::CardInteracted {
                         key: trigger_key.clone(),
                         event: CardInput::ModalOpen,
+                        seen: seen.clone(),
                     },
                     window,
                     cx,

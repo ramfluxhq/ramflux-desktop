@@ -547,3 +547,147 @@ fn every_directory_and_action_frame_reaches_the_account_router_of_the_real_daemo
     let cli = daemon.rf(&["account", "list"]).expect("rf account list");
     assert!(cli.status.success(), "the daemon still answers");
 }
+
+/// A prepared data root whose unlocked account holds a form card: a TextField
+/// and a Button (`RAMFLUX_LIVE_CARD_TEMPLATE`), and the card's surface
+/// reference (`RAMFLUX_LIVE_CARD_SURFACE`). The daemon must be built with the
+/// card runtime (`ramflux-sdk/card-runtime`).
+const CARD_TEMPLATE_ENV: &str = "RAMFLUX_LIVE_CARD_TEMPLATE";
+const CARD_SURFACE_ENV: &str = "RAMFLUX_LIVE_CARD_SURFACE";
+
+/// The fence a host event on `key` carries: the token of the tree the event
+/// was taken on (the runtime's camelCase keys).
+fn card_token(batch: &serde_json::Value, session: u64, key: &str) -> serde_json::Value {
+    json!({
+        "session": session,
+        "signedVersion": batch["signed_version"],
+        "editSeq": batch["edit_seq"],
+        "treeVersion": batch["version"],
+        "key": key,
+    })
+}
+
+/// The keys of the first TextField and the first Button of a card's batch.
+fn card_controls(batch: &serde_json::Value) -> (String, String) {
+    let (mut field, mut button) = (None, None);
+    for mutation in batch["mutations"].as_array().into_iter().flatten() {
+        if mutation["op"] != "upsert" {
+            continue;
+        }
+        let node = &mutation["node"];
+        let key = node["key"].as_str().map(str::to_owned);
+        match node["kind"].as_str() {
+            Some("TextField") if field.is_none() => field = key,
+            Some("Button") if button.is_none() => button = key,
+            _ => {}
+        }
+    }
+    (field.expect("the card has a TextField"), button.expect("the card has a Button"))
+}
+
+/// The value a node holds in the batch that upserted it, when the batch
+/// carries that node.
+fn card_node_value(batch: &serde_json::Value, key: &str) -> Option<String> {
+    batch["mutations"].as_array()?.iter().find_map(|mutation| {
+        let node = &mutation["node"];
+        (mutation["op"] == "upsert" && node["key"] == key)
+            .then(|| node["attrs"]["value"].as_str().map(str::to_owned))
+            .flatten()
+    })
+}
+
+#[test]
+#[ignore = "needs a card-runtime rf and a prepared form card: RAMFLUX_LIVE_DAEMON=1 RAMFLUX_RF_BIN=... RAMFLUX_LIVE_CARD_TEMPLATE=... RAMFLUX_LIVE_CARD_SURFACE=..."]
+fn a_text_field_then_a_button_is_taken_in_order_on_the_card_runtime() {
+    if !live_daemon::enabled() {
+        println!("skipped: set {}=1 to run against a real daemon", live_daemon::ENABLE_ENV);
+        return;
+    }
+    let (Some(template), Ok(surface)) =
+        (std::env::var_os(CARD_TEMPLATE_ENV), std::env::var(CARD_SURFACE_ENV))
+    else {
+        println!("skipped: set {CARD_TEMPLATE_ENV} and {CARD_SURFACE_ENV}");
+        return;
+    };
+    let daemon = LiveDaemon::start_from("card-form", std::path::Path::new(&template))
+        .unwrap_or_else(|e| panic!("daemon: {e}"));
+    // The daemon opens the account a moment after it answers.
+    let mut account = None;
+    for _ in 0..200 {
+        let listed = daemon.call(None, "account", "account.list", &json!({}));
+        if let Ok(listed) = listed
+            && listed["account_details"][0]["state"] == "unlocked"
+        {
+            account = listed["accounts"][0]["id"].as_str().map(str::to_owned);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let account = account.expect("the daemon opened the prepared account");
+    let account = Some(account.as_str());
+
+    let opened = daemon
+        .call(
+            account,
+            "surface",
+            "card.session.open",
+            &json!({
+                "surface_ref": surface, "locale": "en", "dark": false,
+            }),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(opened["result"], "opened", "{opened}");
+    let session = opened["session"].as_u64().expect("a session");
+    let first = opened["batch"].clone();
+    let (field, button) = card_controls(&first);
+
+    // The text field first: its edit moves the tree on.
+    let typed = daemon
+        .call(
+            account,
+            "surface",
+            "card.session.event",
+            &json!({
+                "session": session,
+                "token": card_token(&first, session, &field),
+                "event": { "kind": "input", "value": "Ada" },
+            }),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(typed["result"], "edited", "{typed}");
+    let after_input = typed["batch"].clone();
+    assert_eq!(card_node_value(&after_input, &field).as_deref(), Some("Ada"), "{typed}");
+
+    // A tap taken on the tree before the field was typed is refused.
+    let stale = daemon.call(
+        account,
+        "surface",
+        "card.session.event",
+        &json!({
+            "session": session,
+            "token": card_token(&first, session, &button),
+            "event": { "kind": "activate" },
+        }),
+    );
+    if let Ok(stale) = stale {
+        assert!(
+            !matches!(stale["result"].as_str(), Some("edited" | "pending_submit")),
+            "a tap on an older tree was taken: {stale}"
+        );
+    }
+
+    // The tap on the tree the field produced is taken, and the submit follows.
+    let tapped = daemon
+        .call(
+            account,
+            "surface",
+            "card.session.event",
+            &json!({
+                "session": session,
+                "token": card_token(&after_input, session, &button),
+                "event": { "kind": "activate" },
+            }),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert!(matches!(tapped["result"].as_str(), Some("pending_submit" | "edited")), "{tapped}");
+}

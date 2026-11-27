@@ -126,7 +126,9 @@ impl StoreHandle {
     pub fn reload_active_session(&mut self, cx: &mut Context<Self>) {
         let (Some(id), true) = (self.active.clone(), self.live.is_some()) else { return };
         // The old source goes first: it detaches by account, which must not
-        // reach the scope the new source attaches.
+        // reach the scope the new source attaches. Its card sessions are
+        // released first, so the daemon does not keep them.
+        self.release_cards(&id);
         self.sessions.remove(&id);
         if let Some(link) = self.live.as_ref() {
             let source = link.hub.account_source(id.clone());
@@ -139,6 +141,16 @@ impl StoreHandle {
             );
         }
         self.emit_reset(cx);
+    }
+
+    /// Releases the card sessions of an account that is being removed or
+    /// signed out, and records the releases in the inspector.
+    fn release_cards(&mut self, id: &AccountId) {
+        let Some(session) = self.sessions.get_mut(id) else { return };
+        let records = session.dispose_all_cards();
+        for record in records {
+            self.inspector.push(record);
+        }
     }
 
     fn reconcile_live(&mut self, cx: &mut Context<Self>) {
@@ -167,6 +179,12 @@ impl StoreHandle {
             return;
         }
         for id in stale {
+            // Disjoint fields: the link above borrows `self.live` only.
+            if let Some(session) = self.sessions.get_mut(&id) {
+                for record in session.dispose_all_cards() {
+                    self.inspector.push(record);
+                }
+            }
             self.sessions.remove(&id);
         }
         for id in fresh {

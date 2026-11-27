@@ -20,8 +20,9 @@
 use std::collections::BTreeSet;
 
 use ramflux_desktop_core::{
-    CardDue, CardEvent, ContextId, DomainEvent, Effect, EventEnvelope, Intent, IntentError,
-    IntentKind, MomentId, Source, Store, SurfaceId, Timestamp, handle_intent,
+    CARD_CHANGED_REASON, CardDue, CardEvent, CardInput, CardSeen, ContextId, DomainEvent, Effect,
+    EventEnvelope, Intent, IntentError, IntentKind, MomentId, Source, Store, SurfaceId, Timestamp,
+    handle_intent, methods,
 };
 #[cfg(feature = "demo")]
 use ramflux_desktop_test::{MockSource, Scenario};
@@ -39,6 +40,96 @@ pub struct CardMarks {
     presented: std::collections::BTreeMap<SurfaceId, (String, bool)>,
     /// Surfaces whose session release was asked.
     disposing: BTreeSet<SurfaceId>,
+    /// Surfaces whose open was refused or fell back, with the surface
+    /// version it happened at: not asked again until the version changes or
+    /// the surface changes again (a resync included).
+    open_refused: std::collections::BTreeMap<SurfaceId, u64>,
+    /// Cards with a host event call in flight.
+    busy: BTreeSet<SurfaceId>,
+    /// Host events waiting for the call in flight on their card, in order.
+    queued: std::collections::BTreeMap<SurfaceId, Vec<QueuedEvent>>,
+}
+
+/// A host event on a card that waits behind the event call in flight on its
+/// card. A text draft replaces an older draft of the same key (the whole
+/// value, the newest wins); a tap waits behind every draft of its press.
+#[derive(Debug, Clone)]
+pub struct QueuedEvent {
+    moment_id: MomentId,
+    surface_id: SurfaceId,
+    key: String,
+    event: CardInput,
+    seen: CardSeen,
+}
+
+impl QueuedEvent {
+    /// The queued form of a host event intent, if it is one.
+    fn of(kind: &IntentKind) -> Option<Self> {
+        match kind {
+            IntentKind::CardInteract { moment_id, surface_id, key, event, seen } => Some(Self {
+                moment_id: moment_id.clone(),
+                surface_id: surface_id.clone(),
+                key: key.clone(),
+                event: event.clone(),
+                seen: seen.clone(),
+            }),
+            _ => None,
+        }
+    }
+
+    fn is_input(&self) -> bool {
+        matches!(self.event, CardInput::Input { .. })
+    }
+
+    fn into_intent(self) -> Intent {
+        Intent::human(IntentKind::CardInteract {
+            moment_id: self.moment_id,
+            surface_id: self.surface_id,
+            key: self.key,
+            event: self.event,
+            seen: self.seen,
+        })
+    }
+}
+
+impl CardMarks {
+    /// Whether a host event for `surface` must wait (a call is in flight, or
+    /// events are already waiting).
+    fn holds(&self, surface: &SurfaceId) -> bool {
+        self.busy.contains(surface) || self.queued.get(surface).is_some_and(|q| !q.is_empty())
+    }
+
+    /// Queues a host event; a draft replaces the queued draft of its key.
+    fn enqueue(&mut self, event: QueuedEvent) {
+        let queue = self.queued.entry(event.surface_id.clone()).or_default();
+        if event.is_input()
+            && let Some(slot) = queue.iter_mut().find(|q| q.is_input() && q.key == event.key)
+        {
+            *slot = event;
+            return;
+        }
+        queue.push(event);
+    }
+}
+
+/// The surface a user host event addresses (the card is acted on by a person).
+fn card_user_surface(kind: &IntentKind) -> Option<&SurfaceId> {
+    match kind {
+        IntentKind::CardInteract { surface_id, .. }
+        | IntentKind::CardSlotAnswer { surface_id, .. }
+        | IntentKind::CardSubmit { surface_id, .. } => Some(surface_id),
+        _ => None,
+    }
+}
+
+/// Whether an effect is a host event call (`card.session.event`).
+fn is_event_call(effect: &Effect) -> bool {
+    match effect {
+        Effect::Call { method, .. } | Effect::SecretCall { method, .. } => {
+            method == methods::CARD_SESSION_EVENT
+        }
+        _ => false,
+    }
 }
 
 /// The card state an accepted intent records (see [`card_mark`]).
@@ -424,9 +515,32 @@ impl AccountSession {
     }
 
     /// Whether a card on screen should be opened now: the store holds no
-    /// session for it and none is being opened.
+    /// session for it, none is being opened, and the last open of this
+    /// surface was not refused at its current version.
     pub fn card_open_pending(&self, surface: &SurfaceId) -> bool {
-        self.store.card(surface).is_none() && !self.card_marks.borrow().opening.contains(surface)
+        let marks = self.card_marks.borrow();
+        let refused = marks.open_refused.get(surface) == Some(&self.surface_version(surface));
+        self.store.card(surface).is_none() && !marks.opening.contains(surface) && !refused
+    }
+
+    /// The version of the surface a card belongs to (0 when unknown).
+    fn surface_version(&self, surface: &SurfaceId) -> u64 {
+        self.store
+            .surface_moment(surface)
+            .and_then(|moment| self.store.surface(moment))
+            .map_or(0, |s| s.version)
+    }
+
+    /// Releases every card session this account holds (the account is being
+    /// removed or signed out). The releases are dispatched like any other.
+    pub fn dispose_all_cards(&mut self) -> Vec<InspectorEntry> {
+        let mut records = Vec::new();
+        for surface_id in self.cards_held() {
+            let Some(moment_id) = self.card_moment(&surface_id) else { continue };
+            let kind = IntentKind::CardDispose { moment_id, surface_id };
+            records.extend(self.dispatch(Intent::human(kind)).1);
+        }
+        records
     }
 
     /// The cards the pool holds, by surface.
@@ -479,16 +593,86 @@ impl AccountSession {
 
     /// Runs policy for `intent` at the session time and submits the
     /// resulting effects. A confirmation request is handed back unsubmitted.
+    /// A host event on a card waits while another event call on that card is
+    /// in flight (see [`QueuedEvent`]).
     pub fn dispatch(&mut self, intent: Intent) -> (DispatchOutcome, Vec<InspectorEntry>) {
+        if let Some(event) = QueuedEvent::of(&intent.kind) {
+            let holds = self.card_marks.borrow().holds(&event.surface_id);
+            if holds {
+                self.card_marks.borrow_mut().enqueue(event);
+                // Sent now when no call is in flight on the card.
+                let records = self.dispatch_card_queue();
+                return (DispatchOutcome::Submitted(Vec::new()), records);
+            }
+        }
+        self.dispatch_now(intent)
+    }
+
+    /// Dispatches waiting host events, one per card with no call in flight.
+    fn dispatch_card_queue(&mut self) -> Vec<InspectorEntry> {
+        let mut records = Vec::new();
+        loop {
+            let ready = {
+                let marks = self.card_marks.borrow();
+                marks
+                    .queued
+                    .iter()
+                    .find(|(surface, queue)| !queue.is_empty() && !marks.busy.contains(*surface))
+                    .map(|(surface, _)| surface.clone())
+            };
+            let Some(surface) = ready else { break };
+            let mut next = {
+                let mut marks = self.card_marks.borrow_mut();
+                let Some(queue) = marks.queued.get_mut(&surface) else { break };
+                let next = queue.remove(0);
+                if queue.is_empty() {
+                    marks.queued.remove(&surface);
+                }
+                next
+            };
+            let was_input = next.is_input();
+            // A draft or tap taken on this desktop's own chain of stamps
+            // follows the held version; any other stamp is checked as it is.
+            if let Some(seen) = self.store.card_rebased(&next.surface_id, &next.key, &next.seen) {
+                next.seen = seen;
+            }
+            let (outcome, recorded) = self.dispatch_now(next.into_intent());
+            records.extend(recorded);
+            // A draft that was not taken means a tap behind it must not
+            // fire without the value the user typed: the queue is dropped.
+            if was_input && matches!(outcome, DispatchOutcome::Refused(_)) {
+                self.card_marks.borrow_mut().queued.remove(&surface);
+            }
+        }
+        records
+    }
+
+    fn dispatch_now(&mut self, intent: Intent) -> (DispatchOutcome, Vec<InspectorEntry>) {
         let mark = card_mark(&intent.kind);
+        let user_surface = card_user_surface(&intent.kind).cloned();
         let (decided, mut records) = self.decide(intent);
         let effects = match decided {
             Ok(effects) => effects,
-            Err(outcome) => return (outcome, records),
+            Err(outcome) => {
+                if let (DispatchOutcome::Refused(IntentError::CardChanged(_)), Some(surface)) =
+                    (&outcome, &user_surface)
+                {
+                    self.store.card_refuse(surface, CARD_CHANGED_REASON);
+                }
+                return (outcome, records);
+            }
         };
         self.note_card_mark(mark);
+        if let Some(surface) = &user_surface {
+            self.store.card_bump(surface);
+        }
         let mut labels = Vec::new();
         for effect in effects {
+            if let Some(surface) = &user_surface
+                && is_event_call(&effect)
+            {
+                self.card_marks.borrow_mut().busy.insert(surface.clone());
+            }
             let label = effect_label(&effect);
             records.push(InspectorEntry::Effect { label: label.clone() });
             labels.push(label);
@@ -564,6 +748,7 @@ impl AccountSession {
             self.apply(&env, &mut applied);
         }
         applied.records.extend(self.dispatch_card_due());
+        applied.records.extend(self.dispatch_card_queue());
         applied.open_urls = std::mem::take(&mut self.open_urls);
         if self.source_mut().recovery_phrase_ready() {
             applied
@@ -578,18 +763,60 @@ impl AccountSession {
     }
 
     fn apply(&mut self, env: &EventEnvelope, applied: &mut Applied) {
+        if let DomainEvent::Surface(_) = &env.event {
+            // A surface change or resync lets a refused open be asked again.
+            self.card_marks.borrow_mut().open_refused.clear();
+        }
         if let DomainEvent::Card(card) = &env.event {
+            let surface = card.surface_id();
             let mut marks = self.card_marks.borrow_mut();
-            marks.opening.remove(card.surface_id());
-            if matches!(card, CardEvent::Disposed { .. }) {
-                marks.disposing.remove(card.surface_id());
+            marks.opening.remove(surface);
+            match card {
+                CardEvent::Disposed { .. } => {
+                    marks.disposing.remove(surface);
+                    marks.busy.remove(surface);
+                    marks.queued.remove(surface);
+                }
+                CardEvent::Refused { .. } => {
+                    // A refused dispose is not in flight any more: the pool
+                    // may ask again. Events waiting behind a refused one are
+                    // dropped; the user acts again on the card as it is.
+                    marks.disposing.remove(surface);
+                    marks.busy.remove(surface);
+                    marks.queued.remove(surface);
+                }
+                CardEvent::Stale { .. } | CardEvent::Fallback { .. } => {
+                    marks.busy.remove(surface);
+                    marks.queued.remove(surface);
+                }
+                CardEvent::Batch { own_reply: true, .. }
+                | CardEvent::PendingSubmit { .. }
+                | CardEvent::OpenUrl { .. } => {
+                    marks.busy.remove(surface);
+                }
+                _ => {}
             }
             drop(marks);
-            if let CardEvent::LinkOpened { url, .. } = card {
+            // The browser opens only for the link the sheet showed: the one
+            // the store holds for this card.
+            if let CardEvent::LinkOpened { url, .. } = card
+                && self
+                    .store
+                    .card(surface)
+                    .and_then(|record| record.link.as_ref())
+                    .is_some_and(|link| &link.url == url)
+            {
                 self.open_urls.push(url.clone());
             }
         }
         let result = self.store.apply(env);
+        if let DomainEvent::Card(card) = &env.event
+            && matches!(card, CardEvent::Refused { .. } | CardEvent::Fallback { .. })
+            && self.store.card(card.surface_id()).is_none()
+        {
+            let version = self.surface_version(card.surface_id());
+            self.card_marks.borrow_mut().open_refused.insert(card.surface_id().clone(), version);
+        }
         applied.records.push(InspectorEntry::Envelope {
             seq: env.seq,
             at_ms: env.at.saturating_since(self.epoch()),

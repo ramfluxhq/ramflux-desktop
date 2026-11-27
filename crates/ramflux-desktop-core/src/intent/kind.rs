@@ -14,7 +14,8 @@ use crate::ids::{
 };
 use crate::model::{
     AgentAccess, AgentCreateRequest, AgentJobAction, AgentJobKind, AgentPersona,
-    AgentRuntimeAction, ConflictResolution, DeleteScope, PinSource, RequestAnswer, RequestPolicy,
+    AgentRuntimeAction, CardSeen, ConflictResolution, DeleteScope, PinSource, RequestAnswer,
+    RequestPolicy,
 };
 use crate::surface_hash::SurfaceHash;
 
@@ -35,8 +36,9 @@ pub enum AppLockPhase {
     Foreground,
 }
 
-/// A host event a card node takes (`card.session.event`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A host event a card node takes (`card.session.event`). Its value is a
+/// user's text or choice: `Debug` never prints it.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CardInput {
     /// A typed value for a field (text, check, choice, slider, date).
@@ -55,6 +57,18 @@ pub enum CardInput {
     ModalOpen,
     /// The host closed a modal of the card.
     ModalClose,
+}
+
+impl std::fmt::Debug for CardInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Input { .. } => f.debug_struct("Input").field("value", &"<redacted>").finish(),
+            Self::Activate => f.write_str("Activate"),
+            Self::SelectTab { index } => f.debug_struct("SelectTab").field("index", index).finish(),
+            Self::ModalOpen => f.write_str("ModalOpen"),
+            Self::ModalClose => f.write_str("ModalClose"),
+        }
+    }
 }
 
 /// Every intent kind.
@@ -268,6 +282,8 @@ pub enum IntentKind {
         key: String,
         /// The event.
         event: CardInput,
+        /// What the user saw of the node when the event was taken.
+        seen: CardSeen,
     },
     /// The host's answer to a slot of a card (link sheet or approval).
     CardSlotAnswer {
@@ -279,6 +295,8 @@ pub enum IntentKind {
         slot_id: String,
         /// The answer.
         outcome: CardSlotOutcome,
+        /// The tree state the user saw when answering.
+        seen: CardSeen,
     },
     /// Send the submit a button press asked for.
     CardSubmit {

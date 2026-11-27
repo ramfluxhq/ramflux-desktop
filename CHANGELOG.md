@@ -9,6 +9,13 @@ Versioning.
 
 ### Security
 
+- Agent cards (G10 review round 1): every host event and slot answer carries
+  the tree state the user saw and is refused when the held tree has moved on
+  (`card_changed`), except that a text draft may be re-sent on the desktop's
+  own chain of replies. Tree text is drawn with bidirectional controls
+  removed. A link sheet shows the host on its own line and opens only an
+  https link the runtime answered `opened` for, and a modal sheet names its
+  author with the AI marker.
 - Agent management (G19): the PRX provider key field is now masked and kept
   out of the clipboard, and the key is trimmed before use. An agent's
   approval names the agent (from the owner's roster), the tool and the
@@ -22,6 +29,11 @@ Versioning.
 
 ### Added
 
+- Card sessions: a card's text drafts and taps queue behind the event call in
+  flight on the card; a refused open is not asked again until the surface
+  changes; a card's sessions are released when its account is removed or
+  reloaded; a refused dispose can be asked again. The `card_gallery.*` strings
+  are compiled in only with `--features card-gallery`.
 - Card gallery and conformance (test builds only, `--features card-gallery`):
   `--card-gallery` lists every host fixture and scenario and draws each through
   the card renderer, live against the standalone card runtime; the conformance
