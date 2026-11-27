@@ -9,12 +9,12 @@
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, IconName, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, div};
 use ramflux_desktop_core::{Node, NodeAction, NodeId, ProbeOutcome, UiEventKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
-use ramflux_desktop_navigation::scale::space;
+use ramflux_desktop_navigation::scale::{design_px, space};
 
 use super::{SectionContext, SettingsSection, note};
 use crate::bubble::EventSink;
@@ -66,7 +66,7 @@ pub fn page(context: &SectionContext, cx: &App) -> SettingPage {
                         gpui_kit::component::tooltip::Tooltip::new(tr("settings.nodes.description"))
                             .build(window, cx)
                     })
-                    .child(gpui_kit::component::Icon::new(IconName::Info).small()),
+                    .child(gpui_kit::component::Icon::new(IconName::Info).size(design_px(18.0))),
             )
             .children(default.into_iter().map(|row| node_section(row, &sink, None, cx)))
             .when(!others.is_empty(), |list| list.child(node_group(&others, &sink, cx)))

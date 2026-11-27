@@ -1322,6 +1322,7 @@
   "dock.contacts.verify.no_number": null,
   "dock.contacts.verify.confirm": null,
   "dock.contacts.verify.cancel": null,
+  "dock.contacts.add.cancel": null,
   "dock.contacts.advanced_safety": null,
   "dock.contacts.advanced_safety_for": null,
   "dock.contacts.reachable": null,

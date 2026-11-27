@@ -371,7 +371,7 @@ impl ContactsDock {
             .child(form)
             .button(crate::modal::cancel_button(
                 "contact-add-cancel",
-                crate::i18n::tr("dock.contacts.verify.cancel"),
+                crate::i18n::tr("dock.contacts.add.cancel"),
                 cx,
                 cancel,
             ))

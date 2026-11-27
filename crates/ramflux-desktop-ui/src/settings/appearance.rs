@@ -146,6 +146,9 @@ fn body(cx: &App) -> impl IntoElement {
             .h(rem(28.0))
             .rounded(gpui_kit::px(palette.radius_xs))
             .when(on, |b| b.bg(palette.surface_white).font_semibold())
+            // Board 00D `RF / Segmented`: the idle segment's label is the
+            // control grey.
+            .text_color(if on { palette.text } else { palette.secondary })
             .selected(on)
             .toggled(on)
             .label(tr(key))

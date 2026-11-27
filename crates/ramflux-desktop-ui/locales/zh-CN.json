@@ -1322,6 +1322,7 @@
   "dock.contacts.verify.no_number": "%{name} 暂无安全码。列出对方设备后才会显示。",
   "dock.contacts.verify.confirm": "号码一致",
   "dock.contacts.verify.cancel": "取消",
+  "dock.contacts.add.cancel": "取消",
   "dock.contacts.advanced_safety": "安全码",
   "dock.contacts.advanced_safety_for": "显示 %{name} 的安全码（高级）",
   "dock.contacts.reachable": "可联系",
