@@ -170,6 +170,21 @@ impl MockSource {
 impl Source for MockSource {
     fn submit(&mut self, effect: Effect) {
         let label = effect.method().unwrap_or("RequireConfirmation").to_owned();
+        if label.starts_with("card.session.") {
+            // The demo answers card calls from the fixture trees, after the echo delay.
+            let body = effect.body().cloned().unwrap_or_default();
+            self.effects.push(EffectRecord {
+                at_ms: self.now_ms,
+                label: label.clone(),
+                rule: None,
+                echoed: true,
+                body: body.clone(),
+            });
+            for event in crate::mock_cards::respond(&label, &body) {
+                self.inject(ECHO_DELAY_MS, event);
+            }
+            return;
+        }
         let rule = self.rules.iter().position(|r| r.on.matches(&effect));
         let ceremony = if rule.is_none() {
             self.ceremony.answer(&effect, self.now_ms, self.epoch)

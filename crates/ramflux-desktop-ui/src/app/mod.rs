@@ -563,10 +563,9 @@ impl StoreHandle {
         dark: bool,
         cx: &mut Context<Self>,
     ) {
-        // A scenario or mock session has no card runtime to answer: its cards
-        // show their fallback text.
+        // A demo (mock) session answers cards from the fixture trees; a surface
+        // without one is refused and shows its fallback text.
         let kind = match self.session() {
-            Some(session) if !session.is_live() => return,
             Some(session) if session.card_open_pending(surface) => IntentKind::CardOpen {
                 moment_id: moment.clone(),
                 surface_id: surface.clone(),
