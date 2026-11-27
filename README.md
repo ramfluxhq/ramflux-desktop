@@ -41,6 +41,25 @@ Production code may not unwrap, expect, panic or take `std::sync` locks; the
 workspace lints and each crate root enforce it (tests may). See the comment
 on `[workspace.lints]` in `Cargo.toml`.
 
+### Card gallery (test builds only)
+
+The card gallery draws every card fixture through the card renderer, live
+against the standalone card runtime, and runs the conformance (checks A to C).
+It is behind the non-default feature `card-gallery` and is never part of the
+default or the release build. The fixtures are copies of the core's host
+fixtures at the pinned revision:
+
+```sh
+scripts/sync-card-fixtures.sh <core-checkout> <full-core-rev> --check
+cargo run -p ramflux-desktop --features card-gallery -- --card-gallery
+cargo run -p ramflux-desktop --features card-gallery -- --card-gallery --card-gallery-exit
+```
+
+`--card-gallery-locale zh-CN` and `--card-gallery-dark` choose the
+presentation. The records go to stdout and to `card-conformance.json` in the
+temp directory; failures, with full values, go to
+`card-conformance-failures.json`.
+
 ### Demo scenarios
 
 The scripted scenarios (`fixtures/scenarios`), the mock source that plays

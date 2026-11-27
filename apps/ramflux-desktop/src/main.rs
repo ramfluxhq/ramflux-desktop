@@ -42,12 +42,32 @@ const WINDOW_SIZE: (f32, f32) = (1280., 820.);
 /// The source chosen by flags, then the environment, then the saved
 /// settings, then the build.
 fn source_choice() -> Result<SourceChoice, String> {
-    let flags = Overrides::from_args(std::env::args().skip(1))?;
+    let flags = Overrides::from_args(launch_args())?;
     let env = Overrides {
         source: std::env::var(choice::SOURCE_ENV).ok(),
         socket: std::env::var(choice::SOCKET_ENV).ok(),
     };
     choice::resolve(&flags.or(env), &LaunchStore::default_location().load())
+}
+
+/// The command-line arguments the launch parser reads: the card gallery's
+/// flags are removed (they exist only in test builds).
+fn launch_args() -> Vec<String> {
+    #[cfg(feature = "card-gallery")]
+    {
+        ramflux_desktop_ui::card_gallery::strip_flags(std::env::args().skip(1))
+    }
+    #[cfg(not(feature = "card-gallery"))]
+    {
+        std::env::args().skip(1).collect()
+    }
+}
+
+/// The card gallery's configuration, when its flags were given (test builds only).
+#[cfg(feature = "card-gallery")]
+fn gallery_config() -> Option<ramflux_desktop_ui::card_gallery::GalleryConfig> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    ramflux_desktop_ui::card_gallery::GalleryConfig::from_args(&args)
 }
 
 fn main() {
@@ -96,6 +116,11 @@ fn main() {
             }),
             ..TitleBar::window_options()
         };
+        #[cfg(feature = "card-gallery")]
+        if let Some(config) = gallery_config() {
+            ramflux_desktop_ui::card_gallery::open(options, cx, config);
+            return;
+        }
         let opened = open_window(options, cx, move |window, cx| {
             cx.new(|cx| Shell::application(source.clone(), window, cx))
         });

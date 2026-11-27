@@ -1871,5 +1871,10 @@
   "moment.card.modal_title": null,
   "moment.card.modal_close": null,
   "moment.card.chart_value": null,
-  "moment.card.task_by": null
+  "moment.card.task_by": null,
+  "card_gallery.title": null,
+  "card_gallery.run": null,
+  "card_gallery.summary": null,
+  "card_gallery.note.slot": null,
+  "card_gallery.error": null
 }

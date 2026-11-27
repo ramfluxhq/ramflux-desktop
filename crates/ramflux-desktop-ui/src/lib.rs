@@ -40,6 +40,9 @@ pub mod actions;
 pub mod app;
 pub mod assets;
 pub mod bubble;
+/// The card gallery and its conformance (test builds only).
+#[cfg(feature = "card-gallery")]
+pub mod card_gallery;
 pub mod chrome;
 pub mod confirm;
 pub mod controls;

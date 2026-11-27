@@ -21,6 +21,8 @@ path = "src/main.rs"
 default = ["demo"]
 demo = ["ramflux-desktop-ui/demo"]
 bus-trace = ["ramflux-desktop-sdk/bus-trace"]
+# The card gallery and conformance (`--card-gallery`); test builds only.
+card-gallery = ["ramflux-desktop-ui/card-gallery"]
 
 [dependencies]
 gpui-kit.workspace = true
