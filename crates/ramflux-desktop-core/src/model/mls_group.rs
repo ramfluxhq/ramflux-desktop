@@ -901,3 +901,112 @@ pub struct CreateState {
     /// The latest outcome: the new group, or the error code.
     pub outcome: Option<Result<String, String>>,
 }
+
+/// Error codes of the MLS group methods that have their own text.
+pub const ERROR_CODES: [&str; 14] = [
+    "not_member",
+    "not_admin",
+    "owner_protected",
+    "tier_unavailable",
+    "group_full",
+    "paced",
+    "rate_limited",
+    "rejoin_needed",
+    "too_large",
+    "host_unreachable",
+    "unknown_invite",
+    "request_not_found",
+    "message_not_found",
+    "not_author",
+];
+
+/// The locale key of an error code: `group.error.<code>` for a code with its
+/// own text, `group.error.void_not_head` and `group.error.unavailable` for
+/// those two, else `group.error.generic`.
+pub fn error_key(code: &str) -> &'static str {
+    match code {
+        "not_member" => "group.error.not_member",
+        "not_admin" => "group.error.not_admin",
+        "owner_protected" => "group.error.owner_protected",
+        "tier_unavailable" => "group.error.tier_unavailable",
+        "group_full" => "group.error.group_full",
+        "paced" => "group.error.paced",
+        "rate_limited" => "group.error.rate_limited",
+        "rejoin_needed" => "group.error.rejoin_needed",
+        "too_large" => "group.error.too_large",
+        "host_unreachable" => "group.error.host_unreachable",
+        "unknown_invite" => "group.error.unknown_invite",
+        "request_not_found" => "group.error.request_not_found",
+        "message_not_found" => "group.error.message_not_found",
+        "not_author" => "group.error.not_author",
+        "void_not_head" => "group.error.void_not_head",
+        "unavailable" => "group.error.unavailable",
+        _ => "group.error.generic",
+    }
+}
+
+impl JoinRefusal {
+    /// The locale key of the text of this refusal.
+    pub fn key(&self) -> &'static str {
+        match self {
+            Self::LinkInvalid => "group.join.refused.link_invalid",
+            Self::InviteExpired { .. } => "group.join.refused.invite_expired",
+            Self::InviteInvalid => "group.join.refused.invite_invalid",
+            Self::GroupFull { .. } => "group.join.refused.group_full",
+            Self::QueueFull => "group.join.refused.queue_full",
+            Self::RequestExpired { .. } => "group.join.refused.request_expired",
+            Self::AlreadyMember { .. } => "group.join.refused.already_member",
+            Self::RateLimited { .. } => "group.join.refused.rate_limited",
+            Self::Unknown(_) => "group.join.refused.generic",
+        }
+    }
+}
+
+impl NotSentReason {
+    /// The locale key of the bubble chip of a post that was not sent.
+    pub fn key(&self) -> &'static str {
+        match self {
+            Self::RateLimited { resets_at: Some(_), .. } => "group.send.rate_limited",
+            Self::RateLimited { resets_at: None, .. } => "group.send.rate_limited.no_reset",
+            Self::TooLarge { .. } => "group.error.too_large",
+            Self::NotMember => "group.error.not_member",
+            Self::RejoinNeeded => "group.error.rejoin_needed",
+            Self::HostUnreachable => "group.error.host_unreachable",
+            Self::Paced { .. } => "group.error.paced",
+            Self::Unknown | Self::Failed => "group.send.failed",
+        }
+    }
+
+    /// The reason an error code of a send stands for.
+    pub fn from_code(code: &str, details: &Value) -> Self {
+        let ts = |field: &str| details.get(field).and_then(Value::as_i64).map(Timestamp);
+        match code {
+            "too_large" => Self::TooLarge {
+                max_bytes: details.get("max_bytes").and_then(Value::as_u64),
+            },
+            "not_member" => Self::NotMember,
+            "rejoin_needed" => Self::RejoinNeeded,
+            "host_unreachable" => Self::HostUnreachable,
+            "paced" => Self::Paced { until: ts("until").or_else(|| ts("resets_at")) },
+            "rate_limited" => Self::RateLimited {
+                resets_at: ts("resets_at"),
+                first_day: details.get("first_day").and_then(Value::as_bool).unwrap_or(false),
+                limit: details.get("limit").and_then(Value::as_u64).unwrap_or(0),
+                remaining: details.get("remaining").and_then(Value::as_u64).unwrap_or(0),
+            },
+            _ => Self::Unknown,
+        }
+    }
+}
+
+impl QueueReason {
+    /// The locale key of the bubble chip of a queued post.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::CatchingUp => "group.send.queued.catching_up",
+            Self::HostUnreachable => "group.send.queued.host_unreachable",
+            Self::FetchingTokens => "group.send.queued.fetching_tokens",
+            Self::Unknown => "group.send.queued.generic",
+        }
+    }
+}

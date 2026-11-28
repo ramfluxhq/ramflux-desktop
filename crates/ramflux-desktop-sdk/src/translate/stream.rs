@@ -22,7 +22,7 @@ use super::{Translator, seconds, text};
 use crate::plan::fetch::{Fetch, Paged};
 
 /// Topics whose events call for reads.
-pub const READ_TOPICS: [&str; 18] = [
+pub const READ_TOPICS: [&str; 19] = [
     "conversation.changed",
     "group.invitation",
     "message.received",
@@ -41,6 +41,7 @@ pub const READ_TOPICS: [&str; 18] = [
     "surface.changed",
     "surface.rejected",
     "task.changed",
+    super::mls_group::GROUP_EVENT,
 ];
 
 /// The daemon's state topics, read directly.
@@ -66,7 +67,13 @@ pub const PUSHED_TOPICS: [&str; 6] = [
 /// (they have no conversation to land in; conversation surfaces come through
 /// `surface.changed`).
 pub fn topics() -> Vec<&'static str> {
-    READ_TOPICS.iter().chain(STATE_TOPICS.iter()).copied().collect()
+    // W: subscribe to `group.event` once the daemon serves the MLS groups.
+    READ_TOPICS
+        .iter()
+        .filter(|topic| **topic != super::mls_group::GROUP_EVENT)
+        .chain(STATE_TOPICS.iter())
+        .copied()
+        .collect()
 }
 
 /// The daemon's background sync as `sync.status` reports it.

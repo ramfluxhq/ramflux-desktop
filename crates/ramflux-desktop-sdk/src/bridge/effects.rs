@@ -64,6 +64,18 @@ impl Task {
             }
             other => other,
         };
+        // The MLS groups are not served at the current pin, and five of the
+        // wire names they use exist with the old sender-key shapes: nothing
+        // is planned or sent for them on a live source. The call is refused
+        // with the typed unavailable outcome, which names only what it was
+        // for (never the link or the text).
+        if let Some(method) = effect.method().filter(|m| methods::is_mls_group(m)) {
+            // W: enable the group.* plan for each mls_group.* method here.
+            let body = effect.body().cloned().unwrap_or_default();
+            let refused = crate::translate::mls_group::unavailable(method, &body);
+            self.emit(vec![refused]);
+            return;
+        }
         // Creation and recovery ceremonies run on a connection of their own
         // (the daemon ties a ceremony to its connection), never through the
         // multiplexed request connection.
