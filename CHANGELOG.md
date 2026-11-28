@@ -7,6 +7,10 @@ Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- MLS groups catch-up banner (MLS GUI batch M3): a `rejoin_needed` warning now always wins over a running catch-up. The banner shows the rejoining text with no Skip, and the policy refuses a catch-up skip while the warning is present (typed refusal `MlsRejoining`).
+
 ### Changed
 
 - MLS groups store (MLS GUI batch M3): a settings or membership row that comes in a history page no longer renames the group, switches approval or touches the requests list; only a live event does (an old row is old news). A commit row from either source still counts for the event-before-reply check.

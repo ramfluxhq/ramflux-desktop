@@ -104,7 +104,12 @@ pub fn banners(
         WarningCode::RejoinNeeded { reason } => Some(reason.key()),
         _ => None,
     });
-    if let Some(record) = store.mls_catch_up(group_id) {
+    // `rejoin_needed` always wins over a running catch-up: the catch-up row
+    // is replaced by the rejoining banner, with no Skip.
+    let catch_up = store
+        .mls_catch_up(group_id)
+        .filter(|r| rejoin.is_none() || r.state != CatchUpState::Running);
+    if let Some(record) = catch_up {
         match record.state {
             CatchUpState::Running => {
                 let text = if record.total > 0 {

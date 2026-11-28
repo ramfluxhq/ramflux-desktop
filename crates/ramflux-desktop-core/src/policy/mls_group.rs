@@ -475,6 +475,14 @@ fn decide_admin(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, In
             }),
         IntentKind::MlsCatchUpSkip { group_id } => {
             p.human_only("skip the catch-up").and_then(|()| writable(p, group_id)).and_then(|()| {
+                // `rejoin_needed` wins over a running catch-up: no skip.
+                if p.store
+                    .mls_warnings(group_id)
+                    .iter()
+                    .any(|w| matches!(w, WarningCode::RejoinNeeded { .. }))
+                {
+                    return Err(IntentError::MlsRejoining);
+                }
                 let record = p
                     .store
                     .mls_catch_up(group_id)

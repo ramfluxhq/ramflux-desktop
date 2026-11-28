@@ -625,3 +625,24 @@ fn an_old_settings_row_in_history_never_changes_the_group_but_a_live_event_does(
     );
     assert_eq!(feed.store.mls_group(G).map(|g| g.name.clone()), Some("New name".to_owned()));
 }
+
+#[test]
+fn a_rejoin_needed_warning_refuses_skip_while_catch_up_runs() {
+    let mut feed = feed();
+    feed.ok(
+        90,
+        DomainEvent::MlsGroupEvent {
+            seq: 100,
+            group_id: G.to_owned(),
+            log_seq: None,
+            kind: GroupEventKind::CatchUp { state: CatchUpState::Running, done: 5, total: 10 },
+        },
+    );
+    ask(&mut feed, IntentKind::MlsCatchUpSkip { group_id: G.to_owned() }).expect("skip passes");
+    warning(&mut feed, 101, WarningCode::RejoinNeeded { reason: RejoinReason::Pruned }, false);
+    assert!(matches!(
+        ask(&mut feed, IntentKind::MlsCatchUpSkip { group_id: G.to_owned() }),
+        Err(IntentError::MlsRejoining)
+    ));
+    assert_eq!(feed.store.mls_warnings(G).len(), 1, "the warning stays");
+}

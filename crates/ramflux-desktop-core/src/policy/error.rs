@@ -400,4 +400,7 @@ pub enum IntentError {
     /// Catch-up is not running, so there is nothing to skip.
     #[error("catch-up is not running")]
     MlsNotCatchingUp,
+    /// The device has to rejoin, so a catch-up cannot be skipped.
+    #[error("this device has to rejoin the group")]
+    MlsRejoining,
 }
