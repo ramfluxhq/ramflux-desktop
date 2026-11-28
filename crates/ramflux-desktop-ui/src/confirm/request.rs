@@ -27,6 +27,8 @@ pub struct ConfirmRequest {
     /// Confirming grants authority (an approval, a role or member change, a
     /// program install, trust in a node): the strip opens on Cancel.
     grants_authority: bool,
+    /// The label of the confirming button when it is not the plain one.
+    accept: Option<SharedString>,
 }
 
 impl ConfirmRequest {
@@ -55,7 +57,25 @@ impl ConfirmRequest {
                 | IntentKind::ConfirmNode { .. }
                 | IntentKind::AgentRuntime { action: AgentRuntimeAction::Install, .. }
         );
-        Self { summary, detail, risk, proposed_by, runtime_path, confirmable, grants_authority }
+        // A node whose key changed is trusted with its new key, said so.
+        let accept = match &intent.kind {
+            IntentKind::ConfirmNode { node_id, .. }
+                if store.node(node_id).is_some_and(|n| n.key_changed) =>
+            {
+                Some(tr("node.trust_new_key"))
+            }
+            _ => None,
+        };
+        Self {
+            summary,
+            detail,
+            risk,
+            proposed_by,
+            runtime_path,
+            confirmable,
+            grants_authority,
+            accept,
+        }
     }
 
     /// Whether Confirm may act: an install is confirmed for a `prx` file the
@@ -88,6 +108,12 @@ impl ConfirmRequest {
     /// strip opens with the focus on Cancel, never on Confirm.
     pub fn is_destructive(&self) -> bool {
         self.risk.requires_confirmation()
+    }
+
+    /// The label of the confirming button: "Confirm" unless the request names
+    /// its own action.
+    pub fn accept_label(&self) -> SharedString {
+        self.accept.clone().unwrap_or_else(|| tr("confirm.accept"))
     }
 
     /// Whether confirming grants authority to someone or something.
@@ -200,9 +226,10 @@ fn describe_kind(
             let label = tr("settings.devices.other_device");
             (tr_args("confirm.revoke_device", &[("device", &label)]), None, Risk::High)
         }
-        IntentKind::ConfirmNode { node_id, pin_source } => {
-            let fingerprint = store.node(node_id).and_then(|n| n.fingerprint.clone());
-            let risk = if pin_source.is_trust_on_first_use() { Risk::High } else { Risk::Medium };
+        IntentKind::ConfirmNode { node_id, pin_source, .. } => {
+            let node = store.node(node_id);
+            let fingerprint = node.and_then(|n| n.fingerprint.clone());
+            let risk = node.map_or(Risk::High, |n| n.pin_risk(*pin_source));
             (
                 tr_args("confirm.trust_node", &[("node", node_id.as_str())]),
                 fingerprint.map(SharedString::from),

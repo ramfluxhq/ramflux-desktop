@@ -300,6 +300,7 @@ mod tests {
         let intent = Intent::human(IntentKind::ConfirmNode {
             node_id: NodeId::new("node"),
             pin_source: PinSource::Manual,
+            operator_key: None,
         });
         let mut prepared =
             actions(&store, intent, Timestamp(2)).expect("test: policy requests a confirmation");

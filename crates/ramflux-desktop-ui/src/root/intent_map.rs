@@ -269,9 +269,15 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
             }
         }
         UiEventKind::AddNodeRequested { url } => IntentKind::AddNode { url: url.clone() },
-        UiEventKind::ConfirmNodePressed { node_id } => IntentKind::ConfirmNode {
+        UiEventKind::ConfirmNodePressed { node_id, operator_key } => IntentKind::ConfirmNode {
             node_id: node_id.clone(),
-            pin_source: store.node(node_id)?.pin_source,
+            // A key typed under "Technical details" is an operator pin.
+            pin_source: if operator_key.is_some() {
+                ramflux_desktop_core::PinSource::Operator
+            } else {
+                store.node(node_id)?.pin_source
+            },
+            operator_key: operator_key.clone(),
         },
         UiEventKind::NodeActionPressed { node_id, action } => {
             let node_id = node_id.clone();
@@ -358,7 +364,7 @@ mod tests {
         let s01 = player("s01_first_launch", 3_000);
         let event = UiEvent::new(
             Scope::Panel("entry".into()),
-            UiEventKind::ConfirmNodePressed { node_id: "n-harbor".into() },
+            UiEventKind::ConfirmNodePressed { node_id: "n-harbor".into(), operator_key: None },
         )
         .within(Scope::Workspace);
         assert!(matches!(

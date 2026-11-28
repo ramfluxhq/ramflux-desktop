@@ -20,6 +20,8 @@ fn node(id: &str, pin_source: PinSource, confirmed: bool) -> Node {
         endpoints: vec!["quic://node.example.test:7443".to_owned()],
         fingerprint: Some("SHA256:aa".to_owned()),
         public_key: Some("key-aa".to_owned()),
+        key_changed: false,
+        discovery_url: None,
         pin_source,
         health: NodeHealth::Unknown,
         capabilities: Vec::new(),
@@ -189,8 +191,11 @@ fn object_actions_follow_the_transfer_state() {
 #[test]
 fn confirming_a_tofu_node_needs_confirmation_and_is_human_only() {
     let store = store();
-    let confirm =
-        |id: &str, pin_source| IntentKind::ConfirmNode { node_id: NodeId::new(id), pin_source };
+    let confirm = |id: &str, pin_source| IntentKind::ConfirmNode {
+        node_id: NodeId::new(id),
+        pin_source,
+        operator_key: None,
+    };
     assert!(needs_confirmation(&store, confirm("n-tofu", PinSource::Manual)));
     let effect =
         decide(&store, tapped(Intent::human(confirm("n-tofu", PinSource::Manual)))).expect("ok");

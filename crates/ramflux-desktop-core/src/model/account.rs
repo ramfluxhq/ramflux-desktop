@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::grant::Risk;
 use crate::ids::{AccountId, DeviceId, NodeId, ParticipantId, Timestamp};
 
 /// Whether the local account is unlocked.
@@ -160,12 +161,32 @@ pub enum PinSource {
     Invite,
     /// Entered by the user and trusted on first use (TOFU).
     Manual,
+    /// Pinned with the key the node's operator gave the user: it matched the
+    /// discovered key.
+    Operator,
 }
 
 impl PinSource {
     /// Whether trust rests only on first use and needs a sticky warning.
     pub const fn is_trust_on_first_use(self) -> bool {
         matches!(self, Self::Manual)
+    }
+}
+
+impl Node {
+    /// Whether the node was found over plain http: such a node is pinned
+    /// only with the key its operator gave.
+    pub fn is_plain_http(&self) -> bool {
+        self.discovery_url
+            .as_deref()
+            .is_some_and(|url| url.to_ascii_lowercase().starts_with("http://"))
+    }
+
+    /// How risky pinning this node with `source` is: trusting a key on first
+    /// use, or a new key for a node pinned before, is a security decision
+    /// that needs the confirmation; any other pin does not.
+    pub const fn pin_risk(&self, source: PinSource) -> Risk {
+        if source.is_trust_on_first_use() || self.key_changed { Risk::High } else { Risk::Medium }
     }
 }
 
@@ -226,6 +247,9 @@ pub struct Node {
     /// trust call sends back as the expected key.
     #[serde(default)]
     pub public_key: Option<String>,
+    /// The address the node's signed record was fetched from.
+    #[serde(default)]
+    pub discovery_url: Option<String>,
     /// Where the pin came from.
     pub pin_source: PinSource,
     /// Last observed health.
@@ -240,6 +264,9 @@ pub struct Node {
     /// Persisted and pinned. False while a discovered node awaits confirmation.
     #[serde(default = "yes")]
     pub confirmed: bool,
+    /// The daemon found a different key than the one pinned for this node.
+    #[serde(default)]
+    pub key_changed: bool,
     /// Shipped with the client.
     #[serde(default)]
     pub builtin: bool,

@@ -190,6 +190,12 @@ pub enum IntentError {
     /// The confirmed pin source differs from the discovery.
     #[error("node {0} was discovered with a different pin source")]
     PinMismatch(NodeId),
+    /// A node found over plain http is pinned only with its operator's key.
+    #[error("node {0} was found over plain http: only an operator key can pin it")]
+    HttpNeedsOperatorKey(NodeId),
+    /// The operator key does not equal the node's discovered key.
+    #[error("the operator key does not match node {0}")]
+    OperatorKeyMismatch(NodeId),
     /// An account is bound to the node.
     #[error("node {0} has a bound account")]
     NodeBound(NodeId),

@@ -69,9 +69,18 @@ fn mapped(effect: Effect) -> (String, Option<String>, Value, Vec<Fetch>) {
 fn entry_and_node_methods_map_to_daemon_requests() {
     let (m, a, b, _) = mapped(call(methods::NODE_ADD, json!({ "url": "https://n.example" })));
     assert_eq!((m.as_str(), a, b), ("node.add", None, json!({ "url": "https://n.example" })));
-    let (m, _, b, _) =
-        mapped(call(methods::NODE_CONFIRM, json!({ "node_id": "n", "pin_source": "Manual" })));
-    assert_eq!((m.as_str(), b), ("node.confirm", json!({ "node_id": "n", "pin_source": "tofu" })));
+    let (m, _, b, _) = mapped(call(
+        methods::NODE_CONFIRM,
+        json!({ "node_id": "n", "pin_source": "Manual", "public_key": "key-aa" }),
+    ));
+    // First use sends back the key the user was shown as the expected key.
+    assert_eq!(
+        (m.as_str(), b),
+        (
+            "node.confirm",
+            json!({ "node_id": "n", "pin_source": "tofu", "expected_public_key": "key-aa" })
+        )
+    );
     let (_, _, b, _) =
         mapped(call(methods::NODE_CONFIRM, json!({ "node_id": "n", "pin_source": "Invite" })));
     assert_eq!(b["pin_source"], "invitation");

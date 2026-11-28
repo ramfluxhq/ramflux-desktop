@@ -37,6 +37,7 @@ pub fn pin_source(source: PinSource) -> SharedString {
         PinSource::Bootstrap => "node.pin.bootstrap",
         PinSource::Invite => "node.pin.invite",
         PinSource::Manual => "node.pin.manual",
+        PinSource::Operator => "node.pin.operator",
     })
 }
 

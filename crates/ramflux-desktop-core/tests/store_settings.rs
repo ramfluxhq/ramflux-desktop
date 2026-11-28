@@ -14,6 +14,8 @@ fn node(id: &str, is_default: bool) -> Node {
         endpoints: Vec::new(),
         fingerprint: None,
         public_key: None,
+        key_changed: false,
+        discovery_url: None,
         pin_source: PinSource::Invite,
         health: NodeHealth::Unknown,
         capabilities: Vec::new(),

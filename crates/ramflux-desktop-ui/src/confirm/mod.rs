@@ -155,7 +155,7 @@ impl Render for ConfirmStrip {
         } else {
             (palette.primary, palette.on_primary)
         };
-        let confirm_label = tr("confirm.accept");
+        let confirm_label = request.accept_label();
         let announce = tr_args("confirm.announce", &[("summary", request.summary())]);
         let confirmable = request.is_confirmable();
         let focused = self.focus_handle.is_focused(window);

@@ -137,9 +137,19 @@ fn account_frames_are_the_sdk_account_requests() {
 
 #[test]
 fn node_frames_name_the_node_and_a_pin_source_the_sdk_knows() {
-    for (desktop, sdk) in [("Manual", "tofu"), ("Invite", "invitation"), ("Bootstrap", "builtin")] {
-        let confirm =
-            request(call(methods::NODE_CONFIRM, json!({ "node_id": "n", "pin_source": desktop })));
+    for (desktop, sdk) in [
+        ("Manual", "tofu"),
+        ("Invite", "invitation"),
+        ("Bootstrap", "builtin"),
+        ("Operator", "operator"),
+    ] {
+        let confirm = request(call(
+            methods::NODE_CONFIRM,
+            json!({
+                "node_id": "n", "pin_source": desktop,
+                "public_key": "key-aa", "operator_key": "key-aa",
+            }),
+        ));
         let body = confirm.wire_body();
         assert_eq!(body["pin_source"], sdk);
         let _: NodePinSource = serde_json::from_value(body["pin_source"].clone())

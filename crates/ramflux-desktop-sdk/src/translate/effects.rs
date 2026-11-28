@@ -68,6 +68,22 @@ impl Translator {
                 if let Some(fingerprint) = answer["key_fingerprint"].as_str() {
                     node.fingerprint = Some(fingerprint.to_owned());
                 }
+                // A node already pinned with this very key is trusted as it
+                // stands: nothing waits for a decision, and what the listing
+                // carries (default, enabled, last probe) is kept.
+                if let Some(known) = self.nodes.get(&node.id)
+                    && known.confirmed
+                    && !known.key_changed
+                    && !node.key_changed
+                    && known.public_key == node.public_key
+                {
+                    node.confirmed = true;
+                    node.enabled = known.enabled;
+                    node.is_default = known.is_default;
+                    node.pin_source = known.pin_source;
+                    node.health = known.health;
+                    node.probe.clone_from(&known.probe);
+                }
                 vec![self.upsert_node(node)]
             }
             methods::NODE_CONFIRM => {

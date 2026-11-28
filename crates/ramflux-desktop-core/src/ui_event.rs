@@ -344,6 +344,9 @@ pub enum UiEventKind {
     ConfirmNodePressed {
         /// Node.
         node_id: NodeId,
+        /// The operator key typed under "Technical details", when one was.
+        #[serde(default)]
+        operator_key: Option<String>,
     },
     /// A settings action on a node.
     NodeActionPressed {

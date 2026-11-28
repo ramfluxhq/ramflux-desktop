@@ -109,11 +109,12 @@ pub(crate) fn node_from_profile(profile: &Value, default: Option<&str>, confirme
     let fingerprint = (!key.is_empty()).then(|| {
         ramflux_protocol::hash_hex(ramflux_protocol::CLIENT_DISCOVERY_DOMAIN, key.as_bytes())
     });
-    // The daemon has four pin sources; the desktop three. An operator pin
-    // is configured out of band like a shipped one.
+    // The daemon's four pin sources: the built-in list, an invitation, the
+    // operator's key and trust on first use.
     let pin_source = match text(profile, "pin_source") {
         "invitation" => PinSource::Invite,
         "tofu" => PinSource::Manual,
+        "operator" => PinSource::Operator,
         _ => PinSource::Bootstrap,
     };
     Node {
@@ -121,6 +122,7 @@ pub(crate) fn node_from_profile(profile: &Value, default: Option<&str>, confirme
         endpoints,
         fingerprint,
         public_key: (!key.is_empty()).then(|| key.to_owned()),
+        discovery_url: field(profile, "discovery_url"),
         pin_source,
         health: NodeHealth::Unknown,
         capabilities: list(profile, "client_capabilities")
@@ -130,6 +132,9 @@ pub(crate) fn node_from_profile(profile: &Value, default: Option<&str>, confirme
             .collect(),
         expires_at: super::seconds(&profile["expires_at"]),
         confirmed,
+        key_changed: list(profile, "safety_warnings")
+            .iter()
+            .any(|w| w.as_str() == Some("key_changed")),
         builtin: profile["builtin"].as_bool().unwrap_or(false),
         enabled: profile["enabled"].as_bool().unwrap_or(true),
         is_default: default == Some(id),

@@ -277,13 +277,15 @@ fn map(
                 Some(PinSource::Manual) => "tofu",
                 Some(PinSource::Invite) => "invitation",
                 Some(PinSource::Bootstrap) => "builtin",
+                Some(PinSource::Operator) => "operator",
                 None => return refuse_invalid("unknown pin source"),
             };
             let mut request = json!({ "node_id": text(body, "node_id"), "pin_source": pin });
-            if pin == "tofu" {
-                // First use pins the key the user was shown: it is sent back
-                // as the expected key, so a different one is refused.
-                let key = text(body, "public_key");
+            if pin == "tofu" || pin == "operator" {
+                // First use pins the key the user was shown; an operator pin
+                // the key the operator gave: either is sent back as the
+                // expected key, so a different one is refused.
+                let key = text(body, if pin == "tofu" { "public_key" } else { "operator_key" });
                 if key.is_empty() {
                     return refuse_invalid("no node key to trust");
                 }

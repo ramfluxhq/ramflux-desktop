@@ -9,7 +9,7 @@ use serde_json::json;
 use super::{Decision, IntentError, Policy};
 use crate::ids::{AccountId, NodeId};
 use crate::intent::{AppLockPhase, IntentKind, SecretInput, SyncDirection, methods};
-use crate::model::{Node, Risk};
+use crate::model::{Node, PinSource, Risk};
 
 /// The longest app lock timeout the daemon accepts: one day, in milliseconds.
 const APP_LOCK_MAX_TIMEOUT_MS: u64 = 86_400_000;
@@ -29,18 +29,29 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
         }
         IntentKind::AddNode { url } => non_empty(url, "node address")
             .map(|()| Decision::Call(methods::NODE_ADD, json!({ "url": url.trim() }))),
-        IntentKind::ConfirmNode { node_id, pin_source } => {
+        IntentKind::ConfirmNode { node_id, pin_source, operator_key } => {
             p.human_only("confirm a node").and_then(|()| {
                 let node = node(p, node_id)?;
                 if node.confirmed {
                     return Err(IntentError::NodeAlreadyConfirmed(node_id.clone()));
                 }
-                if node.pin_source != *pin_source {
+                // The operator's key must be the discovered one, character
+                // for character: that is what makes the pin an operator pin.
+                let operator_key = operator_key.as_deref().map(str::trim);
+                if *pin_source == PinSource::Operator {
+                    let matches = operator_key
+                        .is_some_and(|key| !key.is_empty() && node.public_key.as_deref() == Some(key));
+                    if !matches {
+                        return Err(IntentError::OperatorKeyMismatch(node_id.clone()));
+                    }
+                } else if node.pin_source != *pin_source || node.key_changed {
+                    // A key that changed has no first-use way on.
                     return Err(IntentError::PinMismatch(node_id.clone()));
                 }
-                // Trusting a key on first use is a security decision: confirm it.
-                let risk =
-                    if pin_source.is_trust_on_first_use() { Risk::High } else { Risk::Medium };
+                if node.is_plain_http() && *pin_source != PinSource::Operator {
+                    return Err(IntentError::HttpNeedsOperatorKey(node_id.clone()));
+                }
+                let risk = node.pin_risk(*pin_source);
                 Ok(p.gated(
                     risk,
                     methods::NODE_CONFIRM,
@@ -49,6 +60,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                         "pin_source": pin_source,
                         "fingerprint": node.fingerprint,
                         "public_key": node.public_key,
+                        "operator_key": operator_key,
                     }),
                 ))
             })

@@ -20,7 +20,7 @@ use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::rc::Rc;
 
-use super::node_card::Disclosure;
+use super::node_card::{Disclosure, OperatorKey};
 use super::{EntryPage, NodeCard};
 use crate::i18n::tr;
 
@@ -31,13 +31,8 @@ impl EntryPage {
         if url.is_empty() {
             return;
         }
-        // A node is reached over https only: nothing is looked up otherwise.
-        if url.to_ascii_lowercase().starts_with("http://") {
-            self.http_refused = true;
-            cx.notify();
-            return;
-        }
-        self.http_refused = false;
+        self.node_looked_up = Some(url.clone());
+        self.changed_dismissed = false;
         self.inputs.node_url.update(cx, |input, cx| input.set_value("", window, cx));
         self.node_lookup = Some(self.store.read(cx).store().failures_total());
         self.sink.emit(UiEventKind::AddNodeRequested { url }, window, cx);
@@ -61,6 +56,11 @@ impl EntryPage {
         let store = self.store.read(cx).store();
         let (pending_nodes, known): (Vec<Node>, Vec<Node>) =
             store.nodes().cloned().partition(|n| !n.confirmed);
+        // A cancelled key change leaves the pinned node as it was.
+        let pending_nodes: Vec<Node> = pending_nodes
+            .into_iter()
+            .filter(|n| !(n.key_changed && self.changed_dismissed))
+            .collect();
         // Loading until the source listed the nodes; then an empty list is
         // an explicit empty state, never a perpetual spinner.
         let state = crate::list_state::of(
@@ -90,11 +90,50 @@ impl EntryPage {
         // The socket path is a technical detail: it rides in the first
         // card's disclosure, or in the page's own when no node waits.
         let socket_line = daemon.clone();
+        let operator_toggle = {
+            let this = cx.entity().downgrade();
+            Rc::new(move |_: &mut Window, cx: &mut gpui_kit::App| {
+                this.update(cx, |page, cx| {
+                    page.node_operator = !page.node_operator;
+                    cx.notify();
+                })
+                .ok();
+            })
+        };
+        let dismiss = {
+            let this = cx.entity().downgrade();
+            Rc::new(move |_: &mut Window, cx: &mut gpui_kit::App| {
+                this.update(cx, |page, cx| {
+                    page.changed_dismissed = true;
+                    cx.notify();
+                })
+                .ok();
+            })
+        };
+        let operator_open = self.node_operator;
+        let operator_input = self.inputs.operator_key.clone();
         let cards = pending_nodes.into_iter().enumerate().map(|(ix, node)| {
-            NodeCard::new(node).actions(self.sink.clone()).details(Disclosure {
-                open: details_open,
-                toggle: toggle.clone(),
-                socket: socket_line.clone().filter(|_| ix == 0),
+            NodeCard::new(node)
+                .actions(self.sink.clone())
+                .on_dismiss(dismiss.clone())
+                .details(Disclosure {
+                    open: details_open,
+                    toggle: toggle.clone(),
+                    socket: socket_line.clone().filter(|_| ix == 0),
+                })
+                .operator(OperatorKey {
+                    input: operator_input.clone(),
+                    open: operator_open,
+                    toggle: operator_toggle.clone(),
+                })
+        });
+        // The address just looked up is a node pinned with this key already:
+        // nothing waits for a decision, so the page says so.
+        let already_trusted = self.node_looked_up.as_deref().is_some_and(|url| {
+            let url = origin_of(url);
+            known.iter().any(|n| {
+                n.id.as_str().eq_ignore_ascii_case(&url)
+                    || n.endpoints.iter().any(|e| origin_of(e) == url)
             })
         });
         let page_details = daemon.clone().filter(|_| !pending).map(|line| {
@@ -211,15 +250,6 @@ impl EntryPage {
                             .text_color(cx.theme().muted_foreground)
                             .child(tr("entry.node.add_help")),
                     )
-                    .children(self.http_refused.then(|| {
-                        div()
-                            .id("entry-node-https-only")
-                            .role(Role::Alert)
-                            .text_size(text_caption())
-                            .text_color(cx.theme().danger)
-                            .child(tr("entry.node.https_only"))
-                            .test_support()
-                    }))
                     .children(lookup_failure.map(|reason| {
                         div()
                             .id("entry-node-add-failure")
@@ -232,6 +262,17 @@ impl EntryPage {
                             )
                     })),
             )
+            .when(already_trusted && !pending, |step| {
+                step.child(
+                    div()
+                        .id("entry-node-already-trusted")
+                        .role(Role::Status)
+                        .text_size(text_secondary())
+                        .text_color(cx.theme().muted_foreground)
+                        .child(tr("node.status_trusted"))
+                        .test_support(),
+                )
+            })
             .when(usable, |step| {
                 step.child(
                     div().pt(space(2.)).text_size(text_secondary()).child(tr("entry.node.known")),
@@ -252,4 +293,12 @@ impl EntryPage {
                 )
             })
     }
+}
+
+/// An address without its scheme, path or case, to tell whether two name the
+/// same node.
+fn origin_of(address: &str) -> String {
+    let address = address.trim().to_ascii_lowercase();
+    let address = address.split_once("://").map_or(address.as_str(), |(_, rest)| rest);
+    address.split('/').next().unwrap_or_default().to_owned()
 }

@@ -549,8 +549,13 @@ pub enum IntentKind {
     ConfirmNode {
         /// Discovered node.
         node_id: NodeId,
-        /// Pin source the user is accepting; must match the discovery.
+        /// Pin source the user is accepting; must match the discovery, or
+        /// be `Operator` with `operator_key`.
         pin_source: PinSource,
+        /// The key the node's operator gave the user (`Operator` pins only):
+        /// it must equal the discovered key.
+        #[serde(default)]
+        operator_key: Option<String>,
     },
 
     // Settings.

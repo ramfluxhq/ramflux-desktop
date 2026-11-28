@@ -69,6 +69,8 @@ pub enum AccountPath {
 struct Inputs {
     passphrase: Entity<InputState>,
     node_url: Entity<InputState>,
+    /// The key the node's operator gave the user.
+    operator_key: Entity<InputState>,
 }
 
 impl Inputs {
@@ -82,6 +84,7 @@ impl Inputs {
         Self {
             passphrase: masked("entry.account.passphrase", window, cx),
             node_url: plain("entry.node.url_placeholder", window, cx),
+            operator_key: plain("node.operator_key", window, cx),
         }
     }
 }
@@ -127,8 +130,13 @@ pub struct EntryPage {
     lock_notice: Option<remove::LockNotice>,
     /// The node step's "Technical details" disclosure is open.
     node_details: bool,
-    /// The last typed node address was plain http and was refused.
-    http_refused: bool,
+    /// The operator key field under the node's technical details is open.
+    node_operator: bool,
+    /// A card of a node whose key changed was cancelled: it stays hidden
+    /// until the next lookup.
+    changed_dismissed: bool,
+    /// The node address last looked up, to say when it is trusted already.
+    node_looked_up: Option<String>,
     /// The name of an account just removed from this device.
     removed_notice: Option<gpui_kit::SharedString>,
     node: Option<NodeId>,
@@ -241,6 +249,13 @@ impl EntryPage {
                     this.add_node(window, cx);
                 }
             }),
+            // The typed operator key is compared with the node's key as it
+            // changes, so the page can say when it does not match.
+            cx.subscribe_in(&inputs.operator_key, window, |_, _, event, _, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            }),
         ];
         // Closing the window lets the daemon go of a running ceremony or
         // recovery at once (it also does when the connection drops). A
@@ -268,7 +283,9 @@ impl EntryPage {
             lock_notice: None,
             removed_notice: None,
             node_details: false,
-            http_refused: false,
+            node_operator: false,
+            changed_dismissed: false,
+            node_looked_up: None,
             node: None,
             review_nodes: false,
             submitted: None,
