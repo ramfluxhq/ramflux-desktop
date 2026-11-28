@@ -278,6 +278,99 @@ pub enum UiEventKind {
         /// The new anchor the sheet showed.
         new_anchor: String,
     },
+    /// An MLS group list page was asked for (the section opened, scrolled
+    /// to the end, or "Refresh" was pressed).
+    MlsListRequested {
+        /// The cursor; `None` for the first page.
+        cursor: Option<String>,
+    },
+    /// One MLS group was asked for (it opened, or after an own action).
+    MlsInfoRequested {
+        /// The group.
+        group_id: String,
+    },
+    /// A page of members was asked for.
+    MlsMembersRequested {
+        /// The group.
+        group_id: String,
+        /// The cursor; `None` for the first page.
+        cursor: Option<String>,
+    },
+    /// A page of history was asked for.
+    MlsHistoryRequested {
+        /// The group.
+        group_id: String,
+        /// Which page.
+        direction: crate::model::mls_group::HistoryDirection,
+    },
+    /// "Refresh" pressed in an MLS group.
+    MlsRefreshPressed {
+        /// The group.
+        group_id: String,
+    },
+    /// The read position of an MLS group moved.
+    MlsMarkReadRequested {
+        /// The group.
+        group_id: String,
+        /// The newest position seen.
+        log_seq: u64,
+    },
+    /// "Create" pressed in the new MLS group dialog.
+    MlsCreatePressed {
+        /// The name.
+        name: String,
+        /// Whether new members need approval.
+        approval: bool,
+    },
+    /// "New link" pressed in the invite panel.
+    MlsInviteCreatePressed {
+        /// The group.
+        group_id: String,
+        /// Most uses.
+        max_uses: u32,
+        /// Seconds the invite is valid.
+        ttl_s: u64,
+    },
+    /// The invite list of a group was asked for.
+    MlsInviteListRequested {
+        /// The group.
+        group_id: String,
+    },
+    /// "Revoke" confirmed in the invite panel.
+    MlsInviteRevokePressed {
+        /// The group.
+        group_id: String,
+        /// The invite.
+        invite_id: String,
+    },
+    /// "Join" pressed in the join sheet.
+    MlsJoinPressed {
+        /// The link as checked locally (it never prints).
+        link: crate::model::mls_group::InviteLink,
+        /// The attempt the sheet took from the store.
+        attempt: u64,
+    },
+    /// The pending join requests were asked for.
+    MlsJoinPendingRequested,
+    /// "Retry" pressed on a bubble that was not sent.
+    MlsRetryPressed {
+        /// The group conversation.
+        context: ContextId,
+        /// The client id of the bubble.
+        local_id: String,
+    },
+    /// "Delete for everyone" confirmed on an own post of an MLS group.
+    MlsDeletePressed {
+        /// The group.
+        group_id: String,
+        /// The post.
+        post_id: String,
+    },
+    /// "Leave" confirmed in the info panel of an MLS group.
+    MlsLeavePressed {
+        /// The group.
+        group_id: String,
+    },
     /// Handoff offer answered.
     HandoffAnswered {
         /// Accepted or declined.

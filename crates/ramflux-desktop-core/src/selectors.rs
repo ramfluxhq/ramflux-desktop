@@ -60,6 +60,7 @@ impl AttentionReason {
             | MomentKind::GroupRename(_)
             | MomentKind::IdentityChange(_)
             | MomentKind::SecurityNotice(_)
+            | MomentKind::MlsService(_)
             | MomentKind::System(_) => Self::Other,
         }
     }

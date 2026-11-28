@@ -865,4 +865,105 @@ pub enum IntentKind {
         /// New phase of the window.
         phase: AppLockPhase,
     },
+    /// List a page of MLS groups. Read only.
+    MlsGroupList {
+        /// The cursor of the page; `None` for the first.
+        cursor: Option<String>,
+    },
+    /// Read one MLS group. Read only.
+    MlsGroupInfo {
+        /// The group.
+        group_id: String,
+    },
+    /// Read a page of members. Read only.
+    MlsGroupMembers {
+        /// The group.
+        group_id: String,
+        /// The cursor of the page; `None` for the first.
+        cursor: Option<String>,
+    },
+    /// Read a page of history. Read only.
+    MlsGroupHistory {
+        /// The group.
+        group_id: String,
+        /// Which page.
+        direction: crate::model::mls_group::HistoryDirection,
+    },
+    /// Fetch from the group host now (at most once every 5 s per group).
+    MlsGroupRefresh {
+        /// The group.
+        group_id: String,
+    },
+    /// Move the read position of a group forward.
+    MlsGroupMarkRead {
+        /// The group.
+        group_id: String,
+        /// The newest position seen.
+        log_seq: u64,
+    },
+    /// Create an MLS group. Human only.
+    MlsGroupCreate {
+        /// The name (trimmed, 1 to 64 characters).
+        name: String,
+        /// Whether new members need approval.
+        approval: bool,
+    },
+    /// Create an invite. Human only.
+    MlsInviteCreate {
+        /// The group.
+        group_id: String,
+        /// Most uses.
+        max_uses: u32,
+        /// Seconds the invite is valid.
+        ttl_s: u64,
+    },
+    /// List the invites this account created. Human only.
+    MlsInviteList {
+        /// The group.
+        group_id: String,
+    },
+    /// Revoke an invite. Human only.
+    MlsInviteRevoke {
+        /// The group.
+        group_id: String,
+        /// The invite.
+        invite_id: String,
+    },
+    /// Join a group with a link. Human only; one call per explicit tap.
+    MlsGroupJoin {
+        /// The link, as checked locally (it never prints).
+        link: crate::model::mls_group::InviteLink,
+        /// The attempt: the store's last attempt plus one.
+        attempt: u64,
+    },
+    /// Read the join requests the SDK holds. Read only.
+    MlsJoinPending,
+    /// Send a text post. Human only. `retry_of` names the `NotSent` bubble a
+    /// Retry tap replaces.
+    MlsGroupSend {
+        /// The group.
+        group_id: String,
+        /// The text.
+        text: String,
+        /// The post replied to.
+        reply_to: Option<String>,
+        /// Mentioned anchors.
+        mentions: Vec<String>,
+        /// The client id of this submit.
+        local_id: String,
+        /// The bubble this send replaces.
+        retry_of: Option<String>,
+    },
+    /// Delete an own post for everyone. Human only.
+    MlsGroupDelete {
+        /// The group.
+        group_id: String,
+        /// The post.
+        post_id: String,
+    },
+    /// Leave an MLS group. Human only.
+    MlsGroupLeave {
+        /// The group.
+        group_id: String,
+    },
 }
