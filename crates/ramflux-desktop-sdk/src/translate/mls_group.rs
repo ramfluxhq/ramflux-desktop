@@ -22,19 +22,30 @@
 //! | `group.send` `{post_id, state, params}` | `MlsSendOutcome` (an error frame is `NotSent`) |
 //! | `group.message.delete` | `MlsDeleteOutcome` |
 //! | `group.leave` | `MlsLeft` |
+//! | `group.requests.list` `{requests[], cursor?}` | `MlsRequestsPage` (a failed page keeps its code) |
+//! | `group.requests.approve`, `group.role.set`, `group.member.remove`, `group.member.ban`, `group.settings.set`, `group.void` `{state: committed, log_seq}` | `MlsAdminOutcome` (an error frame is a typed refusal) |
+//! | `group.requests.decline` `{state: declined}` | `MlsDeclineOutcome` |
+//! | `group.push.set` `{push}` | `MlsPushOutcome` |
+//! | `group.catch_up` `{state: rejoining}` or `{state: running, done, total}` | `MlsSkipOutcome` |
 //! | `group.refresh` `{groups[{group_id, last_log_seq}]}` | `MlsRefreshed` |
 //! | `group.mark_read` | `MlsMarkedRead` |
-//! | event `group.event` `post`, `post_state`, `post_deleted`, `membership`, `settings`, `join_result`, `read` | `MlsGroupEvent` |
+//! | event `group.event` `post`, `post_state`, `post_deleted`, `membership`, `settings`, `join_result`, `read`, `pending_join`, `catch_up`, `warning`, `void` | `MlsGroupEvent` |
 //!
-//! Anything else on `group.event` (`pending_join`, `catch_up`, `warning`,
-//! `void`) is skipped without logging its payload.
+//! A kind this build does not know on `group.event` is skipped without
+//! logging its payload. The body of `pending_join`, `catch_up`, `warning` and
+//! `void` is nested under `body` like `membership` and `settings`. A void
+//! that arrives as `kind: void` and as `post{kind: void}` makes the same
+//! row, which the store deduplicates by position. Every M3 reply is echoed
+//! with the epoch and the action id of the call; no anchor, request id,
+//! name or parameter value is ever logged.
 
 use ramflux_desktop_core::mls_group::{
-    Author, CatchUp, DeleteResult, GroupEventKind, HistoryDirection, Invite, InviteLink,
-    JoinOutcome, JoinRecord, JoinRefusal, LastPost, LeaveResult, MemberRow, MembershipChange,
-    MembershipKind, MlsGroupSummary, MlsRole, NotSentReason, PendingReason, Post, PostBody,
-    PostKind, PostState, PrivacyDelay, PushSetting, QueueReason, Quota, SendState, SettingsChange,
-    Warning,
+    AdminResult, Author, CatchUp, CatchUpState, DeclineResult, DeleteResult, ERROR_CODES,
+    GroupEventKind, HistoryDirection, Invite, InviteLink, JoinOutcome, JoinRecord, JoinRefusal,
+    JoinRequest, LastPost, LeaveResult, MemberRow, MembershipChange, MembershipKind,
+    MlsGroupSummary, MlsRole, NotSentReason, OpaqueId, PendingReason, Post, PostBody, PostKind,
+    PostState, PrivacyDelay, PushResult, PushSetting, QueueReason, Quota, SendState,
+    SettingsChange, SkipResult, Warning, WarningCode,
 };
 use ramflux_desktop_core::{DomainEvent, Timestamp, methods};
 use serde_json::Value;
@@ -438,15 +449,45 @@ fn join_record(value: &Value) -> Option<JoinRecord> {
     })
 }
 
+/// A join request row (also the body of a `pending_join` event).
+pub fn join_request(value: &Value) -> Option<JoinRequest> {
+    Some(JoinRequest {
+        request_id: OpaqueId::new(opt_string(value, "request_id")?),
+        anchor: OpaqueId::new(opt_string(value, "anchor")?),
+        display: opt_string(value, "display"),
+        ai_flag: flag(value, "ai_flag"),
+        requested_at: time(value, "requested_at"),
+        expires_at: time(value, "expires_at"),
+    })
+}
+
+/// A warning of a `group.event`: the code and its parameters. An unknown code
+/// is logged by its token only.
+fn warning_code(code: &str, params: &Value) -> WarningCode {
+    let parsed = WarningCode::parse(code, params);
+    if !parsed.is_known() {
+        unknown("warning", code);
+    }
+    parsed
+}
+
 /// A `group.event` frame as the domain event it stands for, `None` for a
-/// kind M2 skips.
+/// kind this build does not know.
 pub fn group_event(frame: &Value) -> Option<DomainEvent> {
     let group_id = opt_string(frame, "group_id")?;
     let seq = number(frame, "seq");
     let log_seq = frame.get("log_seq").and_then(Value::as_u64);
     let row = frame.get("post").unwrap_or(frame);
     let kind = match str_of(frame, "kind")? {
-        "post" => GroupEventKind::Post(Box::new(post(row)?)),
+        "post" => {
+            let row = post(row)?;
+            // A void row is the same row whichever way it arrives.
+            if row.kind == PostKind::Void {
+                GroupEventKind::Void(Box::new(row))
+            } else {
+                GroupEventKind::Post(Box::new(row))
+            }
+        }
         "membership" => {
             let mut row = post(row)?;
             row.kind = PostKind::Membership;
@@ -489,8 +530,58 @@ pub fn group_event(frame: &Value) -> Option<DomainEvent> {
             unread: small(frame, "unread"),
             unread_mentions: small(frame, "unread_mentions"),
         },
-        // `pending_join`, `catch_up`, `warning`, `void` and anything else
-        // are skipped, without their payload.
+        "pending_join" => {
+            GroupEventKind::PendingJoin(Box::new(join_request(frame.get("body").unwrap_or(frame))?))
+        }
+        "catch_up" => {
+            let body = frame.get("body").unwrap_or(frame);
+            GroupEventKind::CatchUp {
+                state: CatchUpState::parse(str_of(body, "state")?),
+                done: number(body, "done"),
+                total: number(body, "total"),
+            }
+        }
+        "warning" => {
+            let body = frame.get("body").unwrap_or(frame);
+            GroupEventKind::Warning {
+                code: warning_code(
+                    str_of(body, "code")?,
+                    body.get("params").unwrap_or(&Value::Null),
+                ),
+                cleared: flag(body, "cleared"),
+            }
+        }
+        "void" => {
+            // The same row a `post{kind: void}` makes.
+            let raw = frame.get("body").unwrap_or(frame);
+            let mut row = post(row).or_else(|| {
+                let at = log_seq?;
+                Some(Post {
+                    log_seq,
+                    post_id: format!("void-{at}"),
+                    author: None,
+                    appended_at: time(frame, "appended_at"),
+                    kind: PostKind::Void,
+                    body: PostBody::Opaque,
+                    reply_to: None,
+                    mentions: Vec::new(),
+                    state: PostState::Sent,
+                    send: None,
+                })
+            })?;
+            row.kind = PostKind::Void;
+            if !matches!(row.body, PostBody::Void { .. }) {
+                row.body = PostBody::Void {
+                    voided_log_seq: raw.get("voided_log_seq").and_then(Value::as_u64),
+                    by: raw.get("by").and_then(author),
+                };
+            }
+            if row.log_seq.is_none() {
+                row.log_seq = log_seq;
+            }
+            GroupEventKind::Void(Box::new(row))
+        }
+        // Anything else is skipped, without its payload.
         _ => return None,
     };
     Some(DomainEvent::MlsGroupEvent { seq, group_id, log_seq, kind })
@@ -615,9 +706,104 @@ pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> 
             unread: small(reply, "unread"),
             unread_mentions: small(reply, "unread_mentions"),
         },
+        methods::MLS_GROUP_REQUESTS_LIST => {
+            requests_page(body, array(reply, "requests"), opt_string(reply, "cursor"), None)
+        }
+        methods::MLS_GROUP_REQUESTS_APPROVE
+        | methods::MLS_GROUP_ROLE_SET
+        | methods::MLS_GROUP_MEMBER_REMOVE
+        | methods::MLS_GROUP_MEMBER_BAN
+        | methods::MLS_GROUP_SETTINGS_SET
+        | methods::MLS_GROUP_VOID => {
+            // Committed needs the position the event will carry.
+            let result = match reply.get("log_seq").and_then(Value::as_u64) {
+                Some(log_seq) if str_of(reply, "state").is_none_or(|s| s == "committed") => {
+                    AdminResult::Committed { log_seq }
+                }
+                _ => AdminResult::Refused {
+                    code: "generic".to_owned(),
+                    retry_at: None,
+                    head_log_seq: None,
+                },
+            };
+            return admin_event(method, body, result).into_iter().collect();
+        }
+        methods::MLS_GROUP_REQUESTS_DECLINE => DomainEvent::MlsDeclineOutcome {
+            epoch: number(body, "epoch"),
+            group_id: group().unwrap_or_default(),
+            request_id: OpaqueId::new(string(body, "request_id")),
+            result: if str_of(reply, "state").is_none_or(|s| s == "declined") {
+                DeclineResult::Declined
+            } else {
+                DeclineResult::Refused { code: "generic".to_owned() }
+            },
+        },
+        methods::MLS_GROUP_PUSH_SET => DomainEvent::MlsPushOutcome {
+            epoch: number(body, "epoch"),
+            group_id: group().unwrap_or_default(),
+            result: PushResult::Set(push(
+                str_of(reply, "push").or_else(|| str_of(body, "push")).unwrap_or_default(),
+            )),
+        },
+        methods::MLS_GROUP_CATCH_UP => DomainEvent::MlsSkipOutcome {
+            epoch: number(body, "epoch"),
+            group_id: group().unwrap_or_default(),
+            from_seq: number(body, "from_seq"),
+            result: match str_of(reply, "state").unwrap_or_default() {
+                "running" => SkipResult::Running {
+                    done: number(reply, "done"),
+                    total: number(reply, "total"),
+                },
+                _ => SkipResult::Rejoining,
+            },
+        },
         _ => return Vec::new(),
     };
     vec![event]
+}
+
+/// The code a refusal shows: a code with its own text stays; any other is
+/// logged by its token (nothing else) and read as generic.
+fn typed_code(code: String) -> String {
+    const OTHERS: [&str; 3] = ["void_not_head", "unavailable", "generic"];
+    if ERROR_CODES.contains(&code.as_str()) || OTHERS.contains(&code.as_str()) {
+        code
+    } else {
+        unknown("error code", &code);
+        "generic".to_owned()
+    }
+}
+
+/// A page of join requests, or its failure; the page generation and the
+/// first-page mark come back from the call.
+fn requests_page(
+    body: &Value,
+    rows: &[Value],
+    cursor: Option<String>,
+    failed: Option<String>,
+) -> DomainEvent {
+    DomainEvent::MlsRequestsPage {
+        group_id: string(body, "group_id"),
+        page_gen: number(body, "page_gen"),
+        first_page: body.get("cursor").is_none_or(Value::is_null),
+        rows: rows.iter().filter_map(join_request).collect(),
+        cursor,
+        failed,
+    }
+}
+
+/// The outcome event of an admin call: its kind and target are read from the
+/// call body, and the epoch and the action id come back with it.
+fn admin_event(method: &str, body: &Value, result: AdminResult) -> Option<DomainEvent> {
+    let (kind, target) = ramflux_desktop_core::event::admin_of(method, body)?;
+    Some(DomainEvent::MlsAdminOutcome {
+        epoch: number(body, "epoch"),
+        action_id: number(body, "action_id"),
+        group_id: string(body, "group_id"),
+        kind,
+        target,
+        result,
+    })
 }
 
 /// The events of an error frame that have their own shape (a join that
@@ -657,6 +843,44 @@ fn error_outcome(method: &str, body: &Value, error: &BusError) -> Option<DomainE
                 LeaveResult::Failed { code }
             },
         },
+        methods::MLS_GROUP_REQUESTS_LIST => requests_page(body, &[], None, Some(typed_code(code))),
+        methods::MLS_GROUP_REQUESTS_APPROVE
+        | methods::MLS_GROUP_ROLE_SET
+        | methods::MLS_GROUP_MEMBER_REMOVE
+        | methods::MLS_GROUP_MEMBER_BAN
+        | methods::MLS_GROUP_SETTINGS_SET
+        | methods::MLS_GROUP_VOID => {
+            let details = error_details(error);
+            // `not_admin{required: owner}` has its own text.
+            let code = if code == "not_admin" && str_of(&details, "required") == Some("owner") {
+                "not_owner".to_owned()
+            } else {
+                typed_code(code)
+            };
+            let result = AdminResult::Refused {
+                retry_at: if code == "paced" { time(&details, "retry_at") } else { None },
+                head_log_seq: details.get("head_log_seq").and_then(Value::as_u64),
+                code,
+            };
+            return admin_event(method, body, result);
+        }
+        methods::MLS_GROUP_REQUESTS_DECLINE => DomainEvent::MlsDeclineOutcome {
+            epoch: number(body, "epoch"),
+            group_id,
+            request_id: OpaqueId::new(string(body, "request_id")),
+            result: DeclineResult::Refused { code: typed_code(code) },
+        },
+        methods::MLS_GROUP_PUSH_SET => DomainEvent::MlsPushOutcome {
+            epoch: number(body, "epoch"),
+            group_id,
+            result: PushResult::Refused { code: typed_code(code) },
+        },
+        methods::MLS_GROUP_CATCH_UP => DomainEvent::MlsSkipOutcome {
+            epoch: number(body, "epoch"),
+            group_id,
+            from_seq: number(body, "from_seq"),
+            result: SkipResult::Refused { code: typed_code(code) },
+        },
         _ => return None,
     })
 }
@@ -680,8 +904,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_group_event_of_a_kind_m2_skips_is_dropped() {
-        for kind in ["pending_join", "catch_up", "warning", "void"] {
+    fn a_group_event_of_an_unknown_kind_is_dropped() {
+        for kind in ["poll", "banana", "device_note"] {
             let frame = json!({ "seq": 1, "group_id": "g", "kind": kind, "secret": "x" });
             assert!(group_event(&frame).is_none(), "{kind}");
         }

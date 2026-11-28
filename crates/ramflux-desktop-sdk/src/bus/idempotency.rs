@@ -24,7 +24,7 @@
 /// Methods that are planned as effects but do not change daemon state.
 /// `object.get` answers with the object's bytes, which must never be kept
 /// in a receipt; `contact.card.export` only reads this account's card.
-const NOT_MUTATIONS: [&str; 12] = [
+const NOT_MUTATIONS: [&str; 13] = [
     "node.probe",
     "object.get",
     "contact.card.export",
@@ -38,6 +38,7 @@ const NOT_MUTATIONS: [&str; 12] = [
     "group.members",
     "group.join.pending",
     "group.list",
+    "group.requests.list",
 ];
 
 /// The methods the daemon's agent module answers. It refuses any frame of

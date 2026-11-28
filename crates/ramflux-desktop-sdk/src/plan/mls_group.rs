@@ -21,6 +21,12 @@
 //! | `mls_group.message.delete` | `group.message.delete` | `{group_id, post_id}` |
 //! | `mls_group.leave` | `group.leave` | `{group_id}` |
 //!
+//! The M3 methods (join requests, roles, removal, ban, settings, the
+//! per-device mode, catch-up and void) have one arm each below. The epoch
+//! and the action id of such a call, the page generation, the event counter
+//! and the catch-up sequence are the store's bookkeeping: they never go on
+//! the wire.
+//!
 //! Five of these wire names exist at the current pin with the old sender-key
 //! shapes (`group.history`, `group.leave`, `group.members`, `group.send` and
 //! the renamed `group.read`), so the bridge refuses every `mls_group.*`
@@ -100,6 +106,50 @@ pub(super) fn plan(acct: Option<&str>, method: &str, body: &Value) -> Plan {
             json!({ "group_id": group(), "post_id": text(body, "post_id") }),
         ),
         methods::MLS_GROUP_LEAVE => request("group.leave", json!({ "group_id": group() })),
+        methods::MLS_GROUP_REQUESTS_LIST => request(
+            "group.requests.list",
+            json!({ "group_id": group(), "cursor": body["cursor"], "limit": body["limit"] }),
+        ),
+        methods::MLS_GROUP_REQUESTS_APPROVE => request(
+            "group.requests.approve",
+            json!({ "group_id": group(), "request_id": text(body, "request_id") }),
+        ),
+        methods::MLS_GROUP_REQUESTS_DECLINE => request(
+            "group.requests.decline",
+            json!({ "group_id": group(), "request_id": text(body, "request_id") }),
+        ),
+        methods::MLS_GROUP_ROLE_SET => request(
+            "group.role.set",
+            json!({ "group_id": group(), "anchor": text(body, "anchor"), "role": text(body, "role") }),
+        ),
+        methods::MLS_GROUP_MEMBER_REMOVE => request(
+            "group.member.remove",
+            json!({ "group_id": group(), "anchor": text(body, "anchor") }),
+        ),
+        methods::MLS_GROUP_MEMBER_BAN => request(
+            "group.member.ban",
+            json!({ "group_id": group(), "anchor": text(body, "anchor") }),
+        ),
+        // One field per call.
+        methods::MLS_GROUP_SETTINGS_SET => {
+            let mut wire = json!({ "group_id": group() });
+            for field in ["name", "approval"] {
+                if let Some(value) = body.get(field).filter(|v| !v.is_null()) {
+                    wire[field] = value.clone();
+                    break;
+                }
+            }
+            request("group.settings.set", wire)
+        }
+        methods::MLS_GROUP_PUSH_SET => {
+            request("group.push.set", json!({ "group_id": group(), "push": text(body, "push") }))
+        }
+        methods::MLS_GROUP_CATCH_UP => {
+            request("group.catch_up", json!({ "group_id": group(), "skip": true }))
+        }
+        methods::MLS_GROUP_VOID => {
+            request("group.void", json!({ "group_id": group(), "log_seq": body["log_seq"] }))
+        }
         _ => refuse_invalid("no daemon counterpart"),
     }
 }

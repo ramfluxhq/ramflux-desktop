@@ -70,7 +70,12 @@ impl Task {
         // with the typed unavailable outcome, which names only what it was
         // for (never the link or the text).
         if let Some(method) = effect.method().filter(|m| methods::is_mls_group(m)) {
-            // W: enable the group.* plan for each mls_group.* method here.
+            // W: enable the group.* plan for each mls_group.* method here
+            // (group.requests.list/approve/decline, group.role.set,
+            // group.member.remove/ban, group.settings.set, group.push.set,
+            // group.catch_up and group.void with their parsers in
+            // translate/mls_group.rs). Every new mls_group.* method is
+            // caught by `is_mls_group` above, so none reaches the daemon.
             // W: the join must emit its `MlsStarted::Join` event before the
             // call is planned, or the account-wide in-flight guard is missing
             // on live (the mock emits it from its own source).
