@@ -228,19 +228,6 @@ w = 13
 h = 12
 
 [[deviation]]
-id = "r18"
-class = "extra"
-reason = "drawn by the app, not on the board at 876,38 12x12"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 876
-y = 38
-w = 12
-h = 12
-
-[[deviation]]
 id = "r19"
 class = "layout"
 reason = "element moved further than its region (ink within 24 px) at 1165,38 7x10"

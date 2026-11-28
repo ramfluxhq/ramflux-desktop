@@ -306,19 +306,6 @@ w = 22
 h = 56
 
 [[deviation]]
-id = "r24"
-class = "extra"
-reason = "drawn by the app, not on the board at 137,795 116x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 137
-y = 795
-w = 116
-h = 13
-
-[[deviation]]
 id = "r25"
 class = "spacing"
 reason = "same element moved by +0.0,-10.0 px (ink box board 25.5,808.5 17.0x19.0, app 25.5,798.5 17.0x19.0)"
@@ -343,19 +330,6 @@ x = 92
 y = 819
 w = 179
 h = 30
-
-[[deviation]]
-id = "r27"
-class = "extra"
-reason = "drawn by the app, not on the board at 279,819 22x11"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 279
-y = 819
-w = 22
-h = 11
 
 [[deviation]]
 id = "r28"
@@ -395,3 +369,94 @@ x = 25
 y = 230
 w = 4
 h = 12
+
+[[deviation]]
+id = "r31"
+class = "layout"
+reason = "UX-FIX-01: the account's contact tools (add, my card, requests, auto-accept, invitations, blocked) sit beside the people table in the Contacts section; zh-CN uses 账户 and 账户码; plumbing text replaced by plain sentences"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 136
+y = 381
+w = 120
+h = 15
+
+[[deviation]]
+id = "r32"
+class = "layout"
+reason = "UX-FIX-01: the account's contact tools (add, my card, requests, auto-accept, invitations, blocked) sit beside the people table in the Contacts section; zh-CN uses 账户 and 账户码; plumbing text replaced by plain sentences"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 136
+y = 406
+w = 30
+h = 14
+
+[[deviation]]
+id = "r33"
+class = "layout"
+reason = "UX-FIX-01: the account's contact tools (add, my card, requests, auto-accept, invitations, blocked) sit beside the people table in the Contacts section; zh-CN uses 账户 and 账户码; plumbing text replaced by plain sentences"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 136
+y = 438
+w = 119
+h = 15
+
+[[deviation]]
+id = "r34"
+class = "layout"
+reason = "UX-FIX-01: the account's contact tools (add, my card, requests, auto-accept, invitations, blocked) sit beside the people table in the Contacts section; zh-CN uses 账户 and 账户码; plumbing text replaced by plain sentences"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 136
+y = 463
+w = 34
+h = 15
+
+[[deviation]]
+id = "r35"
+class = "layout"
+reason = "UX-FIX-01: the account's contact tools (add, my card, requests, auto-accept, invitations, blocked) sit beside the people table in the Contacts section; zh-CN uses 账户 and 账户码; plumbing text replaced by plain sentences"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 181
+y = 463
+w = 75
+h = 14
+
+[[deviation]]
+id = "r36"
+class = "layout"
+reason = "UX-FIX-01: the account's contact tools (add, my card, requests, auto-accept, invitations, blocked) sit beside the people table in the Contacts section; zh-CN uses 账户 and 账户码; plumbing text replaced by plain sentences"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 136
+y = 487
+w = 66
+h = 15
+
+[[deviation]]
+id = "r37"
+class = "layout"
+reason = "UX-FIX-01: the account's contact tools (add, my card, requests, auto-accept, invitations, blocked) sit beside the people table in the Contacts section; zh-CN uses 账户 and 账户码; plumbing text replaced by plain sentences"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 137
+y = 813
+w = 116
+h = 13

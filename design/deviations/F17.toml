@@ -475,19 +475,6 @@ w = 22
 h = 56
 
 [[deviation]]
-id = "r40"
-class = "extra"
-reason = "drawn by the app, not on the board at 137,795 116x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 137
-y = 795
-w = 116
-h = 13
-
-[[deviation]]
 id = "r41"
 class = "spacing"
 reason = "same element moved by +0.0,-10.0 px (ink box board 25.5,808.5 17.0x19.0, app 25.5,798.5 17.0x19.0)"
@@ -512,19 +499,6 @@ x = 92
 y = 819
 w = 179
 h = 30
-
-[[deviation]]
-id = "r43"
-class = "extra"
-reason = "drawn by the app, not on the board at 279,819 22x11"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 279
-y = 819
-w = 22
-h = 11
 
 [[deviation]]
 id = "r44"
@@ -655,3 +629,29 @@ x = 626
 y = 278
 w = 89
 h = 12
+
+[[deviation]]
+id = "r54"
+class = "layout"
+reason = "UX-FIX-01: the account's contact tools (add, my card, requests, auto-accept, invitations, blocked) sit beside the people table in the Contacts section; zh-CN uses 账户 and 账户码; plumbing text replaced by plain sentences"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 137
+y = 813
+w = 116
+h = 13
+
+[[deviation]]
+id = "r55"
+class = "layout"
+reason = "UX-FIX-01: the account's contact tools (add, my card, requests, auto-accept, invitations, blocked) sit beside the people table in the Contacts section; zh-CN uses 账户 and 账户码; plumbing text replaced by plain sentences"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1139
+y = 851
+w = 175
+h = 34

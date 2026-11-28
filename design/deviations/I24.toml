@@ -215,19 +215,6 @@ w = 1
 h = 27
 
 [[deviation]]
-id = "r17"
-class = "type"
-reason = "text height -2.0 px: type scale (ink box board 96.0,78.5 6.5x13.0, app 96.0,79.5 5.0x11.0)"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 96
-y = 78
-w = 7
-h = 14
-
-[[deviation]]
 id = "r18"
 class = "spacing"
 reason = "same element moved by +6.0,-1.0 px (ink box board 112.5,79.5 24.5x12.0, app 118.5,78.5 25.0x12.5)"

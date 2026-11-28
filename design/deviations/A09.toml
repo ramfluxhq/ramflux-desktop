@@ -174,3 +174,146 @@ x = 416
 y = 518
 w = 53
 h = 33
+
+[[deviation]]
+id = "r14"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 416
+y = 394
+w = 304
+h = 13
+
+[[deviation]]
+id = "r15"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 729
+y = 394
+w = 94
+h = 14
+
+[[deviation]]
+id = "r16"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 832
+y = 394
+w = 148
+h = 13
+
+[[deviation]]
+id = "r17"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 988
+y = 394
+w = 26
+h = 13
+
+[[deviation]]
+id = "r18"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 416
+y = 415
+w = 56
+h = 14
+
+[[deviation]]
+id = "r19"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 481
+y = 415
+w = 209
+h = 13
+
+[[deviation]]
+id = "r20"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 413
+y = 515
+w = 614
+h = 55
+
+[[deviation]]
+id = "r21"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 416
+y = 582
+w = 96
+h = 13
+
+[[deviation]]
+id = "r22"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 416
+y = 615
+w = 148
+h = 13
+
+[[deviation]]
+id = "r23"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 416
+y = 644
+w = 122
+h = 33
+
+[[deviation]]
+id = "r24"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 546
+y = 644
+w = 52
+h = 33

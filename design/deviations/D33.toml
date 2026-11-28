@@ -993,3 +993,55 @@ x = 506
 y = 882
 w = 170
 h = 11
+
+[[deviation]]
+id = "r81"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 517
+y = 407
+w = 66
+h = 13
+
+[[deviation]]
+id = "r82"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 517
+y = 445
+w = 79
+h = 13
+
+[[deviation]]
+id = "r83"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 651
+w = 75
+h = 15
+
+[[deviation]]
+id = "r84"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 606
+y = 804
+w = 180
+h = 11

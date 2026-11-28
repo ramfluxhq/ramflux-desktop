@@ -20,32 +20,6 @@ w = 87
 h = 18
 
 [[deviation]]
-id = "r02"
-class = "extra"
-reason = "drawn by the app, not on the board at 53,62 96x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 53
-y = 62
-w = 96
-h = 13
-
-[[deviation]]
-id = "r03"
-class = "extra"
-reason = "drawn by the app, not on the board at 16,63 13x12"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 16
-y = 63
-w = 13
-h = 12
-
-[[deviation]]
 id = "r04"
 class = "layout"
 reason = "geometry differs (ink box board 415.5,114.0 287.5x138.5, app 416.5,94.5 264.5x168.0)"
@@ -57,32 +31,6 @@ x = 415
 y = 94
 w = 288
 h = 169
-
-[[deviation]]
-id = "r05"
-class = "extra"
-reason = "drawn by the app, not on the board at 1380,103 12x12"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1380
-y = 103
-w = 12
-h = 12
-
-[[deviation]]
-id = "r06"
-class = "extra"
-reason = "drawn by the app, not on the board at 1407,103 11x12"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1407
-y = 103
-w = 11
-h = 12
 
 [[deviation]]
 id = "r07"
@@ -135,19 +83,6 @@ x = 415
 y = 422
 w = 141
 h = 72
-
-[[deviation]]
-id = "r11"
-class = "extra"
-reason = "drawn by the app, not on the board at 1002,431 11x8"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1002
-y = 431
-w = 11
-h = 8
 
 [[deviation]]
 id = "r12"
@@ -213,3 +148,94 @@ x = 415
 y = 691
 w = 82
 h = 34
+
+[[deviation]]
+id = "r17"
+class = "layout"
+reason = "UX-FIX-01: the lock page names the bound account with Locked under it and shows one status line; zh-CN 账户码 wording"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 712
+y = 424
+w = 15
+h = 15
+
+[[deviation]]
+id = "r18"
+class = "layout"
+reason = "UX-FIX-01: the lock page names the bound account with Locked under it and shows one status line; zh-CN 账户码 wording"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 703
+y = 465
+w = 33
+h = 16
+
+[[deviation]]
+id = "r19"
+class = "layout"
+reason = "UX-FIX-01: the lock page names the bound account with Locked under it and shows one status line; zh-CN 账户码 wording"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 704
+y = 502
+w = 32
+h = 11
+
+[[deviation]]
+id = "r20"
+class = "layout"
+reason = "UX-FIX-01: the lock page names the bound account with Locked under it and shows one status line; zh-CN 账户码 wording"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 655
+y = 533
+w = 122
+h = 13
+
+[[deviation]]
+id = "r21"
+class = "layout"
+reason = "UX-FIX-01: the lock page names the bound account with Locked under it and shows one status line; zh-CN 账户码 wording"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 878
+y = 573
+w = 11
+h = 8
+
+[[deviation]]
+id = "r22"
+class = "layout"
+reason = "UX-FIX-01: the lock page names the bound account with Locked under it and shows one status line; zh-CN 账户码 wording"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 682
+y = 604
+w = 75
+h = 32
+
+[[deviation]]
+id = "r23"
+class = "layout"
+reason = "UX-FIX-01: the lock page names the bound account with Locked under it and shows one status line; zh-CN 账户码 wording"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 659
+y = 648
+w = 122
+h = 32

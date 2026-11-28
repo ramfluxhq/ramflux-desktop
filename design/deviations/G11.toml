@@ -579,19 +579,6 @@ w = 20
 h = 11
 
 [[deviation]]
-id = "r45"
-class = "layout"
-reason = "element moved further than its region (ink within 24 px) at 549,705 79x13"
-decision = "unreviewed"
-reviewer = ""
-
-[deviation.region]
-x = 549
-y = 705
-w = 79
-h = 13
-
-[[deviation]]
 id = "r46"
 class = "type"
 reason = "text height -2.5 px: type scale (ink box board 506.5,730.0 290.5x14.5, app 506.5,729.0 379.0x12.0)"
@@ -683,19 +670,6 @@ w = 78
 h = 13
 
 [[deviation]]
-id = "r53"
-class = "layout"
-reason = "element moved further than its region (ink within 24 px) at 593,829 18x13"
-decision = "unreviewed"
-reviewer = ""
-
-[deviation.region]
-x = 593
-y = 829
-w = 18
-h = 13
-
-[[deviation]]
 id = "r54"
 class = "layout"
 reason = "geometry differs (ink box board 508.5,857.5 82.0x16.0, app 517.5,860.0 133.5x12.5)"
@@ -707,19 +681,6 @@ x = 508
 y = 857
 w = 143
 h = 17
-
-[[deviation]]
-id = "r55"
-class = "extra"
-reason = "drawn by the app, not on the board at 1215,859 37x14"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1215
-y = 859
-w = 37
-h = 14
 
 [[deviation]]
 id = "r56"
@@ -758,4 +719,147 @@ reviewer = "lead"
 x = 25
 y = 230
 w = 4
+h = 12
+
+[[deviation]]
+id = "r59"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 505
+y = 489
+w = 202
+h = 47
+
+[[deviation]]
+id = "r60"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 715
+y = 489
+w = 171
+h = 13
+
+[[deviation]]
+id = "r61"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 570
+y = 620
+w = 81
+h = 13
+
+[[deviation]]
+id = "r62"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1210
+y = 621
+w = 47
+h = 17
+
+[[deviation]]
+id = "r63"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 659
+w = 397
+h = 45
+
+[[deviation]]
+id = "r64"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1210
+y = 690
+w = 41
+h = 14
+
+[[deviation]]
+id = "r65"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 724
+w = 90
+h = 32
+
+[[deviation]]
+id = "r66"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 771
+w = 578
+h = 26
+
+[[deviation]]
+id = "r67"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 818
+w = 60
+h = 14
+
+[[deviation]]
+id = "r68"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 623
+y = 853
+w = 96
+h = 13
+
+[[deviation]]
+id = "r69"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 518
+y = 888
+w = 84
 h = 12

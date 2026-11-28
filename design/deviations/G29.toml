@@ -527,19 +527,6 @@ w = 38
 h = 34
 
 [[deviation]]
-id = "r47"
-class = "extra"
-reason = "drawn by the app, not on the board at 672,193 101x11"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 672
-y = 193
-w = 101
-h = 11
-
-[[deviation]]
 id = "r48"
 class = "layout"
 reason = "geometry differs (ink box board 517.5,233.5 53.0x33.0, app 507.0,256.0 134.5x16.5)"
@@ -564,19 +551,6 @@ x = 506
 y = 294
 w = 147
 h = 14
-
-[[deviation]]
-id = "r50"
-class = "extra"
-reason = "drawn by the app, not on the board at 662,294 174x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 662
-y = 294
-w = 174
-h = 13
 
 [[deviation]]
 id = "r51"
@@ -616,3 +590,81 @@ x = 25
 y = 230
 w = 4
 h = 12
+
+[[deviation]]
+id = "r54"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 286
+y = 11
+w = 44
+h = 13
+
+[[deviation]]
+id = "r55"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 364
+y = 67
+w = 48
+h = 24
+
+[[deviation]]
+id = "r56"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 174
+w = 152
+h = 24
+
+[[deviation]]
+id = "r57"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 517
+y = 211
+w = 147
+h = 56
+
+[[deviation]]
+id = "r58"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 673
+y = 225
+w = 69
+h = 13
+
+[[deviation]]
+id = "r59"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 750
+y = 225
+w = 44
+h = 13

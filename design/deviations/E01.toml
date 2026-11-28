@@ -733,3 +733,16 @@ x = 23
 y = 871
 w = 21
 h = 29
+
+[[deviation]]
+id = "r57"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 364
+y = 26
+w = 143
+h = 37

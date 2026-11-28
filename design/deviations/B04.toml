@@ -850,3 +850,42 @@ x = 941
 y = 423
 w = 27
 h = 9
+
+[[deviation]]
+id = "r66"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1311
+y = 68
+w = 2
+h = 271
+
+[[deviation]]
+id = "r67"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1402
+y = 76
+w = 31
+h = 265
+
+[[deviation]]
+id = "r68"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1339
+y = 317
+w = 22
+h = 13

@@ -4,7 +4,12 @@
 
 board = "D35"
 capture = "D35__zh-CN__light__1440x900"
-reference_sha256 = "69ab176b18e321462c6cce0662e69e4ae892ebc85d9c63d6557ccf8c2b6c2a61"
+reference_sha256 = "e47b7cce3b810c04cd8c889e67d01374dae93dea4711e230c2ddf0f0a19a1a16"
+
+[no_capture]
+reason = "recipe failed at base 0c5ce43 as well, not caused by UX-FIX-01 (element agent-wizard-provider is not on screen (new agent wizard, capabilities and approvals))"
+decision = "unreviewed"
+reviewer = ""
 
 [[deviation]]
 id = "r01"

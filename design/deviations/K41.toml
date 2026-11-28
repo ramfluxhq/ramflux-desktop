@@ -215,32 +215,6 @@ w = 9
 h = 11
 
 [[deviation]]
-id = "r17"
-class = "extra"
-reason = "drawn by the app, not on the board at 1303,101 12x11"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1303
-y = 101
-w = 12
-h = 11
-
-[[deviation]]
-id = "r18"
-class = "extra"
-reason = "drawn by the app, not on the board at 1356,101 12x11"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1356
-y = 101
-w = 12
-h = 11
-
-[[deviation]]
 id = "r19"
 class = "extra"
 reason = "drawn by the app, not on the board at 1391,105 11x3"
@@ -252,19 +226,6 @@ x = 1391
 y = 105
 w = 11
 h = 3
-
-[[deviation]]
-id = "r20"
-class = "extra"
-reason = "drawn by the app, not on the board at 364,114 49x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 364
-y = 114
-w = 49
-h = 13
 
 [[deviation]]
 id = "r21"
@@ -980,3 +941,55 @@ x = 839
 y = 286
 w = 91
 h = 12
+
+[[deviation]]
+id = "r76"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 364
+y = 96
+w = 33
+h = 17
+
+[[deviation]]
+id = "r77"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1251
+y = 100
+w = 42
+h = 13
+
+[[deviation]]
+id = "r78"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1315
+y = 100
+w = 41
+h = 13
+
+[[deviation]]
+id = "r79"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1384
+y = 104
+w = 16
+h = 5

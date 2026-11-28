@@ -267,19 +267,6 @@ w = 9
 h = 12
 
 [[deviation]]
-id = "r21"
-class = "extra"
-reason = "drawn by the app, not on the board at 1303,87 12x12"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1303
-y = 87
-w = 12
-h = 12
-
-[[deviation]]
 id = "r22"
 class = "extra"
 reason = "drawn by the app, not on the board at 1329,87 13x12"
@@ -290,19 +277,6 @@ reviewer = "rf-design classify"
 x = 1329
 y = 87
 w = 13
-h = 12
-
-[[deviation]]
-id = "r23"
-class = "extra"
-reason = "drawn by the app, not on the board at 1356,87 12x12"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 1356
-y = 87
-w = 12
 h = 12
 
 [[deviation]]
@@ -330,19 +304,6 @@ x = 25
 y = 97
 w = 18
 h = 17
-
-[[deviation]]
-id = "r26"
-class = "extra"
-reason = "drawn by the app, not on the board at 364,101 49x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 364
-y = 101
-w = 49
-h = 13
 
 [[deviation]]
 id = "r27"
@@ -1136,3 +1097,55 @@ x = 881
 y = 273
 w = 49
 h = 12
+
+[[deviation]]
+id = "r88"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 364
+y = 83
+w = 33
+h = 17
+
+[[deviation]]
+id = "r89"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1251
+y = 86
+w = 42
+h = 13
+
+[[deviation]]
+id = "r90"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1315
+y = 86
+w = 41
+h = 13
+
+[[deviation]]
+id = "r91"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1384
+y = 91
+w = 16
+h = 4

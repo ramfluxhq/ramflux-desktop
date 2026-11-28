@@ -852,19 +852,6 @@ w = 148
 h = 13
 
 [[deviation]]
-id = "r79"
-class = "extra"
-reason = "drawn by the app, not on the board at 737,192 200x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 737
-y = 192
-w = 200
-h = 13
-
-[[deviation]]
 id = "r80"
 class = "layout"
 reason = "geometry differs (ink box board 100.5,193.0 29.0x14.5, app 92.5,214.5 25.5x12.5)"
@@ -917,19 +904,6 @@ w = 147
 h = 15
 
 [[deviation]]
-id = "r84"
-class = "extra"
-reason = "drawn by the app, not on the board at 662,294 174x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 662
-y = 294
-w = 174
-h = 13
-
-[[deviation]]
 id = "r85"
 class = "layout"
 reason = "geometry differs (ink box board 506.5,321.0 125.5x12.0, app 506.0,323.5 202.0x32.0)"
@@ -967,3 +941,68 @@ x = 25
 y = 230
 w = 4
 h = 12
+
+[[deviation]]
+id = "r88"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 121
+w = 224
+h = 77
+
+[[deviation]]
+id = "r89"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 507
+y = 217
+w = 222
+h = 36
+
+[[deviation]]
+id = "r90"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 737
+y = 225
+w = 200
+h = 13
+
+[[deviation]]
+id = "r91"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 662
+y = 327
+w = 174
+h = 13
+
+[[deviation]]
+id = "r92"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 506
+y = 356
+w = 114
+h = 33

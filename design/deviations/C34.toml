@@ -369,3 +369,29 @@ x = 25
 y = 230
 w = 4
 h = 12
+
+[[deviation]]
+id = "r29"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 182
+y = 172
+w = 51
+h = 15
+
+[[deviation]]
+id = "r30"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码, 智能体), This device / Other device, plain error sentences instead of raw backend text"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 559
+y = 876
+w = 44
+h = 13

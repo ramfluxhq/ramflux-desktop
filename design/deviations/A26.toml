@@ -202,14 +202,53 @@ w = 141
 h = 99
 
 [[deviation]]
-id = "r16"
-class = "extra"
-reason = "drawn by the app, not on the board at 1002,602 11x8"
-decision = "fix"
-reviewer = "rf-design classify"
+id = "r17"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
 
 [deviation.region]
-x = 1002
-y = 602
-w = 11
-h = 8
+x = 637
+y = 399
+w = 109
+h = 13
+
+[[deviation]]
+id = "r18"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 754
+y = 399
+w = 109
+h = 13
+
+[[deviation]]
+id = "r19"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 871
+y = 399
+w = 134
+h = 13
+
+[[deviation]]
+id = "r20"
+class = "copy"
+reason = "UX-FIX-01: zh-CN glossary (账户, 账户码) and plain wording; the account creation step carries the one-try line"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 415
+y = 597
+w = 175
+h = 53

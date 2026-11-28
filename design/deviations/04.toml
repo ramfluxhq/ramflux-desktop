@@ -798,3 +798,159 @@ x = 25
 y = 230
 w = 4
 h = 12
+
+[[deviation]]
+id = "r62"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1022
+y = 28
+w = 76
+h = 32
+
+[[deviation]]
+id = "r63"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 1238
+y = 35
+w = 55
+h = 18
+
+[[deviation]]
+id = "r64"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 79
+y = 67
+w = 242
+h = 51
+
+[[deviation]]
+id = "r65"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 132
+y = 204
+w = 59
+h = 42
+
+[[deviation]]
+id = "r66"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 92
+y = 208
+w = 32
+h = 68
+
+[[deviation]]
+id = "r67"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 132
+y = 277
+w = 77
+h = 69
+
+[[deviation]]
+id = "r68"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 92
+y = 295
+w = 32
+h = 32
+
+[[deviation]]
+id = "r69"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 92
+y = 344
+w = 32
+h = 70
+
+[[deviation]]
+id = "r70"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 563
+y = 433
+w = 67
+h = 9
+
+[[deviation]]
+id = "r71"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 136
+y = 463
+w = 60
+h = 44
+
+[[deviation]]
+id = "r72"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 92
+y = 469
+w = 32
+h = 32
+
+[[deviation]]
+id = "r73"
+class = "copy"
+reason = "UX-FIX-01: agents are named 智能体 in zh-CN; the loading line shows only while the list is empty"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 563
+y = 596
+w = 68
+h = 9

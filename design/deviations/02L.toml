@@ -410,32 +410,6 @@ w = 18
 h = 30
 
 [[deviation]]
-id = "r32"
-class = "extra"
-reason = "drawn by the app, not on the board at 496,850 69x14"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 496
-y = 850
-w = 69
-h = 14
-
-[[deviation]]
-id = "r33"
-class = "extra"
-reason = "drawn by the app, not on the board at 460,851 12x13"
-decision = "fix"
-reviewer = "rf-design classify"
-
-[deviation.region]
-x = 460
-y = 851
-w = 12
-h = 13
-
-[[deviation]]
 id = "r34"
 class = "type"
 reason = "text height -3.0 px: type scale (ink box board 26.0,852.0 15.0x15.5, app 27.0,853.5 13.0x12.5)"
@@ -460,3 +434,16 @@ x = 25
 y = 230
 w = 4
 h = 12
+
+[[deviation]]
+id = "r36"
+class = "layout"
+reason = "UX-FIX-01: the conversation header rail is labelled (Files, Profile, Members in groups, Approvals when applicable) and Evidence is not on the rail"
+decision = "unreviewed"
+reviewer = ""
+
+[deviation.region]
+x = 866
+y = 443
+w = 60
+h = 13
