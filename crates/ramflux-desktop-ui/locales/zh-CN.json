@@ -406,7 +406,7 @@
   "ceremony.code.ok": "这个账户码可以使用。",
   "ceremony.code.mismatch": "两次输入的账户码不一致。",
   "ceremony.confirm.title": "输入其中三个单词",
-  "ceremony.confirm.once": "只有一次机会。如果有单词不对，设置会结束，不会创建账户。",
+  "ceremony.confirm.once": "只有一次机会。如果有单词不匹配，本次设置将结束，你需要重新开始。",
   "ceremony.confirm.word": "第 %{number} 个单词",
   "ceremony.confirm.placeholder": "输入单词，或它的前四个字母",
   "ceremony.confirm.reads": "识别为：%{word}",

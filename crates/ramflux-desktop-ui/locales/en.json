@@ -411,7 +411,7 @@
   "ceremony.code.ok": "This code can be used.",
   "ceremony.code.mismatch": "The codes don't match.",
   "ceremony.confirm.title": "Type three words back",
-  "ceremony.confirm.once": "You have one attempt. If a word is wrong, the setup ends and no account is created.",
+  "ceremony.confirm.once": "You have one try. If a word does not match, this setup ends and you have to start again.",
   "ceremony.confirm.word": "Word %{number}",
   "ceremony.confirm.placeholder": "The word, or its first four letters",
   "ceremony.confirm.reads": "Reads as: %{word}",
