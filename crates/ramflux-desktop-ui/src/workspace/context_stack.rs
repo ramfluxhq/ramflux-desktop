@@ -74,6 +74,8 @@ struct Entry {
     muted: bool,
     needs_me: usize,
     unread: u32,
+    /// The peer of a direct conversation has an identity change that waits.
+    identity_changed: bool,
 }
 
 /// Retained full-list state. The historical name keeps keyboard/API callers stable.
@@ -365,6 +367,13 @@ fn entry(store: &Store, row: ConversationRow<'_>, filter: ListFilter) -> Option<
         muted: row.context.muted,
         needs_me: row.attention,
         unread: row.context.unread,
+        identity_changed: row.context.kind == ContextKind::Direct && {
+            let me = ramflux_desktop_core::selectors::self_participant(store);
+            row.context.participants.iter().any(|id| {
+                Some(id) != me.as_ref()
+                    && store.participant(id).is_some_and(|p| p.identity.is_changed())
+            })
+        },
     })
 }
 
@@ -382,6 +391,9 @@ fn accessible_name(entry: &Entry) -> SharedString {
     }
     if entry.unread > 0 {
         text.push(tr_args("stack.unread", &[("count", &entry.unread.to_string())]).to_string());
+    }
+    if entry.identity_changed {
+        text.push(tr("identity.state.changed").to_string());
     }
     if entry.needs_me > 0 {
         text.push(tr_args("stack.needs_me", &[("count", &entry.needs_me.to_string())]).to_string());
@@ -466,6 +478,7 @@ impl Render for ContextStack {
                         content.time = entry.time.clone();
                         content.unread = entry.unread;
                         content.attention = entry.needs_me;
+                        content.warning = entry.identity_changed;
                         content.kind = entry.kind;
                         Some(
                             div()

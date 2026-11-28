@@ -76,12 +76,7 @@ impl ViewState {
     }
 
     /// The state handed to a row renderer.
-    pub fn row_state(
-        &self,
-        id: &MomentId,
-        highlighted: bool,
-        ask_call: crate::identity::AskCall,
-    ) -> RowState {
+    pub fn row_state(&self, id: &MomentId, highlighted: bool) -> RowState {
         RowState {
             expanded: self.expanded.contains(id),
             joined: false,
@@ -92,7 +87,6 @@ impl ViewState {
             card_local: self.locals.get(id).cloned().unwrap_or_default(),
             diff: self.diffs.get(id).cloned(),
             focus: None,
-            ask_call,
         }
     }
 

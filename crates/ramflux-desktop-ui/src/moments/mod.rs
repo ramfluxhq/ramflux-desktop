@@ -21,6 +21,7 @@ mod governance;
 pub mod grant_failure;
 mod group_rename;
 mod handoff;
+mod identity;
 mod intervention;
 mod message;
 pub(crate) mod message_bubble;
@@ -29,7 +30,6 @@ mod name_change;
 mod notice;
 mod object_transfer;
 mod privacy;
-mod safety;
 mod task_event;
 mod task_progress;
 mod task_status;
@@ -97,9 +97,9 @@ pub struct RowRefs {
     pub call: Option<Call>,
     /// For an ended call: whether a call back could be placed now.
     pub call_back: bool,
-    /// For a call record: the peer's verification went stale, so a call
-    /// back asks for the acknowledgement first.
-    pub call_stale: bool,
+    /// For a call record: the peer whose identity change is not accepted,
+    /// so a call back opens the identity change sheet first.
+    pub call_changed: Option<ParticipantId>,
 }
 
 /// The task step an intervention belongs to.
@@ -318,7 +318,8 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
         }
         MomentKind::NameChange(p) => vec![&p.participant_id],
         MomentKind::GroupRename(_) => Vec::new(),
-        MomentKind::SafetyChange(p) => vec![&p.participant_id],
+        MomentKind::IdentityChange(p) => vec![&p.participant_id],
+        MomentKind::SecurityNotice(_) => Vec::new(),
         MomentKind::Governance(p) => vec![&p.target],
         MomentKind::ContactRequest(p) => vec![&p.from],
         MomentKind::Handoff(p) => p.to_device.iter().chain([&p.from_device]).collect(),
@@ -326,12 +327,15 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
         MomentKind::Fallback(_) | MomentKind::System(_) => Vec::new(),
         MomentKind::Call(p) => {
             refs.call = store.call(&p.call_id).cloned();
-            refs.call_stale = ramflux_desktop_core::call_peer(store, &moment.context_id)
+            refs.call_changed = ramflux_desktop_core::call_peer(store, &moment.context_id)
                 .and_then(|peer| store.participant(&peer))
-                .is_some_and(|p| p.safety.is_stale());
-            refs.call_back = ramflux_desktop_core::check_start_call(store, &moment.context_id)
-                .is_ok()
-                && store.unsupported_reason(ramflux_desktop_core::methods::CALL_INVITE).is_none();
+                .filter(|p| p.identity.is_changed())
+                .map(|p| p.id.clone());
+            refs.call_back =
+                matches!(
+                    ramflux_desktop_core::check_start_call(store, &moment.context_id),
+                    Ok(_) | Err(ramflux_desktop_core::IntentError::IdentityUnresolved(_))
+                ) && store.unsupported_reason(ramflux_desktop_core::methods::CALL_INVITE).is_none();
             refs.call.as_ref().map(|c| vec![&c.peer]).unwrap_or_default()
         }
     };
@@ -377,9 +381,6 @@ pub struct RowState {
     /// Keyboard focus of the highlighted row ("take me to what needs me"
     /// moves focus here; Tab then reaches the row's own controls).
     pub focus: Option<FocusHandle>,
-    /// Opens the stale-verification acknowledgement of the conversation's
-    /// call (Call back on a call record asks through it).
-    pub ask_call: crate::identity::AskCall,
 }
 
 /// One rendered moment row.
@@ -428,9 +429,8 @@ impl RenderOnce for MomentView {
                     .expanded(state.expanded)
                     .into_any_element()
             }
-            MomentKind::SafetyChange(p) => {
-                safety::render(p, &row.refs, lifecycle, &sink, cx).into_any_element()
-            }
+            MomentKind::IdentityChange(p) => identity::render(p, &row.refs, cx).into_any_element(),
+            MomentKind::SecurityNotice(p) => identity::notice(p, cx).into_any_element(),
             MomentKind::Governance(p) => governance::render(p, &row, cx).into_any_element(),
             MomentKind::ContactRequest(p) => {
                 contact::render(p, &row.refs, lifecycle, &sink, cx).into_any_element()
@@ -450,7 +450,7 @@ impl RenderOnce for MomentView {
             MomentKind::System(p) => notice::system(p, cx).into_any_element(),
             MomentKind::Fallback(p) => notice::fallback(p, cx).into_any_element(),
             MomentKind::TaskEvent(p) => task_event::render(p, &row, cx).into_any_element(),
-            MomentKind::Call(_) => call::render(&row.refs, &sink, &state, cx).into_any_element(),
+            MomentKind::Call(_) => call::render(&row.refs, &sink, cx).into_any_element(),
             MomentKind::NameChange(p) => name_change::render(p, &row, cx).into_any_element(),
             MomentKind::GroupRename(p) => group_rename::render(p, &row, cx).into_any_element(),
         };
@@ -560,7 +560,11 @@ fn body_direction(row: &MomentRow) -> ramflux_desktop_navigation::direction::Lay
 
 fn is_compact(kind: &MomentKind) -> bool {
     match kind {
-        MomentKind::TaskEvent(_) | MomentKind::NameChange(_) | MomentKind::GroupRename(_) => true,
+        MomentKind::TaskEvent(_)
+        | MomentKind::NameChange(_)
+        | MomentKind::GroupRename(_)
+        | MomentKind::IdentityChange(_)
+        | MomentKind::SecurityNotice(_) => true,
         MomentKind::Governance(p) => p.unattributed,
         _ => false,
     }

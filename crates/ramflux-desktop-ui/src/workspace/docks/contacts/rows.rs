@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! Rows of the contacts dock: a contact request (from a moment or from an
-//! incoming link), a contact with its safety state and actions, and a
+//! incoming link), a contact with its identity state and actions, and a
 //! blocked participant.
 //!
 //! Every action emits a UI event; the root turns it into an intent. Block
@@ -12,8 +12,9 @@
 //! with the reason, while the contact is not reachable yet.
 //!
 //! A contact row says how far the contact is trusted, as a status the
-//! daemon reports (verified, not verified, identity changed); nobody is
-//! asked to compare anything in normal use. It also says whether this
+//! SDK reports: "Verified", nothing for an identity first seen on this
+//! device, and a warning with Review while an identity change waits for
+//! the user (the identity change sheet accepts it). It also says whether this
 //! account can reach the contact, and what kind of party it is, with how
 //! far that is proven (a
 //! root-signed profile, or only the contact's own claim; see
@@ -21,12 +22,7 @@
 //! mixes scripts, carries a warning with the principal id beside it. The
 //! row also says where the identity it holds came from: looked up by id
 //! (provisional: anyone could have registered the name first), pinned by
-//! the contact's card, or compared.
-//!
-//! The safety number is an advanced detail: "Safety number" opens it in
-//! the row, with what to compare it with, and only "The numbers match"
-//! marks the contact verified (the daemon verifies the exact snapshot it
-//! computed). Without a number to compare there is nothing to confirm.
+//! the contact's card, or confirmed.
 
 use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
@@ -37,8 +33,8 @@ use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, SharedString, Window, div};
 use ramflux_desktop_core::{
-    ContactAction, ContactLink, Moment, MomentKind, Participant, ParticipantId, RootSource,
-    SafetyState, Scope, Store, UiEventKind, selectors,
+    ContactAction, ContactLink, IdentityState, Moment, MomentKind, Participant, ParticipantId,
+    RootSource, Scope, Store, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
@@ -195,25 +191,15 @@ fn actions_menu(contact: &Participant, sink: &EventSink) -> impl IntoElement + u
 /// A button handler.
 pub type Click = Box<dyn Fn(&gpui_kit::ClickEvent, &mut Window, &mut App)>;
 
-/// The Verify action of a contact row and its comparison.
-pub struct VerifyHandlers {
-    /// Why verifying is unavailable, if it is.
-    pub reason: Option<SharedString>,
-    /// Verify pressed: open the comparison dialog.
-    pub start: Click,
-}
-
-/// A contact with its safety state, safety number, Verify while unverified
-/// (opening the comparison), Message once accepted, and the actions menu.
+/// A contact with its identity state (a warning and Review while a change
+/// waits), Message once accepted, and the actions menu.
 pub fn contact_row(
     contact: &Participant,
     sink: &EventSink,
-    verify: VerifyHandlers,
     on_message: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
     request: Option<super::requests::Outgoing>,
     cx: &App,
 ) -> AnyElement {
-    let VerifyHandlers { reason: verify_reason, start } = verify;
     let unreachable = (contact.reachable == Some(false))
         .then(|| tr_args("dock.contacts.unreachable_reason", &[("name", &contact.display)]));
     let message = (contact.link_state() == ContactLink::Accepted).then(|| {
@@ -231,27 +217,27 @@ pub fn contact_row(
             cx,
         )
     });
-    let color = match contact.safety {
-        SafetyState::Verified => cx.theme().success,
-        SafetyState::Unverified => cx.theme().muted_foreground,
-        SafetyState::VerificationStale => crate::tone::text(cx.theme().warning, cx),
-        SafetyState::KeyChanged | SafetyState::Forked => cx.theme().danger,
+    let color = match contact.identity {
+        IdentityState::Verified => cx.theme().success,
+        IdentityState::Tofu => cx.theme().muted_foreground,
+        IdentityState::Changed => crate::tone::text(cx.theme().warning, cx),
     };
-    // The advanced fallback: the safety number and its comparison.
-    let verify = Some({
-        crate::gate::gated(
-            Button::new("verify")
-                .xsmall()
-                .ghost()
-                .label(tr("dock.contacts.advanced_safety"))
-                .accessibility_label(tr_args(
-                    "dock.contacts.advanced_safety_for",
-                    &[("name", &contact.display)],
-                ))
-                .on_click(start),
-            verify_reason.clone(),
-            cx,
-        )
+    // No badge for an identity first seen on this device.
+    let status =
+        (contact.identity != IdentityState::Tofu).then(|| i18n::identity_state(contact.identity));
+    let review = contact.identity.is_changed().then(|| {
+        let (sink, participant_id) = (sink.clone(), contact.id.clone());
+        Button::new("contact-review")
+            .xsmall()
+            .design_secondary(cx)
+            .design_label(tr("identity.changed.review"))
+            .on_click(move |_, window, cx| {
+                sink.emit(
+                    UiEventKind::ReviewIdentityPressed { participant_id: participant_id.clone() },
+                    window,
+                    cx,
+                );
+            })
     });
     v_flex()
         .id(domain_id("contacts", &contact.id))
@@ -271,7 +257,7 @@ pub fn contact_row(
                         .font_medium()
                         .child(contact.display.clone()),
                 )
-                .children(verify)
+                .children(review)
                 .children(message)
                 .child(actions_menu(contact, sink)),
         )
@@ -282,15 +268,15 @@ pub fn contact_row(
                 .flex_wrap()
                 .gap_x(space(1.))
                 .text_size(text_caption())
-                .child(
+                .children(status.map(|status| {
                     div()
-                        .id("contact-safety")
+                        .id("contact-identity")
                         .role(gpui_kit::Role::Status)
-                        .aria_label(safety_label(contact.safety))
+                        .aria_label(status.clone())
                         .test_support()
                         .text_color(color)
-                        .child(safety_label(contact.safety)),
-                )
+                        .child(status)
+                }))
                 // The kind and how far it is proven, on the trust line (the
                 // name keeps its room).
                 .when_some(
@@ -386,118 +372,6 @@ pub fn root_label(source: RootSource) -> SharedString {
     })
 }
 
-/// The safety number comparison dialog (board B11): what to compare, the
-/// number in a field, the rule that only a full match counts, then "Not
-/// now" and "The numbers match" (only with a number to compare).
-pub fn comparison_dialog(
-    contact: &Participant,
-    confirm: Click,
-    cancel: crate::modal::OnClose,
-    reason: Option<&SharedString>,
-    focus: &gpui_kit::FocusHandle,
-    cx: &App,
-) -> AnyElement {
-    let name = contact.display.as_str();
-    let number = contact.safety_number.clone();
-    let help = if number.is_some() {
-        tr_args("dock.contacts.verify.compare", &[("name", name)])
-    } else {
-        tr_args("dock.contacts.verify.no_number", &[("name", name)])
-    };
-    let blocked = reason.cloned().or_else(|| {
-        number.is_none().then(|| tr_args("dock.contacts.verify.no_number", &[("name", name)]))
-    });
-    let theme = cx.theme();
-    let body = v_flex()
-        .id("contact-verify")
-        .gap(space(4.))
-        .child(
-            div()
-                .id("contact-verify-help")
-                .role(gpui_kit::Role::Status)
-                .aria_label(help.clone())
-                .test_support()
-                .text_size(rems_body(cx))
-                .child(help),
-        )
-        .when_some(number, |col, number| {
-            col.child(
-                v_flex()
-                    .gap(space(1.))
-                    .child(
-                        div()
-                            .text_size(text_secondary())
-                            .font_medium()
-                            .child(tr("dock.contacts.verify.number")),
-                    )
-                    .child(
-                        div()
-                            .id("contact-verify-number")
-                            .test_support()
-                            .h(gpui_kit::px(36.0))
-                            .flex()
-                            .items_center()
-                            .px(space(2.))
-                            .rounded(theme.radius)
-                            .border_1()
-                            .border_color(theme.border)
-                            .text_size(text_secondary())
-                            .font_family(theme.mono_font_family.clone())
-                            .child(number),
-                    ),
-            )
-        })
-        .child(
-            div()
-                .id("contact-verify-rule")
-                .h(gpui_kit::px(55.0))
-                .flex()
-                .items_center()
-                .px(space(4.))
-                .rounded(theme.radius)
-                .bg(theme.secondary)
-                .font_medium()
-                .text_size(rems_body(cx))
-                .child(tr("dock.contacts.verify.rule")),
-        );
-    let close = cancel.clone();
-    crate::modal::Modal::new(
-        "contact-verify-dialog",
-        tr("dock.contacts.verify.title"),
-        focus,
-        move |window, cx| cancel(window, cx),
-    )
-    .child(body)
-    .button(crate::modal::cancel_button(
-        "verify-cancel",
-        tr("dock.contacts.verify.not_now"),
-        cx,
-        move |window, cx| close(window, cx),
-    ))
-    .button(crate::gate::gated(
-        Button::new("verify-confirm")
-            .design_primary(cx)
-            .design_label(tr("dock.contacts.verify.confirm"))
-            .on_click(confirm),
-        blocked,
-        cx,
-    ))
-    .render(cx)
-}
-
-/// The safety state as a contact row says it: a status, never a request
-/// to compare (a key change or a renewed device set reads "identity
-/// changed").
-pub fn safety_label(safety: SafetyState) -> SharedString {
-    match safety {
-        SafetyState::Unverified => tr("dock.contacts.unverified"),
-        SafetyState::KeyChanged | SafetyState::VerificationStale => {
-            tr("dock.contacts.identity_changed")
-        }
-        other => i18n::safety(other),
-    }
-}
-
 /// Reachability, as far as the daemon reported it: "Reachable", "Not
 /// reachable yet"; `None` when not known. The kind is the row's kind mark.
 pub fn trust_line(contact: &Participant) -> Option<SharedString> {
@@ -531,9 +405,4 @@ pub fn blocked_row(contact: &Participant, sink: &EventSink, cx: &App) -> AnyElem
                 .on_click(action_handler(sink, &contact.id, ContactAction::Remove)),
         )
         .into_any_element()
-}
-
-/// The body text size of the design (`size-body`).
-fn rems_body(cx: &App) -> gpui_kit::Rems {
-    gpui_kit::rems(ramflux_desktop_navigation::palette(cx).size_body / 15.0)
 }

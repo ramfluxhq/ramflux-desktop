@@ -6,7 +6,7 @@
 use crate::direction::h_flex;
 use crate::scale::{DesignText as _, space, style};
 use crate::theme;
-use gpui_kit::component::{StyledExt as _, v_flex};
+use gpui_kit::component::{Sizable as _, StyledExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, FontWeight, IntoElement, SharedString, div, rems};
 
@@ -32,6 +32,9 @@ pub struct Row {
     pub unread: u32,
     /// Loaded pending decisions.
     pub attention: usize,
+    /// A warning glyph before the counts (a changed contact identity); the
+    /// host puts the words in the row's accessibility label.
+    pub warning: bool,
     /// Source kind; this does not mean verified.
     pub kind: AvatarKind,
     /// A fixed avatar glyph instead of the title's initial (the strangers
@@ -52,6 +55,7 @@ impl Row {
             time: SharedString::default(),
             unread: 0,
             attention: 0,
+            warning: false,
             kind: AvatarKind::Person,
             glyph: None,
             avatar: true,
@@ -137,6 +141,15 @@ impl Row {
                                     .text_color(palette.secondary)
                                     .child(self.preview),
                             )
+                            .when(self.warning, |row| {
+                                row.child(
+                                    gpui_kit::component::Icon::new(
+                                        gpui_kit::assets::IconName::TriangleAlert,
+                                    )
+                                    .xsmall()
+                                    .text_color(palette.warning),
+                                )
+                            })
                             .when(self.attention > 0, |row| {
                                 row.child(
                                     div()

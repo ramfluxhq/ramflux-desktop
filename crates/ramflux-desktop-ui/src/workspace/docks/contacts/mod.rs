@@ -3,9 +3,9 @@
 
 //! The contacts dock: the add-contact form (a contact card, a link to one,
 //! or a principal id), this account's own contact card to share, open
-//! contact requests (answer in place), every contact with its safety state,
-//! reachability and kind, safety number, a Verify action while unverified,
-//! Message (reported to the workspace as
+//! contact requests (answer in place), every contact with its identity
+//! state, reachability and kind, a Review action while an identity change
+//! waits, Message (reported to the workspace as
 //! [`ContactsDockEvent::MessageRequested`]) and a Block / Remove menu, then
 //! blocked participants (Unblock, Remove). Key changes stay visible here
 //! until verified.
@@ -14,7 +14,7 @@
 //! - [`my_card`]: this account's contact card (QR code, text, copy).
 //! - [`rows`]: request, contact and blocked rows.
 //! - [`requests`]: pending contact requests from the daemon (note, held
-//!   messages, safety number, Accept / Decline / Block), the
+//!   messages, Accept / Decline / Block), the
 //!   auto-accept setting, and this account's own requests on its contacts.
 
 pub mod add_form;
@@ -58,9 +58,6 @@ pub struct ContactsDock {
     sink: EventSink,
     form: AddForm,
     card: MyCard,
-    /// The contact whose safety number is being compared before it is
-    /// marked verified.
-    verifying: Option<ParticipantId>,
     /// Whether the add-contact dialog is open (the form moves from the
     /// panel into the dialog while it is).
     adding: bool,
@@ -100,7 +97,6 @@ impl ContactsDock {
             sink,
             form,
             card: MyCard::default(),
-            verifying: None,
             adding: false,
             dialog_focus: cx.focus_handle(),
             _subscriptions: vec![subscription, enter],
@@ -119,10 +115,9 @@ impl ContactsDock {
         self.adding
     }
 
-    /// Whether a dialog of this dock (add contact, compare safety numbers)
-    /// is open.
+    /// Whether a dialog of this dock (add contact) is open.
     pub fn dialog_open(&self) -> bool {
-        self.adding || self.verifying.is_some()
+        self.adding
     }
 
     /// Moves keyboard focus to the add-contact field.
@@ -196,25 +191,6 @@ impl ContactsDock {
     pub fn confirm_root(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let submission = self.form.confirm_root(self.store.read(cx).store());
         self.emit_submission(submission, window, cx);
-    }
-
-    /// Opens the safety number comparison of `participant` (Verify pressed).
-    pub fn start_verify(&mut self, participant: ParticipantId, cx: &mut Context<Self>) {
-        self.verifying = Some(participant);
-        cx.notify();
-    }
-
-    /// The contact whose safety number is being compared, for tests.
-    pub fn verifying(&self) -> Option<&ParticipantId> {
-        self.verifying.as_ref()
-    }
-
-    /// The numbers matched: marks the contact verified.
-    pub fn confirm_verify(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(participant_id) = self.verifying.take() {
-            self.sink.emit(UiEventKind::VerifySafetyPressed { participant_id }, window, cx);
-        }
-        cx.notify();
     }
 
     /// Adds the contact card in the file at `path` (what the Import card
@@ -318,35 +294,8 @@ impl ContactsDock {
     }
 
     /// The open dialog of this dock, drawn by the workspace over the whole
-    /// window: the safety number comparison, or add contact.
+    /// window: add contact.
     pub fn dialog(&mut self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
-        if let Some(id) = self.verifying.clone() {
-            let (contact, reason) = {
-                let store = self.store.read(cx).store();
-                (
-                    store.participant(&id)?.clone(),
-                    crate::gate::reason(store, methods::SAFETY_VERIFY),
-                )
-            };
-            let this = cx.weak_entity();
-            let cancel = std::rc::Rc::new(move |_: &mut Window, cx: &mut gpui_kit::App| {
-                this.update(cx, |dock, cx| {
-                    dock.verifying = None;
-                    cx.notify();
-                })
-                .ok();
-            });
-            let confirm =
-                Box::new(cx.listener(|this, _, window, cx| this.confirm_verify(window, cx)));
-            return Some(rows::comparison_dialog(
-                &contact,
-                confirm,
-                cancel,
-                reason.as_ref(),
-                &self.dialog_focus,
-                cx,
-            ));
-        }
         if !self.adding {
             return None;
         }
@@ -391,7 +340,6 @@ impl Render for ContactsDock {
         let form = (!self.adding).then(|| self.add_form_element(false, cx).0);
         let handle = self.store.read(cx);
         let store: &Store = handle.store();
-        let verify_reason = crate::gate::reason(store, methods::SAFETY_VERIFY);
         // Answers to incoming links are local when requests cannot travel.
         let local_answers = crate::gate::reason(store, methods::CONTACT_REQUEST).is_some();
         let requests = rows::requests(store);
@@ -492,16 +440,8 @@ impl Render for ContactsDock {
                 let on_message = cx.listener(move |_, _, _, cx| {
                     cx.emit(ContactsDockEvent::MessageRequested(id.clone()));
                 });
-                let id = c.id.clone();
-                let verify = rows::VerifyHandlers {
-                    reason: verify_reason.clone(),
-                    start: Box::new(cx.listener(move |this, _, window, cx| {
-                        this.start_verify(id.clone(), cx);
-                        window.focus(&this.dialog_focus, cx);
-                    })),
-                };
                 let request = requests::outgoing(store, c);
-                rows::contact_row(c, &self.sink, verify, on_message, request, cx)
+                rows::contact_row(c, &self.sink, on_message, request, cx)
             }))
             .when(!blocked.is_empty(), |col| {
                 col.child(section("dock.contacts.blocked", cx))

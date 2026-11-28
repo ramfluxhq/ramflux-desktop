@@ -68,12 +68,7 @@ pub fn summary(call: &Call) -> (SharedString, Option<SharedString>, IconName, bo
 }
 
 /// Renders a call record.
-pub fn render(
-    refs: &RowRefs,
-    sink: &EventSink,
-    state: &super::RowState,
-    cx: &App,
-) -> impl IntoElement {
+pub fn render(refs: &RowRefs, sink: &EventSink, cx: &App) -> impl IntoElement {
     let Some(call) = refs.call.as_ref() else {
         return div().id("call-record").into_any_element();
     };
@@ -85,11 +80,7 @@ pub fn render(
     let color: Hsla = if missed { cx.theme().danger } else { cx.theme().muted_foreground };
     let call_back = call.state.is_ended().then(|| {
         // The same gate as the header's Call button.
-        let on_click = crate::identity::call_gate(
-            refs.call_stale,
-            std::rc::Rc::clone(&state.ask_call),
-            sink.clone(),
-        );
+        let on_click = crate::identity::call_gate(refs.call_changed.clone(), sink.clone());
         Button::new("call-back")
             .small()
             .ghost()

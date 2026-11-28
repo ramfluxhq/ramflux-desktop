@@ -319,9 +319,9 @@ impl Render for StrangersArea {
                     let name = store
                         .participant(&request.peer)
                         .map_or_else(|| request.peer.short(), |p| p.display.clone());
-                    let unverified = store
-                        .participant(&request.peer)
-                        .is_none_or(|p| p.safety != ramflux_desktop_core::SafetyState::Verified);
+                    let unverified = store.participant(&request.peer).is_none_or(|p| {
+                        p.identity != ramflux_desktop_core::IdentityState::Verified
+                    });
                     let body = match (request.note.as_deref(), request.preview.as_deref()) {
                         (_, Some(preview)) => ramflux_desktop_navigation::row::list_text(preview),
                         (Some(note), None) => tr_args(

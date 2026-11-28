@@ -19,23 +19,20 @@
 //!   principal id beside it (never shortened: two ids may share a long
 //!   prefix), with a tooltip and a copy button. Advisory only: nothing is
 //!   blocked.
-//! - the **stale note**: a safety number verified before this contact's
-//!   identity authority changed asks to be verified again. It does not
-//!   claim the keys changed.
+//! - the **AI mark**: shown only when the SDK flags the participant as an
+//!   AI (`ai_flag`).
 //!
 //! Nothing here is communicated by color alone: every mark has text.
 
-use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::button::Button;
 use gpui_kit::component::clipboard::Clipboard;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, ClickEvent, ElementId, SharedString, Window, div};
-use ramflux_desktop_core::{KindClaim, Participant, ParticipantId, PeerKind, SafetyState};
+use ramflux_desktop_core::{KindClaim, Participant, ParticipantId, PeerKind};
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
-use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
+use ramflux_desktop_navigation::scale::{space, text_caption};
 
 use crate::i18n::{self, tr, tr_args};
 
@@ -307,101 +304,41 @@ pub fn author_warning(
         .into_any_element()
 }
 
-/// The note of a stale verification: verify again. `None` unless stale.
-pub fn stale_note(id: impl Into<ElementId>, safety: SafetyState, cx: &App) -> Option<AnyElement> {
-    if !safety.is_stale() {
-        return None;
-    }
-    let text = tr("identity.safety.stale");
-    Some(
-        h_flex()
-            .id(id)
-            .aria_label(text.clone())
-            .test_support()
-            .flex_none()
-            .gap(space(1.))
-            .text_size(text_caption())
-            .text_color(crate::tone::text(cx.theme().warning, cx))
-            .child(Icon::new(gpui_kit::assets::IconName::ShieldAlert).xsmall())
-            .child(tr("safety.verification_stale"))
-            .into_any_element(),
-    )
-}
-
-/// The Verify action's label: "Verify again" once a verification went
-/// stale, else "Verify safety number".
-pub fn verify_label(safety: SafetyState) -> SharedString {
-    if safety.is_stale() { tr("identity.safety.verify_again") } else { tr("moment.safety.verify") }
+/// An AI marker for a participant the SDK flags as an AI (`ai_flag`): the
+/// bot icon and the neutral word. It comes only from the flag, never from a
+/// name, and claims nothing about a profile.
+pub fn ai_mark(id: impl Into<ElementId>, cx: &App) -> AnyElement {
+    let text = i18n::peer_kind(PeerKind::HeadlessAi);
+    h_flex()
+        .id(id)
+        .aria_label(text.clone())
+        .test_support()
+        .flex_none()
+        .gap(space(1.))
+        .text_size(text_caption())
+        .text_color(cx.theme().muted_foreground)
+        .child(Icon::new(kind_icon(PeerKind::HeadlessAi)).xsmall())
+        .child(text)
+        .into_any_element()
 }
 
 /// A button handler.
 pub type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
-/// A command run with the window (opens the call acknowledgement).
-pub type AskCall = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
-
 /// The one gate every call entry point goes through (the header Call
 /// button and Call back on a call record): a call to a contact whose
-/// verification went stale first asks for the acknowledgement (`ask`),
-/// anything else places the call through `sink`. `ask` is not optional: a
-/// caller must say how the acknowledgement is asked, so a stale contact can
-/// never meet a Call button that silently does nothing.
-pub fn call_gate(stale: bool, ask: AskCall, sink: crate::bubble::EventSink) -> Click {
-    Box::new(move |_, window, cx| {
-        if stale {
-            ask(window, cx);
-        } else {
-            sink.emit(ramflux_desktop_core::UiEventKind::CallStartRequested, window, cx);
-        }
+/// identity change is not accepted opens the identity change sheet
+/// (`changed` names the contact), anything else places the call through
+/// `sink`.
+pub fn call_gate(changed: Option<ParticipantId>, sink: crate::bubble::EventSink) -> Click {
+    Box::new(move |_, window, cx| match &changed {
+        Some(participant_id) => sink.emit(
+            ramflux_desktop_core::UiEventKind::ReviewIdentityPressed {
+                participant_id: participant_id.clone(),
+            },
+            window,
+            cx,
+        ),
+        None => sink.emit(ramflux_desktop_core::UiEventKind::CallStartRequested, window, cx),
     })
-}
-
-/// The inline acknowledgement a stale verification asks for before a new
-/// conversation, group or call: what is out of date (without claiming the
-/// keys changed), Verify again and Continue. Never a refusal: Continue
-/// goes ahead.
-pub fn stale_ack(
-    id: impl Into<ElementId>,
-    prompt: SharedString,
-    verify: Click,
-    proceed: Click,
-    cx: &App,
-) -> AnyElement {
-    let color = crate::tone::text(cx.theme().warning, cx);
-    v_flex()
-        .id(id)
-        .role(gpui_kit::Role::Status)
-        .aria_label(prompt.clone())
-        .test_support()
-        .gap(space(2.))
-        .p(space(2.))
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().warning)
-        .child(
-            h_flex()
-                .gap(space(2.))
-                .text_size(text_secondary())
-                .child(Icon::new(gpui_kit::assets::IconName::ShieldAlert).small().text_color(color))
-                .child(div().flex_1().min_w_0().child(prompt)),
-        )
-        .child(
-            h_flex()
-                .gap(space(2.))
-                .justify_row_end()
-                .child(
-                    Button::new("stale-verify")
-                        .small()
-                        .design_secondary(cx)
-                        .design_label(tr("identity.safety.verify_again"))
-                        .on_click(verify),
-                )
-                .child(
-                    Button::new("stale-continue")
-                        .small()
-                        .label(tr("identity.safety.continue"))
-                        .on_click(proceed),
-                ),
-        )
-        .into_any_element()
 }

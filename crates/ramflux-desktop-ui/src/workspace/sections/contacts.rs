@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Span Brain
 
 //! The contact directory (design F02–F14, states F28–F30): this account's
-//! contacts, searchable, each with its kind and safety state; the way into
+//! contacts, searchable, each with its kind and identity state; the way into
 //! the strangers area with its pending count; and Add contact.
 //!
 //! Choosing a contact shows its profile ([`super::contact_profile`]). A
@@ -34,7 +34,6 @@ use crate::actions::{NextConversation, PreviousConversation};
 use crate::app::{StoreEvent, StoreHandle};
 use crate::i18n::{self, tr, tr_args};
 use crate::style::DesignButton as _;
-use crate::workspace::docks::contacts::rows::safety_label;
 
 /// What the directory reports to the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,9 +182,15 @@ impl ContactsDirectory {
                 (
                     p.id.clone(),
                     ramflux_desktop_navigation::row::list_text(&p.display),
-                    match crate::identity::kind_text(p.kind_claim) {
-                        Some(kind) => i18n::join(&kind, &safety_label(p.safety)),
-                        None => safety_label(p.safety),
+                    // No badge for an identity first seen on this device.
+                    match (
+                        crate::identity::kind_text(p.kind_claim),
+                        (p.identity != ramflux_desktop_core::IdentityState::Tofu)
+                            .then(|| i18n::identity_state(p.identity)),
+                    ) {
+                        (Some(kind), Some(status)) => i18n::join(&kind, &status),
+                        (Some(text), None) | (None, Some(text)) => text,
+                        (None, None) => SharedString::default(),
                     },
                     avatar_kind(p.kind),
                 )
@@ -200,7 +205,7 @@ impl ContactsDirectory {
                 // Board 07: "@handle · Identity not verified · note".
                 let unverified = store
                     .participant(&request.peer)
-                    .is_none_or(|p| p.safety != ramflux_desktop_core::SafetyState::Verified);
+                    .is_none_or(|p| p.identity != ramflux_desktop_core::IdentityState::Verified);
                 let mut note = super::stranger_detail::handle(&request.peer);
                 if unverified {
                     note = i18n::join(&note, &tr("sections.strangers.unverified_chip"));

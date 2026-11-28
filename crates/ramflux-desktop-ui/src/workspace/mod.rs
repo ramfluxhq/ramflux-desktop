@@ -20,6 +20,7 @@ mod context_search;
 mod context_stack;
 mod conversation;
 pub mod docks;
+pub mod identity_change;
 mod navigation;
 pub mod new_conversation;
 pub mod new_group;
@@ -94,6 +95,7 @@ pub struct Workspace {
     composer: Entity<Composer>,
     new_conversation: Entity<NewConversation>,
     new_group: Entity<NewGroup>,
+    identity_sheet: Entity<identity_change::IdentitySheet>,
     dock_area: Entity<DockArea>,
     tools: Vec<ToolSlot>,
     objects: Entity<ObjectsDock>,
@@ -142,6 +144,8 @@ impl Workspace {
         let composer = cx.new(|cx| Composer::new(store.clone(), window, cx));
         let new_conversation = cx.new(|cx| NewConversation::new(store.clone(), cx));
         let new_group = cx.new(|cx| NewGroup::new(store.clone(), window, cx));
+        let identity_sheet = cx
+            .new(|cx| identity_change::IdentitySheet::new(store.clone(), sink.clone(), window, cx));
         let stack = cx.new(|cx| ContextStack::new(store.clone(), window, cx));
         let conversation =
             cx.new(|cx| Conversation::new(store.clone(), root.clone(), composer.clone(), cx));
@@ -378,6 +382,8 @@ impl Workspace {
                 },
             ),
             cx.observe(&new_conversation, |this, _, cx| this.sync_composer(cx)),
+            // The sheet opens and closes by itself: the workspace draws it.
+            cx.observe(&identity_sheet, |_, _, cx| cx.notify()),
             cx.subscribe_in(&new_group, window, |this, _, event: &NewGroupEvent, window, cx| {
                 match event {
                     NewGroupEvent::Created(id) => {
@@ -398,6 +404,12 @@ impl Workspace {
                     }
                     RootEvent::SurfaceChanged(_) => {}
                     RootEvent::ConfirmDeclined => {}
+                    RootEvent::ReviewIdentity(participant) => {
+                        let participant = participant.clone();
+                        this.identity_sheet.update(cx, |sheet, cx| {
+                            sheet.open(participant, window, cx);
+                        });
+                    }
                 },
             ),
             cx.subscribe(&dock_area, |this, _, event: &DockToggleEvent, cx| {
@@ -444,6 +456,7 @@ impl Workspace {
             composer,
             new_conversation,
             new_group,
+            identity_sheet,
             dock_area,
             tools,
             objects,
@@ -544,6 +557,11 @@ impl Workspace {
         &self.strangers
     }
 
+    /// The identity change sheet.
+    pub fn identity_sheet(&self) -> &Entity<identity_change::IdentitySheet> {
+        &self.identity_sheet
+    }
+
     /// The new-group form.
     pub fn new_group(&self) -> &Entity<NewGroup> {
         &self.new_group
@@ -578,8 +596,7 @@ impl Workspace {
             self.composer.update(cx, |composer, cx| composer.focus(window, cx));
             return;
         }
-        let root = IntentRoot::sink(&self.root);
-        self.new_conversation.update(cx, |draft, cx| draft.open(participant, &root, cx));
+        self.new_conversation.update(cx, |draft, cx| draft.open(participant, cx));
         if self.current.take().is_some() {
             self.store.update(cx, |store, _| store.focus(None));
         }
@@ -664,6 +681,9 @@ impl Workspace {
             id.as_ref().map(|id| IntentRoot::sink(&self.root).scoped(Scope::Context(id.clone())));
         if changed {
             self.store.update(cx, |store, _| store.focus(id.as_ref()));
+            if let Some(id) = &id {
+                self.read_identity(id, cx);
+            }
         }
         self.conversation.update(cx, |field, cx| field.set_context(id.clone(), cx));
         self.sync_composer(cx);
@@ -678,6 +698,34 @@ impl Workspace {
             self.close_dock(window, cx);
         }
         cx.notify();
+    }
+
+    /// Opening a direct conversation reads its security and its peer's
+    /// identity state (read only: nothing is accepted or sent).
+    fn read_identity(&mut self, context: &ContextId, cx: &mut Context<Self>) {
+        let peer = {
+            let store = self.store.read(cx).store();
+            store
+                .context(context)
+                .filter(|c| c.kind == ContextKind::Direct)
+                .and_then(|_| ramflux_desktop_core::call_peer(store, context))
+        };
+        let Some(participant_id) = peer else { return };
+        let context_id = context.clone();
+        self.store.update(cx, |store, cx| {
+            store.dispatch(
+                ramflux_desktop_core::Intent::human(
+                    ramflux_desktop_core::IntentKind::ReadIdentityState { participant_id },
+                ),
+                cx,
+            );
+            store.dispatch(
+                ramflux_desktop_core::Intent::human(
+                    ramflux_desktop_core::IntentKind::ReadConversationSecurity { context_id },
+                ),
+                cx,
+            );
+        });
     }
 
     /// Tells the composer what the backend cannot do in the shown context
@@ -971,6 +1019,7 @@ impl Render for Workspace {
         let rail = self.navigation_rail(cx);
         let new_group = self.new_group.read(cx).is_open().then(|| self.new_group.clone());
         let contacts_dialog = self.contacts.update(cx, |dock, cx| dock.dialog(cx));
+        let identity_dialog = identity_change::element(&self.identity_sheet);
         let task_dialog = self.tasks_area.update(cx, |area, cx| area.dialog(cx));
         h_flex()
             .id("workspace")
@@ -1052,6 +1101,7 @@ impl Render for Workspace {
             .children(new_group)
             .children(contacts_dialog)
             .children(task_dialog)
+            .child(identity_dialog)
     }
 }
 

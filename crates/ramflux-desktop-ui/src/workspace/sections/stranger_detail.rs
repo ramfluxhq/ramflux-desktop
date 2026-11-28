@@ -3,7 +3,7 @@
 
 //! One stranger's request (design F17): who asks and how little is proven
 //! (first contact, identity not verified), their note, the messages held
-//! until a decision, the safety number to compare, and what accepting does.
+//! until a decision, and what accepting does.
 //!
 //! The three fixed actions sit in the design's order in a bottom bar:
 //! Decline, Reply, Accept. Reply stays visible and disabled with the typed
@@ -107,7 +107,7 @@ impl StrangersArea {
         );
         let unverified = participant
             .as_ref()
-            .is_none_or(|p| p.safety != ramflux_desktop_core::SafetyState::Verified);
+            .is_none_or(|p| p.identity != ramflux_desktop_core::IdentityState::Verified);
         let handle = handle(&request.peer);
         let host = node_host(&request.peer);
         let warning_text = crate::tone::text(theme.warning, cx);
@@ -180,49 +180,36 @@ impl StrangersArea {
                         .child(value),
                 )
         };
-        let safety: SharedString = request
-            .safety_number
-            .as_deref()
-            .map_or_else(|| tr("sections.contact.no_number"), |n| group_digits(n).into());
-        // The warning bar: first contact, unverified, and what to compare.
-        let banner =
-            h_flex()
-                .id("stranger-unverified")
-                .test_support()
-                .items_start()
-                .max_w(rem(560.0))
-                .gap(space(3.))
-                .p(rem(12.0))
-                .rounded(rem(theme.radius_card))
-                .bg(theme.warning_bg)
-                .child(Icon::new(IconName::ShieldAlert).small().text_color(warning_text))
-                .child(
-                    v_flex()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(space(2.))
-                        .child(div().text_size(rem(theme.size_secondary)).font_semibold().child(
-                            if unverified {
-                                tr("sections.strangers.unverified")
-                            } else {
-                                tr("sections.strangers.not_contact")
-                            },
-                        ))
-                        .child(
-                            h_flex()
-                                .flex_wrap()
-                                .gap(rem(24.0))
-                                .child(div().id("stranger-safety").test_support().child(
-                                    banner_fact(tr("sections.contact.safety_number"), safety),
-                                ))
-                                .children(host.map(|host| {
-                                    banner_fact(
-                                        tr_args("sections.strangers.node", &[("host", &host)]),
-                                        SharedString::default(),
-                                    )
-                                })),
-                        ),
-                );
+        // The warning bar: first contact, and whether the identity is verified.
+        let banner = h_flex()
+            .id("stranger-unverified")
+            .test_support()
+            .items_start()
+            .max_w(rem(560.0))
+            .gap(space(3.))
+            .p(rem(12.0))
+            .rounded(rem(theme.radius_card))
+            .bg(theme.warning_bg)
+            .child(Icon::new(IconName::ShieldAlert).small().text_color(warning_text))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(space(2.))
+                    .child(div().text_size(rem(theme.size_secondary)).font_semibold().child(
+                        if unverified {
+                            tr("sections.strangers.unverified")
+                        } else {
+                            tr("sections.strangers.not_contact")
+                        },
+                    ))
+                    .child(h_flex().flex_wrap().gap(rem(24.0)).children(host.map(|host| {
+                        banner_fact(
+                            tr_args("sections.strangers.node", &[("host", &host)]),
+                            SharedString::default(),
+                        )
+                    }))),
+            );
         let bubble = |id: &'static str, text: SharedString| {
             h_flex().child(crate::message_shell::message_shell(
                 gpui_kit::ElementId::Name(format!("{id}:bubble").into()),
@@ -359,12 +346,6 @@ pub(super) fn handle(peer: &ramflux_desktop_core::ParticipantId) -> SharedString
 /// The node of `peer` when its id is an address (`user@host`).
 fn node_host(peer: &ramflux_desktop_core::ParticipantId) -> Option<String> {
     peer.as_str().rsplit_once('@').map(|(_, host)| host.to_owned()).filter(|h| !h.is_empty())
-}
-
-/// A safety number in groups of four digits, as the board prints it.
-fn group_digits(number: &str) -> String {
-    let digits: Vec<char> = number.chars().filter(|c| !c.is_whitespace()).collect();
-    digits.chunks(4).map(|chunk| chunk.iter().collect::<String>()).collect::<Vec<_>>().join(" ")
 }
 
 /// The warning chip ("Not a contact", "Identity not verified").

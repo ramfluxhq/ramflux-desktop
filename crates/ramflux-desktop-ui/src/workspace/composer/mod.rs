@@ -743,6 +743,54 @@ impl Render for Composer {
                         ),
                 )
         });
+        // A send the SDK refused for a contact's identity change that waits:
+        // the message stays failed with its text, and the prompt asks the user
+        // to review the change. Sending stays possible; the SDK refuses again
+        // until the change is accepted.
+        let blocked = {
+            let store = self.store.read(cx).store();
+            self.context.as_ref().and_then(|context| store.send_blocked(context)).and_then(
+                |(participant, _)| {
+                    store
+                        .participant(participant)
+                        .filter(|p| p.identity.is_changed())
+                        .map(|p| (p.id.clone(), p.display.clone()))
+                },
+            )
+        };
+        let identity_prompt = blocked.map(|(participant_id, name)| {
+            let text = tr_args("identity.send.blocked", &[("name", &name)]);
+            let sink = self.sink.clone();
+            h_flex()
+                .id("composer-identity")
+                .role(gpui_kit::Role::Alert)
+                .aria_label(text.clone())
+                .test_support()
+                .w_full()
+                .min_w_0()
+                .items_center()
+                .gap(space(2.))
+                .text_size(gpui_kit::rems(palette.size_secondary / 15.0))
+                .text_color(crate::tone::text(cx.theme().danger, cx))
+                .child(div().flex_1().min_w_0().child(text))
+                .child(
+                    Button::new("composer-identity-review")
+                        .small()
+                        .design_secondary(cx)
+                        .design_label(tr("identity.changed.review"))
+                        .on_click(move |_, window, cx| {
+                            if let Some(sink) = &sink {
+                                sink.emit(
+                                    UiEventKind::ReviewIdentityPressed {
+                                        participant_id: participant_id.clone(),
+                                    },
+                                    window,
+                                    cx,
+                                );
+                            }
+                        }),
+                )
+        });
         // Design board 02: the composer region is the 880 px reading column,
         // 8 px above and 16 px below.
         v_flex()
@@ -760,6 +808,7 @@ impl Render for Composer {
             .gap(space(1.))
             .pt(space(2.))
             .pb(gpui_kit::rems(16.0 / 15.0))
+            .children(identity_prompt)
             .children(receiver)
             .children(action_line)
             // Design `Composer / Default`: the generated shell (no empty slot
