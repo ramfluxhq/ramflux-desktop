@@ -1,27 +1,24 @@
-// s05 variant: an existing group and three contacts who could join, one
-// whose manual verification went stale, one whose key changed and one
-// whose identity forked. Adding or inviting them is held to the same
-// identity gate as a new group: stale asks to acknowledge, the others are
-// refused. Used by tests only; not one of the bundled scenarios.
+// s05 variant: an existing group and four contacts who could join. Adding or
+// inviting them is a plain governance action. Used by tests only; not one of
+// the bundled scenarios.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s05_group_safety",
-    description: "Existing group; adding a stale, key-changed or forked contact",
+    description: "Existing group; adding contacts",
     timeline: [
         (0, SourceStatusChanged(Connected)),
         (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
         (0, AccountUpdated(id: "local", label: "Local", lock_state: Unlocked, self_participant_id: "p-me")),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
         (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", contact: true)),
-        (0, ParticipantUpserted(id: "p-sam", kind: Human, display: "Sam Ortiz", safety: VerificationStale, link: Accepted, contact: true)),
-        (0, ParticipantUpserted(id: "p-kay", kind: Human, display: "Kay Novak", safety: KeyChanged, link: Accepted, contact: true)),
-        (0, ParticipantUpserted(id: "p-fox", kind: Human, display: "Fox Lund", safety: Forked, link: Accepted, contact: true)),
-        (0, ParticipantUpserted(id: "p-zed", kind: Human, display: "Zed Park", safety: Verified, link: Accepted, contact: true)),
+        (0, ParticipantUpserted(id: "p-sam", kind: Human, display: "Sam Ortiz", link: Accepted, contact: true)),
+        (0, ParticipantUpserted(id: "p-kay", kind: Human, display: "Kay Novak", link: Accepted, contact: true)),
+        (0, ParticipantUpserted(id: "p-fox", kind: Human, display: "Fox Lund", link: Accepted, contact: true)),
+        (0, ParticipantUpserted(id: "p-zed", kind: Human, display: "Zed Park", identity: Verified, link: Accepted, contact: true)),
         (10, ContextUpserted(id: "c-garden", kind: Group, title: "Community garden", participants: ["p-me", "p-lena"], pinned: true,
             roles: {"p-me": Owner}, epoch: 3)),
     ],
-    // Adding Zed brings Sam into the group too (another route than Sam's
-    // own question).
+    // Adding Zed brings Sam into the group too (another route).
     responses: [
         (
             on: Call(method: "group.add_member", fields: {"context_id": "c-garden", "participant_id": "p-zed"}),
