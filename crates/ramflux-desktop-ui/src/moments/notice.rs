@@ -36,7 +36,13 @@ pub fn system(payload: &SystemPayload, cx: &App) -> impl IntoElement {
 
 /// Renders a capability downgrade notice.
 pub fn fallback(payload: &FallbackPayload, cx: &App) -> impl IntoElement {
-    let reason = crate::i18n::backend_text(&payload.reason);
+    // An attachment or a card received in an MLS group is not shown yet.
+    let opaque = payload.reason == "mls.opaque";
+    let reason = if opaque {
+        tr("group.timeline.opaque")
+    } else {
+        crate::i18n::backend_text(&payload.reason)
+    };
     v_flex()
         .id("fallback-notice")
         .aria_label(reason.clone())

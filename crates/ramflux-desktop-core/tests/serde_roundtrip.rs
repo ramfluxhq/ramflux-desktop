@@ -95,25 +95,25 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentJobsUpdated { .. } => "AgentJobsUpdated",
         DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
         DomainEvent::MlsStarted(_) => "MlsStarted",
-        DomainEvent::MlsGroupsListed{ .. } => "MlsGroupsListed",
-        DomainEvent::MlsFailed{ .. } => "MlsFailed",
-        DomainEvent::MlsGroupInfoRead{ .. } => "MlsGroupInfoRead",
-        DomainEvent::MlsMembersPage{ .. } => "MlsMembersPage",
-        DomainEvent::MlsHistoryPage{ .. } => "MlsHistoryPage",
-        DomainEvent::MlsGroupEvent{ .. } => "MlsGroupEvent",
-        DomainEvent::MlsCreated{ .. } => "MlsCreated",
-        DomainEvent::MlsCreateFailed{ .. } => "MlsCreateFailed",
-        DomainEvent::MlsInviteCreated{ .. } => "MlsInviteCreated",
-        DomainEvent::MlsInvitesListed{ .. } => "MlsInvitesListed",
-        DomainEvent::MlsInviteRevoked{ .. } => "MlsInviteRevoked",
-        DomainEvent::MlsJoinOutcome{ .. } => "MlsJoinOutcome",
-        DomainEvent::MlsJoinPendingListed{ .. } => "MlsJoinPendingListed",
-        DomainEvent::MlsSendOutcome{ .. } => "MlsSendOutcome",
-        DomainEvent::MlsDeleteOutcome{ .. } => "MlsDeleteOutcome",
-        DomainEvent::MlsLeft{ .. } => "MlsLeft",
-        DomainEvent::MlsRefreshed{ .. } => "MlsRefreshed",
-        DomainEvent::MlsMarkedRead{ .. } => "MlsMarkedRead",
-        DomainEvent::MlsUnavailable{ .. } => "MlsUnavailable",
+        DomainEvent::MlsGroupsListed { .. } => "MlsGroupsListed",
+        DomainEvent::MlsFailed { .. } => "MlsFailed",
+        DomainEvent::MlsGroupInfoRead { .. } => "MlsGroupInfoRead",
+        DomainEvent::MlsMembersPage { .. } => "MlsMembersPage",
+        DomainEvent::MlsHistoryPage { .. } => "MlsHistoryPage",
+        DomainEvent::MlsGroupEvent { .. } => "MlsGroupEvent",
+        DomainEvent::MlsCreated { .. } => "MlsCreated",
+        DomainEvent::MlsCreateFailed { .. } => "MlsCreateFailed",
+        DomainEvent::MlsInviteCreated { .. } => "MlsInviteCreated",
+        DomainEvent::MlsInvitesListed { .. } => "MlsInvitesListed",
+        DomainEvent::MlsInviteRevoked { .. } => "MlsInviteRevoked",
+        DomainEvent::MlsJoinOutcome { .. } => "MlsJoinOutcome",
+        DomainEvent::MlsJoinPendingListed { .. } => "MlsJoinPendingListed",
+        DomainEvent::MlsSendOutcome { .. } => "MlsSendOutcome",
+        DomainEvent::MlsDeleteOutcome { .. } => "MlsDeleteOutcome",
+        DomainEvent::MlsLeft { .. } => "MlsLeft",
+        DomainEvent::MlsRefreshed { .. } => "MlsRefreshed",
+        DomainEvent::MlsMarkedRead { .. } => "MlsMarkedRead",
+        DomainEvent::MlsUnavailable { .. } => "MlsUnavailable",
     }
 }
 const DOMAIN_EVENT_VARIANTS: usize = 92;
@@ -355,9 +355,10 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::MlsDeletePressed { .. } => "MlsDeletePressed",
         UiEventKind::MlsLeavePressed { .. } => "MlsLeavePressed",
         UiEventKind::MlsJoinPendingRequested => "MlsJoinPendingRequested",
+        UiEventKind::MlsPanelRequested { .. } => "MlsPanelRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 79;
+const UI_EVENT_KIND_VARIANTS: usize = 80;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     let mut all = all_moment_kinds_base();

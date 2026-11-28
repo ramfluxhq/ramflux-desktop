@@ -981,9 +981,9 @@ impl NotSentReason {
     pub fn from_code(code: &str, details: &Value) -> Self {
         let ts = |field: &str| details.get(field).and_then(Value::as_i64).map(Timestamp);
         match code {
-            "too_large" => Self::TooLarge {
-                max_bytes: details.get("max_bytes").and_then(Value::as_u64),
-            },
+            "too_large" => {
+                Self::TooLarge { max_bytes: details.get("max_bytes").and_then(Value::as_u64) }
+            }
             "not_member" => Self::NotMember,
             "rejoin_needed" => Self::RejoinNeeded,
             "host_unreachable" => Self::HostUnreachable,
@@ -1009,4 +1009,53 @@ impl QueueReason {
             Self::Unknown => "group.send.queued.generic",
         }
     }
+}
+
+/// A panel or dialog of the MLS groups the interface opens (navigation, not
+/// an intent: nothing is sent until the user confirms inside it).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MlsPanel {
+    /// The new group dialog.
+    Create,
+    /// The join sheet.
+    Join,
+    /// The info panel of a group.
+    Info {
+        /// The group.
+        group_id: String,
+    },
+    /// The members panel of a group.
+    Members {
+        /// The group.
+        group_id: String,
+    },
+    /// The invite panel of a group.
+    Invites {
+        /// The group.
+        group_id: String,
+    },
+    /// The mention picker of a group.
+    Mentions {
+        /// The group.
+        group_id: String,
+    },
+    /// Asks to confirm deleting an own post for everyone.
+    ConfirmDelete {
+        /// The group.
+        group_id: String,
+        /// The post.
+        post_id: String,
+    },
+    /// Asks to confirm leaving the group.
+    ConfirmLeave {
+        /// The group.
+        group_id: String,
+    },
+    /// Asks to confirm revoking an invite.
+    ConfirmRevoke {
+        /// The group.
+        group_id: String,
+        /// The invite.
+        invite_id: String,
+    },
 }

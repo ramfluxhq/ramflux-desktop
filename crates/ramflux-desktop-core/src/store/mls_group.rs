@@ -28,11 +28,11 @@ use crate::event::{DomainEvent, MlsStart};
 use crate::ids::{ContextId, MomentId, ParticipantId, Timestamp};
 use crate::intent::IntentKind;
 use crate::model::mls_group::{
-    self as mls, Author, CreateState, DeleteResult, GroupEventKind, HistoryDirection,
-    JoinOutcome, JoinRecord, JoinRefusal, JoinState, LeaveResult, ListPhase, ListState,
-    MemberPages, MemberRow, MembershipChange, MembershipKind, MlsGroupSummary, MlsName, MlsRole,
-    MlsServiceLine, MlsTimeline, NotSentReason, OwnItem, Post, PostBody, PostKind, PostState,
-    QueueReason, ReadOnly, SendState,
+    self as mls, Author, CreateState, DeleteResult, GroupEventKind, HistoryDirection, JoinOutcome,
+    JoinRecord, JoinRefusal, JoinState, LeaveResult, ListPhase, ListState, MemberPages, MemberRow,
+    MembershipChange, MembershipKind, MlsGroupSummary, MlsName, MlsRole, MlsServiceLine,
+    MlsTimeline, NotSentReason, OwnItem, Post, PostBody, PostKind, PostState, QueueReason,
+    ReadOnly, SendState,
 };
 use crate::model::{
     Context, ContextKind, FallbackPayload, IdentityState, KindClaim, Lifecycle, MessagePayload,
@@ -73,6 +73,11 @@ pub(crate) struct MlsState {
     unavailable: Option<String>,
     tick: u64,
     clock: Timestamp,
+    /// Own posts of evicted timelines that are still submitting or were not
+    /// sent: the send owner keeps them for the session (S4).
+    parked: BTreeMap<String, Vec<OwnItem>>,
+    /// Until when the daily limit of a group is used up.
+    rate_locks: BTreeMap<String, Timestamp>,
 }
 
 /// The author of a post: its `author`, else the actor of a service row.
@@ -106,7 +111,11 @@ fn fnv(text: &str) -> u64 {
 }
 
 fn participant_of(group: &str, anchor: &str) -> ParticipantId {
-    ParticipantId::new(format!("{}{:016x}", mls::PARTICIPANT_PREFIX, fnv(&format!("{group}\0{anchor}"))))
+    ParticipantId::new(format!(
+        "{}{:016x}",
+        mls::PARTICIPANT_PREFIX,
+        fnv(&format!("{group}\0{anchor}"))
+    ))
 }
 
 fn service_participant() -> ParticipantId {
@@ -136,6 +145,25 @@ fn key_posted(log_seq: u64) -> OrderKey {
 
 fn key_own(order: u64) -> OrderKey {
     OrderKey { hlc: u64::MAX, author: String::new(), device_sequence: order }
+}
+
+/// What an unavailable refusal names.
+#[derive(Clone, Copy)]
+struct Unavailable<'a> {
+    method: &'a str,
+    group: Option<&'a str>,
+    attempt: Option<u64>,
+    local_id: Option<&'a str>,
+}
+
+/// A page of history, as the reducer takes it.
+struct HistoryPage<'a> {
+    group: &'a str,
+    direction: HistoryDirection,
+    posts: &'a [Post],
+    floor: Option<u64>,
+    last: u64,
+    more: bool,
 }
 
 /// A line the projection makes of a membership or settings row.
@@ -209,10 +237,7 @@ impl Store {
 
     /// The error code of the last failure of `method` for `group_id`.
     pub fn mls_failure(&self, method: &str, group_id: Option<&str>) -> Option<&str> {
-        self.mls
-            .failures
-            .get(&(method.to_owned(), group_id.map(str::to_owned)))
-            .map(String::as_str)
+        self.mls.failures.get(&(method.to_owned(), group_id.map(str::to_owned))).map(String::as_str)
     }
 
     /// Why the last leave of a group did not take effect.
@@ -253,6 +278,13 @@ impl Store {
             .refreshed_at
             .get(group_id)
             .is_none_or(|at| now.0.saturating_sub(at.0) >= mls::REFRESH_COALESCE_MS)
+    }
+
+    /// Until when the daily limit of the group is used up, while it is at
+    /// `now`: the composer is off (and Retry with it) until then. Reading it
+    /// sends nothing; a timer that lifts the lock only redraws.
+    pub fn mls_rate_locked_until(&self, group_id: &str, now: Timestamp) -> Option<Timestamp> {
+        self.mls.rate_locks.get(group_id).copied().filter(|until| until.0 > now.0)
     }
 
     /// The account's own anchor, once any row said which one it is.
@@ -297,9 +329,10 @@ impl Store {
     }
 
     pub(crate) fn mls_locked(&self) -> bool {
-        self.bound_account.as_ref().and_then(|id| self.accounts.get(id)).is_some_and(|a| {
-            a.lock_state == crate::model::LockState::Locked
-        })
+        self.bound_account
+            .as_ref()
+            .and_then(|id| self.accounts.get(id))
+            .is_some_and(|a| a.lock_state == crate::model::LockState::Locked)
     }
 
     // ---- clearing -------------------------------------------------------
@@ -397,18 +430,18 @@ impl Store {
                 last_log_seq,
                 more,
             } => {
-                self.mls_history_page(
-                    group_id,
-                    *direction,
+                let page = HistoryPage {
+                    group: group_id,
+                    direction: *direction,
                     posts,
-                    *floor_log_seq,
-                    *last_log_seq,
-                    *more,
-                    changes,
-                );
+                    floor: *floor_log_seq,
+                    last: *last_log_seq,
+                    more: *more,
+                };
+                self.mls_history_page(&page, changes);
             }
-            DomainEvent::MlsGroupEvent { seq, group_id, log_seq, kind } => {
-                self.mls_group_event(at, *seq, group_id, *log_seq, kind, changes);
+            DomainEvent::MlsGroupEvent { seq, group_id, kind, .. } => {
+                self.mls_group_event(at, *seq, group_id, kind, changes);
             }
             DomainEvent::MlsCreated { group_id, name, approval, invite } => {
                 self.mls.create.in_flight = false;
@@ -466,13 +499,8 @@ impl Store {
                 self.mls_join_outcome(*attempt, outcome, changes);
             }
             DomainEvent::MlsJoinPendingListed { records } => {
-                let known: BTreeMap<String, u64> = self
-                    .mls
-                    .join
-                    .records
-                    .iter()
-                    .map(|(id, r)| (id.clone(), r.attempt))
-                    .collect();
+                let known: BTreeMap<String, u64> =
+                    self.mls.join.records.iter().map(|(id, r)| (id.clone(), r.attempt)).collect();
                 self.mls.join.records = records
                     .iter()
                     .map(|r| {
@@ -485,7 +513,7 @@ impl Store {
                 changes.mls.insert(String::new());
             }
             DomainEvent::MlsSendOutcome { group_id, local_id, post_id, state } => {
-                self.mls_send_outcome(at, group_id, local_id, post_id.as_deref(), *state, changes);
+                self.mls_send_outcome(group_id, local_id, post_id.as_deref(), *state, changes);
             }
             DomainEvent::MlsDeleteOutcome { group_id, post_id, result } => {
                 self.mls_delete_outcome(group_id, post_id, result, changes);
@@ -506,7 +534,13 @@ impl Store {
                 self.mls_set_read(group_id, *read_log_seq, *unread, *unread_mentions, changes);
             }
             DomainEvent::MlsUnavailable { method, group_id, attempt, local_id } => {
-                self.mls_unavailable(method, group_id.as_deref(), *attempt, local_id.as_deref(), at, changes);
+                let call = Unavailable {
+                    method,
+                    group: group_id.as_deref(),
+                    attempt: *attempt,
+                    local_id: local_id.as_deref(),
+                };
+                self.mls_unavailable(&call, changes);
             }
             _ => {}
         }
@@ -547,6 +581,9 @@ impl Store {
                 self.mls_reproject(group_id, changes);
             }
             MlsStart::History { group_id, direction } => {
+                if matches!(direction, HistoryDirection::Newest) {
+                    self.mls_open_timeline(group_id);
+                }
                 if let Some(tl) = self.mls.timelines.get_mut(group_id) {
                     match direction {
                         HistoryDirection::After(_) => tl.gap_in_flight = true,
@@ -779,7 +816,16 @@ impl Store {
     fn mls_open_timeline(&mut self, group: &str) {
         self.mls.tick += 1;
         let tick = self.mls.tick;
-        self.mls.timelines.entry(group.to_owned()).or_default().used = tick;
+        if !self.mls.timelines.contains_key(group) {
+            // The own posts kept while the timeline was gone come back.
+            let own = self.mls.parked.remove(group).unwrap_or_default();
+            let next_order = own.iter().map(|i| i.order + 1).max().unwrap_or(0);
+            let tl = MlsTimeline { own, next_order, ..MlsTimeline::default() };
+            self.mls.timelines.insert(group.to_owned(), tl);
+        }
+        if let Some(tl) = self.mls.timelines.get_mut(group) {
+            tl.used = tick;
+        }
     }
 
     /// Keeps the three most recently used timelines and drops the others
@@ -796,7 +842,18 @@ impl Store {
             else {
                 break;
             };
-            self.mls.timelines.remove(&oldest);
+            if let Some(tl) = self.mls.timelines.remove(&oldest) {
+                // A post still being sent, or not sent, is not evicted with the
+                // window: queued ones come back through history, these do not.
+                let kept: Vec<OwnItem> = tl
+                    .own
+                    .into_iter()
+                    .filter(|i| matches!(i.send, SendState::Submitting | SendState::NotSent(_)))
+                    .collect();
+                if !kept.is_empty() {
+                    self.mls.parked.insert(oldest.clone(), kept);
+                }
+            }
             if let Some(ids) = self.mls.projected.remove(&oldest) {
                 for id in ids.keys() {
                     self.remove_projected(id, changes);
@@ -813,17 +870,11 @@ impl Store {
         }
     }
 
-    fn mls_history_page(
-        &mut self,
-        group: &str,
-        direction: HistoryDirection,
-        posts: &[Post],
-        floor: Option<u64>,
-        last: u64,
-        more: bool,
-        changes: &mut Changes,
-    ) {
-        if !self.mls.groups.contains_key(group) && !self.contexts.contains_key(&mls::context_id(group)) {
+    fn mls_history_page(&mut self, page: &HistoryPage<'_>, changes: &mut Changes) {
+        let HistoryPage { group, direction, posts, floor, last, more } = *page;
+        if !self.mls.groups.contains_key(group)
+            && !self.contexts.contains_key(&mls::context_id(group))
+        {
             return;
         }
         for post in posts {
@@ -871,7 +922,6 @@ impl Store {
         at: Timestamp,
         seq: u64,
         group: &str,
-        log_seq: Option<u64>,
         kind: &GroupEventKind,
         changes: &mut Changes,
     ) {
@@ -884,7 +934,9 @@ impl Store {
             self.mls.seen_seq.pop_first();
         }
         match kind {
-            GroupEventKind::Post(post) | GroupEventKind::Membership(post) | GroupEventKind::Settings(post) => {
+            GroupEventKind::Post(post)
+            | GroupEventKind::Membership(post)
+            | GroupEventKind::Settings(post) => {
                 self.mls_post_event(at, group, post, kind, changes);
             }
             GroupEventKind::PostState { post_id, state } => {
@@ -900,7 +952,6 @@ impl Store {
                 self.mls_set_read(group, *read_log_seq, *unread, *unread_mentions, changes);
             }
         }
-        let _ = log_seq;
     }
 
     fn mls_post_event(
@@ -1010,19 +1061,38 @@ impl Store {
         state: SendState,
         changes: &mut Changes,
     ) {
-        let Some(tl) = self.mls.timelines.get_mut(group) else { return };
+        let Some(tl) = self.mls.timelines.get_mut(group) else {
+            if let Some(own) = self.mls.parked.get_mut(group) {
+                match state {
+                    SendState::Sent { .. } => own.retain(|i| i.post_id.as_deref() != Some(post_id)),
+                    other => {
+                        for item in own.iter_mut().filter(|i| i.post_id.as_deref() == Some(post_id))
+                        {
+                            item.send = other;
+                        }
+                    }
+                }
+            }
+            return;
+        };
         let Some(ix) = tl.own.iter().position(|i| i.post_id.as_deref() == Some(post_id)) else {
             return;
         };
         match state {
             SendState::Sent { log_seq } => {
                 let item = tl.own.remove(ix);
+                // Any other row of the same post goes with it.
+                tl.own.retain(|i| i.post_id.as_deref() != Some(post_id));
                 let my = self.mls.my_anchor.clone();
                 let post = own_as_post(&item, Some(log_seq), my.as_deref());
                 merge_post(tl, post, my.as_deref());
                 tl.last_log_seq = tl.last_log_seq.max(log_seq);
             }
-            other => tl.own[ix].send = other,
+            other => {
+                for item in tl.own.iter_mut().filter(|i| i.post_id.as_deref() == Some(post_id)) {
+                    item.send = other;
+                }
+            }
         }
         let _ = at;
         self.mls_reproject(group, changes);
@@ -1118,22 +1188,14 @@ impl Store {
         }
     }
 
-    fn mls_unavailable(
-        &mut self,
-        method: &str,
-        group: Option<&str>,
-        attempt: Option<u64>,
-        local_id: Option<&str>,
-        at: Timestamp,
-        changes: &mut Changes,
-    ) {
+    fn mls_unavailable(&mut self, call: &Unavailable<'_>, changes: &mut Changes) {
+        let Unavailable { method, group, attempt, local_id } = *call;
         self.mls.unavailable = Some(method.to_owned());
         if let Some(attempt) = attempt {
             self.mls_join_outcome(attempt, &JoinOutcome::Unavailable, changes);
         }
         if let (Some(group), Some(local_id)) = (group, local_id) {
             self.mls_send_outcome(
-                at,
                 group,
                 local_id,
                 None,
@@ -1151,9 +1213,10 @@ impl Store {
                 self.mls.create.outcome = Some(Err("unavailable".to_owned()));
             }
             _ => {
-                self.mls
-                    .failures
-                    .insert((method.to_owned(), group.map(str::to_owned)), "unavailable".to_owned());
+                self.mls.failures.insert(
+                    (method.to_owned(), group.map(str::to_owned)),
+                    "unavailable".to_owned(),
+                );
             }
         }
         changes.mls.insert(String::new());
@@ -1230,7 +1293,6 @@ impl Store {
 
     fn mls_send_outcome(
         &mut self,
-        _at: Timestamp,
         group: &str,
         local_id: &str,
         post_id: Option<&str>,
@@ -1238,14 +1300,45 @@ impl Store {
         changes: &mut Changes,
     ) {
         let my = self.mls.my_anchor.clone();
-        let Some(tl) = self.mls.timelines.get_mut(group) else { return };
+        // A daily limit used up locks the composer until it resets.
+        if let SendState::NotSent(NotSentReason::RateLimited {
+            resets_at: Some(at),
+            remaining: 0,
+            ..
+        }) = state
+        {
+            self.mls.rate_locks.insert(group.to_owned(), at);
+            changes.mls.insert(group.to_owned());
+        }
+        // The outcome of a send lands even when the timeline was evicted.
+        let Some(tl) = self.mls.timelines.get_mut(group) else {
+            if let Some(own) = self.mls.parked.get_mut(group)
+                && let Some(ix) = own.iter().position(|i| i.local_id == local_id)
+            {
+                match state {
+                    // It comes back through history.
+                    SendState::Sent { .. } => {
+                        own.remove(ix);
+                    }
+                    other => {
+                        own[ix].post_id = post_id.map(str::to_owned).or(own[ix].post_id.take());
+                        own[ix].send = other;
+                    }
+                }
+            }
+            return;
+        };
         let Some(ix) = tl.own.iter().position(|i| i.local_id == local_id) else {
             // Merged already by an event, or cleared: nothing to apply.
             return;
         };
         if let Some(post_id) = post_id {
             tl.own[ix].post_id = Some(post_id.to_owned());
+            // The SDK's own unsent row may have arrived while the call ran:
+            // one post, one bubble (dedupe by `post_id`).
+            tl.own.retain(|i| i.local_id == local_id || i.post_id.as_deref() != Some(post_id));
         }
+        let Some(ix) = tl.own.iter().position(|i| i.local_id == local_id) else { return };
         match state {
             SendState::Sent { log_seq } => {
                 let item = tl.own.remove(ix);
@@ -1304,7 +1397,8 @@ impl Store {
             match had.get(&moment.id) {
                 Some(old) if old == &moment => {}
                 Some(old)
-                    if std::mem::discriminant(&old.kind) == std::mem::discriminant(&moment.kind)
+                    if std::mem::discriminant(&old.kind)
+                        == std::mem::discriminant(&moment.kind)
                         && old.lifecycle == moment.lifecycle
                         && old.order == moment.order
                         && self.moments.contains_key(&moment.id) =>
@@ -1420,7 +1514,7 @@ impl Store {
                     ));
                 }
                 (_, PostBody::Membership { changes: rows, by }) => {
-                    self.mls_membership_lines(&mut lines, *ls, id.as_str(), rows, by.as_ref(), my);
+                    Self::mls_membership_lines(&mut lines, *ls, id.as_str(), rows, by.as_ref(), my);
                 }
                 (_, PostBody::Settings { change, by }) => {
                     let by_name = by.as_ref().map(name_of);
@@ -1442,7 +1536,11 @@ impl Store {
                         ));
                     }
                     if !any {
-                        lines.push(Line::Single(MlsServiceLine::Updated, id.as_str().to_owned(), *ls));
+                        lines.push(Line::Single(
+                            MlsServiceLine::Updated,
+                            id.as_str().to_owned(),
+                            *ls,
+                        ));
                     }
                 }
                 (_, PostBody::Void { .. }) => {
@@ -1453,9 +1551,8 @@ impl Store {
                 }
             }
         }
-        let at_for_line = |ls: u64| {
-            tl.posted.get(&ls).and_then(|p| p.appended_at).unwrap_or(self.mls.clock)
-        };
+        let at_for_line =
+            |ls: u64| tl.posted.get(&ls).and_then(|p| p.appended_at).unwrap_or(self.mls.clock);
         for line in lines {
             let (service, id, ls) = match line {
                 Line::Joined(who, ls) => {
@@ -1507,7 +1604,6 @@ impl Store {
     }
 
     fn mls_membership_lines(
-        &self,
         lines: &mut Vec<Line>,
         ls: u64,
         id: &str,
@@ -1517,7 +1613,9 @@ impl Store {
     ) {
         let shown: Vec<&MembershipChange> = rows
             .iter()
-            .filter(|c| !matches!(c.kind, MembershipKind::DeviceAdded | MembershipKind::DeviceRemoved))
+            .filter(|c| {
+                !matches!(c.kind, MembershipKind::DeviceAdded | MembershipKind::DeviceRemoved)
+            })
             .collect();
         if shown.is_empty() {
             return;
@@ -1570,9 +1668,7 @@ impl Store {
         for (ix, change) in shown.iter().enumerate() {
             let target = change_name(change, my);
             let service = match &change.kind {
-                MembershipKind::Removed => {
-                    MlsServiceLine::Removed { by: by_name.clone(), target }
-                }
+                MembershipKind::Removed => MlsServiceLine::Removed { by: by_name.clone(), target },
                 MembershipKind::Banned => MlsServiceLine::Banned { by: by_name.clone(), target },
                 MembershipKind::RoleChanged => match &change.role {
                     Some(MlsRole::Admin) => {
@@ -1648,8 +1744,11 @@ fn merge_post(tl: &mut MlsTimeline, post: Post, my: Option<&str>) {
     if let Some(ls) = post.log_seq {
         // An own item for this post (by id, or the single submitting item
         // with the same text) is the same post.
-        let is_mine = post.author.as_ref().is_some_and(|a| a.is_me || my == Some(a.anchor.as_str()));
-        if let Some(ix) = tl.own.iter().position(|i| i.post_id.as_deref() == Some(post.post_id.as_str())) {
+        let is_mine =
+            post.author.as_ref().is_some_and(|a| a.is_me || my == Some(a.anchor.as_str()));
+        if let Some(ix) =
+            tl.own.iter().position(|i| i.post_id.as_deref() == Some(post.post_id.as_str()))
+        {
             tl.own.remove(ix);
         } else if is_mine && let PostBody::Text(text) = &post.body {
             let candidates: Vec<usize> = tl
@@ -1686,7 +1785,9 @@ fn merge_post(tl: &mut MlsTimeline, post: Post, my: Option<&str>) {
     }
     // An own post that is not in the log (history: `state: pending`).
     let send = post.send.unwrap_or(SendState::Queued(QueueReason::Unknown));
-    if let Some(item) = tl.own.iter_mut().find(|i| i.post_id.as_deref() == Some(post.post_id.as_str())) {
+    if let Some(item) =
+        tl.own.iter_mut().find(|i| i.post_id.as_deref() == Some(post.post_id.as_str()))
+    {
         item.send = send;
         return;
     }

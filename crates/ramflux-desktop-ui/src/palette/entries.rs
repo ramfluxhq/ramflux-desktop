@@ -118,6 +118,7 @@ fn contexts(store: &Store) -> Group {
                 ContextKind::Direct => IconName::User,
                 ContextKind::Group => IconName::Building2,
                 ContextKind::Space => IconName::LayoutDashboard,
+                ContextKind::MlsGroup => IconName::Building2,
             };
             let mut e = entry(
                 selectors::context_title(store, c),

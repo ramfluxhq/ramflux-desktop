@@ -21,6 +21,7 @@ mod context_stack;
 mod conversation;
 pub mod docks;
 pub mod identity_change;
+pub mod mls_group;
 mod navigation;
 pub mod new_conversation;
 pub mod new_group;
@@ -43,7 +44,7 @@ use gpui_kit::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, Render, Subscription, Window, px,
 };
 use ramflux_desktop_core::{
-    ContextId, ContextKind, IntentKind, ParticipantId, Scope, methods, selectors,
+    ContextId, ContextKind, IntentKind, ParticipantId, Scope, UiEventKind, methods, selectors,
 };
 use ramflux_desktop_navigation::direction::{DirectionalExt as _, h_flex};
 
@@ -79,6 +80,23 @@ use docks::objects::ObjectsDock;
 /// Dock engine panel name of the conversation field.
 const CONVERSATION_PANEL: &str = "Conversation";
 
+/// The views of the MLS groups (MLS GUI batch M2): the list, which stands
+/// in for the group directory while the app runs on the mock source, and the
+/// sheets and dialogs it opens.
+struct MlsViews {
+    section: Entity<mls_group::section::MlsGroupsSection>,
+    create: Entity<mls_group::create::MlsCreate>,
+    join: Entity<mls_group::join::MlsJoin>,
+    invites: Entity<mls_group::invite::MlsInvites>,
+    members: Entity<mls_group::members::MlsMembers>,
+    info: Entity<mls_group::info::MlsInfo>,
+    confirm: Entity<mls_group::confirm::MlsConfirm>,
+    notice: Entity<mls_group::info::MlsHostNotice>,
+    /// Groups whose server notice was shown while the app runs (the notice
+    /// is not kept on disk).
+    noticed: std::collections::BTreeSet<(Option<ramflux_desktop_core::AccountId>, String)>,
+}
+
 /// One dock tool: its frame entity and the handle the dock engine holds.
 struct ToolSlot {
     tool: DockTool,
@@ -96,6 +114,7 @@ pub struct Workspace {
     new_conversation: Entity<NewConversation>,
     new_group: Entity<NewGroup>,
     identity_sheet: Entity<identity_change::IdentitySheet>,
+    mls: MlsViews,
     dock_area: Entity<DockArea>,
     tools: Vec<ToolSlot>,
     objects: Entity<ObjectsDock>,
@@ -146,6 +165,29 @@ impl Workspace {
         let new_group = cx.new(|cx| NewGroup::new(store.clone(), window, cx));
         let identity_sheet = cx
             .new(|cx| identity_change::IdentitySheet::new(store.clone(), sink.clone(), window, cx));
+        let mls = MlsViews {
+            section: cx.new(|cx| {
+                mls_group::section::MlsGroupsSection::new(store.clone(), sink.clone(), window, cx)
+            }),
+            create: cx.new(|cx| {
+                mls_group::create::MlsCreate::new(store.clone(), sink.clone(), window, cx)
+            }),
+            join: cx
+                .new(|cx| mls_group::join::MlsJoin::new(store.clone(), sink.clone(), window, cx)),
+            invites: cx.new(|cx| {
+                mls_group::invite::MlsInvites::new(store.clone(), sink.clone(), window, cx)
+            }),
+            members: cx.new(|cx| {
+                mls_group::members::MlsMembers::new(store.clone(), sink.clone(), window, cx)
+            }),
+            info: cx
+                .new(|cx| mls_group::info::MlsInfo::new(store.clone(), sink.clone(), window, cx)),
+            confirm: cx.new(|cx| {
+                mls_group::confirm::MlsConfirm::new(store.clone(), sink.clone(), window, cx)
+            }),
+            notice: cx.new(|cx| mls_group::info::MlsHostNotice::new(store.clone(), cx)),
+            noticed: std::collections::BTreeSet::new(),
+        };
         let stack = cx.new(|cx| ContextStack::new(store.clone(), window, cx));
         let conversation =
             cx.new(|cx| Conversation::new(store.clone(), root.clone(), composer.clone(), cx));
@@ -235,6 +277,9 @@ impl Workspace {
                     if changes.touches_status() {
                         this.sync_composer(cx);
                         cx.notify();
+                    }
+                    if !changes.domain().mls.is_empty() {
+                        this.mls_mark_read(window, cx);
                     }
                 }
             }),
@@ -362,6 +407,40 @@ impl Workspace {
                     StrangersEvent::Back => this.navigate(WorkspaceRoute::Contacts, window, cx),
                 }
             }),
+            cx.subscribe_in(
+                &mls.section,
+                window,
+                |this, _, event: &mls_group::section::MlsSectionEvent, window, cx| {
+                    let mls_group::section::MlsSectionEvent::Selected(id) = event;
+                    this.show_mls_group(id.clone(), window, cx);
+                },
+            ),
+            cx.subscribe_in(
+                &mls.create,
+                window,
+                |this, _, event: &mls_group::create::MlsCreateEvent, window, cx| {
+                    let mls_group::create::MlsCreateEvent::Created(group_id) = event;
+                    this.mls_created(group_id.clone(), window, cx);
+                },
+            ),
+            cx.subscribe_in(
+                &mls.join,
+                window,
+                |this, _, event: &mls_group::join::MlsJoinEvent, window, cx| {
+                    let mls_group::join::MlsJoinEvent::Open(group_id) = event;
+                    let id = ramflux_desktop_core::mls_group::context_id(group_id);
+                    if this.store.read(cx).store().context(&id).is_some() {
+                        this.show_mls_group(id, window, cx);
+                    }
+                },
+            ),
+            cx.observe(&mls.create, |_, _, cx| cx.notify()),
+            cx.observe(&mls.join, |_, _, cx| cx.notify()),
+            cx.observe(&mls.invites, |_, _, cx| cx.notify()),
+            cx.observe(&mls.members, |_, _, cx| cx.notify()),
+            cx.observe(&mls.info, |_, _, cx| cx.notify()),
+            cx.observe(&mls.confirm, |_, _, cx| cx.notify()),
+            cx.observe(&mls.notice, |_, _, cx| cx.notify()),
             cx.observe(&strangers, |_, _, cx| cx.notify()),
             cx.observe(&contacts, |_, _, cx| cx.notify()),
             cx.observe(&tasks_area, |_, _, cx| cx.notify()),
@@ -410,6 +489,7 @@ impl Workspace {
                             sheet.open(participant, window, cx);
                         });
                     }
+                    RootEvent::MlsPanel(panel) => this.open_mls_panel(panel.clone(), window, cx),
                 },
             ),
             cx.subscribe(&dock_area, |this, _, event: &DockToggleEvent, cx| {
@@ -457,6 +537,7 @@ impl Workspace {
             new_conversation,
             new_group,
             identity_sheet,
+            mls,
             dock_area,
             tools,
             objects,
@@ -565,6 +646,125 @@ impl Workspace {
     /// The new-group form.
     pub fn new_group(&self) -> &Entity<NewGroup> {
         &self.new_group
+    }
+
+    /// Whether the Groups route shows the MLS groups: while the app runs on
+    /// the mock source only. // W: remove the old directory and this switch.
+    pub fn shows_mls_groups(&self, cx: &App) -> bool {
+        !self.store.read(cx).is_live()
+    }
+
+    /// The MLS groups list.
+    pub fn mls_section(&self) -> &Entity<mls_group::section::MlsGroupsSection> {
+        &self.mls.section
+    }
+
+    /// Shows an MLS group: its conversation in the shared view.
+    pub fn show_mls_group(&mut self, id: ContextId, window: &mut Window, cx: &mut Context<Self>) {
+        self.group_shown = true;
+        self.select_context(Some(id.clone()), window, cx);
+        self.mls.section.update(cx, |section, cx| section.set_selected(Some(id), cx));
+        cx.notify();
+    }
+
+    /// A group was created: it opens, then the invite panel, then the
+    /// one-time notice about the group's server (once per account and group
+    /// while the app runs; it is not kept on disk).
+    fn mls_created(&mut self, group_id: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_mls_group(ramflux_desktop_core::mls_group::context_id(&group_id), window, cx);
+        self.mls.invites.update(cx, |panel, cx| panel.open(group_id.clone(), window, cx));
+        let account = self.store.read(cx).active_account().cloned();
+        // What was kept for a removed account goes with it.
+        {
+            let handle = self.store.read(cx);
+            let known: std::collections::BTreeSet<_> = handle.accounts().cloned().collect();
+            self.mls.noticed.retain(|(who, _)| who.as_ref().is_none_or(|id| known.contains(id)));
+        }
+        if self.mls.noticed.insert((account, group_id.clone())) {
+            self.mls.notice.update(cx, |notice, cx| notice.open(group_id, window, cx));
+        }
+    }
+
+    /// An MLS group was opened: its newest page and its info are read once,
+    /// and the host is asked for news (the policy coalesces that to once
+    /// every five seconds per group).
+    fn mls_opened(&mut self, id: &ContextId, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(group) = ramflux_desktop_core::mls_group::group_of(id).map(str::to_owned) else {
+            return;
+        };
+        let sink = IntentRoot::sink(&self.root).scoped(Scope::Context(id.clone()));
+        let store = self.store.read(cx).store();
+        let kept = store.mls_timeline(&group).is_some_and(|tl| tl.loaded);
+        let read_only = store.mls_read_only(&group).is_some();
+        if !kept {
+            sink.emit(
+                UiEventKind::MlsHistoryRequested {
+                    group_id: group.clone(),
+                    direction: ramflux_desktop_core::mls_group::HistoryDirection::Newest,
+                },
+                window,
+                cx,
+            );
+        }
+        if !read_only {
+            sink.emit(UiEventKind::MlsInfoRequested { group_id: group.clone() }, window, cx);
+            sink.emit(UiEventKind::MlsRefreshPressed { group_id: group }, window, cx);
+        }
+    }
+
+    /// The shown MLS group is read up to its newest post (the position only
+    /// moves forward; the policy refuses a call that would not move it).
+    fn mls_mark_read(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.current.clone() else { return };
+        let Some(group) = ramflux_desktop_core::mls_group::group_of(&id).map(str::to_owned) else {
+            return;
+        };
+        if !window.is_window_active() {
+            return;
+        }
+        let store = self.store.read(cx).store();
+        let Some(tl) = store.mls_timeline(&group).filter(|tl| tl.loaded) else { return };
+        let read = store.mls_group(&group).map_or(u64::MAX, |g| g.read_log_seq);
+        if tl.last_log_seq > read && store.mls_read_only(&group).is_none() {
+            let log_seq = tl.last_log_seq;
+            IntentRoot::sink(&self.root).scoped(Scope::Context(id)).emit(
+                UiEventKind::MlsMarkReadRequested { group_id: group, log_seq },
+                window,
+                cx,
+            );
+        }
+    }
+
+    /// Opens a panel or dialog of the MLS groups. Nothing is sent by opening.
+    fn open_mls_panel(
+        &mut self,
+        panel: ramflux_desktop_core::mls_group::MlsPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use ramflux_desktop_core::mls_group::MlsPanel;
+        match panel {
+            MlsPanel::Create => self.mls.create.update(cx, |d, cx| d.open(window, cx)),
+            MlsPanel::Join => self.mls.join.update(cx, |d, cx| d.open(window, cx)),
+            MlsPanel::Info { group_id } => {
+                self.mls.info.update(cx, |d, cx| d.open(group_id, window, cx))
+            }
+            MlsPanel::Members { group_id } => {
+                self.mls.members.update(cx, |d, cx| d.open(group_id, false, window, cx));
+            }
+            MlsPanel::Mentions { group_id } => {
+                self.mls.members.update(cx, |d, cx| d.open(group_id, true, window, cx));
+            }
+            MlsPanel::Invites { group_id } => {
+                self.mls.invites.update(cx, |d, cx| d.open(group_id, window, cx));
+            }
+            confirm @ (MlsPanel::ConfirmDelete { .. }
+            | MlsPanel::ConfirmLeave { .. }
+            | MlsPanel::ConfirmRevoke { .. }) => {
+                self.mls.confirm.update(cx, |d, cx| d.open(confirm, window, cx));
+            }
+        }
+        cx.notify();
     }
 
     /// Opens the new-group dialog over the shown screen and focuses its
@@ -686,6 +886,9 @@ impl Workspace {
             }
         }
         self.conversation.update(cx, |field, cx| field.set_context(id.clone(), cx));
+        if changed && let Some(id) = &id {
+            self.mls_opened(id, window, cx);
+        }
         self.sync_composer(cx);
         self.composer.update(cx, |composer, cx| composer.set_sink(id.clone(), sink, window, cx));
         self.stack.update(cx, |stack, cx| stack.set_current(id.clone(), cx));
@@ -1015,7 +1218,7 @@ impl Render for Workspace {
         self.conversation.update(cx, |conversation, _| {
             conversation.set_status(status_view.clone().filter(|_| banner_in_conversation));
         });
-        let list_pane = self.section_list();
+        let list_pane = self.section_list(cx);
         let rail = self.navigation_rail(cx);
         let new_group = self.new_group.read(cx).is_open().then(|| self.new_group.clone());
         let contacts_dialog = self.contacts.update(cx, |dock, cx| dock.dialog(cx));
@@ -1102,6 +1305,13 @@ impl Render for Workspace {
             .children(contacts_dialog)
             .children(task_dialog)
             .child(identity_dialog)
+            .child(self.mls.create.clone())
+            .child(self.mls.join.clone())
+            .child(self.mls.invites.clone())
+            .child(self.mls.members.clone())
+            .child(self.mls.info.clone())
+            .child(self.mls.notice.clone())
+            .child(self.mls.confirm.clone())
     }
 }
 

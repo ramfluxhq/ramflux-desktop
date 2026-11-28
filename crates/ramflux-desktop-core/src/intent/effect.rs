@@ -9,7 +9,8 @@ use super::{Intent, SecretInput};
 use crate::model::AgentRuntimeAction;
 
 /// What a source must do as a result of an intent.
-#[derive(Debug)]
+///
+/// `Debug` never prints the `link` of a join: an invite link is a secret.
 pub enum Effect {
     /// Perform a contract call.
     Call {
@@ -69,6 +70,45 @@ impl Effect {
         match self {
             Self::Call { body, .. } | Self::SecretCall { body, .. } => Some(body),
             Self::RequireConfirmation { .. } | Self::AgentRuntime { .. } => None,
+        }
+    }
+}
+
+/// The body with the invite link (if any) replaced, for `Debug`.
+fn redacted(body: &Value) -> Value {
+    let mut body = body.clone();
+    if let Some(link) = body.get_mut("link") {
+        *link = Value::from("<redacted>");
+    }
+    body
+}
+
+impl std::fmt::Debug for Effect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Call { method, body } => f
+                .debug_struct("Call")
+                .field("method", method)
+                .field("body", &redacted(body))
+                .finish(),
+            Self::SecretCall { method, body, secrets } => f
+                .debug_struct("SecretCall")
+                .field("method", method)
+                .field("body", &redacted(body))
+                .field("secrets", secrets)
+                .finish(),
+            Self::AgentRuntime { action, provider, model, key, nonce, confirmed_path } => f
+                .debug_struct("AgentRuntime")
+                .field("action", action)
+                .field("provider", provider)
+                .field("model", model)
+                .field("key", key)
+                .field("nonce", nonce)
+                .field("confirmed_path", confirmed_path)
+                .finish(),
+            Self::RequireConfirmation { intent } => {
+                f.debug_struct("RequireConfirmation").field("intent", intent).finish()
+            }
         }
     }
 }

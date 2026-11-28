@@ -3,6 +3,7 @@
 
 //! Native row composition around the generated, presentation-only message shell.
 
+use gpui_kit::component::Disableable as _;
 use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{
@@ -242,11 +243,28 @@ pub(crate) fn render(
     // refused) has none yet; a file message keeps its text as it is.
     let accepted = !matches!(
         payload.receipt,
-        Receipt::Sending | Receipt::Failed { .. } | Receipt::WaitingForNode { .. }
+        Receipt::Sending
+            | Receipt::Failed { .. }
+            | Receipt::WaitingForNode { .. }
+            | Receipt::Queued { .. }
+            | Receipt::Delayed { .. }
+            | Receipt::NotSent { .. }
     ) || !own;
     let editable = own && payload.media.is_empty() && row.body.is_some();
-    let actions =
-        MenuActions { sink: sink.clone(), copy_enabled, own, deleted, accepted, editable };
+    // An MLS group post is replied to and copied; only an own post that is in
+    // the log is deleted, for everyone (there is no edit and no local delete).
+    let mls = row.moment.id.as_str().starts_with(ramflux_desktop_core::mls_group::CONTEXT_PREFIX);
+    let posted = mls && own && crate::root::intent_map::mls_posted(&row.moment.id);
+    let actions = MenuActions {
+        sink: sink.clone(),
+        copy_enabled,
+        own,
+        deleted,
+        accepted,
+        editable,
+        mls,
+        mls_delete: posted && !row.refs.mls_deleting,
+    };
     let menu_focus = state.menu_focus.clone();
     let trigger = gpui_kit::base::Button::new("message-menu")
         .when_some(menu_focus.as_ref(), |button, focus| button.track_focus(focus))
@@ -333,7 +351,8 @@ pub(crate) fn render(
                                 .border_color(theme.danger)
                         })
                         .child(shell)
-                        .children(receipt_line(payload, row, sink, cx)),
+                        .children(receipt_line(payload, row, sink, cx))
+                        .children(mls_receipt_line(payload, row, sink, cx)),
                 )
                 // Design 02: the message actions appear on hover or focus.
                 .child(
@@ -359,6 +378,10 @@ struct MenuActions {
     deleted: bool,
     accepted: bool,
     editable: bool,
+    /// The message is a post of an MLS group.
+    mls: bool,
+    /// An own post of an MLS group that can be deleted for everyone now.
+    mls_delete: bool,
 }
 
 impl MenuActions {
@@ -382,6 +405,18 @@ impl MenuActions {
             self.accepted && Mutation::Reply.check().is_ok(),
             UiEventKind::ReplyPressed,
         );
+        if self.mls {
+            return if self.own {
+                item(
+                    menu,
+                    "group.delete.action",
+                    self.mls_delete,
+                    UiEventKind::DeleteForEveryonePressed,
+                )
+            } else {
+                menu
+            };
+        }
         if self.own {
             menu = item(
                 menu,
@@ -418,8 +453,10 @@ fn receipt_meta(payload: &MessagePayload, outbound: bool) -> Option<impl IntoEle
     use gpui_kit::assets::IconName as Catalog;
     let icon = match payload.receipt {
         _ if !outbound => return None,
-        Receipt::Failed { .. } | Receipt::WaitingForNode { .. } => return None,
-        Receipt::Sending => Catalog::Clock,
+        Receipt::Failed { .. } | Receipt::WaitingForNode { .. } | Receipt::NotSent { .. } => {
+            return None;
+        }
+        Receipt::Sending | Receipt::Queued { .. } | Receipt::Delayed { .. } => Catalog::Clock,
         Receipt::Sent => Catalog::Check,
         Receipt::Delivered | Receipt::Read => Catalog::CheckCheck,
     };
@@ -473,6 +510,96 @@ fn receipt_line(
                         .label(tr("moment.message.retry"))
                         .on_click(move |_, window, cx| {
                             retry.emit(UiEventKind::RetryMessagePressed, window, cx)
+                        }),
+                )
+            })
+            .into_any_element(),
+    )
+}
+
+/// The line under the bubble of an own MLS group post that is on its way, was
+/// not sent, or is being deleted: the state in words, with Retry for a post
+/// that was not sent. Retry is the user's tap and makes a new send; nothing
+/// here is sent again by itself.
+fn mls_receipt_line(
+    payload: &MessagePayload,
+    row: &MomentRow,
+    sink: &EventSink,
+    cx: &App,
+) -> Option<gpui_kit::AnyElement> {
+    use ramflux_desktop_core::mls_group::{NotSentReason, QueueReason};
+    let theme = palette(cx);
+    let (text, failed, retry): (gpui_kit::SharedString, bool, bool) = if row.refs.mls_deleting {
+        (tr("group.delete.deleting"), false, false)
+    } else if let Some(code) = &row.refs.mls_delete_error {
+        (tr(ramflux_desktop_core::mls_group::error_key(code)), true, false)
+    } else {
+        match payload.receipt {
+            Receipt::Sending => (tr("group.send.sending"), false, false),
+            Receipt::Queued { reason } => (tr(QueueReason::key(reason)), false, false),
+            Receipt::Delayed { send_after } => (
+                i18n::tr_args("group.send.delayed", &[("time", &i18n::time_of_day(send_after))]),
+                false,
+                false,
+            ),
+            Receipt::NotSent { reason } => {
+                let text = match reason {
+                    NotSentReason::RateLimited { resets_at: Some(at), .. } => {
+                        i18n::tr_args(reason.key(), &[("time", &i18n::time_of_day(at))])
+                    }
+                    NotSentReason::TooLarge { max_bytes } => {
+                        i18n::tr_args(reason.key(), &[("size", &i18n::format::size(max_bytes))])
+                    }
+                    NotSentReason::Paced { until } => i18n::tr_args(
+                        reason.key(),
+                        &[("time", &until.map(i18n::time_of_day).unwrap_or_default())],
+                    ),
+                    other => tr(other.key()),
+                };
+                (text, true, true)
+            }
+            _ => return None,
+        }
+    };
+    let local = row
+        .moment
+        .id
+        .as_str()
+        .strip_prefix(ramflux_desktop_core::mls_group::CONTEXT_PREFIX)
+        .and_then(|rest| rest.split_once(':'))
+        .and_then(|(_, tail)| tail.strip_prefix("l:").or_else(|| tail.strip_prefix("p:")))
+        .map(str::to_owned);
+    let context = row.moment.context_id.clone();
+    let locked = row.refs.mls_locked;
+    let color = if failed { crate::tone::text(theme.danger, cx) } else { theme.secondary };
+    let sink = sink.clone();
+    Some(
+        h_flex()
+            .id("mls-receipt")
+            .aria_label(text.clone())
+            .test_support()
+            .pt(space(1.))
+            .gap(space(1.))
+            .text_size(rems(theme.size_meta / 15.0))
+            .text_color(color)
+            .when(failed, |line| line.child(Icon::new(IconName::CircleAlert).xsmall()))
+            .child(text)
+            .when_some(local.filter(|_| retry), |line, local_id| {
+                line.child(
+                    gpui_kit::component::button::Button::new("mls-retry")
+                        .ghost()
+                        .xsmall()
+                        .label(tr("group.send.retry"))
+                        .disabled(locked)
+                        .on_click(move |_, window, cx| {
+                            sink.emit(
+                                UiEventKind::MlsRetryPressed {
+                                    context: context.clone(),
+                                    local_id: local_id.clone(),
+                                },
+                                window,
+                                cx,
+                            )
                         }),
                 )
             })

@@ -104,6 +104,9 @@ pub fn receipt(receipt: Receipt) -> SharedString {
         Receipt::Sent => "moment.message.sent",
         Receipt::Delivered => "moment.message.delivered",
         Receipt::Read => "moment.message.read",
+        Receipt::Queued { reason } => reason.key(),
+        Receipt::Delayed { .. } => "group.send.queued.generic",
+        Receipt::NotSent { .. } => "group.send.failed",
     })
 }
 
@@ -290,5 +293,6 @@ pub fn moment_kind(kind: &MomentKind) -> SharedString {
         MomentKind::Call(_) => "moment.kind.call",
         MomentKind::NameChange(_) => "moment.kind.name_change",
         MomentKind::GroupRename(_) => "moment.kind.group_rename",
+        MomentKind::MlsService(_) => "moment.kind.mls_service",
     })
 }

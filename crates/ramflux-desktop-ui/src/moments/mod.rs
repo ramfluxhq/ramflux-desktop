@@ -26,6 +26,7 @@ mod intervention;
 mod message;
 pub(crate) mod message_bubble;
 pub(crate) mod message_text;
+pub(crate) mod mls_group;
 mod name_change;
 mod notice;
 mod object_transfer;
@@ -100,6 +101,12 @@ pub struct RowRefs {
     /// For a call record: the peer whose identity change is not accepted,
     /// so a call back opens the identity change sheet first.
     pub call_changed: Option<ParticipantId>,
+    /// For an own post of an MLS group that is being deleted for everyone.
+    pub mls_deleting: bool,
+    /// For an own post of an MLS group whose delete was refused: the code.
+    pub mls_delete_error: Option<String>,
+    /// The group's daily limit is used up: Retry is off until it resets.
+    pub mls_locked: bool,
 }
 
 /// The task step an intervention belongs to.
@@ -234,6 +241,16 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
     };
     let people: Vec<&ParticipantId> = match &moment.kind {
         MomentKind::Message(p) => {
+            if let Some(post) = crate::root::intent_map::mls_post_of(store, &moment.id)
+                && let Some(group) = moment
+                    .context_id
+                    .as_str()
+                    .strip_prefix(ramflux_desktop_core::mls_group::CONTEXT_PREFIX)
+            {
+                refs.mls_deleting =
+                    store.mls_timeline(group).is_some_and(|tl| tl.deleting.contains(&post));
+                refs.mls_delete_error = store.mls_delete_failure(&post).map(str::to_owned);
+            }
             if let Some(id) = &p.attachment {
                 object(id, &mut refs);
             }
@@ -317,7 +334,7 @@ fn refs(store: &Store, moment: &Moment, audit: &AuditIndex<'_>) -> RowRefs {
             vec![&moment.origin]
         }
         MomentKind::NameChange(p) => vec![&p.participant_id],
-        MomentKind::GroupRename(_) => Vec::new(),
+        MomentKind::GroupRename(_) | MomentKind::MlsService(_) => Vec::new(),
         MomentKind::IdentityChange(p) => vec![&p.participant_id],
         MomentKind::SecurityNotice(_) => Vec::new(),
         MomentKind::Governance(p) => vec![&p.target],
@@ -453,6 +470,7 @@ impl RenderOnce for MomentView {
             MomentKind::Call(_) => call::render(&row.refs, &sink, cx).into_any_element(),
             MomentKind::NameChange(p) => name_change::render(p, &row, cx).into_any_element(),
             MomentKind::GroupRename(p) => group_rename::render(p, &row, cx).into_any_element(),
+            MomentKind::MlsService(line) => mls_group::render(line, cx).into_any_element(),
         };
         // A task event, a name change, a group rename and a membership record
         // from a signed group state are one compact line each: they carry
@@ -563,6 +581,7 @@ fn is_compact(kind: &MomentKind) -> bool {
         MomentKind::TaskEvent(_)
         | MomentKind::NameChange(_)
         | MomentKind::GroupRename(_)
+        | MomentKind::MlsService(_)
         | MomentKind::IdentityChange(_)
         | MomentKind::SecurityNotice(_) => true,
         MomentKind::Governance(p) => p.unattributed,

@@ -367,6 +367,9 @@ pub enum IntentError {
     /// Only an own post that is in the log can be deleted.
     #[error("only an own post in the log can be deleted")]
     MlsNotOwnPost,
+    /// The daily limit of the group is used up: no send until it resets.
+    #[error("the daily limit is used up")]
+    MlsRateLocked,
     /// The invite settings are not offered.
     #[error("the invite settings are not valid")]
     MlsInviteInvalid,

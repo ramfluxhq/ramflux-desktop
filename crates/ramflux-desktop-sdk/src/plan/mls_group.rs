@@ -28,7 +28,7 @@
 //! now and are unused on live until then. The link of a join is passed
 //! verbatim and never logged.
 
-use ramflux_desktop_core::methods;
+use ramflux_desktop_core::{SecretInput, methods};
 use serde_json::{Value, json};
 
 use super::{Plan, call, refuse_invalid, text};
@@ -37,7 +37,8 @@ use crate::bus::BusRequest;
 /// Plans one MLS group method.
 pub(super) fn plan(acct: Option<&str>, method: &str, body: &Value) -> Plan {
     let group = || text(body, "group_id");
-    let request = |wire: &'static str, body: Value| call(BusRequest::new(acct, "group", wire, body));
+    let request =
+        |wire: &'static str, body: Value| call(BusRequest::new(acct, "group", wire, body));
     match method {
         methods::MLS_GROUP_LIST => {
             request("group.list", json!({ "cursor": body["cursor"], "limit": body["limit"] }))
@@ -59,7 +60,12 @@ pub(super) fn plan(acct: Option<&str>, method: &str, body: &Value) -> Plan {
             json!({ "group_id": group(), "invite_id": text(body, "invite_id") }),
         ),
         // The link only: the attempt number never goes on the wire.
-        methods::MLS_GROUP_JOIN => request("group.join", json!({ "link": text(body, "link") })),
+        // The link only (the attempt number never goes on the wire). It
+        // travels as a secret field, so no `Debug` of the request prints it.
+        methods::MLS_GROUP_JOIN => call(
+            BusRequest::new(acct, "group", "group.join", json!({}))
+                .with_secret("link", SecretInput::new(text(body, "link"))),
+        ),
         methods::MLS_GROUP_JOIN_PENDING => request("group.join.pending", json!({})),
         methods::MLS_GROUP_MEMBERS => request(
             "group.members",

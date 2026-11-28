@@ -217,7 +217,10 @@ pub fn invite(value: &Value) -> Option<Invite> {
         invite_id: opt_string(value, "invite_id")?,
         link: InviteLink::new(string(value, "link")),
         max_uses: small(value, "max_uses"),
-        uses_left: value.get("uses_left").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok()),
+        uses_left: value
+            .get("uses_left")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok()),
         expires_at: time(value, "expires_at").unwrap_or_default(),
         revoked: flag(value, "revoked"),
     })
@@ -385,14 +388,17 @@ pub fn join_refusal(reason: &str, params: &Value) -> JoinRefusal {
         "invite_expired" => JoinRefusal::InviteExpired { expired_at: time(params, "expired_at") },
         "invite_invalid" => JoinRefusal::InviteInvalid,
         "group_full" => JoinRefusal::GroupFull {
-            leaf_cap: params.get("leaf_cap").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok()),
+            leaf_cap: params
+                .get("leaf_cap")
+                .and_then(Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok()),
         },
         "queue_full" => JoinRefusal::QueueFull,
         "request_expired" => JoinRefusal::RequestExpired { expired_at: time(params, "expired_at") },
         "already_member" => JoinRefusal::AlreadyMember { group_id: opt_string(params, "group_id") },
-        "rate_limited" => {
-            JoinRefusal::RateLimited { retry_after_s: params.get("retry_after_s").and_then(Value::as_u64) }
-        }
+        "rate_limited" => JoinRefusal::RateLimited {
+            retry_after_s: params.get("retry_after_s").and_then(Value::as_u64),
+        },
         other => {
             unknown("join refusal", other);
             JoinRefusal::Unknown(other.to_owned())
@@ -468,7 +474,9 @@ pub fn group_event(frame: &Value) -> Option<DomainEvent> {
             let params = frame.get("params").unwrap_or(&Value::Null);
             let result = match str_of(frame, "state") {
                 Some("joined") => Ok(()),
-                _ => Err(join_refusal(str_of(frame, "reason").unwrap_or("request_expired"), params)),
+                _ => {
+                    Err(join_refusal(str_of(frame, "reason").unwrap_or("request_expired"), params))
+                }
             };
             GroupEventKind::JoinResult {
                 request_id: opt_string(frame, "request_id")?,
@@ -499,7 +507,9 @@ pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> 
     };
     let reply = match result {
         Ok(reply) => reply,
-        Err(error) => return vec![error_outcome(method, body, error).unwrap_or_else(|| failed(error))],
+        Err(error) => {
+            return vec![error_outcome(method, body, error).unwrap_or_else(|| failed(error))];
+        }
     };
     let event = match method {
         methods::MLS_GROUP_LIST => DomainEvent::MlsGroupsListed {
@@ -511,15 +521,17 @@ pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> 
             Some(summary) => DomainEvent::MlsGroupInfoRead { summary: Box::new(summary) },
             None => return Vec::new(),
         },
-        methods::MLS_GROUP_CREATE => match (opt_string(reply, "group_id"), reply.get("invite").and_then(invite)) {
-            (Some(group_id), Some(invite)) => DomainEvent::MlsCreated {
-                group_id,
-                name: string(body, "name"),
-                approval: flag(body, "approval"),
-                invite,
-            },
-            _ => DomainEvent::MlsCreateFailed { code: "generic".to_owned() },
-        },
+        methods::MLS_GROUP_CREATE => {
+            match (opt_string(reply, "group_id"), reply.get("invite").and_then(invite)) {
+                (Some(group_id), Some(invite)) => DomainEvent::MlsCreated {
+                    group_id,
+                    name: string(body, "name"),
+                    approval: flag(body, "approval"),
+                    invite,
+                },
+                _ => DomainEvent::MlsCreateFailed { code: "generic".to_owned() },
+            }
+        }
         methods::MLS_GROUP_INVITE_CREATE => match (group(), invite(reply)) {
             (Some(group_id), Some(invite)) => DomainEvent::MlsInviteCreated { group_id, invite },
             _ => return Vec::new(),
@@ -683,7 +695,9 @@ mod tests {
             JoinOutcome::Refused(JoinRefusal::Unknown(_))
         ));
         assert!(matches!(
-            join_outcome(&json!({ "state": "pending", "request_id": "r", "reason": "awaiting_admin", "expires_at": 5 })),
+            join_outcome(
+                &json!({ "state": "pending", "request_id": "r", "reason": "awaiting_admin", "expires_at": 5 })
+            ),
             JoinOutcome::Pending { .. }
         ));
     }

@@ -213,6 +213,13 @@ pub fn plan(account: Option<&AccountId>, effect: Effect, known: &impl Known) -> 
     } else {
         keyed(map(account, &method, &body, secrets, known))
     };
+    // The link of a join is a secret: the planned copy of the body never keeps it.
+    let mut body = body;
+    if method == methods::MLS_GROUP_JOIN
+        && let Some(link) = body.get_mut("link")
+    {
+        *link = Value::from("<redacted>");
+    }
     Planned { method, body, plan }
 }
 

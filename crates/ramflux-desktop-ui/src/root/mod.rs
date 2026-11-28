@@ -20,7 +20,7 @@
 //! is reported ([`RootEvent::SurfaceChanged`]) so the row asks the user to
 //! review it again. Policy re-checks the bound version on submit as well.
 
-mod intent_map;
+pub(crate) mod intent_map;
 
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
@@ -79,6 +79,9 @@ pub enum RootEvent {
     /// "Review" was pressed on this contact's changed identity: open the
     /// identity change sheet.
     ReviewIdentity(ramflux_desktop_core::ParticipantId),
+    /// A panel or dialog of the MLS groups was asked for: the workspace
+    /// opens it.
+    MlsPanel(ramflux_desktop_core::mls_group::MlsPanel),
 }
 
 /// Owns the pending intent and the confirm strip.
@@ -231,6 +234,10 @@ impl IntentRoot {
         {
             // Navigation, not an intent: the workspace opens the sheet.
             cx.emit(RootEvent::ReviewIdentity(participant_id.clone()));
+        }
+        if let ramflux_desktop_core::UiEventKind::MlsPanelRequested { panel } = &event.kind {
+            // Navigation, not an intent: the workspace opens the panel.
+            cx.emit(RootEvent::MlsPanel(panel.clone()));
         }
         let intent = intent_for(&event, self.store.read(cx).store()).map(Intent::human);
         let outcome = match intent {
@@ -419,6 +426,23 @@ impl IntentRoot {
         }
     }
 
+    /// Asks for the reads the MLS state needs next (a gap fill, the group
+    /// list after a join, the info of a group after a membership or settings
+    /// event). They are reads, each asked once per need: the source's
+    /// started fact marks them asked. Nothing is sent or resent here.
+    fn mls_followups(&mut self, cx: &mut Context<Self>) {
+        let (now, kinds) = {
+            let handle = self.store.read(cx);
+            let Some(session) = handle.session() else { return };
+            let now = session.now();
+            (now, session.store().mls_followups(now))
+        };
+        let _ = now;
+        for kind in kinds {
+            self.store.update(cx, |store, cx| store.dispatch(Intent::human(kind), cx));
+        }
+    }
+
     /// Creates a root dispatching to `store` and wires the strip's events,
     /// which need a window.
     pub fn attach(store: Entity<StoreHandle>, window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -433,8 +457,11 @@ impl IntentRoot {
                     },
                 ),
                 cx.subscribe(&store, |root: &mut Self, _, event: &StoreEvent, cx| {
-                    if matches!(event, StoreEvent::Changed(_)) {
+                    if let StoreEvent::Changed(changes) = event {
                         root.recheck_pending(cx);
+                        if !changes.domain().mls.is_empty() {
+                            root.mls_followups(cx);
+                        }
                     }
                 }),
                 cx.observe_window_activation(window, |root: &mut Self, window, cx| {

@@ -305,12 +305,17 @@ fn every_key_used_in_code_exists() {
 /// Prefixes the code builds keys under at run time (`format!` with an enum
 /// key, or a reason code from the SDK), so their keys are used even when no
 /// literal names them.
-const DYNAMIC_PREFIXES: [&str; 9] = [
+const DYNAMIC_PREFIXES: [&str; 12] = [
     "agents.unavailable.",
     "backend.backup.",
     "backend.failure.action.",
     "backend.message.",
     "backend.service.",
+    // MLS groups: the keys of error codes, join refusals and send states come
+    // from the core (`mls_group::error_key`, `JoinRefusal::key`, `QueueReason::key`).
+    "group.error.",
+    "group.join.refused.",
+    "group.send.",
     "sections.tasks.",
     "settings.section.",
     "theme.family.",

@@ -147,6 +147,9 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
         }
         IntentKind::MlsGroupSend { group_id, text, reply_to, mentions, local_id, retry_of } => {
             p.human_only("send in a group").and_then(|()| writable(p, group_id)).and_then(|()| {
+                if p.store.mls_rate_locked_until(group_id, p.now).is_some() {
+                    return Err(IntentError::MlsRateLocked);
+                }
                 if text.trim().is_empty()
                     || local_id.is_empty()
                     || mentions.len() > mls::MAX_MENTIONS
