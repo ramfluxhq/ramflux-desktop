@@ -105,12 +105,10 @@ impl Translator {
                     is_default: None,
                 }]
             }
-            methods::ACCOUNT_UNLOCK | methods::ACCOUNT_BACKUP_IMPORT => {
+            methods::ACCOUNT_UNLOCK => {
                 let id = AccountId::new(text(answer, "local_account_id"));
                 let mut events = self.opened_account(&id, answer, None);
-                if method == methods::ACCOUNT_UNLOCK {
-                    events.extend(self.app_unlocked(&id));
-                }
+                events.extend(self.app_unlocked(&id));
                 events
             }
             methods::ACCOUNT_LOCK => {

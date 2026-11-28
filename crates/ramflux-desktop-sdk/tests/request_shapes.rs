@@ -17,7 +17,6 @@ use ramflux_desktop_sdk::directory::Directory;
 use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
 use ramflux_desktop_sdk::plan::{Known, Plan, plan};
 use ramflux_sdk::{
-    LocalBusAccountBackupExportRequest, LocalBusAccountBackupImportRequest,
     LocalBusAccountPassphraseRotateRequest, LocalBusAccountUnlockRequest,
     LocalBusConversationDisappearingSetRequest, LocalBusConversationMuteRequest,
     LocalBusDeviceRevokeRequest, LocalBusGrantRevokeRequest,
@@ -122,15 +121,6 @@ fn account_frames_are_the_sdk_account_requests() {
     let unlock: LocalBusAccountUnlockRequest =
         mutation(secret(methods::ACCOUNT_UNLOCK, json!({ "account_id": "acct-x" }), &["pw"]));
     assert_eq!(unlock.passphrase, "pw");
-    let import: LocalBusAccountBackupImportRequest =
-        mutation(secret(methods::ACCOUNT_BACKUP_IMPORT, json!({ "path": "/b" }), &["pw"]));
-    assert_eq!(import.input_path, "/b");
-    let export: LocalBusAccountBackupExportRequest = mutation(secret(
-        methods::ACCOUNT_BACKUP_EXPORT,
-        json!({ "account_id": "acct-main", "path": "/o" }),
-        &["pw"],
-    ));
-    assert_eq!(export.output_path, "/o");
     let rotate: LocalBusAccountPassphraseRotateRequest = mutation(secret(
         methods::ACCOUNT_ROTATE_PASSPHRASE,
         json!({ "account_id": "acct-main" }),

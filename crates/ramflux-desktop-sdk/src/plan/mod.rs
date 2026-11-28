@@ -304,30 +304,6 @@ fn map(
             },
             None => refuse_invalid("missing passphrase"),
         },
-        methods::ACCOUNT_BACKUP_IMPORT => match secrets.pop() {
-            Some(secret) => call(
-                BusRequest::new(
-                    None,
-                    "account",
-                    "account.backup.import",
-                    json!({ "input_path": text(body, "path") }),
-                )
-                .with_secret("passphrase", secret),
-            ),
-            None => refuse_invalid("missing passphrase"),
-        },
-        methods::ACCOUNT_BACKUP_EXPORT => match secrets.pop() {
-            Some(secret) => call(
-                BusRequest::new(
-                    Some(text(body, "account_id")),
-                    "account",
-                    "account.backup.export",
-                    json!({ "output_path": text(body, "path") }),
-                )
-                .with_secret("passphrase", secret),
-            ),
-            None => refuse_invalid("missing backup passphrase"),
-        },
         methods::ACCOUNT_LOCK => call(BusRequest::new(
             Some(text(body, "account_id")),
             "account",

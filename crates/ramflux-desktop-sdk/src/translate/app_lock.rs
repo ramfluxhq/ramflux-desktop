@@ -28,7 +28,10 @@ pub fn app_lock_of(body: &Value) -> AppLock {
         generation: body["generation"].as_u64().unwrap_or(0),
         armed: body["state"].as_str() == Some("armed")
             || body["remaining_ms"].as_u64().is_some_and(|ms| ms > 0),
-        code_retry_after_ms: body["code_retry_after_ms"].as_u64().filter(|ms| *ms > 0),
+        code_retry_after_ms: body["code_retry_after_secs"]
+            .as_u64()
+            .map(|secs| secs.saturating_mul(1_000))
+            .filter(|ms| *ms > 0),
         code_attempts_exhausted: body["code_attempts_exhausted"].as_bool().unwrap_or(false),
     }
 }

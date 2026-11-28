@@ -574,7 +574,7 @@ pub fn settings<H: Host, D: DemoDaemon>(
     let desk = demo.sides[0].desk()?;
     desk.open_settings(demo.host, SettingsSection::Account);
     let account = demo.wait(0, demo.config.limits.answer, "the account page", |desk, host| {
-        desk.exists(host, "rotate-current") || desk.exists(host, "backup-passphrase")
+        desk.exists(host, "rotate-current")
     });
     let listed = demo.read(0, |s| s.accounts().map(|a| a.id.to_string()).collect::<Vec<_>>())?;
     notes.add(format!("account page drawn: {}; accounts listed {listed:?}", account.is_ok()));

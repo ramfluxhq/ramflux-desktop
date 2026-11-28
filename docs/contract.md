@@ -334,10 +334,9 @@ The kinds, by area:
   role }`: an invitation names the invited participant), `RevokeGrant`,
   `RevokeStandingApproval`.
 - Entry: `Unlock`, `CreateAccount { kind, label, node_id, secret }`,
-  `ActivateDevice { node_id, device_label, code }`, `RestoreBackup { path,
-  secret }`, `AddNode { url }`, `ConfirmNode { node_id, pin_source }`.
+  `ActivateDevice { node_id, device_label, code }`, `AddNode { url }`, `ConfirmNode { node_id, pin_source }`.
 - Settings: `LockAccount`, `RotatePassphrase { current, next }`,
-  `ExportBackup { account_id, path, secret }`, `RevokeDevice`, `SyncDevices`, `ProbeNode`, `RemoveNode`,
+  `RevokeDevice`, `SyncDevices`, `ProbeNode`, `RemoveNode`,
   `SetDefaultNode`, `SetNodeEnabled`, `ExportDiagnostics`.
 - Backup: `CreateBackup { account_id, path, secret,
   allow_missing_attachments }`, `VerifyRestore { path, secret }`,
@@ -800,10 +799,9 @@ until then (or with `SdkConfig::backup_api` false) they are declared
 unsupported (`backend.gap.full_backup`) and Settings · Backup shows its
 buttons disabled with that reason. The daemon snapshot reads it too: with
 no account open (the entry page of a fresh device) the same job API runs a
-full restore at daemon scope. The older `account.backup.export` /
-`account.backup.import` (manifest and contacts only) stay as they are:
-Settings · Account calls it a key backup, and the entry page offers it as
-"Key backup" beside the full restore.
+full restore at daemon scope. The older key backup methods
+(`account.backup.export` / `account.backup.import`) were removed from the
+daemon; the desktop has no key backup flow.
 
 **Store.** A `BackupJob` (`BackupJobId`, `kind` Backup | Restore, `path`,
 `phase`, the daemon's rising per-job `version`, `started_at`,

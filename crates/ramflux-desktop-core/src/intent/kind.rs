@@ -554,14 +554,6 @@ pub enum IntentKind {
         /// One-shot secret.
         secret: SecretInput,
     },
-    /// Restore an account from an encrypted backup. Not serializable.
-    #[serde(skip)]
-    RestoreBackup {
-        /// Backup file chosen by the user.
-        path: String,
-        /// Backup passphrase.
-        secret: SecretInput,
-    },
     /// Discover a node from a URL; the source answers with an unconfirmed node.
     AddNode {
         /// Node URL or id.
@@ -591,16 +583,6 @@ pub enum IntentKind {
         current: SecretInput,
         /// New passphrase.
         next: SecretInput,
-    },
-    /// Export an encrypted backup to a local path. Not serializable.
-    #[serde(skip)]
-    ExportBackup {
-        /// Account.
-        account_id: AccountId,
-        /// Local path chosen by the user.
-        path: String,
-        /// Passphrase the backup is encrypted with.
-        secret: SecretInput,
     },
     /// Write a full backup of an account (everything it holds, every file)
     /// to a local path. Not serializable.

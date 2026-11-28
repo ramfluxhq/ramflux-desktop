@@ -29,8 +29,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 use unicode_width::UnicodeWidthStr;
 
 use super::remove::LockNotice;
-use super::{AccountPath, EntryPage, RestoreKind};
-use crate::file_dialog;
+use super::{AccountPath, EntryPage};
 use crate::i18n::{self, tr, tr_args};
 use crate::ids::domain_id;
 
@@ -39,10 +38,6 @@ fn take_secret(input: &Entity<InputState>, window: &mut Window, cx: &mut App) ->
     let secret = SecretInput::new(input.read(cx).value().to_string());
     input.update(cx, |input, cx| input.set_value("", window, cx));
     secret
-}
-
-fn text(input: &Entity<InputState>, cx: &App) -> String {
-    input.read(cx).value().trim().to_owned()
 }
 
 impl EntryPage {
@@ -102,13 +97,6 @@ impl EntryPage {
         self.removed_notice = false;
         self.submitted = Some(account_id.clone());
         self.submit_secret(IntentKind::Unlock { account_id, secret }, window, cx);
-    }
-
-    /// Restores an account from a backup file.
-    pub fn restore(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let path = text(&self.inputs.backup_path, cx);
-        let secret = take_secret(&self.inputs.backup_secret, window, cx);
-        self.submit_secret(IntentKind::RestoreBackup { path, secret }, window, cx);
     }
 
     /// The user asked to recover `account` with its recovery phrase: the
@@ -479,23 +467,6 @@ impl EntryPage {
             .child(form)
     }
 
-    fn field(
-        label: &str,
-        input: &Entity<InputState>,
-        id: &'static str,
-        masked: bool,
-        cx: &App,
-    ) -> AnyElement {
-        let label = tr(label);
-        let input = Input::new(input).id(id).aria_label(label.clone());
-        crate::settings::presentation::field(
-            label,
-            if masked { input.mask_toggle() } else { input },
-            cx,
-        )
-        .into_any_element()
-    }
-
     /// "Create account with recovery phrase": the only creation path.
     fn render_phrase_entry(&self, cx: &mut Context<Self>) -> AnyElement {
         v_flex()
@@ -527,95 +498,16 @@ impl EntryPage {
             .into_any_element()
     }
 
-    /// Picks the backup file with the native open dialog and fills the
-    /// path input (view-local; nothing is submitted).
-    fn browse_backup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let input = self.inputs.backup_path.clone();
-        file_dialog::open_file(tr("entry.restore.path"), window, cx, move |path, window, cx| {
-            input.update(cx, |input, cx| input.set_value(path, window, cx));
-        });
-    }
-
     fn render_restore(&self, cx: &mut Context<Self>) -> AnyElement {
-        let kinds = [
-            (RestoreKind::Full, tr("entry.restore.full")),
-            (RestoreKind::Key, tr("entry.restore.key")),
-        ];
-        let kind = self.restore_kind.unwrap_or_else(|| {
-            let store = self.store.read(cx).store();
-            if store.unsupported_reason(methods::RESTORE_VERIFY).is_some() {
-                RestoreKind::Key
-            } else {
-                RestoreKind::Full
-            }
-        });
-        let choice = self.segment(
-            "entry-restore-kind",
-            &kinds,
-            kind,
-            |this, kind| this.restore_kind = Some(kind),
-            cx,
-        );
-        let muted = cx.theme().muted_foreground;
-        if kind == RestoreKind::Full {
-            return v_flex()
-                .gap(space(3.))
-                .child(choice)
-                .child(
-                    div()
-                        .text_size(text_secondary())
-                        .text_color(muted)
-                        .child(tr("entry.restore.full_help")),
-                )
-                .child(
-                    div().id("entry-full-restore").test_support().child(self.full_restore.clone()),
-                )
-                .into_any_element();
-        }
         v_flex()
             .gap(space(3.))
-            .child(choice)
             .child(
                 div()
                     .text_size(text_secondary())
-                    .text_color(muted)
-                    .child(tr("entry.restore.key_help")),
+                    .text_color(cx.theme().muted_foreground)
+                    .child(tr("entry.restore.full_help")),
             )
-            .child(
-                h_flex()
-                    .gap(space(2.))
-                    .items_end()
-                    .child(div().flex_1().min_w_0().child(Self::field(
-                        "entry.restore.path",
-                        &self.inputs.backup_path,
-                        "backup-path",
-                        false,
-                        cx,
-                    )))
-                    .child(
-                        Button::new("backup-browse")
-                            .design_secondary(cx)
-                            .design_label(tr("entry.restore.browse"))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.browse_backup(window, cx);
-                            })),
-                    ),
-            )
-            .child(Self::field(
-                "entry.restore.passphrase",
-                &self.inputs.backup_secret,
-                "backup-secret",
-                true,
-                cx,
-            ))
-            .child(
-                h_flex().child(
-                    Button::new("account-restore")
-                        .design_primary(cx)
-                        .design_label(tr("entry.restore.submit"))
-                        .on_click(cx.listener(|this, _, window, cx| this.restore(window, cx))),
-                ),
-            )
+            .child(div().id("entry-full-restore").test_support().child(self.full_restore.clone()))
             .into_any_element()
     }
 }

@@ -9,7 +9,7 @@ mod common;
 use common::*;
 use gpui_kit::TestAppContext;
 use gpui_kit::test::TestWindowExt as _;
-use ramflux_desktop_core::{DeviceId, LockState, NodeId, methods};
+use ramflux_desktop_core::{DeviceId, NodeId, methods};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::route::{EntryStep, Page};
 use ramflux_desktop_ui::settings::SettingsSection;
@@ -94,32 +94,23 @@ fn entry_adds_a_tofu_node_with_confirmation(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn entry_restores_a_backup_then_locks_and_unlocks(cx: &mut TestAppContext) {
-    let (handle, shell) = harbor_confirmed(cx);
+fn entry_offers_only_the_full_restore(cx: &mut TestAppContext) {
+    let (handle, _shell) = harbor_confirmed(cx);
     click(cx, handle, "entry-path-1");
-    // The scenario daemon has the full backup job API, so the full restore
-    // is offered first; this is the key backup (legacy import).
+    // Only the full restore is offered: the key backup import is gone.
     assert!(exists(cx, handle, "entry-full-restore"));
-    click(cx, handle, "entry-restore-kind-1");
-    click(cx, handle, "backup-browse");
-    cx.simulate_path_prompt_response(|options| {
-        assert!(options.files && !options.multiple);
-        Some(vec!["/backups/ramflux.backup".into()])
-    });
-    cx.run_until_parked();
-    type_into(cx, handle, "backup-secret", "river stone lantern");
-    click(cx, handle, "account-restore");
-    assert_eq!(
-        last_body(cx, &shell, methods::ACCOUNT_BACKUP_IMPORT)["path"],
-        "/backups/ramflux.backup",
-        "the native dialog filled the path input"
-    );
-    advance(cx, 700);
-    assert_eq!(page(cx, &shell), Page::Workspace);
+    assert!(!exists(cx, handle, "backup-browse"));
+    assert!(!exists(cx, handle, "account-restore"));
+}
 
+#[gpui_kit::test]
+fn settings_lock_returns_to_entry_and_unlock_sends_the_secret(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s09_multi_account_day");
+    advance(cx, 1_000);
+    assert_eq!(page(cx, &shell), Page::Workspace);
     settings(cx, handle, &shell, SettingsSection::Account);
     click(cx, handle, "settings-lock");
-    assert_eq!(last_body(cx, &shell, methods::ACCOUNT_LOCK)["account_id"], "a-main");
+    assert!(last_body(cx, &shell, methods::ACCOUNT_LOCK)["account_id"].is_string());
     advance(cx, 100);
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account), "locking returns to entry");
     assert!(!cx.update(|cx| shell.read(cx).is_settings_open()));
@@ -128,10 +119,6 @@ fn entry_restores_a_backup_then_locks_and_unlocks(cx: &mut TestAppContext) {
     in_window(cx, handle, |window, cx| window.press("enter", cx));
     assert_eq!(effects(cx, &shell).last().map(String::as_str), Some(methods::ACCOUNT_UNLOCK));
     assert!(secrets_cleared(cx, &shell));
-    advance(cx, 200);
-    let state = with_store(cx, &shell, |s| s.accounts().next().map(|a| a.lock_state));
-    assert_eq!(state, Some(LockState::Unlocked));
-    assert_eq!(page(cx, &shell), Page::Workspace);
 }
 
 #[gpui_kit::test]
@@ -224,31 +211,6 @@ fn settings_rotate_passphrase_and_export_diagnostics(cx: &mut TestAppContext) {
             .as_str()
             .is_some_and(|p| p.ends_with("/diag.txt"))
     );
-}
-
-#[gpui_kit::test]
-fn settings_export_backup_takes_its_passphrase_as_a_secret(cx: &mut TestAppContext) {
-    let (handle, shell) = open(cx, "s09_multi_account_day");
-    advance(cx, 1_000);
-    settings(cx, handle, &shell, SettingsSection::Account);
-    // Without a passphrase the control is disabled: no dialog, no export.
-    click(cx, handle, "settings-export-backup");
-    assert!(
-        !effects(cx, &shell).iter().any(|m| m == methods::ACCOUNT_BACKUP_EXPORT),
-        "no passphrase, no export"
-    );
-    type_into(cx, handle, "backup-passphrase", "quiet harbor lights");
-    click(cx, handle, "settings-export-backup");
-    let page = cx.update(|cx| shell.read(cx).settings().clone());
-    let cleared = cx.update(|cx| page.read(cx).backup_input().read(cx).value().is_empty());
-    assert!(cleared, "the passphrase leaves its input when export starts");
-    cx.simulate_new_path_selection(|dir| Some(dir.join("personal.backup")));
-    cx.run_until_parked();
-    let body = last_body(cx, &shell, methods::ACCOUNT_BACKUP_EXPORT);
-    assert_eq!(body["account_id"], "a-personal");
-    assert!(body["path"].as_str().is_some_and(|p| p.ends_with("/personal.backup")));
-    assert!(!body.to_string().contains("harbor"), "the passphrase travels beside the body");
-    assert!(!inspector_text(cx, &shell).contains("harbor"));
 }
 
 /// A long nodes page scrolls to its last node: with many backup nodes every

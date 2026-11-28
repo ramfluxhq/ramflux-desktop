@@ -75,7 +75,7 @@ from a debug build (for example a temporary call to
 
 | # | Check | How | A | B | C | D |
 |---|---|---|---|---|---|---|
-| 5.1 | File dialogs through the portal | Settings › Diagnostics export, backup export: the portal dialog opens (Omarchy: Folio or GTK) | | | | |
+| 5.1 | File dialogs through the portal | Settings › Diagnostics export: the portal dialog opens (Omarchy: Folio or GTK) | | | | |
 | 5.2 | Tiling | Hyprland tiled: no in-app title bar row, no duplicate buttons; resizing by the tiling layout works at any size down to 640×480 | | | | |
 | 5.3 | Floating | Omarchy 4.5 floating workspace: the compositor's themed title bar only; GNOME floating window: the app's bar with working close, drag and double-click | | | | |
 | 5.4 | Half-snapped and maximized | GNOME snapped left and maximized: the app's bar stays | | | | |
