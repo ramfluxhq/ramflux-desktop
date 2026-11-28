@@ -24,6 +24,9 @@ pub struct ConfirmRequest {
     runtime_path: Option<String>,
     /// An install with no `prx` file found has nothing to confirm.
     confirmable: bool,
+    /// Confirming grants authority (an approval, a role or member change, a
+    /// program install, trust in a node): the strip opens on Cancel.
+    grants_authority: bool,
 }
 
 impl ConfirmRequest {
@@ -44,7 +47,15 @@ impl ConfirmRequest {
             Actor::Agent(id) | Actor::Member(id) => Some(display_name(store, id).into()),
         };
         let confirmable = !install || runtime_path.is_some();
-        Self { summary, detail, risk, proposed_by, runtime_path, confirmable }
+        let grants_authority = matches!(
+            &intent.kind,
+            IntentKind::Approve { .. }
+                | IntentKind::SurfaceAction { .. }
+                | IntentKind::Governance { .. }
+                | IntentKind::ConfirmNode { .. }
+                | IntentKind::AgentRuntime { action: AgentRuntimeAction::Install, .. }
+        );
+        Self { summary, detail, risk, proposed_by, runtime_path, confirmable, grants_authority }
     }
 
     /// Whether Confirm may act: an install is confirmed for a `prx` file the
@@ -77,6 +88,17 @@ impl ConfirmRequest {
     /// strip opens with the focus on Cancel, never on Confirm.
     pub fn is_destructive(&self) -> bool {
         self.risk.requires_confirmation()
+    }
+
+    /// Whether confirming grants authority to someone or something.
+    pub fn grants_authority(&self) -> bool {
+        self.grants_authority
+    }
+
+    /// Whether the strip opens with the focus on Cancel: a destructive
+    /// request, or one that grants authority.
+    pub fn focuses_cancel(&self) -> bool {
+        self.is_destructive() || self.grants_authority
     }
 
     /// Display name of the agent that proposed the intent, if an agent did.

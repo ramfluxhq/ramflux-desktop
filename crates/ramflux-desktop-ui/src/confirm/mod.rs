@@ -11,11 +11,12 @@
 //! and Confirm beside it. One click on Confirm, or one press of Enter or
 //! Space while it has the focus, confirms; Cancel or Escape dismisses.
 //!
-//! A destructive request (high or critical risk) opens with the focus on
-//! Cancel, so Tab (or the pointer) has to reach Confirm; other requests open
-//! on Confirm. A key only activates either button after a fresh key-down
-//! inside the open strip: the key that opened it, held down or repeating,
-//! never confirms or cancels it.
+//! A destructive request (high or critical risk), or one that grants
+//! authority (an approval, a role or member change, a program install,
+//! trust in a node), opens with the focus on Cancel, so Tab (or the pointer)
+//! has to reach Confirm; other requests open on Confirm. A key only
+//! activates either button after a fresh key-down inside the open strip: the
+//! key that opened it, held down or repeating, never confirms or cancels it.
 
 use crate::actions::{CONFIRM_CONTEXT, CancelConfirmation};
 use crate::i18n::{tr, tr_args};
@@ -74,9 +75,10 @@ impl ConfirmStrip {
     }
 
     /// Shows `request` and moves keyboard focus into the strip: to Cancel
-    /// for a destructive request, to Confirm otherwise.
+    /// for a destructive request or one that grants authority, to Confirm
+    /// otherwise.
     pub fn open(&mut self, request: ConfirmRequest, window: &mut Window, cx: &mut Context<Self>) {
-        let target = if request.is_destructive() { &self.cancel_focus } else { &self.focus_handle };
+        let target = if request.focuses_cancel() { &self.cancel_focus } else { &self.focus_handle };
         window.focus(target, cx);
         self.request = Some(request);
         self.fresh_key = false;
