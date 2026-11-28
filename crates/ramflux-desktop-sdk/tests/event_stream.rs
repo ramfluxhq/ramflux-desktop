@@ -177,7 +177,12 @@ fn every_topic_calls_for_its_reads_and_nothing_is_polled() {
             json!({ "link_id": "l", "requester_id": "a", "target_id": "b" }),
             &["contact.list", "identity.directory"],
         ),
-        ("safety.changed", json!({ "id": "principal-ana" }), &["identity.directory"]),
+        (
+            "contact.identity_changed",
+            json!({ "contact": "principal-ana", "username": "ana",
+                    "previous_anchor": "A1", "new_anchor": "A2", "ai_flag": false }),
+            &["contact.verification.status"],
+        ),
         ("mcp.approval.request", json!({ "approval_id": "appr-9" }), &["mcp.approval.list"]),
         ("message.unrouted", json!({ "envelope_id": "e" }), &["conversation.directory"]),
     ];

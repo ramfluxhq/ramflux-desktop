@@ -142,6 +142,36 @@ impl Store {
                 changes.participants.insert(participant.id.clone());
                 self.participants.insert(participant.id.clone(), participant.clone());
             }
+            DomainEvent::IdentityChanged {
+                participant,
+                username,
+                previous_anchor,
+                new_anchor,
+                ai_flag,
+            } => {
+                let change = crate::model::IdentityChange {
+                    previous_anchor: previous_anchor.clone(),
+                    new_anchor: new_anchor.clone(),
+                    username: username.clone(),
+                    seen_at: at,
+                };
+                self.identity_changed(at, participant, change, *ai_flag, changes)?;
+            }
+            DomainEvent::IdentityStateRead { participant, state } => {
+                self.identity_state_read(participant, *state, changes)?;
+            }
+            DomainEvent::IdentityAccepted { participant, new_anchor } => {
+                self.identity_accepted(at, participant, new_anchor.as_deref(), changes)?;
+            }
+            DomainEvent::IdentityAcceptFailed { participant, reason } => {
+                self.identity_accept_failed(participant, *reason, changes)?;
+            }
+            DomainEvent::ConversationSecurityRead { context, security } => {
+                self.conversation_security(at, context, security, changes)?;
+            }
+            DomainEvent::SendBlockedByIdentity { context, participant, moment } => {
+                self.send_blocked_by_identity(context, participant, moment, changes)?;
+            }
             DomainEvent::ContextUpserted(context) => self.upsert_context(context, changes),
             DomainEvent::ContextSettingsChanged { context_id, pinned, muted, disappearing } => {
                 self.context_settings(context_id, *pinned, *muted, *disappearing, changes)?;

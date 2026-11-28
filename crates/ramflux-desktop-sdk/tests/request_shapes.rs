@@ -74,7 +74,7 @@ fn planned(effect: Effect) -> Plan {
 
 fn request(effect: Effect) -> BusRequest {
     match planned(effect) {
-        Plan::Call { request, .. } | Plan::Verify { lookup: request, .. } => request,
+        Plan::Call { request, .. } => request,
         other => panic!("expected a call, got {other:?}"),
     }
 }

@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use ramflux_desktop_core::{
     Account, AccountId, AccountKind, Context, ContextId, ContextKind, DomainEvent, Lifecycle,
     Listing, LockState, MessagePayload, Moment, MomentId, MomentKind, Participant, ParticipantId,
-    ParticipantKind, Receipt, SafetyState, SourceStatus, Timestamp,
+    ParticipantKind, Receipt, SourceStatus, Timestamp,
 };
 
 use crate::scenario::{DEFAULT_EPOCH, Scenario};
@@ -26,9 +26,10 @@ fn participant(id: &str, display: &str) -> DomainEvent {
         id: ParticipantId::new(id),
         kind: ParticipantKind::Human,
         display: display.to_owned(),
-        safety: SafetyState::Verified,
+        identity: ramflux_desktop_core::IdentityState::Verified,
+        pending_change: None,
+        ai_flag: false,
         contact: true,
-        safety_number: None,
         link: ramflux_desktop_core::ContactLink::None,
         reachable: None,
         kind_claim: ramflux_desktop_core::KindClaim::None,

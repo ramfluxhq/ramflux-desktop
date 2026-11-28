@@ -5,10 +5,9 @@
 //!
 //! The first message creates the conversation. Only the attended human
 //! starts one, only with an accepted contact (the daemon refuses a message
-//! to anyone else), never with this account's own identity, and never while
-//! the contact's key changed or forked without being verified again (a
-//! stale verification refuses nothing; the draft asks the user to
-//! acknowledge it). The id
+//! to anyone else) and never with this account's own identity. A contact whose
+//! identity change is not accepted is not refused here: the send is, by the
+//! SDK, until the user accepts the change. The id
 //! of the new conversation is fresh and must not name a known context.
 
 use serde_json::json;
@@ -56,8 +55,6 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
 ///
 /// [`IntentError::UnknownParticipant`], [`IntentError::SelfParticipant`],
 /// [`IntentError::ContactLinkState`] (not an accepted contact) or
-/// [`IntentError::SafetyUnresolved`] (key changed or forked; never a stale
-/// verification) or
 /// [`IntentError::NotReachable`] (none of their devices is known yet).
 pub fn check_start_conversation(
     store: &Store,
@@ -72,9 +69,6 @@ pub fn check_start_conversation(
     let link = contact.link_state();
     if link != ContactLink::Accepted {
         return Err(IntentError::ContactLinkState { participant: participant.clone(), link });
-    }
-    if contact.safety.refuses_contact() {
-        return Err(IntentError::SafetyUnresolved(participant.clone()));
     }
     if contact.reachable == Some(false) {
         return Err(IntentError::NotReachable(participant.clone()));

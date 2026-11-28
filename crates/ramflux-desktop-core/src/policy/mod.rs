@@ -34,6 +34,7 @@ mod conversation;
 mod error;
 mod governance;
 mod groups;
+mod identity;
 mod moments;
 mod recovery;
 mod start;
@@ -119,7 +120,7 @@ impl Policy<'_> {
 /// follow the same rules. Agents may never unlock, create, activate or
 /// restore an account, rotate its passphrase, export a backup, back up or
 /// restore in full, create an account with a recovery phrase, sync or revoke
-/// devices, confirm a node, verify a safety number, answer a handoff, add a
+/// devices, confirm a node, accept an identity change, answer a handoff, add a
 /// contact, share the contact card, start a conversation, or create a group. Grants whose expiry is at or before `now` cannot be approved or
 /// denied.
 ///
@@ -160,6 +161,7 @@ pub fn handle_intent(
         .or_else(|| moments::decide(&policy, &intent.kind))
         .or_else(|| governance::decide(&policy, &intent.kind))
         .or_else(|| contacts::decide(&policy, &intent.kind))
+        .or_else(|| identity::decide(&policy, &intent.kind))
         .or_else(|| start::decide(&policy, &intent.kind))
         .or_else(|| groups::decide(&policy, &intent.kind))
         .or_else(|| calls::decide(&policy, &intent.kind))

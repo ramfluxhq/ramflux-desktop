@@ -14,9 +14,7 @@ use ramflux_desktop_core::{AccountId, ContextId, ContextKind, Effect, FailureCod
 use ramflux_desktop_sdk::bus::BusRequest;
 use ramflux_desktop_sdk::directory::Directory;
 use ramflux_desktop_sdk::plan::{Known, Plan, plan};
-use ramflux_sdk::{
-    LocalBusContactSafetyRequest, LocalBusGroupMemberAddRequest, LocalBusMessageSubmitRequest,
-};
+use ramflux_sdk::{LocalBusGroupMemberAddRequest, LocalBusMessageSubmitRequest};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
@@ -52,7 +50,7 @@ fn planned(method: &str, body: Value) -> Plan {
 
 fn one(plan: Plan) -> BusRequest {
     match plan {
-        Plan::Call { request, .. } | Plan::Verify { lookup: request, .. } => request,
+        Plan::Call { request, .. } => request,
         other => panic!("one request expected, got {other:?}"),
     }
 }
@@ -137,15 +135,20 @@ fn a_conversation_without_a_route_is_refused_with_the_reason() {
 }
 
 #[test]
-fn verification_names_the_contact_commitment_from_the_identity_directory() {
-    let request =
-        one(planned(methods::SAFETY_VERIFY, json!({ "participant_id": "principal-ana" })));
-    assert_eq!(request.method, "contact.safety_number", "the compared snapshot is read first");
-    let verify: LocalBusContactSafetyRequest = typed(&request, &[]);
-    assert_eq!(verify.contact_identity_commitment, "cm-ana");
-    let unknown =
-        refused(planned(methods::SAFETY_VERIFY, json!({ "participant_id": "principal-zed" })));
-    assert_eq!(unknown, "backend.gap.no_commitment");
+fn the_identity_calls_name_the_contact_commitment_and_the_shown_anchor() {
+    let body = json!({ "participant_id": "principal-ana", "new_anchor": "A2" });
+    let accept = planned(methods::IDENTITY_ACCEPT_CHANGE, body);
+    let Plan::Call { request, refresh } = accept else { panic!("one call") };
+    assert_eq!(request.method, "contact.trust.accept_change");
+    assert_eq!(request.body, json!({ "contact": "cm-ana", "new_anchor": "A2" }));
+    assert_eq!(refresh.len(), 1, "the status is read again");
+    let status =
+        one(planned(methods::IDENTITY_STATUS, json!({ "participant_id": "principal-ana" })));
+    assert_eq!(status.method, "contact.verification.status");
+    assert_eq!(status.body, json!({ "contact": "cm-ana" }));
+    let security = one(planned(methods::CONVERSATION_SECURITY, json!({ "context_id": "dm-ana" })));
+    assert_eq!(security.method, "conversation.security");
+    assert_eq!(security.body, json!({ "conversation_id": "dm-ana" }));
 }
 
 #[test]

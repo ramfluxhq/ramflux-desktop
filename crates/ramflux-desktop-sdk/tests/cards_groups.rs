@@ -10,7 +10,7 @@ mod common;
 
 use ramflux_desktop_core::{
     AccountId, ContactCard, ContactLink, ContextId, ContextKind, DomainEvent, Effect, FailureCode,
-    KindClaim, Participant, ParticipantKind, PeerKind, RootSource, SafetyState, Timestamp, methods,
+    KindClaim, Participant, ParticipantKind, PeerKind, RootSource, Timestamp, methods,
 };
 use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::directory::Directory;
@@ -160,7 +160,6 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
         // An unproven claim draws no AI marker.
         (ParticipantKind::Unknown, KindClaim::Asserted(PeerKind::HeadlessAi))
     );
-    assert_eq!(kai[0].safety, SafetyState::Unverified);
     assert_eq!(kai[0].root_source, Some(RootSource::Card), "the card pinned the root");
     assert_eq!(kai[0].link, ContactLink::Accepted);
     let again = participants(&t.effect_done(
@@ -175,7 +174,7 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
         record(
             "root-lu",
             json!({
-                "principal_id": "principal-lu", "reachable": false, "verified": true,
+                "principal_id": "principal-lu", "reachable": false,
                 "root_source": "lookup",
             }),
         ),
@@ -184,10 +183,7 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
     let people = participants(&t.fetched(&Fetch::ContactList, &listed, Timestamp(2)).events);
     let lu = people.iter().find(|p| p.id.as_str() == "principal-lu").expect("lu");
     // The row names the contact even when the link names its root.
-    assert_eq!(
-        (lu.reachable, lu.safety, lu.root_source),
-        (Some(false), SafetyState::Verified, Some(RootSource::Lookup))
-    );
+    assert_eq!((lu.reachable, lu.root_source), (Some(false), Some(RootSource::Lookup)));
     let old = people.iter().find(|p| p.id.as_str() == "principal-old").expect("old");
     assert_eq!(
         (old.reachable, old.kind_claim),
@@ -195,9 +191,9 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
         "an older daemon reports neither"
     );
 
-    // The identity directory stays the authority for safety and kind.
+    // The identity directory stays the authority for the kind.
     let identities = json!({ "identities": [{
-        "principal_id": "principal-lu", "kind": "human", "safety_state": "unverified",
+        "principal_id": "principal-lu", "kind": "human",
         "root_source": "verified", "devices": [],
     }], "next_cursor": null });
     let people = participants(
@@ -206,13 +202,8 @@ fn a_resolving_daemon_reports_reachability_verification_and_the_claimed_kind() {
     let lu = people.iter().find(|p| p.id.as_str() == "principal-lu").expect("lu");
     // A directory kind without a verified profile is only asserted.
     assert_eq!(
-        (lu.kind, lu.kind_claim, lu.safety, lu.root_source),
-        (
-            ParticipantKind::Human,
-            KindClaim::Asserted(PeerKind::Human),
-            SafetyState::Unverified,
-            Some(RootSource::Verified)
-        )
+        (lu.kind, lu.kind_claim, lu.root_source),
+        (ParticipantKind::Human, KindClaim::Asserted(PeerKind::Human), Some(RootSource::Verified))
     );
 }
 

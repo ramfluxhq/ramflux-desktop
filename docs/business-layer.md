@@ -14,7 +14,7 @@ reconciliation. Planning is not evidence that an operation succeeded.
 | Area | Existing adapter/policy | New presentation/read seam |
 | --- | --- | --- |
 | Conversations | Send/start, mute, disappear, pin, history and source receipts | Full paged directory, title/member/cached-body search, activity for unloaded histories, unread/attention and outgoing receipts |
-| Contacts/strangers | Request accept/decline/block, contact links, safety verification and request settings | Pending-request totals; bounded batch validation preserving each block confirmation |
+| Contacts/strangers | Request accept/decline/block, contact links, identity changes and request settings | Pending-request totals; bounded batch validation preserving each block confirmation |
 | Groups/roles | Create/rename, membership, invitations and role changes | Directory/identity/contact read plan; existing governance policy and daemon authority retained |
 | Agents | Owner custody ceremony and one-shot credential export | Runtime/tool/scope draft validation against an explicit offered catalog; no default permissions |
 | Devices | List/revoke and existing sync capability refusals | Exact-device platform/origin facts, browser operator warning and missing-origin state |

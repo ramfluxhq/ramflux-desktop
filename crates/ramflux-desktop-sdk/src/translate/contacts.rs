@@ -4,14 +4,14 @@
 //! Participants and contact links.
 //!
 //! A participant is a principal. What is known about it comes from two
-//! lists: the identity directory (display name, kind, safety) and the
+//! lists: the identity directory (display name, kind) and the
 //! daemon's friend-link records (`contact.list`, and the record each
 //! `contact.*` call answers with), which name a requester and a target
 //! principal; the other side of a link is the contact. A pending link is
 //! incoming unless this account is its requester. Whatever neither list
 //! reports stays unknown: the short id is shown for a missing name, the kind is
-//! `Unknown` and safety `Unverified` until the identity directory says
-//! otherwise.
+//! `Unknown` and its identity `Tofu` until a status read or a change event
+//! says otherwise (see [`IdentityRecord`]).
 //!
 //! The daemon resolves contacts at add time and reports, on each
 //! `contact.list` row (the link record joined with the contact entry) and
@@ -22,10 +22,9 @@
 //! | `principal_id` | the contact (the link's ids may be root commitments) |
 //! | `display_name` (string or null) | the name, when the identity directory has none (a card's or profile's name) |
 //! | `reachable` (bool) | `reachable`: it holds a verified device to send to |
-//! | `verified` (bool) | safety `Verified`, when the identity directory has no row |
 //! | `kind_asserted` (`human` / `headless_ai` / `bot`, or null) with `kind_verified` (bool) | the kind claim: `Verified` when a root-signed public profile states it, else `Asserted`; null is `None` (the safe default) |
 //! | `display_name_confusable_with` (principal id or null), `mixed_script` (bool) | the name warnings |
-//! | `root_source` `lookup` / `card` / `verified` | `root_source`: provisional name lookup, pinned by a card, or compared |
+//! | `root_source` `lookup` / `card` / `verified` | `root_source`: provisional name lookup, pinned by a card, or confirmed |
 //!
 //! A record without these fields leaves them unreported (`reachable` and
 //! `root_source` none, the kind claim `None`, no name warning). The
@@ -42,9 +41,9 @@
 //! also after a restart.
 
 use ramflux_desktop_core::{
-    ContactLink, DomainEvent, KindClaim, Lifecycle, Moment, MomentId, MomentKind,
-    NameChangePayload, NameWarnings, Participant, ParticipantId, ParticipantKind, PeerKind,
-    RootSource, SafetyState, Timestamp,
+    ContactLink, DomainEvent, IdentityChange, IdentityState, KindClaim, Lifecycle, Moment,
+    MomentId, MomentKind, NameChangePayload, NameWarnings, Participant, ParticipantId,
+    ParticipantKind, PeerKind, RootSource, Timestamp,
 };
 use serde_json::Value;
 
@@ -61,10 +60,6 @@ pub(crate) struct Facts {
     pub claim: KindClaim,
     /// Name warnings.
     pub warnings: NameWarnings,
-    /// Verification state.
-    pub safety: SafetyState,
-    /// Persisted safety number.
-    pub safety_number: Option<String>,
     /// Where the pinned root came from.
     pub root_source: Option<RootSource>,
 }
@@ -142,8 +137,6 @@ pub(crate) struct Resolution {
     pub display: Option<String>,
     /// Whether a verified device to send to is held.
     pub reachable: Option<bool>,
-    /// Whether the contact's safety number was verified.
-    pub verified: bool,
     /// The kind claim.
     pub claim: KindClaim,
     /// Name warnings.
@@ -157,7 +150,6 @@ impl Resolution {
         Self {
             display: crate::directory::field(record, "display_name"),
             reachable: record["reachable"].as_bool(),
-            verified: record["verified"].as_bool().unwrap_or(false),
             claim: kind_claim(record, "kind_asserted"),
             warnings: name_warnings(record),
             root_source: root_source(record),
@@ -172,17 +164,32 @@ pub(crate) struct Person {
     pub facts: Option<Facts>,
     /// From the friend-link records.
     pub link: ContactLink,
+    /// From the status reads and change events of the SDK.
+    pub identity: IdentityRecord,
     /// From the friend-link records of a resolving daemon.
     pub resolution: Resolution,
 }
 
+/// What the SDK said about a contact's identity: `contact.verification.status`
+/// and `contact.identity_changed`. Never read from a list row.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct IdentityRecord {
+    /// The state.
+    pub state: IdentityState,
+    /// The change waiting for the user, when its event was seen.
+    pub pending: Option<IdentityChange>,
+    /// The SDK's AI flag.
+    pub ai_flag: bool,
+    /// The contact identifier the SDK used for this contact in its last
+    /// event or refusal; sent back unchanged.
+    pub contact_ref: Option<String>,
+}
+
 impl Person {
-    fn participant(&self, id: &ParticipantId) -> Participant {
+    pub(super) fn participant(&self, id: &ParticipantId) -> Participant {
         let listed = self.facts.is_some();
         let facts = self.facts.clone().unwrap_or_default();
         let resolution = &self.resolution;
-        let safety =
-            if !listed && resolution.verified { SafetyState::Verified } else { facts.safety };
         // A proven claim wins; else the directory's, else the link's.
         let kind_claim = match (facts.claim, resolution.claim) {
             (KindClaim::Verified(kind), _) | (_, KindClaim::Verified(kind)) => {
@@ -209,9 +216,10 @@ impl Person {
                 .display
                 .or_else(|| resolution.display.clone())
                 .unwrap_or_else(|| id.short()),
-            safety,
+            identity: self.identity.state,
+            pending_change: self.identity.pending.clone(),
+            ai_flag: self.identity.ai_flag,
             contact: self.link == ContactLink::Accepted,
-            safety_number: facts.safety_number,
             link: self.link,
             reachable: resolution.reachable,
             kind_claim,
@@ -328,12 +336,11 @@ impl Translator {
         }
         let person = self.people.entry(id.clone()).or_default();
         let reachable = person.resolution.reachable;
-        let (verified, root_source) = (person.resolution.verified, person.resolution.root_source);
+        let root_source = person.resolution.root_source;
         let mut resolution = Resolution::from_record(row);
-        // A request row says nothing about reachability, verification or
-        // the root: what the contact row said stays.
+        // A request row says nothing about reachability or the root: what
+        // the contact row said stays.
         resolution.reachable = reachable;
-        resolution.verified = verified;
         resolution.root_source = root_source;
         person.resolution = resolution;
         self.report_person(&id)

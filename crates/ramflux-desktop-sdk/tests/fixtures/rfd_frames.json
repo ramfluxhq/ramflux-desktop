@@ -511,10 +511,7 @@
             "signing_public_key": "key-ana"
           }
         ],
-        "device_set_hash": "set-ana",
-        "safety_state": "unverified",
-        "safety_number": null,
-        "safety_number_available": false
+        "device_set_hash": "set-ana"
       },
       {
         "id": "principal-bo",
@@ -536,10 +533,7 @@
             "signing_public_key": "key-bo"
           }
         ],
-        "device_set_hash": "set-bo",
-        "safety_state": "verified",
-        "safety_number": "12345 67890",
-        "safety_number_available": true
+        "device_set_hash": "set-bo"
       },
       {
         "id": "principal-cy",
@@ -569,10 +563,7 @@
             "signing_public_key": "key-cy-2"
           }
         ],
-        "device_set_hash": "set-cy",
-        "safety_state": "verification_stale",
-        "safety_number": null,
-        "safety_number_available": false
+        "device_set_hash": "set-cy"
       },
       {
         "id": "principal-me",
@@ -591,10 +582,7 @@
             "target_delivery_id": "target-me",
             "signing_public_key": "key-me"
           }
-        ],
-        "safety_state": "unverified",
-        "safety_number": null,
-        "safety_number_available": false
+        ]
       }
     ],
     "next_cursor": null

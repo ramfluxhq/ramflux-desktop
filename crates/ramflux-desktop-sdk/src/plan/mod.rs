@@ -13,7 +13,7 @@
 //!
 //! - [`fetch`]: the reads.
 //! - [`identity`]: fresh identity material for account creation.
-//! - [`contact`]: contact effects and the links they name, and verification.
+//! - [`contact`]: contact effects and the links they name, and identity.
 //! - [`contact_card`]: adding a contact from a card, exporting this account's.
 //! - [`conversation`]: starting a direct conversation (its first message).
 //! - [`message`]: direct and group sends.
@@ -109,6 +109,11 @@ pub trait Known {
         let _ = object;
         None
     }
+    /// The `contact` identifier the SDK knows `participant` by (named in its
+    /// last change event or refused send, else the identity commitment).
+    fn identity_contact(&self, participant: &str) -> Option<String> {
+        self.directory()?.identities.get(participant)?.commitment.clone()
+    }
 }
 
 /// How to perform one effect.
@@ -134,14 +139,6 @@ pub enum Plan {
     /// The read of an image slot's bytes through the object API (see
     /// [`card_image`]).
     CardImage(Box<card_image::Job>),
-    /// `contact.verify`: first `lookup` (`contact.safety_number`), then the
-    /// verification of the compared snapshot it answers (`expected`).
-    Verify {
-        /// The safety number read.
-        lookup: BusRequest,
-        /// Reads after the verification.
-        refresh: Vec<Fetch>,
-    },
     /// A desktop-local preference; the translator echoes it.
     Local,
     /// A username claim or change, run as a job (see [`username`]).
@@ -475,7 +472,9 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         | methods::GROUP_REMOVE_MEMBER
         | methods::GROUP_SET_ROLE
         | methods::GROUP_ADD_MEMBER => group::governance(acct, method, body, known),
-        methods::SAFETY_VERIFY => contact::verify(acct, body, known),
+        methods::IDENTITY_STATUS => contact::identity_status(acct, body, known),
+        methods::IDENTITY_ACCEPT_CHANGE => contact::accept_change(acct, body, known),
+        methods::CONVERSATION_SECURITY => conversation::security(acct, body),
         methods::SURFACE_REQUEST_RESYNC => surface::request_resync(acct, body, known),
         methods::CONTACT_CARD_IMPORT => contact_card::import(acct, body),
         methods::CONTACT_CARD_EXPORT => contact_card::export(acct),

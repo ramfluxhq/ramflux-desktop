@@ -41,6 +41,7 @@ mod ceremony;
 mod contact_request;
 mod conversation;
 mod grant;
+mod identity;
 mod integrations;
 mod listing;
 mod message_v1;
@@ -92,10 +93,14 @@ pub use contact_request::{
 };
 pub use conversation::{
     ContactCard, ContactLink, Context, ContextKind, ContextPreview, Disappearing, GroupInvitation,
-    KindClaim, NameWarnings, Participant, ParticipantKind, PeerKind, Role, RootSource, SafetyState,
+    KindClaim, NameWarnings, Participant, ParticipantKind, PeerKind, Role, RootSource,
     UsernameClaim, UsernameLookup, UsernameStatus,
 };
 pub use grant::{AuditEntry, Grant, GrantFailure, GrantState, Risk, StandingApproval};
+pub use identity::{
+    AcceptFailure, ConversationSecurity, IdentityChange, IdentityState, SecurityState,
+    SecurityWarning,
+};
 pub use integrations::{A2iItem, Integrations, McpServer};
 pub use listing::{ListState, Listing};
 pub use message_v1::{
@@ -105,10 +110,10 @@ pub use message_v1::{
 pub use moment::{
     AgentSurfacePayload, CallPayload, ConflictPayload, ConflictResolution, ConflictSide,
     ContactRequestPayload, FallbackPayload, GovernanceAction, GovernancePayload,
-    GroupRenamePayload, HandoffPayload, InterventionPayload, Lifecycle, MessagePayload, Moment,
-    MomentKind, NameChangePayload, ObjectTransferPayload, PrivacyRevealPayload, Receipt,
-    RevealRecord, SafetyChangeKind, SafetyChangePayload, SystemLevel, SystemPayload, TaskEventKind,
-    TaskEventPayload, TaskProgressPayload,
+    GroupRenamePayload, HandoffPayload, IdentityChangeKind, IdentityChangePayload,
+    InterventionPayload, Lifecycle, MessagePayload, Moment, MomentKind, NameChangePayload,
+    ObjectTransferPayload, PrivacyRevealPayload, Receipt, RevealRecord, SecurityNoticePayload,
+    SystemLevel, SystemPayload, TaskEventKind, TaskEventPayload, TaskProgressPayload,
 };
 pub use object::{Direction, Object, TransferState};
 pub use order::OrderKey;

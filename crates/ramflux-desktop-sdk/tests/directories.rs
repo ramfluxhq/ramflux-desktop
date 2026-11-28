@@ -64,9 +64,7 @@ fn pages_are_followed_by_cursor_and_listed_only_when_complete() {
             && s.context(&ContextId::new("dm-ana")).is_some()
             && s.context(&ContextId::new("thread-team")).is_some()
     });
-    account.until("second identity page", |s, _| {
-        s.participant(&"principal-bo".into()).is_some_and(|p| p.safety_number.is_some())
-    });
+    account.until("second identity page", |s, _| s.participant(&"principal-bo".into()).is_some());
     let seen = fake.seen();
     let cursors: Vec<Option<&str>> = seen
         .iter()
@@ -301,47 +299,30 @@ fn adding_a_member_on_several_devices_reports_how_far_it_got() {
 }
 
 #[test]
-fn verifying_a_contact_reads_the_identity_directory_again() {
-    let path = socket_path("verify");
-    let verified = Arc::new(AtomicUsize::new(0));
-    let flag = verified.clone();
+fn accepting_an_identity_change_names_the_anchor_shown_and_reads_the_status_again() {
+    let path = socket_path("accept");
     let fake = FakeBus::start(&path, move |method, _, body| match method {
-        // The compared snapshot first; the verification names exactly it.
-        "contact.safety_number" => Reply::Ok(json!({
-            "contact_identity_commitment": "cm-ana", "verification_state": "unverified",
-            "expected": { "contact_identity_commitment": "cm-ana", "safety_number_hash": "h" }
-        })),
-        "contact.verify" if body["expected"]["safety_number_hash"] == "h" => {
-            flag.store(1, Ordering::SeqCst);
-            Reply::Ok(
-                json!({ "contact_identity_commitment": "cm-ana", "verification_state": "verified",
-                "safety_number": "11111 22222" }),
-            )
+        "contact.trust.accept_change" if body["new_anchor"] == "A2" => {
+            Reply::Ok(json!({ "state": "accepted" }))
         }
-        "identity.directory" if flag.load(Ordering::SeqCst) == 1 => {
-            let mut frame = frames()[method].clone();
-            frame["identities"][0]["safety_state"] = json!("verified");
-            frame["identities"][0]["safety_number"] = json!("11111 22222");
-            Reply::Ok(frame)
-        }
+        "contact.verification.status" => Reply::Ok(json!({ "identity_state": "tofu" })),
         _ => fixture(method),
     });
     let hub = hub(&path);
     let mut account = Fed::new(hub.account_source(AccountId::new("acct-main")));
     account.until("ana", |s, _| s.participant(&"principal-ana".into()).is_some());
-    account
-        .source
-        .submit(call(methods::SAFETY_VERIFY, json!({ "participant_id": "principal-ana" })));
-    account.until("verified", |s, _| {
-        s.participant(&"principal-ana".into()).is_some_and(|p| {
-            p.safety == ramflux_desktop_core::SafetyState::Verified
-                && p.safety_number.as_deref() == Some("11111 22222")
-        })
+    account.source.submit(call(
+        methods::IDENTITY_ACCEPT_CHANGE,
+        json!({ "participant_id": "principal-ana", "new_anchor": "A2" }),
+    ));
+    account.until("the status read again", |_, _| {
+        fake.seen().iter().any(|s| s.method == "contact.verification.status")
     });
-    let verify = fake.seen().into_iter().find(|s| s.method == "contact.verify").expect("verify");
-    assert_eq!(
-        verify.body,
-        json!({ "expected": { "contact_identity_commitment": "cm-ana", "safety_number_hash": "h" } })
-    );
+    let accept = fake
+        .seen()
+        .into_iter()
+        .find(|s| s.method == "contact.trust.accept_change")
+        .expect("accept_change");
+    assert_eq!(accept.body, json!({ "contact": "cm-ana", "new_anchor": "A2" }));
     fake.shutdown();
 }

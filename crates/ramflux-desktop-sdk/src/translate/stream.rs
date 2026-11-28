@@ -22,7 +22,7 @@ use super::{Translator, seconds, text};
 use crate::plan::fetch::{Fetch, Paged};
 
 /// Topics whose events call for reads.
-pub const READ_TOPICS: [&str; 17] = [
+pub const READ_TOPICS: [&str; 18] = [
     "conversation.changed",
     "group.invitation",
     "message.received",
@@ -30,7 +30,8 @@ pub const READ_TOPICS: [&str; 17] = [
     "group.message.received",
     "group.changed",
     "contact.changed",
-    "safety.changed",
+    super::identity_status::IDENTITY_CHANGED,
+    super::identity_status::DEVICES_CHANGED,
     "object.changed",
     "object.transfer.progress",
     "mcp.approval.request",
@@ -139,8 +140,13 @@ impl Translator {
         frame: Frame,
         now: Timestamp,
     ) -> super::Translated {
-        let follow = self.stream_reads(topic, body);
+        let mut follow = self.stream_reads(topic, body);
         let mut events = Vec::new();
+        if topic == super::identity_status::IDENTITY_CHANGED {
+            let (changed, reads) = self.identity_changed_event(body, now);
+            events.extend(changed);
+            follow.extend(reads);
+        }
         if topic == "task.changed" {
             events.extend(self.task_decision_rejected(body));
             events.extend(self.task_removed(body));
@@ -172,9 +178,14 @@ impl Translator {
             "group.changed" | "group.invitation" => {
                 vec![Fetch::first(Paged::Groups), conversations, Fetch::GroupInvitations]
             }
-            "contact.changed" | "safety.changed" => {
-                vec![Fetch::ContactList, Fetch::first(Paged::Identities)]
-            }
+            "contact.changed" => vec![Fetch::ContactList, Fetch::first(Paged::Identities)],
+            // The identity change itself is translated by `streamed`; its
+            // status is read there. A device set change reads the security
+            // of a direct conversation shown.
+            super::identity_status::DEVICES_CHANGED => context
+                .filter(|_| kind == Some(ramflux_desktop_core::ContextKind::Direct))
+                .map(|context| vec![Fetch::ConversationSecurity(context)])
+                .unwrap_or_default(),
             "mcp.approval.request" | "mcp.approval.granted" | "mcp.approval.denied" => {
                 vec![Fetch::first(Paged::Approvals), Fetch::Grants]
             }

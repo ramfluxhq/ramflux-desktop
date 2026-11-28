@@ -151,9 +151,12 @@ pub enum IntentError {
     /// The contact request setting is not known yet; clearing keeps it.
     #[error("the contact request setting is not known yet")]
     ContactRequestSettingUnknown,
-    /// Safety number already verified.
-    #[error("participant {0} is already verified")]
-    AlreadyVerified(ParticipantId),
+    /// The participant has no identity change waiting for a decision.
+    #[error("participant {0} has no identity change to accept")]
+    NoPendingIdentityChange(ParticipantId),
+    /// The identity changed again since the sheet was rendered.
+    #[error("the identity of {0} changed again; review it again")]
+    IdentityChangedAgain(ParticipantId),
     /// Governance on a direct context.
     #[error("context {0} is not a group or space")]
     NotAGroup(ContextId),
@@ -234,11 +237,10 @@ pub enum IntentError {
     /// A new conversation would reuse the id of a known context.
     #[error("context {0} already exists")]
     ContextExists(ContextId),
-    /// The participant's key changed or forked and is not verified again;
-    /// a new conversation, group or call waits until the user checks the
-    /// safety number. A stale verification is never this refusal.
-    #[error("the safety number of {0} must be verified again first")]
-    SafetyUnresolved(ParticipantId),
+    /// The participant's identity changed and the user has not accepted the
+    /// change; a new conversation, group or call waits until they review it.
+    #[error("the new identity of {0} must be reviewed first")]
+    IdentityUnresolved(ParticipantId),
     /// A conversation with this account's own identity.
     #[error("{0} is this account")]
     SelfParticipant(ParticipantId),

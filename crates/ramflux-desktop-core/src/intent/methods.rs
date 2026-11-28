@@ -102,8 +102,12 @@ pub const CONTACT_REQUEST_DECLINE: &str = "contact.request.decline";
 pub const CONTACT_REQUEST_BLOCK: &str = "contact.request.block";
 /// Set how contact requests are answered (`manual` or `auto_accept`).
 pub const CONTACT_REQUESTS_POLICY: &str = "contact.requests.policy.set";
-/// Verify a safety number.
-pub const SAFETY_VERIFY: &str = "safety.verify";
+/// Read a contact's identity state (`contact.verification.status`).
+pub const IDENTITY_STATUS: &str = "identity.status";
+/// Accept a contact's changed identity (`contact.trust.accept_change`).
+pub const IDENTITY_ACCEPT_CHANGE: &str = "identity.accept_change";
+/// Read a direct conversation's security (`conversation.security`).
+pub const CONVERSATION_SECURITY: &str = "conversation.security";
 /// Create a group with its conversation and first members.
 pub const GROUP_CREATE: &str = "group.create";
 /// Rename a group conversation (the name this account keeps for it).

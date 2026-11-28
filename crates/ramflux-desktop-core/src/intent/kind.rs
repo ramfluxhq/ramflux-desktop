@@ -411,10 +411,25 @@ pub enum IntentKind {
         /// ContactRequest moment.
         moment_id: MomentId,
     },
-    /// Mark a participant's safety number as verified out of band. Human only.
-    VerifySafetyNumber {
+    /// Accept a contact's changed identity. Human only, and only from the
+    /// identity change sheet: `new_anchor` is the anchor the sheet showed.
+    AcceptIdentityChange {
         /// Participant.
         participant_id: ParticipantId,
+        /// The new anchor of the change the user reviewed.
+        new_anchor: String,
+    },
+    /// Read a contact's identity state (`contact.verification.status`).
+    /// Read only.
+    ReadIdentityState {
+        /// Participant.
+        participant_id: ParticipantId,
+    },
+    /// Read a direct conversation's security (`conversation.security`).
+    /// Read only.
+    ReadConversationSecurity {
+        /// The direct conversation.
+        context_id: ContextId,
     },
     /// Continue the offered context on this device. Human only.
     AcceptHandoff {

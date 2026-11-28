@@ -10,21 +10,21 @@ mod common;
 use common::*;
 use ramflux_desktop_core::*;
 
-fn person(id: &str, link: ContactLink, safety: SafetyState) -> DomainEvent {
+fn person(id: &str, link: ContactLink, safety: IdentityState) -> DomainEvent {
     let mut p = participant(id, ParticipantKind::Human, &format!("Name {id}"), true);
     p.link = link;
-    p.safety = safety;
+    p.identity = safety;
     DomainEvent::ParticipantUpserted(p)
 }
 
 fn store() -> Store {
     let mut feed = Feed::new();
-    feed.ok(1, person("p-ana", ContactLink::Accepted, SafetyState::Unverified));
-    feed.ok(1, person("p-bo", ContactLink::Accepted, SafetyState::Verified));
-    feed.ok(1, person("p-cy", ContactLink::Accepted, SafetyState::KeyChanged));
-    feed.ok(1, person("p-dee", ContactLink::Accepted, SafetyState::Forked));
-    feed.ok(1, person("p-eve", ContactLink::Outgoing, SafetyState::Unverified));
-    feed.ok(1, person("p-fin", ContactLink::Blocked, SafetyState::Unverified));
+    feed.ok(1, person("p-ana", ContactLink::Accepted, IdentityState::Tofu));
+    feed.ok(1, person("p-bo", ContactLink::Accepted, IdentityState::Verified));
+    feed.ok(1, person("p-cy", ContactLink::Accepted, IdentityState::Changed));
+    feed.ok(1, person("p-dee", ContactLink::Accepted, IdentityState::Changed));
+    feed.ok(1, person("p-eve", ContactLink::Outgoing, IdentityState::Tofu));
+    feed.ok(1, person("p-fin", ContactLink::Blocked, IdentityState::Tofu));
     feed.ok(
         1,
         DomainEvent::AccountUpdated(Account {
@@ -32,7 +32,7 @@ fn store() -> Store {
             ..account("acct-main")
         }),
     );
-    feed.ok(1, person("p-me", ContactLink::Accepted, SafetyState::Verified));
+    feed.ok(1, person("p-me", ContactLink::Accepted, IdentityState::Verified));
     feed.ok(1, DomainEvent::ContextUpserted(context("c-existing", false)));
     feed.store
 }
@@ -77,14 +77,6 @@ fn an_accepted_contact_gets_the_first_message_with_their_name() {
 fn starts_are_refused_with_the_reason() {
     let store = store();
     let refused = |kind| human(&store, kind).expect_err("refused");
-    assert_eq!(
-        refused(start("p-cy", "c-new", "x")),
-        IntentError::SafetyUnresolved(ParticipantId::new("p-cy"))
-    );
-    assert_eq!(
-        refused(start("p-dee", "c-new", "x")),
-        IntentError::SafetyUnresolved(ParticipantId::new("p-dee"))
-    );
     assert!(matches!(
         refused(start("p-eve", "c-new", "x")),
         IntentError::ContactLinkState { link: ContactLink::Outgoing, .. }
@@ -112,7 +104,7 @@ fn starts_are_refused_with_the_reason() {
 #[test]
 fn agents_cannot_start_conversations() {
     let mut feed = Feed::new();
-    feed.ok(1, person("p-ana", ContactLink::Accepted, SafetyState::Verified));
+    feed.ok(1, person("p-ana", ContactLink::Accepted, IdentityState::Verified));
     feed.ok(
         1,
         DomainEvent::ParticipantUpserted(participant(
@@ -133,6 +125,6 @@ fn agents_cannot_start_conversations() {
 fn the_draft_check_matches_the_policy() {
     let store = store();
     assert!(check_start_conversation(&store, &ParticipantId::new("p-ana")).is_ok());
-    assert!(check_start_conversation(&store, &ParticipantId::new("p-cy")).is_err());
+    assert!(check_start_conversation(&store, &ParticipantId::new("p-cy")).is_ok());
     assert!(check_start_conversation(&store, &ParticipantId::new("p-eve")).is_err());
 }

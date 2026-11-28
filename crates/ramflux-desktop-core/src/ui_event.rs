@@ -264,10 +264,19 @@ pub enum UiEventKind {
         /// Action.
         action: ContactAction,
     },
-    /// Verify pressed for a participant's safety number.
-    VerifySafetyPressed {
+    /// "Review" pressed for a participant's changed identity: opens the
+    /// identity change sheet.
+    ReviewIdentityPressed {
         /// Participant.
         participant_id: ParticipantId,
+    },
+    /// "Accept new identity" pressed in the identity change sheet, naming
+    /// the anchor the sheet showed.
+    AcceptIdentityPressed {
+        /// Participant.
+        participant_id: ParticipantId,
+        /// The new anchor the sheet showed.
+        new_anchor: String,
     },
     /// Handoff offer answered.
     HandoffAnswered {

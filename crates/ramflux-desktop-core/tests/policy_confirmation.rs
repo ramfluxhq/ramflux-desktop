@@ -61,7 +61,7 @@ fn store() -> Store {
     });
     feed.ok(4, added(moment("m-handoff", "c-direct", 4, handoff, Lifecycle::NeedsMe)));
     let mut verified = participant("p-cy", ParticipantKind::Human, "Cy", true);
-    verified.safety = SafetyState::Verified;
+    verified.identity = IdentityState::Verified;
     feed.ok(5, DomainEvent::ParticipantUpserted(verified));
     feed.store
 }
@@ -180,20 +180,36 @@ fn governance_validates_context_and_membership() {
 }
 
 #[test]
-fn safety_verification_is_human_only_and_not_repeated() {
-    let store = store();
-    let verify =
-        |id: &str| IntentKind::VerifySafetyNumber { participant_id: ParticipantId::new(id) };
-    let (method, body) = call_body(effects(&store, Intent::human(verify("p-ana"))));
-    assert_eq!(method, methods::SAFETY_VERIFY);
-    assert_eq!(body["participant_id"], "p-ana");
+fn accepting_an_identity_change_is_human_only_and_names_the_anchor_shown() {
+    let mut store = store();
+    let accept = |id: &str, anchor: &str| IntentKind::AcceptIdentityChange {
+        participant_id: ParticipantId::new(id),
+        new_anchor: anchor.to_owned(),
+    };
+    // No change waits for p-cy yet.
+    assert_eq!(
+        handle_intent(&store, Intent::human(accept("p-cy", "A2")), NOW).err(),
+        Some(IntentError::NoPendingIdentityChange(ParticipantId::new("p-cy")))
+    );
+    let changed = DomainEvent::IdentityChanged {
+        participant: ParticipantId::new("p-cy"),
+        username: None,
+        previous_anchor: "A1".to_owned(),
+        new_anchor: "A2".to_owned(),
+        ai_flag: false,
+    };
+    store.apply(&EventEnvelope::new(900, Timestamp(5), changed)).expect("changed");
+    let (method, body) = call_body(effects(&store, Intent::human(accept("p-cy", "A2"))));
+    assert_eq!(method, methods::IDENTITY_ACCEPT_CHANGE);
+    assert_eq!(body["new_anchor"], "A2");
     assert!(matches!(
-        handle_intent(&store, agent(verify("p-ana")), NOW),
+        handle_intent(&store, agent(accept("p-cy", "A2")), NOW),
         Err(IntentError::AgentForbidden(_))
     ));
+    // A click that showed an older anchor is refused.
     assert_eq!(
-        handle_intent(&store, Intent::human(verify("p-cy")), NOW).err(),
-        Some(IntentError::AlreadyVerified(ParticipantId::new("p-cy")))
+        handle_intent(&store, Intent::human(accept("p-cy", "A1")), NOW).err(),
+        Some(IntentError::IdentityChangedAgain(ParticipantId::new("p-cy")))
     );
 }
 

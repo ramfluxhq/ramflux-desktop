@@ -148,24 +148,31 @@ pub struct InterventionPayload {
     pub summary: String,
 }
 
-/// What changed about a participant's keys.
+/// What happened to a participant's identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SafetyChangeKind {
-    /// Identity key changed.
-    KeyChanged,
-    /// Identity fork detected.
-    Forked,
-    /// Safety number verified.
-    Verified,
+pub enum IdentityChangeKind {
+    /// The identity changed.
+    Changed,
+    /// The user accepted the new identity.
+    Accepted,
 }
 
-/// Payload of a [`MomentKind::SafetyChange`]. Sticky until resolved.
+/// Payload of a [`MomentKind::IdentityChange`]: a service line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SafetyChangePayload {
+pub struct IdentityChangePayload {
     /// Affected participant.
     pub participant_id: ParticipantId,
     /// Change.
-    pub change: SafetyChangeKind,
+    pub change: IdentityChangeKind,
+}
+
+/// Payload of a [`MomentKind::SecurityNotice`]: a service line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SecurityNoticePayload {
+    /// The warning.
+    pub warning: super::identity::SecurityWarning,
+    /// The epoch the warning came with.
+    pub epoch: u64,
 }
 
 /// Group governance action.
@@ -413,8 +420,10 @@ pub enum MomentKind {
     ObjectTransfer(ObjectTransferPayload),
     /// Approval intervention.
     Intervention(InterventionPayload),
-    /// Key safety change.
-    SafetyChange(SafetyChangePayload),
+    /// A participant's identity changed, or the user accepted the change.
+    IdentityChange(IdentityChangePayload),
+    /// A warning about the conversation's encryption.
+    SecurityNotice(SecurityNoticePayload),
     /// Group governance.
     Governance(GovernancePayload),
     /// Contact request.

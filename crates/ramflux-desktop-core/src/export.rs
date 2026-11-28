@@ -56,7 +56,10 @@ fn body(store: &Store, moment: &Moment) -> String {
                 .unwrap_or(p.object_id.as_str());
             format!("[file] {name}")
         }
-        MomentKind::SafetyChange(p) => format!("[safety] {:?} for {}", p.change, p.participant_id),
+        MomentKind::IdentityChange(p) => {
+            format!("[identity] {:?} for {}", p.change, p.participant_id)
+        }
+        MomentKind::SecurityNotice(p) => format!("[security] {:?}", p.warning),
         MomentKind::Governance(p) => format!("[membership] {:?} {}", p.action, p.target),
         MomentKind::ContactRequest(p) => format!("[contact request] from {}", p.from),
         MomentKind::Conflict(p) => {

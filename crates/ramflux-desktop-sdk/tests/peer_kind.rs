@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Verified peer kinds, name warnings, stale verification, authenticated
+//! Verified peer kinds, name warnings, authenticated
 //! renames and task actors, as the translator reads them from the daemon's
 //! contact, identity, request, stream, task and message rows.
 
 mod common;
 
 use ramflux_desktop_core::{
-    AccountId, ContextId, DomainEvent, KindClaim, MomentKind, Participant, ParticipantId,
-    ParticipantKind, PeerKind, SafetyState, Timestamp,
+    AccountId, ContextId, DomainEvent, IdentityState, KindClaim, MomentKind, Participant,
+    ParticipantId, ParticipantKind, PeerKind, Timestamp,
 };
 use ramflux_desktop_sdk::Scope;
 use ramflux_desktop_sdk::plan::fetch::{Fetch, Paged};
@@ -72,11 +72,7 @@ fn a_root_signed_profile_proves_the_kind_and_a_card_only_claims_it() {
         (ParticipantKind::Human, KindClaim::Verified(PeerKind::Human))
     );
     assert_eq!(kai.display, "Kai");
-    assert_eq!(
-        kai.safety,
-        SafetyState::Unverified,
-        "a signed kind is not a verified safety number"
-    );
+    assert_eq!(kai.identity, IdentityState::Tofu, "a signed kind says nothing of the identity");
     let bot = one(&events, "principal-bot");
     assert_eq!(bot.kind_claim, KindClaim::Asserted(PeerKind::HeadlessAi));
     assert_eq!(bot.kind, ParticipantKind::Unknown, "an unproven claim draws no AI marker");
@@ -84,27 +80,25 @@ fn a_root_signed_profile_proves_the_kind_and_a_card_only_claims_it() {
     // The safe default: nothing claimed, nothing verified, shown by id.
     let legacy = one(&events, "principal-legacy");
     assert_eq!((legacy.kind, legacy.kind_claim), (ParticipantKind::Unknown, KindClaim::None));
-    assert_eq!(legacy.safety, SafetyState::Unverified);
+    assert_eq!(legacy.identity, IdentityState::Tofu);
     assert!(!legacy.named());
 }
 
 #[test]
-fn name_warnings_and_a_stale_verification_come_from_the_identity_directory() {
+fn name_warnings_come_from_the_identity_directory() {
     let mut t = translator();
     let identities = json!({ "identities": [
         { "principal_id": "principal-kai", "display_name": "Kаi", "kind": "human",
-          "kind_verified": true, "safety_state": "verification_stale", "devices": [],
+          "kind_verified": true, "devices": [],
           "display_name_confusable_with": "principal-kay", "mixed_script": true,
           "root_source": "verified" },
         { "principal_id": "principal-lu", "display_name": "Lu", "kind": "bot",
-          "kind_verified": false, "safety_state": "verified", "devices": [],
+          "kind_verified": false, "devices": [],
           "display_name_confusable_with": null, "mixed_script": false },
     ], "next_cursor": null });
     let events = t.fetched(&Fetch::first(Paged::Identities), &identities, Timestamp(2)).events;
     let kai = one(&events, "principal-kai");
     assert_eq!(kai.kind_claim, KindClaim::Verified(PeerKind::Human));
-    assert_eq!(kai.safety, SafetyState::VerificationStale, "verify again");
-    assert!(kai.safety.needs_attention(), "sticky like a key change");
     assert!(kai.name_warnings.mixed_script);
     assert_eq!(
         kai.name_warnings.confusable_with.as_ref().map(ParticipantId::as_str),
@@ -112,7 +106,6 @@ fn name_warnings_and_a_stale_verification_come_from_the_identity_directory() {
     );
     let lu = one(&events, "principal-lu");
     assert_eq!(lu.kind_claim, KindClaim::Asserted(PeerKind::Bot));
-    assert_eq!(lu.safety, SafetyState::Verified);
     assert!(!lu.name_warnings.any());
 
     // A contact row with only a card claim does not lower a verified one,
@@ -125,7 +118,6 @@ fn name_warnings_and_a_stale_verification_come_from_the_identity_directory() {
     let events = t.fetched(&Fetch::ContactList, &contacts, Timestamp(3)).events;
     let kai = one(&events, "principal-kai");
     assert_eq!(kai.kind_claim, KindClaim::Verified(PeerKind::Human), "the proven claim stays");
-    assert_eq!(kai.safety, SafetyState::VerificationStale);
     assert!(kai.name_warnings.mixed_script);
     assert!(kai.contact, "the link is what the row adds");
 }

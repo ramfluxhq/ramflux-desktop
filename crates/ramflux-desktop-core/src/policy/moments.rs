@@ -2,14 +2,14 @@
 // Copyright (c) 2026 Span Brain
 
 //! Policy for decisions taken inside moments: surface actions, approvals,
-//! reveals, conflicts, contact requests, safety and handoffs.
+//! reveals, conflicts, contact requests and handoffs.
 
 use serde_json::json;
 
 use super::{Decision, IntentError, Policy};
 use crate::ids::{GrantId, MomentId};
 use crate::intent::{IntentKind, methods};
-use crate::model::{Grant, GrantState, Lifecycle, MomentKind, Risk, SafetyState, StepState};
+use crate::model::{Grant, GrantState, Lifecycle, MomentKind, Risk, StepState};
 use crate::store::SurfaceState;
 use crate::surface_hash::SurfaceHash;
 
@@ -102,21 +102,6 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 needs_me(moment_id, moment.lifecycle)?;
                 let method = if accept { methods::CONTACT_ACCEPT } else { methods::CONTACT_REJECT };
                 Ok(Decision::Call(method, json!({ "moment_id": moment_id, "from": payload.from })))
-            })
-        }
-        IntentKind::VerifySafetyNumber { participant_id } => {
-            p.human_only("verify a safety number").and_then(|()| {
-                let participant = p
-                    .store
-                    .participant(participant_id)
-                    .ok_or_else(|| IntentError::UnknownParticipant(participant_id.clone()))?;
-                if participant.safety == SafetyState::Verified {
-                    return Err(IntentError::AlreadyVerified(participant_id.clone()));
-                }
-                Ok(Decision::Call(
-                    methods::SAFETY_VERIFY,
-                    json!({ "participant_id": participant_id }),
-                ))
             })
         }
         IntentKind::AcceptHandoff { moment_id } | IntentKind::DeclineHandoff { moment_id } => {

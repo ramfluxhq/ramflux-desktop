@@ -13,24 +13,24 @@ use ramflux_desktop_core::*;
 fn person(
     id: &str,
     link: ContactLink,
-    safety: SafetyState,
+    safety: IdentityState,
     reachable: Option<bool>,
 ) -> DomainEvent {
     let mut p = participant(id, ParticipantKind::Human, &format!("Name {id}"), true);
     p.link = link;
-    p.safety = safety;
+    p.identity = safety;
     p.reachable = reachable;
     DomainEvent::ParticipantUpserted(p)
 }
 
 fn store() -> Store {
     let mut feed = Feed::new();
-    feed.ok(1, person("p-ana", ContactLink::Accepted, SafetyState::Unverified, Some(true)));
-    feed.ok(1, person("p-bo", ContactLink::Accepted, SafetyState::Verified, None));
-    feed.ok(1, person("p-cy", ContactLink::Accepted, SafetyState::KeyChanged, Some(true)));
-    feed.ok(1, person("p-dee", ContactLink::Accepted, SafetyState::Unverified, Some(false)));
-    feed.ok(1, person("p-eve", ContactLink::Outgoing, SafetyState::Unverified, Some(true)));
-    feed.ok(1, person("p-agent", ContactLink::Accepted, SafetyState::Unverified, Some(true)));
+    feed.ok(1, person("p-ana", ContactLink::Accepted, IdentityState::Tofu, Some(true)));
+    feed.ok(1, person("p-bo", ContactLink::Accepted, IdentityState::Verified, None));
+    feed.ok(1, person("p-cy", ContactLink::Accepted, IdentityState::Changed, Some(true)));
+    feed.ok(1, person("p-dee", ContactLink::Accepted, IdentityState::Tofu, Some(false)));
+    feed.ok(1, person("p-eve", ContactLink::Outgoing, IdentityState::Tofu, Some(true)));
+    feed.ok(1, person("p-agent", ContactLink::Accepted, IdentityState::Tofu, Some(true)));
     let mut agent = participant("p-bot", ParticipantKind::Agent, "Bot", true);
     agent.link = ContactLink::Accepted;
     feed.ok(1, DomainEvent::ParticipantUpserted(agent));
@@ -189,10 +189,6 @@ fn group_creation_is_refused_with_the_reason() {
         refused(create("Trip", &["p-eve"])),
         IntentError::ContactLinkState { link: ContactLink::Outgoing, .. }
     ));
-    assert_eq!(
-        refused(create("Trip", &["p-cy"])),
-        IntentError::SafetyUnresolved(ParticipantId::new("p-cy"))
-    );
     assert_eq!(
         refused(create("Trip", &["p-dee"])),
         IntentError::NotReachable(ParticipantId::new("p-dee"))
