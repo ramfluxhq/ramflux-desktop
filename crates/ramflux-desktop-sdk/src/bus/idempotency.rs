@@ -24,7 +24,7 @@
 /// Methods that are planned as effects but do not change daemon state.
 /// `object.get` answers with the object's bytes, which must never be kept
 /// in a receipt; `contact.card.export` only reads this account's card.
-const NOT_MUTATIONS: [&str; 11] = [
+const NOT_MUTATIONS: [&str; 12] = [
     "node.probe",
     "object.get",
     "contact.card.export",
@@ -37,6 +37,7 @@ const NOT_MUTATIONS: [&str; 11] = [
     "group.history",
     "group.members",
     "group.join.pending",
+    "group.list",
 ];
 
 /// The methods the daemon's agent module answers. It refuses any frame of
@@ -95,6 +96,10 @@ mod tests {
         assert!(is_mutation("contact.block"));
         assert!(!is_mutation("node.probe"));
         assert!(!is_mutation("object.get"));
+        // MLS group reads leave no receipts; the writes keep their keys.
+        assert!(!is_mutation("group.list"));
+        assert!(is_mutation("group.send"));
+        assert!(is_mutation("group.mark_read"));
         // The daemon refuses a frame key on these.
         assert!(!is_mutation("agent.create"));
         assert!(!is_mutation("agent.delete"));

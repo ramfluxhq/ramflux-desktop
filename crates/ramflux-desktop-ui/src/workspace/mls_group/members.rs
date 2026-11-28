@@ -34,7 +34,7 @@ use ramflux_desktop_core::{Scope, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
-use super::{MentionPick, member_name, picked_mentions, toggle_mention};
+use super::{member_name, picked_mentions};
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args, tr_count};
@@ -341,9 +341,12 @@ impl Render for MlsMembers {
                                     tr_count("group.members.devices", u64::from(item.devices));
                                 let ai = item.ai;
                                 let selected = this.mode == Mode::Mentions
-                                    && picked_mentions(this.group.as_deref().unwrap_or_default())
-                                        .iter()
-                                        .any(|(a, _)| *a == anchor);
+                                    && picked_mentions(
+                                        this.store.read(cx).store(),
+                                        this.group.as_deref().unwrap_or_default(),
+                                    )
+                                    .iter()
+                                    .any(|(a, _)| *a == anchor);
                                 let label = item.name.clone();
                                 let pick_name = item.name.clone();
                                 let me = item.me;
@@ -370,10 +373,8 @@ impl Render for MlsMembers {
                                         .accessibility_label(label)
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             if let Some(group) = this.group.clone() {
-                                                toggle_mention(
-                                                    &group,
-                                                    &anchor,
-                                                    MentionPick { name: pick_name.clone() },
+                                                this.store.read(cx).store().mls_toggle_mention(
+                                                    &group, &anchor, &pick_name,
                                                 );
                                             }
                                             cx.notify();

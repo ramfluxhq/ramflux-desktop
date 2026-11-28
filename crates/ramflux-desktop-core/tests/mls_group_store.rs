@@ -392,3 +392,128 @@ fn the_local_link_check_trims_and_refuses_what_is_not_printable_ascii() {
     assert!(check_link("").is_none());
     assert!(check_link("caf\u{e9}").is_none());
 }
+
+fn evict(feed: &mut Feed) {
+    for n in 2..=4 {
+        let mut summary = mls_samples::summary();
+        summary.group_id = format!("g-{n}");
+        feed.ok(
+            50 + n,
+            DomainEvent::MlsGroupsListed { rows: vec![summary], cursor: None, first_page: false },
+        );
+        feed.ok(
+            60 + n,
+            DomainEvent::MlsHistoryPage {
+                group_id: format!("g-{n}"),
+                direction: HistoryDirection::Newest,
+                posts: vec![],
+                floor_log_seq: Some(1),
+                last_log_seq: 0,
+                more: false,
+            },
+        );
+    }
+    assert!(feed.store.mls_timeline(G).is_none(), "evicted");
+}
+
+fn unlocked_account(feed: &mut Feed) {
+    feed.ok(
+        2,
+        DomainEvent::AccountUpdated(
+            serde_json::from_value(serde_json::json!({
+                "id": "a-1", "label": "A", "lock_state": "Unlocked"
+            }))
+            .expect("an account"),
+        ),
+    );
+    feed.store.bind_account(AccountId::new("a-1"));
+}
+
+#[test]
+fn a_queued_post_that_fails_while_its_timeline_is_evicted_is_still_not_sent_on_reopen() {
+    let mut feed = feed();
+    started(&mut feed, "l-1");
+    outcome(&mut feed, "l-1", Some("p-1"), SendState::Queued(QueueReason::CatchingUp));
+    started(&mut feed, "l-2");
+    outcome(&mut feed, "l-2", Some("p-2"), SendState::Delayed { send_after: Timestamp(9_000) });
+    evict(&mut feed);
+    event(
+        &mut feed,
+        100,
+        None,
+        GroupEventKind::PostState {
+            post_id: "p-1".into(),
+            state: SendState::NotSent(NotSentReason::Failed),
+        },
+    );
+    started(&mut feed, "l-3");
+    let own: Vec<_> = feed.store.mls_timeline(G).map(|t| t.own.clone()).unwrap_or_default();
+    assert_eq!(own.len(), 3, "queued, delayed and new");
+    let failed = own.iter().find(|i| i.local_id == "l-1").expect("the queued post is kept");
+    assert!(matches!(failed.send, SendState::NotSent(NotSentReason::Failed)));
+    assert_eq!(failed.text, "hi", "its text is kept");
+    assert!(own.iter().any(|i| i.local_id == "l-2" && matches!(i.send, SendState::Delayed { .. })));
+}
+
+#[test]
+fn locking_through_an_account_update_clears_the_mls_state() {
+    let mut feed = feed();
+    unlocked_account(&mut feed);
+    started(&mut feed, "l-1");
+    feed.store.mls_toggle_mention(G, "anc-1", "Ann");
+    assert!(feed.store.mls_group(G).is_some() && feed.store.mls_timeline(G).is_some());
+    feed.ok(
+        3,
+        DomainEvent::AccountUpdated(
+            serde_json::from_value(serde_json::json!({
+                "id": "a-1", "label": "A", "lock_state": "Locked"
+            }))
+            .expect("an account"),
+        ),
+    );
+    assert!(feed.store.mls_group(G).is_none(), "the list is gone");
+    assert!(feed.store.mls_timeline(G).is_none(), "the timeline is gone");
+    assert!(feed.store.mls_mentions(G).is_empty(), "the picks are gone");
+}
+
+#[test]
+fn mention_picks_belong_to_the_account_state_and_go_with_a_lock_or_a_removal() {
+    let mut feed = feed();
+    unlocked_account(&mut feed);
+    feed.store.mls_toggle_mention(G, "anc-1", "Ann");
+    feed.store.mls_toggle_mention(G, "anc-2", "Bob");
+    assert_eq!(feed.store.mls_mentions(G).len(), 2);
+    // Picking again unpicks.
+    feed.store.mls_toggle_mention(G, "anc-1", "Ann");
+    assert_eq!(feed.store.mls_mentions(G), vec![("anc-2".to_owned(), "Bob".to_owned())]);
+    // A refused send keeps them; only an accepted one spends them.
+    assert_eq!(feed.store.mls_mentions(G).len(), 1);
+    feed.store.mls_mentions_spent(G);
+    assert!(feed.store.mls_mentions(G).is_empty());
+    // The limit holds.
+    for n in 0..=MAX_MENTIONS {
+        feed.store.mls_toggle_mention(G, &format!("a-{n}"), "x");
+    }
+    assert_eq!(feed.store.mls_mentions(G).len(), MAX_MENTIONS);
+    // Another account's state starts with none, and a removal clears them.
+    feed.ok(4, DomainEvent::AccountRemoved { account_id: AccountId::new("a-1") });
+    assert!(feed.store.mls_mentions(G).is_empty());
+}
+
+#[test]
+fn a_post_state_that_arrives_before_the_send_reply_is_applied_by_the_reply() {
+    let mut feed = feed();
+    started(&mut feed, "l-1");
+    event(
+        &mut feed,
+        100,
+        None,
+        GroupEventKind::PostState {
+            post_id: "p-1".into(),
+            state: SendState::NotSent(NotSentReason::Failed),
+        },
+    );
+    outcome(&mut feed, "l-1", Some("p-1"), SendState::Queued(QueueReason::CatchingUp));
+    let own = feed.store.mls_timeline(G).map(|t| t.own.clone()).unwrap_or_default();
+    assert!(matches!(own[0].send, SendState::NotSent(NotSentReason::Failed)));
+}

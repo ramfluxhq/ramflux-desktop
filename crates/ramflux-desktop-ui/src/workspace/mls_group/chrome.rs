@@ -17,13 +17,14 @@ use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, App, IntoElement, Role, SharedString, div};
+use gpui_kit::{AnyElement, App, Entity, IntoElement, Role, SharedString, div};
 use ramflux_desktop_core::mls_group::{self as mls, ReadOnly};
 use ramflux_desktop_core::{Context, Store, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_secondary};
 
-use super::{group_name, picked_mentions, toggle_mention};
+use super::{group_name, picked_mentions};
+use crate::app::StoreHandle;
 use crate::bubble::EventSink;
 use crate::i18n::{tr, tr_count};
 
@@ -152,6 +153,7 @@ pub fn read_only_banner(store: &Store, group_id: &str, cx: &App) -> Option<AnyEl
 /// button that opens the picker. `None` while the group takes no posts.
 pub fn mention_strip(
     store: &Store,
+    handle: Entity<StoreHandle>,
     group_id: &str,
     sink: EventSink,
     cx: &App,
@@ -159,7 +161,7 @@ pub fn mention_strip(
     if store.mls_read_only(group_id).is_some() {
         return None;
     }
-    let picked = picked_mentions(group_id);
+    let picked = picked_mentions(store, group_id);
     let group = group_id.to_owned();
     let open = {
         let sink = sink.clone();
@@ -191,12 +193,13 @@ pub fn mention_strip(
             .child(open)
             .children(picked.into_iter().map(|(anchor, pick)| {
                 let group = group.clone();
+                let handle = handle.clone();
                 Button::new(SharedString::from(format!("mls-mention-chip-{anchor}")))
                     .design_quiet(cx)
                     .design_label(pick.name.clone())
                     .tooltip(pick.name.clone())
                     .on_click(move |_, _, cx| {
-                        toggle_mention(&group, &anchor, pick.clone());
+                        handle.read(cx).store().mls_toggle_mention(&group, &anchor, &pick.name);
                         cx.refresh_windows();
                     })
             }))

@@ -71,6 +71,9 @@ impl Task {
         // for (never the link or the text).
         if let Some(method) = effect.method().filter(|m| methods::is_mls_group(m)) {
             // W: enable the group.* plan for each mls_group.* method here.
+            // W: the join must emit its `MlsStarted::Join` event before the
+            // call is planned, or the account-wide in-flight guard is missing
+            // on live (the mock emits it from its own source).
             let body = effect.body().cloned().unwrap_or_default();
             let refused = crate::translate::mls_group::unavailable(method, &body);
             self.emit(vec![refused]);
