@@ -17,7 +17,10 @@ use serde_json::{Value, json};
 
 use super::{Decision, IntentError, Policy};
 use crate::intent::{IntentKind, methods};
-use crate::model::mls_group::{self as mls, HistoryDirection, PostState};
+use crate::model::mls_group::{
+    self as mls, CatchUpState, HistoryDirection, MlsRole, OpaqueId, PostState, RequestRowState,
+    SettingsField, WarningCode,
+};
 
 /// Rows asked of a list page.
 const LIST_LIMIT: u32 = 50;
@@ -27,6 +30,8 @@ const MEMBERS_LIMIT: u32 = 200;
 const HISTORY_LIMIT: u32 = 50;
 /// Posts asked of a gap fill.
 const GAP_LIMIT: u32 = 200;
+/// Join requests asked of a page.
+const REQUESTS_LIMIT: u32 = 200;
 
 /// Invite durations offered, in seconds (1 and 7 days; the host caps an invite at 7 days).
 pub const INVITE_TTLS: [u64; 2] = [86_400, 604_800];
@@ -42,9 +47,14 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 json!({ "cursor": cursor, "limit": LIST_LIMIT }),
             )
         }),
-        IntentKind::MlsGroupInfo { group_id } => {
-            known(p, group_id).map(|()| call(methods::MLS_GROUP_INFO, json!({ "group_id": group_id })))
-        }
+        // The read carries the group's event counter from now: what an event
+        // applies after it wins over what the read says (common 2.7).
+        IntentKind::MlsGroupInfo { group_id } => known(p, group_id).map(|()| {
+            call(
+                methods::MLS_GROUP_INFO,
+                json!({ "group_id": group_id, "issued": p.store.mls_event_gen(group_id) }),
+            )
+        }),
         IntentKind::MlsGroupMembers { group_id, cursor } => known(p, group_id).map(|()| {
             call(
                 methods::MLS_GROUP_MEMBERS,
@@ -205,7 +215,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 call(methods::MLS_GROUP_LEAVE, json!({ "group_id": group_id }))
             })
         }
-        _ => return None,
+        other => return decide_admin(p, other),
     };
     Some(result)
 }
@@ -236,4 +246,273 @@ fn known(p: &Policy<'_>, group_id: &str) -> Result<(), IntentError> {
 fn writable(p: &Policy<'_>, group_id: &str) -> Result<(), IntentError> {
     known(p, group_id)?;
     if p.store.mls_read_only(group_id).is_some() { Err(IntentError::MlsReadOnly) } else { Ok(()) }
+}
+
+// ---- M3: admin and edge states -------------------------------------------
+
+/// Adds the account epoch and a new action id to a call body: every M3 call
+/// carries them and its outcome echoes them. They never go on the wire.
+fn stamped(p: &Policy<'_>, mut body: Value) -> Value {
+    body["epoch"] = json!(p.store.mls_epoch());
+    body["action_id"] = json!(p.store.mls_next_action_id());
+    body
+}
+
+/// The group takes admin calls from this account: it is writable, the role
+/// allows it (`owner_only` for role changes), and, for a commit, no other
+/// admin action holds the group and commits are not paced.
+fn admin_gate(
+    p: &Policy<'_>,
+    group_id: &str,
+    owner_only: bool,
+    commit: bool,
+) -> Result<(), IntentError> {
+    writable(p, group_id)?;
+    match p.store.mls_my_role(group_id) {
+        Some(MlsRole::Owner) => {}
+        Some(MlsRole::Admin) if !owner_only => {}
+        _ => return Err(IntentError::MlsNotAllowed),
+    }
+    if commit {
+        if p.store.mls_admin_busy(group_id) {
+            return Err(IntentError::MlsAdminBusy);
+        }
+        if p.store.mls_paced_until(group_id, p.now).is_some() {
+            return Err(IntentError::MlsPaced);
+        }
+    }
+    Ok(())
+}
+
+/// The group needs approval (the requests exist only then).
+fn approval_on(p: &Policy<'_>, group_id: &str) -> Result<(), IntentError> {
+    if p.store.mls_group(group_id).is_some_and(|g| g.approval) {
+        Ok(())
+    } else {
+        Err(IntentError::MlsApprovalOff)
+    }
+}
+
+/// An idle request row that has not expired.
+fn open_request(p: &Policy<'_>, group_id: &str, id: &OpaqueId) -> Result<(), IntentError> {
+    let row = p
+        .store
+        .mls_requests(group_id)
+        .and_then(|pager| pager.row(id))
+        .ok_or(IntentError::MlsTargetUnknown)?;
+    if row.state != RequestRowState::Idle {
+        return Err(IntentError::MlsInFlight);
+    }
+    if row.request.expires_at.is_some_and(|at| at.0 <= p.now.0) {
+        return Err(IntentError::MlsTargetUnknown);
+    }
+    Ok(())
+}
+
+/// The loaded member row of `anchor`, when it is not this account and not
+/// the owner.
+fn member_target<'a>(
+    p: &'a Policy<'_>,
+    group_id: &str,
+    anchor: &OpaqueId,
+) -> Result<&'a mls::MemberRow, IntentError> {
+    let row = p
+        .store
+        .mls_members(group_id)
+        .and_then(|pages| pages.rows.get(anchor.expose()))
+        .ok_or(IntentError::MlsTargetUnknown)?;
+    if row.is_me || row.role == MlsRole::Owner {
+        return Err(IntentError::MlsNotAllowed);
+    }
+    Ok(row)
+}
+
+fn decide_admin(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decision, IntentError>> {
+    let result = match kind {
+        IntentKind::MlsRequestsList { group_id, cursor } => {
+            p.human_only("list join requests").and_then(|()| known(p, group_id)).and_then(|()| {
+                if !p.store.mls_is_admin(group_id) {
+                    return Err(IntentError::MlsNotAllowed);
+                }
+                approval_on(p, group_id)?;
+                let pager = p.store.mls_requests(group_id);
+                let first = cursor.is_none();
+                // One call per page: the same page is not asked twice, and
+                // a later page is the one the cursor names.
+                if first && pager.is_some_and(|r| r.loading) {
+                    return Err(IntentError::MlsInFlight);
+                }
+                if !first && (pager.is_none_or(|r| r.loading_more || r.cursor != *cursor)) {
+                    return Err(IntentError::MlsInFlight);
+                }
+                Ok(call(
+                    methods::MLS_GROUP_REQUESTS_LIST,
+                    json!({
+                        "group_id": group_id,
+                        "cursor": cursor,
+                        "limit": REQUESTS_LIMIT,
+                        "page_gen": p.store.mls_requests_gen(group_id, first),
+                    }),
+                ))
+            })
+        }
+        IntentKind::MlsRequestApprove { group_id, request_id } => p
+            .human_only("approve a join request")
+            .and_then(|()| admin_gate(p, group_id, false, true))
+            .and_then(|()| approval_on(p, group_id))
+            .and_then(|()| open_request(p, group_id, request_id))
+            .map(|()| {
+                call(
+                    methods::MLS_GROUP_REQUESTS_APPROVE,
+                    stamped(p, json!({ "group_id": group_id, "request_id": request_id.expose() })),
+                )
+            }),
+        IntentKind::MlsRequestDecline { group_id, request_id } => p
+            .human_only("decline a join request")
+            .and_then(|()| admin_gate(p, group_id, false, false))
+            .and_then(|()| approval_on(p, group_id))
+            .and_then(|()| open_request(p, group_id, request_id))
+            .and_then(|()| {
+                if p.store.mls_declining(group_id, request_id) {
+                    return Err(IntentError::MlsInFlight);
+                }
+                Ok(call(
+                    methods::MLS_GROUP_REQUESTS_DECLINE,
+                    json!({
+                        "group_id": group_id,
+                        "request_id": request_id.expose(),
+                        "epoch": p.store.mls_epoch(),
+                    }),
+                ))
+            }),
+        IntentKind::MlsRoleSet { group_id, anchor, admin } => {
+            p.human_only("change a role")
+                .and_then(|()| admin_gate(p, group_id, true, true))
+                .and_then(|()| member_target(p, group_id, anchor).map(|row| row.role.clone()))
+                .and_then(|role| {
+                    // Promote a member, or demote an admin; nothing else.
+                    let valid =
+                        matches!((admin, role), (true, MlsRole::Member) | (false, MlsRole::Admin));
+                    if !valid {
+                        return Err(IntentError::MlsNotAllowed);
+                    }
+                    Ok(call(
+                        methods::MLS_GROUP_ROLE_SET,
+                        stamped(
+                            p,
+                            json!({
+                                "group_id": group_id,
+                                "anchor": anchor.expose(),
+                                "role": if *admin { "admin" } else { "member" },
+                            }),
+                        ),
+                    ))
+                })
+        }
+        IntentKind::MlsMemberRemove { group_id, anchor }
+        | IntentKind::MlsMemberBan { group_id, anchor } => {
+            let (method, what) = if matches!(kind, IntentKind::MlsMemberRemove { .. }) {
+                (methods::MLS_GROUP_MEMBER_REMOVE, "remove a member")
+            } else {
+                (methods::MLS_GROUP_MEMBER_BAN, "ban a member")
+            };
+            p.human_only(what)
+                .and_then(|()| admin_gate(p, group_id, false, true))
+                .and_then(|()| member_target(p, group_id, anchor).map(|row| row.role.clone()))
+                .and_then(|role| {
+                    // An admin acts on plain members only.
+                    if p.store.mls_my_role(group_id) == Some(&MlsRole::Admin)
+                        && role != MlsRole::Member
+                    {
+                        return Err(IntentError::MlsNotAllowed);
+                    }
+                    Ok(call(
+                        method,
+                        stamped(p, json!({ "group_id": group_id, "anchor": anchor.expose() })),
+                    ))
+                })
+        }
+        IntentKind::MlsSettingsSet { group_id, field } => {
+            p.human_only("change group settings")
+                .and_then(|()| admin_gate(p, group_id, false, true))
+                .and_then(|()| {
+                    let summary =
+                        p.store.mls_group(group_id).ok_or(IntentError::MlsGroupUnknown)?;
+                    // One field per call.
+                    let body = match field {
+                        SettingsField::Name(name) => {
+                            if !mls::name_change_valid(name, &summary.name) {
+                                return Err(IntentError::MlsSettingInvalid);
+                            }
+                            json!({ "group_id": group_id, "name": name.trim() })
+                        }
+                        SettingsField::Approval(on) => {
+                            if *on == summary.approval {
+                                return Err(IntentError::MlsSettingInvalid);
+                            }
+                            json!({ "group_id": group_id, "approval": on })
+                        }
+                    };
+                    Ok(call(methods::MLS_GROUP_SETTINGS_SET, stamped(p, body)))
+                })
+        }
+        IntentKind::MlsPushSet { group_id, push } => p
+            .human_only("change notifications")
+            .and_then(|()| writable(p, group_id))
+            .and_then(|()| {
+                let token = push.token().ok_or(IntentError::MlsSettingInvalid)?;
+                if p.store.mls_push_saving(group_id).is_some() {
+                    return Err(IntentError::MlsInFlight);
+                }
+                Ok(call(
+                    methods::MLS_GROUP_PUSH_SET,
+                    json!({
+                        "group_id": group_id,
+                        "push": token,
+                        "epoch": p.store.mls_epoch(),
+                    }),
+                ))
+            }),
+        IntentKind::MlsCatchUpSkip { group_id } => {
+            p.human_only("skip the catch-up").and_then(|()| writable(p, group_id)).and_then(|()| {
+                let record = p
+                    .store
+                    .mls_catch_up(group_id)
+                    .filter(|r| r.state == CatchUpState::Running)
+                    .ok_or(IntentError::MlsNotCatchingUp)?;
+                if record.skipping.is_some() {
+                    return Err(IntentError::MlsInFlight);
+                }
+                Ok(call(
+                    methods::MLS_GROUP_CATCH_UP,
+                    json!({
+                        "group_id": group_id,
+                        "skip": true,
+                        "epoch": p.store.mls_epoch(),
+                        "from_seq": record.seq,
+                    }),
+                ))
+            })
+        }
+        IntentKind::MlsVoid { group_id, log_seq } => {
+            p.human_only("undo a change")
+                .and_then(|()| admin_gate(p, group_id, false, true))
+                .and_then(|()| {
+                    // The head commit, or the one `head_commit_rejected` names.
+                    let named = p.store.mls_warnings(group_id).into_iter().any(|w| {
+                        matches!(w, WarningCode::HeadCommitRejected { log_seq: l } if l == log_seq)
+                    });
+                    let head = p.store.mls_head_commit(group_id) == Some(*log_seq);
+                    if !(head || named) || p.store.mls_voided(group_id).contains(log_seq) {
+                        return Err(IntentError::MlsVoidTarget);
+                    }
+                    Ok(call(
+                        methods::MLS_GROUP_VOID,
+                        stamped(p, json!({ "group_id": group_id, "log_seq": log_seq })),
+                    ))
+                })
+        }
+        _ => return None,
+    };
+    Some(result)
 }

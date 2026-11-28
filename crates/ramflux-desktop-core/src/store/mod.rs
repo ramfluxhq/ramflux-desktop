@@ -37,6 +37,7 @@ mod changes;
 mod contact_requests;
 mod identity;
 mod index;
+mod mls_admin;
 mod mls_group;
 mod recovery;
 mod reducer;

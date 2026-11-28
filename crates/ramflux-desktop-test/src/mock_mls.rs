@@ -414,7 +414,8 @@ impl MockMls {
             methods::MLS_GROUP_LIST => self.list(body, now),
             methods::MLS_GROUP_INFO => match self.summary(&group, now) {
                 Some(summary) => {
-                    vec![(80, DomainEvent::MlsGroupInfoRead { summary: Box::new(summary) })]
+                    let issued = body.get("issued").and_then(JsonValue::as_u64).unwrap_or(0);
+                    vec![(80, DomainEvent::MlsGroupInfoRead { summary: Box::new(summary), issued })]
                 }
                 None => vec![(
                     80,

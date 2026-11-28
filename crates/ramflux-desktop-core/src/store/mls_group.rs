@@ -32,7 +32,7 @@ use crate::model::mls_group::{
     JoinRecord, JoinRefusal, JoinState, LeaveResult, ListPhase, ListState, MemberPages, MemberRow,
     MembershipChange, MembershipKind, MlsGroupSummary, MlsName, MlsRole, MlsServiceLine,
     MlsTimeline, NotSentReason, OwnItem, Post, PostBody, PostKind, PostState, QueueReason,
-    ReadOnly, SendState,
+    ReadOnly, SendState, UndoOffer, WarningCode,
 };
 use crate::model::{
     Context, ContextKind, FallbackPayload, IdentityState, KindClaim, Lifecycle, MessagePayload,
@@ -47,22 +47,22 @@ const INFO_COALESCE_MS: i64 = 1_000;
 /// The MLS state of one account.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MlsState {
-    groups: BTreeMap<String, MlsGroupSummary>,
+    pub(super) groups: BTreeMap<String, MlsGroupSummary>,
     list: ListState,
     stale: BTreeSet<String>,
-    members: BTreeMap<String, MemberPages>,
+    pub(super) members: BTreeMap<String, MemberPages>,
     invites: BTreeMap<String, Vec<mls::Invite>>,
     join: JoinState,
-    timelines: BTreeMap<String, MlsTimeline>,
+    pub(super) timelines: BTreeMap<String, MlsTimeline>,
     projected: BTreeMap<String, BTreeMap<MomentId, Moment>>,
-    ai_true: BTreeSet<(String, String)>,
-    read_only: BTreeMap<String, ReadOnly>,
+    pub(super) ai_true: BTreeSet<(String, String)>,
+    pub(super) read_only: BTreeMap<String, ReadOnly>,
     my_anchor: Option<String>,
     create: CreateState,
     failures: BTreeMap<(String, Option<String>), String>,
     refreshed_at: BTreeMap<String, Timestamp>,
     info_at: BTreeMap<String, Timestamp>,
-    info_wanted: BTreeSet<String>,
+    pub(super) info_wanted: BTreeSet<String>,
     list_wanted: bool,
     pending_wanted: bool,
     activity: BTreeMap<String, Timestamp>,
@@ -85,6 +85,8 @@ pub(crate) struct MlsState {
     /// A `post_state` that named a post no item carried yet (it arrived
     /// before the send reply): applied when the reply gives the post id.
     early_states: BTreeMap<(String, String), SendState>,
+    /// The admin owner (M3): the slot, requests, push, catch-up, warnings.
+    pub(super) admin: super::mls_admin::AdminOwner,
 }
 
 /// Early post states kept at most.
@@ -185,6 +187,15 @@ struct HistoryPage<'a> {
     floor: Option<u64>,
     last: u64,
     more: bool,
+}
+
+/// The row a membership line is made of: its position, its moment id, and
+/// whether it must stand alone (the head commit, or one that was undone).
+#[derive(Clone, Copy)]
+struct CommitRow<'a> {
+    ls: u64,
+    id: &'a str,
+    alone: bool,
 }
 
 /// A line the projection makes of a membership or settings row.
@@ -360,6 +371,17 @@ impl Store {
                 });
             }
         }
+        for group in &self.mls.admin.newest_wanted {
+            out.push(IntentKind::MlsGroupHistory {
+                group_id: group.clone(),
+                direction: HistoryDirection::Newest,
+            });
+        }
+        for group in &self.mls.admin.members_wanted {
+            if self.mls.members.get(group).is_some_and(|p| p.loaded) {
+                out.push(IntentKind::MlsGroupMembers { group_id: group.clone(), cursor: None });
+            }
+        }
         if self.mls.list_wanted {
             out.push(IntentKind::MlsGroupList { cursor: None });
         }
@@ -396,7 +418,8 @@ impl Store {
             && self.mls.join.records.is_empty()
             && self.mls.join.last.is_none()
         {
-            self.mls = MlsState::default();
+            let admin = self.mls.admin.after_clear();
+            self.mls = MlsState { admin, ..MlsState::default() };
             return;
         }
         let groups: BTreeSet<String> = self
@@ -426,7 +449,8 @@ impl Store {
             self.participants.remove(&person);
             changes.participants.insert(person);
         }
-        self.mls = MlsState::default();
+        let admin = self.mls.admin.after_clear();
+        self.mls = MlsState { admin, ..MlsState::default() };
         changes.mls.insert(String::new());
         for group in groups {
             changes.mls.insert(group);
@@ -463,12 +487,44 @@ impl Store {
             DomainEvent::MlsFailed { method, group_id, invite_id, code } => {
                 self.mls_failed(method, group_id.as_deref(), invite_id.as_deref(), code, changes);
             }
-            DomainEvent::MlsGroupInfoRead { summary } => {
+            DomainEvent::MlsGroupInfoRead { summary, issued } => {
                 self.mls.failures.remove(&(
                     crate::intent::methods::MLS_GROUP_INFO.to_owned(),
                     Some(summary.group_id.clone()),
                 ));
                 self.mls_upsert_group((**summary).clone(), changes);
+                self.mls_info_merge(summary, *issued, changes);
+                self.mls_reproject(&summary.group_id, changes);
+            }
+            DomainEvent::MlsRequestsPage {
+                group_id,
+                page_gen,
+                first_page,
+                rows,
+                cursor,
+                failed,
+            } => {
+                let page = super::mls_admin::RequestsPage {
+                    group: group_id,
+                    page_gen: *page_gen,
+                    first_page: *first_page,
+                    rows,
+                    cursor: cursor.clone(),
+                    failed: failed.clone(),
+                };
+                self.mls_requests_page(page, changes);
+            }
+            DomainEvent::MlsAdminOutcome { epoch, action_id, group_id, result, .. } => {
+                self.mls_admin_outcome(*epoch, *action_id, group_id, result, changes);
+            }
+            DomainEvent::MlsDeclineOutcome { epoch, group_id, request_id, result } => {
+                self.mls_decline_outcome(*epoch, group_id, request_id, result, changes);
+            }
+            DomainEvent::MlsPushOutcome { epoch, group_id, result } => {
+                self.mls_push_outcome(*epoch, group_id, result, changes);
+            }
+            DomainEvent::MlsSkipOutcome { epoch, group_id, from_seq, result } => {
+                self.mls_skip_outcome(*epoch, group_id, *from_seq, result, changes);
             }
             DomainEvent::MlsMembersPage { group_id, rows, cursor, failed } => {
                 self.mls_members_page(group_id, rows, cursor.clone(), failed.clone(), changes);
@@ -634,6 +690,7 @@ impl Store {
             MlsStart::History { group_id, direction } => {
                 if matches!(direction, HistoryDirection::Newest) {
                     self.mls_open_timeline(group_id);
+                    self.mls.admin.newest_wanted.remove(group_id);
                 }
                 if let Some(tl) = self.mls.timelines.get_mut(group_id) {
                     match direction {
@@ -674,6 +731,7 @@ impl Store {
                 self.mls.info_wanted.remove(group_id);
                 self.mls.info_at.insert(group_id.clone(), at);
             }
+            other => self.mls_admin_started(at, other, changes),
         }
     }
 
@@ -734,8 +792,9 @@ impl Store {
         changes.mls.insert(String::new());
     }
 
-    fn mls_upsert_group(&mut self, summary: MlsGroupSummary, changes: &mut Changes) {
+    pub(super) fn mls_upsert_group(&mut self, summary: MlsGroupSummary, changes: &mut Changes) {
         let group = summary.group_id.clone();
+        self.mls_warnings_seed(&summary);
         let context = Context {
             last_activity: summary.last_activity_at,
             id: mls::context_id(&group),
@@ -936,6 +995,7 @@ impl Store {
         }
         for post in posts {
             self.mls_learn_post(group, post);
+            self.mls_admin_on_commit_row(group, post, changes);
         }
         self.mls_open_timeline(group);
         let known_anchor = self.mls.my_anchor.clone();
@@ -1008,6 +1068,16 @@ impl Store {
             GroupEventKind::Read { read_log_seq, unread, unread_mentions } => {
                 self.mls_set_read(group, *read_log_seq, *unread, *unread_mentions, changes);
             }
+            GroupEventKind::PendingJoin(request) => self.mls_pending_join(group, request, changes),
+            GroupEventKind::CatchUp { state, done, total } => {
+                self.mls_catch_up_event(group, *state, *done, *total, changes);
+            }
+            GroupEventKind::Warning { code, cleared } => {
+                self.mls_warning_event(group, code, *cleared, changes);
+            }
+            GroupEventKind::Void(post) => {
+                self.mls_post_event(at, group, post, kind, changes);
+            }
         }
     }
 
@@ -1033,9 +1103,17 @@ impl Store {
                 changes.contexts.insert(context.id.clone());
             }
         }
-        if matches!(kind, GroupEventKind::Membership(_) | GroupEventKind::Settings(_)) {
+        if matches!(
+            kind,
+            GroupEventKind::Membership(_) | GroupEventKind::Settings(_) | GroupEventKind::Void(_)
+        ) {
             self.mls.info_wanted.insert(group.to_owned());
         }
+        if matches!(kind, GroupEventKind::Void(_)) {
+            // The roster may revert with an undone change.
+            self.mls.admin.members_wanted.insert(group.to_owned());
+        }
+        self.mls_admin_on_commit_row(group, post, changes);
         if let PostBody::Membership { changes: rows, .. } = &post.body {
             self.mls_membership_effects(group, rows, changes);
         }
@@ -1105,6 +1183,7 @@ impl Store {
                 self.mls.groups.remove(group);
                 self.mls.mentions.0.lock().remove(group);
                 self.mls.info_wanted.remove(group);
+                self.mls_admin_forget(group);
                 changes.mls.insert(group.to_owned());
                 changes.mls.insert(String::new());
             }
@@ -1233,6 +1312,7 @@ impl Store {
                 self.mls.leave_failure.remove(group);
                 self.mls.read_only.insert(group.to_owned(), ReadOnly::Left);
                 self.mls.mentions.0.lock().remove(group);
+                self.mls_admin_forget(group);
             }
             other => {
                 self.mls.leave_failure.insert(group.to_owned(), other.clone());
@@ -1378,6 +1458,14 @@ impl Store {
         changes: &mut Changes,
     ) {
         let my = self.mls.my_anchor.clone();
+        // The next group read shows the quota this send used (the M2
+        // coalescing applies).
+        if !matches!(state, SendState::Submitting)
+            && self.mls.groups.contains_key(group)
+            && !self.mls.read_only.contains_key(group)
+        {
+            self.mls.info_wanted.insert(group.to_owned());
+        }
         // A state that came by event before this reply is the newer one.
         let state = post_id
             .and_then(|id| self.mls.early_states.remove(&(group.to_owned(), id.to_owned())))
@@ -1546,6 +1634,8 @@ impl Store {
             ));
         }
         let mut lines: Vec<Line> = Vec::new();
+        let head = self.mls_head_commit(group);
+        let voided = self.mls_voided(group);
         for (ls, post) in &tl.posted {
             let at = post.appended_at.unwrap_or(last_at);
             last_at = at;
@@ -1596,7 +1686,16 @@ impl Store {
                     ));
                 }
                 (_, PostBody::Membership { changes: rows, by }) => {
-                    Self::mls_membership_lines(&mut lines, *ls, id.as_str(), rows, by.as_ref(), my);
+                    // A row that is the head commit or was undone stands alone,
+                    // so its mark and its entry belong to it only.
+                    let alone = head == Some(*ls) || voided.contains(ls);
+                    Self::mls_membership_lines(
+                        &mut lines,
+                        CommitRow { ls: *ls, id: id.as_str(), alone },
+                        rows,
+                        by.as_ref(),
+                        my,
+                    );
                 }
                 (_, PostBody::Settings { change, by }) => {
                     let by_name = by.as_ref().map(name_of);
@@ -1625,12 +1724,26 @@ impl Store {
                         ));
                     }
                 }
-                (_, PostBody::Void { .. }) => {
-                    lines.push(Line::Single(MlsServiceLine::Void, id.as_str().to_owned(), *ls));
+                (_, PostBody::Void { by, .. }) => {
+                    lines.push(Line::Single(
+                        MlsServiceLine::Void { by: by.as_ref().map(name_of) },
+                        id.as_str().to_owned(),
+                        *ls,
+                    ));
                 }
                 _ => {
                     lines.push(Line::Single(MlsServiceLine::Updated, id.as_str().to_owned(), *ls));
                 }
+            }
+        }
+        // The placeholder of messages this device could not read.
+        for code in self.mls_warnings(group) {
+            if let WarningCode::Undecryptable { count, from_log_seq: Some(from) } = code {
+                lines.push(Line::Single(
+                    MlsServiceLine::Undecryptable { count: *count },
+                    format!("mls:{group}:undecryptable"),
+                    *from,
+                ));
             }
         }
         let at_for_line =
@@ -1644,6 +1757,25 @@ impl Store {
                     (MlsServiceLine::Left { who }, format!("mls:{group}:{ls}"), ls)
                 }
                 Line::Single(service, id, ls) => (service, id, ls),
+            };
+            // A commit row that was undone, or that may be undone now, carries
+            // the mark or the entry.
+            let is_commit = tl.posted.get(&ls).is_some_and(|p| {
+                matches!(
+                    p.body,
+                    PostBody::Membership { .. } | PostBody::Settings { .. } | PostBody::Void { .. }
+                )
+            }) && !matches!(service, MlsServiceLine::Undecryptable { .. });
+            let service = if is_commit {
+                let undo = self.mls_undo_offer(group, head, ls);
+                let undone = voided.contains(&ls);
+                if undone || undo != UndoOffer::No {
+                    MlsServiceLine::Commit { line: Box::new(service), voided: undone, undo }
+                } else {
+                    service
+                }
+            } else {
+                service
             };
             out.push(make(
                 MomentId::new(id),
@@ -1687,12 +1819,12 @@ impl Store {
 
     fn mls_membership_lines(
         lines: &mut Vec<Line>,
-        ls: u64,
-        id: &str,
+        row: CommitRow<'_>,
         rows: &[MembershipChange],
         by: Option<&Author>,
         my: Option<&str>,
     ) {
+        let CommitRow { ls, id, alone } = row;
         let shown: Vec<&MembershipChange> = rows
             .iter()
             .filter(|c| {
@@ -1715,6 +1847,15 @@ impl Store {
             .collect();
         let only_joined = joined.len() == shown.len();
         let only_left = left.len() == shown.len();
+        if alone && (only_joined || only_left) {
+            let service = if only_joined {
+                MlsServiceLine::Joined { who: joined.into_iter().take(mls::MAX_NAMES).collect() }
+            } else {
+                MlsServiceLine::Left { who: left.into_iter().take(mls::MAX_NAMES).collect() }
+            };
+            lines.push(Line::Single(service, id.to_owned(), ls));
+            return;
+        }
         if only_joined {
             if let Some(Line::Joined(names, _)) = lines.last_mut() {
                 let room = mls::MAX_NAMES.saturating_sub(names.len());

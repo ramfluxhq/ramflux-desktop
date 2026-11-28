@@ -377,6 +377,77 @@ pub enum UiEventKind {
         /// The group.
         group_id: String,
     },
+    /// A page of join requests was asked for (the screen opened, scrolled to
+    /// the end, or "Try again" was pressed).
+    MlsRequestsRequested {
+        /// The group.
+        group_id: String,
+        /// The cursor; `None` for the first page.
+        cursor: Option<String>,
+    },
+    /// "Approve" confirmed on a join request.
+    MlsApprovePressed {
+        /// The group.
+        group_id: String,
+        /// The request.
+        request_id: crate::model::mls_group::OpaqueId,
+    },
+    /// "Decline" confirmed on a join request.
+    MlsDeclinePressed {
+        /// The group.
+        group_id: String,
+        /// The request.
+        request_id: crate::model::mls_group::OpaqueId,
+    },
+    /// A role change confirmed.
+    MlsRolePressed {
+        /// The group.
+        group_id: String,
+        /// The member.
+        anchor: crate::model::mls_group::OpaqueId,
+        /// Admin when true, regular member when false.
+        admin: bool,
+    },
+    /// "Remove" confirmed on a member.
+    MlsRemovePressed {
+        /// The group.
+        group_id: String,
+        /// The member.
+        anchor: crate::model::mls_group::OpaqueId,
+    },
+    /// "Ban" confirmed on a member.
+    MlsBanPressed {
+        /// The group.
+        group_id: String,
+        /// The member.
+        anchor: crate::model::mls_group::OpaqueId,
+    },
+    /// "Save" pressed on the group name, or the approval switch confirmed.
+    MlsSettingsPressed {
+        /// The group.
+        group_id: String,
+        /// The one field to change.
+        field: crate::model::mls_group::SettingsField,
+    },
+    /// A notification mode was chosen for this device.
+    MlsPushPressed {
+        /// The group.
+        group_id: String,
+        /// The mode.
+        push: crate::model::mls_group::PushSetting,
+    },
+    /// "Skip" confirmed in the skip dialog.
+    MlsSkipPressed {
+        /// The group.
+        group_id: String,
+    },
+    /// "Undo" confirmed in the undo dialog.
+    MlsVoidPressed {
+        /// The group.
+        group_id: String,
+        /// The position of the change.
+        log_seq: u64,
+    },
     /// Handoff offer answered.
     HandoffAnswered {
         /// Accepted or declined.

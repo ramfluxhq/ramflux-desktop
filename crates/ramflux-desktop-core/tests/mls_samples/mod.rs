@@ -84,6 +84,17 @@ pub fn member() -> MemberRow {
     }
 }
 
+pub fn join_request(id: &str, anchor: &str) -> JoinRequest {
+    JoinRequest {
+        request_id: OpaqueId::new(id),
+        anchor: OpaqueId::new(anchor),
+        display: Some("Ana".to_owned()),
+        ai_flag: false,
+        requested_at: Some(Timestamp(100)),
+        expires_at: Some(Timestamp(86_400_100)),
+    }
+}
+
 pub fn events() -> Vec<DomainEvent> {
     vec![
         DomainEvent::MlsStarted(MlsStart::Join { attempt: 1 }),
@@ -94,7 +105,7 @@ pub fn events() -> Vec<DomainEvent> {
             invite_id: None,
             code: "not_member".to_owned(),
         },
-        DomainEvent::MlsGroupInfoRead { summary: Box::new(summary()) },
+        DomainEvent::MlsGroupInfoRead { summary: Box::new(summary()), issued: 0 },
         DomainEvent::MlsMembersPage {
             group_id: "g-1".to_owned(),
             rows: vec![member()],
@@ -163,6 +174,39 @@ pub fn events() -> Vec<DomainEvent> {
             attempt: None,
             local_id: Some("l-1".to_owned()),
         },
+        DomainEvent::MlsRequestsPage {
+            group_id: "g-1".to_owned(),
+            page_gen: 1,
+            first_page: true,
+            rows: vec![join_request("r-1", "anc-r1")],
+            cursor: Some("c2".to_owned()),
+            failed: None,
+        },
+        DomainEvent::MlsAdminOutcome {
+            epoch: 0,
+            action_id: 1,
+            group_id: "g-1".to_owned(),
+            kind: AdminKind::Approve,
+            target: AdminTarget::Request(OpaqueId::new("r-1")),
+            result: AdminResult::Committed { log_seq: 301 },
+        },
+        DomainEvent::MlsDeclineOutcome {
+            epoch: 0,
+            group_id: "g-1".to_owned(),
+            request_id: OpaqueId::new("r-1"),
+            result: DeclineResult::Declined,
+        },
+        DomainEvent::MlsPushOutcome {
+            epoch: 0,
+            group_id: "g-1".to_owned(),
+            result: PushResult::Set(PushSetting::None),
+        },
+        DomainEvent::MlsSkipOutcome {
+            epoch: 0,
+            group_id: "g-1".to_owned(),
+            from_seq: 2,
+            result: SkipResult::Rejoining,
+        },
     ]
 }
 
@@ -193,6 +237,29 @@ pub fn intents() -> Vec<IntentKind> {
         },
         IntentKind::MlsGroupDelete { group_id: "g-1".to_owned(), post_id: "p-1".to_owned() },
         IntentKind::MlsGroupLeave { group_id: "g-1".to_owned() },
+        IntentKind::MlsRequestsList { group_id: "g-1".to_owned(), cursor: None },
+        IntentKind::MlsRequestApprove {
+            group_id: "g-1".to_owned(),
+            request_id: OpaqueId::new("r-1"),
+        },
+        IntentKind::MlsRequestDecline {
+            group_id: "g-1".to_owned(),
+            request_id: OpaqueId::new("r-1"),
+        },
+        IntentKind::MlsRoleSet {
+            group_id: "g-1".to_owned(),
+            anchor: OpaqueId::new("anc-1"),
+            admin: true,
+        },
+        IntentKind::MlsMemberRemove { group_id: "g-1".to_owned(), anchor: OpaqueId::new("anc-1") },
+        IntentKind::MlsMemberBan { group_id: "g-1".to_owned(), anchor: OpaqueId::new("anc-1") },
+        IntentKind::MlsSettingsSet {
+            group_id: "g-1".to_owned(),
+            field: SettingsField::Name("Team".to_owned()),
+        },
+        IntentKind::MlsPushSet { group_id: "g-1".to_owned(), push: PushSetting::All },
+        IntentKind::MlsCatchUpSkip { group_id: "g-1".to_owned() },
+        IntentKind::MlsVoid { group_id: "g-1".to_owned(), log_seq: 250 },
     ]
 }
 
@@ -229,5 +296,31 @@ pub fn ui_events() -> Vec<UiEventKind> {
         },
         UiEventKind::MlsDeletePressed { group_id: "g-1".to_owned(), post_id: "p-1".to_owned() },
         UiEventKind::MlsLeavePressed { group_id: "g-1".to_owned() },
+        UiEventKind::MlsRequestsRequested { group_id: "g-1".to_owned(), cursor: None },
+        UiEventKind::MlsApprovePressed {
+            group_id: "g-1".to_owned(),
+            request_id: OpaqueId::new("r-1"),
+        },
+        UiEventKind::MlsDeclinePressed {
+            group_id: "g-1".to_owned(),
+            request_id: OpaqueId::new("r-1"),
+        },
+        UiEventKind::MlsRolePressed {
+            group_id: "g-1".to_owned(),
+            anchor: OpaqueId::new("anc-1"),
+            admin: false,
+        },
+        UiEventKind::MlsRemovePressed {
+            group_id: "g-1".to_owned(),
+            anchor: OpaqueId::new("anc-1"),
+        },
+        UiEventKind::MlsBanPressed { group_id: "g-1".to_owned(), anchor: OpaqueId::new("anc-1") },
+        UiEventKind::MlsSettingsPressed {
+            group_id: "g-1".to_owned(),
+            field: SettingsField::Approval(false),
+        },
+        UiEventKind::MlsPushPressed { group_id: "g-1".to_owned(), push: PushSetting::None },
+        UiEventKind::MlsSkipPressed { group_id: "g-1".to_owned() },
+        UiEventKind::MlsVoidPressed { group_id: "g-1".to_owned(), log_seq: 250 },
     ]
 }

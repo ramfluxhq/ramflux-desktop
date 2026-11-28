@@ -114,9 +114,14 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::MlsRefreshed { .. } => "MlsRefreshed",
         DomainEvent::MlsMarkedRead { .. } => "MlsMarkedRead",
         DomainEvent::MlsUnavailable { .. } => "MlsUnavailable",
+        DomainEvent::MlsRequestsPage { .. } => "MlsRequestsPage",
+        DomainEvent::MlsAdminOutcome { .. } => "MlsAdminOutcome",
+        DomainEvent::MlsDeclineOutcome { .. } => "MlsDeclineOutcome",
+        DomainEvent::MlsPushOutcome { .. } => "MlsPushOutcome",
+        DomainEvent::MlsSkipOutcome { .. } => "MlsSkipOutcome",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 92;
+const DOMAIN_EVENT_VARIANTS: usize = 97;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -268,11 +273,21 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::MlsGroupSend { .. } => "MlsGroupSend",
         IntentKind::MlsGroupDelete { .. } => "MlsGroupDelete",
         IntentKind::MlsGroupLeave { .. } => "MlsGroupLeave",
+        IntentKind::MlsRequestsList { .. } => "MlsRequestsList",
+        IntentKind::MlsRequestApprove { .. } => "MlsRequestApprove",
+        IntentKind::MlsRequestDecline { .. } => "MlsRequestDecline",
+        IntentKind::MlsRoleSet { .. } => "MlsRoleSet",
+        IntentKind::MlsMemberRemove { .. } => "MlsMemberRemove",
+        IntentKind::MlsMemberBan { .. } => "MlsMemberBan",
+        IntentKind::MlsSettingsSet { .. } => "MlsSettingsSet",
+        IntentKind::MlsPushSet { .. } => "MlsPushSet",
+        IntentKind::MlsCatchUpSkip { .. } => "MlsCatchUpSkip",
+        IntentKind::MlsVoid { .. } => "MlsVoid",
         IntentKind::MlsJoinPending => "MlsJoinPending",
     }
 }
 /// Serializable intent variants (all but the seven secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 115;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 125;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -354,11 +369,21 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::MlsRetryPressed { .. } => "MlsRetryPressed",
         UiEventKind::MlsDeletePressed { .. } => "MlsDeletePressed",
         UiEventKind::MlsLeavePressed { .. } => "MlsLeavePressed",
+        UiEventKind::MlsRequestsRequested { .. } => "MlsRequestsRequested",
+        UiEventKind::MlsApprovePressed { .. } => "MlsApprovePressed",
+        UiEventKind::MlsDeclinePressed { .. } => "MlsDeclinePressed",
+        UiEventKind::MlsRolePressed { .. } => "MlsRolePressed",
+        UiEventKind::MlsRemovePressed { .. } => "MlsRemovePressed",
+        UiEventKind::MlsBanPressed { .. } => "MlsBanPressed",
+        UiEventKind::MlsSettingsPressed { .. } => "MlsSettingsPressed",
+        UiEventKind::MlsPushPressed { .. } => "MlsPushPressed",
+        UiEventKind::MlsSkipPressed { .. } => "MlsSkipPressed",
+        UiEventKind::MlsVoidPressed { .. } => "MlsVoidPressed",
         UiEventKind::MlsJoinPendingRequested => "MlsJoinPendingRequested",
         UiEventKind::MlsPanelRequested { .. } => "MlsPanelRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 80;
+const UI_EVENT_KIND_VARIANTS: usize = 90;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     let mut all = all_moment_kinds_base();

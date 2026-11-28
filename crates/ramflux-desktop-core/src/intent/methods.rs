@@ -157,6 +157,27 @@ pub const MLS_GROUP_MESSAGE_DELETE: &str = "mls_group.message.delete";
 /// Leave a group (wire `group.leave`).
 pub const MLS_GROUP_LEAVE: &str = "mls_group.leave";
 
+/// Read a page of join requests (wire `group.requests.list`).
+pub const MLS_GROUP_REQUESTS_LIST: &str = "mls_group.requests.list";
+/// Approve a join request (wire `group.requests.approve`).
+pub const MLS_GROUP_REQUESTS_APPROVE: &str = "mls_group.requests.approve";
+/// Decline a join request (wire `group.requests.decline`).
+pub const MLS_GROUP_REQUESTS_DECLINE: &str = "mls_group.requests.decline";
+/// Change a member's role (wire `group.role.set`).
+pub const MLS_GROUP_ROLE_SET: &str = "mls_group.role.set";
+/// Remove a member (wire `group.member.remove`).
+pub const MLS_GROUP_MEMBER_REMOVE: &str = "mls_group.member.remove";
+/// Ban a member (wire `group.member.ban`).
+pub const MLS_GROUP_MEMBER_BAN: &str = "mls_group.member.ban";
+/// Change the name or the approval mode (wire `group.settings.set`).
+pub const MLS_GROUP_SETTINGS_SET: &str = "mls_group.settings.set";
+/// Set this device's notification mode for a group (wire `group.push.set`).
+pub const MLS_GROUP_PUSH_SET: &str = "mls_group.push.set";
+/// Skip the catch-up (wire `group.catch_up`, always with `skip: true`).
+pub const MLS_GROUP_CATCH_UP: &str = "mls_group.catch_up";
+/// Undo the head commit (wire `group.void`).
+pub const MLS_GROUP_VOID: &str = "mls_group.void";
+
 /// Whether `method` is a contract method of the MLS groups.
 pub fn is_mls_group(method: &str) -> bool {
     method.starts_with("mls_group.")

@@ -373,4 +373,31 @@ pub enum IntentError {
     /// The invite settings are not offered.
     #[error("the invite settings are not valid")]
     MlsInviteInvalid,
+    /// The role of this account does not allow the action.
+    #[error("this role cannot do that in the group")]
+    MlsNotAllowed,
+    /// Another admin action holds the group.
+    #[error("another change is in progress in the group")]
+    MlsAdminBusy,
+    /// Group commits are paced until later.
+    #[error("group changes are paced until later")]
+    MlsPaced,
+    /// The same call is in flight already.
+    #[error("that call is in flight already")]
+    MlsInFlight,
+    /// The group does not need approval.
+    #[error("the group does not need approval")]
+    MlsApprovalOff,
+    /// The change to undo is not the head commit.
+    #[error("only the latest change can be undone")]
+    MlsVoidTarget,
+    /// The setting is not valid or is not a change.
+    #[error("the setting is not valid or does not change")]
+    MlsSettingInvalid,
+    /// The member or request is not one the loaded lists show.
+    #[error("the target is not in the loaded list")]
+    MlsTargetUnknown,
+    /// Catch-up is not running, so there is nothing to skip.
+    #[error("catch-up is not running")]
+    MlsNotCatchingUp,
 }

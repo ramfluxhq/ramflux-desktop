@@ -518,7 +518,10 @@ pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> 
             first_page: body.get("cursor").is_none_or(Value::is_null),
         },
         methods::MLS_GROUP_INFO => match summary(reply) {
-            Some(summary) => DomainEvent::MlsGroupInfoRead { summary: Box::new(summary) },
+            Some(summary) => DomainEvent::MlsGroupInfoRead {
+                summary: Box::new(summary),
+                issued: number(body, "issued"),
+            },
             None => return Vec::new(),
         },
         methods::MLS_GROUP_CREATE => {

@@ -17,8 +17,9 @@ use crate::model::{
 
 use crate::card_event::CardEvent;
 use crate::model::mls_group::{
-    DeleteResult, GroupEventKind, HistoryDirection, Invite, JoinOutcome, JoinRecord, LeaveResult,
-    MemberRow, MlsGroupSummary, Post, SendState,
+    AdminKind, AdminResult, AdminTarget, DeclineResult, DeleteResult, GroupEventKind,
+    HistoryDirection, Invite, JoinOutcome, JoinRecord, JoinRequest, LeaveResult, MemberRow,
+    MlsGroupSummary, OpaqueId, Post, PushResult, SendState, SkipResult,
 };
 pub use crate::surface_event::{SurfaceEvent, SurfaceSnapshot};
 use serde_json::Value as JsonValue;
@@ -530,6 +531,10 @@ pub enum DomainEvent {
     MlsGroupInfoRead {
         /// The group as it is now.
         summary: Box<MlsGroupSummary>,
+        /// The group's event counter when the read was issued (echoed from
+        /// the call): events applied after it win over what the read says.
+        #[serde(default)]
+        issued: u64,
     },
     /// A page of `group.members`, or its failure.
     MlsMembersPage {
@@ -666,6 +671,69 @@ pub enum DomainEvent {
         /// Unread mentions.
         unread_mentions: u32,
     },
+    /// A page of `group.requests.list`, or its failure.
+    MlsRequestsPage {
+        /// The group.
+        group_id: String,
+        /// The page generation when the page was asked for (echoed from the
+        /// call): a page asked before the last reset is dropped.
+        page_gen: u64,
+        /// Whether this was the first page.
+        first_page: bool,
+        /// The rows.
+        rows: Vec<JoinRequest>,
+        /// The cursor of the next page; `None` at the end.
+        cursor: Option<String>,
+        /// The error code when the page failed.
+        #[serde(default)]
+        failed: Option<String>,
+    },
+    /// What an admin call (approve, role, remove, ban, settings, void) came to.
+    MlsAdminOutcome {
+        /// The account epoch the call was issued in.
+        epoch: u64,
+        /// The id of the action.
+        action_id: u64,
+        /// The group.
+        group_id: String,
+        /// What the action was.
+        kind: AdminKind,
+        /// What it was about.
+        target: AdminTarget,
+        /// How it ended.
+        result: AdminResult,
+    },
+    /// What a decline came to.
+    MlsDeclineOutcome {
+        /// The account epoch the call was issued in.
+        epoch: u64,
+        /// The group.
+        group_id: String,
+        /// The request.
+        request_id: OpaqueId,
+        /// How it ended.
+        result: DeclineResult,
+    },
+    /// What a push-mode change came to.
+    MlsPushOutcome {
+        /// The account epoch the call was issued in.
+        epoch: u64,
+        /// The group.
+        group_id: String,
+        /// How it ended.
+        result: PushResult,
+    },
+    /// What a catch-up skip came to.
+    MlsSkipOutcome {
+        /// The account epoch the call was issued in.
+        epoch: u64,
+        /// The group.
+        group_id: String,
+        /// The catch-up sequence the call started from.
+        from_seq: u64,
+        /// How it ended.
+        result: SkipResult,
+    },
     /// A new method of the MLS groups is not available on this source.
     MlsUnavailable {
         /// The contract method.
@@ -741,6 +809,54 @@ pub enum MlsStart {
         /// The group.
         group_id: String,
     },
+    /// A page of join requests.
+    Requests {
+        /// The group.
+        group_id: String,
+        /// Whether it is the first page.
+        first_page: bool,
+        /// The page generation the call was made with.
+        page_gen: u64,
+    },
+    /// A first page of members.
+    Members {
+        /// The group.
+        group_id: String,
+    },
+    /// An admin call (approve, role, remove, ban, settings, void).
+    Admin {
+        /// The group.
+        group_id: String,
+        /// The account epoch.
+        epoch: u64,
+        /// The id of the action.
+        action_id: u64,
+        /// What it does.
+        kind: AdminKind,
+        /// What it is about.
+        target: AdminTarget,
+    },
+    /// A decline.
+    Decline {
+        /// The group.
+        group_id: String,
+        /// The request.
+        request_id: OpaqueId,
+    },
+    /// A push-mode change.
+    Push {
+        /// The group.
+        group_id: String,
+        /// The mode asked for.
+        push: crate::model::mls_group::PushSetting,
+    },
+    /// A catch-up skip.
+    Skip {
+        /// The group.
+        group_id: String,
+        /// The catch-up sequence it started from.
+        from_seq: u64,
+    },
 }
 
 impl DomainEvent {
@@ -786,8 +902,73 @@ impl DomainEvent {
             m::MLS_GROUP_CREATE => MlsStart::Create,
             m::MLS_GROUP_LIST => MlsStart::List,
             m::MLS_GROUP_INFO => MlsStart::Info { group_id: group()? },
+            m::MLS_GROUP_REQUESTS_LIST => MlsStart::Requests {
+                group_id: group()?,
+                first_page: body.get("cursor").is_none_or(JsonValue::is_null),
+                page_gen: body.get("page_gen").and_then(JsonValue::as_u64).unwrap_or(0),
+            },
+            m::MLS_GROUP_MEMBERS if body.get("cursor").is_none_or(JsonValue::is_null) => {
+                MlsStart::Members { group_id: group()? }
+            }
+            m::MLS_GROUP_REQUESTS_APPROVE
+            | m::MLS_GROUP_ROLE_SET
+            | m::MLS_GROUP_MEMBER_REMOVE
+            | m::MLS_GROUP_MEMBER_BAN
+            | m::MLS_GROUP_SETTINGS_SET
+            | m::MLS_GROUP_VOID => {
+                let (kind, target) = admin_of(method, body)?;
+                MlsStart::Admin {
+                    group_id: group()?,
+                    epoch: body.get("epoch")?.as_u64()?,
+                    action_id: body.get("action_id")?.as_u64()?,
+                    kind,
+                    target,
+                }
+            }
+            m::MLS_GROUP_REQUESTS_DECLINE => MlsStart::Decline {
+                group_id: group()?,
+                request_id: OpaqueId::new(text("request_id")?),
+            },
+            m::MLS_GROUP_PUSH_SET => MlsStart::Push {
+                group_id: group()?,
+                push: crate::model::mls_group::PushSetting::from_token(&text("push")?),
+            },
+            m::MLS_GROUP_CATCH_UP => {
+                MlsStart::Skip { group_id: group()?, from_seq: body.get("from_seq")?.as_u64()? }
+            }
             _ => return None,
         };
         Some(Self::MlsStarted(start))
     }
+}
+
+/// The kind and target of an admin call, read from the call body the policy
+/// built (the translators use the same reading to echo the target).
+pub fn admin_of(method: &str, body: &JsonValue) -> Option<(AdminKind, AdminTarget)> {
+    use crate::intent::methods as m;
+    let id = |field: &str| body.get(field).and_then(JsonValue::as_str).map(OpaqueId::new);
+    Some(match method {
+        m::MLS_GROUP_REQUESTS_APPROVE => {
+            (AdminKind::Approve, AdminTarget::Request(id("request_id")?))
+        }
+        m::MLS_GROUP_ROLE_SET => (
+            AdminKind::Role,
+            AdminTarget::Member {
+                anchor: id("anchor")?,
+                admin: Some(body.get("role").and_then(JsonValue::as_str)? == "admin"),
+            },
+        ),
+        m::MLS_GROUP_MEMBER_REMOVE => {
+            (AdminKind::Remove, AdminTarget::Member { anchor: id("anchor")?, admin: None })
+        }
+        m::MLS_GROUP_MEMBER_BAN => {
+            (AdminKind::Ban, AdminTarget::Member { anchor: id("anchor")?, admin: None })
+        }
+        m::MLS_GROUP_SETTINGS_SET => (
+            AdminKind::Settings,
+            if body.get("name").is_some() { AdminTarget::Name } else { AdminTarget::Approval },
+        ),
+        m::MLS_GROUP_VOID => (AdminKind::Void, AdminTarget::LogSeq(body.get("log_seq")?.as_u64()?)),
+        _ => return None,
+    })
 }

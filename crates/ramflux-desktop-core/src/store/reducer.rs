@@ -198,6 +198,11 @@ impl Store {
             | DomainEvent::MlsLeft { .. }
             | DomainEvent::MlsRefreshed { .. }
             | DomainEvent::MlsMarkedRead { .. }
+            | DomainEvent::MlsRequestsPage { .. }
+            | DomainEvent::MlsAdminOutcome { .. }
+            | DomainEvent::MlsDeclineOutcome { .. }
+            | DomainEvent::MlsPushOutcome { .. }
+            | DomainEvent::MlsSkipOutcome { .. }
             | DomainEvent::MlsUnavailable { .. } => self.mls_reduce(at, event, changes)?,
             DomainEvent::ContextUpserted(context) => self.upsert_context(context, changes),
             DomainEvent::ContextSettingsChanged { context_id, pinned, muted, disappearing } => {

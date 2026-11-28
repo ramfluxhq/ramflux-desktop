@@ -16,7 +16,7 @@ use ramflux_desktop_core::mls_group::{MlsName, MlsServiceLine};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption};
 
-use crate::i18n::{tr, tr_args};
+use crate::i18n::{tr, tr_args, tr_count};
 use crate::workspace::mls_group::name_text;
 
 fn name(who: &MlsName) -> SharedString {
@@ -77,7 +77,12 @@ pub fn sentence(line: &MlsServiceLine) -> SharedString {
                 if *on { "group.timeline.approval_on" } else { "group.timeline.approval_off" };
             tr_args(key, &[("by", &by)])
         }
-        MlsServiceLine::Void => tr("group.timeline.void"),
+        MlsServiceLine::Void { by } => match opt(by.as_ref()) {
+            Some(by) => tr_args("group.timeline.void_by", &[("by", &by)]),
+            None => tr("group.timeline.void"),
+        },
+        MlsServiceLine::Undecryptable { count } => tr_count("group.timeline.undecryptable", *count),
+        MlsServiceLine::Commit { line, .. } => sentence(line),
         MlsServiceLine::Updated => tr("group.timeline.updated"),
         MlsServiceLine::Deleted => tr("group.timeline.deleted"),
         MlsServiceLine::Floor => tr("group.timeline.floor"),
@@ -90,7 +95,9 @@ fn icon(line: &MlsServiceLine) -> IconName {
         MlsServiceLine::Removed { .. } | MlsServiceLine::Banned { .. } => IconName::UserX,
         MlsServiceLine::RoleChanged { .. } => IconName::Shield,
         MlsServiceLine::Renamed { .. } | MlsServiceLine::Approval { .. } => IconName::Settings,
-        MlsServiceLine::Void => IconName::Undo2,
+        MlsServiceLine::Void { .. } => IconName::Undo2,
+        MlsServiceLine::Undecryptable { .. } => IconName::LockKeyhole,
+        MlsServiceLine::Commit { line, .. } => icon(line),
         MlsServiceLine::Deleted => IconName::Trash,
         MlsServiceLine::Updated => IconName::Info,
         MlsServiceLine::Floor => IconName::Clock,

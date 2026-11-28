@@ -789,6 +789,17 @@ impl Workspace {
             | MlsPanel::ConfirmRevoke { .. }) => {
                 self.mls.confirm.update(cx, |d, cx| d.open(confirm, window, cx));
             }
+            // The M3 panels are routed with their views.
+            MlsPanel::Requests { .. }
+            | MlsPanel::Settings { .. }
+            | MlsPanel::ConfirmApprove { .. }
+            | MlsPanel::ConfirmDecline { .. }
+            | MlsPanel::ConfirmRole { .. }
+            | MlsPanel::ConfirmRemove { .. }
+            | MlsPanel::ConfirmBan { .. }
+            | MlsPanel::ConfirmVoid { .. }
+            | MlsPanel::ConfirmSkip { .. }
+            | MlsPanel::ConfirmApprovalOff { .. } => {}
         }
         cx.notify();
     }

@@ -966,4 +966,76 @@ pub enum IntentKind {
         /// The group.
         group_id: String,
     },
+    /// Read a page of join requests. Human only; owner or admin of a group
+    /// that needs approval.
+    MlsRequestsList {
+        /// The group.
+        group_id: String,
+        /// The cursor of the page; `None` for the first.
+        cursor: Option<String>,
+    },
+    /// Approve a join request. Human only; one admin commit per group.
+    MlsRequestApprove {
+        /// The group.
+        group_id: String,
+        /// The request.
+        request_id: crate::model::mls_group::OpaqueId,
+    },
+    /// Decline a join request. Human only; nothing is committed.
+    MlsRequestDecline {
+        /// The group.
+        group_id: String,
+        /// The request.
+        request_id: crate::model::mls_group::OpaqueId,
+    },
+    /// Change a member's role. Human only; owner only.
+    MlsRoleSet {
+        /// The group.
+        group_id: String,
+        /// The member.
+        anchor: crate::model::mls_group::OpaqueId,
+        /// Admin when true, regular member when false.
+        admin: bool,
+    },
+    /// Remove a member. Human only.
+    MlsMemberRemove {
+        /// The group.
+        group_id: String,
+        /// The member.
+        anchor: crate::model::mls_group::OpaqueId,
+    },
+    /// Ban a member. Human only.
+    MlsMemberBan {
+        /// The group.
+        group_id: String,
+        /// The member.
+        anchor: crate::model::mls_group::OpaqueId,
+    },
+    /// Change one group setting. Human only.
+    MlsSettingsSet {
+        /// The group.
+        group_id: String,
+        /// The one field to change.
+        field: crate::model::mls_group::SettingsField,
+    },
+    /// Set this device's notification mode for a group. Human only.
+    MlsPushSet {
+        /// The group.
+        group_id: String,
+        /// The mode.
+        push: crate::model::mls_group::PushSetting,
+    },
+    /// Skip the catch-up of a group. Human only; only the skip dialog's
+    /// confirm button makes it.
+    MlsCatchUpSkip {
+        /// The group.
+        group_id: String,
+    },
+    /// Undo the head commit. Human only.
+    MlsVoid {
+        /// The group.
+        group_id: String,
+        /// The position of the commit.
+        log_seq: u64,
+    },
 }

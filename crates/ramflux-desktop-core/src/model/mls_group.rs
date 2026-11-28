@@ -100,7 +100,7 @@ pub enum MlsRole {
     Unknown(String),
 }
 
-/// The notification mode of this device for a group (read-only in M2).
+/// The notification mode of this device for a group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PushSetting {
     /// Mentions and replies.
@@ -145,7 +145,7 @@ pub struct Quota {
     pub resets_at: Option<Timestamp>,
 }
 
-/// The privacy delay of a group (parsed in M2, shown in M3).
+/// The privacy delay of a group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PrivacyDelay {
     /// None.
@@ -681,6 +681,26 @@ pub enum GroupEventKind {
         /// Unread mentions.
         unread_mentions: u32,
     },
+    /// A join request arrived (admins of an approval group only).
+    PendingJoin(Box<JoinRequest>),
+    /// The catch-up state moved.
+    CatchUp {
+        /// The new state.
+        state: CatchUpState,
+        /// Done.
+        done: u64,
+        /// Total.
+        total: u64,
+    },
+    /// A warning was set or cleared.
+    Warning {
+        /// The warning.
+        code: WarningCode,
+        /// Whether it was cleared.
+        cleared: bool,
+    },
+    /// A change was undone (the same row a `post{kind: void}` makes).
+    Void(Box<Post>),
 }
 
 /// How a delete ended.
@@ -789,13 +809,53 @@ pub enum MlsServiceLine {
         on: bool,
     },
     /// A change was undone.
-    Void,
+    Void {
+        /// By whom, when the row names somebody.
+        by: Option<MlsName>,
+    },
     /// A change this build does not show.
     Updated,
     /// A deleted message.
     Deleted,
     /// Earlier messages are not available on this device.
     Floor,
+    /// Messages this device could not read, at the position of the first.
+    Undecryptable {
+        /// How many.
+        count: u64,
+    },
+    /// The line of a commit row: it knows whether it was undone and whether
+    /// the account may undo it now.
+    Commit {
+        /// The sentence of the row.
+        line: Box<MlsServiceLine>,
+        /// Whether a later void row undid it.
+        voided: bool,
+        /// The undo entry of the row.
+        undo: UndoOffer,
+    },
+}
+
+/// The "Undo this change" entry of the head commit row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UndoOffer {
+    /// No entry.
+    No,
+    /// The entry is offered.
+    Offer {
+        /// The position the entry would undo.
+        log_seq: u64,
+    },
+    /// Another admin action holds the group: the entry is disabled.
+    Busy {
+        /// The position.
+        log_seq: u64,
+    },
+    /// This row's undo runs.
+    Undoing {
+        /// The position.
+        log_seq: u64,
+    },
 }
 
 /// An own post that is not in the log, or a post the user is sending.
@@ -903,9 +963,10 @@ pub struct CreateState {
 }
 
 /// Error codes of the MLS group methods that have their own text.
-pub const ERROR_CODES: [&str; 14] = [
+pub const ERROR_CODES: [&str; 15] = [
     "not_member",
     "not_admin",
+    "not_owner",
     "owner_protected",
     "tier_unavailable",
     "group_full",
@@ -927,6 +988,7 @@ pub fn error_key(code: &str) -> &'static str {
     match code {
         "not_member" => "group.error.not_member",
         "not_admin" => "group.error.not_admin",
+        "not_owner" => "group.error.not_owner",
         "owner_protected" => "group.error.owner_protected",
         "tier_unavailable" => "group.error.tier_unavailable",
         "group_full" => "group.error.group_full",
@@ -1058,4 +1120,585 @@ pub enum MlsPanel {
         /// The invite.
         invite_id: String,
     },
+    /// The join requests of a group.
+    Requests {
+        /// The group.
+        group_id: String,
+    },
+    /// The settings form of a group.
+    Settings {
+        /// The group.
+        group_id: String,
+    },
+    /// Asks to confirm approving a join request.
+    ConfirmApprove {
+        /// The group.
+        group_id: String,
+        /// The request.
+        request_id: OpaqueId,
+    },
+    /// Asks to confirm declining a join request.
+    ConfirmDecline {
+        /// The group.
+        group_id: String,
+        /// The request.
+        request_id: OpaqueId,
+    },
+    /// Asks to confirm a role change.
+    ConfirmRole {
+        /// The group.
+        group_id: String,
+        /// The member.
+        anchor: OpaqueId,
+        /// Admin when true, regular member when false.
+        admin: bool,
+    },
+    /// Asks to confirm removing a member.
+    ConfirmRemove {
+        /// The group.
+        group_id: String,
+        /// The member.
+        anchor: OpaqueId,
+    },
+    /// Asks to confirm banning a member.
+    ConfirmBan {
+        /// The group.
+        group_id: String,
+        /// The member.
+        anchor: OpaqueId,
+    },
+    /// Asks to confirm undoing a change.
+    ConfirmVoid {
+        /// The group.
+        group_id: String,
+        /// The position of the change.
+        log_seq: u64,
+    },
+    /// Asks to confirm skipping the catch-up.
+    ConfirmSkip {
+        /// The group.
+        group_id: String,
+    },
+    /// Asks to confirm turning approval off.
+    ConfirmApprovalOff {
+        /// The group.
+        group_id: String,
+    },
+}
+
+// ---- M3: admin and edge states -----------------------------------------
+
+/// An id that is never shown or logged (a join request id, a member anchor).
+/// It prints as `<id>`; the text is exposed only to build a call or to match
+/// a row.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct OpaqueId(String);
+
+impl OpaqueId {
+    /// Wraps an id.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// The id text, to build a call or to match a row.
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for OpaqueId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("<id>")
+    }
+}
+
+/// A join request of an approval group, as an admin lists it.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JoinRequest {
+    /// The request id.
+    pub request_id: OpaqueId,
+    /// The requester's anchor.
+    pub anchor: OpaqueId,
+    /// The display name; `None` shows "Member".
+    pub display: Option<String>,
+    /// The SDK's AI flag.
+    pub ai_flag: bool,
+    /// When it was asked.
+    pub requested_at: Option<Timestamp>,
+    /// When it expires.
+    pub expires_at: Option<Timestamp>,
+}
+
+impl fmt::Debug for JoinRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "JoinRequest {{ ai_flag: {} }}", self.ai_flag)
+    }
+}
+
+/// What an admin action does (it produces one commit).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AdminKind {
+    /// Approve a join request.
+    Approve,
+    /// Change a member's role.
+    Role,
+    /// Remove a member.
+    Remove,
+    /// Ban a member.
+    Ban,
+    /// Change a group setting.
+    Settings,
+    /// Undo the head commit.
+    Void,
+}
+
+/// What an admin action is about.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AdminTarget {
+    /// A join request.
+    Request(OpaqueId),
+    /// A member (anchor) and, for a role change, whether the new role is admin.
+    Member {
+        /// The member.
+        anchor: OpaqueId,
+        /// The new role of a role change: admin when true.
+        admin: Option<bool>,
+    },
+    /// The group name.
+    Name,
+    /// The approval mode.
+    Approval,
+    /// A position in the log.
+    LogSeq(u64),
+}
+
+impl fmt::Debug for AdminTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Request(_) => "AdminTarget::Request",
+            Self::Member { .. } => "AdminTarget::Member",
+            Self::Name => "AdminTarget::Name",
+            Self::Approval => "AdminTarget::Approval",
+            Self::LogSeq(_) => "AdminTarget::LogSeq",
+        })
+    }
+}
+
+/// The admin action in flight in a group: its call is running.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdminAction {
+    /// The client-made id of the action.
+    pub action_id: u64,
+    /// What it does.
+    pub kind: AdminKind,
+    /// What it is about.
+    pub target: AdminTarget,
+    /// The account epoch it was issued in.
+    pub issued_epoch: u64,
+    /// When the source took it.
+    pub issued_at: Timestamp,
+}
+
+/// An admin action whose reply said `committed`: it waits for its event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdminPending {
+    /// The action.
+    pub action: AdminAction,
+    /// The position the reply named.
+    pub log_seq: u64,
+}
+
+/// How an admin call ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AdminResult {
+    /// Committed at a position; the event at it confirms.
+    Committed {
+        /// The position.
+        log_seq: u64,
+    },
+    /// Refused or failed (a typed code).
+    Refused {
+        /// The code (`not_owner` for `not_admin{required: owner}`).
+        code: String,
+        /// For `paced`: when the next commit may be tried.
+        retry_at: Option<Timestamp>,
+        /// For `void_not_head`: the head the SDK named.
+        head_log_seq: Option<u64>,
+    },
+}
+
+/// How a decline ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeclineResult {
+    /// Declined (nothing is committed).
+    Declined,
+    /// Refused or failed (a typed code).
+    Refused {
+        /// The code.
+        code: String,
+    },
+}
+
+/// How a push-mode change ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PushResult {
+    /// The mode of this device now.
+    Set(PushSetting),
+    /// Refused or failed (a typed code).
+    Refused {
+        /// The code.
+        code: String,
+    },
+}
+
+/// How a skip ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SkipResult {
+    /// The device rejoins.
+    Rejoining,
+    /// Catch-up runs.
+    Running {
+        /// Done.
+        done: u64,
+        /// Total.
+        total: u64,
+    },
+    /// Refused or failed (a typed code).
+    Refused {
+        /// The code.
+        code: String,
+    },
+}
+
+/// The last typed refusal of an admin action of a group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminFailure {
+    /// What the action was.
+    pub kind: AdminKind,
+    /// The code.
+    pub code: String,
+}
+
+/// Where an admin slot stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdminState<'a> {
+    /// No admin action holds the group.
+    Idle,
+    /// A call runs.
+    Running(&'a AdminAction),
+    /// The reply said committed; the event has not arrived.
+    Updating(&'a AdminPending),
+}
+
+/// The state of one request row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestRowState {
+    /// Nothing runs.
+    Idle,
+    /// The approve call runs.
+    Approving,
+    /// Approved; waiting for the member to appear.
+    Adding,
+    /// The decline call runs.
+    Declining,
+}
+
+/// A join request row and what runs on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestRow {
+    /// The request.
+    pub request: JoinRequest,
+    /// What runs on it.
+    pub state: RequestRowState,
+    /// The code of the last refusal of an action on it.
+    pub failure: Option<String>,
+}
+
+/// The join requests of a group as far as they are loaded: oldest first,
+/// deduplicated by request id.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RequestPager {
+    /// The rows, oldest request first.
+    pub rows: Vec<RequestRow>,
+    /// The cursor of the next page; `None` at the end.
+    pub cursor: Option<String>,
+    /// Whether the first page arrived.
+    pub loaded: bool,
+    /// A first page is on its way.
+    pub loading: bool,
+    /// A later page is on its way.
+    pub loading_more: bool,
+    /// The code of the first page that failed.
+    pub error: Option<String>,
+    /// The code of the later page that failed.
+    pub page_error: Option<String>,
+    /// Counts resets: a page asked before the last reset is dropped.
+    pub page_gen: u64,
+}
+
+impl RequestPager {
+    /// Inserts a request, or ignores one already listed.
+    pub fn insert(&mut self, request: JoinRequest) -> bool {
+        if self.rows.iter().any(|r| r.request.request_id == request.request_id) {
+            return false;
+        }
+        let at = self
+            .rows
+            .iter()
+            .position(|r| r.request.requested_at > request.requested_at)
+            .unwrap_or(self.rows.len());
+        self.rows.insert(at, RequestRow { request, state: RequestRowState::Idle, failure: None });
+        true
+    }
+
+    /// The row of a request.
+    pub fn row(&self, id: &OpaqueId) -> Option<&RequestRow> {
+        self.rows.iter().find(|r| &r.request.request_id == id)
+    }
+}
+
+/// The catch-up state of a group.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CatchUpState {
+    /// Nothing runs (an unknown state reads as this).
+    Idle,
+    /// Catching up.
+    Running,
+    /// The device rejoins the group.
+    Rejoining,
+}
+
+impl CatchUpState {
+    /// Reads a wire token; an unknown one is idle.
+    pub fn parse(token: &str) -> Self {
+        match token {
+            "running" => Self::Running,
+            "rejoining" => Self::Rejoining,
+            _ => Self::Idle,
+        }
+    }
+}
+
+/// The catch-up record of a group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatchUpRecord {
+    /// The state.
+    pub state: CatchUpState,
+    /// Done.
+    pub done: u64,
+    /// Total (0 reads as unknown).
+    pub total: u64,
+    /// Changes whenever a different state is applied (an event or an info
+    /// read): a skip result applies only while it is unchanged.
+    pub seq: u64,
+    /// The `seq` a running skip call started from.
+    pub skipping: Option<u64>,
+    /// The code of the last skip that was refused.
+    pub skip_failure: Option<String>,
+}
+
+/// Why a device has to rejoin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RejoinReason {
+    /// The device was away too long.
+    Pruned,
+    /// A change from the device was refused.
+    GateRejected,
+    /// The device could not apply a change.
+    ApplyFailed,
+    /// The invitation to the group expired.
+    WelcomeExpired,
+    /// The device lost its keys.
+    StateLost,
+    /// A reason this build does not know.
+    Unknown(String),
+}
+
+impl RejoinReason {
+    /// The locale key of the text of this reason.
+    pub fn key(&self) -> &'static str {
+        match self {
+            Self::Pruned => "group.warning.rejoin_needed.pruned",
+            Self::GateRejected => "group.warning.rejoin_needed.gate_rejected",
+            Self::ApplyFailed => "group.warning.rejoin_needed.apply_failed",
+            Self::WelcomeExpired => "group.warning.rejoin_needed.welcome_expired",
+            Self::StateLost => "group.warning.rejoin_needed.state_lost",
+            Self::Unknown(_) => "group.warning.rejoin_needed.generic",
+        }
+    }
+}
+
+/// A warning of a group, with the parameters its code defines.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WarningCode {
+    /// The history split.
+    ForkAlarm {
+        /// The head number.
+        head_n: u64,
+    },
+    /// The device has to rejoin.
+    RejoinNeeded {
+        /// Why.
+        reason: RejoinReason,
+    },
+    /// Messages this device could not read.
+    Undecryptable {
+        /// How many.
+        count: u64,
+        /// The position of the first.
+        from_log_seq: Option<u64>,
+    },
+    /// New members can join only while somebody is online.
+    AdmissionNeedsOnline,
+    /// The host behaves unusually.
+    HostUnusual {
+        /// The kind token.
+        kind: String,
+    },
+    /// Members refused the head commit.
+    HeadCommitRejected {
+        /// The position of the head.
+        log_seq: u64,
+    },
+    /// The host sees this device's address (the M2 info row).
+    HostIpVisible {
+        /// The host node.
+        host_node: String,
+    },
+    /// A code this build does not know.
+    Unknown(String),
+}
+
+impl fmt::Debug for WarningCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "WarningCode({})", self.code())
+    }
+}
+
+impl WarningCode {
+    /// The wire code.
+    pub fn code(&self) -> &str {
+        match self {
+            Self::ForkAlarm { .. } => "fork_alarm",
+            Self::RejoinNeeded { .. } => "rejoin_needed",
+            Self::Undecryptable { .. } => "undecryptable",
+            Self::AdmissionNeedsOnline => "admission_needs_online",
+            Self::HostUnusual { .. } => "host_unusual",
+            Self::HeadCommitRejected { .. } => "head_commit_rejected",
+            Self::HostIpVisible { .. } => "host_ip_visible",
+            Self::Unknown(code) => code,
+        }
+    }
+
+    /// Reads a code and its parameters; an unknown code keeps its token.
+    pub fn parse(code: &str, params: &Value) -> Self {
+        let num = |field: &str| params.get(field).and_then(Value::as_u64);
+        let text =
+            |field: &str| params.get(field).and_then(Value::as_str).unwrap_or_default().to_owned();
+        match code {
+            "fork_alarm" => Self::ForkAlarm { head_n: num("head_n").unwrap_or(0) },
+            "rejoin_needed" => Self::RejoinNeeded {
+                reason: match params.get("reason").and_then(Value::as_str).unwrap_or_default() {
+                    "pruned" => RejoinReason::Pruned,
+                    "gate_rejected" => RejoinReason::GateRejected,
+                    "apply_failed" => RejoinReason::ApplyFailed,
+                    "welcome_expired" => RejoinReason::WelcomeExpired,
+                    "state_lost" => RejoinReason::StateLost,
+                    other => RejoinReason::Unknown(other.to_owned()),
+                },
+            },
+            "undecryptable" => Self::Undecryptable {
+                count: num("count").unwrap_or(0),
+                from_log_seq: num("from_log_seq"),
+            },
+            "admission_needs_online" => Self::AdmissionNeedsOnline,
+            "host_unusual" => Self::HostUnusual { kind: text("kind") },
+            "head_commit_rejected" => match num("log_seq") {
+                Some(log_seq) => Self::HeadCommitRejected { log_seq },
+                None => Self::Unknown(code.to_owned()),
+            },
+            "host_ip_visible" => Self::HostIpVisible { host_node: text("host_node") },
+            other => Self::Unknown(other.to_owned()),
+        }
+    }
+
+    /// Whether the code is one this build knows.
+    pub fn is_known(&self) -> bool {
+        !matches!(self, Self::Unknown(_))
+    }
+
+    /// Whether the banner of this warning may be hidden for the session.
+    pub fn hideable(&self) -> bool {
+        matches!(
+            self,
+            Self::Undecryptable { .. } | Self::HostUnusual { .. } | Self::AdmissionNeedsOnline
+        )
+    }
+
+    /// Whether only an owner or an admin sees the warning.
+    pub fn admin_only(&self) -> bool {
+        matches!(self, Self::HeadCommitRejected { .. })
+    }
+
+    /// The banner order: lower shows first (critical, warning, info).
+    /// `None` for codes that show no banner.
+    pub fn banner_rank(&self) -> Option<u8> {
+        match self {
+            Self::ForkAlarm { .. } => Some(0),
+            Self::RejoinNeeded { .. } => Some(1),
+            Self::HeadCommitRejected { .. } => Some(2),
+            Self::Undecryptable { .. } => Some(3),
+            Self::HostUnusual { .. } => Some(4),
+            Self::AdmissionNeedsOnline => Some(5),
+            Self::HostIpVisible { .. } | Self::Unknown(_) => None,
+        }
+    }
+}
+
+/// The least a group name must differ by to be saved: it is trimmed, 1 to 64
+/// characters, and not the name it has.
+pub fn name_change_valid(new: &str, current: &str) -> bool {
+    check_name(new) && new.trim() != current
+}
+
+/// The settings field one `group.settings.set` call changes.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SettingsField {
+    /// The name.
+    Name(String),
+    /// The approval mode.
+    Approval(bool),
+}
+
+impl fmt::Debug for SettingsField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Name(_) => "SettingsField::Name",
+            Self::Approval(_) => "SettingsField::Approval",
+        })
+    }
+}
+
+impl PushSetting {
+    /// Reads a wire token; an unknown one keeps its text.
+    pub fn from_token(token: &str) -> Self {
+        match token {
+            "mentions_replies" | "mentions" => Self::MentionsReplies,
+            "all" => Self::All,
+            "none" => Self::None,
+            other => Self::Unknown(other.to_owned()),
+        }
+    }
+
+    /// The wire token of a mode a person can choose; `None` for one this
+    /// build does not know.
+    pub fn token(&self) -> Option<&'static str> {
+        match self {
+            Self::MentionsReplies => Some("mentions_replies"),
+            Self::All => Some("all"),
+            Self::None => Some("none"),
+            Self::Unknown(_) => None,
+        }
+    }
 }
