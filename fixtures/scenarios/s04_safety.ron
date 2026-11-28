@@ -1,59 +1,134 @@
-// s04 Safety and contacts: a verified contact's identity key changes. A
-// sticky SafetyChange moment (and a banner in the context header) needs the
-// user until the user verifies the safety number again (VerifySafetyNumber
-// intent), after which the warning is closed and a verification moment is
-// recorded. A new person asks to become a contact; the request is answered
-// inline or from the contacts dock. Another asks through a contact link (no
-// moment), one participant is blocked, and contacts are added by id from the
-// contacts dock (one add succeeds, one fails with the daemon's reason).
-// Demonstrates: ParticipantUpserted safety states, safety numbers and contact
-// links, SafetyChange moments, ContactRequest moments, and safety.verify /
-// contact.add / contact.accept / contact.reject / contact.block /
+// s04 Identity and contacts (MLS direct-chat identity, fixtures F1-1..F1-10):
+// the contact's identity state is tofu, verified or changed. Ana is tofu with a
+// secure conversation of two devices (F1-1); Ben is verified (F1-2); Chen's
+// identity changes at 500 ms (F1-3): the header banner, the list badge and a
+// service line appear, Review opens the identity change sheet, and Accept
+// answers `accepted` (the status is read again as tofu). A send to Chen is
+// refused while the change waits and the message stays failed (F1-4). Eli's
+// acceptance answers "changed again" and a newer change (A3) follows (F1-5);
+// Fay's answers "already handled" (F1-6). Scout, an AI contact, has a changed
+// identity (F1-7). Fork's conversation sets up its encryption, then
+// re-establishes it after a fork with one service line (F1-8). Opening Ana's
+// conversation reads its security again (F1-9). Gil is changed with no change
+// known yet (F1-10). Besides, a new person asks to become a contact; the
+// request is answered inline or from the contacts dock. Another asks through a
+// contact link (no moment), one participant is blocked, and contacts are added
+// by id from the contacts dock (one add succeeds, one fails with the daemon's
+// reason).
+// Demonstrates: ParticipantUpserted identity states, IdentityChanged,
+// IdentityAccepted, IdentityAcceptFailed, SendBlockedByIdentity,
+// ConversationSecurityRead, ContactRequest moments, and identity.accept_change /
+// message.send / contact.add / contact.accept / contact.reject / contact.block /
 // contact.unblock / contact.remove responses.
 // Moment `at: 0` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s04_safety",
-    description: "Contact key changed, sticky warning, safety number verified, contact request",
+    description: "Contact identity changed, review and accept, send refused, fork recovery, contact request",
     timeline: [
         (0, SourceStatusChanged(Connected)),
         (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
         (0, AccountUpdated(id: "local", label: "Local", lock_state: Unlocked, self_participant_id: "p-me")),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
-        (0, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true,
-            safety_number: "38104 77215 90462 11873 50926 64018")),
-        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", safety: Verified, contact: true,
-            safety_number: "70211 48302 19554 83017 22690 41175")),
+        (0, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", identity: Verified, contact: true)),
+        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", identity: Verified, contact: true)),
+        (0, ParticipantUpserted(id: "p-ana", kind: Human, display: "Ana Costa")),
+        (0, ParticipantUpserted(id: "p-ben", kind: Human, display: "Ben Ito", identity: Verified)),
+        (0, ParticipantUpserted(id: "p-chen", kind: Human, display: "Chen Wei")),
+        (0, ParticipantUpserted(id: "p-eli", kind: Human, display: "Eli Marsh")),
+        (0, ParticipantUpserted(id: "p-fay", kind: Human, display: "Fay Lindqvist")),
+        (0, ParticipantUpserted(id: "p-scout", kind: Agent, display: "Scout")),
+        (0, ParticipantUpserted(id: "p-fork", kind: Human, display: "Fork Hall")),
+        (0, ParticipantUpserted(id: "p-gil", kind: Human, display: "Gil Ndiaye", identity: Changed)),
         (0, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", contact: true)),
         (0, ParticipantUpserted(id: "p-noor", kind: Human, display: "Noor Haddad")),
         (0, ParticipantUpserted(id: "p-sam", kind: Human, display: "Sam Ortiz", link: Incoming)),
         (0, ParticipantUpserted(id: "p-ivo", kind: Human, display: "Ivo Brandt", link: Blocked)),
         (10, ContextUpserted(id: "c-mira", kind: Direct, title: "Mira Okafor", participants: ["p-me", "p-mira"])),
         (10, ContextUpserted(id: "c-requests", kind: Direct, title: "Noor Haddad", participants: ["p-me", "p-noor"])),
+        (10, ContextUpserted(id: "c-ana", kind: Direct, title: "Ana Costa", participants: ["p-me", "p-ana"])),
+        (10, ContextUpserted(id: "c-ben", kind: Direct, title: "Ben Ito", participants: ["p-me", "p-ben"])),
+        (10, ContextUpserted(id: "c-chen", kind: Direct, title: "Chen Wei", participants: ["p-me", "p-chen"])),
+        (10, ContextUpserted(id: "c-eli", kind: Direct, title: "Eli Marsh", participants: ["p-me", "p-eli"])),
+        (10, ContextUpserted(id: "c-fay", kind: Direct, title: "Fay Lindqvist", participants: ["p-me", "p-fay"])),
+        (10, ContextUpserted(id: "c-scout", kind: Direct, title: "Scout", participants: ["p-me", "p-scout"])),
+        (10, ContextUpserted(id: "c-fork", kind: Direct, title: "Fork Hall", participants: ["p-me", "p-fork"])),
+        (10, ContextUpserted(id: "c-gil", kind: Direct, title: "Gil Ndiaye", participants: ["p-me", "p-gil"])),
+        (20, ConversationSecurityRead(context: "c-ana",
+            security: (state: Ok, epoch: 3, peer_devices: 2, any_ai: false))),
+        (20, ConversationSecurityRead(context: "c-fork",
+            security: (state: Pending, epoch: 1, peer_devices: 1, any_ai: false))),
         (100, MomentAdded(id: "m-mira-1", context_id: "c-mira", origin: "p-mira", at: 0,
             kind: Message(text: "New phone, same me."), lifecycle: Done)),
         (300, MomentAdded(id: "m-noor", context_id: "c-requests", origin: "p-noor", at: 0,
             kind: ContactRequest(from: "p-noor", note: "We met at the garden workshop."), lifecycle: NeedsMe)),
-        (500, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: KeyChanged, contact: true,
-            safety_number: "38104 77215 90462 11873 50926 99031")),
-        (500, MomentAdded(id: "m-key", context_id: "c-mira", origin: "p-mira", at: 0,
-            kind: SafetyChange(participant_id: "p-mira", change: KeyChanged), lifecycle: NeedsMe)),
+        (100, MomentAdded(id: "m-chen-1", context_id: "c-chen", origin: "p-chen", at: 0,
+            kind: Message(text: "I got a new laptop today."), lifecycle: Done)),
+        (500, IdentityChanged(participant: "p-chen", username: "chen", previous_anchor: "A1", new_anchor: "A2", ai_flag: false)),
+        (500, IdentityChanged(participant: "p-eli", username: "eli", previous_anchor: "B1", new_anchor: "B2", ai_flag: false)),
+        (500, IdentityChanged(participant: "p-fay", username: "fay", previous_anchor: "C1", new_anchor: "C2", ai_flag: false)),
+        (500, IdentityChanged(participant: "p-scout", username: "scout", previous_anchor: "D1", new_anchor: "D2", ai_flag: true)),
+        (400, ConversationSecurityRead(context: "c-fork",
+            security: (state: ReEstablished, epoch: 2, peer_devices: 1, any_ai: false, warning: ForkRecovered))),
     ],
     responses: [
+        // F1-3: Chen's acceptance (the sheet showed A2) is accepted; the
+        // status is read again and says the identity is first seen (tofu).
         (
-            on: Call(method: "safety.verify", fields: {"participant_id": "p-mira"}),
+            on: Call(method: "identity.accept_change", fields: {"participant_id": "p-chen", "new_anchor": "A2"}),
             emit: [
-                (100, ParticipantUpserted(id: "p-mira", kind: Human, display: "Mira Okafor", safety: Verified, contact: true,
-                    safety_number: "38104 77215 90462 11873 50926 99031")),
-                (100, MomentAdded(id: "m-verified", context_id: "c-mira", origin: "p-me", at: 0,
-                    kind: SafetyChange(participant_id: "p-mira", change: Verified), lifecycle: Done)),
-                (100, MomentUpdated(moment_id: "m-key", lifecycle: Done)),
+                (100, IdentityAccepted(participant: "p-chen", new_anchor: "A2")),
+                (150, IdentityStateRead(participant: "p-chen", state: Tofu)),
+            ],
+        ),
+        // F1-4: a send to Chen is refused while the change waits; the message
+        // stays as a failed moment, never sent again by itself.
+        (
+            on: Call(method: "message.send", fields: {"context_id": "c-chen"}),
+            emit: [
+                (50, MomentAdded(id: "m-chen-blocked", context_id: "c-chen", origin: "p-me", at: 0,
+                    kind: Message(text: "Are you free tonight?", receipt: Failed(retryable: false)), lifecycle: Failed)),
+                (60, SendBlockedByIdentity(context: "c-chen", participant: "p-chen", moment: "m-chen-blocked")),
+            ],
+        ),
+        // F1-5: the identity changed again (A3) before Eli accepted A2.
+        (
+            on: Call(method: "identity.accept_change", fields: {"participant_id": "p-eli", "new_anchor": "B2"}),
+            emit: [
+                (100, IdentityAcceptFailed(participant: "p-eli", reason: ChangedAgain)),
+                (120, IdentityChanged(participant: "p-eli", username: "eli", previous_anchor: "B2", new_anchor: "B3", ai_flag: false)),
             ],
         ),
         (
-            on: Call(method: "safety.verify", fields: {"participant_id": "p-tomas"}),
+            on: Call(method: "identity.accept_change", fields: {"participant_id": "p-eli", "new_anchor": "B3"}),
             emit: [
-                (100, ParticipantUpserted(id: "p-tomas", kind: Human, display: "Tomas Reyes", safety: Verified, contact: true)),
+                (100, IdentityAccepted(participant: "p-eli", new_anchor: "B3")),
+                (150, IdentityStateRead(participant: "p-eli", state: Tofu)),
+            ],
+        ),
+        // F1-6: the change was handled already (on another device).
+        (
+            on: Call(method: "identity.accept_change", fields: {"participant_id": "p-fay"}),
+            emit: [
+                (100, IdentityAcceptFailed(participant: "p-fay", reason: AlreadyHandled)),
+                (150, IdentityStateRead(participant: "p-fay", state: Tofu)),
+            ],
+        ),
+        // F1-7: Scout, an AI contact, accepts like anyone.
+        (
+            on: Call(method: "identity.accept_change", fields: {"participant_id": "p-scout", "new_anchor": "D2"}),
+            emit: [
+                (100, IdentityAccepted(participant: "p-scout", new_anchor: "D2")),
+                (150, IdentityStateRead(participant: "p-scout", state: Tofu)),
+            ],
+        ),
+        // F1-9: opening Ana's conversation reads its security again; nothing
+        // changes on screen.
+        (
+            on: Call(method: "conversation.security", fields: {"context_id": "c-ana"}),
+            emit: [
+                (50, ConversationSecurityRead(context: "c-ana",
+                    security: (state: Ok, epoch: 3, peer_devices: 2, any_ai: false))),
             ],
         ),
         (
