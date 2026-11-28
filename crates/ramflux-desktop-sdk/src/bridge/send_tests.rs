@@ -330,3 +330,59 @@ async fn unresolved_group_members_are_terminal_even_with_networking_details() {
     assert_eq!(fake.seen().len(), 1, "Live does not retry the refused request");
     fake.shutdown();
 }
+
+#[tokio::test]
+async fn identity_blocked_send_is_manually_retryable_and_never_resent() {
+    let (mut task, mut inbox, rx, fake) = fixture("identity-blocked");
+    let frames: std::collections::BTreeMap<String, Value> =
+        serde_json::from_str(include_str!("../../tests/fixtures/rfd_frames.json")).expect("frames");
+    for (fetch, key) in [
+        (Fetch::AccountStatus(AccountId::new("a")), "account.status"),
+        (Fetch::DeviceList, "device.list"),
+        (Fetch::first(crate::plan::fetch::Paged::Identities), "identity.directory"),
+        (Fetch::first(crate::plan::fetch::Paged::Conversations), "conversation.directory"),
+    ] {
+        let out = task.translator.fetched(&fetch, &frames[key], ramflux_desktop_core::Timestamp(0));
+        task.emit(out.events);
+    }
+    let _ = rx.try_iter().count();
+    task.start_send(
+        json!({"context_id":"dm-ana","text":"hello"}),
+        BusRequest::new(
+            Some("a"),
+            "message",
+            "message.submit",
+            json!({"message_id":"m","conversation_id":"dm-ana"}),
+        )
+        .with_operation_id("original".to_owned()),
+        Vec::new(),
+    );
+    let _ = inbox.internal.recv().await.expect("first");
+    task.send_done("m", Err(BusError::daemon("identity_change_pending", "held back")));
+    let events: Vec<_> = rx.try_iter().map(|d| d.event).collect();
+    assert!(events.iter().any(|e| matches!(e, DomainEvent::SendBlockedByIdentity { .. })));
+    let last = events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            DomainEvent::MomentAdded(m) => Some(m.kind.clone()),
+            DomainEvent::MomentUpdated { kind: Some(k), .. } => Some(k.clone()),
+            _ => None,
+        })
+        .expect("message moment");
+    assert!(
+        matches!(last, ramflux_desktop_core::MomentKind::Message(p)
+        if p.receipt == Receipt::Failed { retryable: true }),
+        "the user may retry by hand"
+    );
+    assert!(task.sends.is_empty(), "nothing keeps the send for an automatic retry");
+    task.networking_event(&json!({"account_id":"a","state":"live","session":{"state":"live"}}));
+    task.retry_sends(true);
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    let submits = fake.seen().iter().filter(|r| r.method == "message.submit").count();
+    assert_eq!(submits, 1, "never sent again by itself");
+    assert!(task.next_send_due().is_none());
+    fake.shutdown();
+}

@@ -109,6 +109,11 @@ pub enum DomainEvent {
         participant: crate::ParticipantId,
         /// Why.
         reason: crate::AcceptFailure,
+        /// The anchor the refused acceptance named. A newer pending change
+        /// than this one is never cleared by the refusal; `None` when the
+        /// attempt is not known.
+        #[serde(default)]
+        attempted_anchor: Option<String>,
     },
     /// What `conversation.security` says about a direct conversation.
     ConversationSecurityRead {

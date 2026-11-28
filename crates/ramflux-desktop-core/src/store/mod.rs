@@ -97,7 +97,7 @@ pub struct Store {
     /// The latest security read of each direct conversation (in memory only).
     security: BTreeMap<ContextId, crate::model::ConversationSecurity>,
     /// Why the last acceptance of a contact's identity change failed.
-    identity_failures: BTreeMap<ParticipantId, (crate::model::AcceptFailure, u64)>,
+    identity_failures: BTreeMap<ParticipantId, (crate::model::AcceptFailure, u64, Option<String>)>,
     /// How many acceptance failures were recorded (numbers each one).
     identity_failure_seq: u64,
     /// Direct conversations whose last send an identity change refused.

@@ -88,6 +88,61 @@ fn an_identity_change_waits_for_a_review_and_one_accept(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
+fn a_late_already_handled_reply_leaves_the_newer_change_reviewable(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    use ramflux_desktop_core::{AcceptFailure, DomainEvent, ParticipantId};
+    let (handle, shell) = open(cx, "s04_safety");
+    advance(cx, 1_000);
+    show_context(cx, handle, &shell, "c-chen");
+    click(cx, handle, "banner-review-p-chen");
+    click(cx, handle, "identity-sheet-accept");
+    // A3 arrives before the reply to the A2 call, which says it was handled.
+    let store = store_handle(cx, &shell);
+    cx.update(|cx| {
+        store.update(cx, |h, _| {
+            let mock = h.mock_mut().expect("a mock source");
+            mock.inject(
+                0,
+                DomainEvent::IdentityChanged {
+                    participant: ParticipantId::new("p-chen"),
+                    username: None,
+                    previous_anchor: "A2".to_owned(),
+                    new_anchor: "A3".to_owned(),
+                    ai_flag: false,
+                },
+            );
+            mock.inject(
+                0,
+                DomainEvent::IdentityAcceptFailed {
+                    participant: ParticipantId::new("p-chen"),
+                    reason: AcceptFailure::AlreadyHandled,
+                    attempted_anchor: Some("A2".to_owned()),
+                },
+            );
+        });
+    });
+    advance(cx, 100);
+    let pending = with_store(cx, &shell, |s| {
+        s.participant(&ParticipantId::new("p-chen"))
+            .and_then(|p| p.pending_change.as_ref())
+            .map(|c| c.new_anchor.clone())
+    });
+    assert_eq!(pending.as_deref(), Some("A3"), "the newer change stays pending");
+    assert!(exists(cx, handle, "identity-sheet-note"), "the sheet says it changed again");
+    assert_ne!(
+        in_window(cx, handle, |window, _| window.find("identity-sheet-accept").disabled()),
+        Some(true),
+        "Accept is enabled for the newer anchor"
+    );
+    click(cx, handle, "identity-sheet-accept");
+    assert_eq!(
+        last_body(cx, &shell, methods::IDENTITY_ACCEPT_CHANGE)["new_anchor"],
+        "A3",
+        "the user's new click names the newer anchor"
+    );
+}
+
+#[gpui_kit::test]
 fn contact_requests_are_answered_inline(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s04_safety");
     advance(cx, 1_000);

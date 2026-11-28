@@ -185,6 +185,7 @@ impl Translator {
             return vec![DomainEvent::IdentityAcceptFailed {
                 participant: participant.clone(),
                 reason: AcceptFailure::Failed,
+                attempted_anchor: accepted.map(str::to_owned),
             }];
         }
         // The state is read again by the plan; until then the change is no
@@ -216,16 +217,27 @@ impl Translator {
     pub(crate) fn identity_accept_refused(
         &mut self,
         participant: &ParticipantId,
+        attempted: Option<&str>,
         error: &BusError,
     ) -> Vec<DomainEvent> {
         let reason = accept_failure(error);
-        // The change the user looked at is gone, or no longer the latest.
+        // The change the user looked at is gone; a newer pending change than
+        // the attempted one is kept.
         let mut events = self.update_identity(participant, |identity| {
-            if reason == AcceptFailure::AlreadyHandled {
+            if reason == AcceptFailure::AlreadyHandled
+                && identity
+                    .pending
+                    .as_ref()
+                    .is_some_and(|c| attempted.is_none_or(|a| c.new_anchor == a))
+            {
                 identity.pending = None;
             }
         });
-        events.push(DomainEvent::IdentityAcceptFailed { participant: participant.clone(), reason });
+        events.push(DomainEvent::IdentityAcceptFailed {
+            participant: participant.clone(),
+            reason,
+            attempted_anchor: attempted.map(str::to_owned),
+        });
         events
     }
 
@@ -302,5 +314,70 @@ impl Translator {
     /// Whether `participant` is this account.
     fn is_self(&self, participant: &ParticipantId) -> bool {
         self.directory.self_principal.as_deref() == Some(participant.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::translate::Scope;
+    use ramflux_desktop_core::AccountId;
+    use serde_json::json;
+
+    fn translator() -> Translator {
+        Translator::new(Scope::Account(AccountId::new("acct-main")), "rfd.sock")
+    }
+
+    fn change(t: &mut Translator, new: &str, at: i64) {
+        let body = json!({"contact":"p-chen","previous_anchor":"A0","new_anchor":new});
+        let _ = t.identity_changed_event(&body, Timestamp(at));
+    }
+
+    fn pending(t: &Translator) -> Option<String> {
+        t.people
+            .get(&ParticipantId::new("p-chen"))
+            .and_then(|p| p.identity.pending.as_ref())
+            .map(|c| c.new_anchor.clone())
+    }
+
+    fn no_pending() -> BusError {
+        BusError::daemon("no_pending_change", "wording is irrelevant")
+    }
+
+    #[test]
+    fn already_handled_keeps_a_newer_change_than_the_attempted_one() {
+        let mut t = translator();
+        change(&mut t, "A2", 1);
+        // The A3 event reaches the desktop before the reply to the A2 call.
+        change(&mut t, "A3", 2);
+        let events =
+            t.identity_accept_refused(&ParticipantId::new("p-chen"), Some("A2"), &no_pending());
+        assert_eq!(pending(&t).as_deref(), Some("A3"), "A3 stays pending and reviewable");
+        assert!(events.iter().any(|e| matches!(e,
+            DomainEvent::IdentityAcceptFailed { reason: AcceptFailure::AlreadyHandled, attempted_anchor: Some(a), .. }
+                if a == "A2")));
+    }
+
+    #[test]
+    fn already_handled_clears_the_attempted_change() {
+        let mut t = translator();
+        change(&mut t, "A2", 1);
+        let _ = t.identity_accept_refused(&ParticipantId::new("p-chen"), Some("A2"), &no_pending());
+        assert_eq!(pending(&t), None);
+    }
+
+    #[test]
+    fn a_refused_acceptance_names_the_attempted_anchor() {
+        let mut t = translator();
+        change(&mut t, "A2", 1);
+        let events = t.identity_accept_refused(
+            &ParticipantId::new("p-chen"),
+            Some("A2"),
+            &BusError::daemon("anchor_mismatch", "x"),
+        );
+        assert!(events.iter().any(|e| matches!(e,
+            DomainEvent::IdentityAcceptFailed { reason: AcceptFailure::ChangedAgain, attempted_anchor: Some(a), .. }
+                if a == "A2")));
+        assert_eq!(pending(&t).as_deref(), Some("A2"), "only already-handled clears");
     }
 }

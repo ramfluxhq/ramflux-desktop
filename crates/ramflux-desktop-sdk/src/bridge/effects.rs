@@ -362,7 +362,9 @@ impl Task {
             Err(error) if method == methods::IDENTITY_ACCEPT_CHANGE => {
                 let participant =
                     ramflux_desktop_core::ParticipantId::new(text(body, "participant_id"));
-                let events = self.translator.identity_accept_refused(&participant, &error);
+                let attempted = Some(text(body, "new_anchor")).filter(|a| !a.is_empty());
+                let events =
+                    self.translator.identity_accept_refused(&participant, attempted, &error);
                 self.emit(events);
                 self.spawn_fetches(refresh);
                 if error.is_connection_lost() {

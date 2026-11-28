@@ -27,10 +27,16 @@ impl Store {
     }
 
     /// Why the last acceptance for `participant` did not take effect, with
-    /// the number of the failure (later failures have higher numbers), until
-    /// the next change, acceptance or read of the identity.
-    pub fn identity_failure(&self, participant: &ParticipantId) -> Option<(AcceptFailure, u64)> {
-        self.identity_failures.get(participant).copied()
+    /// the number of the failure (later failures have higher numbers) and
+    /// the anchor the refused acceptance named, until the next change,
+    /// acceptance or read of the identity.
+    pub fn identity_failure(
+        &self,
+        participant: &ParticipantId,
+    ) -> Option<(AcceptFailure, u64, Option<&str>)> {
+        self.identity_failures
+            .get(participant)
+            .map(|(reason, seq, anchor)| (*reason, *seq, anchor.as_deref()))
     }
 
     /// The number of the latest acceptance failure recorded (0 for none): a
@@ -182,19 +188,30 @@ impl Store {
         &mut self,
         participant: &ParticipantId,
         reason: AcceptFailure,
+        attempted: Option<&str>,
         changes: &mut Changes,
     ) -> Result<(), ApplyError> {
         let who = self
             .participants
             .get_mut(participant)
             .ok_or_else(|| ApplyError::UnknownParticipant(participant.clone()))?;
-        // The change the user looked at is gone (handled elsewhere) or
-        // outdated: a stale one is never offered again.
-        if reason == AcceptFailure::AlreadyHandled && who.pending_change.take().is_some() {
+        // The change the user looked at is gone (handled elsewhere): that one
+        // is never offered again, but a newer change than the attempted one
+        // stays pending to be reviewed.
+        if reason == AcceptFailure::AlreadyHandled
+            && who
+                .pending_change
+                .as_ref()
+                .is_some_and(|c| attempted.is_none_or(|a| c.new_anchor == a))
+        {
+            who.pending_change = None;
             changes.participants.insert(participant.clone());
         }
         self.identity_failure_seq += 1;
-        self.identity_failures.insert(participant.clone(), (reason, self.identity_failure_seq));
+        self.identity_failures.insert(
+            participant.clone(),
+            (reason, self.identity_failure_seq, attempted.map(str::to_owned)),
+        );
         for context in self.direct_contexts(participant) {
             changes.contexts.insert(context);
         }
