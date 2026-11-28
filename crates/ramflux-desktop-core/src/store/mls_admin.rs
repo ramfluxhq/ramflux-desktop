@@ -603,11 +603,14 @@ impl Store {
     }
 
     /// A commit row arrived (an event or a history page): it is remembered,
-    /// and it resolves the pending action it belongs to.
+    /// and it resolves the pending action it belongs to. Only a live event
+    /// (`live`) also acts on the roster, the requests and the settings: a
+    /// history row is older news and never changes what the group is now.
     pub(super) fn mls_admin_on_commit_row(
         &mut self,
         group: &str,
         post: &Post,
+        live: bool,
         changes: &mut Changes,
     ) {
         let class = match &post.body {
@@ -632,6 +635,10 @@ impl Store {
             .is_some_and(|p| p.log_seq == log_seq && class_of(p.action.kind) == class);
         if resolves && let Some(pending) = self.mls.admin.pending.get(group).cloned() {
             self.mls_admin_resolved(group, &pending.action, changes);
+        }
+        if !live {
+            changes.mls.insert(group.to_owned());
+            return;
         }
         match &post.body {
             PostBody::Membership { changes: rows, .. } => {

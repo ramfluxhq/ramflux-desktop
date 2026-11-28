@@ -586,3 +586,42 @@ fn ids_never_print() {
     let intent = IntentKind::MlsMemberBan { group_id: G.to_owned(), anchor: anchor("anc-secret") };
     assert!(!format!("{intent:?}").contains("anc-secret"));
 }
+
+#[test]
+fn an_old_settings_row_in_history_never_changes_the_group_but_a_live_event_does() {
+    let mut feed = feed();
+    let rename = |name: &str, approval: Option<bool>, log_seq: u64| {
+        commit_post(
+            log_seq,
+            PostKind::Settings,
+            PostBody::Settings {
+                change: SettingsChange { name: Some(name.to_owned()), approval },
+                by: None,
+            },
+        )
+    };
+    let name_before = feed.store.mls_group(G).map(|g| g.name.clone());
+    feed.ok(
+        97,
+        DomainEvent::MlsHistoryPage {
+            group_id: G.to_owned(),
+            direction: HistoryDirection::Newest,
+            posts: vec![rename("Old name", Some(false), 60)],
+            floor_log_seq: Some(1),
+            last_log_seq: 60,
+            more: false,
+        },
+    );
+    assert_eq!(feed.store.mls_group(G).map(|g| g.name.clone()), name_before, "history is old news");
+    assert!(feed.store.mls_group(G).is_some_and(|g| g.approval));
+    feed.ok(
+        98,
+        DomainEvent::MlsGroupEvent {
+            seq: 100,
+            group_id: G.to_owned(),
+            log_seq: Some(61),
+            kind: GroupEventKind::Settings(Box::new(rename("New name", None, 61))),
+        },
+    );
+    assert_eq!(feed.store.mls_group(G).map(|g| g.name.clone()), Some("New name".to_owned()));
+}

@@ -995,7 +995,7 @@ impl Store {
         }
         for post in posts {
             self.mls_learn_post(group, post);
-            self.mls_admin_on_commit_row(group, post, changes);
+            self.mls_admin_on_commit_row(group, post, false, changes);
         }
         self.mls_open_timeline(group);
         let known_anchor = self.mls.my_anchor.clone();
@@ -1113,7 +1113,7 @@ impl Store {
             // The roster may revert with an undone change.
             self.mls.admin.members_wanted.insert(group.to_owned());
         }
-        self.mls_admin_on_commit_row(group, post, changes);
+        self.mls_admin_on_commit_row(group, post, true, changes);
         if let PostBody::Membership { changes: rows, .. } = &post.body {
             self.mls_membership_effects(group, rows, changes);
         }
