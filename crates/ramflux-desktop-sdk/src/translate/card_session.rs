@@ -267,11 +267,10 @@ pub enum CardFailure {
     Other,
 }
 
-/// Classifies a failed card call from its typed reason. The resume cap is
-/// untyped at the pinned core (an invalid-argument refusal of a resume), so
-/// that one answer is a limit too.
+/// Classifies a failed card call from its typed reason; a resume at the cap
+/// answers the typed `card_limit_exceeded`, as an open does.
 #[must_use]
-pub fn failure(method: &str, error: &BusError) -> CardFailure {
+pub fn failure(error: &BusError) -> CardFailure {
     let BusError::Daemon { code, reason_code, .. } = error else {
         return CardFailure::Other;
     };
@@ -284,11 +283,6 @@ pub fn failure(method: &str, error: &BusError) -> CardFailure {
         CardFailure::Limit(CardLimit::Account)
     } else if token.starts_with(REASON_PREFIX) {
         CardFailure::Refused(token.to_owned())
-    } else if method == CARD_RESUME
-        && reason_code.is_none()
-        && matches!(code.as_str(), "InvalidArgument" | "ValidationFailed")
-    {
-        CardFailure::Limit(CardLimit::Process)
     } else {
         CardFailure::Other
     }
@@ -318,7 +312,7 @@ pub fn outcome(method: &str, body: &Value, result: &Result<Value, BusError>) -> 
             Err(ReplyError) if method == CARD_SUBMIT => unknown_submit(),
             Err(ReplyError) => vec![refused_event(body, "card_session_reply")],
         },
-        Err(error) => match failure(method, error) {
+        Err(error) => match failure(error) {
             // The release asked for is done: the runtime dropped it already.
             CardFailure::Expired if method == CARD_DISPOSE => {
                 vec![DomainEvent::Card(CardEvent::Disposed { surface_id: surface_id() })]
