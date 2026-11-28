@@ -5,8 +5,9 @@
 //! direct conversation, the peer's kind mark and name warning beside it,
 //! see [`crate::identity`]), members, local settings (pin, mute,
 //! disappearing timer behind a menu, the secondary entry besides the
-//! command palette; Rename… for a group), and a sticky safety banner while
-//! any member's key change is unresolved or a verification went stale.
+//! command palette; Rename… for a group), and a banner with a Review
+//! button while a member's identity change is not accepted (no dismiss: it
+//! stays until the change is accepted).
 
 use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
@@ -25,7 +26,7 @@ use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{design_px, space, text_secondary};
 
 use crate::bubble::EventSink;
-use crate::i18n::{self, tr, tr_args};
+use crate::i18n::{tr, tr_args};
 use crate::ids::domain_id;
 
 /// Disappearing timers offered in menus: off, one hour, one day, one week.
@@ -47,23 +48,9 @@ pub fn timer_label(seconds: Option<u32>) -> SharedString {
 /// A command run with the window.
 pub type Command = std::rc::Rc<dyn Fn(&mut gpui_kit::Window, &mut App)>;
 
-/// The acknowledgement a call to a contact whose verification went stale
-/// asks for (view-local): whether it is open here, and how to open and
-/// close it.
-pub struct CallAck {
-    /// The acknowledgement is shown for this conversation.
-    pub open: bool,
-    /// Call pressed on a stale contact: show the acknowledgement.
-    pub ask: Command,
-    /// Verify again or Continue chosen: hide it.
-    pub close: Command,
-}
-
-/// The header's trailing controls: the call acknowledgement and, while no
-/// dock tool is open, the tool switcher (design H01).
+/// The header's trailing controls: while no dock tool is open, the tool
+/// switcher (design H01).
 pub struct Controls {
-    /// The stale-contact call acknowledgement.
-    pub call_ack: CallAck,
     /// The dock tool switcher, when the header carries it.
     pub tools: Option<AnyElement>,
 }
@@ -86,7 +73,7 @@ pub fn render(
     controls: Controls,
     cx: &App,
 ) -> AnyElement {
-    let Controls { call_ack, tools } = controls;
+    let Controls { tools } = controls;
     let Some((context, sink)) = context.zip(sink) else {
         let palette = ramflux_desktop_navigation::palette(cx);
         return h_flex()
@@ -109,12 +96,12 @@ pub fn render(
             .into_any_element();
     };
     let members = context.participants.len();
+    let me = selectors::self_participant(store);
     let warnings: Vec<Participant> = selectors::participants(store, &context.id)
         .into_iter()
-        .filter(|p| p.safety.needs_attention())
+        .filter(|p| p.identity.is_changed() && Some(&p.id) != me.as_ref())
         .cloned()
         .collect();
-    let me = selectors::self_participant(store);
     let peer = (context.kind == ContextKind::Direct)
         .then(|| {
             selectors::participants(store, &context.id)
@@ -217,7 +204,7 @@ pub fn render(
             )
         })
         .when(context.kind == ContextKind::Direct, |row| {
-            row.child(call_button(store, context, &sink, &call_ack))
+            row.child(call_button(store, context, &sink, cx))
         })
         .children(tools)
         .child(
@@ -321,71 +308,30 @@ pub fn render(
         .border_color(palette.line)
         .child(row)
         .children(identity)
-        .children(warnings.into_iter().map(|participant| safety_banner(&participant, &sink, cx)))
-        .children(call_ack_strip(store, context, &sink, &call_ack, cx))
+        .children(warnings.into_iter().map(|participant| identity_banner(&participant, &sink, cx)))
         .into_any_element()
 }
 
-/// The peer of a direct conversation whose verification went stale, if so.
-fn stale_peer<'a>(store: &'a Store, context: &Context) -> Option<&'a Participant> {
-    let peer = ramflux_desktop_core::call_peer(store, &context.id)?;
-    store.participant(&peer).filter(|p| p.safety.is_stale())
-}
-
-/// The acknowledgement before a call to a contact whose verification went
-/// stale: Verify again, or Continue (places the call).
-fn call_ack_strip(
-    store: &Store,
-    context: &Context,
-    sink: &EventSink,
-    ack: &CallAck,
-    cx: &App,
-) -> Option<AnyElement> {
-    if !ack.open {
-        return None;
-    }
-    let peer = stale_peer(store, context)?;
-    let prompt = tr_args("identity.ack.call", &[("name", &peer.display)]);
-    let (verify_sink, call_sink) = (sink.scoped(Scope::Panel("header".into())), sink.clone());
-    let (close_verify, close_call) = (ack.close.clone(), ack.close.clone());
-    let participant_id = peer.id.clone();
-    Some(
-        div()
-            .px(space(4.))
-            .pb(space(2.))
-            .child(crate::identity::stale_ack(
-                "call-stale-ack",
-                prompt,
-                Box::new(move |_, window, cx| {
-                    close_verify(window, cx);
-                    verify_sink.emit(
-                        UiEventKind::VerifySafetyPressed { participant_id: participant_id.clone() },
-                        window,
-                        cx,
-                    );
-                }),
-                Box::new(move |_, window, cx| {
-                    close_call(window, cx);
-                    call_sink.emit(UiEventKind::CallStartRequested, window, cx);
-                }),
-                cx,
-            ))
-            .into_any_element(),
-    )
-}
-
 /// The call button of a direct conversation: disabled, with the reason as
-/// its tooltip, while a call cannot be placed. To a contact whose
-/// verification went stale it first asks for the acknowledgement.
-fn call_button(store: &Store, context: &Context, sink: &EventSink, ack: &CallAck) -> AnyElement {
+/// its tooltip, while a call cannot be placed. To a contact whose identity
+/// change is not accepted it opens the identity change sheet instead, and
+/// says why in its tooltip.
+fn call_button(store: &Store, context: &Context, sink: &EventSink, cx: &App) -> AnyElement {
     let blocked = crate::workspace::call_blocked(store, &context.id);
-    let stale = stale_peer(store, context).is_some();
-    let ask = ack.ask.clone();
+    let peer = ramflux_desktop_core::call_peer(store, &context.id);
+    let changed = peer
+        .as_ref()
+        .and_then(|id| store.participant(id))
+        .filter(|p| p.identity.is_changed())
+        .map(|p| (p.id.clone(), p.display.clone()));
     let sink = sink.clone();
     let name = selectors::participants(store, &context.id)
         .into_iter()
-        .find(|p| Some(&p.id) == ramflux_desktop_core::call_peer(store, &context.id).as_ref())
+        .find(|p| Some(&p.id) == peer.as_ref())
         .map_or_else(|| context.title.clone(), |p| p.display.clone());
+    let gate_note =
+        changed.as_ref().map(|(_, name)| tr_args("identity.changed.banner", &[("name", name)]));
+    let _ = cx;
     Button::new("conversation-call")
         .ghost()
         .small()
@@ -393,47 +339,43 @@ fn call_button(store: &Store, context: &Context, sink: &EventSink, ack: &CallAck
         .label(tr("call.start"))
         .accessibility_label(tr_args("call.start_a11y", &[("name", &name)]))
         .disabled(blocked.is_some())
-        .when_some(blocked, |button, reason| button.tooltip(reason))
-        .on_click(crate::identity::call_gate(stale, ask, sink))
+        .when_some(blocked.or(gate_note), |button, reason| button.tooltip(reason))
+        .on_click(crate::identity::call_gate(changed.map(|(id, _)| id), sink))
         .into_any_element()
 }
 
-/// The sticky banner: stays until the participant is verified again. A key
-/// change or fork is a danger; a stale verification a warning.
-fn safety_banner(participant: &Participant, sink: &EventSink, cx: &App) -> AnyElement {
+/// The banner of an identity change that waits for the user: the name, and
+/// Review (primary), which opens the identity change sheet. It has no
+/// dismiss: it stays until the change is accepted.
+fn identity_banner(participant: &Participant, sink: &EventSink, cx: &App) -> AnyElement {
     let sink = sink.scoped(Scope::Panel("header".into()));
     let participant_id = participant.id.clone();
-    let (color, icon) = if participant.safety.is_stale() {
-        (cx.theme().warning, gpui_kit::assets::IconName::ShieldAlert)
-    } else {
-        (cx.theme().danger, gpui_kit::assets::IconName::TriangleAlert)
-    };
-    let text = if participant.safety.is_stale() {
-        tr_args("identity.safety.stale_banner", &[("name", &participant.display)])
-    } else {
-        tr_args(
-            "conversation.safety_banner",
-            &[("name", &participant.display), ("state", &i18n::safety(participant.safety))],
-        )
-    };
+    let color = cx.theme().danger;
+    let text = tr_args("identity.changed.banner", &[("name", &participant.display)]);
     h_flex()
-        .id(domain_id("safety-banner", &participant.id))
+        .id(domain_id("identity-banner", &participant.id))
         .aria_label(text.clone())
         .gap(space(2.))
         .px(space(4.))
         .py(space(2.))
         .bg(color.opacity(0.12))
         .text_size(text_secondary())
-        .child(Icon::new(icon).small().text_color(crate::tone::text(color, cx)))
+        .child(
+            Icon::new(gpui_kit::assets::IconName::TriangleAlert)
+                .small()
+                .text_color(crate::tone::text(color, cx)),
+        )
         .child(div().flex_1().min_w_0().child(text))
         .child(
-            Button::new(domain_id("banner-verify", &participant.id))
+            Button::new(domain_id("banner-review", &participant.id))
                 .small()
-                .design_secondary(cx)
-                .design_label(crate::identity::verify_label(participant.safety))
+                .design_primary(cx)
+                .design_label(tr("identity.changed.review"))
                 .on_click(move |_, window, cx| {
                     sink.emit(
-                        UiEventKind::VerifySafetyPressed { participant_id: participant_id.clone() },
+                        UiEventKind::ReviewIdentityPressed {
+                            participant_id: participant_id.clone(),
+                        },
                         window,
                         cx,
                     );

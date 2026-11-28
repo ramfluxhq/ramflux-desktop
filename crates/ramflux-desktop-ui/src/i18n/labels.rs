@@ -6,8 +6,8 @@
 use gpui_kit::SharedString;
 use ramflux_desktop_core::{
     AccountKind, AgentCustodyProblem, CeremonyFailure, Direction, GovernanceAction, GrantState,
-    Lifecycle, MomentKind, NodeHealth, PeerKind, PinSource, Receipt, Risk, Role, SafetyState,
-    SourceStatus, StepState, SystemLevel, TaskState, TransferState, VaultReason,
+    IdentityState, Lifecycle, MomentKind, NodeHealth, PeerKind, PinSource, Receipt, Risk, Role,
+    SecurityState, SourceStatus, StepState, SystemLevel, TaskState, TransferState, VaultReason,
 };
 
 use super::tr;
@@ -128,14 +128,21 @@ pub fn grant_state(state: GrantState) -> SharedString {
     })
 }
 
-/// Label of a participant safety state.
-pub fn safety(state: SafetyState) -> SharedString {
+/// Label of a contact's identity state.
+pub fn identity_state(state: IdentityState) -> SharedString {
     tr(match state {
-        SafetyState::Unverified => "safety.unverified",
-        SafetyState::Verified => "safety.verified",
-        SafetyState::KeyChanged => "safety.key_changed",
-        SafetyState::Forked => "safety.forked",
-        SafetyState::VerificationStale => "safety.verification_stale",
+        IdentityState::Verified => "identity.state.verified",
+        IdentityState::Tofu => "identity.state.tofu",
+        IdentityState::Changed => "identity.state.changed",
+    })
+}
+
+/// Label of a direct conversation's security state.
+pub fn security_state(state: SecurityState) -> SharedString {
+    tr(match state {
+        SecurityState::Ok => "security.state.ok",
+        SecurityState::Pending => "security.state.pending",
+        SecurityState::ReEstablished => "security.state.re_established",
     })
 }
 
@@ -269,7 +276,8 @@ pub fn moment_kind(kind: &MomentKind) -> SharedString {
         MomentKind::AgentSurface(_) => "moment.kind.agent_surface",
         MomentKind::ObjectTransfer(_) => "moment.kind.object_transfer",
         MomentKind::Intervention(_) => "moment.kind.intervention",
-        MomentKind::SafetyChange(_) => "moment.kind.safety_change",
+        MomentKind::IdentityChange(_) => "moment.kind.identity_change",
+        MomentKind::SecurityNotice(_) => "moment.kind.security_notice",
         MomentKind::Governance(_) => "moment.kind.governance",
         MomentKind::ContactRequest(_) => "moment.kind.contact_request",
         MomentKind::TaskProgress(_) => "moment.kind.task_progress",

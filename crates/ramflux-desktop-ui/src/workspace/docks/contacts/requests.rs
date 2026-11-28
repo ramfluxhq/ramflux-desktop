@@ -5,8 +5,7 @@
 //!
 //! - a pending request from someone: who asks (with their kind as far as
 //!   it is proven, and a warning on a name that could pass for another's,
-//!   see [`crate::identity`]), their note, the safety
-//!   number to compare before accepting, the messages they sent meanwhile
+//!   see [`crate::identity`]), their note, the messages they sent meanwhile
 //!   (held until an answer: a "message request", with a preview of the
 //!   first), and Accept, Decline and Block (Block drops anything they send
 //!   from now on, and needs the confirmation);
@@ -47,8 +46,8 @@ pub fn reason(store: &Store) -> Option<SharedString> {
     crate::gate::reason(store, methods::CONTACT_REQUEST_ACCEPT)
 }
 
-/// A pending incoming request with its note, held messages, safety number
-/// and the three answers.
+/// A pending incoming request with its note, held messages and the three
+/// answers.
 pub fn pending_row(
     request: &ContactRequest,
     from: Option<&Participant>,
@@ -147,18 +146,6 @@ pub fn pending_row(
                     .child(held),
             )
         })
-        .child(
-            div()
-                .id("request-safety")
-                .test_support()
-                .text_size(text_caption())
-                .font_family(cx.theme().mono_font_family.clone())
-                .text_color(muted)
-                .child(match &request.safety_number {
-                    Some(number) => tr_args("dock.contacts.safety_number", &[("number", number)]),
-                    None => tr("dock.contacts.request.no_safety_number"),
-                }),
-        )
         .child(
             h_flex()
                 .gap(space(2.))

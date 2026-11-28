@@ -11,8 +11,8 @@
 //! (`check_add_contact_card`, `check_add_contact`) before emitting, so a
 //! refusal is explained next to the field. A card is checked by the daemon
 //! against its signature and pins the identity it names; an id is looked
-//! up on the contact's node and stays unverified until safety numbers are
-//! compared, which the line under the field says before anything is sent.
+//! up on the contact's node, and its root stays provisional until a card pins
+//! it, which the line under the field says before anything is sent.
 //!
 //! Once submitted the form waits for the outcome without clearing the
 //! field: the contact appearing in the list (for a card, any contact the

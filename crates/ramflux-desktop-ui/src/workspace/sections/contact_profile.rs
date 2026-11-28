@@ -2,28 +2,31 @@
 // Copyright (c) 2026 Span Brain
 
 //! A contact's profile (design F family): who it is and how far that is
-//! proven, the safety number and its comparison, Message and Call, the
-//! conversations shared with it, and Block or Remove (both revoke what was
-//! shared and need the host-drawn confirmation, which policy opens).
+//! proven, an Encryption section (derived design D-M1-2), Message and Call,
+//! the conversations shared with it, and Block or Remove (both revoke what
+//! was shared and need the host-drawn confirmation, which policy opens).
 //!
-//! Verifying never happens on one click: Compare opens the number and what
-//! to compare it with, and only "The numbers match" emits the verification.
-//! A changed or forked key shows a sticky danger banner until resolved.
+//! The Encryption section says how far the identity is trusted ("Verified",
+//! the neutral first-seen line, or a warning with Review while a change
+//! waits; Review opens the identity change sheet) and, when a direct
+//! conversation exists, how it is encrypted and with how many of the
+//! contact's devices. Nothing is compared and nothing is marked verified
+//! here.
 
 use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, Context, Entity, EventEmitter, IntoElement, Render, Role, SharedString,
+    AnyElement, Context, Entity, EventEmitter, IntoElement, Render, Role, SharedString,
     Subscription, Window, div,
 };
 use ramflux_desktop_core::{
-    ContactAction, ContextKind, Participant, ParticipantId, SafetyState, Scope, Store, UiEventKind,
-    selectors,
+    ContactAction, ContextKind, IdentityState, Intent, IntentKind, Participant, ParticipantId,
+    Scope, Store, UiEventKind, selectors,
 };
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::palette;
@@ -31,8 +34,8 @@ use ramflux_desktop_navigation::scale::{design_px, space, text_caption, text_sec
 
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
-use crate::i18n::{tr, tr_args};
-use crate::workspace::docks::contacts::rows::{action_label, safety_label, trust_line};
+use crate::i18n::{self, tr, tr_args};
+use crate::workspace::docks::contacts::rows::{action_label, trust_line};
 
 /// What the profile asks the workspace to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,13 +44,11 @@ pub enum ContactProfileEvent {
     Message(ParticipantId),
 }
 
-/// The profile's view state: which contact, and whether the safety number
-/// comparison is open.
+/// The profile's view state: which contact.
 pub struct ContactProfile {
     store: Entity<StoreHandle>,
     sink: EventSink,
     participant: Option<ParticipantId>,
-    comparing: bool,
     _subscription: Subscription,
 }
 
@@ -60,7 +61,6 @@ impl ContactProfile {
             if let StoreEvent::Changed(changes) = event {
                 if changes.is_reset() {
                     this.participant = None;
-                    this.comparing = false;
                 }
                 if changes.touches_docks() || changes.touches_status() {
                     cx.notify();
@@ -68,16 +68,38 @@ impl ContactProfile {
             }
         });
         let sink = sink.scoped(Scope::Panel("section-contacts".into()));
-        Self { store, sink, participant: None, comparing: false, _subscription: subscription }
+        Self { store, sink, participant: None, _subscription: subscription }
     }
 
-    /// Shows `participant` (or nothing). A new contact closes a comparison.
+    /// Shows `participant` (or nothing). Opening a contact reads its
+    /// identity state, and the security of the direct conversation with it.
     pub fn set_participant(&mut self, participant: Option<ParticipantId>, cx: &mut Context<Self>) {
         if self.participant != participant {
             self.participant = participant;
-            self.comparing = false;
+            if let Some(id) = self.participant.clone() {
+                self.read(&id, cx);
+            }
             cx.notify();
         }
+    }
+
+    /// Reads what the Encryption section shows.
+    fn read(&self, participant: &ParticipantId, cx: &mut Context<Self>) {
+        let context = direct_context(self.store.read(cx).store(), participant);
+        self.store.update(cx, |store, cx| {
+            store.dispatch(
+                Intent::human(IntentKind::ReadIdentityState {
+                    participant_id: participant.clone(),
+                }),
+                cx,
+            );
+            if let Some(context_id) = context {
+                store.dispatch(
+                    Intent::human(IntentKind::ReadConversationSecurity { context_id }),
+                    cx,
+                );
+            }
+        });
     }
 
     /// The shown contact.
@@ -85,138 +107,86 @@ impl ContactProfile {
         self.participant.as_ref()
     }
 
-    fn emit(&self, kind: UiEventKind, window: &mut Window, cx: &mut App) {
-        self.sink.emit(kind, window, cx);
-    }
-
-    fn safety_block(&self, contact: &Participant, cx: &mut Context<Self>) -> AnyElement {
-        let number = contact.safety_number.clone();
-        let grouped: Option<SharedString> = number.as_ref().map(|n| group_digits(n).into());
-        let state = safety_label(contact.safety);
-        let danger = matches!(contact.safety, SafetyState::KeyChanged | SafetyState::Forked);
-        let id = contact.id.clone();
-        let mut block = v_flex()
-            .id("contact-safety")
+    /// The Encryption section: the identity line, then the conversation's
+    /// security line and device count when a direct conversation exists.
+    fn encryption_block(&self, contact: &Participant, cx: &mut Context<Self>) -> AnyElement {
+        let security = {
+            let store = self.store.read(cx).store();
+            direct_context(store, &contact.id).and_then(|context| store.security(&context).cloned())
+        };
+        let (icon, color, state) = match contact.identity {
+            IdentityState::Verified => {
+                (Some(IconName::CircleCheck), cx.theme().success, tr("identity.state.verified"))
+            }
+            IdentityState::Tofu => (None, cx.theme().muted_foreground, tr("identity.state.tofu")),
+            IdentityState::Changed => (
+                Some(IconName::TriangleAlert),
+                crate::tone::text(cx.theme().warning, cx),
+                tr("identity.state.changed"),
+            ),
+        };
+        let review = contact.identity.is_changed().then(|| {
+            let (sink, participant_id) = (self.sink.clone(), contact.id.clone());
+            Button::new("contact-review")
+                .small()
+                .design_secondary(cx)
+                .design_label(tr("identity.changed.review"))
+                .on_click(move |_, window, cx| {
+                    sink.emit(
+                        UiEventKind::ReviewIdentityPressed {
+                            participant_id: participant_id.clone(),
+                        },
+                        window,
+                        cx,
+                    );
+                })
+        });
+        v_flex()
+            .id("contact-encryption")
             .test_support()
             .gap(space(2.))
-            .p(space(3.))
-            .rounded(cx.theme().radius_lg)
-            .border_1()
-            .border_color(if danger { cx.theme().danger } else { cx.theme().border })
+            .child(div().font_medium().child(tr("security.section.title")))
             .child(
                 h_flex()
+                    .id("contact-identity-state")
+                    .role(Role::Status)
+                    .aria_label(state.clone())
+                    .test_support()
                     .gap(space(2.))
-                    .child(Icon::new(IconName::ShieldCheck).small())
-                    .child(div().font_medium().child(tr("sections.contact.safety_number")))
-                    .child(div().flex_1())
+                    .text_size(text_secondary())
+                    .text_color(color)
+                    .children(icon.map(|icon| Icon::new(icon).small()))
+                    .child(div().child(state))
+                    .children(review),
+            )
+            .children(security.map(|security| {
+                h_flex()
+                    .id("contact-security")
+                    .test_support()
+                    .gap(space(2.))
+                    .flex_wrap()
+                    .text_size(text_secondary())
                     .child(
                         div()
-                            .id("contact-safety-state")
-                            .test_support()
-                            .text_size(text_caption())
-                            .text_color(if danger {
-                                cx.theme().danger
-                            } else {
-                                cx.theme().muted_foreground
-                            })
-                            .child(state),
-                    ),
-            )
-            .child(
-                div()
-                    .id("contact-safety-number")
-                    .test_support()
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .text_size(text_secondary())
-                    .whitespace_normal()
-                    .child(grouped.clone().unwrap_or_else(|| tr("sections.contact.no_number"))),
-            );
-        if danger {
-            block = block.child(crate::status::security_notice(
-                true,
-                tr("sections.contact.key_changed"),
-                tr("sections.contact.key_changed_help"),
-                cx,
-            ));
-        }
-        if contact.safety == SafetyState::Verified {
-            return block.into_any_element();
-        }
-        if self.comparing {
-            let help = tr_args("dock.contacts.verify.compare", &[("name", &contact.display)]);
-            // Without a number there is nothing to compare and nothing to confirm.
-            let blocked = number
-                .is_none()
-                .then(|| tr_args("dock.contacts.verify.no_number", &[("name", &contact.display)]));
-            block = block
-                .child(
-                    div()
-                        .id("contact-compare-help")
-                        .test_support()
-                        .role(Role::Status)
-                        .aria_label(help.clone())
-                        .text_size(text_caption())
-                        .whitespace_normal()
-                        .child(help),
-                )
-                .child(
-                    h_flex()
-                        .gap(space(2.))
-                        .child(crate::gate::gated(
-                            Button::new("contact-numbers-match")
-                                .small()
-                                .design_primary(cx)
-                                .design_label(tr("dock.contacts.verify.confirm"))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.comparing = false;
-                                    this.emit(
-                                        UiEventKind::VerifySafetyPressed {
-                                            participant_id: id.clone(),
-                                        },
-                                        window,
-                                        cx,
-                                    );
-                                    cx.notify();
-                                })),
-                            blocked,
-                            cx,
-                        ))
-                        .child(
-                            Button::new("contact-compare-cancel")
-                                .small()
-                                .ghost()
-                                .label(tr("dock.contacts.verify.cancel"))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.comparing = false;
-                                    cx.notify();
-                                })),
-                        ),
-                );
-        } else {
-            block = block.child(
-                h_flex().child(
-                    Button::new("contact-compare")
-                        .small()
-                        .design_secondary(cx)
-                        .design_label(crate::identity::verify_label(contact.safety))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.comparing = true;
-                            cx.notify();
-                        })),
-                ),
-            );
-        }
-        block.into_any_element()
+                            .id("contact-security-state")
+                            .child(i18n::security_state(security.state)),
+                    )
+                    .when(security.peer_devices > 0, |line| {
+                        line.child(div().text_color(cx.theme().muted_foreground).child("·")).child(
+                            div().id("contact-security-devices").child(i18n::tr_count(
+                                "security.devices",
+                                u64::from(security.peer_devices),
+                            )),
+                        )
+                    })
+                    .children(
+                        security
+                            .any_ai
+                            .then(|| crate::identity::ai_mark("contact-security-ai", cx)),
+                    )
+            }))
+            .into_any_element()
     }
-}
-
-/// The safety number in groups of four digits (spaces kept as given).
-fn group_digits(number: &str) -> String {
-    if number.contains(' ') {
-        return number.to_owned();
-    }
-    let chars: Vec<char> = number.chars().collect();
-    chars.chunks(4).map(|chunk| chunk.iter().collect::<String>()).collect::<Vec<_>>().join(" ")
 }
 
 /// The direct conversation with `participant`, if there is one.
@@ -286,15 +256,20 @@ impl Render for ContactProfile {
             cx,
         );
         let call_sink = direct.map(|context| self.sink.scoped(Scope::Context(context)));
+        // The same gate as the header's Call button: a contact whose identity
+        // change waits opens the identity change sheet.
+        let changed = contact.identity.is_changed().then(|| contact.id.clone());
         let call = crate::gate::gated(
             Button::new("contact-call")
                 .small()
                 .design_secondary(cx)
                 .icon(IconName::Phone)
                 .design_label(tr("sections.contact.call"))
-                .on_click(move |_, window, cx| {
+                .on_click(move |event, window, cx| {
                     if let Some(sink) = &call_sink {
-                        sink.emit(UiEventKind::CallStartRequested, window, cx);
+                        crate::identity::call_gate(changed.clone(), sink.clone())(
+                            event, window, cx,
+                        );
                     }
                 }),
             call_reason,
@@ -326,7 +301,7 @@ impl Render for ContactProfile {
                     &gate_palette,
                 )
             };
-        let safety = self.safety_block(&contact, cx);
+        let encryption = self.encryption_block(&contact, cx);
         v_flex()
             .id("contact-profile")
             .test_support()
@@ -378,7 +353,7 @@ impl Render for ContactProfile {
                                     .child(line)
                             })),
                     )
-                    .child(safety)
+                    .child(encryption)
                     .child(
                         v_flex()
                             .id("contact-shared")

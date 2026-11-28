@@ -187,8 +187,11 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                 text: text.clone(),
             }
         }
-        UiEventKind::VerifySafetyPressed { participant_id } => {
-            IntentKind::VerifySafetyNumber { participant_id: participant_id.clone() }
+        UiEventKind::AcceptIdentityPressed { participant_id, new_anchor } => {
+            IntentKind::AcceptIdentityChange {
+                participant_id: participant_id.clone(),
+                new_anchor: new_anchor.clone(),
+            }
         }
         UiEventKind::AddContactRequested { participant_id } => {
             IntentKind::AddContact { participant_id: participant_id.clone() }

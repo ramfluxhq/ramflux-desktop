@@ -50,6 +50,9 @@ const MICROPHONE_SETTINGS: &str =
 
 /// Why a call cannot be placed in `context` now, translated; `None` when
 /// it can. Calls exist only in direct conversations (no button elsewhere).
+/// A peer whose identity change is not accepted is not a block: the call
+/// button then opens the identity change sheet (see
+/// [`crate::identity::call_gate`]).
 pub fn call_blocked(store: &Store, context: &ContextId) -> Option<SharedString> {
     if let Some(reason) = i18n::unsupported(store, methods::CALL_INVITE) {
         return Some(reason);
@@ -60,8 +63,8 @@ pub fn call_blocked(store: &Store, context: &ContextId) -> Option<SharedString> 
     }
     let error = check_start_call(store, context).err()?;
     Some(tr(match error {
+        IntentError::IdentityUnresolved(_) => return None,
         IntentError::CallInProgress => "call.blocked.in_progress",
-        IntentError::SafetyUnresolved(_) => "call.blocked.safety",
         IntentError::NotReachable(_) => "call.blocked.unreachable",
         _ => "call.blocked.unavailable",
     }))

@@ -76,6 +76,9 @@ pub enum RootEvent {
     /// An action on this surface was not performed because the surface
     /// changed after the user reviewed it.
     SurfaceChanged(MomentId),
+    /// "Review" was pressed on this contact's changed identity: open the
+    /// identity change sheet.
+    ReviewIdentity(ramflux_desktop_core::ParticipantId),
 }
 
 /// Owns the pending intent and the confirm strip.
@@ -223,6 +226,12 @@ impl IntentRoot {
         let started = Instant::now();
         let path = format_path(&event.scope_path);
         let kind = ui_event_name(&event);
+        if let ramflux_desktop_core::UiEventKind::ReviewIdentityPressed { participant_id } =
+            &event.kind
+        {
+            // Navigation, not an intent: the workspace opens the sheet.
+            cx.emit(RootEvent::ReviewIdentity(participant_id.clone()));
+        }
         let intent = intent_for(&event, self.store.read(cx).store()).map(Intent::human);
         let outcome = match intent {
             None => UiOutcome::Ignored,

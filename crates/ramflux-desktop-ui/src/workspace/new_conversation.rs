@@ -14,9 +14,9 @@
 //!
 //! Before anything is typed the draft runs the policy's own check
 //! (`check_start_conversation`) and says why a conversation cannot start
-//! yet, and what to do (accept the contact, verify a changed key). A
-//! contact whose verification went stale is not refused: the draft asks
-//! the user to acknowledge it first (Verify again, or Continue). The draft
+//! yet, and what to do (accept the contact). A contact whose identity
+//! change is not accepted is not refused here: the send is, by the SDK,
+//! and the composer then asks the user to review the change. The draft
 //! is view-local; nothing in it reaches the store.
 
 use gpui_kit::TestSupportExt as _;
@@ -64,8 +64,6 @@ pub struct Draft {
     pub context_id: ContextId,
     /// Progress.
     pub phase: Phase,
-    /// The user acknowledged the contact's stale verification (Continue).
-    pub acknowledged: bool,
 }
 
 /// Reported to the workspace.
@@ -79,8 +77,6 @@ pub enum NewConversationEvent {
 pub struct NewConversation {
     store: Entity<StoreHandle>,
     draft: Option<Draft>,
-    /// Where Verify again is emitted (the root's sink, scoped to the draft).
-    sink: Option<EventSink>,
     /// Why no id could be chosen (no randomness), if so.
     id_error: Option<SharedString>,
     _subscription: Subscription,
@@ -96,22 +92,15 @@ impl NewConversation {
                 this.observe(cx);
             }
         });
-        Self { store, draft: None, sink: None, id_error: None, _subscription: subscription }
+        Self { store, draft: None, id_error: None, _subscription: subscription }
     }
 
-    /// Opens a draft with `participant` under a fresh conversation id,
-    /// emitting Verify again through `root` (the root's sink).
-    pub fn open(&mut self, participant: ParticipantId, root: &EventSink, cx: &mut Context<Self>) {
-        self.sink = Some(root.scoped(Scope::Panel(SCOPE.to_owned())));
+    /// Opens a draft with `participant` under a fresh conversation id.
+    pub fn open(&mut self, participant: ParticipantId, cx: &mut Context<Self>) {
         match ramflux_desktop_sdk::fresh_conversation_id() {
             Ok(context_id) => {
                 self.id_error = None;
-                self.draft = Some(Draft {
-                    participant,
-                    context_id,
-                    phase: Phase::Composing,
-                    acknowledged: false,
-                });
+                self.draft = Some(Draft { participant, context_id, phase: Phase::Composing });
             }
             Err(error) => {
                 self.id_error = Some(SharedString::from(error));
@@ -155,27 +144,7 @@ impl NewConversation {
         if let Err(error) = check_start_conversation(store, &draft.participant) {
             return Some(refusal(store, &draft.participant, &error));
         }
-        self.awaits_acknowledgement(store)
-            .then(|| tr_args("identity.ack.wait", &[("name", &name(store, &draft.participant))]))
-    }
-
-    /// Whether the contact's verification went stale and the user has not
-    /// acknowledged it yet.
-    pub fn awaits_acknowledgement(&self, store: &Store) -> bool {
-        self.draft.as_ref().is_some_and(|draft| {
-            !draft.acknowledged
-                && matches!(draft.phase, Phase::Composing)
-                && store.participant(&draft.participant).is_some_and(|p| p.safety.is_stale())
-        })
-    }
-
-    /// Continue chosen: the stale verification is acknowledged for this
-    /// draft.
-    pub fn acknowledge(&mut self, cx: &mut Context<Self>) {
-        if let Some(draft) = &mut self.draft {
-            draft.acknowledged = true;
-            cx.notify();
-        }
+        None
     }
 
     /// The sink the composer emits the first message through: scoped to
@@ -250,7 +219,6 @@ fn refusal(store: &Store, participant: &ParticipantId, error: &IntentError) -> S
         IntentError::ContactLinkState { .. } | IntentError::UnknownParticipant(_) => {
             "conversation.new.error.not_a_contact"
         }
-        IntentError::SafetyUnresolved(_) => "conversation.new.error.key_changed",
         IntentError::NotReachable(_) => "conversation.new.error.unreachable",
         other => return SharedString::from(other.to_string()),
     };
@@ -259,31 +227,6 @@ fn refusal(store: &Store, participant: &ParticipantId, error: &IntentError) -> S
 
 impl Render for NewConversation {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let ack = self.awaits_acknowledgement(self.store.read(cx).store()).then(|| {
-            let store = self.store.read(cx).store();
-            let participant = self.draft.as_ref().map(|d| d.participant.clone());
-            let participant = participant.unwrap_or_else(|| ParticipantId::new(""));
-            let prompt =
-                tr_args("identity.ack.conversation", &[("name", &name(store, &participant))]);
-            let sink = self.sink.clone();
-            crate::identity::stale_ack(
-                "new-conversation-stale-ack",
-                prompt,
-                Box::new(move |_, window, cx| {
-                    if let Some(sink) = &sink {
-                        sink.emit(
-                            UiEventKind::VerifySafetyPressed {
-                                participant_id: participant.clone(),
-                            },
-                            window,
-                            cx,
-                        );
-                    }
-                }),
-                Box::new(cx.listener(|this, _, _, cx| this.acknowledge(cx))),
-                cx,
-            )
-        });
         let store = self.store.read(cx).store();
         let theme = cx.theme();
         let (muted, danger, border) = (theme.muted_foreground, theme.danger, theme.border);
@@ -291,15 +234,17 @@ impl Render for NewConversation {
             || tr("conversation.new.title_unknown"),
             |d| tr_args("conversation.new.title", &[("name", &name(store, &d.participant))]),
         );
-        let safety = self.draft.as_ref().and_then(|d| store.participant(&d.participant));
+        let identity = self
+            .draft
+            .as_ref()
+            .and_then(|d| store.participant(&d.participant))
+            .filter(|p| p.identity.is_changed());
         let blocked = self.blocked(store);
         let (status, failed) = match self.draft.as_ref().map(|d| &d.phase) {
             Some(Phase::Failed(reason)) => {
                 (Some(tr_args("conversation.new.failed", &[("reason", reason)])), true)
             }
             Some(Phase::Sending { .. }) => (Some(tr("conversation.new.sending")), false),
-            // The acknowledgement says it all; no second line.
-            _ if ack.is_some() => (None, false),
             _ => (blocked.clone(), blocked.is_some()),
         };
         v_flex()
@@ -324,11 +269,11 @@ impl Render for NewConversation {
                             .font_weight(gpui_kit::FontWeight::MEDIUM)
                             .child(title),
                     )
-                    .children(safety.map(|p| {
+                    .children(identity.map(|p| {
                         div()
                             .text_size(text_caption())
                             .text_color(muted)
-                            .child(i18n::safety(p.safety))
+                            .child(i18n::identity_state(p.identity))
                     })),
             )
             .child(
@@ -345,7 +290,6 @@ impl Render for NewConversation {
                             .text_center()
                             .child(tr("conversation.new.hint")),
                     )
-                    .children(ack)
                     .children(status.map(|text| {
                         div()
                             .id("new-conversation-status")

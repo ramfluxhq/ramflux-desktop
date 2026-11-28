@@ -58,9 +58,6 @@ pub struct Conversation {
     draft: Option<Entity<NewConversation>>,
     rename: Option<rename::Rename>,
     rename_subscription: Option<Subscription>,
-    /// The conversation whose call waits for the stale-verification
-    /// acknowledgement (view-local).
-    call_ack: Option<ContextId>,
     focus_handle: FocusHandle,
     highlight_focus: FocusHandle,
     /// The dock tool open beside the conversation, if any.
@@ -164,7 +161,6 @@ impl Conversation {
             draft: None,
             rename: None,
             rename_subscription: None,
-            call_ack: None,
             focus_handle: cx.focus_handle(),
             highlight_focus: cx.focus_handle().tab_stop(true),
             open_tool: None,
@@ -589,26 +585,6 @@ impl Render for Conversation {
                 this.update(cx, |field, cx| field.start_rename(window, cx)).ok();
             }),
         };
-        let (ask, close) = (cx.weak_entity(), cx.weak_entity());
-        let call_ack = header::CallAck {
-            open: self.call_ack.is_some() && self.call_ack == self.context_id,
-            ask: Rc::new(move |_, cx| {
-                ask.update(cx, |field, cx| {
-                    field.call_ack.clone_from(&field.context_id);
-                    cx.notify();
-                })
-                .ok();
-            }),
-            close: Rc::new(move |_, cx| {
-                close
-                    .update(cx, |field, cx| {
-                        field.call_ack = None;
-                        cx.notify();
-                    })
-                    .ok();
-            }),
-        };
-        let ask_call = call_ack.ask.clone();
         let in_form = self.context_id.is_none() && self.draft.is_some();
         let open_tool = self.open_tool;
         let switcher = || {
@@ -633,7 +609,7 @@ impl Render for Conversation {
             context,
             context_sink.clone(),
             renaming,
-            header::Controls { call_ack, tools },
+            header::Controls { tools },
             cx,
         );
         let body = match context_sink.filter(|_| !rows.is_empty()) {
@@ -675,7 +651,6 @@ impl Render for Conversation {
                 let highlight_focus = self.highlight_focus.clone();
                 let this = cx.weak_entity();
                 let store = self.store.downgrade();
-                let ask_call = ask_call.clone();
                 let visible = Rc::new(std::cell::RefCell::new(std::collections::BTreeSet::new()));
                 MessageScroller::new(
                     "conversation",
@@ -728,7 +703,7 @@ impl Render for Conversation {
                             });
                         }
                         let is_highlighted = highlighted.as_ref() == Some(id);
-                        let mut state = view.row_state(id, is_highlighted, ask_call.clone());
+                        let mut state = view.row_state(id, is_highlighted);
                         state.joined =
                             ix.checked_sub(1).and_then(|at| rows.get(at)).is_some_and(|previous| {
                                 crate::moments::message_bubble::joins(previous, row)
