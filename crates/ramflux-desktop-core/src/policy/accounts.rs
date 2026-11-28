@@ -27,13 +27,6 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 ))
             })
         }
-        IntentKind::RestoreBackup { path, secret } => {
-            p.human_only("restore a backup").and_then(|()| {
-                non_empty(path, "backup path")?;
-                secret_present(secret, "passphrase")?;
-                Ok(Decision::SecretCall(methods::ACCOUNT_BACKUP_IMPORT, json!({ "path": path })))
-            })
-        }
         IntentKind::AddNode { url } => non_empty(url, "node address")
             .map(|()| Decision::Call(methods::NODE_ADD, json!({ "url": url.trim() }))),
         IntentKind::ConfirmNode { node_id, pin_source } => {
@@ -69,17 +62,6 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                 Ok(Decision::SecretCall(
                     methods::ACCOUNT_ROTATE_PASSPHRASE,
                     json!({ "account_id": account_id }),
-                ))
-            })
-        }
-        IntentKind::ExportBackup { account_id, path, secret } => {
-            p.human_only("export a backup").and_then(|()| {
-                account(p, account_id)?;
-                non_empty(path, "backup path")?;
-                secret_present(secret, "backup passphrase")?;
-                Ok(Decision::SecretCall(
-                    methods::ACCOUNT_BACKUP_EXPORT,
-                    json!({ "account_id": account_id, "path": path }),
                 ))
             })
         }

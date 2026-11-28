@@ -94,26 +94,16 @@ fn entry_adds_a_tofu_node_with_confirmation(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn entry_restores_a_backup_then_locks_and_unlocks(cx: &mut TestAppContext) {
+fn entry_offers_only_the_full_restore_then_locks_and_unlocks(cx: &mut TestAppContext) {
     let (handle, shell) = harbor_confirmed(cx);
     click(cx, handle, "entry-path-1");
-    // The scenario daemon has the full backup job API, so the full restore
-    // is offered first; this is the key backup (legacy import).
+    // Only the full restore is offered: the key backup import is gone.
     assert!(exists(cx, handle, "entry-full-restore"));
-    click(cx, handle, "entry-restore-kind-1");
-    click(cx, handle, "backup-browse");
-    cx.simulate_path_prompt_response(|options| {
-        assert!(options.files && !options.multiple);
-        Some(vec!["/backups/ramflux.backup".into()])
-    });
-    cx.run_until_parked();
-    type_into(cx, handle, "backup-secret", "river stone lantern");
-    click(cx, handle, "account-restore");
-    assert_eq!(
-        last_body(cx, &shell, methods::ACCOUNT_BACKUP_IMPORT)["path"],
-        "/backups/ramflux.backup",
-        "the native dialog filled the path input"
-    );
+    assert!(!exists(cx, handle, "backup-browse"));
+    assert!(!exists(cx, handle, "account-restore"));
+    click(cx, handle, "entry-path-0");
+    type_into(cx, handle, "passphrase", "river stone lantern");
+    in_window(cx, handle, |window, cx| window.press("enter", cx));
     advance(cx, 700);
     assert_eq!(page(cx, &shell), Page::Workspace);
 
@@ -224,31 +214,6 @@ fn settings_rotate_passphrase_and_export_diagnostics(cx: &mut TestAppContext) {
             .as_str()
             .is_some_and(|p| p.ends_with("/diag.txt"))
     );
-}
-
-#[gpui_kit::test]
-fn settings_export_backup_takes_its_passphrase_as_a_secret(cx: &mut TestAppContext) {
-    let (handle, shell) = open(cx, "s09_multi_account_day");
-    advance(cx, 1_000);
-    settings(cx, handle, &shell, SettingsSection::Account);
-    // Without a passphrase the control is disabled: no dialog, no export.
-    click(cx, handle, "settings-export-backup");
-    assert!(
-        !effects(cx, &shell).iter().any(|m| m == methods::ACCOUNT_BACKUP_EXPORT),
-        "no passphrase, no export"
-    );
-    type_into(cx, handle, "backup-passphrase", "quiet harbor lights");
-    click(cx, handle, "settings-export-backup");
-    let page = cx.update(|cx| shell.read(cx).settings().clone());
-    let cleared = cx.update(|cx| page.read(cx).backup_input().read(cx).value().is_empty());
-    assert!(cleared, "the passphrase leaves its input when export starts");
-    cx.simulate_new_path_selection(|dir| Some(dir.join("personal.backup")));
-    cx.run_until_parked();
-    let body = last_body(cx, &shell, methods::ACCOUNT_BACKUP_EXPORT);
-    assert_eq!(body["account_id"], "a-personal");
-    assert!(body["path"].as_str().is_some_and(|p| p.ends_with("/personal.backup")));
-    assert!(!body.to_string().contains("harbor"), "the passphrase travels beside the body");
-    assert!(!inspector_text(cx, &shell).contains("harbor"));
 }
 
 /// A long nodes page scrolls to its last node: with many backup nodes every

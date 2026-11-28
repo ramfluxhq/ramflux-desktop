@@ -54,7 +54,6 @@ fn placeholders(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<SharedStr
         inputs.push(shell.entry().read(cx).passphrase().clone());
         let settings = shell.settings().read(cx);
         inputs.extend(settings.rotate_inputs().into_iter().cloned());
-        inputs.push(settings.backup_input().clone());
         labels
             .extend(inputs.iter().map(|input| input.read(cx).presentation().placeholder().clone()));
         labels
@@ -88,7 +87,6 @@ fn expected() -> Vec<SharedString> {
         "entry.account.passphrase",
         "settings.account.current",
         "settings.account.next",
-        "settings.account.backup_passphrase",
     ]
     .into_iter()
     .map(tr)

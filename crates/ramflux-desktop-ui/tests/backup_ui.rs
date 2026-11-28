@@ -944,7 +944,7 @@ fn an_account_that_never_loads_can_be_locked_from_the_error(cx: &mut TestAppCont
 }
 
 #[gpui_kit::test]
-fn a_daemon_without_the_job_api_offers_the_key_backup_first(cx: &mut TestAppContext) {
+fn a_daemon_without_the_job_api_gates_the_full_restore(cx: &mut TestAppContext) {
     let (fake, state, path) = sdk_fake::start("ui-backup-entry-key");
     fake.enable_stream();
     {
@@ -961,10 +961,7 @@ fn a_daemon_without_the_job_api_offers_the_key_backup_first(cx: &mut TestAppCont
     wait(cx, "the account step", |cx| page(cx, &shell) == Page::Entry(EntryStep::Account));
     advance(cx, 300);
     click(cx, handle, "entry-path-1");
-    assert!(!exists(cx, handle, "entry-full-restore"), "the key backup is the default");
-    assert!(exists(cx, handle, "backup-browse"));
-    // The full restore can still be chosen; its Check is gated.
-    click(cx, handle, "entry-restore-kind-0");
+    // The full restore is the only one offered; its Check is gated.
     assert!(exists(cx, handle, "entry-full-restore"));
     let gated = in_window(cx, handle, |window, _| window.find("restore-verify").disabled());
     assert_eq!(gated, Some(true));

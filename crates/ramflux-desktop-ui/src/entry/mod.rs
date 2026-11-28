@@ -65,22 +65,10 @@ pub enum AccountPath {
     Restore,
 }
 
-/// Which backup the restore path restores from (view-local).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RestoreKind {
-    /// A full backup (everything, every file): the daemon's restore jobs,
-    /// checked and reviewed before anything is installed.
-    Full,
-    /// A key backup (identity keys and contacts only): the legacy import.
-    Key,
-}
-
 /// The text inputs of the entry page.
 struct Inputs {
     passphrase: Entity<InputState>,
     node_url: Entity<InputState>,
-    backup_path: Entity<InputState>,
-    backup_secret: Entity<InputState>,
 }
 
 impl Inputs {
@@ -94,8 +82,6 @@ impl Inputs {
         Self {
             passphrase: masked("entry.account.passphrase", window, cx),
             node_url: plain("entry.node.url_placeholder", window, cx),
-            backup_path: plain("entry.restore.path_placeholder", window, cx),
-            backup_secret: masked("entry.restore.passphrase", window, cx),
         }
     }
 }
@@ -122,9 +108,6 @@ pub struct EntryPage {
     sink: EventSink,
     inputs: Inputs,
     path: AccountPath,
-    /// The restore kind the user chose; until then the full restore when
-    /// the daemon has the job API, else the key backup.
-    restore_kind: Option<RestoreKind>,
     /// The full restore flow (verify, review, install, result), shared with
     /// Settings · Backup; it needs no account.
     full_restore: Entity<BackupPanel>,
@@ -271,7 +254,6 @@ impl EntryPage {
             launcher,
             inputs,
             path: AccountPath::Create,
-            restore_kind: None,
             full_restore,
             ceremony,
             ceremony_open: false,
@@ -427,8 +409,8 @@ impl EntryPage {
     }
 
     /// Every masked secret input, for tests that check secrets are cleared.
-    pub fn secret_inputs(&self) -> [&Entity<InputState>; 2] {
-        [&self.inputs.passphrase, &self.inputs.backup_secret]
+    pub fn secret_inputs(&self) -> [&Entity<InputState>; 1] {
+        [&self.inputs.passphrase]
     }
 
     /// The step shown: the store's step, or the node step while the user

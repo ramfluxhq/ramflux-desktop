@@ -7,7 +7,7 @@
 // returns to the workspace.
 // Demonstrates: SourceStatusChanged, NodeUpserted (confirmed and pending),
 // node.add / node.confirm, account.create / device.activate /
-// account.backup.import secret calls, account.lock echo and account.unlock.
+// secret calls, account.lock echo and account.unlock.
 // Moment `at` values are stamped by the mock source at delivery time.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
@@ -134,19 +134,6 @@
                 (450, ListingsLoaded([Contexts, Contacts, Objects, Approvals])),
                 (500, MomentAdded(id: "m-welcome", context_id: "c-notes", origin: "p-me", at: 0,
                     kind: System(level: Info, text: "This laptop joined your account. History syncs from your other devices."), lifecycle: Done)),
-            ],
-        ),
-        (
-            on: Call(method: "account.backup.import"),
-            emit: [
-                (400, AccountUpdated(id: "a-main", label: "Personal", node_id: "n-harbor", device_id: "dev-laptop-01", lock_state: Unlocked, self_participant_id: "p-me")),
-                (450, SourceStatusChanged(Connected)),
-                (450, DeviceUpserted(id: "dev-laptop-01", account_id: "a-main", label: "This laptop", this_device: true)),
-                (500, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
-                (550, ContextUpserted(id: "c-notes", kind: Direct, title: "Notes to self", participants: ["p-me"], pinned: true)),
-                (550, ListingsLoaded([Contexts, Contacts, Objects, Approvals])),
-                (600, MomentAdded(id: "m-welcome", context_id: "c-notes", origin: "p-me", at: 0,
-                    kind: System(level: Info, text: "Account restored from backup."), lifecycle: Done)),
             ],
         ),
         (

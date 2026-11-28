@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Settings · Account: the active account, lock (returns to entry), backup
-//! export (a masked backup passphrase handed to the root as a secret with the
-//! chosen path), passphrase rotation (two masked inputs handed to the root as
+//! Settings · Account: the active account, lock (returns to entry),
+//! passphrase rotation (two masked inputs handed to the root as
 //! secrets), and the username claim (a name and the recovery phrase that
 //! authorizes it, handed to the root as a secret). Masked inputs are cleared
 //! the moment they are taken.
@@ -22,7 +21,6 @@ use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::space;
 
 use super::{SectionContext, SettingsSection, design, note};
-use crate::file_dialog::{self, StartDir};
 use crate::i18n::{self, tr, tr_args};
 use crate::root::SUBMITTED;
 use crate::style::DesignButton as _;
@@ -33,8 +31,6 @@ pub struct AccountInputs {
     pub current: Entity<InputState>,
     /// New passphrase (rotation).
     pub next: Entity<InputState>,
-    /// Passphrase the exported backup is encrypted with.
-    pub backup: Entity<InputState>,
     /// The username to claim (or change to), typed with or without `@`.
     pub username: Entity<InputState>,
     /// The recovery phrase that authorizes the username change.
@@ -60,9 +56,7 @@ const REFRESH_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(2);
 /// section, locking the account or switching accounts), the account code
 /// included.
 pub(super) fn clear_inputs(inputs: &AccountInputs, window: &mut Window, cx: &mut App) {
-    for input in
-        [&inputs.current, &inputs.next, &inputs.backup, &inputs.username, &inputs.username_phrase]
-    {
+    for input in [&inputs.current, &inputs.next, &inputs.username, &inputs.username_phrase] {
         input.update(cx, |input, cx| input.set_value("", window, cx));
     }
     clear_code(&inputs.app_lock_code, window, cx);
@@ -133,14 +127,9 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
     let app_lock = app_lock_item(context, account.as_ref().map(|a| a.id.clone()), inputs);
     let sink = context.sink(SettingsSection::Account);
     let username_configured = inputs.username_configured;
-    let export_reason = crate::gate::reason(
-        context.store.read(cx).store(),
-        ramflux_desktop_core::methods::ACCOUNT_BACKUP_EXPORT,
-    );
-    let backup_typed = !inputs.backup.read(cx).value().is_empty();
     // Design G01: the current account (its row with a "Current" chip, the
-    // default node and device, Lock), the key backup export and the
-    // passphrase change, each a section of the 760 px column.
+    // default node and device, Lock) and the passphrase change, each a
+    // section of the 760 px column.
     let current = {
         let account = account.clone();
         let sink = sink.clone();
@@ -213,62 +202,6 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                                 )
                             }),
                     ),
-                )
-                .into_any_element()
-        })
-    };
-    let backup = {
-        let input = inputs.backup.clone();
-        let root = context.root.clone();
-        let account = account.as_ref().map(|a| a.id.clone());
-        SettingItem::render(move |_, _, cx: &mut App| {
-            let Some(account_id) = account.clone() else { return h_flex().into_any_element() };
-            let (input, root) = (input.clone(), root.clone());
-            let suggested = format!("ramflux-{account_id}.backup");
-            let reason = export_reason
-                .clone()
-                .or_else(|| (!backup_typed).then(|| tr("settings.account.backup_help")));
-            design::section("account-backup", tr("settings.account.backup_title"), cx)
-                .child(design::help(tr("settings.account.backup_help"), cx))
-                .child(super::presentation::field(
-                    tr("settings.account.backup_passphrase"),
-                    Input::new(&input)
-                        .id("backup-passphrase")
-                        .aria_label(tr("settings.account.backup_passphrase"))
-                        .mask_toggle()
-                        .large(),
-                    cx,
-                ))
-                .child(
-                    h_flex().child(crate::gate::gated(
-                        crate::style::secondary_button("settings-export-backup", cx)
-                            .label(tr("settings.account.export"))
-                            .on_click(move |_, window, cx| {
-                                // Taken (and the input cleared) now; the secret
-                                // lives only in the pending dialog callback, which
-                                // drops (zeroizes) it when the dialog is cancelled.
-                                let secret = take(&input, window, cx);
-                                if secret.is_empty() {
-                                    return;
-                                }
-                                let (root, account_id) = (root.clone(), account_id.clone());
-                                file_dialog::save_as(
-                                    StartDir::Documents,
-                                    &suggested,
-                                    window,
-                                    cx,
-                                    move |path, window, cx| {
-                                        let kind =
-                                            IntentKind::ExportBackup { account_id, path, secret };
-                                        root.update(cx, |root, cx| {
-                                            root.submit_secret(kind, window, cx);
-                                        });
-                                    },
-                                );
-                            }),
-                        reason,
-                        cx,
-                    )),
                 )
                 .into_any_element()
         })
@@ -458,13 +391,7 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
             .into_any_element()
     });
     SettingPage::new(tr("settings.section.account")).group(
-        SettingGroup::new()
-            .item(current)
-            .item(backup)
-            .item(rotation)
-            .item(claim)
-            .item(app_lock)
-            .item(privacy),
+        SettingGroup::new().item(current).item(rotation).item(claim).item(app_lock).item(privacy),
     )
 }
 
