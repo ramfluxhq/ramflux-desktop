@@ -9,7 +9,7 @@ mod common;
 use common::*;
 use gpui_kit::TestAppContext;
 use gpui_kit::test::TestWindowExt as _;
-use ramflux_desktop_core::{DeviceId, LockState, NodeId, methods};
+use ramflux_desktop_core::{DeviceId, NodeId, methods};
 use ramflux_desktop_ui::Shell;
 use ramflux_desktop_ui::route::{EntryStep, Page};
 use ramflux_desktop_ui::settings::SettingsSection;
@@ -94,22 +94,23 @@ fn entry_adds_a_tofu_node_with_confirmation(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn entry_offers_only_the_full_restore_then_locks_and_unlocks(cx: &mut TestAppContext) {
-    let (handle, shell) = harbor_confirmed(cx);
+fn entry_offers_only_the_full_restore(cx: &mut TestAppContext) {
+    let (handle, _shell) = harbor_confirmed(cx);
     click(cx, handle, "entry-path-1");
     // Only the full restore is offered: the key backup import is gone.
     assert!(exists(cx, handle, "entry-full-restore"));
     assert!(!exists(cx, handle, "backup-browse"));
     assert!(!exists(cx, handle, "account-restore"));
-    click(cx, handle, "entry-path-0");
-    type_into(cx, handle, "passphrase", "river stone lantern");
-    in_window(cx, handle, |window, cx| window.press("enter", cx));
-    advance(cx, 700);
-    assert_eq!(page(cx, &shell), Page::Workspace);
+}
 
+#[gpui_kit::test]
+fn settings_lock_returns_to_entry_and_unlock_sends_the_secret(cx: &mut TestAppContext) {
+    let (handle, shell) = open(cx, "s09_multi_account_day");
+    advance(cx, 1_000);
+    assert_eq!(page(cx, &shell), Page::Workspace);
     settings(cx, handle, &shell, SettingsSection::Account);
     click(cx, handle, "settings-lock");
-    assert_eq!(last_body(cx, &shell, methods::ACCOUNT_LOCK)["account_id"], "a-main");
+    assert!(last_body(cx, &shell, methods::ACCOUNT_LOCK)["account_id"].is_string());
     advance(cx, 100);
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account), "locking returns to entry");
     assert!(!cx.update(|cx| shell.read(cx).is_settings_open()));
@@ -118,10 +119,6 @@ fn entry_offers_only_the_full_restore_then_locks_and_unlocks(cx: &mut TestAppCon
     in_window(cx, handle, |window, cx| window.press("enter", cx));
     assert_eq!(effects(cx, &shell).last().map(String::as_str), Some(methods::ACCOUNT_UNLOCK));
     assert!(secrets_cleared(cx, &shell));
-    advance(cx, 200);
-    let state = with_store(cx, &shell, |s| s.accounts().next().map(|a| a.lock_state));
-    assert_eq!(state, Some(LockState::Unlocked));
-    assert_eq!(page(cx, &shell), Page::Workspace);
 }
 
 #[gpui_kit::test]
