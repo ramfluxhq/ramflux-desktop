@@ -322,6 +322,9 @@ impl Desk {
 
     /// Shows a conversation through the workspace navigation.
     pub fn show_context(&self, host: &mut impl Host, id: &ContextId) -> Result<(), String> {
+        // A conversation is shown in the Messages section, as a person
+        // chooses it from there.
+        let _ = self.click(host, None, "nav-messages");
         let workspace = host.app(|cx| self.shell.read(cx).workspace().clone());
         let id = id.clone();
         host.window(self.handle.into(), move |window, cx| {

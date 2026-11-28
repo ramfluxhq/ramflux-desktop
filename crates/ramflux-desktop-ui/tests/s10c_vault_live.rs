@@ -143,11 +143,14 @@ fn fresh_device(
     }
     let (handle, shell) = open_sized(cx, sdk_fake::options(&path), 900.);
     cx.update_window(handle.into(), |_, window, _| window.activate_window()).expect("window");
-    wait(cx, "the entry page", |cx| matches!(page(cx, &shell), Page::Entry(_)));
+    // A device that holds a locked account opens on its lock page.
+    wait(cx, "the entry page", |cx| matches!(page(cx, &shell), Page::Entry(_) | Page::Lock));
     if page(cx, &shell) == Page::Entry(EntryStep::Node) {
         click_in(cx, handle, "node-n-harbor", "node-confirm");
     }
-    wait(cx, "the account step", |cx| page(cx, &shell) == Page::Entry(EntryStep::Account));
+    wait(cx, "the account step", |cx| {
+        matches!(page(cx, &shell), Page::Entry(EntryStep::Account) | Page::Lock)
+    });
     wait(cx, "creation offered", |cx| daemon(cx, &shell, |s| s.offers_born_v3_creation()));
     if locked_account {
         wait(cx, "the account is listed", |cx| {

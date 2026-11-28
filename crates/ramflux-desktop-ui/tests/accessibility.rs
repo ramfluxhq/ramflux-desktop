@@ -142,7 +142,8 @@ fn moments_announce_kind_state_and_risk_and_the_strip_its_risk(cx: &mut TestAppC
         (strip.role(), strip.label().map(str::to_owned).unwrap_or_default())
     });
     assert_eq!(role, Some(Role::Alert), "the strip is announced");
-    assert!(label.contains(i18n::risk(risk).as_ref()), "with its risk: {label}");
+    // The strip carries no risk wording any more: the sentence carries the weight.
+    assert!(!label.contains(i18n::risk(risk).as_ref()), "no risk badge: {label}");
     let accept = in_window(cx, handle, |window, _| {
         let accept = window.find("confirm-accept");
         (accept.role(), accept.label().map(str::to_owned))

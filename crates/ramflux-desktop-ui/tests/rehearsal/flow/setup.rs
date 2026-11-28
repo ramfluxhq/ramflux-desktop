@@ -102,11 +102,11 @@ pub fn node<H: Host, D: DemoDaemon>(
         let desk = demo.sides[ix].desk()?;
         desk.click(demo.host, Some(&card), "node-confirm")?;
         if node.pin_source.is_trust_on_first_use() {
-            if !desk.strip_open(demo.host) || !desk.exists(demo.host, "entry-confirm-footer") {
-                return Err(format!("desktop {tag}: no confirm strip for a first-use pin"));
+            // The press of "Trust this node" is the confirmation: no second
+            // strip follows it.
+            if desk.strip_open(demo.host) {
+                return Err(format!("desktop {tag}: a second confirm strip followed the trust"));
             }
-            demo.shots(ix, "02_node_confirm", notes)?;
-            demo.sides[ix].desk()?.tap_confirm(demo.host)?;
             notes.add(format!("{tag}: trusted on first use, confirmed with one tap"));
         }
         let id = node.id.clone();

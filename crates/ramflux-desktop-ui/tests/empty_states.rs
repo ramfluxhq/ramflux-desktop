@@ -110,14 +110,16 @@ fn lists_show_loading_then_an_explicit_empty_state(cx: &mut TestAppContext) {
     assert_eq!(label(cx, handle, "contacts-list-state"), loading);
 
     advance(cx, 500);
+    assert_eq!(
+        label(cx, handle, "contacts-list-state"),
+        Some(tr("dock.contacts.empty").to_string())
+    );
+    // The chat lists are in the Messages section.
+    click(cx, handle, "nav-messages");
     assert_eq!(label(cx, handle, "stack-list-state"), Some(tr("stack.empty").to_string()));
     assert_eq!(
         label(cx, handle, "conversation-list-state"),
         Some(tr("conversation.no_contexts").to_string())
-    );
-    assert_eq!(
-        label(cx, handle, "contacts-list-state"),
-        Some(tr("dock.contacts.empty").to_string())
     );
     open_tool(cx, handle, &shell, DockTool::Objects);
     assert_eq!(label(cx, handle, "objects-list-state"), Some(tr("dock.objects.empty").to_string()));

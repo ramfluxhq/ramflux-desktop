@@ -131,7 +131,9 @@ fn a_failed_add_shows_the_daemon_reason_under_the_field(cx: &mut TestAppContext)
     let Some(FormNote::Error(text)) = note(cx, &shell) else {
         panic!("an error under the field, got {:?}", note(cx, &shell))
     };
-    assert!(text.contains("account database is not unlocked"), "{text}");
+    // A daemon's own message is never shown: the generic sentence is.
+    assert!(!text.contains("account database is not unlocked"), "{text}");
+    assert!(!text.is_empty(), "the failure is said");
     assert_eq!(field(cx, &shell), "principal-locked", "the input is kept to retry");
     assert_eq!(link(cx, &shell, "principal-locked"), None);
 }

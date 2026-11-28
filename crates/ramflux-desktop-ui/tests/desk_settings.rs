@@ -44,22 +44,20 @@ fn account_devices_backup_fit_all_widths_and_themes(cx: &mut TestAppContext) {
                         );
                     }
                     if section == SettingsSection::Devices && width == 640. {
-                        // This device carries the compact note; an active
-                        // other device carries the full wrapped warning.
+                        // This device carries no note about its origin; another
+                        // device carries one neutral line, wrapped within the
+                        // compact viewport.
                         assert!(
                             w.within("device-dev-laptop-01")
                                 .try_find("device-origin-note")
-                                .is_some(),
-                            "this device shows the unknown origin as one compact line"
+                                .is_none(),
+                            "this device shows no origin note"
                         );
-                        let description = w
-                            .within("device-dev-phone-01")
-                            .find("device-origin-description")
-                            .bounds();
+                        let note =
+                            w.within("device-dev-phone-01").find("device-origin-note").bounds();
                         assert!(
-                            description.size.height > gpui_kit::px(40.)
-                                && description.right() <= gpui_kit::px(width),
-                            "the complete operator warning must wrap within the compact viewport"
+                            note.right() <= gpui_kit::px(width),
+                            "the neutral line must wrap within the compact viewport"
                         );
                     }
                     assert!(
@@ -195,8 +193,15 @@ fn device_directory_states_follow_source_and_unknown_origin_stays_cautious(
         "source failures expose the last settings error"
     );
     assert!(
-        has_label(cx, handle, "Last device directory error. Device directory disconnected"),
-        "a failed directory has an error state rather than an empty list"
+        has_label(
+            cx,
+            handle,
+            &format!(
+                "Last device directory error. {}",
+                ramflux_desktop_ui::i18n::tr("backend.failure.generic")
+            )
+        ),
+        "a failed directory has an error state, in plain words, rather than an empty list"
     );
     advance(cx, 1000);
     assert!(
@@ -215,8 +220,8 @@ fn device_directory_states_follow_source_and_unknown_origin_stays_cautious(
     advance(cx, 1000);
     show(cx, &shell, SettingsSection::Devices);
     assert!(
-        exists_in(cx, handle, "device-dev-phone-01", "device-origin-warning"),
-        "a source device without platform facts must retain a cautious warning"
+        exists_in(cx, handle, "device-dev-phone-01", "device-origin-note"),
+        "a source device without platform facts says so in one neutral line"
     );
     assert!(
         !exists(cx, handle, "device-foreign-device"),

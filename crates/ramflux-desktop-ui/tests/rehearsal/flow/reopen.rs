@@ -90,7 +90,7 @@ pub fn reopen<H: Host, D: DemoDaemon>(
     demo.sides[1].desk = Some(Desk::open(demo.host, demo.sides[1].tag, options));
     demo.wait(1, limits.answer, "the reopened desktop", |desk, host| {
         let page = desk.page(host);
-        page == Page::Workspace || matches!(page, Page::Entry(_))
+        page == Page::Workspace || matches!(page, Page::Entry(_) | Page::Lock)
     })?;
     if demo.sides[1].desk()?.page(demo.host) != Page::Workspace {
         let locked =

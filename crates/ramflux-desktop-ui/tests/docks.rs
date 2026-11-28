@@ -158,7 +158,10 @@ fn approvals_dock_revokes_with_confirmation_and_lists_the_audit(cx: &mut TestApp
 fn evidence_dock_is_read_only(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s03_intervention");
     advance(cx, 1_000);
-    click(cx, handle, "rail-evidence");
+    // Evidence has no rail entry (in a direct chat its content is the Profile
+    // panel's "Technical details"); a group chat reaches it by its shortcut.
+    assert!(!exists(cx, handle, "rail-evidence"));
+    in_window(cx, handle, |window, cx| window.press("secondary-alt-5", cx));
     assert!(exists(cx, handle, "dock-content-evidence"));
     let workspace = workspace(cx, &shell);
     let open = cx.update(|cx| workspace.read(cx).open_tool_kind());

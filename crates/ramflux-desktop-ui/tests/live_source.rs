@@ -114,7 +114,8 @@ fn an_unlocked_account_opens_the_workspace_and_lock_returns_to_entry(cx: &mut Te
     });
     cx.run_until_parked();
     click(cx, handle, "settings-lock");
-    wait(cx, "entry after lock", |cx| matches!(page(cx, &shell), Page::Entry(_)));
+    // The locked account is met on its own lock page, not the onboarding.
+    wait(cx, "lock page after lock", |cx| page(cx, &shell) == Page::Lock);
     assert!(locked.load(Ordering::SeqCst), "the daemon locked the account");
     let sessions = cx.update(|cx| shell.read(cx).store().read(cx).accounts().count());
     assert_eq!(sessions, 0, "the account's session and its cached data are gone");

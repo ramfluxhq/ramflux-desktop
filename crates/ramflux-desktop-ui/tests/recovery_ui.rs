@@ -72,7 +72,8 @@ fn world(cx: &mut TestAppContext) -> (Handle, Entity<Shell>) {
         m.inject(0, account(ID, AccountKind::HumanInteractive, LockState::Locked));
     });
     advance(cx, 300);
-    assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account));
+    // A locked account is met on the lock page.
+    assert_eq!(page(cx, &shell), Page::Lock);
     (handle, shell)
 }
 

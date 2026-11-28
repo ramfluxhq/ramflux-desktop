@@ -22,8 +22,8 @@ pub fn lock_and_restart<H: Host, D: DemoDaemon>(
     let desk = demo.sides[0].desk()?;
     desk.open_settings(demo.host, SettingsSection::Account);
     desk.click(demo.host, None, "settings-lock")?;
-    demo.wait(0, limit, "the entry page after lock", |desk, host| {
-        matches!(desk.page(host), Page::Entry(_))
+    demo.wait(0, limit, "the lock page after lock", |desk, host| {
+        desk.page(host) == Page::Lock
             && desk.store(host, |s| {
                 probe::account(s).is_some_and(|a| a.lock_state == LockState::Locked)
             })
@@ -34,7 +34,7 @@ pub fn lock_and_restart<H: Host, D: DemoDaemon>(
             })
     })?;
     demo.sides[0].desk()?.close_settings(demo.host);
-    notes.add("Alice locked: back on the entry page");
+    notes.add("Alice locked: on her lock page");
     demo.shots(0, "07_locked", notes)?;
     unlock(demo)?;
     history(demo)?;

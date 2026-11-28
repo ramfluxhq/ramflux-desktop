@@ -317,7 +317,7 @@ fn a_new_group_is_created_with_its_members_named_and_renamed(cx: &mut TestAppCon
     });
     add(cx, handle, "principal-lu");
     wait(cx, "lu", |cx| contact(cx, &shell, "principal-lu").is_some());
-    click(cx, handle, "nav-contacts");
+    click(cx, handle, "nav-messages");
 
     click(cx, handle, "stack-new");
     click_label(cx, handle, &tr("stack.new_group"));
@@ -415,7 +415,7 @@ fn a_new_group_is_created_with_its_members_named_and_renamed(cx: &mut TestAppCon
 #[gpui_kit::test]
 fn a_direct_conversation_has_no_rename_and_cancel_leaves_no_group(cx: &mut TestAppContext) {
     let (handle, shell, state, fake) = open(cx, "f14-cancel");
-    click(cx, handle, "nav-contacts");
+    click(cx, handle, "nav-messages");
     show_context(cx, handle, &shell, "dm-ana");
     click(cx, handle, "conversation-more");
     assert!(
