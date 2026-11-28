@@ -294,6 +294,13 @@ fn is_identity_read(label: &str) -> bool {
     matches!(label, "identity.status" | "conversation.security")
 }
 
+/// Read-only calls the MLS groups list makes when the Groups route opens
+/// (the group list and the join requests the SDK holds). They change
+/// nothing, so "nothing was sent" assertions do not count them.
+fn is_mls_read(label: &str) -> bool {
+    matches!(label, "mls_group.list" | "mls_group.join.pending")
+}
+
 /// Card runtime calls that only keep a drawn card alive (open on render,
 /// update, present, suspend, resume, dispose). They carry no user intent, so
 /// "nothing was sent" assertions do not count them; `card.session.event`,
@@ -322,7 +329,9 @@ pub fn bodies(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<(String, Js
             .session()
             .map(|s| {
                 s.effects()
-                    .filter(|(l, _)| !is_card_lifecycle(l) && !is_identity_read(l))
+                    .filter(|(l, _)| {
+                        !is_card_lifecycle(l) && !is_identity_read(l) && !is_mls_read(l)
+                    })
                     .map(|(l, b)| (l.to_owned(), b.clone()))
                     .collect()
             })

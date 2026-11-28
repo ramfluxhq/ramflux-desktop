@@ -32,7 +32,10 @@ fn a_group_chosen_in_the_directory_opens_its_conversation_and_member_panel(
     let (handle, shell) = open(cx, "s05_group_governance");
     advance(cx, 1000);
     navigate(cx, handle, &shell, WorkspaceRoute::Groups);
-    assert!(exists(cx, handle, "group-directory"), "the groups route lists groups");
+    // On the mock the route lists the MLS groups (the old directory is shown
+    // on a live daemon until the pin batch); the old directory still backs
+    // `show_group`, which this test drives.
+    assert!(exists(cx, handle, "mls-groups-section"), "the groups route lists groups");
     assert!(
         exists(cx, handle, "groups-detail-empty"),
         "no group is shown until one is chosen (C05)"
