@@ -28,8 +28,8 @@ const HISTORY_LIMIT: u32 = 50;
 /// Posts asked of a gap fill.
 const GAP_LIMIT: u32 = 200;
 
-/// Invite durations offered, in seconds (1, 7 and 30 days).
-pub const INVITE_TTLS: [u64; 3] = [86_400, 604_800, 2_592_000];
+/// Invite durations offered, in seconds (1 and 7 days; the host caps an invite at 7 days).
+pub const INVITE_TTLS: [u64; 2] = [86_400, 604_800];
 /// Invite use limits offered.
 pub const INVITE_USES: [u32; 3] = [1, 10, 100];
 

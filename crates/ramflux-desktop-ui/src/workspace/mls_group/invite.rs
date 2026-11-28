@@ -6,7 +6,7 @@
 //! Any member may create invites (r4); the list and revoke cover the invites
 //! this account created. The panel shows the secret note, then the newest
 //! link (monospace, middle-truncated, left to right) with "Copy link", the
-//! duration and use presets (1, 7 or 30 days; 1, 10 or 100 uses) with "New
+//! duration and use presets (1 or 7 days; 1, 10 or 100 uses) with "New
 //! link", and the list of invites with their "Revoked" and "Expired" badges.
 //!
 //! A link is a secret. It is written to the clipboard on the tap of "Copy
