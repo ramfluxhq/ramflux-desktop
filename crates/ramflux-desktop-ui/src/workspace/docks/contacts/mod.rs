@@ -458,6 +458,7 @@ impl Render for ContactsDock {
         let muted = cx.theme().muted_foreground;
         v_flex()
             .id("dock-contacts")
+            .test_support()
             .size_full()
             .overflow_y_scroll()
             .when_some(form, |col, form| {

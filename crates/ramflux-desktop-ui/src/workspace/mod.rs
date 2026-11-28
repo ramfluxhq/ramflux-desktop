@@ -982,6 +982,13 @@ impl Render for Workspace {
         // conversation is shown; on a section page at the foot of its pane,
         // never in the window's drag region.
         let banner_in_conversation = show_detail && section_detail.is_none() && blocking.is_none();
+        // A section page has no conversation to draw the confirm strip: it
+        // sits at the foot of the pane, above the banner.
+        let section_strip = {
+            let root = self.root.read(cx);
+            (section_detail.is_some() && root.host() == ConfirmHost::Workspace)
+                .then(|| root.confirm_strip().clone())
+        };
         let status_view = self.status.clone().map(gpui_kit::AnyView::from);
         self.conversation.update(cx, |conversation, _| {
             conversation.set_status(status_view.clone().filter(|_| banner_in_conversation));
@@ -1056,6 +1063,7 @@ impl Render for Workspace {
                                 (None, None) => self.dock_area.clone().into_any_element(),
                             },
                         ))
+                        .children(section_strip)
                         // A section page: the banner at the foot of the pane.
                         .when(!banner_in_conversation, |col| col.children(self.status.clone()))
                         .child(

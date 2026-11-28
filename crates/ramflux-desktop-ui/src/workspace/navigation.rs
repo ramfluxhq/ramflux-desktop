@@ -9,7 +9,7 @@ use crate::i18n::tr;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{
-    Disableable as _, Icon, Selectable as _, Sizable as _, StyledExt as _, v_flex,
+    ActiveTheme as _, Disableable as _, Icon, Selectable as _, Sizable as _, StyledExt as _, v_flex,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, Context, IntoElement, TestSupportExt as _, Window, div, rems};
@@ -137,18 +137,21 @@ impl Workspace {
                 let people =
                     self.contact_directory.update(cx, |list, cx| list.detail(None, window, cx));
                 // The account's own contact tools (my card, requests, the
-                // auto-accept setting, invitations, blocked) sit under the
-                // people table; the conversation's Profile panel has none.
+                // auto-accept setting, invitations, blocked) sit beside the
+                // people table, full height; the conversation's Profile panel
+                // has none of them.
                 Some(
-                    gpui_kit::component::v_flex()
+                    ramflux_desktop_navigation::direction::h_flex()
                         .size_full()
-                        .child(gpui_kit::div().flex_1().min_h_0().child(people))
+                        .child(gpui_kit::div().flex_1().min_w_0().h_full().child(people))
                         .child(
                             gpui_kit::div()
                                 .id("contacts-tools")
                                 .flex_none()
-                                .max_h(gpui_kit::rems(240.0 / 15.0))
-                                .overflow_y_scroll()
+                                .w(gpui_kit::rems(400.0 / 15.0))
+                                .h_full()
+                                .border_start_1()
+                                .border_color(cx.theme().border)
                                 .child(self.contacts.clone()),
                         )
                         .into_any_element(),
