@@ -128,9 +128,8 @@ is and how far it is trusted: a card is checked against its signature and pins
 the identity it names; an id is looked up on your home node and trusted on
 first use. Each contact row says where its identity came from: **looked up by
 id** (provisional: names are first come, first served), **pinned by their
-contact card**, or **confirmed by comparing safety numbers**. **Verify** opens
-the comparison with the safety number; only **The numbers match** marks the
-contact verified. The row also says whether the contact is reachable and what
+contact card**, or **confirmed**. A contact whose identity changed shows **Review**, which opens
+the identity change sheet. The row also says whether the contact is reachable and what
 kind of party it is (marked when that is only its own claim). A contact that is
 reachable can be messaged at once. The field explains text it cannot use, and a
 daemon refusal is explained under it (unknown id, expired or forged card,
@@ -157,10 +156,9 @@ recorded it (its event stream says so). **Accept** adds the contact on
 this account and **Reject** declines.
 The requester is not told yet, for the same reason. A contact's menu blocks or
 removes them (both revoke what you shared and need a confirmation); blocked
-contacts can be unblocked. **Verify** compares the contact's devices through the
-node and marks the safety number verified (it needs the node, and the contact's
-identity, which the daemon lists once it has fetched their device manifest, for
-example after a message).
+contacts can be unblocked. **Review** (on a contact whose identity changed)
+opens the identity change sheet; **Accept new identity** is the only way to
+accept the change.
 
 ## 8. Send a message or an attachment
 

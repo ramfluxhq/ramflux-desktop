@@ -35,7 +35,7 @@
             a2i_pending: [],
         )),
         (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
-        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", safety: Verified, contact: true)),
+        (0, ParticipantUpserted(id: "p-lena", kind: Human, display: "Lena Hart", identity: Verified, contact: true)),
         (0, ParticipantUpserted(id: "p-sam", kind: Human, display: "Sam Moreau", contact: true)),
         (0, ParticipantUpserted(id: "p-ines", kind: Human, display: "Ines Carvalho")),
         (10, ContextUpserted(id: "c-family", kind: Group, title: "Family", participants: ["p-me", "p-sam", "p-lena"], pinned: true, epoch: 11)),

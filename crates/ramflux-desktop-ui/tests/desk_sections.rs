@@ -55,7 +55,7 @@ fn a_group_chosen_in_the_directory_opens_its_conversation_and_member_panel(
 }
 
 #[gpui_kit::test]
-fn a_contact_profile_compares_before_it_verifies(cx: &mut TestAppContext) {
+fn a_contact_profile_shows_the_encryption_section_and_accepts_nothing(cx: &mut TestAppContext) {
     let _locale = locale_guard();
     let (handle, shell) = open(cx, "s02_daily");
     advance(cx, 1000);
@@ -74,16 +74,12 @@ fn a_contact_profile_compares_before_it_verifies(cx: &mut TestAppContext) {
     let profile = cx.update(|cx| workspace.read(cx).contact_profile().clone());
     cx.update(|cx| profile.update(cx, |p, cx| p.set_participant(Some(contact), cx)));
     cx.run_until_parked();
-    assert!(exists(cx, handle, "contact-safety-number"), "the safety number is shown");
+    assert!(exists(cx, handle, "contact-encryption"), "the Encryption section is shown");
     let before = effects(cx, &shell).len();
-    if exists(cx, handle, "contact-compare") {
-        click(cx, handle, "contact-compare");
-        assert!(
-            exists(cx, handle, "contact-compare-cancel"),
-            "Compare opens the comparison instead of verifying"
-        );
-        assert_eq!(effects(cx, &shell).len(), before, "opening a comparison sends nothing");
-    }
+    assert!(
+        !effects(cx, &shell).iter().any(|e| format!("{e:?}").contains("accept_change")),
+        "opening a profile accepts nothing ({before} effects)"
+    );
 }
 
 #[gpui_kit::test]
@@ -97,7 +93,6 @@ fn replying_to_a_stranger_is_unavailable_and_never_accepts(cx: &mut TestAppConte
         direction: RequestDirection::Incoming,
         state: RequestState::Pending,
         note: Some("Hello from the review".into()),
-        safety_number: Some("73051186442090573312".into()),
         held_messages: 2,
         preview: None,
         expires_at: None,

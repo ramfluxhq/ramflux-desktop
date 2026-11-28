@@ -60,18 +60,31 @@ fn object_transfers_pull_preview_and_save(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn safety_changes_stay_sticky_until_verified(cx: &mut TestAppContext) {
+fn an_identity_change_waits_for_a_review_and_one_accept(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s04_safety");
     advance(cx, 1_000);
-    show_context(cx, handle, &shell, "c-mira");
-    assert!(exists(cx, handle, "safety-banner-p-mira"), "the context header carries the banner");
+    show_context(cx, handle, &shell, "c-chen");
+    assert!(exists(cx, handle, "identity-banner-p-chen"), "the context header carries the banner");
+    assert!(exists(cx, handle, "moment-identity:changed:p-chen:A2"), "and a service line");
     advance(cx, 5_000);
-    assert!(exists(cx, handle, "safety-banner-p-mira"), "still there");
-    click_in(cx, handle, "moment-m-key", "verify-safety");
-    assert_eq!(last_body(cx, &shell, methods::SAFETY_VERIFY)["participant_id"], "p-mira");
-    advance(cx, 200);
-    assert!(!exists(cx, handle, "safety-banner-p-mira"), "verified: the banner goes");
-    assert_eq!(lifecycle(cx, &shell, "m-key"), Some(Lifecycle::Done));
+    assert!(exists(cx, handle, "identity-banner-p-chen"), "nothing dismisses or accepts it");
+    assert!(!exists(cx, handle, "identity-sheet-text"));
+    click(cx, handle, "banner-review-p-chen");
+    assert!(exists(cx, handle, "identity-sheet-text"), "Review opens the sheet");
+    assert!(
+        !bodies(cx, &shell).iter().any(|(m, _)| m == methods::IDENTITY_ACCEPT_CHANGE),
+        "opening accepts nothing"
+    );
+    click(cx, handle, "identity-sheet-accept");
+    let body = last_body(cx, &shell, methods::IDENTITY_ACCEPT_CHANGE);
+    assert_eq!(
+        (body["participant_id"].as_str(), body["new_anchor"].as_str()),
+        (Some("p-chen"), Some("A2"))
+    );
+    advance(cx, 500);
+    assert!(!exists(cx, handle, "identity-banner-p-chen"), "accepted: the banner goes");
+    assert!(!exists(cx, handle, "identity-sheet-text"), "and the sheet closes");
+    assert!(exists(cx, handle, "moment-identity:accepted:p-chen:A2"));
 }
 
 #[gpui_kit::test]

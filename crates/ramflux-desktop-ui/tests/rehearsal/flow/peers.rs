@@ -206,7 +206,7 @@ pub fn contacts<H: Host, D: DemoDaemon>(
         )?;
         notes.add(format!("desktop: peer {} accepted and reachable after {added:?}", peer.name));
         let shown = demo.read(0, |s| {
-            s.participant(&participant).map(|p| (p.safety, p.root_source, p.reachable))
+            s.participant(&participant).map(|p| (p.identity, p.root_source, p.reachable))
         })?;
         let marker =
             demo.read(0, |s| s.participant(&participant).map(|p| (p.kind, p.kind_claim)))?;
@@ -215,13 +215,13 @@ pub fn contacts<H: Host, D: DemoDaemon>(
             peer.name
         ));
         notes.add(format!(
-            "desktop shows peer {}: (safety, root, reachable) = {shown:?}",
+            "desktop shows peer {}: (identity, root, reachable) = {shown:?}",
             peer.name
         ));
         let row = format!("contacts-{}", peer.principal);
         let status = demo.sides[0].desk()?.label_in(demo.host, &row, "contact-root");
-        let safety = demo.sides[0].desk()?.label_in(demo.host, &row, "contact-safety");
-        notes.add(format!("status on the row {row}: {safety:?}"));
+        let identity = demo.sides[0].desk()?.label_in(demo.host, &row, "contact-identity");
+        notes.add(format!("status on the row {row}: {identity:?}"));
         notes.add(format!("trust line on the row {row}: {status:?}"));
     }
     demo.shots(0, "20_peer_contacts", notes)?;

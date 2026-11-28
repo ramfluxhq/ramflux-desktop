@@ -15,8 +15,8 @@
 
 use ramflux_desktop_core::{
     Account, AccountId, AccountKind, Call, CallDirection, CallEndReason, CallId, CallState,
-    Capabilities, ContextId, DomainEvent, EffectFailure, FailureCode, Listing, LockState,
-    Networking, ParticipantId, SafetyState, SecureSessions, SourceStatus, Timestamp,
+    Capabilities, ContextId, DomainEvent, EffectFailure, FailureCode, IdentityState, Listing,
+    LockState, Networking, ParticipantId, SecureSessions, SourceStatus, Timestamp,
 };
 use ramflux_desktop_test::Scenario;
 use ramflux_desktop_test::mock_ceremony::{DEMO_POSITIONS, demo_word};
@@ -70,14 +70,15 @@ fn push(scenario: &mut Scenario, at: u64, event: DomainEvent) {
     scenario.timeline.sort_by_key(|(t, _)| *t);
 }
 
-fn participant(id: &str, display: &str, safety: SafetyState, number: Option<&str>) -> DomainEvent {
+fn participant(id: &str, display: &str, identity: IdentityState) -> DomainEvent {
     DomainEvent::ParticipantUpserted(ramflux_desktop_core::Participant {
         id: ParticipantId::new(id),
         kind: ramflux_desktop_core::ParticipantKind::Human,
         display: display.to_owned(),
-        safety,
+        identity,
+        pending_change: None,
+        ai_flag: false,
         contact: true,
-        safety_number: number.map(str::to_owned),
         link: ramflux_desktop_core::ContactLink::None,
         reachable: None,
         kind_claim: ramflux_desktop_core::KindClaim::None,
@@ -204,31 +205,6 @@ fn strangers_selected(run: &mut Run) -> Step {
     let workspace = run.cx.update(|cx| run.shell.read(cx).workspace().clone());
     let area = run.cx.update(|cx| workspace.read(cx).strangers().clone());
     run.cx.update(|cx| area.update(cx, |a, cx| a.select(Some("req-chenyao".into()), cx)));
-    run.cx.run_until_parked();
-    Ok(())
-}
-
-/// B11: from the product conversation (c-product) the board shows, the
-/// safety number dialog of p-zhou over the dimmed shell.
-fn safety_compare(run: &mut Run) -> Step {
-    let mut s = messages_world()?;
-    push(
-        &mut s,
-        900,
-        participant(
-            "p-zhou",
-            &t("name_zhou"),
-            SafetyState::Unverified,
-            Some("0421 1830 5502 7681 9904"),
-        ),
-    );
-    run.play(&s, 1_000);
-    run.show("c-product")?;
-    // The contacts dock's compare button: start the comparison the way it
-    // does; the dialog is drawn by the workspace over the whole window.
-    let workspace = run.cx.update(|cx| run.shell.read(cx).workspace().clone());
-    let dock = run.cx.update(|cx| workspace.read(cx).contacts_dock().clone());
-    run.cx.update(|cx| dock.update(cx, |d, cx| d.start_verify(ParticipantId::new("p-zhou"), cx)));
     run.cx.run_until_parked();
     Ok(())
 }
@@ -504,29 +480,14 @@ pub fn plan(key: &str) -> Option<Plan> {
         ),
         "B10" => capture!(
             S02,
-            "board_zh, p-zhou's key changed, conversation with p-zhou open",
+            "board_zh, p-zhou's identity changed, conversation with p-zhou open",
             [],
             |run| {
                 let mut s = messages_world()?;
-                push(
-                    &mut s,
-                    900,
-                    participant(
-                        "p-zhou",
-                        &t("name_zhou"),
-                        SafetyState::KeyChanged,
-                        Some("0421 1830 5502 7681 9031"),
-                    ),
-                );
+                push(&mut s, 900, participant("p-zhou", &t("name_zhou"), IdentityState::Changed));
                 run.play(&s, 1_000);
                 run.show("c-zhou")
             }
-        ),
-        "B11" | "I31" => capture!(
-            S02,
-            "board_zh c-product, the safety number dialog comparing p-zhou's number",
-            ["verify-confirm"],
-            safety_compare
         ),
         "B38" => capture!(
             S02,
@@ -765,7 +726,7 @@ pub fn plan(key: &str) -> Option<Plan> {
             }
         ),
         "F04" => {
-            capture!(S02, "board_zh contact profile of p-zhou", ["contact-safety-number"], |run| {
+            capture!(S02, "board_zh contact profile of p-zhou", ["contact-encryption"], |run| {
                 daily(run)?;
                 run.route(WorkspaceRoute::Contacts)?;
                 run.click("contacts-view-p-zhou")

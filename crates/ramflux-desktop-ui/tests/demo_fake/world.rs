@@ -63,7 +63,6 @@ pub struct Account {
     pub links: Vec<Value>,
     pub conversations: BTreeMap<String, Conversation>,
     pub objects: Vec<Value>,
-    pub verified: BTreeSet<String>,
 }
 
 impl Account {
@@ -356,7 +355,6 @@ impl World {
                     links: Vec::new(),
                     conversations: BTreeMap::new(),
                     objects: Vec::new(),
-                    verified: BTreeSet::new(),
                 };
                 let answer = rows::opened(&account);
                 daemon.accounts.push(account);
@@ -408,7 +406,6 @@ impl World {
                     links: Vec::new(),
                     conversations: BTreeMap::new(),
                     objects: Vec::new(),
-                    verified: BTreeSet::new(),
                 };
                 let id = account.id.clone();
                 daemon.accounts.push(account);
@@ -579,14 +576,6 @@ impl World {
                     group.titles.insert(principal, body["name"].clone());
                 }
                 json!({ "name": body["name"] })
-            }
-            "contact.safety_number" => json!({
-                "expected": { "contact_identity_commitment": text(body, "contact_identity_commitment") }
-            }),
-            "contact.verify" => {
-                let commitment = text(&body["expected"], "contact_identity_commitment");
-                self.account(side, id).expect("account").verified.insert(commitment);
-                json!({})
             }
             "message.submit" => return self.submit(side, id, body),
             "message.receive" => self.receive(side, id, &text(body, "conversation_id")),

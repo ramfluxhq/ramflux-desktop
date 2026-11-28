@@ -80,7 +80,7 @@ fn the_people_table_opens_a_profile_by_pointer_and_by_keyboard(cx: &mut TestAppC
     navigate(cx, handle, &shell, WorkspaceRoute::Contacts);
     assert!(exists(cx, handle, "contacts-people"), "the people table before a choice");
     click(cx, handle, "contacts-view-p-lena");
-    assert!(exists(cx, handle, "contact-safety-number"), "View profile opens the profile");
+    assert!(exists(cx, handle, "contact-encryption"), "View profile opens the profile");
     click(cx, handle, "contacts-people-entry");
     assert!(exists(cx, handle, "contacts-people"), "People returns to the table");
     // The search field's cursor moves over the table; Enter opens the row.
@@ -89,7 +89,7 @@ fn the_people_table_opens_a_profile_by_pointer_and_by_keyboard(cx: &mut TestAppC
         window.press("down", cx);
         window.press("enter", cx);
     });
-    assert!(exists(cx, handle, "contact-safety-number"), "Enter opens the row under the cursor");
+    assert!(exists(cx, handle, "contact-encryption"), "Enter opens the row under the cursor");
 }
 
 #[gpui_kit::test]

@@ -5,7 +5,7 @@
 //! production window, on a fake daemon that resolves contacts when they are
 //! added (see `resolve_fake`):
 //!
-//! - a principal id is added, shown as unverified (compare safety numbers),
+//! - a principal id is added, shown with its root provisional until a card pins it,
 //!   reachable, and a direct conversation starts with it at once;
 //! - a contact card (pasted, or imported from a file) adds the contact it
 //!   names, its self-declared kind marked; a bad card or an unknown id
@@ -24,8 +24,8 @@ use common::*;
 use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::{MouseButton, TestAppContext, WindowHandle};
 use ramflux_desktop_core::{
-    ContactLink, ContextId, ContextKind, KindClaim, ParticipantId, PeerKind, RootSource,
-    SafetyState,
+    ContactLink, ContextId, ContextKind, IdentityState, KindClaim, ParticipantId, PeerKind,
+    RootSource,
 };
 use ramflux_desktop_ui::i18n::tr;
 use ramflux_desktop_ui::identity::kind_text;
@@ -149,13 +149,12 @@ fn a_principal_id_is_added_unverified_and_a_conversation_starts_at_once(cx: &mut
             .is_some_and(|p| p.reachable == Some(true) && p.display == "Kai")
     });
     let kai = contact(cx, &shell, "principal-kai").expect("kai");
-    assert_eq!((kai.link_state(), kai.safety), (ContactLink::Accepted, SafetyState::Unverified));
+    assert_eq!((kai.link_state(), kai.identity), (ContactLink::Accepted, IdentityState::Tofu));
     assert_eq!(seen(&state, "contact.add")[0]["principal_id"], "principal-kai");
     wait(cx, "the field cleared", |cx| note(cx, &shell).is_none());
-    assert_eq!(
-        label_in(cx, handle, "contacts-principal-kai", "contact-safety").as_deref(),
-        Some(tr("dock.contacts.unverified").as_ref()),
-        "the safety line is a status, never a request to compare"
+    assert!(
+        label_in(cx, handle, "contacts-principal-kai", "contact-identity").is_none(),
+        "an identity first seen on this device carries no badge"
     );
     assert!(has_label(cx, handle, &tr("dock.contacts.reachable")));
     // A name lookup's kind is only claimed: the mark says so.
@@ -489,19 +488,6 @@ fn a_looked_up_identity_is_provisional_until_a_card_replaces_it_after_confirmati
             == Some(tr("dock.contacts.root.card").as_ref())
     });
 
-    // Verify compares the number first; then the identity is confirmed.
-    click_in(cx, handle, "contacts-principal-kai", "verify");
-    assert!(exists(cx, handle, "contact-verify-number"));
-    assert!(seen(&state, "contact.verify").is_empty(), "opening the comparison changes nothing");
-    click(cx, handle, "verify-confirm");
-    wait(cx, "verified", |cx| {
-        contact(cx, &shell, "principal-kai")
-            .is_some_and(|p| p.root_source == Some(RootSource::Verified))
-    });
-    assert_eq!(
-        seen(&state, "contact.verify")[0]["expected"]["contact_identity_commitment"],
-        "cm-other-principal-kai"
-    );
     fake.shutdown();
 }
 

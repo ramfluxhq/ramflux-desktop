@@ -286,6 +286,14 @@ pub fn effects(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<String> {
     bodies(cx, shell).into_iter().map(|(label, _)| label).collect()
 }
 
+/// Read-only calls a view makes when it opens a direct conversation or a
+/// contact (the identity state and the conversation's security). They change
+/// nothing, so "nothing was sent" assertions do not count them; accepting a
+/// change (`identity.accept_change`) stays visible.
+fn is_identity_read(label: &str) -> bool {
+    matches!(label, "identity.status" | "conversation.security")
+}
+
 /// Card runtime calls that only keep a drawn card alive (open on render,
 /// update, present, suspend, resume, dispose). They carry no user intent, so
 /// "nothing was sent" assertions do not count them; `card.session.event`,
@@ -303,7 +311,8 @@ fn is_card_lifecycle(label: &str) -> bool {
 }
 
 /// Every effect the active source received, with its secret-free body, except
-/// the card runtime's keep-alive calls (see [`is_card_lifecycle`]).
+/// the card runtime's keep-alive calls (see [`is_card_lifecycle`]) and the
+/// identity reads (see [`is_identity_read`]).
 pub fn bodies(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<(String, JsonValue)> {
     cx.update(|cx| {
         shell
@@ -313,7 +322,7 @@ pub fn bodies(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Vec<(String, Js
             .session()
             .map(|s| {
                 s.effects()
-                    .filter(|(l, _)| !is_card_lifecycle(l))
+                    .filter(|(l, _)| !is_card_lifecycle(l) && !is_identity_read(l))
                     .map(|(l, b)| (l.to_owned(), b.clone()))
                     .collect()
             })

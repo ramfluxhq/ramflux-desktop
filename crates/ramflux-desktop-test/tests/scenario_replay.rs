@@ -157,25 +157,41 @@ fn s03_approval_is_refused_after_the_grant_expires() {
 }
 
 #[test]
-fn s04_key_change_is_sticky_until_verified() {
+fn s04_identity_change_waits_until_the_user_accepts_it() {
     let mut p = player("s04_safety");
     p.advance(1000);
-    let mira = ParticipantId::new("p-mira");
-    assert_eq!(p.store().participant(&mira).expect("mira").safety, SafetyState::KeyChanged);
-    let reasons: Vec<_> = attention(p.store()).into_iter().map(|a| a.reason).collect();
-    assert_eq!(reasons, [AttentionReason::ContactRequest, AttentionReason::Safety]);
+    let chen = ParticipantId::new("p-chen");
+    let who = p.store().participant(&chen).expect("chen").clone();
+    assert_eq!(who.identity, IdentityState::Changed);
+    assert_eq!(who.pending_change.as_ref().map(|c| c.new_anchor.as_str()), Some("A2"));
+    assert!(
+        p.store().moment(&MomentId::new("identity:changed:p-chen:A2")).is_some(),
+        "the change is a service line in the conversation"
+    );
+    assert_eq!(attention_ids(&p), ["m-noor"], "an identity change is a banner, not a needs-me row");
     p.advance(5000);
-    assert_eq!(lifecycle(&p, "m-key"), Lifecycle::NeedsMe, "warning must stay until verified");
+    assert_eq!(
+        p.store().participant(&chen).expect("chen").identity,
+        IdentityState::Changed,
+        "nothing accepts it by itself"
+    );
 
-    let verify = IntentKind::VerifySafetyNumber { participant_id: mira.clone() };
-    assert!(p.dispatch(Intent::human(verify)).expect("verify").is_empty());
+    // A click that showed another anchor is refused; the shown one is sent.
+    let accept = |anchor: &str| IntentKind::AcceptIdentityChange {
+        participant_id: chen.clone(),
+        new_anchor: anchor.to_owned(),
+    };
+    assert_eq!(
+        p.dispatch(Intent::human(accept("A1"))).err(),
+        Some(IntentError::IdentityChangedAgain(chen.clone()))
+    );
+    assert!(p.dispatch(Intent::human(accept("A2"))).expect("accept").is_empty());
     p.advance(200);
 
     assert_clean(&p);
-    assert_eq!(p.store().participant(&mira).expect("mira").safety, SafetyState::Verified);
-    assert_eq!(lifecycle(&p, "m-key"), Lifecycle::Done);
-    assert_eq!(lifecycle(&p, "m-verified"), Lifecycle::Done);
-    assert_eq!(attention_ids(&p), ["m-noor"], "only the contact request is left");
+    let who = p.store().participant(&chen).expect("chen");
+    assert_eq!((who.identity, who.pending_change.as_ref()), (IdentityState::Tofu, None));
+    assert!(p.store().moment(&MomentId::new("identity:accepted:p-chen:A2")).is_some());
     let accept = IntentKind::AcceptContact { moment_id: MomentId::new("m-noor") };
     assert!(p.dispatch(Intent::human(accept)).expect("accept").is_empty());
     p.advance(200);

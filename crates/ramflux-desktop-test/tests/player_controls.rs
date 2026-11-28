@@ -52,19 +52,25 @@ fn seek_backwards_rebuilds_the_store() {
     let scenario = load_fixture("s04_safety").expect("fixture");
     let mut p = ScenarioPlayer::new(&scenario);
     p.advance(6000);
-    let verify = IntentKind::VerifySafetyNumber { participant_id: ParticipantId::new("p-mira") };
-    p.dispatch(Intent::human(verify)).expect("verify");
+    let accept = IntentKind::AcceptIdentityChange {
+        participant_id: ParticipantId::new("p-chen"),
+        new_anchor: "A2".to_owned(),
+    };
+    p.dispatch(Intent::human(accept)).expect("accept");
     p.advance(200);
     let full = p.store().last_seq();
-    assert_eq!(
-        p.store().moment(&MomentId::new("m-key")).expect("m-key").lifecycle,
-        Lifecycle::Done
+    assert!(
+        p.store().moment(&MomentId::new("identity:accepted:p-chen:A2")).is_some(),
+        "the acceptance is a service line"
     );
 
     p.seek(1000);
 
-    let key = p.store().moment(&MomentId::new("m-key")).expect("m-key");
-    assert_eq!(key.lifecycle, Lifecycle::NeedsMe);
+    assert!(
+        p.store().moment(&MomentId::new("identity:accepted:p-chen:A2")).is_none(),
+        "seeking back removes the acceptance"
+    );
+    assert!(p.store().moment(&MomentId::new("identity:changed:p-chen:A2")).is_some());
     assert!(p.store().last_seq() < full);
     p.seek(6200);
     assert_eq!(p.store().last_seq(), full);

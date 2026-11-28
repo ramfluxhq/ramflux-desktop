@@ -27,8 +27,6 @@ pub struct Limits {
     pub discover: Duration,
     /// For a delivery receipt.
     pub receipt: Duration,
-    /// For a safety number to become verifiable and be verified.
-    pub verify: Duration,
     /// For the receiver's daemon to fetch a received attachment; `None`
     /// reports the receiver's objects as they are without requiring it (the
     /// fake daemon does not fetch).
@@ -41,7 +39,6 @@ impl Limits {
         answer: Duration::from_secs(90),
         discover: Duration::from_secs(20),
         receipt: Duration::from_secs(60),
-        verify: Duration::from_secs(30),
         fetch: Some(Duration::from_secs(90)),
     };
 
@@ -50,7 +47,6 @@ impl Limits {
         answer: Duration::from_secs(30),
         discover: Duration::from_secs(2),
         receipt: Duration::from_secs(30),
-        verify: Duration::from_secs(10),
         fetch: None,
     };
 }

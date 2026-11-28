@@ -18,7 +18,7 @@ use common::*;
 use gpui_kit::TestAppContext;
 use gpui_kit::test::TestWindowExt as _;
 use ramflux_desktop_core::{
-    ContextId, KindClaim, MomentKind, ParticipantId, PeerKind, SafetyState, SyncMode,
+    ContextId, IdentityState, KindClaim, MomentKind, ParticipantId, PeerKind, SyncMode,
 };
 use ramflux_desktop_ui::i18n::tr_args;
 use ramflux_desktop_ui::identity::kind_text;
@@ -36,8 +36,7 @@ struct World {
 }
 
 /// The fake daemon with public profiles: Ana verified as a person whose
-/// name looks like Cy's, Cy verified as a person whose verification went
-/// stale (the fixture's `verification_stale`), Bo an AI participant by its
+/// name looks like Cy's, Cy verified as a person, Bo an AI participant by its
 /// card alone, Zed nothing at all.
 fn open_profiles(cx: &mut TestAppContext, name: &str) -> World {
     let (fake, state, path) = sdk_fake::start(name);
@@ -114,28 +113,12 @@ fn contacts_say_how_far_a_kind_is_proven_and_warn_on_a_confusable_name(cx: &mut 
         "{warning}"
     );
     assert!(label_in(cx, &world, "contacts-principal-cy", "contact-name-warning").is_none());
-    // A stale verification: said as a status; the number stays advanced.
-    assert_eq!(
-        label_in(cx, &world, "contacts-principal-cy", "contact-safety").as_deref(),
-        Some(ramflux_desktop_ui::i18n::tr("dock.contacts.identity_changed").as_ref()),
-        "the safety line is a status, never a request to compare"
-    );
-    let cy = with_store(cx, &world.shell, |s| {
-        s.participant(&ParticipantId::new("principal-cy")).cloned()
-    });
-    let cy = cy.expect("cy");
-    assert_eq!(cy.safety, SafetyState::VerificationStale);
-    assert!(cy.safety.needs_attention(), "sticky until verified again");
-    assert_eq!(
-        label_in(cx, &world, "contacts-principal-cy", "verify").as_deref(),
-        Some(tr_args("dock.contacts.advanced_safety_for", &[("name", "Cy")]).as_ref())
-    );
     // Nothing reported about Zed: the safe default, no mark, no warning.
     let zed = with_store(cx, &world.shell, |s| {
         s.participant(&ParticipantId::new("principal-zed")).cloned()
     });
     let zed = zed.expect("zed");
-    assert_eq!((zed.kind_claim, zed.safety), (KindClaim::None, SafetyState::Unverified));
+    assert_eq!((zed.kind_claim, zed.identity), (KindClaim::None, IdentityState::Tofu));
     assert!(!zed.named());
     assert!(label_in(cx, &world, "contacts-principal-zed", "contact-kind").is_none());
     assert!(label_in(cx, &world, "contacts-principal-zed", "contact-name-warning").is_none());
